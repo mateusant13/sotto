@@ -406,7 +406,9 @@ are spelled out here with the reason each class is NOT source:
   commit and shows as ` M`. That is the concurrency, not a defect in this commit.
 * This commit does **not** re-run the two fixes' oracles. It records the code that already
   proved them (the proof is the lanes' own evidence, cited in the ticket and `AGENTS.md`).
-* `git ls-files` = 267 is the count **at commit time**; later lanes adding files will raise it.
+* `git ls-files` = **267** at `5ffeefc` (the count at commit time; later lanes adding files
+  raise it). This report itself adds one more path, `docs/audit/tracked-durability.md`, so at
+  `d8fdcfa` the count is **268**.
 * 4 ignored entries that were already ignored were re-counted under the new rules — the
   before/after ignored tables in §1b are the same instrument (`git status --ignored`) run at
   two moments, not two different definitions.
