@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sotto (staging)</title>
+    <!-- The staging page exists so the preload can be registered BEFORE the
+         panel is ever parsed.
+
+         Why it is needed: pywebview loads the window URL from inside its own
+         CoreWebView2InitializationCompleted handler, and that handler is
+         subscribed before the host's, so by the time the host gets to
+         AddScriptToExecuteOnDocumentCreatedAsync the navigation is already in
+         flight. Measured: the first panel parse then came up with
+         `hasSotto=false` and panel.js painted its "Preload bridge missing"
+         branch. So the host opens this page instead, registers the preload
+         here (nothing is lost — registration is per-environment, not
+         per-page), and only then navigates to panel.html. The panel's FIRST
+         parse is then correct, with no repair reload.
+
+         This page never paints anything. It is not the panel and it is not a
+         second UI; it is an empty document the shell uses to buy one
+         navigation of ordering. -->
+  </head>
+  <body></body>
+</html>

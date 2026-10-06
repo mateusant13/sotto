@@ -135,6 +135,34 @@ contextBridge.exposeInMainWorld('sotto', {
     ipcRenderer.send('sotto:caption-cleared', { remaining: Number(remaining) || 0 });
   },
 
+  // --- the transcript history ("redux") ------------------------------------
+  // Mirrors the WebView2 arm's `window.sotto.history` exactly (same names, same
+  // resolved shapes). The MAIN process owns the disk; the renderer is handed
+  // the written entry, path included, so the folder layout is not duplicated.
+  history: {
+    append(text, meta) {
+      return ipcRenderer.invoke('sotto:history-append', {
+        text: String(text == null ? '' : text),
+        meta: meta && typeof meta === 'object' ? meta : {},
+      });
+    },
+    tail(limit) {
+      return ipcRenderer.invoke('sotto:history-tail', { limit: Number(limit) || 400 });
+    },
+    search(query, limit) {
+      return ipcRenderer.invoke('sotto:history-search', {
+        query: String(query == null ? '' : query),
+        limit: Number(limit) || 200,
+      });
+    },
+    root() {
+      return ipcRenderer.invoke('sotto:history-root');
+    },
+    reveal(path) {
+      ipcRenderer.send('sotto:history-reveal', { path: String(path == null ? '' : path) });
+    },
+  },
+
   // --- constants -----------------------------------------------------------
   HOTKEY: 'Alt+C',
   platform: process.platform,

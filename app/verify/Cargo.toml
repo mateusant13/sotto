@@ -1,0 +1,15 @@
+[package]
+name = "sotto-verify"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# NOT part of the app. This crate exists so the REAL src-tauri/src/geometry.rs
+# and src-tauri/src/memory.rs can be compiled and their REAL unit tests run on a
+# machine where the full Tauri dependency tree could not be downloaded.
+#
+# It compiles the real files via #[path]; the only thing stubbed is the Tauri
+# window surface they touch. Read verify/README.md before trusting a green here.
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

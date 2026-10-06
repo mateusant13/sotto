@@ -1,0 +1,12 @@
+{
+    "type": "onnxmodel",
+    "config": {
+        "model_path": "/datadisks/disk2/nebanfic/multilingual_onnx_int4_v3",
+        "onnx_file_name": "joint.onnx",
+        "inference_settings": null,
+        "use_ort_extensions": false,
+        "external_initializers_file_name": null,
+        "constant_inputs_file_name": null,
+        "model_attributes": null
+    }
+}

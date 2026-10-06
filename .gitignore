@@ -21,3 +21,54 @@ __pycache__/
 # OS debris
 Thumbs.db
 .DS_Store
+
+# The transcript history the panel writes (<date>/<HH>.md). It is the owner's
+# own data, not source: it grows every time the app transcribes, so it must
+# never enter a commit.
+history/
+
+# ── Run records, scratch and derived state (durability audit 2026-10-06) ─────
+# Everything matched here is a RECORD of a run, a machine cache, or a scratch
+# mutant/arm — never source. `git clean -fd` is allowed to take any of it.
+# The proof instruments themselves (the oracle .py under _main/, the app, the
+# worker) are TRACKED on purpose; only their output is ignored below.
+*.err
+*.out
+*.jsonl
+*.jsonl.err
+*.mirror
+*.stdout
+*.pid
+
+# _main/ holds the oracles (tracked) AND their captures. Only the captures go.
+_main/*.txt
+_main/*.png
+_main/*.flac
+_main/*.orig-*
+_main/*-state.json
+_main/_pwtest3.json
+_main/asr-warmup.json
+_main/probe-verify.json
+_main/panel-visible-window-probe.json
+_main/tap-restart-loop-oracle.json
+_main/webview-hotreload-acceptance.json
+_main/route-a-cu13.report.json
+_main/runcmd-entry-report.json
+_main/console-census-*.json
+_main/run-cmd-exit-oracle-*.json
+_main/vad-arm-*.json
+_main/_probe/
+
+# Per-run scratch inside the production trees. worker/models/ is the downloaded
+# weights + their metadata; the model's OWN spec docs live in docs/model-specs/.
+worker/models/
+worker/runs/
+worker/_probe/
+worker/_e2e/
+app/electron/_hotreload/
+app/electron/_single-instance/
+app/electron/_dom-probe-*.json
+app/verify/rustc/out/
+app/webview/_flash-show-*.py
+app/webview/_vis-live-*.py
+worker/_sotto_worker_agcinert.py

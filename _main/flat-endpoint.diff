@@ -1,0 +1,223 @@
+--- a/worker/wasapi_loopback.py
++++ b/worker/wasapi_loopback.py
+@@ -56,9 +56,16 @@
+ CLSCTX_INPROC_SERVER = 1
+ COINIT_MULTITHREADED = 0
+ RPC_E_CHANGED_MODE = -2147417850  # 0x80010106: already initialised, other mode
++S_OK = 0            # CoInitializeEx: COM started here;            reference taken
++S_FALSE = 1         # CoInitializeEx: COM already running here;    reference taken
++# What a successful `_com_init()` leaves the caller OWING. They are kept apart
++# because CoUninitialize is due for exactly one of them.
++COM_REF_TAKEN = "taken"    # S_OK / S_FALSE: the caller must CoUninitialize
++COM_ALREADY = "already"    # RPC_E_CHANGED_MODE: nothing was taken to give back
+ 
+ AUDCLNT_SHAREMODE_SHARED = 0
+ AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000
++AUDCLNT_BUFFERFLAGS_SILENT = 0x00000002  # GetBuffer: this packet is SILENCE
+ 
+ WAVE_FORMAT_PCM = 0x0001
+ WAVE_FORMAT_IEEE_FLOAT = 0x0003
+@@ -130,6 +137,69 @@
+     return ctypes.WinDLL("ole32", use_last_error=True)
+ 
+ 
++# ── COM init: the vendor contract, not an assumption ──────────────────────────
++# CoInitializeEx(NULL, COINIT_MULTITHREADED) has THREE documented outcomes, and a
++# caller has to tell them apart because they differ in what it then OWES:
++#   S_OK               (0) COM started here in the MTA;          A REFERENCE IS TAKEN
++#   S_FALSE            (1) COM already running here in the MTA;  A REFERENCE IS TAKEN
++#                          "The COM library is already initialized on this thread."
++#                          Also a SUCCESS code.
++#   RPC_E_CHANGED_MODE     already running here in ANOTHER apartment. The CALL
++#                          fails and no reference is taken -- but COM IS
++#                          initialised and usable on this thread.
++# Everything else (E_FAIL, E_OUTOFMEMORY, E_UNEXPECTED, ...) is a real failure and
++# nothing was taken. Microsoft Learn, CoInitializeEx (Return value + Remarks: "each
++# successful call to CoInitialize or CoInitializeEx, including any call that returns
++# S_FALSE, must be balanced by a corresponding call to CoUninitialize"):
++#   https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex
++#
++# The gate used to be `if hr not in (0, RPC_E_CHANGED_MODE): raise`. It REFUSED
++# S_FALSE -- a success code -- and never gave back the reference it took, so in a
++# process where nothing had initialised COM first the SECOND call on that thread
++# returned S_FALSE and raised. The ladder calls default_render_endpoint() twice on
++# one thread before any stream exists (device_candidates() ->
++# loopback_device_spec(), then WasapiLoopbackTap.__init__), so rung (a) -- WASAPI
++# loopback of the default render endpoint, the only rung that needs no virtual
++# cable -- could never open.
++# MEASURED 2026-10-06 (`_main/flat-endpoint-ladder.py mta`, the branch where the
++# thread was MTA before anything else touched it): candidate list WITHOUT the WASAPI
++# rung, peak=0.000092, nonzero_blocks=0, worker rc=3 -- the numbers of
++# `_main/_live_owner3.log:61`. Same run, post-fix: see `_main/flat-endpoint-AFTER-mta.out`.
++def _com_init():
++    """Start COM on this thread, or admit it is already running.
++
++    Returns COM_REF_TAKEN when THIS call took a reference, which the caller MUST
++    pair with `_com_uninit()`; COM_ALREADY when COM is already running here in
++    another apartment and NOTHING was taken (calling CoUninitialize then would
++    release someone else's reference, which is why the outcome is returned instead
++    of collapsed into a bool). Raises WasapiError on a genuine failure.
++    """
++    hr = _ole32().CoInitializeEx(None, COINIT_MULTITHREADED)
++    if hr in (S_OK, S_FALSE):
++        return COM_REF_TAKEN
++    if hr == RPC_E_CHANGED_MODE:
++        # The thread is already an STA. That is a STATE, not a fault: COM is
++        # initialised and the objects this module uses are free-threaded. MEASURED
++        # 2026-10-06 on this box (`_main/flat-endpoint-BEFORE.out`): sounddevice/
++        # PortAudio leaves the worker's main thread in an STA before rung (a) is
++        # ever probed, every CoInitializeEx here then returns RPC_E_CHANGED_MODE,
++        # and the loopback tap opens and carries speech (601 blocks,
++        # peak=0.465224, 59 captions). Turning this into an error would DELETE
++        # rung (a) on exactly such a host -- a regression, not a fix.
++        return COM_ALREADY
++    raise WasapiError("CoInitializeEx failed: %s" % _fmt(hr))
++
++
++def _com_uninit():
++    """Give back the reference `_com_init()` said it took. Never raises: the
++    thread's COM is released on thread exit anyway, and losing the caller's real
++    work over a bookkeeping error would be worse than the leak."""
++    try:
++        _ole32().CoUninitialize()
++    except Exception:
++        pass
++
++
+ def _vtbl(ptr, index, restype, *argtypes):
+     table = ctypes.cast(ptr, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
+     return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(table[index])
+@@ -145,7 +215,13 @@
+ 
+ def _fmt(hr):
+     try:
+-        raise ctypes.WinError(ctypes.c_uint32(hr).value)
++        # WinError takes a SIGNED C int. Passing the unsigned form of an HRESULT
++        # whose high bit is set (every failure HRESULT: E_FAIL 0x80004005, ...)
++        # raised OverflowError, so the message the gate was trying to raise was
++        # replaced by a bare Python error coming OUT of the error path itself.
++        # Narrowing first is what makes "the negative HRESULTs stay errors"
++        # observable as a WasapiError instead of a crash.
++        raise ctypes.WinError(ctypes.c_int32(ctypes.c_uint32(hr).value).value)
+     except OSError as exc:
+         return "%s (0x%08X)" % (exc.strerror, hr & 0xFFFFFFFF)
+ 
+@@ -180,14 +256,26 @@
+ 
+     This is steps 1-2-3-4 of the docstring and is deliberately free of any stream
+     state, so it can be used both by the capability probe and by the live tap.
++
++    COM is started for the duration of this call and, when THIS call is the one
++    that took the reference, released again on every exit path -- including the
++    exception paths, which is what `try/finally` is doing here. Each call is
++    therefore balanced on its own, so a second call in the same thread is not
++    paying for the first one's reference.
+     """
+     if sys.platform != "win32":
+         raise WasapiError("WASAPI loopback is Windows-only")
++    com = _com_init()
++    try:
++        return _enumerate_default_render_endpoint(role)
++    finally:
++        if com == COM_REF_TAKEN:
++            _com_uninit()
++
++
++def _enumerate_default_render_endpoint(role):
++    """The body of `default_render_endpoint`, with COM already started."""
+     ole32 = _ole32()
+-    hr = ole32.CoInitializeEx(None, COINIT_MULTITHREADED)
+-    if hr not in (0, RPC_E_CHANGED_MODE):
+-        raise WasapiError("CoInitializeEx failed: %s" % _fmt(hr))
+-
+     ole32.CoCreateInstance.argtypes = [
+         ctypes.POINTER(GUID),
+         ctypes.c_void_p,
+@@ -322,10 +410,15 @@
+         self.block = int(self.rate * block_ms / 1000)
+         self._stop = threading.Event()
+         self._thread = None
++        self._com = None          # what `_start` owes COM, released by `close`
+         self._client = None
+         self._capture = None
+         self._enum = None
+         self._dev = None
++        # Packets GetBuffer marked AUDCLNT_BUFFERFLAGS_SILENT. Counted, not dropped,
++        # so "the endpoint is not rendering" is visible instead of being converted
++        # into samples by accident.
++        self.silent_packets = 0
+ 
+     # -- name surface the worker's reporting uses ----------------------------
+     @property
+@@ -356,6 +449,25 @@
+         return False
+ 
+     def _start(self):
++        # COM for the tap's LIFETIME. `default_render_endpoint()` in __init__
++        # released its own reference when it returned (that is what makes each of
++        # its calls balanced), so CoCreateInstance below would otherwise run on a
++        # thread whose COM may already be closed. The reference is released by
++        # `close()`.
++        self._com = _com_init()
++        try:
++            self._open()
++        except BaseException:
++            # nothing was opened, so nothing owns the reference
++            self._release_com()
++            raise
++
++    def _release_com(self):
++        if self._com == COM_REF_TAKEN:
++            _com_uninit()
++        self._com = None
++
++    def _open(self):
+         ole32 = _ole32()
+         enum = ctypes.c_void_p()
+         hr = ole32.CoCreateInstance(
+@@ -488,14 +600,30 @@
+             pos = ctypes.c_int64(0)
+             if get_buffer(cap, ctypes.byref(data), ctypes.byref(frames), ctypes.byref(flags), ctypes.byref(pos)) != 0:
+                 break
+-            if frames.value and data:
+-                raw = ctypes.string_at(data, frames.value * block_align)
+-                if float_fmt:
+-                    arr = np.frombuffer(raw, dtype=np.float32)
++            if frames.value:
++                if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:
++                    # AUDCLNT_BUFFERFLAGS_SILENT says the endpoint is not rendering
++                    # and the packet's BYTES ARE NOT VALID SAMPLES. The flags were
++                    # read and thrown away, so the undefined contents of a silent
++                    # packet were decoded as audio -- which is precisely the
++                    # dead-endpoint signature the ladder reads as "this device hears
++                    # something": MEASURED peak=0.000092 with nonzero_blocks>0.
++                    # Microsoft Learn, IAudioCaptureClient::GetBuffer (flags):
++                    #   https://learn.microsoft.com/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getbuffer
++                    # The packet is ACCUMULATED AS ZEROS rather than skipped, so a
++                    # silent endpoint keeps the run's block cadence and is reported
++                    # as the silence it is (peak 0, no nonzero block) instead of
++                    # vanishing from the counters or lying in them.
++                    arr = np.zeros(frames.value, dtype=np.float32)
++                    self.silent_packets += 1
+                 else:
+-                    arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+-                if channels > 1:
+-                    arr = arr.reshape(-1, channels).mean(axis=1)
++                    raw = ctypes.string_at(data, frames.value * block_align)
++                    if float_fmt:
++                        arr = np.frombuffer(raw, dtype=np.float32)
++                    else:
++                        arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
++                    if channels > 1:
++                        arr = arr.reshape(-1, channels).mean(axis=1)
+                 buf.append(np.asarray(arr, dtype=np.float32))
+                 acc += arr.size
+             release(cap, frames.value)
+@@ -521,6 +649,7 @@
+         for ref in (self._capture, self._client, self._dev, self._enum):
+             _release(ref)
+         self._capture = self._client = self._dev = self._enum = None
++        self._release_com()
+ 
+ 
+ def loopback_device_spec(role=E_CONSOLE):

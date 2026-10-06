@@ -1,0 +1,401 @@
+'use strict';
+
+/**
+ * Sotto — caption formulation.
+ *
+ * The streaming ASR emits SHORT, UNSTABLE text: one to three tokens per hop,
+ * measured 2026-10-06 on the owner's own run (`app/electron/panel-run.log`) at
+ * 0.56 s of audio per fragment, with real silences between them. Three
+ * measured facts from that log shape everything below:
+ *
+ *   1. A fragment is a DELTA over a known audio window, not a full hypothesis.
+ *      The worker emits `start`/`end` in AUDIO seconds
+ *      (`worker/sotto_worker.py:975-977`), and consecutive lines cover new,
+ *      non-overlapping audio. So the panel cannot treat an arriving fragment
+ *      as "the sentence so far" — it must JOIN, and it must be able to tell a
+ *      NEW word from a REVISED one.
+ *   2. The same words REPEAT and the same audio is re-read. The log holds
+ *      `text="cre"` then `text="s"` then `text="partici"` then `text="s"`
+ *      inside 4.5 s, and `text="s"` four separate times. Naive concatenation
+ *      accumulates exactly that garbage — the old join rendered the literal
+ *      line "cre s partici" from those emissions.
+ *   3. AUDIO gaps are the only honest sentence boundary available. Measured
+ *      gaps between consecutive fragments in that log, in seconds of audio:
+ *      0.00 0.56 0.56 1.12 1.12 1.68 2.80 2.80 3.36 3.92 4.48 5.60 6.16
+ *      11.20 11.76 13.44 21.28 65.52.
+ *      Within-burst gaps top out at 2.80 s; the next step is 11.20 s.
+ *
+ * ── the three decisions, and why ───────────────────────────────────────────
+ *
+ * (a) STABILITY — LocalAgreement-2 with hold-back and in-place rewrite.
+ *     A word is COMMITTED only once two consecutive hypotheses agree on it.
+ *     Everything after the agreed prefix stays PROVISIONAL: shown, marked,
+ *     and REWRITTEN IN PLACE when the next hypothesis revises it. This is
+ *     what makes fact (2) stop being a defect — a revised word REPLACES the
+ *     provisional one instead of being appended after it.
+ *
+ * (b) FORMULATION — RULES, not a model. The reason is latency: a caption
+ *     panel that waits on a second model to punctuate its own text lags the
+ *     speaker. These rules are pure functions over committed text, cost
+ *     microseconds, and are testable — which is exactly what the oracle in
+ *     `_main/join-harness.js` checks. They invent no words: casing and one
+ *     terminal mark are added; nothing is inserted mid-sentence.
+ *
+ * (c) READINESS — `describeReadiness()`. One honest state during warm-up,
+ *     carrying the MEASURED seconds, instead of a sequence of placeholders
+ *     that each look like a different failure.
+ *
+ * DOM-free on purpose: `panel.js` owns rendering, this owns the text. That
+ * split is what lets the oracle run these REAL functions outside Electron.
+ */
+
+/** Terminal punctuation that closes a sentence on its own. */
+const TERMINAL = /[.!?…]["')\]]?$/;
+
+/** Openers that make a line a question when the model gave no punctuation. */
+const QUESTION_OPENERS = new Set([
+  'what', 'why', 'how', 'when', 'where', 'who', 'whom', 'whose', 'which',
+]);
+
+/**
+ * A silence longer than this, in AUDIO seconds, ends the line.
+ *
+ * Taken from the measured distribution above rather than from taste:
+ * within-burst gaps reached 2.80 s and the next distinct step was 11.20 s,
+ * so 8 s sits in the empty band between them. A pause closes a caption while
+ * continuous speech never splits a burst by accident.
+ *
+ * This is the boundary the old 1200 ms WALL-CLOCK rule could never see: at
+ * the measured cadence the wall gap between fragments stayed under 1.2 s, so
+ * that rule never fired and every fragment was emitted alone.
+ */
+const SENTENCE_GAP_S = 8;
+
+/** Hard cap, so a model that never pauses still cannot grow without bound. */
+const SENTENCE_MAX_CHARS = 90;
+
+/**
+ * How long a provisional tail may wait for a second opinion before the
+ * RENDERER gives up on it and commits it anyway.
+ *
+ * This is a DEADLINE, not a condition evaluated inside `ingest`, and that
+ * difference is the whole point. Measured 2026-10-06, before this change,
+ * on a speaker who paused 11.2 s — so BOTH the audio clock and the wall clock
+ * advanced, which is the real world and not the harness's synthetic cadence:
+ *
+ *   reasons : ["audio-gap 11.20s","hold-timeout"]
+ *   lines   : ["Going along slush country.","Roads are closed tonight."]
+ *
+ * The in-ingest check fired on the very next fragment and committed the
+ * first words after the pause ALONE, before a second hypothesis could ever
+ * confirm them. That is the fragment salad LocalAgreement-2 exists to end,
+ * reintroduced through its own escape hatch.
+ *
+ * A hold can only be judged honestly by something that is WAITING. Inside
+ * `ingest` a fragment has provably just arrived, so the stream has provably
+ * not stopped and there is nothing to escape. The deadline belongs to the
+ * renderer's timer; see `armHoldTimer` in panel.js.
+ */
+const COMMIT_MAX_HOLD_MS = 1500;
+
+/**
+ * MEASURED on this machine, 2026-10-06, by
+ * `_main/measure-asr-warmup.py` (run under pythonw, so no console window):
+ *
+ *     asr_process_start_to_first_caption_s : 7.04
+ *     asr_process_start_to_model_loaded_s  : 5.69
+ *
+ * i.e. the ASR process needs ~7.0 s to produce its first caption, of which
+ * ~5.7 s is loading the model. Quoted as measured, not rounded into a promise.
+ *
+ * SCOPE, stated because it matters: this is the ASR half. The full
+ * launch -> first caption for the whole shell was NOT measured on this
+ * machine — every audio tap came back flat
+ * (`BRIDGE_STATUS state="device-exhausted"`), so no caption could exist to
+ * time. `_main/measure-readiness.py` measures that number and is the command
+ * to re-run once a live tap carries audio. The shell half measured
+ * 0.31 s to `RECEIVER_READY`, which is not the same thing and is not added in.
+ */
+const READY_SECONDS_MEASURED = 7.0;
+
+/** Split on whitespace, dropping empties. Punctuation stays with its word. */
+function words(text) {
+  return String(text == null ? '' : text).trim().split(/\s+/).filter(Boolean);
+}
+
+/** How many leading words `a` and `b` share, word for word. */
+function agreedPrefixLength(a, b) {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i += 1;
+  return i;
+}
+
+/**
+ * FORMULATION PASS (b): casing and terminal punctuation, nothing else.
+ *
+ * Measured input from the owner's stream: "going along slush country roadss"
+ * — bare, lowercase, unpunctuated. Rules, in order:
+ *   - capitalise the first character, and only when it is a letter, so "3AM"
+ *     and accented text are not mangled;
+ *   - if the line already ends in terminal punctuation, leave it (the model
+ *     got there first — never double it);
+ *   - otherwise append a full stop, or a question mark when the line opens
+ *     with an interrogative.
+ *
+ * The interior is never edited and no word is ever added or removed.
+ */
+function formulate(text) {
+  const parts = words(text);
+  if (!parts.length) return '';
+
+  let out = parts[0];
+  out = out.charAt(0).toUpperCase() + out.slice(1);
+  for (let i = 1; i < parts.length; i += 1) out += ` ${parts[i]}`;
+
+  if (TERMINAL.test(out)) return out;
+
+  const opener = parts[0].toLowerCase().replace(/[^a-z]/g, '');
+  return QUESTION_OPENERS.has(opener) ? `${out}?` : `${out}.`;
+}
+
+/**
+ * The one honest readiness state (c).
+ *
+ * Today the panel walks a SEQUENCE of placeholders — "Starting the ASR
+ * worker", then "Booting the ASR worker", then "Loading the ASR model", then
+ * "Waiting for audio" — and each reads as a different failure to whoever is
+ * watching. Exactly one thing is true through all of it: the pipeline is
+ * warming up and no caption can exist yet.
+ *
+ * @param {number} elapsedMs since the pipeline started
+ */
+function describeReadiness(elapsedMs) {
+  const seconds = Math.max(0, Math.round((elapsedMs || 0) / 100) / 10);
+  if (seconds < READY_SECONDS_MEASURED) {
+    return {
+      state: 'warming',
+      title: 'Warming up',
+      body:
+        'The ASR pipeline is starting. No caption can exist until the model is ' +
+        'loaded and the first words are transcribed — measured warm-up on this ' +
+        `machine: ${READY_SECONDS_MEASURED} s to the first caption.`,
+    };
+  }
+  return { state: 'ready', title: 'Listening', body: 'Captions appear as speech is transcribed.' };
+}
+
+/**
+ * The formulation engine. One instance per panel.
+ *
+ * `ingest` is the only way text enters. The buffer is a list of TOKENS, each
+ * carrying the audio position it came from:
+ *
+ *   committed   — tokens two consecutive hypotheses agreed on
+ *   provisional — the unstable tail; rendered, and REWRITTEN as it changes
+ *
+ * Carrying the audio position per token is what makes a revision precise. A
+ * re-read says "this span of audio, from here on, is actually something
+ * else", and only the tokens inside that span may be retracted — dropping the
+ * whole line loses words the model never contradicted, and dropping only the
+ * provisional tail lets a committed word survive a re-read that overrode it.
+ */
+function createEngine(options) {
+  const onCommit = options.onCommit;
+  const onProvisional = options.onProvisional;
+  const now = options.now || (() => Date.now());
+
+  /** @type {{w:string,a:number|null}[]} agreed, immutable once agreed */
+  let committed = [];
+  /** @type {{w:string,a:number|null}[]} unstable tail */
+  let provisional = [];
+  /** Words of the previous hypothesis, for the agreement test. */
+  let prevWords = [];
+  let lastAudioEnd = null;
+  /** Guards the cap's re-ingest against an oversized single fragment. */
+  let reentered = false;
+
+  /** Everything currently on screen, in order. */
+  function visible() {
+    return committed.concat(provisional);
+  }
+
+  function visibleText() {
+    return visible().map((t) => t.w).join(' ');
+  }
+
+  /**
+   * The audio END covered by the tokens, or null.
+   *
+   * This reads the token's `b` (end) and NOT its `a` (start). Reading `a`
+   * here made the rewind point a word's BEGINNING, so after a re-read the
+   * engine believed it had already covered less audio than it had, and the
+   * next legitimate fragment looked like a second re-read — which is how
+   // "going along" was retracted out of a line the model never contradicted.
+   */
+  function audioEndOf(tokens) {
+    for (let i = tokens.length - 1; i >= 0; i -= 1) {
+      if (tokens[i].b !== null) return tokens[i].b;
+    }
+    return null;
+  }
+
+  /** Empty the buffer and hand back what it held. */
+  function takeBuffer() {
+    const all = visible();
+    committed = [];
+    provisional = [];
+    prevWords = [];
+    lastAudioEnd = null;
+    return all;
+  }
+
+  /** Freeze what is on screen into one final, formulated line. */
+  function commit(reason) {
+    const all = takeBuffer();
+    if (!all.length) return '';
+    const line = formulate(all.map((t) => t.w).join(' '));
+    if (line) onCommit(line, reason);
+    return line;
+  }
+
+  /**
+   * Hold-back + agreement (a).
+   *
+   * @param {string} text raw fragment from the worker
+   * @param {{start?:number,end?:number}} [meta] audio seconds
+   */
+  function ingest(text, meta) {
+    const fragment = String(text == null ? '' : text).trim();
+    if (!fragment) return;
+
+    const start = meta && typeof meta.start === 'number' ? meta.start : null;
+    const end = meta && typeof meta.end === 'number' ? meta.end : null;
+
+    // A silence in the AUDIO closes the sentence. This is the boundary the
+    // old 1200 ms WALL-CLOCK rule could never see.
+    if (lastAudioEnd !== null && start !== null && start - lastAudioEnd >= SENTENCE_GAP_S) {
+      commit(`audio-gap ${(start - lastAudioEnd).toFixed(2)}s`);
+    }
+
+    // REVISION. `start < lastAudioEnd` means this fragment re-covers audio
+    // the line already shows, so the model is re-reading that span. The
+    // comparison is against the audio END of what is rendered — NOT against
+    // the previous fragment's start, which compared every legitimate
+    // continuation against the window it was extending and therefore
+    // duplicated every word ("slush slush country").
+    if (start !== null && lastAudioEnd !== null && start < lastAudioEnd) {
+      // Filter over EVERYTHING on screen, not just the committed prefix. After
+      // a first re-read the whole line sits in `provisional` (nothing has been
+      // confirmed twice yet), so a filter that only looked at `committed`
+      // found nothing to keep and the line lost words the model never
+      // contradicted — "going along" vanished when "slush" was re-read again.
+      const kept = visible().filter((t) => t.a === null || t.a < start);
+      committed = kept;
+      provisional = [];
+      prevWords = [];
+      lastAudioEnd = audioEndOf(committed);
+    }
+
+    // Hard cap, checked as a LOOKAHEAD. Testing the buffer after appending
+    // commits a line that already exceeded the cap by a whole fragment; this
+    // closes the line first and lets the fragment that would have overflowed
+    // start the next one.
+    const projected = visibleText();
+    const wouldBe = projected.length ? projected.length + 1 + fragment.length : fragment.length;
+    if (projected.length && wouldBe > SENTENCE_MAX_CHARS) {
+      commit(`chars ${projected.length}`);
+      // The `reentered` guard stops a single fragment that is ITSELF over the
+      // cap from recursing forever: it is committed as-is, which is the
+      // honest outcome for input no line can hold.
+      if (reentered) return;
+      reentered = true;
+      ingest(fragment, meta);
+      reentered = false;
+      return;
+    }
+
+    // Spread the fragment's words across its audio window, so a later re-read
+    // can tell which of them it supersedes.
+    const parts = words(fragment);
+    const span = start !== null && end !== null && end > start ? end - start : 0;
+    const incoming = parts.map((w, i) => ({
+      w,
+      a: start === null ? null : start + (span * i) / parts.length,
+      b: start === null ? null : start + (span * (i + 1)) / parts.length,
+    }));
+
+    const hypothesis = visible().concat(incoming);
+
+    // LocalAgreement-2: the prefix two consecutive hypotheses agree on is
+    // stable; everything after it stays provisional until confirmed.
+    const agreed = agreedPrefixLength(prevWords, hypothesis.map((t) => t.w));
+    committed = hypothesis.slice(0, agreed);
+    provisional = hypothesis.slice(agreed);
+    prevWords = hypothesis.map((t) => t.w);
+
+
+    // No hold check here, deliberately. `ingest` runs only when a fragment
+    // arrived, which is proof the stream did NOT stop, so reading a wall
+    // clock in here can only mis-split a live burst. The deadline is owned by
+    // the caller's timer — see `expireHold`.
+    if (end !== null) lastAudioEnd = end;
+
+    onProvisional(visibleText(), provisional.length > 0);
+  }
+
+  /** Force the current line closed (status change, shutdown, owner action). */
+  function flush(reason) {
+    return commit(reason || 'flush');
+  }
+
+  /**
+   * Give up on the held tail and commit it.
+   *
+   * Called by the renderer's timer when COMMIT_MAX_HOLD_MS has passed with no
+   * new fragment — the ONLY situation in which abandoning the hold is
+   * correct. Returns the committed line, or '' when nothing was held, so a
+   * timer that fires after the line was already closed by a pause commits
+   * nothing and renders nothing.
+   */
+  function expireHold() {
+    if (!provisional.length) return '';
+    return commit('hold-timeout');
+  }
+
+  return {
+    ingest,
+    flush,
+    expireHold,
+    /** Current on-screen text; the oracle reads this instead of the DOM. */
+    visible: visibleText,
+    state: () => ({
+      committed: committed.map((t) => t.w),
+      provisional: provisional.map((t) => t.w),
+      lastAudioEnd,
+    }),
+  };
+}
+
+const SottoFormulation = {
+  createEngine,
+  formulate,
+  describeReadiness,
+  agreedPrefixLength,
+  words,
+  SENTENCE_GAP_S,
+  SENTENCE_MAX_CHARS,
+  COMMIT_MAX_HOLD_MS,
+  READY_SECONDS_MEASURED,
+};
+
+// Both surfaces, because this file is BOTH a `<script>` in the panel and a
+// `require` in the oracle. Exporting only under CommonJS left the renderer
+// with nothing: panel.html loads this as a plain script, where `module` does
+// not exist, so `window.SottoFormulation` stayed undefined and panel.js died
+// on its first line with
+//   Uncaught TypeError: Cannot read properties of undefined (reading 'createEngine')
+// MEASURED 2026-10-06 via `_main/_loaderr-probe.js`; the dom-probe saw the
+// symptom as "main sent 2 captions and the panel rendered 0 .caption lines".
+if (typeof module !== 'undefined' && module.exports) module.exports = SottoFormulation;
+if (typeof window !== 'undefined') window.SottoFormulation = SottoFormulation;

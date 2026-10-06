@@ -1,0 +1,25 @@
+[package]
+name = "sotto"
+version = "0.1.0"
+description = "Sotto - real-time transcription overlay. M0: the shell only."
+authors = ["Sotto"]
+edition = "2021"
+rust-version = "1.82"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+# M0 ships one release profile whose only job is "do not get fat while idle".
+# opt-level/lto/strip keep the resident image small; the idle NUMBER is
+# measured, not assumed - see README.md.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

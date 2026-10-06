@@ -63,6 +63,17 @@ const DEFAULT_COMMAND = 'python';
  *
  * System audio IS present on this machine. Anything that says "waiting for
  * audio" is making a claim about a capture that may not have started yet.
+ *
+ * THIS IS A HINT, NOT AN OVERRIDE. It was previously exported unconditionally
+ * as `SOTTO_AUDIO_DEVICE`, which made the shell's guess outrank
+ * `worker/config.json` — measured same minute, one arm read silence from the
+ * configured device while the other produced 29 captions from the forced one,
+ * and the name that actually carries audio flips with the owner's routing, so
+ * neither name is stable enough to pin. The worker now resolves the tap at
+ * runtime and rotates off any device that stays flat (sotto_worker.py
+ * `device_candidates` / the rotation loop), which is the only thing that can
+ * be right when the right answer changes between runs. Exported for callers
+ * that want to name a device explicitly and for the self-test's contract line.
  */
 const DEFAULT_AUDIO_DEVICE = 'Mapeador de som da Microsoft - Input';
 
@@ -113,6 +124,13 @@ const STATE_MAP = {
   device: { kind: 'busy', status: CAPTURE_NOT_STARTED, title: 'Audio device opened' },
   capture_starting: { kind: 'busy', status: CAPTURE_NOT_STARTED, title: 'Opening the audio device' },
   opening_device: { kind: 'busy', status: CAPTURE_NOT_STARTED, title: 'Opening the audio device' },
+  // The worker resolves the tap at runtime and rotates off a device that stays
+  // flat. These are NOT failure words and must not be coloured as failure: the
+  // worker is doing exactly the right thing and the run continues on the next
+  // candidate. `device_exhausted` IS the failure — every candidate was flat, so
+  // no captions will arrive and the operator has to change the routing.
+  device_rotated: { kind: 'busy', status: 'Audio tap carried no signal - trying the next device', title: 'Switching audio tap' },
+  device_exhausted: { kind: 'error', status: 'No audio tap carried signal - every candidate device was silent', title: 'No working audio tap' },
   listening: { kind: 'live', status: 'Listening - captions appear as speech is transcribed', title: 'Listening' },
   capturing: { kind: 'live', status: 'Listening - captions appear as speech is transcribed', title: 'Listening' },
   running: { kind: 'live', status: 'Listening - captions appear as speech is transcribed', title: 'Listening' },
@@ -259,8 +277,17 @@ class WorkerBridge {
      */
     this.extraArgs = Array.isArray(opts.extraArgs) ? opts.extraArgs.slice() : [];
     this.workerPath = opts.workerPath || DEFAULT_WORKER_PATH;
-    /** Audio tap preference, passed to the worker by ENVIRONMENT only — see `#spawn`. */
-    this.device = opts.device || DEFAULT_AUDIO_DEVICE;
+    /**
+     * Audio tap, or null when the owner did not name one. null is the honest
+     * value for "the worker decides": it is what keeps SOTTO_AUDIO_DEVICE out
+     * of the child env, so the worker resolves the tap itself and rotates off
+     * a dead one. DEFAULT_AUDIO_DEVICE stays exported as a HINT for callers
+     * that want to name a device — passing it here is a real choice, not a
+     * default that arrives whether you asked for it or not.
+     */
+    this.device = typeof opts.device === 'string' && opts.device.trim() !== ''
+      ? opts.device.trim()
+      : null;
     this.captureMode = opts.captureMode || DEFAULT_CAPTURE_MODE;
     this.log = typeof opts.log === 'function' ? opts.log : () => {};
     this.backoff = resolveBackoff(opts.backoff);
@@ -333,21 +360,101 @@ class WorkerBridge {
 
   // --- lifecycle ---------------------------------------------------------
 
-  /** Bring the worker up. A no-op when it is already running. */
+  /**
+   * Is a restart already ARMED inside this bridge?
+   *
+   * This is the fact a caller cannot see any other way. Between a worker's
+   * death and the next `#spawn()` there is a window where `child` is null and
+   * the bridge is still very much alive — it is holding a `setTimeout` that
+   * will bring a new python up on its own. A caller that guards on the child
+   * reads that window as "nothing is running, I may start one", which is the
+   * exact reading that produced two workers per Alt+C. MEASURED 2026-10-06;
+   * receipt: docs/worker-single-instance-20261006.md.
+   */
+  get hasPendingRestart() {
+    return this.timer !== null;
+  }
+
+  /** 0 or 1. One bridge owns at most one live child, and this says so. */
+  get liveChildCount() {
+    return this.child === null ? 0 : 1;
+  }
+
+  /**
+   * True while this bridge owns the worker lifecycle: a live child OR an armed
+   * restart. Neither-yet-started is NOT this — a caller must still be able to
+   * bring an idle bridge up. Idempotency for a caller has to be decided on the
+   * BRIDGE, because the BRIDGE is what owns both the child and the timer.
+   */
+  get isActive() {
+    return !this.stopped && (this.child !== null || this.timer !== null);
+  }
+
+  /**
+   * Bring the worker up. Idempotent on the BRIDGE, not on the child.
+   *
+   * The old guard was `if (this.child) return false`, which is false in the
+   * armed-restart window, so a second `#spawn()` joined the one the timer was
+   * already going to make — and the first child was then orphaned with nothing
+   * holding a handle to it. Same bridge, two live pythons, ~2.1 GB each.
+   */
   start(reason = 'start') {
     if (this.stopped) return false;
-    if (this.child) return false;
-    this.log(`BRIDGE_START reason=${reason} command=${this.command} worker=${this.workerPath} device=${JSON.stringify(this.device)} capture=${this.captureMode}`);
+    if (this.isActive) {
+      this.log(`BRIDGE_START_REFUSED reason=${reason} live=${this.liveChildCount} pendingRestart=${this.hasPendingRestart}`);
+      return false;
+    }
+    // `device=auto` is the honest spelling when nobody named one: the worker
+    // resolves the tap itself and may rotate off a dead one, so a name here
+    // would be a claim about a device the bridge never opened.
+    this.log(`BRIDGE_START reason=${reason} command=${this.command} worker=${this.workerPath} device=${this.device === null ? 'auto' : JSON.stringify(this.device)} capture=${this.captureMode}`);
     // basename() is only meaningful for a real file; the self-test's `-c`
     // inline worker is not one, and a status naming a wall of Python is a
     // status nobody can read.
     const label = this.requireExists ? path.basename(this.workerPath) : 'inline worker';
     this.#bridgeStatus(`Starting worker... (${label})`, 'busy', 'starting', 'starting');
-    this.#spawn();
+    return this.#spawn('start');
+  }
+
+  /**
+   * Cancel the armed restart, if any. ONE code path for both callers that need
+   * it (`stop()` and the double-spawn guard), so "a cancelled restart can
+   * never fire later" is a property of one function rather than of two blocks
+   * that can drift apart.
+   * @returns {boolean} true when a timer was actually cancelled
+   */
+  #cancelRestart(why) {
+    if (this.timer === null) return false;
+    clearTimeout(this.timer);
+    this.timer = null;
+    this.log(`BRIDGE_RESTART_CANCELLED why=${why}`);
     return true;
   }
 
-  #spawn() {
+  /**
+   * Bring one python up. Returns true when a child was spawned.
+   *
+   * ONE BRIDGE, ONE CHILD — asserted here, in the one function that can break
+   * it. Every legitimate respawn path (`close`, `error`, the silence ceiling,
+   * `stop`) clears `this.child` BEFORE it schedules, so a non-null child on
+   * entry means this spawn would orphan a live worker: `this.child` is about
+   * to be overwritten, the old process keeps running, and nothing holds a
+   * handle to it again. That is the shape of the 2026-10-06 multi-worker
+   * report, so it is refused rather than spawned.
+   *
+   * The refusal also cancels any restart that is armed, because the timer that
+   * got us here is now redundant: a worker is alive, and when THAT one dies its
+   * own `close` will schedule the next retry.
+   */
+  #spawn(why = 'spawn') {
+    if (this.child !== null) {
+      this.#cancelRestart(`double-spawn-refused-${why}`);
+      this.log(`BRIDGE_DOUBLE_SPAWN_REFUSED why=${why} pid=${this.child.pid}`);
+      // No status on purpose: the panel is already describing the worker that
+      // is running, and an error line about a refusal would be a claim about a
+      // failure that did not happen.
+      return false;
+    }
     // The missing-file check is not an optimisation: spawning a nonexistent
     // path fails asynchronously and reports a message that names the shell,
     // not the worker. This names the worker, which is the whole point.
@@ -355,7 +462,7 @@ class WorkerBridge {
       this.log(`BRIDGE_WORKER_MISSING path=${this.workerPath}`);
       this.#bridgeStatus(`Worker not found - ${this.workerPath} does not exist`, 'error', 'missing', 'missing');
       this.#scheduleRestart('missing');
-      return;
+      return false;
     }
 
     this.state = 'spawning';
@@ -365,6 +472,18 @@ class WorkerBridge {
     this.stderrTail = [];
 
     let child = null;
+    // SOTTO_AUDIO_DEVICE is exported ONLY when the owner named a device. It
+    // used to be exported unconditionally from DEFAULT_AUDIO_DEVICE, which
+    // made the shell's guess outrank worker/config.json on every run that did
+    // not ask for a device — and that guess is not stable, because the
+    // endpoint carrying system audio flips with the owner's routing. Absent,
+    // the variable is the correct value: the worker resolves the tap itself,
+    // reads config.json, and rotates off any candidate that stays flat.
+    const childEnv = {
+      ...process.env,
+      SOTTO_CAPTURE_MODE: this.captureMode,
+    };
+    if (this.device !== null) childEnv.SOTTO_AUDIO_DEVICE = this.device;
     try {
       child = spawn(this.command, [...this.args, ...this.extraArgs, this.workerPath], {
         cwd: fs.existsSync(path.dirname(this.workerPath))
@@ -376,22 +495,19 @@ class WorkerBridge {
         // built with `argparse` and strict parsing dies on an argument it does
         // not know, but silently ignores an environment variable it does not
         // read. A preference must never be able to kill the worker.
-        env: {
-          ...process.env,
-          SOTTO_AUDIO_DEVICE: this.device,
-          SOTTO_CAPTURE_MODE: this.captureMode,
-        },
+        env: childEnv,
       });
     } catch (err) {
-      const why = err && err.message ? err.message : String(err);
-      this.log(`BRIDGE_SPAWN_THREW error="${why}"`);
-      this.#bridgeStatus(`Worker could not be started: ${why}`, 'error', 'dead', 'dead');
+      const message = err && err.message ? err.message : String(err);
+      this.log(`BRIDGE_SPAWN_THREW error="${message}"`);
+      this.#bridgeStatus(`Worker could not be started: ${message}`, 'error', 'dead', 'dead');
       this.#scheduleRestart('spawn-threw');
-      return;
+      return false;
     }
 
     this.child = child;
     this.#bridgeStatus('Worker starting - waiting for its first status...', 'busy', 'spawning', 'spawning');
+    this.log(`BRIDGE_SPAWNED pid=${child.pid} attempt=${this.restarts + 1}`);
 
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => this.#consume(chunk));
@@ -399,10 +515,10 @@ class WorkerBridge {
     child.stderr.on('data', (chunk) => this.#rememberStderr(chunk));
 
     child.on('error', (err) => {
-      const why = err && err.message ? err.message : String(err);
-      this.log(`BRIDGE_CHILD_ERROR error="${why}"`);
+      const message = err && err.message ? err.message : String(err);
+      this.log(`BRIDGE_CHILD_ERROR error="${message}"`);
       this.child = null;
-      this.#bridgeStatus(`Worker failed to start: ${why}`, 'error', 'dead', 'dead');
+      this.#bridgeStatus(`Worker failed to start: ${message}`, 'error', 'dead', 'dead');
       this.#scheduleRestart('child-error');
     });
 
@@ -449,6 +565,7 @@ class WorkerBridge {
       this.#scheduleRestart('silent');
     }, this.silenceMs);
     if (this.silenceTimer.unref) this.silenceTimer.unref();
+    return true;
   }
 
   #clearSilence() {
@@ -460,6 +577,18 @@ class WorkerBridge {
 
   #scheduleRestart(why) {
     if (this.stopped) return;
+    // ONE ARMED RESTART PER BRIDGE. A spawn that never starts emits BOTH
+    // `error` and `close` on the same child, and each handler schedules its own
+    // retry. Without this cancel the second `setTimeout` overwrites `this.timer`
+    // while the first is STILL ARMED — one death, two timers, and the surviving
+    // one is invisible to `stop()`. MEASURED 2026-10-06, fixed here.
+    this.#cancelRestart(`superseded-by-${why}`);
+    // Counted BEFORE the delay is computed, because the delay is the backoff
+    // for THIS attempt. A bridge that restarts forever has to back off, and the
+    // counter is the only thing that makes the delay grow. (A version of this
+    // line went missing during the 2026-10-06 edit and the self-test caught it:
+    // every retry came back at the base delay, and `arm-die-restart-still-
+    // happens` read `restarts=0`.)
     this.restarts += 1;
     const delay = Math.min(
       this.backoff.max,
@@ -480,19 +609,29 @@ class WorkerBridge {
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.stopped) return;
-      this.#spawn();
+      this.#spawn(`restart-${this.restarts}`);
     }, delay);
     if (this.timer.unref) this.timer.unref();
   }
 
-  /** Stop for good: kill the child, cancel every timer, say so. */
+  /**
+   * Stop for good: kill the child, cancel EVERY timer, say so.
+   *
+   * "Every timer" is not decoration. A restart that outlives `stop()` fires a
+   * `#spawn()` on a bridge nobody owns any more, and that python has no parent
+   * to kill it — the exact shape of the multi-worker report, arrived at from the
+   * other direction. Both timers go through the one cancel path, and the log
+   * line names what was still armed, so "nothing was left armed" is a receipt
+   * rather than an intention.
+   */
   stop(reason = 'quit') {
     this.stopped = true;
     this.#clearSilence();
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
+    const pendingBefore = {
+      restart: this.timer !== null,
+      silence: this.silenceTimer !== null,
+    };
+    this.#cancelRestart(reason);
     if (this.child) {
       const child = this.child;
       this.child = null;
@@ -500,7 +639,7 @@ class WorkerBridge {
     }
     this.state = 'stopped';
     this.#status('Worker stopped', 'error', BRIDGE_PLACEHOLDER.stopped);
-    this.log(`BRIDGE_STOP reason=${reason} spawns=${this.spawns} captions=${this.captions} malformed=${this.malformed}`);
+    this.log(`BRIDGE_STOP reason=${reason} spawns=${this.spawns} captions=${this.captions} malformed=${this.malformed} armedAtStop=restart:${pendingBefore.restart} silence:${pendingBefore.silence} stillArmed=restart:${this.hasPendingRestart} silence:${this.silenceTimer !== null}`);
     return true;
   }
 

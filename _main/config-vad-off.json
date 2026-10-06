@@ -1,0 +1,26 @@
+{
+  "audio": {
+    "device": null,
+    "preferred_devices": [],
+    "match": "heuristic",
+    "_comment": "DELIBERATELY EMPTY. This file used to name three devices that exist on one machine ('CABLE Output (VB-Audio Virtual Cable)', 'VoiceMeeter Output', 'Mapeador de som da Microsoft - Input'); on an ordinary Windows PC none of them exist, so the product could not capture system audio anywhere else. Device choice is now the universal ladder in worker/sotto_worker.py: (a) WASAPI loopback of the default render endpoint, driver-free, works with no virtual cable installed -- see worker/wasapi_loopback.py; (b) a virtual-cable / stereo-mix input matched by NAME HEURISTIC (cable/virtual/loopback/stereo mix/voicemeeter/...); (c) an explicit --device or SOTTO_AUDIO_DEVICE override, which always wins and is never rotated away from. The run records which rung it took, and its measured peak, in the tap ledger. A device pinned here still works and is honoured, but pinning one is no longer required and is no longer portable.",
+    "sample_rate": 16000,
+    "channels": 1,
+    "block_ms": 100,
+    "latency": "low"
+  },
+  "model": {
+    "dir": "models/nemotron-3.5-asr-streaming-0.6b-int8",
+    "_comment_lang_id": "The model's language prompt. Accepted: an id from the model's OWN languages.json (0=en-US, 12=pt-BR, 13=pt/pt-PT), a language tag ('pt-BR'), 'auto' (the model's autoSlot 101), or 'os' = THIS DEFAULT: the host's user locale, mapped through the table, falling back to 'auto' when the locale names no slot. Resolved by worker/lang_prompt.py; an undeclared value is REFUSED (exit 2), never clamped. Precedence: --lang-id > SOTTO_LANG_ID > this file. Was a literal 0 (en-US) that ALSO never reached the model, because --lang-id defaulted to 0 and shadowed this key.",
+    "lang_id": "os",
+    "use_vad": false,
+    "providers": [
+      "CUDAExecutionProvider",
+      "CPUExecutionProvider"
+    ]
+  },
+  "output": {
+    "partial": false,
+    "min_chars": 1
+  }
+}

@@ -21,12 +21,19 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const { createBridge, DEFAULT_WORKER_PATH, DEFAULT_COMMAND } = require('./worker-bridge');
+const { createHotReload, DEBOUNCE_MS } = require('./hot-reload');
 const { runBridgeSelfTest, printResult } = require('./bridge-selftest');
+const historyStore = require('./history-store');
 
 /** The global toggle. Global rather than window-local is the whole point: the
  *  panel is hidden most of the time, so a hotkey that only worked while the
- *  panel had focus would never fire. Matches HOTKEY in ../src-tauri/src/main.rs. */
-const HOTKEY = 'Alt+C';
+ *  panel had focus would never fire. Matches HOTKEY in ../src-tauri/src/main.rs.
+ *  `--hotkey=` overrides it for a hermetic run: Alt+C is a GLOBAL accelerator, so
+ *  on a machine where an earlier instance still owns it, a single-instance test
+ *  cannot show the winner registering at all. Overriding proves the guard itself
+ *  instead of the machine's accelerator state. Test-only; default unchanged. */
+/** Resolved just below, once argValue() exists — see the note there. */
+let HOTKEY = 'Alt+C';
 
 /** Panel size in DIP (CSS) pixels. The Rust shell used 360 x full-height with a
  *  10 px margin; the Electron brief asks for a fixed slab, so this is 380 x 900
@@ -62,10 +69,28 @@ const argValue = (name) => {
   const hit = process.argv.slice(1).find((a) => a.startsWith(`${name}=`));
   return hit ? hit.slice(name.length + 1) : null;
 };
+
+// HOTKEY is resolved HERE, after argValue exists. It used to be assigned at the
+// top of the file, which threw `ReferenceError: Cannot access 'argValue' before
+// initialization` and killed the whole main process before the panel or the
+// hotkey ever existed. MEASURED 2026-10-06: the owner pressed Alt+C and nothing
+// happened, because there was no process left to register it — the only thing on
+// screen was Electron's own "A JavaScript error occurred in the main process".
+HOTKEY = argValue('--hotkey') || HOTKEY;
 const SELFTEST = ARGS.has('--selftest');
-const START_VISIBLE = ARGS.has('--show') || SELFTEST;
+/** Transcribing a file is a visible, bounded run: the owner asked to see text. */
+const START_VISIBLE = ARGS.has('--show') || SELFTEST || argValue('--transcribe') !== null;
 const DEMO_CAPTION = argValue('--caption');
 const DEMO_STATUS = argValue('--status');
+/** Quit on a wall clock so an acceptance run ends by ITSELF and leaves a log,
+ *  instead of needing a hand on the kill switch. 0 = never. */
+const EXIT_AFTER = Number(argValue('--exit-after')) || 0;
+/** `--no-hot-reload` is the opt-out: a run that must not be disturbed by a save
+ *  anywhere on this machine asks for it explicitly, and nothing is armed. */
+const NO_HOT_RELOAD = ARGS.has('--no-hot-reload');
+/** Kept next to the flag so the doc, the log and the code cannot drift: the
+ *  number main.js prints at startup IS the constant hot-reload.js uses. */
+const HOT_RELOAD_DEBOUNCE_MS = DEBOUNCE_MS;
 
 /** --- the worker bridge -------------------------------------------------
  *  Flags, all additive and all optional. `--selftest` on its own still behaves
@@ -74,10 +99,23 @@ const DEMO_STATUS = argValue('--status');
 const BRIDGE_SELFTEST = ARGS.has('--bridge-selftest');
 /** Start the worker at launch instead of waiting for the first Alt+C. */
 const WITH_WORKER = ARGS.has('--with-worker');
+/** Test-only. Measures the real panel and exits; see the block after loadFile. */
+const DUMP_DOM = ARGS.has('--dump-dom');
+/** Test-only: force an opaque window, to A/B whether transparency is the defect. */
+const USE_OPAQUE = ARGS.has('--opaque');
 const WORKER_PATH = argValue('--worker') || DEFAULT_WORKER_PATH;
 const PYTHON_PATH = argValue('--python') || DEFAULT_COMMAND;
 const WORKER_DEVICE = argValue('--device');
 const WORKER_CAPTURE = argValue('--capture');
+/** `--transcribe=<file>` makes the worker transcribe a FILE instead of the
+ *  loopback. It is the one invocation that is proven to produce model text on
+ *  this host (`worker/assets/sample1.flac` -> 37 tokens), so it is how the
+ *  end-to-end caption path gets proven end to end without an audio device. It
+ *  travels by ENVIRONMENT, never by argv: the bridge builds argv as
+ *  `python [args] <workerPath> [extraArgs]`, so a flag from here would land
+ *  before the script path and be eaten by the interpreter's own parser. That is
+ *  the same reason worker-bridge.js passes the device by env. */
+const TRANSCRIBE_FILE = argValue('--transcribe');
 
 /** @type {BrowserWindow|null} */
 let panel = null;
@@ -178,8 +216,8 @@ function createPanel() {
     minHeight: geometry.height,
     maxHeight: geometry.height,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: !USE_OPAQUE,
+    backgroundColor: USE_OPAQUE ? '#0b0f14' : '#00000000',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
@@ -231,6 +269,60 @@ function createPanel() {
   );
 
   panel.loadFile(path.join(APP_DIR, 'panel.html'));
+
+  // `--dump-dom`: measure the panel THE REAL WINDOW PAINTS — rects from the live
+  // renderer plus a pixel capture of this very window — then exit. This exists
+  // because a hand-made probe window with different options is a confound: the
+  // owner reported the panel as wrong while an isolated probe measured correct
+  // rects, so the measurement has to come from the window under complaint.
+  if (DUMP_DOM) {
+    panel.webContents.once('did-finish-load', async () => {
+      const fs = require('fs');
+      const probe = `(() => {
+        const sels = ['#panel', '.panel__header', '.wordmark', '.captions', '#placeholder',
+                      '#caption-list', '.status', '.wordmark__name', '#clear-button', '#status'];
+        const out = { viewport: [innerWidth, innerHeight],
+                      zoom: (window.devicePixelRatio || 1),
+                      body: [document.body.scrollWidth, document.body.scrollHeight],
+                      sheets: document.styleSheets.length, els: {} };
+        for (const s of sels) {
+          const el = document.querySelector(s);
+          if (!el) { out.els[s] = null; continue; }
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          out.els[s] = { rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
+                         color: cs.color, display: cs.display, position: cs.position,
+                         visibility: cs.visibility, opacity: cs.opacity };
+        }
+        return out;
+      })()`;
+      try {
+        const dump = await panel.webContents.executeJavaScript(probe, true);
+        log(`DOMDUMP ${JSON.stringify(dump)}`);
+        // Test-only: drive the SAME path Alt+C takes (`window.sotto.toggle()` -> ipc ->
+        // togglePanel) so the single-instance guard is exercised by the caller that
+        // matters, not by a simulation of it.
+        const toggleTimes = Number(argValue('--toggle-times')) || 0;
+        for (let i = 0; i < toggleTimes; i += 1) {
+          await panel.webContents.executeJavaScript('window.sotto.toggle(); true', true).catch(() => {});
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        if (toggleTimes) log(`TOGGLES_DRIVEN n=${toggleTimes}`);
+        // SHOW before capturing: a never-shown window has no drawable surface and
+        // capturePage() returns 0x0, which is a measurement of nothing.
+        panel.showInactive();
+        await new Promise((r) => setTimeout(r, 1200));
+        const img = await panel.webContents.capturePage();
+        const arm = USE_OPAQUE ? 'opaque' : 'transparent';
+        const png = path.join(APP_DIR, '..', '..', '_main', `panel-${arm}.png`);
+        fs.writeFileSync(png, img.toPNG());
+        log(`DOMDUMP_CAPTURE arm=${arm} ${png} ${img.getSize().width}x${img.getSize().height}`);
+      } catch (err) {
+        warn(`DOMDUMP failed: ${err && err.message ? err.message : err}`);
+      }
+      app.exit(0);
+    });
+  }
 
   panel.on('closed', () => {
     panel = null;
@@ -392,7 +484,21 @@ function startWorker(reason) {
     log(`WORKER_AUTOSTART=skipped reason=${BRIDGE_SELFTEST ? 'bridge-selftest' : 'selftest'}`);
     return false;
   }
-  if (workerBridge && workerBridge.child) return false;
+  // ONE BRIDGE PER PROCESS. The bridge owns BOTH the child and its restart timer, so a
+  // guard on `child` alone was wrong: after a worker death `child` becomes null while the
+  // restart timer is still armed inside the SAME bridge, so the next Alt+C built a SECOND
+  // bridge and spawned a SECOND python — and the first bridge's timer later spawned a
+  // third, with the old bridge unreferenced but still running. Each worker is a ~2.1 GB
+  // process, so repeated Alt+C multiplied memory. MEASURED 2026-10-06; the guard is now on
+  // the BRIDGE, which is what actually owns the lifecycle.
+  if (workerBridge) {
+    log(`WORKER_AUTOSTART=reused reason=${reason}`);
+    return true;
+  }
+
+  // File mode travels by env; see the TRANSCRIBE_FILE note. Set here, next to the
+  // bridge that will spawn it, so the pairing is visible in one place.
+  if (TRANSCRIBE_FILE) process.env.SOTTO_AUDIO_FILE = TRANSCRIBE_FILE;
 
   workerBridge = createBridge({
     command: PYTHON_PATH,
@@ -413,6 +519,7 @@ function startWorker(reason) {
 
   log(`WORKER_PATH ${WORKER_PATH}`);
   log(`WORKER_COMMAND ${PYTHON_PATH}`);
+  if (TRANSCRIBE_FILE) log(`WORKER_MODE=file audio=${TRANSCRIBE_FILE}`);
   const started = workerBridge.start(reason);
   log(`WORKER_AUTOSTART=${started ? 'started' : 'declined'} reason=${reason}`);
   return started;
@@ -426,8 +533,192 @@ function stopWorker(reason) {
 }
 
 // ---------------------------------------------------------------------------
+// Hot reload — edit a file, see it in the app that is already running.
+//
+// The watcher lives in hot-reload.js and knows nothing about windows or
+// workers; this half owns the consequences. Two invariants make it safe: a
+// reload never creates a second BrowserWindow, and it never creates a second
+// worker. The app stays a single instance from first paint to last edit.
+// ---------------------------------------------------------------------------
+
+/** @type {ReturnType<typeof createHotReload>|null} */
+let hotReload = null;
+
+/** How long a restart waits for the old child to really be gone. */
+const CHILD_EXIT_TIMEOUT_MS = 5000;
+
+/**
+ * Wait until a child is really gone, bounded.
+ *
+ * `stop()` kills the child, but kill() is a REQUEST: on Windows the process
+ * dies asynchronously, and spawning the replacement in the same tick would
+ * briefly put two workers on the machine — the multi-worker shape the bridge
+ * guard exists to prevent. So the replacement waits for the old pid to
+ * actually exit. The wait is BOUNDED, because an unbounded one would hang the
+ * app on a child that never reports its exit; the timeout is named in the log
+ * instead of being silent.
+ *
+ * @param {import('node:child_process').ChildProcess|null} child
+ * @returns {Promise<'no-child'|'already-exited'|'exit'|'timeout'>}
+ */
+function waitForChildExit(child) {
+  if (!child) return Promise.resolve('no-child');
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve('already-exited');
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (how) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(how);
+    };
+    const timer = setTimeout(() => done('timeout'), CHILD_EXIT_TIMEOUT_MS);
+    if (timer.unref) timer.unref();
+    child.once('exit', () => done('exit'));
+  });
+}
+
+/**
+ * Put changed panel assets into the window that is already on screen.
+ *
+ * `reloadIgnoringCache`, not `loadFile` and not a new BrowserWindow: the
+ * window's geometry, always-on-top and click-through state are MAIN-process
+ * state that a fresh window would have to rebuild, and one that rebuilds a
+ * pixel differently is the exact panel the owner already reported as broken.
+ * The renderer is the only thing that restarts; the process, the window and
+ * the worker child are untouched — which is what keeps a capture session
+ * alive across a CSS edit.
+ *
+ * @param {string[]} files
+ */
+function reloadPanelAssets(files) {
+  if (!panel || panel.isDestroyed()) {
+    log(`HOT_RELOAD_PANEL_SKIPPED files=${JSON.stringify(files)} reason=panel-gone`);
+    return false;
+  }
+  panel.webContents.reloadIgnoringCache();
+  // The hotkey is registered by THIS process and a renderer reload cannot
+  // unregister it — but "cannot" is a claim, so it is read back here. A hotkey
+  // that died in a reload is the failure the owner would feel first.
+  const hotkeyRegistered = globalShortcut.isRegistered(HOTKEY);
+  log(
+    `HOT_RELOAD_PANEL_DONE files=${JSON.stringify(files)} alive=${!panel.isDestroyed()} ` +
+      `visible=${panel.isVisible()} hotkey=${HOTKEY} hotkeyRegistered=${hotkeyRegistered}`,
+  );
+  if (!hotkeyRegistered) warn(`HOT_RELOAD_HOTKEY_LOST accelerator=${HOTKEY} after=${JSON.stringify(files)}`);
+  return true;
+}
+
+/**
+ * Restart the one worker, through the path that already exists.
+ *
+ * There is no second code path here: `stopWorker()` is main.js's own call into
+ * `bridge.stop()` (kills the child, cancels the restart and silence timers)
+ * and `startWorker()` builds exactly ONE new bridge and calls its `start()`,
+ * which refuses a second start. Neither guard is bypassed or re-implemented.
+ *
+ * @param {string[]} files
+ */
+async function restartWorkerForHotReload(files) {
+  if (!workerBridge) {
+    // No worker means the owner never asked for one; starting one because a
+ // file changed would be a 2 GB process nobody wanted.
+    log(`HOT_RELOAD_WORKER_SKIPPED files=${JSON.stringify(files)} reason=no-worker-running`);
+    return false;
+  }
+  const child = workerBridge.child;
+  const oldPid = child && child.pid ? child.pid : null;
+  // Armed BEFORE the stop, so it cannot miss the exit event it is waiting for.
+  const exited = waitForChildExit(child);
+  stopWorker('hot-reload');
+  const how = await exited;
+  const started = startWorker('hot-reload');
+  const newPid = workerBridge && workerBridge.child ? workerBridge.child.pid : null;
+  log(
+    `HOT_RELOAD_WORKER_RESTART files=${JSON.stringify(files)} oldPid=${oldPid} ` +
+      `oldChildExit=${how} started=${started} newPid=${newPid} ` +
+      `liveChildren=${workerBridge ? workerBridge.liveChildCount : 0}`,
+  );
+  return started;
+}
+
+/**
+ * Arm the watcher — unless this run opted out.
+ *
+ * `--no-hot-reload` is checked BEFORE anything is armed, so a release or
+ * acceptance run cannot be disturbed by a save in an unrelated lane. A
+ * PACKAGED app is exempt for the same reason: there is no source tree to
+ * watch there, and a watcher in a shipped build is a liability.
+ */
+function startHotReload() {
+  if (NO_HOT_RELOAD || app.isPackaged) {
+    log(`HOT_RELOAD_DISABLED reason=${NO_HOT_RELOAD ? '--no-hot-reload' : 'packaged'}`);
+    return false;
+  }
+  try {
+    hotReload = createHotReload({
+      log,
+      onPanelAssetsChanged: reloadPanelAssets,
+      onWorkerChanged: restartWorkerForHotReload,
+      debounceMs: HOT_RELOAD_DEBOUNCE_MS,
+    });
+    hotReload.start();
+    log(`HOT_RELOAD_ENABLED debounce_ms=${hotReload.debounceMs}`);
+    return true;
+  } catch (err) {
+    // A watcher that cannot be armed must cost the reload feature, not the app.
+    warn(`HOT_RELOAD_START_FAILED error=${JSON.stringify(err && err.message ? err.message : String(err))}`);
+    hotReload = null;
+    return false;
+  }
+}
+
+function stopHotReload(reason = 'quit') {
+  if (!hotReload) return false;
+  const stopped = hotReload.stop(reason);
+  hotReload = null;
+  return stopped;
+}
+
+// ---------------------------------------------------------------------------
 // The hotkey — the acceptance criterion that matters most
 // ---------------------------------------------------------------------------
+
+/** A hotkey failure waiting for a panel that can receive it. */
+let pendingHotkeyFailure = null;
+
+/**
+ * Put a hotkey registration failure where the owner can actually see it.
+ *
+ * Two things make this more than a log line. First, the panel must be SHOWN:
+ * with the hotkey dead nothing else would ever bring it up, so a failure that
+ * was only delivered to a hidden window is a failure the owner still cannot
+ * see. Second, it must survive the page not being painted yet — registration
+ * happens at `whenReady`, well before `sotto:renderer-ready` — so the text is
+ * held and replayed.
+ *
+ * @param {string} text
+ * @returns {boolean} whether the panel took it right now
+ */
+function hotkeyFailure(text) {
+  pendingHotkeyFailure = text;
+  if (!panel || panel.isDestroyed()) {
+    log('HOTKEY_FAILURE_DEFERRED reason=panel-not-ready');
+    return false;
+  }
+  // A dead hotkey is the only reason this panel will ever open on its own.
+  if (!panel.isVisible()) showPanel('hotkey-failed');
+  const delivered = applyPanelState(text, 'error', {
+    title: `Cannot use ${HOTKEY}`,
+    body:
+      `${text}. The panel is open now, but ${HOTKEY} will not toggle it. ` +
+      'Close the other instance (or whatever owns the shortcut) and start Sotto again.',
+  });
+  log(`HOTKEY_FAILURE_PENDING text=${JSON.stringify(String(text).slice(0, 80))}`);
+  return delivered;
+}
 
 function registerHotkey() {
   let ok = false;
@@ -448,14 +739,27 @@ function registerHotkey() {
       `HOTKEY_REGISTERED accelerator=${HOTKEY} register=${ok} isRegistered=${registered} ` +
         `toggle=show|hide`,
     );
-  } else {
-    console.error(
-      `HOTKEY_REGISTER_FAILED accelerator=${HOTKEY} register=${ok} isRegistered=${registered} ` +
-        `reason=another application already owns ${HOTKEY}` +
-        (thrown ? ` error="${thrown}"` : ''),
-    );
+    return true;
   }
-  return ok && registered;
+
+  console.error(
+    `HOTKEY_REGISTER_FAILED accelerator=${HOTKEY} register=${ok} isRegistered=${registered} ` +
+      `reason=another application already owns ${HOTKEY}` +
+      (thrown ? ` error="${thrown}"` : ''),
+  );
+
+  // A failure the user cannot see is the same class of bug as "Waiting for
+  // audio": the panel keeps advertising a gesture that does nothing, and the
+  // only evidence is a line in a log nobody opens. So the failure is pushed
+  // through BOTH channels the panel renders — the footer status and the
+  // caption area's placeholder — with the fix stated, because "another
+  // application owns Alt+C" is not actionable until you know what to close.
+  const why = thrown
+    ? `${HOTKEY} could not be registered: ${thrown}`
+    : `${HOTKEY} is already owned by another application, so this panel cannot be toggled with it - close the other Sotto instance and start again`;
+  const shown = hotkeyFailure && hotkeyFailure(why);
+  log(`HOTKEY_FAILURE_ON_PANEL delivered=${shown} text=${JSON.stringify(why)}`);
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -475,6 +779,13 @@ function registerIpc() {
     if (workerBridge && workerBridge.lastStatus) {
       applyPanelState(workerBridge.lastStatus, workerBridge.lastKind, workerBridge.lastInfo || {});
       log(`WORKER_STATUS_REPLAYED text=${JSON.stringify(workerBridge.lastStatus)}`);
+    }
+    // A dead hotkey outranks the worker's state: the owner has to know the
+    // gesture they are about to press is owned by something else, and it can
+    // only be fixed outside this process.
+    if (pendingHotkeyFailure) {
+      hotkeyFailure(pendingHotkeyFailure);
+      log('HOTKEY_FAILURE_REPLAYED');
     }
     if (DEMO_STATUS !== null) sendStatus(DEMO_STATUS);
     if (SELFTEST && !BRIDGE_SELFTEST) runSelfTest();
@@ -504,6 +815,30 @@ function registerIpc() {
   ipcMain.on('sotto:caption-cleared', (_event, payload = {}) => {
     captionLog.length = 0;
     log(`CAPTIONS_CLEARED remaining=${Number(payload.remaining) || 0}`);
+  });
+
+  // --- the transcript history ("redux") -----------------------------------
+  // The disk layout lives in history-store.js, the Node twin of the store in
+  // app/webview/sotto_webview.py; both write the same `<date>/<HH>.md` shape.
+  ipcMain.handle('sotto:history-append', (_event, payload = {}) => {
+    const entry = historyStore.append(payload.text);
+    if (entry) {
+      log(
+        `HISTORY_APPEND path=${JSON.stringify(entry.path)} time=${entry.time} ` +
+          `bytes=${Buffer.byteLength(entry.text, 'utf8')}`,
+      );
+    }
+    return { entry };
+  });
+  ipcMain.handle('sotto:history-tail', (_event, payload = {}) => historyStore.tail(payload.limit));
+  ipcMain.handle('sotto:history-search', (_event, payload = {}) =>
+    historyStore.search(payload.query, payload.limit),
+  );
+  ipcMain.handle('sotto:history-root', () => historyStore.root());
+  ipcMain.on('sotto:history-reveal', (_event, payload = {}) => {
+    const target = String(payload.path == null ? '' : payload.path);
+    const ok = historyStore.reveal(target);
+    log(`REVEAL_IN_FOLDER path=${JSON.stringify(target)} ok=${ok}`);
   });
 
   // What the panel asked for at first paint: the hotkey it must advertise, the
@@ -688,8 +1023,24 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     registerHotkey();
 
+    // Armed after the hotkey so the FIRST thing a reload has to preserve is
+    // already registered and can be read back in the same log.
+    startHotReload();
+
     if (START_VISIBLE) showPanel(SELFTEST ? 'startup-selftest' : 'startup --show');
-    if (WITH_WORKER) startWorker('startup --with-worker');
+    if (WITH_WORKER || TRANSCRIBE_FILE) {
+      startWorker(TRANSCRIBE_FILE ? 'startup --transcribe' : 'startup --with-worker');
+    }
+
+    // A bounded acceptance run ends on its own terms, so its log is complete
+    // rather than truncated by whoever killed it.
+    if (EXIT_AFTER > 0) {
+      log(`EXIT_AFTER=${EXIT_AFTER}s`);
+      setTimeout(() => {
+        log(`EXIT_TIMER elapsed=${EXIT_AFTER}s captions=${captionLog.length}`);
+        app.exit(captionLog.length > 0 ? 0 : 4);
+      }, EXIT_AFTER * 1000);
+    }
 
     if (workerBridge) {
       log(`idle: worker bridge live (${WORKER_PATH}), panel hidden until ${HOTKEY}`);
@@ -703,7 +1054,9 @@ if (!app.requestSingleInstanceLock()) {
     if (globalShortcut.isRegistered(HOTKEY)) globalShortcut.unregister(HOTKEY);
     globalShortcut.unregisterAll();
     // Never orphan the Python worker: a panel that quits and leaves a
-    // transcriber running is a leak nobody asked for.
+    // transcriber running is a leak nobody asked for. The watcher goes first:
+    // armed, it could restart the worker this very teardown is killing.
+    stopHotReload('will-quit');
     stopWorker('will-quit');
     log('HOTKEY_UNREGISTERED on quit');
   });

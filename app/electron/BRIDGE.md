@@ -116,7 +116,30 @@ The caption area's headline is replaced at the same time, via
 - Backoff is exponential: `500ms`, doubling, clamped at `8000ms`
   (`{base, factor, max}`). The countdown is on screen, because "dead" with no
   hint that a retry is in flight reads as a hang.
-- A restart is idempotent — `start()` on a live bridge is a no-op.
+- **One bridge, one child — and `start()` is idempotent on the BRIDGE, not on
+  the child.** The old guard was `if (this.child) return false`, which reads
+  "nothing is running" during the window where a worker has just died and this
+  bridge's restart timer is still armed. Every `start()` inside that window was
+  a second python, and the armed timer was a third. MEASURED 2026-10-06 (Alt+C
+  spawned several unwanted processes; each worker is ~2.1 GB); the reproduction
+  and both arms are in `docs/worker-single-instance-20261006.md`.
+
+  The three accessors exist so a caller can make the same decision from outside:
+
+  | accessor            | meaning                                                  |
+  | ------------------- | -------------------------------------------------------- |
+  | `hasPendingRestart` | a restart is ARMED inside this bridge (`timer !== null`)  |
+  | `liveChildCount`    | 0 or 1 — one bridge owns at most one live child           |
+  | `isActive`          | live child OR armed restart, and not stopped              |
+
+  `#spawn()` refuses when `this.child !== null` (`BRIDGE_DOUBLE_SPAWN_REFUSED`)
+  and cancels any timer that got it there: every legitimate respawn path
+  (`close`, `error`, the silence ceiling, `stop`) clears `child` FIRST, so a
+  non-null child on entry means the spawn would orphan a live worker.
+  `#scheduleRestart()` cancels a still-armed timer before arming its own — a
+  spawn that never starts emits BOTH `error` and `close`, which used to leave
+  one invisible timer that `stop()` could not reach. `stop()` cancels both timers
+  through the one `#cancelRestart()` path and logs what was armed.
 - **`silenceMs` (default 15s) is a first-output ceiling, not a wall-clock one.**
   A worker that opens stdout and then says nothing is *silence*, and silence is
   the real failure mode here (a model import can wedge for minutes). The status
@@ -137,14 +160,31 @@ These are **measured on this host**, not assumed (probe/tap_probe.py):
   shape is a **callback** stream (`sd.InputStream(callback=cb)`), which is what
   `sotto_worker.py::LoopbackTap` uses.
 
-So the bridge defaults to `SOTTO_CAPTURE_MODE=callback` and
-`SOTTO_AUDIO_DEVICE="Mapeador de som da Microsoft - Input"`, passed to the
-worker as **environment variables, never argv**. A worker built with `argparse`
+So the bridge defaults to `SOTTO_CAPTURE_MODE=callback`, passed to the worker
+as an **environment variable, never argv**. A worker built with `argparse`
 dies on an argument it does not know but silently ignores an environment
 variable it does not read: *a preference must never be able to kill the worker*.
-The only flag the bridge appends is `--device`, and only when the owner passed
-`--device=` explicitly — the live worker already lists the measured-best tap
-first in its own `preferred` order, so the default imposes nothing.
+
+`SOTTO_AUDIO_DEVICE` is exported **only when the owner asked for a device**
+(`--device=`). It used to be exported unconditionally from
+`DEFAULT_AUDIO_DEVICE`, which made the shell's guess outrank
+`worker/config.json` on every run that asked for nothing — measured in the same
+minute, one arm reading silence from the configured device while the other
+produced captions from the forced one. `DEFAULT_AUDIO_DEVICE` survives as an
+exported **hint**, not an override.
+
+With no device named, `BRIDGE_START` logs `device=auto` and the worker resolves
+the tap itself: it reads `config.json`, and if a candidate carries no signal for
+`--tap-window` seconds (default 6) it rotates to the next one, logging one
+`{"type":"status","state":"device-rotated",...}` line per switch. A run whose
+every candidate is flat ends on `state=device-exhausted` — the panel's named
+answer to "which device carries audio", instead of a name chosen before the run
+started. The only flag the bridge appends is `--device`, and only when the owner
+passed `--device=` explicitly.
+
+The bridge maps both new states: `device-rotated` is `busy` (the worker is
+doing the right thing), `device-exhausted` is `error` (no captions will arrive
+until the routing changes).
 
 ## Flags (all optional, all additive)
 
@@ -196,6 +236,50 @@ tracebacks are what actually break bridges, and none of them are stubbable.
 The restart step requires **two** boots: one boot would prove nothing about
 restart. The missing-worker step uses a path outside `H:\sotto\worker`, because
 that tree belongs to another lane.
+
+### Single-instance self-test (separate file, on purpose)
+
+`bridge-selftest.js` proves the bridge PARSES what a worker says. It does not
+prove the bridge never spawns a second worker, which is a different failure with
+a different instrument — the damage is PROCESSES, and `bridge.spawns` is a
+self-report. So:
+
+```powershell
+# 9 steps; rc 0 = PASS, 3 = a step did not observe. Two arms, ~6 s.
+node bridge-single-instance-selftest.js
+
+# the same arms counted from OUTSIDE, by python command line. ~15 s.
+node worker-proc-count-probe.js
+```
+
+Each worker appends its **own OS pid** to a file, and the verdict is the
+MAXIMUM number of those pids alive at once, sampled every 5 ms — a second worker
+that lived 40 ms and then died is still the bug the owner reported, and a
+snapshot taken afterwards would call the run clean.
+
+| arm                        | worker                        | what it is                                     |
+| -------------------------- | ----------------------------- | ---------------------------------------------- |
+| `hold` (control)           | sleeps, stays up               | the case the old child-only guard handled       |
+| `die` (**the defect**)     | exits 7 immediately           | `child` null + restart timer ARMED = the window |
+
+The control arm is labelled a control because it passes against the broken
+bridge too. Proof that this gate can go red:
+
+```powershell
+# pre-fix bridge -> arm-die fails with maxLive=2 and the two pids named
+New-Item -ItemType Directory -Force _single-instance | Out-Null   # generated; not committed
+git show HEAD:app/electron/worker-bridge.js > _single-instance\worker-bridge-prefix.js
+$env:SOTTO_BRIDGE_MODULE = "_single-instance\worker-bridge-prefix.js"
+node bridge-single-instance-selftest.js   # rc 3
+Remove-Item Env:SOTTO_BRIDGE_MODULE
+```
+
+`worker-proc-count-probe.js` counts `python.exe` processes whose command line
+contains `worker_probe.py` — the probe's OWN script path, never the image name,
+because other lanes run python on this box too. It spawns one PowerShell that
+samples continuously; one WMI sample costs ~250 ms, longer than the whole defect
+window, so per-sample process restarts would step straight over the thing being
+measured.
 
 ### Running it while another instance is running
 

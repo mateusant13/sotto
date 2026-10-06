@@ -1,0 +1,20 @@
+{
+  "model_type": "speech_features",
+  "audio_params": {
+    "sample_rate": 16000,
+    "n_fft": 512,
+    "hop_length": 160,
+    "n_mels": 128,
+    "window_length": 400,
+    "window_type": "hann",
+    "fmin": 0,
+    "fmax": 8000,
+    "dither": 1e-05,
+    "preemphasis": 0.97,
+    "log_zero_guard_type": "add",
+    "log_zero_guard_value": 1e-10,
+    "normalize": "NA",
+    "center": true,
+    "mag_power": 2.0
+  }
+}

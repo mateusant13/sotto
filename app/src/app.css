@@ -1,0 +1,42 @@
+/*
+ * Sotto panel theme.
+ *
+ * Colours come from brand/logo.svg: the near-black slab (#0B0F14) and the
+ * #7DD3FC -> #A78BFA accent gradient. One accent, used twice.
+ */
+
+:root {
+  --sotto-bg: #0b0f14;
+  --sotto-accent-a: #7dd3fc;
+  --sotto-accent-b: #a78bfa;
+  --sotto-text: #e7edf3;
+  --sotto-muted: #6b7885;
+  --sotto-radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* The window is transparent; only .panel paints. A background here would
+     turn the whole window into an opaque slab. */
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  color: var(--sotto-text);
+  /* An overlay must never steal a click it does not draw. */
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  height: 100%;
+}

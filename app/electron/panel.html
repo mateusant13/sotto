@@ -12,8 +12,19 @@
     <link rel="stylesheet" href="panel.css" />
   </head>
   <body>
-    <!-- The slab. `.panel` is the only element that takes pointer events; the
-         transparent margin around it stays click-through to the desktop. -->
+    <!-- The slab. `.panel` fills the whole window and is the only element that
+         takes pointer events. There is NO transparent margin inside this window:
+         dockRight() in main.js spends PANEL_MARGIN outside it, between the window
+         and the work-area edge, and sizes the window to the panel. Measured
+         2026-10-06 by dom-probe.js — an inset here shows up as dead transparent
+         space inside the always-on-top region and clips the slab's own shadow.
+
+         TWO SECTIONS, stacked, and the shape is the owner's:
+           TOP    `.history`   the accumulated transcript ("redux") — a feed laid
+                               out along the panel, persisted on disk, searchable.
+           BOTTOM `.captions`  the LIVE caption box — the streaming caption
+                               growing line by line. This is the focus.
+         The footer carries the status line. -->
     <main class="panel" id="panel">
       <header class="panel__header">
         <div class="wordmark">
@@ -54,8 +65,8 @@
             type="button"
             class="icon-button"
             id="clear-button"
-            title="Clear captions"
-            aria-label="Clear captions"
+            title="Clear the live caption box"
+            aria-label="Clear the live caption box"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path
@@ -88,21 +99,89 @@
         </div>
       </header>
 
-      <!-- The caption area. Empty by design in M0: audio capture is a later
-           milestone, so this is a placeholder that receives lines through
-           window.sotto.pushCaption(text). -->
-      <section class="captions" id="captions" aria-live="polite" aria-label="Live captions">
-        <div class="captions__placeholder" id="placeholder">
-          <div class="listening" aria-hidden="true">
-            <span></span><span></span><span></span><span></span><span></span>
-          </div>
-          <p class="captions__placeholder-title">Waiting for audio</p>
-          <p class="captions__placeholder-body">
-            Nothing is being transcribed yet. Captions appear here line by line the
-            moment audio reaches Sotto.
-          </p>
+      <!-- ── TOP: the history feed ─────────────────────────────────────────
+           The general transcript as it happened, read back from disk. Every
+           committed caption is appended to <root>/<YYYY-MM-DD>/<HH>.md, so this
+           feed survives a restart and is what the search operates on. The root
+           is printed here so the owner always knows where his data lives. -->
+      <section class="history" id="history" aria-label="Transcript history">
+        <div class="history__bar">
+          <span class="history__label">History &middot; Redux</span>
+          <button
+            type="button"
+            class="history__path"
+            id="history-root"
+            title="Open the history folder"
+          >&hellip;</button>
         </div>
-        <ol class="captions__list" id="caption-list"></ol>
+
+        <div class="history__tools">
+          <form class="search" id="search-form" role="search">
+            <input
+              type="search"
+              class="search__input"
+              id="search-input"
+              placeholder="Search history&hellip;"
+              aria-label="Search history"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit" class="search__button" id="search-button" title="Search history">
+              Search
+            </button>
+            <button type="button" class="search__clear" id="search-clear" title="Clear search" hidden>
+              Clear
+            </button>
+          </form>
+          <button
+            type="button"
+            class="reveal-button"
+            id="reveal-button"
+            title="Show the selected entry in the OS file manager"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M1.5 4.2a1 1 0 0 1 1-1h3.1l1.3 1.4h5.6a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>Show in folder</span>
+          </button>
+        </div>
+
+        <p class="history__note" id="history-status" hidden></p>
+
+        <ol class="history__list" id="history-list" aria-live="off"></ol>
+      </section>
+
+      <!-- ── BOTTOM: the live caption box ──────────────────────────────────
+           The focus of the panel. Lines arrive through the bridge, are
+           formulated by caption-formulation.js, and a committed line is added
+           here AND appended to the history feed above. -->
+      <section class="captions" id="captions" aria-live="polite" aria-label="Live caption">
+        <div class="captions__bar">
+          <span class="history__label">Live &middot; NVIDIA</span>
+          <span class="captions__hint" id="captions-hint"></span>
+        </div>
+        <div class="captions__body" id="captions-body">
+          <div class="captions__placeholder" id="placeholder">
+            <div class="listening" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <p class="captions__placeholder-title">Waiting for audio</p>
+            <p class="captions__placeholder-body">
+              Nothing is being transcribed yet. Captions appear here line by line the
+              moment audio reaches Sotto.
+            </p>
+          </div>
+          <!-- `hidden` because the empty state shows the placeholder instead.
+               panel.js clears this attribute on the first caption; without it the
+               empty box still occupies the top of the caption area. -->
+          <ol class="captions__list" id="caption-list" hidden></ol>
+        </div>
       </section>
 
       <footer class="status" id="status">
@@ -112,6 +191,9 @@
       </footer>
     </main>
 
+    <!-- The text decisions, DOM-free, so the oracle can run them outside
+         Electron. Must load BEFORE panel.js, which calls into it at load. -->
+    <script src="caption-formulation.js"></script>
     <script src="panel.js"></script>
   </body>
 </html>

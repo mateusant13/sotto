@@ -1,0 +1,23 @@
+{
+  "audio": {
+    "device": null,
+    "preferred_devices": [],
+    "_comment": "DELIBERATELY EMPTY. This file used to name three devices that exist on one machine ('CABLE Output (VB-Audio Virtual Cable)', 'VoiceMeeter Output', 'Mapeador de som da Microsoft - Input'); on an ordinary Windows PC none of them exist, so the product could not capture system audio anywhere else. Device choice is now the universal ladder in worker/sotto_worker.py: (a) WASAPI loopback of the default render endpoint, driver-free, works with no virtual cable installed -- see worker/wasapi_loopback.py; (b) a virtual-cable / stereo-mix input matched by NAME HEURISTIC (cable/virtual/loopback/stereo mix/voicemeeter/...); (c) an explicit --device or SOTTO_AUDIO_DEVICE override, which always wins and is never rotated away from. The run records which rung it took, and its measured peak, in the tap ledger. A device pinned here still works and is honoured, but pinning one is no longer required and is no longer portable.",
+    "block_ms": 100,
+    "_comment_live": "LIVE as of 2026-10-06: worker/sotto_worker.py reads this and passes it to LoopbackTap, where it sets the tap's block (and, for the WASAPI tap, the pump's poll period). It used to be inert -- the call site passed no block_ms, so the parameter default won and editing this key changed nothing. audio.match / audio.sample_rate / audio.channels / audio.latency / output.partial were DELETED the same day because nothing read them. See docs/audit/config-inert-fixed.md."
+  },
+  "model": {
+    "dir": "models/nemotron-3.5-asr-streaming-0.6b-int8",
+    "_comment_lang_id": "The model's language prompt. Accepted: an id from the model's OWN languages.json (0=en-US, 12=pt-BR, 13=pt/pt-PT), a language tag ('pt-BR'), 'auto' (the model's autoSlot 101), or 'os' (the host's user locale, mapped through the table). Resolved by worker/lang_prompt.py; an undeclared value is REFUSED (exit 2), never clamped. Precedence: --lang-id > SOTTO_LANG_ID > this file. CHANGED 'os' -> 'auto' 2026-10-06 (lane SottoLangDefault) WITH A MEASUREMENT, because both earlier values silently destroyed one language: 'os' resolves to pt-BR (12) on this pt-BR host, and prompt 12 on the bundled ENGLISH sample (worker/assets/sample1.flac) collapses the decode from 94 tokens to 10 (the whole English clip decoded against a Portuguese prompt); the literal 0 did the mirror damage to Portuguese (5 tokens vs 18 on _main/pt-br-sample.wav). 'auto' (autoSlot 101) got 89/94 tokens on the ENGLISH clip AND 18/18 on the Portuguese one -- it is the only one of the three that is good on BOTH. 'os' cannot ship as a default: the host locale names the language of the USER, not of the AUDIO, and an app must not silently pick one language over another. Receipt: _main/lang-id-default-arms.py, _main/langdef-arms.json.",
+    "lang_id": "auto",
+    "use_vad": true,
+    "providers": [
+      "CUDAExecutionProvider",
+      "CPUExecutionProvider"
+    ]
+  },
+  "output": {
+    "_comment_live": "LIVE as of 2026-10-06: min_chars is the minimum trimmed-caption length both emitters print (worker/sotto_worker.py selftest() and asr_thread()); a value below 1 is refused back to 1, loudly. output.partial was DELETED the same day -- nothing read it. See docs/audit/config-inert-fixed.md.",
+    "min_chars": 8
+  }
+}

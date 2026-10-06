@@ -1,0 +1,12 @@
+{
+    "type": "onnxmodel",
+    "config": {
+        "model_path": "E:\\Learn\\nemotron-speech-csharp\\converter\\src\\build\\onnx_models_int8_cpu",
+        "onnx_file_name": "joint.onnx",
+        "inference_settings": null,
+        "use_ort_extensions": false,
+        "external_initializers_file_name": null,
+        "constant_inputs_file_name": null,
+        "model_attributes": null
+    }
+}
