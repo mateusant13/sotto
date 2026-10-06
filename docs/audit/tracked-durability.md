@@ -413,6 +413,21 @@ are spelled out here with the reason each class is NOT source:
 
 ---
 
+## 6. GATE-CHANGE REQUEST
+
+A hole this audit found is in a **gate**, so it is returned as a request, not fixed here.
+
+- gate: `I:/!manager/scripts/self-audit-lint.sh` — `bash I:/!manager/scripts/self-audit-lint.sh <receipt-or-dir>`
+- invoker: the lane-completion path that already runs this lint over a `status: done` receipt (its rules (c)/(d) are read by every closing lane)
+- hole: **no rule checks that a receipt's own claimed fix artifact is TRACKED by git.** A lane can prove a fix green, stamp the receipt `done`, and leave the file untracked. Measured this session: `worker/wasapi_loopback.py` and `app/webview/sotto_webview.py` were BOTH untracked while their proofs were green, `git diff` was empty for them, and `git ls-files` counted **23** files in a repo whose app is dozens. This receipt closes the instance; the gate does not exist, so the next lane repeats it.
+- change: for a `done`-stamped receipt that names a repo-relative fix path, require `git -C <repo> ls-files --error-unmatch <path>` to exit 0; otherwise emit `GATE-FIX-UNTRACKED`.
+- nonvacuity: the RED input is the pre-commit state of `worker/wasapi_loopback.py` in `H:/sotto` — `git -C H:/sotto ls-files --error-unmatch worker/wasapi_loopback.py` exits non-zero before `5ffeefc` and 0 after. `--selftest` must carry both arms.
+- blast: `I:/!manager/scripts/self-audit-lint.sh` only. Receipts naming a NON-repo artifact (paths under `I:/!manager/runs`, `G:/…`) must be out of scope, or the rule turns existing green receipts red.
+- revert: `git -C I:/!manager checkout -- scripts/self-audit-lint.sh`
+- prepared_by / merged_by: `TrackedDurability`; Main
+
+---
+
 ## SELF-AUDIT
 
 * **protocolos em falta** — I did not find a repo protocol that says which untracked files are
@@ -429,17 +444,17 @@ are spelled out here with the reason each class is NOT source:
 * **review por outro subagente** — `sim-com-escopo "conferir a fronteira codigo/gerado do
   _main/ (147 ficheiros): algum e' run output que entrou, ou codigo que ficou de fora?"`
 * **gate-doubt** —
-  * `verde-de-verdade`: the `git grep -c ... HEAD` greps are REAL (they read the commit object,
+  * verde-de-verdade: the `git grep -c ... HEAD` greps are REAL (they read the commit object,
     and the HEAD~1 negative control is rc=1 with no output — the run that proves it is the
     negative control, not the positive one). `ls-files` 267 is real (read after commit). Caveat
     I must name: `sha256sum` was recomputed **after** the commit, so for the two fix files the
     "before" value comes from the pre-add manifest — the two agree, but the comparator is my
     own manifest, not git's blob hash.
-  * `falta-no-gate`: **nothing in the repo verifies that a fix lane's artifact is tracked at
+  * falta-no-gate: **nothing in the repo verifies that a fix lane's artifact is tracked at
     all.** A future change — a lane writing `worker/new_module.py` and proving it green — walks
     straight past every gate and lands untracked again, exactly as ticket `2051631332c989…`
     describes. The gate does not exist; that is the hole.
-  * `gate-melhor`: add a mechanical check run after any lane claims a fix:
+  * gate-melhor: add a mechanical check run after any lane claims a fix:
     `git ls-files --error-unmatch <the file the lane names> >/dev/null || echo UNTRACKED-FIX`
     — with the RED input being the current pre-commit state of `worker/wasapi_loopback.py`
     (which returns `UNTRACKED-FIX` before `5ffeefc` and silence after).
