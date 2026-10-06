@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- No remote content, no inline event handlers: everything is local files
+         reached through the preload bridge. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+    />
+    <title>Sotto</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <!-- The slab. `.panel` is the only element that takes pointer events; the
+         transparent margin around it stays click-through to the desktop. -->
+    <main class="panel" id="panel">
+      <header class="panel__header">
+        <div class="wordmark">
+          <!-- The mark from brand/logo.svg: three audio bars and the panel slab,
+               in the same #7DD3FC -> #A78BFA gradient. -->
+          <svg class="wordmark__mark" viewBox="0 0 64 64" role="img" aria-label="Sotto">
+            <defs>
+              <linearGradient id="sotto-accent" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#7DD3FC" />
+                <stop offset="100%" stop-color="#A78BFA" />
+              </linearGradient>
+            </defs>
+            <rect
+              x="30"
+              y="6"
+              width="28"
+              height="52"
+              rx="6"
+              fill="#0B0F14"
+              stroke="url(#sotto-accent)"
+              stroke-width="2"
+            />
+            <rect x="35" y="14" width="18" height="3" rx="1.5" fill="url(#sotto-accent)" opacity="0.95" />
+            <rect x="35" y="22" width="13" height="3" rx="1.5" fill="#7DD3FC" opacity="0.45" />
+            <rect x="35" y="30" width="16" height="3" rx="1.5" fill="#A78BFA" opacity="0.55" />
+            <rect x="8" y="26" width="4" height="12" rx="2" fill="#7DD3FC" opacity="0.55" />
+            <rect x="15" y="18" width="4" height="28" rx="2" fill="url(#sotto-accent)" />
+            <rect x="22" y="23" width="4" height="18" rx="2" fill="#A78BFA" opacity="0.75" />
+          </svg>
+          <div class="wordmark__text">
+            <h1 class="wordmark__name">Sotto</h1>
+            <p class="wordmark__tag">live captions</p>
+          </div>
+        </div>
+
+        <div class="panel__controls">
+          <button
+            type="button"
+            class="icon-button"
+            id="clear-button"
+            title="Clear captions"
+            aria-label="Clear captions"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="icon-button"
+            id="hide-button"
+            title="Hide (Alt+C)"
+            aria-label="Hide panel"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- The caption area. Empty by design in M0: audio capture is a later
+           milestone, so this is a placeholder that receives lines through
+           window.sotto.pushCaption(text). -->
+      <section class="captions" id="captions" aria-live="polite" aria-label="Live captions">
+        <div class="captions__placeholder" id="placeholder">
+          <div class="listening" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <p class="captions__placeholder-title">Waiting for audio</p>
+          <p class="captions__placeholder-body">
+            Nothing is being transcribed yet. Captions appear here line by line the
+            moment audio reaches Sotto.
+          </p>
+        </div>
+        <ol class="captions__list" id="caption-list"></ol>
+      </section>
+
+      <footer class="status" id="status">
+        <span class="status__dot" id="status-dot" aria-hidden="true"></span>
+        <span class="status__text" id="status-text">Idle &middot; no audio source</span>
+        <span class="status__hint" id="status-hint"><kbd>Alt</kbd>+<kbd>C</kbd></span>
+      </footer>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>

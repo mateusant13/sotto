@@ -1,0 +1,23 @@
+# Dependencies and build output. The Electron runtime is 214 MB and the Rust
+# toolchain cannot run on this host at all, so none of this belongs in git.
+node_modules/
+dist/
+target/
+
+# Downloaded model weights. Sotto fetches these on first run, never bundled,
+# so they are reproducible state, not source.
+*.onnx
+*.gguf
+*.bin
+
+# Run logs and the audio scratch the probes write.
+*.log
+*.wav
+probe/*.log
+probe/*.wav
+__pycache__/
+*.pyc
+
+# OS debris
+Thumbs.db
+.DS_Store
