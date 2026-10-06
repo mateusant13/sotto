@@ -5,8 +5,11 @@
  *
  * M0's only job is to exist measurably: the panel opens, Alt+C toggles it, and
  * the window behaviour is provable from stdout without a screenshot. There is no
- * audio capture and no model here — the caption area is a receiver waiting for
- * a later milestone to feed it (see `pushCaption` in preload.js).
+ * audio capture and no model in THIS file — the caption area is a receiver, and
+ * the Python ASR worker that will feed it is attached by `worker-bridge.js`
+ * (spawn, JSONL captions/statuses, restart with backoff). Pressing Alt+C now
+ * brings that worker up, so the panel reports the worker's real state instead of
+ * a static "Waiting for audio".
  *
  * Why Electron and not the Tauri build next door: the Tauri/Rust tree at
  * ../src-tauri cannot be built on this host — cargo hangs at "Updating
@@ -17,6 +20,8 @@
 
 const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
+const { createBridge, DEFAULT_WORKER_PATH, DEFAULT_COMMAND } = require('./worker-bridge');
+const { runBridgeSelfTest, printResult } = require('./bridge-selftest');
 
 /** The global toggle. Global rather than window-local is the whole point: the
  *  panel is hidden most of the time, so a hotkey that only worked while the
@@ -62,12 +67,27 @@ const START_VISIBLE = ARGS.has('--show') || SELFTEST;
 const DEMO_CAPTION = argValue('--caption');
 const DEMO_STATUS = argValue('--status');
 
+/** --- the worker bridge -------------------------------------------------
+ *  Flags, all additive and all optional. `--selftest` on its own still behaves
+ *  exactly as M0 did: no worker, no Python, no caption — its receipt is a
+ *  frozen artefact for the shell lane. */
+const BRIDGE_SELFTEST = ARGS.has('--bridge-selftest');
+/** Start the worker at launch instead of waiting for the first Alt+C. */
+const WITH_WORKER = ARGS.has('--with-worker');
+const WORKER_PATH = argValue('--worker') || DEFAULT_WORKER_PATH;
+const PYTHON_PATH = argValue('--python') || DEFAULT_COMMAND;
+const WORKER_DEVICE = argValue('--device');
+const WORKER_CAPTURE = argValue('--capture');
+
 /** @type {BrowserWindow|null} */
 let panel = null;
 /** Capped mirror of what the renderer is showing, for the startup receipt and
  *  the self-test. The renderer is the source of truth for the DOM; this is the
  *  main process's answer to "did a caption actually arrive". */
 const captionLog = [];
+
+/** @type {import('./worker-bridge').WorkerBridge|null} */
+let workerBridge = null;
 
 // ---------------------------------------------------------------------------
 // Geometry — the port of ../src-tauri/src/geometry.rs::dock_right.
@@ -291,7 +311,118 @@ function togglePanel(reason) {
     return false;
   }
   const visible = panel.isVisible();
-  return visible ? hidePanel(reason) : showPanel(reason);
+  if (visible) return hidePanel(reason);
+  // Alt+C is the "I want captions" gesture, so showing the panel brings the
+  // worker with it — otherwise the panel opens onto the stale status again,
+  // which is the bug this wiring exists to remove.
+  startWorker(reason);
+  return showPanel(reason);
+}
+
+// ---------------------------------------------------------------------------
+// The worker bridge — the wire between this shell and the Python ASR worker.
+//
+// The panel used to say "Waiting for audio" forever, which was a claim about
+// audio. Audio is NOT the missing thing on this host: the system tap measures
+// CAPTURED (peak=0.883270). The missing thing was the worker — nothing was
+// connected to this panel — and the panel had no way to say so. Every state
+// below therefore names the WORKER (starting / loading / listening / not
+// running / not found) and never asserts that audio is absent.
+//
+// The caption path is the one M0 already proved: main -> IPC -> preload -> DOM
+// -> `CAPTION_APPLIED`. This section only changes who calls `sendCaption`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Put a bridge state on screen in BOTH places the panel shows state.
+ *
+ * The footer status line is the primary channel (it acks as `STATUS_APPLIED`),
+ * and the caption area's placeholder — which ships hardcoded as "Waiting for
+ * audio" in panel.html — is rewritten so the headline matches the real state.
+ * It is done with one `executeJavaScript` using the class names panel.js
+ * already queries, so panel.html / panel.js / preload.js stay untouched.
+ *
+ * @param {string} text  the status line
+ * @param {'busy'|'live'|'error'} kind
+ * @param {{title?:string|null, body?:string|null}} [info] placeholder copy
+ */
+function applyPanelState(text, kind = 'busy', info = {}) {
+  const line = String(text == null ? '' : text).trim();
+  if (line === '') {
+    // Never send an empty status: panel.js returns early on `!text`, which
+    // would leave the previous text on screen — the stale-status bug itself.
+    log('bridge status rejected: empty text would leave the stale line in place');
+    return false;
+  }
+  const delivered = sendStatus(line);
+
+  if (!panel || panel.isDestroyed()) return delivered;
+
+  const script = `(() => {
+    const title = ${JSON.stringify(info.title || '')};
+    const body = ${JSON.stringify(info.body || '')};
+    const kind = ${JSON.stringify(kind)};
+    const t = document.querySelector('.captions__placeholder-title');
+    const b = document.querySelector('.captions__placeholder-body');
+    if (t && title) t.textContent = title;
+    if (b && body) b.textContent = body;
+    const s = document.getElementById('status');
+    if (s) {
+      s.classList.toggle('status--live', kind === 'live');
+      s.classList.toggle('status--error', kind === 'error');
+    }
+    // Return what the panel now HEADLINES, so the placeholder rewrite is a
+    // receipt and not an assumption: STATUS_APPLIED only proves the footer.
+    return t ? t.textContent : '';
+  })()`;
+  Promise.resolve(panel.webContents.executeJavaScript(script))
+    .then((shown) => {
+      if (shown) log(`PLACEHOLDER_APPLIED title=${JSON.stringify(String(shown))}`);
+    })
+    .catch(() => {});
+  return delivered;
+}
+
+/** Bring the worker up once. Idempotent: the bridge refuses a second start. */
+function startWorker(reason) {
+  if (SELFTEST || BRIDGE_SELFTEST) {
+    // `--selftest` on its own must stay byte-for-byte the M0 receipt: no
+    // worker, no Python, no caption. `--bridge-selftest` drives its own
+    // throwaway workers from bridge-selftest.js instead.
+    log(`WORKER_AUTOSTART=skipped reason=${BRIDGE_SELFTEST ? 'bridge-selftest' : 'selftest'}`);
+    return false;
+  }
+  if (workerBridge && workerBridge.child) return false;
+
+  workerBridge = createBridge({
+    command: PYTHON_PATH,
+    workerPath: WORKER_PATH,
+    device: WORKER_DEVICE || undefined,
+    captureMode: WORKER_CAPTURE || undefined,
+    // Only when the owner explicitly asked for a device: the live worker
+    // already prefers the measured-best tap on its own.
+    extraArgs: WORKER_DEVICE ? ['--device', WORKER_DEVICE] : [],
+    log,
+    onCaption: (text, meta) => {
+      const ok = sendCaption(text, meta);
+      log(`BRIDGE_CAPTION_SENT delivered=${ok} text=${JSON.stringify(text)}`);
+      return ok;
+    },
+    onStatus: (text, kind, info) => applyPanelState(text, kind, info),
+  });
+
+  log(`WORKER_PATH ${WORKER_PATH}`);
+  log(`WORKER_COMMAND ${PYTHON_PATH}`);
+  const started = workerBridge.start(reason);
+  log(`WORKER_AUTOSTART=${started ? 'started' : 'declined'} reason=${reason}`);
+  return started;
+}
+
+function stopWorker(reason) {
+  if (!workerBridge) return false;
+  const stopped = workerBridge.stop(reason);
+  workerBridge = null;
+  return stopped;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,8 +469,16 @@ function registerIpc() {
         `placeholder=${JSON.stringify(String(payload.placeholder || '').slice(0, 60))}`,
     );
     sendGeometry();
+    // A worker started with `--with-worker` speaks before the page has painted,
+    // and an IPC message with no listener is gone. Re-send the current state so
+    // the panel opens onto the truth instead of the hardcoded placeholder.
+    if (workerBridge && workerBridge.lastStatus) {
+      applyPanelState(workerBridge.lastStatus, workerBridge.lastKind, workerBridge.lastInfo || {});
+      log(`WORKER_STATUS_REPLAYED text=${JSON.stringify(workerBridge.lastStatus)}`);
+    }
     if (DEMO_STATUS !== null) sendStatus(DEMO_STATUS);
-    if (SELFTEST) runSelfTest();
+    if (SELFTEST && !BRIDGE_SELFTEST) runSelfTest();
+    if (BRIDGE_SELFTEST) runBridgeSelfTestMode();
   });
 
   // The preload layer saw a pushCaption / setStatus call.
@@ -480,6 +619,45 @@ function runSelfTest() {
 }
 
 // ---------------------------------------------------------------------------
+// Bridge self-test — the same steps bridge-selftest.js runs under plain node,
+// but with the panel as the sink, so the proof covers IPC -> preload -> DOM ->
+// `CAPTION_APPLIED` rather than just the parser. Exit 0 / 3, never a lie.
+// ---------------------------------------------------------------------------
+
+async function runBridgeSelfTestMode() {
+  if (!panel || panel.isDestroyed()) {
+    warn('bridge-selftest: panel is gone');
+    app.exit(3);
+    return;
+  }
+  if (!panel.isVisible()) showPanel('bridge-selftest');
+  log('BRIDGE_SELFTEST mode=panel sink=ipc');
+
+  let result;
+  try {
+    result = await runBridgeSelfTest({
+      isPanel: true,
+      log,
+      onCaption: (text, meta) => sendCaption(text, meta),
+      onStatus: (text, kind, info) => applyPanelState(text, kind, info),
+      acked: () => captionLog.slice(),
+    });
+  } catch (err) {
+    warn(`bridge-selftest threw: ${err && err.stack ? err.stack : err}`);
+    log('BRIDGE_SELFTEST FAIL threw=1 rc=3');
+    app.exit(3);
+    return;
+  }
+
+  // The DOM ack is asynchronous; give the last `caption-applied` a moment to
+  // land before the verdict, or the step would measure IPC timing, not the code.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const rc = printResult(result);
+  log(`BRIDGE_SELFTEST rc=${rc}`);
+  app.exit(rc);
+}
+
+// ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
@@ -487,7 +665,14 @@ function runSelfTest() {
 // panel to the first and exits, rather than silently failing to register.
 if (!app.requestSingleInstanceLock()) {
   log('second instance detected; handing the panel to the running one');
-  app.exit(0);
+  // A self-test that never ran must not exit 0 — 0 is the PASS signal, and a
+  // lock collision would otherwise be a silent, unearned pass.
+  if (BRIDGE_SELFTEST) {
+    console.error('BRIDGE_SELFTEST FAIL reason=single-instance-lock-held rc=3');
+    app.exit(3);
+  } else {
+    app.exit(0);
+  }
 } else {
   app.on('second-instance', () => showPanel('second-instance'));
 
@@ -504,14 +689,22 @@ if (!app.requestSingleInstanceLock()) {
     registerHotkey();
 
     if (START_VISIBLE) showPanel(SELFTEST ? 'startup-selftest' : 'startup --show');
+    if (WITH_WORKER) startWorker('startup --with-worker');
 
-    log(`idle: no audio capture, no model loaded, panel hidden until ${HOTKEY}`);
+    if (workerBridge) {
+      log(`idle: worker bridge live (${WORKER_PATH}), panel hidden until ${HOTKEY}`);
+    } else {
+      log(`idle: no audio capture, no model loaded, panel hidden until ${HOTKEY}`);
+    }
   });
 
   // A hotkey that survives quitting is a hotkey that fires into nothing.
   app.on('will-quit', () => {
     if (globalShortcut.isRegistered(HOTKEY)) globalShortcut.unregister(HOTKEY);
     globalShortcut.unregisterAll();
+    // Never orphan the Python worker: a panel that quits and leaves a
+    // transcriber running is a leak nobody asked for.
+    stopWorker('will-quit');
     log('HOTKEY_UNREGISTERED on quit');
   });
 }

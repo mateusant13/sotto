@@ -8,6 +8,8 @@
   "scripts": {
     "start": "electron .",
     "selftest": "electron . --selftest",
+    "bridge-selftest": "electron . --bridge-selftest",
+    "bridge-selftest:node": "node bridge-selftest.js",
     "version": "electron --version"
   },
   "devDependencies": {

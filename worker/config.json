@@ -1,0 +1,24 @@
+{
+  "audio": {
+    "device": null,
+    "preferred_devices": [
+      "Mapeador de som da Microsoft - Input",
+      "VoiceMeeter Output",
+      "CABLE Output (VB-Audio Virtual Cable)"
+    ],
+    "sample_rate": 16000,
+    "channels": 1,
+    "block_ms": 100,
+    "latency": "low"
+  },
+  "model": {
+    "dir": "models/nemotron-3.5-asr-streaming-0.6b-int4",
+    "lang_id": 0,
+    "use_vad": false,
+    "providers": ["CPUExecutionProvider"]
+  },
+  "output": {
+    "partial": false,
+    "min_chars": 1
+  }
+}
