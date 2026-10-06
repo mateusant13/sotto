@@ -415,32 +415,66 @@ function runSelfTest() {
     app.exit(failed.length === 0 ? 0 : 3);
   };
 
-  // 1. The handler that Alt+C calls, invoked the same way the hotkey invokes it.
-  steps.push({ name: 'toggle-show', ok: togglePanel('selftest') && panel.isVisible() });
-  log(`SELFTEST toggle-show visible=${panel.isVisible()}`);
+  // Start from a KNOWN state. --selftest shows the panel at startup so the
+  // owner can see it, so "toggle means show" is only true after an explicit
+  // hide. Asserting a transition without pinning its starting state tests the
+  // test's assumption, not the code.
+  if (panel && panel.isVisible()) hidePanel('selftest-reset');
 
+  // 1. The handler Alt+C calls, invoked the way the hotkey invokes it: hidden
+  //    -> visible.
   setTimeout(() => {
+    const shown = togglePanel('selftest') && panel.isVisible();
+    steps.push({ name: 'hotkey-show', ok: shown });
+    log(`SELFTEST hotkey-show visible=${panel.isVisible()}`);
+
     // 2. And again, to prove it toggles both ways.
-    steps.push({ name: 'toggle-hide', ok: togglePanel('selftest') && !panel.isVisible() });
-    log(`SELFTEST toggle-hide visible=${panel.isVisible()}`);
-
     setTimeout(() => {
-      // 3. Leave the panel visible so the owner sees it, then push one caption
-      //    down the exact path a later milestone will use: main -> IPC ->
-      //    preload -> DOM -> ack.
-      showPanel('selftest');
-      const probe = DEMO_CAPTION || 'selftest caption — receiver is live';
-      const delivered = sendCaption(probe, { source: 'selftest' });
-      log(`SELFTEST caption-sent delivered=${delivered} text=${JSON.stringify(probe)}`);
-      const statusProbe = DEMO_STATUS || 'selftest: caption receiver verified';
-      log(`SELFTEST status-sent delivered=${sendStatus(statusProbe)} text=${JSON.stringify(statusProbe)}`);
+      const hidden = togglePanel('selftest') && !panel.isVisible();
+      steps.push({ name: 'hotkey-hide', ok: hidden });
+      log(`SELFTEST hotkey-hide visible=${panel.isVisible()}`);
 
-      // Give the renderer time to apply, then let the ack decide.
       setTimeout(() => {
-        const applied = captionLog.some((t) => t === probe.trim());
-        steps.push({ name: 'caption-applied', ok: applied });
-        finish();
-      }, 1500);
+        // 3. Leave the panel visible so the owner sees it, then push one caption
+        //    down the exact path a later milestone will use: main -> IPC ->
+        //    preload -> DOM -> ack.
+        showPanel('selftest');
+        const probe = DEMO_CAPTION || 'selftest caption - receiver is live';
+        const delivered = sendCaption(probe, { source: 'selftest' });
+        log(`SELFTEST caption-sent delivered=${delivered} text=${JSON.stringify(probe)}`);
+        const statusProbe = DEMO_STATUS || 'selftest: caption receiver verified';
+        log(`SELFTEST status-sent delivered=${sendStatus(statusProbe)} text=${JSON.stringify(statusProbe)}`);
+
+        // Give the renderer time to apply, then let the ack decide.
+        setTimeout(() => {
+          const applied = captionLog.some((t) => t === probe.trim());
+          steps.push({ name: 'caption-applied', ok: applied });
+          log(`SELFTEST caption-applied acknowledged=${applied} lines=${captionLog.length}`);
+
+          // 4. The other direction: the preload API itself, called from the page.
+          //    The caption above arrived over IPC; this one goes through
+          //    contextBridge (`window.sotto.pushCaption`), which is the API a
+          //    later milestone is told to call.
+          const bridgeProbe = 'page-bridge caption via window.sotto.pushCaption';
+          log(`SELFTEST bridge-sending text=${JSON.stringify(bridgeProbe)}`);
+          Promise.resolve(
+            panel.webContents.executeJavaScript(
+              `window.sotto.pushCaption(${JSON.stringify(bridgeProbe)})`,
+            ),
+          )
+            .then(() => new Promise((resolve) => setTimeout(resolve, 800)))
+            .then(() => {
+              const bridgeOk = captionLog.includes(bridgeProbe);
+              steps.push({ name: 'bridge-pushCaption', ok: bridgeOk });
+              log(`SELFTEST bridge-pushCaption acknowledged=${bridgeOk} lines=${captionLog.length}`);
+            })
+            .catch((err) => {
+              steps.push({ name: 'bridge-pushCaption', ok: false });
+              log(`SELFTEST bridge-pushCaption threw: ${err && err.message ? err.message : err}`);
+            })
+            .then(finish);
+        }, 1500);
+      }, 800);
     }, 800);
   }, 800);
 }
