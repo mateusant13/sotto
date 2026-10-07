@@ -178,6 +178,28 @@ git -C H:\sotto-wt\ArbV8 merge-tree --write-tree main <branch>       # read-only
 is reported here without a merge having been performed. No `git add -A` was run; no branch was
 merged; `main` is untouched.
 
+### Window drift — re-verified
+
+`main` advanced **during** this sweep, from `615110e` to **`82ddeb7`**
+(`scale: gate verified RED on a real run (rc=1 at N=20000)…`, reflog `main@{0}`). This sweep
+performed **no merge and no commit to `main`** — the advance is another lane's. Because every
+conflict check above was computed against the older head, all six were **re-run against
+`82ddeb7` and every verdict is unchanged**:
+
+| Branch | vs `615110e` | vs `82ddeb7` |
+|---|---|---|
+| `feat/ring-cap-ram-c` (F1) | clean | **clean** |
+| `feat/cut-verb-3` (F6) | clean | **clean** |
+| `feat/build-verify-1` (F3) | clean | **clean** |
+| `feat/probe-e2e-1` (F4) | clean | **clean** |
+| `docs/ram-v6` (F5) | clean | **clean** |
+| `feat/stdin-v9` (F2) | conflict | **conflict** |
+
+Ancestry re-checked at the new head: `caf7a9a`, `24df100`, `2acc0ae` all still **NOT** ancestors
+of `main` (`merge-base --is-ancestor` exit 1 each) — none of the four READY families was
+absorbed while the sweep ran. **The READY TO MERGE NOW list stands as written, valid against
+`main @ 82ddeb7`.** If `main` moves again, re-run the `merge-tree` command from §6 before merging.
+
 **UNVERIFIED / limits of this sweep:**
 - Conflicts are detected structurally (`merge-tree` exit 1), not by compiling. A clean merge can
   still fail the build — F1 touches `d3d11_ctx.cpp` and **no build was run here**.
