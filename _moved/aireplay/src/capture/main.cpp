@@ -128,6 +128,10 @@ struct Options {
     // on this host, so nothing here may select an endpoint by its index.
     bool     audio_off = false;
     std::string audio_endpoint;
+    // The `cut` VERB (ShadowPlay's hotkey). --cut-session keeps the process alive and serves
+    // {"cmd":"cut"} on the SAME stdin handle the ping path already uses.
+    bool        cut_session = false;
+    std::string cut_dir;
 };
 
 static void usage()
@@ -160,6 +164,12 @@ static void usage()
     log_line("                             stream and run the SAME cut. No WGC, no NVENC. Proves the");
     log_line("                             muxer even when capture is unavailable (receipt 03 §7)");
     log_line("  --cut-fps N --cut-size WxH  what the offline stream is, for the container header");
+    log_line("  --cut-session              keep the process alive and serve {\"cmd\":\"cut\"} on the SAME");
+    log_line("                             stdin handle: finalise the clip being written RIGHT NOW and");
+    log_line("                             open the next, with no process restart. Needs");
+    log_line("                             --cut-from-h264 FILE as the feed (WGC refuses every capture");
+    log_line("                             item on this host, so a live clip is not obtainable)");
+    log_line("  --cut-dir DIR              where --cut-session writes its clips (default: --out's dir)");
     log_line("  --log FILE                 also write the log here");
     log_line("  --help");
 }
@@ -188,6 +198,8 @@ static bool parse(int argc, char** argv, Options* o, std::string* err)
         else if (a == "--window-top") o->window_top = true;
         else if (a == "--window-alpha") o->window_alpha = atoi(next("--window-alpha").c_str());
         else if (a == "--cut-from-h264") o->cut_from = next("--cut-from-h264");
+        else if (a == "--cut-session") o->cut_session = true;
+        else if (a == "--cut-dir") o->cut_dir = next("--cut-dir");
         else if (a == "--cut-fps") o->cut_fps = (uint32_t)atoi(next("--cut-fps").c_str());
         else if (a == "--cut-size") {
             std::string s = next("--cut-size");
