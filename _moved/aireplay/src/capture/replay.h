@@ -105,6 +105,14 @@ public:
     uint64_t ring_used() const { return ring_.bytes_used(); }
     uint64_t ring_evictions() const { return ring_.evictions(); }
 
+    // OFFLINE VALIDATION OF THE CUT PATH — no WGC, no NVENC, no D3D11.  Fills the ring from
+    // a real Annex-B H.264 elementary stream (`ffmpeg -bsf:v h264_mp4toannexb`) and runs the
+    // SAME perform_cut() the live path runs.  This exists because WGC began refusing every
+    // capture item on this box (E_ACCESSDENIED, receipt §7), and a muxer that can only be
+    // exercised through the one component that broke is not provable.
+    bool cut_from_h264(const std::string& h264_path, const std::string& out_path,
+                       uint32_t fps, uint32_t w, uint32_t h, std::string* err);
+
     // Where the test window actually landed — the receipt quotes this.
     RECT test_window_rect() const { return tw_rect_; }
     uint64_t test_window_paints() const { return tw_.paint_count(); }

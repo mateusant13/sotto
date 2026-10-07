@@ -348,8 +348,96 @@ bool Replay::perform_cut(CutResult& r)
     return r.ok;
 }
 
-void Replay::cut_thread_main()
+// ------------------------------------------------------------------ offline cut
+bool Replay::cut_from_h264(const std::string& h264_path, const std::string& out_path,
+                           uint32_t fps, uint32_t w, uint32_t h, std::string* err)
 {
+    FILE* f = nullptr;
+    if (fopen_s(&f, h264_path.c_str(), "rb") != 0 || !f) { *err = "cannot open " + h264_path; return false; }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    std::vector<uint8_t> raw((size_t)(n > 0 ? n : 0));
+    size_t got = raw.empty() ? 0 : fread(raw.data(), 1, raw.size(), f);
+    fclose(f);
+    raw.resize(got);
+    if (raw.empty()) { *err = "empty elementary stream"; return false; }
+
+    std::vector<NalSpan> nals;
+    annexb_split(raw.data(), raw.size(), nals);
+    if (nals.empty()) { *err = "no NAL units found"; return false; }
+
+    // Group NALs into access units.  A VCL NAL (type 1 or 5) starts a new AU, and a
+    // parameter set / AUD that arrives AFTER a VCL NAL starts one too.  Non-VCL NALs
+    // otherwise attach to the AU they precede, which is what a decoder expects.
+    std::vector<std::vector<uint8_t>> aus;
+    std::vector<bool> au_idr;
+    std::vector<uint8_t> cur;
+    bool cur_has_vcl = false, cur_is_idr = false;
+    auto flush = [&]() {
+        if (!cur.empty()) { aus.push_back(cur); au_idr.push_back(cur_is_idr); }
+        cur.clear();
+        cur_has_vcl = false;
+        cur_is_idr = false;
+    };
+    for (const NalSpan& ns : nals) {
+        const bool vcl = (ns.type == 1 || ns.type == 5);
+        const bool ps  = (ns.type == 7 || ns.type == 8 || ns.type == 9);
+        if ((vcl && cur_has_vcl) || (ps && cur_has_vcl)) flush();
+        static const uint8_t sc[4] = { 0, 0, 0, 1 };
+        cur.insert(cur.end(), sc, sc + 4);
+        cur.insert(cur.end(), ns.data, ns.data + ns.size);
+        if (vcl) { cur_has_vcl = true; if (ns.type == 5) cur_is_idr = true; }
+    }
+    flush();
+    if (aus.size() < 2) { *err = "the stream has fewer than two access units"; return false; }
+
+    uint64_t need = 0;
+    for (const std::vector<uint8_t>& a : aus) need += a.size() + 4096;
+    if (!ring_.init((size_t)need, err)) return false;
+    w_ = w;
+    h_ = h;
+    cfg_.fps = fps;
+
+    const uint64_t step_ns = 1000000000ull / (fps ? fps : 60);
+    uint64_t t = 0;
+    for (size_t i = 0; i < aus.size(); ++i) {
+        if (!ring_.append(aus[i].data(), aus[i].size(), au_idr[i], au_idr[i] ? 1 : 0, t, i)) {
+            *err = "the ring could not hold the whole stream";
+            return false;
+        }
+        t += step_ns;
+    }
+
+    // Base = the first IDR; end = one past the newest byte.  This is exactly the range a
+    // live cut would pin, so perform_cut() runs unmodified.
+    size_t first_idr = 0;
+    if (!ring_.find_oldest_idr(&first_idr)) { *err = "no IDR in the stream"; return false; }
+    RingEntry base_e, last_e;
+    if (!ring_.entry_at(first_idr, &base_e)) { *err = "base entry missing"; return false; }
+    if (!ring_.entry_at(ring_.count() - 1, &last_e)) { *err = "last entry missing"; return false; }
+
+    CutResult r;
+    r.path = out_path;
+    r.base_abs = base_e.abs_off;
+    r.end_abs = last_e.abs_off + last_e.size;
+    r.base_qpc_ns = base_e.qpc_ns;
+    r.cut_qpc_ns = last_e.qpc_ns;
+    r.captured_in_window = aus.size();
+    r.encoded_in_window = aus.size();
+    ring_.pin(r.base_abs);
+    const bool ok = perform_cut(r);
+    ring_.unpin();
+    last_cut_ = r;
+    log_line("  OFFLINE CUT: %s -> %s  aus=%zu  idr=%s  frames_in_clip=%llu  bytes=%llu  wall_ms=%.1f  note=%s",
+             h264_path.c_str(), out_path.c_str(), aus.size(), first_idr ? "not-first" : "first",
+             (unsigned long long)r.frames_in_clip, (unsigned long long)r.bytes, r.wall_ms,
+             r.note.empty() ? "(none)" : r.note.c_str());
+    if (!ok) { *err = "perform_cut failed: " + r.note; return false; }
+    return true;
+}
+
+void Replay::cut_thread_main(){
     for (;;) {
         CutResult job;
         {
