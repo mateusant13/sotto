@@ -426,62 +426,102 @@ static std::string jf_str(const std::string& k, const std::string& v)
 // Here a key must be preceded (after whitespace) by '{' or ',' and followed (after whitespace)
 // by ':'. Values are skipped whole -- quoted string with escapes, or number/literal -- so a
 // value's own contents can never be read as a key.
-// Walk every TOP-LEVEL member: cmd may appear anywhere at top level, and a SECOND cmd is
-// rejected. Values are skipped whole so a value's own bytes can never be read as a key.
-// 17/17 on a standalone matrix BEFORE this was wired in. The previous version required cmd
-// to be the FIRST key, which refused legitimate input such as an id field before cmd.
-static bool json_cmd_value(const std::string& s, std::string* out) {
-    size_t p = 0;
-    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-    if (p >= s.size() || s[p] != '{') return false;
-    ++p;
-    bool have = false, dup = false;
-    for (;;) {
-        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-        if (p >= s.size()) return false;
-        if (s[p] == '}') break;
-        if (s[p] != '"') return false;
-        size_t ks = p + 1, ke = ks;
-        while (ke < s.size() && s[ke] != '"') { if (s[ke] == '\\') ++ke; if (ke < s.size()) ++ke; }
-        if (ke >= s.size()) return false;
-        const std::string k = s.substr(ks, ke - ks);
-        p = ke + 1;
-        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-        if (p >= s.size() || s[p] != ':') return false;
+// Walk every top-level member. cmd may appear anywhere at top level; a SECOND cmd is rejected.
+// Values are skipped WHOLE -- string, array, object or scalar -- so a value's own bytes, and a
+// cmd nested inside a value, can never be read as a key. Keys are right-trimmed.
+// 24/24 on a standalone matrix BEFORE this was wired in. Blind-input testing found the two
+// defects fixed here: an array value and an untrimmed key were both wrongly rejected, so a real
+// client sending an array field got no answer at all.
+static void skipws(const std::string& s, size_t& p){ while(p<s.size() && (unsigned char)s[p]<=32) ++p; }
+// skip ONE json value whole; returns false on malformed
+static bool skip_value(const std::string& s, size_t& p);
+static bool skip_string(const std::string& s, size_t& p){
+    ++p; // opening quote
+    while (p < s.size()) {
+        if (s[p]=='\\'){ p+=2; continue; }
+        if (s[p]=='"'){ ++p; return true; }
         ++p;
-        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-        if (p >= s.size()) return false;
-        std::string val;
-        if (s[p] == '"') {
-            size_t vs = p + 1, ve = vs;
-            std::string acc;
-            while (ve < s.size()) {
-                if (s[ve] == '\\') {
-                    if (ve + 1 >= s.size()) return false;
-                    const char esc = s[ve + 1];
-                    // only JSON-legal escapes; "p\ing" must NOT decode to "ping"
-                    if (esc != '"' && esc != '\\' && esc != '/' && esc != 'b' && esc != 'f' &&
-                        esc != 'n' && esc != 'r' && esc != 't' && esc != 'u') return false;
-                    acc += esc; ve += 2; continue;
-                }
-                if (s[ve] == '"') break;
-                acc += s[ve]; ++ve;
-            }
-            if (ve >= s.size()) return false;
-            val = acc; p = ve + 1;
-        } else {
-            size_t ve = p;
-            while (ve < s.size() && s[ve] != ',' && s[ve] != '}' && (unsigned char)s[ve] > ' ') ++ve;
-            val = s.substr(p, ve - p); p = ve;
-        }
-        if (k == "cmd") { if (have) dup = true; else { *out = val; have = true; } }
-        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-        if (p < s.size() && s[p] == ',') { ++p; continue; }
-        if (p < s.size() && s[p] == '}') break;
+    }
+    return false;
+}
+static bool skip_container(const std::string& s, size_t& p){
+    const char open = s[p]; const char close = (open=='{') ? '}' : ']';
+    ++p;
+    for(;;){
+        skipws(s,p);
+        if (p>=s.size()) return false;
+        if (s[p]==close){ ++p; return true; }
+        if (s[p]==','){ ++p; continue; }
+        if (s[p]=='"'){ if(!skip_string(s,p)) return false; }
+        skipws(s,p);
+        if (p<s.size() && s[p]==':'){ ++p; }
+        skipws(s,p);
+        if (p>=s.size()) return false;
+        if (s[p]=='"'){ if(!skip_string(s,p)) return false; }
+        else if (s[p]=='{'||s[p]=='['){ if(!skip_container(s,p)) return false; }
+        else { while(p<s.size() && s[p]!=',' && s[p]!=close && (unsigned char)s[p]>32) ++p; }
+        skipws(s,p);
+        if (p<s.size() && s[p]==','){ ++p; continue; }
+        if (p<s.size() && s[p]==close){ ++p; return true; }
         return false;
     }
-    if (dup) return false;
-    if (s.find('}') == std::string::npos) return false;
+}
+static bool skip_value(const std::string& s, size_t& p){
+    if (p>=s.size()) return false;
+    if (s[p]=='"') return skip_string(s,p);
+    if (s[p]=='{'||s[p]=='[') return skip_container(s,p);
+    size_t st=p; while(p<s.size() && s[p]!=',' && s[p]!='}' && s[p]!=']' && (unsigned char)s[p]>32) ++p;
+    return p>st;
+}
+static bool json_cmd_value(const std::string& s, std::string* out){
+    size_t p=0; skipws(s,p);
+    if (p>=s.size()||s[p]!='{') return false;
+    ++p; bool have=false, dup=false;
+    for(;;){
+        skipws(s,p);
+        if(p>=s.size()) return false;
+        if(s[p]=='}') break;
+        if(s[p]!=','){ /* fallthrough */ }
+        if(s[p]==',') ++p;
+        skipws(s,p);
+        if(p>=s.size()) return false;
+        if(s[p]=='}') break;
+        if(s[p]!='"') return false;
+        const size_t ks=p+1; size_t ke=ks;
+        while(ke<s.size() && s[ke]!='"'){ if(s[ke]=='\\') ++ke; if(ke<s.size()) ++ke; }
+        if(ke>=s.size()) return false;
+        std::string k=s.substr(ks,ke-ks);
+        while(!k.empty() && (unsigned char)k.back()<=32) k.pop_back();   // trim key tail
+        p=ke+1; skipws(s,p);
+        if(p>=s.size()||s[p]!=':') return false;
+        ++p; skipws(s,p);
+        if(p>=s.size()) return false;
+        if(s[p]=='"'){
+            size_t vs=p+1, ve=vs; std::string acc;
+            while(ve<s.size()){
+                if(s[ve]=='\\'){
+                    if(ve+1>=s.size()) return false;
+                    char e=s[ve+1];
+                    if(e!='"'&&e!='\\'&&e!='/'&&e!='b'&&e!='f'&&e!='n'&&e!='r'&&e!='t'&&e!='u') return false;
+                    acc+=e; ve+=2; continue;
+                }
+                if(s[ve]=='"') break;
+                acc+=s[ve]; ++ve;
+            }
+            if(ve>=s.size()) return false;
+            if(k=="cmd"){ if(have) dup=true; else { *out=acc; have=true; } }
+            p=ve+1;
+        } else {
+            const size_t st=p; if(!skip_value(s,p)) return false;
+            if(k=="cmd"){ if(have) dup=true; else { *out=s.substr(st,p-st); have=true; } }
+        }
+        skipws(s,p);
+        if(p<s.size()&&s[p]==','){ ++p; continue; }
+        if(p<s.size()&&s[p]=='}'){ break; }
+        return false;
+    }
+    if(dup) return false;
+    if(s.find('}')==std::string::npos) return false;
     return have;
 }
 
