@@ -200,3 +200,26 @@ RESULT: FAIL
   `search.py` scan is out of scope for this lane and not measured here.
 - Run B proves the threshold *clause* fires. It does not prove the CLI has a
   budget knob -- it does not; there is no such flag.
+## POSITIVE CONTROL -- the gate CAN go GREEN (closes the biggest gate-doubt)
+
+A reviewer lane correctly objected: proving a gate emits FAIL+rc=1 does not prove the gate
+works. A permanently-RED gate is as useless as a permanently-GREEN one. That control now
+exists, measured in the foreground, on `main`:
+
+| N | frac under 16 ms | p50 | RESULT | rc |
+|---|---|---|---|---|
+| 5000 | 1.000 | 0.88 ms | PASS | 0 |
+| 5000 | 1.000 | 0.88 ms | PASS | 0 |
+
+POPULATION = 2 runs at N=5000, WINDOW = 100 timed queries per run, <=2 threads, same
+commit. rc captured by redirecting to a file and reading $LASTEXITCODE.
+
+**Both directions are now proven on real executions:** FAIL+rc=1 at N=20000 and N=211200,
+PASS+rc=0 at N=5000. The gate discriminates; it is not stuck in one state.
+
+## Remaining truth about the index (do not soften this)
+The 16 ms budget is MISSED at N=20000 (p50 15.14 ms, 57% under, rc=1) and MISSED badly at
+N=211200 (p50 52.94 ms then 75.71 ms across runs, 0% under, rc=1). The gate fix did not make
+the index faster -- it made the failure visible. The performance work is still OPEN.
+Host contention note: small-N absolutes carry roughly +/-30% on this multi-lane host; the
+N=211200 miss is far outside that envelope.
