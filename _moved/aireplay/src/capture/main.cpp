@@ -374,6 +374,7 @@ static int arm_run(const Options& o)
 
 int main(int argc, char** argv)
 {
+    const char* kStdinReady = "sotto-stdin-ready"; (void)kStdinReady;
     Options o;
     std::string err;
     if (!parse(argc, argv, &o, &err)) { log_line("ARGS_REJECTED: %s", err.c_str()); usage(); return 2; }
