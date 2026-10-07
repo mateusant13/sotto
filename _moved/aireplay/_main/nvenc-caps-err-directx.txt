@@ -1,0 +1,4 @@
+STEP start
+STEP table non-null slots=42
+STEP create-instance ok
+STEP d3d11 hr=0 feat=0xB000

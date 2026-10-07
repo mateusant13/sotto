@@ -1,0 +1,62 @@
+{
+  "probe": "_index-crash2-probe.py",
+  "when": "2026-10-07T10:34:23",
+  "rows": 20000,
+  "batch": 2000,
+  "kill": "taskkill /F /PID on the marker 'T:' (inside a transaction)",
+  "armA_wal_synchronous_normal": {
+    "mode": "wal",
+    "killed_inside_transaction": true,
+    "last_committed_before_kill": 0,
+    "files_at_kill": {
+      "": 17182720,
+      "-wal": 5034672,
+      "-shm": 32768,
+      "-journal": 0
+    },
+    "integrity_check": "ok",
+    "rows_after_kill": 16000,
+    "query_error": null,
+    "knn_k100_rows_after_reopen": 100,
+    "clean": true
+  },
+  "armB_journal_off_synchronous_off": {
+    "mode": "off",
+    "killed_inside_transaction": true,
+    "last_committed_before_kill": 4000,
+    "files_at_kill": {
+      "": 20402176,
+      "-wal": 0,
+      "-shm": 0,
+      "-journal": 0
+    },
+    "integrity_check": "ok",
+    "rows_after_kill": 18041,
+    "query_error": null,
+    "knn_k100_rows_after_reopen": 100,
+    "rows_lost_beyond_last_commit": -14041,
+    "clean": false
+  },
+  "armC_journal_off_small_cache": {
+    "mode": "off_smallcache",
+    "killed_inside_transaction": true,
+    "last_committed_before_kill": 0,
+    "files_at_kill": {
+      "": 6455296,
+      "-wal": 0,
+      "-shm": 0,
+      "-journal": 0
+    },
+    "integrity_check": "*** in database main ***\nTree 6 page 6 cell 0: invalid page number 1575\nTree 6 page 6 cell 15: invalid page number 1316\nTree 6 page 6 cell 14: invalid page number 1315\nTree 6 page 6 cell 13: invalid page number 1314\nTree 4 page 4 cell 5: invalid page number 1317\nTree 4 page 4 cell 4: invalid page number 1056",
+    "rows_after_kill": null,
+    "query_error": "DatabaseError: database disk image is malformed",
+    "clean": false
+  },
+  "verdict": {
+    "armA_green": true,
+    "armB_red": true,
+    "armC_red": true,
+    "all_arms_caught_a_transaction": true,
+    "conclusion": "GREEN-with-control: WAL survives a mid-transaction kill intact and at least one durability-off arm goes RED, so the green is earned"
+  }
+}

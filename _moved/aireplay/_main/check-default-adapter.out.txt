@@ -1,0 +1,7 @@
+--- adapters enumerated by DXGI ---
+  index 0: NVIDIA GeForce RTX 5080  vendor=0x10DE device_id=0x2C02
+  index 1: Intel(R) UHD Graphics 770  vendor=0x8086 device_id=0xA780
+  index 2: Microsoft Basic Render Driver  vendor=0x1414 device_id=0x008C
+
+D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE) hr=0x00000000 feature_level=0xB000
+DEFAULT-ADAPTER -> 'NVIDIA GeForce RTX 5080' vendor=0x10DE device_id=0x2C02

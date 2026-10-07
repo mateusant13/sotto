@@ -1,0 +1,57 @@
+{
+  "lane": "01-index-spec-inputs",
+  "source": "H:\\sotto\\_moved\\aireplay\\docs\\research\\07-index-search.md",
+  "source_sha256": "e9142e87d42fe4306c00d19a3640dde52ae66c7a53794b4e55888621d1e4e5d9",
+  "source_unchanged_by_lane": true,
+  "arms": {
+    "ARM-0-real": {
+      "status": "GREEN",
+      "problems": [],
+      "facts": {
+        "bytes": 16264,
+        "heading_count": 9,
+        "headings": [
+          "07 — THE INDEX: STORE, SCHEMA, THREE-CHANNEL FUSION, RERANKER, TWO SPEEDS",
+          "1. THE STORE",
+          "Is a numpy brute-force scan already enough at ~120 k? Yes — with the arithmetic",
+          "2. THE SCHEMA — and how a hit becomes \"open the file X at 03:41.2\"",
+          "3. FUSION OF THE THREE CHANNELS — filterable by window, and explainable",
+          "4. RERANKER — not worth the cost at this scale",
+          "5. TWO SPEEDS — what the light pass writes, and how a segment is promoted",
+          "6. THE ARITHMETIC OF THE BRIEF, REDONE (do not trust the brief)",
+          "7. UNKNOWN — named, with the experiment that settles each"
+        ],
+        "create_table_statements": [
+          "video",
+          "segment",
+          "transcript",
+          "ocr",
+          "embedding"
+        ],
+        "schema_row_tokens": 1,
+        "numeric_claims": 130,
+        "unknown_marks": 9,
+        "provenance_labels_present": 37,
+        "cited_paths": [
+          "AGENTS.md",
+          "_index-crash2-probe.py",
+          "docs/research/08-import-library.md"
+        ],
+        "channels": {
+          "speech": true,
+          "ocr": true,
+          "visual": true
+        }
+      }
+    },
+    "ARM-A-corrupt": {
+      "status": "RED",
+      "problems": [
+        "no SQL schema fence with a table(...) grammar -> the schema is not in this lane",
+        "missing provenance channel(s): ocr"
+      ]
+    }
+  },
+  "oracle_selfcheck": "GREEN only if ARM-0 is GREEN AND ARM-A is RED AND the source is unchanged",
+  "oracle_verdict": "GREEN"
+}

@@ -1,0 +1,150 @@
+font-name-census  FONTS=C:\Users\Administrador\AppData\Local\Microsoft\Windows\Fonts
+==============================================================================
+Newsreader-Variable.ttf  451664 B  exists=True
+  family(1)        'Newsreader 16pt'
+  subfamily(2)     'Regular'
+  uid(3)           '1.003;PROD;Newsreader16pt-Regular'
+  full(4)          'Newsreader 16pt Regular'
+  version(5)       'Version 1.003'
+  ps(6)            'Newsreader16pt-Regular'
+  typofamily(16)   'Newsreader'
+  typosub(17)      'Regular'
+  name IDs ausentes: nenhum
+  fvar axes (2): [('wght', 200.0, 400.0, 800.0, 0), ('opsz', 6.0, 18.0, 72.0, 0)]
+  fvar named instances: 7
+      ExtraLight                   ps=270 coords={'wght': 200.0, 'opsz': 18.0}
+      Light                        ps=271 coords={'wght': 300.0, 'opsz': 18.0}
+      Regular                      ps=272 coords={'wght': 400.0, 'opsz': 18.0}
+      Medium                       ps=273 coords={'wght': 500.0, 'opsz': 18.0}
+      SemiBold                     ps=274 coords={'wght': 600.0, 'opsz': 18.0}
+      Bold                         ps=275 coords={'wght': 700.0, 'opsz': 18.0}
+      ExtraBold                    ps=276 coords={'wght': 800.0, 'opsz': 18.0}
+  OS/2 fsSelection=0x00c0  usWeightClass=400  usWidthClass=5
+  head.macStyle=0x0000  unitsPerEm=2000  post.italicAngle=0.00  post.isFixedPitch=0
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,HVAR,OS/2,STAT,avar,cmap,fvar,gasp,glyf,gvar,head,hhea,hmtx,loca,maxp,name,post,prep
+==============================================================================
+Newsreader-Italic-Variable.ttf  495684 B  exists=True
+  family(1)        'Newsreader 16pt'
+  subfamily(2)     'Italic'
+  uid(3)           '1.003;PROD;Newsreader16pt-Italic'
+  full(4)          'Newsreader 16pt Italic'
+  version(5)       'Version 1.003'
+  ps(6)            'Newsreader16pt-Italic'
+  typofamily(16)   'Newsreader'
+  typosub(17)      'Italic'
+  name IDs ausentes: nenhum
+  fvar axes (2): [('wght', 200.0, 400.0, 800.0, 0), ('opsz', 6.0, 18.0, 72.0, 0)]
+  fvar named instances: 7
+      ExtraLight Italic            ps=275 coords={'wght': 200.0, 'opsz': 18.0}
+      Light Italic                 ps=276 coords={'wght': 300.0, 'opsz': 18.0}
+      Italic                       ps=277 coords={'wght': 400.0, 'opsz': 18.0}
+      Medium Italic                ps=278 coords={'wght': 500.0, 'opsz': 18.0}
+      SemiBold Italic              ps=279 coords={'wght': 600.0, 'opsz': 18.0}
+      Bold Italic                  ps=280 coords={'wght': 700.0, 'opsz': 18.0}
+      ExtraBold Italic             ps=281 coords={'wght': 800.0, 'opsz': 18.0}
+  OS/2 fsSelection=0x0081  usWeightClass=400  usWidthClass=5
+  head.macStyle=0x0002  unitsPerEm=2000  post.italicAngle=-17.00  post.isFixedPitch=0
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,HVAR,OS/2,STAT,avar,cmap,fvar,gasp,glyf,gvar,head,hhea,hmtx,loca,maxp,name,post,prep
+==============================================================================
+Fraunces-Variable.ttf  360440 B  exists=True
+  family(1)        'Fraunces'
+  subfamily(2)     'Regular'
+  uid(3)           '1.000;UCT;Fraunces-9ptBlack'
+  full(4)          'Fraunces 9pt Black'
+  version(5)       'Version 1.000;[b76b70a41]'
+  ps(6)            'Fraunces-9ptBlack'
+  typofamily(16)   'Fraunces'
+  typosub(17)      'Black'
+  name IDs ausentes: nenhum
+  fvar axes (4): [('opsz', 9.0, 9.0, 144.0, 0), ('wght', 100.0, 900.0, 900.0, 0), ('SOFT', 0.0, 0.0, 100.0, 0), ('WONK', 0.0, 1.0, 1.0, 0)]
+  fvar named instances: 6
+      Thin                         ps=261 coords={'opsz': 9.0, 'wght': 100.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Light                        ps=263 coords={'opsz': 9.0, 'wght': 300.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Regular                      ps=265 coords={'opsz': 9.0, 'wght': 400.0, 'SOFT': 0.0, 'WONK': 1.0}
+      SemiBold                     ps=267 coords={'opsz': 9.0, 'wght': 600.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Bold                         ps=269 coords={'opsz': 9.0, 'wght': 700.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Black                        ps=271 coords={'opsz': 9.0, 'wght': 900.0, 'SOFT': 0.0, 'WONK': 1.0}
+  OS/2 fsSelection=0x00c0  usWeightClass=900  usWidthClass=5
+  head.macStyle=0x0000  unitsPerEm=2000  post.italicAngle=0.00  post.isFixedPitch=0
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,HVAR,OS/2,STAT,avar,cmap,fvar,gasp,glyf,gvar,head,hhea,hmtx,loca,maxp,name,post,prep
+==============================================================================
+Fraunces-Italic-Variable.ttf  414904 B  exists=True
+  family(1)        'Fraunces'
+  subfamily(2)     'Italic'
+  uid(3)           '1.000;UCT;Fraunces-9ptBlackItalic'
+  full(4)          'Fraunces 9pt Black Italic'
+  version(5)       'Version 1.000;[b76b70a41]'
+  ps(6)            'Fraunces-9ptBlackItalic'
+  typofamily(16)   'Fraunces'
+  typosub(17)      'Black Italic'
+  name IDs ausentes: nenhum
+  fvar axes (4): [('opsz', 9.0, 9.0, 144.0, 0), ('wght', 100.0, 900.0, 900.0, 0), ('SOFT', 0.0, 0.0, 100.0, 0), ('WONK', 0.0, 1.0, 1.0, 0)]
+  fvar named instances: 6
+      Thin Italic                  ps=261 coords={'opsz': 9.0, 'wght': 100.0, 'SOFT': 100.0, 'WONK': 1.0}
+      Light Italic                 ps=263 coords={'opsz': 9.0, 'wght': 300.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Italic                       ps=285 coords={'opsz': 9.0, 'wght': 400.0, 'SOFT': 0.0, 'WONK': 1.0}
+      SemiBold Italic              ps=267 coords={'opsz': 9.0, 'wght': 600.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Bold Italic                  ps=269 coords={'opsz': 9.0, 'wght': 700.0, 'SOFT': 0.0, 'WONK': 1.0}
+      Black Italic                 ps=271 coords={'opsz': 9.0, 'wght': 900.0, 'SOFT': 0.0, 'WONK': 1.0}
+  OS/2 fsSelection=0x0081  usWeightClass=900  usWidthClass=5
+  head.macStyle=0x0002  unitsPerEm=2000  post.italicAngle=-16.00  post.isFixedPitch=0
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,HVAR,OS/2,STAT,avar,cmap,fvar,gasp,glyf,gvar,head,hhea,hmtx,loca,maxp,name,post,prep
+==============================================================================
+SpaceGrotesk-Variable.ttf  136676 B  exists=True
+  family(1)        'Space Grotesk Light'
+  subfamily(2)     'Regular'
+  uid(3)           '2.000;FK;SpaceGrotesk-Light'
+  full(4)          'Space Grotesk Light'
+  version(5)       'Version 2.000'
+  ps(6)            'SpaceGrotesk-Light'
+  typofamily(16)   'Space Grotesk'
+  typosub(17)      'Light'
+  name IDs ausentes: nenhum
+  fvar axes (1): [('wght', 300.0, 300.0, 700.0, 0)]
+  fvar named instances: 4
+      Light                        ps=65535 coords={'wght': 300.0}
+      Regular                      ps=65535 coords={'wght': 400.0}
+      Medium                       ps=65535 coords={'wght': 500.0}
+      Bold                         ps=65535 coords={'wght': 700.0}
+  OS/2 fsSelection=0x00c0  usWeightClass=300  usWidthClass=5
+  head.macStyle=0x0000  unitsPerEm=1000  post.italicAngle=0.00  post.isFixedPitch=0
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,HVAR,OS/2,STAT,avar,cmap,fvar,gasp,glyf,gvar,head,hhea,hmtx,loca,maxp,name,post,prep
+==============================================================================
+BarlowCondensed-Bold.ttf  109912 B  exists=True
+  family(1)        'Barlow Condensed'
+  subfamily(2)     'Bold'
+  uid(3)           '1.408;TRBY;BarlowCondensed-Bold'
+  full(4)          'Barlow Condensed Bold'
+  version(5)       'Version 1.408'
+  ps(6)            'BarlowCondensed-Bold'
+  name IDs ausentes: ['typofamily(16)', 'typosub(17)']
+  fvar: (n�o � vari�vel)
+  OS/2 fsSelection=0x00a0  usWeightClass=700  usWidthClass=3
+  head.macStyle=0x0001  unitsPerEm=1000  post.italicAngle=0.00  post.isFixedPitch=0
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,OS/2,cmap,cvt ,fpgm,gasp,glyf,head,hhea,hmtx,loca,maxp,name,post,prep
+==============================================================================
+IBMPlexMono-Bold.ttf  137784 B  exists=True
+  family(1)        'IBM Plex Mono'
+  subfamily(2)     'Bold'
+  uid(3)           '2.3;IBM ;IBMPlexMono-Bold'
+  full(4)          'IBM Plex Mono Bold'
+  version(5)       'Version 2.3'
+  ps(6)            'IBMPlexMono-Bold'
+  name IDs ausentes: ['typofamily(16)', 'typosub(17)']
+  fvar: (n�o � vari�vel)
+  OS/2 fsSelection=0x01a0  usWeightClass=700  usWidthClass=5
+  head.macStyle=0x0001  unitsPerEm=1000  post.italicAngle=0.00  post.isFixedPitch=1
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,OS/2,cmap,cvt ,fpgm,gasp,glyf,head,hhea,hmtx,loca,maxp,meta,name,post,prep
+==============================================================================
+IBMPlexMono-Italic.ttf  143920 B  exists=True
+  family(1)        'IBM Plex Mono'
+  subfamily(2)     'Italic'
+  uid(3)           '2.3;IBM ;IBMPlexMono-Italic'
+  full(4)          'IBM Plex Mono Italic'
+  version(5)       'Version 2.3'
+  ps(6)            'IBMPlexMono-Italic'
+  name IDs ausentes: ['typofamily(16)', 'typosub(17)']
+  fvar: (n�o � vari�vel)
+  OS/2 fsSelection=0x0181  usWeightClass=400  usWidthClass=5
+  head.macStyle=0x0002  unitsPerEm=1000  post.italicAngle=-9.00  post.isFixedPitch=1
+  tabelas: DSIG,GDEF,GPOS,GSUB,GlyphOrder,OS/2,cmap,cvt ,fpgm,gasp,glyf,head,hhea,hmtx,loca,maxp,meta,name,post,prep

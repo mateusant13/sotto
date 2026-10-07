@@ -1,0 +1,190 @@
+{
+  "probe": "_index-store-probe2.py",
+  "when": "2026-10-07T08:18:32",
+  "rows": 120000,
+  "dims": 256,
+  "sqlite_vec": "0.1.9",
+  "sqlite": "3.43.1",
+  "tables": {
+    "A_nopartition": {
+      "insert_s": 2.6,
+      "insert_vectors_per_s": 46186,
+      "count": 120000,
+      "knn_k10": {
+        "min_ms": 253.35,
+        "median_ms": 257.43,
+        "reps": 5
+      },
+      "knn_k10_no_order_by": {
+        "min_ms": 277.21,
+        "median_ms": 313.36,
+        "reps": 5
+      },
+      "knn_k100": {
+        "min_ms": 286.53,
+        "median_ms": 487.0,
+        "reps": 5
+      },
+      "knn_k100_channel_speech": {
+        "min_ms": 264.49,
+        "median_ms": 277.97,
+        "reps": 5
+      },
+      "knn_k100_window": {
+        "min_ms": 242.99,
+        "median_ms": 252.42,
+        "reps": 5
+      },
+      "shadow_tables": [
+        "vec_seg",
+        "vec_seg_info",
+        "sqlite_autoindex_vec_seg_info_1",
+        "vec_seg_chunks",
+        "sqlite_sequence",
+        "vec_seg_rowids",
+        "vec_seg_vector_chunks00",
+        "sqlite_autoindex_vec_seg_vector_chunks00_1",
+        "vec_seg_metadatachunks00",
+        "sqlite_autoindex_vec_seg_metadatachunks00_1",
+        "vec_seg_metadatatext00",
+        "sqlite_autoindex_vec_seg_metadatatext00_1",
+        "vec_seg_metadatachunks01",
+        "sqlite_autoindex_vec_seg_metadatachunks01_1",
+        "vec_seg_metadatachunks02",
+        "sqlite_autoindex_vec_seg_metadatachunks02_1"
+      ],
+      "page_size": 4096,
+      "page_count": 31908,
+      "db_bytes": 130695168,
+      "db_MiB": 124.6,
+      "payload_MiB": 117.2
+    },
+    "B_partition_channel": {
+      "insert_s": 23.54,
+      "insert_vectors_per_s": 5097,
+      "count": 120000,
+      "knn_k10": {
+        "min_ms": 265.63,
+        "median_ms": 363.83,
+        "reps": 5
+      },
+      "knn_k10_no_order_by": {
+        "min_ms": 272.96,
+        "median_ms": 461.79,
+        "reps": 5
+      },
+      "knn_k100": {
+        "min_ms": 288.11,
+        "median_ms": 318.3,
+        "reps": 5
+      },
+      "knn_k100_channel_speech": {
+        "min_ms": 187.2,
+        "median_ms": 208.7,
+        "reps": 5
+      },
+      "knn_k100_window": {
+        "min_ms": 241.23,
+        "median_ms": 250.65,
+        "reps": 5
+      },
+      "shadow_tables": [
+        "vec_seg",
+        "vec_seg_info",
+        "sqlite_autoindex_vec_seg_info_1",
+        "vec_seg_chunks",
+        "sqlite_sequence",
+        "vec_seg_rowids",
+        "vec_seg_vector_chunks00",
+        "sqlite_autoindex_vec_seg_vector_chunks00_1",
+        "vec_seg_metadatachunks00",
+        "sqlite_autoindex_vec_seg_metadatachunks00_1",
+        "vec_seg_metadatachunks01",
+        "sqlite_autoindex_vec_seg_metadatachunks01_1"
+      ],
+      "page_size": 4096,
+      "page_count": 31679,
+      "db_bytes": 129757184,
+      "db_MiB": 123.7,
+      "payload_MiB": 117.2
+    },
+    "C_partition_video": {
+      "insert_s": 34.12,
+      "insert_vectors_per_s": 3517,
+      "count": 120000,
+      "knn_k10": {
+        "min_ms": 2220.0,
+        "median_ms": 2458.59,
+        "reps": 5
+      },
+      "knn_k10_no_order_by": {
+        "min_ms": 1911.72,
+        "median_ms": 2480.87,
+        "reps": 5
+      },
+      "knn_k100": {
+        "min_ms": 2559.51,
+        "median_ms": 2696.89,
+        "reps": 5
+      },
+      "knn_k100_channel_speech": {
+        "min_ms": 2416.09,
+        "median_ms": 2703.85,
+        "reps": 5
+      },
+      "knn_k100_window": {
+        "min_ms": 2083.27,
+        "median_ms": 2606.84,
+        "reps": 5
+      },
+      "knn_k100_video42": {
+        "min_ms": 0.82,
+        "median_ms": 3.63,
+        "reps": 5
+      },
+      "shadow_tables": [
+        "vec_seg",
+        "vec_seg_info",
+        "sqlite_autoindex_vec_seg_info_1",
+        "vec_seg_chunks",
+        "sqlite_sequence",
+        "vec_seg_rowids",
+        "vec_seg_vector_chunks00",
+        "sqlite_autoindex_vec_seg_vector_chunks00_1",
+        "vec_seg_metadatachunks00",
+        "sqlite_autoindex_vec_seg_metadatachunks00_1",
+        "vec_seg_metadatatext00",
+        "sqlite_autoindex_vec_seg_metadatatext00_1",
+        "vec_seg_metadatachunks01",
+        "sqlite_autoindex_vec_seg_metadatachunks01_1",
+        "vec_seg_metadatachunks02",
+        "sqlite_autoindex_vec_seg_metadatachunks02_1"
+      ],
+      "page_size": 4096,
+      "page_count": 267267,
+      "db_bytes": 1094725632,
+      "db_MiB": 1044.0,
+      "payload_MiB": 117.2
+    },
+    "D_manual_plain_table+vec_distance_cosine": {
+      "insert_s": 7.71,
+      "count": 120000,
+      "knn_k100_orderby": {
+        "min_ms": 673.04,
+        "median_ms": 702.43,
+        "reps": 5
+      }
+    }
+  },
+  "numpy_control_same_process": {
+    "min_ms": 19.62,
+    "median_ms": 28.21,
+    "reps": 10
+  },
+  "numpy_control_bytes_MiB": 117.2,
+  "numpy_at_k10": {
+    "min_ms": 19.9,
+    "median_ms": 27.92,
+    "reps": 10
+  }
+}

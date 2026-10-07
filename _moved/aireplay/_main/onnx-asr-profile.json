@@ -1,0 +1,201 @@
+{
+  "instrument": "onnx_asr_probe.py",
+  "pid": 24400,
+  "python": "3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]",
+  "argv": [
+    "H:\\aireplay\\_main\\onnx_asr_probe.py",
+    "--model-dir",
+    "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+    "--quantization",
+    "int8",
+    "--loop-wav",
+    "H:\\aireplay\\_main\\onnx-asr-scratch\\slice-30s.wav",
+    "--loop-wav-seconds",
+    "30.016",
+    "--providers",
+    "CPUExecutionProvider",
+    "--loop-passes",
+    "3",
+    "--sample-ms",
+    "250",
+    "--profile",
+    "H:\\aireplay\\_main\\onnx-asr-scratch\\prof",
+    "--out",
+    "H:\\aireplay\\_main\\onnx-asr-profile.json",
+    "--timeline",
+    "H:\\aireplay\\_main\\onnx-asr-profile-timeline.jsonl"
+  ],
+  "started": "2026-10-07T06:53:26",
+  "onnxruntime": "1.30.0",
+  "available_providers": [
+    "TensorrtExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "onnx_asr": "0.12.0",
+  "providers_requested": [
+    "CPUExecutionProvider"
+  ],
+  "load_seconds": 2.385,
+  "model_dir": "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+  "quantization": "int8",
+  "sessions": [
+    {
+      "attr": "_encoder",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "inputs": {
+        "audio_signal": [
+          "audio_signal_dynamic_axes_1",
+          128,
+          "audio_signal_dynamic_axes_2"
+        ],
+        "length": [
+          "length_dynamic_axes_1"
+        ]
+      }
+    },
+    {
+      "attr": "_decoder_joint",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "inputs": {
+        "encoder_outputs": [
+          "encoder_outputs_dynamic_axes_1",
+          1024,
+          "encoder_outputs_dynamic_axes_2"
+        ],
+        "targets": [
+          "targets_dynamic_axes_1",
+          "targets_dynamic_axes_2"
+        ],
+        "target_length": [
+          "target_length_dynamic_axes_1"
+        ],
+        "input_states_1": [
+          2,
+          "input_states_1_dynamic_axes_1",
+          640
+        ],
+        "input_states_2": [
+          2,
+          "input_states_2_dynamic_axes_1",
+          640
+        ]
+      }
+    }
+  ],
+  "sess_intra_op_threads": 0,
+  "cpu_count": 20,
+  "curve": {
+    "wav": "H:\\aireplay\\_main\\onnx-asr-scratch\\slice-30s.wav",
+    "elapsed_note": "wav file; onnx-asr reports no duration, --loop-wav-seconds is a probe argument",
+    "passes": 3,
+    "curve_wall_seconds": 117.385,
+    "audio_seconds_total": 90.048,
+    "rtfx_mean": 0.767,
+    "per_pass": [
+      {
+        "pass": 1,
+        "wall_s": 42.68,
+        "ws_mb": 967.8,
+        "private_mb": 1659.2,
+        "t_rel_s": 42.68,
+        "rtfx": 0.703
+      },
+      {
+        "pass": 2,
+        "wall_s": 36.769,
+        "ws_mb": 1168.2,
+        "private_mb": 1941.2,
+        "t_rel_s": 79.47,
+        "rtfx": 0.816
+      },
+      {
+        "pass": 3,
+        "wall_s": 37.888,
+        "ws_mb": 1185.1,
+        "private_mb": 1958.5,
+        "t_rel_s": 117.376,
+        "rtfx": 0.792
+      }
+    ]
+  },
+  "profile": {
+    "_encoder": {
+      "profile_file": "H:\\aireplay\\_main\\onnx-asr-scratch\\prof\\ort_2026-10-07_06-53-26_363.json",
+      "node_events": 7140,
+      "total_node_us": 95728722.0,
+      "by_op_type_ms": {
+        "/pre_encode/conv/conv.0/Conv_output_0_output_quantized_cast_kernel_time": 3419.3,
+        "/layers.9/conv/depthwise_conv/Conv_quant_kernel_time": 3006.5,
+        "/layers.9/feed_forward2/linear1/MatMul_quant_kernel_time": 2951.4,
+        "/pre_encode/conv/conv.2/Conv_quant_kernel_time": 2938.8,
+        "/layers.10/self_attn/linear_pos/MatMul_quant_kernel_time": 2293.2,
+        "/layers.15/conv/depthwise_conv/Conv_quant_kernel_time": 1270.5,
+        "/layers.14/conv/depthwise_conv/Conv_quant_kernel_time": 1081.4,
+        "/pre_encode/conv/conv.0/Conv_quant_kernel_time": 1061.7,
+        "/layers.11/conv/depthwise_conv/Conv_quant_kernel_time": 967.2,
+        "/layers.13/conv/depthwise_conv/Conv_quant_kernel_time": 892.1,
+        "/pre_encode/conv/conv.1/Relu_output_0_QuantizeLinear_kernel_time": 854.3,
+        "/layers.12/conv/depthwise_conv/Conv_quant_kernel_time": 795.2
+      },
+      "top_nodes_ms": {
+        "/pre_encode/conv/conv.0/Conv_output_0_output_quantized_cast_kernel_time|/pre_encode/conv/conv.0/Conv_output_0_output_quantized_cast_kernel_time": 3419.3,
+        "/layers.9/conv/depthwise_conv/Conv_quant_kernel_time|/layers.9/conv/depthwise_conv/Conv_quant_kernel_time": 3006.5,
+        "/layers.9/feed_forward2/linear1/MatMul_quant_kernel_time|/layers.9/feed_forward2/linear1/MatMul_quant_kernel_time": 2951.4,
+        "/pre_encode/conv/conv.2/Conv_quant_kernel_time|/pre_encode/conv/conv.2/Conv_quant_kernel_time": 2938.8,
+        "/layers.10/self_attn/linear_pos/MatMul_quant_kernel_time|/layers.10/self_attn/linear_pos/MatMul_quant_kernel_time": 2293.2,
+        "/layers.15/conv/depthwise_conv/Conv_quant_kernel_time|/layers.15/conv/depthwise_conv/Conv_quant_kernel_time": 1270.5,
+        "/layers.14/conv/depthwise_conv/Conv_quant_kernel_time|/layers.14/conv/depthwise_conv/Conv_quant_kernel_time": 1081.4,
+        "/pre_encode/conv/conv.0/Conv_quant_kernel_time|/pre_encode/conv/conv.0/Conv_quant_kernel_time": 1061.7
+      }
+    },
+    "_decoder_joint": {
+      "profile_file": "H:\\aireplay\\_main\\onnx-asr-scratch\\prof\\ort_2026-10-07_06-53-28_621.json",
+      "node_events": 7656,
+      "total_node_us": 15433598.0,
+      "by_op_type_ms": {
+        "/joint/joint_net/joint_net.2/MatMul_quant_kernel_time": 5619.2,
+        "/decoder/dec_rnn/lstm/LSTM_quant_kernel_time": 3471.1,
+        "/decoder/dec_rnn/lstm/LSTM_1_quant_kernel_time": 2540.3,
+        "/joint/enc/MatMul_quant_kernel_time": 1074.4,
+        "/joint/pred/MatMul_quant_kernel_time": 494.0,
+        "/joint/Transpose_kernel_time": 266.0,
+        "/decoder/dec_rnn/lstm/Concat_1_kernel_time": 260.1,
+        "/decoder/dec_rnn/lstm/Squeeze_1_kernel_time": 165.6,
+        "Identity_57_kernel_time": 144.3,
+        "/joint/Add_kernel_time": 136.1,
+        "/decoder/dec_rnn/lstm/Slice/GatherSliceToSplitFusion_kernel_time": 131.9,
+        "/decoder/dec_rnn/lstm/Concat_kernel_time": 128.9
+      },
+      "top_nodes_ms": {
+        "/joint/joint_net/joint_net.2/MatMul_quant_kernel_time|/joint/joint_net/joint_net.2/MatMul_quant_kernel_time": 5619.2,
+        "/decoder/dec_rnn/lstm/LSTM_quant_kernel_time|/decoder/dec_rnn/lstm/LSTM_quant_kernel_time": 3471.1,
+        "/decoder/dec_rnn/lstm/LSTM_1_quant_kernel_time|/decoder/dec_rnn/lstm/LSTM_1_quant_kernel_time": 2540.3,
+        "/joint/enc/MatMul_quant_kernel_time|/joint/enc/MatMul_quant_kernel_time": 1074.4,
+        "/joint/pred/MatMul_quant_kernel_time|/joint/pred/MatMul_quant_kernel_time": 494.0,
+        "/joint/Transpose_kernel_time|/joint/Transpose_kernel_time": 266.0,
+        "/decoder/dec_rnn/lstm/Concat_1_kernel_time|/decoder/dec_rnn/lstm/Concat_1_kernel_time": 260.1,
+        "/decoder/dec_rnn/lstm/Squeeze_1_kernel_time|/decoder/dec_rnn/lstm/Squeeze_1_kernel_time": 165.6
+      }
+    }
+  },
+  "total_wall_s": 124.349,
+  "rss": {
+    "peak_working_set_mb": 1293.1,
+    "peak_working_set_os_mb": 1293.1,
+    "peak_private_mb": 2066.3,
+    "samples": 387
+  },
+  "rss_phase_peaks_mb": {
+    "startup": 19.2,
+    "import-done": 711.4,
+    "loaded": 747.2,
+    "curve": 1197.8,
+    "curve-done": 1185.1,
+    "done": 1293.1
+  }
+}

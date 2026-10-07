@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-diag-verdict="GREEN" data-preview-ready="ok"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sotto · as cinco direções de design — pré-visualização</title>
+<!--
+  Ficheiro auto-contido: sem build, sem rede, sem servidor. Abre por duplo clique.
+  Reproduz as cinco direções de `docs/design/sotto-app-design-directions/src`
+  (data/designs.ts, components/{Panel,Caption,bits,Ticker,Stage}.tsx, index.css)
+  em CSS/JS puro. Guião simulado = SCRIPT de designs.ts, a correr como legendas ao vivo.
+  As três cenas são referenciadas por caminho RELATIVO a este ficheiro
+  (sotto-app-design-directions/public/scenes/*.jpg) — nenhum recurso de rede.
+  Nenhuma das cinco fontes está instalada neste Windows: ver a barra de tipografia,
+  que é medida em tempo de execução (document.fonts.check), não afirmada.
+-->
+<style>
+/* ============================================================ tokens ==== */
+:root{
+  --ink:#14161a; --ink2:#1b1e24; --ink3:#23262e;
+  --bone:#eae5d9; --fog:#a49e90; --ember:#f2703f; --lagoon:#6fc2b4;
+  --signal:#ff6a55; --paper:#f2e9d8; --pencil:#a9c1d9; --gold:#e4b363;
+  --led:#5fd3a7; --amberlite:#ffc46b;
+  /* famílias pedidas pelo design e a família que este Windows realmente tem */
+  --f-display:"Bricolage Grotesque","Instrument Sans",system-ui,sans-serif;
+  --f-body:"Instrument Sans","Segoe UI",system-ui,sans-serif;
+  --f-tele:"Barlow Condensed","Bahnschrift SemiCondensed","Bahnschrift Condensed","Bahnschrift",ui-sans-serif,sans-serif;
+  --f-bcast:"IBM Plex Mono","Cascadia Mono",ui-monospace,monospace;
+  --f-mano:"Newsreader",Georgia,serif;
+  --f-cine:"Fraunces",Georgia,serif;
+  --f-inst:"Space Grotesk","Segoe UI",ui-sans-serif,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--ink);color:var(--bone);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+::selection{background:rgba(242,112,63,.35);color:#fdf9f0}
+.mono{font-family:var(--f-bcast)}
+
+/* ============================================================ barra ===== */
+#bar{position:sticky;top:0;z-index:60;background:rgba(11,12,15,.94);backdrop-filter:blur(10px);
+     border-bottom:1px solid rgba(255,255,255,.09);padding:8px 16px 9px}
+#bar .row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#bar .brand{font-family:var(--f-display);font-weight:800;font-size:17px;letter-spacing:-.01em}
+#bar .tag{font-family:var(--f-bcast);font-size:9.5px;letter-spacing:.22em;color:rgba(234,229,217,.45)}
+#nav{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.nav-btn{display:flex;align-items:baseline;gap:8px;cursor:pointer;border-radius:6px;padding:6px 11px;
+         border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.30);color:rgba(255,255,255,.45);
+         transition:transform .3s,color .3s,border-color .3s,background .3s}
+.nav-btn:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.85)}
+.nav-btn.on{transform:translateY(-2px);border-color:transparent;background:rgba(0,0,0,.65);color:var(--bone)}
+.nav-btn .n{font-family:var(--f-bcast);font-size:9px;letter-spacing:.2em}
+.nav-btn .nm{font-size:15px;line-height:1}
+.nav-btn .nm.f-tele{font-family:var(--f-tele);font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+.nav-btn .nm.f-bcast{font-family:var(--f-bcast);font-weight:600}
+.nav-btn .nm.f-mano{font-family:var(--f-mano);font-style:italic;font-weight:500}
+.nav-btn .nm.f-cine{font-family:var(--f-cine);font-weight:300}
+.nav-btn .nm.f-inst{font-family:var(--f-inst);font-weight:700}
+.nav-btn.alt{border-style:dashed}
+#bar .spacer{margin-left:auto}
+#bar .controls{display:flex;align-items:center;gap:8px}
+.pill{cursor:pointer;border-radius:999px;border:1px solid rgba(255,255,255,.13);background:rgba(0,0,0,.4);
+      color:rgba(255,255,255,.6);font-family:var(--f-bcast);font-size:10.5px;padding:4px 10px;transition:.2s}
+.pill:hover{color:#fff;border-color:rgba(255,255,255,.3)}
+.pill.on{background:var(--bone);color:var(--ink);font-weight:600;border-color:transparent}
+.pill.scene{display:flex;align-items:center;gap:6px;font-size:9.5px;font-weight:600;text-transform:uppercase;
+            letter-spacing:.16em;padding:5px 10px}
+.pill.scene i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.3)}
+.pill.scene.on{border:1px solid rgba(228,179,99,.7);background:rgba(0,0,0,.55);color:var(--gold)}
+.pill.scene.on i{background:var(--gold)}
+#btnPlay{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.55);
+         color:var(--bone);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.3s}
+#btnPlay:hover{transform:scale(1.05);border-color:rgba(255,255,255,.45)}
+#keyhint{font-family:var(--f-bcast);font-size:9px;letter-spacing:.14em;color:rgba(255,255,255,.32)}
+#typobar{display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06)}
+.tchip{font-family:var(--f-bcast);font-size:9px;letter-spacing:.1em;color:rgba(255,255,255,.5);
+       border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 7px;background:rgba(0,0,0,.35)}
+.tchip b{font-weight:600;color:rgba(255,255,255,.28)}
+.tchip.sub{border-color:rgba(242,112,63,.45);color:rgba(255,196,107,.9)}
+.tchip.sub b{color:rgba(255,255,255,.45)}
+#selfcheck{font-family:var(--f-bcast);font-size:9px;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-top:7px}
+#selfcheck .ok{color:var(--led)} #selfcheck .bad{color:var(--ember)}
+
+/* ============================================================ palco ===== */
+.stage{position:relative;height:calc(100svh - 190px);min-height:520px;overflow:hidden;background:#000}
+.scene-wrap{position:absolute;inset:0;overflow:hidden;background:radial-gradient(80% 60% at 40% 40%,#1a1f26,#05070a 70%)}
+.scene{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.4s;animation:kenburns 28s ease-in-out infinite alternate}
+.scene.on{opacity:1}
+.scene-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,.20) 50%,rgba(0,0,0,.55))}
+.scene-vig{position:absolute;inset:0;background:radial-gradient(125% 95% at 45% 40%,transparent 42%,rgba(0,0,0,.58) 100%)}
+.grain{position:absolute;inset:-40%;pointer-events:none;opacity:.055;animation:grainShift .9s steps(4) infinite;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+.panel-slot{position:absolute;top:50%;right:40px;transform:translateY(-50%);z-index:20}
+.panel-scaler{position:absolute;top:0;left:0;width:380px;height:900px;transform-origin:top left}
+.cap-slot{position:absolute;left:5vw;bottom:56px;z-index:15;display:flex;justify-content:center;pointer-events:none}
+.stage-foot{position:absolute;bottom:22px;right:40px;z-index:20;text-align:right;max-width:300px;pointer-events:none}
+.stage-foot p{margin:0;font-family:var(--f-bcast);font-size:9px;line-height:1.6;letter-spacing:.14em;color:rgba(255,255,255,.35);white-space:pre-line}
+
+/* ============================================================ painel ==== */
+.panel{width:380px;height:900px;display:flex;flex-direction:column;overflow:hidden;border-radius:8px;
+       border:1px solid transparent;backdrop-filter:blur(12px);box-shadow:0 28px 90px rgba(0,0,0,.6);position:relative}
+.p-tele{background:rgba(11,12,15,.55);border-color:rgba(255,255,255,.10)}
+.p-bcast{background:rgba(9,13,16,.70);border-color:rgba(255,255,255,.12)}
+.p-mano{background:rgba(242,233,216,.06);border-color:rgba(255,255,255,.14)}
+.p-cine{background:rgba(13,12,9,.60);border-color:rgba(228,179,99,.15)}
+.p-inst{background:rgba(9,15,13,.65);border-color:rgba(95,211,167,.15)}
+.p-head{display:flex;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.p-body{flex:1;overflow-y:auto;padding:14px 16px}
+.p-foot{padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center}
+.p-empty{margin:0;font-family:var(--f-bcast);font-size:10px;letter-spacing:.2em;color:rgba(255,255,255,.3)}
+.p-form{margin:0}
+.p-words{display:inline}
+.panel-scroll::-webkit-scrollbar{width:3px}
+.panel-scroll::-webkit-scrollbar-track{background:transparent}
+.panel-scroll::-webkit-scrollbar-thumb{background:rgba(234,229,217,.16);border-radius:2px}
+.caret{animation:caretBlink 1.1s steps(1) infinite}
+.w-tele{animation:wordRise .3s cubic-bezier(.2,.7,.2,1) both}
+.w-bcast{animation:wordRise .16s ease-out both}
+.w-mano{animation:wordInk .7s ease both;opacity:var(--ink-op,1)}
+.w-cine{animation:wordFog .6s ease both}
+.w-inst{animation:wordSnap .1s steps(2) both}
+
+/* --- 01 teleprompter --- */
+.p-tele .p-head{align-items:center;justify-content:space-between;border-color:rgba(255,255,255,.08)}
+.tele-brand{font-family:var(--f-tele);font-size:12px;font-weight:600;letter-spacing:.42em;color:rgba(242,233,216,.6)}
+.tele-state{display:flex;align-items:center;gap:6px;font-family:var(--f-tele);font-size:10px;letter-spacing:.28em;color:rgba(242,233,216,.35)}
+.tele-state i{width:6px;height:6px;border-radius:50%;background:rgba(242,233,216,.25)}
+.pane.on .tele-state i{background:rgba(242,233,216,.8)}
+.d-tele .p-row{margin:0 0 10px;font-family:var(--f-tele);font-size:16.5px;font-weight:600;line-height:1.22;color:rgba(255,255,255,.25)}
+.d-tele .p-row.newest{color:rgba(255,255,255,.5)}
+.d-tele .p-form{padding-top:4px;animation:glowPulse 2.6s ease-in-out infinite}
+.d-tele .p-words{font-family:var(--f-tele);font-size:18.5px;font-weight:700;line-height:1.2;color:var(--paper)}
+.p-tele .p-foot{justify-content:space-between;font-family:var(--f-tele);font-size:10px;letter-spacing:.3em;color:rgba(255,255,255,.3)}
+.tele-up{color:rgba(242,233,216,.5)}
+
+/* --- 02 broadcast --- */
+.bcast-head{gap:10px;padding:10px 14px;border-color:rgba(255,255,255,.10);font-family:var(--f-bcast);font-size:9.5px;letter-spacing:.18em}
+.bcast-head .rec{width:8px;height:8px;border-radius:50%;background:var(--signal);opacity:.4}
+.pane.on .bcast-head .rec{opacity:1;animation:softPing 1.6s ease-out infinite}
+.bcast-rec{font-weight:600;color:var(--signal)}
+.bcast-tc{margin-left:auto;color:rgba(255,255,255,.55)}
+.bcast-ch{color:rgba(255,255,255,.3)}
+.d-bcast .p-row{display:grid;grid-template-columns:24px 38px 1fr;gap:8px;margin:0 0 8px;
+  font-family:var(--f-bcast);font-size:10.5px;line-height:1.55}
+.b-idx{color:rgba(255,255,255,.25)} .b-at{color:rgba(255,255,255,.4)} .b-tx{color:rgba(255,255,255,.6)}
+.d-bcast .p-form{display:grid;grid-template-columns:24px 38px 1fr;gap:8px;font-family:var(--f-bcast);font-size:10.5px;line-height:1.55}
+.b-fidx{color:rgba(255,196,107,.6)} .b-ftc{color:rgba(255,196,107,.7)}
+.d-bcast .p-words{color:rgba(255,255,255,.85)}
+.d-bcast .p-words .last{color:var(--amberlite)}
+.d-bcast .caret{color:var(--signal)}
+.p-bcast .p-foot{gap:8px;font-family:var(--f-bcast);font-size:9px;letter-spacing:.14em;color:rgba(255,255,255,.4)}
+.b-sep{color:rgba(255,255,255,.2)}
+.bcast-conf{margin-left:auto;color:var(--amberlite)}
+.meter{display:inline-flex;height:16px;align-items:flex-end;gap:2.5px}
+.meter i{width:2.5px;border-radius:2px;transform-origin:bottom}
+
+/* --- 03 manuscrito --- */
+.mano-head{align-items:baseline;justify-content:space-between;border-color:rgba(255,255,255,.10)}
+.mano-draft{font-family:var(--f-mano);font-style:italic;font-size:12.5px;color:rgba(234,229,217,.55)}
+.mano-page{font-family:var(--f-mano);font-size:11px;color:rgba(234,229,217,.35)}
+.d-mano .p-row{margin:0 0 12px;font-family:var(--f-mano);font-size:14px;line-height:1.8;color:rgba(234,229,217,.8)}
+.d-mano .p-form{border-bottom:1px solid rgba(234,229,217,.3);padding-bottom:4px}
+.d-mano .p-words{font-family:var(--f-mano);font-size:14.5px;line-height:1.8;color:var(--bone)}
+.mcaret{display:inline-block;width:2px;height:.92em;margin-left:1px;transform:translateY(.12em);background:rgba(234,229,217,.85)}
+.mano-foot{font-family:var(--f-mano);font-style:italic;font-size:11px;color:rgba(234,229,217,.4)}
+
+/* --- 04 cartão de cinema --- */
+.cine-head{align-items:baseline;justify-content:space-between;border-color:rgba(228,179,99,.12)}
+.cine-brand{font-family:var(--f-cine);font-size:11px;font-weight:500;letter-spacing:.34em;color:rgba(228,179,99,.75)}
+.cine-live{font-family:var(--f-cine);font-style:italic;font-size:11px;color:rgba(234,229,217,.4)}
+.d-cine .p-row{margin:0 0 14px;font-family:var(--f-cine);font-size:15px;font-weight:300;line-height:1.9;color:rgba(255,255,255,.38)}
+.d-cine .p-row.newest{color:rgba(255,255,255,.7)}
+.d-cine .p-form{border-left:1px solid rgba(228,179,99,.5);padding-left:12px}
+.d-cine .p-words{font-family:var(--f-cine);font-style:italic;font-size:15px;font-weight:300;line-height:1.9;color:rgba(255,255,255,.45)}
+.cine-foot{justify-content:center;border-color:rgba(228,179,99,.10);padding:8px 16px}
+.cine-foot span{font-family:var(--f-cine);font-size:12px;letter-spacing:.5em;color:rgba(228,179,99,.4)}
+
+/* --- 05 instrumento --- */
+.inst-head{gap:8px;border-color:rgba(255,255,255,.10)}
+.inst-led{width:8px;height:8px;border-radius:2px;background:var(--led);opacity:.3}
+.pane.on .inst-led{opacity:1;animation:ledBreathe 1.5s ease-in-out infinite}
+.inst-on{font-family:var(--f-inst);font-size:11px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.85)}
+.inst-key{margin-left:auto;font-family:var(--f-inst);font-size:9px;letter-spacing:.22em;color:rgba(255,255,255,.35)}
+.d-inst .p-row{display:flex;align-items:flex-start;gap:10px;margin:0 0 10px}
+.i-bullet{margin-top:7px;width:5px;height:5px;flex:0 0 auto;border:1px solid rgba(255,255,255,.25)}
+.i-tx{font-family:var(--f-inst);font-size:13.5px;font-weight:500;line-height:1.45;color:rgba(255,255,255,.6)}
+.d-inst .p-row.newest .i-tx{color:rgba(255,255,255,.9)}
+.d-inst .p-form{display:flex;align-items:stretch;gap:10px}
+.inst-bar{width:3px;flex:0 0 auto;border-radius:999px;background:var(--led);opacity:.4}
+.pane.on .inst-bar{opacity:1;animation:ledBreathe 1.5s ease-in-out infinite}
+.d-inst .p-words{font-family:var(--f-inst);font-size:14.5px;font-weight:700;line-height:1.4;color:#fff}
+.p-inst .p-foot{gap:10px;font-family:var(--f-inst);font-size:9px;letter-spacing:.22em;color:rgba(255,255,255,.45)}
+.inst-size{margin-left:auto;color:rgba(255,255,255,.3)}
+
+/* ============================================================ legendas = */
+.cap{margin:0;pointer-events:none}
+.d-tele .cap{max-width:760px;text-align:left}
+.d-tele .cap-empty{margin:0;font-family:var(--f-tele);font-size:clamp(20px,3vw,34px);font-weight:600;letter-spacing:.4em;color:rgba(242,233,216,.3)}
+.d-tele .cap-words{font-family:var(--f-tele);font-size:clamp(30px,4.6vw,54px);font-weight:700;line-height:1.06;text-transform:uppercase;color:rgba(242,233,216,.82);animation:glowPulse 2.6s ease-in-out infinite}
+.d-tele .cap-words .last{color:#fff}
+
+.d-bcast .cap{width:100%;max-width:700px}
+.b-head{display:flex;align-items:center;gap:16px;margin-bottom:8px;font-family:var(--f-bcast);font-size:10px;letter-spacing:.28em}
+.b-live{display:flex;align-items:center;gap:6px;color:var(--signal)}
+.b-live i{width:6px;height:6px;border-radius:50%;background:var(--signal)}
+.cap.forming .b-live i{animation:softPing 1.6s ease-out infinite}
+.b-tc2{color:rgba(255,255,255,.45)}
+.d-bcast .cap-words{display:block;font-family:var(--f-bcast);font-size:clamp(18px,2.3vw,28px);font-weight:500;line-height:1.4;color:rgba(255,255,255,.9);text-align:left}
+.d-bcast .cap-words .last.amber{color:var(--amberlite)}
+.d-bcast .caret{color:var(--signal)}
+.b-empty{color:rgba(255,255,255,.35)}
+.b-meta{display:flex;gap:20px;margin-top:10px;font-family:var(--f-bcast);font-size:9.5px;letter-spacing:.2em;color:rgba(255,255,255,.4)}
+.b-meta .closing{color:var(--amberlite)}
+
+.d-mano .cap{max-width:720px;text-align:left}
+.m-underline{display:inline-block;border-bottom:1px solid rgba(234,229,217,.35);padding-bottom:4px}
+.d-mano .cap-words{font-family:var(--f-mano);font-size:clamp(21px,2.7vw,33px);line-height:1.55;color:var(--bone)}
+.m-empty{display:inline-block;border-bottom:1px solid rgba(234,229,217,.25);padding:0 32px 4px 0}
+.mcaret2{display:inline-block;width:2px;height:.9em;margin-left:1px;transform:translateY(.1em);background:rgba(234,229,217,.8)}
+
+.d-cine .cap{max-width:780px;text-align:center}
+.c-echo{margin:0 0 12px;font-family:var(--f-cine);font-style:italic;font-size:clamp(13px,1.3vw,16px);line-height:1.6;color:rgba(255,255,255,.65)}
+.d-cine .cap-words{font-family:var(--f-cine);font-size:clamp(24px,3vw,42px);font-weight:300;line-height:1.42;color:var(--bone);transition:opacity .7s ease,letter-spacing .7s ease}
+.cap.forming .d-cine .cap-words{letter-spacing:.018em;opacity:.5}
+.c-empty{margin:0;font-family:var(--f-cine);font-size:20px;letter-spacing:.5em;color:rgba(228,179,99,.35)}
+
+.d-inst .cap{display:flex;align-items:stretch;gap:16px;max-width:720px}
+.i-bar2{width:4px;flex:0 0 auto;border-radius:999px;background:var(--led);opacity:.3}
+.cap.on .i-bar2{opacity:1;animation:ledBreathe 1.5s ease-in-out infinite}
+.d-inst .cap-words{font-family:var(--f-inst);font-size:clamp(24px,3.1vw,42px);font-weight:700;line-height:1.14;color:#fff;text-align:left}
+.i-empty{font-family:var(--f-inst);font-size:13px;font-weight:500;letter-spacing:.3em;color:rgba(255,255,255,.3)}
+
+/* ============================================================ ticker ==== */
+.ticker{position:relative;overflow:hidden;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08);background:var(--ink2);padding:14px 0}
+.ticker .lbl{position:absolute;top:0;bottom:0;left:0;z-index:10;display:flex;align-items:center;padding:0 32px 0 20px;
+  background:linear-gradient(to right,var(--ink2),rgba(27,30,36,.95),transparent);
+  font-family:var(--f-bcast);font-size:9px;letter-spacing:.3em;color:var(--ember)}
+.ticker-track{display:flex;align-items:center;width:max-content;animation:tickerScroll 48s linear infinite}
+.ticker:hover .ticker-track{animation-play-state:paused}
+.tk-row{display:flex;align-items:center;flex:0 0 auto}
+.tk-item{display:flex;align-items:center;white-space:nowrap}
+.tk-item span:first-child{font-family:var(--f-mano);font-style:italic;font-size:14.5px;color:rgba(234,229,217,.55)}
+.tk-item span:last-child{margin:0 32px;font-family:var(--f-bcast);font-size:10px;color:rgba(242,112,63,.7)}
+
+/* ============================================================ comparação */
+#compare{padding:18px 16px 40px}
+#cmpGrid{display:grid;gap:14px;align-items:start}
+.cmp-cell{position:relative;border:1px solid rgba(255,255,255,.10);border-radius:10px;overflow:hidden;background:#05070a}
+.cmp-scene{position:absolute;inset:0;overflow:hidden}
+.cmp-scene img{width:100%;height:100%;object-fit:cover;opacity:.85}
+.cmp-inner{position:relative;z-index:2;padding:12px 12px 16px}
+.cmp-head{display:flex;align-items:baseline;gap:9px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.10)}
+.cmp-num{font-family:var(--f-bcast);font-size:9px;letter-spacing:.2em}
+.cmp-name{font-size:19px;line-height:1;color:var(--bone)}
+.cmp-name.f-tele{font-family:var(--f-tele);font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+.cmp-name.f-bcast{font-family:var(--f-bcast);font-weight:600}
+.cmp-name.f-mano{font-family:var(--f-mano);font-style:italic;font-weight:500}
+.cmp-name.f-cine{font-family:var(--f-cine);font-weight:300}
+.cmp-name.f-inst{font-family:var(--f-inst);font-weight:700}
+.cmp-model{margin:0 0 6px;font-family:var(--f-bcast);font-size:8.5px;letter-spacing:.2em;color:rgba(255,255,255,.5);text-transform:uppercase}
+.cmp-spec{margin:0 0 10px;font-family:var(--f-bcast);font-size:9px;line-height:1.6;letter-spacing:.04em;color:var(--fog)}
+.cmp-panel-slot{position:relative;margin:0 auto 12px}
+.cmp-cap-slot{position:relative;overflow:hidden}
+.cmp-note{margin:10px 0 0;font-family:var(--f-bcast);font-size:9px;line-height:1.7;letter-spacing:.05em;color:rgba(255,255,255,.45)}
+.cmp-note b{color:rgba(255,255,255,.8)}
+
+/* ============================================================ diferenças */
+#diff{padding:26px 16px 60px}
+#diff .wrap{max-width:1180px;margin:0 auto}
+#diff h2{margin:14px 0 6px;font-family:var(--f-display);font-size:clamp(26px,3.4vw,42px);font-weight:800;letter-spacing:-.01em}
+#diff .lead{max-width:820px;margin:0 0 22px;font-size:14px;line-height:1.75;color:var(--fog)}
+#diff table{width:100%;border-collapse:collapse}
+#diff th,#diff td{border-top:1px solid rgba(255,255,255,.10);padding:14px 14px 14px 0;vertical-align:top;text-align:left}
+#diff th{font-family:var(--f-bcast);font-size:9.5px;letter-spacing:.26em;color:rgba(255,255,255,.5);font-weight:400}
+#diff td{font-size:13.5px;line-height:1.7;color:rgba(234,229,217,.8)}
+#diff td.aspect{width:180px;font-family:var(--f-bcast);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ember)}
+#diff td.b{color:rgba(169,193,217,.9)}
+#diff .same{margin-top:26px;border-left:2px solid rgba(111,194,180,.7);padding-left:18px;max-width:900px}
+#diff .same p{margin:0 0 8px;font-size:13.5px;line-height:1.75;color:rgba(234,229,217,.8)}
+#diff code{font-family:var(--f-bcast);font-size:12px;color:rgba(255,196,107,.9)}
+
+/* ============================================================ keyframes */
+@keyframes grainShift{0%{transform:translate(0,0)}25%{transform:translate(-2%,1.2%)}50%{transform:translate(1.4%,-1.8%)}75%{transform:translate(-1.2%,2%)}100%{transform:translate(0,0)}}
+@keyframes kenburns{from{transform:scale(1.04) translate3d(0,0,0)}to{transform:scale(1.12) translate3d(-1.6%,-1.1%,0)}}
+@keyframes lineIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.line-in{animation:lineIn .5s cubic-bezier(.2,.7,.2,1) both}
+@keyframes wordRise{from{opacity:0;transform:translateY(.38em)}to{opacity:1;transform:none}}
+@keyframes wordInk{from{opacity:0}to{opacity:var(--ink-op,1)}}
+@keyframes wordFog{from{opacity:0;filter:blur(3px)}to{opacity:1;filter:blur(0)}}
+@keyframes wordSnap{from{opacity:0}to{opacity:1}}
+@keyframes caretBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes glowPulse{0%,100%{text-shadow:0 0 16px rgba(242,233,216,.26),0 2px 22px rgba(0,0,0,.6)}50%{text-shadow:0 0 30px rgba(242,233,216,.5),0 2px 22px rgba(0,0,0,.6)}}
+@keyframes ledBreathe{0%,100%{transform:scaleY(.45);opacity:.65}50%{transform:scaleY(1);opacity:1}}
+@keyframes levelHit{0%{transform:scaleY(.12)}30%{transform:scaleY(1)}100%{transform:scaleY(.3)}}
+@keyframes softPing{0%{box-shadow:0 0 0 0 rgba(255,106,85,.55)}100%{box-shadow:0 0 0 8px rgba(255,106,85,0)}}
+@keyframes tickerScroll{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){
+  .grain,.ticker-track,.glow-live,.led-breathe,.scene,.meter i,.w-tele,.w-bcast,.w-mano,.w-cine,.w-inst,.line-in{animation:none !important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<header id="bar">
+  <div class="row">
+    <div>
+      <div class="brand">SOTTO</div>
+      <div class="tag">CINCO DIREÇÕES DE DESIGN · TRANSCRIÇÃO SIMULADA</div>
+    </div>
+    <nav id="nav" aria-label="Direções de design"><button class="nav-btn" data-design="tele" style="border-color: rgb(242, 233, 216); box-shadow: rgba(242, 233, 216, 0.15) 0px 0px 26px;"><span class="n" style="color:#f2e9d8">01</span><span class="nm f-tele">Teleprompter</span></button><button class="nav-btn" data-design="bcast"><span class="n" style="color:#ff6a55">02</span><span class="nm f-bcast">Broadcast</span></button><button class="nav-btn" data-design="mano"><span class="n" style="color:#a9c1d9">03</span><span class="nm f-mano">Manuscrito</span></button><button class="nav-btn" data-design="cine"><span class="n" style="color:#e4b363">04</span><span class="nm f-cine">Cartão de Cinema</span></button><button class="nav-btn" data-design="inst"><span class="n" style="color:#5fd3a7">05</span><span class="nm f-inst">Instrumento</span></button><button class="nav-btn alt on" data-view="compare"><span class="n" style="color:var(--lagoon)">00</span><span class="nm">Comparação</span></button><button class="nav-btn alt" data-view="diff"><span class="n" style="color:var(--ember)">06</span><span class="nm">Diferenças A↔B</span></button></nav>
+    <div class="spacer"></div>
+    <div class="controls">
+      <button id="btnPlay" aria-label="Pausar simulação"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2.6" y="1.8" width="3.4" height="10.4" rx="1"></rect><rect x="8" y="1.8" width="3.4" height="10.4" rx="1"></rect></svg></button>
+      <span id="speeds"><button class="pill" data-speed="0.6">0,6×</button><button class="pill on" data-speed="1">1×</button><button class="pill" data-speed="1.6">1,6×</button></span>
+      <span id="sceneBtn"><button class="pill scene on" data-scene="noir"><i></i>Noite</button><button class="pill scene" data-scene="stage"><i></i>Palco</button><button class="pill scene" data-scene="deep"><i></i>Abismo</button></span>
+    </div>
+  </div>
+  <div class="row" style="margin-top:2px">
+    <span id="keyhint">1–5 TROCA A DIREÇÃO · 0 COMPARAÇÃO · 9 DIFERENÇAS · ESPAÇO PAUSA</span>
+  </div>
+  <div id="typobar"><span class="tchip">01 Teleprompter: <b>AUSENTE</b> → Bahnschrift SemiCondensed</span><span class="tchip">02 Broadcast: <b>AUSENTE</b> → Cascadia Mono</span><span class="tchip">03 Manuscrito: <b>AUSENTE</b> → Georgia</span><span class="tchip">04 Cartão: <b>AUSENTE</b> → Georgia</span><span class="tchip">05 Instrumento: <b>AUSENTE</b> → Segoe UI</span><span class="tchip ">controlo do detector: Georgia→presente · fonte-inexistente→ausente</span><span class="tchip sub"><b>5 de 5 substituídas</b> — este Windows não tem as fontes do design; a coluna depois da seta é a família que o browser usa de facto. Georgia é o fallback que o próprio index.css declara para Newsreader e Fraunces.</span></div>
+  <div id="selfcheck"><span class="ok">DIAG · vista compare · todas as medidas OK</span><br>tele: painel 255×605 · legenda 256×224 · fonte declarada Barlow Condensed (AUSENTE → substituída) · palavras vivas 51 · form no painel 7 · linhas fechadas 3 · colado ao fim sim · última "A legenda nasce enquanto a frase a…" · OK<br>bcast: painel 255×605 · legenda 256×154 · fonte declarada IBM Plex Mono (AUSENTE → substituída) · palavras vivas 53 · form no painel 8 · linhas fechadas 3 · colado ao fim sim · última "00300:00A legenda nasce enquanto a…" · OK<br>mano: painel 255×605 · legenda 256×169 · fonte declarada Newsreader (AUSENTE → substituída) · palavras vivas 51 · form no painel 7 · linhas fechadas 3 · colado ao fim sim · última "A legenda nasce enquanto a frase a…" · OK<br>cine: painel 255×605 · legenda 256×236 · fonte declarada Fraunces (AUSENTE → substituída) · palavras vivas 51 · form no painel 7 · linhas fechadas 3 · colado ao fim sim · última "A legenda nasce enquanto a frase a…" · OK<br>inst: painel 255×605 · legenda 256×187 · fonte declarada Space Grotesk (AUSENTE → substituída) · palavras vivas 51 · form no painel 7 · linhas fechadas 3 · colado ao fim sim · última "A legenda nasce enquanto a frase a…" · OK<br><span>cenas: noir:ok · stage:ok · deep:ok</span></div>
+</header>
+
+<div id="single" hidden="">
+  <section class="stage" id="stage" style="height: 763px;">
+    <div class="scene-wrap" id="sceneWrap"><img class="scene on" data-scene="noir" src="sotto-app-design-directions/public/scenes/noir.jpg" alt="" style="animation-duration:26s" onerror="this.dataset.failed=1"><img class="scene" data-scene="stage" src="sotto-app-design-directions/public/scenes/stage.jpg" alt="" style="animation-duration:33s" onerror="this.dataset.failed=1"><img class="scene" data-scene="deep" src="sotto-app-design-directions/public/scenes/deep.jpg" alt="" style="animation-duration:40s" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div><div class="grain"></div></div>
+    <div class="panel-slot" id="panelSlot"><div class="panel-scaler" id="panelScaler" style="width: 305.267px; height: 723px;"><div class="pane d-tele on" style="width: 305.267px; height: 723px;"><div class="panel-scaler" style="transform: scale(0.803333);"><div class="panel p-tele"><header class="p-head tele-head"><span class="tele-brand">SOTTO</span><span class="tele-state"><i></i><b class="js-state">LENDO</b></span></header><div class="p-body panel-scroll"><p class="p-empty">AGUARDANDO ÁUDIO…</p><div class="p-list"></div><div class="p-form tele-form" hidden=""><span class="p-words"></span></div></div><footer class="p-foot tele-foot"><span>HISTÓRICO</span><span class="tele-up">▲ EM CURSO</span></footer></div></div></div></div></div>
+    <div class="cap-slot" id="capSlot" style="right: 401.267px;"><div class="cap d-tele on" style="width: 1408px;"><p class="cap-empty">· · ·</p><p class="cap-live" hidden=""><span class="cap-words"></span></p></div></div>
+    <div class="stage-foot"><p id="dirRuler">01 · A LEGENDA COMO FLUXO CONTÍNUO DE LEITURA
+Barlow Condensed · quase-branco · alinhamento rígido à esquerda</p></div>
+  </section>
+  <div class="ticker" id="ticker">
+    <span class="lbl">JÁ DITO</span>
+    <div class="ticker-track"><div class="tk-row" data-sig="o som chega antes da imagem.|antes da primeira cena, já existe um rumor de sala.|a legenda nasce enquanto a frase ainda está em formação.|cada palavra provisória carrega uma pequena dúvida.|quando a frase fecha, ela ganha peso — e fica.|ninguém lê uma legenda: as pessoas apenas acompanham."><span class="tk-item"><span>o som chega antes da imagem.</span><span>·</span></span><span class="tk-item"><span>antes da primeira cena, já existe um rumor de sala.</span><span>·</span></span><span class="tk-item"><span>a legenda nasce enquanto a frase ainda está em formação.</span><span>·</span></span><span class="tk-item"><span>cada palavra provisória carrega uma pequena dúvida.</span><span>·</span></span><span class="tk-item"><span>quando a frase fecha, ela ganha peso — e fica.</span><span>·</span></span><span class="tk-item"><span>ninguém lê uma legenda: as pessoas apenas acompanham.</span><span>·</span></span></div><div class="tk-row" data-sig="o som chega antes da imagem.|antes da primeira cena, já existe um rumor de sala.|a legenda nasce enquanto a frase ainda está em formação.|cada palavra provisória carrega uma pequena dúvida.|quando a frase fecha, ela ganha peso — e fica.|ninguém lê uma legenda: as pessoas apenas acompanham."><span class="tk-item"><span>o som chega antes da imagem.</span><span>·</span></span><span class="tk-item"><span>antes da primeira cena, já existe um rumor de sala.</span><span>·</span></span><span class="tk-item"><span>a legenda nasce enquanto a frase ainda está em formação.</span><span>·</span></span><span class="tk-item"><span>cada palavra provisória carrega uma pequena dúvida.</span><span>·</span></span><span class="tk-item"><span>quando a frase fecha, ela ganha peso — e fica.</span><span>·</span></span><span class="tk-item"><span>ninguém lê uma legenda: as pessoas apenas acompanham.</span><span>·</span></span></div></div>
+  </div>
+</div>
+
+<main id="compare"><div id="cmpGrid" style="grid-template-columns: repeat(5, minmax(0px, 1fr));"><div class="cmp-cell"><div class="cmp-scene"><img src="sotto-app-design-directions/public/scenes/noir.jpg" alt="" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div></div><div class="cmp-inner"><div class="cmp-head"><span class="cmp-num" style="color:#f2e9d8">01</span><span class="cmp-name f-tele">Teleprompter</span></div><p class="cmp-model" style="color:#f2e9d8">A LEGENDA COMO FLUXO CONTÍNUO DE LEITURA</p><p class="cmp-spec">Barlow Condensed · quase-branco · alinhamento rígido à esquerda</p><div class="cmp-panel-slot"><div class="pane d-tele on" style="width: 255.444px; height: 605px;"><div class="panel-scaler" style="transform: scale(0.672222);"><div class="panel p-tele"><header class="p-head tele-head"><span class="tele-brand">SOTTO</span><span class="tele-state"><i></i><b class="js-state">LENDO</b></span></header><div class="p-body panel-scroll"><p class="p-empty" hidden="">AGUARDANDO ÁUDIO…</p><div class="p-list"><p class="p-row line-in" data-id="1">O som chega antes da imagem.</p><p class="p-row line-in" data-id="2">Antes da primeira cena, já existe um rumor de sala.</p><p class="p-row line-in" data-id="3">A legenda nasce enquanto a frase ainda está em formação.</p><p class="p-row line-in" data-id="4">Cada palavra provisória carrega uma pequena dúvida.</p><p class="p-row line-in" data-id="5">Quando a frase fecha, ela ganha peso — e fica.</p><p class="p-row line-in newest" data-id="6">Ninguém lê uma legenda: as pessoas apenas acompanham.</p></div><div class="p-form tele-form"><span class="p-words"><span class="w-tele">O </span><span class="w-tele">painel </span></span></div></div><footer class="p-foot tele-foot"><span>HISTÓRICO</span><span class="tele-up">▲ EM CURSO</span></footer></div></div></div></div><div class="cmp-cap-slot"><div class="cap-scaler" style="width: 256.465px; height: 32.0386px;"><div class="cap d-tele on forming" style="width: 328.2px; transform: scale(0.781429); transform-origin: left top;"><p class="cap-empty" hidden="">· · ·</p><p class="cap-live"><span class="cap-words"><span class="w-tele">O </span><span class="w-tele">painel </span></span></p></div></div></div><p class="cmp-note"><b style="color:#f2e9d8">o que a distingue · </b>o histórico recua em cinza; só o agora brilha, e a linha ativa respira com um glow</p></div></div><div class="cmp-cell"><div class="cmp-scene"><img src="sotto-app-design-directions/public/scenes/noir.jpg" alt="" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div></div><div class="cmp-inner"><div class="cmp-head"><span class="cmp-num" style="color:#ff6a55">02</span><span class="cmp-name f-bcast">Broadcast</span></div><p class="cmp-model" style="color:#ff6a55">UMA TRANSMISSÃO ACONTECENDO AGORA</p><p class="cmp-spec">IBM Plex Mono · timecode · pequenos marcadores de estado</p><div class="cmp-panel-slot"><div class="pane d-bcast on" style="width: 255.444px; height: 605px;"><div class="panel-scaler" style="transform: scale(0.672222);"><div class="panel p-bcast"><header class="p-head bcast-head"><i class="rec"></i><b class="bcast-rec js-rec">REC</b><span class="bcast-tc js-tc">00:00:00:06</span><span class="bcast-ch">CH·01</span></header><div class="p-body panel-scroll"><p class="p-empty" hidden="">AGUARDANDO ÁUDIO…</p><div class="p-list"><div class="p-row line-in" data-id="1"><span class="b-idx">001</span><span class="b-at">00:00</span><span class="b-tx">O som chega antes da imagem.</span></div><div class="p-row line-in" data-id="2"><span class="b-idx">002</span><span class="b-at">00:00</span><span class="b-tx">Antes da primeira cena, já existe um rumor de sala.</span></div><div class="p-row line-in" data-id="3"><span class="b-idx">003</span><span class="b-at">00:00</span><span class="b-tx">A legenda nasce enquanto a frase ainda está em formação.</span></div><div class="p-row line-in" data-id="4"><span class="b-idx">004</span><span class="b-at">00:00</span><span class="b-tx">Cada palavra provisória carrega uma pequena dúvida.</span></div><div class="p-row line-in" data-id="5"><span class="b-idx">005</span><span class="b-at">00:00</span><span class="b-tx">Quando a frase fecha, ela ganha peso — e fica.</span></div><div class="p-row line-in newest" data-id="6"><span class="b-idx">006</span><span class="b-at">00:00</span><span class="b-tx">Ninguém lê uma legenda: as pessoas apenas acompanham.</span></div></div><div class="p-form bcast-form"><span class="b-fidx js-fidx">007</span><span class="b-ftc js-ftc">00:00</span><span class="p-words"><span class="w-bcast">O </span><span class="w-bcast last amber">painel </span><span class="caret">▍</span></span></div></div><footer class="p-foot bcast-foot"><span>PT-BR</span><span class="b-sep">·</span><span>48K</span><span class="meter js-meter" data-color="rgba(255,196,107,.9)"><i style="height: 7px; background: rgba(255, 196, 107, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 0ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 12px; background: rgba(255, 196, 107, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 26ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 16px; background: rgba(255, 196, 107, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 52ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 11px; background: rgba(255, 196, 107, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 78ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 8px; background: rgba(255, 196, 107, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 104ms 1 normal both running levelHit; transform-origin: center bottom;"></i></span><span class="bcast-conf">CONF <b class="js-conf">0.89</b></span></footer></div></div></div></div><div class="cmp-cap-slot"><div class="cap-scaler" style="width: 256.465px; height: 25.0057px;"><div class="cap d-bcast on forming" style="width: 328.2px; transform: scale(0.781429); transform-origin: left top;"><div class="b-head"><span class="b-live"><i></i>AO VIVO</span><span class="b-tc2 js-captc">TC 00:00:00:06</span></div><p style="margin:0"><span class="cap-words"><span class="w-bcast">O </span><span class="w-bcast last amber">painel </span><span class="caret">▍</span></span></p><div class="b-meta"><span>PT-BR</span><span>CONF <b class="js-capconf">0.89</b></span><span class="js-capstatus">FORMANDO</span></div></div></div></div><p class="cmp-note"><b style="color:#ff6a55">o que a distingue · </b>cada linha fechada leva índice e timecode; o rodapé é instrumentação, não enfeite</p></div></div><div class="cmp-cell"><div class="cmp-scene"><img src="sotto-app-design-directions/public/scenes/noir.jpg" alt="" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div></div><div class="cmp-inner"><div class="cmp-head"><span class="cmp-num" style="color:#a9c1d9">03</span><span class="cmp-name f-mano">Manuscrito</span></div><p class="cmp-model" style="color:#a9c1d9">A LEGENDA NASCE DIANTE DOS SEUS OLHOS</p><p class="cmp-spec">Newsreader · cursor textual · estabilidade progressiva palavra a palavra</p><div class="cmp-panel-slot"><div class="pane d-mano on" style="width: 255.444px; height: 605px;"><div class="panel-scaler" style="transform: scale(0.672222);"><div class="panel p-mano"><header class="p-head mano-head"><span class="mano-draft">rascunho ao vivo</span><span class="mano-page">pág. 1</span></header><div class="p-body panel-scroll"><p class="p-empty" hidden="">AGUARDANDO ÁUDIO…</p><div class="p-list"><p class="p-row line-in" data-id="1">O som chega antes da imagem.</p><p class="p-row line-in" data-id="2">Antes da primeira cena, já existe um rumor de sala.</p><p class="p-row line-in" data-id="3">A legenda nasce enquanto a frase ainda está em formação.</p><p class="p-row line-in" data-id="4">Cada palavra provisória carrega uma pequena dúvida.</p><p class="p-row line-in" data-id="5">Quando a frase fecha, ela ganha peso — e fica.</p><p class="p-row line-in newest" data-id="6">Ninguém lê uma legenda: as pessoas apenas acompanham.</p></div><div class="p-form mano-form"><span class="p-words"><span class="w-mano" data-w="O" style="--ink-op: 0.725;">O </span><span class="w-mano" data-w="painel" style="--ink-op: 1.000;">painel </span><span class="caret mcaret">▍</span></span></div></div><footer class="p-foot mano-foot"><span>— escrito ao ouvido</span></footer></div></div></div></div><div class="cmp-cap-slot"><div class="cap-scaler" style="width: 256.465px; height: 61.7329px;"><div class="cap d-mano on forming" style="width: 328.2px; transform: scale(0.781429); transform-origin: left top;"><p class="m-empty" hidden=""><span class="mcaret2 caret"></span></p><p style="margin:0"><span class="m-underline"><span class="cap-words"><span class="w-mano" data-w="O" style="--ink-op: 0.725;">O </span><span class="w-mano" data-w="painel" style="--ink-op: 1.000;">painel </span><span class="caret mcaret">▍</span></span></span></p></div></div></div><p class="cmp-note"><b style="color:#a9c1d9">o que a distingue · </b>cada palavra nova ganha tinta aos poucos; a frase em curso vive sublinhada</p></div></div><div class="cmp-cell"><div class="cmp-scene"><img src="sotto-app-design-directions/public/scenes/noir.jpg" alt="" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div></div><div class="cmp-inner"><div class="cmp-head"><span class="cmp-num" style="color:#e4b363">04</span><span class="cmp-name f-cine">Cartão de Cinema</span></div><p class="cmp-model" style="color:#e4b363">PRESENÇA EDITORIAL MÍNIMA</p><p class="cmp-spec">Fraunces · entrelinha larga · névoa tipográfica na fala em formação</p><div class="cmp-panel-slot"><div class="pane d-cine on" style="width: 255.444px; height: 605px;"><div class="panel-scaler" style="transform: scale(0.672222);"><div class="panel p-cine"><header class="p-head cine-head"><span class="cine-brand">SOTTO</span><span class="cine-live">· ao vivo ·</span></header><div class="p-body panel-scroll"><p class="p-empty" hidden="">AGUARDANDO ÁUDIO…</p><div class="p-list"><p class="p-row line-in" data-id="1">O som chega antes da imagem.</p><p class="p-row line-in" data-id="2">Antes da primeira cena, já existe um rumor de sala.</p><p class="p-row line-in" data-id="3">A legenda nasce enquanto a frase ainda está em formação.</p><p class="p-row line-in" data-id="4">Cada palavra provisória carrega uma pequena dúvida.</p><p class="p-row line-in" data-id="5">Quando a frase fecha, ela ganha peso — e fica.</p><p class="p-row line-in newest" data-id="6">Ninguém lê uma legenda: as pessoas apenas acompanham.</p></div><div class="p-form cine-form"><span class="p-words"><span class="w-cine" data-w="O">O </span><span class="w-cine" data-w="painel">painel </span></span></div></div><footer class="p-foot cine-foot"><span>· · ·</span></footer></div></div></div></div><div class="cmp-cap-slot"><div class="cap-scaler" style="width: 256.465px; height: 17.1914px;"><div class="cap d-cine on forming" style="width: 328.2px; transform: scale(0.781429); transform-origin: left top;"><p class="c-echo">Ninguém lê uma legenda: as pessoas apenas acompanham.</p><p class="c-empty" hidden="">· ·</p><p style="margin:0"><span class="cap-words"><span class="w-cine" data-w="O">O </span><span class="w-cine" data-w="painel">painel </span></span></p></div></div></div><p class="cmp-note"><b style="color:#e4b363">o que a distingue · </b>a fala em formação chega desfocada e assenta; o itálico faz o resto</p></div></div><div class="cmp-cell"><div class="cmp-scene"><img src="sotto-app-design-directions/public/scenes/noir.jpg" alt="" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div></div><div class="cmp-inner"><div class="cmp-head"><span class="cmp-num" style="color:#5fd3a7">05</span><span class="cmp-name f-inst">Instrumento</span></div><p class="cmp-model" style="color:#5fd3a7">ESTÁ LIGADO, NÃO É UMA JANELA ABERTA</p><p class="cmp-spec">Space Grotesk · indicador contínuo à esquerda · coluna estável</p><div class="cmp-panel-slot"><div class="pane d-inst on" style="width: 255.444px; height: 605px;"><div class="panel-scaler" style="transform: scale(0.672222);"><div class="panel p-inst"><header class="p-head inst-head"><i class="inst-led"></i><b class="inst-on">ON</b><span class="inst-key">ALT+C</span></header><div class="p-body panel-scroll"><p class="p-empty" hidden="">AGUARDANDO ÁUDIO…</p><div class="p-list"><div class="p-row line-in" data-id="1"><span class="i-bullet"></span><p class="i-tx" style="margin:0">O som chega antes da imagem.</p></div><div class="p-row line-in" data-id="2"><span class="i-bullet"></span><p class="i-tx" style="margin:0">Antes da primeira cena, já existe um rumor de sala.</p></div><div class="p-row line-in" data-id="3"><span class="i-bullet"></span><p class="i-tx" style="margin:0">A legenda nasce enquanto a frase ainda está em formação.</p></div><div class="p-row line-in" data-id="4"><span class="i-bullet"></span><p class="i-tx" style="margin:0">Cada palavra provisória carrega uma pequena dúvida.</p></div><div class="p-row line-in" data-id="5"><span class="i-bullet"></span><p class="i-tx" style="margin:0">Quando a frase fecha, ela ganha peso — e fica.</p></div><div class="p-row line-in newest" data-id="6"><span class="i-bullet"></span><p class="i-tx" style="margin:0">Ninguém lê uma legenda: as pessoas apenas acompanham.</p></div></div><div class="p-form inst-form"><span class="inst-bar"></span><span class="p-words"><span class="w-inst" data-w="O">O </span><span class="w-inst" data-w="painel">painel </span></span></div></div><footer class="p-foot inst-foot"><span class="meter js-meter" data-color="rgba(95,211,167,.9)"><i style="height: 7px; background: rgba(95, 211, 167, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 0ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 12px; background: rgba(95, 211, 167, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 26ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 16px; background: rgba(95, 211, 167, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 52ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 11px; background: rgba(95, 211, 167, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 78ms 1 normal both running levelHit; transform-origin: center bottom;"></i><i style="height: 8px; background: rgba(95, 211, 167, 0.9); animation: 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) 104ms 1 normal both running levelHit; transform-origin: center bottom;"></i></span><span class="js-state">OUVINDO</span><span class="inst-size">380×900</span></footer></div></div></div></div><div class="cmp-cap-slot"><div class="cap-scaler" style="width: 256.465px; height: 13.2843px;"><div class="cap d-inst on forming" style="width: 328.2px; transform: scale(0.781429); transform-origin: left top;"><span class="i-bar2"></span><div><p class="i-empty" style="margin:0" hidden="">OUVINDO…</p><p style="margin:0"><span class="cap-words"><span class="w-inst" data-w="O">O </span><span class="w-inst" data-w="painel">painel </span></span></p></div></div></div></div><p class="cmp-note"><b style="color:#5fd3a7">o que a distingue · </b>um LED contínuo à esquerda é o elemento dinâmico; tudo o resto fica subordinado</p></div></div></div></main>
+<main id="diff" hidden=""><div class="wrap" id="diffBody"></div></main>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================ dados ==== */
+/* SCRIPT, DESIGNS (nome, modelo, spec, accent, fontClass) e SCENES são os de
+   src/data/designs.ts, letra por letra. */
+/* SCRIPT é, em designs.ts, string[][] — uma lista de FRASES, e cada frase é um
+   array. Em designs.ts cada array interno tem UM elemento (a frase inteira), ou
+   seja o protótipo original avança FRASE a frase: o `forming.map(...)` recebe um
+   único elemento e as animações POR PALAVRA (tinta do Manuscrito, névoa do
+   Cartão, subida do Teleprompter) nunca se vêem palavra a palavra — vê-se uma
+   frase a aparecer e a fechar 780 ms depois. Aqui a frase é dividida em palavras
+   para que o tratamento da linha em formação, que é o que distingue as cinco,
+   seja VISÍVEL. As frases são as de designs.ts, letra por letra. */
+var SCRIPT_SENTENCES=[
+  "O som chega antes da imagem.",
+  "Antes da primeira cena, já existe um rumor de sala.",
+  "A legenda nasce enquanto a frase ainda está em formação.",
+  "Cada palavra provisória carrega uma pequena dúvida.",
+  "Quando a frase fecha, ela ganha peso — e fica.",
+  "Ninguém lê uma legenda: as pessoas apenas acompanham.",
+  "O painel escuta tudo, mas não interrompe nada.",
+  "No escuro do filme, o texto precisa brilhar sem gritar.",
+  "A correção em tempo real é quase invisível.",
+  "O que era hipótese, vira registro.",
+  "No fim, sobra apenas o que foi dito."
+];
+var SCRIPT=SCRIPT_SENTENCES.map(function(s){return s.split(/\s+/)});
+
+var DESIGNS=[
+  {id:"tele",num:"01",name:"Teleprompter",accent:"#f2e9d8",fc:"f-tele",
+   model:"A legenda como fluxo contínuo de leitura",
+   spec:"Barlow Condensed · quase-branco · alinhamento rígido à esquerda",
+   nota:"o histórico recua em cinza; só o agora brilha, e a linha ativa respira com um glow"},
+  {id:"bcast",num:"02",name:"Broadcast",accent:"#ff6a55",fc:"f-bcast",
+   model:"Uma transmissão acontecendo agora",
+   spec:"IBM Plex Mono · timecode · pequenos marcadores de estado",
+   nota:"cada linha fechada leva índice e timecode; o rodapé é instrumentação, não enfeite"},
+  {id:"mano",num:"03",name:"Manuscrito",accent:"#a9c1d9",fc:"f-mano",
+   model:"A legenda nasce diante dos seus olhos",
+   spec:"Newsreader · cursor textual · estabilidade progressiva palavra a palavra",
+   nota:"cada palavra nova ganha tinta aos poucos; a frase em curso vive sublinhada"},
+  {id:"cine",num:"04",name:"Cartão de Cinema",accent:"#e4b363",fc:"f-cine",
+   model:"Presença editorial mínima",
+   spec:"Fraunces · entrelinha larga · névoa tipográfica na fala em formação",
+   nota:"a fala em formação chega desfocada e assenta; o itálico faz o resto"},
+  {id:"inst",num:"05",name:"Instrumento",accent:"#5fd3a7",fc:"f-inst",
+   model:"Está ligado, não é uma janela aberta",
+   spec:"Space Grotesk · indicador contínuo à esquerda · coluna estável",
+   nota:"um LED contínuo à esquerda é o elemento dinâmico; tudo o resto fica subordinado"}
+];
+
+/* Caminho RELATIVO a este ficheiro — nada vem da rede. */
+var SCENES=[
+  {id:"noir",label:"Noite",src:"sotto-app-design-directions/public/scenes/noir.jpg"},
+  {id:"stage",label:"Palco",src:"sotto-app-design-directions/public/scenes/stage.jpg"},
+  {id:"deep",label:"Abismo",src:"sotto-app-design-directions/public/scenes/deep.jpg"}
+];
+
+var CARET={tele:false,bcast:true,mano:true,cine:false,inst:false};
+var VIS={tele:14,bcast:14,mano:14,cine:14,inst:14};   /* Panel.tsx: history.slice(-14) */
+var HEIGHTS=[7,12,16,11,8];                            /* bits.tsx: LevelMeter */
+
+/* ============================================================ utils ===== */
+function pad(n,w){n=String(n);while(n.length<(w||2))n="0"+n;return n}
+function fmtClock(s){return pad(Math.floor(s/60))+":"+pad(Math.floor(s%60))}
+function fmtTC(s){return pad(Math.floor(s/3600))+":"+pad(Math.floor(s/60)%60)+":"+pad(Math.floor(s%60))+":"+pad(Math.floor((s%1)*25))}
+function el(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e}
+
+/* ============================================================ motor ===== */
+var eng={history:[],forming:[],status:"forming",tick:0,elapsed:0,playing:true,speed:1};
+var uid=1,lineIdx=0,wordIdx=0,timer=0,raf=0,lastT=0,lastSec=-1;
+
+function schedule(){
+  window.clearTimeout(timer);
+  if(!eng.playing)return;
+  var line=SCRIPT[lineIdx%SCRIPT.length];
+  if(wordIdx<line.length){
+    var delay=(235+Math.random()*175)/eng.speed;
+    timer=window.setTimeout(function(){
+      wordIdx++;
+      eng.forming=line.slice(0,wordIdx);
+      eng.tick++;eng.status="forming";
+      render();schedule();
+    },delay);
+  }else{
+    eng.status="closing";render();
+    timer=window.setTimeout(function(){
+      eng.history.push({id:uid++,text:line.join(" "),at:fmtClock(eng.elapsed),conf:0.88+Math.random()*0.11});
+      if(eng.history.length>36)eng.history=eng.history.slice(-36);
+      lineIdx++;wordIdx=0;eng.forming=[];eng.status="forming";
+      render();schedule();
+    },780/eng.speed);
+  }
+}
+function clock(t){
+  if(eng.playing){eng.elapsed+=(t-lastT)/1000}
+  lastT=t;
+  var s=Math.floor(eng.elapsed);
+  if(s!==lastSec){lastSec=s;render()}
+  raf=window.requestAnimationFrame(clock);
+}
+
+/* ============================================================ grelha ==== */
+function meterHTML(color){
+  var h="";for(var i=0;i<HEIGHTS.length;i++){h+='<i data-h="'+HEIGHTS[i]+'" style="height:'+HEIGHTS[i]+'px;background:'+color+'"></i>'}
+  return h;
+}
+function syncMeter(box,playing,tick,lastTick){
+  if(!box)return lastTick;
+  var bars=box.children;
+  if(!playing){
+    for(var i=0;i<bars.length;i++){
+      bars[i].style.animation="none";bars[i].style.transform="scaleY(.22)";bars[i].style.opacity=".5";
+      bars[i].style.animationDelay="";
+    }
+    return lastTick;
+  }
+  if(tick===lastTick)return lastTick;
+  for(var j=0;j<bars.length;j++){                       /* key={tick-i} → recria para reanimar */
+    var b=document.createElement("i");
+    b.style.height=HEIGHTS[j]+"px";
+    b.style.background=box.dataset.color;
+    b.style.animation="levelHit .55s cubic-bezier(.2,.7,.3,1) both";
+    b.style.animationDelay=(j*26)+"ms";
+    b.style.transformOrigin="bottom";
+    box.replaceChild(b,bars[j]||b);
+  }
+  return tick;
+}
+
+function paneHTML(id){
+  var head={
+    tele:'<header class="p-head tele-head"><span class="tele-brand">SOTTO</span><span class="tele-state"><i></i><b class="js-state">LENDO</b></span></header>',
+    bcast:'<header class="p-head bcast-head"><i class="rec"></i><b class="bcast-rec js-rec">REC</b><span class="bcast-tc js-tc">00:00:00:00</span><span class="bcast-ch">CH·01</span></header>',
+    mano:'<header class="p-head mano-head"><span class="mano-draft">rascunho ao vivo</span><span class="mano-page">pág. 1</span></header>',
+    cine:'<header class="p-head cine-head"><span class="cine-brand">SOTTO</span><span class="cine-live">· ao vivo ·</span></header>',
+    inst:'<header class="p-head inst-head"><i class="inst-led"></i><b class="inst-on">ON</b><span class="inst-key">ALT+C</span></header>'
+  }[id];
+  var foot={
+    tele:'<footer class="p-foot tele-foot"><span>HISTÓRICO</span><span class="tele-up">▲ EM CURSO</span></footer>',
+    bcast:'<footer class="p-foot bcast-foot"><span>PT-BR</span><span class="b-sep">·</span><span>48K</span><span class="meter js-meter" data-color="rgba(255,196,107,.9)">'+meterHTML("rgba(255,196,107,.9)")+'</span><span class="bcast-conf">CONF <b class="js-conf">0.93</b></span></footer>',
+    mano:'<footer class="p-foot mano-foot"><span>— escrito ao ouvido</span></footer>',
+    cine:'<footer class="p-foot cine-foot"><span>· · ·</span></footer>',
+    inst:'<footer class="p-foot inst-foot"><span class="meter js-meter" data-color="rgba(95,211,167,.9)">'+meterHTML("rgba(95,211,167,.9)")+'</span><span class="js-state">OUVINDO</span><span class="inst-size">380×900</span></footer>'
+  }[id];
+  var form={
+    tele:'<div class="p-form tele-form"><span class="p-words"></span></div>',
+    bcast:'<div class="p-form bcast-form"><span class="b-fidx js-fidx"></span><span class="b-ftc js-ftc"></span><span class="p-words"></span></div>',
+    mano:'<div class="p-form mano-form"><span class="p-words"></span></div>',
+    cine:'<div class="p-form cine-form"><span class="p-words"></span></div>',
+    inst:'<div class="p-form inst-form"><span class="inst-bar"></span><span class="p-words"></span></div>'
+  }[id];
+  return '<div class="panel p-'+id+'">'+head+'<div class="p-body panel-scroll"><p class="p-empty">AGUARDANDO ÁUDIO…</p><div class="p-list"></div>'+form+'</div>'+foot+'</div>';
+}
+function capHTML(id){
+  var inner={
+    tele:'<p class="cap-empty">· · ·</p><p class="cap-live" hidden><span class="cap-words"></span></p>',
+    bcast:'<div class="b-head"><span class="b-live"><i></i>AO VIVO</span><span class="b-tc2 js-captc">TC 00:00:00:00</span></div>'+
+          '<p style="margin:0"><span class="cap-words"></span></p>'+
+          '<div class="b-meta"><span>PT-BR</span><span>CONF <b class="js-capconf">0.93</b></span><span class="js-capstatus">FORMANDO</span></div>',
+    mano:'<p class="m-empty" hidden><span class="mcaret2 caret"></span></p><p style="margin:0"><span class="m-underline" hidden><span class="cap-words"></span></span></p>',
+    cine:'<p class="c-echo" hidden></p><p class="c-empty">· ·</p><p style="margin:0"><span class="cap-words" hidden></span></p>',
+    inst:'<span class="i-bar2"></span><div><p class="i-empty" style="margin:0">OUVINDO…</p><p style="margin:0"><span class="cap-words" hidden></span></p></div>'
+  }[id];
+  return '<div class="cap d-'+id+'">'+inner+'</div>';
+}
+function rowHTML(id,h){
+  if(id==="tele")return '<p class="p-row line-in" data-id="'+h.id+'">'+esc(h.text)+'</p>';
+  if(id==="bcast")return '<div class="p-row line-in" data-id="'+h.id+'"><span class="b-idx">'+pad(h.id,3)+'</span><span class="b-at">'+h.at+'</span><span class="b-tx">'+esc(h.text)+'</span></div>';
+  if(id==="mano")return '<p class="p-row line-in" data-id="'+h.id+'">'+esc(h.text)+'</p>';
+  if(id==="cine")return '<p class="p-row line-in" data-id="'+h.id+'">'+esc(h.text)+'</p>';
+  return '<div class="p-row line-in" data-id="'+h.id+'"><span class="i-bullet"></span><p class="i-tx" style="margin:0">'+esc(h.text)+'</p></div>';
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+
+/* ---------------------------------------------------- fontes instaladas --
+   document.fonts.check() NÃO serve para isto: medido nesta caixa, devolve
+   `true` para as cinco famílias que document.fonts NÃO tem e o Windows também
+   não (só para famílias locais ausentes, sem @font-face). O detector que vale
+   é de LARGURA: se a largura da string com a família pedida for igual à do
+   fallback puro, a família não existe e o browser substituiu-a em silêncio. */
+function fontAvailable(family){
+  var cv=document.createElement("canvas"),cx=cv.getContext("2d");
+  var probe="mmmMMMiiiWWWQQ@@ÀÉÍÓÚãõçjlg0179—";
+  var bases=["monospace","serif","sans-serif"];
+  for(var i=0;i<bases.length;i++){
+    cx.font="72px "+bases[i];
+    var w0=cx.measureText(probe).width;
+    cx.font='72px "'+family+'",'+bases[i];
+    if(Math.abs(cx.measureText(probe).width-w0)>0.5)return true;
+  }
+  return false;
+}
+
+/* ---------------------------------------------------------- makePane --- */
+/* Um "pane" = o painel 380×900 + a sua legenda viva, para UMA direção. */
+function makePane(id){
+  var P={id:id,accent:DESIGNS.filter(function(d){return d.id===id})[0].accent};
+  P.outer=el("div","pane d-"+id);
+  P.scaler=el("div","panel-scaler");
+  P.scaler.innerHTML=paneHTML(id);
+  P.panel=P.scaler.firstChild;
+  P.outer.appendChild(P.scaler);
+  P.cap=el("div","pane-cap");
+  P.cap.innerHTML=capHTML(id);
+  P.capEl=P.cap.firstChild;
+  P.capWrap=el("div","cap-scaler");
+  P.capWrap.appendChild(P.capEl);
+
+  var q=function(s){return P.panel.querySelector(s)};
+  P.r={
+    list:q(".p-list"),empty:q(".p-empty"),form:q(".p-form"),words:q(".p-words"),
+    state:q(".js-state"),tc:q(".js-tc"),rec:q(".js-rec"),conf:q(".js-conf"),
+    meter:q(".js-meter"),fidx:q(".js-fidx"),ftc:q(".js-ftc")
+  };
+  P.c={
+    empty:P.capEl.querySelector(".cap-empty,.c-empty"),live:P.capEl.querySelector(".cap-live"),
+    words:P.capEl.querySelector(".cap-words"),echo:P.capEl.querySelector(".c-echo"),
+    underline:P.capEl.querySelector(".m-underline"),mempty:P.capEl.querySelector(".m-empty"),
+    iempty:P.capEl.querySelector(".i-empty"),bar:P.capEl.querySelector(".i-bar2"),
+    tc:P.capEl.querySelector(".js-captc"),conf:P.capEl.querySelector(".js-capconf"),
+    status:P.capEl.querySelector(".js-capstatus")
+  };
+  P.sig="";P.wordsTick=-1;P.capTick=-1;P.meterTick=-1;P.capMeterTick=-1;
+  P.setScale=function(k){
+    P.scaler.style.transform="scale("+k+")";
+    P.outer.style.width=(380*k)+"px";
+    P.outer.style.height=(900*k)+"px";
+  };
+  P.update=function(){updatePane(P,eng)};
+  return P;
+}
+
+/* ------------------------------------------------------------- palavras - */
+function syncWords(host,words,id,status,e,tickRef){
+  /* tele: o React re-chaveia TODAS as palavras a cada tick (w-tele corre em todas).
+     As outras quatro mantêm a identidade por índice: só a última entra animada. */
+  if(id==="tele"){
+    if(tickRef.tick!==e.tick){
+      tickRef.tick=e.tick;
+      var html="";
+      for(var i=0;i<words.length;i++)html+='<span class="w-tele">'+esc(words[i])+" </span>";
+      host.innerHTML=html;
+    }
+    return;
+  }
+  var existing=[];
+  for(var j=0;j<host.children.length;j++){
+    var c=host.children[j];
+    if(!c.classList.contains("caret"))existing.push(c);
+  }
+  var caret=host.querySelector(".caret");
+  if(existing.length>words.length){                       /* a frase reiniciou */
+    host.innerHTML="";existing=[];
+  }
+  for(var k=0;k<words.length;k++){
+    var sp=existing[k];
+    if(!sp){
+      sp=document.createElement("span");
+      if(k===words.length-1)sp.className="w-"+id;
+      host.insertBefore(sp,caret||null);
+    }
+    if(sp.getAttribute("data-w")!==words[k]){
+      sp.textContent=words[k]+" ";
+      sp.setAttribute("data-w",words[k]);
+    }
+    if(id==="mano")sp.style.setProperty("--ink-op",(0.45+0.55*((k+1)/words.length)).toFixed(3));
+    if(id==="bcast"){
+      if(k===words.length-1&&status==="forming")sp.classList.add("last");
+      else sp.classList.remove("last");
+    }
+  }
+  var need=!!CARET[id]&&status==="forming"&&words.length>0;
+  if(need&&!caret){
+    caret=el("span","caret");
+    caret.textContent="▍";
+    if(id==="mano")caret.className="caret mcaret";
+    host.appendChild(caret);
+  }else if(!need&&caret){
+    caret.parentNode.removeChild(caret);
+  }
+}
+
+/* ---------------------------------------------------------- updatePane - */
+function updatePane(P,e){
+  var id=P.id,lastClosed=e.history.length?e.history[e.history.length-1]:null;
+
+  if(e.playing)P.outer.classList.add("on");else P.outer.classList.remove("on");
+
+  /* superfície viva */
+  var hist=e.history.slice(-VIS[id]);
+  var sig=hist.map(function(h){return h.id}).join(",");
+  if(sig!==P.sig){
+    P.sig=sig;
+    var rows=[].slice.call(P.r.list.children);
+    var ok=rows.length<=hist.length;
+    for(var i=0;ok&&i<rows.length;i++)if(rows[i].getAttribute("data-id")!==String(hist[i].id))ok=false;
+    if(!ok){P.r.list.innerHTML="";rows=[]}
+    for(var j=rows.length;j<hist.length;j++)P.r.list.insertAdjacentHTML("beforeend",rowHTML(id,hist[j]));
+    rows=[].slice.call(P.r.list.children);
+    for(var m=0;m<rows.length;m++)rows[m].classList.toggle("newest",m===rows.length-1);
+  }
+
+  P.r.empty.hidden=!(hist.length===0&&e.forming.length===0);
+  P.r.form.hidden=e.forming.length===0;
+  syncWords(P.r.words,e.forming,id,e.status,e,P.r);
+
+  /* estados e instrumentação */
+  if(P.r.state)P.r.state.textContent=(id==="inst")?(e.playing?"OUVINDO":"PAUSA"):(e.playing?"LENDO":"PAUSA");
+  if(P.r.rec)P.r.rec.textContent=e.playing?"REC":"STBY";
+  if(P.r.tc)P.r.tc.textContent=fmtTC(e.elapsed);
+  if(P.r.conf)P.r.conf.textContent=(lastClosed?lastClosed.conf:0.93).toFixed(2);
+  if(P.r.fidx)P.r.fidx.textContent=pad(e.history.length+1,3);
+  if(P.r.ftc)P.r.ftc.textContent=fmtTC(e.elapsed).slice(3,8);
+  P.meterTick=syncMeter(P.r.meter,e.playing,e.tick,P.meterTick);
+
+  /* ---------- legenda viva ---------- */
+  var empty=e.forming.length===0;
+  P.capEl.classList.toggle("on",e.playing);
+  P.capEl.classList.toggle("forming",e.status==="forming"&&!empty);
+  if(id==="tele"){
+    P.c.empty.hidden=!empty;
+    P.c.live.hidden=empty;
+  }else if(id==="bcast"){
+    if(empty){
+      if(!P.c._empty){
+        P.c.words.innerHTML='<span class="caret" style="color:var(--signal)">▍</span> <span class="b-empty">captando áudio…</span>';
+        P.c._empty=true;
+      }
+    }else if(P.c._empty){
+      P.c.words.innerHTML="";P.c._empty=false;
+    }
+  }else if(id==="mano"){
+    P.c.mempty.hidden=!empty;
+    P.c.underline.hidden=empty;
+  }else if(id==="cine"){
+    P.c.empty.hidden=!empty;
+    P.c.echo.hidden=empty||!lastClosed;
+    if(lastClosed)P.c.echo.textContent=lastClosed.text;
+    P.c.words.hidden=empty;
+  }else{
+    P.c.iempty.hidden=!empty;
+    P.c.words.hidden=empty;
+  }
+  syncWords(P.c.words,e.forming,id,e.status,e,P.c);
+  if(P.c.tc)P.c.tc.textContent="TC "+fmtTC(e.elapsed);
+  if(P.c.conf)P.c.conf.textContent=(lastClosed?lastClosed.conf:0.93).toFixed(2);
+  if(P.c.status){
+    P.c.status.textContent=e.status==="closing"?"FECHANDO FRASE":"FORMANDO";
+    P.c.status.classList.toggle("closing",e.status==="closing");
+  }
+  /* A mantém a caixa colada ao fim (Panel.tsx: scrollTop = scrollHeight) */
+  P.r.list.parentNode.scrollTop=P.r.list.parentNode.scrollHeight;
+}
+/* bcast precisa do mesmo caminho de palavras na legenda, com caret próprio */
+(function(){
+  var orig=syncWords;
+  syncWords=function(host,words,id,status,e,ref){
+    if(id==="bcast"){
+      if(ref.tick!==e.tick){
+        ref.tick=e.tick;
+        var html="";
+        for(var i=0;i<words.length;i++){
+          html+='<span class="w-bcast'+(i===words.length-1&&status==="forming"?" last amber":"")+'">'+esc(words[i])+" </span>";
+        }
+        if(status==="forming"&&words.length)html+='<span class="caret">▍</span>';
+        host.innerHTML=html;
+      }
+      return;
+    }
+    orig(host,words,id,status,e,ref);
+  };
+})();
+
+/* ============================================================ vistas ==== */
+var state={design:"tele",view:"single",scene:"noir",speed:1};
+var singlePane=null,cmpPanes=[];
+
+function buildNav(){
+  var nav=document.getElementById("nav");nav.innerHTML="";
+  DESIGNS.forEach(function(d){
+    var b=el("button","nav-btn");
+    b.innerHTML='<span class="n" style="color:'+d.accent+'">'+d.num+'</span><span class="nm '+d.fc+'">'+d.name+"</span>";
+    b.dataset.design=d.id;
+    b.addEventListener("click",function(){setView("single");setDesign(d.id)});
+    nav.appendChild(b);
+  });
+  var c=el("button","nav-btn alt");
+  c.innerHTML='<span class="n" style="color:var(--lagoon)">00</span><span class="nm">Comparação</span>';
+  c.dataset.view="compare";
+  c.addEventListener("click",function(){setView("compare")});
+  nav.appendChild(c);
+  var x=el("button","nav-btn alt");
+  x.innerHTML='<span class="n" style="color:var(--ember)">06</span><span class="nm">Diferenças A↔B</span>';
+  x.dataset.view="diff";
+  x.addEventListener("click",function(){setView("diff")});
+  nav.appendChild(x);
+}
+function buildScenes(){
+  var wrap=document.getElementById("sceneWrap");
+  var html="",btn="";
+  SCENES.forEach(function(s,i){
+    html+='<img class="scene'+(s.id===state.scene?" on":"")+'" data-scene="'+s.id+'" src="'+s.src+'" alt="" style="animation-duration:'+(26+i*7)+'s" onerror="this.dataset.failed=1">';
+    btn+='<button class="pill scene" data-scene="'+s.id+'"><i></i>'+s.label+"</button>";
+  });
+  wrap.innerHTML=html+'<div class="scene-grad"></div><div class="scene-vig"></div><div class="grain"></div>';
+  document.getElementById("sceneBtn").innerHTML=btn;
+  document.getElementById("sceneBtn").addEventListener("click",function(ev){
+    var b=ev.target.closest(".pill.scene");if(!b)return;
+    state.scene=b.dataset.scene;
+    [].forEach.call(wrap.querySelectorAll(".scene"),function(im){im.classList.toggle("on",im.dataset.scene===state.scene)});
+    [].forEach.call(this.querySelectorAll(".pill.scene"),function(x){x.classList.toggle("on",x.dataset.scene===state.scene)});
+    refreshCompareScenes();
+  });
+  [].forEach.call(document.querySelectorAll("#sceneBtn .pill.scene"),function(x){x.classList.toggle("on",x.dataset.scene===state.scene)});
+}
+function refreshCompareScenes(){
+  [].forEach.call(document.querySelectorAll(".cmp-scene img"),function(im){
+    var s=SCENES.filter(function(z){return z.id===state.scene})[0];
+    im.src=s.src;
+  });
+}
+function buildControls(){
+  var sp=document.getElementById("speeds");var html="";
+  [0.6,1,1.6].forEach(function(v){html+='<button class="pill'+(v===state.speed?" on":"")+'" data-speed="'+v+'">'+String(v).replace(".",",")+"×</button>"});
+  sp.innerHTML=html;
+  sp.addEventListener("click",function(ev){
+    var b=ev.target.closest(".pill");if(!b)return;
+    state.speed=parseFloat(b.dataset.speed);eng.speed=state.speed;
+    [].forEach.call(sp.querySelectorAll(".pill"),function(x){x.classList.toggle("on",x===b)});
+    schedule();
+  });
+  var pb=document.getElementById("btnPlay");
+  function paintPlay(){
+    pb.innerHTML=eng.playing
+      ?'<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2.6" y="1.8" width="3.4" height="10.4" rx="1"/><rect x="8" y="1.8" width="3.4" height="10.4" rx="1"/></svg>'
+      :'<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M3 1.6v10.8c0 .6.65.97 1.17.66l8.4-5.4a.78.78 0 0 0 0-1.32l-8.4-5.4A.78.78 0 0 0 3 1.6Z"/></svg>';
+  }
+  pb.addEventListener("click",function(){togglePlay();paintPlay()});
+  paintPlay();
+  pb._paint=paintPlay;
+  window.__paintPlay=paintPlay;
+}
+function togglePlay(){
+  eng.playing=!eng.playing;
+  lastT=performance.now();
+  if(eng.playing)schedule();else window.clearTimeout(timer);
+  if(window.__paintPlay)window.__paintPlay();
+  render();
+}
+
+/* ------------------------------------------------------------- single -- */
+function setDesign(id){
+  state.design=id;
+  if(location.hash!=="#"+id){try{history.replaceState(null,"","#"+id)}catch(e){location.hash=id}}
+  if(singlePane){singlePane.outer.remove();singlePane=null}
+  singlePane=makePane(id);
+  var slot=document.getElementById("panelScaler");
+  slot.innerHTML="";slot.appendChild(singlePane.outer);
+  var cs=document.getElementById("capSlot");
+  cs.innerHTML="";cs.appendChild(singlePane.capEl);
+  singlePane.capEl.style.width=cs.clientWidth+"px";
+  var d=DESIGNS.filter(function(x){return x.id===id})[0];
+  document.getElementById("dirRuler").textContent=d.num+" · "+d.model.toUpperCase()+"\n"+d.spec;
+  [].forEach.call(document.querySelectorAll("#nav .nav-btn[data-design]"),function(b){
+    var on=b.dataset.design===id;b.classList.toggle("on",on);
+    b.style.borderColor=on?d.accent:"";
+    b.style.boxShadow=on?("0 0 26px "+d.accent+"26"):"";
+  });
+  layoutSingle();
+  singlePane.update();
+}
+function layoutSingle(){
+  var stage=document.getElementById("stage");
+  var h=Math.max(Math.min(stage.clientHeight-40,900),320);
+  var k=h/900,panelW=380*k;
+  document.getElementById("panelScaler").style.width=(380*k)+"px";
+  document.getElementById("panelScaler").style.height=(900*k)+"px";
+  if(singlePane)singlePane.setScale(k);
+  var cs=document.getElementById("capSlot");
+  cs.style.right=(panelW+96)+"px";                 /* Stage.tsx: right = panel + 96px */
+  if(singlePane){singlePane.capEl.style.width=Math.max(cs.clientWidth,260)+"px"}
+}
+function fitStage(){
+  var bar=document.getElementById("bar");
+  var stage=document.getElementById("stage");
+  var h=window.innerHeight-bar.offsetHeight-78;    /* 78 = barra do ticker */
+  stage.style.height=Math.max(h,520)+"px";
+  if(state.view==="single")layoutSingle();
+}
+function setView(v){
+  state.view=v;
+  if(v!=="single"&&location.hash!=="#"+v){try{history.replaceState(null,"","#"+v)}catch(e){}}
+  document.getElementById("single").hidden=(v!=="single");
+  document.getElementById("compare").hidden=(v!=="compare");
+  document.getElementById("diff").hidden=(v!=="diff");
+  [].forEach.call(document.querySelectorAll("#nav .nav-btn"),function(b){
+    b.classList.toggle("on",b.dataset.view===v);
+  });
+  if(v==="single"){fitStage();setDesign(state.design)}
+  if(v==="compare"){buildCompare()}
+  if(v==="diff"){buildDiff()}
+}
+
+/* ------------------------------------------------------------ compare -- */
+function buildCompare(){
+  var grid=document.getElementById("cmpGrid");
+  cmpPanes.forEach(function(p){p.outer.remove();p.capWrap.remove()});
+  cmpPanes=[];
+  grid.innerHTML="";
+  DESIGNS.forEach(function(d){
+    var cell=el("div","cmp-cell");
+    var sc=SCENES.filter(function(z){return z.id===state.scene})[0];
+    cell.innerHTML=
+      '<div class="cmp-scene"><img src="'+sc.src+'" alt="" onerror="this.dataset.failed=1"><div class="scene-grad"></div><div class="scene-vig"></div></div>'+
+      '<div class="cmp-inner">'+
+        '<div class="cmp-head"><span class="cmp-num" style="color:'+d.accent+'">'+d.num+'</span><span class="cmp-name '+d.fc+'">'+d.name+'</span></div>'+
+        '<p class="cmp-model" style="color:'+d.accent+'">'+d.model.toUpperCase()+"</p>"+
+        '<p class="cmp-spec">'+d.spec+"</p>"+
+        '<div class="cmp-panel-slot"></div>'+
+        '<div class="cmp-cap-slot"></div>'+
+        '<p class="cmp-note"><b style="color:'+d.accent+'">o que a distingue · </b>'+d.nota+"</p>"+
+      "</div>";
+    grid.appendChild(cell);
+    var p=makePane(d.id);
+    cell.querySelector(".cmp-panel-slot").appendChild(p.outer);
+    cell.querySelector(".cmp-cap-slot").appendChild(p.capWrap);
+    cmpPanes.push(p);
+  });
+  layoutCompare();
+  render();
+}
+function layoutCompare(){
+  var grid=document.getElementById("cmpGrid");
+  var W=grid.clientWidth||window.innerWidth-32;
+  var cols=W>=1560?5:(W>=1000?3:(W>=640?2:1));
+  grid.style.gridTemplateColumns="repeat("+cols+",minmax(0,1fr))";
+  var gap=14,cellW=(W-(cols-1)*gap)/cols;
+  var availH=window.innerHeight-230;
+  var k=Math.min((cellW-40)/380,(availH-150)/900);
+  k=Math.max(k,0.22);
+  cmpPanes.forEach(function(p){
+    p.setScale(k);
+    var capW=Math.min(420,cellW-32);
+    var capK=Math.min(1,capW/420);
+    var box=p.capWrap;
+    p.capEl.style.width=Math.max(capW,240)+"px";
+    p.capEl.style.transform="scale("+capK+")";
+    p.capEl.style.transformOrigin="top left";
+    box.style.width=(capW*capK+((Math.max(capW,240)-capW)*capK))+"px";
+    box.style.height=(p.capEl.offsetHeight*capK)+"px";
+  });
+}
+
+/* ---------------------------------------------------------------- diff - */
+function buildDiff(){
+  var rows=[
+    ["Cor de destaque","cada direção tem a SUA cor (paper / signal / pencil / gold / led), em designs.ts.","UMA cor para as cinco (<code>#e8574f</code>, mais <code>#e0a63c</code> e <code>#7fa86b</code>): a personalidade por direção desaparece."],
+    ["Tipografia do Manuscrito","<code>Newsreader</code> — serifada, \"um documento a ser escrito\".","<code>Instrument Sans</code> — SEM serifa. A metáfora passa a ser geométrica (margem de caderno + sublinhado), não tipográfica."],
+    ["Onde vive a legenda viva","DUAS superfícies: painel 380×900 (histórico) + legenda ao vivo ao fundo-centro do palco.","UMA superfície: o painel É o overlay e a linha viva vive lá dentro. Decisão de produto em aberto."],
+    ["Onde se marca \"em formação\"","Só a linha viva brilha; o que fechou recua em cinza uniforme.","O histórico também carrega a marca: cauda recém-chegada que assenta (Manuscrito) ou opacidade por idade (Teleprompter, Cartão)."],
+    ["Névoa (Cartão de Cinema)","Literal: palavras nascem com <code>blur(3px)</code> e assentam, em itálico, com filete ouro à esquerda.","Sussurro: <code>blur(.45px)</code> fixo + opacidade .5; o filete é branco/25. Muito mais discreto."],
+    ["Telemetria","Recusada por desenho (o rodapé é PT-BR · 48K · medidor · CONF).","Aceite: <code>buffer 38ms</code>, <code>latência 240ms</code>, keycaps Alt+C, estados EM ESCUTA / CAPTANDO / PAUSADO."],
+    ["Cenário e modos","3 cenas (Noite/Palco/Abismo) + selector de direção + texto de critério (impacto/recomendação/risco).","3 cenários com crómio real (filme/jogo/reunião) + modo fantasma (cliques atravessam) e Alt+C a ocultar o painel."],
+    ["Lista do histórico","Auto-scroll colado ao fim (<code>scrollTop = scrollHeight</code>), 14 linhas visíveis.","Colado ao fundo com máscara de fade no topo, 9–12 linhas, opacidade por idade."],
+    ["Indicador do Instrumento","Barra LED 3px que respira (scaleY) + quadrado 5×5 vazado por linha fechada.","Barra LED com <code>box-shadow</code> a pulsar (indicator-pulse) — o LED brilha, não só respira."]
+  ];
+  var h='<h2>Duas leituras das mesmas cinco direções</h2>'+
+    '<p class="lead">A leitura <b>A</b> é <code>docs/design/sotto-app-design-directions/src</code> — a fonte do dono '+
+    '(<code>data/designs.ts</code> + <code>components/*.tsx</code> + <code>index.css</code>). A leitura <b>B</b> é '+
+    '<code>docs/design/sotto-transcription-panel-designs/src/components/panels.tsx</code> + <code>lib/scripts.ts</code>. '+
+    'As duas propõem as MESMAS cinco direções com os mesmos nomes, e concordam no essencial: a linha provisória e a '+
+    'linha fechada não podem ter o mesmo peso. Diferem nisto:</p>'+
+    '<table><thead><tr><th>ASPECTO</th><th>LEITURA A</th><th>LEITURA B</th></tr></thead><tbody>';
+  rows.forEach(function(r){h+='<tr><td class="aspect">'+r[0]+'</td><td>'+r[1]+'</td><td class="b">'+r[2]+"</td></tr>"});
+  h+="</tbody></table>";
+  h+='<div class="same"><p><b>O que as duas dizem exactamente o mesmo:</b> as cinco direções, os seus nomes, e quatro das '+
+     'cinco famílias tipográficas (Barlow Condensed, IBM Plex Mono, Fraunces, Space Grotesk). Ambas marcam a fala em '+
+     'formação com uma animação própria e ambas dão ao Teleprompter um glow na linha viva.</p>'+
+     '<p><b>O que este ficheiro mostra:</b> a leitura A, porque é a que tem a paleta por direção em código '+
+     '(<code>designs.ts</code>). A leitura B entra aqui como coluna de diferenças, não como segunda página — se o dono '+
+     'quiser, a B pode ser construída a partir desta mesma base trocando as tabelas de cor e tipografia.</p></div>';
+  document.getElementById("diffBody").innerHTML=h;
+}
+
+/* ============================================================ render ==== */
+function render(){
+  if(state.view==="compare"){cmpPanes.forEach(function(p){p.update()})}
+  else if(singlePane)singlePane.update();
+  renderTicker();
+  if(raf)return;
+}
+var tickerRow=null;
+function renderTicker(){
+  var row=document.querySelectorAll(".tk-row");
+  if(!row.length)return;
+  var list=eng.history.length?eng.history.map(function(h){return h.text.toLowerCase()}).slice(-10)
+    :["o som chega antes da imagem","a legenda nasce enquanto a frase está em formação",
+      "o painel escuta tudo, mas não interrompe nada","o que era hipótese, vira registro"];
+  var html="";
+  list.forEach(function(t){html+='<span class="tk-item"><span>'+esc(t)+'</span><span>·</span></span>'});
+  for(var i=0;i<row.length;i++)if(row[i].dataset.sig!==list.join("|"))row[i].innerHTML=html;
+  for(var j=0;j<row.length;j++)row[j].dataset.sig=list.join("|");
+}
+
+/* ============================================================ tipografia */
+function buildTypoBar(){
+  var want=[["Barlow Condensed","01 Teleprompter"],["IBM Plex Mono","02 Broadcast"],
+            ["Newsreader","03 Manuscrito"],["Fraunces","04 Cartão"],["Space Grotesk","05 Instrumento"]];
+  var got={tele:'Bahnschrift SemiCondensed',bcast:'Cascadia Mono',mano:'Georgia',cine:'Georgia',inst:'Segoe UI'};
+  var keys=["tele","bcast","mano","cine","inst"],html="",missing=0;
+  want.forEach(function(w,i){
+    var ok=fontAvailable(w[0]);
+    var chk=false;try{chk=document.fonts.check('16px "'+w[0]+'"')}catch(e){}
+    if(!ok)missing++;
+    html+='<span class="tchip">'+w[1]+': <b>'+(ok?"instalada":"AUSENTE")+"</b> "+
+          (ok?w[0]:'→ '+got[keys[i]])+"</span>";
+  });
+  var ctrlOk=fontAvailable("Georgia"),ctrlNo=fontAvailable("__fonte-que-nao-existe__");
+  html+='<span class="tchip '+(ctrlOk&&!ctrlNo?"":"sub")+'">controlo do detector: Georgia→'+
+        (ctrlOk?"presente":"AUSENTE (detector avariado)")+" · fonte-inexistente→"+
+        (ctrlNo?"presente (detector avariado)":"ausente")+"</span>";
+  if(missing)html+='<span class="tchip sub"><b>'+missing+' de 5 substituídas</b> — este Windows não tem as fontes do design; '+
+    'a coluna depois da seta é a família que o browser usa de facto. Georgia é o fallback que o próprio index.css declara '+
+    'para Newsreader e Fraunces.</span>';
+  document.getElementById("typobar").innerHTML=html;
+}
+function selfCheck(){
+  var lines=[];
+  var panes=document.querySelectorAll(".panel").length;
+  var caps=document.querySelectorAll(".cap").length;
+  lines.push('<span class="'+(panes>=1&&caps>=1?"ok":"bad")+'">painéis vivos: '+panes+" · legendas: "+caps+"</span>");
+  var imgs=[].slice.call(document.querySelectorAll("#sceneWrap .scene"));
+  var okc=imgs.filter(function(i){return i.complete&&i.naturalWidth>0}).length;
+  lines.push('<span class="'+(okc===3?"ok":"bad")+'">cenas locais carregadas: '+okc+"/3</span>");
+  var ext=/url\(["']?(https?:)?\/\//.test(document.documentElement.innerHTML);
+  lines.push('<span class="'+(ext?"bad":"ok")+'">recursos de rede no documento: '+(ext?"> 0 (ENCONTRADO)":"nenhum")+"</span>");
+  lines.push('<span class="ok">direções : '+DESIGNS.length+" · guião : "+SCRIPT.length+" frases / "+
+    SCRIPT.reduce(function(a,l){return a+l.length},0)+" palavras</span>");
+  lines.push('<span style="color:rgba(255,255,255,.3)">guião: em designs.ts cada frase é UM elemento '+
+    '(avança frase a frase); aqui é dividida em palavras para a tinta/névoa por palavra ser visível</span>');
+  var cOk=fontAvailable("Georgia")&&!fontAvailable("__fonte-que-nao-existe__");
+  lines.push('<span class="'+(cOk?"ok":"bad")+'">detector de fontes: controlo '+(cOk?"OK":"AVARIADO")+"</span>");
+  document.getElementById("selfcheck").innerHTML="auto-teste · "+lines.join(" · ");
+  document.documentElement.dataset.previewReady="ok";
+  if(START_HASH==="diag"||START_HASH==="diag-compare")diagReport();
+}
+/* #diag — mede cada direção em vez de a afirmar: caixa do painel, caixa da
+   legenda, família tipográfica realmente usada, palavras vivas, linhas fechadas. */
+function diagReport(){
+  var out=[],bad=0;
+  function measure(p,label){
+    var pb=p.panel.getBoundingClientRect();
+    var cb=p.capEl.getBoundingClientRect();
+    var fam=getComputedStyle(p.c.words).fontFamily.split(",")[0].replace(/"/g,"");
+    var inst=fontAvailable(fam);
+    var words=p.c.words.textContent.trim();
+    var rows=p.r.list.children.length;
+    var formN=0,fc=p.r.form.querySelector(".p-words");
+    if(fc)formN=fc.textContent.trim().split(/\s+/).filter(Boolean).length;
+    var lastTx=rows?p.r.list.lastChild.textContent.trim():"(nada)";
+    var body=p.r.list.parentNode;
+    var stick=body.scrollHeight-body.clientHeight<=1||Math.abs(body.scrollTop-(body.scrollHeight-body.clientHeight))<2;
+    var ok=pb.width>60&&pb.height>120&&cb.width>60&&cb.height>8&&words.length>0;
+    if(!ok)bad++;
+    return label+": painel "+Math.round(pb.width)+"×"+Math.round(pb.height)+
+      " · legenda "+Math.round(cb.width)+"×"+Math.round(cb.height)+
+      " · fonte declarada "+fam+" ("+(inst?"instalada":"AUSENTE → substituída")+")"+
+      " · palavras vivas "+words.length+" · form no painel "+formN+
+      " · linhas fechadas "+rows+" · colado ao fim "+(stick?"sim":"não")+
+      ' · última "'+(lastTx.length>34?lastTx.slice(0,34)+"…":lastTx)+'"'+
+      " · "+(ok?"OK":"FALHA");
+  }
+  if(state.view==="compare"){
+    cmpPanes.forEach(function(p){out.push(measure(p,p.id))});
+  }else if(singlePane){
+    out.push(measure(singlePane,singlePane.id));
+  }
+  var scenes=[].slice.call(document.querySelectorAll("img")).map(function(i){return i.dataset.scene?i.dataset.scene+":"+(i.complete&&i.naturalWidth>0?"ok":"FALHOU"):null}).filter(Boolean);
+  document.getElementById("selfcheck").innerHTML=
+    '<span class="'+(bad?"bad":"ok")+'">DIAG · vista '+state.view+" · "+(bad?bad+" falha(s)":"todas as medidas OK")+"</span>"+
+    "<br>"+out.join("<br>")+
+    "<br><span>cenas: "+scenes.join(" · ")+"</span>";
+  document.documentElement.dataset.diagVerdict=bad?("RED-"+bad):"GREEN";
+}
+
+/* ============================================================ arranque = */
+document.addEventListener("keydown",function(ev){
+  if(["INPUT","TEXTAREA","SELECT"].indexOf(ev.target.tagName)>=0)return;
+  if(ev.key===" "){ev.preventDefault();togglePlay();return}
+  if(ev.key==="0"){setView("compare");return}
+  if(ev.key==="9"){setView("diff");return}
+  var i=["1","2","3","4","5"].indexOf(ev.key);
+  if(i>=0){setView("single");setDesign(DESIGNS[i].id)}
+});
+window.addEventListener("resize",function(){
+  fitStage();
+  if(state.view==="compare")layoutCompare();
+});
+
+var START_HASH=(location.hash||"").replace("#","");
+buildNav();buildScenes();buildControls();buildTypoBar();
+fitStage();
+setDesign(state.design);
+/* endereço: preview.html#compare · #diff · #tele…#inst — também serve para verificar */
+function applyHash(h){
+  h=(h==null?location.hash:h).replace("#","");
+  var d=null;
+  for(var i=0;i<DESIGNS.length;i++)if(DESIGNS[i].id===h)d=DESIGNS[i];
+  if(d){if(state.view!=="single")setView("single");if(state.design!==d.id)setDesign(d.id);return}
+  if(h==="compare"&&state.view!=="compare")setView("compare");
+  else if(h==="diff"&&state.view!=="diff")setView("diff");
+  else if(h==="diag")diagReport();
+  else if(h==="diag-compare"){setView("compare");diagReport()}
+}
+window.addEventListener("hashchange",function(){applyHash()});
+if(START_HASH)applyHash(START_HASH);
+schedule();raf=window.requestAnimationFrame(clock);
+window.setTimeout(selfCheck,START_HASH.indexOf("diag")===0?13000:1200);
+window.__preview={eng:eng,state:state,setDesign:setDesign,setView:setView};
+})();
+</script>
+
+
+</body></html>

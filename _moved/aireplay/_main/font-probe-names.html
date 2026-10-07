@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>font-probe-names</title>
+<style>#out{white-space:pre;font:12px ui-monospace,Consolas,monospace}</style></head>
+<body><pre id="out">running</pre>
+<script>
+var P="mmmMMMiiiWWWQQ@@ÀÉÍÓÚãõçjlg0179—";
+function cv(){return document.createElement("canvas").getContext("2d")}
+function w(spec){var cx=cv();cx.font=spec;return cx.measureText(P).width}
+var NAMES=["Newsreader","Newsreader 16pt","Newsreader Roman","NewsreaderRoman",
+  "Fraunces","Fraunces 9pt","Fraunces 9pt SuperSoft","Fraunces 9pt Black","Fraunces 144pt",
+  "Fraunces-Regular","Fraunces Black","Fraunces Thin",
+  "Barlow","Barlow Condensed","Barlow Condensed Black","Barlow Condensed ExtraLight",
+  "Space Grotesk","Space Grotesk Light","IBM Plex Mono","IBM Plex Mono Light",
+  "Bahnschrift","Bahnschrift Condensed","Bahnschrift SemiCondensed","Georgia","Times New Roman",
+  "__fonte-que-nao-existe__"];
+var SPECS=[["400","normal"],["400","italic"],["700","normal"],["700","italic"],["300","normal"]];
+var base={};
+SPECS.forEach(function(s){base[s.join("|")]=w(s[0]+" "+s[1]+' 72px "__fonte-que-nao-existe__"')});
+var L=["nome\t"+SPECS.map(function(s){return s[0]+s[1][0]}).join("\t")+"\tveredicto"];
+NAMES.forEach(function(n){
+  var row=[],any=false,allsame=true;
+  SPECS.forEach(function(s){
+    var v=w(s[0]+" "+s[1]+' 72px "'+n+'"');
+    var b=base[s.join("|")];
+    if(Math.abs(v-b)>0.5){any=true}else{allsame=false}
+    row.push(v.toFixed(1));
+  });
+  L.push(n+"\t"+row.join("\t")+"\t"+(any?(allsame?"RESOLVE-EM-TODOS":"RESOLVE-EM-ALGUNS"):"AUSENTE (==fallback puro)"));
+});
+L.push("");
+L.push("larguras do fallback puro (Times New Roman é o default): "+SPECS.map(function(s){return s[0]+s[1][0]+"="+base[s.join("|")].toFixed(1)}).join(" "));
+document.getElementById("out").textContent=L.join("\n");
+document.documentElement.dataset.probe="done";
+</script></body></html>

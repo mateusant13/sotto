@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Fraunces specimen (lane FontesFix)</title>
+<style>
+  body{background:#14161a;color:#eae5d9;margin:0;padding:22px 26px}
+  .row{display:flex;align-items:baseline;gap:20px;margin:0 0 14px}
+  .tag{font:11px ui-monospace,Consolas,monospace;color:#f2703f;width:250px;flex:none;letter-spacing:.04em}
+  .txt{font-size:44px;line-height:1.3;white-space:nowrap}
+  .f-fr{font-family:"Fraunces",Georgia,serif;font-weight:300}
+  .f-fri{font-family:"Fraunces",Georgia,serif;font-weight:300;font-style:italic}
+  .f-frb{font-family:"Fraunces",Georgia,serif;font-weight:700}
+  .f-geo{font-family:Georgia,serif;font-weight:300}
+  .f-geoi{font-family:Georgia,serif;font-style:italic}
+  .f-9pt{font-family:"Fraunces 9pt",Georgia,serif;font-weight:300}
+  .f-nr{font-family:"Newsreader",Georgia,serif}
+  .f-nri{font-family:"Newsreader",Georgia,serif;font-style:italic}
+  h1{font:12px ui-monospace,Consolas,monospace;color:#a49e90;margin:0 0 16px;font-weight:400}
+  .note{font:11px ui-monospace,Consolas,monospace;color:#6fc2b4;margin-top:10px}
+</style></head>
+<body>
+<h1>o MESMO texto, seis declarações — a linha "Georgia" é o que a página mostrava quando o Fraunces não resolvia</h1>
+<div class="row"><span class="tag">"Fraunces",Georgia,serif 300</span><span class="txt f-fr">A legenda nasce diante dos olhos</span></div>
+<div class="row"><span class="tag">"Fraunces" 300 itálico</span><span class="txt f-fri">A legenda nasce diante dos olhos</span></div>
+<div class="row"><span class="tag">"Fraunces" 700</span><span class="txt f-frb">A legenda nasce diante dos olhos</span></div>
+<div class="row"><span class="tag">Georgia serif 300 (controlo)</span><span class="txt f-geo">A legenda nasce diante dos olhos</span></div>
+<div class="row"><span class="tag">"Fraunces 9pt" (nome do Windows)</span><span class="txt f-9pt">A legenda nasce diante dos olhos</span></div>
+<div class="row"><span class="tag">"Newsreader" (controlo positivo)</span><span class="txt f-nr">A legenda nasce diante dos olhos</span></div>
+<div class="row"><span class="tag">"Newsreader" itálico</span><span class="txt f-nri">A legenda nasce diante dos olhos</span></div>
+<div class="note" id="w"></div>
+<script>
+/* mesma sonda de largura da página, para o espécime ser também numérico */
+var P="mmmMMMiiiWWWQQ@@ÀÉÍÓÚãõçjlg0179—";
+function w(spec){var cx=document.createElement("canvas").getContext("2d");cx.font=spec;return cx.measureText(P).width}
+var miss=w('72px "__fonte-que-nao-existe__"');
+var out=[];
+[["Fraunces","normal","300"],["Fraunces","italic","300"],["Fraunces","normal","700"],
+ ["Georgia","normal","300"],["Fraunces 9pt","normal","300"],["Newsreader","normal","400"],
+ ["Newsreader","italic","400"],["__fonte-que-nao-existe__","normal","400"]].forEach(function(t){
+  var v=w(t[2]+" "+t[1]+' 72px "'+t[0]+'"');
+  out.push(t[0]+" "+t[1]+" "+t[2]+"="+v.toFixed(1)+(Math.abs(v-miss)<0.5?" (==fallback: AUSENTE)":" (RESOLVE)"));
+});
+document.getElementById("w").textContent="controlo negativo (fallback puro)="+miss.toFixed(1)+"  ·  "+out.join("  ·  ");
+document.documentElement.dataset.specimen="done";
+</script></body></html>

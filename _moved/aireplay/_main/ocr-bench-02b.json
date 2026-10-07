@@ -1,0 +1,26 @@
+{
+  "frame": "H:\\aireplay\\_main\\ocr-frames\\00-clean_hud.png",
+  "arms": [
+    {
+      "label": "cpu_default",
+      "yaml": "",
+      "error": "Traceback (most recent call last):\n  File \"H:\\aireplay\\_main\\ocr-bench-02b.py\", line 36, in one\n    engine = RapidOCR(**kwargs)\n             ^^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\main.py\", line 46, in __init__\n    self._initialize(cfg)\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\main.py\", line 82, in _initialize\n    self.text_rec = TextRecognizer(cfg.Rec)\n                    ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\ch_ppocr_rec\\main.py\", line 39, in __init__\n    self.session = get_engine(cfg.engine_type)(cfg)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\inference_engine\\onnxruntime\\main.py\", line 70, in __init__\n    self.session = InferenceSession(\n                   ^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\onnxruntime\\capi\\onnxruntime_inference_collection.py\", line 683, in __init__\n    self._create_inference_session(providers, provider_options, disabled_optimizers)\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\onnxruntime\\capi\\onnxruntime_inference_collection.py\", line 778, in _create_inference_session\n    sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nonnxruntime.capi.onnxruntime_pybind11_state.Fail: [ONNXRuntimeError] : 1 : FAIL : Load model from C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\models\\PP-OCRv6_rec_small.onnx failed:bad allocation\n"
+    },
+    {
+      "label": "cuda",
+      "yaml": "EngineConfig:\n  onnxruntime:\n    use_cuda: true\n",
+      "error": "Traceback (most recent call last):\n  File \"H:\\aireplay\\_main\\ocr-bench-02b.py\", line 36, in one\n    engine = RapidOCR(**kwargs)\n             ^^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\main.py\", line 42, in __init__\n    cfg = self._load_config(config_path, params)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\main.py\", line 57, in _load_config\n    cfg = ParseParams.update_batch(cfg, params)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\utils\\parse_parameters.py\", line 44, in update_batch\n    for k, v in params.items():\n                ^^^^^^^^^^^^\nAttributeError: 'str' object has no attribute 'items'\n"
+    }
+  ],
+  "frame_shape": [
+    1080,
+    1920,
+    3
+  ],
+  "ort_providers_available": [
+    "TensorrtExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "ort_version": "1.30.0"
+}

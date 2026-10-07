@@ -1,0 +1,7 @@
+STEP start
+STEP table non-null slots=42
+STEP create-instance ok
+STEP CUDA driver context handle=2266114726976
+STEP open H264 -> 5 ptr=False
+STEP open HEVC -> 5 ptr=False
+STEP open AV1 -> 5 ptr=False

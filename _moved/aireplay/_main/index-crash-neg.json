@@ -1,0 +1,19 @@
+{
+  "probe": "_index-crash-neg-probe.py",
+  "when": "2026-10-07T10:32:03",
+  "arm": "NEGATIVE CONTROL: journal_mode=OFF, synchronous=OFF, same hard kill",
+  "kill": "taskkill /F /PID (TerminateProcess)",
+  "rows_committed_by_writer_at_kill": 10000,
+  "db_bytes_at_kill": 21471232,
+  "journal_files_present": {
+    "-wal": false,
+    "-shm": false,
+    "-journal": false
+  },
+  "integrity_check": "ok",
+  "rows_after_kill": 20000,
+  "knn_k100_rows_after_reopen": 100,
+  "query_error": null,
+  "RED": false,
+  "verdict": "GREEN: this control did NOT go red -- the crash probe cannot say NO"
+}

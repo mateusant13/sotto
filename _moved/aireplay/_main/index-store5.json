@@ -1,0 +1,59 @@
+{
+  "probe": "_index-store-probe5.py",
+  "when": "2026-10-07T08:24:24",
+  "vectors": 120000,
+  "dims": 256,
+  "rounds": {
+    "numpy_k100": {
+      "min_ms": 5.6,
+      "median_ms": 5.7,
+      "all_ms": [
+        5.6,
+        5.7,
+        5.7,
+        17.6
+      ]
+    },
+    "A_k100": {
+      "min_ms": 76.4,
+      "median_ms": 82.7,
+      "all_ms": [
+        76.4,
+        82.5,
+        82.7,
+        338.7
+      ]
+    },
+    "E_k100": {
+      "min_ms": 73.3,
+      "median_ms": 76.0,
+      "all_ms": [
+        73.3,
+        74.9,
+        76.0,
+        172.7
+      ]
+    },
+    "C_k10": {
+      "min_ms": 477.7,
+      "median_ms": 1155.1,
+      "all_ms": [
+        480.7,
+        477.7,
+        1956.7,
+        1155.1
+      ]
+    },
+    "C_k100": {
+      "min_ms": 561.8,
+      "median_ms": 1232.5,
+      "all_ms": [
+        572.5,
+        561.8,
+        3267.7,
+        1232.5
+      ]
+    }
+  },
+  "note": "numpy and the three vec0 tables measured alternately in one process; a table that is slow in every round is slow, not the box"
+}

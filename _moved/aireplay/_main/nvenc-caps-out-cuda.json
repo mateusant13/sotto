@@ -1,0 +1,63 @@
+{
+  "probe": "nvenc-caps-probe.py",
+  "source_header": "nvEncodeAPI.h 13.1",
+  "driver_nvenc_api": {
+    "status": 0,
+    "raw": "0x000000D1",
+    "version": "13.1"
+  },
+  "NvEncodeAPICreateInstance_status": 0,
+  "sessions": {
+    "H264": {
+      "open_status": 5
+    },
+    "HEVC": {
+      "open_status": 5
+    },
+    "AV1": {
+      "open_status": 5
+    }
+  },
+  "cuInit": 0,
+  "cuDeviceGet": 0,
+  "cuCtxCreate_v2": 0,
+  "cu_context_handle_nonzero": true,
+  "device_mode": "cuda",
+  "gpu_encoder_handle_probe": {
+    "device_type": 1,
+    "device_ptr": 2266114726976
+  },
+  "dxgi_adapters": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5080",
+      "vendor": "0x10DE",
+      "luid": 88110,
+      "dedicated_vram_bytes": 16755195904,
+      "flags": 0
+    },
+    {
+      "index": 1,
+      "name": "Intel(R) UHD Graphics 770",
+      "vendor": "0x8086",
+      "luid": 94235,
+      "dedicated_vram_bytes": 134217728,
+      "flags": 0
+    },
+    {
+      "index": 2,
+      "name": "Microsoft Basic Render Driver",
+      "vendor": "0x1414",
+      "luid": 94135,
+      "dedicated_vram_bytes": 0,
+      "flags": 2
+    }
+  ],
+  "concurrent_session_probe": [
+    {
+      "n": 1,
+      "status": 5
+    }
+  ],
+  "result": "OK"
+}

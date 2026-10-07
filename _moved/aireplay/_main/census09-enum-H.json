@@ -1,0 +1,143 @@
+{
+ "generated": "2026-10-07T08:20:42",
+ "host": "DESKTOP-O58U7KF",
+ "extensions_scanned": [
+  ".264",
+  ".265",
+  ".3g2",
+  ".3gp",
+  ".amv",
+  ".asf",
+  ".av1",
+  ".avi",
+  ".bik",
+  ".dav",
+  ".divx",
+  ".dv",
+  ".dvr-ms",
+  ".f4v",
+  ".flc",
+  ".fli",
+  ".flv",
+  ".h264",
+  ".h265",
+  ".hevc",
+  ".ifo",
+  ".m1v",
+  ".m2p",
+  ".m2ts",
+  ".m2v",
+  ".m4s",
+  ".m4v",
+  ".mkv",
+  ".mkv3d",
+  ".mod",
+  ".mov",
+  ".mp4",
+  ".mpe",
+  ".mpeg",
+  ".mpg",
+  ".mpv",
+  ".mts",
+  ".mxf",
+  ".nsv",
+  ".nut",
+  ".ogm",
+  ".ogv",
+  ".pds",
+  ".qt",
+  ".rec",
+  ".rm",
+  ".rmvb",
+  ".roq",
+  ".smk",
+  ".svi",
+  ".tod",
+  ".tp",
+  ".trp",
+  ".ts",
+  ".ts2",
+  ".veg",
+  ".vob",
+  ".vro",
+  ".vvc",
+  ".webm",
+  ".wmv",
+  ".wtv",
+  ".y4m",
+  ".yuv"
+ ],
+ "roots": [
+  "H:\\aireplay\\_main\\_census09-ctl"
+ ],
+ "per_drive": {
+  "H:\\aireplay\\_main\\_census09-ctl": {
+   "files": 6,
+   "dirs_seen": 0,
+   "denied": 0,
+   "bytes": 135467,
+   "seconds": 0.0
+  }
+ },
+ "total_files": 6,
+ "total_bytes": 135467,
+ "by_extension": [
+  {
+   "ext": ".mp4",
+   "count": 4,
+   "bytes": 103205
+  },
+  {
+   "ext": ".mkv",
+   "count": 1,
+   "bytes": 11582
+  },
+  {
+   "ext": ".ts",
+   "count": 1,
+   "bytes": 20680
+  }
+ ],
+ "by_directory": [
+  {
+   "dir": "H:\\aireplay\\_main\\_census09-ctl",
+   "count": 6,
+   "bytes": 135467
+  }
+ ],
+ "denied": [],
+ "denied_total": 0,
+ "files": [
+  {
+   "path": "H:\\aireplay\\_main\\_census09-ctl\\ctl-faststart.mp4",
+   "size": 30870,
+   "mtime": 1791372038
+  },
+  {
+   "path": "H:\\aireplay\\_main\\_census09-ctl\\ctl-frag.mp4",
+   "size": 30882,
+   "mtime": 1791371765
+  },
+  {
+   "path": "H:\\aireplay\\_main\\_census09-ctl\\ctl-hevc.mp4",
+   "size": 10583,
+   "mtime": 1791372039
+  },
+  {
+   "path": "H:\\aireplay\\_main\\_census09-ctl\\ctl-normal.mp4",
+   "size": 30870,
+   "mtime": 1791371765
+  },
+  {
+   "path": "H:\\aireplay\\_main\\_census09-ctl\\ctl-novid.mkv",
+   "size": 11582,
+   "mtime": 1791372038
+  },
+  {
+   "path": "H:\\aireplay\\_main\\_census09-ctl\\ctl.ts",
+   "size": 20680,
+   "mtime": 1791372038
+  }
+ ],
+ "seconds_total": 0.0
+}

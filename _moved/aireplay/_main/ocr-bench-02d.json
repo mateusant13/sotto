@@ -1,0 +1,236 @@
+{
+  "inputs": [
+    {
+      "label": "full_1920x1080",
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        7.465,
+        24.559,
+        5.762,
+        2.397,
+        8.23
+      ],
+      "latency_min_s": 2.397,
+      "latency_median_s": 7.465,
+      "elapse_last": {
+        "_total": 8.2028
+      },
+      "elapse_median": {
+        "_total": 7.4023
+      },
+      "n_boxes": 8,
+      "texts": [
+        "-HP 87/100 AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "■",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria]gg.wp",
+        "ERRO0x80070005:ACESSONEGADO"
+      ],
+      "scores": [
+        0.9776,
+        0.9731,
+        0.6443,
+        0.9979,
+        0.9994,
+        0.9957,
+        0.9819,
+        0.9888
+      ]
+    },
+    {
+      "label": "crop_chat_640x140",
+      "shape": [
+        140,
+        640,
+        3
+      ],
+      "latency_s": [
+        9.884,
+        9.559,
+        11.929,
+        5.311,
+        4.556
+      ],
+      "latency_min_s": 4.556,
+      "latency_median_s": 9.559,
+      "elapse_last": {
+        "_total": 4.5494
+      },
+      "elapse_median": {
+        "_total": 9.5454
+      },
+      "n_boxes": 3,
+      "texts": [
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria]gg.wp"
+      ],
+      "scores": [
+        0.9748,
+        0.996,
+        0.9917
+      ]
+    },
+    {
+      "label": "crop_subtitle_band_1920x120",
+      "shape": [
+        120,
+        1920,
+        3
+      ],
+      "latency_s": [
+        12.592,
+        9.811,
+        10.025,
+        11.031,
+        10.699
+      ],
+      "latency_min_s": 9.811,
+      "latency_median_s": 10.699,
+      "elapse_last": {
+        "_total": 10.6687
+      },
+      "elapse_median": {
+        "_total": 10.6687
+      },
+      "n_boxes": 25,
+      "texts": [
+        "■",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        " ■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■",
+        "■"
+      ],
+      "scores": [
+        0.8686,
+        0.9738,
+        0.8509,
+        0.5875,
+        0.8932,
+        0.7767,
+        0.8436,
+        0.6319,
+        0.5459,
+        0.7942,
+        0.754,
+        0.6562,
+        0.8413,
+        0.7947,
+        0.9169,
+        0.6642,
+        0.7662,
+        0.8571,
+        0.8258,
+        0.6769,
+        0.9163,
+        0.7139,
+        0.67,
+        0.5765,
+        0.868
+      ]
+    },
+    {
+      "label": "crop_hud_topleft_700x100",
+      "shape": [
+        100,
+        700,
+        3
+      ],
+      "latency_s": [
+        13.022,
+        11.499,
+        21.664,
+        34.317,
+        14.185
+      ],
+      "latency_min_s": 11.499,
+      "latency_median_s": 14.185,
+      "elapse_last": {
+        "_total": 14.1307
+      },
+      "elapse_median": {
+        "_total": 14.1307
+      },
+      "n_boxes": 2,
+      "texts": [
+        "-HP 87/100",
+        "AMMO 24/90"
+      ],
+      "scores": [
+        0.9776,
+        0.9995
+      ]
+    },
+    {
+      "label": "full_960x540_downscaled",
+      "shape": [
+        540,
+        960,
+        3
+      ],
+      "latency_s": [
+        10.024,
+        8.23,
+        8.173,
+        7.114,
+        6.518
+      ],
+      "latency_min_s": 6.518,
+      "latency_median_s": 8.173,
+      "elapse_last": {
+        "_total": 6.5058
+      },
+      "elapse_median": {
+        "_total": 8.1707
+      },
+      "n_boxes": 7,
+      "texts": [
+        "HP 87/100 AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg,wp",
+        "ERRO 0x80070005: ACESSO NEGADO"
+      ],
+      "scores": [
+        0.9951,
+        0.9866,
+        0.9808,
+        0.9731,
+        0.9911,
+        0.8722,
+        0.9563
+      ]
+    }
+  ],
+  "init_s": 0.82,
+  "fatal": "Traceback (most recent call last):\n  File \"H:\\aireplay\\_main\\ocr-bench-02d.py\", line 89, in <module>\n    engine.text_rec(band)\n  File \"C:\\Program Files\\Python311\\Lib\\site-packages\\rapidocr\\ch_ppocr_rec\\main.py\", line 92, in __call__\n    img_list = [args.img] if isinstance(args.img, np.ndarray) else args.img\n                                        ^^^^^^^^\nAttributeError: 'numpy.ndarray' object has no attribute 'img'\n"
+}

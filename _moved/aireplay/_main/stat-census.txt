@@ -1,0 +1,88 @@
+==============================================================================
+Newsreader-Variable.ttf
+  STAT version=65537  ElidedFallbackNameID=2
+  DesignAxis tag=opsz  nameID=257  order=0  (Optical Size)
+  DesignAxis tag=wght  nameID=256  order=1  (Weight)
+  DesignAxis tag=ital  nameID=268  order=2  (Italic)
+  AxisValue[0] fmt=2 flags=0x0000  nomimalValue=6.0 rangeMin=6.0 rangeMax=14.0 elidable=False olderSibling=False  '6pt'
+  AxisValue[1] fmt=2 flags=0x0002  nomimalValue=16.0 rangeMin=15.0 rangeMax=48.0 elidable=True olderSibling=False  '16pt'
+  AxisValue[2] fmt=2 flags=0x0000  nomimalValue=72.0 rangeMin=49.0 rangeMax=144.0 elidable=False olderSibling=False  '72pt'
+  AxisValue[3] fmt=1 flags=0x0000  axisIndex=1 value=200.0 elidable=False olderSibling=False  'ExtraLight'
+  AxisValue[4] fmt=1 flags=0x0000  axisIndex=1 value=300.0 elidable=False olderSibling=False  'Light'
+  AxisValue[5] fmt=1 flags=0x0002  axisIndex=1 value=400.0 elidable=True olderSibling=False  'Regular'
+  AxisValue[6] fmt=1 flags=0x0000  axisIndex=1 value=500.0 elidable=False olderSibling=False  'Medium'
+  AxisValue[7] fmt=1 flags=0x0000  axisIndex=1 value=600.0 elidable=False olderSibling=False  'SemiBold'
+  AxisValue[8] fmt=1 flags=0x0000  axisIndex=1 value=700.0 elidable=False olderSibling=False  'Bold'
+  AxisValue[9] fmt=1 flags=0x0000  axisIndex=1 value=800.0 elidable=False olderSibling=False  'ExtraBold'
+  AxisValue[10] fmt=3 flags=0x0002  axisIndex=2 value=0.0 linkedValue=1.0 elidable=True olderSibling=False  'Roman'
+==============================================================================
+Newsreader-Italic-Variable.ttf
+  STAT version=65537  ElidedFallbackNameID=2
+  DesignAxis tag=opsz  nameID=257  order=0  (Optical Size)
+  DesignAxis tag=wght  nameID=256  order=1  (Weight)
+  DesignAxis tag=ital  nameID=260  order=2  (Italic)
+  AxisValue[0] fmt=2 flags=0x0000  nomimalValue=6.0 rangeMin=6.0 rangeMax=14.0 elidable=False olderSibling=False  '6pt'
+  AxisValue[1] fmt=2 flags=0x0002  nomimalValue=16.0 rangeMin=15.0 rangeMax=48.0 elidable=True olderSibling=False  '16pt'
+  AxisValue[2] fmt=2 flags=0x0000  nomimalValue=72.0 rangeMin=49.0 rangeMax=144.0 elidable=False olderSibling=False  '72pt'
+  AxisValue[3] fmt=1 flags=0x0000  axisIndex=1 value=200.0 elidable=False olderSibling=False  'ExtraLight'
+  AxisValue[4] fmt=1 flags=0x0000  axisIndex=1 value=300.0 elidable=False olderSibling=False  'Light'
+  AxisValue[5] fmt=1 flags=0x0002  axisIndex=1 value=400.0 elidable=True olderSibling=False  'Regular'
+  AxisValue[6] fmt=1 flags=0x0000  axisIndex=1 value=500.0 elidable=False olderSibling=False  'Medium'
+  AxisValue[7] fmt=1 flags=0x0000  axisIndex=1 value=600.0 elidable=False olderSibling=False  'SemiBold'
+  AxisValue[8] fmt=1 flags=0x0000  axisIndex=1 value=700.0 elidable=False olderSibling=False  'Bold'
+  AxisValue[9] fmt=1 flags=0x0000  axisIndex=1 value=800.0 elidable=False olderSibling=False  'ExtraBold'
+  AxisValue[10] fmt=1 flags=0x0000  axisIndex=2 value=1.0 elidable=False olderSibling=False  'Italic'
+==============================================================================
+Fraunces-Variable.ttf
+  STAT version=65537  ElidedFallbackNameID=2
+  DesignAxis tag=opsz  nameID=256  order=0  (Optical Size)
+  DesignAxis tag=SOFT  nameID=258  order=1  (Softness)
+  DesignAxis tag=wght  nameID=257  order=2  (Weight)
+  DesignAxis tag=WONK  nameID=259  order=3  (Wonky)
+  DesignAxis tag=ital  nameID=279  order=4  (Italic)
+  AxisValue[0] fmt=2 flags=0x0000  nomimalValue=9.0 rangeMin=9.0 rangeMax=40.5 elidable=False olderSibling=False  '9pt'
+  AxisValue[1] fmt=2 flags=0x0000  nomimalValue=72.0 rangeMin=40.5 rangeMax=108.0 elidable=False olderSibling=False  '72pt'
+  AxisValue[2] fmt=2 flags=0x0000  nomimalValue=144.0 rangeMin=108.0 rangeMax=144.0 elidable=False olderSibling=False  '144pt'
+  AxisValue[3] fmt=2 flags=0x0002  nomimalValue=0.0 rangeMin=0.0 rangeMax=25.0 elidable=True olderSibling=False  'Sharp'
+  AxisValue[4] fmt=2 flags=0x0000  nomimalValue=50.0 rangeMin=25.0 rangeMax=75.0 elidable=False olderSibling=False  'Soft'
+  AxisValue[5] fmt=2 flags=0x0000  nomimalValue=100.0 rangeMin=75.0 rangeMax=100.0 elidable=False olderSibling=False  'SuperSoft'
+  AxisValue[6] fmt=2 flags=0x0000  nomimalValue=100.0 rangeMin=100.0 rangeMax=200.0 elidable=False olderSibling=False  'Thin'
+  AxisValue[7] fmt=2 flags=0x0000  nomimalValue=300.0 rangeMin=200.0 rangeMax=350.0 elidable=False olderSibling=False  'Light'
+  AxisValue[8] fmt=2 flags=0x0002  nomimalValue=400.0 rangeMin=350.0 rangeMax=500.0 elidable=True olderSibling=False  'Regular'
+  AxisValue[9] fmt=2 flags=0x0000  nomimalValue=600.0 rangeMin=500.0 rangeMax=650.0 elidable=False olderSibling=False  'SemiBold'
+  AxisValue[10] fmt=2 flags=0x0000  nomimalValue=700.0 rangeMin=650.0 rangeMax=800.0 elidable=False olderSibling=False  'Bold'
+  AxisValue[11] fmt=2 flags=0x0000  nomimalValue=900.0 rangeMin=800.0 rangeMax=900.0 elidable=False olderSibling=False  'Black'
+  AxisValue[12] fmt=2 flags=0x0000  nomimalValue=0.0 rangeMin=0.0 rangeMax=0.5 elidable=False olderSibling=False  'NonWonky'
+  AxisValue[13] fmt=2 flags=0x0002  nomimalValue=1.0 rangeMin=0.5 rangeMax=1.0 elidable=True olderSibling=False  'Wonky'
+  AxisValue[14] fmt=2 flags=0x0002  nomimalValue=0.0 rangeMin=-32768.0 rangeMax=32767.99998474121 elidable=True olderSibling=False  'Roman'
+==============================================================================
+Fraunces-Italic-Variable.ttf
+  STAT version=65537  ElidedFallbackNameID=2
+  DesignAxis tag=opsz  nameID=256  order=0  (Optical Size)
+  DesignAxis tag=SOFT  nameID=258  order=1  (Softness)
+  DesignAxis tag=wght  nameID=257  order=2  (Weight)
+  DesignAxis tag=WONK  nameID=259  order=3  (Wonky)
+  DesignAxis tag=ital  nameID=264  order=4  (Italic)
+  AxisValue[0] fmt=2 flags=0x0000  nomimalValue=9.0 rangeMin=9.0 rangeMax=40.5 elidable=False olderSibling=False  '9pt'
+  AxisValue[1] fmt=2 flags=0x0000  nomimalValue=72.0 rangeMin=40.5 rangeMax=108.0 elidable=False olderSibling=False  '72pt'
+  AxisValue[2] fmt=2 flags=0x0000  nomimalValue=144.0 rangeMin=108.0 rangeMax=144.0 elidable=False olderSibling=False  '144pt'
+  AxisValue[3] fmt=2 flags=0x0002  nomimalValue=0.0 rangeMin=0.0 rangeMax=25.0 elidable=True olderSibling=False  'Sharp'
+  AxisValue[4] fmt=2 flags=0x0000  nomimalValue=50.0 rangeMin=25.0 rangeMax=75.0 elidable=False olderSibling=False  'Soft'
+  AxisValue[5] fmt=2 flags=0x0000  nomimalValue=100.0 rangeMin=75.0 rangeMax=100.0 elidable=False olderSibling=False  'SuperSoft'
+  AxisValue[6] fmt=2 flags=0x0000  nomimalValue=100.0 rangeMin=100.0 rangeMax=200.0 elidable=False olderSibling=False  'Thin'
+  AxisValue[7] fmt=2 flags=0x0000  nomimalValue=300.0 rangeMin=200.0 rangeMax=350.0 elidable=False olderSibling=False  'Light'
+  AxisValue[8] fmt=2 flags=0x0002  nomimalValue=400.0 rangeMin=350.0 rangeMax=500.0 elidable=True olderSibling=False  'Regular'
+  AxisValue[9] fmt=2 flags=0x0000  nomimalValue=600.0 rangeMin=500.0 rangeMax=650.0 elidable=False olderSibling=False  'SemiBold'
+  AxisValue[10] fmt=2 flags=0x0000  nomimalValue=700.0 rangeMin=650.0 rangeMax=800.0 elidable=False olderSibling=False  'Bold'
+  AxisValue[11] fmt=2 flags=0x0000  nomimalValue=900.0 rangeMin=800.0 rangeMax=900.0 elidable=False olderSibling=False  'Black'
+  AxisValue[12] fmt=2 flags=0x0000  nomimalValue=0.0 rangeMin=0.0 rangeMax=0.5 elidable=False olderSibling=False  'NonWonky'
+  AxisValue[13] fmt=2 flags=0x0002  nomimalValue=1.0 rangeMin=0.5 rangeMax=1.0 elidable=True olderSibling=False  'Wonky'
+  AxisValue[14] fmt=2 flags=0x0000  nomimalValue=1.0 rangeMin=-32768.0 rangeMax=32767.99998474121 elidable=False olderSibling=False  'Italic'
+==============================================================================
+SpaceGrotesk-Variable.ttf
+  STAT version=65537  ElidedFallbackNameID=2
+  DesignAxis tag=wght  nameID=256  order=0  (Weight)
+  AxisValue[0] fmt=1 flags=0x0000  axisIndex=0 value=300.0 elidable=False olderSibling=False  'Light'
+  AxisValue[1] fmt=3 flags=0x0002  axisIndex=0 value=400.0 linkedValue=700.0 elidable=True olderSibling=False  'Regular'
+  AxisValue[2] fmt=1 flags=0x0000  axisIndex=0 value=500.0 elidable=False olderSibling=False  'Medium'
+  AxisValue[3] fmt=1 flags=0x0000  axisIndex=0 value=700.0 elidable=False olderSibling=False  'Bold'

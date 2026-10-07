@@ -1,0 +1,71 @@
+== ENGINE ==
+AVAILABLE pt-BR | Português (Brasil)
+USER-PROFILE ENGINE pt-BR
+pt-BR ENGINE pt-BR
+en-US ENGINE NULL
+MAXDIMENSION 10000
+== ARM engine=pt-BR ==
+--- FRAME 00-clean_hud.png
+DIM 1920x1080
+MS 119
+LINE 1 | •HP 87/400 | words=2
+LINE 2 | AMMO 24/90 | words=2
+LINE 3 | OBJEflVO: PLANTAR A BOMBA | words=4
+LINE 4 | ELE TÁ DE AWP, NÃO SOBE A RAMP | words=8
+LINE 5 | [Joao] ele ta de awp | words=5
+LINE 6 | ando B | words=2
+NLINES 6
+--- FRAME 01-low_contrast_chat.png
+DIM 1920x1080
+MS 110
+LINE 1 | HP 87/400 | words=2
+LINE 2 | AMMO 24/90 | words=2
+LINE 3 | ELE TÁDE NÃO SOBE A RAMP | words=6
+LINE 4 | Joao] eleáa de aw | words=4
+LINE 5 | OBJETIVO: PLANTAãJA BOMBA | words=3
+LINE 6 | SSO NEG | words=2
+NLINES 6
+--- FRAME 02-small_text_0.7.png
+DIM 1920x1080
+MS 114
+LINE 1 | A BOMBA | words=2
+LINE 2 | ELE TÁ DE AWP, NÃO SOBE A RAMP | words=8
+LINE 3 | ERRO ox8007000. | words=2
+NLINES 3
+--- FRAME 03-motion_blur_2px.png
+DIM 1920x1080
+MS 28
+LINE 1 | HP 87/100 AMMO 24/90 | words=4
+LINE 2 | OBJETIVO •efANTAR A BOMàA | words=4
+LINE 3 | ' ELE TÁ DE AWP, NÃO SOBE A RAMP | words=9
+NLINES 3
+--- FRAME 04-motion_blur_4px.png
+DIM 1920x1080
+MS 21
+LINE 1 | ELE oe NAO soar A | words=5
+NLINES 1
+--- FRAME 05-subtitle_fade_50pct.png
+DIM 1920x1080
+MS 82
+LINE 1 | AMMO 24/90 | words=2
+LINE 2 | ELE TÁ DE AWP, NÃO SOBE A RAMP • | words=9
+LINE 3 | [Jvo] ele ta de awp | words=5
+LINE 4 | [voce] recuando B | words=3
+LINE 5 | [Marial gg wp | words=3
+LINE 6 | OBJETIVO: PLANTAR A BOMBA | words=4
+NLINES 6
+--- FRAME 06-subtitle_cjk.png
+DIM 1920x1080
+MS 109
+LINE 1 | 31100' AMMoi4190 | words=2
+NLINES 1
+--- FRAME 07-subtitle_cyrillic.png
+DIM 1920x1080
+MS 111
+LINE 1 | HP 87/400 | words=2
+LINE 2 | AMMOv24/90. | words=1
+LINE 3 | OH Ha xonMe, He nOAHb4MahCB | words=5
+LINE 4 | OBJETIVO:H-ANTAR A BOMBA | words=3
+LINE 5 | ERRO ACESSO.NEGADO' | words=2
+NLINES 5
+== DONE ==

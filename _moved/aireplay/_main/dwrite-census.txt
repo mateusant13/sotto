@@ -1,0 +1,34 @@
+DIRECTWRITE  famílias no system font collection: 90
+
+FindFamilyName (o caminho que o Chromium/skia usa):
+  Newsreader           -> PRESENTE index=86 faces=21
+  Newsreader 16pt      -> AUSENTE
+  Fraunces             -> AUSENTE
+  Space Grotesk        -> PRESENTE index=89 faces=8
+  Space Grotesk Light  -> AUSENTE
+  Barlow Condensed     -> AUSENTE
+  IBM Plex Mono        -> PRESENTE index=85 faces=12
+  Georgia              -> PRESENTE index=15 faces=6
+  Times New Roman      -> PRESENTE index=70 faces=6
+
+Famílias do DirectWrite que contêm Newsreader/Fraunces/Space Grotesk/Barlow/Plex:
+  Barlow
+  IBM Plex Mono
+  Newsreader
+  Fraunces 9pt SuperSoft
+  Fraunces 9pt
+  Space Grotesk
+
+GDI (InstalledFontCollection)  famílias: 162
+  Newsreader           -> PRESENTE
+  Newsreader 16pt      -> AUSENTE
+  Fraunces             -> AUSENTE
+  Space Grotesk        -> PRESENTE
+  Space Grotesk Light  -> PRESENTE
+  Barlow Condensed     -> PRESENTE
+  IBM Plex Mono        -> PRESENTE
+  Georgia              -> PRESENTE
+  Times New Roman      -> PRESENTE
+
+Controlo negativo:
+  __fonte-que-nao-existe__ -> DW AUSENTE | GDI AUSENTE

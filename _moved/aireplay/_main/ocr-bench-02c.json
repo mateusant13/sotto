@@ -1,0 +1,123 @@
+{
+  "frame": "H:\\aireplay\\_main\\ocr-frames\\00-clean_hud.png",
+  "levers": {
+    "area": [
+      {
+        "region": "bottom_left_chat_640x140",
+        "box": [
+          0,
+          850,
+          640,
+          990
+        ],
+        "shape": [
+          140,
+          640,
+          3
+        ],
+        "latency_s": [
+          5.551,
+          10.799
+        ],
+        "latency_min_s": 5.551,
+        "n_boxes": 3,
+        "texts": [
+          "[Joao] ele ta de awp",
+          "[voce] recuando B",
+          "[Maria]gg.wp"
+        ]
+      },
+      {
+        "region": "subtitle_band_1920x120",
+        "box": [
+          0,
+          730,
+          1920,
+          810
+        ],
+        "shape": [
+          80,
+          1920,
+          3
+        ],
+        "latency_s": [
+          27.344,
+          19.901
+        ],
+        "latency_min_s": 19.901,
+        "n_boxes": 10,
+        "texts": [
+          "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+          "■",
+          "■",
+          "■",
+          "■",
+          "■",
+          "■",
+          "■",
+          "■",
+          "■"
+        ]
+      },
+      {
+        "region": "full_1920x1080",
+        "box": [
+          0,
+          0,
+          1920,
+          1080
+        ],
+        "shape": [
+          1080,
+          1920,
+          3
+        ],
+        "latency_s": [
+          11.666,
+          9.276
+        ],
+        "latency_min_s": 9.276,
+        "n_boxes": 8,
+        "texts": [
+          "-HP 87/100 AMMO 24/90",
+          "OBJETIVO: PLANTAR A BOMBA",
+          "■",
+          "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+          "[Joao] ele ta de awp",
+          "[voce] recuando B",
+          "[Maria]gg.wp",
+          "ERRO0x80070005:ACESSONEGADO"
+        ]
+      }
+    ],
+    "trigger": {
+      "mean_abs_160x90": {
+        "per_frame_s": 0.000221,
+        "quiet_max": 0.0,
+        "onset": 30.551458333333333,
+        "offset": 30.551458333333333,
+        "nonzero_quiet_count": 0,
+        "quiet_count": 87,
+        "separable": true
+      },
+      "mean_abs_40x23": {
+        "per_frame_s": 7e-05,
+        "quiet_max": 0,
+        "onset": 33,
+        "offset": 33,
+        "nonzero_quiet_count": 0,
+        "quiet_count": 87,
+        "separable": true
+      },
+      "dhash_bits_40x23": {
+        "per_frame_s": 0.000111,
+        "quiet_max": 0,
+        "onset": 489,
+        "offset": 489,
+        "nonzero_quiet_count": 0,
+        "quiet_count": 87,
+        "separable": true
+      }
+    }
+  }
+}

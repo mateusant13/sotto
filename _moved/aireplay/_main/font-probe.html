@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>font-probe (lane FontesFix)</title>
+<style>
+ body{background:#101216;color:#e8e4da;font:12px ui-monospace,Consolas,monospace;margin:12px}
+ #out{white-space:pre;font:11px ui-monospace,Consolas,monospace;line-height:1.35}
+ .ref{position:absolute;left:-9999px;top:0;white-space:pre;font-size:72px}
+</style></head>
+<body>
+<h3>sonda de fontes — Chrome/DirectWrite vs o detector da página</h3>
+<pre id="out">running</pre>
+<div id="refs"></div>
+<script>
+/* =====================================================================
+   Sonda de famílias: responde a TRÊS perguntas por família/estilo/peso —
+     (1) o Chromium encontra a família?  (largura != largura do fallback)
+     (2) qual o par (estilo,peso) que falha? (romana vs itálica)
+     (3) contra quem é que ele substitui? (o default do documento, Georgia, serif)
+   A largura do "fallback puro" é medida com uma família que NÃO existe no
+   mesmo spec — é o caminho de código que a substituição usa.
+   O mesmo algoritmo de fontAvailable() da página é reproduzido em (A).
+   ===================================================================== */
+var PROBE="mmmMMMiiiWWWQQ@@ÀÉÍÓÚãõçjlg0179—";
+var MISS="__fonte-que-nao-existe__";
+
+function cv(){var c=document.createElement("canvas");return c.getContext("2d")}
+function w(spec){var cx=cv();cx.font=spec;return cx.measureText(PROBE).width}
+function q(f){return '"'+f+'"'}
+
+/* --- (A) o detector da própria página, reproduzido ------------------- */
+function fontAvailable(family){
+  var cx=cv(),bases=["monospace","serif","sans-serif"];
+  for(var i=0;i<bases.length;i++){
+    cx.font="72px "+bases[i];
+    var w0=cx.measureText(PROBE).width;
+    cx.font='72px "'+family+'",'+bases[i];
+    if(Math.abs(cx.measureText(PROBE).width-w0)>0.5)return true;
+  }
+  return false;
+}
+
+/* --- (B) largura SEM lista de fallback (só a família) ---------------- */
+var FB={};
+["normal|400","italic|400","normal|700","italic|700","normal|300","italic|300"].forEach(function(k){
+  var p=k.split("|");
+  FB[k]=w(p[1]+" "+p[0]+" 72px "+q(MISS));           // spec idêntico, família ausente
+});
+var WGEO={},WSER={},WTIM={};
+["normal|400","italic|400","normal|700","italic|700","normal|300","italic|300"].forEach(function(k){
+  var p=k.split("|"),pre=p[1]+" "+p[0]+" 72px ";
+  try{WGEO[k]=w(pre+"Georgia")}catch(e){WGEO[k]=-1}
+  try{WSER[k]=w(pre+"serif")}catch(e){WSER[k]=-1}
+  try{WTIM[k]=w(pre+"\"Times New Roman\"")}catch(e){WTIM[k]=-1}
+});
+
+var FAM=["Newsreader","Fraunces","Newsreader-Variable","Fraunces-Variable",
+         "Newsreader Italic","Fraunces Italic",
+         "Barlow Condensed","IBM Plex Mono","Space Grotesk",
+         "Georgia","Times New Roman","Segoe UI","Bahnschrift","Cascadia Mono"];
+var KS=["normal|400","italic|400","normal|700","italic|700","normal|300","italic|300"];
+var L=[];
+L.push("family\tstyle\tweight\twidth\t_fallback_puro\tdelta_vs_fallback\t==Georgia?\t==serif?\t==Times?\tpage_fontAvailable\tfonts.check");
+FAM.forEach(function(f){
+  KS.forEach(function(k){
+    var p=k.split("|"),st=p[0],wt=p[1],pre=wt+" "+st+" 72px ";
+    var wf=-1; try{wf=w(pre+q(f))}catch(e){}
+    var fbp=FB[k];
+    var d=wf-fbp;
+    var chk=false; try{chk=document.fonts.check(st+" "+wt+" 16px "+q(f))}catch(e){}
+    L.push([f,st,wt,wf.toFixed(2),fbp.toFixed(2),d.toFixed(2),
+            (Math.abs(d)<0.01?"MESMO-QUE-FALLBACK":(Math.abs(wf-WGEO[k])<0.01?"==Georgia":"difere")),
+            (Math.abs(wf-WSER[k])<0.01?"==serif":"difere"),
+            (Math.abs(wf-WTIM[k])<0.01?"==Times":"difere"),
+            fontAvailable(f), chk].join("\t"));
+  });
+});
+
+/* --- (C) o mesmo, mas pela DOM, com font-family sem fallback --------- */
+var refs=document.getElementById("refs");
+function domWidth(f,st,wt){
+  var s=document.createElement("span");s.className="ref";s.textContent=PROBE;
+  s.style.fontFamily=q(f);s.style.fontStyle=st;s.style.fontWeight=wt;
+  refs.appendChild(s);var x=s.getBoundingClientRect().width;refs.removeChild(s);return x;
+}
+L.push("");
+L.push("DOM (font-family só com a família, sem fallback)");
+["normal|400","italic|400","normal|700","italic|700"].forEach(function(k){
+  var p=k.split("|"),st=p[0],wt=p[1];
+  FAM.forEach(function(f){
+    var a=domWidth(f,st,wt),b=domWidth(MISS,st,wt);
+    L.push([f,st,wt,a.toFixed(2),b.toFixed(2),(a-b).toFixed(2),
+            (Math.abs(a-b)<0.01?"MESMO-QUE-FALLBACK":"RESOLVE")].join("\t"));
+  });
+});
+
+L.push("");
+L.push("bases: fallback_puro(400 normal)="+FB["normal|400"].toFixed(2)+
+       " Georgia="+WGEO["normal|400"].toFixed(2)+
+       " serif="+WSER["normal|400"].toFixed(2)+
+       " Times="+WTIM["normal|400"].toFixed(2));
+L.push("document.fonts.size="+document.fonts.size+"  (0 = nenhum @font-face na página)");
+L.push("navigator.fonts? "+(!!(navigator.fonts&&navigator.fonts.query)));
+
+var out=document.getElementById("out");
+out.textContent=L.join("\n");
+document.documentElement.dataset.probe="done";
+</script></body></html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-probe="done"><head><meta charset="utf-8"><title>font-probe-names</title>
+<style>#out{white-space:pre;font:12px ui-monospace,Consolas,monospace}</style></head>
+<body><pre id="out">nome	400n	400i	700n	700i	300n	veredicto
+Newsreader	1467.0	1419.2	1565.1	1536.1	1436.3	RESOLVE-EM-TODOS
+Newsreader 16pt	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+Newsreader Roman	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+NewsreaderRoman	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+Fraunces	1583.7	1510.4	1680.1	1621.8	1535.3	RESOLVE-EM-TODOS
+Fraunces 9pt	1583.7	1510.4	1680.1	1621.8	1535.3	RESOLVE-EM-TODOS
+Fraunces 9pt SuperSoft	1413.5	1413.5	1413.5	1413.5	1413.5	RESOLVE-EM-TODOS
+Fraunces 9pt Black	1728.5	1677.3	1728.5	1677.3	1728.5	RESOLVE-EM-TODOS
+Fraunces 144pt	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+Fraunces-Regular	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+Fraunces Black	1728.5	1677.3	1728.5	1677.3	1728.5	RESOLVE-EM-TODOS
+Fraunces Thin	1486.9	1486.9	1486.9	1486.9	1486.9	RESOLVE-EM-TODOS
+Barlow	1015.7	984.7	1100.0	1066.8	1015.7	RESOLVE-EM-TODOS
+Barlow Condensed	1015.7	984.7	1100.0	1066.8	1015.7	RESOLVE-EM-TODOS
+Barlow Condensed Black	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+Barlow Condensed ExtraLight	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+Space Grotesk	1493.7	1493.7	1510.0	1510.0	1486.9	RESOLVE-EM-TODOS
+Space Grotesk Light	1486.9	1486.9	1486.9	1486.9	1486.9	RESOLVE-EM-TODOS
+IBM Plex Mono	1382.4	1382.4	1382.4	1382.4	1382.4	RESOLVE-EM-TODOS
+IBM Plex Mono Light	1382.4	1382.4	1382.4	1382.4	1382.4	RESOLVE-EM-TODOS
+Bahnschrift	1407.9	1407.9	1407.9	1407.9	1407.9	RESOLVE-EM-TODOS
+Bahnschrift Condensed	1212.5	1212.5	1212.5	1212.5	1212.5	RESOLVE-EM-TODOS
+Bahnschrift SemiCondensed	1212.5	1212.5	1212.5	1212.5	1212.5	RESOLVE-EM-TODOS
+Georgia	1536.7	1544.2	1732.3	1747.2	1536.7	RESOLVE-EM-TODOS
+Times New Roman	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+__fonte-que-nao-existe__	1476.4	1416.2	1541.7	1460.0	1476.4	AUSENTE (==fallback puro)
+
+larguras do fallback puro (Times New Roman é o default): 400n=1476.4 400i=1416.2 700n=1541.7 700i=1460.0 300n=1476.4</pre>
+<script>
+var P="mmmMMMiiiWWWQQ@@ÀÉÍÓÚãõçjlg0179—";
+function cv(){return document.createElement("canvas").getContext("2d")}
+function w(spec){var cx=cv();cx.font=spec;return cx.measureText(P).width}
+var NAMES=["Newsreader","Newsreader 16pt","Newsreader Roman","NewsreaderRoman",
+  "Fraunces","Fraunces 9pt","Fraunces 9pt SuperSoft","Fraunces 9pt Black","Fraunces 144pt",
+  "Fraunces-Regular","Fraunces Black","Fraunces Thin",
+  "Barlow","Barlow Condensed","Barlow Condensed Black","Barlow Condensed ExtraLight",
+  "Space Grotesk","Space Grotesk Light","IBM Plex Mono","IBM Plex Mono Light",
+  "Bahnschrift","Bahnschrift Condensed","Bahnschrift SemiCondensed","Georgia","Times New Roman",
+  "__fonte-que-nao-existe__"];
+var SPECS=[["400","normal"],["400","italic"],["700","normal"],["700","italic"],["300","normal"]];
+var base={};
+SPECS.forEach(function(s){base[s.join("|")]=w(s[0]+" "+s[1]+' 72px "__fonte-que-nao-existe__"')});
+var L=["nome\t"+SPECS.map(function(s){return s[0]+s[1][0]}).join("\t")+"\tveredicto"];
+NAMES.forEach(function(n){
+  var row=[],any=false,allsame=true;
+  SPECS.forEach(function(s){
+    var v=w(s[0]+" "+s[1]+' 72px "'+n+'"');
+    var b=base[s.join("|")];
+    if(Math.abs(v-b)>0.5){any=true}else{allsame=false}
+    row.push(v.toFixed(1));
+  });
+  L.push(n+"\t"+row.join("\t")+"\t"+(any?(allsame?"RESOLVE-EM-TODOS":"RESOLVE-EM-ALGUNS"):"AUSENTE (==fallback puro)"));
+});
+L.push("");
+L.push("larguras do fallback puro (Times New Roman é o default): "+SPECS.map(function(s){return s[0]+s[1][0]+"="+base[s.join("|")].toFixed(1)}).join(" "));
+document.getElementById("out").textContent=L.join("\n");
+document.documentElement.dataset.probe="done";
+</script>
+</body></html>

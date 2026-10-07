@@ -1,0 +1,90 @@
+Arial
+Bahnschrift
+Barlow
+Calibri
+Cambria
+Cambria Math
+Candara
+Cascadia Code
+Cascadia Mono
+Comic Sans MS
+Consolas
+Constantia
+Corbel
+Courier New
+Crew Vibes
+Ebrima
+Franklin Gothic
+Fraunces 9pt
+Fraunces 9pt SuperSoft
+Gabriola
+Gadugi
+Georgia
+IBM Plex Mono
+Impact
+Ink Free
+Javanese Text
+Leelawadee UI
+Lucida Console
+Lucida Sans Unicode
+Malgun Gothic
+Marlett
+Microsoft Himalaya
+Microsoft JhengHei
+Microsoft JhengHei UI
+Microsoft New Tai Lue
+Microsoft PhagsPa
+Microsoft Sans Serif
+Microsoft Tai Le
+Microsoft YaHei
+Microsoft YaHei UI
+Microsoft Yi Baiti
+MingLiU_HKSCS-ExtB
+MingLiU_MSCS-ExtB
+MingLiU-ExtB
+Mongolian Baiti
+MS Gothic
+MS PGothic
+MS UI Gothic
+MV Boli
+Myanmar Text
+Newsreader
+Nirmala Text
+Nirmala UI
+NSimSun
+Palatino Linotype
+PMingLiU-ExtB
+Sans Serif Collection
+Segoe Fluent Icons
+Segoe MDL2 Assets
+Segoe Print
+Segoe Script
+Segoe UI
+Segoe UI Emoji
+Segoe UI Historic
+Segoe UI Symbol
+Segoe UI Variable Display
+Segoe UI Variable Small
+Segoe UI Variable Text
+SimSun
+SimSun-ExtB
+SimSun-ExtG
+Sitka Banner
+Sitka Display
+Sitka Heading
+Sitka Small
+Sitka Subheading
+Sitka Text
+Space Grotesk
+Sylfaen
+Symbol
+Tahoma
+Times New Roman
+Trebuchet MS
+Ubuntu Mono
+Unispace
+Verdana
+Webdings
+Wingdings
+Yu Gothic
+Yu Gothic UI

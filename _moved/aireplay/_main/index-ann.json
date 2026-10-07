@@ -1,0 +1,87 @@
+{
+  "probe": "_index-ann-probe2.py",
+  "when": "2026-10-07T10:28:01",
+  "vectors": 120000,
+  "dims": 256,
+  "M": 16,
+  "efConstruction": 200,
+  "queries": 100,
+  "k": 10,
+  "stages": {
+    "corpus": {
+      "matrix_MiB": 117.2
+    },
+    "numpy_exact_groundtruth": {
+      "queries": 100,
+      "k": 10,
+      "seconds": 0.79,
+      "ms_per_query": 7.887
+    },
+    "faiss_flat": {
+      "index_bytes": 122880000,
+      "search_k10": {
+        "min_ms": 559.068,
+        "median_ms": 599.776,
+        "reps": 5
+      }
+    },
+    "hnsw_build": {
+      "seconds": 88.7,
+      "vectors_per_s": 1353,
+      "ntotal": 120000
+    },
+    "hnsw_ram_formula": {
+      "bytes_per_vector_D4_plus_M2x4": 1152,
+      "index_bytes_formula": 138240000
+    },
+    "incremental_add": {
+      "one_vector_ms": 35.982,
+      "batch_1000_s": 0.966,
+      "ntotal": 121001
+    },
+    "remove_one_id": {
+      "implemented": false,
+      "error": "RuntimeError: Error in unsigned __int64 __cdecl faiss::Index::remove_ids(const struct faiss::IDSelector &) at D:\\a\\faiss\\faiss\\faiss\\Index.cpp:57: remove_ids not implemented for this type of index",
+      "ntotal_unchanged": 121001,
+      "consequence": "a deleted or moved file cannot be removed from an HNSW index; the only cure is a full rebuild"
+    },
+    "durability": {
+      "write_index_s": 0.105,
+      "read_index_s": 0.105,
+      "file_bytes": 141371558,
+      "file_MiB": 134.8,
+      "payload_bytes_120k_fp32": 122880000,
+      "overhead_bytes_per_vector": 154.1,
+      "note": "no incremental durable append; the dump IS the index"
+    },
+    "search": {
+      "ef=16": {
+        "ms_per_query_k10": 0.154,
+        "recall@10": 0.034
+      },
+      "ef=32": {
+        "ms_per_query_k10": 0.172,
+        "recall@10": 0.05
+      },
+      "ef=64": {
+        "ms_per_query_k10": 0.368,
+        "recall@10": 0.104
+      },
+      "ef=128": {
+        "ms_per_query_k10": 0.649,
+        "recall@10": 0.176
+      },
+      "ef=256": {
+        "ms_per_query_k10": 1.216,
+        "recall@10": 0.29
+      }
+    }
+  },
+  "faiss": "1.15.1",
+  "faiss_omp_threads": 2,
+  "thread_env": {
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2"
+  }
+}

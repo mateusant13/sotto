@@ -1,0 +1,95 @@
+[
+  {
+    "file": "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx\\encoder-model.int8.onnx",
+    "bytes": 652183999,
+    "ir_version": 8,
+    "opset_imports": {
+      "ai.onnx": 17
+    },
+    "node_count": 5654,
+    "op_types": {
+      "Constant": 1661,
+      "Mul": 733,
+      "Cast": 426,
+      "Unsqueeze": 328,
+      "Reshape": 295,
+      "Transpose": 244,
+      "DynamicQuantizeLinear": 223,
+      "Concat": 221,
+      "MatMulInteger": 217,
+      "Add": 205,
+      "Shape": 175,
+      "Gather": 149,
+      "Slice": 123,
+      "LayerNormalization": 120,
+      "Sigmoid": 96,
+      "ConvInteger": 77,
+      "Where": 73,
+      "MatMul": 72,
+      "ConstantOfShape": 51,
+      "Pad": 48,
+      "Div": 27,
+      "Squeeze": 24,
+      "Softmax": 24,
+      "Split": 24,
+      "Floor": 3,
+      "Relu": 3,
+      "Sub": 2,
+      "Expand": 2,
+      "Not": 2,
+      "And": 2,
+      "Equal": 1,
+      "Range": 1,
+      "Less": 1,
+      "Tile": 1
+    },
+    "initializer_dtypes": {
+      "FLOAT": 612,
+      "UINT8": 588,
+      "INT64": 29
+    },
+    "quant_ops": {
+      "DynamicQuantizeLinear": 223,
+      "ConvInteger": 77,
+      "MatMulInteger": 217
+    }
+  },
+  {
+    "file": "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx\\decoder_joint-model.int8.onnx",
+    "bytes": 18202004,
+    "ir_version": 8,
+    "opset_imports": {
+      "ai.onnx": 17,
+      "com.microsoft": 1
+    },
+    "node_count": 55,
+    "op_types": {
+      "Constant": 16,
+      "Mul": 6,
+      "Cast": 4,
+      "Slice": 4,
+      "Add": 4,
+      "Transpose": 3,
+      "DynamicQuantizeLinear": 3,
+      "MatMulInteger": 3,
+      "DynamicQuantizeLSTM": 2,
+      "Squeeze": 2,
+      "Unsqueeze": 2,
+      "Concat": 2,
+      "Identity": 1,
+      "Gather": 1,
+      "DequantizeLinear": 1,
+      "Relu": 1
+    },
+    "initializer_dtypes": {
+      "FLOAT": 13,
+      "UINT8": 8,
+      "INT8": 8
+    },
+    "quant_ops": {
+      "DynamicQuantizeLinear": 3,
+      "MatMulInteger": 3,
+      "DynamicQuantizeLSTM": 2
+    }
+  }
+]

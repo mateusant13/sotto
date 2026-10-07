@@ -1,0 +1,107 @@
+{
+  "probe": "_index-store-probe.py",
+  "when": "2026-10-07T08:14:41",
+  "sqlite_vec_version": "0.1.9",
+  "sqlite_version": "3.43.1",
+  "dims": 256,
+  "videos": 1000,
+  "segments": 120000,
+  "vectors_total": 211200,
+  "vectors_by_channel": {
+    "visual": 120000,
+    "speech": 72000,
+    "ocr": 19200
+  },
+  "corpus_gen_s": 0.83,
+  "sqlite_vec_python": "0.1.9",
+  "vec_version_sql": "v0.1.9",
+  "constructor": "cosine, partition_key=video_id, metadata=channel/start_ms/seg_id",
+  "insert": {
+    "vectors": 211200,
+    "seconds": 31.65,
+    "vectors_per_s": 6673,
+    "ms_per_vector": 0.1499
+  },
+  "count_vec_seg": 211200,
+  "knn_sql": {
+    "k=10": {
+      "min_ms": 2409.56,
+      "median_ms": 2494.8,
+      "reps": 5,
+      "rows_returned": 10
+    },
+    "k=100": {
+      "min_ms": 2803.83,
+      "median_ms": 2886.65,
+      "reps": 5,
+      "rows_returned": 100
+    },
+    "k=1000": {
+      "min_ms": 3527.81,
+      "median_ms": 3685.59,
+      "reps": 5,
+      "rows_returned": 1000
+    },
+    "k=100 channel=speech": {
+      "min_ms": 2460.09,
+      "median_ms": 2896.78,
+      "reps": 8,
+      "rows_returned": 100
+    },
+    "k=100 start_ms in [100000,160000)": {
+      "min_ms": 2226.49,
+      "median_ms": 2652.17,
+      "reps": 8,
+      "rows_returned": 100
+    },
+    "k=100 video_id=42 (partition key)": {
+      "min_ms": 1.1,
+      "median_ms": 2.71,
+      "reps": 8,
+      "rows_returned": 100
+    }
+  },
+  "answer_query": {
+    "min_ms": 2662.19,
+    "median_ms": 2844.45,
+    "reps": 5,
+    "first_row": {
+      "seg_id": 39321,
+      "start_ms": 405000,
+      "path": "H:\\Videos\\clips\\clip_0327.mp4",
+      "channel": "visual",
+      "distance": 0.7148,
+      "hms": "06:45.0"
+    }
+  },
+  "disk": {
+    "db": 1101152256,
+    "db_MiB": 1050.1
+  },
+  "numpy_matrix_MiB": 206.2,
+  "knn_numpy_k100": {
+    "no filter": {
+      "min_ms": 24.61,
+      "median_ms": 33.51,
+      "reps": 8,
+      "candidates_after_filter": 211200
+    },
+    "speech only": {
+      "min_ms": 26.61,
+      "median_ms": 27.81,
+      "reps": 8,
+      "candidates_after_filter": 72000
+    },
+    "window 60 s": {
+      "min_ms": 30.13,
+      "median_ms": 37.52,
+      "reps": 8,
+      "candidates_after_filter": 21257
+    }
+  },
+  "knn_numpy_k10_unfiltered": {
+    "min_ms": 33.28,
+    "median_ms": 44.32,
+    "reps": 8
+  }
+}

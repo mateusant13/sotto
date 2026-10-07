@@ -1,0 +1,259 @@
+DIRECTWRITE famílias=90
+
+--- nomes do DirectWrite (todos, 90) ---
+  Arial
+  Bahnschrift
+  Barlow
+  Calibri
+  Cambria
+  Cambria Math
+  Candara
+  Cascadia Code
+  Cascadia Mono
+  Comic Sans MS
+  Consolas
+  Constantia
+  Corbel
+  Courier New
+  Crew Vibes
+  Ebrima
+  Franklin Gothic
+  Fraunces 9pt
+  Fraunces 9pt SuperSoft
+  Gabriola
+  Gadugi
+  Georgia
+  IBM Plex Mono
+  Impact
+  Ink Free
+  Javanese Text
+  Leelawadee UI
+  Lucida Console
+  Lucida Sans Unicode
+  Malgun Gothic
+  Marlett
+  Microsoft Himalaya
+  Microsoft JhengHei
+  Microsoft JhengHei UI
+  Microsoft New Tai Lue
+  Microsoft PhagsPa
+  Microsoft Sans Serif
+  Microsoft Tai Le
+  Microsoft YaHei
+  Microsoft YaHei UI
+  Microsoft Yi Baiti
+  MingLiU_HKSCS-ExtB
+  MingLiU_MSCS-ExtB
+  MingLiU-ExtB
+  Mongolian Baiti
+  MS Gothic
+  MS PGothic
+  MS UI Gothic
+  MV Boli
+  Myanmar Text
+  Newsreader
+  Nirmala Text
+  Nirmala UI
+  NSimSun
+  Palatino Linotype
+  PMingLiU-ExtB
+  Sans Serif Collection
+  Segoe Fluent Icons
+  Segoe MDL2 Assets
+  Segoe Print
+  Segoe Script
+  Segoe UI
+  Segoe UI Emoji
+  Segoe UI Historic
+  Segoe UI Symbol
+  Segoe UI Variable Display
+  Segoe UI Variable Small
+  Segoe UI Variable Text
+  SimSun
+  SimSun-ExtB
+  SimSun-ExtG
+  Sitka Banner
+  Sitka Display
+  Sitka Heading
+  Sitka Small
+  Sitka Subheading
+  Sitka Text
+  Space Grotesk
+  Sylfaen
+  Symbol
+  Tahoma
+  Times New Roman
+  Trebuchet MS
+  Ubuntu Mono
+  Unispace
+  Verdana
+  Webdings
+  Wingdings
+  Yu Gothic
+  Yu Gothic UI
+
+--- só no GDI (o que o GDI tem e o DirectWrite não) ---
+  Arial Black
+  Bahnschrift Condensed
+  Bahnschrift Light
+  Bahnschrift Light Condensed
+  Bahnschrift Light SemiCondensed
+  Bahnschrift SemiBold
+  Bahnschrift SemiBold Condensed
+  Bahnschrift SemiBold SemiConden
+  Bahnschrift SemiCondensed
+  Bahnschrift SemiLight
+  Bahnschrift SemiLight Condensed
+  Bahnschrift SemiLight SemiConde
+  Barlow Condensed
+  Barlow Condensed Black
+  Barlow Condensed ExtraBold
+  Barlow Condensed ExtraLight
+  Calibri Light
+  Candara Light
+  Cascadia Code ExtraLight
+  Cascadia Code Light
+  Cascadia Code SemiBold
+  Cascadia Code SemiLight
+  Cascadia Mono ExtraLight
+  Cascadia Mono Light
+  Cascadia Mono SemiBold
+  Cascadia Mono SemiLight
+  Corbel Light
+  Franklin Gothic Medium
+  Fraunces 9pt Black
+  Fraunces 9pt Light
+  Fraunces 9pt SemiBold
+  Fraunces 9pt SuperSoft Thin
+  Fraunces 9pt Thin
+  IBM Plex Mono ExtraLight
+  IBM Plex Mono Light
+  IBM Plex Mono Medium
+  Leelawadee UI Semilight
+  Malgun Gothic Semilight
+  Microsoft JhengHei Light
+  Microsoft JhengHei UI Light
+  Microsoft YaHei Light
+  Microsoft YaHei UI Light
+  Newsreader ExtraBold
+  Newsreader ExtraLight
+  Newsreader Light
+  Newsreader Medium
+  Newsreader SemiBold
+  Nirmala Text Semilight
+  Nirmala UI Semilight
+  Segoe UI Black
+  Segoe UI Light
+  Segoe UI Semibold
+  Segoe UI Semilight
+  Segoe UI Variable Display Light
+  Segoe UI Variable Display Semib
+  Segoe UI Variable Display Semil
+  Segoe UI Variable Small Light
+  Segoe UI Variable Small Semibol
+  Segoe UI Variable Small Semilig
+  Segoe UI Variable Text Light
+  Segoe UI Variable Text Semibold
+  Segoe UI Variable Text Semiligh
+  Sitka Banner Semibold
+  Sitka Display Semibold
+  Sitka Heading Semibold
+  Sitka Small Semibold
+  Sitka Subheading Semibold
+  Sitka Text Semibold
+  Space Grotesk Light
+  Space Grotesk Medium
+  Yu Gothic Light
+  Yu Gothic Medium
+  Yu Gothic UI Light
+  Yu Gothic UI Semibold
+  Yu Gothic UI Semilight
+
+--- só no DirectWrite ---
+  Barlow
+  Franklin Gothic
+  Fraunces 9pt SuperSoft
+
+--- faces das famílias de interesse no DirectWrite ---
+  [82] Ubuntu Mono
+    face[0] wght=0 stretch=0 style=0 faceName=Regular full=Version 0.80
+    face[1] wght=0 stretch=0 style=0 faceName=Oblique full=Version 0.80
+    face[2] wght=0 stretch=0 style=0 faceName=Bold full=Version 0.80
+    face[3] wght=0 stretch=0 style=0 faceName=Bold Oblique full=Version 0.80
+  [84] Barlow
+    face[0] wght=0 stretch=0 style=0 faceName=Condensed ExtraLight full=Version 1.408
+    face[1] wght=0 stretch=0 style=0 faceName=Condensed ExtraLight Italic full=Version 1.408
+    face[2] wght=0 stretch=0 style=0 faceName=Condensed Bold full=Version 1.408
+    face[3] wght=0 stretch=0 style=0 faceName=Condensed Bold Italic full=Version 1.408
+    face[4] wght=0 stretch=0 style=0 faceName=Condensed ExtraBold full=Version 1.408
+    face[5] wght=0 stretch=0 style=0 faceName=Condensed ExtraBold Italic full=Version 1.408
+    face[6] wght=0 stretch=0 style=0 faceName=Condensed Black full=Version 1.408
+    face[7] wght=0 stretch=0 style=0 faceName=Condensed Black Italic full=Version 1.408
+    face[8] wght=0 stretch=0 style=0 faceName=Condensed ExtraLight Oblique full=Version 1.408
+    face[9] wght=0 stretch=0 style=0 faceName=Condensed Bold Oblique full=Version 1.408
+    face[10] wght=0 stretch=0 style=0 faceName=Condensed ExtraBold Oblique full=Version 1.408
+    face[11] wght=0 stretch=0 style=0 faceName=Condensed Black Oblique full=Version 1.408
+  [85] IBM Plex Mono
+    face[0] wght=0 stretch=0 style=0 faceName=ExtraLight full=Version 2.3
+    face[1] wght=0 stretch=0 style=0 faceName=ExtraLight Italic full=Version 2.3
+    face[2] wght=0 stretch=0 style=0 faceName=Light full=Version 2.3
+    face[3] wght=0 stretch=0 style=0 faceName=Light Italic full=Version 2.3
+    face[4] wght=0 stretch=0 style=0 faceName=Italic full=Version 2.3
+    face[5] wght=0 stretch=0 style=0 faceName=Medium full=Version 2.3
+    face[6] wght=0 stretch=0 style=0 faceName=Bold full=Version 2.3
+    face[7] wght=0 stretch=0 style=0 faceName=Bold Italic full=Version 2.3
+    face[8] wght=0 stretch=0 style=0 faceName=ExtraLight Oblique full=Version 2.3
+    face[9] wght=0 stretch=0 style=0 faceName=Light Oblique full=Version 2.3
+    face[10] wght=0 stretch=0 style=0 faceName=Medium Oblique full=Version 2.3
+    face[11] wght=0 stretch=0 style=0 faceName=Bold Oblique full=Version 2.3
+  [86] Newsreader
+    face[0] wght=0 stretch=0 style=0 faceName=ExtraLight full=Version 1.003
+    face[1] wght=0 stretch=0 style=0 faceName=ExtraLight Italic full=Version 1.003
+    face[2] wght=0 stretch=0 style=0 faceName=Light full=Version 1.003
+    face[3] wght=0 stretch=0 style=0 faceName=Light Italic full=Version 1.003
+    face[4] wght=0 stretch=0 style=0 faceName=Regular full=Version 1.003
+    face[5] wght=0 stretch=0 style=0 faceName=Italic full=Version 1.003
+    face[6] wght=0 stretch=0 style=0 faceName=Medium full=Version 1.003
+    face[7] wght=0 stretch=0 style=0 faceName=Medium Italic full=Version 1.003
+    face[8] wght=0 stretch=0 style=0 faceName=SemiBold full=Version 1.003
+    face[9] wght=0 stretch=0 style=0 faceName=SemiBold Italic full=Version 1.003
+    face[10] wght=0 stretch=0 style=0 faceName=Bold full=Version 1.003
+    face[11] wght=0 stretch=0 style=0 faceName=Bold Italic full=Version 1.003
+    face[12] wght=0 stretch=0 style=0 faceName=ExtraBold full=Version 1.003
+    face[13] wght=0 stretch=0 style=0 faceName=ExtraBold Italic full=Version 1.003
+    face[14] wght=0 stretch=0 style=0 faceName=ExtraLight Oblique full=Version 1.003
+    face[15] wght=0 stretch=0 style=0 faceName=Light Oblique full=Version 1.003
+    face[16] wght=0 stretch=0 style=0 faceName=Oblique full=Version 1.003
+    face[17] wght=0 stretch=0 style=0 faceName=Medium Oblique full=Version 1.003
+    face[18] wght=0 stretch=0 style=0 faceName=SemiBold Oblique full=Version 1.003
+    face[19] wght=0 stretch=0 style=0 faceName=Bold Oblique full=Version 1.003
+    face[20] wght=0 stretch=0 style=0 faceName=ExtraBold Oblique full=Version 1.003
+  [87] Fraunces 9pt SuperSoft
+    face[0] wght=0 stretch=0 style=0 faceName=Thin Italic full=Version 1.000;[b76b70a41]
+  [88] Fraunces 9pt
+    face[0] wght=0 stretch=0 style=0 faceName=Thin full=Version 1.000;[b76b70a41]
+    face[1] wght=0 stretch=0 style=0 faceName=Light full=Version 1.000;[b76b70a41]
+    face[2] wght=0 stretch=0 style=0 faceName=Light Italic full=Version 1.000;[b76b70a41]
+    face[3] wght=0 stretch=0 style=0 faceName=Regular full=Version 1.000;[b76b70a41]
+    face[4] wght=0 stretch=0 style=0 faceName=Italic full=Version 1.000;[b76b70a41]
+    face[5] wght=0 stretch=0 style=0 faceName=SemiBold full=Version 1.000;[b76b70a41]
+    face[6] wght=0 stretch=0 style=0 faceName=SemiBold Italic full=Version 1.000;[b76b70a41]
+    face[7] wght=0 stretch=0 style=0 faceName=Bold full=Version 1.000;[b76b70a41]
+    face[8] wght=0 stretch=0 style=0 faceName=Bold Italic full=Version 1.000;[b76b70a41]
+    face[9] wght=0 stretch=0 style=0 faceName=Black full=Version 1.000;[b76b70a41]
+    face[10] wght=0 stretch=0 style=0 faceName=Black Italic full=Version 1.000;[b76b70a41]
+    face[11] wght=0 stretch=0 style=0 faceName=Thin Oblique full=Version 1.000;[b76b70a41]
+    face[12] wght=0 stretch=0 style=0 faceName=Light Oblique full=Version 1.000;[b76b70a41]
+    face[13] wght=0 stretch=0 style=0 faceName=Oblique full=Version 1.000;[b76b70a41]
+    face[14] wght=0 stretch=0 style=0 faceName=SemiBold Oblique full=Version 1.000;[b76b70a41]
+    face[15] wght=0 stretch=0 style=0 faceName=Bold Oblique full=Version 1.000;[b76b70a41]
+    face[16] wght=0 stretch=0 style=0 faceName=Black Oblique full=Version 1.000;[b76b70a41]
+  [89] Space Grotesk
+    face[0] wght=0 stretch=0 style=0 faceName=Light full=Version 2.000
+    face[1] wght=0 stretch=0 style=0 faceName=Regular full=Version 2.000
+    face[2] wght=0 stretch=0 style=0 faceName=Medium full=Version 2.000
+    face[3] wght=0 stretch=0 style=0 faceName=Bold full=Version 2.000
+    face[4] wght=0 stretch=0 style=0 faceName=Light Oblique full=Version 2.000
+    face[5] wght=0 stretch=0 style=0 faceName=Oblique full=Version 2.000
+    face[6] wght=0 stretch=0 style=0 faceName=Medium Oblique full=Version 2.000
+    face[7] wght=0 stretch=0 style=0 faceName=Bold Oblique full=Version 2.000

@@ -1,0 +1,70 @@
+{
+  "probe": "nvenc-caps-probe.py",
+  "source_header": "nvEncodeAPI.h 13.1",
+  "driver_nvenc_api": {
+    "status": 0,
+    "raw": "0x000000D1",
+    "version": "13.1"
+  },
+  "NvEncodeAPICreateInstance_status": 0,
+  "sessions": {},
+  "device_mode": "directx",
+  "gpu_encoder_handle_probe": {
+    "device_type": 0,
+    "device_ptr": 2522020485312
+  },
+  "d3d11_device": {
+    "hr": 0,
+    "feature_level": "0xB000",
+    "device_ptr_nonzero": true
+  },
+  "dxgi_adapters": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5080",
+      "vendor": "0x10DE",
+      "luid": 88110,
+      "dedicated_vram_bytes": 16755195904,
+      "flags": 0
+    },
+    {
+      "index": 1,
+      "name": "Intel(R) UHD Graphics 770",
+      "vendor": "0x8086",
+      "luid": 94235,
+      "dedicated_vram_bytes": 134217728,
+      "flags": 0
+    },
+    {
+      "index": 2,
+      "name": "Microsoft Basic Render Driver",
+      "vendor": "0x1414",
+      "luid": 94135,
+      "dedicated_vram_bytes": 0,
+      "flags": 2
+    }
+  ],
+  "adapter_session_probe": [
+    {
+      "adapter": 0,
+      "name": "NVIDIA GeForce RTX 5080",
+      "d3d11_hr": 0,
+      "feature_level": "0xB000",
+      "nvenc_open_status": 5
+    },
+    {
+      "adapter": 1,
+      "name": "Intel(R) UHD Graphics 770",
+      "d3d11_hr": 0,
+      "feature_level": "0xB000",
+      "nvenc_open_status": 5
+    },
+    {
+      "adapter": 2,
+      "name": "Microsoft Basic Render Driver",
+      "d3d11_hr": -2005270524,
+      "feature_level": "0x0"
+    }
+  ],
+  "result": "NO-ADAPTER-ACCEPTED-BY-NVENC"
+}

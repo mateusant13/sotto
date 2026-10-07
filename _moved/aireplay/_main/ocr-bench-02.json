@@ -1,0 +1,913 @@
+{
+  "what": "RapidOCR on synthetic game-like frames",
+  "frames": [
+    {
+      "arm": "clean_hud",
+      "blur_px": 0.0,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        19.022
+      ],
+      "latency_min_s": 19.022,
+      "n_boxes": 8,
+      "texts": [
+        "-HP 87/100 AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "■",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria]gg.wp",
+        "ERRO0x80070005:ACESSONEGADO"
+      ],
+      "scores": [
+        0.9776,
+        0.9731,
+        0.6443,
+        0.9979,
+        0.9994,
+        0.9957,
+        0.9819,
+        0.9888
+      ],
+      "boxes": [
+        [
+          [
+            29,
+            28
+          ],
+          [
+            369,
+            28
+          ],
+          [
+            369,
+            61
+          ],
+          [
+            29,
+            61
+          ]
+        ],
+        [
+          [
+            1443,
+            28
+          ],
+          [
+            1885,
+            28
+          ],
+          [
+            1885,
+            64
+          ],
+          [
+            1443,
+            64
+          ]
+        ],
+        [
+          [
+            1831,
+            702
+          ],
+          [
+            1839,
+            702
+          ],
+          [
+            1839,
+            710
+          ],
+          [
+            1831,
+            710
+          ]
+        ],
+        [
+          [
+            594,
+            744
+          ],
+          [
+            1326,
+            744
+          ],
+          [
+            1326,
+            797
+          ],
+          [
+            594,
+            797
+          ]
+        ],
+        [
+          [
+            34,
+            879
+          ],
+          [
+            237,
+            879
+          ],
+          [
+            237,
+            906
+          ],
+          [
+            34,
+            906
+          ]
+        ],
+        [
+          [
+            40,
+            909
+          ],
+          [
+            217,
+            909
+          ],
+          [
+            217,
+            935
+          ],
+          [
+            40,
+            935
+          ]
+        ],
+        [
+          [
+            35,
+            936
+          ],
+          [
+            174,
+            939
+          ],
+          [
+            173,
+            969
+          ],
+          [
+            34,
+            966
+          ]
+        ],
+        [
+          [
+            1482,
+            1018
+          ],
+          [
+            1883,
+            1018
+          ],
+          [
+            1883,
+            1044
+          ],
+          [
+            1482,
+            1044
+          ]
+        ]
+      ],
+      "ground_truth": [
+        "HP 87/100   AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP"
+      ],
+      "exact_gt_hits": "4/7"
+    },
+    {
+      "arm": "low_contrast_chat",
+      "blur_px": 0.0,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        17.962
+      ],
+      "latency_min_s": 17.962,
+      "n_boxes": 8,
+      "texts": [
+        "HP 87/100 AMMO.24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "■",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "éle ta de awp",
+        "[voce] recando B•",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO"
+      ],
+      "scores": [
+        0.9954,
+        0.9706,
+        0.7245,
+        0.9979,
+        0.9227,
+        0.9886,
+        0.9976,
+        0.9805
+      ],
+      "boxes": [
+        [
+          [
+            34,
+            28
+          ],
+          [
+            372,
+            28
+          ],
+          [
+            372,
+            64
+          ],
+          [
+            34,
+            64
+          ]
+        ],
+        [
+          [
+            1443,
+            28
+          ],
+          [
+            1886,
+            28
+          ],
+          [
+            1886,
+            64
+          ],
+          [
+            1443,
+            64
+          ]
+        ],
+        [
+          [
+            1813,
+            404
+          ],
+          [
+            1821,
+            404
+          ],
+          [
+            1821,
+            412
+          ],
+          [
+            1813,
+            412
+          ]
+        ],
+        [
+          [
+            594,
+            745
+          ],
+          [
+            1326,
+            745
+          ],
+          [
+            1326,
+            797
+          ],
+          [
+            594,
+            797
+          ]
+        ],
+        [
+          [
+            101,
+            881
+          ],
+          [
+            236,
+            881
+          ],
+          [
+            236,
+            905
+          ],
+          [
+            101,
+            905
+          ]
+        ],
+        [
+          [
+            35,
+            910
+          ],
+          [
+            225,
+            908
+          ],
+          [
+            225,
+            935
+          ],
+          [
+            35,
+            937
+          ]
+        ],
+        [
+          [
+            35,
+            936
+          ],
+          [
+            175,
+            939
+          ],
+          [
+            174,
+            970
+          ],
+          [
+            34,
+            967
+          ]
+        ],
+        [
+          [
+            1481,
+            1014
+          ],
+          [
+            1882,
+            1014
+          ],
+          [
+            1882,
+            1044
+          ],
+          [
+            1481,
+            1044
+          ]
+        ]
+      ],
+      "ground_truth": [
+        "HP 87/100   AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP"
+      ],
+      "exact_gt_hits": "4/7"
+    },
+    {
+      "arm": "small_text_0.7",
+      "blur_px": 0.0,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        19.852
+      ],
+      "latency_min_s": 19.852,
+      "n_boxes": 5,
+      "texts": [
+        "HP 87/100 AMMO 24/90",
+        "OBJETIVO:PLANTAR A BOMBA",
+        "à",
+        "ELE TÁ DE AP, NÃO SOBE A RAMP",
+        "ERRO 0x80070005: ACESSO NEGADO"
+      ],
+      "scores": [
+        0.9583,
+        0.9725,
+        0.706,
+        0.9893,
+        0.9948
+      ],
+      "boxes": [
+        [
+          [
+            36,
+            27
+          ],
+          [
+            266,
+            27
+          ],
+          [
+            266,
+            54
+          ],
+          [
+            36,
+            54
+          ]
+        ],
+        [
+          [
+            1578,
+            27
+          ],
+          [
+            1883,
+            28
+          ],
+          [
+            1883,
+            54
+          ],
+          [
+            1578,
+            53
+          ]
+        ],
+        [
+          [
+            1473,
+            386
+          ],
+          [
+            1487,
+            386
+          ],
+          [
+            1487,
+            400
+          ],
+          [
+            1473,
+            400
+          ]
+        ],
+        [
+          [
+            701,
+            742
+          ],
+          [
+            1216,
+            742
+          ],
+          [
+            1216,
+            782
+          ],
+          [
+            701,
+            782
+          ]
+        ],
+        [
+          [
+            1610,
+            1020
+          ],
+          [
+            1880,
+            1020
+          ],
+          [
+            1880,
+            1037
+          ],
+          [
+            1610,
+            1037
+          ]
+        ]
+      ],
+      "ground_truth": [
+        "HP 87/100   AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP"
+      ],
+      "exact_gt_hits": "1/7"
+    },
+    {
+      "arm": "motion_blur_2px",
+      "blur_px": 2.0,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        26.525
+      ],
+      "latency_min_s": 26.525,
+      "n_boxes": 7,
+      "texts": [
+        "HP 10 1 90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "[Joao] ele ta de awp.",
+        "[voce] recuando",
+        "[Maria] gg wp •",
+        "ERRO Dx80070005:ACESSO NEGADO"
+      ],
+      "scores": [
+        0.6893,
+        0.967,
+        0.9717,
+        0.9669,
+        0.9776,
+        0.9569,
+        0.9554
+      ],
+      "boxes": [
+        [
+          [
+            34,
+            27
+          ],
+          [
+            372,
+            27
+          ],
+          [
+            372,
+            63
+          ],
+          [
+            34,
+            63
+          ]
+        ],
+        [
+          [
+            1442,
+            29
+          ],
+          [
+            1884,
+            29
+          ],
+          [
+            1884,
+            62
+          ],
+          [
+            1442,
+            62
+          ]
+        ],
+        [
+          [
+            594,
+            744
+          ],
+          [
+            1325,
+            744
+          ],
+          [
+            1325,
+            797
+          ],
+          [
+            594,
+            797
+          ]
+        ],
+        [
+          [
+            33,
+            871
+          ],
+          [
+            242,
+            874
+          ],
+          [
+            242,
+            910
+          ],
+          [
+            33,
+            908
+          ]
+        ],
+        [
+          [
+            36,
+            909
+          ],
+          [
+            202,
+            909
+          ],
+          [
+            202,
+            936
+          ],
+          [
+            36,
+            936
+          ]
+        ],
+        [
+          [
+            34,
+            937
+          ],
+          [
+            194,
+            937
+          ],
+          [
+            194,
+            970
+          ],
+          [
+            34,
+            970
+          ]
+        ],
+        [
+          [
+            1482,
+            1019
+          ],
+          [
+            1881,
+            1019
+          ],
+          [
+            1881,
+            1042
+          ],
+          [
+            1482,
+            1042
+          ]
+        ]
+      ],
+      "ground_truth": [
+        "HP 87/100   AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP"
+      ],
+      "exact_gt_hits": "2/7"
+    },
+    {
+      "arm": "motion_blur_4px",
+      "blur_px": 4.0,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        10.581
+      ],
+      "latency_min_s": 10.581,
+      "n_boxes": 1,
+      "texts": [
+        "MO2490"
+      ],
+      "scores": [
+        0.9954
+      ],
+      "boxes": [
+        [
+          [
+            238,
+            29
+          ],
+          [
+            370,
+            29
+          ],
+          [
+            370,
+            63
+          ],
+          [
+            238,
+            63
+          ]
+        ]
+      ],
+      "ground_truth": [
+        "HP 87/100   AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP"
+      ],
+      "exact_gt_hits": "0/7"
+    },
+    {
+      "arm": "subtitle_fade_50pct",
+      "blur_px": 0.0,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "latency_s": [
+        40.993
+      ],
+      "latency_min_s": 40.993,
+      "n_boxes": 7,
+      "texts": [
+        "HP 87/100 AMMO,24/90",
+        "OBJETIVO:PLANTAR A BOMBA",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP",
+        "[Joao] ele ta de awp",
+        "[vote] recuando B",
+        "[Maria] gg wp",
+        "ERRO0x80070005:ACESSONEGADO"
+      ],
+      "scores": [
+        0.9668,
+        0.9821,
+        0.9808,
+        0.9999,
+        0.9754,
+        0.9734,
+        0.9979
+      ],
+      "boxes": [
+        [
+          [
+            32,
+            19
+          ],
+          [
+            374,
+            21
+          ],
+          [
+            374,
+            67
+          ],
+          [
+            32,
+            64
+          ]
+        ],
+        [
+          [
+            1443,
+            27
+          ],
+          [
+            1884,
+            27
+          ],
+          [
+            1884,
+            63
+          ],
+          [
+            1443,
+            63
+          ]
+        ],
+        [
+          [
+            593,
+            739
+          ],
+          [
+            1327,
+            743
+          ],
+          [
+            1327,
+            798
+          ],
+          [
+            593,
+            795
+          ]
+        ],
+        [
+          [
+            35,
+            878
+          ],
+          [
+            238,
+            878
+          ],
+          [
+            238,
+            907
+          ],
+          [
+            35,
+            907
+          ]
+        ],
+        [
+          [
+            36,
+            908
+          ],
+          [
+            219,
+            908
+          ],
+          [
+            219,
+            938
+          ],
+          [
+            36,
+            938
+          ]
+        ],
+        [
+          [
+            34,
+            935
+          ],
+          [
+            176,
+            935
+          ],
+          [
+            176,
+            969
+          ],
+          [
+            34,
+            969
+          ]
+        ],
+        [
+          [
+            1482,
+            1019
+          ],
+          [
+            1882,
+            1019
+          ],
+          [
+            1882,
+            1045
+          ],
+          [
+            1482,
+            1045
+          ]
+        ]
+      ],
+      "ground_truth": [
+        "HP 87/100   AMMO 24/90",
+        "OBJETIVO: PLANTAR A BOMBA",
+        "[Joao] ele ta de awp",
+        "[voce] recuando B",
+        "[Maria] gg wp",
+        "ERRO 0x80070005: ACESSO NEGADO",
+        "ELE TÁ DE AWP, NÃO SOBE A RAMP"
+      ],
+      "exact_gt_hits": "3/7"
+    }
+  ],
+  "errors": [],
+  "engine_init_s": 0.73,
+  "params": {
+    "_metadata": "ContainerMetadata(ref_type=typing.Any, object_type=<class 'dict'>, optional=True, key=None, flags={}, flags_root=False, resolver_cache=defaultdict(<class 'dict'>, {}), key_type=typing.Any, element_type=typing.Any)",
+    "_parent": "None",
+    "_flags_cache": "{'struct': None, 'readonly': None, 'convert': None, 'allow_objects': None, 'no_deepcopy_set_nodes': None}",
+    "_content": "{'Global': {'text_score': 0.5, 'use_det': True, 'use_cls': True, 'use_rec': True, 'use_preprocess_img': True, 'min_side_len': 30, 'max_side_len': 2000, 'use_vertical_padding': True, 'min_height': 30, 'width_height_ratio': 8, 'return_word_box': False, 'return_single_char_box': False, 'font_path': None, 'log_level': 'info', 'model_root_dir': WindowsPath('C:/Program Files/Python311/Lib/site-packages/rapidocr/models')}, 'EngineConfig': {'onnxruntime': {'intra_op_num_threads': -1, 'inter_op_num_threads': -1, 'enable_cpu_mem_arena': False, 'cpu_ep_cfg': {'arena_extend_strategy': 'kSameAsRequested'}, 'use_cuda': False, 'cuda_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'cudnn_conv_algo_search': 'EXHAUSTIVE', 'do_copy_in_default_stream': True}, 'use_dml': False, 'dml_ep_cfg': None, 'use_cann': False, 'cann_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'npu_mem_limit': 21474836480, 'op_select_impl_mode': 'high_performance', 'optypelist_for_implmode': 'Gelu', 'enable_cann_graph': True}, 'use_coreml': False, 'coreml_ep_cfg': {'ModelFormat': 'MLProgram', 'MLComputeUnits': 'ALL', 'RequireStaticInputShapes': 0, 'EnableOnSubgraphs': 0, 'SpecializationStrategy': 'FastPrediction', 'ProfileComputePlan': 0, 'AllowLowPrecisionAccumulationOnGPU': 0, 'ModelCacheDirectory': '/tmp/RapidOCR'}}, 'openvino': {'inference_num_threads': -1, 'performance_hint': None, 'performance_num_requests': -1, 'enable_cpu_pinning': None, 'num_streams': -1, 'enable_hyper_threading': None, 'scheduling_core_type': None}, 'paddle': {'cpu_math_library_num_threads': -1, 'use_npu': False, 'npu_ep_cfg': {'device_id': 0, 'envs': {'FLAGS_npu_jit_compile': 0, 'FLAGS_use_stride_kernel': 0, 'FLAGS_allocator_strategy': 'auto_growth', 'CUSTOM_DEVICE_BLACK_LIST': 'pad3d,pad3d_grad,set_value,set_value_with_tensor', 'FLAGS_npu_scale_aclnn': 'True', 'FLAGS_npu_split_aclnn': 'True'}}, 'use_cuda': False, 'cuda_ep_cfg': {'device_id': 0, 'gpu_mem': 500}}, 'torch': {'use_cuda': False, 'cuda_ep_cfg': {'device_id': 0}, 'use_npu': False, 'npu_ep_cfg': {'device_id': 0}, 'use_mps': False}, 'tensorrt': {'device_id': 0, 'use_fp16': True, 'use_int8': False, 'workspace_size': 1073741824, 'cache_dir': None, 'force_rebuild': False, 'det_profile': {'min_shape': [1, 3, 32, 32], 'opt_shape': [1, 3, 736, 736], 'max_shape': [1, 3, 2048, 2048]}, 'rec_profile': {'min_shape': [1, 3, 48, 32], 'opt_shape': [6, 3, 48, 320], 'max_shape': [6, 3, 48, 2048]}, 'cls_profile': {'min_shape': [1, 3, 48, 32], 'opt_shape': [6, 3, 48, 192], 'max_shape': [6, 3, 48, 192]}}, 'mnn': {}}, 'Det': {'engine_type': <EngineType.ONNXRUNTIME: 'onnxruntime'>, 'lang_type': <LangDet.CH: 'ch'>, 'model_type': <ModelType.SMALL: 'small'>, 'ocr_version': <OCRVersion.PPOCRV6: 'PP-OCRv6'>, 'task_type': <TaskType.DET: 'det'>, 'model_path': None, 'model_dir': None, 'limit_side_len': 736, 'limit_type': 'min', 'std': [0.5, 0.5, 0.5], 'mean': [0.5, 0.5, 0.5], 'thresh': 0.3, 'box_thresh': 0.5, 'max_candidates': 1000, 'unclip_ratio': 1.6, 'use_dilation': True, 'score_mode': 'fast', 'engine_cfg': {'intra_op_num_threads': -1, 'inter_op_num_threads': -1, 'enable_cpu_mem_arena': False, 'cpu_ep_cfg': {'arena_extend_strategy': 'kSameAsRequested'}, 'use_cuda': False, 'cuda_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'cudnn_conv_algo_search': 'EXHAUSTIVE', 'do_copy_in_default_stream': True}, 'use_dml': False, 'dml_ep_cfg': None, 'use_cann': False, 'cann_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'npu_mem_limit': 21474836480, 'op_select_impl_mode': 'high_performance', 'optypelist_for_implmode': 'Gelu', 'enable_cann_graph': True}, 'use_coreml': False, 'coreml_ep_cfg': {'ModelFormat': 'MLProgram', 'MLComputeUnits': 'ALL', 'RequireStaticInputShapes': 0, 'EnableOnSubgraphs': 0, 'SpecializationStrategy': 'FastPrediction', 'ProfileComputePlan': 0, 'AllowLowPrecisionAccumulationOnGPU': 0, 'ModelCacheDirectory': '/tmp/RapidOCR'}}, 'model_root_dir': WindowsPath('C:/Program Files/Python311/Lib/site-packages/rapidocr/models')}, 'Cls': {'engine_type': <EngineType.ONNXRUNTIME: 'onnxruntime'>, 'lang_type': <LangCls.CH: 'ch'>, 'model_type': <ModelType.MOBILE: 'mobile'>, 'ocr_version': <OCRVersion.PPOCRV4: 'PP-OCRv4'>, 'task_type': <TaskType.CLS: 'cls'>, 'model_path': None, 'model_dir': None, 'cls_image_shape': [3, 48, 192], 'cls_batch_num': 6, 'cls_thresh': 0.9, 'label_list': ['0', '180'], 'engine_cfg': {'intra_op_num_threads': -1, 'inter_op_num_threads': -1, 'enable_cpu_mem_arena': False, 'cpu_ep_cfg': {'arena_extend_strategy': 'kSameAsRequested'}, 'use_cuda': False, 'cuda_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'cudnn_conv_algo_search': 'EXHAUSTIVE', 'do_copy_in_default_stream': True}, 'use_dml': False, 'dml_ep_cfg': None, 'use_cann': False, 'cann_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'npu_mem_limit': 21474836480, 'op_select_impl_mode': 'high_performance', 'optypelist_for_implmode': 'Gelu', 'enable_cann_graph': True}, 'use_coreml': False, 'coreml_ep_cfg': {'ModelFormat': 'MLProgram', 'MLComputeUnits': 'ALL', 'RequireStaticInputShapes': 0, 'EnableOnSubgraphs': 0, 'SpecializationStrategy': 'FastPrediction', 'ProfileComputePlan': 0, 'AllowLowPrecisionAccumulationOnGPU': 0, 'ModelCacheDirectory': '/tmp/RapidOCR'}}, 'model_root_dir': WindowsPath('C:/Program Files/Python311/Lib/site-packages/rapidocr/models')}, 'Rec': {'engine_type': <EngineType.ONNXRUNTIME: 'onnxruntime'>, 'lang_type': <LangRec.CH: 'ch'>, 'model_type': <ModelType.SMALL: 'small'>, 'ocr_version': <OCRVersion.PPOCRV6: 'PP-OCRv6'>, 'task_type': <TaskType.REC: 'rec'>, 'model_path': None, 'model_dir': None, 'rec_keys_path': None, 'rec_img_shape': [3, 48, 320], 'rec_batch_num': 6, 'engine_cfg': {'intra_op_num_threads': -1, 'inter_op_num_threads': -1, 'enable_cpu_mem_arena': False, 'cpu_ep_cfg': {'arena_extend_strategy': 'kSameAsRequested'}, 'use_cuda': False, 'cuda_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'cudnn_conv_algo_search': 'EXHAUSTIVE', 'do_copy_in_default_stream': True}, 'use_dml': False, 'dml_ep_cfg': None, 'use_cann': False, 'cann_ep_cfg': {'device_id': 0, 'arena_extend_strategy': 'kNextPowerOfTwo', 'npu_mem_limit': 21474836480, 'op_select_impl_mode': 'high_performance', 'optypelist_for_implmode': 'Gelu', 'enable_cann_graph': True}, 'use_coreml': False, 'coreml_ep_cfg': {'ModelFormat': 'MLProgram', 'MLComputeUnits': 'ALL', 'RequireStaticInputShapes': 0, 'EnableOnSubgraphs': 0, 'SpecializationStrategy': 'FastPrediction', 'ProfileComputePlan': 0, 'AllowLowPrecisionAccumulationOnGPU': 0, 'ModelCacheDirectory': '/tmp/RapidOCR'}}, 'font_path': None, 'model_root_dir': WindowsPath('C:/Program Files/Python311/Lib/site-packages/rapidocr/models')}}"
+  }
+}

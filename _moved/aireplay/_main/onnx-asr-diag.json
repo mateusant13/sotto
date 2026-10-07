@@ -1,0 +1,90 @@
+{
+  "instrument": "onnx_asr_probe.py",
+  "pid": 41564,
+  "python": "3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]",
+  "argv": [
+    "H:\\aireplay\\_main\\onnx_asr_probe.py",
+    "--model-dir",
+    "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+    "--quantization",
+    "int8",
+    "--out",
+    "H:\\aireplay\\_main\\onnx-asr-diag.json",
+    "--timeline",
+    "H:\\aireplay\\_main\\onnx-asr-diag-timeline.jsonl"
+  ],
+  "started": "2026-10-07T06:49:21",
+  "onnxruntime": "1.30.0",
+  "available_providers": [
+    "TensorrtExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "onnx_asr": "0.12.0",
+  "load_seconds": 9.149,
+  "model_dir": "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+  "quantization": "int8",
+  "sessions": [
+    {
+      "attr": "_encoder",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "inputs": {
+        "audio_signal": [
+          "audio_signal_dynamic_axes_1",
+          128,
+          "audio_signal_dynamic_axes_2"
+        ],
+        "length": [
+          "length_dynamic_axes_1"
+        ]
+      }
+    },
+    {
+      "attr": "_decoder_joint",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "inputs": {
+        "encoder_outputs": [
+          "encoder_outputs_dynamic_axes_1",
+          1024,
+          "encoder_outputs_dynamic_axes_2"
+        ],
+        "targets": [
+          "targets_dynamic_axes_1",
+          "targets_dynamic_axes_2"
+        ],
+        "target_length": [
+          "target_length_dynamic_axes_1"
+        ],
+        "input_states_1": [
+          2,
+          "input_states_1_dynamic_axes_1",
+          640
+        ],
+        "input_states_2": [
+          2,
+          "input_states_2_dynamic_axes_1",
+          640
+        ]
+      }
+    }
+  ],
+  "sess_intra_op_threads": 0,
+  "cpu_count": 20,
+  "total_wall_s": 9.343,
+  "rss": {
+    "peak_working_set_mb": 749.4,
+    "peak_working_set_os_mb": 756.5,
+    "peak_private_mb": 1341.1,
+    "samples": 12
+  },
+  "rss_phase_peaks_mb": {
+    "startup": 19.0,
+    "import-done": 749.4,
+    "loaded": 749.4,
+    "done": 749.4
+  }
+}

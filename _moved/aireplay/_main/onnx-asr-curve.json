@@ -1,0 +1,211 @@
+{
+  "instrument": "onnx_asr_probe.py",
+  "pid": 29528,
+  "python": "3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]",
+  "argv": [
+    "H:\\aireplay\\_main\\onnx_asr_probe.py",
+    "--model-dir",
+    "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+    "--quantization",
+    "int8",
+    "--loop-wav",
+    "H:\\aireplay\\_main\\onnx-asr-scratch\\slice-30s.wav",
+    "--loop-wav-seconds",
+    "30.016",
+    "--providers",
+    "CPUExecutionProvider",
+    "--loop-passes",
+    "12",
+    "--sample-ms",
+    "250",
+    "--out",
+    "H:\\aireplay\\_main\\onnx-asr-curve.json",
+    "--timeline",
+    "H:\\aireplay\\_main\\onnx-asr-curve-timeline.jsonl"
+  ],
+  "started": "2026-10-07T06:55:31",
+  "onnxruntime": "1.30.0",
+  "available_providers": [
+    "TensorrtExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "onnx_asr": "0.12.0",
+  "providers_requested": [
+    "CPUExecutionProvider"
+  ],
+  "load_seconds": 15.14,
+  "model_dir": "H:\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+  "quantization": "int8",
+  "sessions": [
+    {
+      "attr": "_encoder",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "inputs": {
+        "audio_signal": [
+          "audio_signal_dynamic_axes_1",
+          128,
+          "audio_signal_dynamic_axes_2"
+        ],
+        "length": [
+          "length_dynamic_axes_1"
+        ]
+      }
+    },
+    {
+      "attr": "_decoder_joint",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "inputs": {
+        "encoder_outputs": [
+          "encoder_outputs_dynamic_axes_1",
+          1024,
+          "encoder_outputs_dynamic_axes_2"
+        ],
+        "targets": [
+          "targets_dynamic_axes_1",
+          "targets_dynamic_axes_2"
+        ],
+        "target_length": [
+          "target_length_dynamic_axes_1"
+        ],
+        "input_states_1": [
+          2,
+          "input_states_1_dynamic_axes_1",
+          640
+        ],
+        "input_states_2": [
+          2,
+          "input_states_2_dynamic_axes_1",
+          640
+        ]
+      }
+    }
+  ],
+  "sess_intra_op_threads": 0,
+  "cpu_count": 20,
+  "curve": {
+    "wav": "H:\\aireplay\\_main\\onnx-asr-scratch\\slice-30s.wav",
+    "elapsed_note": "wav file; onnx-asr reports no duration, --loop-wav-seconds is a probe argument",
+    "passes": 12,
+    "curve_wall_seconds": 445.827,
+    "audio_seconds_total": 360.192,
+    "rtfx_mean": 0.808,
+    "per_pass": [
+      {
+        "pass": 1,
+        "wall_s": 72.313,
+        "ws_mb": 953.7,
+        "private_mb": 1644.0,
+        "t_rel_s": 72.313,
+        "rtfx": 0.415
+      },
+      {
+        "pass": 2,
+        "wall_s": 32.57,
+        "ws_mb": 1151.3,
+        "private_mb": 1908.6,
+        "t_rel_s": 104.904,
+        "rtfx": 0.922
+      },
+      {
+        "pass": 3,
+        "wall_s": 25.709,
+        "ws_mb": 1151.3,
+        "private_mb": 1908.5,
+        "t_rel_s": 130.62,
+        "rtfx": 1.168
+      },
+      {
+        "pass": 4,
+        "wall_s": 26.378,
+        "ws_mb": 1151.4,
+        "private_mb": 1908.5,
+        "t_rel_s": 157.017,
+        "rtfx": 1.138
+      },
+      {
+        "pass": 5,
+        "wall_s": 16.535,
+        "ws_mb": 1151.4,
+        "private_mb": 1908.5,
+        "t_rel_s": 173.558,
+        "rtfx": 1.815
+      },
+      {
+        "pass": 6,
+        "wall_s": 49.127,
+        "ws_mb": 1046.8,
+        "private_mb": 1908.5,
+        "t_rel_s": 222.689,
+        "rtfx": 0.611
+      },
+      {
+        "pass": 7,
+        "wall_s": 39.375,
+        "ws_mb": 1071.5,
+        "private_mb": 1908.5,
+        "t_rel_s": 262.088,
+        "rtfx": 0.762
+      },
+      {
+        "pass": 8,
+        "wall_s": 29.062,
+        "ws_mb": 1071.7,
+        "private_mb": 1908.6,
+        "t_rel_s": 291.157,
+        "rtfx": 1.033
+      },
+      {
+        "pass": 9,
+        "wall_s": 29.287,
+        "ws_mb": 1071.8,
+        "private_mb": 1908.6,
+        "t_rel_s": 320.563,
+        "rtfx": 1.025
+      },
+      {
+        "pass": 10,
+        "wall_s": 34.87,
+        "ws_mb": 1071.9,
+        "private_mb": 1908.6,
+        "t_rel_s": 355.435,
+        "rtfx": 0.861
+      },
+      {
+        "pass": 11,
+        "wall_s": 44.416,
+        "ws_mb": 1071.9,
+        "private_mb": 1908.5,
+        "t_rel_s": 399.86,
+        "rtfx": 0.676
+      },
+      {
+        "pass": 12,
+        "wall_s": 45.957,
+        "ws_mb": 1071.9,
+        "private_mb": 1908.5,
+        "t_rel_s": 445.826,
+        "rtfx": 0.653
+      }
+    ]
+  },
+  "total_wall_s": 462.377,
+  "rss": {
+    "peak_working_set_mb": 1174.0,
+    "peak_working_set_os_mb": 1184.4,
+    "peak_private_mb": 1941.7,
+    "samples": 1393
+  },
+  "rss_phase_peaks_mb": {
+    "startup": 52.6,
+    "import-done": 749.3,
+    "loaded": 749.3,
+    "curve": 1174.0,
+    "curve-done": 1071.9,
+    "done": 1071.9
+  }
+}

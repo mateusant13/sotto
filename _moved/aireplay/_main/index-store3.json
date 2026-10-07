@@ -1,0 +1,63 @@
+{
+  "probe": "_index-store-probe3.py",
+  "when": "2026-10-07T08:22:13",
+  "tables": {
+    "C_partition_video": {
+      "before_checkpoint": {
+        "db_bytes": 1094725632,
+        "wal_bytes": 0
+      },
+      "checkpoint_s": 0.0,
+      "after_db_bytes": 1094725632,
+      "page_size": 4096,
+      "page_count": 267267,
+      "count": 120000,
+      "knn_k10_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      },
+      "knn_k100_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      },
+      "knn_k100_window_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      },
+      "knn_k100_video42_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      }
+    },
+    "A_nopartition": {
+      "before_checkpoint": {
+        "db_bytes": 130695168,
+        "wal_bytes": 0
+      },
+      "checkpoint_s": 0.0,
+      "after_db_bytes": 130695168,
+      "page_size": 4096,
+      "page_count": 31908,
+      "count": 120000,
+      "knn_k10_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      },
+      "knn_k100_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      },
+      "knn_k100_window_after_checkpoint": {
+        "min_ms": 0.0,
+        "median_ms": 0.0,
+        "reps": 5
+      }
+    }
+  }
+}

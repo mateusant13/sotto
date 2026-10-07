@@ -1,0 +1,38 @@
+{
+  "mean_abs_160x90": {
+    "per_frame_s": 2.7e-05,
+    "quiet_max": 7.5372916666666665,
+    "onset_idx": 44,
+    "onset_value": 30.640833333333333,
+    "offset_idx": 68,
+    "offset_value": 30.640833333333333,
+    "first_at_or_above_quiet_max": 44,
+    "quiet_mean": 0.20574869791666664,
+    "quiet_std": 0.9236875915093663,
+    "n_above_quiet_max": 3
+  },
+  "mean_abs_40x23": {
+    "per_frame_s": 1e-05,
+    "quiet_max": 8.25,
+    "onset_idx": 44,
+    "onset_value": 33.66195652173913,
+    "offset_idx": 68,
+    "offset_value": 33.66195652173913,
+    "first_at_or_above_quiet_max": 44,
+    "quiet_mean": 0.22520380434782608,
+    "quiet_std": 1.011029288365375,
+    "n_above_quiet_max": 3
+  },
+  "dhash_bits_40x23": {
+    "per_frame_s": 1.4e-05,
+    "quiet_max": 117.0,
+    "onset_idx": 44,
+    "onset_value": 464.0,
+    "offset_idx": 68,
+    "offset_value": 464.0,
+    "first_at_or_above_quiet_max": 44,
+    "quiet_mean": 3.453125,
+    "quiet_std": 15.078885991159128,
+    "n_above_quiet_max": 3
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "lane": "02-durability-oracle",
+  "repo_root": "H:\\sotto",
+  "product_root": "H:\\sotto\\_moved\\aireplay",
+  "arms": {
+    "ARM-0-real": {
+      "label": "ARM-0-real product tree",
+      "path": "H:\\sotto\\_moved\\aireplay",
+      "status": "GREEN",
+      "tracked_files": 0,
+      "untracked_files": 671
+    },
+    "ARM-A-corrupt": {
+      "label": "ARM-A-corrupt (must be RED)",
+      "path": "H:\\sotto\\_moved\\aireplay-THIS-PATH-DOES-NOT-EXIST",
+      "status": "RED",
+      "problem": "path does not exist - the oracle cannot measure a tree that is not there"
+    }
+  },
+  "clean_dryrun_paths_under_moved": 412,
+  "worktrees": [
+    {
+      "worktree": "H:/sotto",
+      "sees_product": true
+    },
+    {
+      "worktree": "H:/sotto-wt-EmbedRuntime",
+      "sees_product": false
+    },
+    {
+      "worktree": "H:/sotto-wt-EngineProc",
+      "sees_product": false
+    },
+    {
+      "worktree": "H:/sotto-wt-FlatEndpoint",
+      "sees_product": false
+    },
+    {
+      "worktree": "H:/sotto-wt-IndexImpl",
+      "sees_product": false
+    },
+    {
+      "worktree": "H:/sotto-wt-OcrImpl",
+      "sees_product": false
+    },
+    {
+      "worktree": "H:/sotto-wt-PanelGap",
+      "sees_product": false
+    },
+    {
+      "worktree": "H:/sotto-wt-TapRestartLoop",
+      "sees_product": false
+    }
+  ],
+  "worktrees_that_see_product": 1,
+  "oracle_verdict": "GREEN",
+  "note": "DRY RUN ONLY. This oracle never runs git clean, never add/checkout/reset."
+}

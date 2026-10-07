@@ -1,0 +1,19 @@
+{
+  "probe": "_index-crash-probe.py",
+  "when": "2026-10-07T10:30:45",
+  "kill": "taskkill /F /PID (TerminateProcess)",
+  "sqlite_vec": {
+    "rows_committed_by_writer_at_kill": 20000,
+    "rows_after_kill": 20000,
+    "rows_lost_beyond_last_commit": 0,
+    "wal_bytes_at_kill": 5471392,
+    "integrity_check": "ok",
+    "knn_k100_rows_after_reopen": 100,
+    "elapsed_s": 1.27,
+    "verdict": "committed rows survive; uncommitted batch rolled back"
+  },
+  "hnswlib": {
+    "importable": false,
+    "error": "ModuleNotFoundError: No module named 'hnswlib'"
+  }
+}

@@ -1,0 +1,15 @@
+STEP start
+STEP table non-null slots=42
+STEP create-instance ok
+STEP CUDA driver context handle=2835846180448
+STEP open H264 -> 5 ptr=False
+Traceback (most recent call last):
+  File "H:\aireplay\_main\nvenc-caps-probe.py", line 457, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "H:\aireplay\_main\nvenc-caps-probe.py", line 436, in main
+    report(codec, dev_type, device_ptr)
+  File "H:\aireplay\_main\nvenc-caps-probe.py", line 380, in report
+    out["sessions"][codec] = rec
+    ~~~^^^^^^^^^^^^
+KeyError: 'sessions'

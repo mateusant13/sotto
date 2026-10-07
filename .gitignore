@@ -78,3 +78,47 @@ worker/_sotto_worker_agcinert.py
 *.onnx.data
 *.safetensors
 _main/_ordem-before/models/
+
+# CORRECTION 2026-10-07: the line above said "the Rust toolchain cannot run on
+# this host at all". That was FALSE and is measured wrong here. cargo 1.97.1
+# works, `cargo build` in app/src-tauri returns rc=0, and it produced a valid
+# 215.7 MB PE executable (H:\jcode-target-gnu\debug\sotto.exe). The only real
+# blocker had been 2 lines of Tauri-1-era code, fixed in 5eca648.
+
+# The moved ShadowPlay clone (Sotto). Source: docs/, specs/, src/, receipts/,
+# AGENTS.md, ROADMAP.md.
+#
+# DURABILITY 2026-10-07: this tree arrived by a move from H:\aireplay and was
+# for a while ENTIRELY UNTRACKED - `git clean -fd` would have taken 419 paths,
+# i.e. the whole product. It is tracked now. Never ignore it wholesale again:
+# if a subtree must stay untracked, ignore the ARTEFACTS, not the source.
+
+_moved/aireplay/models/
+_moved/aireplay/.hf-home/
+
+# _main/ holds probes, oracles, logs and run artefacts. The ORACLE sources stay
+# tracked on purpose - they are how every claim in this repo gets checked - and
+# only their output is ignored.
+_moved/aireplay/_main/logs/
+_moved/aireplay/_main/runs/
+_moved/aireplay/_main/build/
+_moved/aireplay/_main/*/
+_moved/aireplay/_main/*.log
+_moved/aireplay/_main/*.out
+_moved/aireplay/_main/*.err
+_moved/aireplay/_main/*.pid
+_moved/aireplay/_main/*.stdout
+_moved/aireplay/_main/heartbeat.lock
+_moved/aireplay/_main/heartbeat-run-*
+_moved/aireplay/_main/_hb-*.lock
+_moved/aireplay/_main/cargoprobe/
+
+# Stray probes written to the old Sotto tree during the Tauri investigation.
+_main/cargo-ver.*
+_main/tauri-build*.out
+_main/tauri-build*.err
+_main/mcode-ver.*
+_main/move-robocopy.log
+_main/gitignore-ORIGINAL.txt
+_main/_probe-sqlite-cron.py
+_main/_probe-crons.py

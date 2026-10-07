@@ -1,0 +1,264 @@
+================================================================================
+nvEncodeAPI probe — raw status codes, MEASURED on this box
+================================================================================
+timestamp      : 2026-10-07 06:40:53 (local)
+source header  : nvEncodeAPI.h 13.1  sha256 8776FDDCB8FEBC6AEC4D73989B1F21831EB30306BC583DA55B4BF0C14A1DC228
+               : byte-identical to FFmpeg/nv-codec-headers master eddcea9e27f6b772057c9b3f87de2cc1737faffc
+               : official NVIDIA Video Codec SDK NOT used (its download is behind a login)
+compiler       : g++ 15.2.0 15.2.0
+struct sizes   : SESSION_EX_PARAMS=1552  INITIALIZE_PARAMS=1800  CONFIG=3584
+versions       : NVENCAPI_VERSION=0x0100000D  SESSION_EX_VER=0x7101000D  FUNCTION_LIST_VER=0x7102000D
+device types   : DIRECTX=0  CUDA=1
+error codes    : OUT_OF_MEMORY=10  INVALID_VERSION=15  INVALID_DEVICE=4  INVALID_PARAM=8  INVALID_PTR=6  INCOMPATIBLE_CLIENT_KEY=21
+
+--- 0. GPU / machine context (so a session count is not read in a vacuum) -----
+  physical RAM   : 48888 MiB total, 14797 MiB available
+  probe exe      : H:\aireplay\_main\build\nvenc-probe.exe
+  probe peak WS  : 8 MiB
+  nvidia-adjacent process: pid=6340 C:\Program Files\NVIDIA Corporation\NvContainer\nvcontainer.exe
+  nvidia-adjacent process: pid=31640 C:\Program Files\NVIDIA Corporation\NvContainer\nvcontainer.exe
+  nvidia-adjacent process: pid=24152 C:\Program Files\NVIDIA Corporation\NvContainer\nvcontainer.exe
+  nvidia-adjacent process: pid=24240 C:\Program Files\NVIDIA Corporation\NvContainer\nvcontainer.exe
+  nvidia-adjacent process: pid=7092 C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe
+  nvidia-adjacent process: pid=21188 C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe
+  nvidia-adjacent process: pid=7388 C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe
+  nvidia-adjacent process: pid=21496 C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe
+  nvidia-adjacent process: pid=29904 C:\Program Files\ShareX\ShareX.exe
+  nvidia-adjacent process: pid=4108 C:\Program Files\NVIDIA Corporation\NVIDIA App\CEF\NVIDIA Overlay.exe
+  nvidia-adjacent process: pid=19596 C:\Program Files\NVIDIA Corporation\NVIDIA App\CEF\NVIDIA Overlay.exe
+  nvidia-adjacent process: pid=17840 C:\Program Files\NVIDIA Corporation\NVIDIA App\CEF\NVIDIA Overlay.exe
+  nvidia-adjacent process: pid=2672 C:\Program Files\NVIDIA Corporation\NVIDIA App\CEF\NVIDIA Overlay.exe
+  nvidia-adjacent process: pid=29640 C:\Program Files\NVIDIA Corporation\NVIDIA App\CEF\NVIDIA Overlay.exe
+  note: which of those holds the pre-existing NVENC session is NOT proven here;
+        nvidia-smi reports only the COUNT (1 before this probe ran).
+
+--- 1. driver/API version handshake -------------------------------------------
+dll            : C:\WINDOWS\SYSTEM32\nvEncodeAPI64.dll
+NvEncodeAPIGetMaxSupportedVersion -> status=0 (NV_ENC_SUCCESS)  driverApi=0x000000D1 (major=0 minor=209)
+NvEncodeAPICreateInstance(version=0x7102000D) -> NV_ENC_SUCCESS
+function table : 40 of 40 named slots non-null; reserved1=NON-NULL(unexpected) reserved2[0]=null-as-documented
+
+--- DXGI adapters (all) ---
+  idx=0 vendor=0x10DE device=0x2C02 vram=15979MB flags=0x0 name=NVIDIA GeForce RTX 5080
+  idx=1 vendor=0x8086 device=0xA780 vram=128MB flags=0x0 name=Intel(R) UHD Graphics 770
+  idx=2 vendor=0x1414 device=0x008C vram=0MB flags=0x2 name=Microsoft Basic Render Driver
+
+--- 2. a real D3D11 device ON THE NVIDIA ADAPTER (not the default one) --------
+  D3D11CreateDevice(adapter = vendor 0x10DE, DRIVER_TYPE_UNKNOWN) ->
+    hr=0x00000000  feature_level=0xB000  device=00000225511012F0  name=NVIDIA GeForce RTX 5080
+
+--- 2b. CONTROL: D3D11CreateDevice(NULL, HARDWARE) — which adapter is that? ---
+  hr=0x00000000 feature_level=0xB000
+  -> the DEFAULT device really lives on: vendor=0x10DE name=NVIDIA GeForce RTX 5080
+
+--- 3. CUDA arm --------------------------------------------------------------
+  nvcuda exports : cuInit=yes cuDeviceGet=yes cuCtxCreate_v2=yes
+  cuInit(0)        -> 0
+  cuDeviceGet(0)   -> 0  (CUdevice=0)
+  cuCtxCreate_v2   -> 0  (CUcontext=0000022597ACBA20)
+  NvEncodeAPICreateInstance (fresh table for the CUDA arm) -> NV_ENC_SUCCESS
+
+  ARM 2 — DEVICE_TYPE_CUDA, real CUDA context, header-correct version/apiVersion
+    sent version=0x7101000D deviceType=1 device=0000022597ACBA20 apiVersion=0x0100000D
+    NvEncOpenEncodeSessionEx -> 0 (NV_ENC_SUCCESS)  encoder=000002254499E040
+    CUDA arm: lastErrorString: Success.
+    released -> 0 (NV_ENC_SUCCESS)
+
+--- 4. DIRECTX arm ------------------------------------------------------------
+  NvEncodeAPICreateInstance (fresh table for the DIRECTX arm) -> NV_ENC_SUCCESS
+  ARM 3 — DEVICE_TYPE_DIRECTX, ID3D11Device on the NVIDIA adapter, header-correct
+    sent version=0x7101000D deviceType=0 device=00000225511012F0 apiVersion=0x0100000D
+    NvEncOpenEncodeSessionEx -> 0 (NV_ENC_SUCCESS)  encoder=00000225449ABF60
+    DX arm: lastErrorString: Success.
+    released -> 0 (NV_ENC_SUCCESS)
+
+--- 5. VERSION arms — the status-5 hypothesis, one variable at a time --------
+
+  ARM 4  version = header macro (CORRECT), but apiVersion = 0
+    sent version=0x7101000D apiVersion=0x00000000 -> 0 (NV_ENC_SUCCESS)  encoder=00000225449ABF60
+    (released)
+
+  ARM 5  version = 0 (field never filled), apiVersion correct
+    sent version=0x00000000 apiVersion=0x0100000D -> 15 (NV_ENC_ERR_INVALID_VERSION)  encoder=0000000000000000
+    arm: lastErrorString: EncodeAPI Internal Error.
+
+  ARM 6  version = NVENCAPI_STRUCT_VERSION(99) (bogus struct ver)
+    sent version=0x7163000D apiVersion=0x0100000D -> 15 (NV_ENC_ERR_INVALID_VERSION)  encoder=0000000000000000
+    arm: lastErrorString: EncodeAPI Internal Error.
+
+  ARM 7  apiVersion = 12.0 (older than driver 13.1)
+    sent version=0x7101000D apiVersion=0x0000000C -> 0 (NV_ENC_SUCCESS)  encoder=00000225449ABF60
+    (released)
+
+  ARM 8  apiVersion = 14.0 (newer than driver 13.1)
+    sent version=0x7101000D apiVersion=0x0000000E -> 0 (NV_ENC_SUCCESS)  encoder=00000225449ABF60
+    (released)
+
+--- 6. open ONE session and INITIALISE it (the capture lane never got here) ---
+  NvEncOpenEncodeSessionEx -> 0 (NV_ENC_SUCCESS)  (session=00000225449ABF60)
+  NvEncInitializeEncoder(H264 P3, 1920x1080, NV12, 60fps, tuning=LOW_LATENCY, no explicit config)
+    -> 0 (NV_ENC_SUCCESS)
+  => encoder INITIALISED: YES
+
+--- 6a. what the driver itself offers (needs only an OPEN session) -----------
+  codec GUIDs:
+    nvEncGetEncodeGUIDCount -> 3
+      6BC82762-4E63-4CA4  <- H.264
+      790CDC88-4522-4D7B  <- HEVC
+      0A352289-0AA7-4759  <- AV1
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+      00000000-0000-0000  <- (other)
+  INPUT BUFFER FORMATS the driver lists for H.264:
+    nvEncGetInputFormatCount -> 13
+      0x00000001
+      0x00000010
+      0x00000100
+      0x00001000
+      0x00010000
+      0x00100000
+      0x40000001
+      0x40000002
+      0x01000000
+      0x10000000
+      0x04000000
+      0x02000000
+      0x20000000
+  preset config the DRIVER defines for P3/H264/LOW_LATENCY:
+    status=0 (NV_ENC_SUCCESS)  profileGUID=00000000-0000 gopLength=4294967295 frameIntervalP=1
+    rc.rateControlMode=0x2 rc.averageBitRate=0
+
+--- 6b. register a REAL D3D11 NV12 texture as an NVENC input resource --------
+    CreateTexture2D(NV12 1920x1080) hr=0x00000000 tex=00000225446BCFE0
+    NvEncRegisterResource -> 0 (NV_ENC_SUCCESS) registeredPtr=00000225449FA8C0
+    NvEncMapInputResource -> 0 (NV_ENC_SUCCESS) mappedPtr=00000225449FA8C0
+    => D3D11 texture -> NVENC zero-copy path COMPLETED on this box (no synthetic frames encoded)
+
+--- 6c. incremental INIT self-test: which config actually initialises? --------
+  STEP 1  NV12 tuning=LOW_LATENCY   encodeConfig=NULL        -> 0 (NV_ENC_SUCCESS)
+  STEP 2  NV12 tuning=LOW_LATENCY   encodeConfig=CBR 40Mbps  -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  STEP 3  NV12 tuning=UNDEFINED(0)  encodeConfig=NULL        -> 12 (NV_ENC_ERR_UNSUPPORTED_PARAM)
+  STEP 4  NV12 tuning=HIGH_QUALITY(1) encodeConfig=NULL      -> 0 (NV_ENC_SUCCESS)
+
+  BUFFER FORMAT sweep (fresh session each, minimal config):
+  STEP F  fmt=NV12          (0x00000001) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+  STEP F  fmt=IYUV          (0x00000100) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+  STEP F  fmt=YV12          (0x00000010) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+  STEP F  fmt=YUV444        (0x00001000) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+  STEP F  fmt=YUV420_10BIT  (0x00010000) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+  STEP F  fmt=ARGB          (0x01000000) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+  STEP F  fmt=ABGR          (0x10000000) tuning=LOW_LATENCY  -> 0 (NV_ENC_SUCCESS)
+
+  => the first SUCCESS above is a config this box accepts.  If STEP 3 fails and
+     STEP 1 passes, the failure is the UNDEFINED tuning value, not the format.
+
+  FIELD ISOLATION for STEP 2 (from the failing config towards a working one):
+  level 0  encodeConfig=memset(0) + version only           -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 1  + profileGUID = H264 PROFILE_HIGH               -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 2  + gopLength = 120                               -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 3  + frameIntervalP = 1                            -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 4  + rcParams.version only                         -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 5  + rc.rateControlMode = CBR                      -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 6  + rc.averageBitRate / maxBitRate = 40Mbps       -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+  level 7  + rc.vbvBufferSize / vbvInitialDelay = 40Mbps   -> 8 (NV_ENC_ERR_INVALID_PARAM)
+        driver says: Unsupported color format.
+
+  STEP 5  explicit config taken from nvEncGetEncodePresetConfig(Ex), then refined:
+    nvEncGetEncodePresetConfigEx(P3, LOW_LATENCY) -> 0 (NV_ENC_SUCCESS)
+    NvEncInitializeEncoder(explicit config from the driver) -> 0 (NV_ENC_SUCCESS)
+    => an EXPLICIT config DOES initialise; the earlier 8 was the config
+       CONTENT, not the concept.  (gopLength=120 frameIntervalP=1 rc=0x2)
+
+--- 7. NvEncGetEncodeCaps per codec ------------------------------------------
+  [H.264]
+    NUM_ENCODER_ENGINES  -> status=0 (NV_ENC_SUCCESS) value=2
+    WIDTH_MAX            -> status=0 (NV_ENC_SUCCESS) value=4096
+    HEIGHT_MAX           -> status=0 (NV_ENC_SUCCESS) value=4096
+    WIDTH_MIN            -> status=0 (NV_ENC_SUCCESS) value=145
+    HEIGHT_MIN           -> status=0 (NV_ENC_SUCCESS) value=49
+    RATECONTROL_MODES    -> status=0 (NV_ENC_SUCCESS) value=3
+    SUPPORT_10BIT        -> status=0 (NV_ENC_SUCCESS) value=1
+    MB_PER_SEC_MAX       -> status=0 (NV_ENC_SUCCESS) value=983040
+  [HEVC]
+    NUM_ENCODER_ENGINES  -> status=0 (NV_ENC_SUCCESS) value=2
+    WIDTH_MAX            -> status=0 (NV_ENC_SUCCESS) value=8192
+    HEIGHT_MAX           -> status=0 (NV_ENC_SUCCESS) value=8192
+    WIDTH_MIN            -> status=0 (NV_ENC_SUCCESS) value=129
+    HEIGHT_MIN           -> status=0 (NV_ENC_SUCCESS) value=33
+    RATECONTROL_MODES    -> status=0 (NV_ENC_SUCCESS) value=3
+    SUPPORT_10BIT        -> status=0 (NV_ENC_SUCCESS) value=1
+    MB_PER_SEC_MAX       -> status=0 (NV_ENC_SUCCESS) value=983040
+  [AV1]
+    NUM_ENCODER_ENGINES  -> status=0 (NV_ENC_SUCCESS) value=2
+    WIDTH_MAX            -> status=0 (NV_ENC_SUCCESS) value=8192
+    HEIGHT_MAX           -> status=0 (NV_ENC_SUCCESS) value=8192
+    WIDTH_MIN            -> status=0 (NV_ENC_SUCCESS) value=192
+    HEIGHT_MIN           -> status=0 (NV_ENC_SUCCESS) value=128
+    RATECONTROL_MODES    -> status=0 (NV_ENC_SUCCESS) value=3
+    SUPPORT_10BIT        -> status=0 (NV_ENC_SUCCESS) value=1
+    MB_PER_SEC_MAX       -> status=0 (NV_ENC_SUCCESS) value=983040
+
+--- 8. CONCURRENT SESSION LIMIT: open until the driver refuses, release each --
+  session # 1 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544A31DE0   (now holding 1)
+  session # 2 -> status=0 (NV_ENC_SUCCESS)  encoder=00000225449C46A0   (now holding 2)
+  session # 3 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F22850   (now holding 3)
+  session # 4 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F24ED0   (now holding 4)
+  session # 5 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F27550   (now holding 5)
+  session # 6 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F29BD0   (now holding 6)
+  session # 7 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F2C250   (now holding 7)
+  session # 8 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F2E8D0   (now holding 8)
+  session # 9 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F38120   (now holding 9)
+  session #10 -> status=0 (NV_ENC_SUCCESS)  encoder=0000022544F34FB0   (now holding 10)
+  session #11 -> status=21 (NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY)  (encoder=0000000000000000)   *** FIRST REFUSAL ***
+    refusal: lastErrorString: EncodeAPI Internal Error.
+
+  => concurrent sessions opened and HELD at one time : 10
+  => the driver refused #11 with status 21 (NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY)
+
+  --- 8b. release every session, then open one more (does the budget return?)
+  all 10 released.
+  after releasing all 10, open one more -> 0 (NV_ENC_SUCCESS)
+  released again -> 0 (NV_ENC_SUCCESS)
+
+  --- 8c. same question for INITIALISED sessions (open + init, hold, repeat) ---
+  init-session # 1 -> opened AND initialised, encoder=0000022544F37A10   (holding 1 live encoders)
+  init-session # 2 -> opened AND initialised, encoder=0000022544F38120   (holding 2 live encoders)
+  init-session # 3 -> opened AND initialised, encoder=0000022544F364E0   (holding 3 live encoders)
+  init-session # 4 -> opened AND initialised, encoder=0000022544F37300   (holding 4 live encoders)
+  init-session # 5 -> opened AND initialised, encoder=0000022544F38830   (holding 5 live encoders)
+  init-session # 6 -> opened AND initialised, encoder=0000022544F356C0   (holding 6 live encoders)
+  init-session # 7 -> opened AND initialised, encoder=0000022544F34FB0   (holding 7 live encoders)
+  init-session # 8 -> opened AND initialised, encoder=0000022544F35DD0   (holding 8 live encoders)
+  init-session # 9 -> opened AND initialised, encoder=0000022544F36BF0   (holding 9 live encoders)
+  init-session #10 -> opened AND initialised, encoder=00000227A90CACB0   (holding 10 live encoders)
+  init-session #11 -> OPEN 21 (NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY)   *** REFUSED AT OPEN ***
+    open-refusal: lastErrorString: EncodeAPI Internal Error.
+
+  => INITIALISED sessions held at one time : 10
+  => refused #11 at OPEN with status 21 (NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY)
+  all 10 initialised sessions released.
+
+--- 9. cleanup audit — nothing may be left held -------------------------------
+  single session destroy -> 0 (NV_ENC_SUCCESS)
+  cuCtxDestroy_v2 -> 0
+  every session opened above was destroyed or refused; none is meant to be held.
+
+probe finished.

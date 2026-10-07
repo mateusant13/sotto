@@ -1,0 +1,147 @@
+family	style	weight	width	_fallback_puro	delta_vs_fallback	==Georgia?	==serif?	==Times?	page_fontAvailable	fonts.check
+Newsreader	normal	400	1467.00	1476.42	-9.42	difere	difere	difere	true	true
+Newsreader	italic	400	1419.16	1416.23	2.92	difere	difere	difere	true	true
+Newsreader	normal	700	1565.14	1541.74	23.40	difere	difere	difere	true	true
+Newsreader	italic	700	1536.06	1459.97	76.09	difere	difere	difere	true	true
+Newsreader	normal	300	1436.29	1476.42	-40.13	difere	difere	difere	true	true
+Newsreader	italic	300	1383.68	1416.23	-32.55	difere	difere	difere	true	true
+Fraunces	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces	normal	700	1541.74	1541.74	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces	normal	300	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces	italic	300	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader-Variable	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader-Variable	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader-Variable	normal	700	1541.74	1541.74	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader-Variable	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader-Variable	normal	300	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader-Variable	italic	300	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces-Variable	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces-Variable	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces-Variable	normal	700	1541.74	1541.74	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces-Variable	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces-Variable	normal	300	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces-Variable	italic	300	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader Italic	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader Italic	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader Italic	normal	700	1541.74	1541.74	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader Italic	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader Italic	normal	300	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Newsreader Italic	italic	300	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces Italic	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces Italic	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces Italic	normal	700	1541.74	1541.74	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces Italic	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces Italic	normal	300	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Fraunces Italic	italic	300	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	false	true
+Barlow Condensed	normal	400	1015.70	1476.42	-460.72	difere	difere	difere	true	true
+Barlow Condensed	italic	400	984.67	1416.23	-431.56	difere	difere	difere	true	true
+Barlow Condensed	normal	700	1100.02	1541.74	-441.73	difere	difere	difere	true	true
+Barlow Condensed	italic	700	1066.82	1459.97	-393.15	difere	difere	difere	true	true
+Barlow Condensed	normal	300	1015.70	1476.42	-460.72	difere	difere	difere	true	true
+Barlow Condensed	italic	300	984.67	1416.23	-431.56	difere	difere	difere	true	true
+IBM Plex Mono	normal	400	1382.40	1476.42	-94.02	difere	difere	difere	true	true
+IBM Plex Mono	italic	400	1382.40	1416.23	-33.83	difere	difere	difere	true	true
+IBM Plex Mono	normal	700	1382.40	1541.74	-159.34	difere	difere	difere	true	true
+IBM Plex Mono	italic	700	1382.40	1459.97	-77.57	difere	difere	difere	true	true
+IBM Plex Mono	normal	300	1382.40	1476.42	-94.02	difere	difere	difere	true	true
+IBM Plex Mono	italic	300	1382.40	1416.23	-33.83	difere	difere	difere	true	true
+Space Grotesk	normal	400	1493.68	1476.42	17.26	difere	difere	difere	true	true
+Space Grotesk	italic	400	1493.68	1416.23	77.45	difere	difere	difere	true	true
+Space Grotesk	normal	700	1509.98	1541.74	-31.76	difere	difere	difere	true	true
+Space Grotesk	italic	700	1509.98	1459.97	50.02	difere	difere	difere	true	true
+Space Grotesk	normal	300	1486.87	1476.42	10.45	difere	difere	difere	true	true
+Space Grotesk	italic	300	1486.87	1416.23	70.64	difere	difere	difere	true	true
+Georgia	normal	400	1536.71	1476.42	60.29	==Georgia	difere	difere	true	true
+Georgia	italic	400	1544.17	1416.23	127.93	==Georgia	difere	difere	true	true
+Georgia	normal	700	1732.29	1541.74	190.55	==Georgia	difere	difere	true	true
+Georgia	italic	700	1747.23	1459.97	287.26	==Georgia	difere	difere	true	true
+Georgia	normal	300	1536.71	1476.42	60.29	==Georgia	difere	difere	true	true
+Georgia	italic	300	1544.17	1416.23	127.93	==Georgia	difere	difere	true	true
+Times New Roman	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	true	true
+Times New Roman	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	true	true
+Times New Roman	normal	700	1541.74	1541.74	0.00	MESMO-QUE-FALLBACK	==serif	==Times	true	true
+Times New Roman	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK	==serif	==Times	true	true
+Times New Roman	normal	300	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK	==serif	==Times	true	true
+Times New Roman	italic	300	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK	==serif	==Times	true	true
+Segoe UI	normal	400	1502.54	1476.42	26.12	difere	difere	difere	true	true
+Segoe UI	italic	400	1480.99	1416.23	64.76	difere	difere	difere	true	true
+Segoe UI	normal	700	1588.43	1541.74	46.69	difere	difere	difere	true	true
+Segoe UI	italic	700	1575.56	1459.97	115.59	difere	difere	difere	true	true
+Segoe UI	normal	300	1424.25	1476.42	-52.17	difere	difere	difere	true	true
+Segoe UI	italic	300	1413.39	1416.23	-2.85	difere	difere	difere	true	true
+Bahnschrift	normal	400	1407.94	1476.42	-68.48	difere	difere	difere	true	true
+Bahnschrift	italic	400	1407.94	1416.23	-8.30	difere	difere	difere	true	true
+Bahnschrift	normal	700	1407.94	1541.74	-133.80	difere	difere	difere	true	true
+Bahnschrift	italic	700	1407.94	1459.97	-52.03	difere	difere	difere	true	true
+Bahnschrift	normal	300	1407.94	1476.42	-68.48	difere	difere	difere	true	true
+Bahnschrift	italic	300	1407.94	1416.23	-8.30	difere	difere	difere	true	true
+Cascadia Mono	normal	400	1350.00	1476.42	-126.42	difere	difere	difere	true	true
+Cascadia Mono	italic	400	1350.00	1416.23	-66.23	difere	difere	difere	true	true
+Cascadia Mono	normal	700	1350.00	1541.74	-191.74	difere	difere	difere	true	true
+Cascadia Mono	italic	700	1350.00	1459.97	-109.97	difere	difere	difere	true	true
+Cascadia Mono	normal	300	1350.00	1476.42	-126.42	difere	difere	difere	true	true
+Cascadia Mono	italic	300	1350.00	1416.23	-66.23	difere	difere	difere	true	true
+
+DOM (font-family só com a família, sem fallback)
+Newsreader	normal	400	1467.00	1476.42	-9.42	RESOLVE
+Fraunces	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK
+Newsreader-Variable	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK
+Fraunces-Variable	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK
+Newsreader Italic	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK
+Fraunces Italic	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK
+Barlow Condensed	normal	400	1015.72	1476.42	-460.70	RESOLVE
+IBM Plex Mono	normal	400	1382.41	1476.42	-94.02	RESOLVE
+Space Grotesk	normal	400	1493.69	1476.42	17.27	RESOLVE
+Georgia	normal	400	1536.72	1476.42	60.30	RESOLVE
+Times New Roman	normal	400	1476.42	1476.42	0.00	MESMO-QUE-FALLBACK
+Segoe UI	normal	400	1502.55	1476.42	26.13	RESOLVE
+Bahnschrift	normal	400	1407.94	1476.42	-68.48	RESOLVE
+Cascadia Mono	normal	400	1350.00	1476.42	-126.42	RESOLVE
+Newsreader	italic	400	1419.16	1416.23	2.92	RESOLVE
+Fraunces	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK
+Newsreader-Variable	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK
+Fraunces-Variable	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK
+Newsreader Italic	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK
+Fraunces Italic	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK
+Barlow Condensed	italic	400	984.67	1416.23	-431.56	RESOLVE
+IBM Plex Mono	italic	400	1382.41	1416.23	-33.83	RESOLVE
+Space Grotesk	italic	400	1493.69	1416.23	77.45	RESOLVE
+Georgia	italic	400	1544.17	1416.23	127.94	RESOLVE
+Times New Roman	italic	400	1416.23	1416.23	0.00	MESMO-QUE-FALLBACK
+Segoe UI	italic	400	1481.00	1416.23	64.77	RESOLVE
+Bahnschrift	italic	400	1407.94	1416.23	-8.30	RESOLVE
+Cascadia Mono	italic	400	1350.00	1416.23	-66.23	RESOLVE
+Newsreader	normal	700	1565.14	1541.75	23.39	RESOLVE
+Fraunces	normal	700	1541.75	1541.75	0.00	MESMO-QUE-FALLBACK
+Newsreader-Variable	normal	700	1541.75	1541.75	0.00	MESMO-QUE-FALLBACK
+Fraunces-Variable	normal	700	1541.75	1541.75	0.00	MESMO-QUE-FALLBACK
+Newsreader Italic	normal	700	1541.75	1541.75	0.00	MESMO-QUE-FALLBACK
+Fraunces Italic	normal	700	1541.75	1541.75	0.00	MESMO-QUE-FALLBACK
+Barlow Condensed	normal	700	1100.03	1541.75	-441.72	RESOLVE
+IBM Plex Mono	normal	700	1382.41	1541.75	-159.34	RESOLVE
+Space Grotesk	normal	700	1509.98	1541.75	-31.77	RESOLVE
+Georgia	normal	700	1732.30	1541.75	190.55	RESOLVE
+Times New Roman	normal	700	1541.75	1541.75	0.00	MESMO-QUE-FALLBACK
+Segoe UI	normal	700	1588.44	1541.75	46.69	RESOLVE
+Bahnschrift	normal	700	1407.94	1541.75	-133.81	RESOLVE
+Cascadia Mono	normal	700	1350.00	1541.75	-191.75	RESOLVE
+Newsreader	italic	700	1536.06	1459.97	76.09	RESOLVE
+Fraunces	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK
+Newsreader-Variable	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK
+Fraunces-Variable	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK
+Newsreader Italic	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK
+Fraunces Italic	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK
+Barlow Condensed	italic	700	1066.83	1459.97	-393.14	RESOLVE
+IBM Plex Mono	italic	700	1382.41	1459.97	-77.56	RESOLVE
+Space Grotesk	italic	700	1509.98	1459.97	50.02	RESOLVE
+Georgia	italic	700	1747.23	1459.97	287.27	RESOLVE
+Times New Roman	italic	700	1459.97	1459.97	0.00	MESMO-QUE-FALLBACK
+Segoe UI	italic	700	1575.56	1459.97	115.59	RESOLVE
+Bahnschrift	italic	700	1407.94	1459.97	-52.03	RESOLVE
+Cascadia Mono	italic	700	1350.00	1459.97	-109.97	RESOLVE
+
+bases: fallback_puro(400 normal)=1476.42 Georgia=1536.71 serif=1476.42 Times=1476.42
+document.fonts.size=0  (0 = nenhum @font-face na página)
+navigator.fonts? false

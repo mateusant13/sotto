@@ -1,0 +1,5 @@
+WGC-IsSupported = True
+FramePool: Create,CreateCaptureSession,CreateFreeThreaded,CreateObjRef,Recreate,TryGetNextFrame
+CaptureItem: add_Closed,CreateFromVisual,CreateObjRef,Equals,get_DisplayName,get_Size,GetHashCode,GetLifetimeService,GetType,InitializeLifetimeService,remove_Closed,ToString,TryCreateFromDisplayId,TryCreateFromWindowId
+SessionMembers: get_IsBorderRequired,get_IsCursorCaptureEnabled,IsSupported,put_IsBorderRequired,put_IsCursorCaptureEnabled,StartCapture
+AccessKind values: Borderless,Programmatic

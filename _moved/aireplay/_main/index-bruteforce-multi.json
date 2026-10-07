@@ -1,0 +1,228 @@
+{
+  "probe": "_index-bruteforce-probe.py",
+  "when": "2026-10-07T08:07:08",
+  "python": "3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]",
+  "numpy": "1.26.4",
+  "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "cpu_count": 20,
+  "OMP_NUM_THREADS": null,
+  "OPENBLAS_NUM_THREADS": null,
+  "MKL_NUM_THREADS": null,
+  "dims": 256,
+  "arms": [
+    {
+      "N": 120000,
+      "dtype": "float32",
+      "matrix_bytes": 122880000,
+      "matrix_MiB": 117.1875,
+      "scan": {
+        "min_ms": 7.110500000010234,
+        "median_ms": 8.749700000009852,
+        "max_ms": 13.734999999996944,
+        "reps": 166
+      },
+      "topk": {
+        "min_ms": 0.8663000000410648,
+        "median_ms": 0.9693999999740299,
+        "max_ms": 1.8191999999999098,
+        "reps": 166
+      },
+      "scan_effective_GB_per_s": 17.281485127603283,
+      "cosine_scan": {
+        "min_ms": 8.796199999949295,
+        "median_ms": 11.50430000001279,
+        "max_ms": 35.895799999991596,
+        "reps": 41
+      }
+    },
+    {
+      "N": 120000,
+      "dtype": "float16",
+      "matrix_bytes": 61440000,
+      "matrix_MiB": 58.59375,
+      "scan": {
+        "min_ms": 120.9999999999809,
+        "median_ms": 153.46899999997277,
+        "max_ms": 198.58340000001817,
+        "reps": 166
+      },
+      "topk": {
+        "min_ms": 1.8357000000150947,
+        "median_ms": 1.9614000000274245,
+        "max_ms": 2.6960000000144646,
+        "reps": 166
+      },
+      "scan_effective_GB_per_s": 0.5077685950414025,
+      "cosine_scan": {
+        "min_ms": 136.83489999999665,
+        "median_ms": 154.65539999996736,
+        "max_ms": 161.09910000000127,
+        "reps": 41
+      }
+    },
+    {
+      "N": 250000,
+      "dtype": "float32",
+      "matrix_bytes": 256000000,
+      "matrix_MiB": 244.140625,
+      "scan": {
+        "min_ms": 12.068199999987428,
+        "median_ms": 14.858199999991939,
+        "max_ms": 40.34469999999146,
+        "reps": 80
+      },
+      "topk": {
+        "min_ms": 2.6224999999726606,
+        "median_ms": 2.8075999999828127,
+        "max_ms": 4.361899999992147,
+        "reps": 80
+      },
+      "scan_effective_GB_per_s": 21.2127740674058,
+      "cosine_scan": {
+        "min_ms": 14.60199999996803,
+        "median_ms": 16.100300000005063,
+        "max_ms": 18.596000000002277,
+        "reps": 20
+      }
+    },
+    {
+      "N": 250000,
+      "dtype": "float16",
+      "matrix_bytes": 128000000,
+      "matrix_MiB": 122.0703125,
+      "scan": {
+        "min_ms": 270.8225000000084,
+        "median_ms": 316.7505000000119,
+        "max_ms": 379.8527000000149,
+        "reps": 80
+      },
+      "topk": {
+        "min_ms": 3.0909999999835236,
+        "median_ms": 3.6624999999617103,
+        "max_ms": 5.7550999999875785,
+        "reps": 80
+      },
+      "scan_effective_GB_per_s": 0.47263428998696944,
+      "cosine_scan": {
+        "min_ms": 284.2509999999834,
+        "median_ms": 315.92849999998407,
+        "max_ms": 344.45579999999154,
+        "reps": 20
+      }
+    },
+    {
+      "N": 500000,
+      "dtype": "float32",
+      "matrix_bytes": 512000000,
+      "matrix_MiB": 488.28125,
+      "scan": {
+        "min_ms": 25.144699999998466,
+        "median_ms": 29.929999999978918,
+        "max_ms": 56.769699999961176,
+        "reps": 40
+      },
+      "topk": {
+        "min_ms": 4.501900000036585,
+        "median_ms": 4.8692999999957465,
+        "max_ms": 6.522499999960019,
+        "reps": 40
+      },
+      "scan_effective_GB_per_s": 20.362143911044125,
+      "cosine_scan": {
+        "min_ms": 27.366500000027827,
+        "median_ms": 28.93810000000485,
+        "max_ms": 30.93090000004395,
+        "reps": 10
+      }
+    },
+    {
+      "N": 500000,
+      "dtype": "float16",
+      "matrix_bytes": 256000000,
+      "matrix_MiB": 244.140625,
+      "scan": {
+        "min_ms": 617.6403999999707,
+        "median_ms": 684.6082999999794,
+        "max_ms": 5758.049400000004,
+        "reps": 40
+      },
+      "topk": {
+        "min_ms": 10.707299999921815,
+        "median_ms": 25.094399999943562,
+        "max_ms": 41.27579999999398,
+        "reps": 40
+      },
+      "scan_effective_GB_per_s": 0.41448065897245734,
+      "cosine_scan": {
+        "min_ms": 631.4272000000756,
+        "median_ms": 1420.039299999985,
+        "max_ms": 2133.639099999982,
+        "reps": 10
+      }
+    },
+    {
+      "N": 1000000,
+      "dtype": "float32",
+      "matrix_bytes": 1024000000,
+      "matrix_MiB": 976.5625,
+      "scan": {
+        "min_ms": 51.41439999999875,
+        "median_ms": 56.949899999949594,
+        "max_ms": 72.52740000001268,
+        "reps": 20
+      },
+      "topk": {
+        "min_ms": 8.543799999984003,
+        "median_ms": 8.948000000032152,
+        "max_ms": 9.502199999928962,
+        "reps": 20
+      },
+      "scan_effective_GB_per_s": 19.91659924068014,
+      "cosine_scan": {
+        "min_ms": 55.9610000000248,
+        "median_ms": 62.411999999994805,
+        "max_ms": 74.79379999995217,
+        "reps": 5
+      }
+    },
+    {
+      "N": 1000000,
+      "dtype": "float16",
+      "matrix_bytes": 512000000,
+      "matrix_MiB": 488.28125,
+      "scan": {
+        "min_ms": 1213.6902999999393,
+        "median_ms": 1254.6299000000545,
+        "max_ms": 5834.325599999943,
+        "reps": 20
+      },
+      "topk": {
+        "min_ms": 16.650400000003174,
+        "median_ms": 17.051199999968958,
+        "max_ms": 20.6094000000121,
+        "reps": 20
+      },
+      "scan_effective_GB_per_s": 0.4218539111666507,
+      "cosine_scan": {
+        "min_ms": 1275.3943000000163,
+        "median_ms": 1297.0315000000028,
+        "max_ms": 1311.1023999999816,
+        "reps": 5
+      }
+    }
+  ],
+  "load_and_cast": {
+    "N": 1000000,
+    "fp32_bytes": 1024000000,
+    "fp16_bytes": 512000000,
+    "generate_fp32_s": 3.0328713000000107,
+    "fp16_to_fp32_cast_ms": 621.9370999999683,
+    "fp16_to_fp32_effective_GB_per_s": 0.8232343753090564,
+    "same_values": true
+  },
+  "fp16_vs_fp32_scan": {
+    "fp32_ms": 7.035699999960343,
+    "fp16_ms": 150.86830000007012,
+    "fp16_cast_first_ms": 192.17379999997775
+  }
+}

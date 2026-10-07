@@ -1,0 +1,736 @@
+{
+  "probe": "_index-final-probe.py",
+  "census": {
+    "when": "2026-10-07T10:18:28",
+    "python": "3.11.8",
+    "numpy": "1.26.4",
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "logical_cpus": 20,
+    "thread_env": {
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2"
+    },
+    "libs": {
+      "sqlite-vec": {
+        "installed": true,
+        "version": "0.1.9",
+        "license": "MIT License, Apache License, Version 2.0",
+        "license_expression": null,
+        "license_classifiers": [],
+        "installed_bytes": 295723,
+        "installed_MiB": 0.3
+      },
+      "faiss-cpu": {
+        "installed": true,
+        "version": "1.15.1",
+        "license": "",
+        "license_expression": "MIT",
+        "license_classifiers": [],
+        "installed_bytes": 67614974,
+        "installed_MiB": 64.5
+      },
+      "hnswlib": {
+        "installed": false,
+        "error": "PackageNotFoundError: No package metadata was found for hnswlib"
+      },
+      "lancedb": {
+        "installed": false,
+        "error": "PackageNotFoundError: No package metadata was found for lancedb"
+      },
+      "qdrant-client": {
+        "installed": false,
+        "error": "PackageNotFoundError: No package metadata was found for qdrant-client"
+      },
+      "pyarrow": {
+        "installed": true,
+        "version": "25.0.0",
+        "license": "",
+        "license_expression": "Apache-2.0",
+        "license_classifiers": [],
+        "installed_bytes": 90437342,
+        "installed_MiB": 86.2
+      },
+      "numpy": {
+        "installed": true,
+        "version": "1.26.4",
+        "license": "Copyright (c) 2005-2023, NumPy Developers.\nAll rights reserved.\n\nRedistribution ",
+        "license_expression": null,
+        "license_classifiers": [
+          "License :: OSI Approved :: BSD License"
+        ],
+        "installed_bytes": 71712109,
+        "installed_MiB": 68.4
+      },
+      "sqlite3": {
+        "installed": false,
+        "error": "PackageNotFoundError: No package metadata was found for sqlite3",
+        "sqlite_version": "3.43.1"
+      }
+    },
+    "numpy_blas": {
+      "name": "openblas64",
+      "found": true,
+      "version": "0.3.23.dev",
+      "detection method": "pkgconfig",
+      "include directory": "/c/opt/64/include",
+      "lib directory": "/c/opt/64/lib",
+      "openblas configuration": "USE_64BITINT=1 DYNAMIC_ARCH=1 DYNAMIC_OLDER= NO_CBLAS= NO_LAPACK= NO_LAPACKE= NO_AFFINITY=1 USE_OPENMP= SKYLAKEX MAX_THREADS=2",
+      "pc file directory": "C:/opt/64/lib/pkgconfig"
+    }
+  },
+  "corpus": {
+    "videos": 1000,
+    "segments": 120000,
+    "seg_per_video": 120,
+    "vectors_by_channel": {
+      "visual": 120000,
+      "speech": 72000,
+      "ocr": 19200
+    },
+    "vectors_total": 211200
+  },
+  "brute_force": {
+    "vectors_total": 211200,
+    "matrix_MiB": 206.2,
+    "matrix_MB_decimal": 216.3,
+    "knn_fp32_k100": {
+      "no filter": {
+        "min_ms": 15.994,
+        "median_ms": 20.273,
+        "reps": 6,
+        "candidates_after_filter": 211200,
+        "scan_GB_per_s": 13.52
+      },
+      "channel=speech": {
+        "min_ms": 15.677,
+        "median_ms": 20.917,
+        "reps": 6,
+        "candidates_after_filter": 72000,
+        "scan_GB_per_s": 13.8
+      },
+      "channel=visual": {
+        "min_ms": 15.083,
+        "median_ms": 15.566,
+        "reps": 6,
+        "candidates_after_filter": 120000,
+        "scan_GB_per_s": 14.34
+      },
+      "channel=ocr": {
+        "min_ms": 14.922,
+        "median_ms": 15.83,
+        "reps": 6,
+        "candidates_after_filter": 19200,
+        "scan_GB_per_s": 14.49
+      },
+      "video 42, 0-60 s": {
+        "min_ms": 14.356,
+        "median_ms": 17.259,
+        "reps": 6,
+        "candidates_after_filter": 20,
+        "scan_GB_per_s": 15.06
+      },
+      "one 5 s window": {
+        "min_ms": 14.281,
+        "median_ms": 15.975,
+        "reps": 6,
+        "candidates_after_filter": 2,
+        "scan_GB_per_s": 15.14
+      }
+    },
+    "knn_fp32_k10_no_filter": {
+      "min_ms": 15.226,
+      "median_ms": 17.82,
+      "reps": 6
+    },
+    "visual_only_120k": {
+      "matrix_MiB": 117.2,
+      "k10": {
+        "min_ms": 7.405,
+        "median_ms": 8.953,
+        "reps": 6
+      },
+      "k100": {
+        "min_ms": 7.638,
+        "median_ms": 10.052,
+        "reps": 6,
+        "scan_GB_per_s": 16.09
+      }
+    },
+    "fp16": {
+      "native_fp16_matvec_k100_120k": {
+        "min_ms": 67.303,
+        "median_ms": 69.17,
+        "reps": 3
+      },
+      "fp16_to_fp32_cast_120k": {
+        "min_ms": 60.484,
+        "median_ms": 79.413,
+        "reps": 5
+      },
+      "stored_bytes_120k_fp16_MiB": 58.6,
+      "stored_bytes_120k_fp32_MiB": 117.2,
+      "cast_then_fp32_scan_k100": {
+        "min_ms": 11.003,
+        "median_ms": 12.811,
+        "reps": 6
+      },
+      "top10_identical_to_fp32": true,
+      "top10_overlap": 10
+    },
+    "crossover": {
+      "measured_N": [
+        120000,
+        211200
+      ],
+      "measured_ms": [
+        7.638,
+        15.994
+      ],
+      "us_per_vector": 0.0916,
+      "extrapolated_ms_at": {
+        "250000": 19.5,
+        "500000": 42.5,
+        "1000000": 88.3,
+        "5000000": 454.8
+      },
+      "N_where_50ms": 582352,
+      "N_where_250ms": 2765214,
+      "note": "linear in N (scan is bandwidth-bound); us/vector is the fitted slope"
+    }
+  },
+  "store": {
+    "insert": {
+      "vectors": 211200,
+      "seconds": 2.28,
+      "vectors_per_s": 92688,
+      "ms_per_vector": 0.0108
+    },
+    "startup": {
+      "select_all_s": 0.863,
+      "cast_fp16_to_fp32_s": 0.123,
+      "total_s": 0.986,
+      "vectors": 211200,
+      "ram_fp32_MiB": 206.2,
+      "MB_per_s_end_to_end": 104.5
+    },
+    "answer_join": {
+      "open": "clip_0644.mp4 @ 04:05.0",
+      "path": "H:\\Videos\\clips\\clip_0644.mp4",
+      "video_id": 644,
+      "channel": "ocr",
+      "transcript": "placa comprar ideia ontem do clip",
+      "ocr": null,
+      "ms": {
+        "min_ms": 0.01,
+        "median_ms": 0.011,
+        "reps": 5
+      }
+    },
+    "disk": {
+      "db_bytes": 144007168,
+      "db_MiB": 137.3,
+      "vector_payload_MiB": 103.1,
+      "non_vector_MiB": 34.2,
+      "overhead_pct_of_payload": 33.2,
+      "fp32_equivalent_MiB": 206.2
+    },
+    "row_counts": {
+      "video": 1000,
+      "segment": 120000,
+      "transcript": 72000,
+      "ocr": 19200,
+      "embedding": 211200,
+      "marker": 0
+    },
+    "db_path": "H:\\aireplay\\_main\\_index-final\\store.db"
+  },
+  "fusion": {
+    "per_channel_candidates_k100": {
+      "speech": 100,
+      "ocr": 100,
+      "visual": 100
+    },
+    "latency_ms": {
+      "no_window": {
+        "min_ms": 72.57,
+        "median_ms": 83.249,
+        "reps": 5
+      },
+      "video42_0_60s_window": {
+        "min_ms": 67.978,
+        "median_ms": 71.116,
+        "reps": 5
+      },
+      "one_5s_window": {
+        "min_ms": 60.874,
+        "median_ms": 65.741,
+        "reps": 5
+      }
+    },
+    "top10": [
+      {
+        "seg_id": 111261,
+        "video_id": 927,
+        "open": "clip_0927.mp4 @ 01:45.0",
+        "start_ms": 105000,
+        "rrf_score": 0.031161,
+        "channels": [
+          "ocr",
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 7,
+            "cosine": 0.2176
+          },
+          {
+            "channel": "ocr",
+            "rank": 29,
+            "cosine": 0.1855
+          },
+          {
+            "channel": "visual",
+            "rank": 80,
+            "cosine": 0.1996
+          }
+        ]
+      },
+      {
+        "seg_id": 8132,
+        "video_id": 67,
+        "open": "clip_0067.mp4 @ 07:40.0",
+        "start_ms": 460000,
+        "rrf_score": 0.03055,
+        "channels": [
+          "ocr",
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 6,
+            "cosine": 0.2226
+          },
+          {
+            "channel": "ocr",
+            "rank": 76,
+            "cosine": 0.1669
+          },
+          {
+            "channel": "visual",
+            "rank": 27,
+            "cosine": 0.2127
+          }
+        ]
+      },
+      {
+        "seg_id": 39321,
+        "video_id": 327,
+        "open": "clip_0327.mp4 @ 06:45.0",
+        "start_ms": 405000,
+        "rrf_score": 0.027869,
+        "channels": [
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 1,
+            "cosine": 0.2608
+          },
+          {
+            "channel": "visual",
+            "rank": 1,
+            "cosine": 0.2851
+          }
+        ]
+      },
+      {
+        "seg_id": 93321,
+        "video_id": 777,
+        "open": "clip_0777.mp4 @ 06:45.0",
+        "start_ms": 405000,
+        "rrf_score": 0.026253,
+        "channels": [
+          "ocr",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "ocr",
+            "rank": 1,
+            "cosine": 0.2245
+          },
+          {
+            "channel": "visual",
+            "rank": 11,
+            "cosine": 0.2225
+          }
+        ]
+      },
+      {
+        "seg_id": 65878,
+        "video_id": 548,
+        "open": "clip_0548.mp4 @ 09:50.0",
+        "start_ms": 590000,
+        "rrf_score": 0.025084,
+        "channels": [
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 4,
+            "cosine": 0.2291
+          },
+          {
+            "channel": "visual",
+            "rank": 14,
+            "cosine": 0.2214
+          }
+        ]
+      },
+      {
+        "seg_id": 113903,
+        "video_id": 949,
+        "open": "clip_0949.mp4 @ 01:55.0",
+        "start_ms": 115000,
+        "rrf_score": 0.024787,
+        "channels": [
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 9,
+            "cosine": 0.2158
+          },
+          {
+            "channel": "visual",
+            "rank": 8,
+            "cosine": 0.2249
+          }
+        ]
+      },
+      {
+        "seg_id": 33587,
+        "video_id": 279,
+        "open": "clip_0279.mp4 @ 08:55.0",
+        "start_ms": 535000,
+        "rrf_score": 0.024515,
+        "channels": [
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 3,
+            "cosine": 0.2324
+          },
+          {
+            "channel": "visual",
+            "rank": 21,
+            "cosine": 0.2154
+          }
+        ]
+      },
+      {
+        "seg_id": 86378,
+        "video_id": 719,
+        "open": "clip_0719.mp4 @ 08:10.0",
+        "start_ms": 490000,
+        "rrf_score": 0.024444,
+        "channels": [
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 15,
+            "cosine": 0.2095
+          },
+          {
+            "channel": "visual",
+            "rank": 3,
+            "cosine": 0.2389
+          }
+        ]
+      },
+      {
+        "seg_id": 62144,
+        "video_id": 517,
+        "open": "clip_0517.mp4 @ 08:40.0",
+        "start_ms": 520000,
+        "rrf_score": 0.023758,
+        "channels": [
+          "speech",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "speech",
+            "rank": 18,
+            "cosine": 0.2076
+          },
+          {
+            "channel": "visual",
+            "rank": 4,
+            "cosine": 0.2322
+          }
+        ]
+      },
+      {
+        "seg_id": 38619,
+        "video_id": 321,
+        "open": "clip_0321.mp4 @ 08:15.0",
+        "start_ms": 495000,
+        "rrf_score": 0.022625,
+        "channels": [
+          "ocr",
+          "visual"
+        ],
+        "why": [
+          {
+            "channel": "ocr",
+            "rank": 4,
+            "cosine": 0.2089
+          },
+          {
+            "channel": "visual",
+            "rank": 40,
+            "cosine": 0.2095
+          }
+        ]
+      }
+    ],
+    "explainability": {
+      "every_hit_names_at_least_one_channel": true,
+      "channels_seen_in_top10": [
+        "ocr",
+        "speech",
+        "visual"
+      ],
+      "hits_matched_by_more_than_one_channel": 10
+    },
+    "window_filter_control": {
+      "all_hits_in_video_42": true,
+      "all_hits_under_60s": true,
+      "n": 10
+    },
+    "one_5s_window_control": {
+      "hits": [
+        "clip_0042.mp4 @ 01:00.0"
+      ],
+      "all_in_window": true,
+      "verdict": "a 5 s window is a handful of candidates, not a search"
+    }
+  },
+  "reranker": {
+    "gemm_measured": {
+      "100x384x384": {
+        "ms": 0.6,
+        "GFLOP": 0.029,
+        "GFLOP_per_s": 49.2
+      },
+      "100x768x768": {
+        "ms": 2.194,
+        "GFLOP": 0.118,
+        "GFLOP_per_s": 53.8
+      },
+      "6400x768x768": {
+        "ms": 134.647,
+        "GFLOP": 7.55,
+        "GFLOP_per_s": 56.1
+      }
+    },
+    "gemm_fp32_GFLOP_per_s_at_2_threads": 53.8,
+    "candidates": [
+      {
+        "model": "cross-encoder/ms-marco-MiniLM-L6-v2",
+        "params": 22713600,
+        "license": "apache-2.0",
+        "fp16_disk_MiB": 43.3,
+        "int8_disk_MiB": 21.7,
+        "100_cands_L64": {
+          "TFLOP": 0.291,
+          "s_at_measured_fp32_2t": 5.4
+        },
+        "100_cands_L128": {
+          "TFLOP": 0.581,
+          "s_at_measured_fp32_2t": 10.81
+        },
+        "100_cands_L256": {
+          "TFLOP": 1.163,
+          "s_at_measured_fp32_2t": 21.62
+        }
+      },
+      {
+        "model": "mixedbread-ai/mxbai-rerank-base-v1",
+        "params": 184000000,
+        "license": "apache-2.0",
+        "fp16_disk_MiB": 351.0,
+        "int8_disk_MiB": 175.5,
+        "100_cands_L64": {
+          "TFLOP": 2.355,
+          "s_at_measured_fp32_2t": 43.78
+        },
+        "100_cands_L128": {
+          "TFLOP": 4.71,
+          "s_at_measured_fp32_2t": 87.55
+        },
+        "100_cands_L256": {
+          "TFLOP": 9.421,
+          "s_at_measured_fp32_2t": 175.11
+        }
+      },
+      {
+        "model": "BAAI/bge-reranker-base",
+        "params": 278000000,
+        "license": "mit",
+        "fp16_disk_MiB": 530.2,
+        "int8_disk_MiB": 265.1,
+        "100_cands_L64": {
+          "TFLOP": 3.558,
+          "s_at_measured_fp32_2t": 66.14
+        },
+        "100_cands_L128": {
+          "TFLOP": 7.117,
+          "s_at_measured_fp32_2t": 132.28
+        },
+        "100_cands_L256": {
+          "TFLOP": 14.234,
+          "s_at_measured_fp32_2t": 264.57
+        }
+      },
+      {
+        "model": "BAAI/bge-reranker-v2-m3",
+        "params": 568000000,
+        "license": "apache-2.0",
+        "fp16_disk_MiB": 1083.4,
+        "int8_disk_MiB": 541.7,
+        "100_cands_L64": {
+          "TFLOP": 7.27,
+          "s_at_measured_fp32_2t": 135.14
+        },
+        "100_cands_L128": {
+          "TFLOP": 14.541,
+          "s_at_measured_fp32_2t": 270.28
+        },
+        "100_cands_L256": {
+          "TFLOP": 29.082,
+          "s_at_measured_fp32_2t": 540.55
+        }
+      },
+      {
+        "model": "Qwen/Qwen3-Reranker-0.6B",
+        "params": 596000000,
+        "license": "apache-2.0",
+        "fp16_disk_MiB": 1136.8,
+        "int8_disk_MiB": 568.4,
+        "100_cands_L64": {
+          "TFLOP": 7.629,
+          "s_at_measured_fp32_2t": 141.8
+        },
+        "100_cands_L128": {
+          "TFLOP": 15.258,
+          "s_at_measured_fp32_2t": 283.6
+        },
+        "100_cands_L256": {
+          "TFLOP": 30.515,
+          "s_at_measured_fp32_2t": 567.2
+        }
+      }
+    ],
+    "lexical_overlap_100_candidates": {
+      "min_ms": 0.144,
+      "median_ms": 0.146,
+      "reps": 20
+    },
+    "lexical_overlap_note": "pure-python Jaccard over 100 short strings; this is the floor a reranker must beat to be worth its seconds"
+  },
+  "light_writer": {
+    "commit_ms": {
+      "min": 0.022,
+      "median": 0.061,
+      "p95": 0.198,
+      "max": 1.056,
+      "n": 200
+    },
+    "rows_per_commit": 4,
+    "db_MiB": 0.26,
+    "journal_mode": "wal",
+    "synchronous": 1,
+    "note": "one 5 s segment = segment + transcript + 2 channel vectors, committed"
+  },
+  "sqlite_vec": {
+    "vec_version": "v0.1.9",
+    "tables": {
+      "A_nopartition_120k": {
+        "db_MiB": 124.6,
+        "count": 120000,
+        "k10": {
+          "min_ms": 118.87,
+          "median_ms": 132.328,
+          "reps": 4
+        },
+        "k100": {
+          "min_ms": 136.109,
+          "median_ms": 142.172,
+          "reps": 4
+        },
+        "k100_window": {
+          "min_ms": 118.439,
+          "median_ms": 121.13,
+          "reps": 4
+        }
+      },
+      "C_partition_video_211k": {
+        "db_MiB": 1050.1,
+        "count": 211200,
+        "k10": {
+          "min_ms": 901.98,
+          "median_ms": 943.426,
+          "reps": 2
+        },
+        "k100": {
+          "min_ms": 1074.381,
+          "median_ms": 1187.657,
+          "reps": 2
+        },
+        "k100_window": {
+          "min_ms": 962.399,
+          "median_ms": 1152.702,
+          "reps": 2
+        },
+        "k100_partition_video42": {
+          "min_ms": 0.823,
+          "median_ms": 0.883,
+          "reps": 2
+        }
+      }
+    },
+    "live_insert": {
+      "bulk_20k_s": 0.81,
+      "bulk_vectors_per_s": 24805,
+      "single_row_commit_ms": {
+        "min": 0.104,
+        "median": 0.113,
+        "p95": 0.27,
+        "max": 1.268,
+        "n": 120
+      },
+      "knn_answers_after_inserts": 10,
+      "db_MiB": 21.2,
+      "verdict": "vec0 takes incremental INSERTs while live; no rebuild, no re-serialize"
+    }
+  }
+}
