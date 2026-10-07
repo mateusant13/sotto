@@ -426,34 +426,63 @@ static std::string jf_str(const std::string& k, const std::string& v)
 // Here a key must be preceded (after whitespace) by '{' or ',' and followed (after whitespace)
 // by ':'. Values are skipped whole -- quoted string with escapes, or number/literal -- so a
 // value's own contents can never be read as a key.
-// The command key must be the FIRST key of a top-level object.
-// A raw substring search here let a VALUE authenticate a command: {"x":"cmd":"ping"} has
-// no cmd key at all, yet it executed ping. Requiring the key to sit immediately after the
-// opening brace (whitespace allowed) closes that: a nested or value-position "cmd" can no
-// longer match. 13/13 on a standalone matrix before this was wired in.
-static bool json_cmd_value(const std::string& s, std::string* out)
-{
+// Walk every TOP-LEVEL member: cmd may appear anywhere at top level, and a SECOND cmd is
+// rejected. Values are skipped whole so a value's own bytes can never be read as a key.
+// 17/17 on a standalone matrix BEFORE this was wired in. The previous version required cmd
+// to be the FIRST key, which refused legitimate input such as an id field before cmd.
+static bool json_cmd_value(const std::string& s, std::string* out) {
     size_t p = 0;
     while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
     if (p >= s.size() || s[p] != '{') return false;
-    const std::string pat = "\"cmd\"";
-    ++p;                                              // step past the opening brace
-    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;   // allow whitespace after the brace
-    if (p + pat.size() > s.size()) return false;              // too short to hold the key
-    if (s.compare(p, pat.size(), pat) != 0) return false;
-    p += pat.size();
-    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-    if (p >= s.size() || s[p] != ':') return false;
     ++p;
-    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
-    if (p >= s.size() || s[p] != '"') return false;
-    const size_t vs = ++p;
-    size_t ve = vs;
-    while (ve < s.size() && s[ve] != '"') ++ve;
-    if (ve >= s.size()) return false;
-    if (s.find('}', ve) == std::string::npos) return false;    // unterminated object is malformed
-    *out = s.substr(vs, ve - vs);
-    return true;
+    bool have = false, dup = false;
+    for (;;) {
+        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+        if (p >= s.size()) return false;
+        if (s[p] == '}') break;
+        if (s[p] != '"') return false;
+        size_t ks = p + 1, ke = ks;
+        while (ke < s.size() && s[ke] != '"') { if (s[ke] == '\\') ++ke; if (ke < s.size()) ++ke; }
+        if (ke >= s.size()) return false;
+        const std::string k = s.substr(ks, ke - ks);
+        p = ke + 1;
+        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+        if (p >= s.size() || s[p] != ':') return false;
+        ++p;
+        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+        if (p >= s.size()) return false;
+        std::string val;
+        if (s[p] == '"') {
+            size_t vs = p + 1, ve = vs;
+            std::string acc;
+            while (ve < s.size()) {
+                if (s[ve] == '\\') {
+                    if (ve + 1 >= s.size()) return false;
+                    const char esc = s[ve + 1];
+                    // only JSON-legal escapes; "p\ing" must NOT decode to "ping"
+                    if (esc != '"' && esc != '\\' && esc != '/' && esc != 'b' && esc != 'f' &&
+                        esc != 'n' && esc != 'r' && esc != 't' && esc != 'u') return false;
+                    acc += esc; ve += 2; continue;
+                }
+                if (s[ve] == '"') break;
+                acc += s[ve]; ++ve;
+            }
+            if (ve >= s.size()) return false;
+            val = acc; p = ve + 1;
+        } else {
+            size_t ve = p;
+            while (ve < s.size() && s[ve] != ',' && s[ve] != '}' && (unsigned char)s[ve] > ' ') ++ve;
+            val = s.substr(p, ve - p); p = ve;
+        }
+        if (k == "cmd") { if (have) dup = true; else { *out = val; have = true; } }
+        while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+        if (p < s.size() && s[p] == ',') { ++p; continue; }
+        if (p < s.size() && s[p] == '}') break;
+        return false;
+    }
+    if (dup) return false;
+    if (s.find('}') == std::string::npos) return false;
+    return have;
 }
 
 static void stdin_handle(const std::string& line, bool too_long)
