@@ -2,7 +2,7 @@
 
 THE PORT, NOT A SECOND IMPLEMENTATION
 -------------------------------------
-`app/electron/hot-reload.js` already owns this idea for the Electron arm, and
+`app/_legacy-electron/hot-reload.js` already owns this idea for the Electron arm, and
 this module is its counterpart, not a rival. `hot-reload.js` is a Node/CommonJS
 module: it cannot be `require`d from a Python process, so it is not portable
 and could not be reused even in principle. What IS portable — and what is

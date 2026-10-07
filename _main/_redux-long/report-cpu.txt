@@ -1,0 +1,789 @@
+
+=== device=cpu ===
+case          audio_s   wall_s  xreal_w xreal_inf  peakRSS_GB peakVRAM_MB  rc  seg  chars    cov     bnd  tail  hang   cpu%
+---------------------------------------------------------------------------------------------------------------------------
+plain-30s       30.00    13.82     2.17      6.93       3.208        7102   0    4    319   0.99     1/1   yes         57.9
+plain-60s       60.00    23.42     2.56      4.14       3.934        7094   0    6    451   0.99     2/4   yes         58.5
+plain-120s     120.00    25.20     4.76      8.38       4.286        7068   0   12    902   1.00     5/8   yes         52.9
+plain-300s     300.00   312.88     0.96      0.98       4.341       15553   0   30   2198   1.00   15/21   yes         34.2
+plain-600s     600.00    49.09    12.22     14.19       4.526        5153   0   56   4103   1.00   27/41   yes         60.9
+gap-120s       120.00    32.04     3.75      6.76       4.351        6383   0   12    866   1.00     5/7   yes         53.6
+gap-300s       300.00    51.60     5.81      6.91       4.521        4284   0   26   1906   1.00   12/19   yes         48.6
+gap-600s       600.00    97.47     6.16      6.69       4.531        4659   0   54   3939   1.00   26/38   yes         48.7
+src-en-8s        8.54     9.30     0.92      5.85       3.806        4586   0    2    130   0.95       -    NO         52.1
+src-pt-15s      15.00    35.92     0.42      6.48       3.669        4695   0    2    159   0.98       -   yes         27.7
+src-agc-20s     20.00    35.58     0.56      7.44       3.611        4756   0    0      0   0.00       -    NO         36.8
+plain-600s     600.00   110.80     5.42      5.99       4.496        4628   0   56   4103   1.00   27/41   yes         51.7
+plain-1800s   1800.00   381.67     4.72      4.82       4.517        6757   0  166  12091   1.00  82/123   yes         60.3
+plain-3600s   3600.00   347.52    10.36     10.68       4.471        6936   0  332  24182   1.00 165/247   yes         60.4
+
+=== device=cpu -- per-run detail ===
+
+-- plain-30s  (device=cpu, started 2026-10-07T04:56:03)
+   audio=30.0s  wall=13.82s  compute=4.327s  xreal_inference=6.93  xreal_wall_incl_load=2.17
+   peak RSS (my 0.25 s poll) = 3.208 GiB (3284.7 MiB); OS peak_wset = 3411.8 MiB; 46 samples, first=2.5 last=387.6
+   cpu% median=57.9 max=78.9   VRAM before=6698 peak=7102 after=7031 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 46 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 6.60s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-30s.wav: 30.0s of audio in 4.33s, 7x real time']
+   captions=4 chars=319 duration_reported=30.0 last_caption_end=29.68 coverage=0.989
+   tail sentinel present=True at_end=True count=2   english head count=0
+   splice points landing on a segment start (<=0.75 s): 1/1
+      expected    15.000  nearest segment start 0.04  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 7.92, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 23.28, "end": 29.68, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 6.60s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-30s.wav: 30.0s of audio in 4.33s, 7x real time
+
+-- plain-60s  (device=cpu, started 2026-10-07T04:56:17)
+   audio=60.0s  wall=23.419s  compute=14.48s  xreal_inference=4.14  xreal_wall_incl_load=2.56
+   peak RSS (my 0.25 s poll) = 3.934 GiB (4028.1 MiB); OS peak_wset = 4052.4 MiB; 81 samples, first=2.5 last=3411.2
+   cpu% median=58.5 max=74.0   VRAM before=7031 peak=7094 after=7078 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 81 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 6.13s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-60s.wav: 60.0s of audio in 14.48s, 4x real time']
+   captions=6 chars=451 duration_reported=60.0 last_caption_end=59.72 coverage=0.995
+   tail sentinel present=True at_end=True count=2   english head count=0
+   splice points landing on a segment start (<=0.75 s): 2/4
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 1.537  hit=False
+      expected    45.000  nearest segment start 0.08  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 53.24, "end": 59.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 6.13s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-60s.wav: 60.0s of audio in 14.48s, 4x real time
+
+-- plain-120s  (device=cpu, started 2026-10-07T04:56:41)
+   audio=120.0s  wall=25.196s  compute=14.312s  xreal_inference=8.38  xreal_wall_incl_load=4.76
+   peak RSS (my 0.25 s poll) = 4.286 GiB (4389.2 MiB); OS peak_wset = 4390.0 MiB; 86 samples, first=2.4 last=62.9
+   cpu% median=52.9 max=75.3   VRAM before=7078 peak=7068 after=5411 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 86 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 8.43s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-120s.wav: 120.0s of audio in 14.31s, 8x real time']
+   captions=12 chars=902 duration_reported=120.0 last_caption_end=119.72 coverage=0.998
+   tail sentinel present=True at_end=True count=4   english head count=1
+   splice points landing on a segment start (<=0.75 s): 5/8
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 0.063  hit=True
+      expected    58.543  nearest segment start 0.143  hit=True
+      expected    67.086  nearest segment start 3.806  hit=False
+      expected    87.086  nearest segment start 0.126  hit=True
+      expected   102.086  nearest segment start 3.074  hit=False
+      expected   105.000  nearest segment start 0.16  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 113.24, "end": 119.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 8.43s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-120s.wav: 120.0s of audio in 14.31s, 8x real time
+
+-- plain-300s  (device=cpu, started 2026-10-07T04:57:06)
+   audio=300.0s  wall=312.88s  compute=304.804s  xreal_inference=0.98  xreal_wall_incl_load=0.96
+   peak RSS (my 0.25 s poll) = 4.341 GiB (4445.7 MiB); OS peak_wset = 4619.8 MiB; 1103 samples, first=2.5 last=24.6
+   cpu% median=34.2 max=87.9   VRAM before=5411 peak=15553 after=5153 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 1103 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 5.21s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-300s.wav: 300.0s of audio in 304.80s, 1x real time']
+   captions=30 chars=2198 duration_reported=300.0 last_caption_end=299.72 coverage=0.999
+   tail sentinel present=True at_end=True count=8   english head count=5
+   splice points landing on a segment start (<=0.75 s): 15/21
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 0.063  hit=True
+      expected    58.543  nearest segment start 0.143  hit=True
+      expected    67.086  nearest segment start 3.806  hit=False
+      expected    87.086  nearest segment start 0.126  hit=True
+      expected   102.086  nearest segment start 0.126  hit=True
+      expected   110.629  nearest segment start 3.789  hit=False
+      expected   130.629  nearest segment start 0.069  hit=True
+      expected   145.629  nearest segment start 0.149  hit=True
+      expected   154.172  nearest segment start 3.812  hit=False
+      expected   174.172  nearest segment start 0.092  hit=True
+      expected   189.172  nearest segment start 0.132  hit=True
+      expected   197.715  nearest segment start 3.795  hit=False
+      expected   217.715  nearest segment start 0.075  hit=True
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   241.258  nearest segment start 3.778  hit=False
+      expected   261.258  nearest segment start 0.058  hit=True
+      expected   276.258  nearest segment start 0.138  hit=True
+      expected   284.801  nearest segment start 0.119  hit=True
+      expected   285.000  nearest segment start 0.08  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 293.24, "end": 299.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 5.21s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-300s.wav: 300.0s of audio in 304.80s, 1x real time
+
+-- plain-600s  (device=cpu, started 2026-10-07T05:02:19)
+   audio=600.0s  wall=49.09s  compute=42.287s  xreal_inference=14.19  xreal_wall_incl_load=12.22
+   peak RSS (my 0.25 s poll) = 4.526 GiB (4634.8 MiB); OS peak_wset = 4662.3 MiB; 169 samples, first=2.5 last=3677.2
+   cpu% median=60.9 max=93.6   VRAM before=5153 peak=5153 after=4635 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 169 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 4.37s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-600s.wav: 600.0s of audio in 42.29s, 14x real time']
+   captions=56 chars=4103 duration_reported=600.0 last_caption_end=599.72 coverage=1.0
+   tail sentinel present=True at_end=True count=15   english head count=12
+   splice points landing on a segment start (<=0.75 s): 27/41
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 0.063  hit=True
+      expected    58.543  nearest segment start 0.143  hit=True
+      expected    67.086  nearest segment start 3.806  hit=False
+      expected    87.086  nearest segment start 0.126  hit=True
+      expected   102.086  nearest segment start 0.126  hit=True
+      expected   110.629  nearest segment start 3.789  hit=False
+      expected   130.629  nearest segment start 0.069  hit=True
+      expected   145.629  nearest segment start 0.149  hit=True
+      expected   154.172  nearest segment start 3.812  hit=False
+      expected   174.172  nearest segment start 0.092  hit=True
+      expected   189.172  nearest segment start 0.132  hit=True
+      expected   197.715  nearest segment start 3.795  hit=False
+      expected   217.715  nearest segment start 0.075  hit=True
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   241.258  nearest segment start 3.778  hit=False
+      expected   261.258  nearest segment start 0.098  hit=True
+      expected   276.258  nearest segment start 0.138  hit=True
+      expected   284.801  nearest segment start 3.801  hit=False
+      expected   304.801  nearest segment start 0.081  hit=True
+      expected   319.801  nearest segment start 0.121  hit=True
+      expected   328.344  nearest segment start 3.784  hit=False
+      expected   348.344  nearest segment start 0.064  hit=True
+      expected   363.344  nearest segment start 0.144  hit=True
+      expected   371.888  nearest segment start 3.808  hit=False
+      expected   391.888  nearest segment start 0.128  hit=True
+      expected   406.888  nearest segment start 0.128  hit=True
+      expected   415.431  nearest segment start 3.791  hit=False
+      expected   435.431  nearest segment start 0.071  hit=True
+      expected   450.431  nearest segment start 0.151  hit=True
+      expected   458.974  nearest segment start 3.814  hit=False
+      expected   478.974  nearest segment start 0.054  hit=True
+      expected   493.974  nearest segment start 0.134  hit=True
+      expected   502.517  nearest segment start 3.797  hit=False
+      expected   522.517  nearest segment start 0.117  hit=True
+      expected   537.517  nearest segment start 0.117  hit=True
+      expected   546.060  nearest segment start 3.78  hit=False
+      expected   566.060  nearest segment start 0.1  hit=True
+      expected   581.060  nearest segment start 4.1  hit=False
+      expected   585.000  nearest segment start 0.16  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 593.24, "end": 599.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 4.37s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-600s.wav: 600.0s of audio in 42.29s, 14x real time
+
+-- gap-120s  (device=cpu, started 2026-10-07T05:03:08)
+   audio=120.0s  wall=32.04s  compute=17.757s  xreal_inference=6.76  xreal_wall_incl_load=3.75
+   peak RSS (my 0.25 s poll) = 4.351 GiB (4455.1 MiB); OS peak_wset = 4607.9 MiB; 113 samples, first=2.5 last=447.3
+   cpu% median=53.6 max=75.3   VRAM before=4625 peak=6383 after=4227 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 113 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 6.80s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: gap-120s.wav: 120.0s of audio in 17.76s, 7x real time']
+   captions=12 chars=866 duration_reported=120.0 last_caption_end=119.68 coverage=0.997
+   tail sentinel present=True at_end=True count=3   english head count=1
+   splice points landing on a segment start (<=0.75 s): 5/7
+      expected    16.000  nearest segment start 0.16  hit=True
+      expected    25.543  nearest segment start 4.743  hit=False
+      expected    46.543  nearest segment start 0.103  hit=True
+      expected    62.543  nearest segment start 0.183  hit=True
+      expected    72.086  nearest segment start 4.726  hit=False
+      expected    93.086  nearest segment start 0.126  hit=True
+      expected   105.000  nearest segment start 0.2  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 113.28, "end": 119.68, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 6.80s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: gap-120s.wav: 120.0s of audio in 17.76s, 7x real time
+
+-- gap-300s  (device=cpu, started 2026-10-07T05:03:41)
+   audio=300.0s  wall=51.604s  compute=43.446s  xreal_inference=6.91  xreal_wall_incl_load=5.81
+   peak RSS (my 0.25 s poll) = 4.521 GiB (4629.6 MiB); OS peak_wset = 4629.9 MiB; 185 samples, first=2.4 last=1817.4
+   cpu% median=48.6 max=67.1   VRAM before=4227 peak=4284 after=4055 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 185 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 5.32s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: gap-300s.wav: 300.0s of audio in 43.45s, 7x real time']
+   captions=26 chars=1906 duration_reported=300.0 last_caption_end=299.72 coverage=0.999
+   tail sentinel present=True at_end=True count=7   english head count=5
+   splice points landing on a segment start (<=0.75 s): 12/19
+      expected    16.000  nearest segment start 0.16  hit=True
+      expected    25.543  nearest segment start 4.743  hit=False
+      expected    46.543  nearest segment start 0.103  hit=True
+      expected    62.543  nearest segment start 0.183  hit=True
+      expected    72.086  nearest segment start 4.726  hit=False
+      expected    93.086  nearest segment start 0.126  hit=True
+      expected   109.086  nearest segment start 0.166  hit=True
+      expected   118.629  nearest segment start 4.749  hit=False
+      expected   139.629  nearest segment start 0.149  hit=True
+      expected   155.629  nearest segment start 0.229  hit=True
+      expected   165.172  nearest segment start 4.732  hit=False
+      expected   186.172  nearest segment start 0.132  hit=True
+      expected   202.172  nearest segment start 0.212  hit=True
+      expected   211.715  nearest segment start 4.715  hit=False
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   248.715  nearest segment start 0.235  hit=True
+      expected   258.258  nearest segment start 4.738  hit=False
+      expected   279.258  nearest segment start 5.662  hit=False
+      expected   285.000  nearest segment start 0.08  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 293.24, "end": 299.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 5.32s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: gap-300s.wav: 300.0s of audio in 43.45s, 7x real time
+
+-- gap-600s  (device=cpu, started 2026-10-07T05:04:32)
+   audio=600.0s  wall=97.467s  compute=89.638s  xreal_inference=6.69  xreal_wall_incl_load=6.16
+   peak RSS (my 0.25 s poll) = 4.531 GiB (4640.0 MiB); OS peak_wset = 4643.3 MiB; 351 samples, first=2.5 last=2059.9
+   cpu% median=48.7 max=68.3   VRAM before=4055 peak=4659 after=4586 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 351 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 5.17s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: gap-600s.wav: 600.0s of audio in 89.64s, 7x real time']
+   captions=54 chars=3939 duration_reported=600.0 last_caption_end=599.72 coverage=1.0
+   tail sentinel present=True at_end=True count=14   english head count=11
+   splice points landing on a segment start (<=0.75 s): 26/38
+      expected    16.000  nearest segment start 0.16  hit=True
+      expected    25.543  nearest segment start 4.743  hit=False
+      expected    46.543  nearest segment start 0.103  hit=True
+      expected    62.543  nearest segment start 0.183  hit=True
+      expected    72.086  nearest segment start 4.726  hit=False
+      expected    93.086  nearest segment start 0.126  hit=True
+      expected   109.086  nearest segment start 0.166  hit=True
+      expected   118.629  nearest segment start 4.749  hit=False
+      expected   139.629  nearest segment start 0.149  hit=True
+      expected   155.629  nearest segment start 0.229  hit=True
+      expected   165.172  nearest segment start 4.732  hit=False
+      expected   186.172  nearest segment start 0.132  hit=True
+      expected   202.172  nearest segment start 0.212  hit=True
+      expected   211.715  nearest segment start 4.715  hit=False
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   248.715  nearest segment start 0.195  hit=True
+      expected   258.258  nearest segment start 4.738  hit=False
+      expected   279.258  nearest segment start 0.098  hit=True
+      expected   295.258  nearest segment start 0.178  hit=True
+      expected   304.801  nearest segment start 4.761  hit=False
+      expected   325.801  nearest segment start 0.161  hit=True
+      expected   341.801  nearest segment start 0.241  hit=True
+      expected   351.344  nearest segment start 4.744  hit=False
+      expected   372.344  nearest segment start 0.104  hit=True
+      expected   388.344  nearest segment start 0.224  hit=True
+      expected   397.888  nearest segment start 4.728  hit=False
+      expected   418.888  nearest segment start 0.128  hit=True
+      expected   434.888  nearest segment start 0.208  hit=True
+      expected   444.431  nearest segment start 4.711  hit=False
+      expected   465.431  nearest segment start 0.111  hit=True
+      expected   481.431  nearest segment start 0.231  hit=True
+      expected   490.974  nearest segment start 4.734  hit=False
+      expected   511.974  nearest segment start 0.134  hit=True
+      expected   527.974  nearest segment start 0.174  hit=True
+      expected   537.517  nearest segment start 4.717  hit=False
+      expected   558.517  nearest segment start 0.157  hit=True
+      expected   574.517  nearest segment start 0.237  hit=True
+      expected   585.000  nearest segment start 0.08  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 593.24, "end": 599.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 5.17s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: gap-600s.wav: 600.0s of audio in 89.64s, 7x real time
+
+-- src-en-8s  (device=cpu, started 2026-10-07T05:06:10)
+   audio=8.543s  wall=9.298s  compute=1.46s  xreal_inference=5.85  xreal_wall_incl_load=0.92
+   peak RSS (my 0.25 s poll) = 3.806 GiB (3897.0 MiB); OS peak_wset = 3897.2 MiB; 33 samples, first=2.4 last=528.9
+   cpu% median=52.1 max=63.6   VRAM before=4586 peak=4586 after=4640 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 33 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 4.94s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: src-en-8s.wav: 8.5s of audio in 1.46s, 6x real time']
+   captions=2 chars=130 duration_reported=8.543 last_caption_end=8.16 coverage=0.955
+   tail sentinel present=False at_end=False count=0   english head count=1
+   first caption: {"type": "caption", "text": "The radio announced that the bridge over the river will be closed next Monday.", "start": 0.0, "end": 4.8, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Residents need an alternative route to get to work.", "start": 4.8, "end": 8.16, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 4.94s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: src-en-8s.wav: 8.5s of audio in 1.46s, 6x real time
+
+-- src-pt-15s  (device=cpu, started 2026-10-07T05:06:20)
+   audio=15.0s  wall=35.921s  compute=2.314s  xreal_inference=6.48  xreal_wall_incl_load=0.42
+   peak RSS (my 0.25 s poll) = 3.669 GiB (3757.1 MiB); OS peak_wset = 3826.8 MiB; 130 samples, first=2.4 last=462.7
+   cpu% median=27.7 max=58.7   VRAM before=4648 peak=4695 after=4595 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 130 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 6.16s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: src-pt-15s.wav: 15.0s of audio in 2.31s, 6x real time']
+   captions=2 chars=159 duration_reported=15.0 last_caption_end=14.72 coverage=0.981
+   tail sentinel present=True at_end=True count=1   english head count=0
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 7.92, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 8.24, "end": 14.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 6.16s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: src-pt-15s.wav: 15.0s of audio in 2.31s, 6x real time
+
+-- src-agc-20s  (device=cpu, started 2026-10-07T05:06:56)
+   audio=20.0s  wall=35.576s  compute=2.687s  xreal_inference=7.44  xreal_wall_incl_load=0.56
+   peak RSS (my 0.25 s poll) = 3.611 GiB (3697.5 MiB); OS peak_wset = 3893.2 MiB; 129 samples, first=2.5 last=460.6
+   cpu% median=36.8 max=62.2   VRAM before=4607 peak=4756 after=4500 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 129 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 6.00s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: src-agc-20s.wav: 20.0s of audio in 2.69s, 7x real time']
+   captions=0 chars=0 duration_reported=20.0 last_caption_end=None coverage=None
+   tail sentinel present=False at_end=False count=0   english head count=0
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 6.00s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: src-agc-20s.wav: 20.0s of audio in 2.69s, 7x real time
+
+-- plain-600s  (device=cpu, started 2026-10-07T05:08:47)
+   audio=600.0s  wall=110.797s  compute=100.108s  xreal_inference=5.99  xreal_wall_incl_load=5.42
+   peak RSS (my 0.25 s poll) = 4.496 GiB (4604.2 MiB); OS peak_wset = 4629.6 MiB; 395 samples, first=2.4 last=267.0
+   cpu% median=51.7 max=79.7   VRAM before=4494 peak=4628 after=3979 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 395 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 7.33s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-600s.wav: 600.0s of audio in 100.11s, 6x real time']
+   captions=56 chars=4103 duration_reported=600.0 last_caption_end=599.72 coverage=1.0
+   tail sentinel present=True at_end=True count=15   english head count=12
+   splice points landing on a segment start (<=0.75 s): 27/41
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 0.063  hit=True
+      expected    58.543  nearest segment start 0.143  hit=True
+      expected    67.086  nearest segment start 3.806  hit=False
+      expected    87.086  nearest segment start 0.126  hit=True
+      expected   102.086  nearest segment start 0.126  hit=True
+      expected   110.629  nearest segment start 3.789  hit=False
+      expected   130.629  nearest segment start 0.069  hit=True
+      expected   145.629  nearest segment start 0.149  hit=True
+      expected   154.172  nearest segment start 3.812  hit=False
+      expected   174.172  nearest segment start 0.092  hit=True
+      expected   189.172  nearest segment start 0.132  hit=True
+      expected   197.715  nearest segment start 3.795  hit=False
+      expected   217.715  nearest segment start 0.075  hit=True
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   241.258  nearest segment start 3.778  hit=False
+      expected   261.258  nearest segment start 0.098  hit=True
+      expected   276.258  nearest segment start 0.138  hit=True
+      expected   284.801  nearest segment start 3.801  hit=False
+      expected   304.801  nearest segment start 0.081  hit=True
+      expected   319.801  nearest segment start 0.121  hit=True
+      expected   328.344  nearest segment start 3.784  hit=False
+      expected   348.344  nearest segment start 0.064  hit=True
+      expected   363.344  nearest segment start 0.144  hit=True
+      expected   371.888  nearest segment start 3.808  hit=False
+      expected   391.888  nearest segment start 0.128  hit=True
+      expected   406.888  nearest segment start 0.128  hit=True
+      expected   415.431  nearest segment start 3.791  hit=False
+      expected   435.431  nearest segment start 0.071  hit=True
+      expected   450.431  nearest segment start 0.151  hit=True
+      expected   458.974  nearest segment start 3.814  hit=False
+      expected   478.974  nearest segment start 0.054  hit=True
+      expected   493.974  nearest segment start 0.134  hit=True
+      expected   502.517  nearest segment start 3.797  hit=False
+      expected   522.517  nearest segment start 0.117  hit=True
+      expected   537.517  nearest segment start 0.117  hit=True
+      expected   546.060  nearest segment start 3.78  hit=False
+      expected   566.060  nearest segment start 0.1  hit=True
+      expected   581.060  nearest segment start 4.1  hit=False
+      expected   585.000  nearest segment start 0.16  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 593.24, "end": 599.72, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 7.33s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-600s.wav: 600.0s of audio in 100.11s, 6x real time
+
+-- plain-1800s  (device=cpu, started 2026-10-07T05:10:38)
+   audio=1800.0s  wall=381.672s  compute=373.406s  xreal_inference=4.82  xreal_wall_incl_load=4.72
+   peak RSS (my 0.25 s poll) = 4.517 GiB (4625.9 MiB); OS peak_wset = 4640.2 MiB; 1307 samples, first=2.5 last=1476.1
+   cpu% median=60.3 max=89.6   VRAM before=3979 peak=6757 after=4985 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 1307 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 5.31s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-1800s.wav: 1800.0s of audio in 373.41s, 5x real time']
+   captions=166 chars=12091 duration_reported=1800.0 last_caption_end=1799.68 coverage=1.0
+   tail sentinel present=True at_end=True count=42   english head count=40
+   splice points landing on a segment start (<=0.75 s): 82/123
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 0.063  hit=True
+      expected    58.543  nearest segment start 0.143  hit=True
+      expected    67.086  nearest segment start 3.806  hit=False
+      expected    87.086  nearest segment start 0.126  hit=True
+      expected   102.086  nearest segment start 0.126  hit=True
+      expected   110.629  nearest segment start 3.789  hit=False
+      expected   130.629  nearest segment start 0.069  hit=True
+      expected   145.629  nearest segment start 0.149  hit=True
+      expected   154.172  nearest segment start 3.812  hit=False
+      expected   174.172  nearest segment start 0.092  hit=True
+      expected   189.172  nearest segment start 0.132  hit=True
+      expected   197.715  nearest segment start 3.795  hit=False
+      expected   217.715  nearest segment start 0.075  hit=True
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   241.258  nearest segment start 3.778  hit=False
+      expected   261.258  nearest segment start 0.098  hit=True
+      expected   276.258  nearest segment start 0.138  hit=True
+      expected   284.801  nearest segment start 3.801  hit=False
+      expected   304.801  nearest segment start 0.081  hit=True
+      expected   319.801  nearest segment start 0.121  hit=True
+      expected   328.344  nearest segment start 3.784  hit=False
+      expected   348.344  nearest segment start 0.064  hit=True
+      expected   363.344  nearest segment start 0.144  hit=True
+      expected   371.888  nearest segment start 3.808  hit=False
+      expected   391.888  nearest segment start 0.128  hit=True
+      expected   406.888  nearest segment start 0.128  hit=True
+      expected   415.431  nearest segment start 3.791  hit=False
+      expected   435.431  nearest segment start 0.071  hit=True
+      expected   450.431  nearest segment start 0.151  hit=True
+      expected   458.974  nearest segment start 3.814  hit=False
+      expected   478.974  nearest segment start 0.054  hit=True
+      expected   493.974  nearest segment start 0.134  hit=True
+      expected   502.517  nearest segment start 3.797  hit=False
+      expected   522.517  nearest segment start 0.077  hit=True
+      expected   537.517  nearest segment start 0.117  hit=True
+      expected   546.060  nearest segment start 3.78  hit=False
+      expected   566.060  nearest segment start 0.1  hit=True
+      expected   581.060  nearest segment start 0.14  hit=True
+      expected   589.603  nearest segment start 3.803  hit=False
+      expected   609.603  nearest segment start 0.083  hit=True
+      expected   624.603  nearest segment start 0.123  hit=True
+      expected   633.146  nearest segment start 3.786  hit=False
+      expected   653.146  nearest segment start 0.066  hit=True
+      expected   668.146  nearest segment start 0.146  hit=True
+      expected   676.689  nearest segment start 3.809  hit=False
+      expected   696.689  nearest segment start 0.129  hit=True
+      expected   711.689  nearest segment start 0.129  hit=True
+      expected   720.232  nearest segment start 3.792  hit=False
+      expected   740.232  nearest segment start 0.072  hit=True
+      expected   755.232  nearest segment start 0.152  hit=True
+      expected   763.775  nearest segment start 3.735  hit=False
+      expected   783.775  nearest segment start 0.055  hit=True
+      expected   798.775  nearest segment start 0.135  hit=True
+      expected   807.318  nearest segment start 3.798  hit=False
+      expected   827.318  nearest segment start 0.078  hit=True
+      expected   842.318  nearest segment start 0.118  hit=True
+      expected   850.861  nearest segment start 3.781  hit=False
+      expected   870.861  nearest segment start 0.101  hit=True
+      expected   885.861  nearest segment start 0.141  hit=True
+      expected   894.404  nearest segment start 3.804  hit=False
+      expected   914.404  nearest segment start 0.084  hit=True
+      expected   929.404  nearest segment start 0.124  hit=True
+      expected   937.947  nearest segment start 3.787  hit=False
+      expected   957.947  nearest segment start 0.067  hit=True
+      expected   972.947  nearest segment start 0.107  hit=True
+      expected   981.490  nearest segment start 3.77  hit=False
+      expected  1001.490  nearest segment start 0.13  hit=True
+      expected  1016.490  nearest segment start 0.13  hit=True
+      expected  1025.034  nearest segment start 3.794  hit=False
+      expected  1045.034  nearest segment start 0.074  hit=True
+      expected  1060.034  nearest segment start 0.154  hit=True
+      expected  1068.577  nearest segment start 3.737  hit=False
+      expected  1088.577  nearest segment start 0.057  hit=True
+      expected  1103.577  nearest segment start 0.137  hit=True
+      expected  1112.120  nearest segment start 3.8  hit=False
+      expected  1132.120  nearest segment start 0.08  hit=True
+      expected  1147.120  nearest segment start 0.12  hit=True
+      expected  1155.663  nearest segment start 3.783  hit=False
+      expected  1175.663  nearest segment start 0.103  hit=True
+      expected  1190.663  nearest segment start 0.143  hit=True
+      expected  1199.206  nearest segment start 3.806  hit=False
+      expected  1219.206  nearest segment start 0.086  hit=True
+      expected  1234.206  nearest segment start 0.126  hit=True
+      expected  1242.749  nearest segment start 3.789  hit=False
+      expected  1262.749  nearest segment start 0.069  hit=True
+      expected  1277.749  nearest segment start 0.109  hit=True
+      expected  1286.292  nearest segment start 3.772  hit=False
+      expected  1306.292  nearest segment start 0.092  hit=True
+      expected  1321.292  nearest segment start 0.132  hit=True
+      expected  1329.835  nearest segment start 3.795  hit=False
+      expected  1349.835  nearest segment start 0.075  hit=True
+      expected  1364.835  nearest segment start 0.115  hit=True
+      expected  1373.378  nearest segment start 3.778  hit=False
+      expected  1393.378  nearest segment start 0.058  hit=True
+      expected  1408.378  nearest segment start 0.138  hit=True
+      expected  1416.921  nearest segment start 3.801  hit=False
+      expected  1436.921  nearest segment start 0.121  hit=True
+      expected  1451.921  nearest segment start 0.121  hit=True
+      expected  1460.464  nearest segment start 3.784  hit=False
+      expected  1480.464  nearest segment start 0.104  hit=True
+      expected  1495.464  nearest segment start 0.144  hit=True
+      expected  1504.007  nearest segment start 3.807  hit=False
+      expected  1524.007  nearest segment start 0.087  hit=True
+      expected  1539.007  nearest segment start 0.127  hit=True
+      expected  1547.550  nearest segment start 3.79  hit=False
+      expected  1567.550  nearest segment start 0.07  hit=True
+      expected  1582.550  nearest segment start 0.11  hit=True
+      expected  1591.093  nearest segment start 3.773  hit=False
+      expected  1611.093  nearest segment start 0.093  hit=True
+      expected  1626.093  nearest segment start 0.133  hit=True
+      expected  1634.636  nearest segment start 3.796  hit=False
+      expected  1654.636  nearest segment start 0.076  hit=True
+      expected  1669.636  nearest segment start 0.116  hit=True
+      expected  1678.179  nearest segment start 3.779  hit=False
+      expected  1698.179  nearest segment start 0.059  hit=True
+      expected  1713.179  nearest segment start 0.139  hit=True
+      expected  1721.723  nearest segment start 3.803  hit=False
+      expected  1741.723  nearest segment start 0.083  hit=True
+      expected  1756.723  nearest segment start 0.123  hit=True
+      expected  1765.266  nearest segment start 3.786  hit=False
+      expected  1785.000  nearest segment start 0.12  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 1793.28, "end": 1799.68, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 5.31s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-1800s.wav: 1800.0s of audio in 373.41s, 5x real time
+
+-- plain-3600s  (device=cpu, started 2026-10-07T05:17:00)
+   audio=3600.0s  wall=347.525s  compute=337.174s  xreal_inference=10.68  xreal_wall_incl_load=10.36
+   peak RSS (my 0.25 s poll) = 4.471 GiB (4577.9 MiB); OS peak_wset = 4634.9 MiB; 1208 samples, first=2.5 last=1341.5
+   cpu% median=60.4 max=91.8   VRAM before=4985 peak=6936 after=4446 of 16303 MiB   child_held_gpu_context=False
+   visible windows for the child pid: 0 sample(s) of 1208 at 0.25 s []
+   rc=0 hung=False  load: ['redux_batch: resident weight form = dense', 'redux_batch: loaded in 7.20s from H:\\sotto\\worker\\models\\parakeet-redux-ternary']
+   timing: ['redux_batch: plain-3600s.wav: 3600.0s of audio in 337.17s, 11x real time']
+   captions=332 chars=24182 duration_reported=3600.0 last_caption_end=3599.68 coverage=1.0
+   tail sentinel present=True at_end=True count=84   english head count=81
+   splice points landing on a segment start (<=0.75 s): 165/247
+      expected    15.000  nearest segment start 0.12  hit=True
+      expected    23.543  nearest segment start 3.743  hit=False
+      expected    43.543  nearest segment start 0.063  hit=True
+      expected    58.543  nearest segment start 0.143  hit=True
+      expected    67.086  nearest segment start 3.806  hit=False
+      expected    87.086  nearest segment start 0.126  hit=True
+      expected   102.086  nearest segment start 0.126  hit=True
+      expected   110.629  nearest segment start 3.789  hit=False
+      expected   130.629  nearest segment start 0.069  hit=True
+      expected   145.629  nearest segment start 0.149  hit=True
+      expected   154.172  nearest segment start 3.812  hit=False
+      expected   174.172  nearest segment start 0.092  hit=True
+      expected   189.172  nearest segment start 0.132  hit=True
+      expected   197.715  nearest segment start 3.795  hit=False
+      expected   217.715  nearest segment start 0.075  hit=True
+      expected   232.715  nearest segment start 0.115  hit=True
+      expected   241.258  nearest segment start 3.778  hit=False
+      expected   261.258  nearest segment start 0.098  hit=True
+      expected   276.258  nearest segment start 0.138  hit=True
+      expected   284.801  nearest segment start 3.801  hit=False
+      expected   304.801  nearest segment start 0.081  hit=True
+      expected   319.801  nearest segment start 0.121  hit=True
+      expected   328.344  nearest segment start 3.784  hit=False
+      expected   348.344  nearest segment start 0.064  hit=True
+      expected   363.344  nearest segment start 0.144  hit=True
+      expected   371.888  nearest segment start 3.808  hit=False
+      expected   391.888  nearest segment start 0.128  hit=True
+      expected   406.888  nearest segment start 0.128  hit=True
+      expected   415.431  nearest segment start 3.791  hit=False
+      expected   435.431  nearest segment start 0.071  hit=True
+      expected   450.431  nearest segment start 0.151  hit=True
+      expected   458.974  nearest segment start 3.814  hit=False
+      expected   478.974  nearest segment start 0.054  hit=True
+      expected   493.974  nearest segment start 0.134  hit=True
+      expected   502.517  nearest segment start 3.797  hit=False
+      expected   522.517  nearest segment start 0.077  hit=True
+      expected   537.517  nearest segment start 0.117  hit=True
+      expected   546.060  nearest segment start 3.78  hit=False
+      expected   566.060  nearest segment start 0.1  hit=True
+      expected   581.060  nearest segment start 0.14  hit=True
+      expected   589.603  nearest segment start 3.803  hit=False
+      expected   609.603  nearest segment start 0.083  hit=True
+      expected   624.603  nearest segment start 0.123  hit=True
+      expected   633.146  nearest segment start 3.786  hit=False
+      expected   653.146  nearest segment start 0.066  hit=True
+      expected   668.146  nearest segment start 0.146  hit=True
+      expected   676.689  nearest segment start 3.809  hit=False
+      expected   696.689  nearest segment start 0.129  hit=True
+      expected   711.689  nearest segment start 0.129  hit=True
+      expected   720.232  nearest segment start 3.792  hit=False
+      expected   740.232  nearest segment start 0.072  hit=True
+      expected   755.232  nearest segment start 0.152  hit=True
+      expected   763.775  nearest segment start 3.735  hit=False
+      expected   783.775  nearest segment start 0.055  hit=True
+      expected   798.775  nearest segment start 0.135  hit=True
+      expected   807.318  nearest segment start 3.798  hit=False
+      expected   827.318  nearest segment start 0.078  hit=True
+      expected   842.318  nearest segment start 0.118  hit=True
+      expected   850.861  nearest segment start 3.781  hit=False
+      expected   870.861  nearest segment start 0.101  hit=True
+      expected   885.861  nearest segment start 0.141  hit=True
+      expected   894.404  nearest segment start 3.804  hit=False
+      expected   914.404  nearest segment start 0.084  hit=True
+      expected   929.404  nearest segment start 0.124  hit=True
+      expected   937.947  nearest segment start 3.787  hit=False
+      expected   957.947  nearest segment start 0.067  hit=True
+      expected   972.947  nearest segment start 0.107  hit=True
+      expected   981.490  nearest segment start 3.77  hit=False
+      expected  1001.490  nearest segment start 0.13  hit=True
+      expected  1016.490  nearest segment start 0.13  hit=True
+      expected  1025.034  nearest segment start 3.794  hit=False
+      expected  1045.034  nearest segment start 0.074  hit=True
+      expected  1060.034  nearest segment start 0.154  hit=True
+      expected  1068.577  nearest segment start 3.737  hit=False
+      expected  1088.577  nearest segment start 0.057  hit=True
+      expected  1103.577  nearest segment start 0.137  hit=True
+      expected  1112.120  nearest segment start 3.8  hit=False
+      expected  1132.120  nearest segment start 0.08  hit=True
+      expected  1147.120  nearest segment start 0.12  hit=True
+      expected  1155.663  nearest segment start 3.783  hit=False
+      expected  1175.663  nearest segment start 0.103  hit=True
+      expected  1190.663  nearest segment start 0.143  hit=True
+      expected  1199.206  nearest segment start 3.806  hit=False
+      expected  1219.206  nearest segment start 0.086  hit=True
+      expected  1234.206  nearest segment start 0.126  hit=True
+      expected  1242.749  nearest segment start 3.789  hit=False
+      expected  1262.749  nearest segment start 0.069  hit=True
+      expected  1277.749  nearest segment start 0.109  hit=True
+      expected  1286.292  nearest segment start 3.772  hit=False
+      expected  1306.292  nearest segment start 0.092  hit=True
+      expected  1321.292  nearest segment start 0.132  hit=True
+      expected  1329.835  nearest segment start 3.795  hit=False
+      expected  1349.835  nearest segment start 0.075  hit=True
+      expected  1364.835  nearest segment start 0.115  hit=True
+      expected  1373.378  nearest segment start 3.778  hit=False
+      expected  1393.378  nearest segment start 0.058  hit=True
+      expected  1408.378  nearest segment start 0.138  hit=True
+      expected  1416.921  nearest segment start 3.801  hit=False
+      expected  1436.921  nearest segment start 0.121  hit=True
+      expected  1451.921  nearest segment start 0.121  hit=True
+      expected  1460.464  nearest segment start 3.784  hit=False
+      expected  1480.464  nearest segment start 0.104  hit=True
+      expected  1495.464  nearest segment start 0.144  hit=True
+      expected  1504.007  nearest segment start 3.807  hit=False
+      expected  1524.007  nearest segment start 0.087  hit=True
+      expected  1539.007  nearest segment start 0.127  hit=True
+      expected  1547.550  nearest segment start 3.79  hit=False
+      expected  1567.550  nearest segment start 0.07  hit=True
+      expected  1582.550  nearest segment start 0.11  hit=True
+      expected  1591.093  nearest segment start 3.773  hit=False
+      expected  1611.093  nearest segment start 0.093  hit=True
+      expected  1626.093  nearest segment start 0.133  hit=True
+      expected  1634.636  nearest segment start 3.796  hit=False
+      expected  1654.636  nearest segment start 0.076  hit=True
+      expected  1669.636  nearest segment start 0.116  hit=True
+      expected  1678.179  nearest segment start 3.779  hit=False
+      expected  1698.179  nearest segment start 0.059  hit=True
+      expected  1713.179  nearest segment start 0.139  hit=True
+      expected  1721.723  nearest segment start 3.803  hit=False
+      expected  1741.723  nearest segment start 0.083  hit=True
+      expected  1756.723  nearest segment start 0.123  hit=True
+      expected  1765.266  nearest segment start 3.786  hit=False
+      expected  1785.266  nearest segment start 0.066  hit=True
+      expected  1800.266  nearest segment start 0.146  hit=True
+      expected  1808.809  nearest segment start 3.809  hit=False
+      expected  1828.809  nearest segment start 0.089  hit=True
+      expected  1843.809  nearest segment start 0.129  hit=True
+      expected  1852.352  nearest segment start 3.792  hit=False
+      expected  1872.352  nearest segment start 0.072  hit=True
+      expected  1887.352  nearest segment start 0.112  hit=True
+      expected  1895.895  nearest segment start 3.775  hit=False
+      expected  1915.895  nearest segment start 0.095  hit=True
+      expected  1930.895  nearest segment start 0.135  hit=True
+      expected  1939.438  nearest segment start 3.798  hit=False
+      expected  1959.438  nearest segment start 0.078  hit=True
+      expected  1974.438  nearest segment start 0.118  hit=True
+      expected  1982.981  nearest segment start 3.781  hit=False
+      expected  2002.981  nearest segment start 0.061  hit=True
+      expected  2017.981  nearest segment start 0.141  hit=True
+      expected  2026.524  nearest segment start 3.804  hit=False
+      expected  2046.524  nearest segment start 0.124  hit=True
+      expected  2061.524  nearest segment start 0.124  hit=True
+      expected  2070.067  nearest segment start 3.787  hit=False
+      expected  2090.067  nearest segment start 0.067  hit=True
+      expected  2105.067  nearest segment start 0.147  hit=True
+      expected  2113.610  nearest segment start 3.81  hit=False
+      expected  2133.610  nearest segment start 0.09  hit=True
+      expected  2148.610  nearest segment start 0.13  hit=True
+      expected  2157.153  nearest segment start 3.793  hit=False
+      expected  2177.153  nearest segment start 0.073  hit=True
+      expected  2192.153  nearest segment start 0.113  hit=True
+      expected  2200.696  nearest segment start 3.776  hit=False
+      expected  2220.696  nearest segment start 0.096  hit=True
+      expected  2235.696  nearest segment start 0.136  hit=True
+      expected  2244.239  nearest segment start 3.799  hit=False
+      expected  2264.239  nearest segment start 0.079  hit=True
+      expected  2279.239  nearest segment start 0.119  hit=True
+      expected  2287.782  nearest segment start 3.782  hit=False
+      expected  2307.782  nearest segment start 0.062  hit=True
+      expected  2322.782  nearest segment start 0.142  hit=True
+      expected  2331.325  nearest segment start 3.805  hit=False
+      expected  2351.325  nearest segment start 0.085  hit=True
+      expected  2366.325  nearest segment start 0.125  hit=True
+      expected  2374.868  nearest segment start 3.788  hit=False
+      expected  2394.868  nearest segment start 0.068  hit=True
+      expected  2409.868  nearest segment start 0.148  hit=True
+      expected  2418.412  nearest segment start 3.812  hit=False
+      expected  2438.412  nearest segment start 0.092  hit=True
+      expected  2453.412  nearest segment start 0.132  hit=True
+      expected  2461.955  nearest segment start 3.795  hit=False
+      expected  2481.955  nearest segment start 0.075  hit=True
+      expected  2496.955  nearest segment start 0.115  hit=True
+      expected  2505.498  nearest segment start 3.778  hit=False
+      expected  2525.498  nearest segment start 0.098  hit=True
+      expected  2540.498  nearest segment start 0.138  hit=True
+      expected  2549.041  nearest segment start 3.801  hit=False
+      expected  2569.041  nearest segment start 0.081  hit=True
+      expected  2584.041  nearest segment start 0.121  hit=True
+      expected  2592.584  nearest segment start 3.784  hit=False
+      expected  2612.584  nearest segment start 0.064  hit=True
+      expected  2627.584  nearest segment start 0.144  hit=True
+      expected  2636.127  nearest segment start 3.807  hit=False
+      expected  2656.127  nearest segment start 0.127  hit=True
+      expected  2671.127  nearest segment start 0.127  hit=True
+      expected  2679.670  nearest segment start 3.79  hit=False
+      expected  2699.670  nearest segment start 0.07  hit=True
+      expected  2714.670  nearest segment start 0.15  hit=True
+      expected  2723.213  nearest segment start 3.813  hit=False
+      expected  2743.213  nearest segment start 0.093  hit=True
+      expected  2758.213  nearest segment start 0.133  hit=True
+      expected  2766.756  nearest segment start 3.796  hit=False
+      expected  2786.756  nearest segment start 0.076  hit=True
+      expected  2801.756  nearest segment start 0.116  hit=True
+      expected  2810.299  nearest segment start 3.779  hit=False
+      expected  2830.299  nearest segment start 0.099  hit=True
+      expected  2845.299  nearest segment start 0.139  hit=True
+      expected  2853.842  nearest segment start 3.802  hit=False
+      expected  2873.842  nearest segment start 0.082  hit=True
+      expected  2888.842  nearest segment start 0.122  hit=True
+      expected  2897.385  nearest segment start 3.785  hit=False
+      expected  2917.385  nearest segment start 0.065  hit=True
+      expected  2932.385  nearest segment start 0.145  hit=True
+      expected  2940.928  nearest segment start 3.808  hit=False
+      expected  2960.928  nearest segment start 0.128  hit=True
+      expected  2975.928  nearest segment start 0.128  hit=True
+      expected  2984.471  nearest segment start 3.791  hit=False
+      expected  3004.471  nearest segment start 0.071  hit=True
+      expected  3019.471  nearest segment start 0.151  hit=True
+      expected  3028.014  nearest segment start 3.814  hit=False
+      expected  3048.014  nearest segment start 0.094  hit=True
+      expected  3063.014  nearest segment start 0.134  hit=True
+      expected  3071.557  nearest segment start 3.797  hit=False
+      expected  3091.557  nearest segment start 0.077  hit=True
+      expected  3106.557  nearest segment start 0.117  hit=True
+      expected  3115.101  nearest segment start 3.781  hit=False
+      expected  3135.101  nearest segment start 0.101  hit=True
+      expected  3150.101  nearest segment start 0.141  hit=True
+      expected  3158.644  nearest segment start 3.804  hit=False
+      expected  3178.644  nearest segment start 0.084  hit=True
+      expected  3193.644  nearest segment start 0.124  hit=True
+      expected  3202.187  nearest segment start 3.787  hit=False
+      expected  3222.187  nearest segment start 0.067  hit=True
+      expected  3237.187  nearest segment start 0.107  hit=True
+      expected  3245.730  nearest segment start 3.77  hit=False
+      expected  3265.730  nearest segment start 0.13  hit=True
+      expected  3280.730  nearest segment start 0.13  hit=True
+      expected  3289.273  nearest segment start 3.793  hit=False
+      expected  3309.273  nearest segment start 0.073  hit=True
+      expected  3324.273  nearest segment start 0.153  hit=True
+      expected  3332.816  nearest segment start 3.736  hit=False
+      expected  3352.816  nearest segment start 0.056  hit=True
+      expected  3367.816  nearest segment start 0.136  hit=True
+      expected  3376.359  nearest segment start 3.799  hit=False
+      expected  3396.359  nearest segment start 0.079  hit=True
+      expected  3411.359  nearest segment start 0.119  hit=True
+      expected  3419.902  nearest segment start 3.782  hit=False
+      expected  3439.902  nearest segment start 0.102  hit=True
+      expected  3454.902  nearest segment start 0.142  hit=True
+      expected  3463.445  nearest segment start 3.805  hit=False
+      expected  3483.445  nearest segment start 0.085  hit=True
+      expected  3498.445  nearest segment start 0.125  hit=True
+      expected  3506.988  nearest segment start 3.788  hit=False
+      expected  3526.988  nearest segment start 0.068  hit=True
+      expected  3541.988  nearest segment start 0.108  hit=True
+      expected  3550.531  nearest segment start 3.771  hit=False
+      expected  3570.531  nearest segment start 0.131  hit=True
+      expected  3585.000  nearest segment start 0.04  hit=True
+   first caption: {"type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.24, "producer": "redux"}
+   last  caption: {"type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho.", "start": 3593.28, "end": 3599.68, "producer": "redux"}
+   stderr| redux_batch: resident weight form = dense
+   stderr| redux_batch: loaded in 7.20s from H:\sotto\worker\models\parakeet-redux-ternary
+   stderr| redux_batch: plain-3600s.wav: 3600.0s of audio in 337.17s, 11x real time

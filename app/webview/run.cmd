@@ -2,20 +2,30 @@
 REM ===========================================================================
 REM  Sotto -- THE APP.  Double-click this file, or run it from a terminal.
 REM
-REM    run.cmd                  start hidden, wait for Alt+C
+REM    run.cmd                  start hidden, TRANSCRIBE, wait for Alt+C
 REM    run.cmd --show           start with the panel already up
-REM    run.cmd --with-worker    also spawn worker\sotto_worker.py
+REM    run.cmd --no-worker      shell only: start NO transcription worker
+REM    run.cmd --with-worker    accepted alias -- the worker is the default
 REM    run.cmd --help           every flag
 REM
-REM  The WebView2 shell (sotto_webview.py) is the app. app\electron\ is the
-REM  EARLIER shell and is kept only for its panel files and for comparison --
-REM  it is not a fallback and nothing here reaches for it.
+REM  THE WORKER STARTS BY DEFAULT (F1, 2026-10-07). Until this change the flag
+REM  was the other way round and `run.cmd` passed nothing, so Alt+C opened a
+REM  panel reading "Waiting for audio" with no capture process in existence --
+REM  the owner's acceptance ("alt c mostra as transcricoes em tempo real")
+REM  failing on the most obvious path. The default now lives in the shell
+REM  (`sotto_webview.py`), not in this wrapper, so there is no second flag
+REM  table here to drift: `--no-worker` turns it off and `--with-worker` only
+REM  FORCES it past an automatic opt-out.
+REM
+REM  The WebView2 shell (sotto_webview.py) is the app. The panel it hosts is
+REM  app\panel\. The EARLIER shell is app\_legacy-electron\ -- kept only for its
+REM  own files and for comparison, not as a fallback; nothing here reaches for it.
 REM
 REM  NO CONSOLE WINDOW. A normal launch goes through pythonw.exe, which is a
 REM  GUI-subsystem binary: Windows allocates no console for it. Measured on this
 REM  box (Start-Process pythonw, detached):
 REM      stdout=None stderr=None GetConsoleWindow()=0
-REM  (`_main\webview-pythonw-console.json`) — so the `print()` in the shell's
+REM  (`_main\webview-pythonw-console.json`) ? so the `print()` in the shell's
 REM  log() is a no-op there, which is why run.cmd passes --log and the run's
 REM  receipt is the FILE, not the screen.
 REM
@@ -27,7 +37,7 @@ REM
 REM  A LAUNCH REPORTS A HANG (gap G3, 2026-10-06). `start` detaches the app, so
 REM  the wrapper used to answer 0 no matter what happened next -- measured: a
 REM  launch stopped at STAGING_LOADED and run.cmd still said 0
-REM  (docs/audit/launch-entry.md §3/§4). A FRESH ready-file now travels with the
+REM  (docs/audit/launch-entry.md ?3/?4). A FRESH ready-file now travels with the
 REM  app; the shell touches it once the panel navigation has completed, and
 REM  run.cmd waits for it, BOUNDED, exiting 4 on timeout. It still does not wait
 REM  for the app to EXIT -- the app lives for days by design.
@@ -84,6 +94,13 @@ for %%A in (%*) do (
   if /I "%%~A"=="--dump-dom"  set "NEEDS_STDOUT=1"
   if /I "%%~A"=="--selftest"  set "NEEDS_STDOUT=1"
   if /I "%%~A"=="--memory"    set "NEEDS_STDOUT=1"
+  REM The autostart modes PRINT their result (what was written to, or removed
+  REM from, HKCU\...\Run, and whether it still points at THIS checkout), so they
+  REM need the console interpreter for the same reason --help does: under
+  REM pythonw their output would be a no-op and the owner would see nothing.
+  if /I "%%~A"=="--install-autostart"   set "NEEDS_STDOUT=1"
+  if /I "%%~A"=="--uninstall-autostart" set "NEEDS_STDOUT=1"
+  if /I "%%~A"=="--autostart-status"    set "NEEDS_STDOUT=1"
   if /I "%%~A"=="--check-args" set "CHECK_ARGS_ONLY=1"
 )
 
@@ -120,7 +137,7 @@ REM Asked for the pre-flight itself, the pre-flight IS the action: return its
 REM status and start nothing. Until 2026-10-06 `run.cmd --check-args` passed the
 REM pre-flight and then `start`ed the app, which returned 0 having opened
 REM nothing -- a second way for "nothing happened" to answer as success
-REM (docs/audit/launch-entry.md, §2).
+REM (docs/audit/launch-entry.md, ?2).
 if defined CHECK_ARGS_ONLY exit /b %PREFLIGHT_RC%
 
 REM ---- normal launch: pythonw, detached, with a log file the run can leave --
@@ -133,7 +150,7 @@ REM moment the panel navigation has completed (`mark_launch_ready`, after
 REM PRELOAD_ACTIVE). The wait for it is BOUNDED and reports a HANG, which the
 REM detached `start` alone could never do -- measured 2026-10-06 a launch
 REM stopped at STAGING_LOADED and run.cmd still answered 0 (see
-REM docs/audit/launch-entry.md §3/§4). It does NOT wait for the app to EXIT:
+REM docs/audit/launch-entry.md ?3/?4). It does NOT wait for the app to EXIT:
 REM the app is meant to sit hidden for days; only the readiness handshake is
 REM bounded. SOTTO_READY_BOUND overrides the bound (default 30 s) so a test can
 REM shorten it; the whole wait lives in the shell's `--wait-ready` mode, so it

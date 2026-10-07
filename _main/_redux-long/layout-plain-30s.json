@@ -1,0 +1,24 @@
+{
+ "seconds": 30.0,
+ "gap": 0.0,
+ "pieces": [
+  {
+   "src": "pt",
+   "start": 0.0,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 15.0,
+   "dur": 15.0,
+   "whole": true,
+   "sentinel": true
+  }
+ ],
+ "expected_chars": 310,
+ "ref_texts": {
+  "pt": "O r\u00e1dio anunciou que a ponte sobre o rio vai ser interditada na pr\u00f3xima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho.",
+  "en": "The radio announced that the bridge over the river will be closed next Monday. Residents need an alternative route to get to work."
+ }
+}

@@ -54,7 +54,7 @@ import hot_reload
 HERE = os.path.dirname(os.path.abspath(__file__))
 #: The panel UI. Read-only for this shell: it is the Electron arm's files and
 #: they are the contract, not ours to change.
-PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'electron'))
+PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'panel'))
 PANEL_HTML = os.path.join(PANEL_DIR, 'panel.html')
 #: An empty page the shell opens FIRST, so the preload is registered before the
 #: panel is ever parsed. See stage.html for why the ordering needs buying.

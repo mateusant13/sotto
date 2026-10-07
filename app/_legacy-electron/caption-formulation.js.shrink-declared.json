@@ -1,0 +1,1 @@
+{"target":"H:/sotto/app/electron/caption-formulation.js","before":21492,"after":14567,"reason":"Cure toggle implementation - removed duplicate code and added cureEnabled flag to prevent transcript duplication"}

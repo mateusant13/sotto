@@ -22,17 +22,33 @@ the first `PANEL_VISIBILITY_REASSERTED`.
 ARMS (copies are BUILT from the live shell at run time, sha256 logged, and
 deleted at the end, so a negative arm cannot silently go stale):
 
-  precure  a COPY of the live shell with the navigation-start re-assert
-           subscription REMOVED — the BEFORE half / the negative arm. Its
-           catches must be >= 1 or this instrument is blind.
-  real     the LIVE `app/webview/sotto_webview.py`, the real entry point
-           `run.cmd` launches. Both the AFTER measurement and the thing the
-           owner sees.
-  opaque   a COPY of the live shell run with the app's own `--opaque`. If the
-           flash goes to 0 here, that is a FINDING (the mechanism is the
-           transparent Show-on-navigation), not a workaround.
-  sync-off a COPY of the live shell with ONLY the synchronous re-assert removed
-           (the posted half left in). Isolates the synchronous cure.
+  live     a COPY of the live `app/webview/sotto_webview.py` — the fixed shell.
+           `run.cmd`'s real entry point with ONLY the geometry moved off the
+           desk, so no copy can put a window on the owner's screen while the
+           mechanism axis is still measured.
+  nogate   the 2026-10-07 CURE REVERTED — `_gate_form_show` not called. This is
+           the PRE-fix shell in behaviour, and the arm the fix is judged
+           against. Its catches must be >= 1 or the fix is being credited for
+           something it did not do.
+  nogate-nonet
+           the PRE-fix shell with NO net at all (gate AND re-assert
+           subscription removed): the state AGENTS.md measured at 18/20.
+  nocure   a COPY with the navigation-start subscription reverted to the
+           CoreWebView2 event (the OLD registration form). NOTE 2026-10-07: it
+           now CRASHES `_arm_visibility_invariant` (`self.core` is None at
+           `before_show`) BEFORE the arm, and because the gate installs earlier
+           in the same method it is no longer a valid negative arm — kept for
+           continuity only; `nogate` is the control.
+  precure  a COPY with the navigation-start subscription REMOVED (the patterns
+           here named the OLD registration form until 2026-10-07, so the
+           DEFAULT arms raised SystemExit and the instrument could not run at
+           all — measured, fixed).
+  opaque   a COPY of the live shell run with the app's own `--opaque`. The
+           navigation Show is skipped there because pywebview gates it on
+           `transparent`; the only catches are the creation dance at alpha=0.
+  sync-off a COPY with ONLY the synchronous re-assert removed.
+  show     a COPY of the live shell run with `--show` — the path the OWNER asks
+           for, to prove the gate cannot cost him the panel.
 
 SAFETY. Launched with pythonw.exe (GUI subsystem: no console) and every child
 spawned with CREATE_NO_WINDOW. Every copy arm is moved OFF-SCREEN (x=-10000);
@@ -291,13 +307,30 @@ OFFSCREEN = (
      "        # OFF-SCREEN measurement copy (panel-startup-flash-census.py)\n"
      "        self.geometry['x'] = -10000\n"),
 )
+#: The re-assert subscription removed entirely (today's line — the pattern here
+#: used to name the OLD CoreWebView2 registration and would have raised
+#: SystemExit on every default run).
 CURE_REMOVED = (
-    ('        self.core.NavigationStarting += self._on_navigation_start\n', ''),
+    ('        self.webview2.NavigationStarting += self._on_navigation_start\n', ''),
 )
 SYNC_REMOVED = (
     ("        self._reassert_hidden()\n        self._post(self._reassert_hidden)\n",
      "        self._post(self._reassert_hidden)\n"),
 )
+#: THE 2026-10-07 CURE, REVERTED IN A COPY — the precise negative arm for the
+#: gate. `_gate_form_show` refuses pywebview's OWN mapping call at full opacity
+#: (`edgechromium.py:348 self.form.Show()`); a copy whose `_on_before_show` does
+#: not call it is the PRE-fix shell in behaviour — the counter and the docstring
+#: are inert. This is the arm that must still put a window on the desk, or the
+#: gate is being credited for something it did not do.
+GATE_REMOVED = (
+    ('        self._gate_form_show(form)\n',
+     '        pass  # 2026-10-07 gate removed: pywebview maps the form again\n'),
+)
+#: PRE-fix shell with BOTH nets removed (the gate AND the re-assert
+#: subscription): the state AGENTS.md measured at 18/20, and the gross control.
+#: No catch here means this instrument is blind.
+NO_NET_AT_ALL = GATE_REMOVED + CURE_REMOVED
 #: The FIX reverted in a COPY — the negative arm. The cure is subscribing the
 #: re-assert to the SAME event pywebview subscribes (the control's
 #: `NavigationStarting`), which makes the hide run right after the Show in one
@@ -482,7 +515,7 @@ def main() -> int:
     n = DEFAULT_N
     secs = DEFAULT_SECS
     cadence_ms = DEFAULT_MS
-    arms = 'precure,real,opaque'
+    arms = 'live,nogate,opaque'
     if '--n' in a:
         n = int(a[a.index('--n') + 1])
     if '--secs' in a:
@@ -515,7 +548,8 @@ def main() -> int:
     variants = {}
     built = []
     try:
-        if 'precure' in want or 'sync-off' in want or 'opaque' in want:
+        if [x for x in ('precure', 'sync-off', 'opaque', 'nogate',
+                        'nogate-nonet') if x in want]:
             off = os.path.join(VARIANT_DIR, '_flash-offscreen-sotto_webview.py')
             build_variant(off, OFFSCREEN)
             built.append(off)
@@ -545,6 +579,16 @@ def main() -> int:
             build_variant(p, OFFSCREEN + CURE_HOOK_REMOVED)
             built.append(p)
             variants['nocure'] = p
+        if 'nogate' in want:
+            p = os.path.join(VARIANT_DIR, '_flash-nogate-sotto_webview.py')
+            build_variant(p, OFFSCREEN + GATE_REMOVED)
+            built.append(p)
+            variants['nogate'] = p
+        if 'nogate-nonet' in want:
+            p = os.path.join(VARIANT_DIR, '_flash-nogatenonet-sotto_webview.py')
+            build_variant(p, OFFSCREEN + NO_NET_AT_ALL)
+            built.append(p)
+            variants['nogate-nonet'] = p
         if 'show' in want:
             p = os.path.join(VARIANT_DIR, '_flash-show-sotto_webview.py')
             build_variant(p, OFFSCREEN)
@@ -567,6 +611,13 @@ def main() -> int:
         if 'nocure' in want:
             results['nocure'] = run_arm('nocure', variants['nocure'], [],
                                         n, secs, cadence_s, False)
+        if 'nogate' in want:
+            results['nogate'] = run_arm('nogate', variants['nogate'], [],
+                                        n, secs, cadence_s, False)
+        if 'nogate-nonet' in want:
+            results['nogate-nonet'] = run_arm('nogate-nonet',
+                                              variants['nogate-nonet'], [],
+                                              n, secs, cadence_s, False)
         if 'show' in want:
             results['show'] = run_arm('show', variants['show'], ['--show'],
                                       n, secs, cadence_s, False)
@@ -590,15 +641,27 @@ def main() -> int:
             f'occluded_samples={r["occluded_samples"]} '
             f'longest_mech_ms={r["longest_ms"]:.0f} '
             f'longest_owner_ms={r["longest_owner_ms"]:.0f}')
-    # BLIND unless a copy with the fix reverted still SHOWS the window (mech>0).
-    negatives = [r for t, r in results.items() if t in ('nocure', 'precure')]
+    # BLIND unless a copy with the fix reverted still MAPS the window (mech>0).
+    negatives = [r for t, r in results.items()
+                 if t in ('nocure', 'precure', 'nogate', 'nogate-nonet')]
     fixed = [r for t, r in results.items() if t in ('real', 'live')]
     neg_ok = (not negatives) or any(r['mech_samples'] > 0 for r in negatives)
-    fix_ok = (not fixed) or all(r['owner_samples'] == 0 for r in fixed)
+    # THE FIXED ARM IS JUDGED ON `mech`, NOT ON `owner`, AND THAT IS A GATE FIX.
+    # Every fixed arm this instrument may legally run is an OFF-SCREEN copy
+    # (x=-10000), so its window can never be on a monitor and `owner_samples` is
+    # 0 BY CONSTRUCTION. Judging `owner` printed FIXED-CLEAN for a shell that
+    # still flashed, on every run before 2026-10-07. `mech` is the axis that
+    # travels: a docked launch IS on the primary monitor, so mech=0 implies
+    # owner=0 there — and it is the axis every negative arm above moves.
+    fix_ok = (not fixed) or all(r['mech_samples'] == 0 for r in fixed)
     ok = neg_ok and fix_ok
+    if not negatives or not fixed:
+        log('NOTE vacuous half: a run with NO negative arm shows the '
+            'instrument is not blind; a run with NO fixed arm says NOTHING '
+            'about the fix. Only a run with BOTH is a control pair.')
     log(f'NEGATIVE-ARM mechanism reproduces={str(bool(neg_ok)).lower()} '
         f'(neg arms present={len(negatives)}) | '
-        f'FIXED arms owner-clean={str(bool(fix_ok)).lower()} '
+        f'FIXED arms mech-clean={str(bool(fix_ok)).lower()} '
         f'(fixed arms present={len(fixed)})')
     return 0 if ok else 3
 

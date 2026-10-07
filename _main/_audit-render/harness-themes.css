@@ -1,0 +1,144 @@
+/* Sotto — the audit harness's OWN chrome, for the `#themes` state.
+ *
+ * NOT part of the panel, NOT linked by `panel.html`, and NOT one of the five
+ * theme files. It styles exactly two things the harness invents so a human can
+ * compare the five designs by opening ONE file:
+ *
+ *   `.themes-bar`  the toolbar: five buttons, the active one marked, each with
+ *                  its theme's accent as a swatch.
+ *   `.themes-card` five `<iframe>`s, each loading THIS SAME harness file with
+ *                  `?state=live&theme=theme-N`: five REAL panels, one per theme.
+ *
+ * THE MECHANISM IS THE SHIPPED ONE, NOT AN APPROXIMATION. Every theme file
+ * scopes itself to `:root[data-theme='theme-N']` — the ROOT element — so a
+ * nested element cannot wear a theme, and that is the contract rather than a
+ * limitation. An iframe has its OWN root, so
+ * `iframeDoc.documentElement.dataset.theme = 'theme-3'` is exactly what the
+ * shipped switcher does, and all five theme stylesheets are already linked in
+ * that document because it is the same generated harness.
+ */
+
+/* ── the page in #themes: the live panel plus the five-up row ────────────── */
+
+body[data-surface="themes"] {
+  --harness-ink: #e8eef6;
+  --harness-dim: #94a3b8;
+  --harness-line: rgba(148, 163, 184, 0.25);
+  display: block;
+  overflow: auto;
+  padding: 0 0 26px;
+  background: #05070a;
+  color: var(--harness-ink);
+}
+
+/* `data-surface="themes"` is a third surface and neither `panel` nor `strip`
+   claims it, so panel.css hides nothing here. The page is the live box and
+   nothing else: hide the sections that belong to one of the two real surfaces. */
+body[data-surface="themes"] .stripbar,
+body[data-surface="themes"] .panel__header,
+body[data-surface="themes"] .history,
+body[data-surface="themes"] .status__hint,
+body[data-surface="themes"] .status__text {
+  display: none;
+}
+
+/* The panel is absolutely positioned in the real shells because the WINDOW is
+   the slab. In this page it is one block among others, so it gets a box. */
+body[data-surface="themes"] .panel {
+  position: relative;
+  inset: auto;
+  width: 420px;
+  height: 620px;
+  margin: 18px 12px 0 auto;
+}
+
+/* ── the toolbar ─────────────────────────────────────────────────────────── */
+
+.themes-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--harness-line);
+  background: #05070a;
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+.themes-bar__title {
+  margin-right: 6px;
+  color: var(--harness-dim);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.themes-bar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--harness-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--harness-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.themes-bar__button:hover {
+  color: #fff;
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
+.themes-bar__button[aria-current="true"] {
+  color: #05070a;
+  background: #e8eef6;
+  border-color: #e8eef6;
+  font-weight: 600;
+}
+
+.themes-bar__swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 99px;
+  background: var(--theme-swatch, #888);
+}
+
+.themes-bar__hint {
+  margin-left: auto;
+  color: var(--harness-dim);
+  font-size: 11px;
+}
+
+/* ── the five-up row of REAL panels ──────────────────────────────────────── */
+
+.themes-wrap {
+  display: block;
+}
+
+.themes-compare {
+  display: flex;
+  gap: 12px;
+  padding: 0 12px;
+  overflow-x: auto;
+}
+
+/* 380 x 760 is the panel's own geometry; `zoom` scales the whole card so five
+   fit on a normal screen. Nothing inside the frame is scaled differently from
+   anything else, so the type ratios between the themes stay true. */
+.themes-card {
+  flex: none;
+  width: 380px;
+  height: 760px;
+  border: 1px solid var(--harness-line);
+  border-radius: 12px;
+  background: transparent;
+  zoom: 0.5;
+}

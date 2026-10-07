@@ -10,11 +10,28 @@ recollection; each is traceable to a quote and a URL.
 
 ## VERDICT: UNRESOLVED
 
-The licence text permits commercial use and redistribution, but the Parakeet
+**Two licence questions, two DIFFERENT components — they must not be fused.**
+
+- **Parakeet Redux** (`moondream/parakeet-redux`, the batch model) is **CC-BY-4.0
+  end to end** — its base `nvidia/parakeet-tdt-0.6b-v3` is `cc-by-4.0`, and so is
+  every derivative (`Nairod785/parakeet-redux-gguf`, `eschmidbauer/parakeet-redux-onnx`).
+  CC-BY-4.0 permits redistribution and commercial use, so Redux is **bundle-able
+  with attribution** (credit the author + link the licence + state that changes
+  were made); there is **no redistribution ban and no royalty**. This closes
+  NOT-ESTABLISHED item 5 below, which had left `moondream/parakeet-redux`'s own
+  licence unread. Source: `_main/research-parakeet-redux.md` Q4; HF `cardData`
+  for the four repos.
+- **OpenMDW-1.1 is NOT Redux's licence.** It governs
+  `nvidia/nemotron-3.5-asr-streaming-0.6b` — the **streaming** model, a
+  *different component*. Its redistribution clause requires retaining notices
+  "that are applicable to your distribution", an undefined qualifier that
+  decides how much NVIDIA paperwork travels with the weights. Question One below
+  is the OpenMDW reading and is untouched by this separation.
+
+Separately from either licence, one **runtime** finding stands: the Parakeet
 Redux `tq1_g128` artefact named in the stack cannot be loaded by upstream
 transcribe.cpp — it requires an unpublished ggml type patch that exists only on a
-fork — and one sentence of the licence leaves the set of notices Sotto must ship
-undefined.
+fork.
 
 Two findings drive this. Neither is fatal; both must be closed before a public
 release.

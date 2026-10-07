@@ -1,0 +1,42 @@
+{
+ "seconds": 60.0,
+ "gap": 0.0,
+ "pieces": [
+  {
+   "src": "pt",
+   "start": 0.0,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 15.0,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 23.543,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 43.543,
+   "dur": 1.457,
+   "whole": false
+  },
+  {
+   "src": "pt",
+   "start": 45.0,
+   "dur": 15.0,
+   "whole": true,
+   "sentinel": true
+  }
+ ],
+ "expected_chars": 455,
+ "ref_texts": {
+  "pt": "O r\u00e1dio anunciou que a ponte sobre o rio vai ser interditada na pr\u00f3xima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho.",
+  "en": "The radio announced that the bridge over the river will be closed next Monday. Residents need an alternative route to get to work."
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "sources": {
+  "pt": {
+   "path": "H:\\sotto\\_main\\pt-br-sample.wav",
+   "seconds_16k": 15.0
+  },
+  "en": {
+   "path": "H:\\sotto\\_main\\en-us-sample.wav",
+   "seconds_16k": 8.543
+  },
+  "agc": {
+   "path": "H:\\sotto\\_main\\agc_drone_floor.wav",
+   "seconds_16k": 20.0
+  }
+ },
+ "cases": {
+  "src-en-8s": {
+   "seconds": 8.543,
+   "gap": 0.0,
+   "pieces": [],
+   "note": "raw source file, copied"
+  },
+  "src-pt-15s": {
+   "seconds": 15.0,
+   "gap": 0.0,
+   "pieces": [],
+   "note": "raw source file, copied"
+  },
+  "src-agc-20s": {
+   "seconds": 20.0,
+   "gap": 0.0,
+   "pieces": [],
+   "note": "raw source file, copied"
+  },
+  "plain-30s": {
+   "seconds": 30.0,
+   "gap": 0.0,
+   "expected_chars": 310
+  },
+  "plain-60s": {
+   "seconds": 60.0,
+   "gap": 0.0,
+   "expected_chars": 455
+  },
+  "plain-120s": {
+   "seconds": 120.0,
+   "gap": 0.0,
+   "expected_chars": 924
+  },
+  "plain-300s": {
+   "seconds": 300.0,
+   "gap": 0.0,
+   "expected_chars": 2150
+  },
+  "plain-600s": {
+   "seconds": 600.0,
+   "gap": 0.0,
+   "expected_chars": 4075
+  },
+  "plain-1800s": {
+   "seconds": 1800.0,
+   "gap": 0.0,
+   "expected_chars": 11840
+  },
+  "plain-3600s": {
+   "seconds": 3600.0,
+   "gap": 0.0,
+   "expected_chars": 23674
+  },
+  "gap-120s": {
+   "seconds": 120.0,
+   "gap": 1.0,
+   "expected_chars": 838
+  },
+  "gap-300s": {
+   "seconds": 300.0,
+   "gap": 1.0,
+   "expected_chars": 1914
+  },
+  "gap-600s": {
+   "seconds": 600.0,
+   "gap": 1.0,
+   "expected_chars": 3860
+  }
+ }
+}

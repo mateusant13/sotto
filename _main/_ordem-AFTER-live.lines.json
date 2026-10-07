@@ -1,0 +1,147 @@
+[
+{
+"t": 0.107,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"start\", \"pid\": 15244, \"argv\": [\"--max-seconds\", \"25\"], \"mode\": \"live\"}"
+},
+{
+"t": 0.109,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"lang\", \"lang_id\": 101, \"lang\": \"auto\", \"requested\": \"auto\", \"source\": \"config:auto\", \"table\": \"H:\\\\sotto\\\\worker\\\\models\\\\nemotron-3.5-asr-streaming-0.6b-fp16\\\\languages.json\", \"note\": \"the model's own auto slot, asked for explicitly\"}"
+},
+{
+"t": 0.109,
+"s": "err",
+"line": "lang_id      : 101 (auto) source=config:auto table=languages.json"
+},
+{
+"t": 2.062,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"providers\", \"providers_available\": [\"TensorrtExecutionProvider\", \"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"providers_selected\": [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"note\": \"\", \"cuda_probe_model\": \"nemotron-3.5-asr-streaming-0.6b-int8\", \"cuda_dirs_ms\": 1532, \"provider_probe_ms\": 423}"
+},
+{
+"t": 2.062,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"model-loading\", \"model\": \"nemotron-3.5-asr-streaming-0.6b-int8\"}"
+},
+{
+"t": 5.161,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"model-loaded\", \"model\": \"nemotron-3.5-asr-streaming-0.6b-int8\", \"providers\": [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"load_s\": 3.1, \"rss_mb\": 1671.9, \"peak_rss_mb\": 1689.5, \"lang_id\": 101, \"lang\": \"auto\", \"lang_input\": \"lang_id\"}"
+},
+{
+"t": 5.161,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"gate\", \"gate\": \"on\", \"source\": \"live-default\", \"db_range_min\": 18.0, \"rms_floor\": 0.004, \"hold_chunks\": 3}"
+},
+{
+"t": 8.401,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device\", \"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"max_input_channels\": 2, \"candidates\": [\"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"WASAPI loopback: Fones de ouvido (soundcore Space Q45)\", \"WASAPI loopback: AG251F1WG2 (NVIDIA High Definition Audio)\", \"WASAPI loopback: Alto-falantes (HyperX Quadcast)\", \"VoiceMeeter Output (VB-Audio Vo\", \"CABLE Output (VB-Audio Virtual \", \"Mixagem est\u00e9reo (Realtek HD Audio Stereo input)\", \"Entrada (Realtek HD Audio Line input)\"], \"wanted\": null, \"tap_window_s\": 6.0, \"tap_peak_floor\": 0.002}"
+},
+{
+"t": 9.154,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 1, \"of\": 10}"
+},
+{
+"t": 15.202,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device-rotated\", \"reason\": \"flat\", \"from\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"to\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"peak\": 0.106745, \"run_peak\": 0.106745, \"window_s\": 6.0, \"peak_floor\": 0.002, \"attempt\": 1, \"of\": 10}"
+},
+{
+"t": 15.957,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 2, \"of\": 10}"
+},
+{
+"t": 18.426,
+"s": "err",
+"line": "WORKER_STATS tag=tick blocks=92 block_samples=441600 nonzero_blocks=92 peak=0.378515 rms=0.04334179 gain_db=-0.2 gain_min_db=-2.1 gain_max_db=+18.9 peak_out=0.619777 gain_would_db=+2.3 gain_would_max_db=+24.0 held_blocks=6 speech_blocks=96 agc=on resampled_samples=169600 chunks=17 captions=0 tokens=0 frames=112 blanks=112 blank_frac=1.0 empty_chunks=16 vad_gated_chunks=0 music_gated_chunks=1 gate_kept=16 gate=on queue_drops=0 reruns=0 rerun_wall_s=0.00 audio_s=9.52 infer_wall_s=2.11 rss_mb=2416.2"
+},
+{
+"t": 22.001,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device-rotated\", \"reason\": \"flat\", \"from\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"to\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"peak\": 0.378515, \"run_peak\": 0.378515, \"window_s\": 6.0, \"peak_floor\": 0.002, \"attempt\": 2, \"of\": 10}"
+},
+{
+"t": 22.749,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 3, \"of\": 10}"
+},
+{
+"t": 28.433,
+"s": "err",
+"line": "WORKER_STATS tag=tick blocks=192 block_samples=921600 nonzero_blocks=192 peak=0.378515 rms=0.04019191 gain_db=+11.5 gain_min_db=-2.1 gain_max_db=+18.9 peak_out=0.636321 gain_would_db=+18.2 gain_would_max_db=+24.0 held_blocks=36 speech_blocks=180 agc=on resampled_samples=352000 chunks=36 captions=0 tokens=0 frames=210 blanks=210 blank_frac=1.0 empty_chunks=30 vad_gated_chunks=0 music_gated_chunks=6 gate_kept=30 gate=on queue_drops=0 reruns=0 rerun_wall_s=0.00 audio_s=20.16 infer_wall_s=2.92 rss_mb=2416.8"
+},
+{
+"t": 28.785,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device-rotated\", \"reason\": \"flat\", \"from\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"to\": \"WASAPI loopback: Fones de ouvido (soundcore Space Q45)\", \"peak\": 0.316431, \"run_peak\": 0.378515, \"window_s\": 6.0, \"peak_floor\": 0.002, \"attempt\": 3, \"of\": 10}"
+},
+{
+"t": 29.552,
+"s": "err",
+"line": "Traceback (most recent call last):"
+},
+{
+"t": 29.552,
+"s": "err",
+"line": "  File \"H:\\sotto\\worker\\sotto_worker.py\", line 2859, in <module>"
+},
+{
+"t": 29.553,
+"s": "err",
+"line": "    sys.exit(main())"
+},
+{
+"t": 29.553,
+"s": "err",
+"line": "             ^^^^^^"
+},
+{
+"t": 29.553,
+"s": "err",
+"line": "  File \"H:\\sotto\\worker\\sotto_worker.py\", line 2436, in main"
+},
+{
+"t": 29.554,
+"s": "err",
+"line": "    tap.stream.start()"
+},
+{
+"t": 29.554,
+"s": "err",
+"line": "  File \"H:\\sotto\\worker\\wasapi_loopback.py\", line 735, in start"
+},
+{
+"t": 29.554,
+"s": "err",
+"line": "    self._start()"
+},
+{
+"t": 29.554,
+"s": "err",
+"line": "  File \"H:\\sotto\\worker\\wasapi_loopback.py\", line 754, in _start"
+},
+{
+"t": 29.555,
+"s": "err",
+"line": "    self._open()"
+},
+{
+"t": 29.555,
+"s": "err",
+"line": "  File \"H:\\sotto\\worker\\wasapi_loopback.py\", line 831, in _open"
+},
+{
+"t": 29.555,
+"s": "err",
+"line": "    raise WasapiError(\"Initialize(SHARED|LOOPBACK) failed: %s\" % _fmt(hr))"
+},
+{
+"t": 29.555,
+"s": "err",
+"line": "wasapi_loopback.WasapiError: Initialize(SHARED|LOOPBACK) failed: <no description> (0x8889000A)"
+}
+]

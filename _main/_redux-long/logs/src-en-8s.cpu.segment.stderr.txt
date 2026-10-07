@@ -1,0 +1,3 @@
+redux_batch: resident weight form = dense
+redux_batch: loaded in 4.94s from H:\sotto\worker\models\parakeet-redux-ternary
+redux_batch: src-en-8s.wav: 8.5s of audio in 1.46s, 6x real time

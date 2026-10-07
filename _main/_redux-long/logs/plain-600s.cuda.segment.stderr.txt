@@ -1,0 +1,11 @@
+redux_batch: resident weight form = dense
+redux_batch: loaded in 5.72s from H:\sotto\worker\models\parakeet-redux-ternary
+C:\Program Files\Python311\Lib\site-packages\kestrel_kernels\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer LayerNorm variant for x=(1, 245, 1024) dtype=torch.float32; using PyTorch fallback.
+  warn_fallback_once(kernel_key, message)
+C:\Program Files\Python311\Lib\site-packages\kestrel_kernels\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer residual LayerNorm variant for x=(1, 245, 1024) dtype=torch.float32; using PyTorch fallback.
+  warn_fallback_once(kernel_key, message)
+C:\Program Files\Python311\Lib\site-packages\kestrel_kernels\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer attention variant for qkv=(1, 245, 3072) heads=8x128 dtype=torch.float32; using PyTorch fallback.
+  warn_fallback_once(kernel_key, message)
+C:\Program Files\Python311\Lib\site-packages\kestrel_kernels\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer depthwise variant for x=(1, 245, 1024) dtype=torch.float32 taps=(1024, 9); using PyTorch fallback.
+  warn_fallback_once(kernel_key, message)
+redux_batch: plain-600s.wav: 600.0s of audio in 7.18s, 84x real time

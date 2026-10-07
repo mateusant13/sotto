@@ -1,0 +1,264 @@
+{
+ "seconds": 600.0,
+ "gap": 0.0,
+ "pieces": [
+  {
+   "src": "pt",
+   "start": 0.0,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 15.0,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 23.543,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 43.543,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 58.543,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 67.086,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 87.086,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 102.086,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 110.629,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 130.629,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 145.629,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 154.172,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 174.172,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 189.172,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 197.715,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 217.715,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 232.715,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 241.258,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 261.258,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 276.258,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 284.801,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 304.801,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 319.801,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 328.344,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 348.344,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 363.344,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 371.888,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 391.888,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 406.888,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 415.431,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 435.431,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 450.431,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 458.974,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 478.974,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 493.974,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 502.517,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 522.517,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 537.517,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 546.06,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 566.06,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 581.06,
+   "dur": 3.94,
+   "whole": false
+  },
+  {
+   "src": "pt",
+   "start": 585.0,
+   "dur": 15.0,
+   "whole": true,
+   "sentinel": true
+  }
+ ],
+ "expected_chars": 4075,
+ "ref_texts": {
+  "pt": "O r\u00e1dio anunciou que a ponte sobre o rio vai ser interditada na pr\u00f3xima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho.",
+  "en": "The radio announced that the bridge over the river will be closed next Monday. Residents need an alternative route to get to work."
+ }
+}

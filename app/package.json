@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "main": "electron/main.js",
+  "main": "_legacy-electron/main.js",
   "description": "Sotto - real-time transcription overlay. M0: the shell only.",
   "scripts": {
     "start": "electron .",

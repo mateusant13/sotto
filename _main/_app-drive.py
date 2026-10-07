@@ -78,16 +78,17 @@ def launch(probe_s, log_path):
     if log_path:
         args += ["--log", log_path]
     print("LAUNCH cwd=%s argv=%r" % (WEBVIEW, args))
+    # DEVNULL, not PIPE: run.cmd `start`s the app DETACHED, and a detached child
+    # INHERITS the wrapper's std handles -- with PIPE handles, communicate()
+    # would block on a pipe that stays open until the app itself exits (measured:
+    # the 150 s probe run made a PIPE launch block 160 s). With DEVNULL the
+    # handles are NUL, run.cmd's own exit is the only thing left to wait for.
     p = subprocess.Popen(args, cwd=WEBVIEW, stdin=subprocess.DEVNULL,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          creationflags=CREATE_NO_WINDOW)
-    out, err = p.communicate(timeout=180)
-    print("run.cmd rc=%s" % p.returncode)
-    print("run.cmd stdout=%r" % out.decode("cp850", "replace")[:2000])
-    e = err.decode("cp850", "replace")
-    if e.strip():
-        print("run.cmd stderr=%r" % e[:2000])
-    return p.returncode
+    rc = p.wait(timeout=180)
+    print("run.cmd rc=%s" % rc)
+    return rc
 
 
 def play(seconds, device):

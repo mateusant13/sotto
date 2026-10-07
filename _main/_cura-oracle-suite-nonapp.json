@@ -1,0 +1,165 @@
+{
+ "repo": "H:\\sotto",
+ "rows": [
+  {
+   "oracle": "segment-rerun-probe",
+   "argv": [
+    "_main/segment-rerun-probe.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 122.5,
+   "tail": [
+    "COST  : segment 14.56 s of audio -> second pass 58.30 s (RTF 4.004); streaming the same audio took 57.90 s (RTF 3.977)",
+    "COST  : the pass costs 1.01x a streaming pass of the SAME audio",
+    "COST  : the audit's §6.2 table predicted RTF x S = 0.15-0.25 -> 2.18-3.64 s for this segment",
+    "LOAD  : READ BOTH RTF NUMBERS WITH THE BOX IN MIND — this is the ratio; the ABSOLUTE RTF is only comparable to the audit's 0.14-0.22 on an IDLE box. On this one the streaming pass alone measured far above it, which is the load, not the model (see WORKER_STATS rss_mb / the process census).",
+    "note  : the streaming text of the same audio was 'moradores preci m de um caminho alternativo para chegar ao trabalho'",
+    "RESULT: GREEN (6/6 assertions)"
+   ]
+  },
+  {
+   "oracle": "model-spec-oracle",
+   "argv": [
+    "_main/model-spec-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": []
+  },
+  {
+   "oracle": "config-keys-oracle",
+   "argv": [
+    "_main/config-keys-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.2,
+   "tail": [
+    "  key model.use_vad                -> 2 consumer(s)  first: worker\\sotto_worker.py:1975",
+    "  key model.providers              -> 2 consumer(s)  first: worker\\sotto_worker.py:1980",
+    "  key output.min_chars             -> 4 consumer(s)  first: worker\\sotto_worker.py:1896",
+    "  key output.partial               -> 2 consumer(s)  first: worker\\sotto_worker.py:1920",
+    "  DEFAULT_MODEL agrees with config.model.dir: nemotron-3.5-asr-streaming-0.6b-int8",
+    "VERDICT: PASS"
+   ]
+  },
+  {
+   "oracle": "lang-id-oracle",
+   "argv": [
+    "_main/lang-id-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 13.1,
+   "tail": []
+  },
+  {
+   "oracle": "caption-lines-oracle",
+   "argv": [
+    "_main/caption-lines-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "       want    = ['O rádio', 'O rádio Segunda-feira', 'O rádio Segunda-feira Os moradores']",
+    "       control = ['O rádio', 'Segunda-feira', 'Os moradores']  (must differ: yes)",
+    "[PASS] acceptance: the real run has a caption with >= 3 words (longest = 5)",
+    "       AFTER  captions = ['O rádio', 'O rádio Segunda-feira', 'O rádio Segunda-feira Os moradores']",
+    "       BEFORE captions = ['O rádio', 'Segunda-feira', 'Os moradores']",
+    "caption-lines-oracle: 12 PASS / 0 FAIL (12 arms)  impl=H:\\sotto\\worker\\sotto_worker.py"
+   ]
+  },
+  {
+   "oracle": "speech-gate-oracle",
+   "argv": [
+    "_main/speech-gate-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.3,
+   "tail": [
+    "  drone  synth:60Hz                   chunks= 14 kept=  0 gated= 14",
+    "  speech sample1.flac                 chunks= 24 kept= 24 gated=  0 kept_frac=1.0",
+    "  speech sample2.flac                 chunks= 25 kept= 25 gated=  0 kept_frac=1.0",
+    "  speech pt-br-sample.wav             chunks= 26 kept= 26 gated=  0 kept_frac=1.0",
+    "  speech en-us-sample.wav             chunks= 15 kept= 15 gated=  0 kept_frac=1.0",
+    "  VERDICT: PASS"
+   ]
+  },
+  {
+   "oracle": "delivery-rate-oracle-wav",
+   "argv": [
+    "_main/delivery-rate-oracle.py",
+    "--wav",
+    "worker/assets/sample1.flac"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 13.5,
+   "tail": [
+    "# delivery-rate-oracle  2026-10-06T11:29:47  threshold=0.95  invert=False",
+    "# worker=H:\\sotto\\worker\\sotto_worker.py",
+    "[PASS] ARM=wav-control        duty = numerator audio_s=13.44 / denominator wall_s=3.42 = 3.9275  (threshold 0.95)  queue_drops=0 [n/a (file arm has no queue)]",
+    "        open=(selftest-start) end=(selftest-done) streams=1 rotations=0 rc=0",
+    "VERDICT: PASS"
+   ]
+  },
+  {
+   "oracle": "flat-endpoint-oracle",
+   "argv": [
+    "_main/flat-endpoint-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.3,
+   "tail": [
+    "  unsilenced-packet-kept         flags=0x0 blocks=3/3  peak=0.000091553 silent_packets=0  want peak==9.15527e-05 and 3 blocks and silent_packets==0  OK",
+    "  -> FAIL  (8 arms, 5 failed, failed=s-false-is-success,s-ok-is-success-and-balanced,genuine-failure-refused,real-two-calls-one-thread,silent-flag-is-silence)",
+    "==============================================================================",
+    "LIVE   : PASS",
+    "CONTROL: RED as required",
+    "VERDICT PASS"
+   ]
+  },
+  {
+   "oracle": "wasapi-com-init-oracle",
+   "argv": [
+    "_main/wasapi-com-init-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "  real-second-call-is-sfalse   real API hr1=0x00000000 hr2=0x00000001  expect hr1=S_OK hr2=S_FALSE  OK",
+    "  real-mismatch-owes-nothing   SKIPPED -- module has no _com_init() (pre-fix shape)",
+    "  -> FAIL  (6 arms, 3 failed, failed=s-false-is-success,s-ok-is-success,genuine-failure-raises)",
+    "LIVE   : PASS",
+    "NEGARM : PASS (pre-fix copy RED on 3 arm(s))",
+    "VERDICT PASS"
+   ]
+  },
+  {
+   "oracle": "_ordem-cura-oracle",
+   "argv": [
+    "_main/_ordem-cura-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 2.8,
+   "tail": [
+    "cure present in module: True",
+    "re-read cost = 0.628 s",
+    "order AFTER  the choice: ['CABLE Input (VB-Audio Virtual Cable)', 'Speakers (NVIDIA Broadcast)', 'VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)', 'Fones de ouvido (soundcore Space Q45)', 'AG251F1WG2 (NVIDIA High Definition Audio)', 'Alto-falantes (HyperX Quadcast)']",
+    "attempt 1 would open  : CABLE Input (VB-Audio Virtual Cable)",
+    "VERDICT GREEN -- live endpoint is 'CABLE Input (VB-Audio Virtual Cable)', attempt 1 opens 'CABLE Input (VB-Audio Virtual Cable)'",
+    "WORKER_CHOICE at=attempt-1 picked=WASAPI loopback: CABLE Input (VB-Audio Virtual Cable) peak=0.070712 over=WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO) peak=0.000000"
+   ]
+  }
+ ],
+ "counts": {
+  "GREEN": 10
+ }
+}

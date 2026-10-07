@@ -1,0 +1,85 @@
+{
+  "mutex_held_before": true,
+  "probe_mutex_name": "Local\\SottoShell-probe-10664",
+  "probe_mutex_free_before": true,
+  "log": "H:\\sotto\\_main\\_tray-quit-run1-20261007-102522.log",
+  "tray_window_logged": true,
+  "tray_icon_add_ok": true,
+  "shell_pid": 32996,
+  "tray_hwnd": 49945546,
+  "tray_menu": [
+    "sotto: TRAY_MENU [1]='Open panel' [sep] [2]='Quit Sotto'"
+  ],
+  "tray_disabled": false,
+  "shell_workers": [
+    33296,
+    27156
+  ],
+  "icon_registered_external": true,
+  "windows_before": [
+    {
+      "hwnd": 85138202,
+      "class": "WindowsForms10.Window.8.app.0.aec740_r18_ad1",
+      "title": "Sotto",
+      "visible": false
+    },
+    {
+      "hwnd": 63249034,
+      "class": "GDI+ Hook Window Class",
+      "title": "GDI+ Window (pythonw.exe)",
+      "visible": false
+    },
+    {
+      "hwnd": 13638936,
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.aec740.0",
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.aec740.0",
+      "visible": false
+    },
+    {
+      "hwnd": 31202480,
+      "class": "MSCTFIME UI",
+      "title": "MSCTFIME UI",
+      "visible": false
+    },
+    {
+      "hwnd": 6167942,
+      "class": "IME",
+      "title": "Default IME",
+      "visible": false
+    },
+    {
+      "hwnd": 10886542,
+      "class": "IME",
+      "title": "Default IME",
+      "visible": false
+    }
+  ],
+  "visible_before": 0,
+  "mutex_held_with_app": true,
+  "probe_mutex_held_with_app": true,
+  "single_instance_logged": [
+    "sotto: SINGLE_INSTANCE name=Local\\SottoShell-probe-10664 already_running=false"
+  ],
+  "quit_menu_id": 2,
+  "shell_alive_after": false,
+  "workers_after": [],
+  "mutex_held_after": true,
+  "probe_mutex_held_after": false,
+  "icon_registered_after": false,
+  "windows_after": [],
+  "quit_logged": true,
+  "tray_icon_delete_logged": true,
+  "shell_exit_logged": [
+    "sotto: SHELL_EXIT rc=0 reason=tray-quit"
+  ],
+  "relaunch": {
+    "pid": 22952,
+    "tray_hwnd": 76487498,
+    "tray_windows_for_pid": [],
+    "icon_registered_new": true,
+    "icon_registered_old": false,
+    "single_instance": false
+  },
+  "relaunch_killed_pid": 22952,
+  "verdict": "MEASURED"
+}

@@ -1,0 +1,23 @@
+{
+ "arm": "_ordem-BEFORE-cap",
+ "mode": "capture",
+ "play_delay_s": 1.0,
+ "rc": 4294967295,
+ "rotations_total": 0,
+ "rotations_before_first_caption": 0,
+ "rotations": [],
+ "captures": [
+  [
+   12.274,
+   "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)",
+   1
+  ]
+ ],
+ "first_capture": [
+  12.274,
+  "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)",
+  1,
+  10
+ ],
+ "first_caption": null
+}

@@ -22,7 +22,7 @@ import os
 import subprocess
 import time
 
-LOG = r"H:\sotto\app\electron\panel-run-readiness.log"
+LOG = r"H:\sotto\app\_legacy-electron\panel-run-readiness.log"
 ELECTRON = r"H:\sotto\app\node_modules\electron\dist\electron.exe"
 CWD = r"H:\sotto\app"
 

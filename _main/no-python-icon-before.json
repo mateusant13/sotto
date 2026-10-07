@@ -1,0 +1,125 @@
+{
+  "label": "before",
+  "pid": 22864,
+  "log": "H:\\sotto\\_main\\_no-python-icon-before-20261007-101509.log",
+  "cmd": "C:\\Program Files\\Python311\\pythonw.exe H:\\sotto\\app\\webview\\_negarm_sotto_webview.py --no-hotkey --no-hot-reload --exit-after 28 --log H:\\sotto\\_main\\_no-python-icon-before-20261007-101509.log",
+  "icon_arg": "app\\webview\\sotto.ico",
+  "hwnd": 39459722,
+  "receiver_ready": true,
+  "panel_loaded": true,
+  "window_census": [
+    {
+      "hwnd": 39459722,
+      "class": "WindowsForms10.Window.8.app.0.aec740_r18_ad1",
+      "title": "Sotto",
+      "visible": false,
+      "samples": 20,
+      "visible_samples": 0
+    },
+    {
+      "hwnd": 56367922,
+      "class": "GDI+ Hook Window Class",
+      "title": "GDI+ Window (pythonw.exe)",
+      "visible": false,
+      "samples": 20,
+      "visible_samples": 0
+    },
+    {
+      "hwnd": 86382864,
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.aec740.0",
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.aec740.0",
+      "visible": false,
+      "samples": 20,
+      "visible_samples": 0
+    },
+    {
+      "hwnd": 20716744,
+      "class": "MSCTFIME UI",
+      "title": "MSCTFIME UI",
+      "visible": false,
+      "samples": 20,
+      "visible_samples": 0
+    },
+    {
+      "hwnd": 41817490,
+      "class": "IME",
+      "title": "Default IME",
+      "visible": false,
+      "samples": 20,
+      "visible_samples": 0
+    },
+    {
+      "hwnd": 42081208,
+      "class": "IME",
+      "title": "Default IME",
+      "visible": false,
+      "samples": 20,
+      "visible_samples": 0
+    }
+  ],
+  "visible_window_samples": 0,
+  "distinct_windows": 6,
+  "image": "C:\\Program Files\\Python311\\pythonw.exe",
+  "exe_icon_pixels": "8bfd03e267b05c81",
+  "ico_file_pixels": {
+    "path": "app\\webview\\sotto.ico",
+    "exists": true,
+    "frames": {
+      "16x16": "3ce8d84bac001a88",
+      "32x32": "7fedb6faa9cf5a75",
+      "48x48": "cca7e02ae7caf961",
+      "64x64": "76663044675cf836",
+      "128x128": "dfe3d4dc264d712b",
+      "256x256": "e7d0582e27249f2f"
+    },
+    "file_sha256": "d3442cfc32c96e33"
+  },
+  "window": {
+    "class": "WindowsForms10.Window.8.app.0.aec740_r18_ad1",
+    "title": "Sotto",
+    "owner": 0,
+    "exstyle": 327688,
+    "aumid": {
+      "read": true,
+      "hr": 0,
+      "value": null,
+      "vt": 0
+    },
+    "ex_toolwindow": false,
+    "ex_appwindow": true
+  },
+  "wm_geticon": {
+    "ICON_SMALL": 22748336,
+    "ICON_BIG": 9575694,
+    "ICON_SMALL2": 22748336
+  },
+  "class_long": {
+    "GCLP_HICON": 0,
+    "GCLP_HICONSM": 0
+  },
+  "window_icon_pixels_big": "8bfd03e267b05c81",
+  "window_icon_pixels_small": "8bfd03e267b05c81",
+  "window_icon_drawable_here": true,
+  "shell_log": {
+    "WINDOW_ICON": [
+      "sotto: WINDOW_ICON source=pythonw-fallback:C:\\Program Files\\Python311\\pythonw.exe file=H:\\sotto\\app\\webview\\sotto.ico file_exists=true file_sha256=d3442cfc32c96e33 form_icon=32x32:64d0d3f083272dfa wm_geticon_small=22748336 wm_geticon_big=9575694 wm_geticon_small2=22748336 class_hicon=0 class_hiconsm=0 image=C:\\Program Files\\Python311\\pythonw.exe",
+      "sotto: WINDOW_ICON_APPLIED applied=false path=None handle=None reason=neg-arm",
+      "sotto: WINDOW_ICON source=pythonw-fallback:C:\\Program Files\\Python311\\pythonw.exe file=H:\\sotto\\app\\webview\\sotto.ico file_exists=true file_sha256=d3442cfc32c96e33 form_icon=32x32:64d0d3f083272dfa wm_geticon_small=22748336 wm_geticon_big=9575694 wm_geticon_small2=22748336 class_hicon=0 class_hiconsm=0 image=C:\\Program Files\\Python311\\pythonw.exe",
+      "sotto: WINDOW_ICON source=pythonw-fallback:C:\\Program Files\\Python311\\pythonw.exe file=H:\\sotto\\app\\webview\\sotto.ico file_exists=true file_sha256=d3442cfc32c96e33 form_icon=32x32:64d0d3f083272dfa wm_geticon_small=22748336 wm_geticon_big=9575694 wm_geticon_small2=22748336 class_hicon=0 class_hiconsm=0 image=C:\\Program Files\\Python311\\pythonw.exe"
+    ],
+    "WINDOW_ICON_APPLIED": [
+      "sotto: WINDOW_ICON_APPLIED applied=false path=None handle=None reason=neg-arm"
+    ],
+    "APP_USER_MODEL_ID": [
+      "sotto: APP_USER_MODEL_ID value=None ok=false hr=2147500037 set=false set_hr=None image=C:\\Program Files\\Python311\\pythonw.exe"
+    ],
+    "PANEL_EXSTYLE_REASSERT": [],
+    "PANEL_VISIBILITY_AT_STARTUP": [
+      "sotto: PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=39459722 form.Visible=false opacity=1.0 show_requested=false"
+    ],
+    "RECEIVER_READY": [
+      "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+    ]
+  },
+  "verdict": "MEASURED"
+}

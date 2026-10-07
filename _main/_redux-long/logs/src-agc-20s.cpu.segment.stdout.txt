@@ -1,0 +1,1 @@
+{"type": "result", "text": "", "segments": 0, "duration": 20.0, "compute_seconds": 2.687, "real_time_factor": 7.44, "producer": "redux", "wav": "H:\\sotto\\_main\\_redux-long\\src-agc-20s.wav", "model_dir": "H:\\sotto\\worker\\models\\parakeet-redux-ternary"}

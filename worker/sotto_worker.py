@@ -94,8 +94,9 @@ TARGET_SR = 16000
 #
 # So the shipped list is now empty ON PURPOSE, and matching is HEURISTIC.
 # Rungs, tried in this order (recorded per candidate as `rung` in the tap ledger):
-#   a) WASAPI loopback of the DEFAULT RENDER endpoint -- driver-free, works with
-#      no virtual cable installed. See worker/wasapi_loopback.py.
+#   a) WASAPI loopback of EVERY ACTIVE RENDER ENDPOINT, ordered by who is
+#      carrying audio RIGHT NOW -- driver-free, works with no virtual cable
+#      installed. See worker/wasapi_loopback.py (loopback_device_specs).
 #   b) a virtual-cable / stereo-mix INPUT matched by name pattern below, any
 #      host API, any language and any suffix.
 #   c) an explicit --device / SOTTO_AUDIO_DEVICE override, which ALWAYS WINS.
@@ -230,6 +231,17 @@ TAP_PEAK_FLOOR = 0.002
 # on open while accepting every candidate that actually ran and heard nothing.
 TAP_MIN_WINDOW_S = 2.0
 TAP_SILENT_BLOCKS = 20
+
+# The BOUND on `StreamAsr.labels` (F17). The list is the run's symbol ids; a
+# multi-hour stream used to grow it without limit and then `detok()` the whole
+# thing into ONE JSONL line at exit. The arithmetic that chose the number:
+# MEASURED on the reference video (2 692 chunks of 560 ms, 25 min) this model
+# emitted 8 192 tokens, i.e. ~5.4 symbols/chunk here and ~20 000 symbols/hour, so
+# 200 000 is ~10 hours of symbols — several times the longest run this worker has
+# ever been given — while capping the list at ~7 MB of ints instead of unbounded.
+# The NEWEST entries are kept: `_last_symbol` (the decoding state) is separate,
+# and every published caption is built from the chunk's own `chunk_ids`.
+MAX_RETAINED_LABELS = 200_000
 
 
 # ── thread limiting ───────────────────────────────────────────────────────────
@@ -493,14 +505,33 @@ class StreamAsr:
         self.providers = self.enc.get_providers()
 
         # genai owns the cache-aware feature front end for this export.
+        # ONE `og.Model` (the weights) and ONE streaming processor per STREAM:
+        # the processor carries the cache-aware mel window AND the Silero VAD
+        # state, so it is per-stream state exactly like `cc/ct/ccl` — see
+        # `fresh_processor()`. `self.use_vad` is retained so a rebuilt processor
+        # gets the SAME options this one got.
         self._og = og
         self.model = og.Model(model_dir)
-        self.sp = self.model.create_streaming_processor()
-        self.sp.set_option("use_vad", "1" if use_vad else "0")
+        self.use_vad = bool(use_vad)
+        self.sp = self.fresh_processor()
 
         self.cc, self.ct, self.ccl = _initial_encoder_caches(np, self.enc, model_dir)
         self.h = np.zeros((2, 1, self.hidden), np.float32)
         self.c = np.zeros((2, 1, self.hidden), np.float32)
+        # The LAST SYMBOL this stream emitted, or None at a stream start. It is
+        # the seed of the next chunk's first decoder call (`run_chunk`), because
+        # the predictor now CARRIES across the boundary instead of being
+        # re-primed per chunk (`docs/audit/predictor-carry-cura.md`). It is
+        # decoding STATE, not a counter: `run_chunk(account=False)` still moves
+        # it while moving no accounting number.
+        self._last_symbol = None
+        # Does the LAST chunk's text continue the word the previous chunk left
+        # open? Read from the chunk's own TOKENS by `run_chunk`, and read by the
+        # emitters right after the call (`LineFormer.push(..., continues=...)`).
+        # `detok()` cannot carry this: it replaces `▁` with a space and strips
+        # it, so the fact is gone by the time the text exists. Initialised here
+        # so a caller that reads it before the first chunk gets a clean False.
+        self.chunk_continues = False
         self.lid = np.array([self.lang_id], np.int64)
 
         # READ-BACK, not a claim: the encoder graph must itself DECLARE the
@@ -515,7 +546,16 @@ class StreamAsr:
                 "cannot be delivered to the model"
             )
 
+        # `labels` is the run's SYMBOL LIST, and it is bounded (F17): `labels_total`
+        # is what was really emitted, `labels_pruned` how many of the OLDEST ids
+        # were dropped once the list passed MAX_RETAINED_LABELS. Nothing on the
+        # live path reads a pruned id — `_last_symbol` is the decoding state, and
+        # the chunk text is built from `chunk_ids`, not from this list — so the
+        # bound costs no caption. It exists because a multi-hour run used to grow
+        # this list forever and then ship `detok(labels)` as ONE JSONL line.
         self.labels = []
+        self.labels_total = 0
+        self.labels_pruned = 0
         self.n_chunks = 0
         self.audio_s = 0.0
         self.wall = 0.0
@@ -556,7 +596,88 @@ class StreamAsr:
     def _decode(self, targets, h, c):
         return self.dec.run(["decoder_output", "h_out", "c_out"], {"targets": targets, "h_in": h, "c_in": c})
 
-    def run_chunk(self, pcm_chunk, speech=None):
+    def fresh_processor(self):
+        """A NEW `og.StreamingProcessor` for THIS model, with the same options.
+
+        WHY A NEW OBJECT AND NOT A "RESET" (F12). The streaming processor is the
+        cache-aware feature front end: it holds the mel window that crosses chunk
+        boundaries (`pre_encode_cache_size` 9 / `conv_context` 8) AND the Silero
+        VAD state (the export ships it tuned, `genai_config.json`). The
+        ORT-GenAI 0.17.1 Python API exposes NO reset on it — there is no
+        `reset()`, and `set_option` cannot clear a held cache — so "start this
+        audio stream from nothing" can only be built by asking the model for a
+        new processor. `self.model` (the weights) is reused; only the per-stream
+        front end is new.
+
+        EVERY option `__init__` applies is re-applied here, from
+        `self.use_vad`. Note the ORDER, which is an API fact and not a choice:
+        the processor is CONSTRUCTED first and `set_option` runs after, so the
+        VAD the `genai_config.json` declares is already armed at construction
+        and `use_vad` is honoured THROUGH the option (read back with
+        `get_option('use_vad')`, measured in `_main/vad-option-probe.py`).
+        `use_vad:false` therefore means `set_option("use_vad", "0")` on a
+        constructed processor, not a processor built without a VAD.
+
+        It raises whatever the API raises. `__init__` lets that propagate (a
+        model whose front end cannot be built must not boot), while the two
+        mid-stream callers — `rerun()` and the device-change site — treat it as
+        a reported degradation rather than a silent one; see `reset_frontend()`.
+        """
+        sp = self.model.create_streaming_processor()
+        sp.set_option("use_vad", "1" if self.use_vad else "0")
+        return sp
+
+    def reset_stream_state(self):
+        """Return EVERY piece of stream state to "nothing was heard yet".
+
+        This is the state a SECOND PASS over one segment's audio has to start
+        from (M3): the encoder's cross-attention caches (`cc`/`ct`/`ccl`) AND the
+        RNN-T predictor. The predictor is part of "stream start" now — `run_chunk`
+        lets `h`/`c` cross the chunk boundary and seeds the first decode of a chunk
+        with `_last_symbol` (`docs/audit/predictor-carry-cura.md`) — so a reset
+        that zeroed only the caches would leave the predictor describing audio
+        from the PREVIOUS stream. That is exactly the leak `rerun()` would cause
+        if it restored only `cc/ct/ccl`, which is why `rerun()` saves and restores
+        the SAME six things this method resets, and the isolation probe pins the
+        pair bit for bit (`_main/segment-rerun-probe.py`, A2/C3).
+
+        THIS METHOD IS ONLY HALF A STREAM START (F12). It cannot touch the
+        front end: `self.sp` holds the cache-aware mel window and the VAD state,
+        and ORT-GenAI offers no reset for it. The other half is `self.sp`, and
+        the only way to start it from nothing is a NEW processor
+        (`fresh_processor()`), which `rerun()` swaps in for the duration of a
+        pass and `reset_frontend()` installs for a new device. Callers that mean
+        "a new stream" must therefore do BOTH.
+
+        It is called in exactly TWO places, both a stream start: `__init__` (via
+        the same allocation) and the second pass. Never mid-stream otherwise.
+        """
+        self.cc, self.ct, self.ccl = _initial_encoder_caches(self.np, self.enc, self.model_dir)
+        self.h = self.np.zeros((2, 1, self.hidden), self.np.float32)
+        self.c = self.np.zeros((2, 1, self.hidden), self.np.float32)
+        self._last_symbol = None
+
+    def reset_frontend(self):
+        """Install a FRESH front end on the LIVE stream: a new device is a new stream.
+
+        The counterpart of `reset_stream_state()` for `self.sp`, and the F12 cure
+        on the device ladder: a rotation changes the endpoint (and, before the
+        resample, its native rate), so the cache-aware mel window and the VAD
+        hold describe audio from a device that is no longer open. The live
+        object gets a NEW processor built from the same model with the same
+        options; the old one is dropped (it is the only way to clear it).
+
+        Returns the new processor so a caller can name it in a log line. It
+        raises if the API cannot build one — the caller at
+        `asr_thread`'s gen-change site reports that on stderr instead of letting
+        it kill the ASR thread, which would strand the run with no captions and
+        no error line on stdout.
+        """
+        self.sp = self.fresh_processor()
+        return self.sp
+
+
+    def run_chunk(self, pcm_chunk, speech=None, account=True):
         """One 8960-sample (560 ms) chunk of 16 kHz mono float32 -> (text, n_tokens).
 
         `speech` is the speech/music decision the CALLER already made on the
@@ -565,6 +686,16 @@ class StreamAsr:
         post-gain chunk would put the decision AFTER the gain and defeat the
         order. When it is None (the FILE arm, `selftest()`, and any direct
         caller) the gate is consulted here, on `pcm_chunk`, exactly as before.
+
+        `account=True` (the default) is what makes this chunk's cost part of the
+        LIVE stream's numbers. The M3 second pass calls it with `account=False`
+        (`rerun()`), so re-decoding a segment cannot double-count `audio_s`,
+        `tokens` or the RTF: `WORKER_STATS` stays the assertion about ONE pass,
+        and the pass publishes its own two counters (`reruns`, `rerun_wall_s`).
+        `account` gates every COUNTER and nothing else — the decoder state
+        (`cc`/`ct`/`ccl`, `h`/`c`, `_last_symbol`) moves either way, which is the
+        point of the pass and what `_main/segment-rerun-probe.py` pins (B: no
+        counter moves; C3: the predictor DID move and the restore reproduces it).
 
 
         THE GREEDY WALK, AND THE BUG THAT WAS IN IT. The previous version kept a
@@ -614,10 +745,11 @@ class StreamAsr:
         if speech is None:
             speech = True if self.gate is None else self.gate.is_speech(pcm_chunk)
         if not speech:
-            self.music_gated_chunks += 1
-            self.n_chunks += 1
-            self.audio_s += len(pcm_chunk) / TARGET_SR
-            self.wall += time.time() - t_start
+            if account:
+                self.music_gated_chunks += 1
+                self.n_chunks += 1
+                self.audio_s += len(pcm_chunk) / TARGET_SR
+                self.wall += time.time() - t_start
             return "", 0
 
         feats = self.sp.process(pcm_chunk)
@@ -638,10 +770,11 @@ class StreamAsr:
         # A gated chunk is real elapsed audio, so the clock still advances; it
         # simply contributes no features, no frames and no text.
         if feats is None:
-            self.vad_gated_chunks += 1
-            self.n_chunks += 1
-            self.audio_s += len(pcm_chunk) / TARGET_SR
-            self.wall += time.time() - t_start
+            if account:
+                self.vad_gated_chunks += 1
+                self.n_chunks += 1
+                self.audio_s += len(pcm_chunk) / TARGET_SR
+                self.wall += time.time() - t_start
             return "", 0
         af = feats["audio_features"]
         af = af.as_numpy() if hasattr(af, "as_numpy") else np.asarray(af)
@@ -665,20 +798,25 @@ class StreamAsr:
         )
         T = int(np.asarray(enc_len).reshape(-1)[0])
 
-        # The prediction network is RE-PRIMED at every chunk boundary: h/c start
-        # at zero and the first decoder call consumes only the blank. MEASURED
-        # reason, same file, same weights, CPU, only this line differing:
-        #   carry across chunks -> 86 tokens (int4) / 108 (int8), with doubled
-        #     word tails ("Goinging along country roadskingss infty schoolros")
-        #   re-prime per chunk  -> 81 tokens (int4) /  91 (int8), clean, and the
-        #     int8 line matches the sherpa-onnx reference almost word for word.
-        # The acoustic history crosses the boundary in the ENCODER cache
-        # (cache_last_channel / cache_last_time), which is what carries it; the
-        # decoder state carrying it too is what duplicates the words.
-        self.h = np.zeros((2, 1, self.hidden), np.float32)
-        self.c = np.zeros((2, 1, self.hidden), np.float32)
-        # Blank first: position 0 of the decoder output is "nothing emitted yet".
-        dout, self.h, self.c = self._decode(np.array([[self.blank]], np.int64), self.h, self.c)
+        # ── THE PREDICTOR CARRIES ACROSS THE BOUNDARY (arm 3, CURA 2026-10-06) ──
+        # `docs/audit/predictor-carry-cura.md`. This file USED to re-prime the
+        # prediction network here — `h`/`c` back to zero and the first decoder
+        # call consuming only the blank — justified by a 13.44 s measurement that
+        # compared the right arm against the WRONG one (the "carry" arm of that
+        # table still fed the blank, so it measured the GLUE, i.e. doubled word
+        # tails, and not the carry). Re-measured on the reference video
+        # `PQw0TRzpCkk` (2 692 chunks × 560 ms, int8, CPU/CUDA, only this policy
+        # differing, `_main/sotto-vs-ref-decode-arms.py`):
+        #   re-prime per chunk (old)        5 661 tok | 2 183 words | 59.3 % empty | WER 0.6105
+        #   carry `h`/`c`, seed `<blank>`   8 192 tok | 3 304 words | 23.1 % empty | WER 0.5954
+        #   carry `h`/`c`, seed LAST SYMBOL 10 738 tok| 4 279 words | 10.0 % empty | WER 0.1536
+        # The words were being eaten at every 560 ms boundary. The acoustic
+        # history crosses in the ENCODER cache (`cache_last_channel` /
+        # `cache_last_time`); the predictor crosses in `h`/`c`, and the first
+        # decode of the chunk consumes the LAST EMITTED SYMBOL — not the blank —
+        # so the LSTM is never told "nothing was emitted yet" mid-stream.
+        seed = self.blank if self._last_symbol is None else self._last_symbol
+        dout, self.h, self.c = self._decode(np.array([[seed]], np.int64), self.h, self.c)
 
         def _pred(dout_arr):
             """The decoder output at its last position, shaped for the joint."""
@@ -686,9 +824,32 @@ class StreamAsr:
             return np.ascontiguousarray(last.reshape(1, 1, self.hidden), dtype=np.float32)
 
         dd = _pred(dout)
+        # ── TWO bounds, and they mean different things (F11) ─────────────────
+        # `max_symbols_per_step` is a ceiling on ONE ENCODER FRAME's label run
+        # (`docs/model-specs/README.md` §1-2: "10 = upper bound on labels emitted
+        # per encoder frame", "the ceiling on one frame's label run"), NOT a
+        # budget for the whole chunk. The walk below may re-run the decoder
+        # WITHOUT advancing `ti` — that is the label cursor moving within one
+        # frame — so before this cure the per-frame ceiling did not exist at all
+        # and `limit` was the only bound, applied to the chunk. That is legal
+        # output only by accident: a frame that keeps wanting a symbol past the
+        # ceiling can spend the whole chunk's budget on itself, and the canonical
+        # decoders (NeMo `GreedyRNNTInfer`, ORT-GenAI `ParakeetTdt`) all advance
+        # the time cursor when the ceiling is reached — ORT-GenAI's comment is
+        # literal about the hang a ceiling-less walk causes ("the loop would hang
+        # on the same frame forever").
+        #
+        # `frame_syms` is that per-frame count. It resets whenever `ti` advances
+        # (a blank, or the ceiling itself). `limit`/`guard` STAYS as the
+        # chunk-global BACKSTOP, and it must now be unreachable in a correct
+        # walk: with the ceiling checked BEFORE the joint call, a frame can cost
+        # at most `max_sym` joint calls, so `guard <= max_sym * T < limit`
+        # always. If the backstop fires it means this walk is buggy, so it says
+        # so on stderr instead of silently truncating the chunk.
         limit = self.max_sym * T + 16
         ti = 0
         guard = 0
+        frame_syms = 0
         chunk_ids = []
         # ONE joint call per (frame, label) cell. MEASURED reason this is not
         # batched: scanning several frames in a single joint call and picking the
@@ -701,6 +862,14 @@ class StreamAsr:
         # symbol lands one position out of alignment. The extra calls cost ~7
         # joint evaluations per 560 ms chunk and buy an aligned transcript.
         while ti < T and guard < limit:
+            # The per-frame ceiling, tested BEFORE the joint call: once this
+            # frame has produced `max_sym` labels its run is over, whatever the
+            # joint would say, so the time cursor moves and the next frame gets
+            # its own budget. No counter moves — nothing was emitted here.
+            if frame_syms >= self.max_sym:
+                ti += 1
+                frame_syms = 0
+                continue
             guard += 1
             e1 = np.ascontiguousarray(enc_out[:, ti : ti + 1, :], dtype=np.float32)
             y = int(
@@ -712,22 +881,60 @@ class StreamAsr:
             # signature of "the model had nothing to emit here", which is a
             # different failure from "no audio arrived" and was indistinguishable
             # before these counters existed.
-            self.frames_walked += 1
+            if account:
+                self.frames_walked += 1
             if y == self.blank:
-                self.blank_frames += 1
+                if account:
+                    self.blank_frames += 1
                 ti += 1
+                frame_syms = 0
                 continue
             chunk_ids.append(y)
-            self.labels.append(y)
-            self.symbols += 1
+            frame_syms += 1
+            if account:
+                self.labels.append(y)
+                self.labels_total += 1
+                self.symbols += 1
+            # `_last_symbol` is DECODING STATE, not a counter: it must move even
+            # with `account=False` (the M3 second pass), because it is the seed
+            # of the next chunk's first decode either way. Moving it inside the
+            # `if account:` block would leave the live stream seeded from a
+            # symbol the pass emitted — the exact defect the probe's C3 destroys.
+            self._last_symbol = y
             dout, self.h, self.c = self._decode(np.array([[y]], np.int64), self.h, self.c)
             dd = _pred(dout)
 
-        self.n_chunks += 1
-        if not chunk_ids:
-            self.empty_chunks += 1
-        self.audio_s += len(pcm_chunk) / TARGET_SR
-        self.wall += time.time() - t_start
+        if ti < T and guard >= limit:
+            err(
+                f"max_symbols_per_step backstop fired: walk stopped at frame {ti}/{T} after "
+                f"{guard} joint calls (limit={limit}, max_sym={self.max_sym}) — the per-frame "
+                f"ceiling should make this unreachable, so this is a bug in the walk"
+            )
+
+        if account:
+            self.n_chunks += 1
+            if not chunk_ids:
+                self.empty_chunks += 1
+            self.audio_s += len(pcm_chunk) / TARGET_SR
+            self.wall += time.time() - t_start
+            # ── the label list is BOUNDED (F17) ──────────────────────────────
+            # Pruned ONCE PER CHUNK, not per symbol: the oldest ids go, the
+            # count of what was dropped is kept in `labels_pruned`, and the
+            # honest token count is `labels_total`. Nothing on the live path
+            # reads a pruned id (each caption is built from this chunk's own
+            # `chunk_ids`), so the bound cannot cost a caption.
+            drop = len(self.labels) - MAX_RETAINED_LABELS
+            if drop > 0:
+                del self.labels[:drop]
+                self.labels_pruned += drop
+        # THE WORD-BOUNDARY FACT, taken from the tokens and NOT from the text:
+        # `detok()` below turns `▁` into a space and strips it, so by the time
+        # `chunk_ids` is a string the "this continues the previous word" signal
+        # is already destroyed — the cause of the owner's "shi t". Published on
+        # the instance because `run_chunk`'s `(text, n)` contract is consumed by
+        # probes that must not change; every emitter reads it immediately after
+        # the call and hands it to `LineFormer.push(continues=...)`.
+        self.chunk_continues = chunk_is_continuation(self.vocab, chunk_ids)
         return self.detok(chunk_ids), len(chunk_ids)
 
 
@@ -787,7 +994,10 @@ def device_candidates(cfg_audio=None, wanted=None):
     seen_ep = set()
 
     def offer(d, rung, why=None):
-        key = endpoint_key(d["name"])
+        # A WASAPI candidate is identified by its ENDPOINT ID, not by its name:
+        # two active endpoints can publish the same friendly name (two identical
+        # monitors), and a name collision would silently drop one of them.
+        key = d["endpoint_id"] if d.get("endpoint_id") else endpoint_key(d["name"])
         if d.get("index") is not None and d["index"] in seen_idx:
             return False
         if key in seen_ep:
@@ -811,18 +1021,32 @@ def device_candidates(cfg_audio=None, wanted=None):
                 if offer(d, "c", "explicit override"):
                     break
 
-    # RUNG A -- WASAPI loopback of the default render endpoint. Added as a
-    # candidate only when this machine can actually open it, so a box with no
-    # render endpoint silently skips to rung B rather than failing the run.
+    # RUNG A -- WASAPI loopback of EVERY ACTIVE RENDER ENDPOINT, the one
+    # rendering RIGHT NOW first.
+    #
+    # It used to be the DEFAULT endpoint alone, and that is the measured defect
+    # this closes: on this box the owner's Chrome rendered to `CABLE Input`
+    # (meter peak 0.264, `chrome.exe` pid 9736 ACTIVE) while the default was
+    # `VoiceMeeter Input`, IDLE (peak 0.000000) -- the tap opened the idle one
+    # and the app said "no audio to transcribe" with the sound plainly playing.
+    # Measured 2026-10-06 (`_main/audio-escopo-probe.py`): playing the fixture to
+    # a real speaker endpoint lit up THAT endpoint's loopback at peak 0.429398
+    # and left the default at 0.000000 (0 blocks).
+    #
+    # `loopback_device_specs()` enumerates them (IMMDeviceEnumerator,
+    # eRender + DEVICE_STATE_ACTIVE), reads each endpoint's LIVE
+    # IAudioMeterInformation peak and sorts on it, so the first candidate is the
+    # endpoint that is actually carrying audio. A machine with no render
+    # endpoint returns [] and the ladder skips to rung B rather than failing.
     try:
         import wasapi_loopback
 
-        spec = wasapi_loopback.loopback_device_spec()
+        specs = wasapi_loopback.loopback_device_specs()
     except Exception as exc:  # import or enumeration failure -> rung B
-        spec = None
+        specs = []
         err(f"loopback rung unavailable: {type(exc).__name__}: {exc}")
-    if spec is not None:
-        offer(spec, "a", "WASAPI loopback of the default render endpoint")
+    for spec in specs:
+        offer(spec, "a", spec.get("rung_why"))
 
     # RUNG B -- heuristic. Score every input by how much its NAME looks like the
     # PC's own output looped back, best first. No literal list is consulted.
@@ -1055,6 +1279,82 @@ class AutoGain:
         return out
 
 
+# ── the audio level the PANEL draws a wave from (lane SottoWordSplit, task 2) ──
+# OWNER: asked for a wave in the panel. The contract lane measured that the datum
+# that exists does NOT serve one: `counters['peak']` is the MAXIMUM OF THE RUN
+# and only ever rises (three consecutive WORKER_STATS ticks printed the SAME
+# peak=0.554093 while `rms` drifted 0.06100197 -> 0.06181468), and the published
+# cadence is ONE POINT PER 10 s. A wave drawn from either is monotone, i.e.
+# decorative.
+#
+# THE TWO MISSING THINGS, and where each is fixed:
+#   1. a level PER WINDOW — this class: the peak of the CURRENT window, RESET on
+#      every tick. It is the same per-block peak `on_block` already computes; it
+#      is simply no longer allowed to accumulate.
+#   2. a cadence a wave can be drawn from — ~10 Hz, which is the tap's OWN block
+#      rate (`audio.block_ms: 100`). It is NOT `--stats-interval` lowered to
+#      0.1 s: that line is ~600 B, so 10 Hz would be ~6 KB/s on the channel that
+#      also carries the captions. The level travels as its own tiny event
+#      (`emit(type="meter", peak=…, blocks=…)`) on stdout, and the stderr
+#      WORKER_STATS tick is untouched.
+#
+# THE FIELD IS `peak`, NOT `peak_window`, and that is deliberate: the panel's
+# shipped `wireStatsSource` reads `fields.peak`/`fields.blocks`
+# (`app/panel/panel.js:1709` -> `pushLevel(fields.peak, fields.blocks)`), and its
+# own comment says the code is built against "`stats.peak` = the level OF ONE
+# WINDOW, plus `stats.blocks`". In a `meter` event `peak` IS the window level;
+# the RUN maximum keeps its name inside WORKER_STATS. Sending a differently named
+# field would arrive and be ignored.
+#
+# RAW, NOT SMOOTHED: instant attack / ~200 ms release is the PANEL's job (a
+# meter's legibility rule), and doing it here would hide the true level from
+# every other consumer. `blocks` travels with the level so a consumer can see a
+# window that was longer or shorter than one block period (a stalled tap, a
+# dropped block).
+METER_HZ = 10.0
+
+
+class AudioMeter:
+    """Per-WINDOW audio level at ~`hz`, PURE: no clock, no I/O, no audio device.
+
+    The caller owns the clock (`now`) and the emitting, so this class can be
+    driven at any rate by an oracle — which is the only way it can be tested
+    without opening the device the owner's worker is holding.
+    """
+
+    def __init__(self, hz=METER_HZ, now=0.0):
+        self.interval = (1.0 / float(hz)) if hz and float(hz) > 0 else 0.0
+        self.enabled = self.interval > 0.0
+        self.next = now + self.interval
+        self.reset()
+
+    def reset(self):
+        self.peak = 0.0
+        self.blocks = 0
+
+    def tick(self, block_peak, now):
+        """Feed ONE block's peak; return the payload when the window CLOSED.
+
+        Returns `{"peak": <window peak>, "blocks": <blocks in it>}` or None. The
+        window is closed by TIME, not by a block count: a tap that stalls gives a
+        LONGER window, and `blocks` is how a consumer sees that instead of
+        reading a smooth wave over a gap.
+        """
+        if not self.enabled:
+            return None
+        self.blocks += 1
+        if block_peak > self.peak:
+            self.peak = block_peak
+        if now < self.next:
+            return None
+        out = {"peak": round(self.peak, 4), "blocks": self.blocks}
+        self.reset()
+        # From `now`, not `+= interval`: a late tick must NOT emit a burst of
+        # catch-up windows carrying the same audio twice.
+        self.next = now + self.interval
+        return out
+
+
 # ── speech/music decision, cheap and local (lane SottoSpeechSeparation) ─────
 # OWNER: "precisamos de algo novo. que divida musica de fala, isole a fala, e ai
 # aplicamos a legenda ao vivo nisso."
@@ -1258,11 +1558,134 @@ def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
     does the 48k -> 16k step (an exact 3:1 ratio, so it is block averaging, not
     interpolation).
     """
+    if device.get("file_tap"):
+        # Lane SottoAsrTap: the LIVE loop fed from a file, no device opened.
+        return FileTap(device["file_tap"], on_block, block_ms=block_ms)
     if device.get("wasapi_loopback"):
         import wasapi_loopback
 
-        return wasapi_loopback.WasapiLoopbackTap(on_block, block_ms=block_ms)
+        # The endpoint id travels with the candidate: the ladder may have
+        # picked any ACTIVE render endpoint, and opening "the default" here
+        # would silently substitute the very endpoint whose silence is the
+        # defect (`CABLE Input` rendering while the default sat idle).
+        return wasapi_loopback.WasapiLoopbackTap(
+            on_block, block_ms=block_ms, endpoint_id=device.get("endpoint_id")
+        )
     return _PortAudioTap(device, on_block, want_rate=want_rate, block_ms=block_ms)
+
+
+# ── lane SottoAsrTap: the LIVE loop fed from a FILE, no audio device ──────────
+class _FileTapStream:
+    """The `stream` handle a real tap exposes (start/stop/close), for FileTap.
+
+    It owns the pump THREAD, so the tap's shape at the call site is identical to
+    `_PortAudioTap.stream`: the run loop calls `.start()` on it, and `close_tap()`
+    calls `.stop()`/`.close()`. Nothing here touches PortAudio or WASAPI.
+    """
+
+    def __init__(self, tap):
+        self._tap = tap
+        self._thread = None
+        self._stop = threading.Event()
+
+    def start(self):
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._tap._pump, name="file-tap", daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+
+    def close(self):
+        self._stop.set()
+
+
+class FileTap:
+    """Feed a FILE's PCM into the LIVE `asr_thread` as if a callback delivered it.
+
+    Lane SottoAsrTap. WHY it exists: `SOTTO_AUDIO_FILE` lands in `selftest()`,
+    which runs its OWN chunk loop and never enters `asr_thread`, so the live
+    loop's `seg_pcm` retention/prune and its five `drain()` call sites were never
+    executed end to end (worker/sotto_worker.py:1981). A REAL capture device
+    cannot close that hole (owner: "nao quero ouvir"), so this tap opens NO
+    device: it reads `path` (float32 mono at TARGET_SR), LOOPS it, and calls
+    `on_block` once per `block_ms` of audio on a wall-clock schedule — the exact
+    shape a PortAudio callback has, minus the device.
+
+    OFF by default: only `SOTTO_FILE_TAP=<path>` reaches it. With the variable
+    unset the shipped live path (device_candidates -> LoopbackTap -> a real
+    stream) is unchanged.
+    """
+
+    def __init__(self, path, on_block, want_rate=TARGET_SR, block_ms=100):
+        import numpy as np
+        import soundfile as sf
+
+        pcm, sr = sf.read(path, dtype="float32")
+        if pcm.ndim > 1:
+            pcm = pcm.mean(axis=1)
+        if sr != TARGET_SR:
+            pcm = resample_to_16k(pcm, sr)
+        self.np = np
+        self.pcm = np.ascontiguousarray(pcm, dtype=np.float32)
+        self.on_block = on_block
+        self.path = path
+        # 16 kHz by construction, so the live loop reads `native=False` and does
+        # NOT resample: the tap's PCM IS what the encoder wants, exactly as a
+        # device that accepted a 16 kHz request would deliver.
+        self.rate = TARGET_SR
+        self.native_rate = None
+        self.block_ms = block_ms
+        self.block = int(TARGET_SR * block_ms / 1000)
+        self.stream = _FileTapStream(self)
+
+    def _pump(self):
+        # Wall-clock pacing: one block every `block_ms`, so a 25 s run is fed
+        # ~25 s of audio at the cadence a real callback delivers it. An
+        # unbounded burst would be a slow-consumer storm, not a capture, and
+        # would make `--max-seconds` mean a different thing here than on the
+        # device arm.
+        block_s = self.block_ms / 1000.0
+        i = 0
+        next_t = time.monotonic()
+        stop = self.stream._stop
+        while not stop.is_set():
+            seg = self.pcm[i : i + self.block]
+            if seg.size == 0:
+                i = 0
+                continue
+            i += self.block
+            if i >= self.pcm.size:
+                i = 0  # LOOP: keep the stream alive until the run stops it
+            self.on_block(self.np.ascontiguousarray(seg, dtype=self.np.float32))
+            next_t += block_s
+            delay = next_t - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+
+
+def file_tap_candidate(path):
+    """A device-dict-shaped candidate for the FILE tap (lane SottoAsrTap).
+
+    Shaped like a `device_candidates` row so the ladder, the tap ledger and the
+    rotation loop are untouched. `file_tap` is the key `LoopbackTap` reads to
+    return a `FileTap`; there is no device index, no host API and no endpoint.
+    """
+    return {
+        "name": f"file:{os.path.basename(path)}",
+        "index": None,
+        "max_input_channels": 1,
+        "default_samplerate": TARGET_SR,
+        "hostapi": None,
+        # `_host_api_name` reads this first for a candidate with no PortAudio
+        # hostapi index (the same field rung (a)'s synthetic rows carry).
+        "hostapi_name": "file",
+        "file_tap": path,
+        "rung": "file",
+        "rung_why": "SOTTO_FILE_TAP: the live loop fed from a file, no audio device",
+    }
 
 
 # ── provider selection ────────────────────────────────────────────────────────
@@ -1368,6 +1791,64 @@ SENTENCE_MAX_CHARS = 90
 # Sentence-ending marks. A line ending in one of these is closed where it is.
 LINE_TERMINAL = ".!?…"
 
+# The word-start marker of this model's SentencePiece vocabulary. `detok()`
+# turns it into a space and `.strip()`s it away, which is fine for the ONE
+# string a run ships at exit (`done.text`) and lossy for a STREAM, where the
+# marker is the only thing that says whether the next chunk CONTINUES the word
+# the previous one left open. These two helpers are that fact, read from the
+# TOKENS (`chunk_is_continuation`) and spent when fragments are joined
+# (`join_fragments`).
+WORD_MARK = "\u2581"
+
+
+def chunk_is_continuation(vocab, ids) -> bool:
+    """Does this chunk's text CONTINUE the word the previous chunk left open?
+
+    True when the chunk's first REAL token carries no `▁` word-start marker —
+    i.e. the model says "this is the rest of the word I was spelling", which is
+    exactly the fact `detok()`'s `.strip()` destroys. A chunk with nothing but
+    special tokens (`<...>`, dropped by `detok`) makes no claim: False.
+
+    MEASURED on `_main/pt-br-sample.wav` (`_main/word-split-trace.json`): the
+    chunk at 6.16 s decodes to the single token `ima`, no marker, right after
+    the chunk at 5.60 s decoded `▁próx` — one word, two chunks. The old join put
+    a space between them and the caption read "próx ima".
+    """
+    for i in ids:
+        t = vocab[i]
+        if t.startswith("<") and t.endswith(">"):
+            continue
+        return not t.startswith(WORD_MARK)
+    return False
+
+
+def join_fragments(frags) -> str:
+    """Join `(text, continues)` pairs: a CHUNK boundary is NOT a word boundary.
+
+    `continues` is `chunk_is_continuation`'s verdict for that fragment. A
+    fragment that continues the open word is glued to it with NO separator;
+    every other fragment starts a new word and takes ONE space. This is the
+    whole cure for the owner's "shi t" — the old `" ".join(...)` inserted a
+    space at every chunk seam, including the seams the model had explicitly
+    marked as mid-word.
+
+    It is deliberately the ONLY place that decides a separator: `line()` and the
+    `max_chars` lookahead both go through it, so the lookahead measures the line
+    that will actually exist and one revert of this function restores the old
+    text exactly (the oracle's negative arm).
+    """
+    out = ""
+    for text, cont in frags:
+        if not text:
+            continue
+        if not out:
+            out = text
+        elif cont:
+            out += text
+        else:
+            out += " " + text
+    return out.strip()
+
 
 class LineFormer:
     """Accumulate decoded chunk text into a LINE, and say when to emit it.
@@ -1392,20 +1873,39 @@ class LineFormer:
         self.reset()
 
     def reset(self):
+        # `_words` holds `(text, continues)` PAIRS, not bare strings: `continues`
+        # is the per-chunk word-boundary verdict the join needs. `line()` is the
+        # only reader and `join_fragments()` the only joiner.
         self._words = []
         self._start = None
         self._end = None
         # The text this LINE last sent, so a partial and the final of the same
         # text cannot both go out. Reset with the line, never across lines.
         self._shown = None
+        # The lines that CLOSED since the last `take_closed()` — the OUT-OF-BAND
+        # channel (M2). `push`/`flush` keep returning the partial events the
+        # renderer has always consumed; the line the TRANSCRIPT accepts is the
+        # one collected here, and it is the only thing that ever claims `final`.
+        self._closed = []
+
+    @property
+    def open_start(self):
+        """The audio second the OPEN line began at, or None when none is open.
+
+        The live path keeps the PCM of the chunks a line still needs and PRUNES
+        by this value (M1): everything before the open line's start belongs to a
+        line that has already closed and been published, so holding it would be
+        unbounded growth for a stream that runs for hours.
+        """
+        return self._start
 
     def line(self):
-        return " ".join(self._words).strip()
+        return join_fragments(self._words)
 
     def _worthy(self, text):
         return len(text.strip()) >= self.min_chars
 
-    def _event(self, text):
+    def _event(self, text, final=False, closed=False):
         return {
             "type": "caption",
             "text": text,
@@ -1417,18 +1917,61 @@ class LineFormer:
             # itself word for word. MEASURED against the real renderer module.
             "start": None if self._start is None else round(self._start, 2),
             "end": None if self._end is None else round(self._end, 2),
+            # THE ROUTE (M2). `final:true` is a line the WORKER CLOSED and is the
+            # ONLY text the transcript may take (`panel.js recordHistory`:
+            # `if (route !== 'final') return`); every partial is `final:false`.
+            # `app/electron/caption-formulation.js` reads exactly this field —
+            # "The worker stamps every caption event with `final`" — and derives
+            # the file's `route=` from it. `closed` marks the out-of-band copy so
+            # `line_events()` can normalise both channels through one shape.
+            "final": bool(final),
+            "closed": bool(closed),
         }
 
     def _close(self):
         text = self.line()
         out = []
-        if text and self._worthy(text) and text != self._shown:
-            out.append(self._event(text))
+        if text and self._worthy(text):
+            # THE CLOSE GOES OUT OF BAND (M2), once, and it is the only event
+            # that claims `final:true`. The live path drains it (`take_closed`)
+            # and replaces its text with the SECOND PASS over the segment (M3).
+            #
+            # WHY out of band and not "just another event": the guard below
+            # suppresses the close whenever the text was already shown as a
+            # partial — which is the normal case on the live path (`partial=true`)
+            # — and MEASURED on this box that made a 14.5 s file-mode run emit 3
+            # provisional partials and ZERO finals: a transcript that never
+            # receives a single line. Keeping the partial channel byte-identical
+            # (arms 6/8/9/10 of `_main/caption-lines-oracle.py`) and publishing
+            # the close on its own channel fixes that without moving the events
+            # the renderer sees.
+            self._closed.append(self._event(text, final=True, closed=True))
+            if text != self._shown:
+                # `emit_partial=False`: the closed line was never shown, so this
+                # IS its publication. It stays a PARTIAL on the wire — `final` is
+                # the out-of-band channel's mark — and the live path still
+                # publishes the transcript's copy from the second pass.
+                out.append(self._event(text))
         self._words, self._start, self._end, self._shown = [], None, None, None
         return out
 
-    def push(self, text, start=None, end=None):
-        """Feed ONE decoded chunk; return the caption events to emit (0..2)."""
+    def take_closed(self):
+        """Drain the lines that CLOSED since the last call (M2), out of band."""
+        out = self._closed
+        self._closed = []
+        return out
+
+    def push(self, text, start=None, end=None, continues=False):
+        """Feed ONE decoded chunk; return the caption events to emit (0..2).
+
+        `continues` is `StreamAsr.chunk_continues` — True when the model's own
+        tokens say this chunk's text is the REST OF THE WORD the previous chunk
+        left open. It is a keyword defaulting to False, so every existing caller
+        that pushes an already-whole fragment keeps the old text exactly; the
+        worker's three emitters pass the real verdict. It only ever means
+        something INSIDE an open line: a fragment that arrives after a close
+        starts a word, because the word it would have continued is gone.
+        """
         frag = (text or "").strip()
         if not frag:
             return []
@@ -1443,13 +1986,17 @@ class LineFormer:
         ):
             out += self._close()
         # (2) the cap is a LOOKAHEAD, so the fragment that would overflow opens
-        # the next line instead of being appended to a line already full.
-        if self._words and (len(self.line()) + 1 + len(frag)) > self.max_chars:
+        # the next line instead of being appended to a line already full. The
+        # lookahead measures the JOINED line (`join_fragments`), so a fragment
+        # that glues to the open word is charged its own length and no space.
+        cont = bool(continues) and bool(self._words)
+        if self._words and len(join_fragments(self._words + [(frag, cont)])) > self.max_chars:
             out += self._close()
+            cont = False
         # (3) append, remembering where the LINE began.
         if not self._words:
             self._start = start
-        self._words.append(frag)
+        self._words.append((frag, cont))
         if end is not None:
             self._end = end
         # (4) terminal punctuation closes AFTER this chunk — the model has
@@ -1467,14 +2014,630 @@ class LineFormer:
         return self._close()
 
 
+def line_events(events):
+    """Shape the events of ONE `push`/`flush` — or of a `take_closed()` drain —
+    for the wire (M2).
+
+    Two channels, one shape. Every caption the worker emits carries its ROUTE:
+    `final:true` is a line the WORKER CLOSED (the only text the transcript may
+    take), `final:false` is a partial (`provisional-draft`). A close does NOT
+    travel among the events `push` returns — it is collected out of band — so a
+    caller must publish BOTH: `line_events(former.push(...))` for the live box and
+    `line_events(former.take_closed())` for the transcript (the live path replaces
+    the latter's text with the second pass, M3).
+
+    This is also the only place the internal `closed` marker is dropped: it is how
+    the out-of-band copy is recognised, not something a consumer should see.
+    """
+    out = []
+    for ev in events or ():
+        e = dict(ev)
+        e.pop("closed", None)
+        e["final"] = bool(e.get("final"))
+        out.append(e)
+    return out
+
+
+# ── texture of the run's text ─────────────────────────────────────────────────
+def capped_text(text: str, max_chars: int) -> str:
+    """`text` cut to at most `max_chars` characters, head preserved (F17).
+
+    `done.text` is `detok()` of the whole run and ships as ONE JSONL line, so a
+    multi-hour stream produced a single unbounded line — a consumer that buffers
+    a line has to hold all of it. `max_chars <= 0` means NO cap. The cut keeps
+    the HEAD (the beginning of what was transcribed), and the caller publishes
+    the untruncated length beside it (`text_chars`, `text_truncated`) so a
+    truncated line is visible from the numbers rather than inferred. The
+    returned text is always a genuine PREFIX of the transcript — no marker is
+    spliced into it, because this string is the transcript.
+    """
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    return text[:max_chars]
+
+
+# ── THE STACK LAW: streaming only while the panel is OPEN ─────────────────────
+# OWNER, 2026-10-07, verbatim: *"o nvidia é pro ao vivo, o parakeet redux é pro
+# geral. o ao vivo só acontece quando o painel ta aberto. quando ta fechado, o
+# redux entra, e vira um transcritor LEVE ao contrario do nvidia."*
+#
+# THE FLAG DEFAULTS OFF, and that default is not caution, it is the HARD RULE in
+# AGENTS.md expressed as a default: today the streaming engine is the ONLY
+# transcriber in this tree, so a switch that lands before the batch path is
+# proven means ZERO transcription exactly while the owner is not looking. With
+# the flag off this file behaves as it did before this lane existed — no file
+# read, no extra process, no extra stdout line.
+REDUX_WHEN_HIDDEN_DEFAULT = False
+#: How long the panel must stay hidden before the batch engine takes over.
+REDUX_HIDDEN_AFTER_DEFAULT_S = 20.0
+#: How much accumulated audio one batch invocation covers. It is the granularity
+#: of the light path: a longer window is fewer model loads and later text.
+REDUX_BATCH_INTERVAL_DEFAULT_S = 15.0
+#: Bound on the audio held in RAM while hidden. Without it, "accumulate" is an
+#: unbounded buffer on a panel the owner may leave closed for hours.
+REDUX_MAX_AUDIO_DEFAULT_S = 120.0
+#: The BATCH engine's runner — ANOTHER LANE'S FILE. This lane names it, calls it
+#: and never writes it. Contract: `python redux_batch.py --wav PATH --json` ->
+#: JSONL on stdout, `{"type":"caption","text":…,"start":<s>,"end":<s>,"producer":"redux"}`.
+REDUX_RUNNER_DEFAULT = os.path.join(HERE, "redux_batch.py")
+#: The shell's visibility channel — written by `app/webview/sotto_webview.py`
+#: (`PanelVisibilityWriter`), read here and nowhere else.
+REDUX_VISIBILITY_DEFAULT = os.path.join(
+    os.path.dirname(HERE), "_main", "panel-visibility.json")
+#: THE FIELD THAT OPENS THE CANONICAL TRANSCRIPT. `app/electron/history-source.js:51`
+#: (`CANONICAL_PRODUCER = 'redux'`) accepts a line only when `meta.producer` is
+#: literally this string, and `grep -rn producer worker/` had ZERO matches before
+#: this constant existed — so "History · Redux" was decorative and the archive
+#: took no new line. This is the worker's half of that contract.
+REDUX_PRODUCER = "redux"
+#: A batch invocation may not run forever: a hung runner would silently freeze
+#: the light path while the panel is closed, which looks exactly like "working".
+REDUX_RUNNER_TIMEOUT_DEFAULT_S = 180.0
+#: Below this much audio a batch invocation is not worth a model load.
+REDUX_MIN_AUDIO_S = 1.0
+#: FREE physical memory a batch invocation is allowed to start under, in MB.
+#: The runner's own documented peak is ~3.9 GB (the kestrel int8 kernel is
+#: unavailable on this box, so it falls back to the dense weight form) and the
+#: streaming model stays resident while the panel is hidden, so the default is
+#: that peak plus a margin. MEASURED reason this exists: while another job held
+#: 3.5 GB, a sibling process could not allocate a ~1 GB ONNX session at all
+#: ("bad allocation"). A pass that cannot fit should be DEFERRED, not attempted:
+#: the audio stays buffered and the next tick retries.
+REDUX_MIN_FREE_MB_DEFAULT = 4600.0
+
+
+def _free_memory_mb():
+    """Free physical memory in MB, or None when it cannot be measured.
+
+    `None` is NOT "no memory": it means the measurement itself failed, and a gate
+    that cannot measure must not block the work it would otherwise allow. The
+    caller treats `None` as "go ahead and try" — a failed measurement is not
+    evidence of pressure, and inventing a refusal from it would be this repo's
+    oldest bug wearing a new hat.
+    """
+    try:
+        import psutil
+
+        return round(psutil.virtual_memory().available / 1048576.0, 1)
+    except Exception:
+        return None
+
+
+def _positive_or(value, default):
+    """A flag's built-in default when the flag was left at 0/None."""
+    try:
+        got = float(value or 0)
+    except (TypeError, ValueError):
+        return float(default)
+    return got if got > 0 else float(default)
+
+
+class PanelVisibilityReader:
+    """The shell's visibility file, read with the HARD RULE's fail-safe.
+
+    THE SHAPE (frozen by `app/webview/sotto_webview.py`):
+
+        {"visible": <bool>, "since_ms": <int>, "pid": <int>,
+         "writtenAtEpoch": <float>, "staleAfterSeconds": <float>, ...}
+
+    THE FAIL-SAFE IS THE WHOLE POINT, and it is in one direction on purpose.
+    EVERY way this reader can fail to get an answer — no file, an unreadable
+    file, a shape it does not recognise, a `visible` that is not a bool — returns
+    `visible=True`, i.e. KEEP STREAMING. "The file said hidden" must never be
+    produced by a file that meant nothing.
+
+    STALENESS IS THE SAME RULE. A shell that died leaves its last sentence on
+    disk forever; obeying `visible:false` from a dead producer would silence the
+    only transcriber this tree has. So `writtenAtEpoch` is checked against
+    `staleAfterSeconds`, and a stale dump also reads as visible. A dump with NO
+    `writtenAtEpoch` is treated as fresh and its `visible` is believed: that is
+    the shape a HAND-WRITTEN file (a probe, a human) has, and refusing it would
+    make the channel untestable by the very probes that must drive it.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.reads = 0
+        self.fallbacks = 0
+        self.last_reason = None
+        self.last_payload = None
+
+    def read(self):
+        """-> (visible: bool, why: str, age_s: float|None). Never raises."""
+        self.reads += 1
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except FileNotFoundError:
+            return self._fallback("no-file", None)
+        except Exception as exc:
+            return self._fallback(f"unreadable:{type(exc).__name__}", None)
+        if not isinstance(payload, dict) or not isinstance(payload.get("visible"), bool):
+            return self._fallback("unknown-shape", None)
+        self.last_payload = payload
+        epoch = payload.get("writtenAtEpoch")
+        if isinstance(epoch, (int, float)):
+            age = max(0.0, time.time() - float(epoch))
+            limit = payload.get("staleAfterSeconds")
+            if isinstance(limit, (int, float)) and age > float(limit):
+                return self._fallback(f"stale(age={age:.1f}s>limit={limit}s)", age)
+            self.last_reason = "fresh"
+            return bool(payload["visible"]), "fresh", age
+        self.last_reason = "fresh-no-epoch"
+        return bool(payload["visible"]), "fresh-no-epoch", None
+
+    def _fallback(self, why, age):
+        self.fallbacks += 1
+        self.last_reason = why
+        return True, why, age
+
+
+class ReduxHiddenSwitch:
+    """Streaming while the panel is OPEN, batch while it is CLOSED.
+
+    WHAT "STOPS" MEANS — and this is the part that must not be got wrong. The
+    thing that stops is the STREAMING DECODE: the 560 ms encoder+RNNT pass whose
+    cost the owner is paying for while nobody is looking. THE TAP DOES NOT STOP,
+    because the batch pass transcribes "the accumulated audio" and there is no
+    audio to accumulate from a closed device. A hidden panel therefore costs one
+    WAV append per 100 ms block plus one batch invocation per
+    `batch_interval_s` — LEVE, and the opposite of a forward pass per chunk.
+
+    THREE GATES, ALL OF WHICH MUST BE OPEN BEFORE THE FIRST CHUNK IS CUT:
+      1. THE FLAG (`--redux-when-hidden`, DEFAULT OFF). With it off this object
+         is never constructed and the worker is byte-identical to today.
+      2. THE RUNNER MUST EXIST ON DISK. A flag that switches to an engine which
+         is not there would trade the ONLY transcriber in this tree for nothing —
+         verbatim the failure the HARD RULE in AGENTS.md was written after. A
+         missing runner is REFUSED LOUDLY and the worker stays streaming.
+      3. THE FILE MUST BE FRESH *AND* SAY HIDDEN for longer than
+         `hidden_after_s` (see `PanelVisibilityReader`: a stale or unreadable
+         file reads as VISIBLE, so gate 3 fails closed towards streaming).
+
+    THE BATCH PASS IS OFF-THREAD, and deliberately: the runner is a separate
+    process with a model load, and blocking the ASR thread on it would stall
+    `audio_q` until it overflowed and DROPPED audio — the accumulated audio the
+    batch path exists to transcribe. So the accumulated PCM is SNAPSHOT and
+    handed to the runner thread, while the ASR thread keeps consuming the queue
+    into a fresh buffer. Nothing is transcribed twice and nothing is dropped.
+
+    STDOUT STAYS ONE THREAD. The runner thread does not emit: it pushes parsed
+    caption dicts onto a queue and the ASR thread drains and emits them, so the
+    JSONL contract keeps its single writer even while the batch pass runs.
+    """
+
+    def __init__(self, enabled, reader, runner, log_fn,
+                 hidden_after_s=REDUX_HIDDEN_AFTER_DEFAULT_S,
+                 batch_interval_s=REDUX_BATCH_INTERVAL_DEFAULT_S,
+                 max_audio_s=REDUX_MAX_AUDIO_DEFAULT_S,
+                 runner_timeout_s=REDUX_RUNNER_TIMEOUT_DEFAULT_S,
+                 wav_dir=None, armed_by="--redux-when-hidden",
+                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT):
+        self.enabled = bool(enabled)
+        self.reader = reader
+        self.runner = runner
+        self.log = log_fn
+        self.armed_by = str(armed_by)
+        self.min_free_mb = float(min_free_mb or 0.0)
+        self.hidden_after_s = float(hidden_after_s)
+        self.batch_interval_s = max(1.0, float(batch_interval_s))
+        self.max_audio_s = max(self.batch_interval_s, float(max_audio_s))
+        self.runner_timeout_s = float(runner_timeout_s)
+        self.wav_dir = wav_dir
+        # ── gate 2, decided ONCE, at construction, and stated in the log ─────
+        self.runner_available = os.path.exists(self.runner)
+        self.armed = bool(self.enabled and self.runner_available)
+        self.mode = "stream"
+        self.visible = True
+        self.why = "boot"
+        self.hidden_since = None
+        self.switches = 0
+        self.segments = 0
+        self.segment_lines = 0
+        self.batches_kicked = 0
+        self.runner_failures = 0
+        self.refusals = 0
+        self.deferred = 0
+        self.stream_chunks_before = 0
+        self.batch_seconds = 0.0
+        self._pending = []
+        self._pending_samples = 0
+        self._inflight = None
+        self._captions = queue.Queue()
+        self._lock = threading.Lock()
+
+    # -- the log line a boot leaves ----------------------------------------
+    def boot_line(self):
+        if not self.enabled:
+            return
+        if self.armed:
+            self.log(
+                f"REDUX_SWITCH armed=true by={self.armed_by} "
+                f"hidden_after_s={self.hidden_after_s} "
+                f"batch_interval_s={self.batch_interval_s} "
+                f"max_audio_s={self.max_audio_s} min_free_mb={self.min_free_mb} "
+                f"runner={self.runner} "
+                f"visibility={self.reader.path}")
+        else:
+            # LOUD, and it is the HARD RULE speaking: without a runner on disk
+            # the switch would silence the only transcriber there is, so it is
+            # refused and the streaming path is left exactly as it is.
+            self.log(
+                f"REDUX_SWITCH_REFUSED armed=false reason=runner-missing "
+                f"runner={self.runner} — the batch engine is not on disk, so the "
+                f"streaming capture is NOT cut while the panel is hidden "
+                f"(today it is the only transcriber)")
+
+    # -- the mode decision --------------------------------------------------
+    def tick(self, now=None):
+        """Decide the mode for THIS block, and say so in one line per change."""
+        if not self.armed:
+            return self.mode
+        now = time.time() if now is None else now
+        visible, why, age = self.reader.read()
+        self.why = why
+        if visible:
+            self.visible = True
+            self.hidden_since = None
+        else:
+            self.visible = False
+            if self.hidden_since is None:
+                self.hidden_since = now
+                self.log(
+                    f"REDUX_VISIBILITY visible=false source={why} "
+                    f"age_s={age if age is None else round(age, 2)} "
+                    f"hidden_since={round(now, 3)} "
+                    f"switch_in_s={self.hidden_after_s}")
+        wanted = "batch" if (
+            not self.visible
+            and self.hidden_since is not None
+            and (now - self.hidden_since) >= self.hidden_after_s
+        ) else "stream"
+        if wanted != self.mode:
+            self.mode = wanted
+            self.switches += 1
+            if wanted == "batch":
+                self.log(
+                    f"REDUX_MODE mode=batch visible=false reason=hidden-"
+                    f"{self.hidden_after_s}s visibility={self.why} "
+                    f"switches={self.switches} runner={os.path.basename(self.runner)}")
+            else:
+                self.log(
+                    f"REDUX_MODE mode=stream visible={str(self.visible).lower()} "
+                    f"reason={'visible-again' if self.visible else 'boot'} "
+                    f"switches={self.switches} segments={self.segments}")
+        return self.mode
+
+    # -- the accumulation ---------------------------------------------------
+    def add_audio(self, block):
+        """Hold one 16 kHz block for the batch pass. Bounded by `max_audio_s`."""
+        with self._lock:
+            self._pending.append(block)
+            self._pending_samples += int(block.size)
+            limit = int(self.max_audio_s * TARGET_SR)
+            while self._pending_samples > limit and len(self._pending) > 1:
+                dropped = self._pending.pop(0)
+                self._pending_samples -= int(dropped.size)
+                # Dropping the OLDEST audio is the only bounded choice, and it is
+                # said out loud rather than leaked silently: a hidden panel is
+                # not supposed to transcribe an unbounded backlog.
+                if self._pending_samples % (5 * TARGET_SR) < int(block.size):
+                    self.log(
+                        f"REDUX_BUFFER_TRIMMED max_audio_s={self.max_audio_s} "
+                        f"held_s={round(self._pending_samples / TARGET_SR, 2)}")
+
+    def pending_seconds(self):
+        return round(self._pending_samples / float(TARGET_SR), 2)
+
+    def take_pending(self):
+        """Snapshot and clear: the runner gets THIS audio, once."""
+        with self._lock:
+            held = self._pending
+            samples = self._pending_samples
+            self._pending = []
+            self._pending_samples = 0
+        return held, samples
+
+    # -- the batch pass -----------------------------------------------------
+    def maybe_kick(self, reason="interval"):
+        """Start a batch pass if one is not already running and it is worth it.
+
+        THE INTERVAL IS A FLOOR, NOT A HINT. This is the measured bug the first
+        version of this method shipped: it delegated straight to `flush_pending`,
+        whose only floor is `REDUX_MIN_AUDIO_S` (the point at which a model load
+        is worth it at all), so on the live loop — which calls this once per
+        100 ms block — it kicked a batch every time one second of audio had
+        accumulated. Twelve invocations for sixteen seconds of hidden audio, and
+        with a runner that takes seconds to load its weights the light path
+        becomes a queue of model loads: the exact opposite of "um transcritor
+        LEVE". The interval gate belongs HERE, where it means "how much audio one
+        pass covers", and the minimum belongs in `flush_pending`, where it means
+        "do not wake the model for a rounding error".
+
+        This is also the only caller that RESPECTS the memory floor, because it is
+        the only one that can afford to wait: a deferred interval pass keeps its
+        audio and retries on the next tick (see `flush_pending`).
+        """
+        if not self.armed or self.mode != "batch":
+            return False
+        if self.pending_seconds() < self.batch_interval_s:
+            return False
+        return self.flush_pending(reason, respect_memory_floor=True)
+
+    def flush_pending(self, reason="flush", respect_memory_floor=False):
+        """One batch pass over the audio held NOW, whatever the mode is.
+
+        THE TAIL IS THE POINT. The panel coming back must not LOSE the audio that
+        accumulated since the last interval pass, and it must not DELAY the return
+        to streaming either — "panel visible again -> back to streaming
+        immediately". So this kick is allowed in EITHER mode and always runs
+        off-thread, exactly like the interval ones; its lines come out through
+        `drain_captions()` while the stream is already live again. Ordering is
+        carried by `start`/`end` on every line, not by arrival order.
+
+        This is the path the TAILS take (panel visible again, stream end), so it
+        deliberately does NOT apply the interval floor: whatever is left must be
+        transcribed. `REDUX_MIN_AUDIO_S` is the only floor, and it exists so a
+        few milliseconds of audio does not pay for a model load.
+
+        THE MEMORY FLOOR IS APPLIED ONLY WHEN WAITING IS FREE. `maybe_kick` (the
+        interval path) passes `respect_memory_floor=True`: under pressure the pass
+        is DEFERRED and its audio stays buffered, so the next tick retries and
+        nothing is lost. A TAIL cannot be deferred — there is no next tick, so a
+        deferral would simply drop the owner's last minute — so a tail ATTEMPTS
+        under pressure and says in the log that it did. Both outcomes are stated;
+        neither is silent.
+        """
+        if not self.armed:
+            return False
+        if self._inflight is not None and self._inflight.is_alive():
+            # A pass is already running. The audio keeps accumulating and the
+            # next tick will cover it; nothing is dropped by refusing here.
+            return False
+        if self.min_free_mb > 0:
+            free = _free_memory_mb()
+            if free is not None and free < self.min_free_mb:
+                if respect_memory_floor:
+                    self.deferred += 1
+                    # RATE-LIMITED, for the reason `on_block`'s `queue_drops` is:
+                    # this is evaluated once per 100 ms block, and MEASURED that
+                    # way the first version wrote NINETY lines in thirteen seconds
+                    # of pressure — a log that grows ~36 000 lines an hour on the
+                    # exact path (a hidden panel on a busy box) where nobody is
+                    # watching. The COUNTER stays exact; only the prose is thin.
+                    if self.deferred <= 3 or self.deferred % 30 == 0:
+                        self.log(
+                            f"REDUX_BATCH_DEFERRED reason=low-memory free_mb={free} "
+                            f"floor_mb={self.min_free_mb} "
+                            f"held_s={self.pending_seconds()} deferred={self.deferred} "
+                            f"— the batch engine's documented peak is ~3.9 GB and a failed "
+                            f"allocation would lose this pass; the audio stays buffered and "
+                            f"the next tick retries")
+                    return False
+                self.deferred += 1
+                self.log(
+                    f"REDUX_BATCH_LOW_MEMORY free_mb={free} floor_mb={self.min_free_mb} "
+                    f"reason={reason} attempting=anyway deferred={self.deferred} — a tail "
+                    f"has no next tick, so the attempt is made and this line is the "
+                    f"receipt that it was made under pressure")
+        held, samples = self.take_pending()
+        if samples < int(REDUX_MIN_AUDIO_S * TARGET_SR):
+            # Not worth a model load: put it back and wait for more audio.
+            with self._lock:
+                self._pending = held + self._pending
+                self._pending_samples += samples
+            return False
+        self.batches_kicked += 1
+        self.batch_seconds += samples / float(TARGET_SR)
+        self._inflight = threading.Thread(
+            target=self._run_runner, args=(held, samples, reason),
+            name="redux-batch", daemon=True)
+        self._inflight.start()
+        self.log(
+            f"REDUX_BATCH_KICK reason={reason} audio_s={round(samples / TARGET_SR, 2)} "
+            f"kicks={self.batches_kicked} pid={os.getpid()}")
+        return True
+
+    def _write_wav(self, pcm, path):
+        """16 kHz mono PCM16, via `wave` — no dependency and no ffmpeg."""
+        import wave
+
+        import numpy as np
+
+        data = np.clip(np.concatenate(pcm) if len(pcm) > 1 else pcm[0], -1.0, 1.0)
+        ints = (data * 32767.0).astype("<i2")
+        with wave.open(path, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(TARGET_SR)
+            wav.writeframes(ints.tobytes())
+
+    def _run_runner(self, held, samples, reason):
+        """Invoke the batch engine and queue its caption lines. Never raises.
+
+        THE FAILURE THIS CANNOT BE ALLOWED TO HAVE: dying quietly. A batch pass
+        that fails and says nothing turns "the light path is working" into a
+        claim with no evidence, and the owner's captions simply stop. Every exit
+        from this method logs, and a failure leaves a `REDUX_BATCH_FAILED` line
+        on stderr and a `redux-batch-error` status on stdout.
+        """
+        import subprocess
+        import tempfile
+
+        wav_path = None
+        try:
+            if self.wav_dir is None:
+                # ONE directory per process, not per batch: a `mkdtemp` per
+                # invocation leaks a directory every `batch_interval_s`, and a
+                # panel left closed overnight is exactly when that is not
+                # noticed. The WAV itself is removed after every run.
+                self.wav_dir = tempfile.mkdtemp(prefix="sotto-redux-")
+            wav_dir = self.wav_dir
+            os.makedirs(wav_dir, exist_ok=True)
+            wav_path = os.path.join(
+                wav_dir, f"redux-{os.getpid()}-{self.batches_kicked}.wav")
+            self._write_wav(held, wav_path)
+            cmd = [sys.executable, self.runner, "--wav", wav_path, "--json"]
+            # CREATE_NO_WINDOW: the house rule. This worker already runs without
+            # a console; a child python.exe would otherwise open a NEW console
+            # window on the owner's screen, and the 60 s census names the pid.
+            creationflags = 0x08000000 if os.name == "nt" else 0
+            t_runner = time.time()
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=self.runner_timeout_s,
+                creationflags=creationflags)
+            runner_wall = round(time.time() - t_runner, 2)
+            lines = 0
+            for raw in (proc.stdout or "").splitlines():
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    payload = json.loads(raw)
+                except ValueError:
+                    self.log(f"REDUX_BATCH_MALFORMED line={json.dumps(raw[:160])}")
+                    continue
+                if not isinstance(payload, dict) or payload.get("type") != "caption":
+                    continue
+                text = str(payload.get("text") or "").strip()
+                if not text:
+                    continue
+                # ── THE PAYOFF ───────────────────────────────────────────────
+                # `producer` is stamped HERE and not taken from the runner's own
+                # line unless the runner already said it: the field is what
+                # `app/electron/history-source.js:51,61-63` requires, and a batch
+                # line that reached the transcript without it would be refused.
+                # `final:true` is the worker's OWN route vote — the panel's
+                # engine reads it to derive `route='final'`
+                # (`caption-formulation.js` `routeFor`).
+                self._captions.put({
+                    "type": "caption",
+                    "text": text,
+                    "start": payload.get("start"),
+                    "end": payload.get("end"),
+                    "final": True,
+                    "producer": str(payload.get("producer") or REDUX_PRODUCER),
+                    "producerModel": os.path.basename(
+                        str(payload.get("model") or self.runner)),
+                    "route": "redux-batch",
+                })
+                lines += 1
+            self.segments += 1
+            self.segment_lines += lines
+            self.log(
+                f"REDUX_BATCH_DONE reason={reason} "
+                f"audio_s={round(samples / float(TARGET_SR), 2)} lines={lines} "
+                f"rc={proc.returncode} segments={self.segments} "
+                f"wall_s={runner_wall} timeout_s={self.runner_timeout_s}")
+            # A NON-ZERO rc IS A FAILURE, not "the audio had nothing to say", and
+            # it is counted and named as one. Two separate things are reported
+            # because they are different facts: `REDUX_BATCH_DONE` says the runner
+            # RETURNED (with its rc), and `REDUX_BATCH_FAILED` says this run lost a
+            # pass. MEASURED reason this is not left to the empty-caption status:
+            # the runner's stderr is captured and would otherwise be discarded, so
+            # a runner that refuses its input (wrong WAV shape, missing weights, a
+            # Python traceback) reported as `lines=0` — indistinguishable from a
+            # silence, which is the "green exit code on a broken stage" class this
+            # repo has been bitten by. The tail is logged ONLY on failure, so a
+            # healthy run stays quiet.
+            if proc.returncode != 0:
+                self.runner_failures += 1
+                tail = " | ".join(
+                    (proc.stderr or "").strip().splitlines()[-4:])[:600]
+                self.log(
+                    f"REDUX_BATCH_FAILED reason=runner-rc rc={proc.returncode} "
+                    f"runner={os.path.basename(self.runner)} "
+                    f"failures={self.runner_failures} tail={json.dumps(tail)}")
+            if lines == 0:
+                # A silent batch is a FACT the run must state: the panel is
+                # hidden, the switch is armed, and the audio produced nothing.
+                self._captions.put({
+                    "type": "status",
+                    "state": "redux-batch-empty",
+                    "producer": REDUX_PRODUCER,
+                    "audio_s": round(samples / float(TARGET_SR), 2),
+                    "detail": (
+                        f"the batch engine ran over {round(samples / float(TARGET_SR), 2)}s "
+                        f"of accumulated audio and emitted no caption "
+                        f"(rc={proc.returncode}); the panel is hidden and this is the "
+                        f"only transcriber running"),
+                })
+        except subprocess.TimeoutExpired:
+            self.runner_failures += 1
+            self.log(
+                f"REDUX_BATCH_FAILED reason=timeout timeout_s={self.runner_timeout_s} "
+                f"runner={self.runner} failures={self.runner_failures}")
+        except Exception as exc:
+            self.runner_failures += 1
+            self.log(
+                f"REDUX_BATCH_FAILED reason={type(exc).__name__} error={exc!r} "
+                f"failures={self.runner_failures}")
+        finally:
+            if wav_path:
+                try:
+                    os.remove(wav_path)
+                except OSError:
+                    pass
+
+    def drain_captions(self):
+        """The lines the runner produced, for the ASR thread to emit. Non-blocking."""
+        out = []
+        while True:
+            try:
+                out.append(self._captions.get_nowait())
+            except queue.Empty:
+                return out
+
+    def in_flight(self):
+        return self._inflight is not None and self._inflight.is_alive()
+
+    def stop(self):
+        """Last call: let the runner finish, then report what the switch did."""
+        if not self.enabled:
+            return
+        if self._inflight is not None:
+            self._inflight.join(timeout=max(5.0, self.runner_timeout_s))
+        self.log(
+            f"REDUX_SWITCH_STOP armed={str(self.armed).lower()} "
+            f"switches={self.switches} segments={self.segments} "
+            f"segment_lines={self.segment_lines} kicks={self.batches_kicked} "
+            f"batch_seconds={round(self.batch_seconds, 2)} "
+            f"failures={self.runner_failures} deferred={self.deferred} "
+            f"refusals={self.refusals} "
+            f"fallbacks={self.reader.fallbacks}/{self.reader.reads}")
+
+
 # ── selftest ──────────────────────────────────────────────────────────────────
-def selftest(asr, audio_path, args, min_chars=1, partial=True):
+def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_chars=0):
     """Prove the model works with NO audio device involved.
 
     `min_chars` is `output.min_chars` from config.json — the same caption floor the
     live path applies, so the two emitters cannot drift. Default 1 = the code's own
     historic `if text.strip():` threshold. `partial` is `output.partial`: whether
     the growing line is emitted as it grows, or only once it closes.
+    `done_text_max_chars` is `output.done_text_max_chars`, applied to this arm's
+    `text` for the same reason it applies to `done.text`: it is one JSONL line.
     """
     import soundfile as sf
 
@@ -1501,22 +2664,39 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True):
     former = LineFormer(min_chars=min_chars, emit_partial=partial)
     for i in range(total_chunks):
         text, n = asr.run_chunk(pcm[i * asr.chunk : (i + 1) * asr.chunk])
-        for event in former.push(
+        for event in line_events(former.push(
             text,
             round(i * asr.chunk / TARGET_SR, 2),
             round((i + 1) * asr.chunk / TARGET_SR, 2),
-        ):
+            continues=asr.chunk_continues,
+        )):
             emit(model=asr.name, **event)
-    for event in former.flush():
+        # The close travels OUT OF BAND (M2) and must be published here too: the
+        # partial channel suppresses a close whose text was already shown, and
+        # MEASURED on this box that left a 14.5 s file-mode run with 3
+        # provisional partials and ZERO final lines — a transcript that never
+        # receives anything. The FILE arm deliberately ships the STREAMING text
+        # (it never runs the M3 second pass: there is no renderer racing a
+        # deadline to justify the extra decode), so this is the whole publication.
+        for event in line_events(former.take_closed()):
+            emit(model=asr.name, **event)
+    for event in line_events(former.flush()):
+        emit(model=asr.name, **event)
+    for event in line_events(former.take_closed()):
         emit(model=asr.name, **event)
     wall = time.time() - t0
     full = asr.detok(asr.labels)
     emit(
         type="status",
         state="selftest-done",
-        text=full,
+        # The SAME bound as `done.text` (F17): this is also one JSONL line, and
+        # it is the same claim about a run's whole text.
+        text=capped_text(full, done_text_max_chars),
         empty=(full.strip() == ""),
-        tokens=len(asr.labels),
+        tokens=asr.labels_total,
+        labels_pruned=asr.labels_pruned,
+        text_chars=len(full),
+        text_truncated=len(capped_text(full, done_text_max_chars)) < len(full),
         audio_s=round(asr.audio_s, 3),
         infer_wall_s=round(wall, 3),
         rtf=round(wall / asr.audio_s, 3) if asr.audio_s else None,
@@ -1553,6 +2733,186 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True):
     return 0
 
 
+# ── the run's verdict: ONE word, decided from the counters ────────────────────
+def decide_verdict(counters, outcome, ran_but_silent) -> str:
+    """The `done.verdict` word for one finished run. PURE: no I/O, no state.
+
+    Frozen signature — `counters` is the live run's counter mapping (read with a
+    default of 0 for every key it names, so a caller may pass a partial dict),
+    `outcome` is the device ladder's word, `ran_but_silent` is the MEASURED
+    device-attributable fact. Every key read is named below. Extracted from
+    `main()` so a gate can assert the table without a model, a device or a run.
+
+    The word is what the shells paint, and the shell paints a `done` as an ERROR
+    whenever the verdict is not `captions-emitted`
+    (`app/webview/sotto_webview.py:165` `HEALTHY_DONE_VERDICTS = {'captions-emitted'}`
+    → `worker_status_kind`, `:309`), so the WORD — not the exit code — is what
+    has to stop a failed run from being announced as a healthy one. main() still
+    returns `3 if ran_but_silent else 0`: 3 is the established meaning "a tap
+    OPENED, ran a window and measured digital silence" and a caller separates
+    "never started" (2) from that; reusing 3 for a signal-carrying run whose
+    model emitted nothing would make 3 mean two different things, and the shell
+    already refuses to call any non-`captions-emitted` verdict healthy.
+
+    `counters` keys read: `captions`, `chunks`, `blocks`, `nonzero_blocks`,
+    `resampled_samples`, `music_gated_chunks`, `vad_gated_chunks`.
+
+    The exhaustion case is decided FIRST and on captions, not on tokens.
+    Measured on a forced all-flat run: `tokens=1` with `captions=0` sent this
+    chain to "captions-emitted" — a run that produced nothing announced that
+    it had produced captions. `asr.labels` holds partial symbols too, so
+    len(labels)>0 does not mean a caption was ever emitted; only the
+    `counters["captions"]` counter does.
+
+    The branch the 2026-10-06 smoke run needed, and did not have: a candidate
+    that OPENED and delivered a full window of callbacks while never reaching
+    the peak floor is a SILENT DEVICE, and no verdict about the model is
+    honest here. Measured on that run: blocks=214, peak=0.000122 against a
+    floor of 0.002, and the run still reported "model-emitted-nothing" with
+    exit 0. The device was the fault. It is now named, and it is non-zero.
+
+    ORDER IS THE CONTRACT, and it was wrong until now. This branch used to test
+    the DEVICE-SELECTION outcome FIRST, so a run that BOTH exhausted the ladder
+    AND measured a silent device reported `all-candidate-taps-flat` in its `done`
+    while the very same run emitted `state="silent-device"` and returned exit 3 —
+    the word and the code disagreed inside one run. Measured on disk before the
+    fix: worker/runs/exit3-armB-worker.jsonl, `done` verdict
+    "all-candidate-taps-flat", device_outcome "all-flat", beside a silent-device
+    status with blocks=34 (oracle: _main/verdict-order-oracle.py, red arm).
+
+    `ran_but_silent` is the MEASURED, device-attributable fact (a candidate
+    OPENED, ran a full window and stayed under the floor); `outcome in
+    ("all-flat","open-failed")` is only the weaker statement that no candidate
+    settled. The specific fact, and the one the exit code is already built from
+    (`return 3 if ran_but_silent else 0`), is tested FIRST, so the verdict word
+    and the exit code can no longer diverge.
+    """
+    # ── THE COUNTERS ARE COERCED, AND THE GATE THAT DRIVES THIS FUNCTION IS WHY ─
+    # The adversary lane fed `decide_verdict` a JSON-derived mapping (2026-10-07,
+    # `_main/_review-f1f3.py`) and found two escapes the shipped path cannot
+    # reach but the CONTRACT could not survive:
+    #   * `captions='0'` (a STRING) → `'0' == 0` is False, so the run was
+    #     announced as `captions-emitted` with zero captions — the exact lie F3
+    #     exists to remove, walking back in through a type;
+    #   * `chunks='0'` / `vad_gated_chunks='0'` / `music_gated_chunks='0'` raised
+    #     `TypeError: '>' not supported between instances of 'str' and 'int'`, so
+    #     the run would end in a traceback instead of a `done` line.
+    # Every key is coerced to an int ONCE, here, and the reads below stay in the
+    # `counters.get("<key>", 0)` shape `_main/verdict-gate.py` extracts its arm
+    # table from. For int inputs the output is bit-identical; the worker's own
+    # counters are ints, so the shipped path is unchanged and the pure function is
+    # now total.
+    #
+    # THE COERCION LIVES INSIDE THE FUNCTION ON PURPOSE. This repo's gates — and
+    # the adversary lane's probe — EXTRACT this function's text from the file and
+    # exec it in isolation, so a module-level helper is a `NameError` there: my
+    # first attempt put it at module scope and `_main/_review-f1f3.py` died with
+    # `NameError: name '_int_counters' is not defined` (measured 2026-10-07).
+    # Self-contained is the contract for anything a gate execs.
+    def _as_int(value):
+        """`value` as an int; anything unparseable counts as 0 and never raises."""
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return 0
+
+    counters = {key: _as_int((counters or {}).get(key, 0))
+                for key in ('captions', 'chunks', 'blocks', 'nonzero_blocks',
+                            'resampled_samples', 'music_gated_chunks',
+                            'vad_gated_chunks', 'redux_captions')}
+    # ── TWO ENGINES, ONE QUESTION ("did this run emit captions?") ────────────
+    # The batch engine's lines are REAL captions and they arrive on exactly the
+    # path where NO streaming chunk was ever decoded: the app comes up HIDDEN, so
+    # with `--redux-when-hidden` the run can spend its whole life on the light
+    # path and cut not one 560 ms chunk. Without this sum the verdict chain would
+    # answer `buffer-never-reached-chunk-size` — a FAILURE word — for a run that
+    # transcribed the owner's audio, and the panel paints a non-healthy `done`
+    # verdict as an ERROR. With the flag OFF `redux_captions` is always 0, so
+    # `emitted == captions` and every branch below is byte-identical to today.
+    emitted = counters.get("captions", 0) + counters.get("redux_captions", 0)
+    if ran_but_silent:
+        verdict = "silent-device"
+    elif outcome in ("all-flat", "open-failed"):
+        verdict = "all-candidate-taps-flat"
+    elif counters.get("blocks", 0) == 0:
+        verdict = "no-callback-blocks"
+    elif counters.get("nonzero_blocks", 0) == 0:
+        verdict = "silent-capture"
+    elif counters.get("resampled_samples", 0) == 0:
+        verdict = "resample-produced-nothing"
+    elif counters.get("chunks", 0) == 0 and emitted == 0:
+        # `and emitted == 0`: the light path decodes no chunks BY DESIGN, so
+        # "no chunk was ever cut" is only a failure when nothing was emitted
+        # either. Today a caption implies a chunk, so this is a no-op with the
+        # flag off.
+        verdict = "buffer-never-reached-chunk-size"
+    elif (
+        counters.get("chunks", 0) > 0
+        and counters.get("music_gated_chunks", 0) >= counters.get("chunks", 0)
+        and emitted == 0
+    ):
+        # Lane SottoSpeechSeparation. The tap is alive and carried signal, but
+        # OUR OWN speech/music gate withheld EVERY chunk: what the endpoint is
+        # carrying is not speech. Distinct from `captured-signal-has-no-speech`
+        # (that one is the model's front-end VAD, no gate involved) and from a
+        # model fault — the encoder was never even asked.
+        verdict = "captions-all-music-gated"
+    elif emitted == 0 and counters.get("vad_gated_chunks", 0) > 0:
+        # MEASURED 2026-10-06 (lane BlankFramesRootCause). A live run landed here
+        # with peak=0.101929 (floor 0.002), chunks=44, captions=0, frames=77,
+        # blanks=77, and vad_gated_chunks=33 -- i.e. the tap was measurably ALIVE
+        # and the model's OWN front-end withheld three quarters of the mix as
+        # non-speech. The word it got was "model-emitted-nothing", which points
+        # every reader at the model, and the model was provably innocent: the same
+        # audio, through the same worker in file mode, transcribes a known speech
+        # clip word for word (`_main/bfrc_playedfile.jsonl`). The honest name for
+        # "signal arrived, the VAD called it not-speech, the model found nothing to
+        # say" is NOT a model fault, and this lane exists because that word sent
+        # four separate investigations after the model.
+        verdict = "captured-signal-has-no-speech"
+    elif emitted <= 0:
+        # `<= 0`, not `== 0`: a zero OR NEGATIVE count is never a healthy finish,
+        # and `== 0` let `captions=-1` fall through to `captions-emitted` (the
+        # adversary lane's arm, 2026-10-07). No shipped counter can go negative;
+        # the strict form costs nothing and removes the last input that could
+        # wear the healthy word without a caption.
+        # ── F3: THE LIE THIS BRANCH REMOVES ──────────────────────────────────
+        # This used to be part of the unconditional `else` below, so a run with
+        # `captions: 0` that reached none of the words above — every device
+        # counter non-zero, audio arrived, the model ran, and NOT ONE caption came
+        # out — was announced as `captions-emitted`, which is the single word the
+        # shells treat as a healthy finish (`HEALTHY_DONE_VERDICTS`). Reachable
+        # with `use_vad` off (the code's own default until F14) or with a stream
+        # the front end hands over and the model cannot decode. It ALSO swallowed
+        # the chunk-exception path: `asr_thread` emits `state="error"`, sets
+        # `stop` and returns, so no caption can ever follow, and the run still
+        # finished `captions-emitted` with exit 0.
+        #
+        # The new word says only what was measured: the tap, the resample, the
+        # chunks and the walk all happened, and the run emitted no caption. It
+        # does NOT claim the device (that is `silent-device` /
+        # `captured-signal-has-no-speech` / `all-candidate-taps-flat`, all tested
+        # above and unchanged) and it does not claim a model fault either — the
+        # VAD word owns the "front end withheld it" case. Any consumer that does
+        # not know the word fails CLOSED: the shell paints an unknown `done`
+        # verdict as an error (positive test, `:309`), and a consumer that shows
+        # the word raw shows "captions-zero", which is true.
+        verdict = "captions-zero"
+    else:
+        # The ONLY way to reach the healthy word: a caption was actually emitted
+        # (`emitted > 0` — streaming captions plus batch captions; see the sum
+        # above). Every existing verdict word and predicate above is unchanged;
+        # this one just stopped being the fall-through for `0`.
+        verdict = "captions-emitted"
+    return verdict
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
@@ -1579,6 +2939,18 @@ def main():
         default=10.0,
         help="seconds between WORKER_STATS stage counters on stderr (0 = off)",
     )
+    # ── the panel's WAVE (lane SottoWordSplit, task 2) — default ON at 10 Hz ──
+    # `SOTTO_METER_HZ` overrides it, like every other capture knob that has to
+    # travel by environment because the shell's argv puts extra flags before the
+    # script path. 0 turns the event off completely: with it off, not one read,
+    # not one line, not one branch of `on_block`'s meter block is taken, so a run
+    # with `--meter-hz 0` is byte-identical to the run before this existed.
+    ap.add_argument(
+        "--meter-hz",
+        type=float,
+        default=METER_HZ,
+        help="audio-level events per second on stdout (0 = off)",
+    )
     ap.add_argument(
         "--tap-window",
         type=float,
@@ -1590,6 +2962,71 @@ def main():
         type=float,
         default=0.0,
         help="peak amplitude a tap must reach to count as carrying audio (0 = built-in default)",
+    )
+    # ── THE STACK LAW — DEFAULT OFF ─────────────────────────────────────────
+    # With `--redux-when-hidden` ABSENT, none of the four knobs below is read and
+    # no `REDUX_*` line is written: this run is byte-identical to the run before
+    # this lane existed. That is the whole reason the flag exists — today the
+    # NVIDIA streaming engine is the ONLY transcriber in this tree, so a switch
+    # that lands before the batch path is proven means zero transcription exactly
+    # while the owner is not looking (AGENTS.md, HARD RULE).
+    ap.add_argument(
+        "--redux-when-hidden",
+        action="store_true",
+        default=REDUX_WHEN_HIDDEN_DEFAULT,
+        help="STACK LAW (default OFF): while the panel is HIDDEN for longer than "
+        "--redux-hidden-after, stop the streaming decode and transcribe the "
+        "accumulated audio with the batch engine (worker/redux_batch.py), "
+        "stamping every line producer='redux'. Panel visible again -> streaming "
+        "immediately. Refused, and the run keeps streaming, if the runner is not "
+        "on disk. Off = byte-identical to a run without this flag.",
+    )
+    ap.add_argument(
+        "--redux-hidden-after",
+        type=float,
+        default=0.0,
+        help=f"seconds the panel must stay hidden before the batch engine takes "
+        f"over (0 = built-in default {REDUX_HIDDEN_AFTER_DEFAULT_S})",
+    )
+    ap.add_argument(
+        "--redux-batch-interval",
+        type=float,
+        default=0.0,
+        help=f"seconds of accumulated audio per batch invocation "
+        f"(0 = built-in default {REDUX_BATCH_INTERVAL_DEFAULT_S})",
+    )
+    ap.add_argument(
+        "--redux-max-audio",
+        type=float,
+        default=0.0,
+        help=f"bound on the audio held in RAM while the panel is hidden, seconds "
+        f"(0 = built-in default {REDUX_MAX_AUDIO_DEFAULT_S})",
+    )
+    ap.add_argument(
+        "--redux-batch",
+        default=REDUX_RUNNER_DEFAULT,
+        help="the batch runner (another lane's file). Contract: "
+        "`--wav PATH --json` -> JSONL caption lines on stdout",
+    )
+    ap.add_argument(
+        "--panel-visibility",
+        default=REDUX_VISIBILITY_DEFAULT,
+        help="the shell's panel-visibility.json the mode switch reads",
+    )
+    ap.add_argument(
+        "--redux-runner-timeout",
+        type=float,
+        default=0.0,
+        help=f"hard cap on ONE batch invocation, seconds "
+        f"(0 = built-in default {REDUX_RUNNER_TIMEOUT_DEFAULT_S})",
+    )
+    ap.add_argument(
+        "--redux-min-free-mb",
+        type=float,
+        default=0.0,
+        help=f"defer an INTERVAL batch pass while free physical memory is below "
+        f"this, MB (0 = built-in default {REDUX_MIN_FREE_MB_DEFAULT}); a tail "
+        f"attempts anyway and says so. 0 explicitly disables the gate.",
     )
     args = ap.parse_args()
 
@@ -1647,6 +3084,25 @@ def main():
         err(f"config output.min_chars={((cfg.get('output') or {}).get('min_chars'))!r} is below 1; using 1")
         min_chars = 1
 
+    # ── `output.done_text_max_chars` — the BOUND on the run's text (F17) ─────
+    # `done.text` is `detok()` of the whole run and ships as ONE JSONL line. On a
+    # multi-hour stream that line is unbounded, so the emitted text is capped at
+    # this many characters (the HEAD is kept: it is the part a reader is looking
+    # for) and the run publishes the untruncated length beside it. `0` means NO
+    # cap; a non-integer or a negative value is refused back to the default,
+    # loudly, like every other knob in this file. The same value bounds the
+    # `selftest-done` text, which is the same claim about a file-mode run.
+    try:
+        done_text_max_chars = int((cfg.get("output") or {}).get("done_text_max_chars", 20000))
+    except (TypeError, ValueError):
+        done_text_max_chars = 20000
+    if done_text_max_chars < 0:
+        err(
+            f"config output.done_text_max_chars="
+            f"{((cfg.get('output') or {}).get('done_text_max_chars'))!r} is negative; using 20000"
+        )
+        done_text_max_chars = 20000
+
     # ── `output.partial` — REBUILT as a LIVE knob, 2026-10-06 ────────────────
     # This key used to be inert and was deleted the same day for that reason
     # (docs/audit/config-inert-fixed.md). It named exactly the behaviour that was
@@ -1670,8 +3126,19 @@ def main():
         partial = True
 
     # ── the language prompt, resolved ONCE and NAMED ─────────────────────────
-    # Precedence: --lang-id > SOTTO_LANG_ID > config.json > 'os' sentinel (host locale).
+    # Precedence: --lang-id > SOTTO_LANG_ID > config.json > 'auto'.
     # config.json ships "auto" (autoSlot 101) as of 2026-10-06.
+    #
+    # THE DEFAULT IS `auto`, NOT `os` (F13). An ABSENT `model.lang_id` used to be
+    # handed to the resolver as `None`, and `lang_prompt.resolve_lang_id` reads
+    # `None` as its `os` sentinel — the host's USER locale, which
+    # `worker/README.md` and `docs/model-specs/README.md` §3 both forbid as a
+    # default: on this pt-BR host it resolves to 12 and decoding the bundled
+    # ENGLISH sample with prompt 12 collapsed it from 94 tokens to 10. A config
+    # file with the key deleted therefore destroyed a language, silently, on
+    # every run. Absent now means the model's OWN auto slot; `"os"` is still
+    # ACCEPTED when it is written explicitly (the resolver's sentinel is
+    # untouched — this is the caller no longer reaching it by accident).
     #
     # The env rung is not decoration. worker-bridge.js#spawn builds argv as
     # `python [...extraArgs, workerPath]`, so a flag handed over by the shell
@@ -1689,7 +3156,7 @@ def main():
     elif "lang_id" in (cfg.get("model") or {}):
         lang_requested, lang_from = cfg["model"]["lang_id"], "config"
     else:
-        lang_requested, lang_from = None, "default"
+        lang_requested, lang_from = "auto", "default"
     try:
         lang_res = _lp.resolve_lang_id(lang_requested, model_dir)
     except _lp.LangIdError as exc:
@@ -1719,7 +3186,24 @@ def main():
         f"source={lang_from}:{lang_res.source} table={os.path.basename(lang_res.table)}"
     )
 
-    use_vad = bool(cfg.get("model", {}).get("use_vad", False))
+    # ── `model.use_vad` — the DEFAULT IS `true` (F14) ────────────────────────
+    # The code used to default this key to `False` while `worker/config.json`
+    # (`"use_vad": true`), `worker/README.md` and `docs/model-specs/README.md` §4
+    # all say the shipped default is ON. A config file with the key deleted — or
+    # an operator's file that never had it — therefore ran a different front end
+    # than the documented product, silently, and F3's zero-caption case was
+    # reachable by exactly that route.
+    #
+    # WHAT "false" DOES AND DOES NOT DO, because the API order matters: in
+    # ORT-GenAI 0.17.1 the processor is CONSTRUCTED first
+    # (`StreamAsr.fresh_processor`) and `set_option("use_vad", …)` runs after,
+    # so the Silero VAD declared in `genai_config.json` is armed at construction
+    # and `use_vad:false` is honoured THROUGH the option, not by building a
+    # processor without a VAD. That option is consumed, not stored: measured
+    # (`_main/vad-option-probe.py`), a digital-silence chunk returns a
+    # `(1,65,128)` feature block 12/12 times with the option off and `None`
+    # 10/12 times with it on.
+    use_vad = bool(cfg.get("model", {}).get("use_vad", True))
 
     _add_cuda_dll_dirs()
     t_cuda = time.time()
@@ -1818,7 +3302,7 @@ def main():
         if not os.path.exists(audio):
             emit(type="status", state="error", stage="selftest", detail=f"no audio at {audio}")
             return 2
-        return selftest(asr, audio, args, min_chars, partial)
+        return selftest(asr, audio, args, min_chars, partial, done_text_max_chars)
 
     # Live capture. The tap is RESOLVED AT RUNTIME, not read once and trusted:
     # an explicit `--device`, then the shell's `SOTTO_AUDIO_DEVICE` (the channel
@@ -1843,7 +3327,20 @@ def main():
     if block_ms <= 0:
         err(f"config audio.block_ms={audio_cfg.get('block_ms')!r} is not positive; using 100")
         block_ms = 100
-    candidates = device_candidates(audio_cfg, wanted)
+    # ── lane SottoAsrTap: the LIVE loop fed from a FILE, no device ───────────
+    # `SOTTO_FILE_TAP=<path>` swaps the DEVICE LADDER for one file-sourced
+    # candidate. It opens no device and enumerates none: `device_candidates`
+    # (which queries the host's endpoints) is never called on this arm. OFF by
+    # default — with the variable unset this is the shipped live path, unchanged.
+    file_tap_path = os.environ.get("SOTTO_FILE_TAP")
+    if file_tap_path:
+        if not os.path.exists(file_tap_path):
+            emit(type="status", state="error", stage="file-tap",
+                 detail=f"SOTTO_FILE_TAP set but no audio at {file_tap_path}")
+            return 2
+        candidates = [file_tap_candidate(file_tap_path)]
+    else:
+        candidates = device_candidates(audio_cfg, wanted)
     if not candidates:
         emit(type="status", state="error", stage="device", detail="no input device available")
         return 2
@@ -1874,6 +3371,8 @@ def main():
     #   chunks            how many reached the encoder's chunk size
     #   captions          what the model actually emitted
     #   queue_drops       blocks lost because ASR could not keep up
+    #   reruns            second passes (M3) run over a closed line's segment
+    #   rerun_wall_s      what those passes cost, kept APART from `infer_wall_s`
     counters = {
         "blocks": 0,
         "block_samples": 0,
@@ -1884,6 +3383,38 @@ def main():
         "chunks": 0,
         "captions": 0,
         "queue_drops": 0,
+        "reruns": 0,
+        "rerun_wall_s": 0.0,
+        # The batch engine's own lines, counted SEPARATELY from the streaming
+        # engine's: a run can carry both, and one number that mixes them could
+        # not answer "did the light path work?" — the question this lane exists
+        # to be able to ask. Always 0 with the flag off.
+        "redux_captions": 0,
+    }
+
+    # ── lane SottoAsrTap: per-site DRAIN counters + seg_pcm retention stats ──
+    # The five `drain()` call sites in `asr_thread` had never all executed
+    # before this lane (SOTTO_AUDIO_FILE lands in `selftest()`, which never
+    # enters `asr_thread`). Each is counted by NAME, and `seg_pcm`'s
+    # retention/prune is measured, so a run can say WHICH site fired and how the
+    # buffer grew and shrank. Reported only when `SOTTO_FILE_TAP` is active, so
+    # the shipped run's stdout is unchanged.
+    drain_sites = {
+        "gen-change": 0,
+        "chunk-exc": 0,
+        "post-push": 0,
+        "max-chunks": 0,
+        "final-flush": 0,
+        # The SIXTH site, and the only one this lane adds: the stream is about to
+        # stop decoding, so the held line is closed before the batch window opens.
+        "redux-batch-enter": 0,
+    }
+    seg_stats = {
+        "max": 0,
+        "prunes": 0,
+        "pruned_total": 0,
+        "held_after_last": 0,
+        "events": [],
     }
 
     # Live-branch automatic gain (see AutoGain). `SOTTO_AGC=0` disables it — the
@@ -1931,7 +3462,7 @@ def main():
         n = max(1, counters["block_samples"])
         rms = (counters["sumsq"] / n) ** 0.5
         bf = (asr.blank_frames / asr.frames_walked) if asr.frames_walked else None
-        return (
+        line = (
             f"WORKER_STATS tag={tag} blocks={counters['blocks']} "
             f"block_samples={counters['block_samples']} nonzero_blocks={counters['nonzero_blocks']} "
             f"peak={counters['peak']:.6f} rms={rms:.8f} "
@@ -1941,15 +3472,31 @@ def main():
             f"held_blocks={agc.non_speech_blocks} speech_blocks={agc.speech_blocks} "
             f"agc={'on' if agc_enabled else 'off'} "
             f"resampled_samples={counters['resampled_samples']} chunks={counters['chunks']} "
-            f"captions={counters['captions']} tokens={len(asr.labels)} "
+            f"captions={counters['captions']} tokens={asr.labels_total} "
+            f"labels_pruned={asr.labels_pruned} "
             f"frames={asr.frames_walked} blanks={asr.blank_frames} "
             f"blank_frac={bf if bf is None else round(bf, 4)} "
             f"empty_chunks={asr.empty_chunks} vad_gated_chunks={asr.vad_gated_chunks} "
             f"music_gated_chunks={asr.music_gated_chunks} "
             f"gate_kept={asr.gate.kept if asr.gate else 0} gate={'on' if asr.gate else 'off'} "
             f"queue_drops={counters['queue_drops']} "
+            f"reruns={counters['reruns']} rerun_wall_s={counters['rerun_wall_s']:.2f} "
             f"audio_s={asr.audio_s:.2f} infer_wall_s={asr.wall:.2f} rss_mb={current_rss_mb():.1f}"
         )
+        # ONLY when the switch exists, for the same byte-identity reason as the
+        # `done` payload: the shipped WORKER_STATS line keeps its exact fields.
+        # Without this, a run hidden for an hour would publish nothing at all
+        # about the light path between batch kicks — and a tick-level count is
+        # what says "it is still switching" rather than "it went quiet".
+        if switch is not None:
+            line += (
+                f" redux_mode={switch.mode} redux_captions={counters['redux_captions']}"
+                f" redux_segments={switch.segments} redux_kicks={switch.batches_kicked}"
+                f" redux_held_s={switch.pending_seconds()}"
+                f" redux_switches={switch.switches}"
+                f" redux_deferred={switch.deferred}"
+            )
+        return line
 
     def on_block(block):
         counters["blocks"] += 1
@@ -1989,6 +3536,147 @@ def main():
         # The chunk stream is joined into LINES here, so the panel receives a
         # phrase that grows instead of one decoded chunk per caption.
         former = LineFormer(min_chars=min_chars, emit_partial=partial)
+        # ── THE STACK LAW, in this thread ────────────────────────────────────
+        # `mode` mirrors what the switch decided. It is `'stream'` and never
+        # consulted at all when `switch is None` (the flag is off), so this whole
+        # block is inert by default.
+        mode = "stream"
+        # ── M1: the PCM of the chunks a line may still need ───────────────────
+        # The second pass (M3) re-decodes a CLOSED line from its OWN audio, so the
+        # POST-GAIN chunk that actually reached the encoder is held here, keyed by
+        # the 1-based chunk index, TOGETHER WITH the speech verdict the caller made
+        # on the PRE-GAIN signal: the pass must hand `run_chunk` the same `speech`,
+        # or it would consult the speech/music gate a second time on post-gain
+        # audio — the order lane SottoAgcSpeechOrder fixed. Pruned every chunk by
+        # `former.open_start` below, so a stream that runs for hours holds a line's
+        # worth of audio, not a stream's.
+        seg_pcm = {}
+
+        def rerun(closed):
+            """M3 — the SECOND PASS over the WHOLE segment of one closed line.
+
+            The audio is the retained, post-gain chunks of that line's segment, fed
+            back through the SAME `run_chunk` with `account=False`: the pass must
+            not be observable in the live stream's counters (probe B), and its own
+            cost is published as `reruns`/`rerun_wall_s` instead.
+
+            The RNNT state is the LIVE stream's crossed-boundary state, including
+            the predictor, so it is saved, reset to a stream start and restored in
+            a `finally` — the pair `_main/segment-rerun-probe.py` pins bit for bit
+            (A/A2/C/C3). Restoring only `cc/ct/ccl` is exactly the leak the
+            predictor cure creates (`docs/audit/predictor-carry-cura.md` §6): the
+            live stream would resume from the pass' state.
+
+            THE FRONT END IS THE SECOND HALF (F12), and it is SWAPPED, not reset.
+            `asr.sp` — the cache-aware mel window and the Silero VAD — holds
+            state from the audio the live stream has been through, and this pass
+            re-feeds a segment that OVERLAPS that audio, so the pass' text (the
+            text `finalise()` publishes with `final:true`) was decoded against a
+            front end that had already seen the segment and everything before it.
+            There is no reset on the object, so a NEW processor is built
+            (`fresh_processor()`), installed for the duration of the pass, and
+            the LIVE object is put back in the `finally`. The live front end is
+            therefore UNTOUCHED — not merely "reset" — and the pass cannot alter
+            it even by raising.
+
+            Returns the pass' text, or None when the segment's audio is no longer
+            held. A front end that cannot be built does NOT abort the pass: the
+            pass would then run on the live front end with a line on stderr
+            saying so (see `_front_end_note`), because a silent skip is the one
+            thing this lane must not do.
+            """
+            start_s, end_s = closed.get("start"), closed.get("end")
+            if start_s is None or end_s is None:
+                return None
+            try:
+                start_s, end_s = float(start_s), float(end_s)
+            except (TypeError, ValueError):
+                return None
+            # The segment is a set of chunk WINDOWS, not an index range: `start`
+            # and `end` are rounded to 2 decimals by `_event`, so an index
+            # computed from them can land one chunk off. 20 ms of slack covers
+            # the rounding and nothing else.
+            keys = [
+                k
+                for k in sorted(seg_pcm)
+                if (k - 1) * asr.chunk / TARGET_SR >= start_s - 0.02
+                and k * asr.chunk / TARGET_SR <= end_s + 0.02
+            ]
+            if not keys:
+                return None
+            t_pass = time.time()
+            saved = (asr.cc, asr.ct, asr.ccl, asr.h, asr.c, asr._last_symbol)
+            # The LIVE front end, held across the whole pass and restored in the
+            # `finally` whatever happens below — including a fresh processor that
+            # cannot be built.
+            live_sp = asr.sp
+            pass_sp = None
+            try:
+                pass_sp = asr.fresh_processor()
+            except Exception as exc:
+                err(
+                    f"second pass: no fresh front end ({type(exc).__name__}: {exc}); "
+                    f"the pass reuses the LIVE front end — its text may carry the live "
+                    f"stream's cache-aware/VAD state"
+                )
+            second = LineFormer(min_chars=min_chars, emit_partial=False)
+            parts = []
+            try:
+                asr.reset_stream_state()
+                if pass_sp is not None:
+                    asr.sp = pass_sp  # the pass' OWN front end, from nothing
+                for k in keys:
+                    seg, speech = seg_pcm[k]
+                    text, _n = asr.run_chunk(seg, speech=speech, account=False)
+                    for event in line_events(second.push(
+                        text,
+                        round((k - 1) * asr.chunk / TARGET_SR, 2),
+                        round(k * asr.chunk / TARGET_SR, 2),
+                        continues=asr.chunk_continues,
+                    )):
+                        parts.append(event["text"])
+                for event in line_events(second.flush()):
+                    parts.append(event["text"])
+            finally:
+                # THE LIVE OBJECT GOES BACK FIRST, then the RNNT state: the live
+                # stream is never left pointing at the pass' front end, even if
+                # the restore below raised.
+                asr.sp = live_sp
+                asr.cc, asr.ct, asr.ccl, asr.h, asr.c, asr._last_symbol = saved
+                counters["reruns"] += 1
+                counters["rerun_wall_s"] += time.time() - t_pass
+            return " ".join(t for t in parts if t).strip() or None
+
+        def finalise(closed):
+            """ONE closed line -> the ONE `final` event the transcript takes.
+
+            The text is the second pass' (M3). The streaming text is the FALLBACK
+            when the segment's audio is no longer held or the pass raised: a close
+            is never silently dropped — an empty transcript is the defect this
+            whole cure exists to fix — but the fallback is declared on stderr, not
+            passed off as a second pass.
+            """
+            try:
+                text = rerun(closed)
+            except Exception as exc:
+                err(f"second pass failed ({type(exc).__name__}: {exc}); "
+                    f"shipping the streaming line")
+                text = None
+            ev = dict(closed)
+            ev["text"] = text or ev.get("text") or ""
+            if not ev["text"]:
+                return []
+            ev["final"] = True
+            ev.pop("closed", None)
+            return line_events([ev])
+
+        def drain():
+            """Publish the closes the former collected OUT OF BAND (M2), each as
+            the second pass' single `final` line (M3)."""
+            out = []
+            for closed in former.take_closed():
+                out += finalise(closed)
+            return out
         # ── the raw-chunk trace (instrument for the LINE boundary rule) ──────
         # `SOTTO_CHUNK_TRACE=<path>` writes one JSON row per 560 ms chunk: the
         # text the model decoded, whether the AUDIO was speech, and the chunk's
@@ -2022,12 +3710,39 @@ def main():
                 agc.reset()  # a new device starts from unity gain
                 if asr.gate is not None:
                     asr.gate.reset()  # and from a closed speech/music gate
+                # ── A NEW DEVICE IS A NEW STREAM (F12), front end included ────
+                # `reset_stream_state()` cannot cover this: it cannot touch
+                # `self.sp`, whose cache-aware mel window and VAD state describe
+                # the device that was just abandoned (and, before the resample,
+                # its native rate). The live object gets a NEW processor from the
+                # same model with the same options. Reported EITHER WAY, in one
+                # line, because a front end that could not be rebuilt means the
+                # new device starts against the old device's cache.
+                try:
+                    asr.reset_frontend()
+                    err(
+                        "new device is a new stream: front end rebuilt for the tap just "
+                        "opened (cache-aware mel window + VAD start from nothing)"
+                    )
+                except Exception as exc:
+                    err(
+                        f"new device, but the front end could NOT be rebuilt "
+                        f"({type(exc).__name__}: {exc}) — the new tap starts against the "
+                        f"abandoned device's cache-aware window and VAD state"
+                    )
                 # A new device is a new stream: close the held line here rather
                 # than splice audio from a device that is no longer open onto
-                # the first chunk of its replacement.
-                for event in former.flush():
+                # the first chunk of its replacement. The close goes through the
+                # second pass FIRST (its audio is still held), and only then is
+                # the old device's PCM dropped.
+                for event in line_events(former.flush()):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
+                drain_sites["gen-change"] += 1
+                for event in drain():
+                    counters["captions"] += 1
+                    emit(model=asr.name, **event)
+                seg_pcm.clear()
             if native:
                 # WASAPI refused 16 kHz; convert here instead.
                 block = resample_to_16k(block, rate)
@@ -2035,6 +3750,66 @@ def main():
             # reached the ASR side at 16 kHz", and a zero here means the
             # conversion ate the audio even though the callback delivered it.
             counters["resampled_samples"] += int(block.size)
+            # ── THE STACK LAW: which engine transcribes THIS block ───────────
+            # Inert when the flag is off (`switch is None`): not one read, not one
+            # line, not one branch taken. When it is on, the ONLY thing that stops
+            # is the streaming DECODE below — the tap keeps delivering, because a
+            # batch pass over "the accumulated audio" needs audio to accumulate.
+            if switch is not None:
+                wanted = switch.tick()
+                # One drain site for both kinds of line, and it is THIS thread, so
+                # stdout keeps a single writer even while the batch pass runs.
+                for payload in switch.drain_captions():
+                    if payload.get("type") == "caption":
+                        counters["redux_captions"] += 1
+                    emit(**payload)
+                if wanted != mode:
+                    if wanted == "batch":
+                        # Entering the LIGHT path. Close the line the streaming
+                        # decoder was holding, so its words are PUBLISHED instead
+                        # of stranded in a buffer nothing reads again, and drop the
+                        # partial chunk: it belongs to a stream that is stopping,
+                        # and splicing it onto a later one would be a false line.
+                        for event in line_events(former.flush()):
+                            counters["captions"] += 1
+                            emit(model=asr.name, **event)
+                        drain_sites["redux-batch-enter"] += 1
+                        for event in drain():
+                            counters["captions"] += 1
+                            emit(model=asr.name, **event)
+                        buf = np.zeros(0, dtype=np.float32)
+                        seg_pcm.clear()
+                    else:
+                        # Back to streaming. The audio either side of the batch
+                        # window is NOT contiguous with what the decoder last saw,
+                        # so the stream starts from nothing — the SAME treatment
+                        # the ladder gives a new endpoint (F12), and both halves of
+                        # it: the caches/predictor AND the front end. Without the
+                        # front-end half the cache-aware mel window and the VAD
+                        # would splice across the gap, which is the defect that
+                        # `reset_stream_state()` alone cannot cover.
+                        buf = np.zeros(0, dtype=np.float32)
+                        former.reset()
+                        try:
+                            asr.reset_stream_state()
+                            asr.reset_frontend()
+                            err(
+                                "redux: panel visible again — streaming resumed on a "
+                                "fresh stream (caches, predictor and front end all "
+                                "start from nothing: the batch window is a gap)")
+                        except Exception as exc:
+                            err(
+                                f"redux: streaming resumed but the front end could NOT "
+                                f"be rebuilt ({type(exc).__name__}: {exc}) — the resumed "
+                                f"stream starts against the batch window's cache")
+                    mode = wanted
+                if mode == "batch":
+                    # The tap's audio, held for the batch pass and bounded by
+                    # --redux-max-audio. The streaming decode below is SKIPPED:
+                    # this `continue` is the CPU the owner is not paying for.
+                    switch.add_audio(block)
+                    switch.maybe_kick()
+                    continue
             # ── PRE-GAIN buffer ──────────────────────────────────────────────
             # The chunk the model sees is assembled here, BEFORE any gain: the
             # speech/music decision below runs on THESE samples, so the decision
@@ -2060,7 +3835,10 @@ def main():
                 try:
                     text, n = asr.run_chunk(seg_in, speech=speech)
                 except Exception as exc:
-                    for event in former.flush():
+                    for event in line_events(former.flush()):
+                        emit(model=asr.name, **event)
+                    drain_sites["chunk-exc"] += 1
+                    for event in drain():
                         emit(model=asr.name, **event)
                     emit(type="status", state="error", stage="chunk", detail=f"{type(exc).__name__}: {exc}")
                     stop.set()
@@ -2069,20 +3847,56 @@ def main():
                 _end = round(idx * asr.chunk / TARGET_SR, 2)
                 trace_row(idx=idx, start=_start, end=_end,
                           speech=bool(speech), text=text, n=n)
-                for event in former.push(text, _start, _end):
+                # ── M1: hold THIS chunk's audio, drop what no line can need ───
+                # Retained BEFORE the push, because the push may close the line
+                # and `drain()` immediately re-decodes that segment from these
+                # buffers. Pruned AFTER the drain, by where the still-open line
+                # began: every chunk before it belongs to a line already closed
+                # and published. With no line open, nothing is pending and
+                # everything is droppable — a stream that runs for hours must not
+                # hold an hour of PCM.
+                seg_pcm[idx] = (seg_in, speech)
+                for event in line_events(former.push(
+                    text, _start, _end, continues=asr.chunk_continues
+                )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
+                for event in drain():
+                    counters["captions"] += 1
+                    emit(model=asr.name, **event)
+                keep_from = (
+                    idx + 1
+                    if former.open_start is None
+                    else int(round(former.open_start * TARGET_SR / asr.chunk)) + 1
+                )
+                for k in [k for k in seg_pcm if k < keep_from]:
+                    del seg_pcm[k]
                 if args.max_chunks and idx >= args.max_chunks:
-                    for event in former.flush():
+                    for event in line_events(former.flush()):
+                        counters["captions"] += 1
+                        emit(model=asr.name, **event)
+                    for event in drain():
                         counters["captions"] += 1
                         emit(model=asr.name, **event)
                     stop.set()
                     return
         # The stream stopped: the last words must not be stranded in a buffer
-        # nobody will read again, so the held line is closed here.
-        for event in former.flush():
+        # nobody will read again, so the held line is closed here — and the close
+        # goes through the second pass before it is published (M3).
+        for event in line_events(former.flush()):
             counters["captions"] += 1
             emit(model=asr.name, **event)
+        for event in drain():
+            counters["captions"] += 1
+            emit(model=asr.name, **event)
+        # ── THE TAIL OF A HIDDEN SESSION IS NOT DROPPED ──────────────────────
+        # A run that ends while the panel is hidden holds audio no batch pass has
+        # covered yet (up to `--redux-batch-interval` seconds of it). It is
+        # transcribed here rather than discarded; `main()` joins this thread and
+        # emits whatever the runner produced, so the owner's last minute is not
+        # missing from the light path just because he closed the panel.
+        if switch is not None:
+            switch.flush_pending("stream-end")
 
     # ── run the candidates until one of them is measurably alive ────────────
     # The loop is bounded twice over: at most one pass per candidate, and at
@@ -2097,6 +3911,45 @@ def main():
     # run — a live run must not keep rotating away from the device that is
     # carrying audio.
     t_start = time.time()
+    # ── THE STACK LAW, constructed ONLY when the flag is on ─────────────────
+    # `switch is None` when the flag is absent, and that `None` is what makes
+    # "byte-identical to today" a CHECKABLE claim rather than a promise: every
+    # site below is `if switch is not None`, so with the flag off the asr thread
+    # runs the code it ran before this lane existed — no file read, no extra
+    # process, not one extra stdout or stderr byte.
+    switch = None
+    # THE FLAG, OR THE ENVIRONMENT OPT-IN. The flag is the interface and the
+    # opt-in is the DEPLOYMENT channel, and both exist for a measured reason: the
+    # shell spawns this worker itself (`WorkerBridge._spawn`) and forwards
+    # `SOTTO_CAPTURE_MODE` / `SOTTO_AUDIO_DEVICE` by environment because it has no
+    # general "extra worker flags" channel — so a flag with no env counterpart
+    # would be unreachable in the shipped app, i.e. a switch nobody can turn on.
+    # `SOTTO_REDUX_WHEN_HIDDEN=1` is the same shape as the two knobs already
+    # travelling that way. NEITHER being present leaves `switch = None`, which is
+    # the byte-identical default.
+    redux_optin = bool(args.redux_when_hidden) or (
+        str(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") or "").strip() == "1")
+    if redux_optin:
+        switch = ReduxHiddenSwitch(
+            enabled=True,
+            reader=PanelVisibilityReader(args.panel_visibility),
+            runner=args.redux_batch,
+            log_fn=err,
+            armed_by=("--redux-when-hidden" if args.redux_when_hidden
+                      else "SOTTO_REDUX_WHEN_HIDDEN=1"),
+            hidden_after_s=_positive_or(
+                args.redux_hidden_after, REDUX_HIDDEN_AFTER_DEFAULT_S),
+            batch_interval_s=_positive_or(
+                args.redux_batch_interval, REDUX_BATCH_INTERVAL_DEFAULT_S),
+            max_audio_s=_positive_or(
+                args.redux_max_audio, REDUX_MAX_AUDIO_DEFAULT_S),
+            runner_timeout_s=_positive_or(
+                args.redux_runner_timeout, REDUX_RUNNER_TIMEOUT_DEFAULT_S),
+            wav_dir=os.environ.get("SOTTO_REDUX_WAV_DIR") or None,
+            min_free_mb=_positive_or(
+                args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
+        )
+        switch.boot_line()
     worker = threading.Thread(target=asr_thread, name="asr", daemon=True)
     worker.start()
     next_stats = time.time() + args.stats_interval if args.stats_interval > 0 else float("inf")
@@ -2113,36 +3966,114 @@ def main():
     # was the re-entered fallback.
     tap_ledger = []
     proved_alive = {"any": False, "device": None, "peak": 0.0, "reason": ""}
+    #: Every candidate this run could not OPEN, with its cause. Kept because
+    #: "every candidate failed" and "every candidate failed BECAUSE ANOTHER
+    #: PROGRAM HOLDS THE ENDPOINT" are different facts about the owner's machine:
+    #: the first is a fault to report, the second is a routing/ownership problem
+    #: whose fix is in VoiceMeeter, not in this process.
+    denials: list[str] = []
+
+    def _is_device_in_use(text: str) -> bool:
+        """0x8889000A = AUDCLNT_E_DEVICE_IN_USE (the owner's live failure)."""
+        return "8889000a" in text.lower()
 
     def close_tap(t):
+        # NEVER silent, and the call ORDER is deliberate: `stop()` first so the
+        # abandoned endpoint stops feeding `audio_q`, then `close()` — which is
+        # the only method that sets `self._stop`, calls `IAudioClient::Stop` and
+        # releases the COM references. A failure here is a REAL failure now: the
+        # lane that owns `wasapi_loopback.py` added the `stop()` this call site
+        # was written for, so a failure means the abandoned tap keeps calling
+        # `on_block(...)` — it keeps pushing audio from a device the run has left
+        # into `audio_q` and keeps adding to `blocks`/`block_samples`/`peak`,
+        # which are the numbers `silent-device`, `proved_alive` and the exit code
+        # are built from (F4's measured leak). It used to be swallowed by
+        # `except Exception: pass`, which is what made the leak invisible.
         try:
             t.stream.stop()
             t.stream.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            err(
+                f"close_tap failed ({type(exc).__name__}: {exc}) — the abandoned tap may "
+                f"still be delivering blocks to audio_q and inflating the counters"
+            )
 
     try:
         for attempt_no, dev in enumerate(candidates):
             device = dev
-            try:
-                tap = LoopbackTap(dev, on_block, block_ms=block_ms)
-            except Exception as exc:
-                # Unopenable is not the same as silent, but neither is usable:
-                # say which, and keep rotating rather than dying on candidate 1.
-                emit(
-                    type="status",
-                    state="error",
-                    stage="open-stream",
-                    device=dev["name"],
-                    detail=f"{type(exc).__name__}: {exc}",
-                )
-                outcome = "open-failed"
+            # ── ONE PLACE THAT OPENS A CANDIDATE, AND IT RETRIES `DEVICE_IN_USE` ──
+            # Two measured defects live here, both seen on the owner's box with a
+            # video playing (2026-10-07):
+            #
+            # 1. THE OPEN IS IN `start()`, NOT IN THE CONSTRUCTOR. The guard used
+            #    to cover `LoopbackTap(...)` only, while `WasapiLoopbackTap` opens
+            #    the endpoint inside `start()` → `_open()` (its own
+            #    `Initialize(SHARED|LOOPBACK)`, wasapi_loopback.py:878-890). So an
+            #    endpoint that was BUSY raised outside every per-candidate handler
+            #    and the worker died with a traceback: 86 `BRIDGE_DEATH`s, all
+            #    `Initialize(SHARED|LOOPBACK) failed: 0x8889000A`
+            #    (AUDCLNT_E_DEVICE_IN_USE), captions=0, restarted every 2 s
+            #    forever — the app was up, the panel was up, and no candidate ever
+            #    got a chance.
+            # 2. `DEVICE_IN_USE` IS USUALLY OUR OWN PREDECESSOR. The shell
+            #    respawns 2 s after an exit, and the endpoint release can lag the
+            #    process that held it, so the NEXT worker sees its own
+            #    predecessor's endpoint as busy. ROTATING AWAY for that is exactly
+            #    backwards: the busy endpoint is the one that was WORKING (run
+            #    directly, candidate 1 of 10 — `WASAPI loopback: CABLE Input` —
+            #    opened first try and transcribed the video). So a busy endpoint is
+            #    waited for and retried, TWICE, before the ladder moves on; only a
+            #    candidate that fails for any other reason rotates immediately.
+            tap = None
+            open_error = None
+            for retry in range(3):
+                if stop.is_set():
+                    break
+                try:
+                    tap = LoopbackTap(dev, on_block, block_ms=block_ms)
+                    tap_holder["tap"] = tap
+                    tap_holder["gen"] += 1
+                    tap.stream.start()
+                    open_error = None
+                    break
+                except Exception as exc:
+                    open_error = exc
+                    detail = f"{type(exc).__name__}: {exc}"
+                    emit(
+                        type="status",
+                        state="error",
+                        stage="open-stream",
+                        device=dev["name"],
+                        api=dev.get("api"),
+                        detail=detail,
+                        retry=retry,
+                    )
+                    # Release whatever the failed open left behind (the client is
+                    # often created before Initialize refuses it) — the F4 rule: a
+                    # tap this run is done with must not keep the endpoint.
+                    if tap is not None:
+                        close_tap(tap)
+                        tap_holder["tap"] = None
+                        tap = None
+                    if not _is_device_in_use(detail) or retry >= 2:
+                        break
+                    err(f"OPEN_RETRY_RETRY device={dev['name']!r} "
+                        f"reason=device-in-use retry={retry + 1} in_ms=1500 "
+                        f"(the previous worker may still be releasing it)")
+                    stop.wait(1.5)
+
+            if open_error is not None:
+                denials.append(f"{dev['name']} [{dev.get('api')}]: "
+                               f"{type(open_error).__name__}: {open_error}")
+                outcome = ("open-denied"
+                           if all(_is_device_in_use(d) for d in denials)
+                           else "open-failed")
                 if attempt_no + 1 >= len(candidates):
                     break
                 emit(
                     type="status",
                     state="device-rotated",
-                    reason="open-failed",
+                    reason="open-denied" if outcome == "open-denied" else "open-failed",
                     to=candidates[attempt_no + 1]["name"],
                     attempt=attempt_no + 1,
                     of=len(candidates),
@@ -2150,9 +4081,6 @@ def main():
                 rotations += 1
                 continue
 
-            tap_holder["tap"] = tap
-            tap_holder["gen"] += 1
-            tap.stream.start()
             emit(
                 type="status",
                 state="capture-started",
@@ -2315,6 +4243,16 @@ def main():
             worker.join(timeout=5)
         except Exception:
             pass
+        # The batch pass is a SEPARATE PROCESS whose result must not be lost at
+        # exit: the ASR thread has stopped, so this is the only writer left on
+        # stdout, and the runner's remaining lines are emitted here. `stop()`
+        # joins it, so the run does not end underneath a live invocation.
+        if switch is not None:
+            switch.stop()
+            for payload in switch.drain_captions():
+                if payload.get("type") == "caption":
+                    counters["redux_captions"] += 1
+                emit(**payload)
 
     if outcome in ("all-flat", "open-failed"):
         emit(
@@ -2331,78 +4269,33 @@ def main():
 
     err(stats_line("final"))
 
-    # The exhaustion case is decided FIRST and on captions, not on tokens.
-    # Measured on a forced all-flat run: `tokens=1` with `captions=0` sent this
-    # chain to "captions-emitted" — a run that produced nothing announced that
-    # it had produced captions. `asr.labels` holds partial symbols too, so
-    # len(labels)>0 does not mean a caption was ever emitted; only the
-    # `counters["captions"]` counter does.
-    #
-    # The branch the 2026-10-06 smoke run needed, and did not have: a candidate
-    # that OPENED and delivered a full window of callbacks while never reaching
-    # the peak floor is a SILENT DEVICE, and no verdict about the model is
-    # honest here. Measured on that run: blocks=214, peak=0.000122 against a
-    # floor of 0.002, and the run still reported "model-emitted-nothing" with
-    # exit 0. The device was the fault. It is now named, and it is non-zero.
+    # The MEASURED, device-attributable fact the verdict chain starts from, and
+    # the one the exit code is built from: a candidate that OPENED, ran a real
+    # window (TAP_SILENT_BLOCKS callbacks) and stayed under the peak floor, with
+    # nothing ever proved alive. Computed HERE and handed to the pure function,
+    # which reads no state of its own.
     silent_rows = [
         r
         for r in tap_ledger
         if not r["settled"] and r["blocks"] >= TAP_SILENT_BLOCKS and r["peak"] < tap_floor
     ]
     ran_but_silent = bool(silent_rows) and not proved_alive["any"]
-    # ORDER IS THE CONTRACT, and it was wrong until now. This branch used to test
-    # the DEVICE-SELECTION outcome FIRST, so a run that BOTH exhausted the ladder
-    # AND measured a silent device reported `all-candidate-taps-flat` in its `done`
-    # while the very same run emitted `state="silent-device"` and returned exit 3 —
-    # the word and the code disagreed inside one run. Measured on disk before the
-    # fix: worker/runs/exit3-armB-worker.jsonl, `done` verdict
-    # "all-candidate-taps-flat", device_outcome "all-flat", beside a silent-device
-    # status with blocks=34 (oracle: _main/verdict-order-oracle.py, red arm).
-    #
-    # `ran_but_silent` is the MEASURED, device-attributable fact (a candidate
-    # OPENED, ran a full window and stayed under the floor); `outcome in
-    # ("all-flat","open-failed")` is only the weaker statement that no candidate
-    # settled. The specific fact, and the one the exit code is already built from
-    # (`return 3 if ran_but_silent else 0`), is tested FIRST, so the verdict word
-    # and the exit code can no longer diverge.
-    if ran_but_silent:
-        verdict = "silent-device"
-    elif outcome in ("all-flat", "open-failed"):
-        verdict = "all-candidate-taps-flat"
-    elif counters["blocks"] == 0:
-        verdict = "no-callback-blocks"
-    elif counters["nonzero_blocks"] == 0:
-        verdict = "silent-capture"
-    elif counters["resampled_samples"] == 0:
-        verdict = "resample-produced-nothing"
-    elif counters["chunks"] == 0:
-        verdict = "buffer-never-reached-chunk-size"
-    elif (
-        counters["captions"] == 0
-        and counters["chunks"] > 0
-        and asr.music_gated_chunks >= counters["chunks"]
-    ):
-        # Lane SottoSpeechSeparation. The tap is alive and carried signal, but
-        # OUR OWN speech/music gate withheld EVERY chunk: what the endpoint is
-        # carrying is not speech. Distinct from `captured-signal-has-no-speech`
-        # (that one is the model's front-end VAD, no gate involved) and from a
-        # model fault — the encoder was never even asked.
-        verdict = "captions-all-music-gated"
-    elif counters["captions"] == 0 and asr.vad_gated_chunks > 0:
-        # MEASURED 2026-10-06 (lane BlankFramesRootCause). A live run landed here
-        # with peak=0.101929 (floor 0.002), chunks=44, captions=0, frames=77,
-        # blanks=77, and vad_gated_chunks=33 -- i.e. the tap was measurably ALIVE
-        # and the model's OWN front-end withheld three quarters of the mix as
-        # non-speech. The word it got was "model-emitted-nothing", which points
-        # every reader at the model, and the model was provably innocent: the same
-        # audio, through the same worker in file mode, transcribes a known speech
-        # clip word for word (`_main/bfrc_playedfile.jsonl`). The honest name for
-        # "signal arrived, the VAD called it not-speech, the model found nothing to
-        # say" is NOT a model fault, and this lane exists because that word sent
-        # four separate investigations after the model.
-        verdict = "captured-signal-has-no-speech"
-    else:
-        verdict = "captions-emitted"
+
+    # ── the verdict: ONE pure function, so a gate can assert the table ───────
+    # The decision (and the reasoning for every word, and for the exit code
+    # below) lives in `decide_verdict()`. `asr`'s two front-end counters travel
+    # in the mapping the function reads, which is why they are copied in rather
+    # than read off the object here: the function must stay a function of its
+    # arguments.
+    verdict = decide_verdict(
+        dict(
+            counters,
+            vad_gated_chunks=asr.vad_gated_chunks,
+            music_gated_chunks=asr.music_gated_chunks,
+        ),
+        outcome,
+        ran_but_silent,
+    )
 
     # The LOUD failure. Emitted whenever a device opened, ran a real window and
     # delivered digital silence: it names the device, its host API, the peak it
@@ -2524,7 +4417,16 @@ def main():
             f"captions=0 -- the endpoint carries signal that is not speech, not a model fault"
         )
 
-    emit(
+    # ── the run's text, CAPPED (F17) ─────────────────────────────────────────
+    # `detok(asr.labels)` is the whole run in one string and it ships as ONE
+    # JSONL line. `output.done_text_max_chars` bounds it; the untruncated length
+    # and the flag travel beside it, so "the line is short" and "the run was
+    # short" stay distinguishable. `tokens` is `labels_total`, NOT
+    # `len(asr.labels)`: the list is bounded (MAX_RETAINED_LABELS) and its length
+    # stops being the run's token count once anything is pruned.
+    done_text_full = asr.detok(asr.labels)
+    done_text = capped_text(done_text_full, done_text_max_chars)
+    done_payload = dict(
         type="status",
         state="done",
         verdict=verdict,
@@ -2543,7 +4445,8 @@ def main():
         resampled_samples=counters["resampled_samples"],
         chunks=counters["chunks"],
         captions=counters["captions"],
-        tokens=len(asr.labels),
+        tokens=asr.labels_total,
+        labels_pruned=asr.labels_pruned,
         queue_drops=counters["queue_drops"],
         frames=asr.frames_walked,
         blanks=asr.blank_frames,
@@ -2563,8 +4466,36 @@ def main():
         proved_device=proved_alive["device"],
         proved_reason=proved_alive["reason"],
         rotations=rotations,
-        text=asr.detok(asr.labels),
+        text=done_text,
+        text_chars=len(done_text_full),
+        text_max_chars=done_text_max_chars,
+        text_truncated=len(done_text) < len(done_text_full),
     )
+    # ── THE STACK LAW'S OWN NUMBERS, and ONLY when the flag is on ────────────
+    # Guarded on purpose: with `--redux-when-hidden` absent this `update` does
+    # not run, so the `done` line on stdout is byte-for-byte the line it was
+    # before this lane existed. `captions` above stays the STREAMING engine's
+    # count; `reduxCaptions` is the batch engine's, and the two are never added
+    # together here — "which engine spoke" is the question this lane exists to
+    # be able to ask.
+    if switch is not None:
+        done_payload.update(
+            reduxEnabled=True,
+            reduxArmed=switch.armed,
+            reduxRunner=os.path.basename(switch.runner),
+            reduxCaptions=counters["redux_captions"],
+            reduxSwitches=switch.switches,
+            reduxSegments=switch.segments,
+            reduxSegmentLines=switch.segment_lines,
+            reduxBatchKicks=switch.batches_kicked,
+            reduxBatchSeconds=round(switch.batch_seconds, 2),
+            reduxRunnerFailures=switch.runner_failures,
+            reduxBatchDeferred=switch.deferred,
+            reduxMinFreeMb=switch.min_free_mb,
+            reduxVisibilityReads=switch.reader.reads,
+            reduxVisibilityFallbacks=switch.reader.fallbacks,
+        )
+    emit(**done_payload)
     # A run that captured digital silence is NOT a successful run. Returning 0
     # here is the specific defect measured on 2026-10-06: the worker opened a
     # device, heard nothing, and reported success to a caller that has no other

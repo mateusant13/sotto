@@ -4,7 +4,7 @@ The end-to-end number the owner asked for is launch -> first caption, and that
 is `_main/measure-readiness.py`. It is reported separately because it needs a
 LIVE audio tap, and this machine had none at measurement time (every candidate
 device came back flat — `BRIDGE_STATUS state="device-exhausted"` in
-`app/electron/panel-run-readiness.log`). This script measures the part that
+`app/_legacy-electron/panel-run-readiness.log`). This script measures the part that
 does NOT depend on audio, so the boot cost is a real number rather than a
 guess:
 

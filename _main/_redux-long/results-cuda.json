@@ -1,0 +1,2971 @@
+[
+ {
+  "case": "plain-3600s",
+  "device": "cuda",
+  "timestamps": "segment",
+  "wav": "H:\\sotto\\_main\\_redux-long\\plain-3600s.wav",
+  "audio_seconds": 3600.0,
+  "command": "\"C:\\Program Files\\Python311\\python.exe\" H:\\sotto\\worker\\redux_batch.py --wav H:\\sotto\\_main\\_redux-long\\plain-3600s.wav --json --device cuda --timestamps segment",
+  "cwd": "H:\\sotto",
+  "cadence_s": 1.0,
+  "timeout_s": 3900.0,
+  "vram_before_mib": 2953,
+  "vram_total_mib": 16303,
+  "started": "2026-10-07T06:02:05",
+  "gpu_watch_rows": 0,
+  "rc": 4294967295,
+  "wall_seconds": 42.767,
+  "hung": false,
+  "peak_rss_mib": 1899.8,
+  "peak_rss_gib": 1.855,
+  "peak_wset_mib_reported_by_os": 1914.0,
+  "rss_samples_mib": [
+   2.5,
+   343.5,
+   441.5,
+   618.9,
+   704.5,
+   724.3,
+   712.4,
+   743.8,
+   755.8,
+   751.7,
+   787.0,
+   787.4,
+   833.5,
+   898.0,
+   972.9,
+   1171.9,
+   1456.1,
+   1711.7,
+   1889.8,
+   1898.2,
+   1898.0,
+   1898.5,
+   1899.0,
+   1898.3,
+   1898.7,
+   1897.7,
+   1898.9,
+   1897.9,
+   1898.4,
+   1898.6,
+   1898.0,
+   1899.8,
+   1899.4,
+   1899.2,
+   1899.2,
+   1899.2,
+   1899.2,
+   1899.2,
+   1899.2,
+   1899.2,
+   1899.0,
+   1542.8
+  ],
+  "vram_peak_mib": null,
+  "vram_after_mib": 3041,
+  "vram_samples_mib": [],
+  "gpu_procs_before": [],
+  "gpu_procs_during": [],
+  "child_held_gpu_context": false,
+  "child_vram_samples_mib": [],
+  "child_vram_peak_mib": null,
+  "child_vram_from_perfcounter_mib": null,
+  "cpu_percent_samples": [
+   46.8,
+   51.0,
+   50.4,
+   45.5,
+   46.5,
+   46.7,
+   45.3,
+   47.5,
+   48.5,
+   33.4,
+   47.2
+  ],
+  "cpu_percent_median": 46.8,
+  "cpu_percent_max": 51.0,
+  "visible_window_samples": 0,
+  "windows": [],
+  "load_stderr": [
+   "redux_batch: resident weight form = dense",
+   "redux_batch: loaded in 14.30s from H:\\sotto\\worker\\models\\parakeet-redux-ternary"
+  ],
+  "timing_stderr": [],
+  "stderr_tail": [
+   "redux_batch: resident weight form = dense",
+   "redux_batch: loaded in 14.30s from H:\\sotto\\worker\\models\\parakeet-redux-ternary",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer LayerNorm variant for x=(1, 245, 1024) dtype=torch.float32; using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer residual LayerNorm variant for x=(1, 245, 1024) dtype=torch.float32; using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer attention variant for qkv=(1, 245, 3072) heads=8x128 dtype=torch.float32; using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer depthwise variant for x=(1, 245, 1024) dtype=torch.float32 taps=(1024, 9); using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)"
+  ],
+  "n_captions": 0,
+  "text_chars": 0,
+  "duration_reported": null,
+  "compute_seconds": null,
+  "x_real_inference": null,
+  "x_real_inference_measured": null,
+  "x_real_wall": 84.18,
+  "tail_sentinel_present": false,
+  "tail_sentinel_at_end": false,
+  "sentinel_count": 0,
+  "english_head_count": 0,
+  "last_caption_end": null,
+  "coverage": null,
+  "boundaries": [
+   {
+    "expected": 15.0,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 23.543,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 43.543,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 58.543,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 67.086,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 87.086,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 102.086,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 110.629,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 130.629,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 145.629,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 154.172,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 174.172,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 189.172,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 197.715,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 217.715,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 232.715,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 241.258,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 261.258,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 276.258,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 284.801,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 304.801,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 319.801,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 328.344,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 348.344,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 363.344,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 371.888,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 391.888,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 406.888,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 415.431,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 435.431,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 450.431,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 458.974,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 478.974,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 493.974,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 502.517,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 522.517,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 537.517,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 546.06,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 566.06,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 581.06,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 589.603,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 609.603,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 624.603,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 633.146,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 653.146,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 668.146,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 676.689,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 696.689,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 711.689,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 720.232,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 740.232,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 755.232,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 763.775,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 783.775,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 798.775,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 807.318,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 827.318,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 842.318,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 850.861,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 870.861,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 885.861,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 894.404,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 914.404,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 929.404,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 937.947,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 957.947,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 972.947,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 981.49,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1001.49,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1016.49,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1025.034,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1045.034,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1060.034,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1068.577,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1088.577,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1103.577,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1112.12,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1132.12,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1147.12,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1155.663,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1175.663,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1190.663,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1199.206,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1219.206,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1234.206,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1242.749,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1262.749,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1277.749,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1286.292,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1306.292,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1321.292,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1329.835,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1349.835,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1364.835,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1373.378,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1393.378,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1408.378,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1416.921,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1436.921,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1451.921,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1460.464,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1480.464,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1495.464,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1504.007,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1524.007,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1539.007,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1547.55,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1567.55,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1582.55,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1591.093,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1611.093,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1626.093,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1634.636,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1654.636,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1669.636,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1678.179,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1698.179,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1713.179,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1721.723,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1741.723,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1756.723,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1765.266,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1785.266,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1800.266,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1808.809,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1828.809,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1843.809,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1852.352,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1872.352,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1887.352,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1895.895,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1915.895,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1930.895,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1939.438,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1959.438,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1974.438,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1982.981,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2002.981,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2017.981,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2026.524,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2046.524,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2061.524,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2070.067,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2090.067,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2105.067,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2113.61,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2133.61,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2148.61,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2157.153,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2177.153,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2192.153,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2200.696,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2220.696,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2235.696,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2244.239,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2264.239,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2279.239,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2287.782,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2307.782,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2322.782,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2331.325,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2351.325,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2366.325,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2374.868,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2394.868,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2409.868,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2418.412,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2438.412,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2453.412,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2461.955,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2481.955,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2496.955,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2505.498,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2525.498,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2540.498,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2549.041,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2569.041,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2584.041,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2592.584,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2612.584,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2627.584,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2636.127,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2656.127,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2671.127,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2679.67,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2699.67,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2714.67,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2723.213,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2743.213,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2758.213,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2766.756,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2786.756,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2801.756,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2810.299,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2830.299,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2845.299,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2853.842,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2873.842,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2888.842,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2897.385,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2917.385,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2932.385,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2940.928,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2960.928,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2975.928,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2984.471,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3004.471,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3019.471,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3028.014,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3048.014,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3063.014,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3071.557,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3091.557,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3106.557,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3115.101,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3135.101,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3150.101,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3158.644,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3178.644,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3193.644,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3202.187,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3222.187,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3237.187,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3245.73,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3265.73,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3280.73,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3289.273,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3309.273,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3324.273,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3332.816,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3352.816,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3367.816,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3376.359,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3396.359,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3411.359,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3419.902,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3439.902,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3454.902,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3463.445,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3483.445,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3498.445,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3506.988,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3526.988,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3541.988,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3550.531,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3570.531,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3585.0,
+    "nearest_segment_start": null,
+    "hit": false
+   }
+  ],
+  "boundary_hits": 0,
+  "boundary_total": 247,
+  "segments": []
+ },
+ {
+  "case": "plain-3600s",
+  "device": "cuda",
+  "timestamps": "segment",
+  "wav": "H:\\sotto\\_main\\_redux-long\\plain-3600s.wav",
+  "audio_seconds": 3600.0,
+  "command": "\"C:\\Program Files\\Python311\\python.exe\" H:\\sotto\\worker\\redux_batch.py --wav H:\\sotto\\_main\\_redux-long\\plain-3600s.wav --json --device cuda --timestamps segment",
+  "cwd": "H:\\sotto",
+  "cadence_s": 1.0,
+  "timeout_s": 240.0,
+  "vram_before_mib": 2933,
+  "vram_total_mib": 16303,
+  "started": "2026-10-07T06:03:27",
+  "gpu_watch_rows": 0,
+  "rc": 1,
+  "wall_seconds": 240.649,
+  "hung": true,
+  "peak_rss_mib": 1905.0,
+  "peak_rss_gib": 1.86,
+  "peak_wset_mib_reported_by_os": 1918.6,
+  "rss_samples_mib": [
+   2.5,
+   252.2,
+   332.3,
+   358.0,
+   394.3,
+   589.6,
+   739.4,
+   941.0,
+   1066.5,
+   1407.8,
+   1472.8,
+   1555.8,
+   1575.8,
+   1685.3,
+   1834.3,
+   1893.4,
+   1895.3,
+   1905.0,
+   1903.9,
+   1903.9,
+   1903.9,
+   1902.9,
+   1837.9,
+   1837.5,
+   1837.5,
+   1838.8,
+   1838.8,
+   1838.4,
+   1838.8,
+   1839.3,
+   1839.2,
+   1839.2,
+   1839.6,
+   1838.6,
+   1838.6,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0,
+   1839.0
+  ],
+  "vram_peak_mib": null,
+  "vram_after_mib": 2940,
+  "vram_samples_mib": [],
+  "gpu_procs_before": [],
+  "gpu_procs_during": [],
+  "child_held_gpu_context": false,
+  "child_vram_samples_mib": [],
+  "child_vram_peak_mib": null,
+  "child_vram_from_perfcounter_mib": null,
+  "cpu_percent_samples": [
+   94.1,
+   92.6,
+   79.4,
+   50.6,
+   48.5,
+   55.2,
+   51.3,
+   50.9,
+   49.8,
+   47.3,
+   49.2,
+   57.6,
+   43.8,
+   45.1,
+   48.7,
+   49.6,
+   40.0,
+   43.2,
+   46.6,
+   40.0,
+   43.9,
+   41.4,
+   35.6,
+   38.7,
+   41.2,
+   37.6,
+   44.1,
+   34.6,
+   33.4,
+   34.6,
+   37.9,
+   37.1,
+   37.3,
+   36.6,
+   39.5,
+   32.4,
+   34.9,
+   32.6,
+   35.4,
+   37.3,
+   33.2,
+   37.6,
+   32.8,
+   36.0,
+   32.7,
+   31.6,
+   35.0,
+   33.2,
+   37.2,
+   34.5,
+   31.8,
+   30.1,
+   32.4,
+   36.6,
+   34.2,
+   31.9,
+   35.6,
+   38.9,
+   43.5,
+   31.9
+  ],
+  "cpu_percent_median": 37.6,
+  "cpu_percent_max": 94.1,
+  "visible_window_samples": 0,
+  "windows": [],
+  "load_stderr": [
+   "redux_batch: resident weight form = dense",
+   "redux_batch: loaded in 4.20s from H:\\sotto\\worker\\models\\parakeet-redux-ternary"
+  ],
+  "timing_stderr": [],
+  "stderr_tail": [
+   "redux_batch: resident weight form = dense",
+   "redux_batch: loaded in 4.20s from H:\\sotto\\worker\\models\\parakeet-redux-ternary",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer LayerNorm variant for x=(1, 245, 1024) dtype=torch.float32; using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer residual LayerNorm variant for x=(1, 245, 1024) dtype=torch.float32; using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer attention variant for qkv=(1, 245, 3072) heads=8x128 dtype=torch.float32; using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)",
+   "C:\\Program Files\\Python311\\Lib\\site-packages\\kestrel_kernels\\fallback.py:104: RuntimeWarning: kestrel-kernels: no native conformer depthwise variant for x=(1, 245, 1024) dtype=torch.float32 taps=(1024, 9); using PyTorch fallback.",
+   "  warn_fallback_once(kernel_key, message)"
+  ],
+  "n_captions": 0,
+  "text_chars": 0,
+  "duration_reported": null,
+  "compute_seconds": null,
+  "x_real_inference": null,
+  "x_real_inference_measured": null,
+  "x_real_wall": 14.96,
+  "tail_sentinel_present": false,
+  "tail_sentinel_at_end": false,
+  "sentinel_count": 0,
+  "english_head_count": 0,
+  "last_caption_end": null,
+  "coverage": null,
+  "boundaries": [
+   {
+    "expected": 15.0,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 23.543,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 43.543,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 58.543,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 67.086,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 87.086,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 102.086,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 110.629,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 130.629,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 145.629,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 154.172,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 174.172,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 189.172,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 197.715,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 217.715,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 232.715,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 241.258,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 261.258,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 276.258,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 284.801,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 304.801,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 319.801,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 328.344,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 348.344,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 363.344,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 371.888,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 391.888,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 406.888,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 415.431,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 435.431,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 450.431,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 458.974,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 478.974,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 493.974,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 502.517,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 522.517,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 537.517,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 546.06,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 566.06,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 581.06,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 589.603,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 609.603,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 624.603,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 633.146,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 653.146,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 668.146,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 676.689,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 696.689,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 711.689,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 720.232,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 740.232,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 755.232,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 763.775,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 783.775,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 798.775,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 807.318,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 827.318,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 842.318,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 850.861,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 870.861,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 885.861,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 894.404,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 914.404,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 929.404,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 937.947,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 957.947,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 972.947,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 981.49,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1001.49,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1016.49,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1025.034,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1045.034,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1060.034,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1068.577,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1088.577,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1103.577,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1112.12,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1132.12,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1147.12,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1155.663,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1175.663,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1190.663,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1199.206,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1219.206,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1234.206,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1242.749,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1262.749,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1277.749,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1286.292,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1306.292,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1321.292,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1329.835,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1349.835,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1364.835,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1373.378,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1393.378,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1408.378,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1416.921,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1436.921,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1451.921,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1460.464,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1480.464,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1495.464,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1504.007,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1524.007,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1539.007,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1547.55,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1567.55,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1582.55,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1591.093,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1611.093,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1626.093,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1634.636,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1654.636,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1669.636,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1678.179,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1698.179,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1713.179,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1721.723,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1741.723,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1756.723,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1765.266,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1785.266,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1800.266,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1808.809,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1828.809,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1843.809,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1852.352,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1872.352,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1887.352,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1895.895,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1915.895,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1930.895,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1939.438,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1959.438,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1974.438,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 1982.981,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2002.981,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2017.981,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2026.524,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2046.524,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2061.524,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2070.067,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2090.067,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2105.067,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2113.61,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2133.61,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2148.61,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2157.153,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2177.153,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2192.153,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2200.696,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2220.696,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2235.696,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2244.239,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2264.239,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2279.239,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2287.782,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2307.782,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2322.782,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2331.325,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2351.325,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2366.325,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2374.868,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2394.868,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2409.868,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2418.412,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2438.412,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2453.412,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2461.955,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2481.955,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2496.955,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2505.498,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2525.498,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2540.498,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2549.041,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2569.041,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2584.041,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2592.584,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2612.584,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2627.584,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2636.127,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2656.127,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2671.127,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2679.67,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2699.67,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2714.67,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2723.213,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2743.213,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2758.213,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2766.756,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2786.756,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2801.756,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2810.299,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2830.299,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2845.299,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2853.842,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2873.842,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2888.842,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2897.385,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2917.385,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2932.385,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2940.928,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2960.928,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2975.928,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 2984.471,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3004.471,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3019.471,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3028.014,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3048.014,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3063.014,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3071.557,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3091.557,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3106.557,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3115.101,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3135.101,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3150.101,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3158.644,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3178.644,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3193.644,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3202.187,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3222.187,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3237.187,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3245.73,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3265.73,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3280.73,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3289.273,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3309.273,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3324.273,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3332.816,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3352.816,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3367.816,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3376.359,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3396.359,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3411.359,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3419.902,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3439.902,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3454.902,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3463.445,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3483.445,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3498.445,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3506.988,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3526.988,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3541.988,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3550.531,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3570.531,
+    "nearest_segment_start": null,
+    "hit": false
+   },
+   {
+    "expected": 3585.0,
+    "nearest_segment_start": null,
+    "hit": false
+   }
+  ],
+  "boundary_hits": 0,
+  "boundary_total": 247,
+  "segments": []
+ }
+]

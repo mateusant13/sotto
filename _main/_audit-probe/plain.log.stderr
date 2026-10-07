@@ -1,0 +1,72 @@
+Failed to initialize pythonnet: System.TypeInitializationException: O inicializador de tipo de 'Delegates' acionou uma exceção. ---> System.ComponentModel.Win32Exception: Acesso negado
+   em System.Diagnostics.ProcessManager.OpenProcess(Int32 processId, Int32 access, Boolean throwIfExited)
+   em System.Diagnostics.Process.GetProcessHandle(Int32 access, Boolean throwIfExited)
+   em System.Diagnostics.Process.OpenProcessHandle(Int32 access)
+   em System.Diagnostics.Process.get_Handle()
+   em Python.Runtime.Platform.WindowsLoader.GetAllModules()
+   em Python.Runtime.Platform.WindowsLoader.GetFunction(IntPtr hModule, String procedureName)
+   em Python.Runtime.Runtime.Delegates.GetFunctionByName(String functionName, IntPtr libraryHandle)
+   em Python.Runtime.Runtime.Delegates..cctor()
+   --- Fim do rastreamento de pilha de exceções internas ---
+   em Python.Runtime.Runtime.Delegates.get_PyGILState_Ensure()
+   em Python.Runtime.Runtime.PyGILState_Ensure()
+   em Python.Runtime.Py.GIL()
+   em Python.Runtime.Loader.Initialize(IntPtr data, Int32 size)
+   em Python.Runtime.Runtime.Delegates.get_PyGILState_Ensure()
+   em Python.Runtime.Runtime.PyGILState_Ensure()
+   em Python.Runtime.Py.GIL()
+   em Python.Runtime.Loader.Initialize(IntPtr data, Int32 size)Failed to initialize pythonnet: System.TypeInitializationException: O inicializador de tipo de 'Delegates' acionou uma exceção. ---> System.ComponentModel.Win32Exception: Acesso negado
+   em System.Diagnostics.ProcessManager.OpenProcess(Int32 processId, Int32 access, Boolean throwIfExited)
+   em System.Diagnostics.Process.GetProcessHandle(Int32 access, Boolean throwIfExited)
+   em System.Diagnostics.Process.OpenProcessHandle(Int32 access)
+   em System.Diagnostics.Process.get_Handle()
+   em Python.Runtime.Platform.WindowsLoader.GetAllModules()
+   em Python.Runtime.Platform.WindowsLoader.GetFunction(IntPtr hModule, String procedureName)
+   em Python.Runtime.Runtime.Delegates.GetFunctionByName(String functionName, IntPtr libraryHandle)
+   em Python.Runtime.Runtime.Delegates..cctor()
+   --- Fim do rastreamento de pilha de exceções internas ---
+   em Python.Runtime.Runtime.Delegates.get_PyGILState_Ensure()
+   em Python.Runtime.Runtime.PyGILState_Ensure()
+   em Python.Runtime.Py.GIL()
+   em Python.Runtime.Loader.Initialize(IntPtr data, Int32 size)
+   em Python.Runtime.Runtime.Delegates.get_PyGILState_Ensure()
+   em Python.Runtime.Runtime.PyGILState_Ensure()
+   em Python.Runtime.Py.GIL()
+   em Python.Runtime.Loader.Initialize(IntPtr data, Int32 size)Traceback (most recent call last):
+  File "C:\Program Files\Python311\Lib\site-packages\webview\platforms\winforms.py", line 14, in <module>
+    import clr
+  File "C:\Program Files\Python311\Lib\site-packages\clr.py", line 6, in <module>
+    load()
+  File "C:\Program Files\Python311\Lib\site-packages\pythonnet\__init__.py", line 146, in load
+    raise RuntimeError("Failed to initialize Python.Runtime.dll")
+RuntimeError: Failed to initialize Python.Runtime.dll
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "H:\sotto\app\webview\sotto_webview.py", line 4026, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "H:\sotto\app\webview\sotto_webview.py", line 4021, in main
+    webview.start()
+  File "C:\Program Files\Python311\Lib\site-packages\webview\__init__.py", line 248, in start
+    guilib = initialize(gui)
+             ^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\site-packages\webview\guilib.py", line 134, in initialize
+    if not try_import(guis):
+           ^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\site-packages\webview\guilib.py", line 85, in try_import
+    if import_func():
+       ^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\site-packages\webview\guilib.py", line 74, in import_winforms
+    import webview.platforms.winforms as guilib
+  File "C:\Program Files\Python311\Lib\site-packages\webview\platforms\winforms.py", line 17, in <module>
+    import clr
+  File "C:\Program Files\Python311\Lib\site-packages\clr.py", line 6, in <module>
+    load()
+  File "C:\Program Files\Python311\Lib\site-packages\pythonnet\__init__.py", line 146, in load
+    raise RuntimeError("Failed to initialize Python.Runtime.dll")
+RuntimeError: Failed to initialize Python.Runtime.dll
+
+Exceção Sem Tratamento: System.InvalidOperationException: GIL must always be released, and it must be released from the same thread that acquired it.
+   em Python.Runtime.Py.GILState.Finalize()

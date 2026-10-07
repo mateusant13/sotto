@@ -1,0 +1,82 @@
+[
+{
+"t": 0.463,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"start\", \"pid\": 6704, \"argv\": [\"--max-seconds\", \"16\"], \"mode\": \"live\"}"
+},
+{
+"t": 0.464,
+"s": "err",
+"line": "lang_id      : 101 (auto) source=config:auto table=languages.json"
+},
+{
+"t": 0.464,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"lang\", \"lang_id\": 101, \"lang\": \"auto\", \"requested\": \"auto\", \"source\": \"config:auto\", \"table\": \"H:\\\\sotto\\\\worker\\\\models\\\\nemotron-3.5-asr-streaming-0.6b-fp16\\\\languages.json\", \"note\": \"the model's own auto slot, asked for explicitly\"}"
+},
+{
+"t": 8.605,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"providers\", \"providers_available\": [\"TensorrtExecutionProvider\", \"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"providers_selected\": [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"note\": \"\", \"cuda_probe_model\": \"nemotron-3.5-asr-streaming-0.6b-int8\", \"cuda_dirs_ms\": 5484, \"provider_probe_ms\": 2659}"
+},
+{
+"t": 8.605,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"model-loading\", \"model\": \"nemotron-3.5-asr-streaming-0.6b-int8\"}"
+},
+{
+"t": 21.934,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"model-loaded\", \"model\": \"nemotron-3.5-asr-streaming-0.6b-int8\", \"providers\": [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"load_s\": 13.33, \"rss_mb\": 1668.1, \"peak_rss_mb\": 1686.9, \"lang_id\": 101, \"lang\": \"auto\", \"lang_input\": \"lang_id\"}"
+},
+{
+"t": 21.934,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"gate\", \"gate\": \"on\", \"source\": \"live-default\", \"db_range_min\": 18.0, \"rms_floor\": 0.004, \"hold_chunks\": 3}"
+},
+{
+"t": 26.538,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device\", \"device\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"max_input_channels\": 2, \"candidates\": [\"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"WASAPI loopback: Fones de ouvido (soundcore Space Q45)\", \"WASAPI loopback: AG251F1WG2 (NVIDIA High Definition Audio)\", \"WASAPI loopback: Alto-falantes (HyperX Quadcast)\", \"VoiceMeeter Output (VB-Audio Vo\", \"CABLE Output (VB-Audio Virtual \", \"Mixagem est\u00e9reo (Realtek HD Audio Stereo input)\", \"Entrada (Realtek HD Audio Line input)\"], \"wanted\": null, \"tap_window_s\": 6.0, \"tap_peak_floor\": 0.002}"
+},
+{
+"t": 27.506,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 1, \"of\": 10}"
+},
+{
+"t": 33.533,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device-rotated\", \"reason\": \"flat\", \"from\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"to\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"peak\": 0.0, \"run_peak\": 0.0, \"window_s\": 6.0, \"peak_floor\": 0.002, \"attempt\": 1, \"of\": 10}"
+},
+{
+"t": 34.494,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 2, \"of\": 10}"
+},
+{
+"t": 36.664,
+"s": "err",
+"line": "WORKER_STATS tag=tick blocks=0 block_samples=0 nonzero_blocks=0 peak=0.000000 rms=0.00000000 gain_db=+0.0 gain_min_db=+0.0 gain_max_db=+0.0 peak_out=0.000000 gain_would_db=+0.0 gain_would_max_db=+0.0 held_blocks=0 speech_blocks=0 agc=on resampled_samples=0 chunks=0 captions=0 tokens=0 frames=0 blanks=0 blank_frac=None empty_chunks=0 vad_gated_chunks=0 music_gated_chunks=0 gate_kept=0 gate=on queue_drops=0 audio_s=0.00 infer_wall_s=0.00 rss_mb=1677.5"
+},
+{
+"t": 40.5,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device-rotated\", \"reason\": \"flat\", \"from\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"to\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"peak\": 0.0, \"run_peak\": 0.0, \"window_s\": 6.0, \"peak_floor\": 0.002, \"attempt\": 2, \"of\": 10}"
+},
+{
+"t": 41.258,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 3, \"of\": 10}"
+},
+{
+"t": 42.817,
+"s": "err",
+"line": "WORKER_STATS tag=final blocks=0 block_samples=0 nonzero_blocks=0 peak=0.000000 rms=0.00000000 gain_db=+0.0 gain_min_db=+0.0 gain_max_db=+0.0 peak_out=0.000000 gain_would_db=+0.0 gain_would_max_db=+0.0 held_blocks=0 speech_blocks=0 agc=on resampled_samples=0 chunks=0 captions=0 tokens=0 frames=0 blanks=0 blank_frac=None empty_chunks=0 vad_gated_chunks=0 music_gated_chunks=0 gate_kept=0 gate=on queue_drops=0 audio_s=0.00 infer_wall_s=0.00 rss_mb=1677.8"
+},
+{
+"t": 42.817,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"done\", \"verdict\": \"no-callback-blocks\", \"blocks\": 0, \"block_samples\": 0, \"nonzero_blocks\": 0, \"peak\": 0.0, \"peak_out\": 0.0, \"gain_db\": 0.0, \"gain_max_db\": 0.0, \"gain_would_db\": 0.0, \"gain_would_max_db\": 0.0, \"held_blocks\": 0, \"speech_blocks\": 0, \"agc\": true, \"resampled_samples\": 0, \"chunks\": 0, \"captions\": 0, \"tokens\": 0, \"queue_drops\": 0, \"frames\": 0, \"blanks\": 0, \"blank_frac\": null, \"empty_chunks\": 0, \"vad_gated_chunks\": 0, \"music_gated_chunks\": 0, \"gate\": \"on\", \"audio_s\": 0.0, \"infer_wall_s\": 0.0, \"rtf\": null, \"peak_rss_mb\": 1686.9, \"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"device_outcome\": \"run-ended\", \"tap_ledger\": [{\"device\": \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"index\": null, \"api\": \"Windows WASAPI (loopback)\", \"rung\": \"a\", \"rung_why\": \"WASAPI loopback of the DEFAULT render endpoint\", \"peak\": 0.0, \"blocks\": 0, \"captions\": 0, \"settled\": false, \"outcome\": \"flat\"}, {\"device\": \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"index\": null, \"api\": \"Windows WASAPI (loopback)\", \"rung\": \"a\", \"rung_why\": \"WASAPI loopback of an active render endpoint\", \"peak\": 0.0, \"blocks\": 0, \"captions\": 0, \"settled\": false, \"outcome\": \"flat\"}, {\"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"index\": null, \"api\": \"Windows WASAPI (loopback)\", \"rung\": \"a\", \"rung_why\": \"WASAPI loopback of an active render endpoint\", \"peak\": 0.0, \"blocks\": 0, \"captions\": 0, \"settled\": false, \"outcome\": \"run-ended\"}], \"proved_alive\": false, \"proved_device\": null, \"proved_reason\": \"\", \"rotations\": 2, \"text\": \"\"}"
+}
+]

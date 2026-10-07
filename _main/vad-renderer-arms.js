@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const mod = require(path.join(__dirname, '..', 'app', 'electron', 'caption-formulation.js'));
+const mod = require(path.join(__dirname, '..', 'app', 'panel', 'caption-formulation.js'));
 const { createEngine, SENTENCE_GAP_S } = mod;
 
 function captions(tag) {

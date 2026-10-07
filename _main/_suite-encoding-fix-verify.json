@@ -1,0 +1,291 @@
+{
+ "repo": "H:\\sotto",
+ "rows": [
+  {
+   "oracle": "segment-rerun-probe",
+   "argv": [
+    "_main/segment-rerun-probe.py"
+   ],
+   "rc": 1,
+   "verdict": "RED",
+   "wall_s": 6.3,
+   "tail": [
+    "    sys.exit(main())",
+    "             ^^^^^^",
+    "  File \"H:\\sotto\\_main\\segment-rerun-probe.py\", line 107, in main",
+    "    text, _n = asr.run_chunk(seg, speech=True, account=False)",
+    "               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "TypeError: StreamAsr.run_chunk() got an unexpected keyword argument 'account'"
+   ]
+  },
+  {
+   "oracle": "model-spec-oracle",
+   "argv": [
+    "_main/model-spec-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": []
+  },
+  {
+   "oracle": "config-keys-oracle",
+   "argv": [
+    "_main/config-keys-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.2,
+   "tail": [
+    "  key model.use_vad                -> 2 consumer(s)  first: worker\\sotto_worker.py:1746",
+    "  key model.providers              -> 2 consumer(s)  first: worker\\sotto_worker.py:1751",
+    "  key output.min_chars             -> 4 consumer(s)  first: worker\\sotto_worker.py:1667",
+    "  key output.partial               -> 2 consumer(s)  first: worker\\sotto_worker.py:1691",
+    "  DEFAULT_MODEL agrees with config.model.dir: nemotron-3.5-asr-streaming-0.6b-int8",
+    "VERDICT: PASS"
+   ]
+  },
+  {
+   "oracle": "lang-id-oracle",
+   "argv": [
+    "_main/lang-id-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 8.1,
+   "tail": []
+  },
+  {
+   "oracle": "caption-lines-oracle",
+   "argv": [
+    "_main/caption-lines-oracle.py"
+   ],
+   "rc": 1,
+   "verdict": "RED",
+   "wall_s": 0.1,
+   "tail": [
+    "    sys.exit(main())",
+    "             ^^^^^^",
+    "  File \"H:\\sotto\\_main\\caption-lines-oracle.py\", line 221, in main",
+    "    wire11 = W.line_events(f11.take_closed())",
+    "             ^^^^^^^^^^^^^",
+    "AttributeError: module 'sotto_worker' has no attribute 'line_events'"
+   ]
+  },
+  {
+   "oracle": "speech-gate-oracle",
+   "argv": [
+    "_main/speech-gate-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.2,
+   "tail": [
+    "  drone  synth:60Hz                   chunks= 14 kept=  0 gated= 14",
+    "  speech sample1.flac                 chunks= 24 kept= 24 gated=  0 kept_frac=1.0",
+    "  speech sample2.flac                 chunks= 25 kept= 25 gated=  0 kept_frac=1.0",
+    "  speech pt-br-sample.wav             chunks= 26 kept= 26 gated=  0 kept_frac=1.0",
+    "  speech en-us-sample.wav             chunks= 15 kept= 15 gated=  0 kept_frac=1.0",
+    "  VERDICT: PASS"
+   ]
+  },
+  {
+   "oracle": "delivery-rate-oracle-wav",
+   "argv": [
+    "_main/delivery-rate-oracle.py",
+    "--wav",
+    "worker/assets/sample1.flac"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 14.4,
+   "tail": [
+    "# delivery-rate-oracle  2026-10-07T01:23:48  threshold=0.95  invert=False",
+    "# worker=H:\\sotto\\worker\\sotto_worker.py",
+    "[PASS] ARM=wav-control        duty = numerator audio_s=13.44 / denominator wall_s=4.09 = 3.2829  (threshold 0.95)  queue_drops=0 [n/a (file arm has no queue)]",
+    "        open=(selftest-start) end=(selftest-done) streams=1 rotations=0 rc=0",
+    "VERDICT: PASS"
+   ]
+  },
+  {
+   "oracle": "flat-endpoint-oracle",
+   "argv": [
+    "_main/flat-endpoint-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.3,
+   "tail": [
+    "  unsilenced-packet-kept         flags=0x0 blocks=3/3  peak=0.000091553 silent_packets=0  want peak==9.15527e-05 and 3 blocks and silent_packets==0  OK",
+    "  -> FAIL  (8 arms, 5 failed, failed=s-false-is-success,s-ok-is-success-and-balanced,genuine-failure-refused,real-two-calls-one-thread,silent-flag-is-silence)",
+    "==============================================================================",
+    "LIVE   : PASS",
+    "CONTROL: RED as required",
+    "VERDICT PASS"
+   ]
+  },
+  {
+   "oracle": "wasapi-com-init-oracle",
+   "argv": [
+    "_main/wasapi-com-init-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "  real-second-call-is-sfalse   real API hr1=0x00000000 hr2=0x00000001  expect hr1=S_OK hr2=S_FALSE  OK",
+    "  real-mismatch-owes-nothing   SKIPPED -- module has no _com_init() (pre-fix shape)",
+    "  -> FAIL  (6 arms, 3 failed, failed=s-false-is-success,s-ok-is-success,genuine-failure-raises)",
+    "LIVE   : PASS",
+    "NEGARM : PASS (pre-fix copy RED on 3 arm(s))",
+    "VERDICT PASS"
+   ]
+  },
+  {
+   "oracle": "_ordem-cura-oracle",
+   "argv": [
+    "_main/_ordem-cura-oracle.py"
+   ],
+   "rc": 3,
+   "verdict": "rc=3",
+   "wall_s": 2.6,
+   "tail": [
+    "order BEFORE the choice: ['VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)', 'Speakers (NVIDIA Broadcast)', 'CABLE Input (VB-Audio Virtual Cable)', 'Fones de ouvido (soundcore Space Q45)', 'AG251F1WG2 (NVIDIA High Definition Audio)', 'Alto-falantes (HyperX Quadcast)']",
+    "cure present in module: False",
+    "re-read cost = 0.000 s",
+    "order AFTER  the choice: ['VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)', 'Speakers (NVIDIA Broadcast)', 'CABLE Input (VB-Audio Virtual Cable)', 'Fones de ouvido (soundcore Space Q45)', 'AG251F1WG2 (NVIDIA High Definition Audio)', 'Alto-falantes (HyperX Quadcast)']",
+    "attempt 1 would open  : VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+    "VERDICT RED -- live endpoint is 'CABLE Input (VB-Audio Virtual Cable)', attempt 1 opens 'VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)'"
+   ]
+  },
+  {
+   "oracle": "panel-hidden-at-startup-oracle",
+   "argv": [
+    "_main/panel-hidden-at-startup-oracle.py",
+    "--repeats",
+    "2"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.6,
+   "tail": [
+    "  [PASS] ARMED-ONCE before_show fired twice -> guard subscribed once � NavigationStarting handlers=2 (1 pywebview + 1 shell; expected 2 total / 1 shell); visibility_armed=True",
+    "  [PASS] MUTATION arm-line-deleted � expected=caught; delete the arming call from _on_before_show; wiring failures=2, hidden failures=3 � the oracle catches it",
+    "  [PASS] MUTATION guard-never-installed � expected=caught; the guard exists but is never subscribed; wiring failures=3, hidden failures=3 � the oracle catches it",
+    "  [PASS] MUTATION pre-fix-shape � expected=caught; the exact pre-fix shell: no arming call in _on_before_show, and the guard registered only from the initialization-completed handler; wiring failures=2, hidden failures=1 � the oracle catches it",
+    "  [PASS] MUTATION ticket-repro � expected=immune; TICKET-55a4ab4b157bdd26bb9629c7's own repro: delete `self._ui(self._subscribe_core_ready)` from _on_before_show; wiring failures=0, hidden failures=0 � the oracle correctly finds visibility intact",
+    "ORACLE GREEN failures=0"
+   ]
+  },
+  {
+   "oracle": "restart-30s-oracle",
+   "argv": [
+    "_main/restart-30s-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 9.3,
+   "tail": [
+    "RED heartbeat (pre-fix copy): spawns=6 respawns=5 silent_kills=3 reason_silent=3 progress_blocks=None captions=6",
+    "ANOMALY wedge: spawns=4 respawns=3 silent_kills=3 reason_silent=3 progress_blocks=20 captions=4",
+    "static: worker --stats-interval default=10.0s shell WORKER_STATS_INTERVAL_S=10.0s shell WORKER_SILENCE_MS=30000ms",
+    "panel-state GREEN heartbeat: namedState(live)='receiving' namedState(no footer)='capture-started' pendingError=None last_painted={'footer': 'Receiving captions', 'kind': 'live', 'title': '', 'text': 'Olha o'}",
+    "panel-state RED heartbeat (pre-fix copy): namedState(live)='receiving' namedState(no footer)='exit' pendingError='exit' last_painted={'footer': 'Receiving captions', 'kind': 'live', 'title': '', 'text': 'Olha o'}",
+    "VERDICT: GREEN -- heartbeat counts as progress (0 restarts); the pre-fix copy still loops; a wedged worker is still restarted."
+   ]
+  },
+  {
+   "oracle": "panel-exit3-oracle",
+   "argv": [
+    "_main/panel-exit3-oracle.py"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 129.7,
+   "tail": [
+    "      ]",
+    "    }",
+    "  },",
+    "  \"verdict\": \"PASS\",",
+    "  \"failures\": []",
+    "}"
+   ]
+  },
+  {
+   "oracle": "run-cmd-exit-oracle",
+   "argv": [
+    "_main/run-cmd-exit-oracle.py"
+   ],
+   "rc": 1,
+   "verdict": "RED",
+   "wall_s": 43.5,
+   "tail": [
+    "GAP-RCS G1 panel-absent        after=1 before=0",
+    "GAP-RCS G2 pywebview-absent    after=1 before=0",
+    "GAP-RCS G3 hang                after=4 before=0",
+    "GAP-RCS G4 console-fallback    after=3 before=0",
+    "VERDICT FAIL  arms=PASS gaps=FAIL census=PASS -> the arms/gaps failed (see the [NO] lines above)",
+    "RECEIPT H:\\sotto\\_main\\run-cmd-exit-oracle-fixed.json"
+   ]
+  },
+  {
+   "oracle": "route-stamp-gate",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/route-stamp-gate.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.4,
+   "tail": [
+    "       real = false",
+    "       want = false",
+    "[PASS] CONTROL: the panel mutant bit the panel source exactly once (the check is not vacuous)",
+    "       real = {\"panelChanged\":true,\"panelMatches\":1}",
+    "       want = {\"panelChanged\":true,\"panelMatches\":1}",
+    "GATE: PASS — 11/11 arm(s) (live GREEN, and every arm RED on its own mutation)"
+   ]
+  },
+  {
+   "oracle": "historico-vs-redux-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/historico-vs-redux-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "       real = true",
+    "       want = true",
+    "[PASS] guard present — sotto_webview.py history_append declines a provisional-draft",
+    "       real = true",
+    "       want = true",
+    "RESULT: GREEN — the transcript carries only the worker-closed line"
+   ]
+  },
+  {
+   "oracle": "panel-live-vs-history-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/panel-live-vs-history-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.3,
+   "tail": [
+    "       real = true",
+    "       want = true",
+    "[PASS] control: the two values DIFFER (the probe is not vacuous)",
+    "       real = true",
+    "       want = true",
+    "RESULT: GREEN — 9/9 arm(s)"
+   ]
+  }
+ ],
+ "counts": {
+  "RED": 3,
+  "GREEN": 13,
+  "rc=3": 1
+ }
+}

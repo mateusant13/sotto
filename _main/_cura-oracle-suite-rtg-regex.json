@@ -1,0 +1,62 @@
+{
+ "repo": "H:\\sotto",
+ "rows": [
+  {
+   "oracle": "route-stamp-gate",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/route-stamp-gate.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.3,
+   "tail": [
+    "       real = false",
+    "       want = false",
+    "[PASS] CONTROL: the panel mutant bit the panel source exactly once (the check is not vacuous)",
+    "       real = {\"panelChanged\":true,\"panelMatches\":1}",
+    "       want = {\"panelChanged\":true,\"panelMatches\":1}",
+    "GATE: PASS — 11/11 arm(s) (live GREEN, and every arm RED on its own mutation)"
+   ]
+  },
+  {
+   "oracle": "historico-vs-redux-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/historico-vs-redux-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "       real = true",
+    "       want = true",
+    "[PASS] guard present — sotto_webview.py history_append declines a provisional-draft",
+    "       real = true",
+    "       want = true",
+    "RESULT: GREEN — the transcript carries only the worker-closed line"
+   ]
+  },
+  {
+   "oracle": "panel-live-vs-history-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/panel-live-vs-history-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.2,
+   "tail": [
+    "       real = true",
+    "       want = true",
+    "[PASS] control: the two values DIFFER (the probe is not vacuous)",
+    "       real = true",
+    "       want = true",
+    "RESULT: GREEN — 9/9 arm(s)"
+   ]
+  }
+ ],
+ "counts": {
+  "GREEN": 3
+ }
+}

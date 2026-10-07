@@ -31,6 +31,9 @@ ARMS
 10  REAL DATA — replaying the fragments the worker MEASURED on
     `_main/pt-br-sample.wav` (the BEFORE run) through the former reproduces the
     AFTER run caption for caption
+11  the CLOSE is published OUT OF BAND (`take_closed()`), once, and marked
+    `final` (M2/M3 of the live-vs-redux cure): the events `push`/`flush` return
+    are unchanged, and the line the transcript accepts comes from `take_closed()`
 
 Exit codes: 0 PASS, 1 FAIL, 2 setup error. No window: pure file reads.
 """
@@ -201,6 +204,25 @@ def main():
         (real9, real9.count("held back")),
         (captions(drive(_PassThrough, held, emit_partial=True)), 0),
         (["held", "held back"], 1))
+
+    # ── arm 11: the CLOSE is published OUT OF BAND, once, and marked (M2/M3) ─
+    # `push`/`flush` keep returning exactly the events they always did (arm 9),
+    # and the line that CLOSED is collected from `take_closed()`. That split is
+    # the cure: measured on this box, suppressing the close whenever the text
+    # matched what was already shown made a 14.5 s file-mode run emit 3
+    # provisional partials and ZERO finals — a transcript that never receives a
+    # single line. This arm pins BOTH halves: exactly one close, marked final,
+    # and nothing provisional marked final.
+    f11 = W.LineFormer(emit_partial=True)
+    shown11 = []
+    for text, s, e in held:
+        shown11 += f11.push(text, s, e)
+    shown11 += f11.flush()
+    wire11 = W.line_events(f11.take_closed())
+    arm("the close is published once, out of band, and marked final",
+        (captions(shown11), captions(wire11), [bool(x.get("final")) for x in wire11]),
+        (captions(drive(_PassThrough, held, emit_partial=True)), [], []),
+        (["held", "held back"], ["held back"], [True]))
 
     # ── arm 10: REAL DATA — the BEFORE fragments reproduce the AFTER run ────
     before, after = load(BEFORE), load(AFTER)

@@ -24,9 +24,15 @@ import numpy as np
 import sounddevice as sd
 
 SECS = float(sys.argv[1]) if len(sys.argv) > 1 else 8.0
-RENDER = sys.argv[2] if len(sys.argv) > 2 else "VoiceMeeter Input"
+# DEFAULT RENDER = the CABLE, never the owner's output. Measured 2026-10-07:
+# "VoiceMeeter Input" is a RENDER endpoint and this box's system default output,
+# so rendering there played the 440 Hz tone OUT LOUD for the owner (he reported
+# hearing it). "CABLE Input" is also a render endpoint, but its audio emerges at
+# "CABLE Output" -- a CAPTURE endpoint -- so the worker hears it and the speakers
+# get nothing. Owner, verbatim: "muta so pra mim e faz o sotto ouvir."
+RENDER = sys.argv[2] if len(sys.argv) > 2 else "CABLE Input"
 HZ = float(sys.argv[3]) if len(sys.argv) > 3 else 440.0
-AMP = 0.5
+AMP = float(sys.argv[4]) if len(sys.argv) > 4 else 0.5
 FLOOR = 0.002
 
 
@@ -45,6 +51,23 @@ def main() -> int:
         "amp": AMP,
         "floor": FLOOR,
     }, ensure_ascii=False), flush=True)
+    # HARD REFUSAL -- owner, 2026-10-07, verbatim: "ouvi um som ... nao quero
+    # ouvir". The system default output IS the owner's speakers, so rendering
+    # there is audible BY CONSTRUCTION. Refuse it unless the caller says so in
+    # writing with SOTTO_ALLOW_AUDIBLE=1, and never make it a default again.
+    import os as _os
+    try:
+        _defout = sd.query_devices(kind="output")
+    except Exception:
+        _defout = None
+    if _defout is not None and rd is not None and rd["index"] == _defout["index"]:
+        if _os.environ.get("SOTTO_ALLOW_AUDIBLE") != "1":
+            print(json.dumps({"probe": "inject-all-probe", "refused": "AUDIBLE-DEVICE",
+                              "render": rd["name"],
+                              "why": "this is the system default output = the owner's speakers; "
+                                     "set SOTTO_ALLOW_AUDIBLE=1 only if the owner asked to hear it"},
+                             ensure_ascii=False), flush=True)
+            return 4
     if rd is None:
         return 2
 

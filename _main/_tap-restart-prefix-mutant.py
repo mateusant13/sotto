@@ -51,11 +51,12 @@ import threading
 import time
 
 import hot_reload
+import panel_state
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 #: The panel UI. Read-only for this shell: it is the Electron arm's files and
 #: they are the contract, not ours to change.
-PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'electron'))
+PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'panel'))
 PANEL_HTML = os.path.join(PANEL_DIR, 'panel.html')
 #: An empty page the shell opens FIRST, so the preload is registered before the
 #: panel is ever parsed. See stage.html for why the ordering needs buying.
@@ -86,6 +87,21 @@ PANEL_MARGIN = 12
 PANEL_MAX_WORK_FRACTION = 0.34
 MAX_CAPTIONS = 200
 
+# --- the panel AS TEXT: one JSON dump a reader opens with `read` ------------
+# Owner's order, 2026-10-06, verbatim: "faz uma versao do sotto ou painel que tu
+# pode ver sem precisar da visao". Until now the panel's state was only knowable
+# through a screen capture, and a capture needs vision and is limited in time.
+# The dump is written from state the shell ALREADY holds — the bridge's own
+# counters, the panel's own live box read over the existing `exec_js` seam, and
+# the `WORKER_STATS` line the bridge already reads off the worker's stderr — so
+# it is a READ channel, not a second pipeline. Nothing the owner sees changes.
+REPO_ROOT = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir))
+PANEL_STATE_PATH = os.path.join(REPO_ROOT, '_main', 'panel-state.json')
+#: The on-demand trigger: create this file and the next tick dumps immediately
+#: (`py app/webview/panel_state.py --request`).
+PANEL_STATE_REQUEST = PANEL_STATE_PATH + '.request'
+PANEL_STATE_INTERVAL_S = 2.0
+
 # --- the transcript history (the "redux"), on disk --------------------------
 # The panel's TOP section is the accumulated transcript; the BOTTOM box is the
 # live stream. History is written to `<root>/<YYYY-MM-DD>/<HH>.md` — a 24 h
@@ -99,6 +115,13 @@ HISTORY_ROOT = os.path.normpath(
 #: One history line: `- [HH:MM:SS] text`. Markdown-readable AND parseable.
 HISTORY_LINE_RE = re.compile(r'^-\s+\[(\d{2}:\d{2}:\d{2})\]\s+(.*)$')
 HISTORY_DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+#: The provenance the WRITER stamps on the end of a line (M8). It is an HTML
+#: comment, so a Markdown reader shows the sentence and nothing else, and every
+#: reader of the FILE strips it before treating the rest as text.
+HISTORY_TAIL_RE = re.compile(r'\s*<!--.*?-->\s*$')
+#: The vocabulary `_history_provenance` is allowed to write. A route outside it
+#: is not written at all: a marker nobody can interpret is worse than none.
+HISTORY_ROUTES = ('final', 'provisional-draft')
 #: `explorer` for "show in folder" must never open a console window.
 CREATE_NO_WINDOW = 0x08000000
 
@@ -185,6 +208,53 @@ WORKER_NO_AUDIO_VERDICTS = frozenset({
 #: The UI state the shell paints when the silence is the worker's own no-audio
 #: verdict. Named, so the panel says WHAT is true instead of "Worker silent".
 NO_AUDIO_STATE = 'no-audio'
+
+# --- the worker's OWN counters line, read for the text dump -----------------
+# `worker/sotto_worker.py` writes `WORKER_STATS tag=tick|final ...` on STDERR
+# (`stats_line()`, every `--stats-interval` seconds, default 10). The bridge
+# already reads that stream for its stderr tail — those lines were being DROPPED
+# after three, so `peak` and `nonzero_blocks` were unreachable from outside the
+# process. This parses the same line the bridge already sees; it starts no
+# process and reads no other file.
+WORKER_STATS_RE = re.compile(r'^WORKER_STATS\s+tag=(\S+)\s*(.*)$')
+
+#: The worker's heartbeat cadence: `--stats-interval` default in
+#: `worker/sotto_worker.py` (10 s), published as `WORKER_STATS tag=tick` on
+#: stderr. It is the only periodic signal the worker emits, which is why the
+#: no-progress watchdog counts it (see `WorkerBridge._note_progress`).
+WORKER_STATS_INTERVAL_S = 10.0
+#: The no-progress window. MEASURED, not guessed. The old 15000 ms was armed on
+#: STDOUT alone, i.e. on CAPTIONS, and a real conversation's commit-to-commit
+#: gap is routinely longer than that: the owner's own log
+#: (`_main/webview-run.log`, 2026-10-06) commits lines 62 s, 62 s and 56 s
+#: apart while the worker is transcribing normally — so the watchdog was
+#: killing a healthy worker and paying a ~2.4 GB model reload each time.
+#: It is now armed on ANY progress (a stdout line, or an ADVANCING worker
+#: heartbeat), so the window only has to exceed the heartbeat: 3 x 10 s leaves
+#: room for a stalled main loop (the worker runs inference on the same thread
+#: that ticks) while still catching a worker that truly stops in 30 s.
+#: `_main/restart-30s-oracle.py` asserts the relation mechanically against
+#: `worker/sotto_worker.py`, because the two numbers live in two files.
+WORKER_SILENCE_MS = 30000
+
+
+def parse_worker_stats(line):
+    """`{'tag': 'tick'|'final', 'fields': {...}, 'line': ...}` or None.
+
+    Values stay STRINGS exactly as the worker printed them: a reader that wants
+    `peak` as a float can convert it, and a value the worker never printed stays
+    absent instead of becoming a zero this file invented.
+    """
+    match = WORKER_STATS_RE.match(str(line).strip())
+    if not match:
+        return None
+    fields = {}
+    for token in match.group(2).split():
+        if '=' in token:
+            key, value = token.split('=', 1)
+            fields[key] = value
+    return {'tag': match.group(1), 'fields': fields,
+            'line': str(line).strip()}
 
 # ── hot reload of the WORKER: debounce + guard + floor ──────────────────────
 #: Trailing debounce on worker reload requests. `hot_reload.DEBOUNCE_MS` is 250
@@ -1057,6 +1127,52 @@ PANEL_V2_READ_SEARCH = r"""
 })()
 """
 
+#: The panel's LIVE box and footer, read back as TEXT — the read a screenshot
+#: makes, in text. It reports each line's own state (provisional vs committed),
+#: which is the one thing the shell cannot know from the IPC receipts alone: a
+#: provisional line is rewritten in place by `panel.js` and never leaves the DOM.
+PANEL_STATE_PROBE = r"""
+(() => {
+  const txt = (el) => (el && el.textContent ? el.textContent : '');
+  const list = document.getElementById('caption-list');
+  const status = document.getElementById('status');
+  const lines = list ? Array.from(list.children).map((li) => {
+    const body = li.querySelector('.caption__text');
+    return {
+      text: body ? body.textContent : txt(li),
+      provisional: li.classList.contains('caption--provisional'),
+      latest: li.classList.contains('caption--latest'),
+    };
+  }) : null;
+  const ph = document.getElementById('placeholder');
+  const pt = document.querySelector('.captions__placeholder-title');
+  const pb = document.querySelector('.captions__placeholder-body');
+  return {
+    url: location.href,
+    live: {
+      count: list ? list.childElementCount : -1,
+      lines: lines,
+      provisionalCount: lines
+        ? lines.filter((line) => line.provisional).length : -1,
+      hint: txt(document.getElementById('captions-hint')).trim(),
+      hidden: list ? !!list.hidden : null,
+    },
+    status: {
+      text: txt(document.getElementById('status-text')).trim(),
+      kind: status
+        ? (status.classList.contains('status--error') ? 'error'
+          : status.classList.contains('status--live') ? 'live' : 'busy')
+        : null,
+    },
+    placeholder: {
+      hidden: ph ? !!ph.hidden : null,
+      title: txt(pt).trim(),
+      body: txt(pb).trim(),
+    },
+  };
+})()
+"""
+
 
 class SottoHost:
     """The Python side of `window.sotto` — the js_api pywebview exposes.
@@ -1165,7 +1281,8 @@ class SottoHost:
 
     def _history_append(self, payload):
         payload = payload or {}
-        entry = self._shell.history_append(payload.get('text', ''))
+        entry = self._shell.history_append(
+            payload.get('text', ''), payload.get('meta'))
         self._history_reply(payload, {'entry': entry})
 
     def _history_tail(self, payload):
@@ -1202,6 +1319,11 @@ class SottoShell:
         self.geometry = None
         self.display = None
         self.visible = False
+        # True once the "hide unless the owner asked" guard is subscribed to the
+        # control's NavigationStarting. It is the precondition of the panel being
+        # hidden at startup, and it is armed in `_on_before_show` — see
+        # `_arm_visibility_invariant`.
+        self.visibility_armed = False
         self.pointer_interactive = False
         self.caption_log = []
         self.last_status = ''
@@ -1219,6 +1341,9 @@ class SottoShell:
         )
         self.hotkey = None
         self.hot_reload = None       # hot_reload.HotReload
+        #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
+        #: until the panel's first load, which is when the DOM can be read.
+        self.panel_state = None
         self.reload_count = 0        # how many panel re-navigations have run
         self.startup_done = False    # startup actions run once per process
         self.startup_visible = None  # None until the window is measured
@@ -1328,6 +1453,11 @@ class SottoShell:
                 'equivalent exists')
 
         self._fit_client_area(form)
+        # THE VISIBILITY INVARIANT IS ARMED HERE, NOT IN `_on_core_ready`.
+        # See `_arm_visibility_invariant` for why the two are separate
+        # subscriptions; TICKET-55a4ab4b157bdd26bb9629c7 is what it costs to
+        # let one registration be a side effect of the other.
+        self._ui(self._arm_visibility_invariant)
         self._ui(self._subscribe_core_ready)
         # The startup-visibility probe is POSTED, never called from here:
         # before_show fires BEFORE pywebview's own Show();Hide() dance
@@ -1434,31 +1564,90 @@ class SottoShell:
         """
         self.webview2.CoreWebView2InitializationCompleted += self._on_core_ready
 
+    def _arm_visibility_invariant(self):
+        """Subscribe the hide-unless-asked guard, ONCE, as its own act.
+
+        THE INVARIANT. pywebview asks for a transparent window and, on EVERY
+        navigation, un-hides it itself: `if self.pywebview_window.transparent:
+        self.form.Show(); self.form.Activate()`
+        (edgechromium.py:346-349). That hack is load-bearing — clearing
+        `transparent` stops the page loading at all (measured, see
+        `create_window`) — so the shell's only defence is to re-hide the window
+        immediately afterwards. `_on_navigation_start` is that defence, and its
+        REGISTRATION is the entire invariant: with it absent the panel sits on
+        the owner's desk while every internal flag still says "hidden".
+
+        WHY IT IS ARMED HERE AND NOT IN `_on_core_ready`. Reading the installed
+        pywebview (`platforms/edgechromium.py`, `platforms/winforms.py`):
+
+          * `winforms.py:773` builds the form; `EdgeChrome.__init__` subscribes
+            pywebview's handlers and calls `EnsureCoreWebView2Async(None)`
+            (`edgechromium.py:101-102`, `:120`) — async, result discarded. The
+            CONTROL exists; CoreWebView2 does not.
+          * `winforms.py:775` fires `before_show`. This is therefore the last
+            point that provably precedes EVERY navigation.
+          * navigation #1 is raised from INSIDE the initialization-completed
+            dispatch: `on_webview_ready` is what calls `load_url`
+            (`edgechromium.py:305-311`), and pywebview subscribed that handler
+            BEFORE the shell's `_on_core_ready`.
+
+        So arming from `_on_core_ready` is a registration that is not merely
+        late — it is registered by a callback the shell does not control, and
+        when that callback does not arrive, `NavigationStarting` has no handler
+        and nothing re-hides the window. That is the whole of
+        TICKET-55a4ab4b157bdd26bb9629c7: the cure was reachable only through
+        an unrelated subscription, so deleting one line left the panel visible
+        while `py_compile` stayed at rc=0. Arming here removes the dependency;
+        it also covers navigation #1, which the old registration could not.
+
+        The guard is a precondition, not a best-effort: a control that is not
+        there is a RAISE (this method runs before any navigation can, so the
+        control must exist), never a silent return.
+        `_main/panel-hidden-at-startup-oracle.py` holds the invariant by
+        construction and fails if this registration ever stops being on the
+        shipped path.
+        """
+        if self.visibility_armed:
+            return
+        if self.webview2 is None:
+            raise RuntimeError(
+                'PANEL_VISIBILITY_INVARIANT cannot be armed: no WebView2 '
+                'control. Every navigation would be shown by pywebview with '
+                'nothing to re-hide it.')
+        # `+=` cannot live in a lambda (see `_subscribe_core_ready`), which is
+        # why this is a method and not an inline statement.
+        self.webview2.NavigationStarting += self._on_navigation_start
+        self.visibility_armed = True
+        log('PANEL_VISIBILITY_INVARIANT armed=true where=before_show '
+            f'hwnd={self.hwnd}')
+
     def _on_core_ready(self, sender, args):
         """CoreWebView2 exists: install the preload-equivalent.
 
         Registration is per-ENVIRONMENT, not per-page, so registering while the
         staging page is the current document covers the panel's navigation too.
+
+        IT NO LONGER SUBSCRIBES `NavigationStarting`. That registration was
+        moved to `_arm_visibility_invariant`, called from `_on_before_show`,
+        on 2026-10-06 for TICKET-55a4ab4b157bdd26bb9629c7. The reasoning it
+        recorded here was correct about WHY the guard must sit on the
+        CONTROL's `NavigationStarting` and not the CoreWebView2's — pywebview
+        subscribes the same control event in `EdgeChrome.__init__`
+        (edgechromium.py:102) and .NET raises handlers in subscription order,
+        so pywebview's `form.Show()` (edgechromium.py:346-349) runs first and
+        this handler runs immediately after it in the same dispatch; on a
+        different forward the order is a race, and the re-assert was measured
+        losing it and leaving the panel on screen. The error was the WORD
+        "before the first page is loaded": this handler does not run before the
+        first page is loaded, because navigation #1 is raised from inside this
+        very dispatch (pywebview's `on_webview_ready` calls `load_url`,
+        edgechromium.py:305-311). Keeping the registration here made the cure
+        conditional on this callback arriving at all.
         """
         if not args.IsSuccess:
             log(f'WEBVIEW2_INIT_FAILED error={args.InitializationException}')
             return
         self.core = sender.CoreWebView2
-        # pywebview SHOWS the form on every navigation start for a transparent
-        # window (edgechromium.py:345-349), which is what put the panel on the
-        # owner's screen at startup. Subscribe here, before the first page is
-        # loaded, so the FIRST navigation is already covered.
-        # Subscribe the CONTROL's own `NavigationStarting`, NOT the
-        # CoreWebView2's. pywebview subscribed this SAME event object in
-        # `EdgeChrome.__init__` (edgechromium.py:102, `self.webview.
-        # NavigationStarting += self.on_navigation_start`), and .NET raises one
-        # event's handlers in subscription order — so pywebview's `form.Show()`
-        # (edgechromium.py:347) runs FIRST and this handler runs IMMEDIATELY
-        # AFTER it, in the SAME dispatch. On the CoreWebView2 event the two
-        # live on different forwards and the order is a race (measured: the
-        # re-assert sometimes ran before the Show, no-oped, and the panel stayed
-        # on screen). Same event ⇒ deterministic order ⇒ nothing to win.
-        self.webview2.NavigationStarting += self._on_navigation_start
         self._install_bootstrap('initialization-completed')
 
     def _install_bootstrap(self, where):
@@ -1539,6 +1728,10 @@ class SottoShell:
         if not self.startup_done:
             self.startup_done = True
             self.send_geometry()
+            # The panel AS TEXT. Armed here — once the panel document (not the
+            # staging page) has loaded — so the DOM read has something to read.
+            # See panel_state.py and docs/audit/painel-texto.md.
+            self.start_panel_state()
             if self.args.show:
                 self.show_panel('startup')
             self._measure_on_screen_visibility('startup')
@@ -1745,6 +1938,78 @@ class SottoShell:
     def note_status_observed(self, text):
         log(f'STATUS_OBSERVED text={json.dumps(str(text))}')
 
+    # -- the panel as TEXT -------------------------------------------------
+    def panel_state_snapshot(self, reason='periodic'):
+        """Everything the panel shows NOW, as plain data — see panel_state.py.
+
+        Called by the writer thread every `PANEL_STATE_INTERVAL_S` and on the
+        request sentinel. The DOM half is read over the SAME `exec_js` seam the
+        probes use — the read a screenshot makes, in text — and the worker half
+        is the bridge's own already-held state. Nothing here starts a process or
+        a window, and nothing here changes what the owner sees.
+        """
+        dom = None
+        if self.core is not None:
+            dom = self.exec_js(PANEL_STATE_PROBE, timeout=5.0)
+        bridge = self.bridge
+        worker = bridge.snapshot() if bridge is not None else None
+        panel_status = ((dom or {}).get('status') or {}).get('text')
+        return {
+            'namedState': self._named_panel_state(worker, panel_status),
+            'panel': dom,
+            'shell': {
+                'visible': self.visible,
+                'hotkey': self.args.hotkey,
+                'rendererReady': self.renderer_ready.is_set(),
+                'bridgeInstalled': self.bridge_installed,
+                'lastStatus': self.last_status,
+                'captionLogCount': len(self.caption_log),
+                'reloadCount': self.reload_count,
+                'workerPath': self.args.worker,
+                'log': getattr(_LOG_FILE, 'name', None),
+                'hotReload': self.hot_reload is not None,
+            },
+            'worker': worker,
+        }
+
+    @staticmethod
+    def _named_panel_state(worker, panel_status):
+        """One name for "what is the panel showing", by a STATED precedence.
+
+        The panel's OWN footer wins while it is live — `panel.js` writes
+        `Receiving captions` the moment a caption commits — because that is the
+        sentence the owner reads. Below it fall the worker's failure vocabulary,
+        then the bridge's own no-audio verdict. `no-worker` is a real state, not
+        an empty string: a panel with no bridge is not the same panel as one
+        holding a quiet worker.
+        """
+        if panel_status == 'Receiving captions':
+            return 'receiving'
+        if worker is None:
+            return 'no-worker'
+        pending = worker.get('pendingError') or {}
+        if pending.get('state'):
+            return str(pending['state'])
+        state = str(worker.get('state') or '')
+        if state in WORKER_ERROR_STATES:
+            return state
+        if worker.get('noAudio'):
+            return NO_AUDIO_STATE
+        return state or 'idle'
+
+    def start_panel_state(self):
+        """Arm the periodic + on-request dump. Idempotent per process."""
+        if self.panel_state is not None:
+            return False
+        self.panel_state = panel_state.PanelStateWriter(
+            path=PANEL_STATE_PATH,
+            request_path=PANEL_STATE_REQUEST,
+            snapshot=self.panel_state_snapshot,
+            log=log,
+            interval_s=PANEL_STATE_INTERVAL_S,
+        )
+        return self.panel_state.start()
+
     # -- history: the "redux" store, on disk --------------------------------
     # Layout: `<root>/<YYYY-MM-DD>/<HH>.md` — a 24 h folder, one file per hour,
     # appended as captions commit. The shell owns the path (the panel is handed
@@ -1759,7 +2024,36 @@ class SottoShell:
             time.strftime('%H', when) + '.md',
         )
 
-    def history_append(self, text):
+    @staticmethod
+    def _history_provenance(options):
+        """The `<!-- route=… start=… reason=… -->` suffix for one line (M8).
+
+        WHY IT EXISTS: `formulate()` appends terminal punctuation to every line
+        the renderer commits, so a fragment the panel abandoned after 1500 ms
+        and a sentence the worker actually closed were byte-identical in this
+        file. The route is what tells them apart; `start` is the worker's own
+        line identity (`worker/sotto_worker.py:_event`), so a line here can be
+        lined up with the worker's `start=` in its JSONL, and `reason` is the
+        rule that fired at the instant of the write.
+
+        It is written ON the line, and NOT into `entry['text']`: the feed and
+        the search show the sentence, the file carries the provenance.
+        """
+        if not isinstance(options, dict):
+            return ''
+        route = str(options.get('route') or '').strip()
+        if route not in HISTORY_ROUTES:
+            return ''
+        parts = [f'route={route}']
+        start = options.get('start')
+        if isinstance(start, (int, float)) and not isinstance(start, bool):
+            parts.append(f'start={float(start):.2f}')
+        reason = re.sub(r'\s+', ' ', str(options.get('reason') or '')).strip()
+        if reason:
+            parts.append(f'reason={reason}')
+        return ' <!-- ' + ' '.join(parts) + ' -->'
+
+    def history_append(self, text, options=None):
         """Append ONE committed caption. Returns the entry as written, or None."""
         body = re.sub(r'\s+', ' ', str(text or '')).strip()
         if not body:
@@ -1773,10 +2067,11 @@ class SottoShell:
             'text': body,
             'path': path,
         }
+        provenance = self._history_provenance(options)
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'a', encoding='utf-8') as handle:
-                handle.write(f'- [{entry["time"]}] {body}\n')
+                handle.write(f'- [{entry["time"]}] {body}{provenance}\n')
         except OSError as exc:  # noqa: BLE001 -- a write miss must not kill the app
             warn(f'HISTORY_APPEND_FAILED path={json.dumps(path)} error={exc!r}')
             return None
@@ -1819,8 +2114,12 @@ class SottoShell:
             for line in reversed(self._history_read(path)):
                 match = HISTORY_LINE_RE.match(line)
                 if match:
+                    # The provenance comment is the FILE's, not the feed's:
+                    # strip it so search and the feed still see the sentence
+                    # (M8 — see `_history_provenance`).
                     yield {'date': day, 'hour': hour, 'time': match.group(1),
-                           'text': match.group(2).strip(), 'path': path}
+                           'text': HISTORY_TAIL_RE.sub('', match.group(2)).strip(),
+                           'path': path}
 
     def history_tail(self, limit=400):
         limit = max(1, int(limit))
@@ -2015,6 +2314,8 @@ class SottoShell:
             self.bridge.stop('exit')
         if self.hotkey is not None:
             self.hotkey.stop()
+        if self.panel_state is not None:
+            self.panel_state.stop('exit')
         self.stop_hot_reload('exit')
         # `window.destroy()` marshals a Close() onto the UI thread and WAITS
         # for it. With a live worker streaming statuses, each status is an
@@ -2472,7 +2773,7 @@ class WorkerBridge:
 
     def __init__(self, command, worker_path, device=None,
                  capture_mode=DEFAULT_CAPTURE_MODE, log=log,
-                 on_caption=None, on_status=None, silence_ms=15000,
+                 on_caption=None, on_status=None, silence_ms=WORKER_SILENCE_MS,
                  backoff_base=1000, backoff_max=30000):
         self.command = command or default_python()
         self.worker_path = worker_path
@@ -2519,6 +2820,23 @@ class WorkerBridge:
         self.no_audio_evidence = None
         self.deaths = 0
         self.stderr_tail = []
+        #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
+        #: That stream is the ONLY place `peak`/`nonzero_blocks` are published,
+        #: and this bridge already reads it (for `stderr_tail`) — the line was
+        #: dropped after three, which is why those numbers were unreachable from
+        #: outside the process. Kept whole for the panel-state text dump.
+        self.last_worker_stats = None
+        #: The last status that NAMED an endpoint (`device`, `capture-started`,
+        #: `device-rotated`, `device-exhausted`, `silent-device`). The panel shows
+        #: the device inside a human sentence; the raw fields are kept here so the
+        #: dump can say WHICH endpoint is tapped without parsing prose.
+        self.last_device_status = None
+        #: The highest `blocks=` the CURRENT child has published in a
+        #: `WORKER_STATS` line. The watchdog is armed against NO PROGRESS, and
+        #: this counter advancing IS progress (see `_note_progress`). Reset per
+        #: child: the counter starts again at 0, so a value left over from the
+        #: dead process would suppress every re-arm of the new one.
+        self._progress_blocks = None
         self._silence_timer = None
         self._restart_timer = None
         self._lock = threading.Lock()
@@ -2533,6 +2851,43 @@ class WorkerBridge:
         out — see the note there).
         """
         return bool(self.capturing) and self.child is not None
+
+    def snapshot(self):
+        """The bridge's OWN state as plain data, for the panel-state text dump.
+
+        Read-only and cheap: it copies fields this object already holds and does
+        NOT measure anything (no `peak` is computed here, no process is asked).
+        `peak`/`nonzero_blocks` come from the worker's own `WORKER_STATS` line,
+        which `_pump` already read off stderr.
+        """
+        child = self.child
+        current = child.pid if child is not None else None
+        stats = self.last_worker_stats
+        device = self.last_device_status
+        return {
+            'state': self.state,
+            'capturing': bool(self.capturing),
+            'childPid': current,
+            'spawns': self.spawns,
+            'restarts': self.restarts,
+            'deaths': self.deaths,
+            'captions': self.captions,
+            'statuses': self.statuses,
+            'malformed': self.malformed,
+            'lastExit': self.last_exit,
+            'noAudio': bool(self.no_audio),
+            'noAudioEvidence': self.no_audio_evidence,
+            'pendingError': self.pending_error,
+            'lastError': self.last_error,
+            # `*Current` is the honest half of keeping a dead child's number
+            # around: False means the line was published by a child this bridge
+            # has already replaced, and it says so instead of looking live.
+            'device': device,
+            'deviceCurrent': bool(device) and device.get('childPid') == current,
+            'workerStats': stats,
+            'workerStatsCurrent': bool(stats) and stats.get('childPid') == current,
+            'stderrTail': list(self.stderr_tail[-3:]),
+        }
 
     # -- status ------------------------------------------------------------
     def _status(self, text, kind='busy', info=None):
@@ -2588,6 +2943,11 @@ class WorkerBridge:
 
         self.state = 'spawning'
         self.spawns += 1
+        # `stderr_tail` explains THIS death, so it is reset per child. The last
+        # stats line and the last device are NOT cleared: each is stamped with
+        # the pid that published it (`childPid`), so the snapshot can say whether
+        # the number belongs to the live child or to the one that just died,
+        # instead of showing a null that hides both.
         self.stderr_tail = []
         # A freshly spawned worker has no open stream yet; the guard re-opens
         # when its `capture-started` line arrives. `spawned_at` lets a queued
@@ -2598,6 +2958,10 @@ class WorkerBridge:
         # respawn would blind the watchdog for the new one.
         self.no_audio = False
         self.no_audio_evidence = None
+        # The new child's `blocks=` counter starts again at 0 (see
+        # `_progress_blocks`): carrying the dead process's last value over would
+        # make every heartbeat look like a repeat and blind the watchdog.
+        self._progress_blocks = None
         self.spawned_at = time.monotonic()
 
         env = dict(os.environ)
@@ -2642,7 +3006,11 @@ class WorkerBridge:
 
         for stream, name in ((self.child.stdout, 'stdout'),
                              (self.child.stderr, 'stderr')):
-            threading.Thread(target=self._pump, args=(stream, name),
+            # The child is passed EXPLICITLY rather than read from `self.child`
+            # inside the thread: a dead worker's pipe can still be draining while
+            # `self.child` already points at its replacement, and a WORKER_STATS
+            # line stamped with the WRONG pid is an unattributable number.
+            threading.Thread(target=self._pump, args=(stream, name, self.child),
                              name=f'sotto-worker-{name}', daemon=True).start()
         threading.Thread(target=self._wait, name='sotto-worker-wait',
                          daemon=True).start()
@@ -2672,7 +3040,7 @@ class WorkerBridge:
         return False
 
     # -- stdout ------------------------------------------------------------
-    def _pump(self, stream, name):
+    def _pump(self, stream, name, child=None):
         # A reader thread that dies takes the worker's WHOLE output channel with
         # it, and `except Exception: pass` made that indistinguishable from a
         # worker that said nothing: the run then logs `statuses=0` and the panel
@@ -2689,11 +3057,25 @@ class WorkerBridge:
                 if name == 'stderr':
                     self.stderr_tail.append(line.rstrip())
                     del self.stderr_tail[:-3]
+                    # The worker's own counters line, kept whole (see
+                    # `last_worker_stats`): the text dump reads `peak` and
+                    # `nonzero_blocks` from here, not from a new measurement.
+                    if line.startswith('WORKER_STATS'):
+                        parsed = parse_worker_stats(line)
+                        if parsed is not None:
+                            if child is not None:
+                                parsed['childPid'] = child.pid
+                            self.last_worker_stats = parsed
+                            # The heartbeat is PROGRESS. Re-arming here is the
+                            # whole cure: this stream used to `continue` before
+                            # `_arm_silence`, so the one periodic signal the
+                            # worker publishes never reached the watchdog.
+                            self._note_progress(parsed)
                     continue
                 self._arm_silence()
                 text = line.strip()
                 if text:
-                    self._consume(text)
+                    self._consume(text, child)
         except Exception as exc:
             self.log(f'BRIDGE_PUMP_DIED stream={name} error={exc!r}')
         finally:
@@ -2702,7 +3084,7 @@ class WorkerBridge:
             except Exception:
                 pass
 
-    def _consume(self, line):
+    def _consume(self, line, child=None):
         try:
             message = json.loads(line)
         except ValueError:
@@ -2735,6 +3117,21 @@ class WorkerBridge:
             state = str(message.get('state') or '')
             if state:
                 self.state = state
+            if message.get('device'):
+                # Remember WHICH endpoint this child is on. `device` names the
+                # first candidate (with the full `candidates` list); a rotation
+                # names the one it moved to. Kept as raw fields so the dump can
+                # name the endpoint being tapped without parsing the sentence.
+                self.last_device_status = {
+                    'state': state,
+                    'device': message.get('device'),
+                    'api': message.get('api'),
+                    'peak': message.get('peak'),
+                    'reason': message.get('reason'),
+                    'candidates': message.get('candidates'),
+                }
+                if child is not None:
+                    self.last_device_status['childPid'] = child.pid
             # The worker's own answer to "is there anything to transcribe?".
             # Remembered per child (reset in `_spawn`) and read by `_on_silence`
             # so the watchdog stops treating "a quiet desktop" as "a jammed
@@ -2820,6 +3217,36 @@ class WorkerBridge:
         timer.daemon = True
         self._silence_timer = timer
         timer.start()
+
+    def _note_progress(self, stats):
+        """The worker's own heartbeat counts as PROGRESS; re-arm the watchdog.
+
+        MUST NOT take `self._lock` — it is called from the pump thread, and the
+        same rule as `_arm_silence` applies.
+
+        THE DEFECT THIS CLOSES, measured in the owner's own log
+        (`_main/webview-run.log`, 2026-10-06, `pid=4312`/`pid=47056`): the only
+        PERIODIC signal the worker publishes is `WORKER_STATS tag=tick` on
+        STDERR (`--stats-interval`, 10 s), and it carries the ADVANCING
+        `blocks=` counter — the worker's own proof that it is still consuming
+        audio. `_pump` re-armed the watchdog for STDOUT lines only, so that
+        proof was invisible: 15 s without a CAPTION killed a worker that was
+        transcribing (`BRIDGE_RESTART reason=silent`, 33 times in that log;
+        `captions=29` on the very pid that was killed), and every respawn paid
+        a ~2.4 GB model reload before it could caption again.
+
+        The counter must ADVANCE. Otherwise a worker that reprints its last
+        line forever — a wedged loop — would buy itself an eternal reprieve and
+        the watchdog would stop being a watchdog.
+        """
+        try:
+            blocks = int((stats.get('fields') or {}).get('blocks', ''))
+        except (TypeError, ValueError):
+            return
+        if self._progress_blocks is not None and blocks <= self._progress_blocks:
+            return
+        self._progress_blocks = blocks
+        self._arm_silence()
 
     def _cancel_timers(self):
         for name in ('_silence_timer', '_restart_timer'):

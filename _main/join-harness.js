@@ -1,6 +1,6 @@
 // Oracle for the caption pipeline.
 //
-// IT LOADS THE REAL MODULE. `require('../app/electron/caption-formulation.js')`
+// IT LOADS THE REAL MODULE. `require('../app/panel/caption-formulation.js')`
 // — not a copy of it. The previous version of this file pasted a hand-copied
 // transcription of the join functions out of `panel.js`, which is a gate that
 // can go GREEN while the product is broken: the copy and the source drift
@@ -22,7 +22,7 @@ const path = require('node:path');
 
 const IMPL = (() => {
   const flag = process.argv.find((a) => a.startsWith('--impl='));
-  return path.resolve(flag ? flag.slice('--impl='.length) : path.join(__dirname, '..', 'app', 'electron', 'caption-formulation.js'));
+  return path.resolve(flag ? flag.slice('--impl='.length) : path.join(__dirname, '..', 'app', 'panel', 'caption-formulation.js'));
 })();
 const LABEL = path.basename(IMPL) === 'caption-formulation.js' ? 'REAL' : 'CONTROL';
 

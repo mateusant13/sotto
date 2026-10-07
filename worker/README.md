@@ -1,6 +1,9 @@
 # Sotto caption worker
 
-Fills the Electron panel's caption area. System audio in, streamed captions out.
+Fills the caption area of the Sotto panel. System audio in, streamed captions out. The panel files are
+`app/electron/panel.{html,css,js}` and the shell that hosts them today is WebView2
+(`app/webview/sotto_webview.py`); the rest of `app/electron/` is the EARLIER Electron shell, kept as the
+reference arm and not a fallback.
 
 ```
 python sotto_worker.py                 # live loopback capture
@@ -17,9 +20,22 @@ goes to stdout; diagnostics go to stderr.
 {"type":"caption","text":"Can I leave","start":13.44,"end":14.00,"model":"nemotron-3.5-asr-streaming-0.6b-int8"}
 ```
 
-States: `boot`, `model-loading`, `model-loaded`, `device`, `capture-started`,
-`selftest-start`, `selftest-done`, `done`, `error`. Pre-load lifecycle detail travels on
-`boot` as a `stage` (`start`, `lang`, `providers`), the convention this file already used.
+States — the COMPLETE list the code emits, each with its emit site in `worker/sotto_worker.py`:
+`boot` (`:2179`, and `:2301`/`:2342` carrying a `stage` — `start`, `lang`, `providers`), `model-loading`
+(`:2359`), `model-loaded` (`:2375`), `gate` (`:2408`; carries `gate=on|off`, its `source` and the three
+thresholds), `device` (`:2477`), `capture-started` (`:3014`), `device-rotated` (`:3000`, reason
+`open-failed`; `:3153`, reason `flat`), `device-exhausted` (`:3178`), `silent-device` (`:3226`),
+`music-only-capture` (`:3262`), `no-speech-in-capture` (`:3309`), `selftest-start` (`:1919`),
+`selftest-done` (`:1953`), `done` (`:3349`), `error` (ten sites: `:1914`, `:2191`, `:2289`, `:2356`,
+`:2366`, `:2429`, `:2464`, `:2471`, `:2881`, `:2990`).
+
+Pre-load lifecycle detail travels on `boot` as a `stage` (`start`, `lang`, `providers`), the convention
+this file already used. **This list used to stop at nine words while the code emitted six more** —
+`gate`, `device-rotated`, `device-exhausted`, `silent-device`, `music-only-capture` and
+`no-speech-in-capture` — so a consumer written from this file painted the worker's own failure vocabulary
+raw. **The line numbers are the 173388 B revision (mtime 2026-10-07 03:21:10) and they DRIFT** — the worker
+moved by one line while this file was being corrected, so re-grep (`grep -n 'state="' worker/sotto_worker.py`)
+before trusting one.
 
 ## Model
 
@@ -63,23 +79,40 @@ prediction. The previous code kept a cursor `k0` counting emitted symbols and
 used it to slice `decoder_output`; that array only ever holds 1-2 steps, so the
 slice emptied and the chunk ended after a couple of symbols.
 
-**2. The prediction network is re-primed at every chunk boundary.** `h`/`c`
-return to zero and the first decoder call of a chunk consumes only the blank.
-The acoustic history already crosses the boundary in the encoder cache
-(`cache_last_channel` / `cache_last_time`); carrying the decoder state as well
-duplicates word tails.
+**2. The prediction network CARRIES ACROSS every chunk boundary, and the first
+decoder call of a chunk is fed the LAST EMITTED SYMBOL — not the blank.**
+(Changed 2026-10-06, `docs/audit/predictor-carry-cura.md`.) The acoustic history
+crosses the boundary in the encoder cache (`cache_last_channel` /
+`cache_last_time`) *and* the predictor's `h`/`c` crosses with it; the seed for
+the new chunk is what the last chunk actually ended on.
 
-Measured, `sample1.flac` (13.44 s), CPU, only the walk differing:
+This was **re-primed per chunk** (`h`/`c` → 0, first decode eats `<blank>`) until
+2026-10-06, on the strength of the 13.44 s-clip table below. That table was
+measuring the wrong arm: it carried `h`/`c` but still fed the blank, so the
+predictor restarted mid-word and glued tails (`backnst`, `weekendn`, `gotral`) —
+the glue, not the carry, is what it measured. Measured on the reference video
+`PQw0TRzpCkk` (2 692 chunks × 560 ms, CUDA, int8, only the predictor policy
+differing, `_main/sotto-vs-ref-decode-arms.py`):
+
+| walk | tokens | words | % of ref | empty chunks | WER |
+|---|---|---|---|---|---|
+| re-prime per chunk (old shipped) | 5 661 | 2 183 | 50.7 % | 1 597 (59.3 %) | 0.6105 |
+| carry `h`/`c`, seed `<blank>` | 8 192 | 3 304 | 76.8 % | 622 (23.1 %) | 0.5954 |
+| **carry `h`/`c`, seed last symbol (shipped)** | **10 738** | **4 279** | **99.4 %** | **270 (10.0 %)** | **0.1536** |
+
+Carrying the full token list *and* `h`/`c` (the older repetition bug) is a third,
+distinct failure and is still avoided: each decoder call consumes only what it
+has not consumed yet. The predictor is reset in exactly two places, both
+start-of-stream: `__init__` and `reset_stream_state()`.
+
+Measured, `sample1.flac` (13.44 s), CPU, only the walk differing — the original
+table, kept for provenance:
 
 | walk | tokens | output |
 |---|---|---|
 | old (label cursor + state carried across chunks) | 37 | `go sl cous ands droom for night' an somece of on moni …` |
-| corrected, state carried across chunks | 86 | `Goinging along country roadskingss infty schoolros dayy …` |
-| corrected, state re-primed per chunk | 81 | `Going along Slushy Country roads Speaking in School Day For a fortnight …` |
-
-Carrying the full token list *and* `h`/`c` (the older repetition bug) is a third,
-distinct failure and is still avoided: each decoder call consumes only what it
-has not consumed yet.
+| corrected, state carried across chunks + seed `<blank>` | 86 | `Goinging along country roadskingss infty schoolros dayy …` |
+| corrected, state re-primed per chunk (was shipped) | 81 | `Going along Slushy Country roads Speaking in School Day For a fortnight …` |
 
 ## Providers — read this before trusting any RTF
 
@@ -158,12 +191,25 @@ and `docs/int8-route-20261006.md` (which ran that cell). The FP16 export
   PHYSICAL endpoint: Windows lists one cable under several host-API indices with
   different truncated names, and rotating across those would re-open the same
   dead device.
-- Candidates are TRIED, not trusted. A candidate that stays below `--tap-peak-floor`
-  (default 0.002) for `--tap-window` seconds (default 6) with no caption is
-  closed and the next one opened, logging
-  `{"type":"status","state":"device-rotated","from":…,"to":…,"reason":"flat","peak":…}`.
-  `peak` is that device's own maximum; `run_peak` is the run's. When every
-  candidate is flat the run ends on `state=device-exhausted`.
+- Candidates are TRIED, not trusted. **A CAPTION is the only thing that settles the ladder.** `peak >=
+  floor` proves the tap HEARS SOMETHING, not that it hears SPEECH, and the model's own front end gates
+  non-speech (`vad_gated_chunks`); so the peak floor only **classifies** and the ladder keeps looking. A
+  candidate that stays below `--tap-peak-floor` (built-in default 0.002, `sotto_worker.py:219`) for
+  `--tap-window` seconds (built-in default 6.0, `:218`) with no caption is closed and the next one opened.
+  The two things that can settle a candidate are `settled = True` at **`:3053`** (a caption arrived) and
+  at **`:3059`** (this is the re-entered fallback and it carries signal); the per-candidate ledger row is
+  appended at **`:3080`**; a rotation logs
+  `{"type":"status","state":"device-rotated","from":…,"to":…,"reason":"flat","peak":…,"run_peak":…}`
+  (**`:3153`**; the open-failed rotation is `:3000`), where `peak` is that device's own maximum and
+  `run_peak` is the run's. A candidate is only credited as the run's device once it produced a caption
+  **or** was the re-entered fallback (`proved_alive`, **`:3109`**).
+- **When every candidate has been opened once and none produced a caption, the ladder RE-ENTERS the
+  loudest signal-carrying candidate instead of ending** (**`:3136-3145`**: `rung=fallback`, `rung_why`
+  says why, and `best_carried["retried"]` allows it AT MOST ONCE), so a live run keeps streaming rather
+  than exiting on the owner with nothing. `state=device-exhausted` (**`:3178`**) is therefore the case
+  where no candidate carried signal at all — `outcome in ("all-flat","open-failed")`, which includes
+  every candidate failing to OPEN. **This is the 2026-10-06 change:** before it, a candidate was
+  abandoned on the floor alone and "every candidate flat" always ended the run.
 - Capture uses a **callback** stream. Blocking reads fail on this host with
   `PaErrorCode -9999`.
 - The device is asked for 16 kHz mono directly (PortAudio/WASAPI converts); if it
@@ -177,7 +223,12 @@ and `docs/int8-route-20261006.md` (which ran that cell). The FP16 export
   `vad_gated_chunks` and advances the clock instead of dying on the `None`.
   `WORKER_STATS` and the final `done` status both carry `vad_gated_chunks`, so "the VAD acted"
   is a number rather than an assumption. On `assets/sample1.flac` it is `0` — that clip has no
-  3.36 s of silence to gate.
+  3.36 s of silence to gate. The code's own fallback is now `True` as well
+  (`worker/sotto_worker.py:2332` — `bool(cfg.get("model", {}).get("use_vad", True))`, F14 cured
+  2026-10-07): the default used to be `False` in the code while `config.json` shipped `true`, so a
+  config file missing the key ran with the VAD OFF and contradicted this README. The three numbers
+  above are the EXPORT's choices, not NVIDIA's or Silero's recommendation —
+  `docs/model-specs/README.md` §4 carries that distinction with the upstream citations.
 
 ### Speech/music gate (`SOTTO_GATE`)
 
@@ -221,6 +272,14 @@ Resolution order: `--lang-id` > `SOTTO_LANG_ID` > `config.json` > the shipped de
 The env rung exists because `worker-bridge.js#spawn` builds argv as
 `python [...extraArgs, workerPath]`, so a flag handed over by the shell lands BEFORE the
 script path and is eaten by the interpreter — the same reason `SOTTO_AUDIO_DEVICE` exists.
+
+**An ABSENT `model.lang_id` now means `auto`, NOT the host locale (F13, cured 2026-10-07).** The last rung
+used to pass `None`, and `None` is `lang_prompt.resolve_lang_id`'s sentinel for `"os"` — so a config file
+with the key deleted silently conditioned every run on the host's USER locale (on this pt-BR host, `12` =
+`pt-BR`, which collapsed the bundled ENGLISH sample from 94 tokens to 10). `sotto_worker.py:2285` now
+passes `"auto"` on that rung; the `boot stage=lang` line names the resolution it used
+(`source=default:auto`). `"os"` is still resolved when it is written EXPLICITLY — the sentinel in
+`worker/lang_prompt.py:236` is untouched; it was the caller that stopped reaching it by accident.
 
 A value the model does not declare (`999`, `-1`, `"klingon"`) is **refused**: exit **2**, one
 `{"type":"status","state":"error","stage":"lang-id"}` line on stdout, the reason on stderr,

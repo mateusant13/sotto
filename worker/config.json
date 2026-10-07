@@ -16,6 +16,8 @@
   "output": {
     "_comment_live": "LIVE as of 2026-10-06: min_chars is the floor for what is WORTH a caption; both emitters now apply it to the joined LINE (worker/sotto_worker.py selftest() and asr_thread()), and a value below 1 is refused back to 1, loudly. `partial` was DELETED the same day as an inert key -- it WAS inert, and it named exactly the behaviour that was missing (a caption was one decoded CHUNK, so the panel showed words, not phrases; owner, verbatim: 'tem palavras, inves de frases'). It is REBUILT here as a real switch, not restored as dead text: true ships the running LINE as it GROWS, false ships a line only once it CLOSES (a sentence boundary). Both arms are proven in docs/audit/caption-formulation.md; see also docs/audit/config-inert-fixed.md.",
     "min_chars": 1,
-    "partial": true
+    "partial": true,
+    "_comment_done_text_max_chars": "LIVE as of 2026-10-07 (lane F17): the maximum NUMBER OF CHARACTERS the run's whole text may occupy in the ONE JSONL line it ships at exit (`state=done`, key `text`; the same bound applies to `selftest-done.text`, which is the same claim about a file-mode run). Without it that line was unbounded: a multi-hour stream produced a single line nobody can read and a consumer has to hold. The HEAD of the transcript is kept; `text_chars` (the untruncated length) and `text_truncated` travel beside the text so a truncated line is visible from the numbers. 0 means NO cap. A value that is not an integer, or is negative, is refused back to 20000, loudly (worker/sotto_worker.py reads it next to min_chars/partial). The list it is detokenised from is bounded too, independently: `StreamAsr.labels` keeps its newest 200000 symbols (MAX_RETAINED_LABELS) and reports `labels_pruned`.",
+    "done_text_max_chars": 20000
   }
 }

@@ -109,6 +109,32 @@ IID_IMMDeviceEnumerator = _guid("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
 IID_IAudioClient = _guid("{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}")
 IID_IAudioCaptureClient = _guid("{C8ADBD64-E71E-48A0-A4DE-185C395CD317}")
 IID_IPropertyStore = _guid("{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}")
+# IAudioMeterInformation::GetPeakValue on a DEVICE returns that device's own
+# current peak -- the live answer to "which render endpoint is carrying audio
+# right now", read without opening any stream (Microsoft Learn, IAudioMeterInformation).
+IID_IAudioMeterInformation = _guid("{C02216F6-8C67-4B5B-9D00-D008E73E0064}")
+
+# IMMDeviceEnumerator::EnumAudioEndpoints device state. Only ACTIVE endpoints can
+# render, so only they are candidates for a loopback tap (Microsoft Learn,
+# IMMDeviceEnumerator + DEVICE_STATE_*).
+DEVICE_STATE_ACTIVE = 0x00000001
+
+# IMMDevice::OpenPropertyStore access mode (Microsoft Learn). Pulled out because
+# `_friendly_name` reaches the store through it, not through Activate().
+STGM_READ = 0x00000000
+
+# PROPVARIANT::vt for an LPWSTR. Measured on this box: the property store hands
+# PKEY_Device_FriendlyName back with vt=0x001F
+# (`_main/friendly-name-probe.out`). The previous body tested 0x001B, which is no
+# PROPVARIANT type at all, so even a store that answered would have been refused.
+VT_LPWSTR = 0x001F
+
+# Where the union starts inside a PROPVARIANT: 8 bytes of header (VARTYPE plus
+# three reserved words) on every supported ABI -- x86 and x64 both align the
+# union on 8 for its ULONGLONG/double members. Reading the LPWSTR at offset 0
+# instead returns the header bytes reinterpreted as a pointer (measured: an
+# access violation, rc=5, `_main/friendly-name-probe.out`).
+PROPVARIANT_UNION_OFFSET = 8
 
 PKEY_Device_FriendlyName = _guid("{A45C254E-DF1C-4EFD-8020-67D146A850E0}")
 
@@ -273,9 +299,13 @@ def default_render_endpoint(role=E_CONSOLE):
             _com_uninit()
 
 
-def _enumerate_default_render_endpoint(role):
-    """The body of `default_render_endpoint`, with COM already started."""
-    ole32 = _ole32()
+# ── one IMMDevice -> one LoopbackEndpoint ────────────────────────────────────
+# `default_render_endpoint` and `list_render_endpoints` need the SAME three
+# things from an IMMDevice (its friendly name, its endpoint id, its MIX format).
+# They are shared here so a SECOND render endpoint cannot be described by a
+# second, drifting copy of the mix-format parsing.
+def _make_enumerator(ole32):
+    """CoCreateInstance the MMDeviceEnumerator, with the argtypes set."""
     ole32.CoCreateInstance.argtypes = [
         ctypes.POINTER(GUID),
         ctypes.c_void_p,
@@ -285,7 +315,6 @@ def _enumerate_default_render_endpoint(role):
     ]
     ole32.CoCreateInstance.restype = HRESULT
     ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
-
     enum = ctypes.c_void_p()
     hr = ole32.CoCreateInstance(
         ctypes.byref(CLSID_MMDeviceEnumerator),
@@ -296,23 +325,86 @@ def _enumerate_default_render_endpoint(role):
     )
     if hr != 0 or not enum:
         raise WasapiError("MMDeviceEnumerator unavailable: %s" % _fmt(hr))
+    return enum
 
-    dev = ctypes.c_void_p()
-    # NOTE: (this, flow, role, ppEndpoint) -- omitting ppEndpoint corrupts the
-    # stack; measured as "access violation reading 0xFFFFFFFFFFFFFFFF".
-    get_default = _vtbl(
-        enum, 4, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)
-    )
-    hr = get_default(enum, E_RENDER, role, ctypes.byref(dev))
-    if hr != 0:
-        hr = get_default(enum, E_RENDER, E_MULTIMEDIA, ctypes.byref(dev))
-    if hr != 0 or not dev:
-        _release(enum)
-        raise WasapiError("no default render endpoint: %s" % _fmt(hr))
 
-    # friendly name -- a failure report must name the endpoint
-    name = None
+def _friendly_name(dev):
+    """PKEY_Device_FriendlyName, or None when the device genuinely publishes none.
+
+    THREE measured defects in the previous body, all on this box (2026-10-06,
+    `_main/friendly-name-probe.out`); the later two only became observable once
+    the first was fixed:
+
+      * it reached the property store through `IMMDevice::Activate(
+        IPropertyStore, CLSCTX_INPROC_SERVER, ...)`, which fails with
+        E_NOINTERFACE (0x80004002) on ALL SIX active render endpoints. So the
+        function returned None for every device and the ladder, the tap ledger
+        and the panel named every endpoint by its raw GUID
+        ("WASAPI loopback: {0.0.0.00000000}.{55395a4e-...}") instead of
+        "VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)". The property store is
+        reached through `IMMDevice::OpenPropertyStore` (vtable index 4), which
+        returns S_OK on the same six (Microsoft Learn, IMMDevice::OpenPropertyStore).
+      * it read the LPWSTR out of OFFSET 0 of the PROPVARIANT. On x64 the 8-byte
+        header (VARTYPE + three reserved words) is followed by the union at
+        offset 8, so offset 0 reinterprets the header bytes as a pointer --
+        measured: dereferencing it killed the probe with an access violation
+        (rc=5). Offset 8 returns the name, vt=VT_LPWSTR (0x001F).
+      * it tested vt against 0x001B, which is no PROPVARIANT type at all, so
+        even a store that answered would have been refused. The measured vt of a
+        friendly name is VT_LPWSTR = 0x001F.
+
+    A device that really publishes nothing still gets None, and `_mix_spec` keeps
+    its honest endpoint-id fallback rather than a fabricated name.
+    """
     store = ctypes.c_void_p()
+    open_store = _vtbl(dev, 4, HRESULT, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p))
+    if open_store(dev, STGM_READ, ctypes.byref(store)) != 0 or not store:
+        return None
+    name = None
+    var = (ctypes.c_ubyte * 24)()
+    got = False
+    try:
+        get_value = _vtbl(
+            store, 5, HRESULT, ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(ctypes.c_ubyte)
+        )
+        if get_value(store, ctypes.byref(_PKEY_FRIENDLY), var) == 0:
+            got = True
+            if ctypes.cast(var, ctypes.POINTER(ctypes.c_ushort))[0] == VT_LPWSTR:
+                pw = ctypes.cast(
+                    ctypes.addressof(var) + PROPVARIANT_UNION_OFFSET,
+                    ctypes.POINTER(ctypes.c_void_p),
+                )[0]
+                if pw:
+                    name = ctypes.cast(pw, ctypes.c_wchar_p).value
+    finally:
+        if got:
+            # The store allocated the string; PropVariantClear owns freeing it.
+            # Only after a successful GetValue: clearing an uninitialised
+            # PROPVARIANT would free a pointer nobody set.
+            ole32 = _ole32()
+            ole32.PropVariantClear.argtypes = [ctypes.c_void_p]
+            ole32.PropVariantClear.restype = HRESULT
+            ole32.PropVariantClear(ctypes.byref(var))
+        _release(store)
+    return name
+
+
+def _endpoint_id(dev, ole32):
+    """The endpoint's own id string (IMMDevice::GetId), or None."""
+    buf = ctypes.c_wchar_p()
+    if _vtbl(dev, 5, HRESULT, ctypes.POINTER(ctypes.c_wchar_p))(dev, ctypes.byref(buf)) != 0:
+        return None
+    val = buf.value
+    ole32.CoTaskMemFree(buf)
+    return val
+
+
+def _mix_spec(dev, ole32):
+    """LoopbackEndpoint for ONE IMMDevice: name, id and MIX format.
+
+    A loopback stream has no format negotiation, so this format is the one the
+    tap MUST initialise with (Microsoft Learn, loopback recording).
+    """
     activate = _vtbl(
         dev,
         3,
@@ -322,71 +414,265 @@ def _enumerate_default_render_endpoint(role):
         ctypes.c_void_p,
         ctypes.POINTER(ctypes.c_void_p),
     )
-    if activate(dev, ctypes.byref(IID_IPropertyStore), CLSCTX_INPROC_SERVER, None, ctypes.byref(store)) == 0:
-        var = (ctypes.c_ubyte * 24)()
-        get_value = _vtbl(
-            store, 5, HRESULT, ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(ctypes.c_ubyte)
-        )
-        if get_value(store, ctypes.byref(_PKEY_FRIENDLY), var) == 0:
-            if ctypes.cast(var, ctypes.POINTER(ctypes.c_ushort))[0] == 0x001B:  # VT_LPWSTR
-                name = ctypes.cast(
-                    ctypes.cast(var, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.c_wchar_p
-                ).value
-        _release(store)
-
-    get_id = _vtbl(dev, 5, HRESULT, ctypes.POINTER(ctypes.c_wchar_p))
-    endpoint_id = None
-    buf = ctypes.c_wchar_p()
-    if get_id(dev, ctypes.byref(buf)) == 0:
-        endpoint_id = buf.value
-        ole32.CoTaskMemFree(buf)
-
     client = ctypes.c_void_p()
     hr = activate(dev, ctypes.byref(IID_IAudioClient), CLSCTX_INPROC_SERVER, None, ctypes.byref(client))
     if hr != 0:
-        _release(dev)
-        _release(enum)
         raise WasapiError("Activate(IAudioClient) failed: %s" % _fmt(hr))
-
-    mix = ctypes.POINTER(WAVEFORMATEX)()
-    get_mix = _vtbl(client, 8, HRESULT, ctypes.POINTER(ctypes.POINTER(WAVEFORMATEX)))
-    hr = get_mix(client, ctypes.byref(mix))
-    if hr != 0 or not mix:
+    try:
+        mix = ctypes.POINTER(WAVEFORMATEX)()
+        hr = _vtbl(client, 8, HRESULT, ctypes.POINTER(ctypes.POINTER(WAVEFORMATEX)))(
+            client, ctypes.byref(mix)
+        )
+        if hr != 0 or not mix:
+            raise WasapiError("GetMixFormat failed: %s" % _fmt(hr))
+        wf = mix.contents
+        tag = wf.wFormatTag
+        if tag == WAVE_FORMAT_EXTENSIBLE and wf.cbSize >= 22:
+            # offset 18 = wValidBitsPerSample, 20 = dwChannelMask, 24 = SubFormat GUID
+            sub = ctypes.cast(ctypes.addressof(wf) + 24, ctypes.POINTER(GUID)).contents
+            tag = sub.Data1 & 0xFFFF
+        if tag not in (WAVE_FORMAT_PCM, WAVE_FORMAT_IEEE_FLOAT):
+            raise WasapiError("unsupported mix subformat 0x%04X" % tag)
+        endpoint_id = _endpoint_id(dev, ole32)
+        return LoopbackEndpoint(
+            # Some drivers publish no PKEY_Device_FriendlyName (measured on this
+            # box: the property store returns nothing). The endpoint ID still
+            # identifies it exactly, and a failure report that says "unnamed"
+            # tells the owner nothing he can act on.
+            name=_friendly_name(dev) or (endpoint_id or "<unnamed render endpoint>"),
+            endpoint_id=endpoint_id,
+            rate=int(wf.nSamplesPerSec),
+            channels=int(wf.nChannels),
+            bits=int(wf.wBitsPerSample),
+            format_tag=tag,
+            block_align=int(wf.nBlockAlign),
+        )
+    finally:
+        # the client is re-activated inside the tap; release the probe's handle
         _release(client)
-        _release(dev)
-        _release(enum)
-        raise WasapiError("GetMixFormat failed: %s" % _fmt(hr))
 
-    wf = mix.contents
-    tag = wf.wFormatTag
-    if tag == WAVE_FORMAT_EXTENSIBLE and wf.cbSize >= 22:
-        # offset 18 = wValidBitsPerSample, 20 = dwChannelMask, 24 = SubFormat GUID
-        sub = ctypes.cast(ctypes.addressof(wf) + 24, ctypes.POINTER(GUID)).contents
-        tag = sub.Data1 & 0xFFFF
-    if tag not in (WAVE_FORMAT_PCM, WAVE_FORMAT_IEEE_FLOAT):
-        _release(client)
-        _release(dev)
-        _release(enum)
-        raise WasapiError("unsupported mix subformat 0x%04X" % tag)
 
-    ep = LoopbackEndpoint(
-        # Some drivers publish no PKEY_Device_FriendlyName (measured on this box:
-        # the property store returns nothing). The endpoint ID still identifies
-        # it exactly, and a failure report that says "unnamed" tells the owner
-        # nothing he can act on.
-        name=name or (endpoint_id or "<unnamed render endpoint>"),
-        endpoint_id=endpoint_id,
-        rate=int(wf.nSamplesPerSec),
-        channels=int(wf.nChannels),
-        bits=int(wf.wBitsPerSample),
-        format_tag=tag,
-        block_align=int(wf.nBlockAlign),
+def _enumerate_default_render_endpoint(role):
+    """The body of `default_render_endpoint`, with COM already started."""
+    ole32 = _ole32()
+    enum = _make_enumerator(ole32)
+    try:
+        dev = ctypes.c_void_p()
+        # NOTE: (this, flow, role, ppEndpoint) -- omitting ppEndpoint corrupts the
+        # stack; measured as "access violation reading 0xFFFFFFFFFFFFFFFF".
+        get_default = _vtbl(
+            enum, 4, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)
+        )
+        hr = get_default(enum, E_RENDER, role, ctypes.byref(dev))
+        if hr != 0:
+            hr = get_default(enum, E_RENDER, E_MULTIMEDIA, ctypes.byref(dev))
+        if hr != 0 or not dev:
+            raise WasapiError("no default render endpoint: %s" % _fmt(hr))
+        try:
+            return _mix_spec(dev, ole32)
+        finally:
+            _release(dev)
+    finally:
+        _release(enum)
+
+
+def _device_by_id(enum, endpoint_id):
+    """IMMDeviceEnumerator::GetDevice (vtable index 5) -> IMMDevice."""
+    dev = ctypes.c_void_p()
+    hr = _vtbl(enum, 5, HRESULT, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_void_p))(
+        enum, endpoint_id, ctypes.byref(dev)
     )
-    # the client is re-activated inside the tap; release the probe's handles
-    _release(client)
-    _release(dev)
-    _release(enum)
-    return ep
+    if hr != 0 or not dev:
+        raise WasapiError("GetDevice(%s) failed: %s" % (endpoint_id, _fmt(hr)))
+    return dev
+
+
+def _meter_peak(dev, seconds=0.15):
+    """IAudioMeterInformation::GetPeakValue on the DEVICE, sampled for `seconds`.
+
+    >0 means this endpoint is rendering RIGHT NOW. No stream is opened to read
+    it, so it is safe to ask about every endpoint. None when the meter is
+    unavailable (the caller must then not treat "no reading" as "no signal").
+    """
+    m = ctypes.c_void_p()
+    if _vtbl(dev, 3, HRESULT, ctypes.POINTER(GUID), wintypes.DWORD, ctypes.c_void_p,
+             ctypes.POINTER(ctypes.c_void_p))(dev, ctypes.byref(IID_IAudioMeterInformation),
+                                              CLSCTX_INPROC_SERVER, None,
+                                              ctypes.byref(m)) != 0 or not m:
+        return None
+    try:
+        get_peak = _vtbl(m, 3, HRESULT, ctypes.POINTER(ctypes.c_float))
+        best = 0.0
+        t0 = time.time()
+        while True:
+            v = ctypes.c_float(0.0)
+            if get_peak(m, ctypes.byref(v)) == 0:
+                best = max(best, float(v.value))
+            if time.time() - t0 >= seconds:
+                break
+            time.sleep(0.02)
+        return best
+    finally:
+        _release(m)
+
+
+def list_render_endpoints(role=E_CONSOLE, meter_ms=0.15):
+    """EVERY ACTIVE render endpoint, each with its live meter peak.
+
+    `IMMDeviceEnumerator::EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)` is
+    what defines ACTIVE (Microsoft Learn). The result is ORDERED BY SIGNAL
+    (meter_peak descending; the DEFAULT endpoint breaks a tie), because the
+    defect this exists to remove is a tap that opens a SILENT endpoint while the
+    owner's audio renders on a different one.
+    """
+    if sys.platform != "win32":
+        raise WasapiError("WASAPI loopback is Windows-only")
+    com = _com_init()
+    try:
+        return _list_render_endpoints(role, meter_ms)
+    finally:
+        if com == COM_REF_TAKEN:
+            _com_uninit()
+
+
+def _list_render_endpoints(role, meter_ms):
+    ole32 = _ole32()
+    enum = _make_enumerator(ole32)
+    out = []
+    try:
+        default_id = None
+        dev_default = ctypes.c_void_p()
+        get_default = _vtbl(
+            enum, 4, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)
+        )
+        if get_default(enum, E_RENDER, role, ctypes.byref(dev_default)) == 0 and dev_default:
+            default_id = _endpoint_id(dev_default, ole32)
+            _release(dev_default)
+
+        coll = ctypes.c_void_p()
+        hr = _vtbl(enum, 3, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p))(
+            enum, E_RENDER, DEVICE_STATE_ACTIVE, ctypes.byref(coll)
+        )
+        if hr != 0 or not coll:
+            raise WasapiError("EnumAudioEndpoints(eRender, ACTIVE) failed: %s" % _fmt(hr))
+        try:
+            count = wintypes.UINT(0)
+            _vtbl(coll, 3, HRESULT, ctypes.POINTER(wintypes.UINT))(coll, ctypes.byref(count))
+            for i in range(count.value):
+                dev = ctypes.c_void_p()
+                if _vtbl(coll, 4, HRESULT, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(
+                        coll, i, ctypes.byref(dev)) != 0 or not dev:
+                    continue
+                try:
+                    ep = _mix_spec(dev, ole32)
+                    out.append({
+                        "endpoint_id": ep.endpoint_id,
+                        "name": ep.name,
+                        "rate": ep.rate,
+                        "channels": ep.channels,
+                        "bits": ep.bits,
+                        "format_tag": ep.format_tag,
+                        "block_align": ep.block_align,
+                        "is_default": ep.endpoint_id is not None and ep.endpoint_id == default_id,
+                        "meter_peak": _meter_peak(dev, meter_ms),
+                    })
+                except Exception:
+                    # One endpoint that cannot be described must not hide the
+                    # others: the ladder still needs the ones that can.
+                    pass
+                finally:
+                    _release(dev)
+        finally:
+            _release(coll)
+    finally:
+        _release(enum)
+    # ORDER IS THE CONTRACT: whoever is rendering now goes first.
+    out.sort(key=lambda e: (-(e["meter_peak"] or 0.0), not e["is_default"]))
+    return out
+
+
+def live_render_peaks(meter_ms=0.12):
+    """{endpoint_id: live meter peak} for every ACTIVE render endpoint, read NOW.
+
+    The candidate list is ordered ONCE, when `device_candidates()` runs at
+    process start, and that reading is what the ladder then walks. MEASURED on
+    this box 2026-10-06: at that moment the owner was not rendering yet, every
+    one of the six active render endpoints read `meter_peak=0.000000`, the sort
+    could not discriminate, and the `not is_default` tie-break handed the FIRST
+    tap window to `VoiceMeeter Input` -- the endpoint this box never renders to
+    -- while the audio was on `CABLE Input` (id `{2f1295af-...}`). The ladder
+    then burned a whole window before reaching the endpoint that was playing.
+
+    This is the same question asked at the moment the answer matters, and it is
+    deliberately cheaper than `list_render_endpoints`: no IAudioClient is
+    activated and no mix format is parsed, because only the meter is wanted.
+    Cost measured on this box: 6 endpoints at `meter_ms=0.12` = 0.76 s
+    (`_main/ordem-dos-candidatos-probe.py`), against the 6.0 s tap window it
+    replaces when it changes the choice.
+
+    Returns {} -- never raises, never guesses -- when the platform or the
+    enumeration fails; a caller that gets {} must keep the order it already has.
+    """
+    if sys.platform != "win32":
+        return {}
+    com = _com_init()
+    try:
+        ole32 = _ole32()
+        enum = _make_enumerator(ole32)
+        out = {}
+        try:
+            coll = ctypes.c_void_p()
+            hr = _vtbl(enum, 3, HRESULT, wintypes.DWORD, wintypes.DWORD,
+                       ctypes.POINTER(ctypes.c_void_p))(
+                enum, E_RENDER, DEVICE_STATE_ACTIVE, ctypes.byref(coll)
+            )
+            if hr != 0 or not coll:
+                return {}
+            try:
+                count = wintypes.UINT(0)
+                _vtbl(coll, 3, HRESULT, ctypes.POINTER(wintypes.UINT))(coll, ctypes.byref(count))
+                for i in range(count.value):
+                    dev = ctypes.c_void_p()
+                    if _vtbl(coll, 4, HRESULT, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(
+                            coll, i, ctypes.byref(dev)) != 0 or not dev:
+                        continue
+                    try:
+                        eid = _endpoint_id(dev, ole32)
+                        if eid:
+                            out[eid] = _meter_peak(dev, meter_ms)
+                    finally:
+                        _release(dev)
+            finally:
+                _release(coll)
+        finally:
+            _release(enum)
+        return out
+    except Exception:
+        return {}
+    finally:
+        if com == COM_REF_TAKEN:
+            _com_uninit()
+
+
+def endpoint_spec(endpoint_id):
+    """The LoopbackEndpoint for ONE endpoint id, or WasapiError."""
+    if sys.platform != "win32":
+        raise WasapiError("WASAPI loopback is Windows-only")
+    com = _com_init()
+    try:
+        ole32 = _ole32()
+        enum = _make_enumerator(ole32)
+        try:
+            dev = _device_by_id(enum, endpoint_id)
+            try:
+                return _mix_spec(dev, ole32)
+            finally:
+                _release(dev)
+        finally:
+            _release(enum)
+    finally:
+        if com == COM_REF_TAKEN:
+            _com_uninit()
 
 
 class WasapiLoopbackTap:
@@ -395,15 +681,35 @@ class WasapiLoopbackTap:
     Delivers float32 MONO blocks at the endpoint's MIX rate (typically 48 kHz).
     The caller resamples to the model's 16 kHz -- that conversion cannot happen
     on the device, because a loopback stream must use the mix format.
+
+    Contract: `stop()` is idempotent and, when it returns, `on_block` will never
+    be called again (the pump thread is joined before returning), but the COM
+    interfaces are still open. `close()` = `stop()` + release of every COM
+    reference, also idempotent; `close()` alone is enough for a caller that
+    never intends to reuse the tap.
     """
 
-    def __init__(self, on_block, block_ms=100, role=E_CONSOLE):
+    def __init__(self, on_block, block_ms=100, role=E_CONSOLE, endpoint_id=None):
         import numpy as np
 
         self.np = np
         self.on_block = on_block
+        # Held ONLY around the `on_block` call in `_pump`, so `stop()` can prove
+        # the guarantee below: set `_stop`, join the pump, then acquire this lock
+        # -- whoever gets it afterwards cannot be inside a callback, and the
+        # joined thread will not start another one.
+        self._cb_lock = threading.Lock()
         self.block_ms = block_ms
-        self.ep = default_render_endpoint(role)
+        self.role = role
+        # WHICH endpoint this tap reads. None keeps the historical behaviour
+        # (the DEFAULT render endpoint); an id opens THAT endpoint, which is what
+        # lets the ladder settle on the endpoint that is actually RENDERING
+        # instead of on a default that may be carrying nothing. MEASURED on this
+        # box 2026-10-06: the owner's Chrome rendered to `CABLE Input` while the
+        # default was `VoiceMeeter Input`, whose loopback read 0 blocks / peak 0.
+        self.endpoint_id = endpoint_id
+        self.ep = (default_render_endpoint(role) if endpoint_id is None
+                   else endpoint_spec(endpoint_id))
         self.rate = self.ep.rate
         self.native_rate = self.rate
         self.channels = self.ep.channels
@@ -419,6 +725,11 @@ class WasapiLoopbackTap:
         # so "the endpoint is not rendering" is visible instead of being converted
         # into samples by accident.
         self.silent_packets = 0
+        # Packets whose `pu64DevicePosition` did not continue the previous one,
+        # i.e. frames the ring dropped instead of handing over. Read-only
+        # diagnostic: it consumes the position out-parameter of GetBuffer, which
+        # used to be an uninitialised 5th vtable slot (F16).
+        self.position_gap_packets = 0
 
     # -- name surface the worker's reporting uses ----------------------------
     @property
@@ -429,8 +740,9 @@ class WasapiLoopbackTap:
     def stream(self):
         """The worker closes taps with `t.stream.stop(); t.stream.close()`.
 
-        Returning self keeps that call site working unchanged: `close()` is
-        idempotent and already stops the pump, the client and the thread.
+        Returning self keeps that call site working unchanged: `stop()` is the
+        real, idempotent stop (no callback after it returns) and `close()` is
+        `stop()` plus the release of the COM interfaces.
         """
         return self
 
@@ -438,6 +750,48 @@ class WasapiLoopbackTap:
         """The worker opens taps with `tap.stream.start()`; same surface."""
         if self._thread is None:
             self._start()
+        return self
+
+    def stop(self):
+        """Stop delivering blocks. Idempotent; never releases interfaces.
+
+        GUARANTEE: once this returns, `on_block` is NEVER called again. The
+        pump is asked to stop (`_stop`), joined, and the callback lock is taken
+        afterwards, so a callback that was already in flight has returned and
+        the joined thread cannot start another one. This is the property the
+        worker's tap ledger depends on: after `close_tap()` the abandoned
+        endpoint must stop adding `blocks`/`block_samples`/`peak` to the run.
+
+        F4 (`docs/audit/auditoria-completa-20261007.md`): the worker calls
+        `t.stream.stop()` and this method did not exist, so the AttributeError
+        was swallowed by `close_tap()` and `close()` -- the only path that set
+        `_stop` -- was unreachable. The abandoned `_pump` kept feeding the run.
+
+        Does NOT touch `_client`/`_capture`/`_dev`/`_enum`: `close()` is the
+        releasing path. `IAudioClient::Stop` is called here too, so a caller
+        that only stops (and reuses the object later) is not left with a
+        capturing client; a failure there never masks the guarantee above.
+        """
+        self._stop.set()
+        if self._thread is not None:
+            # The pump sleeps at most `period` (<= 5 ms) per empty poll, so the
+            # join is bounded by that, not by the device. The timeout is a safety
+            # valve for a wedged COM call: if it fires, `_thread` is KEPT, so
+            # `_thread is None` keeps meaning "the pump is gone" and `close()`
+            # cannot release the interfaces underneath a live thread.
+            self._thread.join(timeout=2.0)
+            if not self._thread.is_alive():
+                self._thread = None
+        if self._client is not None:
+            try:
+                _vtbl(self._client, 11, HRESULT)(self._client)  # Stop
+            except Exception:
+                pass
+        # Barrier: whoever holds `_cb_lock` is inside `on_block`; taking it here
+        # means the callback that was in flight has returned. The pump, already
+        # past its `_stop` test, cannot start another one.
+        with self._cb_lock:
+            pass
         return self
 
     def __enter__(self):
@@ -468,28 +822,24 @@ class WasapiLoopbackTap:
         self._com = None
 
     def _open(self):
-        ole32 = _ole32()
-        enum = ctypes.c_void_p()
-        hr = ole32.CoCreateInstance(
-            ctypes.byref(CLSID_MMDeviceEnumerator),
-            None,
-            CLSCTX_INPROC_SERVER,
-            ctypes.byref(IID_IMMDeviceEnumerator),
-            ctypes.byref(enum),
-        )
-        if hr != 0:
-            raise WasapiError("MMDeviceEnumerator unavailable: %s" % _fmt(hr))
+        enum = _make_enumerator(_ole32())
         self._enum = enum
 
-        dev = ctypes.c_void_p()
-        get_default = _vtbl(
-            enum, 4, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)
-        )
-        hr = get_default(enum, E_RENDER, E_CONSOLE, ctypes.byref(dev))
-        if hr != 0:
-            hr = get_default(enum, E_RENDER, E_MULTIMEDIA, ctypes.byref(dev))
-        if hr != 0:
-            raise WasapiError("no default render endpoint: %s" % _fmt(hr))
+        if self.endpoint_id:
+            # The ladder picked THIS endpoint (it was the one rendering). Opening
+            # the default instead would silently substitute the very endpoint
+            # whose silence is the defect.
+            dev = _device_by_id(enum, self.endpoint_id)
+        else:
+            dev = ctypes.c_void_p()
+            get_default = _vtbl(
+                enum, 4, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)
+            )
+            hr = get_default(enum, E_RENDER, E_CONSOLE, ctypes.byref(dev))
+            if hr != 0:
+                hr = get_default(enum, E_RENDER, E_MULTIMEDIA, ctypes.byref(dev))
+            if hr != 0:
+                raise WasapiError("no default render endpoint: %s" % _fmt(hr))
         self._dev = dev
 
         activate = _vtbl(
@@ -561,6 +911,16 @@ class WasapiLoopbackTap:
         channels = self.ep.channels
         float_fmt = self.ep.format_tag == WAVE_FORMAT_IEEE_FLOAT
         next_size = _vtbl(cap, 5, HRESULT, ctypes.POINTER(wintypes.DWORD))
+        # FIVE out-parameters. IAudioCaptureClient::GetBuffer is (this,
+        # BYTE **ppData, UINT32 *pNumFramesToRead, DWORD *pdwFlags,
+        # UINT64 *pu64DevicePosition, UINT64 *pu64QPCPosition); the earlier
+        # declaration declared only FOUR, so the callee's 5th slot was
+        # uninitialised stack that it may write 8 bytes through. The 5th
+        # (`pu64QPCPosition`) is optional in the IDL, so it is passed as NULL
+        # (None) -- an explicit null, not a missing argument. The device
+        # position IS used: `position_gap_packets` below counts packets whose
+        # position does not continue the previous one, i.e. frames the ring
+        # dropped or that arrived out of order.
         get_buffer = _vtbl(
             cap,
             3,
@@ -569,6 +929,7 @@ class WasapiLoopbackTap:
             ctypes.POINTER(wintypes.DWORD),
             ctypes.POINTER(wintypes.DWORD),
             ctypes.POINTER(ctypes.c_int64),
+            ctypes.POINTER(ctypes.c_uint64),
         )
         release = _vtbl(cap, 4, HRESULT, wintypes.DWORD)
         # POLL FASTER THAN THE DEVICE'S RING, or frames are dropped where no
@@ -581,12 +942,17 @@ class WasapiLoopbackTap:
         # same block: period 25 ms -> duty 0.815 (8.15 blocks/s); period 5 ms
         # -> duty 0.999 (9.99 blocks/s). `audio_s` now tracks wall clock.
         #
-        # The period is derived from the RING, not from our own block size: our
-        # block is 100 ms and says nothing about how fast the device must be
-        # drained. `block_ms/20` = 5 ms at the shipped 100 ms setting.
+        # The period is OUR poll interval, derived from our own block size --
+        # NOT from the device's ring, and not from anything the endpoint
+        # reports: our block is 100 ms, which says nothing about how fast the
+        # device must be drained, and the previous `block_ms/1000/4` (25 ms)
+        # was slower than the measured 22 ms grant. `block_ms/20` = 5 ms at the
+        # shipped 100 ms setting, i.e. we poll ~4x faster than the ring fills,
+        # which is what keeps duty at 0.999 instead of 0.815.
         period = min(0.005, max(0.001, self.block_ms / 1000.0 / 20.0))
         buf = []
         acc = 0
+        prev_pos = None
         while not self._stop.is_set():
             n = wintypes.DWORD(0)
             if next_size(cap, ctypes.byref(n)) != 0:
@@ -598,9 +964,19 @@ class WasapiLoopbackTap:
             frames = wintypes.DWORD(0)
             flags = wintypes.DWORD(0)
             pos = ctypes.c_int64(0)
-            if get_buffer(cap, ctypes.byref(data), ctypes.byref(frames), ctypes.byref(flags), ctypes.byref(pos)) != 0:
+            if get_buffer(cap, ctypes.byref(data), ctypes.byref(frames), ctypes.byref(flags), ctypes.byref(pos), None) != 0:
                 break
             if frames.value:
+                # `pos` is the device position of this packet's first frame,
+                # wrapped to a SIGNED 64-bit carrier for the vtable. A packet
+                # that does not continue the previous one means the ring lost
+                # frames (or the endpoint rewound): counted, so a gap is a
+                # visible number instead of ~0.1 s of audio spliced together.
+                # WASAPI may mark a discontinuity with the same flag, but this
+                # comparison does not depend on the flag being set.
+                if prev_pos is not None and pos.value != prev_pos + frames.value:
+                    self.position_gap_packets += 1
+                prev_pos = pos.value
                 if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:
                     # AUDCLNT_BUFFERFLAGS_SILENT says the endpoint is not rendering
                     # and the packet's BYTES ARE NOT VALID SAMPLES. The flags were
@@ -634,18 +1010,46 @@ class WasapiLoopbackTap:
                 rest = joined[self.block :]
                 buf = [rest] if rest.size else []
                 acc = rest.size
-                self.on_block(np.ascontiguousarray(head, dtype=np.float32))
+                # Held for the duration of the deliver only: `stop()` takes this
+                # same lock AFTER joining the pump, which is what makes "no
+                # `on_block` after `stop()` returns" a property of the object
+                # rather than a hope about thread scheduling.
+                #
+                # AND THE `_stop` TEST IS REPEATED **INSIDE** THE LOCK, because the
+                # lock alone is not enough and the adversary lane proved it
+                # (`_main/_review-tapstop.py`, 2026-10-07): `_pump` tests `_stop`
+                # once at the loop HEAD, so a thread already past that test but
+                # wedged BEFORE this lock — exactly the case `stop()`'s bounded
+                # `join(timeout=2.0)` exists for — could take the lock after
+                # `stop()` returned and deliver ONE more block (measured: +0.70 s
+                # after `stop()` returned, join timed out). With `stop()`'s own
+                # barrier having come and gone, only a re-test here can close it:
+                # if the stop flag is set by the time the lock is ours, this block
+                # belongs to nobody and is dropped. The counter the ledger reads
+                # stops with the tap, which is the whole point of F4.
+                with self._cb_lock:
+                    if self._stop.is_set():
+                        return
+                    self.on_block(np.ascontiguousarray(head, dtype=np.float32))
 
     def close(self):
-        self._stop.set()
+        """`stop()` + release every COM reference. Idempotent.
+
+        This is the path that gives the references back: COM init token,
+        capture client, audio client, device and enumerator. `stop()` is safe to
+        call again afterwards (the second `stop(); close()` pair is a no-op) and
+        never touches the interfaces, so the release stays in ONE place.
+
+        The second join is the only case where it is needed: if `stop()` timed
+        out on a wedged pump, releasing the interfaces under a LIVE thread would
+        be a use-after-free, so close waits (unbounded, once) for the pump to
+        leave before releasing -- and after that it is provably gone, which is
+        the same invariant `_thread is None` carries.
+        """
+        self.stop()
         if self._thread is not None:
-            self._thread.join(timeout=2.0)
+            self._thread.join()
             self._thread = None
-        if self._client is not None:
-            try:
-                _vtbl(self._client, 11, HRESULT)(self._client)  # Stop
-            except Exception:
-                pass
         for ref in (self._capture, self._client, self._dev, self._enum):
             _release(ref)
         self._capture = self._client = self._dev = self._enum = None
@@ -675,3 +1079,52 @@ def loopback_device_spec(role=E_CONSOLE):
         "channels": ep.channels,
         "bits": ep.bits,
     }
+
+
+def loopback_device_specs(role=E_CONSOLE):
+    """Device-shaped dicts for EVERY ACTIVE render endpoint -- the ladder's rung (a).
+
+    ORDERED BY WHO IS RENDERING NOW (live meter peak, descending). This is the
+    cure for the measured defect: the previous rung (a) offered ONLY the DEFAULT
+    render endpoint, so on this box the tap read `VoiceMeeter Input` (idle, peak
+    0) while the owner's Chrome rendered to `CABLE Input` (peak 0.26) -- the app
+    reported "no audio to transcribe" with the sound plainly playing.
+
+    Every endpoint is kept, including the default: dropping it would break the
+    historical driver-free path, and a silent endpoint costs one bounded tap
+    window before the ladder moves on (the rotation loop already does that). An
+    empty list means this machine has no usable render endpoint at all, and the
+    ladder falls through to rung (b) exactly as before.
+    """
+    try:
+        # 0.4 s per endpoint, not a single instantaneous read: the ordering must
+        # ride out a brief digital-zero gap in the owner's audio (the moment
+        # between two tracks is not "this endpoint is idle").
+        eps = list_render_endpoints(role, meter_ms=0.4)
+    except Exception:
+        return []
+    out = []
+    for e in eps:
+        peak = e.get("meter_peak")
+        if e.get("is_default"):
+            why = "WASAPI loopback of the DEFAULT render endpoint"
+        else:
+            why = "WASAPI loopback of an active render endpoint"
+        if peak:
+            why += " (rendering now, meter peak %.3f)" % peak
+        out.append({
+            "name": "WASAPI loopback: %s" % e["name"],
+            "index": None,
+            "max_input_channels": e["channels"],
+            "default_samplerate": e["rate"],
+            "hostapi": None,
+            "hostapi_name": "Windows WASAPI (loopback)",
+            "wasapi_loopback": True,
+            "endpoint_id": e["endpoint_id"],
+            "rate": e["rate"],
+            "channels": e["channels"],
+            "bits": e["bits"],
+            "meter_peak": peak,
+            "rung_why": why,
+        })
+    return out

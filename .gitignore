@@ -65,10 +65,16 @@ worker/models/
 worker/runs/
 worker/_probe/
 worker/_e2e/
-app/electron/_hotreload/
-app/electron/_single-instance/
-app/electron/_dom-probe-*.json
+app/_legacy-electron/_hotreload/
+app/_legacy-electron/_single-instance/
+app/_legacy-electron/_dom-probe-*.json
 app/verify/rustc/out/
 app/webview/_flash-show-*.py
 app/webview/_vis-live-*.py
 worker/_sotto_worker_agcinert.py
+
+# The model SIDECARS. `*.onnx` does NOT match `encoder.onnx.data`, so a whole fp32 model
+# (2.32 GB) rode into a commit on 2026-10-08 and GitHub refused the push (LFS per-file limit 2 GiB).
+*.onnx.data
+*.safetensors
+_main/_ordem-before/models/

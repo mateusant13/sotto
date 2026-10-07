@@ -80,7 +80,7 @@ GAP ARMS (G1..G4, from docs/audit/launch-entry.md §2; lane SottoRunCmdGaps)
     reading it claims to have fixed is not evidence, so BEFORE is asserted too
     -- it must read 0 (the failure answering as success) where AFTER is
     non-zero. The four levers, and the scripts that produce them:
-      G1 panel absent     the copy's app/electron/panel.html is not written;
+      G1 panel absent     the copy's app/panel/panel.html is not written;
                           AFTER rc 3, BEFORE 0 (and BEFORE's own app log
                           carries PANEL_MISSING, so the 0 was a lie).
       G2 pywebview gone   a `webview.py` that raises ImportError is shadowed in
@@ -594,19 +594,29 @@ def build_tree(notes, variant, shell_src=None, wrapper_src=None,
     """
     root = tempfile.mkdtemp(prefix=f'_gaps-{variant}-', dir=HERE)
     web = os.path.join(root, 'app', 'webview')
-    elec = os.path.join(root, 'app', 'electron')
+    elec = os.path.join(root, 'app', 'panel')
     for d in (web, elec, os.path.join(root, '_main')):
         os.makedirs(d, exist_ok=True)
     src_web = os.path.join(SOTTO, 'app', 'webview')
-    for name in ('hot_reload.py', 'stage.html'):
-        shutil.copy2(os.path.join(src_web, name), os.path.join(web, name))
+    # The copy must carry the shell's IMPORT CLOSURE, not a hand-listed pair.
+    # The old `('hot_reload.py', 'stage.html')` list drifted the moment the
+    # shell grew `import panel_state` (sotto_webview.py:54): every gap copy
+    # then died with `ModuleNotFoundError: No module named 'panel_state'` -> the
+    # interpreter's rc 1 -- BEFORE it could reach the check under test. Measured
+    # 2026-10-07 (lane SottoRunCmdExit): G1's rc-3 expectation read rc 1, and
+    # G2's rc-1 expectation passed for the WRONG reason (that same import crash,
+    # not the shadowed pywebview). Copy every `.py` sibling so a new module is
+    # carried automatically; `shell_src` overwrites the shell itself below.
+    for name in sorted(os.listdir(src_web)):
+        if name.endswith('.py') or name == 'stage.html':
+            shutil.copy2(os.path.join(src_web, name), os.path.join(web, name))
     shutil.copy2(shell_src or os.path.join(src_web, 'sotto_webview.py'),
                  os.path.join(web, 'sotto_webview.py'))
     shutil.copy2(wrapper_src or RUN_CMD, os.path.join(web, 'run.cmd'))
     for name in PANEL_FILES:
         if drop_panel and name == 'panel.html':
             continue
-        src = os.path.join(SOTTO, 'app', 'electron', name)
+        src = os.path.join(SOTTO, 'app', 'panel', name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(elec, name))
     if hang_stub:
@@ -655,7 +665,7 @@ def _app_pid(log: str, timeout: float = 10.0):
 
 
 def arm_gap_panel(notes) -> dict:
-    """G1: with app/electron/panel.html absent, `run.cmd --show` must REFUSE."""
+    """G1: with app/panel/panel.html absent, `run.cmd --show` must REFUSE."""
     (acmd, aenv), (bcmd, benv) = gap_pair(notes, 'g1', drop_panel=True)
     after = run_wrapper(acmd, ['--show'], env=aenv)
     before = run_wrapper(bcmd, ['--show'], capture=False, env=benv)
@@ -848,14 +858,21 @@ def build_reverted_copy(neg_src: str, notes: list) -> str:
                          'byte-identical to the wrapper under test')
     root = tempfile.mkdtemp(prefix='sotto-runcmd-neg-')
     web = os.path.join(root, 'app', 'webview')
-    elec = os.path.join(root, 'app', 'electron')
+    elec = os.path.join(root, 'app', 'panel')
     for d in (web, elec, os.path.join(root, '_main')):
         os.makedirs(d, exist_ok=True)
-    for name in ('sotto_webview.py', 'hot_reload.py', 'stage.html'):
-        shutil.copy2(os.path.join(SOTTO, 'app', 'webview', name),
-                     os.path.join(web, name))
+    # Same IMPORT-CLOSURE rule as build_tree (see its comment): copy every
+    # `.py` sibling, not a hand-listed trio. The trio missed `panel_state.py`
+    # (sotto_webview.py:54), so the reverted copy's shell died at import with
+    # rc 1 and arms 3/4 read "the app's OWN first line is in the run log :: (no
+    # shell=webview2 ... pid= line)" -- the CONTROL failed for a reason that
+    # has nothing to do with the wrapper it reverts. Measured 2026-10-07.
+    src_web = os.path.join(SOTTO, 'app', 'webview')
+    for name in sorted(os.listdir(src_web)):
+        if name.endswith('.py') or name == 'stage.html':
+            shutil.copy2(os.path.join(src_web, name), os.path.join(web, name))
     for name in ('panel.html', 'panel.css', 'panel.js', 'caption-formulation.js'):
-        shutil.copy2(os.path.join(SOTTO, 'app', 'electron', name),
+        shutil.copy2(os.path.join(SOTTO, 'app', 'panel', name),
                      os.path.join(elec, name))
     shutil.copyfile(neg_src, os.path.join(web, 'run.cmd'))
     notes.append(f'copy={root}')

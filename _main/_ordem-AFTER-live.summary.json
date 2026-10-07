@@ -1,0 +1,58 @@
+{
+ "arm": "_ordem-AFTER-live",
+ "mode": "spawn",
+ "play_delay_s": 9999.0,
+ "rc": 1,
+ "rotations_total": 3,
+ "rotations_before_first_caption": 3,
+ "rotations": [
+  [
+   15.202,
+   "flat",
+   "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)",
+   "WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+   0.106745,
+   1
+  ],
+  [
+   22.001,
+   "flat",
+   "WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+   "WASAPI loopback: Speakers (NVIDIA Broadcast)",
+   0.378515,
+   2
+  ],
+  [
+   28.785,
+   "flat",
+   "WASAPI loopback: Speakers (NVIDIA Broadcast)",
+   "WASAPI loopback: Fones de ouvido (soundcore Space Q45)",
+   0.316431,
+   3
+  ]
+ ],
+ "captures": [
+  [
+   9.154,
+   "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)",
+   1
+  ],
+  [
+   15.957,
+   "WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+   2
+  ],
+  [
+   22.749,
+   "WASAPI loopback: Speakers (NVIDIA Broadcast)",
+   3
+  ]
+ ],
+ "first_capture": [
+  9.154,
+  "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)",
+  1,
+  10
+ ],
+ "first_caption": null
+}

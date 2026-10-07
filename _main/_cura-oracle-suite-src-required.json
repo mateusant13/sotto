@@ -1,0 +1,80 @@
+{
+ "repo": "H:\\sotto",
+ "rows": [
+  {
+   "oracle": "route-stamp-gate",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/route-stamp-gate.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.4,
+   "tail": [
+    "       real = {\"srcChanged\":true,\"srcMatches\":1}",
+    "       want = {\"srcChanged\":true,\"srcMatches\":1}",
+    "[PASS] CONTROL: the recomputation REFUSES a `route=final` line with NO `src=` (and ignores a provisional line)",
+    "       real = [null,\"worker-stamped\"]",
+    "       want = [null,\"worker-stamped\"]",
+    "GATE: PASS — 17/17 arm(s) (live GREEN, and every arm RED on its own mutation)"
+   ]
+  },
+  {
+   "oracle": "historico-vs-redux-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/historico-vs-redux-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "       real = true",
+    "       want = true",
+    "[PASS] guard present — sotto_webview.py history_append declines a provisional-draft",
+    "       real = true",
+    "       want = true",
+    "RESULT: GREEN — the transcript carries only the worker-closed line"
+   ]
+  },
+  {
+   "oracle": "panel-live-vs-history-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/panel-live-vs-history-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.2,
+   "tail": [
+    "       real = true",
+    "       want = true",
+    "[PASS] control: the two values DIFFER (the probe is not vacuous)",
+    "       real = true",
+    "       want = true",
+    "RESULT: GREEN — 9/9 arm(s)"
+   ]
+  },
+  {
+   "oracle": "silent-fallback-probe",
+   "argv": [
+    "-c",
+    "import subprocess,sys;sys.exit(subprocess.call(['node','_main/silent-fallback-probe.js'],cwd=r'H:/sotto'))"
+   ],
+   "rc": 0,
+   "verdict": "GREEN",
+   "wall_s": 0.1,
+   "tail": [
+    "       real = false",
+    "       want = false",
+    "[PASS] COMPAT: the old route=… start=… capture still yields route final and a start",
+    "       real = [\"route=final\",true]",
+    "       want = [\"route=final\",true]",
+    "RESULT: GREEN — 7/7 arm(s)"
+   ]
+  }
+ ],
+ "counts": {
+  "GREEN": 4
+ }
+}

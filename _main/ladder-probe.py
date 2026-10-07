@@ -59,7 +59,11 @@ if cands:
         % (first.get("rung"), first["name"], W._host_api_name(first))
     )
     if first.get("rung") == "a":
-        p("  -> the driver-free rung wins: WASAPI loopback of the default render endpoint.")
+        # NOT "the default render endpoint" any more: rung (a) now offers EVERY
+        # active render endpoint, so the winning one is whatever the candidate
+        # itself says it is (and it is chosen by live meter peak).
+        p("  -> the driver-free rung wins: %s."
+          % (first.get("rung_why") or "WASAPI loopback of a render endpoint"))
     elif first.get("rung") == "b":
         p("  -> rung (b): a virtual-cable/stereo-mix input matched BY NAME PATTERN.")
     elif first.get("rung") == "c":

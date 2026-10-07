@@ -1,0 +1,132 @@
+{
+ "seconds": 300.0,
+ "gap": 1.0,
+ "pieces": [
+  {
+   "src": "pt",
+   "start": 0.0,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 16.0,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 25.543,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 46.543,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 62.543,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 72.086,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 93.086,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 109.086,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 118.629,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 139.629,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 155.629,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 165.172,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 186.172,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 202.172,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 211.715,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 232.715,
+   "dur": 15.0,
+   "whole": true
+  },
+  {
+   "src": "en",
+   "start": 248.715,
+   "dur": 8.543,
+   "whole": true
+  },
+  {
+   "src": "agc",
+   "start": 258.258,
+   "dur": 20.0,
+   "whole": true
+  },
+  {
+   "src": "pt",
+   "start": 279.258,
+   "dur": 4.742,
+   "whole": false
+  },
+  {
+   "src": "pt",
+   "start": 285.0,
+   "dur": 15.0,
+   "whole": true,
+   "sentinel": true
+  }
+ ],
+ "expected_chars": 1914,
+ "ref_texts": {
+  "pt": "O r\u00e1dio anunciou que a ponte sobre o rio vai ser interditada na pr\u00f3xima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho.",
+  "en": "The radio announced that the bridge over the river will be closed next Monday. Residents need an alternative route to get to work."
+ }
+}

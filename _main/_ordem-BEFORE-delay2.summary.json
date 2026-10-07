@@ -1,0 +1,35 @@
+{
+ "arm": "_ordem-BEFORE-delay2",
+ "play_delay_s": 2.0,
+ "rc": 0,
+ "rotations_total": 2,
+ "rotations_before_first_caption": 2,
+ "rotations": [
+  [
+   24.758,
+   "flat",
+   "WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+   "WASAPI loopback: Speakers (NVIDIA Broadcast)",
+   0.0
+  ],
+  [
+   30.985,
+   "flat",
+   "WASAPI loopback: Speakers (NVIDIA Broadcast)",
+   "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)",
+   0.0
+  ]
+ ],
+ "capture_order": [
+  "WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+  "WASAPI loopback: Speakers (NVIDIA Broadcast)",
+  "WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+ ],
+ "first_capture": [
+  18.725440740585327,
+  "WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)",
+  1,
+  10
+ ],
+ "first_caption": null
+}

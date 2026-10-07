@@ -1,0 +1,1 @@
+{"target":"H:/sotto/_main/flicker-dom-oracle.js","before":10010,"after":5638,"reason":"Refactored self test to correctly use jsdom and MutationObserver, removed duplicate code and fixed logic."}

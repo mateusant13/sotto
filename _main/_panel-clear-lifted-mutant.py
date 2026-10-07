@@ -1,11 +1,11 @@
 """
 Sotto — the WebView2 shell.
 
-This REPLACES the Electron shell (app/electron/main.js) as the app's window,
+This REPLACES the Electron shell (app/_legacy-electron/main.js) as the app's window,
 and it is a replacement, not a rewrite of the panel: panel.html / panel.css /
-panel.js are loaded byte-for-byte from app/electron/, unmodified. The only
+panel.js are loaded byte-for-byte from app/panel/, unmodified. The only
 thing this file owns is the surface they talk to — the `window.sotto` object —
-and that surface is a line-for-line port of app/electron/preload.js.
+and that surface is a line-for-line port of app/_legacy-electron/preload.js.
 
   preload.js  ->  WebView2 equivalent
   ---------------------------------------------------------------------
@@ -46,15 +46,17 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
 import hot_reload
+import panel_state
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-#: The panel UI. Read-only for this shell: it is the Electron arm's files and
-#: they are the contract, not ours to change.
-PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'electron'))
+#: The panel UI. Read-only for this shell: these are the app's own panel files
+#: and they are the contract, not ours to change.
+PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'panel'))
 PANEL_HTML = os.path.join(PANEL_DIR, 'panel.html')
 #: An empty page the shell opens FIRST, so the preload is registered before the
 #: panel is ever parsed. See stage.html for why the ordering needs buying.
@@ -85,6 +87,88 @@ PANEL_MARGIN = 12
 PANEL_MAX_WORK_FRACTION = 0.34
 MAX_CAPTIONS = 200
 
+# --- the panel AS TEXT: one JSON dump a reader opens with `read` ------------
+# Owner's order, 2026-10-06, verbatim: "faz uma versao do sotto ou painel que tu
+# pode ver sem precisar da visao". Until now the panel's state was only knowable
+# through a screen capture, and a capture needs vision and is limited in time.
+# The dump is written from state the shell ALREADY holds — the bridge's own
+# counters, the panel's own live box read over the existing `exec_js` seam, and
+# the `WORKER_STATS` line the bridge already reads off the worker's stderr — so
+# it is a READ channel, not a second pipeline. Nothing the owner sees changes.
+REPO_ROOT = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir))
+PANEL_STATE_PATH = os.path.join(REPO_ROOT, '_main', 'panel-state.json')
+#: The on-demand trigger: create this file and the next tick dumps immediately
+#: (`py app/webview/panel_state.py --request`).
+PANEL_STATE_REQUEST = PANEL_STATE_PATH + '.request'
+PANEL_STATE_INTERVAL_S = 2.0
+
+# --- THE PANEL'S VISIBILITY, as a file the WORKER can poll -------------------
+# THE STACK LAW (owner, 2026-10-07, verbatim): *"o nvidia é pro ao vivo, o
+# parakeet redux é pro geral. o ao vivo só acontece quando o painel ta aberto.
+# quando ta fechado, o redux entra, e vira um transcritor LEVE ao contrario do
+# nvidia."* The streaming engine must work only while the panel is OPEN; when it
+# is CLOSED the batch engine takes over. The worker is a SEPARATE PROCESS, so
+# "is the panel open" has to cross a process boundary. This file is that
+# crossing, and it is the ONLY thing added here.
+#
+# WHY A FILE, AND NOT A MESSAGE. The worker speaks one channel: JSONL on ITS
+# stdout. There is no worker->shell input pipe, and adding one would make
+# "visibility" a second protocol with its own framing, its own ack and its own
+# silent failure mode. A file the worker only READS cannot be corrupted by the
+# worker, and a reader that misses a tick reads the CURRENT truth instead of a
+# queued event that was already stale when it was queued.
+#
+# WHY `visible` IS MEASURED AND NOT INTENDED. It is `window_visible(hwnd)` —
+# the same `IsWindowVisible` the hotkey path decides from and the cheap
+# `--selftest` two-state check asserts — never "we called hide". A stale
+# intention is exactly the defect class this repo has been bitten by twice
+# (`PANEL_VISIBILITY_CACHE_STALE`, and the panel that was on screen while
+# `PANEL_VISIBILITY_AT_STARTUP` said `visible=false`).
+#
+# THE AGE IS NOT SELF-REPORTED, for the reason `panel_state.py` spells out: a
+# producer that dies cannot update a number inside the file it stopped writing.
+# `writtenAtEpoch` + `staleAfterSeconds` let a reader REFUSE a dead shell's
+# answer, and the worker's fail-safe is to treat missing/stale as
+# `visible=true` (i.e. KEEP STREAMING) — because the alternative, obeying a
+# stale `visible:false`, is the one failure the HARD RULE in AGENTS.md forbids:
+# zero transcription while the owner is not looking.
+PANEL_VISIBILITY_PATH = os.path.join(
+    REPO_ROOT, '_main', 'panel-visibility.json')
+PANEL_VISIBILITY_INTERVAL_S = 3.0
+#: Bumped when a field is renamed or removed, so a reader refuses a shape it
+#: does not know instead of reading a wrong number.
+PANEL_VISIBILITY_SCHEMA = 'sotto.panel-visibility/1'
+
+# --- the transcript history (the "redux"), on disk --------------------------
+# The panel's TOP section is the accumulated transcript; the BOTTOM box is the
+# live stream. History is written to `<root>/<YYYY-MM-DD>/<HH>.md` — a 24 h
+# folder with one file per hour, appended as captions commit — so the owner can
+# find his own data in the file manager and a search can walk it cheaply.
+# The default root is the repo's own `history/` (H:/sotto/history): the owner
+# asked for the data to live under H:/sotto. SOTTO_HISTORY_ROOT overrides it.
+HISTORY_ROOT = os.path.normpath(
+    os.environ.get('SOTTO_HISTORY_ROOT')
+    or os.path.join(HERE, os.pardir, os.pardir, 'history'))
+#: One history line: `- [HH:MM:SS] text`. Markdown-readable AND parseable.
+HISTORY_LINE_RE = re.compile(r'^-\s+\[(\d{2}:\d{2}:\d{2})\]\s+(.*)$')
+HISTORY_DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+#: The provenance the WRITER stamps on the end of a line (M8). It is an HTML
+#: comment, so a Markdown reader shows the sentence and nothing else, and every
+#: reader of the FILE strips it before treating the rest as text.
+HISTORY_TAIL_RE = re.compile(r'\s*<!--.*?-->\s*$')
+#: The vocabulary `_history_provenance` is allowed to write. A route outside it
+#: is not written at all: a marker nobody can interpret is worse than none.
+HISTORY_ROUTES = ('final', 'provisional-draft')
+#: The route SOURCES `_history_provenance` is allowed to write as `src=` — WHICH
+#: branch decided the route. `'fallback'` is the one the de-landing produced
+#: SILENTLY: a line that reached the transcript ONLY because the renderer's
+#: `routeFor` else-half manufactured `final` when the worker stamped no route at
+#: all (P1 `4fb5b25380cbc8269977e22e`). Outside this list nothing is written.
+#: The Node twin is `ROUTE_SOURCES` in `app/panel/history-store.js`.
+HISTORY_ROUTE_SOURCES = ('worker-stamped', 'panel-deadline', 'fallback')
+#: `explorer` for "show in folder" must never open a console window.
+CREATE_NO_WINDOW = 0x08000000
+
 #: Capture shape. PortAudio's BLOCKING read API does not work on this host, so
 #: the worker is told to use the callback shape — same default as
 #: worker-bridge.js DEFAULT_CAPTURE_MODE.
@@ -100,7 +184,7 @@ FAILURE_WORDS_RE = re.compile(
     r'error|fail|fatal|dead|stopped|crash|denied|missing', re.IGNORECASE)
 
 # --- the worker's OWN vocabulary, and how the panel must paint it -----------
-# The reference arm decides this in `app/electron/worker-bridge.js`'s STATE_MAP:
+# The reference arm decides this in `app/_legacy-electron/worker-bridge.js`'s STATE_MAP:
 # there `device_exhausted` is `kind: 'error'` and `device_rotated` is not. This
 # shell never ported that table (it says so in `_readable`) and classified every
 # state with FAILURE_WORDS_RE alone — an English prose list that contains none
@@ -124,6 +208,114 @@ WORKER_WARMUP_STATES = frozenset({
     'boot', 'model-loading', 'model-loaded', 'device', 'capture-started',
     'device-rotated', 'selftest-start',
 })
+#: The ONE state that means an audio stream is OPEN (sotto_worker.py:2139 emits
+#: `capture-started` on every tap attempt, whether or not it later proves flat).
+#: From that line on the worker is mid-stream, and a hot reload must not restart
+#: it under the owner's feet.
+WORKER_CAPTURING_STATES = frozenset({'capture-started'})
+
+# --- the worker's OWN verdict about the audio, and what the silence timer owes it
+# A missing caption is NOT evidence of a fault. An IDLE DESKTOP produces digital
+# silence BY DESIGN: measured by this repo's own idle-floor probe, the loopback of
+# the default render endpoint carries peak=0.000000 over three independent 6 s
+# captures (`_main/sdr_idlefloor.out`). So a worker whose taps are all flat is
+# telling the truth about a quiet machine, and the ONLY thing the shell may do
+# with that truth is show it.
+#
+# MEASURED DEFECT this replaces (lane SottoTapRestartLoop, live run
+# `_main/_live_owner3.log`): the 15 s no-output watchdog killed and respawned the
+# worker 8 times in ONE run (`BRIDGE_SILENT` x8, `spawns=10`), each respawn
+# reloading a ~2.4 GB model (the worker's own `rss_mb=2413-2418`), because a
+# caption is the only thing that lifted the timer and a quiet desktop can never
+# produce one. The loop could not converge: there was never a caption to lift it,
+# and never would be while nothing was rendering.
+#
+# The criterion is the WORKER'S OWN VERDICT, never the absence of a caption.
+# These two sets are that verdict as the worker writes it: as a `status.state`
+# (the device ladder's own conclusion) and as the `verdict` carried inside `done`.
+WORKER_NO_AUDIO_STATES = frozenset({
+    'silent-device',         # a tap ran a full window below the peak floor (exit 3)
+    'device-exhausted',      # every candidate tap was flat
+    'no-speech-in-capture',  # the tap carried signal and none of it was speech
+    'music-only-capture',    # the endpoint is carrying non-speech
+})
+#: The same conclusion, carried by the run's `done` line. `captions-emitted` is
+#: deliberately absent: it is the one verdict that says speech DID come out.
+#: (`silent-capture` lives HERE and not above: verified against
+#: worker/sotto_worker.py, it is a `verdict=`, never a `state=`.)
+WORKER_NO_AUDIO_VERDICTS = frozenset({
+    'silent-device', 'all-candidate-taps-flat', 'silent-capture',
+    'no-callback-blocks', 'resample-produced-nothing',
+    'buffer-never-reached-chunk-size', 'captions-all-music-gated',
+    'captured-signal-has-no-speech',
+})
+#: The UI state the shell paints when the silence is the worker's own no-audio
+#: verdict. Named, so the panel says WHAT is true instead of "Worker silent".
+NO_AUDIO_STATE = 'no-audio'
+
+# --- the worker's OWN counters line, read for the text dump -----------------
+# `worker/sotto_worker.py` writes `WORKER_STATS tag=tick|final ...` on STDERR
+# (`stats_line()`, every `--stats-interval` seconds, default 10). The bridge
+# already reads that stream for its stderr tail — those lines were being DROPPED
+# after three, so `peak` and `nonzero_blocks` were unreachable from outside the
+# process. This parses the same line the bridge already sees; it starts no
+# process and reads no other file.
+WORKER_STATS_RE = re.compile(r'^WORKER_STATS\s+tag=(\S+)\s*(.*)$')
+
+#: The worker's heartbeat cadence: `--stats-interval` default in
+#: `worker/sotto_worker.py` (10 s), published as `WORKER_STATS tag=tick` on
+#: stderr. It is the only periodic signal the worker emits, which is why the
+#: no-progress watchdog counts it (see `WorkerBridge._note_progress`).
+WORKER_STATS_INTERVAL_S = 10.0
+#: The no-progress window. MEASURED, not guessed. The old 15000 ms was armed on
+#: STDOUT alone, i.e. on CAPTIONS, and a real conversation's commit-to-commit
+#: gap is routinely longer than that: the owner's own log
+#: (`_main/webview-run.log`, 2026-10-06) commits lines 62 s, 62 s and 56 s
+#: apart while the worker is transcribing normally — so the watchdog was
+#: killing a healthy worker and paying a ~2.4 GB model reload each time.
+#: It is now armed on ANY progress (a stdout line, or an ADVANCING worker
+#: heartbeat), so the window only has to exceed the heartbeat: 3 x 10 s leaves
+#: room for a stalled main loop (the worker runs inference on the same thread
+#: that ticks) while still catching a worker that truly stops in 30 s.
+#: `_main/restart-30s-oracle.py` asserts the relation mechanically against
+#: `worker/sotto_worker.py`, because the two numbers live in two files.
+WORKER_SILENCE_MS = 30000
+
+
+def parse_worker_stats(line):
+    """`{'tag': 'tick'|'final', 'fields': {...}, 'line': ...}` or None.
+
+    Values stay STRINGS exactly as the worker printed them: a reader that wants
+    `peak` as a float can convert it, and a value the worker never printed stays
+    absent instead of becoming a zero this file invented.
+    """
+    match = WORKER_STATS_RE.match(str(line).strip())
+    if not match:
+        return None
+    fields = {}
+    for token in match.group(2).split():
+        if '=' in token:
+            key, value = token.split('=', 1)
+            fields[key] = value
+    return {'tag': match.group(1), 'fields': fields,
+            'line': str(line).strip()}
+
+# ── hot reload of the WORKER: debounce + guard + floor ──────────────────────
+#: Trailing debounce on worker reload requests. `hot_reload.DEBOUNCE_MS` is 250
+#: ms of quiet — the WATCHER's window — and it is BELOW the cadence of a
+#: cross-lane editing burst: five lanes each saving every 1-3 s reach 250 ms of
+#: quiet between consecutive saves, so every save flushed and every flush
+#: restarted the worker (the churn this fixes). 2 s of quiet coalesces one
+#: lane's save-storm while staying responsive.
+WORKER_RELOAD_DEBOUNCE_MS = 2000
+#: The owner's rule, verbatim: the model must not leave load "super rapido -
+#: faz o model sair de load apos 3 minutos". There is NO idle-unload here to
+#: configure (see docs/audit/load-churn.md): the churn was reloads, and a TTL
+#: would ADD them. What 180 s bounds instead is the RELOAD RATE. Measured cost
+#: of ONE load on this box: 2.0-8.3 s of stall and 1.4-2.1 GB RSS
+#: (`worker/runs/*.jsonl`, the `model-loaded` line), so 180 s is ~20x the stall
+#: it bounds and the model cannot cycle faster than the owner asked.
+WORKER_RELOAD_MIN_INTERVAL_MS = 180000
 #: Fixed field order, so two runs' bodies diff by VALUE and not by shape.
 STATUS_BODY_FIELDS = ('stage', 'detail', 'verdict', 'device', 'api', 'peak',
                       'peak_floor', 'blocks', 'window_s', 'captions', 'tokens',
@@ -248,6 +440,50 @@ def log(message: str) -> None:
 
 def warn(message: str) -> None:
     log(f'WARN {message}')
+
+
+def mark_launch_ready(path) -> bool:
+    """run.cmd's readiness handshake (gap G3): touch `path` once the app is up.
+
+    `run.cmd` `start`s the app detached, so the wrapper can never see any status
+    after the spawn -- measured 2026-10-06 a launch logged `STAGING_LOADED` and
+    then hung, and `run.cmd` still answered 0 (docs/audit/launch-entry.md §3/§4).
+    The wrapper now hands a FRESH path here (`--ready-file`) and waits for it,
+    bounded: the file appearing is "the app came up", the bound expiring is a
+    HANG and the wrapper exits non-zero. A direct launch (no flag) is a no-op.
+    A failure to write it is a WARN, not an exit: the app is up either way, and
+    the wrapper's bound is the thing that reports the miss.
+    """
+    if not path:
+        return False
+    try:
+        directory = os.path.dirname(os.path.abspath(path))
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(f'ready pid={os.getpid()}\n')
+        return True
+    except OSError as exc:  # noqa: BLE001 -- must not take the app down
+        warn(f'READY_FILE_FAILED path={path} {exc!r}')
+        return False
+
+
+def wait_ready_file(path, timeout_s: float) -> int:
+    """run.cmd's bounded half of G3: poll `path` until it exists, or give up.
+
+    Returns 0 the moment the app has touched the file (it is up), 4 when
+    `timeout_s` elapses without it (a HANG -- the app was started and did not
+    come up), which is the non-zero the wrapper passes on. The bound is read
+    from `SOTTO_READY_BOUND` by the caller so a test can shorten it; the default
+    is the wrapper's own.
+    """
+    deadline = time.time() + max(0.0, timeout_s)
+    while True:
+        if os.path.exists(path):
+            return 0
+        if time.time() >= deadline:
+            return 4
+        time.sleep(0.1)
 
 
 # ===========================================================================
@@ -423,6 +659,11 @@ def make_click_through(hwnd, enabled: bool) -> int:
     return set_ex_style(hwnd, remove=WS_EX_TRANSPARENT)
 
 
+# The `OFFSCREEN = -32000` cure was REMOVED 2026-10-06 (see create_window):
+# a window created off-screen never finishes the WebView2 panel navigation, so
+# `_on_loaded` never runs and the shell HANGS. Do not reintroduce it.
+
+
 def show_without_activating(hwnd) -> bool:
     return bool(user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE))
 
@@ -550,7 +791,214 @@ class HotkeyThread(threading.Thread):
 
 
 # ===========================================================================
-# the page bridge — the port of app/electron/preload.js
+# Alt+C IS THE ONLY CONTROL — so its failure modes get first-class code
+# ===========================================================================
+#: Tried IN ORDER when the requested accelerator is already owned by another
+#: program. `Alt+Shift+<key>` and `Ctrl+Alt+<key>` are the conventional choices
+#: precisely because vendors grab the plain ones: on this box `Alt+F9` is already
+#: taken (measured 2026-10-07 by `_main/_audit-hotkey-probe.py`, which is also the
+#: instrument that proves `Alt+C` itself is FREE here — so a dead Alt+C was never
+#: a taken key, and the owner's "Alt+C does nothing" had to be found downstream:
+#: a second shell, or a panel path).
+HOTKEY_FALLBACKS = ('Alt+Shift+C', 'Ctrl+Alt+C', 'Ctrl+Shift+C')
+
+MB_OK = 0x00000000
+MB_ICONERROR = 0x00000010
+MB_SETFOREGROUND = 0x00010000
+MB_TOPMOST = 0x00040000
+
+#: `CreateMutexW`'s handle, kept for the process lifetime on purpose: the kernel
+#: releases it when this process dies, which is what makes "already running" a
+#: fact with no stale lock to age out.
+_SINGLE_INSTANCE = {'handle': None}
+
+
+def take_single_instance_lock(name='Local\\SottoShell') -> bool:
+    """True when THIS process is the one Sotto shell for this session.
+
+    Alt+C is a GLOBAL key with exactly one owner: a second shell cannot register
+    it (`RegisterHotKey` → 1409) and, without this guard, kept running with a dead
+    hotkey and an invisible window of its own — so the owner's Alt+C answered the
+    FIRST instance, which is how a stale panel that no longer updates looks
+    exactly like a broken hotkey. With autostart (`HKCU\\...\\Run`) and a manual
+    double-click arriving in the same login, that collision stops being
+    hypothetical.
+
+    A FAILED `CreateMutexW` returns True (proceed) and says so: refusing to start
+    because a lock could not be created would be worse than a rare double shell.
+    """
+    try:
+        kernel32.CreateMutexW.restype = wt.HANDLE
+        handle = kernel32.CreateMutexW(None, False, name)
+    except Exception as exc:  # noqa: BLE001 -- never cost the app a start
+        log(f'SINGLE_INSTANCE_MUTEX_FAILED error={exc!r}')
+        return True
+    if not handle:
+        log(f'SINGLE_INSTANCE_MUTEX_FAILED winerror={ctypes.get_last_error()}')
+        return True
+    _SINGLE_INSTANCE['handle'] = handle
+    exists = ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
+    log(f'SINGLE_INSTANCE name={name} already_running={str(exists).lower()}')
+    return not exists
+
+
+def warn_hotkey_unavailable(requested: str, tried) -> None:
+    """The app's ONLY control could not be registered: say it ON SCREEN, once.
+
+    The panel cannot be the messenger — by definition nothing can open it — so a
+    modal dialog is the last channel. It runs on a DAEMON thread, so it blocks
+    neither the UI loop nor the worker: the app keeps transcribing while the
+    dialog waits to be dismissed. `MB_TOPMOST` because nothing in this shell ever
+    takes focus, and the text names every key that was tried plus the one-line
+    fix, because "the app is running but you cannot open it" is otherwise
+    unfalsifiable from the owner's side.
+    """
+    lines = ',\n'.join(f'    {a}  (winerror={err})' for a, err in tried) or f'    {requested}'
+
+    def _show():
+        text = ('Sotto could not register its global hotkey, so the caption '
+                'panel cannot be opened with the keyboard.\n\n'
+                'Every accelerator below is already owned by another program:\n'
+                f'{lines}\n\n'
+                'Sotto is still running and still transcribing. To get the panel, '
+                'either close the other program that owns the key, or start Sotto '
+                'with a free one:\n\n'
+                '    run.cmd --hotkey Alt+Shift+C\n\n'
+                '(This message is shown once per launch; nothing is on screen '
+                'otherwise.)')
+        try:
+            user32.MessageBoxW(None, text, 'Sotto — hotkey unavailable',
+                               MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND)
+        except Exception as exc:  # noqa: BLE001 -- a warning must not kill a run
+            log(f'HOTKEY_ALERT_FAILED error={exc!r}')
+
+    log('HOTKEY_UNAVAILABLE alert=messagebox tried=' + json.dumps(
+        [a for a, _ in tried]))
+    threading.Thread(target=_show, name='sotto-hotkey-alert', daemon=True).start()
+
+
+def arm_hotkey(shell, requested: str):
+    """Register `requested`, then the fallbacks; return the live thread or None.
+
+    Why a CHAIN and not one attempt: the shipped behaviour was a single
+    `RegisterHotKey`, and its failure was one log line — the app stayed running,
+    hidden, with its only control dead, and the owner was shown nothing at all
+    (the whole design is "nothing appears until you ask"). A second choice that
+    works turns a bricked app into an app with a different key, and the log says
+    which one won (`HOTKEY_FALLBACK`) so the panel's own footer stays honest.
+    """
+    order = [requested] + [a for a in HOTKEY_FALLBACKS if a != requested]
+    tried = []
+    for accelerator in order:
+        thread = HotkeyThread(accelerator, lambda: shell.toggle_panel('hotkey'))
+        thread.start()
+        thread.wait_ready(5)
+        if thread.registered:
+            if accelerator != requested:
+                warn(f'HOTKEY_FALLBACK requested={requested} using={accelerator} '
+                     'reason=requested-owned-by-another-program')
+            return thread
+        tried.append((accelerator, thread.register_error))
+        log(f'HOTKEY_TRY_FAILED accelerator={accelerator} '
+            f'winerror={thread.register_error}')
+    warn_hotkey_unavailable(requested, tried)
+    return None
+
+
+# ===========================================================================
+# start with Windows (HKCU\...\Run) — the owner asked for "iniciar com o windows"
+# ===========================================================================
+#: The Run value's name: what the owner sees in Task Manager → Startup.
+AUTOSTART_VALUE_NAME = 'Sotto'
+AUTOSTART_RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
+
+
+def autostart_command() -> str:
+    """The command Windows should run at login — `pythonw.exe`, never cmd.exe.
+
+    `run.cmd` cannot be the target: a `.cmd` is a console program, so Windows
+    would flash a console window at every login, and this project forbids console
+    windows on the owner's screen (measured: a stray `python` console was named by
+    the house census and complained about twice). `pythonw.exe` is a GUI-subsystem
+    binary: no console, no window, and the shell then does exactly what a
+    double-click does — including starting the worker (F1).
+
+    Both paths are QUOTED because `C:\\Program Files\\...` contains a space, and
+    the log is passed so an autostart that fails leaves a receipt in the same file
+    every other launch writes to.
+    """
+    pythonw = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
+    if not os.path.exists(pythonw):
+        pythonw = sys.executable  # a machine with no pythonw: still better than cmd
+    shell = os.path.join(HERE, 'sotto_webview.py')
+    log_path = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir,
+                                             '_main', 'webview-run.log'))
+    return f'"{pythonw}" "{shell}" --log "{log_path}"'
+
+
+def autostart_install() -> int:
+    """Write the Run value. Idempotent; prints what it wrote."""
+    import winreg  # local: keep this module importable on a box without winreg
+
+    command = autostart_command()
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, 0,
+                                winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, AUTOSTART_VALUE_NAME, 0, winreg.REG_SZ,
+                              command)
+    except OSError as exc:
+        print(f'sotto: AUTOSTART_INSTALL_FAILED {exc!r}')
+        return 1
+    print(f'sotto: AUTOSTART_INSTALLED name={AUTOSTART_VALUE_NAME}')
+    print(f'sotto:   HKCU\\{AUTOSTART_RUN_KEY}\\{AUTOSTART_VALUE_NAME} = {command}')
+    print('sotto: it starts hidden at login and waits for Alt+C; nothing appears '
+          'until you ask.')
+    print('sotto: to undo it:  run.cmd --uninstall-autostart')
+    log(f'AUTOSTART_INSTALLED command={json.dumps(command)}')
+    return 0
+
+
+def autostart_uninstall() -> int:
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, 0,
+                            winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, AUTOSTART_VALUE_NAME)
+    except FileNotFoundError:
+        print('sotto: AUTOSTART_NOT_INSTALLED (nothing to remove)')
+        log('AUTOSTART_UNINSTALL name=absent')
+        return 0
+    except OSError as exc:
+        print(f'sotto: AUTOSTART_UNINSTALL_FAILED {exc!r}')
+        return 1
+    print(f'sotto: AUTOSTART_REMOVED name={AUTOSTART_VALUE_NAME}')
+    log('AUTOSTART_REMOVED')
+    return 0
+
+
+def autostart_status() -> int:
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, 0,
+                            winreg.KEY_QUERY_VALUE) as key:
+            value, _ = winreg.QueryValueEx(key, AUTOSTART_VALUE_NAME)
+    except FileNotFoundError:
+        print('sotto: AUTOSTART=off (no Run value)')
+        return 1
+    except OSError as exc:
+        print(f'sotto: AUTOSTART_STATUS_FAILED {exc!r}')
+        return 2
+    matches = os.path.normcase(value) == os.path.normcase(autostart_command())
+    print(f'sotto: AUTOSTART=on  value={value}')
+    print(f'sotto:   matches this checkout: {matches}  '
+          f'(expected: {autostart_command()})')
+    return 0 if matches else 3
+
+
+# ===========================================================================
+# the page bridge — the port of app/_legacy-electron/preload.js
 # ===========================================================================
 
 #: Injected into the page's main world before any page script, on every
@@ -666,6 +1114,27 @@ BOOTSTRAP_JS = r"""
     try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
   };
 
+  // The history store round-trip. Same shape as getInfo's id round-trip, so
+  // `history.tail()`/`search()`/`append()` really resolve with disk data
+  // instead of handing back a synchronous guess.
+  var histSeq = 0;
+  var histPending = {};
+  window.__sotto_history = function (id, json) {
+    var resolve = histPending[id];
+    if (!resolve) return;
+    delete histPending[id];
+    try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
+  };
+  function historyCall(kind, payload) {
+    return new Promise(function (resolve) {
+      var id = 'h' + (++histSeq);
+      histPending[id] = resolve;
+      var msg = payload || {};
+      msg.id = id;
+      post(kind, msg);
+    });
+  }
+
   function subscribe(kind, callback) {
     if (typeof callback !== 'function') return function () {};
     subs[kind].push(callback);
@@ -725,9 +1194,70 @@ BOOTSTRAP_JS = r"""
       post('caption-cleared', { remaining: Number(remaining) || 0 });
     },
 
+    // The transcript history ("redux"). The SHELL owns the disk: it names the
+    // file, appends the line, reads it back and reveals it in the file manager.
+    // `append` resolves with the entry as written (real path included), so the
+    // panel never has to guess the folder layout.
+    history: {
+      append: function (text, meta) {
+        return historyCall('history-append',
+          { text: String(text == null ? '' : text), meta: meta || {} });
+      },
+      tail: function (limit) {
+        return historyCall('history-tail', { limit: Number(limit) || 400 });
+      },
+      search: function (query, limit) {
+        return historyCall('history-search',
+          { query: String(query == null ? '' : query), limit: Number(limit) || 200 });
+      },
+      root: function () { return historyCall('history-root', {}); },
+      reveal: function (path) {
+        post('history-reveal', { path: String(path == null ? '' : path) });
+      }
+    },
+
     HOTKEY: 'Alt+C',
     platform: 'win32'
   };
+
+  // ── PAGE ERRORS MUST REACH THE LOG, OR A BROKEN PANEL LOOKS LIKE A QUIET ONE ──
+  // Measured 2026-10-07, on the owner's screen with a video playing: the worker
+  // transcribed for 20+ s at peak 0.44 and the shell logged thousands of
+  // `BRIDGE_CAPTION_SENT delivered=true` lines, while the panel kept showing
+  // "Starting the worker" and `#caption-list` stayed `display:none`. NOTHING in
+  // the log said why: a throw inside panel.js is invisible to Python, because
+  // `evaluate_js` reports the CALL, not the page's own JavaScript. This hook runs
+  // from document start (before the panel's scripts), so an init-time throw — the
+  // case that silently kills every subscription — is reported with its source
+  // position and stack.
+  function reportPageError(detail) {
+    // A BARE resource event is not a panel error: a favicon or stylesheet that
+    // 404s fires `error` with no message, no position and no stack, and reporting
+    // it would put a fake `PAGE_ERROR` in every launch's log — which is how a
+    // word that matters gets trained out of the next reader. Only a real script
+    // error (message, position or stack) is reported.
+    if (!detail.text || (detail.text === 'error' && !detail.source && !detail.stack)) return;
+    try { post('page-error', detail); } catch (e) { /* nothing left to report with */ }
+  }
+  window.addEventListener('error', function (event) {
+    reportPageError({
+      text: String((event && (event.message || (event.error && event.error.message))) || 'error'),
+      source: String((event && event.filename) || ''),
+      line: Number((event && event.lineno) || 0),
+      col: Number((event && event.colno) || 0),
+      stack: String((event && event.error && event.error.stack) || '')
+    });
+  }, true);
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event && event.reason;
+    reportPageError({
+      text: 'unhandledrejection: ' + String((reason && reason.message) || reason || ''),
+      source: 'promise',
+      line: 0,
+      col: 0,
+      stack: String((reason && reason.stack) || '')
+    });
+  });
 })();
 """
 
@@ -809,6 +1339,300 @@ BRIDGE_PROBE = r"""
 })()
 """
 
+#: The v2 acceptance probes. `exec_js` here does NOT await a returned Promise
+#: (measured 2026-10-06: an async IIFE came back as `{}`), so the probe is split
+#: into three SYNCHRONOUS reads that the shell sequences with real waits. The
+#: waits are the point: the caption has to survive the formulation hold
+#: (COMMIT_MAX_HOLD_MS = 1500 ms) before it commits and is written, and the
+#: search is a bridge round-trip. `__STAMP__` is replaced by the shell with a
+#: unique token, so the caption, its history line and the search that finds it
+#: are tied together by one string instead of by timing luck.
+PANEL_V2_INJECT = r"""
+(() => {
+  const txt = (el) => (el && el.textContent ? el.textContent : '');
+  const history = document.getElementById('history');
+  const captions = document.getElementById('captions');
+  const out = {
+    url: location.href,
+    shape: {
+      history: !!history,
+      live: !!captions,
+      liveBox: !!document.getElementById('captions-body'),
+      liveList: !!document.getElementById('caption-list'),
+      // LIVE comes FIRST and the transcript drawer follows it (the live box is
+      // the product and takes the space; see `panel.html`'s own comment on the
+      // section order). This arm used to assert the OPPOSITE — `historyAboveLive`
+      // — and the panel reorder of 2026-10-07 (F2/D1: a transcript that cannot
+      // fill is collapsed UNDER the captions) would have made a stale arm RED
+      // for the right change. `captions` precedes `history`, so history FOLLOWS.
+      liveAboveHistory: !!(history && captions &&
+        (captions.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING)),
+    },
+    buttons: {
+      search: !!document.getElementById('search-button'),
+      searchInput: !!document.getElementById('search-input'),
+      reveal: !!document.getElementById('reveal-button'),
+      revealLabel: txt(document.getElementById('reveal-button')).trim(),
+    },
+    historyApi: !!(window.sotto && window.sotto.history &&
+      typeof window.sotto.history.tail === 'function' &&
+      typeof window.sotto.history.search === 'function' &&
+      typeof window.sotto.history.reveal === 'function'),
+  };
+  return out;
+})()
+"""
+
+PANEL_V2_READ_LIVE = r"""
+(() => {
+  const qa = (s) => Array.from(document.querySelectorAll(s));
+  const txt = (el) => (el && el.textContent ? el.textContent : '');
+  const input = document.getElementById('search-input');
+  input.value = '__STAMP__';
+  document.getElementById('search-form').requestSubmit();
+  return {
+    live: {
+      lines: qa('#caption-list .caption__text').map((e) => e.textContent),
+      count: (document.getElementById('caption-list') || {}).childElementCount,
+      placeholderHidden: !!(document.getElementById('placeholder') || {}).hidden,
+      // The panel DISABLES the search input while no canonical producer exists
+      // (nothing could match, and a search box that cannot work is a promise
+      // with no backend). Read here so the transcript arm below can require the
+      // honest state instead of inventing a hit.
+      searchInputDisabled: !!(document.getElementById('search-input') || {}).disabled,
+    },
+    feed: qa('#history-list .hist__text').map((e) => e.textContent),
+    feedFolderButtons: qa('#history-list .hist__folder').length,
+    rootLabel: txt(document.getElementById('history-root')).trim(),
+    searched: true,
+  };
+})()
+"""
+
+PANEL_V2_READ_SEARCH = r"""
+(() => {
+  const q = (s) => document.querySelector(s);
+  const qa = (s) => Array.from(document.querySelectorAll(s));
+  const txt = (el) => (el && el.textContent ? el.textContent : '');
+  return {
+    search: {
+      hits: qa('#history-list .hist').length,
+      texts: qa('#history-list .hist__text').map((e) => e.textContent),
+      marked: !!q('#history-list mark'),
+      note: txt(document.getElementById('history-status')).trim(),
+      folderButtons: qa('#history-list .hist__folder').length,
+    },
+  };
+})()
+"""
+
+#: The panel's LIVE box and footer, read back as TEXT — the read a screenshot
+#: makes, in text. It reports each line's own state (provisional vs committed),
+#: which is the one thing the shell cannot know from the IPC receipts alone: a
+#: provisional line is rewritten in place by `panel.js` and never leaves the DOM.
+PANEL_STATE_PROBE = r"""
+(() => {
+  const txt = (el) => (el && el.textContent ? el.textContent : '');
+  const list = document.getElementById('caption-list');
+  const status = document.getElementById('status');
+  const lines = list ? Array.from(list.children).map((li) => {
+    const body = li.querySelector('.caption__text');
+    return {
+      text: body ? body.textContent : txt(li),
+      provisional: li.classList.contains('caption--provisional'),
+      latest: li.classList.contains('caption--latest'),
+    };
+  }) : null;
+  const ph = document.getElementById('placeholder');
+  const pt = document.querySelector('.captions__placeholder-title');
+  const pb = document.querySelector('.captions__placeholder-body');
+  return {
+    url: location.href,
+    live: {
+      count: list ? list.childElementCount : -1,
+      lines: lines,
+      provisionalCount: lines
+        ? lines.filter((line) => line.provisional).length : -1,
+      hint: txt(document.getElementById('captions-hint')).trim(),
+      hidden: list ? !!list.hidden : null,
+      // THE FOLLOW, AS THREE NUMBERS. The owner's report was *"a transcricao nao
+      // ta dando auto scroll no painel"* and no existing field could confirm or
+      // refute it: `count` says how many lines exist, not whether the newest one
+      // is on screen. `atBottom` is the exact predicate the panel's own follow
+      // rule uses, read from the element that actually scrolls
+      // (`#captions-body`, whose CSS is `overflow-y: auto`).
+      scroll: (() => {
+        const box = document.getElementById('captions-body');
+        if (!box) return null;
+        const scrollTop = box.scrollTop;
+        const scrollHeight = box.scrollHeight;
+        const clientHeight = box.clientHeight;
+        return {
+          top: scrollTop,
+          height: scrollHeight,
+          client: clientHeight,
+          atBottom: (scrollHeight - scrollTop - clientHeight) < 48,
+          overflowing: scrollHeight > clientHeight + 4,
+        };
+      })(),
+    },
+    status: {
+      text: txt(document.getElementById('status-text')).trim(),
+      kind: status
+        ? (status.classList.contains('status--error') ? 'error'
+          : status.classList.contains('status--live') ? 'live' : 'busy')
+        : null,
+    },
+    placeholder: {
+      hidden: ph ? !!ph.hidden : null,
+      title: txt(pt).trim(),
+      body: txt(pb).trim(),
+    },
+  };
+})()
+"""
+
+
+class PanelVisibilityWriter:
+    """Publish "is the panel on screen" to a file, on every transition AND on a
+    cadence. The worker polls it; nothing else consumes it.
+
+    THE CONTRACT (frozen shape — the worker's reader is built against it):
+
+        {
+          "schema": "sotto.panel-visibility/1",
+          "visible": <bool>,        # window_visible(hwnd), MEASURED
+          "since_ms": <int>,        # epoch ms at which THIS state began
+          "age_ms": <int>,          # ms this state had lasted AT WRITE (0.0-style
+                                    # "age at write": the authoritative duration is
+                                    # `now_ms - since_ms`, computed by the READER)
+          "pid": <int>,             # the SHELL's pid — the producer
+          "reason": "<str>",        # the transition that opened this state
+          "transitions": <int>,     # counted, so "it switched" is a number
+          "writtenAt": "<iso>",
+          "writtenAtEpoch": <float>,
+          "staleAfterSeconds": <float>
+        }
+
+    WHY BOTH `since_ms` AND `age_ms`. The worker's question is "hidden for longer
+    than N seconds". `since_ms` answers it absolutely and survives a reader that
+    samples late; `age_ms` is the same fact as of the write and is what a human
+    reading the file wants. A single field would have to be one of the two, and
+    every reader downstream would have to guess which — the ambiguity that made a
+    previous generation of this repo's probes disagree with each other.
+
+    WHY A THREAD. The transition writes come from the UI thread (`show_panel`/
+    `hide_panel`) and MUST NOT wait on a file. The cadence write runs here, every
+    `interval_s`, re-reading the live window: that is what turns a map/unmap that
+    happened WITHOUT going through `show_panel`/`hide_panel` — pywebview's own
+    navigation-time `Show`, `_reassert_hidden`, a hot reload — into a recorded
+    transition instead of a silent divergence between the file and the screen.
+    """
+
+    def __init__(self, path, observe, log=lambda _m: None,
+                 interval_s=PANEL_VISIBILITY_INTERVAL_S):
+        self.path = path
+        #: `observe()` -> bool, read LIVE from the window at call time.
+        self.observe = observe
+        self.log = log
+        self.interval_s = max(0.5, float(interval_s))
+        self.visible = None
+        self.since_ms = None
+        self.reason = 'boot'
+        self.transitions = 0
+        self.writes = 0
+        self.errors = 0
+        self._stop = threading.Event()
+        self._thread = None
+
+    # -- lifecycle ---------------------------------------------------------
+    def start(self) -> bool:
+        if self._thread is not None:
+            return False
+        # Order matters for a reader grepping this log: the ANNOUNCEMENT (which
+        # names the path a reader must open) comes first, then the boot dump —
+        # the same order `PanelStateWriter.start()` uses. The thread is started
+        # LAST so the boot dump is deterministically the first write and the first
+        # transition line carries `reason=boot` rather than a cadence tick's
+        # `poll`.
+        self.log(f'PANEL_VISIBILITY_WRITER path={self.path} '
+                 f'interval_s={self.interval_s}')
+        self.write('boot')
+        self._thread = threading.Thread(target=self._loop,
+                                        name='sotto-panel-visibility',
+                                        daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self, reason='stop') -> None:
+        self._stop.set()
+        self.log(f'PANEL_VISIBILITY_WRITER_STOP reason={reason} '
+                 f'writes={self.writes} transitions={self.transitions} '
+                 f'errors={self.errors}')
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.interval_s):
+            # Reason `poll`: this state was reached without a show/hide call, or
+            # the call's write already happened and this is the same state — the
+            # writer only logs a transition when the VALUE moved, so a steady
+            # panel produces no transition lines at all.
+            self.write('poll')
+
+    # -- one publication ---------------------------------------------------
+    def write(self, reason='poll', visible=None) -> bool:
+        observed = bool(self.observe()) if visible is None else bool(visible)
+        now_ms = int(time.time() * 1000)
+        if self.visible is None:
+            # The FIRST write is a transition: the state the panel came up in is
+            # a fact worth exactly one line, and it is the one a reader needs to
+            # know how long the run has been in it.
+            self.visible = observed
+            self.since_ms = now_ms
+            self.reason = reason
+            self.transitions += 1
+            self._log_transition(reason)
+        elif observed != self.visible:
+            self.visible = observed
+            self.since_ms = now_ms
+            self.reason = reason
+            self.transitions += 1
+            self._log_transition(reason)
+        payload = {
+            'schema': PANEL_VISIBILITY_SCHEMA,
+            'visible': self.visible,
+            'since_ms': self.since_ms,
+            'age_ms': now_ms - self.since_ms,
+            'pid': os.getpid(),
+            'reason': self.reason,
+            'transitions': self.transitions,
+            'writtenAt': panel_state.now_iso(),
+            'writtenAtEpoch': round(time.time(), 3),
+            'ageSecondsNote': (
+                'age_ms is the age AT WRITE; the authoritative duration is '
+                '(now_ms - since_ms) and is computed by the READER'),
+            'staleAfterSeconds': round(max(self.interval_s * 3.0, 5.0), 2),
+        }
+        try:
+            panel_state.write_atomic(self.path, payload)
+        except Exception as exc:
+            self.errors += 1
+            self.log(f'PANEL_VISIBILITY_WRITE_FAILED path={self.path} '
+                     f'error={exc!r}')
+            return False
+        self.writes += 1
+        return True
+
+    def _log_transition(self, reason) -> None:
+        # ONE line per transition, in the shape a reader greps for. `reason` is
+        # the CALLER's word (`hotkey`, `--show`, `hot-reload`, `navigation`,
+        # `page`, `boot`) or `poll` when the window moved without a call — a
+        # distinction that matters: `poll` means the file is the ONLY record the
+        # transition happened, which is precisely when a silent divergence
+        # would otherwise go unnoticed.
+        self.log(f'PANEL_VISIBILITY_MODE '
+                 f'visible={str(bool(self.visible)).lower()} reason={reason} '
+                 f'transitions={self.transitions} since_ms={self.since_ms}')
+
 
 class SottoHost:
     """The Python side of `window.sotto` — the js_api pywebview exposes.
@@ -852,7 +1676,13 @@ class SottoHost:
             'status-applied': self._status_applied,
             'caption-cleared': self._caption_cleared,
             'renderer-ready': self._renderer_ready,
+            'page-error': self._page_error,
             'pointer': self._pointer,
+            'history-append': self._history_append,
+            'history-tail': self._history_tail,
+            'history-search': self._history_search,
+            'history-root': self._history_root,
+            'history-reveal': self._history_reveal,
             'hide': lambda p: self._shell.hide_panel('page'),
             'toggle': lambda p: self._shell.toggle_panel('page'),
             'quit': lambda p: self._shell.quit('page'),
@@ -872,6 +1702,24 @@ class SottoHost:
 
     def _status_observed(self, payload):
         self._shell.note_status_observed((payload or {}).get('text', ''))
+
+    def _page_error(self, payload):
+        """A THROW INSIDE THE PANEL, on the record.
+
+        The panel's errors used to be unobservable from Python: `evaluate_js`
+        reports the CALL, so a `TypeError` inside `panel.js` left the shell
+        logging healthy `BRIDGE_CAPTION_SENT delivered=true` lines while the
+        owner looked at a panel frozen on its placeholder. This is the channel
+        that names it — with position and stack, because "the panel is broken" is
+        not actionable and "panel.js:187 TypeError: bridge.onCaption is not a
+        function" is. Kept at warning level: the app keeps running, but a page
+        that threw is the reason nothing on screen is moving.
+        """
+        payload = payload or {}
+        warn(f'PAGE_ERROR text={json.dumps(str(payload.get("text", "")))} '
+             f'at={payload.get("source") or "?"}:{payload.get("line") or 0}:'
+             f'{payload.get("col") or 0} '
+             f'stack={json.dumps(str(payload.get("stack", ""))[:400])}')
 
     def _caption_applied(self, payload):
         text = (payload or {}).get('text', '')
@@ -904,6 +1752,34 @@ class SottoHost:
         info_id = (payload or {}).get('id', '')
         self._shell.reply_info(info_id, self._shell.info())
 
+    # -- history (the "redux" store) ---------------------------------------
+    def _history_reply(self, payload, result):
+        history_id = (payload or {}).get('id', '')
+        if history_id:
+            self._shell.reply_history(history_id, result)
+
+    def _history_append(self, payload):
+        payload = payload or {}
+        entry = self._shell.history_append(
+            payload.get('text', ''), payload.get('meta'))
+        self._history_reply(payload, {'entry': entry})
+
+    def _history_tail(self, payload):
+        payload = payload or {}
+        self._history_reply(
+            payload, self._shell.history_tail(int(payload.get('limit') or 400)))
+
+    def _history_search(self, payload):
+        payload = payload or {}
+        self._history_reply(payload, self._shell.history_search(
+            payload.get('query', ''), int(payload.get('limit') or 200)))
+
+    def _history_root(self, payload):
+        self._history_reply(payload or {}, self._shell.history_root())
+
+    def _history_reveal(self, payload):
+        self._shell.reveal_in_folder((payload or {}).get('path'))
+
 
 # ===========================================================================
 # the shell
@@ -922,6 +1798,16 @@ class SottoShell:
         self.geometry = None
         self.display = None
         self.visible = False
+        # True once the "hide unless the owner asked" guard is subscribed to the
+        # control's NavigationStarting. It is the precondition of the panel being
+        # hidden at startup, and it is armed in `_on_before_show` — see
+        # `_arm_visibility_invariant`.
+        self.visibility_armed = False
+        # True once pywebview's OWN mapping call (`form.Show()`) has been
+        # refused at the form instance — see `_gate_form_show`. Counts the maps
+        # refused, so "the gate is on the shipped path" is a number in the log
+        # and not a claim.
+        self.panel_show_refused = 0
         self.pointer_interactive = False
         self.caption_log = []
         self.last_status = ''
@@ -929,8 +1815,26 @@ class SottoShell:
         self.renderer_ready = threading.Event()
         self.exiting = threading.Event()
         self.bridge = None            # WorkerBridge
+        # A file change in `worker/` does NOT restart the worker directly: it
+        # is queued and the policy decides (debounce, mid-stream guard, 180 s
+        # floor). See WorkerReloadPolicy and docs/audit/load-churn.md.
+        self._reload_policy = WorkerReloadPolicy(
+            log_fn=log,
+            get_bridge=lambda: self.bridge,
+            restart=self._do_worker_restart,
+        )
         self.hotkey = None
         self.hot_reload = None       # hot_reload.HotReload
+        #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
+        #: until the panel's first load, which is when the DOM can be read.
+        self.panel_state = None
+        #: THE VISIBILITY CHANNEL (PanelVisibilityWriter). Armed at the same
+        #: moment as `panel_state` and BEFORE the worker can be spawned, because
+        #: the worker's mode switch polls this file: a worker that starts while
+        #: the file does not exist yet would read "unknown" and — by the
+        #: fail-safe — stream, which is the correct default but is NOT the
+        #: honest answer once the file exists.
+        self.panel_visibility = None
         self.reload_count = 0        # how many panel re-navigations have run
         self.startup_done = False    # startup actions run once per process
         self.startup_visible = None  # None until the window is measured
@@ -971,6 +1875,16 @@ class SottoShell:
             js_api=SottoHost(self),
             width=geometry['width'],
             height=geometry['height'],
+            # CREATED AT ITS REAL GEOMETRY. An off-screen creation
+            # (`x=OFFSCREEN, y=OFFSCREEN`, OFFSCREEN=-32000) was tried
+            # 2026-10-06 as the flash cure and MEASURED BROKEN: WebView2 does
+            # not complete the stage->panel navigation for a window parked at
+            # -32000, so `_on_loaded` never fires and the shell HANGS before
+            # the panel loads (measured, no --exit-after, 9 s: log stops at
+            # `STAGING_LOADED`, no `PRELOAD_ACTIVE`, no `RECEIVER_READY`). It
+            # also broke the `--exit-after` probes the same way. Do not
+            # reintroduce it. The startup flash is handled by `_reassert_hidden`
+            # on `NavigationStarting`.
             x=geometry['x'],
             y=geometry['y'],
             frameless=True,
@@ -985,6 +1899,14 @@ class SottoShell:
             **({} if self.args.opaque else {'background_color': '#0b0f14'}),
             text_select=False,
         )
+        # DO NOT clear `self.window.transparent` here. Tried 2026-10-06 and
+        # MEASURED WRONG: pywebview's navigation `Show()` (edgechromium.py:347,
+        # gated by `transparent`) is what makes a transparent WebView2 actually
+        # LOAD; clearing the flag makes the stage->panel navigation never
+        # complete, so `_on_loaded` never fires and the shell HANGS (measured
+        # `_main/_flash-live-0.log`: stops at `STAGING_LOADED`, rc=-999, never
+        # reaches PANEL_VISIBILITY_ON_SCREEN). Transparency must stay on. The
+        # startup flash is handled by the OFFSCREEN creation position below.
         self.window.events.before_show += self._on_before_show
         self.window.events.loaded += self._on_loaded
         self.window.events.closing += self._on_closing
@@ -1006,6 +1928,24 @@ class SottoShell:
             self.hwnd = None
         self.webview2 = form.webview
 
+        # THE MAPPING CALL IS REFUSED HERE. pywebview maps this form itself on
+        # EVERY navigation start (`platforms/edgechromium.py:345-349`):
+        #
+        #     if self.pywebview_window.transparent:
+        #         self.form.Show()
+        #         self.form.Activate()
+        #
+        # `transparent` is ON by default in this shell (`--opaque` is the only
+        # way off), so that call undoes `hidden=True` — and it is a call the
+        # shell does not make and cannot order against. `_reassert_hidden`
+        # (subscribed to the same event, right after) SHORTENS the window that
+        # call maps; it cannot prevent the map, because the two run in the same
+        # dispatch but the map is what the dispatch is doing. Measured by
+        # `_main/panel-startup-flash-census.py` at a 25 ms cadence: the form was
+        # WS_VISIBLE and NOT alpha-occluded in 1 of 6 launches even with the
+        # re-assert in place. See `_gate_form_show`.
+        self._gate_form_show(form)
+
         # The panel never takes focus and never sits in the taskbar; in Win32
         # both are extended styles, not window flags.
         hwnd = self.hwnd
@@ -1022,6 +1962,11 @@ class SottoShell:
                 'equivalent exists')
 
         self._fit_client_area(form)
+        # THE VISIBILITY INVARIANT IS ARMED HERE, NOT IN `_on_core_ready`.
+        # See `_arm_visibility_invariant` for why the two are separate
+        # subscriptions; TICKET-55a4ab4b157bdd26bb9629c7 is what it costs to
+        # let one registration be a side effect of the other.
+        self._ui(self._arm_visibility_invariant)
         self._ui(self._subscribe_core_ready)
         # The startup-visibility probe is POSTED, never called from here:
         # before_show fires BEFORE pywebview's own Show();Hide() dance
@@ -1128,21 +2073,146 @@ class SottoShell:
         """
         self.webview2.CoreWebView2InitializationCompleted += self._on_core_ready
 
+    def _gate_form_show(self, form):
+        """Refuse pywebview's own mapping call unless the owner asked.
+
+        THE DEFECT THIS CLOSES. `Show` is a `System.Windows.Forms.Form` method,
+        but pywebview calls it from PYTHON — `self.form.Show()`
+        (`platforms/edgechromium.py:348`) — so an attribute set on the INSTANCE
+        shadows it for exactly that call and nothing else. Measured:
+        `_main/_pythonnet-show-shadow-test.py` → `instance: base.Show() ->
+        INSTANCE-GATED`, with `type(base).Show` still the CLR method.
+
+        WHY A GATE HERE AND NOT ANOTHER NET. Every previous cure re-hid the
+        window AFTER pywebview mapped it, so the window was mapped and the only
+        question was how long. This refuses the map itself. It changes NO
+        subscription, which matters: `_main/panel-hidden-at-startup-oracle.py`
+        asserts `NavigationStarting handlers=2 (1 pywebview + 1 shell)`, and
+        that assertion keeps its exact meaning.
+
+        WHY IT CANNOT COST THE OWNER THE PANEL. The shell has its OWN way to map
+        the window — `show_panel` → `user32.ShowWindow(SW_SHOWNOACTIVATE)` — and
+        BOTH user paths take it: Alt+C (`toggle_panel` → `show_panel`) and
+        `--show` (`_on_loaded` → `self.show_panel('startup')`). Neither path
+        calls `form.Show()`, so neither is refused.
+
+        WHY THE CREATION DANCE IS STILL ALLOWED. pywebview's `hidden=True`
+        branch (`platforms/winforms.py:777-781`) runs `Opacity=0; Show(); Hide();
+        Opacity=1`. At that moment the form is FULLY TRANSPARENT, so its map is
+        invisible by construction (the house already accepts this class: the
+        `--opaque` arm's only catches are `alpha=0`, AGENTS.md). Refusing it
+        would change the state the shipped app has always started in for no
+        measured gain, so it is let through — the test is `Opacity < 1.0`, read
+        from the form itself, not a shell flag that could drift out of step.
+        """
+        original = form.Show
+
+        def guarded_show():
+            try:
+                opacity = float(form.Opacity)
+            except Exception:
+                opacity = 1.0
+            if self.args.show or self.visible or opacity < 1.0:
+                return original()
+            self.panel_show_refused += 1
+            log(f'PANEL_SHOW_REFUSED reason=not-asked opacity={opacity} '
+                f'show_requested={str(bool(self.args.show)).lower()} '
+                f'panel_shown={str(bool(self.visible)).lower()} '
+                f'count={self.panel_show_refused} '
+                'cure=_gate_form_show source=edgechromium.py:348')
+            return None
+
+        # An instance attribute shadows the CLR method for a PYTHON-side call
+        # (measured, see the docstring). The delegate pywebview subscribed is a
+        # method of ITS object and is untouched.
+        form.Show = guarded_show
+        log('PANEL_SHOW_GATE installed=true method=BrowserForm.Show '
+            'refuses=map-at-full-opacity-unless-asked')
+
+    def _arm_visibility_invariant(self):
+        """Subscribe the hide-unless-asked guard, ONCE, as its own act.
+
+        THE INVARIANT. pywebview asks for a transparent window and, on EVERY
+        navigation, un-hides it itself: `if self.pywebview_window.transparent:
+        self.form.Show(); self.form.Activate()`
+        (edgechromium.py:346-349). That hack is load-bearing — clearing
+        `transparent` stops the page loading at all (measured, see
+        `create_window`) — so the shell's only defence is to re-hide the window
+        immediately afterwards. `_on_navigation_start` is that defence, and its
+        REGISTRATION is the entire invariant: with it absent the panel sits on
+        the owner's desk while every internal flag still says "hidden".
+
+        WHY IT IS ARMED HERE AND NOT IN `_on_core_ready`. Reading the installed
+        pywebview (`platforms/edgechromium.py`, `platforms/winforms.py`):
+
+          * `winforms.py:773` builds the form; `EdgeChrome.__init__` subscribes
+            pywebview's handlers and calls `EnsureCoreWebView2Async(None)`
+            (`edgechromium.py:101-102`, `:120`) — async, result discarded. The
+            CONTROL exists; CoreWebView2 does not.
+          * `winforms.py:775` fires `before_show`. This is therefore the last
+            point that provably precedes EVERY navigation.
+          * navigation #1 is raised from INSIDE the initialization-completed
+            dispatch: `on_webview_ready` is what calls `load_url`
+            (`edgechromium.py:305-311`), and pywebview subscribed that handler
+            BEFORE the shell's `_on_core_ready`.
+
+        So arming from `_on_core_ready` is a registration that is not merely
+        late — it is registered by a callback the shell does not control, and
+        when that callback does not arrive, `NavigationStarting` has no handler
+        and nothing re-hides the window. That is the whole of
+        TICKET-55a4ab4b157bdd26bb9629c7: the cure was reachable only through
+        an unrelated subscription, so deleting one line left the panel visible
+        while `py_compile` stayed at rc=0. Arming here removes the dependency;
+        it also covers navigation #1, which the old registration could not.
+
+        The guard is a precondition, not a best-effort: a control that is not
+        there is a RAISE (this method runs before any navigation can, so the
+        control must exist), never a silent return.
+        `_main/panel-hidden-at-startup-oracle.py` holds the invariant by
+        construction and fails if this registration ever stops being on the
+        shipped path.
+        """
+        if self.visibility_armed:
+            return
+        if self.webview2 is None:
+            raise RuntimeError(
+                'PANEL_VISIBILITY_INVARIANT cannot be armed: no WebView2 '
+                'control. Every navigation would be shown by pywebview with '
+                'nothing to re-hide it.')
+        # `+=` cannot live in a lambda (see `_subscribe_core_ready`), which is
+        # why this is a method and not an inline statement.
+        self.webview2.NavigationStarting += self._on_navigation_start
+        self.visibility_armed = True
+        log('PANEL_VISIBILITY_INVARIANT armed=true where=before_show '
+            f'hwnd={self.hwnd}')
+
     def _on_core_ready(self, sender, args):
         """CoreWebView2 exists: install the preload-equivalent.
 
         Registration is per-ENVIRONMENT, not per-page, so registering while the
         staging page is the current document covers the panel's navigation too.
+
+        IT NO LONGER SUBSCRIBES `NavigationStarting`. That registration was
+        moved to `_arm_visibility_invariant`, called from `_on_before_show`,
+        on 2026-10-06 for TICKET-55a4ab4b157bdd26bb9629c7. The reasoning it
+        recorded here was correct about WHY the guard must sit on the
+        CONTROL's `NavigationStarting` and not the CoreWebView2's — pywebview
+        subscribes the same control event in `EdgeChrome.__init__`
+        (edgechromium.py:102) and .NET raises handlers in subscription order,
+        so pywebview's `form.Show()` (edgechromium.py:346-349) runs first and
+        this handler runs immediately after it in the same dispatch; on a
+        different forward the order is a race, and the re-assert was measured
+        losing it and leaving the panel on screen. The error was the WORD
+        "before the first page is loaded": this handler does not run before the
+        first page is loaded, because navigation #1 is raised from inside this
+        very dispatch (pywebview's `on_webview_ready` calls `load_url`,
+        edgechromium.py:305-311). Keeping the registration here made the cure
+        conditional on this callback arriving at all.
         """
         if not args.IsSuccess:
             log(f'WEBVIEW2_INIT_FAILED error={args.InitializationException}')
             return
         self.core = sender.CoreWebView2
-        # pywebview SHOWS the form on every navigation start for a transparent
-        # window (edgechromium.py:345-349), which is what put the panel on the
-        # owner's screen at startup. Subscribe here, before the first page is
-        # loaded, so the FIRST navigation is already covered.
-        self.core.NavigationStarting += self._on_navigation_start
         self._install_bootstrap('initialization-completed')
 
     def _install_bootstrap(self, where):
@@ -1189,6 +2259,10 @@ class SottoShell:
                 f'navigating to panel {PANEL_HTML}')
             self.window.load_url(file_url(PANEL_HTML))
             return
+        # NOTE: `_move_into_place` (the OFFSCREEN cure) was removed 2026-10-06:
+        # creating the window at -32000 broke the panel load, and its move-back
+        # left the panel VISIBLE at startup (measured: PANEL_VISIBILITY_ON_SCREEN
+        # visible=true). Geometry is fixed at creation instead.
         probe = self.exec_js(BRIDGE_PROBE)
         if probe and probe.get('hasSotto'):
             self.bridge_installed = True
@@ -1204,6 +2278,14 @@ class SottoShell:
             self._install_bootstrap('post-load-repair')
             self._ui(lambda: self.core.Reload())
 
+        # G3: the panel navigation has just completed. That is exactly the
+        # boundary the 2026-10-06 hang never crossed -- it logged
+        # `STAGING_LOADED`, its `load_url(panel)` never came back, there was no
+        # `PRELOAD_ACTIVE`, and run.cmd still answered 0 (launch-entry.md §3/§4).
+        # run.cmd's bounded wait keys on this file (see mark_launch_ready); the
+        # file appearing is the wrapper's "the app came up".
+        mark_launch_ready(self.args.ready_file)
+
         # Startup actions run ONCE per process, not once per navigation. A hot
         # reload re-enters this function; without this guard `--with-worker`
         # would spawn a SECOND worker and `--selftest` would run twice, so a
@@ -1211,12 +2293,89 @@ class SottoShell:
         if not self.startup_done:
             self.startup_done = True
             self.send_geometry()
+            # The panel AS TEXT. Armed here — once the panel document (not the
+            # staging page) has loaded — so the DOM read has something to read.
+            # See panel_state.py and docs/audit/painel-texto.md.
+            self.start_panel_state()
+            # THE VISIBILITY CHANNEL — armed BEFORE `start_worker` below, in
+            # this same block, so a worker spawned on this launch always finds
+            # the file. The order is the point: see `self.panel_visibility`.
+            self.start_panel_visibility()
             if self.args.show:
                 self.show_panel('startup')
             self._measure_on_screen_visibility('startup')
-            if self.args.with_worker:
-                self.start_worker('with-worker')
-            if self.args.dump_dom:
+            # -- F1: the worker starts by DEFAULT --------------------------
+            # `docs/audit/auditoria-completa-20261007.md` F1: the documented
+            # launch started no worker at all, so Alt+C showed a panel that
+            # claimed to be waiting for audio with no capture process in
+            # existence. The flag is now the OPT-OUT.
+            #
+            # THE DECISION IS MADE IN A STATED ORDER, most explicit first, and
+            # the reason string is what the log carries (`WORKER_AUTOSTART
+            # started/declined reason=…`, the same shape every existing reader
+            # parses):
+            #   1. --with-worker          -> force ('with-worker'). AUTHORITATIVE:
+            #      a lane or script that wants the worker in a measurement keeps
+            #      working, because the suppression below is only reached when
+            #      this flag is absent.
+            #   2. --no-worker            -> opt out ('no-worker')
+            #   3. SOTTO_NO_WORKER=1      -> opt out ('env')
+            #   4. a MEASUREMENT FLAG     -> decline
+            #      ('measurement-flag(<flag>)'). The set is the flags that name a
+            #      measurement, not transcription:
+            #        --dump-dom   measures the panel's DOM and exits
+            #        --selftest   proves the hotkey toggles and exits
+            #        --memory     prints the host RSS and exits
+            #        --no-hotkey  the shell's own help calls it "for MEASUREMENT
+            #                     runs", and a real run cannot work without
+            #                     Alt+C, so it is a reliable signal
+            #        --exit-after a bound for a BOUNDED probe run
+            #      WHY IT MATTERS: such a run would otherwise pay a ~2 GB model
+            #      load and open an audio tap on every launch, and several
+            #      oracles point the shell at a temp tree whose worker path does
+            #      not exist -- churn plus restart backoff against an assertion
+            #      about the panel, which is how a default turns into a
+            #      regression for the instruments. Checked against every call
+            #      site that needs the worker FOR REAL: `_main/_app-drive.py`
+            #      (`--with-worker --probe-v2`), `_main/_live-launch.py`
+            #      (`--with-worker`) and a plain double-click (no flags) -- none
+            #      of them relies on `--exit-after` alone.
+            #   5. otherwise              -> start ('default')
+            # The table itself lives in `_worker_autostart_reason` so the rule
+            # can be asserted without a WebView2 (see `_main/_lane1-*.py`).
+            worker_reason = self._worker_autostart_reason(self.args)
+            # EVERY path goes through `start_worker`, so a refusal takes the
+            # SAME `WORKER_AUTOSTART=declined reason=…` line a silent failure
+            # does and no reader has to learn a second shape. `start_worker`
+            # declines by itself when a bridge already exists, and nothing
+            # added here takes `self._lock`.
+            self.start_worker(worker_reason)
+            # -- D3: no worker means the panel must say so ------------------
+            # The panel's shipped footer says "Idle · no audio source", which
+            # claims the machine has no audio -- measured false (there IS audio;
+            # what is missing is the PROCESS). Without F1 cured, no status ever
+            # arrived either, so the claim stood for the whole session. One
+            # status now, through the same path every worker status takes, so
+            # both the placeholder and the footer stop claiming a wait that
+            # cannot end -- and it NAMES THE FLAG, because "no worker" with the
+            # flag in hand is a decision the owner can undo in one argument.
+            #
+            # Only the two opt-outs and a measurement flag get it: the panel the
+            # owner reads must not claim a wait when the shell KNOWS there is no
+            # worker. The sentence NAMES THE FLAG, because "no worker" with the
+            # flag in hand is a decision he can undo in one argument -- "no audio
+            # source" never said that.
+            off_message = self._worker_off_message(worker_reason)
+            if off_message:
+                text, info = off_message
+                self.apply_panel_state(text, 'error', info)
+            if self.args.probe_v2 > 0:
+                timer = threading.Timer(self.args.probe_v2,
+                                        self.run_panel_v2_probe)
+                timer.daemon = True
+                timer.start()
+                log(f'PANEL_V2_PROBE_WAIT s={self.args.probe_v2}')
+            elif self.args.dump_dom:
                 # `--dump-dom-wait` is the difference between measuring the
                 # panel and measuring the panel's STARTUP. A worker that will
                 # die of a silent device spends its first seconds alive, so a
@@ -1250,8 +2409,29 @@ class SottoShell:
             f'visible={str(self.visible).lower()} '
             f'hotkey_still_registered='
             f'{str(bool(self.hotkey and self.hotkey.registered)).lower()}')
-        if self.visible:
-            self.show_panel('hot-reload')
+        # ── NO RE-SHOW HERE. REMOVED ON PURPOSE (2026-10-07) ──────────────────
+        # This was `if self.visible: self.show_panel('hot-reload')`. The owner
+        # reported *"eu to tentando tirar ele da minha tela e ele respawna"*, and
+        # this call is the respawn: every time a lane saved a file under
+        # `app/panel/**` the shell re-navigated and RE-MAPPED the panel — a
+        # second path to the very map `_gate_form_show` exists to refuse, running
+        # AFTER the navigation where nothing can order against it.
+        #
+        # It is also unnecessary. pywebview re-maps the form on every navigation
+        # start and the gate refuses that; a window that was VISIBLE is still
+        # visible after a re-navigation (the content re-renders by itself), and a
+        # window that was HIDDEN must stay hidden. So the correct action is:
+        # assert the state the owner chose, and never the opposite.
+        #
+        # NOTE FOR WHOEVER READS THE F5 RECEIPT: the machine proof of the staging
+        # bounce used to include a `PANEL_SHOWN reason=hot-reload` line. That line
+        # no longer appears — by design. The reload is still proved by
+        # `HOT_RELOAD_APPLIED reload=N` plus the panel loading the real document
+        # (the `panel-state.json` `url` and a non-negative `live.count`).
+        if not self.visible:
+            self._reassert_hidden()
+            log('HOT_RELOAD_KEPT_HIDDEN reason=owner-had-it-hidden '
+                f'reload={self.reload_count}')
 
     def _on_closing(self):
         if self.bridge is not None:
@@ -1347,7 +2527,6 @@ class SottoShell:
             box['error'] = repr(exc)
             done.set()
 
-        self._ui(_run)
         if not done.wait(timeout):
             return None
         if 'error' in box:
@@ -1363,9 +2542,22 @@ class SottoShell:
         self.exec_js('window.__sotto_emit(' +
                      json.dumps(kind) + ',' + json.dumps(json.dumps(payload)) + ')')
 
-    def send_status(self, text):
+    def send_status(self, text, kind=''):
+        """Status wire: `{'text': <str>, 'kind': <str>}` — F8 + D3, frozen.
+
+        `docs/audit/auditoria-completa-20261007.md` F8: the bridge already HAS
+        the severity (`WorkerBridge` classifies every worker status) and the
+        panel threw it away and re-classified the sentence with a regex, so two
+        classifiers decided one status and the panel's guess is the one the
+        owner sees. The kind now travels WITH the text, as an OBJECT, through
+        the existing `emit('status', …)` path — one source of truth. The object
+        is plain JSON-serializable strings and nothing more; `panel.js` (other
+        lane) reads `.kind` when it is there and falls back to the sentence.
+        The page side tolerates a bare string too, so a stale shell cannot
+        break a panel that has already been updated.
+        """
         self.last_status = text
-        self.emit('status', str(text))
+        self.emit('status', {'text': str(text), 'kind': str(kind or '')})
 
     def send_geometry(self):
         self.emit('geometry', self.geometry)
@@ -1385,7 +2577,12 @@ class SottoShell:
                 'in place')
             return False
 
-        self.send_status(line)
+        # The SAME kind travels to the page twice, deliberately: in the status
+        # object (`send_status`, which `panel.js` reads) and in the placeholder
+        # write below, which is the shell's own direct paint of the severity.
+        # One value, both readers — see `send_status` for why the panel must not
+        # re-classify the sentence with a regex.
+        self.send_status(line, kind)
         info = info or {}
         shown = self.exec_js(
             '(() => {'
@@ -1412,14 +2609,382 @@ class SottoShell:
     def note_status_observed(self, text):
         log(f'STATUS_OBSERVED text={json.dumps(str(text))}')
 
+    # -- the panel as TEXT -------------------------------------------------
+    def panel_state_snapshot(self, reason='periodic'):
+        """Everything the panel shows NOW, as plain data — see panel_state.py.
+
+        Called by the writer thread every `PANEL_STATE_INTERVAL_S` and on the
+        request sentinel. The DOM half is read over the SAME `exec_js` seam the
+        probes use — the read a screenshot makes, in text — and the worker half
+        is the bridge's own already-held state. Nothing here starts a process or
+        a window, and nothing here changes what the owner sees.
+        """
+        dom = None
+        if self.core is not None:
+            dom = self.exec_js(PANEL_STATE_PROBE, timeout=5.0)
+        bridge = self.bridge
+        worker = bridge.snapshot() if bridge is not None else None
+        panel_status = ((dom or {}).get('status') or {}).get('text')
+        return {
+            'namedState': self._named_panel_state(worker, panel_status),
+            'panel': dom,
+            'shell': {
+                'visible': self.visible,
+                'hotkey': self.args.hotkey,
+                'rendererReady': self.renderer_ready.is_set(),
+                'bridgeInstalled': self.bridge_installed,
+                'lastStatus': self.last_status,
+                'captionLogCount': len(self.caption_log),
+                'reloadCount': self.reload_count,
+                'workerPath': self.args.worker,
+                'log': getattr(_LOG_FILE, 'name', None),
+                'hotReload': self.hot_reload is not None,
+            },
+            # The visibility channel, as data, beside the two facts it is built
+            # from: `shell.visible` (the window, this instant) and the file the
+            # worker polls. A reader comparing them can see the channel drift or
+            # refuse it; a reader that trusts only the file cannot.
+            'panelVisibility': self.panel_visibility_snapshot(),
+            'worker': worker,
+        }
+
+    @staticmethod
+    def _named_panel_state(worker, panel_status):
+        """One name for "what is the panel showing", by a STATED precedence.
+
+        The panel's OWN footer wins while it is live — `panel.js` writes
+        `Receiving captions` the moment a caption commits — because that is the
+        sentence the owner reads. Below it fall the worker's failure vocabulary,
+        then the bridge's own no-audio verdict. `no-worker` is a real state, not
+        an empty string: a panel with no bridge is not the same panel as one
+        holding a quiet worker.
+        """
+        if panel_status == 'Receiving captions':
+            return 'receiving'
+        if worker is None:
+            return 'no-worker'
+        pending = worker.get('pendingError') or {}
+        if pending.get('state'):
+            return str(pending['state'])
+        state = str(worker.get('state') or '')
+        if state in WORKER_ERROR_STATES:
+            return state
+        if worker.get('noAudio'):
+            return NO_AUDIO_STATE
+        return state or 'idle'
+
+    def start_panel_visibility(self):
+        """Arm the visibility channel. Idempotent per process.
+
+        The observer is the WINDOW, read at call time: `window_visible(hwnd)` is
+        the same `IsWindowVisible` every other visibility decision in this file
+        is built from, so the file and the screen cannot disagree by
+        construction. When there is no window yet the answer is False and the
+        first real window is a transition — which is exactly the fact the worker
+        needs (nothing on screen yet => nothing to go live for).
+        """
+        if self.panel_visibility is not None:
+            return False
+        self.panel_visibility = PanelVisibilityWriter(
+            path=PANEL_VISIBILITY_PATH,
+            observe=self.observe_panel_visible,
+            log=log,
+            interval_s=PANEL_VISIBILITY_INTERVAL_S,
+        )
+        return self.panel_visibility.start()
+
+    def observe_panel_visible(self) -> bool:
+        """The LIVE answer: is the panel window on screen right now?"""
+        hwnd = self.hwnd
+        return bool(window_visible(hwnd)) if hwnd else False
+
+    def publish_panel_visibility(self, reason):
+        """Record a visibility transition the moment it happens.
+
+        Called from the SHOW/HIDE calls themselves, so the file changes within
+        the same instant as the window rather than up to `interval_s` later: a
+        worker that is being switched by this file must not be told "hidden" a
+        tick after the owner pressed Alt+C. Silent when the arm was never made
+        (a measurement run that never loaded the panel) — the cadence writer is
+        the only other writer, and it takes the same path.
+        """
+        writer = self.panel_visibility
+        if writer is None:
+            return False
+        return writer.write(reason)
+
+    def panel_visibility_snapshot(self):
+        """The channel as DATA, for the panel-state dump and for probes."""
+        writer = self.panel_visibility
+        if writer is None:
+            return None
+        return {
+            'path': PANEL_VISIBILITY_PATH,
+            'visible': writer.visible,
+            'since_ms': writer.since_ms,
+            'reason': writer.reason,
+            'transitions': writer.transitions,
+            'writes': writer.writes,
+            'errors': writer.errors,
+        }
+
+    def start_panel_state(self):
+        """Arm the periodic + on-request dump. Idempotent per process."""
+        if self.panel_state is not None:
+            return False
+        self.panel_state = panel_state.PanelStateWriter(
+            path=PANEL_STATE_PATH,
+            request_path=PANEL_STATE_REQUEST,
+            snapshot=self.panel_state_snapshot,
+            log=log,
+            interval_s=PANEL_STATE_INTERVAL_S,
+        )
+        return self.panel_state.start()
+
+    # -- history: the "redux" store, on disk --------------------------------
+    # Layout: `<root>/<YYYY-MM-DD>/<HH>.md` — a 24 h folder, one file per hour,
+    # appended as captions commit. The shell owns the path (the panel is handed
+    # the entry back), so the folder convention lives in exactly one place.
+    def history_root(self):
+        """The history store's root, and whether a canonical producer exists.
+
+        FROZEN SHAPE (other lanes read it): `{'root': <path>,
+        'canonicalProducer': None}`.
+
+        `canonicalProducer` is `None` because of the audit's **F2**
+        (`docs/audit/auditoria-completa-20261007.md`): `app/panel/
+        history-source.js:51` accepts a canonical line only when its meta
+        carries `producer === 'redux'`, and NO engine in this repo ever stamps
+        `producer` — the live path builds its meta with three literal keys
+        (`caption-formulation.js:408`), and the batch engine that could stamp it
+        (Parakeet Redux) is neither on disk nor called. So the transcript cannot
+        fill: the feed is decorative and the search has nothing to search. The
+        shell says so HERE, as data, instead of the panel inferring it from an
+        empty list; `panel.js` (other lane) uses it to collapse the feed and
+        disable the search. It becomes a producer NAME only if a production
+        call site starts stamping one.
+        """
+        return {'root': HISTORY_ROOT, 'canonicalProducer': None}
+
+    def _history_path_for(self, when):
+        return os.path.join(
+            HISTORY_ROOT,
+            time.strftime('%Y-%m-%d', when),
+            time.strftime('%H', when) + '.md',
+        )
+
+    @staticmethod
+    def _history_provenance(options):
+        """The `<!-- route=… start=… reason=… -->` suffix for one line (M8).
+
+        WHY IT EXISTS: `formulate()` appends terminal punctuation to every line
+        the renderer commits, so a fragment the panel abandoned after 1500 ms
+        and a sentence the worker actually closed were byte-identical in this
+        file. The route is what tells them apart; `start` is the worker's own
+        line identity (`worker/sotto_worker.py:_event`), so a line here can be
+        lined up with the worker's `start=` in its JSONL, and `reason` is the
+        rule that fired at the instant of the write.
+
+        It is written ON the line, and NOT into `entry['text']`: the feed and
+        the search show the sentence, the file carries the provenance.
+        """
+        if not isinstance(options, dict):
+            return ''
+        route = str(options.get('route') or '').strip()
+        if route not in HISTORY_ROUTES:
+            return ''
+        parts = [f'route={route}']
+        start = options.get('start')
+        if isinstance(start, (int, float)) and not isinstance(start, bool):
+            parts.append(f'start={float(start):.2f}')
+        # WHICH branch decided the route (M9). Written AFTER `start=` so every
+        # existing `route=… start=…` reader keeps its capture. `src=fallback`
+        # is the de-landing announcing itself (P1 `4fb5b25380cbc8269977e22e`).
+        src = str(options.get('routeSource') or '').strip()
+        if src in HISTORY_ROUTE_SOURCES:
+            parts.append(f'src={src}')
+        reason = re.sub(r'\s+', ' ', str(options.get('reason') or '')).strip()
+        if reason:
+            parts.append(f'reason={reason}')
+        return ' <!-- ' + ' '.join(parts) + ' -->'
+
+    def history_append(self, text, options=None):
+        """Append ONE committed caption. Returns the entry as written, or None."""
+        body = re.sub(r'\s+', ' ', str(text or '')).strip()
+        if not body:
+            return None
+        # HISTORICO-VS-REDUX GUARD — OWNER 2026-10-06: the transcript carries
+        # ONLY a line the WORKER closed (`route=final`). The panel already
+        # declines a `provisional-draft` (panel.js `recordHistory`); this is the
+        # same invariant at the store, so no other caller can put the LIVE
+        # caption in the owner's transcript. The LIVE caption stays in the box.
+        # See docs/audit/historico-vs-redux.md.
+        if isinstance(options, dict) and str(options.get('route') or '').strip() == 'provisional-draft':
+            return None
+        now = time.localtime()
+        path = self._history_path_for(now)
+        entry = {
+            'date': time.strftime('%Y-%m-%d', now),
+            'hour': time.strftime('%H', now),
+            'time': time.strftime('%H:%M:%S', now),
+            'text': body,
+            'path': path,
+        }
+        provenance = self._history_provenance(options)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'a', encoding='utf-8') as handle:
+                handle.write(f'- [{entry["time"]}] {body}{provenance}\n')
+        except OSError as exc:  # noqa: BLE001 -- a write miss must not kill the app
+            warn(f'HISTORY_APPEND_FAILED path={json.dumps(path)} error={exc!r}')
+            return None
+        log(f'HISTORY_APPEND path={json.dumps(path)} time={entry["time"]} '
+            f'bytes={len(body.encode("utf-8"))}')
+        return entry
+
+    def _history_files(self):
+        """Every hour file under the root, OLDEST first: [(date, hour, path)]."""
+        out = []
+        try:
+            days = sorted(name for name in os.listdir(HISTORY_ROOT)
+                          if HISTORY_DAY_RE.match(name))
+        except OSError:
+            return out
+        for day in days:
+            folder = os.path.join(HISTORY_ROOT, day)
+            try:
+                hours = sorted(name for name in os.listdir(folder)
+                               if name.endswith('.md'))
+            except OSError:
+                continue
+            for name in hours:
+                out.append((day, name[:-3], os.path.join(folder, name)))
+        return out
+
+    def _history_read(self, path):
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                return handle.read().splitlines()
+        except OSError as exc:  # noqa: BLE001 -- an unreadable hour is skipped
+            warn(f'HISTORY_READ_FAILED path={json.dumps(path)} error={exc!r}')
+            return []
+
+    def _history_entries(self):
+        """NEWEST-first stream of entries. Reverse file order AND line order, so
+        a `tail()` really returns the last N written, not the first N of the
+        newest file."""
+        for day, hour, path in reversed(self._history_files()):
+            for line in reversed(self._history_read(path)):
+                match = HISTORY_LINE_RE.match(line)
+                if match:
+                    # The provenance comment is the FILE's, not the feed's:
+                    # strip it so search and the feed still see the sentence
+                    # (M8 — see `_history_provenance`).
+                    yield {'date': day, 'hour': hour, 'time': match.group(1),
+                           'text': HISTORY_TAIL_RE.sub('', match.group(2)).strip(),
+                           'path': path}
+
+    def history_tail(self, limit=400):
+        limit = max(1, int(limit))
+        entries = []
+        for entry in self._history_entries():
+            entries.append(entry)
+            if len(entries) >= limit:
+                break
+        entries.reverse()  # back to oldest-first for the feed
+        return {'entries': entries, 'root': HISTORY_ROOT}
+
+    def history_search(self, query, limit=200):
+        needle = str(query or '').strip().lower()
+        hits = []
+        if needle:
+            for entry in self._history_entries():
+                if needle in entry['text'].lower():
+                    hits.append(entry)
+                    if len(hits) >= max(1, int(limit)):
+                        break
+        return {'query': query, 'hits': hits, 'root': HISTORY_ROOT}
+
+    def reply_history(self, history_id, payload):
+        self.exec_js(f'window.__sotto_history({json.dumps(history_id)}, '
+                     f'{json.dumps(json.dumps(payload))})')
+
+    def reveal_in_folder(self, path):
+        """Open the OS file manager at the entry's FILE, or at the root.
+
+        `explorer /select,"<file>"` for a file, `explorer "<dir>"` for a folder.
+        CREATE_NO_WINDOW is mandatory: a helper that flashes a console on the
+        owner's desktop is the exact defect this house refuses. A path outside
+        the history root is REFUSED rather than opened — a reveal that can be
+        pointed anywhere is a foot-gun, even from a trusted page.
+        """
+        raw = str(path or '').strip().strip('"')
+        root_real = os.path.abspath(HISTORY_ROOT)
+        if raw:
+            target = os.path.abspath(raw)
+            # Compare CASE-INSENSITIVELY (normcase) but keep the ORIGINAL case
+            # for the command and the log: Explorer is case-insensitive, and a
+            # lower-cased path in the receipt reads like a different folder.
+            root_key = os.path.normcase(root_real)
+            key = os.path.normcase(target)
+            if key != root_key and not key.startswith(root_key + os.sep):
+                warn(f'REVEAL_REFUSED path={json.dumps(raw)} '
+                     f'reason=outside-history-root')
+                return False
+        else:
+            target = root_real
+        if not os.path.exists(target):
+            warn(f'REVEAL_MISSING path={json.dumps(target)}')
+            return False
+        is_file = os.path.isfile(target)
+        shown = os.path.normpath(target)
+        command = (f'explorer /select,"{shown}"' if is_file
+                   else f'explorer "{shown}"')
+        try:
+            subprocess.Popen(command, creationflags=CREATE_NO_WINDOW)
+        except OSError as exc:  # noqa: BLE001 -- report, never crash the panel
+            warn(f'REVEAL_FAILED path={json.dumps(shown)} error={exc!r}')
+            return False
+        log(f'REVEAL_IN_FOLDER path={json.dumps(shown)} select={str(is_file).lower()}')
+        return True
+
     # -- pointer -----------------------------------------------------------
     def set_pointer_interactive(self, active):
+        """Interactive while the mouse is over a control; click-through after.
+
+        F9 (`docs/audit/auditoria-completa-20261007.md`, `sotto_webview.py:
+        1474-1476`): `_on_before_show` puts `WS_EX_NOACTIVATE` on the window and
+        `show_panel` shows it with `SW_SHOWNOACTIVATE`, which is RIGHT for
+        appearance -- Alt+C must not steal focus from whatever the owner is
+        typing into. It was WRONG for the interactive state: a `WS_EX_NOACTIVATE`
+        window is not brought to the foreground by a click either, so the panel
+        could never take keyboard focus at all and its `<input type="search"
+        id="search-input">` could never receive a character -- typing with the
+        panel in front sent the keys to the app BEHIND it. Both bits are now
+        cleared on entry and restored on leave, so the only moment the panel can
+        be activated is the moment the owner has his mouse on one of its
+        controls. `show_panel`'s `SW_SHOWNOACTIVATE` is untouched: appearing
+        still steals nothing.
+        """
         if self.hwnd is None:
             return False
-        make_click_through(self.hwnd, not active)
+        click_through = not active
+        # `noactivate` is the flag the page-side drive reads back; it is False
+        # exactly while the pointer is over a control. Both calls take the
+        # same value on Windows' side (`& ~flag` and `| flag`), so this is one
+        # state change expressed in two styles, never two competing ones.
+        try:
+            if active:
+                set_ex_style(self.hwnd, remove=WS_EX_NOACTIVATE)
+            else:
+                set_ex_style(self.hwnd, add=WS_EX_NOACTIVATE)
+        except Exception as exc:  # noqa: BLE001 -- report, never kill the panel
+            log(f'POINTER_INTERACTIVE_STYLE_FAILED error={exc!r}')
+        make_click_through(self.hwnd, click_through)
         self.pointer_interactive = bool(active)
         log(f'POINTER_INTERACTIVE active={str(bool(active)).lower()} '
-            f'click_through={str(not active).lower()}')
+            f'click_through={str(click_through).lower()} '
+            f'noactivate={str(not active).lower()}')
         return True
 
     # -- show / hide -------------------------------------------------------
@@ -1451,14 +3016,35 @@ class SottoShell:
             delegate runs once every handler of this event has returned, so it
             covers the other order too.
 
-        MEASURED, posted half only (run 2026-10-06T07:10:22Z): the panel was
-        still caught on screen for ONE 200 ms sample out of 41
-        (`_main/panel-startup-visibility-AFTER.log`, arm P, `CENSUS-PID …
-        visible_samples_over_tree=1`) — a few hundred ms of window on the
-        owner's desk at every start. The synchronous half closes that; the
-        posted half is what keeps the cure true if the handler order ever
-        flips. Nothing happens when the owner asked for the panel (`--show`,
-        or Alt+C).
+        MEASURED 2026-10-06: this pair is NOT the cure. `_main/
+        panel-startup-flash-census.py` samples the shell's OWN pid tree every
+        25 ms over 20 launches, and with BOTH halves in place the window was
+        still caught on screen in **11 of 20 launches, longest 57.7 ms**. The
+        pair SHORTENS the flash; it does not close it, because both halves run
+        on a DIFFERENT event than the `Show()` they are undoing.
+
+        The OFF-SCREEN creation that was meant to CLOSE it (`x=OFFSCREEN`,
+        `OFFSCREEN = -32000`) was tried and REMOVED the same day: a window
+        created at -32000 never finishes the WebView2 panel navigation, so the
+        shell hung after STAGING_LOADED, `PRELOAD_ACTIVE`/`WORKER_AUTOSTART`
+        were never reached and the app produced NOTHING — the flash was traded
+        for a dead app, and the move-back left the panel VISIBLE at startup
+        anyway (`PANEL_VISIBILITY_ON_SCREEN visible=true`). See the note in
+        So this handler is the SECOND net, not the first: it hides the window
+        the instant a navigation Shows it, and it does nothing when the owner
+        asked for the panel (`--show`, or Alt+C).
+
+        CORRECTED 2026-10-07. This paragraph used to end "It SHORTENS the flash;
+        it does not close it", and that was measured true of the re-assert
+        ALONE. The map itself is now refused before it happens: `_gate_form_show`
+        (installed from `_on_before_show`) replaces the form INSTANCE's `Show`
+        with a guard, so pywebview's `self.form.Show()` at full opacity never
+        runs unless the owner asked. Measured by
+        `_main/panel-startup-flash-census.py` at a 25 ms cadence, N=20 per arm:
+        `_main/receipt-20261007-panel-startup-flash.md`. The closed form is kept
+        because it is still the only net if the gate is ever removed, and
+        because a `Show` from anywhere OTHER than that Python call would still
+        be caught here.
         """
         if self.args.show or self.visible:
             return
@@ -1475,6 +3061,11 @@ class SottoShell:
         hide_window(hwnd)
         log(f'PANEL_VISIBILITY_REASSERTED reason=navigation '
             f'visible={str(window_visible(hwnd)).lower()}')
+        # A hide the owner did NOT ask for is still a hide, and the worker's
+        # stack law is about the screen, not about intent. Published here so the
+        # file cannot lag the window on this path either; the cadence writer
+        # would otherwise catch it up to `interval_s` later.
+        self.publish_panel_visibility('reassert-hidden')
 
     def show_panel(self, reason):
         if self.hwnd is None:
@@ -1487,6 +3078,12 @@ class SottoShell:
         log(f'PANEL_SHOWN reason={reason} '
             f'visible={str(self.visible).lower()} '
             'show=SW_SHOWNOACTIVATE focus_stolen=false')
+        # The worker goes back to STREAMING on this line — see the stack law at
+        # `PANEL_VISIBILITY_PATH`. `self.visible` is the MEASURED value above,
+        # so a Show that silently failed publishes "still hidden" and the worker
+        # stays on the batch path rather than switching to a panel nobody can
+        # see.
+        self.publish_panel_visibility(reason)
         return True
 
     def hide_panel(self, reason):
@@ -1496,11 +3093,27 @@ class SottoShell:
         self.visible = window_visible(self.hwnd)
         log(f'PANEL_HIDDEN reason={reason} '
             f'visible={str(self.visible).lower()}')
+        self.publish_panel_visibility(reason)
         return True
 
     def toggle_panel(self, reason):
-        return (self.hide_panel(reason) if self.visible
-                else self.show_panel(reason))
+        """Show if hidden, hide if shown — decided by the WINDOW, not by a cache.
+
+        `self.visible` is only updated when THIS object shows or hides the panel,
+        and two other paths map or unmap the window behind its back: pywebview's
+        own navigation-time `form.Show()` (gated) and `_reassert_hidden`. A stale
+        `True` makes the owner's first Alt+C a no-op HIDE of a panel he cannot
+        see — i.e. "Alt+C does nothing" until he presses it twice, and the log
+        blames `reason=hotkey` in both directions. One `IsWindowVisible` removes
+        the whole class; it is also what the cheap `--selftest` two-state check
+        reads, so the two can no longer disagree.
+        """
+        live = window_visible(self.hwnd) if self.hwnd else False
+        if live != self.visible:
+            log(f'PANEL_VISIBILITY_CACHE_STALE cached={str(self.visible).lower()} '
+                f'live={str(live).lower()} decided_by=window')
+        self.visible = live
+        return (self.hide_panel(reason) if live else self.show_panel(reason))
 
     # -- page -> host handlers --------------------------------------------
     def info(self):
@@ -1530,6 +3143,16 @@ class SottoShell:
             self.bridge.stop('exit')
         if self.hotkey is not None:
             self.hotkey.stop()
+        if self.panel_state is not None:
+            self.panel_state.stop('exit')
+        if self.panel_visibility is not None:
+            # A last write, so a worker still polling during the shell's exit
+            # reads a FRESH answer rather than a stale one: this is the write
+            # that turns "the shell is gone" into "the worker stops believing
+            # me" via `staleAfterSeconds`, instead of the worker obeying the
+            # last state it happens to hold.
+            self.panel_visibility.write('exit')
+            self.panel_visibility.stop('exit')
         self.stop_hot_reload('exit')
         # `window.destroy()` marshals a Close() onto the UI thread and WAITS
         # for it. With a live worker streaming statuses, each status is an
@@ -1555,7 +3178,118 @@ class SottoShell:
         os._exit(code)
 
     # -- worker ------------------------------------------------------------
+    @staticmethod
+    def _worker_off_message(reason):
+        """D3: the honest sentence for a shell with NO worker, or None.
+
+        `panel.html:189` ships `Idle · no audio source`, and D3 of
+        `docs/audit/auditoria-completa-20261007.md` names it for what it is: a
+        FALSE claim. There is audio on this box (measured, `_main/listen-probe.py`
+        and the routing law); what is missing is the PROCESS. With F1 cured the
+        shell knows exactly why there is no worker, so it says so.
+
+        Naming the flag is the point: "no worker" with the flag in hand is a
+        decision the owner (or a lane) can undo in one argument, and
+        `reason` is the same string the launch logged, so the log line and the
+        painted sentence cannot disagree.
+
+        Returns `(text, info)` for `apply_panel_state`, or `None` for a reason
+        that must NOT paint anything: `with-worker` and `default` have a worker,
+        and a measurement run (`measurement-flag(…)`) keeps the NEUTRAL panel its
+        instrument is measuring -- a status fired into an instrument's DOM would
+        be the shell changing the thing under measurement.
+        """
+        if reason == 'no-worker':
+            sent_by = '--no-worker'
+        elif reason == 'env':
+            sent_by = 'SOTTO_NO_WORKER=1'
+        elif reason.startswith('measurement-flag('):
+            sent_by = reason[len('measurement-flag('):-1]
+        else:
+            return None
+        return (
+            f'No transcription worker is running (started with {sent_by})',
+            {'title': 'No worker · captions are impossible',
+             'body': f'This shell was started with {sent_by}, so no audio is '
+                     'being captured. Start it without that flag (run.cmd, the '
+                     'documented entry) to transcribe.'},
+        )
+
+    @staticmethod
+    def _worker_autostart_reason(args, env=None):
+        """F1: should the worker auto-start, and WHY — as one of five strings.
+
+        `docs/audit/auditoria-completa-20261007.md` F1: the documented launch
+        (`run.cmd`) started no worker at all, so Alt+C opened a panel claiming to
+        wait for audio with no capture process in existence. The worker now
+        starts by DEFAULT; the flag is the OPT-OUT.
+
+        The return value is the `reason=` field of the
+        `WORKER_AUTOSTART=started|declined reason=…` line, and `'default'` is the
+        only value that starts it:
+
+          `'with-worker'`      the flag was passed — AUTHORITATIVE, so a lane or
+                               a script that wants the worker in a measurement
+                               keeps working
+          `'no-worker'`        `--no-worker`: shell only
+          `'env'`              `SOTTO_NO_WORKER=1` in the environment
+          `'measurement-flag(…)'` a mode that measures the panel or the shell,
+                               not transcription: `--dump-dom`, `--selftest`,
+                               `--memory`, `--no-hotkey` (the shell's own help
+                               calls it "for MEASUREMENT runs", and a real run
+                               cannot work without Alt+C) and `--exit-after` (a
+                               bound for a BOUNDED probe run). Without this, a
+                               plain probe launch would pay a ~2 GB model load
+                               and open an audio tap on every arm.
+          `'default'`          nothing said otherwise — start it
+
+        Precedence is the order above, most explicit first. Checked against every
+        call site that needs a worker FOR REAL: `_main/_app-drive.py`
+        (`--with-worker --probe-v2`), `_main/_live-launch.py` (`--with-worker`)
+        and a plain double-click (no flags) — none relies on `--exit-after`
+        alone. Factored out of `_on_loaded` so the rule is assertable without a
+        WebView2 (see `_main/_lane1-worker-default-arms.py`).
+        """
+        if getattr(args, 'with_worker', False):
+            return 'with-worker'
+        if getattr(args, 'no_worker', False):
+            return 'no-worker'
+        env = os.environ if env is None else env
+        if str(env.get('SOTTO_NO_WORKER') or '').strip() == '1':
+            return 'env'
+        # `--exit-after` is a FLOAT (0.0 = off) and the rest are `store_true`;
+        # truthiness is correct for both and keeps this one readable table.
+        for flag, name in (('dump_dom', '--dump-dom'),
+                           ('selftest', '--selftest'),
+                           ('memory', '--memory'),
+                           ('no_hotkey', '--no-hotkey'),
+                           ('exit_after', '--exit-after')):
+            if getattr(args, flag, False):
+                return f'measurement-flag({name})'
+        return 'default'
+
+    #: The reasons that may SPAWN a worker. Everything else is the decline half of
+    #: `_worker_autostart_reason`, which NAMES why; this tuple is what makes the
+    #: name binding. `hot-reload` is here because a file change must restart the
+    #: worker it already had (the reload policy decides WHEN, not whether).
+    START_REASONS = ('default', 'with-worker', 'hot-reload')
+
     def start_worker(self, reason):
+        if reason not in self.START_REASONS:
+            # ── THE RULE'S BINDING HALF, AND IT WAS MISSING UNTIL NOW ─────────
+            # `_worker_autostart_reason` was computed at the call site and then
+            # DISCARDED: this method started a worker for any reason string, so a
+            # `--dump-dom` / `--selftest` / `--memory` / `--no-hotkey` /
+            # `--exit-after` launch paid a ~2 GB model load (the exact cost the
+            # suppression set exists to avoid), and the D3 path told the panel
+            # "No transcription worker is running (started with --dump-dom)"
+            # WHILE a worker was loading. Both instruments that passed — the
+            # 15-arm rule probe and the adversary lane's 22-arm sweep — test the
+            # RULE, so neither could see the wiring; it was found by reading this
+            # call site on 2026-10-07. `_main/_audit-worker-start-wiring.py` now
+            # gates precisely this pair.
+            log(f'WORKER_AUTOSTART=declined reason={reason} by=start_worker')
+            return False
         if self.bridge is not None:
             return False
         self.bridge = WorkerBridge(
@@ -1580,6 +3314,9 @@ class SottoShell:
 
     def on_worker_status(self, text, kind, info):
         self.apply_panel_state(text, kind, info)
+        # A status line is the boundary signal: an exit/`done`/`error` closes
+        # the capture guard, so a reload held mid-stream can land here.
+        self._reload_policy.boundary()
 
     # -- hot reload --------------------------------------------------------
     # `hot_reload.py` watches and debounces; WHAT a reload means is decided
@@ -1599,11 +3336,32 @@ class SottoShell:
     def reload_panel_assets(self, files):
         """Re-navigate the live page, in place, without a new window.
 
-        `Navigate` and not `Reload`: a `file://` stylesheet can be served from
-        the WebView2 cache, and a cached stylesheet makes "the reload did
-        nothing" indistinguishable from "the reload never fired". Navigating
-        to the same URL with a fresh cache-busting query is what makes the
-        edit actually visible — which is the whole point of the feature.
+        THE MECHANISM IS THE STAGING BOUNCE, and it is not a cache-busting
+        trick: this re-runs `stage.html` -> `panel.html`, the SAME navigation
+        pair that brings the panel up at startup and is therefore already known
+        to land on the real document. `_on_loaded` sees `staged == False`, does
+        the staging navigation, and on the next load takes the panel branch and
+        its `HOT_RELOAD_APPLIED` half; the `startup_done` guard keeps the
+        once-per-process startup actions (geometry is re-sent by that branch,
+        the worker is NOT respawned, `--selftest` does not run twice) from
+        running again. The document that arrives is a fresh parse of the fresh
+        bytes, which is what a `file://` stylesheet gets no guarantee of.
+
+        WHY THE OLD MECHANISM WAS WRONG — `docs/audit/auditoria-completa-
+        20261007.md` F5, measured and reproduced twice on 2026-10-06. It built
+
+            url = file_url(PANEL_HTML) + f'?sotto_hr={self.reload_count}'
+
+        i.e. a QUERY STRING on a `file://` URL, and `?` is not a legal Windows
+        filename character, so the navigation failed and the pane landed on
+        `chrome-error://chromewebdata/` — Chromium's OWN error page. The
+        receipts are `_main/panel-state.json` reading `panel.url =
+        chrome-error://chromewebdata/` with `panel.live.count = -1`, which is
+        `PANEL_STATE_PROBE`'s sentinel for `#caption-list` ABSENT. The feature
+        therefore destroyed the thing it exists to refresh: after any panel-file
+        edit the panel stopped painting, the owner's transcript stopped growing
+        with it, and only a shell restart brought it back. Any cache-busting
+        that changes the URL of a `file://` document is out for the same reason.
 
         The hotkey belongs to THIS process, not to the page, so a re-navigation
         cannot lose Alt+C. It is re-read anyway and a loss is logged, because a
@@ -1615,15 +3373,17 @@ class SottoShell:
                 'reason=no-core')
             return False
         self.reload_count += 1
-        url = (file_url(PANEL_HTML) + f'?sotto_hr={self.reload_count}')
         # `self.staged`, NOT `self._staged`: `_on_loaded` reads the public one to
         # decide whether the current document is the staging page. Setting a
         # misspelled twin here looked correct and did nothing, so the reload
         # re-ran the staging navigation and the panel came up on stage.html.
-        self.staged = True
+        # It is set to False (NOT True, as the old code did): False is what
+        # makes `_on_loaded` perform the staging bounce instead of treating
+        # stage.html as if it were already the panel.
+        self.staged = False
 
         def _go():
-            self.window.load_url(url)
+            self.window.load_url(file_url(STAGE_HTML))
 
         try:
             self._ui(_go)
@@ -1636,10 +3396,24 @@ class SottoShell:
         return True
 
     def restart_worker(self, files):
-        """Stop the one worker and start it again, on a worker file change."""
+        """Queue a worker reload. The POLICY decides if and when it may run.
+
+        The old body restarted on the spot, which is the churn the owner saw:
+        with five lanes editing `worker/sotto_worker.py` all morning and a
+        250 ms watcher window that ends between their saves, every save cost a
+        full worker respawn — i.e. a model load (2.0-8.3 s, 1.4-2.1 GB, measured
+        in `worker/runs/*.jsonl`). The reload is now debounced, and it is HELD
+        while a capture stream is open. See `WorkerReloadPolicy`.
+        """
         if self.bridge is None:
             log(f'HOT_RELOAD_WORKER_SKIPPED files={json.dumps(files)} '
                 'reason=no-worker-running')
+            return False
+        return self._reload_policy.request(files)
+
+    def _do_worker_restart(self, files):
+        """The one place a hot reload actually stops and restarts the worker."""
+        if self.bridge is None:
             return False
         self.bridge.stop('hot-reload')
         self.bridge = None
@@ -1652,6 +3426,7 @@ class SottoShell:
     def stop_hot_reload(self, reason):
         if self.hot_reload is not None:
             self.hot_reload.stop(reason)
+        self._reload_policy.stop()
 
     # -- probes ------------------------------------------------------------
     def run_dump_dom(self):
@@ -1697,6 +3472,112 @@ class SottoShell:
         log('BRIDGE_GATE=GREEN hasPanelElement=true url=' +
             f"{probe.get('url')} panelSaidBridgeMissing=false")
         self.request_exit(0, reason='dump-dom')
+
+    def run_panel_v2_probe(self):
+        """PROVE the v2 panel end to end, from the page itself.
+
+        Three SYNCHRONOUS reads over the REAL page and the REAL bridge, spaced
+        by real waits: inject a caption through `window.sotto.pushCaption` (the
+        channel the worker drives), let the formulation hold expire, read the
+        live box and the feed, drive a UI search, then read the search results.
+        The disk half is read back through the shell's OWN store, so the feed
+        and the file on disk are checked by two independent paths tied to the
+        same unique token.
+        """
+        stamp = 'SOTTO-V2-' + str(int(time.time() * 1000))
+        injected = self.exec_js(PANEL_V2_INJECT) or {}
+        # The LIVE caption is driven through the REAL worker path — the very
+        # `on_worker_caption` the WorkerBridge calls — so this exercises
+        # worker -> shell -> emit('caption') -> preload -> panel.js -> live box
+        # -> history -> disk, not a shortcut around the bridge.
+        caption = 'A legenda ao vivo ' + stamp + '.'
+        self.on_worker_caption(caption, {'start': 0, 'end': 2})
+        time.sleep(3.0)  # COMMIT_MAX_HOLD_MS (1500) + the append round-trip
+        live = self.exec_js(PANEL_V2_READ_LIVE.replace('__STAMP__', stamp)) or {}
+        time.sleep(1.5)  # the search round-trip
+        search = self.exec_js(PANEL_V2_READ_SEARCH) or {}
+
+        tail = self.history_tail(5)
+        search_api = self.history_search(stamp, 5)
+
+        # The reveal guard, exercised WITHOUT opening a window: a path outside
+        # the history root must be REFUSED and a missing path must be reported.
+        # The success case is a real `explorer` spawn (what the button does) and
+        # is deliberately NOT run here — it would put a File Explorer window on
+        # the owner's desktop.
+        out_reveal = {
+            'outside': self.reveal_in_folder(
+                os.path.join(HISTORY_ROOT, os.pardir, 'sotto_webview.py')),
+            'missing': self.reveal_in_folder(
+                os.path.join(HISTORY_ROOT, '1999-01-01', '00.md')),
+        }
+
+        out = dict(injected)
+        out.update(live)
+        out.update(search)
+        out['stamp'] = stamp
+        out['tail'] = tail
+        out['searchApi'] = search_api
+        out['revealGuard'] = out_reveal
+
+        shape = out.get('shape') or {}
+        buttons = out.get('buttons') or {}
+        livebox = out.get('live') or {}
+        results = out.get('search') or {}
+        feed_hit = any(stamp in str(t) for t in (out.get('feed') or []))
+        disk_hit = any(stamp in str(e.get('text', ''))
+                       for e in (tail.get('entries') or []))
+        api_hit = bool((search_api.get('hits') or []))
+
+        # ── THE TRANSCRIPT HALF IS CONDITIONAL, AND NAMES THE BRANCH IT TOOK ──
+        # The four arms below (`feed_hit`, `results.hits > 0`, `disk_hit`,
+        # `api_hit`) are the ORIGINAL ones, and they can only pass while a
+        # canonical producer exists: the transcript accepts a line only if
+        # `meta.producer` is literally `redux` (`history-source.js:51,61-63`) and
+        # NOTHING in this repo stamps that field, so today the feed is empty and
+        # the disk takes no line (audit F2; `_main/history-producer-gate.js`
+        # measures exactly this and names it `no-producer-in-tree`).
+        #
+        # Kept as an unconditional conjunction, this probe was a gate that could
+        # not say yes: `--probe-v2` would exit 3 on a panel that is WORKING, and
+        # the exit would be read as the panel being broken. So the arm branches on
+        # the capability the shell itself publishes (`history_root()`'s
+        # `canonicalProducer`), asserts the HONEST state of each branch, and
+        # reports which one it took in `transcriptBranch` — a green here always
+        # means "the panel did what the pipeline allows", never "the transcript
+        # works".
+        canonical = self.history_root().get('canonicalProducer')
+        if canonical:
+            transcript_ok = bool(feed_hit and results.get('hits', 0) > 0
+                                 and disk_hit and api_hit)
+        else:
+            # Nothing can fill it: the honest expectations are an EMPTY feed, an
+            # EMPTY disk, a search that found nothing — and a search INPUT the
+            # panel has disabled, because a search box that cannot match is worse
+            # than no search box.
+            transcript_ok = bool(
+                not feed_hit and not disk_hit and not api_hit
+                and results.get('hits', 0) == 0
+                and livebox.get('searchInputDisabled')
+            )
+        out['transcriptBranch'] = 'canonical' if canonical else 'no-producer-in-tree'
+        out['transcriptOk'] = transcript_ok
+
+        out['ok'] = bool(
+            shape.get('history') and shape.get('live')
+            and shape.get('liveAboveHistory') and shape.get('liveBox')
+            and buttons.get('search') and buttons.get('reveal')
+            and out.get('historyApi')
+            and livebox.get('count', 0) > 0
+            and transcript_ok
+            and out_reveal['outside'] is False
+            and out_reveal['missing'] is False
+        )
+        log('PANEL_V2_PROBE ' + json.dumps(out, separators=(',', ':'),
+                                           ensure_ascii=False))
+        log(f'PANEL_V2_GATE={"GREEN" if out["ok"] else "RED"}')
+        self.request_exit(0 if out['ok'] else 3, reason='panel-v2-probe')
+        return out
 
     def run_memory(self):
         report = memory_report()
@@ -1748,8 +3629,136 @@ class SottoShell:
 
 
 # ===========================================================================
-# the worker bridge — the port of app/electron/worker-bridge.js
+# the worker bridge — the port of app/_legacy-electron/worker-bridge.js
 # ===========================================================================
+
+
+class WorkerReloadPolicy:
+    """Decide whether a settled worker-file change MAY restart the worker.
+
+    The watcher (`hot_reload.py`) decides WHEN a burst has settled; this decides
+    whether that settled burst is allowed to cost a worker restart — and, if it
+    is not, that it is QUEUED rather than dropped. Three rules, in order:
+
+      1. DEBOUNCE — a trailing window (`WORKER_RELOAD_DEBOUNCE_MS`) coalesces a
+         cross-lane save burst into ONE request.
+      2. GUARD    — a worker that is mid-stream (capture open, the state the
+         owner watches) is NEVER restarted under his feet. The reload is held
+         and lands at the next boundary: a natural respawn re-reads the file,
+         and that satisfied request is logged as APPLIED_AT_BOUNDARY rather than
+         costing a second restart.
+      3. FLOOR    — the owner's 3 minutes (`WORKER_RELOAD_MIN_INTERVAL_MS`): the
+         model cannot leave load more often than once per 180 s.
+
+    It is a class, not three methods on the shell, for one reason: the guard is
+    the thing that was missing, so it must be drivable from a probe against real
+    files without booting WebView2 (see `--probe-reload`). `get_bridge` is the
+    single seam — it returns the live `WorkerBridge` (or `None`), and the probe
+    returns a stand-in exposing the SAME two fields the policy reads.
+    """
+
+    def __init__(self, log_fn, get_bridge, restart,
+                 debounce_ms=WORKER_RELOAD_DEBOUNCE_MS,
+                 min_interval_ms=WORKER_RELOAD_MIN_INTERVAL_MS):
+        self.log = log_fn
+        self.get_bridge = get_bridge
+        self.restart = restart
+        self.debounce_ms = debounce_ms
+        self.min_interval_ms = min_interval_ms
+        self.pending = None          # files of the newest unapplied request
+        self.pending_since = 0.0
+        self._timer = None
+        self._last_applied_at = 0.0  # monotonic time of the last reload we ran
+        self._stopped = False
+
+    # -- requests ----------------------------------------------------------
+    def request(self, files):
+        """A settled burst: queue it and arm/reset the trailing debounce."""
+        if self._stopped:
+            return False
+        self.pending = list(files)
+        self.pending_since = time.monotonic()
+        self._arm(self.debounce_ms)
+        self.log(f'HOT_RELOAD_WORKER_QUEUED files={json.dumps(self.pending)} '
+                 f'debounce_ms={self.debounce_ms} '
+                 f'min_interval_ms={self.min_interval_ms}')
+        return True
+
+    def boundary(self):
+        """A worker status arrived: if a request is held, try to land it.
+
+        Called from `on_worker_status` on every status line — including the
+        exit line — so the deferred reload is not waiting on a timer that may
+        never fire while the worker is down.
+        """
+        if self._stopped or self.pending is None:
+            return
+        br = self.get_bridge()
+        if br is not None and br.is_capturing():
+            return                    # still mid-stream: keep holding it
+        self._arm(self.debounce_ms)
+
+    def stop(self):
+        self._stopped = True
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
+    # -- internals ---------------------------------------------------------
+    def _arm(self, delay_ms):
+        if self._stopped:
+            return
+        if self._timer is not None:
+            self._timer.cancel()
+        timer = threading.Timer(max(0, delay_ms) / 1000.0, self._fire)
+        timer.daemon = True
+        self._timer = timer
+        timer.start()
+
+    def _fire(self):
+        if self._stopped or self.pending is None:
+            return
+        files = self.pending
+        br = self.get_bridge()
+        if br is None:
+            # No worker at all: a file change must NOT spawn a 2 GB process
+            # nobody asked for (main.js:624 states the same law).
+            self.pending = None
+            self.log(f'HOT_RELOAD_WORKER_SKIPPED files={json.dumps(files)} '
+                     'reason=no-worker-running')
+            return
+        if br.is_capturing():
+            self.log(f'HOT_RELOAD_WORKER_DEFERRED files={json.dumps(files)} '
+                     'reason=capturing -- applies at the next boundary')
+            return                    # pending stays; boundary() re-arms
+
+        # A natural respawn already re-read the file. If it happened AFTER this
+        # request was queued, the request is satisfied — do not restart again
+        # (that double restart is itself churn).
+        spawned_at = float(getattr(br, 'spawned_at', 0.0) or 0.0)
+        if br.child is None or spawned_at >= self.pending_since:
+            self.pending = None
+            self.log(f'HOT_RELOAD_WORKER_APPLIED_AT_BOUNDARY '
+                     f'files={json.dumps(files)} reason=respawn-reread-file')
+            return
+
+        if self._last_applied_at <= 0.0:
+            # The floor counts from the INITIAL model load, not from the first
+            # hot-reload request: the model has already paid one load.
+            self._last_applied_at = spawned_at or time.monotonic()
+        left_ms = self.min_interval_ms - int(
+            (time.monotonic() - self._last_applied_at) * 1000)
+        if left_ms > 0:
+            self.log(f'HOT_RELOAD_WORKER_COOLDOWN files={json.dumps(files)} '
+                     f'left_ms={left_ms} min_interval_ms={self.min_interval_ms}')
+            self._arm(left_ms)
+            return
+
+        self.pending = None
+        self._last_applied_at = time.monotonic()
+        self.log(f'HOT_RELOAD_WORKER_RESTART files={json.dumps(files)} '
+                 f'after_idle_ms={self.min_interval_ms}')
+        self.restart(files)
 
 
 class WorkerBridge:
@@ -1767,7 +3776,7 @@ class WorkerBridge:
 
     def __init__(self, command, worker_path, device=None,
                  capture_mode=DEFAULT_CAPTURE_MODE, log=log,
-                 on_caption=None, on_status=None, silence_ms=15000,
+                 on_caption=None, on_status=None, silence_ms=WORKER_SILENCE_MS,
                  backoff_base=1000, backoff_max=30000):
         self.command = command or default_python()
         self.worker_path = worker_path
@@ -1789,17 +3798,99 @@ class WorkerBridge:
         self.malformed = 0
         self.stopped = False
         self.last_exit = None
+        #: True from the `capture-started` status until the child stops/exits.
+        #: This is the guard's input: a worker with an OPEN capture stream must
+        #: not be restarted by a file change (owner: "o modelo loading ta toda
+        #: hora saindo de load").
+        self.capturing = False
+        #: Monotonic time of the last spawn, so a queued reload can tell whether
+        #: a natural respawn already re-read the file (WorkerReloadPolicy).
+        self.spawned_at = 0.0
         # The last failure this worker reported, and the death the panel is
         # currently obliged to keep showing. `pending_error` is set by a
         # non-zero exit and cleared only by a CAPTION: a restart that has
         # produced no caption has proved nothing, so it must not clear it.
         self.last_error = None
         self.pending_error = None
+        #: True once THIS child has published its own verdict that the audio it
+        #: opened carries nothing to transcribe (see WORKER_NO_AUDIO_STATES /
+        #: WORKER_NO_AUDIO_VERDICTS). Reset on every spawn, because the verdict
+        #: is a fact about the CHILD that measured it, not about the shell. Read
+        #: by `_on_silence`: a child that has said this is quiet because the
+        #: machine is quiet, so the watchdog re-arms instead of killing it.
+        self.no_audio = False
+        #: What the child said, verbatim, for the log and for the UI state.
+        self.no_audio_evidence = None
         self.deaths = 0
         self.stderr_tail = []
+        #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
+        #: That stream is the ONLY place `peak`/`nonzero_blocks` are published,
+        #: and this bridge already reads it (for `stderr_tail`) — the line was
+        #: dropped after three, which is why those numbers were unreachable from
+        #: outside the process. Kept whole for the panel-state text dump.
+        self.last_worker_stats = None
+        #: The last status that NAMED an endpoint (`device`, `capture-started`,
+        #: `device-rotated`, `device-exhausted`, `silent-device`). The panel shows
+        #: the device inside a human sentence; the raw fields are kept here so the
+        #: dump can say WHICH endpoint is tapped without parsing prose.
+        self.last_device_status = None
+        #: The highest `blocks=` the CURRENT child has published in a
+        #: `WORKER_STATS` line. The watchdog is armed against NO PROGRESS, and
+        #: this counter advancing IS progress (see `_note_progress`). Reset per
+        #: child: the counter starts again at 0, so a value left over from the
+        #: dead process would suppress every re-arm of the new one.
+        self._progress_blocks = None
         self._silence_timer = None
         self._restart_timer = None
         self._lock = threading.Lock()
+
+    # -- state -------------------------------------------------------------
+    def is_capturing(self):
+        """True while an audio stream is open on the worker.
+
+        Read by `WorkerReloadPolicy` WITHOUT the lock: it is a single boolean
+        read, and taking the lock here would deadlock `_spawn` (which calls
+        `_arm_silence` with the lock held and must stay lock-free on its way
+        out — see the note there).
+        """
+        return bool(self.capturing) and self.child is not None
+
+    def snapshot(self):
+        """The bridge's OWN state as plain data, for the panel-state text dump.
+
+        Read-only and cheap: it copies fields this object already holds and does
+        NOT measure anything (no `peak` is computed here, no process is asked).
+        `peak`/`nonzero_blocks` come from the worker's own `WORKER_STATS` line,
+        which `_pump` already read off stderr.
+        """
+        child = self.child
+        current = child.pid if child is not None else None
+        stats = self.last_worker_stats
+        device = self.last_device_status
+        return {
+            'state': self.state,
+            'capturing': bool(self.capturing),
+            'childPid': current,
+            'spawns': self.spawns,
+            'restarts': self.restarts,
+            'deaths': self.deaths,
+            'captions': self.captions,
+            'statuses': self.statuses,
+            'malformed': self.malformed,
+            'lastExit': self.last_exit,
+            'noAudio': bool(self.no_audio),
+            'noAudioEvidence': self.no_audio_evidence,
+            'pendingError': self.pending_error,
+            'lastError': self.last_error,
+            # `*Current` is the honest half of keeping a dead child's number
+            # around: False means the line was published by a child this bridge
+            # has already replaced, and it says so instead of looking live.
+            'device': device,
+            'deviceCurrent': bool(device) and device.get('childPid') == current,
+            'workerStats': stats,
+            'workerStatsCurrent': bool(stats) and stats.get('childPid') == current,
+            'stderrTail': list(self.stderr_tail[-3:]),
+        }
 
     # -- status ------------------------------------------------------------
     def _status(self, text, kind='busy', info=None):
@@ -1855,7 +3946,26 @@ class WorkerBridge:
 
         self.state = 'spawning'
         self.spawns += 1
+        # `stderr_tail` explains THIS death, so it is reset per child. The last
+        # stats line and the last device are NOT cleared: each is stamped with
+        # the pid that published it (`childPid`), so the snapshot can say whether
+        # the number belongs to the live child or to the one that just died,
+        # instead of showing a null that hides both.
         self.stderr_tail = []
+        # A freshly spawned worker has no open stream yet; the guard re-opens
+        # when its `capture-started` line arrives. `spawned_at` lets a queued
+        # reload tell whether this respawn already re-read the file.
+        self.capturing = False
+        # A new child has declared nothing yet: the previous child's `silent-
+        # device` is evidence about the OLD process, and letting it survive the
+        # respawn would blind the watchdog for the new one.
+        self.no_audio = False
+        self.no_audio_evidence = None
+        # The new child's `blocks=` counter starts again at 0 (see
+        # `_progress_blocks`): carrying the dead process's last value over would
+        # make every heartbeat look like a repeat and blind the watchdog.
+        self._progress_blocks = None
+        self.spawned_at = time.monotonic()
 
         env = dict(os.environ)
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
@@ -1899,7 +4009,11 @@ class WorkerBridge:
 
         for stream, name in ((self.child.stdout, 'stdout'),
                              (self.child.stderr, 'stderr')):
-            threading.Thread(target=self._pump, args=(stream, name),
+            # The child is passed EXPLICITLY rather than read from `self.child`
+            # inside the thread: a dead worker's pipe can still be draining while
+            # `self.child` already points at its replacement, and a WORKER_STATS
+            # line stamped with the WRONG pid is an unattributable number.
+            threading.Thread(target=self._pump, args=(stream, name, self.child),
                              name=f'sotto-worker-{name}', daemon=True).start()
         threading.Thread(target=self._wait, name='sotto-worker-wait',
                          daemon=True).start()
@@ -1913,6 +4027,7 @@ class WorkerBridge:
             self.stopped = True
             self._cancel_timers()
             child, self.child = self.child, None
+            self.capturing = False
         if child is not None:
             self.log(f'BRIDGE_STOP reason={reason} pid={child.pid}')
             try:
@@ -1928,7 +4043,7 @@ class WorkerBridge:
         return False
 
     # -- stdout ------------------------------------------------------------
-    def _pump(self, stream, name):
+    def _pump(self, stream, name, child=None):
         # A reader thread that dies takes the worker's WHOLE output channel with
         # it, and `except Exception: pass` made that indistinguishable from a
         # worker that said nothing: the run then logs `statuses=0` and the panel
@@ -1945,11 +4060,25 @@ class WorkerBridge:
                 if name == 'stderr':
                     self.stderr_tail.append(line.rstrip())
                     del self.stderr_tail[:-3]
+                    # The worker's own counters line, kept whole (see
+                    # `last_worker_stats`): the text dump reads `peak` and
+                    # `nonzero_blocks` from here, not from a new measurement.
+                    if line.startswith('WORKER_STATS'):
+                        parsed = parse_worker_stats(line)
+                        if parsed is not None:
+                            if child is not None:
+                                parsed['childPid'] = child.pid
+                            self.last_worker_stats = parsed
+                            # The heartbeat is PROGRESS. Re-arming here is the
+                            # whole cure: this stream used to `continue` before
+                            # `_arm_silence`, so the one periodic signal the
+                            # worker publishes never reached the watchdog.
+                            self._note_progress(parsed)
                     continue
                 self._arm_silence()
                 text = line.strip()
                 if text:
-                    self._consume(text)
+                    self._consume(text, child)
         except Exception as exc:
             self.log(f'BRIDGE_PUMP_DIED stream={name} error={exc!r}')
         finally:
@@ -1958,7 +4087,7 @@ class WorkerBridge:
             except Exception:
                 pass
 
-    def _consume(self, line):
+    def _consume(self, line, child=None):
         try:
             message = json.loads(line)
         except ValueError:
@@ -1988,6 +4117,37 @@ class WorkerBridge:
             state = str(message.get('state') or '')
             if state:
                 self.state = state
+            if message.get('device'):
+                # Remember WHICH endpoint this child is on. `device` names the
+                # first candidate (with the full `candidates` list); a rotation
+                # names the one it moved to. Kept as raw fields so the dump can
+                # name the endpoint being tapped without parsing the sentence.
+                self.last_device_status = {
+                    'state': state,
+                    'device': message.get('device'),
+                    'api': message.get('api'),
+                    'peak': message.get('peak'),
+                    'reason': message.get('reason'),
+                    'candidates': message.get('candidates'),
+                }
+                if child is not None:
+                    self.last_device_status['childPid'] = child.pid
+            # The worker's own answer to "is there anything to transcribe?".
+            # Remembered per child (reset in `_spawn`) and read by `_on_silence`
+            # so the watchdog stops treating "a quiet desktop" as "a jammed
+            # worker" -- see WORKER_NO_AUDIO_STATES.
+            evidence = self._no_audio_evidence(state, message)
+            if evidence is not None:
+                self.no_audio = True
+                self.no_audio_evidence = evidence
+            # The guard's input, kept where the state is READ, not inferred
+            # later: `capture-started` opens the guard, and a terminal state or
+            # the child's exit closes it. See `WorkerReloadPolicy`.
+            if state in WORKER_CAPTURING_STATES:
+                self.capturing = True
+            elif state in WORKER_ERROR_STATES or state in ('done',
+                                                           'selftest-done'):
+                self.capturing = False
             info = {k: v for k, v in message.items() if k not in ('type', 'state')}
             title = info.pop('title', None)
             body = info.pop('body', None)
@@ -2058,6 +4218,36 @@ class WorkerBridge:
         self._silence_timer = timer
         timer.start()
 
+    def _note_progress(self, stats):
+        """The worker's own heartbeat counts as PROGRESS; re-arm the watchdog.
+
+        MUST NOT take `self._lock` — it is called from the pump thread, and the
+        same rule as `_arm_silence` applies.
+
+        THE DEFECT THIS CLOSES, measured in the owner's own log
+        (`_main/webview-run.log`, 2026-10-06, `pid=4312`/`pid=47056`): the only
+        PERIODIC signal the worker publishes is `WORKER_STATS tag=tick` on
+        STDERR (`--stats-interval`, 10 s), and it carries the ADVANCING
+        `blocks=` counter — the worker's own proof that it is still consuming
+        audio. `_pump` re-armed the watchdog for STDOUT lines only, so that
+        proof was invisible: 15 s without a CAPTION killed a worker that was
+        transcribing (`BRIDGE_RESTART reason=silent`, 33 times in that log;
+        `captions=29` on the very pid that was killed), and every respawn paid
+        a ~2.4 GB model reload before it could caption again.
+
+        The counter must ADVANCE. Otherwise a worker that reprints its last
+        line forever — a wedged loop — would buy itself an eternal reprieve and
+        the watchdog would stop being a watchdog.
+        """
+        try:
+            blocks = int((stats.get('fields') or {}).get('blocks', ''))
+        except (TypeError, ValueError):
+            return
+        if self._progress_blocks is not None and blocks <= self._progress_blocks:
+            return
+        self._progress_blocks = blocks
+        self._arm_silence()
+
     def _cancel_timers(self):
         for name in ('_silence_timer', '_restart_timer'):
             timer = getattr(self, name, None)
@@ -2065,9 +4255,87 @@ class WorkerBridge:
                 timer.cancel()
                 setattr(self, name, None)
 
+    def _no_audio_evidence(self, state, message):
+        """The worker's OWN sentence that there is nothing to transcribe.
+
+        Returns the sentence (for the log) or None. Three shapes, all of them a
+        measurement the WORKER made about the ENDPOINT -- never an inference the
+        shell draws from a caption that did not arrive:
+
+          * `device-rotated` with `reason=flat`: the per-candidate row the ladder
+            writes on its way out of a window that produced NO CAPTION. The
+            worker's word is `flat`, but it is NOT "below the peak floor" —
+            measured on this box, a live idle run rotated with
+            `peak=0.465216` against `floor=0.002`
+            (`_main/_tap-restart-live-after.log`): the tap heard something and
+            the model found nothing to transcribe in the window
+            (sotto_worker.py:2163 settles only on a CAPTION). So the row means
+            "this candidate carried nothing I could transcribe, moving on" —
+            the ladder accounting for the silence, candidate after candidate,
+            which is exactly what an idle desktop produces.
+            `open-failed` is deliberately NOT included: a device that could not
+            be OPENED is a fault, not a measurement of the audio.
+          * a terminal device state (`silent-device`, `device-exhausted`,
+            `silent-capture`, `no-speech-in-capture`, `music-only-capture`).
+          * a `done` whose verdict is one of WORKER_NO_AUDIO_VERDICTS. An absent
+            or unknown verdict is NOT evidence of no audio, so it does not count.
+        """
+        message = message or {}
+        if state == 'device-rotated':
+            if str(message.get('reason') or '') == 'flat':
+                return (f'device-rotated reason=flat '
+                        f'peak={message.get("peak")} '
+                        f'floor={message.get("peak_floor")}')
+            return None
+        if state == 'done':
+            verdict = str(message.get('verdict') or '').strip()
+            if verdict and verdict in WORKER_NO_AUDIO_VERDICTS:
+                return f'done verdict={verdict}'
+            return None
+        if state in WORKER_NO_AUDIO_STATES:
+            return f'state={state}'
+        return None
+
     def _on_silence(self):
         if self.stopped or self.child is None:
             return
+        if self.no_audio:
+            # BENIGN, and the fix for this lane's defect. The worker has already
+            # published its own verdict that the tap carries nothing to
+            # transcribe, and a tap that carries nothing produces NOTHING on
+            # stdout by design -- so this quiet is the CORRECT behaviour on a
+            # quiet machine, not a jam. Killing it here is what produced 8
+            # `BRIDGE_SILENT` and `spawns=10` in ONE live run, each respawn
+            # reloading a ~2.4 GB model, with no caption able to ever break the
+            # cycle (owner's brief: "o loop nunca converge").
+            #
+            # Nothing is killed. The state is NAMED so the panel says what is
+            # true, and the timer is re-armed so the watchdog keeps watching --
+            # it must still catch a child that wedges AFTER saying this.
+            self.log(f'BRIDGE_SILENT_BENIGN ms={self.silence_ms} '
+                     f'pid={self.child.pid} state={NO_AUDIO_STATE} '
+                     f'because={json.dumps(self.no_audio_evidence)}'
+                     f' restarts={self.restarts}')
+            if self.pending_error is None:
+                # Only when no death is on screen: a real exit outranks a benign
+                # quiet, and painting a status over it is the swallow this file
+                # already fights (see `pending_error`).
+                self._bridge_status(
+                    'Audio tap silent - nothing to transcribe', 'busy',
+                    {'title': 'No audio to transcribe',
+                     'body': 'The worker measured every tap it opened below the '
+                             'peak floor: this endpoint is carrying digital '
+                             'silence, which is what a quiet desktop looks like. '
+                             'The worker keeps listening; it is not restarted.'},
+                    NO_AUDIO_STATE)
+            else:
+                self.log(f'BRIDGE_SILENT_BENIGN_HELD state={NO_AUDIO_STATE} '
+                         f'behind={json.dumps(self.pending_error["state"])}')
+            self._arm_silence()
+            return
+        # ANOMALOUS. The tap was open (or had declared itself) and then went
+        # mute WITHOUT the worker ever saying what the audio was: that is the
+        # jam this watchdog exists for, and it still restarts.
         self.log(f'BRIDGE_SILENT ms={self.silence_ms} pid={self.child.pid}')
         self._status('Worker is running but has said nothing', 'error',
                      {'title': 'Worker silent',
@@ -2086,6 +4354,7 @@ class WorkerBridge:
                  f'malformed={self.malformed} '
                  f'stderr_tail={json.dumps(self.stderr_tail[-3:])}')
         self.child = None
+        self.capturing = False
         if self.stopped:
             return
         # The stderr tail is the worker's own sentence about its own death
@@ -2304,12 +4573,24 @@ def parse_args(argv):
                         help='show the panel at startup instead of waiting '
                              'for Alt+C')
     parser.add_argument('--hotkey', default='Alt+C',
-                        help='the global toggle accelerator (default: Alt+C)')
+                        help='the global toggle accelerator (default: Alt+C). If '
+                             'another program already owns it the shell tries '
+                             + ' / '.join(HOTKEY_FALLBACKS)
+                             + ' and logs which one won (HOTKEY_FALLBACK)')
     parser.add_argument('--no-hotkey', action='store_true',
                         help='do not register the global hotkey. A MEASUREMENT '
                              'run must use this: Alt+C is the app\'s only '
                              'control, and a probe that owns it shows the '
                              "owner its own panel when he presses his key")
+    parser.add_argument('--install-autostart', action='store_true',
+                        help='make Windows start Sotto at login (HKCU\\...\\Run, '
+                             'pointing at pythonw.exe so no console appears), '
+                             'then exit')
+    parser.add_argument('--uninstall-autostart', action='store_true',
+                        help='remove that autostart entry, then exit')
+    parser.add_argument('--autostart-status', action='store_true',
+                        help='print whether autostart is installed and whether it '
+                             'still points at THIS checkout, then exit')
     parser.add_argument('--worker', default=DEFAULT_WORKER_PATH,
                         help='worker entrypoint to spawn')
     parser.add_argument('--python', default=None,
@@ -2320,8 +4601,26 @@ def parse_args(argv):
                              'resolves the tap itself by default')
     parser.add_argument('--capture', default=None,
                         help=f'capture mode (default: {DEFAULT_CAPTURE_MODE})')
+    #: F1 (docs/audit/auditoria-completa-20261007.md): the worker starts BY
+    #: DEFAULT. Until 2026-10-07 `start_worker` was reachable only under
+    #: `if self.args.with_worker:`, and `run.cmd` -- the entry the owner
+    #: double-clicks -- never passed it: 32 shell starts in `_main/webview-run.log`,
+    #: 10 with a worker and every one of them `reason=with-worker`. So Alt+C on
+    #: the documented path opened a panel that said "Waiting for audio" forever,
+    #: with no transcription process in existence. The opt-OUT is now the flag.
+    parser.add_argument('--no-worker', action='store_true',
+                        help='do NOT start the worker: the shell only. The '
+                             'worker starts by default (F1); this is the '
+                             'opt-out, for a shell-only run')
+    #: An ALIAS, kept for the lane instruments that pass it (`_main/_app-drive.py`,
+    #: `_main/_live-launch.py`) and for `--help` compatibility: it is accepted,
+    #: it does not change behaviour, and it can no longer be the REASON a run has
+    #: a worker. Precedence with `--no-worker` is stated in `_on_loaded`.
     parser.add_argument('--with-worker', action='store_true',
-                        help='start the worker at launch')
+                        help='start the worker at launch. Alias: the worker '
+                             'already starts by default (F1), so this flag now '
+                             'only FORCES the worker where an automatic '
+                             'opt-out would decline it -- see --no-worker')
     parser.add_argument('--dump-dom', action='store_true',
                         help="measure the panel with the Electron arm's probe "
                              'and exit')
@@ -2330,6 +4629,10 @@ def parse_args(argv):
                              'the dump can measure a state that only exists '
                              'after the worker has run (0 = measure at startup, '
                              'unchanged)')
+    parser.add_argument('--probe-v2', type=float, default=0.0, metavar='SECONDS',
+                        help='after SECONDS, run the panel-v2 acceptance probe: '
+                             '(two sections, live caption, history on disk, '
+                             'search) and exit 0 GREEN / 3 RED')
     parser.add_argument('--opaque', action='store_true',
                         help='force an opaque window, to A/B transparency')
     parser.add_argument('--selftest', action='store_true',
@@ -2343,7 +4646,28 @@ def parse_args(argv):
                              'by itself')
     parser.add_argument('--no-hot-reload', action='store_true',
                         help='do not watch panel assets / worker sources')
+    parser.add_argument('--probe-reload', action='store_true',
+                        help='prove the worker hot-reload guard: touch the '
+                             'worker file while a capture is open and print '
+                             'the restart count (starts no window)')
     parser.add_argument('--log', default=None, help='mirror stdout here')
+    #: run.cmd's pre-flight switch. SUPPRESS keeps it out of `--help`, so the
+    #: usage printed by `run.cmd --help` is byte-for-byte the one it printed
+    #: before this mode existed (it is the wrapper's, not the user's, flag).
+    parser.add_argument('--check-args', action='store_true',
+                        help=argparse.SUPPRESS)
+    #: run.cmd's readiness handshake (gap G3). The wrapper `start`s the app
+    #: DETACHED, so a hang after the spawn is invisible to it; it hands a FRESH
+    #: path here and waits for it, bounded (the file appearing is "the app came
+    #: up", the bound expiring is a HANG). SUPPRESS: it is the wrapper's flag,
+    #: not a user flag, and `--help` must stay byte-for-byte as it was.
+    parser.add_argument('--ready-file', default=None,
+                        help=argparse.SUPPRESS)
+    #: run.cmd's bounded readiness poll (the other half of G3). A MODE: it takes
+    #: a path, waits for the app to touch it, and exits 0/4. It is the wrapper's
+    #: flag, so it stays out of `--help`.
+    parser.add_argument('--wait-ready', default=None, metavar='PATH',
+                        help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -2355,9 +4679,226 @@ def pywebview_version():
         return 'unknown'
 
 
+def _preflight_refuse(args, message: str, code: int) -> int:
+    """Record a pre-flight refusal where the caller can still see it, and return
+    the code the wrapper passes on.
+
+    The pre-flight runs under pythonw.exe, whose stdout/stderr are None, so the
+    interpreter's own message is discarded and the exit code is the whole
+    contract the wrapper can read. The reason is mirrored to `--log` when the
+    caller gave one (appending, like every other line) and printed when there is
+    a console (a direct run). This opens no window and starts nothing.
+    """
+    if getattr(args, 'log', None):
+        _open_log(args.log)
+    log(message)
+    return code
+
+
+def probe_reload():
+    """Prove the worker-reload guard against REAL files and a REAL watcher.
+
+    The defect: a settled worker-file change restarted the worker on the spot,
+    even mid-stream, so five lanes saving all morning produced a restart storm
+    (the "model loading toda hora" the owner saw). Three arms, each able to
+    print RED:
+
+      1. GUARD    a capture is open; the worker file is touched N times, spaced
+                  wider than the watcher's 250 ms window so each touch WOULD
+                  flush. Expect: ZERO restarts during the capture, and exactly
+                  ONE worker spawn in total once the stream ends.
+      2. STORM    the SAME N touches with the guard and the floor removed (the
+                  old behaviour). Expect: N restarts. This is the arm that makes
+                  arm 1 mean something — if the storm is not reproducible, the
+                  guard is not being tested.
+      3. BURST    a tight burst (8 writes in <250 ms) with no capture. Expect:
+                  exactly ONE restart (the debounce coalesces it).
+
+    No WebView2, no worker process: the only stand-in is the bridge, which
+    exposes the two fields the policy reads (`child`, `is_capturing()`), and the
+    `restart` callable, which counts. Everything else is the production classes.
+    """
+    root = tempfile.mkdtemp(prefix='sotto-reload-')
+    panel_dir = os.path.join(root, 'panel')
+    worker_dir = os.path.join(root, 'worker')
+    os.makedirs(panel_dir)
+    os.makedirs(worker_dir)
+    worker_py = os.path.join(worker_dir, 'sotto_worker.py')
+    with open(worker_py, 'w', encoding='utf-8') as fh:
+        fh.write('# seed\n')
+
+    rc = 0
+
+    class StandInBridge:
+        """Exactly the surface WorkerReloadPolicy reads, and no more."""
+
+        def __init__(self):
+            self.child = object()          # a worker is up
+            self.capturing = False
+            self.spawned_at = time.monotonic() - 1000.0
+            self.spawns = 0
+
+        def is_capturing(self):
+            return self.capturing
+
+    def run_arm(debounce_ms, min_interval_ms):
+        br = StandInBridge()
+
+        def restart(files):
+            br.spawns += 1
+            br.spawned_at = time.monotonic()
+            return True
+
+        policy = WorkerReloadPolicy(log_fn=print, get_bridge=lambda: br,
+                                    restart=restart, debounce_ms=debounce_ms,
+                                    min_interval_ms=min_interval_ms)
+        hr = hot_reload.HotReload(log=lambda line: None,
+                                  on_worker_changed=policy.request,
+                                  panel_dir=panel_dir, worker_dir=worker_dir)
+        if not hr.start():
+            return None, None, None
+        return br, policy, hr
+
+    touches = 6
+
+    # ── arm 1: the guard — a capture is open while the file is touched ──────
+    # A short 200 ms debounce keeps the arm quick; the GUARD, not the debounce,
+    # is what this arm isolates.
+    br, policy, hr = run_arm(200, WORKER_RELOAD_MIN_INTERVAL_MS)
+    if br is None:
+        print('VERDICT arm=guard watchers=0 got=0-1')
+        shutil.rmtree(root, ignore_errors=True)
+        return 3
+    br.capturing = True
+    for i in range(touches):
+        with open(worker_py, 'a', encoding='utf-8') as fh:
+            fh.write(f'# touch {i}\n')
+        time.sleep(0.4)                    # > the watcher's 250 ms window
+    time.sleep(0.9)                        # let the last flush reach the policy
+    during = br.spawns
+    print(f'ARM guard touches={touches} restarts_during_capture={during} '
+          f'expect=0')
+    if during != 0:
+        rc = 3
+    # the stream ends: the worker exits, then respawns ONCE (the app's own
+    # supervisor), which re-reads the file — no second restart is owed.
+    br.capturing = False
+    br.child = None
+    policy.boundary()
+    time.sleep(0.9)
+    br.child = object()
+    br.spawned_at = time.monotonic()
+    respawns = 1
+    total = br.spawns + respawns
+    print(f'ARM guard total_spawns={total} '
+          f'(policy_restarts={br.spawns} + boundary_respawn={respawns}) '
+          f'expect=1')
+    if total != 1:
+        rc = 3
+    policy.stop()
+    hr.stop('arm1')
+
+    # ── arm 2: the storm — the SAME touches with the guard removed ──────────
+    br, policy, hr = run_arm(0, 0)
+    if br is None:
+        print('VERDICT arm=storm watchers=0 got=0-1')
+        shutil.rmtree(root, ignore_errors=True)
+        return 3
+    br.capturing = False                   # pre-fix: no guard existed at all
+    for i in range(touches):
+        with open(worker_py, 'a', encoding='utf-8') as fh:
+            fh.write(f'# storm {i}\n')
+        time.sleep(0.4)
+    time.sleep(0.9)
+    print(f'ARM storm touches={touches} restarts={br.spawns} '
+          f'expect={touches}')
+    if br.spawns != touches:
+        rc = 3
+    policy.stop()
+    hr.stop('arm2')
+
+    # ── arm 3: the debounce — a tight burst is ONE request ──────────────────
+    br, policy, hr = run_arm(WORKER_RELOAD_DEBOUNCE_MS, 0)
+    if br is None:
+        print('VERDICT arm=burst watchers=0 got=0-1')
+        shutil.rmtree(root, ignore_errors=True)
+        return 3
+    for i in range(8):
+        with open(worker_py, 'a', encoding='utf-8') as fh:
+            fh.write(f'# burst {i}\n')
+        time.sleep(0.03)                   # under the watcher's window
+    time.sleep(0.5 + WORKER_RELOAD_DEBOUNCE_MS / 1000.0)
+    print(f'ARM burst writes=8 restarts={br.spawns} expect=1 '
+          f'debounce_ms={WORKER_RELOAD_DEBOUNCE_MS}')
+    if br.spawns != 1:
+        rc = 3
+    policy.stop()
+    hr.stop('arm3')
+
+    shutil.rmtree(root, ignore_errors=True)
+    print(f'SELFTEST reload rc={rc}')
+    return rc
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
+
+    if args.wait_ready:
+        # ---- run.cmd's bounded readiness poll: the other half of G3 ---------
+        # `run.cmd` `start`s the app DETACHED, so it can never see a hang after
+        # the spawn -- measured 2026-10-06 a launch logged STAGING_LOADED and
+        # stopped, and the wrapper still answered 0 (launch-entry.md §3/§4). It
+        # hands a FRESH path to the app (`--ready-file`) and calls THIS mode,
+        # which waits, bounded, for the app to touch it: 0 = up, 4 = HANG.
+        # pythonw keeps it windowless; nothing is opened, logged or started.
+        try:
+            bound = float(os.environ.get('SOTTO_READY_BOUND', '30'))
+        except ValueError:
+            bound = 30.0
+        return wait_ready_file(args.wait_ready, bound)
+
+    if args.check_args:
+        # ---- run.cmd's PRE-FLIGHT: the one mode that STARTS NOTHING ----------
+        # `start` in run.cmd detaches the app, so the wrapper never sees the
+        # interpreter's status. Measured 2026-10-06 (lane SottoRunCmdEntry):
+        # `run.cmd --bogus-flag` returned rc=0 with no log bytes, no shell line
+        # and no process -- argparse exits 2 on pythonw.exe, whose stdout is
+        # None, and `start` reports only its OWN success, so a rejected flag
+        # answered as success. The wrapper runs THIS first and spawns the app
+        # only when it returns 0: the list is validated by the shell's own
+        # parser, one flag table, and a second copy in batch cannot drift.
+        #
+        # Reaching here means parse_args ACCEPTED the list (a rejected one exits
+        # 2 from parse_args above, before this line -- that status is the one
+        # the wrapper passes on).
+        #
+        # G1: the panel must be present. This return USED to happen before the
+        #     panel check further down (:2483), so with app/panel/panel.html
+        #     missing `run.cmd` exited 0 while a real launch exited 3 -- the
+        #     same "failure answering as success" the pre-flight exists to
+        #     close (docs/audit/launch-entry.md, §2 G1).
+        if not os.path.exists(PANEL_HTML):
+            return _preflight_refuse(args,
+                                     f'PANEL_MISSING path={PANEL_HTML}', 3)
+        # G2: `import webview` is late (the WinForms assemblies it loads must not
+        #     be imported before the UI loop exists), so an ImportError surfaced
+        #     as the process' rc=1 only AFTER `run.cmd` had already answered 0.
+        #     Import it HERE, where the wrapper is still listening, and pass the
+        #     same status a real launch would exit with.
+        try:
+            import webview  # noqa: F401
+        except Exception as exc:  # noqa: BLE001 -- any import failure is G2
+            return _preflight_refuse(
+                args,
+                f'PYWEBVIEW_IMPORT_FAILED {type(exc).__name__}: {exc}', 1)
+        return 0
+
+    if args.probe_reload:
+        # ---- the reload-guard proof: starts NO window and NO worker ----------
+        # It only touches real files and drives the real watcher + policy, so it
+        # is safe under pythonw and prints its own verdict to the log/console.
+        return probe_reload()
 
     _open_log(args.log)
     log(f'shell=webview2 pywebview={pywebview_version()} '
@@ -2368,6 +4909,48 @@ def main(argv=None):
         return 3
 
     args.python = args.python or default_python()
+
+    # ── the three autostart modes print and exit: no window, no worker ───────
+    # They are here (and not before `_open_log`) so the receipt of what was
+    # written to the registry lands in the same run log as everything else.
+    if args.install_autostart:
+        return autostart_install()
+    if args.uninstall_autostart:
+        return autostart_uninstall()
+    if args.autostart_status:
+        return autostart_status()
+
+    # ── ONE SHELL AT A TIME — BUT ONLY WHEN A HOTKEY IS AT STAKE ─────────────
+    # The mutex protects the GLOBAL HOTKEY, which is the only genuinely exclusive
+    # resource here (a second shell cannot register it: `RegisterHotKey` → 1409,
+    # and the owner's Alt+C then answers the first, possibly stale, instance).
+    # A MEASUREMENT run registers no hotkey — that is exactly why AGENTS.md makes
+    # `--no-hotkey` mandatory for one — so it must NEVER be refused by this lock.
+    # It was, for one revision: `_main/_audit-verify-all`-style probes and the
+    # `--dump-dom` dump below were both refused with
+    # `SINGLE_INSTANCE already_running=true` while the owner's app was up, i.e.
+    # the guard bricked every instrument in the repo (measured 2026-10-07). The
+    # union of the flags is deliberate: a probe that forgot `--no-hotkey` still
+    # runs, and the log says which flag excused it.
+    lock_excuse = None
+    if args.no_hotkey:
+        lock_excuse = '--no-hotkey'
+    elif args.dump_dom:
+        lock_excuse = '--dump-dom'
+    elif args.selftest:
+        lock_excuse = '--selftest'
+    elif args.memory:
+        lock_excuse = '--memory'
+    elif args.probe_v2 > 0:
+        lock_excuse = '--probe-v2'
+    if lock_excuse:
+        log(f'SINGLE_INSTANCE_SKIPPED reason={lock_excuse} '
+            '(a measurement run registers no global hotkey)')
+    elif not take_single_instance_lock():
+        warn('Sotto is already running in this session: this launch will not show '
+             'anything. Press Alt+C for the running panel, or close it with the '
+             'panel\'s Quit button before starting another one.')
+        return 0
 
     shell = SottoShell(args)
     shell.create_window()
@@ -2380,10 +4963,11 @@ def main(argv=None):
     if args.no_hotkey:
         log('HOTKEY_DISABLED reason=--no-hotkey')
     else:
-        shell.hotkey = HotkeyThread(args.hotkey,
-                                    lambda: shell.toggle_panel('hotkey'))
-        shell.hotkey.start()
-        shell.hotkey.wait_ready(5)
+        # The chain lives in `arm_hotkey`: the requested key, then
+        # `HOTKEY_FALLBACKS`, then — if every one is owned by another program —
+        # a dialog on a daemon thread, because a hidden app with a dead hotkey
+        # and no message is indistinguishable from a broken app.
+        shell.hotkey = arm_hotkey(shell, args.hotkey)
 
     # Hot reload is armed AFTER the hotkey, so a watcher that cannot start can
     # never cost the one feature the panel cannot live without. `--no-hot-reload`

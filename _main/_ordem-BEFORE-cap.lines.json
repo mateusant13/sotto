@@ -1,0 +1,47 @@
+[
+{
+"t": 0.136,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"start\", \"pid\": 41688, \"argv\": [\"--max-seconds\", \"40\"], \"mode\": \"live\"}"
+},
+{
+"t": 0.142,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"lang\", \"lang_id\": 12, \"lang\": \"pt-BR\", \"requested\": null, \"source\": \"default:os-locale\", \"table\": \"H:\\\\sotto\\\\_main\\\\_ordem-before\\\\models\\\\nemotron-3.5-asr-streaming-0.6b-fp16\\\\languages.json\", \"note\": \"host locale 'pt-BR'\"}"
+},
+{
+"t": 0.142,
+"s": "err",
+"line": "lang_id      : 12 (pt-BR) source=default:os-locale table=languages.json"
+},
+{
+"t": 4.365,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"boot\", \"stage\": \"providers\", \"providers_available\": [\"TensorrtExecutionProvider\", \"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"providers_selected\": [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"note\": \"\", \"cuda_probe_model\": \"nemotron-3.5-asr-streaming-0.6b-int8\", \"cuda_dirs_ms\": 3378, \"provider_probe_ms\": 849}"
+},
+{
+"t": 4.365,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"model-loading\", \"model\": \"nemotron-3.5-asr-streaming-0.6b-int8\"}"
+},
+{
+"t": 9.357,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"model-loaded\", \"model\": \"nemotron-3.5-asr-streaming-0.6b-int8\", \"providers\": [\"CUDAExecutionProvider\", \"CPUExecutionProvider\"], \"load_s\": 4.99, \"rss_mb\": 1796.0, \"peak_rss_mb\": 1814.5, \"lang_id\": 12, \"lang\": \"pt-BR\", \"lang_input\": \"lang_id\"}"
+},
+{
+"t": 9.357,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"gate\", \"gate\": \"on\", \"source\": \"live-default\", \"db_range_min\": 18.0, \"rms_floor\": 0.004, \"hold_chunks\": 3}"
+},
+{
+"t": 12.266,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"device\", \"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"max_input_channels\": 2, \"candidates\": [\"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)\", \"WASAPI loopback: Speakers (NVIDIA Broadcast)\", \"WASAPI loopback: Fones de ouvido (soundcore Space Q45)\", \"WASAPI loopback: AG251F1WG2 (NVIDIA High Definition Audio)\", \"WASAPI loopback: Alto-falantes (HyperX Quadcast)\", \"VoiceMeeter Output (VB-Audio Vo\", \"CABLE Output (VB-Audio Virtual \", \"Mixagem est\u00e9reo (Realtek HD Audio Stereo input)\", \"Entrada (Realtek HD Audio Line input)\"], \"wanted\": null, \"tap_window_s\": 6.0, \"tap_peak_floor\": 0.002}"
+},
+{
+"t": 12.274,
+"s": "out",
+"line": "{\"type\": \"status\", \"state\": \"capture-started\", \"device\": \"WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)\", \"rate\": 48000, \"block\": 4800, \"attempt\": 1, \"of\": 10}"
+}
+]

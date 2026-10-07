@@ -41,6 +41,34 @@ The model ships its own spec. These are not guesses:
 | `vad.silence_duration_ms` | `3360` | |
 | `vad.prefix_padding_ms` | `560` | |
 
+### 1.1 The chunk size is a property of the EXPORT, not a knob in this repo
+
+The card offers a **menu of chunk sizes — 80 / 160 / 320 / 560 / 1120 ms** — expressed as
+`att_context_size = [56, right_context]` with `right_context ∈ {0, 1, 3, 6, 13}`, "each chunk processed in
+non-overlapping fashion" ([model
+card](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b), [transcribe.cpp's port
+doc](https://github.com/handy-computer/transcribe.cpp/blob/main/docs/models/nemotron-3.5-asr-streaming-0.6b.md)).
+**The export on disk is fixed at one of them.** `worker/models/nemotron-3.5-asr-streaming-0.6b-int8`
+declares `"chunk_samples": 8960` (= 560 ms) and `left_context: 70` in its own `genai_config.json`, and its
+card says so in words ("Chunk size 0.56s (8,960 samples @ 16kHz)"). The geometry is baked into the graphs:
+the encoder's caches are allocated from the shapes the encoder declares and cross-checked against
+`genai_config.json` (`worker/README.md`), so editing `chunk_samples` in the JSON is not a supported way to
+change cadence. Upstream ships SIBLINGS with different geometry — which is the evidence that this is an
+export property, all read 2026-10-07:
+
+| export | `chunk_samples` | `left_context` |
+|---|---|---|
+| `DimQ1/…-onnx-int8-cpu` (**the one this repo ships**) | 8960 (560 ms) | 70 |
+| `DimQ1/…-onnx-fp32-c056-cpu` | 8960 (560 ms) | 56 |
+| `DimQ1/…-onnx-fp32-c112-cpu`, `…-onnx-gpu-cuda` | 17920 (1.12 s) | 56 / 140 |
+| `csukuangfj2/sherpa-onnx-…-{80,160,560,1120}ms-int8-2026-06-11` | one export per chunk size | — |
+
+**Consequence for the product:** `audio.block_ms` (100 in `worker/config.json`) changes only the CAPTURE
+granularity — it cannot make the decoder commit sooner. A faster caption needs a different export
+(`chunk_samples` 1280 / 2560 / 5120 = 80 / 160 / 320 ms), and that trades latency for accuracy: the card's
+own averages fall **10.38 → 9.49 → 9.12 → 8.84 %** FLEURS WER as the chunk grows 80 ms → 320 ms → 560 ms →
+1.12 s.
+
 **I/O names are declared, not to be invented** (`genai_config.json`, `encoder.inputs`):
 `audio_signal`, `length`, `cache_last_channel`, `cache_last_time`, `cache_last_channel_len`,
 `lang_id`; outputs `outputs`, `encoded_lengths`, `cache_last_channel_next`,
@@ -95,6 +123,27 @@ is a deviation from both texts above.
 | `pt-PT`, `pt` | **13** |
 | `auto` | **101** |
 
+**The engine's own default is `0` = `en-US`; `auto` is the model's `autoSlot` (101).** The card is explicit
+about the default path: "the pipeline uses the default language prompt (index 0, `en-US`)". So ANY caller
+that forgets to send the prompt is silently conditioning on English — the exact failure the 2026-10-06
+default change exists to prevent, and the reason an ABSENT `model.lang_id` now resolves to `auto` in the
+worker (`worker/README.md`, and the `boot stage=lang` line names which rung won).
+
+What the prompt is worth, from the card's own FLEURS table (WER %, LangID columns against auto-detect
+columns, [Performance](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b#performance)):
+
+| language | LangID 80 ms | LangID 320 ms | LangID 560 ms | LangID 1.12 s | auto 80 ms | auto 320 ms | auto 560 ms | auto 1.12 s |
+|---|---|---|---|---|---|---|---|---|
+| Portuguese (pt-BR, pt-PT) | 6.29 | 5.81 | 5.65 | 5.48 | 6.41 | 5.82 | 5.57 | 5.47 |
+| English (en-US, en-GB) | 9.43 | 8.27 | 7.99 | 7.91 | 9.72 | 8.84 | 8.80 | 8.84 |
+| German (de-DE) | 9.81 | 8.83 | 8.42 | 8.31 | 9.90 | 8.87 | 8.58 | 8.22 |
+| **average** | **10.38** | **9.49** | **9.12** | **8.84** | **11.14** | **10.05** | **9.63** | **9.21** |
+
+Portuguese is the case this repo has to read honestly: at 560 ms it is **5.65 (LangID) vs 5.57 (auto)** and
+at 1.12 s **5.48 vs 5.47** — a tie, so `auto` costs this host's language nothing. English is where `auto`
+is measurably worse (7.99 → 8.80 at 560 ms; 7.91 → 8.84 at 1.12 s): that is the price of not knowing the
+language, and the reason `--lang-id 0` stays available for a user who only ever transcribes English.
+
 **RESOLVED 2026-10-06.** `model.lang_id` in `worker/config.json` is `"auto"` (the model's own
 `autoSlot`, **101**). It was `"os"` (the host's USER locale, `GetUserDefaultLocaleName`) earlier
 the same day, and BOTH silent defaults destroyed a language on the same clip: on this pt-BR host
@@ -130,6 +179,34 @@ guards exactly that (`if inputs is not None`). MEASURED: the same digital-silenc
 advancing the clock; before that guard it raised
 `TypeError: 'NoneType' object is not subscriptable` and the worker exited 1.
 
+**Where `0.3 / 3360 / 560` come from — and what Silero's own defaults are.** They are the ONNX EXPORT's
+numbers, not a NVIDIA recommendation and not a Silero one: `original/int8/genai_config.json:66-68` declares
+them, and **the model card never mentions VAD at all** (the word does not appear on
+https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b outside this project's own notes). These five
+exports checked on 2026-10-07 all declare the SAME three values — `DimQ1/…-onnx-fp32-cpu`,
+`…-onnx-fp32-c056-cpu`, `…-onnx-fp32-c112-cpu`, `…-onnx-gpu-cuda` and
+`onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4` — so this is a deliberate converter default
+rather than one repo's accident; **a different conversion of the same architecture chose different numbers
+(next paragraph)**, which is the proof that this is a per-export choice and still **not normative**.
+Silero's own library defaults are different:
+`threshold 0.5`, `min_silence_duration_ms 100`, `speech_pad_ms 30`, `min_speech_duration_ms 250`, plus
+hysteresis `neg_threshold = max(threshold - 0.15, 0.01)` and the 512-sample (32 ms) frame the ONNX wrapper
+enforces ([`silero_vad/utils_vad.py`](https://github.com/snakers4/silero-vad/blob/master/src/silero_vad/utils_vad.py)).
+None of those is `0.3 / 3360 / 560`. The shipped values are defensible *because they came with the export*
+— but "the model's documentation says so" is FALSE, and this is the file where that distinction lives.
+
+**The numbers are the EXPORTER's choice, and two exporters disagree — which is the general lesson.** The
+`DimQ1` family (all five repos named above, including the one this repo ships) declares
+`0.3 / 3360 / 560`. A different conversion of the same architecture declares something else:
+`onnx-community/nemotron-speech-streaming-es-0.6b-ft` — a Spanish fine-tune — ships
+`"vad": {"threshold": 0.5, "silence_duration_ms": 500, "prefix_padding_ms": 300}`
+([`genai_config.json`](https://huggingface.co/onnx-community/nemotron-speech-streaming-es-0.6b-ft/raw/main/genai_config.json),
+fetched 2026-10-07). So **there is no "the model's VAD setting"**: it is a per-export default, it is not
+NVIDIA's (the card never mentions VAD), and it is not Silero's (their own defaults are `0.5 / 100 / 30`).
+That same sibling export is also a warning against copying constants between exports — it carries
+`vocab_size: 8193`, `blank_id: 8192`, `chunk_samples: 8960`, `left_context: 70`, and its encoder declares
+**no `lang_id` input at all** (it is not prompt-conditioned). Every constant in §1 belongs to ONE export.
+
 ## 5. Quality table, per the model's own README (`original/int8/README.md:78-84`)
 
 | variant | encoder | total | the README's word |
@@ -141,6 +218,41 @@ advancing the clock; before that guard it raised
 Memory measured on this box (session build + one real inference, one process per arm):
 int4 756 MB on disk → **924 MB RSS**; int8 1020 MB → **1192 MB RSS**
 (`_main/precision-ram-probe-int4.log`, `-int8.log`).
+
+**The precision trade, with published numbers.** The shipped choice is int8 (`worker/config.json:10`);
+int4 is the smaller, faster arm. What the two cost in accuracy is published for this model by
+`transcribe.cpp` (GGUF quant presets, LibriSpeech test-clean, 2 620 utterances): **F32 3.04 / F16 3.03 /
+Q8_0 3.06 / Q6_K 3.07 / Q5_K_M 3.10 / Q4_K_M 3.28** WER %, against a 3.03 % NeMo reference — i.e. ~**0.02
+pp** for the 8-bit-class preset and ~**0.25 pp** for the 4-bit-class one
+([Nemotron doc](https://github.com/handy-computer/transcribe.cpp/blob/main/docs/models/nemotron-3.5-asr-streaming-0.6b.md)).
+Those are that runtime's GGUF presets, not these ONNX exports, and this repo's own measured cost of the
+choice is **memory, not WER**: **+268 MB RSS** for int8 over int4 (`AGENTS.md`, deviations table;
+`_main/precision-ram-probe-*.log`). Read together: the 8-bit-class arm buys ~0.2–0.25 pp of WER for ~270 MB
+— which is the trade this repo took, and the reason int8 is the shipped arm.
+
+**Why a lower-precision COMPUTE path is not the alternative it looks like.** NeMo's own cache-aware
+streaming inference script refuses a non-float32 `compute_dtype` outright. In
+`examples/asr/cache_aware_streaming/speech_to_text_cache_aware_streaming_infer.py`, inside `main()`:
+
+```python
+if compute_dtype != torch.float32:
+    # NB: cache-aware models do not currently work with compute_dtype != float32
+    # since in some layers output is force-casted to float32
+    # TODO(vbataev): implement support in future; set `compute_dtype` in config to None by default
+    raise NotImplementedError(
+        f"Compute dtype {compute_dtype} is not yet supported for cache-aware models, use float32 instead"
+    )
+```
+
+the config dataclass carries the same note (`# NB: default compute_dtype is float32 since currently
+cache-aware models do not work with different dtype`, `compute_dtype: Optional[str] = "float32"`), and
+`amp=true` with any other dtype raises `ValueError("amp=true is mutually exclusive with a compute_dtype
+other than float32")` ([file](https://github.com/NVIDIA/NeMo/blob/main/examples/asr/asr_cache_aware_streaming/speech_to_text_cache_aware_streaming_infer.py),
+fetched 2026-10-07). **Scope, in one clause:** that is a guard in NeMo's streaming inference SCRIPT and
+its config schema — the encoder modules themselves carry no such check (I read
+`nemo/collections/asr/modules/conformer_encoder.py` and `parts/mixins/streaming.py` and found none). The
+consequence for this project is unchanged either way: precision comes from choosing a **quantised export**,
+not from running the float32 graph in half precision.
 
 ## 6. Known drift between this doc set and the code
 
@@ -171,6 +283,14 @@ int4 756 MB on disk → **924 MB RSS**; int8 1020 MB → **1192 MB RSS**
    6 captions vs 4 with the flag off. The flag is a real behaviour change that the bundled sample
    cannot see. Receipts: `_main/vad-arm-*.json` (before/after/neg/gap-on/gap-off),
    `_main/vad-option-probe.py`, `_main/vad-renderer-arms.js`.
+4. **The export's own licence tag does not match the base model's** — OPEN, recorded 2026-10-07.
+   `DimQ1/nemotron-3.5-asr-streaming-0.6b-onnx-int8-cpu`, the repo the weights in `worker/models/` came
+   from, declares `"license": "cc-by-nc-4.0"` in its cardData and repeats it on its card ("inherits
+   cc-by-nc-4.0 from the base NVIDIA Nemotron model"), while the base model this doc set documents
+   publishes **OpenMDW-1.1** (commercial use permitted; only the licence copy and the notices have to
+   travel with a distribution). The two statements disagree and this file does not resolve it — see
+   `README.md` §"Licence posture", which records the disagreement and names the way out (download the
+   weights at first run, or choose an export whose terms match the base).
 
 ## 7. ORACLE
 

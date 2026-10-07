@@ -1,0 +1,13 @@
+{
+  "schema": "sotto.panel-visibility/1",
+  "visible": false,
+  "since_ms": 1791361122049,
+  "age_ms": 15422,
+  "pid": 39704,
+  "reason": "hotkey",
+  "transitions": 2,
+  "writtenAt": "2026-10-07T05:18:57-03:00",
+  "writtenAtEpoch": 1791361137.471,
+  "ageSecondsNote": "age_ms is the age AT WRITE; the authoritative duration is (now_ms - since_ms) and is computed by the READER",
+  "staleAfterSeconds": 5.0
+}

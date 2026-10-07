@@ -6,7 +6,7 @@
  * WHY THIS EXISTS
  * ---------------
  * The worker now emits a JOINED LINE (`worker/sotto_worker.py: LineFormer`), and
- * the panel ALSO joins (`app/electron/caption-formulation.js`). Two layers that
+ * the panel ALSO joins (`app/panel/caption-formulation.js`). Two layers that
  * each own the line can fight: feed the renderer a line that GROWS and, if the
  * renderer treats it as a NEW fragment, the line duplicates itself word for word
  * ("O rádio O rádio Segunda-feira").
@@ -35,7 +35,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REPO = path.resolve(__dirname, '..');
-const FORMULATION = require(path.join(REPO, 'app', 'electron', 'caption-formulation.js'));
+const FORMULATION = require(path.join(REPO, 'app', 'panel', 'caption-formulation.js'));
 
 const AFTER = process.argv[2] || path.join(__dirname, '_wav-after.jsonl');
 const BEFORE = path.join(__dirname, '_wav-before.jsonl');
@@ -131,5 +131,5 @@ check('7. SENTENCE_MAX_CHARS agrees across worker (py) and renderer (js)',
 const failed = results.filter((x) => !x).length;
 console.log(`caption-renderer-integration: ${results.length - failed} PASS / ${failed} FAIL`
   + `  impl=${path.relative(REPO, require.resolve(
-      path.join(REPO, 'app', 'electron', 'caption-formulation.js')))}`);
+      path.join(REPO, 'app', 'panel', 'caption-formulation.js')))}`);
 process.exit(failed === 0 ? 0 : 1);

@@ -1,0 +1,6 @@
+steps=9 gate=5 control=2 expect-red=2 missing=2 failed=7
+rcs:  ok-step=0 failing-step=3 another-ok-step=0 also-failing=7 missing-simulated=MISSING rehearsed-control-goes-red=MISSING rehearsed-control-stayed-green=0 rehearsed-red-as-expected=1 rehearsed-did-not-go-red=1
+controls:  rehearsed-control-goes-red(rc=MISSING) rehearsed-control-stayed-green(rc=0) rehearsed-red-as-expected(rc=1) rehearsed-did-not-go-red(rc=1)
+failed:  failing-step=3 also-failing=7 missing-simulated=MISSING rehearsed-control-goes-red=MISSING rehearsed-control-stayed-green=0 rehearsed-red-as-expected=1 rehearsed-did-not-go-red=1
+exit-code: 7
+BATTERY-VERDICT: RED - 7 step(s) failed

@@ -629,6 +629,36 @@ class Harness:
             self.owner.show_panel('oracle-refutation')
 
 
+def arm_armed_once(shell, stage_url, panel_url):
+    """The guard is registered exactly ONCE, and the flag says so.
+
+    REFUTATION ATTEMPT. The fix moved a subscription earlier and added an
+    idempotence guard (`if self.visibility_armed: return`) rather than proving
+    it. If `before_show` ever fires twice — pywebview re-showing a window, a hot
+    reload re-entering, a future caller — a non-idempotent arm would subscribe
+    `_on_navigation_start` twice per navigation. So: fire `before_show` twice
+    and count the handlers on the control's `NavigationStarting`.
+
+    Expectation: pywebview's own handler (edgechromium.py:102) plus EXACTLY ONE
+    shell handler. A count of 2 shell handlers also means `_on_core_ready` kept
+    its old subscription and the cure is doubled rather than moved.
+    """
+    h = Harness(shell, stage_url=stage_url, panel_url=panel_url)
+    h.shell_before_show()
+    h.shell_before_show()
+    total = len(h.form.webview.NavigationStarting.handlers)
+    shell_handlers = total - 1        # -1 is pywebview's own
+    results = [{
+        'arm': 'ARMED-ONCE',
+        'check': 'before_show fired twice -> guard subscribed once',
+        'ok': (shell_handlers == 1 and h.owner.visibility_armed is True),
+        'detail': (f'NavigationStarting handlers={total} '
+                   f'(1 pywebview + {shell_handlers} shell; expected 2 total / 1 '
+                   f'shell); visibility_armed='
+                   f'{h.owner.visibility_armed}')}]
+    return results, 0 if results[0]['ok'] else 1
+
+
 # ===========================================================================
 # scenarios
 # ===========================================================================
@@ -856,7 +886,7 @@ def main(argv=None):
         return 2
 
     stage = os.path.join(os.path.dirname(SHELL_DIR), 'webview', 'stage.html')
-    panel = os.path.join(os.path.dirname(SHELL_DIR), 'electron', 'panel.html')
+    panel = os.path.join(os.path.dirname(SHELL_DIR), 'panel', 'panel.html')
     stage_url = 'file:///' + stage.replace('\\', '/').lstrip('/')
     panel_url = 'file:///' + panel.replace('\\', '/').lstrip('/')
 
@@ -889,6 +919,13 @@ def main(argv=None):
     emit(f'  HIDDEN population: {population} decisions over '
          f'{len(scenarios())} scenarios x 3 initialization timings x '
          f'{args.repeats} repeats')
+
+    res, fail = arm_armed_once(shell, stage_url, panel_url)
+    results += res
+    failures += fail
+    for r in res:
+        emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
+             f'— {r["detail"]}')
 
     if os.path.abspath(args.shell) == os.path.abspath(DEFAULT_SHELL):
         res, fail = arm_mutation(args.shell, shell)
