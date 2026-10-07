@@ -1,5 +1,7 @@
 #include "d3d11_ctx.h"
 
+#include <cstdlib>
+
 namespace aireplay {
 
 static void dump_adapters(IDXGIFactory1* f)
@@ -63,14 +65,73 @@ bool D3d11Context::create_on_vendor(UINT want_vendor, std::string* err)
     return false;
 }
 
+// ---- the ring budget prices SYSTEM RAM, not VRAM (spec 03, law 7) -----------------
+// MEASURED defect (receipts/receipt-14-ring-cap-vram-vs-ram.md): the arena is a
+// std::vector<uint8_t> committed in full at init() (ring_buffer.cpp:15, arena_.assign), so
+// the ring consumes SYSTEM RAM.  Nothing in the ring path allocates VRAM, yet the cap was
+// dedicated_vram/16 -- a budget priced in bytes of a pool the ring never draws from.  On
+// this box that bound at 2.0% of the 47.74 GiB of RAM (998.69 MiB, from DedicatedVideoMemory
+// 15 979 MiB) and silently clipped 4K60 to 46.5 s instead of the promised 120 s.  VRAM still
+// legitimately governs the ENCODE path; it never governed this one.
+//
+//   cap = clamp(0.25 * systemTotalPhysicalMemory, 256 MiB, 4096 MiB)
+//   SOTTO_RING_CAP_MB=<MiB> overrides it, and the override passes through the SAME bounds:
+//   an absurd override is refused out loud, never honoured silently.
+static const uint64_t RING_CAP_LO = 256ull  << 20;
+static const uint64_t RING_CAP_HI = 4096ull << 20;
+
+static uint64_t system_total_phys_bytes(uint64_t* avail_phys)
+{
+    MEMORYSTATUSEX ms;
+    memset(&ms, 0, sizeof(ms));
+    ms.dwLength = sizeof(ms);
+    if (!GlobalMemoryStatusEx(&ms)) return 0;
+    if (avail_phys) *avail_phys = (uint64_t)ms.ullAvailPhys;
+    return (uint64_t)ms.ullTotalPhys;
+}
+
 uint64_t D3d11Context::ring_cap_bytes() const
 {
-    // Law 7: budget the ring from the measured hardware class, then derive seconds.
-    // clamp(VRAM/16, 256 MiB, 2048 MiB).
-    uint64_t cap = info.dedicated_vram / 16;
-    const uint64_t lo = 256ull << 20, hi = 2048ull << 20;
-    if (cap < lo) cap = lo;
-    if (cap > hi) cap = hi;
+    // Law 7: budget the ring from the MEASURED pool the ring actually consumes, and say
+    // out loud WHERE the number came from, so no receipt has to guess.
+    const char* ov = getenv("SOTTO_RING_CAP_MB");
+    if (ov && *ov) {
+        char* end = nullptr;
+        unsigned long long want_mb = strtoull(ov, &end, 10);
+        if (end != ov && *end == 0 && want_mb > 0) {
+            const unsigned long long lo_mb = RING_CAP_LO >> 20, hi_mb = RING_CAP_HI >> 20;
+            unsigned long long cap_mb = want_mb;
+            const char* why = "";
+            if (cap_mb < lo_mb) { cap_mb = lo_mb; why = "  CLAMPED_LOW"; }
+            if (cap_mb > hi_mb) { cap_mb = hi_mb; why = "  CLAMPED_HIGH"; }
+            log_line("  ring cap: %llu MB  source=env:SOTTO_RING_CAP_MB  requested=%llu MB  "
+                     "clamp=[%llu,%llu] MB%s",
+                     cap_mb, want_mb, lo_mb, hi_mb, why);
+            return (uint64_t)cap_mb << 20;
+        }
+        log_line("  ring cap: SOTTO_RING_CAP_MB=\"%s\" is not a whole MiB count > 0 -- IGNORED, "
+                 "falling back to system RAM", ov);
+    }
+
+    uint64_t avail = 0;
+    const uint64_t total = system_total_phys_bytes(&avail);
+    if (total == 0) {
+        log_line("  ring cap: %llu MB  source=lo_floor  reason=GlobalMemoryStatusEx failed",
+                 (unsigned long long)(RING_CAP_LO >> 20));
+        return RING_CAP_LO;
+    }
+
+    const uint64_t quarter = total / 4;              // 0.25 x system RAM, read at runtime
+    uint64_t cap = quarter;
+    const char* why = "";
+    if (cap < RING_CAP_LO) { cap = RING_CAP_LO; why = "  CLAMPED_LOW"; }
+    if (cap > RING_CAP_HI) { cap = RING_CAP_HI; why = "  CLAMPED_HIGH"; }
+    log_line("  ring cap: %llu MB  source=system_ram  total_phys=%llu MB  avail_phys=%llu MB  "
+             "quarter=%llu MB  clamp=[%llu,%llu] MB%s  vram_ignored=%llu MB",
+             (unsigned long long)(cap >> 20), (unsigned long long)(total >> 20),
+             (unsigned long long)(avail >> 20), (unsigned long long)(quarter >> 20),
+             (unsigned long long)(RING_CAP_LO >> 20), (unsigned long long)(RING_CAP_HI >> 20), why,
+             (unsigned long long)(info.dedicated_vram >> 20));
     return cap;
 }
 
