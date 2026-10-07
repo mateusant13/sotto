@@ -2918,7 +2918,13 @@ def main():
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
     ap.add_argument("--config", default=os.path.join(HERE, "config.json"))
     ap.add_argument("--selftest", action="store_true", help="transcribe a file, no audio device needed")
-    ap.add_argument("--audio", default=None, help="audio for --selftest (default: bundled sample1.flac)")
+    ap.add_argument(
+        "--audio",
+        default=None,
+        help="audio file to transcribe; honoured on its own, without --selftest "
+        "(implies file mode, no audio device). With bare --selftest and no "
+        "--audio, the bundled sample1.flac is used",
+    )
     ap.add_argument("--device", default=None, help="substring of the input device name")
     ap.add_argument("--model", default=None)
     ap.add_argument(
@@ -3048,13 +3054,28 @@ def main():
     # guess about. A boot line carrying the pid and argv is not ambiguous, and the
     # per-stage timings below say exactly where the remaining seconds went.
     t_boot = time.time()
+    # ── lane audiofix: the FILE SOURCE, resolved ONCE, before anything branches ──
+    # WHY this is computed here and not inline: `--audio` was read ONLY under
+    # `args.selftest`, so `--audio FILE` without `--selftest` was DISCARDED and
+    # the run fell through to the LIVE capture branch — capturing the room
+    # instead of the file, silently, with a plausible-looking JSONL to prove it.
+    # Every consumer of "is this a file run?" must now read THIS one value, or a
+    # `--audio`-only run would fix its source and still report `mode="live"` and
+    # still arm the live-only gate.
+    #
+    # Order is unchanged from before: an explicit `SOTTO_AUDIO_FILE` still wins
+    # over `--audio`, and `--selftest` with NO `--audio` still yields None here
+    # and falls back to the bundled sample below — so the pre-existing
+    # `--selftest --audio X` and bare `--selftest` runs are bit-identical.
+    audio_file = os.environ.get("SOTTO_AUDIO_FILE") or args.audio
+    file_mode = bool(audio_file) or args.selftest
     emit(
         type="status",
         state="boot",
         stage="start",
         pid=os.getpid(),
         argv=sys.argv[1:],
-        mode="file" if (os.environ.get("SOTTO_AUDIO_FILE") or args.selftest) else "live",
+        mode="file" if file_mode else "live",
     )
 
     cfg = {}
@@ -3270,7 +3291,7 @@ def main():
     # negative/positive control harness this lane's proof runs use, and
     # `SOTTO_GATE=0` is the live CONTROL arm (same device, gate off).
     _gate_env = os.environ.get("SOTTO_GATE")
-    _file_mode = bool(os.environ.get("SOTTO_AUDIO_FILE") or args.selftest)
+    _file_mode = file_mode
     if _gate_env is None:
         gate_enabled = not _file_mode
     else:
@@ -3296,7 +3317,14 @@ def main():
     # reason — see worker-bridge.js `#spawn` — so file mode travels the same way.
     # This is what makes the end-to-end caption path provable with REAL model text
     # and no audio device: the same worker, the same JSONL, the same renderer.
-    audio_file = os.environ.get("SOTTO_AUDIO_FILE") or (args.audio if args.selftest else None)
+    #
+    # lane audiofix: `audio_file` / `file_mode` are resolved ONCE, up at the boot
+    # emit (the `SOTTO_AUDIO_FILE or args.audio` line). They are NOT recomputed
+    # here, because this is the branch that used to swallow `--audio`: the guard
+    # read `args.audio if args.selftest else None`, so `--audio FILE` on its own
+    # produced `None` here, this branch was skipped, and the run fell through to
+    # LIVE capture — the room, not the file, with no error. `--audio` is now an
+    # input to this branch on its own, exactly as `SOTTO_AUDIO_FILE` always was.
     if args.selftest or audio_file:
         audio = audio_file or os.path.join(HERE, "assets", "sample1.flac")
         if not os.path.exists(audio):

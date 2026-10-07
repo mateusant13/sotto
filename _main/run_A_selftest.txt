@@ -1,0 +1,28 @@
+probe under test: H:\sotto-wt\gatecheck\_moved\aireplay\_main\slice_scale_probe.py
+budget=16ms under_need>=0.99 p95_need<=16ms
+arms            : 9 expected
+
+PASS arm=R0_old_logic               want=PASS  got=PASS reasons=0   <- the shipped gate said PASS to a 3.3x miss
+PASS arm=R1_observed_miss           want=FAIL got=FAIL reasons=2
+       reason: latency budget MISSED: 0.0% of 100 queries under 16 ms, need 99.0% (min=44.96 p50=52.94 p95=68.35 max=86.25 ms; POPULATION n=211200, WINDOW 100 timed queries, <=2 threads)
+       reason: p95 68.35 ms over the 16 ms ceiling: 100 timed queries, p50=52.94 max=86.25 ms (POPULATION n=211200, WINDOW 100 timed queries, <=2 threads)
+PASS arm=R2_tail_clause_alone       want=FAIL got=FAIL reasons=1
+       reason: p95 68.35 ms over the 16 ms ceiling: 100 timed queries, p50=52.94 max=86.25 ms (POPULATION n=211200, WINDOW 100 timed queries, <=2 threads)
+PASS arm=G1_compliant               want=PASS got=PASS reasons=0
+PASS arm=G2_tolerated_outlier       want=PASS got=PASS reasons=0
+PASS arm=X1_rows_missing            want=FAIL got=FAIL reasons=1
+       reason: only 19999/20000 embeddings landed in the store
+PASS arm=X2_empty_results           want=FAIL got=FAIL reasons=1
+       reason: 3/100 queries returned no hit
+PASS arm=X3_no_timings              want=FAIL got=FAIL reasons=1
+       reason: no query timings collected over a population of 100 queries at n=20000: unmeasured is not a pass
+PASS arm=E1_real_run_nonzero        want=rc=1  got=rc=1  verdict=['RESULT: FAIL']
+       probe: FAIL: latency budget MISSED: 0.0% of 20 queries under 0.001 ms, need 99.0% (min=0.99 p50=1.75 p95=20.14 max=20.14 ms; POPULATION n=2000, WINDOW 20 timed queries, <=2 threads)
+       probe: FAIL: p95 20.14 ms over the 16 ms ceiling: 20 timed queries, p50=1.75 max=20.14 ms (POPULATION n=2000, WINDOW 20 timed queries, <=2 threads)
+       probe: SCALE: n=2000 p50=1.75ms p95=20.14ms frac_under_0.001ms=0.000 mem_delta=8.1MB
+       probe: GATE : budget=0.001ms under_need>=0.99 p95_need<=16ms  (POPULATION n=2000, WINDOW 20 queries, <=2 threads)
+       probe: RESULT: FAIL
+
+held            : 9/9 arms
+proved RED on   : R0_old_logic, R1_observed_miss, R2_tail_clause_alone, X1_rows_missing, X2_empty_results, X3_no_timings, E1_real_run_nonzero
+SELFTEST: PASS
