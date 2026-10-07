@@ -1,0 +1,1 @@
+WORKTREE-ARCHIVE placeholder — lane/archplan6 receipt anchor
