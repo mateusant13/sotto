@@ -7,6 +7,12 @@
 //
 // There is no window on screen in any arm except the self-test's own window, which is
 // placed OFF the virtual desktop and is censused at 25 ms by this process itself.
+//
+// CancelSynchronousIo() (the only way out of a blocked stdin read at shutdown) is
+// Vista+; declare that BEFORE windows.h arrives through common.h.
+#if !defined(_WIN32_WINNT)
+#define _WIN32_WINNT 0x0601
+#endif
 #include "common.h"
 
 #include "d3d11_ctx.h"
@@ -88,6 +94,7 @@ struct Options {
     uint32_t bitrate = 0;
     bool     monitor = false;
     bool     window_top = false;
+    bool     stdin_ctl = false;
     int      window_alpha = -1;
     std::string cut_from;
     uint32_t cut_fps = 60, cut_w = 1920, cut_h = 1080;
@@ -117,6 +124,10 @@ static void usage()
     log_line("  --window-alpha N           make the test window cover the WHOLE desktop as a LAYERED "
              "window at alpha N (N=1 is imperceptible); needed because an off-desktop window is "
              "captured as uniform BLACK");
+    log_line("  --stdin                    serve one json command per line on the stdin HANDLE while the run "
+             "is live");
+    log_line("                             (blocking ReadFile, NOT std::cin - works detached); each command "
+             "gets one json reply");
     log_line("  --out FILE                 clip path (default _main\\runs\\clip-<ts>.mp4)");
     log_line("  --cut-from-h264 FILE       OFFLINE: fill the ring from a real Annex-B H.264 elementary");
     log_line("                             stream and run the SAME cut. No WGC, no NVENC. Proves the");
@@ -147,6 +158,7 @@ static bool parse(int argc, char** argv, Options* o, std::string* err)
         else if (a == "--fps") o->fps = (uint32_t)atoi(next("--fps").c_str());
         else if (a == "--bitrate") o->bitrate = (uint32_t)strtoul(next("--bitrate").c_str(), nullptr, 10);
         else if (a == "--monitor") o->monitor = true;
+        else if (a == "--stdin") o->stdin_ctl = true;
         else if (a == "--window-top") o->window_top = true;
         else if (a == "--window-alpha") o->window_alpha = atoi(next("--window-alpha").c_str());
         else if (a == "--cut-from-h264") o->cut_from = next("--cut-from-h264");
@@ -187,6 +199,196 @@ static std::string timestamp_slug()
 static void ensure_dir(const std::string& dir)
 {
     CreateDirectoryA(dir.c_str(), nullptr);
+}
+
+// ------------------------------------------------------------------ stdin control (v8)
+// A DETACHED capture process has no console to attach to, so std::cin is NOT the contract -
+// the HANDLE is.  ReadFile on STD_INPUT_HANDLE blocks until the parent writes a byte, works
+// with no console attached, and returns ERROR_BROKEN_PIPE the moment the parent closes the
+// pipe, which is the only clean way out.  One line in, one line out; bytes are read ONE AT A
+// TIME so a command can never steal the first byte of the next one.
+//
+// The parser is deliberately the smallest thing that can answer the only question this
+// channel asks ("what is cmd?") and REFUSE everything else with a reason instead of
+// guessing.  A malformed line must produce a clean error reply, never a crash and never a
+// silent success (red arm).
+
+static std::string json_escape(const std::string& v)
+{
+    std::string o;
+    for (size_t i = 0; i < v.size(); ++i) {
+        char c = v[i];
+        if (c == '"' || c == '\\') { o += '\\'; o += c; }
+        else if ((unsigned char)c < 0x20) {
+            char b[8];
+            _snprintf_s(b, sizeof(b), _TRUNCATE, "\\u%04x", (unsigned)(unsigned char)c);
+            o += b;
+        } else o += c;
+    }
+    return o;
+}
+
+// probe_json - the ONE json writer in this file.  Callers append already-formatted fields
+// with jf_*() and probe_json closes the object, so a reply can never be half-formed.
+static std::string probe_json(const std::string& fields) { return "{" + fields + "}"; }
+
+static void jf_str(std::string& acc, const char* k, const std::string& v)
+{
+    if (!acc.empty()) acc += ',';
+    acc += '"'; acc += k; acc += "\":\""; acc += json_escape(v); acc += '"';
+}
+static void jf_num(std::string& acc, const char* k, uint64_t v)
+{
+    if (!acc.empty()) acc += ',';
+    char b[32];
+    _snprintf_s(b, sizeof(b), _TRUNCATE, "%llu", (unsigned long long)v);
+    acc += '"'; acc += k; acc += "\":"; acc += b;
+}
+static void jf_bool(std::string& acc, const char* k, bool v)
+{
+    if (!acc.empty()) acc += ',';
+    acc += '"'; acc += k; acc += "\":"; acc += (v ? "true" : "false");
+}
+static void jf_null(std::string& acc, const char* k)
+{
+    if (!acc.empty()) acc += ',';
+    acc += '"'; acc += k; acc += "\":null";
+}
+
+// The one question this reader answers.  It is NOT a json parser and does not pretend to
+// be: no escapes are decoded (a value containing one is refused, not mangled), nesting is
+// not followed, and anything it cannot read confidently is a FALSE with the caller free to
+// say why.
+static bool json_find_string(const std::string& s, const char* key, std::string* out)
+{
+    std::string pat = "\"";
+    pat += key;
+    pat += "\"";
+    size_t k = s.find(pat);
+    if (k == std::string::npos) return false;
+    size_t i = k + pat.size();
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+    if (i >= s.size() || s[i] != ':') return false;
+    ++i;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+    if (i >= s.size() || s[i] != '"') return false;
+    ++i;
+    out->clear();
+    while (i < s.size() && s[i] != '"') {
+        if (s[i] == '\\') return false;
+        *out += s[i++];
+    }
+    return i < s.size();
+}
+
+// TRUE = a whole line arrived.  FALSE = the read failed (pipe closed) or we were cancelled.
+// *too_long is set when the line was longer than the cap: the rest is drained to the newline
+// so the NEXT command is still aligned, and the caller is told not to parse the fragment.
+static bool stdin_read_line(HANDLE in, std::string* line, bool* too_long)
+{
+    const size_t kMaxLine = 4096;
+    line->clear();
+    *too_long = false;
+    for (;;) {
+        char c = 0;
+        DWORD got = 0;
+        if (!ReadFile(in, &c, 1, &got, nullptr) || got != 1) return false;
+        if (c == '\n') {
+            if (!line->empty() && line->back() == '\r') line->pop_back();
+            return true;
+        }
+        if (line->size() >= kMaxLine) { line->clear(); *too_long = true; continue; }
+        *line += c;
+    }
+}
+
+static void stdin_write_reply(const std::string& reply)
+{
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    std::string s = reply + "\n";
+    DWORD wrote = 0;
+    WriteFile(out, s.c_str(), (DWORD)s.size(), &wrote, nullptr);
+    FlushFileBuffers(out);   // the parent reads line by line; a buffered reply looks like a hang
+}
+
+struct StdinCtl {
+    std::thread       th;
+    std::atomic<bool> stop{false};
+    const Replay*     rep = nullptr;
+
+    ~StdinCtl() { shutdown(); }
+
+    void start(const Replay* r)
+    {
+        rep = r;
+        th = std::thread(&StdinCtl::loop, this);
+    }
+
+    // A blocked ReadFile never sees `stop`, so the read has to be CANCELLED or shutdown()
+    // would wait for ever on a byte that is never coming.  CancelSynchronousIo is exactly
+    // this and is safe here because the read is issued by this thread alone.
+    void shutdown()
+    {
+        stop = true;
+        if (th.joinable()) {
+            CancelSynchronousIo(th.native_handle());
+            th.join();
+        }
+    }
+
+    static void reply(const std::string& fields) { stdin_write_reply(probe_json(fields)); }
+
+    static void reply_ok()
+    {
+        std::string f;
+        jf_bool(f, "ok", true);
+        reply(f);
+    }
+
+    static void reply_err(const char* code)
+    {
+        std::string f;
+        jf_bool(f, "ok", false);
+        jf_str(f, "error", code);
+        reply(f);
+    }
+
+    void handle(const std::string& line, bool too_long);
+
+    void loop()
+    {
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        if (!in || in == INVALID_HANDLE_VALUE) {
+            log_line("STDIN CONTROL: no stdin HANDLE (started detached with no pipe) - the channel is OFF, "
+                     "not broken");
+            return;
+        }
+        log_line("STDIN CONTROL: listening on the stdin HANDLE (blocking ReadFile, 1 byte at a time, "
+                 "one line = one command)");
+        for (;;) {
+            std::string line;
+            bool too_long = false;
+            if (!stdin_read_line(in, &line, &too_long)) {
+                log_line("STDIN CONTROL: stdin closed (%s)",
+                         stop.load() ? "cancelled at shutdown" : "parent closed the pipe");
+                return;
+            }
+            if (line.empty() && !too_long) continue;   // a blank line asked nothing
+            handle(line, too_long);
+        }
+    }
+};
+
+void StdinCtl::handle(const std::string& line, bool too_long)
+{
+    if (too_long) { reply_err("line-too-long"); return; }
+    size_t a = line.find_first_not_of(" \t\r");
+    if (a == std::string::npos || line[a] != '{') { reply_err("not-a-json-object"); return; }
+    std::string cmd;
+    if (!json_find_string(line, "cmd", &cmd)) { reply_err("no-cmd-field"); return; }
+    if (cmd == "ping") { reply_ok(); return; }
+    reply_err("unknown-cmd");
 }
 
 // ------------------------------------------------------------------ arms
@@ -261,6 +463,9 @@ static int arm_run(const Options& o)
     census.start();
 
     Replay replay;
+    // Declared AFTER replay on purpose: C++ destroys locals in reverse order, so the control
+    // thread is always joined (and stopped touching replay) while the Replay is still alive.
+    StdinCtl ctl;
     std::string err;
     bool armed = replay.arm(cfg, &err);
     if (!armed) {
@@ -285,12 +490,14 @@ static int arm_run(const Options& o)
     }
 
     const RunConfig& rc = replay.cfg();
+    if (o.stdin_ctl) ctl.start(&replay);
     log_line("  ARMED: codec=%s  %ux%u  fps=%u  bitrate=%.1f Mbps  ring=%llu MB",
              replay.armed_codec(), replay.width(), replay.height(), rc.fps, (double)rc.bitrate / 1e6,
              (unsigned long long)(replay.ring_capacity() >> 20));
 
     bool ok = replay.run(&err);
     census.finish();
+    ctl.shutdown();   // the probe thread is stopped before anything it points at goes away
 
     const Stats& s = replay.stats();
     const CutResult& c = replay.last_cut();
@@ -374,6 +581,7 @@ static int arm_run(const Options& o)
 
 int main(int argc, char** argv)
 {
+    const char* kHeartbeat = "sotto-stdin-ready"; (void)kHeartbeat;
     Options o;
     std::string err;
     if (!parse(argc, argv, &o, &err)) { log_line("ARGS_REJECTED: %s", err.c_str()); usage(); return 2; }
