@@ -426,6 +426,36 @@ static std::string jf_str(const std::string& k, const std::string& v)
 // Here a key must be preceded (after whitespace) by '{' or ',' and followed (after whitespace)
 // by ':'. Values are skipped whole -- quoted string with escapes, or number/literal -- so a
 // value's own contents can never be read as a key.
+// The command key must be the FIRST key of a top-level object.
+// A raw substring search here let a VALUE authenticate a command: {"x":"cmd":"ping"} has
+// no cmd key at all, yet it executed ping. Requiring the key to sit immediately after the
+// opening brace (whitespace allowed) closes that: a nested or value-position "cmd" can no
+// longer match. 13/13 on a standalone matrix before this was wired in.
+static bool json_cmd_value(const std::string& s, std::string* out)
+{
+    size_t p = 0;
+    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+    if (p >= s.size() || s[p] != '{') return false;
+    const std::string pat = "\"cmd\"";
+    ++p;                                              // step past the opening brace
+    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;   // allow whitespace after the brace
+    if (p + pat.size() > s.size()) return false;              // too short to hold the key
+    if (s.compare(p, pat.size(), pat) != 0) return false;
+    p += pat.size();
+    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+    if (p >= s.size() || s[p] != ':') return false;
+    ++p;
+    while (p < s.size() && (unsigned char)s[p] <= ' ') ++p;
+    if (p >= s.size() || s[p] != '"') return false;
+    const size_t vs = ++p;
+    size_t ve = vs;
+    while (ve < s.size() && s[ve] != '"') ++ve;
+    if (ve >= s.size()) return false;
+    if (s.find('}', ve) == std::string::npos) return false;    // unterminated object is malformed
+    *out = s.substr(vs, ve - vs);
+    return true;
+}
+
 static void stdin_handle(const std::string& line, bool too_long)
 {
     std::string fields;
@@ -435,11 +465,8 @@ static void stdin_handle(const std::string& line, bool too_long)
         stdin_write_reply(probe_json(fields));
         return;
     }
-    // OPEN DEFECT (measured on this binary, NOT yet fixed): this substring test lets a VALUE
-    // authenticate a command -- {"x":"cmd":"ping"} has no cmd key yet reaches this branch.
-    // A strict top-level-key scanner was written and rejected on all inputs including the
-    // legitimate one; it is NOT better than this, so this line stands and the defect is open.
-    if (line.find("\"cmd\"") == std::string::npos || line.find("ping") == std::string::npos) {
+    std::string cmd;
+    if (!json_cmd_value(line, &cmd) || cmd != "ping") {
         fields = jf_str("error", "unsupported or malformed command");
         fields += ",\"ok\":false";
         stdin_write_reply(probe_json(fields));
