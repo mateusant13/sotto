@@ -619,3 +619,4 @@ int main(int argc, char** argv)
     log_close_file();
     return rc;
 }
+// cut verb placeholder
