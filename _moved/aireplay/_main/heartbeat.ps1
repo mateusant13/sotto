@@ -68,11 +68,17 @@ try {
         -WorkingDirectory $root -NoNewWindow -PassThru `
         -RedirectStandardOutput "$out.stdout" -RedirectStandardError "$out.stderr"
 
-    $finished = $p.WaitForExit(15 * 60 * 1000)
+    # MEASURED FIX #3 2026-10-07: the original window was 15 minutes. A live pass
+    # started 11:29:15 was still working productively at 11:43 - it had written 10
+    # probe scripts and rebuilt wgc-probe.exe - and the 15-min kill would have
+    # destroyed it mid-flight. A pass that is doing real work needs room; the lock
+    # already prevents overlap, so a long window costs nothing except latency on a
+    # genuinely wedged pass. 55 min, and the kill is logged loudly.
+    $finished = $p.WaitForExit(55 * 60 * 1000)
     if (-not $finished) {
-        Log 'PASS TIMEOUT at 15 min - stopping this pass only'
+        Log 'PASS EXCEEDED 55 min - it may be wedged; stopping THIS pass only'
         try { $p.Kill() } catch {}
-        Log 'PASS timeout - killed'
+        Log 'PASS killed after window'
         exit 0
     }
     Log ("PASS done rc={0} -> {1}" -f $p.ExitCode, $out)
