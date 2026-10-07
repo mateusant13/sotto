@@ -65,6 +65,111 @@ Run C completed in **56.8 s** (43.7 s of it the 211200-row upsert, 0.2071
 ms/row; 297.1 MiB on disk; index load 1.86 s; rss delta +304.2 MB). It was run
 because it fits the budget, not because it is cheap.
 
+## FULL STDOUT, verbatim
+
+The runner writes raw output to `_main/gate_run_*.txt`, which `.gitignore:44`
+(`_main/*.txt`) keeps out of git as probe scratch. So the full streams are
+reproduced here, in the committed file.
+
+### Run A, sample 1 -- `python slice_scale_probe.py 20000 100 4096` -> **rc=1**
+
+```
+n               : 20000  dim=256 channel=visual fp32
+thread budget   : 2 (env set pre-numpy) mem_source=psutil
+rss before      : 36.2 MB
+queries         : 100  budget=16.0 ms
+chunk           : 4096 rows per upsert_embeddings call
+db              : I:\cc-tmp\slice-scale-eyunb78b\scratch.sqlite  journal=wal
+video_id        : 1
+segments        : 20000 in 0.10s (0.0050 ms/row)
+  upserted 4096/20000 (0.3s)
+upsert          : 20000/20000 in 1.77s (0.0887 ms/row)
+embeddings in db: 20000
+db on disk      : 28.1 MiB (page_size=4096)
+SearchIndex     : n=20000 dim=256 load=0.21s rss=58.5 MB
+
+window          : 2026-10-07 15:35:33 -> 15:35:36 (3.5s elapsed)
+population      : n=20000 vectors, 100 timed queries, <=2 threads (OMP=2)
+query ms        : min=4.58 p50=9.51 p95=17.95 max=28.15   (n=100 timed queries)
+under 16 ms     : 87.0% (87/100 queries; gate needs 99.0%)
+empty results   : 0/100
+rss after       : 82.9 MB  delta=+46.7 MB
+FAIL: latency budget MISSED: 87.0% of 100 queries under 16 ms, need 99.0% (min=4.58 p50=9.51 p95=17.95 max=28.15 ms; POPULATION n=20000, WINDOW 100 timed queries, <=2 threads)
+FAIL: p95 17.95 ms over the 16 ms ceiling: 100 timed queries, p50=9.51 max=28.15 ms (POPULATION n=20000, WINDOW 100 timed queries, <=2 threads)
+
+SCALE: n=20000 p50=9.51ms p95=17.95ms frac_under_16ms=0.870 mem_delta=46.7MB
+GATE : budget=16ms under_need>=0.99 p95_need<=16ms  (POPULATION n=20000, WINDOW 100 queries, <=2 threads)
+RESULT: FAIL
+```
+
+### Run B, sample 1 -- budget forced to 0.0001 ms -> **rc=1**
+
+```
+n               : 20000  dim=256 channel=visual fp32
+thread budget   : 2 (env set pre-numpy) mem_source=psutil
+rss before      : 35.6 MB
+queries         : 100  budget=0.0001 ms
+chunk           : 4096 rows per upsert_embeddings call
+db              : I:\cc-tmp\slice-scale-4t0i48l7\scratch.sqlite  journal=wal
+video_id        : 1
+segments        : 20000 in 0.15s (0.0073 ms/row)
+  upserted 4096/20000 (0.4s)
+upsert          : 20000/20000 in 2.15s (0.1076 ms/row)
+embeddings in db: 20000
+db on disk      : 28.1 MiB (page_size=4096)
+SearchIndex     : n=20000 dim=256 load=0.14s rss=58.0 MB
+
+window          : 2026-10-07 15:35:37 -> 15:35:40 (3.8s elapsed)
+population      : n=20000 vectors, 100 timed queries, <=2 threads (OMP=2)
+query ms        : min=5.16 p50=9.67 p95=17.40 max=19.69   (n=100 timed queries)
+under 0.0001 ms     : 0.0% (0/100 queries; gate needs 99.0%)
+empty results   : 0/100
+rss after       : 82.1 MB  delta=+46.5 MB
+FAIL: latency budget MISSED: 0.0% of 100 queries under 0.0001 ms, need 99.0% (min=5.16 p50=9.67 p95=17.40 max=19.69 ms; POPULATION n=20000, WINDOW 100 timed queries, <=2 threads)
+FAIL: p95 17.40 ms over the 0.0001 ms ceiling: 100 timed queries, p50=9.67 max=19.69 ms (POPULATION n=20000, WINDOW 100 timed queries, <=2 threads)
+
+SCALE: n=20000 p50=9.67ms p95=17.40ms frac_under_0.0001ms=0.000 mem_delta=46.5MB
+GATE : budget=0.0001ms under_need>=0.99 p95_need<=0.0001ms  (POPULATION n=20000, WINDOW 100 queries, <=2 threads)
+RESULT: FAIL
+```
+
+### Run C -- `python slice_scale_probe.py 211200 100 4096` -> **rc=1**
+
+```
+n               : 211200  dim=256 channel=visual fp32
+thread budget   : 2 (env set pre-numpy) mem_source=psutil
+rss before      : 36.1 MB
+queries         : 100  budget=16.0 ms
+chunk           : 4096 rows per upsert_embeddings call
+db              : I:\cc-tmp\slice-scale-roheg7z2\scratch.sqlite  journal=wal
+video_id        : 1
+segments        : 211200 in 1.80s (0.0085 ms/row)
+  upserted 4096/211200 (0.3s)
+  upserted 36864/211200 (5.3s)
+  upserted 69632/211200 (9.9s)
+  upserted 102400/211200 (14.4s)
+  upserted 135168/211200 (26.9s)
+  upserted 167936/211200 (35.1s)
+  upserted 200704/211200 (42.0s)
+upsert          : 211200/211200 in 43.73s (0.2071 ms/row)
+embeddings in db: 211200
+db on disk      : 297.1 MiB (page_size=4096)
+SearchIndex     : n=211200 dim=256 load=1.86s rss=65.2 MB
+
+window          : 2026-10-07 15:36:07 -> 15:37:04 (56.8s elapsed)
+population      : n=211200 vectors, 100 timed queries, <=2 threads (OMP=2)
+query ms        : min=50.80 p50=75.71 p95=129.45 max=151.06   (n=100 timed queries)
+under 16 ms     : 0.0% (0/100 queries; gate needs 99.0%)
+empty results   : 0/100
+rss after       : 340.4 MB  delta=+304.2 MB
+FAIL: latency budget MISSED: 0.0% of 100 queries under 16 ms, need 99.0% (min=50.80 p50=75.71 p95=129.45 max=151.06 ms; POPULATION n=211200, WINDOW 100 timed queries, <=2 threads)
+FAIL: p95 129.45 ms over the 16 ms ceiling: 100 timed queries, p50=75.71 max=151.06 ms (POPULATION n=211200, WINDOW 100 timed queries, <=2 threads)
+
+SCALE: n=211200 p50=75.71ms p95=129.45ms frac_under_16ms=0.000 mem_delta=304.2MB
+GATE : budget=16ms under_need>=0.99 p95_need<=16ms  (POPULATION n=211200, WINDOW 100 queries, <=2 threads)
+RESULT: FAIL
+```
+
 ## What the numbers mean
 
 1. **The gate is no longer decorative.** Every one of the five runs returned a
