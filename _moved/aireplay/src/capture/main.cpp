@@ -14,11 +14,40 @@
 #include "replay.h"
 #include "selftest.h"
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
+
+// ------------------------------------------------------------------ the audio tap, reached
+// WHY THIS IS AN #include AND NOT A LINK
+// --------------------------------------
+// `LoopbackTap`, `Endpoint`, `TapCounters` and `enumerate_endpoints` are all declared inside
+// audio_tap.cpp and NONE of them is exported by audio_tap.h, which carries only the three
+// `AudioTap` contract constants. `Endpoint` is additionally declared inside an anonymous
+// namespace (audio_tap.cpp:118-311), so that type has INTERNAL LINKAGE: even a header that
+// declared it could not be satisfied from a second translation unit, because there the type
+// would be a different `sotto::{anonymous}::Endpoint`. audio_tap.cpp also states at its own
+// line 61 that it is deliberately absent from build.cmd.
+//
+// The two clean fixes (export the types from audio_tap.h, move Endpoint out of the anonymous
+// namespace; add audio_tap.cpp to build.cmd:12) both mean editing files this lane does not own
+// and that are declared proven, so they are NOT taken here. Compiling the tap INTO this
+// translation unit is the one wiring that needs no change outside main.cpp, and it needs no
+// build.cmd edit either -- which is exactly why the tap was absent from the link line.
+// audio_tap.cpp defines its own `main` only under -DAUDIO_TAP_SELFTEST; a production build
+// carrying that flag would produce two mains, so it is refused loudly instead of silently.
+#ifdef AUDIO_TAP_SELFTEST
+#error "audio_tap.cpp is #included by main.cpp and already defines main() under AUDIO_TAP_SELFTEST"
+#endif
+#include "audio_tap.cpp"
 
 using namespace aireplay;
 
@@ -94,6 +123,11 @@ struct Options {
     std::string out;
     std::string log;
     uint32_t st_w = 1920, st_h = 1080;
+    // Audio tap controls. The tap is ON for --run; --audio-off turns it off and --audio-endpoint
+    // names the render endpoint BY NAME. Endpoint enumeration order is NOT stable between runs
+    // on this host, so nothing here may select an endpoint by its index.
+    bool     audio_off = false;
+    std::string audio_endpoint;
 };
 
 static void usage()
@@ -118,6 +152,10 @@ static void usage()
              "window at alpha N (N=1 is imperceptible); needed because an off-desktop window is "
              "captured as uniform BLACK");
     log_line("  --out FILE                 clip path (default _main\\runs\\clip-<ts>.mp4)");
+    log_line("  --audio-endpoint NAME      tap THIS render endpoint, by name (default: the one");
+    log_line("                             rendering now). Enumeration order is NOT stable here,");
+    log_line("                             so the endpoint is never addressed by index");
+    log_line("  --audio-off                do not open a loopback tap for this run");
     log_line("  --cut-from-h264 FILE       OFFLINE: fill the ring from a real Annex-B H.264 elementary");
     log_line("                             stream and run the SAME cut. No WGC, no NVENC. Proves the");
     log_line("                             muxer even when capture is unavailable (receipt 03 §7)");
@@ -159,6 +197,8 @@ static bool parse(int argc, char** argv, Options* o, std::string* err)
             o->cut_h = (uint32_t)atoi(s.substr(x + 1).c_str());
         }
         else if (a == "--out") o->out = next("--out");
+        else if (a == "--audio-endpoint") o->audio_endpoint = next("--audio-endpoint");
+        else if (a == "--audio-off") o->audio_off = true;
         else if (a == "--log") o->log = next("--log");
         else { *err = "unknown argument: " + a; return false; }
         if (!err->empty()) return false;
@@ -236,6 +276,242 @@ static int arm_selftest(const Options& o)
     return g.armed ? 0 : 3;
 }
 
+// ------------------------------------------------------------------ audio: the production tap
+// Everything below is the ONLY audio code the production command path owns. The tap itself is
+// audio_tap.cpp's; this is the plumbing that opens it beside the video capture, writes what it
+// carries to the ASR's own format, and then REPORTS what it measured -- because "the tap opened"
+// and "the tap carried audio" are two different claims and only one of them is the product.
+
+// A RIFF/WAVE sink at the ASR contract's format (audio_contract.h: 16 kHz, mono, PCM16).
+// The sizes are patched on close. A run killed mid-write therefore leaves a header whose data
+// size does not match the file, which the analyser can SEE, instead of a file that quietly
+// claims a length it does not have.
+struct WavSink {
+    HANDLE      h    = INVALID_HANDLE_VALUE;
+    std::string path;
+    uint64_t    data_bytes = 0;
+
+    bool open(const std::string& p, std::string* err)
+    {
+        path = p;
+        h = CreateFileA(p.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) { *err = "cannot create " + p; return false; }
+        unsigned char hdr[44];
+        memset(hdr, 0, sizeof(hdr));
+        const uint32_t rate = (uint32_t)sotto::AudioTap::kSampleRate;
+        const uint16_t ch   = (uint16_t)sotto::AudioTap::kChannels;
+        const uint16_t bits = (uint16_t)(sotto::AudioTap::kSampleWidthBytes * 8);
+        const uint16_t ba   = (uint16_t)(ch * sotto::AudioTap::kSampleWidthBytes);
+        memcpy(hdr + 0,  "RIFF", 4);
+        *(uint32_t*)(hdr + 4)  = 36;                       // patched on close
+        memcpy(hdr + 8,  "WAVEfmt ", 8);
+        *(uint32_t*)(hdr + 16) = 16;                       // fmt chunk size
+        *(uint16_t*)(hdr + 20) = 1;                        // PCM
+        *(uint16_t*)(hdr + 22) = ch;
+        *(uint32_t*)(hdr + 24) = rate;
+        *(uint32_t*)(hdr + 28) = rate * ba;                // byte rate
+        *(uint16_t*)(hdr + 32) = ba;                       // block align
+        *(uint16_t*)(hdr + 34) = bits;
+        memcpy(hdr + 36, "data", 4);
+        *(uint32_t*)(hdr + 40) = 0;                        // patched on close
+        DWORD wrote = 0;
+        if (!WriteFile(h, hdr, sizeof(hdr), &wrote, nullptr) || wrote != sizeof(hdr)) {
+            *err = "cannot write the wav header";
+            CloseHandle(h); h = INVALID_HANDLE_VALUE;
+            return false;
+        }
+        return true;
+    }
+
+    bool append(const std::vector<int16_t>& pcm)
+    {
+        if (!pcm.empty() && h != INVALID_HANDLE_VALUE) {
+            DWORD wrote = 0;
+            if (!WriteFile(h, pcm.data(), (DWORD)(pcm.size() * 2), &wrote, nullptr)) return false;
+            data_bytes += (uint64_t)pcm.size() * 2;
+        }
+        return true;
+    }
+
+    void close()
+    {
+        if (h == INVALID_HANDLE_VALUE) return;
+        const uint32_t riff = (uint32_t)(36 + data_bytes);
+        const uint32_t data = (uint32_t)data_bytes;
+        DWORD wrote = 0;
+        SetFilePointer(h, 4, nullptr, FILE_BEGIN);
+        WriteFile(h, &riff, 4, &wrote, nullptr);
+        SetFilePointer(h, 40, nullptr, FILE_BEGIN);
+        WriteFile(h, &data, 4, &wrote, nullptr);
+        CloseHandle(h);
+        h = INVALID_HANDLE_VALUE;
+    }
+};
+
+// What the run is allowed to claim about audio. Every field is filled from a measured counter.
+struct AudioTapResult {
+    bool        attempted      = false;
+    bool        opened         = false;
+    uint32_t    endpoints_seen = 0;
+    std::string endpoint_name;
+    std::string endpoint_id;
+    std::string wav_path;
+    std::string reason;          // why it is not opened, in the owner's words
+    uint64_t    pulls           = 0;   // pull() calls that returned PCM
+    uint64_t    pcm_samples     = 0;   // samples actually written
+    bool        have_counters   = false;
+    sotto::TapCounters counters;
+    std::string verdict;
+    double      seconds         = 0.0;
+};
+
+// Opens a loopback tap on a background thread and writes what it carries to a WAV.
+//
+// The tap is pull-based and spawns no thread of its own (audio_tap.cpp:347), so this class
+// costs exactly ONE thread -- and arm_run's window census already spends one, which is the
+// whole of the 2-thread budget. Nothing here can make the run fail: a host with no render
+// endpoint, a name that matches nothing, and an endpoint that refuses to open are all LOGGED
+// and then the video capture proceeds untouched.
+class AudioTapPump {
+public:
+    // Returns true when a tap is open and pumping. `res` is valid after join().
+    bool start(const std::string& want_name, const std::string& wav_path, AudioTapResult* res)
+    {
+        res_ = res;
+        res_->attempted = true;
+        th_ = std::thread(&AudioTapPump::run, this, want_name, wav_path);
+        // Block only until the open has been decided, so the caller can log a verdict that
+        // covers the window it is about to record.
+        std::unique_lock<std::mutex> lk(m_);
+        decided_cv_.wait(lk, [this] { return decided_; });
+        return res_->opened;
+    }
+
+    void join()
+    {
+        { std::lock_guard<std::mutex> lk(m_); stop_.store(true); }
+        if (th_.joinable()) th_.join();
+    }
+
+private:
+    void run(const std::string& want_name, const std::string& wav_path)
+    {
+        std::vector<sotto::Endpoint> eps;
+        std::string err;
+        if (!sotto::enumerate_endpoints(&eps, 300, &err)) {
+            res_->reason = "enumerate failed: " + err;
+            decide();
+            return;
+        }
+        res_->endpoints_seen = (uint32_t)eps.size();
+        if (eps.empty()) {
+            res_->reason = "this host has no ACTIVE render endpoint";
+            decide();
+            return;
+        }
+        // NEVER an index: enumeration order is not stable between runs on this host.
+        // The choice is by NAME when one is asked for, else by who is rendering NOW.
+        const sotto::Endpoint* chosen = nullptr;
+        if (!want_name.empty()) {
+            for (size_t i = 0; i < eps.size(); ++i) {
+                if (eps[i].name == want_name) { chosen = &eps[i]; break; }
+            }
+            if (!chosen) {
+                res_->reason = "no active render endpoint is named '" + want_name + "' (" +
+                               std::to_string(eps.size()) + " active: ";
+                for (size_t i = 0; i < eps.size() && i < 8; ++i) {
+                    res_->reason += (i ? ", " : "") + eps[i].name;
+                    if (eps[i].is_default) res_->reason += "[default]";
+                }
+                res_->reason += ")";
+                decide();
+                return;
+            }
+        } else {
+            for (size_t i = 0; i < eps.size(); ++i) {
+                if (!chosen) { chosen = &eps[i]; continue; }
+                // Highest live meter peak wins; the default endpoint only breaks a tie.
+                if (eps[i].meter_peak > chosen->meter_peak) chosen = &eps[i];
+                else if (eps[i].meter_peak == chosen->meter_peak && eps[i].is_default
+                         && !chosen->is_default) chosen = &eps[i];
+            }
+        }
+        res_->endpoint_name = chosen->name;
+        res_->endpoint_id   = chosen->endpoint_id;
+        res_->wav_path      = wav_path;
+
+        sotto::LoopbackTap tap;
+        if (!tap.open(*chosen, 100, &err)) {
+            res_->reason = "open failed on '" + chosen->name + "': " + err;
+            res_->verdict = "open_failed";
+            decide();
+            return;
+        }
+        res_->opened = true;
+
+        WavSink sink;
+        std::string werr;
+        const bool wav_ok = sink.open(wav_path, &werr);
+        if (!wav_ok) {
+            // Keep pumping anyway so the counters still report, but say the file is missing.
+            res_->reason = "tap open but wav failed: " + werr;
+        }
+
+        const ULONGLONG t0 = GetTickCount64();
+        std::vector<int16_t> pcm;
+        uint64_t pulls = 0, samples = 0;
+        while (!stop_.load()) {
+            std::string perr;
+            if (tap.pull(&pcm, 200, &perr)) {
+                ++pulls;
+                samples += pcm.size();
+                if (wav_ok && !sink.append(pcm)) {
+                    res_->reason = "wav write failed after " + std::to_string(samples) + " samples";
+                }
+            }
+        }
+        const ULONGLONG dt = GetTickCount64() - t0;
+        sink.close();
+        res_->pulls = pulls;
+        res_->pcm_samples = samples;
+        res_->seconds = (double)dt / 1000.0;
+        if (tap.is_open()) {
+            res_->counters = tap.counters();
+            res_->have_counters = true;
+            res_->verdict = sotto::tap_state_name(tap.judge());
+        } else {
+            res_->verdict = "closed";
+        }
+        tap.close();
+        decide();
+    }
+
+    void decide()
+    {
+        { std::lock_guard<std::mutex> lk(m_); decided_ = true; }
+        decided_cv_.notify_all();
+    }
+
+    std::thread             th_;
+    std::atomic<bool>       stop_{false};
+    std::mutex              m_;
+    std::condition_variable decided_cv_;
+    bool                    decided_ = false;
+    AudioTapResult*         res_ = nullptr;
+};
+
+// The wav that belongs to a clip: same stem, .wav instead of .mp4. Derived from the clip path so
+// the two cannot drift apart on disk.
+static std::string wav_sibling_of(const std::string& clip)
+{
+    std::string s = clip;
+    const size_t dot = s.find_last_of('.');
+    const size_t sep = s.find_last_of("\\/");
+    if (dot != std::string::npos && (sep == std::string::npos || dot > sep)) s = s.substr(0, dot);
+    return s + ".wav";
+}
+
 static int arm_run(const Options& o)
 {
     RunConfig cfg;
@@ -289,8 +565,27 @@ static int arm_run(const Options& o)
              replay.armed_codec(), replay.width(), replay.height(), rc.fps, (double)rc.bitrate / 1e6,
              (unsigned long long)(replay.ring_capacity() >> 20));
 
+    // AUDIO: the tap is ON for the capture command and runs BESIDE the video capture, on the
+    // last thread this process is allowed (the census spends one, the tap pump spends one,
+    // and the tap itself spawns none). Nothing here can fail the run: a host with no render
+    // endpoint, a name that matches nothing, and a refusal to open are all log lines.
+    AudioTapResult audio;
+    AudioTapPump  tap;
+    if (o.audio_off) {
+        log_line("AUDIO: --audio-off — no loopback tap opened for this run");
+    } else if (!tap.start(o.audio_endpoint, wav_sibling_of(cfg.out_path), &audio)) {
+        log_line("AUDIO: DEGRADED — no tap open; the VIDEO capture continues unchanged");
+        log_line("AUDIO:   endpoints_seen=%u  reason=%s", audio.endpoints_seen,
+                 audio.reason.c_str());
+    } else {
+        log_line("AUDIO: tap OPEN on endpoint NAME=\"%s\"", audio.endpoint_name.c_str());
+        log_line("AUDIO:   endpoint_id=%s", audio.endpoint_id.c_str());
+        log_line("AUDIO:   wav=%s  (16 kHz mono PCM16, the ASR contract)", audio.wav_path.c_str());
+    }
+
     bool ok = replay.run(&err);
     census.finish();
+    tap.join();
 
     const Stats& s = replay.stats();
     const CutResult& c = replay.last_cut();
@@ -344,6 +639,42 @@ static int arm_run(const Options& o)
              (unsigned long long)census.samples.load(),
              (unsigned long long)census.visible_samples.load(),
              (unsigned long long)census.worst_onscreen.load());
+    log_line("");
+    log_line("=== AUDIO (the loopback tap, measured) ===");
+    if (o.audio_off) {
+        log_line("  off by request (--audio-off)");
+    } else if (!audio.opened) {
+        log_line("  NOT CAPTURED — no endpoint opened. The clip below is VIDEO-ONLY, and any");
+        log_line("    searchable memory cut from it has no audio input at all.");
+        log_line("  endpoints_seen=%u  reason=%s", audio.endpoints_seen, audio.reason.c_str());
+    } else {
+        log_line("  endpoint NAME=\"%s\"", audio.endpoint_name.c_str());
+        log_line("  endpoint_id=%s", audio.endpoint_id.c_str());
+        log_line("  wav=%s", audio.wav_path.c_str());
+        if (audio.have_counters) {
+            log_line("  VERDICT=%s  (kOk = audio above the silence floor; kSilentDevice = opened and "
+                     "delivering frames that are DIGITAL SILENCE, which is correct with nothing routed)",
+                     audio.verdict.c_str());
+            log_line("  tap    : packets=%llu frames=%llu silent_packets=%llu empty_polls=%llu "
+                     "blocks=%llu grant_frames=%u",
+                     (unsigned long long)audio.counters.packets,
+                     (unsigned long long)audio.counters.frames,
+                     (unsigned long long)audio.counters.silent_packets,
+                     (unsigned long long)audio.counters.empty_polls,
+                     (unsigned long long)audio.counters.blocks,
+                     audio.counters.endpoint_grant_frames);
+            log_line("  audio  : pulls=%llu pcm_samples=%llu pcm_bytes=%llu over %.3f s",
+                     (unsigned long long)audio.pulls,
+                     (unsigned long long)audio.pcm_samples,
+                     (unsigned long long)audio.counters.pcm_bytes, audio.seconds);
+            log_line("  level  : peak=%.6f rms=%.6f", (double)audio.counters.peak,
+                     (double)audio.counters.rms);
+            const double asr_s = (double)audio.pcm_samples / (double)sotto::AudioTap::kSampleRate;
+            log_line("  wav    : %.3f s at %d Hz -> ffprobe must see AUDIO, not AUDIO=NONE", asr_s,
+                     (int)sotto::AudioTap::kSampleRate);
+        }
+        if (!audio.reason.empty()) log_line("  note   : %s", audio.reason.c_str());
+    }
     log_line("");
     log_line("=== CLIP ===");
     log_line("  path=%s ok=%d", c.path.c_str(), c.ok ? 1 : 0);
