@@ -154,17 +154,26 @@ pub fn dock(panel: &WebviewWindow) -> Option<PanelGeometry> {
         height: size.height as f64,
     };
 
-    // The work area is the screen minus the taskbar. If the platform does not
-    // report one, the full monitor rect is the honest fallback and the
-    // resulting number is still traceable to `screen`.
-    let work = match monitor.work_area() {
-        Some(area) => ScreenRect {
+    // The work area is the screen minus the taskbar.
+    //
+    // TAURI 2 API CHANGE (measured 2026-10-07, `cargo build` error E0308 x2):
+    // in Tauri 1 `Monitor::work_area()` returned `Option<Rect>`, so this arm
+    // matched `Some(area) / None`. In Tauri 2 it returns `&PhysicalRect`
+    // DIRECTLY - there is no None arm, because the platform always reports one.
+    // Matching it as an Option is what broke the build; the fallback below is
+    // therefore kept for a degenerate zero-sized rect, not for None.
+    let area = monitor.work_area();
+    let work = if area.size.width > 0 && area.size.height > 0 {
+        ScreenRect {
             x: area.position.x as f64,
             y: area.position.y as f64,
             width: area.size.width as f64,
             height: area.size.height as f64,
-        },
-        None => screen,
+        }
+    } else {
+        // A platform that reports no usable work area gets the full monitor
+        // rect, and the number stays traceable to `screen`.
+        screen
     };
 
     Some(dock_right(work, scale))
