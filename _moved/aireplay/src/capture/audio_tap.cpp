@@ -694,12 +694,23 @@ bool enumerate_raw(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* e
             com_release(dev);
             continue;   // skip this one, keep enumerating
         }
-        // The meter is sampled over a WINDOW, not read once.
+        // The meter is sampled over a WINDOW, and the PEAK OVER THAT WINDOW is what is
+        // kept. This used to be a single instantaneous read that stopped as soon as the
+        // meter answered (`slept < meter_ms && avail == false`), which is exactly the
+        // failure the comment above it warns about: one read cannot tell "idle" from "the
+        // owner is between two tracks", and it made the same endpoint read `carries=0` on
+        // one launch and `carries=1` on the next (measured this lane). A window with the
+        // max kept cannot: a tone present for any part of the window is seen.
         float peak = 0.0f;
         bool avail = false;
-        for (uint32_t slept = 0; slept < meter_ms && avail == false; slept += 10) {
-            avail = read_device_peak(dev, &peak, &avail);
-            if (avail && slept + 10 < meter_ms) Sleep(10);
+        for (uint32_t slept = 0; slept < meter_ms; slept += 10) {
+            float p = 0.0f;
+            bool a = false;
+            if (read_device_peak(dev, &p, &a) && a) {
+                avail = true;
+                if (p > peak) peak = p;
+            }
+            if (slept + 10 < meter_ms) Sleep(10);
         }
         ep.meter_available = avail;
         ep.meter_peak = avail ? peak : 0.0f;
@@ -734,18 +745,24 @@ bool enumerate_raw(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* e
     return true;
 }
 
-// The order-by-loudness view, kept because it is what the worker wants ("who is rendering
-// NOW"), and kept SEPARATE from `enumerate_raw` because it is a ranking, not an identity.
+// The order-by-loudness view, a RANKING and not an identity: it ranks the endpoints that
+// are already enumerated by meter peak, default breaking a tie. It is a separate function
+// so the ranking can be printed from the SAME metering pass as the raw order -- two
+// enumerations would meter every endpoint twice and could even disagree with themselves.
 // Two endpoints that both read peak 0.000000 tie here, and the tie is broken by the
 // enumeration order underneath -- which is exactly how an index-based selection ends up
 // pointing at a different device from one run to the next. Selection by name or by the
-// frozen ordinal does not go through this function.
-bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err) {
-    if (!enumerate_raw(out, meter_ms, err)) return false;
-    std::stable_sort(out->begin(), out->end(), [](const Endpoint& a, const Endpoint& b) {
+// frozen ordinal does not go through this ranking.
+void sort_by_loudness(std::vector<Endpoint>* v) {
+    std::stable_sort(v->begin(), v->end(), [](const Endpoint& a, const Endpoint& b) {
         if (a.meter_peak != b.meter_peak) return a.meter_peak > b.meter_peak;
         return a.is_default && !b.is_default;   // the default only breaks a tie
     });
+}
+
+bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err) {
+    if (!enumerate_raw(out, meter_ms, err)) return false;
+    sort_by_loudness(out);
     return true;
 }
 
@@ -1208,6 +1225,7 @@ int main(int argc, char** argv) {
     bool enum_only = false;        // --enum-only
     bool expect_silent = false;    // --expect-silent
     bool no_map = false;           // --no-map: measure order without touching the map
+    bool by_loudness = false;      // --by-loudness: also run the public ranking entry point
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -1217,6 +1235,8 @@ int main(int argc, char** argv) {
             expect_silent = true;
         } else if (a == "--no-map") {
             no_map = true;
+        } else if (a == "--by-loudness") {
+            by_loudness = true;
         } else if (a == "--select" && i + 1 < argc) {
             want = argv[++i];
         } else if (a == "--wav" && i + 1 < argc) {
@@ -1293,15 +1313,29 @@ int main(int argc, char** argv) {
     // this order can move between launches for exactly the same reason the raw one does.
     // Printed by NAME and short id, never by a bare index.
     {
-        std::vector<Endpoint> sorted;
-        std::string serr;
-        if (enumerate_endpoints(&sorted, 0, &serr)) {
-            printf("SORTED_BY_LOUDNESS");
-            for (const Endpoint& ep : sorted) printf(" %s(%.6f)", ep.short_id.c_str(),
-                                                     static_cast<double>(ep.meter_peak));
+        std::vector<Endpoint> sorted = raw;
+        sort_by_loudness(&sorted);
+        printf("SORTED_BY_LOUDNESS");
+        for (const Endpoint& ep : sorted) printf(" %s(%.6f)", ep.short_id.c_str(),
+                                                 static_cast<double>(ep.meter_peak));
+        printf("\n");
+    }
+    // The public entry point, exercised through ITS OWN fresh enumeration -- not the
+    // ranking helper on the copy above. Two separate COM enumerations agreeing is a real
+    // check that `enumerate_endpoints()` still works as the component's API, and it is the
+    // only place in this file that calls it.
+    if (by_loudness) {
+        std::vector<Endpoint> ranked;
+        std::string rerr;
+        if (enumerate_endpoints(&ranked, meter_ms, &rerr)) {
+            printf("LOUDNESS_RANK count=%zu", ranked.size());
+            for (size_t i = 0; i < ranked.size(); ++i) {
+                printf(" [%zu]=%s#%d(%.6f)", i, ranked[i].name.c_str(), ranked[i].ordinal,
+                       static_cast<double>(ranked[i].meter_peak));
+            }
             printf("\n");
         } else {
-            printf("SORTED_BY_LOUDNESS UNAVAILABLE reason=%s\n", serr.c_str());
+            printf("LOUDNESS_RANK UNAVAILABLE reason=%s\n", rerr.c_str());
         }
     }
     if (enum_only) {
