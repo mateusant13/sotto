@@ -10,7 +10,9 @@
       * -SourceSet recipe = the exact file list in src/capture/build.cmd:12
         -SourceSet all    = every *.cpp under src/capture (catches files that were merged
                              into src/ but never added to build.cmd, i.e. silent no-build)
-      * -j2 : measurements are capped at 2 threads.
+      * No -j flag: this mingw g++ 15.2.0 build rejects -j and -j2 outright
+        (measured: "unrecognized command-line option '-j'"). Compilation is therefore
+        single-threaded, which satisfies the <=2 threads measurement cap.
 
     Usage:
       pwsh -File _main/buildcheck-run.ps1 -RepoRoot <worktree> -Label head -SourceSet all
@@ -72,7 +74,7 @@ $libs = @('-ld3d11', '-ldxgi', '-lavrt', '-luuid', '-lole32', '-loleaut32',
     '-lruntimeobject', '-lwindowsapp', '-lpsapi', '-lgdi32', '-luser32')
 
 $argList = @(
-    '-std=c++17', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter', '-j2',
+    '-std=c++17', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter',
     '-I', $src, '-I', (Join-Path $src 'third_party')
 ) + $files + @('-o', $exe) + $libs
 
