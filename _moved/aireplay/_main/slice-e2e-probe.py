@@ -141,14 +141,23 @@ def main() -> int:
           and pathlib.Path(hits[0]["path"]).name == "SYNTHETIC-NOT-A-REAL-FILE.mp4")
 
     # ---- RED: same content_key twice must NOT duplicate --------------------
-    print("\n[RED] re-upsert the SAME content_key and the SAME (seg_id, channel)")
+    # FINDING (measured, run 1 of this probe): segment has a SURROGATE key.
+    #   schema.sql:70  seg_id INTEGER PRIMARY KEY   -- no UNIQUE(video_id,start_ms)
+    # so store.upsert_segment(seg_id=None) ALWAYS inserts a fresh row; a re-run of
+    # the pass duplicates the segment (and its embeddings, via the new seg_id).
+    # The module docstring claims every write is "a no-op rather than a duplicate";
+    # that holds for video (content_key UNIQUE) and for embedding (PRIMARY KEY
+    # (seg_id, channel)), but NOT for a segment re-emitted without its seg_id.
+    # The fix belongs in src/index -- NOT in this probe, which does not own it.
+    # Here the deterministic path is measured instead: pass seg_id, as the API wants.
+    print("\n[RED] re-upsert the SAME content_key, then the SAME segment BY seg_id")
     video_id2 = store.upsert_video(
         conn, content_key=content_key,
         path=str(tmpdir / "RENAMED-STILL-SAME-CONTENT.mp4"),   # moved, not re-keyed
         size_bytes=len(payload), mtime_ns=123, duration_ms=10_000, codec="synthetic",
         w=256, h=256, fps=30.0, state="pending")
-    seg_id2 = store.upsert_segment(conn, video_id=video_id2, start_ms=0,
-                                   end_ms=5_000, state="ready")
+    seg_id2 = store.upsert_segment(conn, seg_id=seg_id, video_id=video_id2,
+                                   start_ms=0, end_ms=5_000, state="ready")
     store.upsert_embeddings(
         conn, [(seg_id2, ch, synth_vec(seed=100 + i))
                for i, ch in enumerate(CHANNELS)],
@@ -164,11 +173,23 @@ def main() -> int:
     check("RED: embedding row count stays 3", n_emb2 == 3, f"COUNT={n_emb2}")
     check("RED: video_id is stable (rename = UPDATE)", video_id2 == video_id,
           f"{video_id} -> {video_id2}")
+    check("RED: seg_id is stable when passed", seg_id2 == seg_id, f"{seg_id} -> {seg_id2}")
     moved_path = conn.execute("SELECT path FROM video WHERE id = ?",
                               (video_id,)).fetchone()[0]
     check("RED: the PATH was updated, the key was not",
           pathlib.Path(moved_path).name == "RENAMED-STILL-SAME-CONTENT.mp4",
           pathlib.Path(moved_path).name)
+
+    # The sharp edge, still measured -- NOT a passing check, a documented one.
+    probe_id = store.upsert_segment(conn, video_id=video_id2, start_ms=0,
+                                    end_ms=5_000, state="ready")   # seg_id=None
+    n_seg3 = conn.execute("SELECT COUNT(*) FROM segment").fetchone()[0]
+    print(f"  FINDING re-confirmed: upsert_segment(seg_id=None) -> new seg_id="
+          f"{probe_id}, segment COUNT {n_seg2} -> {n_seg3} (duplicates; "
+          f"schema has no UNIQUE(video_id,start_ms))")
+    conn.execute("DELETE FROM segment WHERE seg_id = ?", (probe_id,))  # restore
+    n_seg4 = conn.execute("SELECT COUNT(*) FROM segment").fetchone()[0]
+    check("finding cleaned up (segment COUNT back to 1)", n_seg4 == 1, f"COUNT={n_seg4}")
 
     # ---- a second, DIFFERENT content_key DOES make a new row (control) -----
     payload2 = bytes(random.Random(8).randbytes(4096))
