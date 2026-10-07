@@ -63,35 +63,115 @@ None of these were on the previous roadmap. Each was measured, not inferred.
     P2  ONE APP        the shell, the search, the memory
     P3  FRONTEND       the panel, last, against a real backend
 
-### P0 — INTEGRATE (no new features; make what exists run together)
+### P0 — INTEGRATE
 
 **P0.0 comes first and is NOT optional — it is B1 and B2 above. Integration into a
 tree that `git clean` can delete, driven by a driver that never runs, is not work.**
+**B1 and B2 are DONE as of 2026-10-07** (see §0c below).
 
-1. **Fix the heartbeat invocation (B1).** `mcode exec` needs the prompt as a
-   *positional argument* or `--input -`; `--file` only attaches. One-line fix, then
-   re-arm. **Acceptance that can go RED:** a pass whose `heartbeat-run-*.md` is
-   **empty** and whose rc≠0 is a FAILURE, and the ARM-B arm (prompt path pointed at
-   a non-existent file) must produce rc≠0 and a non-empty `.stderr`.
-2. **Commit the product tree (B2).** `git ls-files _moved` must go 0 → >0 and the
-   `git clean -nd _moved` count must drop to 0. **Never `git add -A`** — stage the
-   tree by explicit path, and never `checkout`/`reset` over uncommitted work.
-3. **One Memory Engine process** that owns capture + ASR + index, independent of
-   the UI (law: if the UI dies, recording continues). Tauri is a *bridge* only —
-   never the realtime scheduler, never capture inside a Tauri command.
-4. **Wire the replay hotkey to a real encoder init.** Law 6: no encoder → the key
-   is NOT armed, and the reason is said out loud.
-5. **One SQLite file** (`schema` in research 07) holding video/segment/transcript/
-   ocr/embedding/marker. Live clips and the imported library are the SAME table —
-   the difference is the producer, never the table. Lane 01 confirms the schema is
-   already fully specified in `docs/research/07-index-search.md:33-43`: `video`,
-   `segment`, `transcript`, `ocr`, `embedding`, `marker`. **Spec 04 is therefore a
-   TRANSCRIPTION job, not a design job.**
-6. **Ring budget from measured hardware** (law 7): 120 s = 572 MiB @1080p60,
-   **1 431 MiB @4K60/100 Mbps, 2 861 MiB @4K60/200 Mbps**. The product must *say*
-   what it chose and why.
-7. **Both-colour gate on every claim** — an instrument that cannot say NO is
-   worthless; each ships the pass AND a deliberately-broken arm that must go RED.
+### 0c. B1 AND B2 RESOLVED — 2026-10-07 (measured, not asserted)
+
+**B2 (durability) — FIXED, commit `a66da94`.** Re-measured after the commit:
+
+| measure | before | after |
+|---|---|---|
+| `git ls-files _moved` | **0** | **328** |
+| untracked entries under `_moved` | 679 | 1 |
+| `git clean -nd _moved` would remove | **419 paths** | **2** (the heartbeat lock + lockfile) |
+
+The 2 remaining paths are the live lock handle and its transient — by design, they
+are recreated every pass and hold no work. Staging bar measured before committing:
+**291 files, 0 with deletions (pure additions), largest file 1.80 MB** — no model
+weights, no multi-GB blobs. The `_main/` oracle sources are deliberately tracked:
+they are how every claim here gets falsified.
+
+**B1 (the heartbeat) — FIXED, and the lane's diagnosis was WRONG in a way that
+matters.** The roadmap's B1 said the fix was "pass the prompt positionally, because
+`--file` only attaches". That is **not what was wrong**, and following it would
+have been a fix for a cause that does not exist. The measured truth is three
+separate faults, found by firing it and reading the real stderr each time:
+
+| # | symptom | real cause | fix |
+|---|---|---|---|
+| 1 | `%1 não é um aplicativo Win32 válido` | `mcode` resolves to **three** things on PATH; `Start-Process` grabbed the extensionless shell script | use `H:\env\npm-global\mcode.cmd` by absolute native path |
+| 2 | `rc=2  A prompt, --input -, or at least one --file is required` | flags were passed with no prompt text | `--file $promptFile` |
+| 3 | `rc=4  Session already has an active Turn` | the heartbeat targeted the **owner's live session** — he is talking in it, so this could *never* work | give the heartbeat **its own session** via `--cwd`, never name the owner's session id |
+
+**Proof it now does real work** (not merely "rc=0"): pass PID 24360 ran from
+11:29:15 with **33.2 s of CPU**, held the exclusive lock the whole time, and
+independently compiled `_main\wgc-probe.exe` (303 093 B, 11:31:27) — a pass
+doing capture research on its own initiative.
+
+**The lock is proven, not assumed.** `_hb-lock-selftest.ps1` → **rc=0, 8 arms,
+both colours**. ARM-D is the real one: the old `New-Item -ItemType Directory -Force`
+mutex **fails to exclude** (it succeeds against an existing directory), which is
+why the first driver would have let two passes overlap. The working mutex is an
+exclusive `FileStream` with `FileShare::None`, which also means a killed pass drops
+its own lock and there is no stale-lock sweep to get wrong.
+
+**B3 (worktrees could not see the product) — FIXED.** MEASURED before: a lane
+worktree reported `Test-Path _moved\aireplay\specs` → **False**, i.e. a dispatched
+lane would have seen `AGENTS.md` and nothing else. All four lanes
+(`EmbedRuntime`, `IndexImpl`, `OcrImpl`, `EngineProc`) were fast-forwarded
+`a3c288f → a66da94` and now report `sees_product=True`.
+**Worktree isolation is only safe AFTER B2 — a lane in a worktree that cannot see
+the product is not isolated, it is blind.**
+
+**B4 (the embedding benchmark cannot run) — CONFIRMED, and it is the OWNER's call.**
+MEASURED: `models/` holds only `parakeet-tdt-0.6b-v3-onnx` (670 622 916 B) and
+`.hf-home` (113 798 B). **No embedding weights on disk.** The 768d-vs-256d recall
+falsifier in P1 needs a ~1.5 GB download. **Do not start it silently — that
+decision is the owner's.** The index can be built and shipped at 768d in the
+meantime; the choice is only about whether 256d is acceptable.
+
+
+
+**P0 SCOPE CORRECTED 2026-10-07 by the refute pass.** This section originally
+read "wire four subsystems together — no new features". Measurement says two of
+the four are missing **features**, not glue:
+
+> - **No hotkey exists.** `Select-String` for `RegisterHotKey|GetAsyncKeyState|
+>   WM_HOTKEY|SetWindowsHookEx|GetKeyState|VK_` across **ALL** of
+>   `src/capture/*.cpp|*.h` → **0 hits**. The cut is *time-triggered*
+>   (`cfg.cut_at_s`). **The "instant replay" trigger — the product's whole promise
+>   — does not exist.**
+> - **No audio exists.** `ffprobe -select_streams a` on **8** clips (3.0 s–30.0 s,
+>   the largest 165 MB) → **8/8 `AUDIO=NONE`**, h264 video-only. ASR meanwhile is
+>   file-fed (`transcribe.py --wav`, required). *Nothing is ever spoken into the
+>   index.*
+> - **`src/index/` is EMPTY**; there is **no SQLite anywhere** in `src/`.
+> - **`memory.rs` is not a memory index** — it is a `GetProcessMemoryInfo`
+>   working-set probe, and `commands.rs` returns a hardcoded `active:false,
+>   source:"m0-no-capture"`. The Tauri shell is an M0 mock.
+>
+> Both hotkey and audio claims were **re-measured on the whole population**, not on
+> the single grep and single ffprobe the audit lane used — see
+> `receipts/receipt-13-refute-integration-audit.md`.
+
+So P0 is **one vertical slice that creates the two missing capabilities**:
+
+1. **`stdin` → cut.** `{"cmd":"cut"}` on the capture process's stdin is the
+   smallest change that turns a time-triggered cut into real instant replay. The
+   capture binary has **no stdin reader today**, so this IS the seam.
+   *Acceptance that can go RED:* press the key during a live 1080p60 encode →
+   clip on disk in < 1 s (`specs/01` S1 target), **zero** `ring_dropped`
+   (`ring_buffer.h:9-11`), and the clip decodes clean via `ffmpeg -f null -`.
+2. **WASAPI loopback → muxed audio.** Capture must carry system audio beside the
+   video, resampled to 16 kHz mono. **The machinery already exists and is proven
+   in this repo's own tree:** `H:\sotto\worker\wasapi_loopback.py` + the device
+   ladder (`sotto_worker.py:942-1088`) + `resample_to_16k` (`:1090`). **Reuse it,
+   do not rebuild it.**
+   *Acceptance that can go RED:* one capture whose clip `ffprobe` reports a stream
+   with `codec_type=audio`, with ASR text over that same audio.
+3. **One Engine process that is the PARENT**, UI as a reconnectable child — so the
+   UI dying can never stop recording. IPC = **JSON Lines over stdin/stdout**, since
+   that exact bridge is already hardened in production here (`sotto_worker.py:374-377`
+   `emit()`, consumed by `sotto_webview.py:5964-5975` with a watchdog).
+4. **One SQLite file** (`research 07` schema) — the durable spine. It exists
+   because identity is `content_key`, which a message-passing engine cannot express.
+5. **Ring budget from measured hardware** (law 7) and **no encoder → no armed key**
+   (law 6) — both already implemented in `selftest.cpp:63`; keep them.
+6. **Both-colour gate on every claim** — an instrument that cannot say NO is worthless.
 
 ### P1 — CLOSE THE DECIDING UNKNOWNS
 
