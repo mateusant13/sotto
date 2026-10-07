@@ -372,6 +372,73 @@ static int arm_run(const Options& o)
     return c.ok ? 0 : 2;
 }
 
+// ------------------------------------------------------------------ stdin control (v9)
+// A DETACHED capture process has no console to attach to, so std::cin is NOT the contract -
+// the HANDLE is.  ReadFile on STD_INPUT_HANDLE blocks until the parent writes a byte, works with
+// no console attached, and returns ERROR_BROKEN_PIPE the moment the parent closes the pipe,
+// which is the only clean way out.  One line in, one line out; bytes are read ONE AT A TIME so a
+// command can never steal the first byte of the next one.
+//
+// The parser answers the only question this channel asks ("what is cmd?") and REFUSES everything
+// else with a reason instead of guessing.  A malformed line is a clean error reply, never a crash.
+static std::string probe_json(const std::string& fields) { return "{" + fields + "}"; }
+
+static bool stdin_read_line(HANDLE in, std::string* line, bool* too_long)
+{
+    const size_t kMaxLine = 4096;
+    line->clear();
+    *too_long = false;
+    for (;;) {
+        char c = 0;
+        DWORD got = 0;
+        if (!ReadFile(in, &c, 1, &got, nullptr) || got == 0) return false;   // pipe closed / cancelled
+        if (c == '\n') return true;
+        if (c == '\r') continue;
+        if (line->size() >= kMaxLine) { line->clear(); *too_long = true; continue; }
+        *line += c;
+    }
+}
+
+static void stdin_write_reply(const std::string& reply)
+{
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (!out || out == INVALID_HANDLE_VALUE) return;
+    std::string s = reply + "\n";
+    DWORD wrote = 0;
+    WriteFile(out, s.c_str(), (DWORD)s.size(), &wrote, nullptr);
+    FlushFileBuffers(out);   // the parent reads line by line; a buffered reply looks like a hang
+}
+
+// smallest honest json string escape: enough to keep a malformed field printable
+static std::string jf_str(const std::string& k, const std::string& v)
+{
+    std::string s = "\"" + k + "\":\"";
+    for (char c : v) {
+        if (c == '"' || c == '\\') s += '\\';
+        if ((unsigned char)c < 0x20) { s += ' '; continue; }
+        s += c;
+    }
+    return s + "\"";
+}
+
+static void stdin_handle(const std::string& line, bool too_long)
+{
+    std::string fields;
+    if (too_long) {
+        fields = jf_str("error", "line too long");
+        fields += ",\"ok\":false";
+        stdin_write_reply(probe_json(fields));
+        return;
+    }
+    if (line.find("\"cmd\"") == std::string::npos || line.find("ping") == std::string::npos) {
+        fields = jf_str("error", "unsupported or malformed command");
+        fields += ",\"ok\":false";
+        stdin_write_reply(probe_json(fields));
+        return;
+    }
+    stdin_write_reply(probe_json("\"ok\":true"));
+}
+
 int main(int argc, char** argv)
 {
     const char* kStdinReady = "sotto-stdin-ready"; (void)kStdinReady;
@@ -379,6 +446,24 @@ int main(int argc, char** argv)
     std::string err;
     if (!parse(argc, argv, &o, &err)) { log_line("ARGS_REJECTED: %s", err.c_str()); usage(); return 2; }
     if (!o.log.empty()) log_open_file(o.log);
+
+    // One blocking ReadFile on the stdin HANDLE.  No stdin HANDLE (started detached with no
+    // pipe) means the channel is OFF, not broken: the run proceeds unchanged.
+    {
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        if (in && in != INVALID_HANDLE_VALUE) {
+            log_line("STDIN CONTROL: listening on the stdin HANDLE (blocking ReadFile, one line)");
+            std::string line;
+            bool too_long = false;
+            if (stdin_read_line(in, &line, &too_long)) {
+                if (!line.empty() || too_long) stdin_handle(line, too_long);
+            } else {
+                log_line("STDIN CONTROL: stdin closed before any command arrived");
+            }
+        } else {
+            log_line("STDIN CONTROL: no stdin HANDLE (started detached with no pipe) - channel OFF");
+        }
+    }
     if (o.help || (!o.selftest && !o.run && o.cut_from.empty())) {
         usage(); log_close_file(); return o.help ? 0 : 2;
     }
