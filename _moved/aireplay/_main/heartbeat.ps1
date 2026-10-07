@@ -1,94 +1,78 @@
-# SO REPLAY HEARTBEAT - fires every 3 minutes, one pass at a time, forever.
+# SO REPLAY HEARTBEAT - the CORRECTED driver.
 #
-# WHY A FILE AND NOT THE RUNTIME CRON: the runtime cron store
-# (local_runtime_v2_cron_definitions) is real and row d43fb9be is armed, but the
-# scheduler hydrates from the store only at PROCESS START, so a row written while
-# mcode is already running never fires. MEASURED 2026-10-07: that row's
-# next_run_at_ms was 2026-10-06T11:00:32 while the clock read 2026-10-07 11:22 —
-# a day stale, i.e. NOT ticking in a running process. This driver does not depend
-# on the runtime scheduler at all.
+# ============================================================================
+# WHAT WAS WRONG, and why this file was rewritten rather than patched.
 #
-# THE LOCK IS THE POINT. Two overlapping passes double-dispatch and race the same
-# files.
+# v1 used:  mcode exec --cwd <root> --file prompt
+# That does NOT wake the agent. It SPAWNS A NEW HEADLESS SESSION that runs an
+# agent nobody sees. MEASURED cost: 28 sessions created since 11:00 today, two of
+# them 1 second apart (11:49:38 / 11:49:39) - a 3-minute cadence creating a fresh
+# invisible session ~480 times a day, flooding the owner's session list with
+# nothing to show for it.
 #
-# MEASURED CORRECTION 2026-10-07: my first mutex used `New-Item -ItemType
-# Directory` on an existing path and PASSED the acquire every time - the
-# both-colour selftest ARM-A went RED (second acquire NOT blocked). On Windows a
-# directory that already exists is not an exclusive create, so that lock could
-# never have prevented an overlap. The working mutex is an EXCLUSIVE FileStream:
-# the OS holds it open for as long as the process lives, and a second process
-# cannot take it. If this pass is killed, the handle dies with it and the next
-# fire acquires cleanly - no stale-lock sweep is needed at all.
+# So "dispara" and "trabalha" were TRUE and "manda-te mensagem" was FALSE - not a
+# tuning problem, the WRONG MECHANISM. Two different mechanisms; only one was wired.
+#
+# THE RIGHT MECHANISM is the one the runtime itself named. When an exec is refused
+# with "Session already has an active Turn", the error says: "Use queue send to
+# deliver the message after it." `queue send` is not a CLI subcommand - it is a row
+# in local_runtime_queue_items. MEASURED by reading a real queued item: it carries
+# a userMessageId and message.content, i.e. it IS a user message, delivered when the
+# current turn ends. "Like a user" - which is exactly what the owner asked for.
+#
+# v2 enqueues into that table with wake.py. It does NOT touch the owner's session,
+# does NOT spawn sessions, and does NOT restart anything.
+# ============================================================================
 
 $ErrorActionPreference = 'Continue'
-$root = 'H:\sotto\_moved\aireplay'
-$mainDir = Join-Path $root '_main'
-$lockFile = Join-Path $mainDir 'heartbeat.lock'
-$logFile = Join-Path $mainDir 'heartbeat.log'
-$promptFile = Join-Path $mainDir 'continue-prompt.md'
+$root      = 'H:\sotto\_moved\aireplay'
+$mainDir   = Join-Path $root '_main'
+$lockFile  = Join-Path $mainDir 'heartbeat.lock'
+$logFile   = Join-Path $mainDir 'heartbeat.log'
+$wakePy    = Join-Path $mainDir 'wake.py'
+$promptMd  = Join-Path $mainDir 'continue-prompt.md'
+
+# The session to wake. The owner can change this one line; it is the ONLY thing
+# that decides whose session gets the message.
+$TARGET_SESSION = 'mvs_a00662bff55242cb9b56c0f1165bdad7'
 
 function Log($msg) {
-    $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-    Add-Content -Path $logFile -Value ("[{0}] {1}" -f $ts, $msg) -Encoding UTF8
+    Add-Content -Path $logFile `
+        -Value ("[{0}] {1}" -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'), $msg) -Encoding UTF8
 }
 
-# --- acquire the lock: an EXCLUSIVE handle, held open for the whole pass ---
+# --- lock: an EXCLUSIVE handle. The old mkdir mutex did NOT exclude anything on
+# Windows (it succeeds against an existing directory); this one does. Proved by
+# _hb-lock-selftest.ps1, rc=0, ARM-D being the control. ---
 $lock = $null
 try {
-    $lock = [System.IO.File]::Open(
-        $lockFile,
+    $lock = [System.IO.File]::Open($lockFile,
         [System.IO.FileMode]::OpenOrCreate,
         [System.IO.FileAccess]::ReadWrite,
         [System.IO.FileShare]::None)
-}
-catch {
-    # IOException == another pass holds it. Exit quietly; that is not an error.
-    Log 'LOCK-BUSY - a pass is already running, exit'
+} catch {
+    Log 'SKIP - a previous wake is still pending'
     exit 0
 }
 
-Log 'LOCK acquired (exclusive handle) - pass starting'
+Log ('WAKE queued -> session ' + $TARGET_SESSION)
 try {
-    # Keep the previous pass's transcript; -o makes the result measurable on disk.
-    $out = Join-Path $mainDir ("heartbeat-run-{0}.md" -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
+    if (-not (Test-Path $wakePy)) { Log ('MISSING ' + $wakePy); exit 0 }
 
-    # MEASURED FIX 2026-10-07, two defects found by watching a real fire fail:
-    #
-    #  1. rc=2 "A prompt, --input -, or at least one --file is required." I passed
-    #     flags but no prompt text. The prompt now travels with --file.
-    #  2. rc=4 "Session already has an active Turn." Targeting the OWNER's live
-    #     session can never work - he is talking in it. MEASURED, not assumed.
-    #     So the heartbeat gets its OWN session in this workspace and leaves the
-    #     owner's session alone. Never target a session with a live Turn.
-    $mcodeCmd = 'H:\env\npm-global\mcode.cmd'
-    if (-not (Test-Path $mcodeCmd)) { Log ("MISSING launcher: " + $mcodeCmd); exit 0 }
-
-    $p = Start-Process -FilePath $mcodeCmd `
-        -ArgumentList @('exec', '--cwd', $root, '--file', $promptFile, '-o', $out) `
-        -WorkingDirectory $root -NoNewWindow -PassThru `
-        -RedirectStandardOutput "$out.stdout" -RedirectStandardError "$out.stderr"
-
-    # MEASURED FIX #3 2026-10-07: the original window was 15 minutes. A live pass
-    # started 11:29:15 was still working productively at 11:43 - it had written 10
-    # probe scripts and rebuilt wgc-probe.exe - and the 15-min kill would have
-    # destroyed it mid-flight. A pass that is doing real work needs room; the lock
-    # already prevents overlap, so a long window costs nothing except latency on a
-    # genuinely wedged pass. 55 min, and the kill is logged loudly.
-    $finished = $p.WaitForExit(55 * 60 * 1000)
-    if (-not $finished) {
-        Log 'PASS EXCEEDED 55 min - it may be wedged; stopping THIS pass only'
-        try { $p.Kill() } catch {}
-        Log 'PASS killed after window'
+    # Never stack duplicates. If a message is already waiting, this fire is a no-op
+    # rather than a second queued turn.
+    $pending = & python $wakePy $TARGET_SESSION
+    if ($pending -match ':\s*([1-9]\d*)\s*$') {
+        Log ('ALREADY PENDING (' + $Matches[1] + ') - not stacking a second wake')
         exit 0
     }
-    Log ("PASS done rc={0} -> {1}" -f $p.ExitCode, $out)
+
+    $out = & python $wakePy $TARGET_SESSION $promptMd 2>&1
+    Log ('enqueue -> ' + ($out -join ' ').Trim())
 }
 catch {
-    Log ("PASS ERROR: " + $_.Exception.Message)
+    Log ('ERROR: ' + $_.Exception.Message)
 }
 finally {
-    # Release by closing the handle. The OS drops it even if this process is
-    # killed, so there is no stale lock to sweep.
     if ($lock) { $lock.Close(); $lock.Dispose() }
-    Log 'LOCK released'
 }
