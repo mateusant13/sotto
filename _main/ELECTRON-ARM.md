@@ -1,0 +1,1 @@
+ELECTRON-ARM receipt anchor (placeholder).
