@@ -1,0 +1,57 @@
+{
+  "started": "2026-10-07T15:37:50-0300",
+  "pid": 41712,
+  "note": "raw receipt for RAM2-BUDGET.md sec 3. Probe: _main/ram_probe.py --mode index --ns 20000 211200. Threads capped at 2. One embedding per segment so the PRIMARY KEY (seg_id, channel) upsert cannot collapse rows.",
+  "index": [
+    {
+      "n": 20000,
+      "n_rows_in_db": 20000,
+      "dim": 256,
+      "matrix_shape": [
+        20000,
+        256
+      ],
+      "matrix_mib": 19.53125,
+      "db_on_disk_mib": 13.515625,
+      "db_file_bytes": 14172160,
+      "page_size": 4096,
+      "build_s": 1.2960246000002371,
+      "load_s": 0.2269575000027544,
+      "rss_before_load_mib": 41.10546875,
+      "rss_after_load_mib": 80.13671875,
+      "rss_delta_load_mib": 39.03125,
+      "ws_delta_load_mib": 39.03125,
+      "private_delta_load_mib": 39.60546875,
+      "private_after_build_mib": 59.1171875,
+      "ws_after_build_mib": 40.69140625,
+      "build_private_mib": 4.109375,
+      "population": "this host, this process, N=20000 embeddings, dim=256",
+      "window": "single build+load, one process, psutil memory_full_info()"
+    },
+    {
+      "n": 211200,
+      "n_rows_in_db": 211200,
+      "dim": 256,
+      "matrix_shape": [
+        211200,
+        256
+      ],
+      "matrix_mib": 206.25,
+      "db_on_disk_mib": 142.6015625,
+      "db_file_bytes": 149528576,
+      "page_size": 4096,
+      "build_s": 15.596129800000199,
+      "load_s": 1.978950700002315,
+      "rss_before_load_mib": 46.0234375,
+      "rss_after_load_mib": 336.96484375,
+      "rss_delta_load_mib": 290.94140625,
+      "ws_delta_load_mib": 290.94140625,
+      "private_delta_load_mib": 291.76171875,
+      "private_after_build_mib": 60.19140625,
+      "ws_after_build_mib": 42.76171875,
+      "build_private_mib": 0.0,
+      "population": "this host, this process, N=211200 embeddings, dim=256",
+      "window": "single build+load, one process, psutil memory_full_info()"
+    }
+  ]
+}
