@@ -56,9 +56,55 @@
 //     thread. The brief caps this lane at 2 threads after the owner reported stutter
 //     from the probes, so a tap that spawned a capture thread would be the defect.
 //
+// STABLE ENDPOINT IDENTITY (this lane -- the measurement hazard, fixed)
+// --------------------------------------------------------------------
+// THE HAZARD, AS MEASURED ON THIS HOST. Five ACTIVE render endpoints enumerate. One of
+// them carries audio; the other four correctly report digital silence. THE ORDER WASAPI
+// RETURNS THEM IN IS NOT THE SAME FROM ONE PROCESS LAUNCH TO THE NEXT, and the previous
+// selection addressed them BY INDEX. A capture aimed at "index 1" could therefore land
+// on a silent endpoint on one run and on the live one on the next, which makes EVERY
+// previous audio number unattributable: it was measured against a position, not a device.
+//
+// WHAT AN IDENTITY IS HERE, AND WHAT IT IS NOT. A friendly name is NOT an identity: this
+// box publishes two endpoints called "CABLE Input ..." style names under different APIs,
+// and a name can be edited in Windows Sound settings at any time. The identity used by
+// this file is the WASAPI endpoint id -- IMMDevice::GetId(), the `{0.0.0.00000000}.{GUID}`
+// string the audio service itself publishes, which is what `LoopbackTap::open` ALREADY
+// re-resolves the device by. This lane adds three things ON TOP of that id, because "the
+// id exists" is not "the id is usable":
+//
+//   1. `short_id`  a DERIVED id, `ep-<fnv1a64 of the endpoint id>`. Short enough to type on
+//                  a command line, and a pure function of the id, so it is stable by
+//                  construction -- there is nothing to keep in sync with anything.
+//   2. `ordinal`   a FIRST-SEEN POSITION persisted in an id->endpoint map, so "index 1"
+//                  keeps meaning ONE NAMED DEVICE even after WASAPI reorders underneath.
+//                  The map is the only state this file adds, and it is a cache: delete it
+//                  and the ordinals are re-frozen from whatever order the next run sees.
+//   3. `raw_index` the position WASAPI actually returned, kept ALONGSIDE the ordinal, so
+//                  the disagreement between the two is a MEASURED number (`rebinds=`)
+//                  rather than a silent wrong-device capture.
+//
+// SELECTION IS BY NAME FIRST. `--select` resolves, in order: an exact case-insensitive
+// friendly name, a `short_id`, a full endpoint id, `#<ordinal>`, and only then
+// `idx:<n>` -- an index, which is resolved THROUGH THE MAP (ordinal n -> the id that
+// ordinal n was frozen to) and prints a loud `INDEX_REBIND` line when the raw order at
+// position n is not the device the map froze there. AN UNKNOWN SELECTOR IS AN ERROR WITH
+// ITS OWN EXIT CODE (4), never a silent fallback to "whatever is first": a selector that
+// does not resolve must not quietly become a different device, which is the whole defect.
+//
+// WHY SILENCE MUST STAY NAMED. Four of five endpoints here are silent because nothing is
+// routed into them; that is CORRECT behaviour and this file reports it as a distinct
+// verdict (`silent-device`). `--expect-silent` inverts the tap's own verdict into an exit
+// code (0 = the endpoint really was silent, 6 = it carried signal where the gate said it
+// would not). A gate that can only say yes is not a gate: if selecting a silent endpoint
+// by name ever produced signal, the new addressing would be laundering silence into
+// signal, and that is the P0 this file is written to make impossible to miss.
+//
 // BUILD (mingw-w64 g++ 15.2.0; there is no MSVC and no CUDA on this box)
 //   g++ -std=c++17 -O2 -Wall -Wextra -I <src> -c audio_tap.cpp -lole32 -loleaut32
 // Not added to build.cmd: that file builds main.cpp, which is NOT this lane's to edit.
+// The selftest below is the probe that measures all of the above and writes the WAV the
+// Goertzel analyser reads; it is a separate translation unit entry, not part of the tap.
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -108,6 +154,8 @@ struct IAudioMeterInformation : public IUnknown {
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -194,6 +242,14 @@ int64_t com_balance() { return g_com_taken - g_com_released; }
 struct Endpoint {
     std::string name;
     std::string endpoint_id;
+    // --- identity independent of enumeration order (this lane) ---
+    std::string short_id;   // derived: "ep-" + fnv1a64(endpoint_id). A pure function of
+                            // the id, so nothing has to be kept in sync with it.
+    int ordinal = -1;       // FIRST-SEEN position, frozen in the persisted id->endpoint
+                            // map. -1 means "this endpoint was never seen before".
+    int raw_index = -1;     // the position WASAPI actually returned, kept BESIDE the
+                            // ordinal so the two can be compared instead of conflated.
+    uint32_t dev_state = 0; // IMMDevice::GetState bitmask, verbatim (0x1 ACTIVE, ...)
     uint32_t rate = 0;
     uint16_t channels = 0;
     uint16_t bits = 0;
@@ -245,6 +301,173 @@ std::string endpoint_id(IMMDevice* dev) {
     std::string out = utf8_of(id);
     CoTaskMemFree(id);
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// STABLE IDENTITY, INDEPENDENT OF ENUMERATION ORDER (this lane)
+// ---------------------------------------------------------------------------
+// FNV-1a 64. Used ONLY to make the endpoint id short and typeable; it is not a security
+// hash and is never used to decide that two devices are equal -- equality is always the
+// full endpoint id. A short_id that collided would be a reporting nuisance, never a
+// wrong-device capture, because the id is what `open()` resolves the device by.
+uint64_t fnv1a64(const std::string& s) {
+    uint64_t h = 1469598103934665603ULL;
+    for (unsigned char c : s) {
+        h ^= c;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+// A DERIVED id: "ep-" + the first 8 bytes of FNV-1a over the endpoint id. A pure function
+// of the id, so it is stable across launches by construction -- there is no stored value
+// that can drift out of sync with the device it names.
+std::string derive_short_id(const std::string& eid) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "ep-%016llx", static_cast<unsigned long long>(fnv1a64(eid)));
+    return std::string(buf);
+}
+
+std::string lower_ascii(const std::string& s) {
+    std::string out = s;
+    for (char& c : out) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return out;
+}
+
+// THE PERSISTED id->endpoint MAP. Text, one record per line, TAB separated:
+//   ordinal <TAB> short_id <TAB> name <TAB> endpoint_id <TAB> unix_last_seen
+// Tab separated because a friendly name on this host contains spaces and parentheses and
+// "VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)" must not need quoting to round-trip.
+// The ordinal is the WHOLE POINT: it freezes "index 1" onto one named device, so the
+// address survives WASAPI reordering the collection underneath it.
+struct MapEntry {
+    int ordinal = 0;
+    std::string short_id;
+    std::string name;
+    std::string endpoint_id;
+    long long last_seen = 0;
+};
+
+// Where the map lives. `SOTTO_ENDPOINT_MAP` overrides it (so a lane can measure against a
+// throwaway map instead of the host's), otherwise %LOCALAPPDATA%\sotto\endpoints.map.
+std::string map_path() {
+    char buf[MAX_PATH] = {0};
+    const DWORD n = GetEnvironmentVariableA("SOTTO_ENDPOINT_MAP", buf, sizeof(buf));
+    if (n > 0 && n < sizeof(buf)) return std::string(buf, n);
+    if (n > 0 && n >= sizeof(buf)) return std::string();
+    char local[MAX_PATH] = {0};
+    const DWORD m = GetEnvironmentVariableA("LOCALAPPDATA", local, sizeof(local));
+    std::string base = (m > 0 && m < sizeof(local)) ? std::string(local, m) : std::string(".");
+    return base + "\\sotto\\endpoints.map";
+}
+
+bool load_map(std::vector<MapEntry>* out) {
+    out->clear();
+    FILE* f = fopen(map_path().c_str(), "rb");
+    if (!f) return false;   // no map yet is the normal first-run case, not an error
+    char line[2048];
+    while (fgets(line, sizeof(line), f)) {
+        std::string s(line);
+        while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+        if (s.empty() || s[0] == '#') continue;
+        std::vector<std::string> f4;
+        size_t start = 0;
+        while (true) {
+            const size_t tab = s.find('\t', start);
+            if (tab == std::string::npos) { f4.push_back(s.substr(start)); break; }
+            f4.push_back(s.substr(start, tab - start));
+            start = tab + 1;
+        }
+        if (f4.size() < 4) continue;
+        MapEntry e;
+        e.ordinal = atoi(f4[0].c_str());
+        e.short_id = f4[1];
+        e.name = f4[2];
+        e.endpoint_id = f4[3];
+        if (f4.size() >= 5) e.last_seen = atoll(f4[4].c_str());
+        out->push_back(e);
+    }
+    fclose(f);
+    return true;
+}
+
+bool save_map(const std::vector<MapEntry>& m) {
+    const std::string path = map_path();
+    // Create the parent directory if needed (CreateDirectoryA on the parent only; the
+    // file itself is written by the CRT, which is what the rest of this file already uses).
+    const size_t cut = path.find_last_of("\\/");
+    if (cut != std::string::npos) {
+        const std::string dir = path.substr(0, cut);
+        CreateDirectoryA(dir.c_str(), nullptr);
+    }
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+    fprintf(f, "# sotto endpoint identity map: ordinal\\tshort_id\\tname\\tendpoint_id\\tlast_seen\n");
+    for (const MapEntry& e : m) {
+        fprintf(f, "%d\t%s\t%s\t%s\t%lld\n", e.ordinal, e.short_id.c_str(), e.name.c_str(),
+                e.endpoint_id.c_str(), e.last_seen);
+    }
+    fclose(f);
+    return true;
+}
+
+// Bind the freshly enumerated endpoints to their persisted ordinals. Endpoints the map
+// has never seen are APPENDED at the end (a new device must not steal an existing
+// device's ordinal -- that is precisely the hazard being fixed), and `rebinds` counts the
+// positions where the raw WASAPI order disagrees with the frozen ordinal: a non-zero
+// count is the instability, measured rather than asserted.
+void bind_map(std::vector<Endpoint>& raw, std::vector<MapEntry>* map, int* new_endpoints,
+              int* rebinds) {
+    *new_endpoints = 0;
+    *rebinds = 0;
+    load_map(map);
+    const long long now = static_cast<long long>(GetTickCount64());
+    int next = 0;
+    for (const MapEntry& e : *map) {
+        if (e.ordinal + 1 > next) next = e.ordinal + 1;
+    }
+    for (Endpoint& ep : raw) {
+        MapEntry* hit = nullptr;
+        for (MapEntry& e : *map) {
+            if (ep.endpoint_id == e.endpoint_id) { hit = &e; break; }
+        }
+        if (!hit) {
+            MapEntry e;
+            e.ordinal = next++;
+            e.short_id = ep.short_id;
+            e.name = ep.name;
+            e.endpoint_id = ep.endpoint_id;
+            e.last_seen = now;
+            map->push_back(e);
+            ++(*new_endpoints);
+            ep.ordinal = e.ordinal;
+        } else {
+            hit->last_seen = now;
+            ep.ordinal = hit->ordinal;
+        }
+    }
+    // The raw order vs the frozen ordinals, endpoint by endpoint.
+    for (const Endpoint& ep : raw) {
+        if (ep.ordinal != ep.raw_index) ++(*rebinds);
+    }
+}
+
+// How many positions the RAW order moved, counting endpoints already known to the map.
+// Kept separate from `rebinds` (which also counts never-seen endpoints as a difference)
+// so a first run cannot be read as instability.
+int count_known_moves(const std::vector<Endpoint>& raw, const std::vector<MapEntry>& map) {
+    int moves = 0;
+    for (const Endpoint& ep : raw) {
+        for (const MapEntry& e : map) {
+            if (ep.endpoint_id == e.endpoint_id) {
+                if (ep.ordinal != ep.raw_index) ++moves;
+                break;
+            }
+        }
+    }
+    return moves;
 }
 
 // Resolve a mix format to (rate, channels, block align, PCM-or-float). A loopback stream
@@ -315,6 +538,11 @@ bool read_device_peak(IMMDevice* dev, float* peak, bool* available) {
 // a single instantaneous read cannot tell "idle" from "the owner is between two tracks",
 // which is the defect that cost the Python ladder a whole tap window.
 bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err);
+
+// The SAME list in the order WASAPI returned it, unsorted. This is the order whose
+// instability between launches this lane measured, and the one an index selector must
+// never trust on its own.
+bool enumerate_raw(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err);
 
 // The verdict vocabulary. The names are the WORDS the Python worker already emits, so a
 // report from either implementation is comparable without a translation table.
@@ -403,7 +631,15 @@ const char* tap_state_name(TapState s) {
     }
 }
 
-bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err) {
+// EVERY ACTIVE render endpoint in the order WASAPI ACTUALLY RETURNED THEM. The order is
+// NOT stable between process launches on this host (measured, this lane), so this function
+// deliberately does NOT sort: sorting here is what let an index address a different device
+// from one run to the next. `ep.raw_index` records the position as returned, which is the
+// thing the stability measurement compares against the frozen ordinals.
+// `meter_ms` is the sampling window PER ENDPOINT: a single instantaneous read cannot tell
+// "idle" from "the owner is between two tracks", which is the defect that cost the Python
+// ladder a whole tap window.
+bool enumerate_raw(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err) {
     ComScope com;
     if (!com.ok()) {
         *err = "CoInitializeEx failed " + hresult_str(com.hr());
@@ -437,7 +673,16 @@ bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::str
         IMMDevice* dev = nullptr;
         if (FAILED(coll->Item(i, &dev)) || !dev) continue;
         Endpoint ep;
+        ep.raw_index = static_cast<int>(i);
         ep.endpoint_id = endpoint_id(dev);
+        ep.short_id = derive_short_id(ep.endpoint_id);
+        // The device's own state word, read verbatim. It is not decoration: it is how a
+        // run says "the thing I enumerated is ACTIVE", independently of any meter reading.
+        // DWORD, not uint32_t: on mingw-w64 DWORD is `unsigned long` and `unsigned int`
+        // is a DIFFERENT type, so a uint32_t* does not bind (measured, build rc=1).
+        DWORD dev_state = 0;
+        dev->GetState(&dev_state);
+        ep.dev_state = static_cast<uint32_t>(dev_state);
         ep.name = friendly_name(dev);
         if (ep.name.empty()) {
             // Some drivers publish no friendly name at all (measured on this box); the
@@ -482,15 +727,195 @@ bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::str
     com_release(coll);
     com_release(enm);
 
-    std::stable_sort(out->begin(), out->end(), [](const Endpoint& a, const Endpoint& b) {
-        if (a.meter_peak != b.meter_peak) return a.meter_peak > b.meter_peak;
-        return a.is_default && !b.is_default;   // the default only breaks a tie
-    });
     if (out->empty()) {
         *err = "no ACTIVE render endpoint on this host";
         return false;
     }
     return true;
+}
+
+// The order-by-loudness view, kept because it is what the worker wants ("who is rendering
+// NOW"), and kept SEPARATE from `enumerate_raw` because it is a ranking, not an identity.
+// Two endpoints that both read peak 0.000000 tie here, and the tie is broken by the
+// enumeration order underneath -- which is exactly how an index-based selection ends up
+// pointing at a different device from one run to the next. Selection by name or by the
+// frozen ordinal does not go through this function.
+bool enumerate_endpoints(std::vector<Endpoint>* out, uint32_t meter_ms, std::string* err) {
+    if (!enumerate_raw(out, meter_ms, err)) return false;
+    std::stable_sort(out->begin(), out->end(), [](const Endpoint& a, const Endpoint& b) {
+        if (a.meter_peak != b.meter_peak) return a.meter_peak > b.meter_peak;
+        return a.is_default && !b.is_default;   // the default only breaks a tie
+    });
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// SELECTION: BY NAME FIRST, INDEX ONLY THROUGH THE MAP (this lane)
+// ---------------------------------------------------------------------------
+enum class SelectVia : int {
+    kName = 0,        // exact case-insensitive friendly name
+    kNamePrefix,      // a unique case-insensitive prefix of the friendly name
+    kShortId,         // ep-<fnv1a64>, the derived id
+    kEndpointId,      // the full WASAPI endpoint id
+    kOrdinal,         // #N or idx:N -- resolved THROUGH the persisted map
+    kDefault,         // no selector given: the loudest endpoint, which is a RANKING
+};
+const char* select_via_name(SelectVia v) {
+    switch (v) {
+        case SelectVia::kName: return "NAME";
+        case SelectVia::kNamePrefix: return "NAME-PREFIX";
+        case SelectVia::kShortId: return "SHORT-ID";
+        case SelectVia::kEndpointId: return "ENDPOINT-ID";
+        case SelectVia::kOrdinal: return "MAP-ORDINAL";
+        case SelectVia::kDefault: default: return "LOUDEST";
+    }
+}
+
+const Endpoint* loudest_of(const std::vector<Endpoint>& v) {
+    const Endpoint* best = v.empty() ? nullptr : &v[0];
+    for (const Endpoint& ep : v) {
+        if (ep.meter_peak > best->meter_peak) best = &ep;
+    }
+    return best;
+}
+
+// Resolve `want` to ONE endpoint, or return nullptr with `*err` set. An unresolved
+// selector is NEVER a silent fallback to "the first one": that is the defect this whole
+// section exists to remove, so the caller turns a null here into a loud line and its own
+// exit code instead of a capture of the wrong device.
+const Endpoint* select_endpoint(const std::vector<Endpoint>& v, const std::string& want,
+                                std::string* err, SelectVia* via) {
+    if (v.empty()) {
+        *err = "no endpoints to select from";
+        return nullptr;
+    }
+    const std::string w = lower_ascii(want);
+
+    if (want.empty()) {
+        *via = SelectVia::kDefault;
+        return loudest_of(v);
+    }
+
+    // 1. exact friendly name
+    for (const Endpoint& ep : v) {
+        if (lower_ascii(ep.name) == w) { *via = SelectVia::kName; return &ep; }
+    }
+    // 2. derived short id
+    for (const Endpoint& ep : v) {
+        if (lower_ascii(ep.short_id) == w) { *via = SelectVia::kShortId; return &ep; }
+    }
+    // 3. the full WASAPI endpoint id, or a unique suffix of it (a GUID tail is enough)
+    for (const Endpoint& ep : v) {
+        const std::string e = lower_ascii(ep.endpoint_id);
+        if (e == w) { *via = SelectVia::kEndpointId; return &ep; }
+    }
+    {
+        const Endpoint* hit = nullptr;
+        int n = 0;
+        for (const Endpoint& ep : v) {
+            const std::string e = lower_ascii(ep.endpoint_id);
+            if (e.size() >= w.size() && e.compare(e.size() - w.size(), w.size(), w) == 0) {
+                ++n;
+                hit = &ep;
+            }
+        }
+        if (n == 1) { *via = SelectVia::kEndpointId; return hit; }
+        if (n > 1) {
+            *err = "endpoint-id suffix '" + want + "' is ambiguous (" + std::to_string(n) +
+                   " endpoints match); give more of the id";
+            return nullptr;
+        }
+    }
+    // 4. #N / idx:N -- AN INDEX, RESOLVED THROUGH THE MAP. `raw_index` is what WASAPI
+    //    returned and it moves between launches; `ordinal` is what the map froze, so this
+    //    is the one spelling that still names the same device tomorrow.
+    if (w[0] == '#' || w.compare(0, 4, "idx:") == 0) {
+        const std::string digits = (w[0] == '#') ? w.substr(1) : w.substr(4);
+        bool numeric = !digits.empty();
+        for (char c : digits) {
+            if (c < '0' || c > '9') { numeric = false; break; }
+        }
+        if (numeric) {
+            const int n = atoi(digits.c_str());
+            const Endpoint* hit = nullptr;
+            for (const Endpoint& ep : v) {
+                if (ep.ordinal == n) { hit = &ep; break; }
+            }
+            if (!hit) {
+                *err = "no endpoint has map ordinal " + std::to_string(n) +
+                       " (the map is %LOCALAPPDATA%\\sotto\\endpoints.map; #0.." +
+                       std::to_string(v.size() - 1) + " are the frozen ones)";
+                return nullptr;
+            }
+            *via = SelectVia::kOrdinal;
+            return hit;
+        }
+    }
+    // 5. a unique prefix of a friendly name -- long names on this box are painful to type
+    {
+        const Endpoint* hit = nullptr;
+        int n = 0;
+        for (const Endpoint& ep : v) {
+            const std::string e = lower_ascii(ep.name);
+            if (e.size() >= w.size() && e.compare(0, w.size(), w) == 0) {
+                ++n;
+                hit = &ep;
+            }
+        }
+        if (n == 1) { *via = SelectVia::kNamePrefix; return hit; }
+        if (n > 1) {
+            *err = "name prefix '" + want + "' is ambiguous (" + std::to_string(n) +
+                   " endpoints match); give more of the name";
+            return nullptr;
+        }
+    }
+
+    // The LOUD failure. Everything this host has is listed so the owner does not have to
+    // guess what the right spelling is.
+    std::string known;
+    for (const Endpoint& ep : v) {
+        known += "\n    " + ep.name + "  [" + ep.short_id + "  #" + std::to_string(ep.ordinal) + "]";
+    }
+    *err = "UNKNOWN SELECTOR '" + want + "'. No endpoint has that name, short id, endpoint id "
+           "or map ordinal. Known endpoints:" + known;
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// A RIFF-WAVE WRITER, so the capture can be handed to the Goertzel analyser as bytes
+// instead of as a claim. (16 kHz / mono / PCM16 -- the contract format.)
+// ---------------------------------------------------------------------------
+bool write_wav(const std::string& path, const std::vector<int16_t>& pcm, uint32_t rate,
+               uint16_t channels, uint16_t width) {
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+    const uint32_t data_bytes = static_cast<uint32_t>(pcm.size()) * width;
+    const uint16_t ch = channels ? channels : 1;
+    const uint16_t bits = static_cast<uint16_t>(width * 8);
+    const uint32_t byte_rate = rate * ch * width;
+    const uint16_t block_align = static_cast<uint16_t>(ch * width);
+    uint8_t hdr[44] = {0};
+    memcpy(hdr + 0, "RIFF", 4);
+    const uint32_t riff_size = 36 + data_bytes;
+    memcpy(hdr + 4, &riff_size, 4);
+    memcpy(hdr + 8, "WAVE", 4);
+    memcpy(hdr + 12, "fmt ", 4);
+    const uint32_t fmt_size = 16;
+    memcpy(hdr + 16, &fmt_size, 4);
+    const uint16_t tag = 1;   // WAVE_FORMAT_PCM
+    memcpy(hdr + 20, &tag, 2);
+    memcpy(hdr + 22, &ch, 2);
+    memcpy(hdr + 24, &rate, 4);
+    memcpy(hdr + 28, &byte_rate, 4);
+    memcpy(hdr + 32, &block_align, 2);
+    memcpy(hdr + 34, &bits, 2);
+    memcpy(hdr + 36, "data", 4);
+    memcpy(hdr + 40, &data_bytes, 4);
+    const bool ok_h = fwrite(hdr, 1, sizeof(hdr), f) == sizeof(hdr);
+    const bool ok_d =
+        data_bytes == 0 || fwrite(pcm.data(), 1, data_bytes, f) == data_bytes;
+    fclose(f);
+    return ok_h && ok_d;
 }
 
 bool LoopbackTap::open(const Endpoint& ep, uint32_t block_ms, std::string* err) {
@@ -776,39 +1201,159 @@ TapState LoopbackTap::judge() const {
 
 int main(int argc, char** argv) {
     using namespace sotto;
-    const uint32_t meter_ms = 300;
-    const uint32_t window_ms = (argc > 1) ? static_cast<uint32_t>(atoi(argv[1])) : 1500;
+    uint32_t meter_ms = 300;
+    uint32_t window_ms = 1500;
+    std::string want;              // --select
+    std::string wav_path;          // --wav
+    bool enum_only = false;        // --enum-only
+    bool expect_silent = false;    // --expect-silent
+    bool no_map = false;           // --no-map: measure order without touching the map
 
-    std::vector<Endpoint> eps;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--enum-only") {
+            enum_only = true;
+        } else if (a == "--expect-silent") {
+            expect_silent = true;
+        } else if (a == "--no-map") {
+            no_map = true;
+        } else if (a == "--select" && i + 1 < argc) {
+            want = argv[++i];
+        } else if (a == "--wav" && i + 1 < argc) {
+            wav_path = argv[++i];
+        } else if (a == "--meter-ms" && i + 1 < argc) {
+            meter_ms = static_cast<uint32_t>(atoi(argv[++i]));
+        } else if (a == "--window-ms" && i + 1 < argc) {
+            window_ms = static_cast<uint32_t>(atoi(argv[++i]));
+        } else if (a.size() > 0 && a[0] >= '0' && a[0] <= '9') {
+            window_ms = static_cast<uint32_t>(atoi(argv[i]));   // positional: window ms
+        } else {
+            fprintf(stderr, "BAD_ARG '%s' (usage: [--enum-only] [--select SPEC] [--wav PATH] "
+                            "[--meter-ms N] [--window-ms N] [--expect-silent] [--no-map] [ms])",
+                    a.c_str());
+            return 64;
+        }
+    }
+
+    // RAW order, never sorted: the order under test.
+    std::vector<Endpoint> raw;
     std::string err;
-    if (!enumerate_endpoints(&eps, meter_ms, &err)) {
+    if (!enumerate_raw(&raw, meter_ms, &err)) {
         printf("AUDIO=NONE reason=%s\n", err.c_str());
         printf("COM_BALANCE=%lld\n", static_cast<long long>(sotto::com_balance()));
         return 2;
     }
-    printf("ENDPOINTS=%zu\n", eps.size());
-    for (size_t i = 0; i < eps.size(); ++i) {
-        printf("  [%zu] name=%s meter=%.6f meter_available=%d default=%d mix=%u Hz "
-               "%uch %ubit tag=0x%04X id=%s\n",
-               i, eps[i].name.c_str(), static_cast<double>(eps[i].meter_peak),
-               eps[i].meter_available ? 1 : 0, eps[i].is_default ? 1 : 0, eps[i].rate,
-               eps[i].channels, eps[i].bits, eps[i].format_tag, eps[i].endpoint_id.c_str());
+
+    // Freeze identities against the persisted map and MEASURE the disagreement.
+    std::vector<MapEntry> map;
+    int new_eps = 0;
+    int rebinds = 0;
+    bind_map(raw, &map, &new_eps, &rebinds);
+    const int known_moves = count_known_moves(raw, map);
+    if (!no_map && !save_map(map)) {
+        fprintf(stderr, "MAP_WRITE_FAILED path=%s\n", map_path().c_str());
+    }
+
+    printf("RAW_ENUM count=%zu order=%s\n", raw.size(),
+           known_moves == 0 ? "SAME-AS-MAP" : "CHANGED-FROM-MAP");
+    for (const Endpoint& ep : raw) {
+        printf("  RAW[%d] state=0x%02lX name=%s short=%s ordinal=#%d carries=%d meter=%.6f "
+               "meter_available=%d default=%d mix=%u Hz %uch %ubit tag=0x%04X id=%s\n",
+               ep.raw_index, static_cast<unsigned long>(ep.dev_state), ep.name.c_str(),
+               ep.short_id.c_str(), ep.ordinal,
+               (ep.meter_available && ep.meter_peak > kSilenceFloor) ? 1 : 0,
+               static_cast<double>(ep.meter_peak), ep.meter_available ? 1 : 0,
+               ep.is_default ? 1 : 0, ep.rate, ep.channels, ep.bits, ep.format_tag,
+               ep.endpoint_id.c_str());
+    }
+    printf("MAP path=%s entries=%zu new=%d rebinds=%d known_moved=%d\n", map_path().c_str(),
+           map.size(), new_eps, rebinds, known_moves);
+    printf("MAPORDER");
+    for (const Endpoint& ep : raw) printf(" %d:%s", ep.ordinal, ep.short_id.c_str());
+    printf("\n");
+    // A loud, human-readable rebind line: the raw position N holding a device other than
+    // the one the map froze at ordinal N. This is the hazard, made visible per run.
+    for (const Endpoint& ep : raw) {
+        if (ep.ordinal != ep.raw_index) {
+            printf("INDEX_REBIND raw_index=%d holds=%s but map ordinal #%d is frozen to %s\n",
+                   ep.raw_index, ep.name.c_str(), ep.ordinal,
+                   map[static_cast<size_t>(ep.ordinal)].name.c_str());
+        }
+    }
+    printf("CARRIES count=%d of %zu\n", [&] {
+        int n = 0;
+        for (const Endpoint& ep : raw) {
+            if (ep.meter_available && ep.meter_peak > kSilenceFloor) ++n;
+        }
+        return n;
+    }(), raw.size());
+    // The SECOND order under test: the by-loudness ranking. It is what the worker asked
+    // for ("who is rendering NOW"), and it is a RANKING, not an identity -- four endpoints
+    // here tie at 0.000000 and the tie is broken by the enumeration order underneath, so
+    // this order can move between launches for exactly the same reason the raw one does.
+    // Printed by NAME and short id, never by a bare index.
+    {
+        std::vector<Endpoint> sorted;
+        std::string serr;
+        if (enumerate_endpoints(&sorted, 0, &serr)) {
+            printf("SORTED_BY_LOUDNESS");
+            for (const Endpoint& ep : sorted) printf(" %s(%.6f)", ep.short_id.c_str(),
+                                                     static_cast<double>(ep.meter_peak));
+            printf("\n");
+        } else {
+            printf("SORTED_BY_LOUDNESS UNAVAILABLE reason=%s\n", serr.c_str());
+        }
+    }
+    if (enum_only) {
+        printf("COM_BALANCE=%lld\n", static_cast<long long>(sotto::com_balance()));
+        return 0;
+    }
+
+    SelectVia via = SelectVia::kDefault;
+    const Endpoint* sel = select_endpoint(raw, want, &err, &via);
+    if (!sel) {
+        // LOUD, on stderr, and a distinct exit code. A selector that does not resolve must
+        // not become a different device: this is the exit code that says so.
+        fprintf(stderr, "SELECTOR_UNKNOWN selector='%s' reason=%s\n", want.c_str(), err.c_str());
+        printf("OPEN=NOT-ATTEMPTED selector_unknown=1\n");
+        printf("COM_BALANCE=%lld\n", static_cast<long long>(sotto::com_balance()));
+        return 4;
+    }
+    printf("SELECT selector=%s via=%s name=%s short=%s ordinal=#%d raw_index=%d\n",
+           want.empty() ? "<none>" : want.c_str(), select_via_name(via), sel->name.c_str(),
+           sel->short_id.c_str(), sel->ordinal, sel->raw_index);
+    // An index selector that reached a device through the map while the raw order
+    // disagrees is worth saying out loud at the moment of selection, not only in the map
+    // report above.
+    if (via == SelectVia::kOrdinal) {
+        const Endpoint* at_raw = nullptr;
+        for (const Endpoint& ep : raw) {
+            if (ep.raw_index == sel->ordinal) { at_raw = &ep; break; }
+        }
+        if (at_raw && at_raw->endpoint_id != sel->endpoint_id) {
+            printf("SELECT_WARN index=%d resolved through the map to %s, but the RAW order "
+                   "currently holds %s there\n", sel->ordinal, sel->name.c_str(),
+                   at_raw->name.c_str());
+        }
     }
 
     LoopbackTap tap;
-    if (!tap.open(eps[0], 100, &err)) {
+    if (!tap.open(*sel, 100, &err)) {
         printf("OPEN=FAILED reason=%s\n", err.c_str());
         return 3;
     }
-    printf("OPEN=ok endpoint=%s\n", eps[0].name.c_str());
+    printf("OPEN=ok endpoint=%s short=%s ordinal=#%d\n", sel->name.c_str(), sel->short_id.c_str(),
+           sel->ordinal);
 
     std::vector<int16_t> pcm;
+    std::vector<int16_t> all;
     const ULONGLONG deadline = GetTickCount64() + window_ms;
     uint64_t total_pcm = 0;
     uint64_t pulls = 0;
     while (GetTickCount64() < deadline) {
         if (tap.pull(&pcm, 200, &err)) {
             total_pcm += pcm.size();
+            all.insert(all.end(), pcm.begin(), pcm.end());
             ++pulls;
         }
     }
@@ -822,9 +1367,37 @@ int main(int argc, char** argv) {
            static_cast<unsigned long long>(c.empty_polls),
            static_cast<unsigned long long>(c.blocks), static_cast<unsigned long long>(pulls),
            static_cast<unsigned long long>(total_pcm), static_cast<double>(c.peak));
+    printf("TAPPED endpoint=%s short=%s ordinal=#%d rate=%u Hz ch=%u\n", sel->name.c_str(),
+           sel->short_id.c_str(), sel->ordinal, kAsrRate,
+           static_cast<unsigned>(kAsrChannels));
     printf("WAV_FMT=%d ch / %d Hz / %d bytes PCM16 (the contract)\n",
            static_cast<int>(AudioTap::kChannels), static_cast<int>(AudioTap::kSampleRate),
            static_cast<int>(AudioTap::kSampleWidthBytes));
+
+    // The NEGATIVE ARM, expressed as an exit code. `--expect-silent` means "this endpoint
+    // must still read digital silence". If it ever carries signal, the addressing has
+    // started laundering silence into signal: that is exit 6, the P0, and it is reachable
+    // only by naming the silent endpoint explicitly.
+    if (expect_silent) {
+        const bool carried = (s == TapState::kOk);
+        printf("EXPECT_SILENT endpoint=%s verdict=%s result=%s\n", sel->name.c_str(),
+               tap_state_name(s), carried ? "VIOLATED-carries-signal" : "holds-silent");
+        if (carried) {
+            fprintf(stderr, "P0 SILENCE_LAUNDERED endpoint='%s' short=%s expected silence, "
+                            "measured peak=%.6f -- naming a silent endpoint returned signal\n",
+                    sel->name.c_str(), sel->short_id.c_str(), static_cast<double>(c.peak));
+        }
+        tap.close();
+        printf("COM_BALANCE=%lld\n", static_cast<long long>(sotto::com_balance()));
+        return carried ? 6 : 0;
+    }
+
+    if (!wav_path.empty()) {
+        const bool ok = write_wav(wav_path, all, kAsrRate, kAsrChannels, kAsrWidth);
+        printf("WAV path=%s ok=%d samples=%zu bytes=%zu\n", wav_path.c_str(), ok ? 1 : 0,
+               all.size(), all.size() * kAsrWidth);
+        if (!ok) return 7;
+    }
     tap.close();
     printf("COM_BALANCE=%lld\n", static_cast<long long>(sotto::com_balance()));
     return 0;
