@@ -1,0 +1,463 @@
+{
+ "seconds": 6,
+ "rateHz": 8,
+ "limits": {
+  "loaf.styleAndLayout": 4.0,
+  "loaf.blocking": 5.0,
+  "loaf.duration": 6.0,
+  "frame.p95": 4.0,
+  "frame.over50": 2,
+  "push.mean": 0.3,
+  "forcedLayout.mean": 0.25
+ },
+ "results": {
+  "theme-5": {
+   "reduced": {
+    "theme": "theme-5",
+    "arm": "reduced",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6009.6,
+    "reducedMotion": true,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 361,
+     "skipped": 0,
+     "total": 5.7,
+     "mean": 0.016,
+     "max": 0.2
+    },
+    "forcedLed": {
+     "count": 361,
+     "mean": 0.011,
+     "max": 0.2
+    },
+    "forcedList": {
+     "count": 361,
+     "mean": 0.005,
+     "max": 0.1
+    },
+    "control": {
+     "installed": false,
+     "writes": 0,
+     "skipped": 0,
+     "applied": null
+    },
+    "frame": {
+     "n": 360,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 20.2,
+     "mean": 0.439,
+     "max": 0.7
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "none"
+    }
+   },
+   "on": {
+    "theme": "theme-5",
+    "arm": "on",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6008.3,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 361,
+     "skipped": 0,
+     "total": 91.4,
+     "mean": 0.253,
+     "max": 1.5
+    },
+    "forcedLed": {
+     "count": 361,
+     "mean": 0.246,
+     "max": 1.5
+    },
+    "forcedList": {
+     "count": 361,
+     "mean": 0.006,
+     "max": 0.3
+    },
+    "control": {
+     "installed": false,
+     "writes": 0,
+     "skipped": 0,
+     "applied": null
+    },
+    "frame": {
+     "n": 360,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.7,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 23.2,
+     "mean": 0.504,
+     "max": 0.9
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "sotto-5-led-live",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   },
+   "relayout": {
+    "theme": "theme-5",
+    "arm": "relayout",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6011.2,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 360,
+     "skipped": 0,
+     "total": 104.2,
+     "mean": 0.289,
+     "max": 0.9
+    },
+    "forcedLed": {
+     "count": 360,
+     "mean": 0.284,
+     "max": 0.9
+    },
+    "forcedList": {
+     "count": 360,
+     "mean": 0.004,
+     "max": 0.1
+    },
+    "control": {
+     "installed": true,
+     "writes": 360,
+     "skipped": 0,
+     "applied": "11px"
+    },
+    "frame": {
+     "n": 359,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.7,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 21.4,
+     "mean": 0.465,
+     "max": 0.9
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "sotto-5-led-live",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   }
+  },
+  "theme-2": {
+   "reduced": {
+    "theme": "theme-2",
+    "arm": "reduced",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6008.7,
+    "reducedMotion": true,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 362,
+     "skipped": 0,
+     "total": 8.4,
+     "mean": 0.023,
+     "max": 0.7
+    },
+    "forcedLed": {
+     "count": 362,
+     "mean": 0.017,
+     "max": 0.6
+    },
+    "forcedList": {
+     "count": 362,
+     "mean": 0.006,
+     "max": 0.1
+    },
+    "control": {
+     "installed": false,
+     "writes": 0,
+     "skipped": 0,
+     "applied": null
+    },
+    "frame": {
+     "n": 361,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.7,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 22.5,
+     "mean": 0.489,
+     "max": 1
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "none"
+    }
+   },
+   "on": {
+    "theme": "theme-2",
+    "arm": "on",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6003.5,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 361,
+     "skipped": 0,
+     "total": 87.3,
+     "mean": 0.242,
+     "max": 1.3
+    },
+    "forcedLed": {
+     "count": 361,
+     "mean": 0.235,
+     "max": 1.3
+    },
+    "forcedList": {
+     "count": 361,
+     "mean": 0.006,
+     "max": 0.1
+    },
+    "control": {
+     "installed": false,
+     "writes": 0,
+     "skipped": 0,
+     "applied": null
+    },
+    "frame": {
+     "n": 360,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 19.1,
+     "mean": 0.415,
+     "max": 0.7
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   },
+   "relayout": {
+    "theme": "theme-2",
+    "arm": "relayout",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6007.5,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 360,
+     "skipped": 0,
+     "total": 99.5,
+     "mean": 0.276,
+     "max": 1.2
+    },
+    "forcedLed": {
+     "count": 360,
+     "mean": 0.269,
+     "max": 1.1
+    },
+    "forcedList": {
+     "count": 360,
+     "mean": 0.006,
+     "max": 0.1
+    },
+    "control": {
+     "installed": true,
+     "writes": 360,
+     "skipped": 0,
+     "applied": "11px"
+    },
+    "frame": {
+     "n": 359,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.7,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 20.9,
+     "mean": 0.454,
+     "max": 1
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   }
+  }
+ }
+}
