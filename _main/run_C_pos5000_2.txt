@@ -1,0 +1,24 @@
+n               : 5000  dim=256 channel=visual fp32
+thread budget   : 2 (env set pre-numpy) mem_source=psutil
+rss before      : 36.1 MB
+queries         : 100  budget=16.0 ms
+chunk           : 4096 rows per upsert_embeddings call
+db              : I:\cc-tmp\slice-scale-t0l17dec\scratch.sqlite  journal=wal
+video_id        : 1
+segments        : 5000 in 0.03s (0.0062 ms/row)
+  upserted 4096/5000 (0.4s)
+upsert          : 5000/5000 in 0.48s (0.0955 ms/row)
+embeddings in db: 5000
+db on disk      : 7.1 MiB (page_size=4096)
+SearchIndex     : n=5000 dim=256 load=0.04s rss=46.9 MB
+
+window          : 2026-10-07 16:35:14 -> 16:35:16 (1.5s elapsed)
+population      : n=5000 vectors, 100 timed queries, <=2 threads (OMP=2)
+query ms        : min=0.90 p50=1.68 p95=3.03 max=4.29   (n=100 timed queries)
+under 16 ms     : 100.0% (100/100 queries; gate needs 99.0%)
+empty results   : 0/100
+rss after       : 53.3 MB  delta=+17.2 MB
+
+SCALE: n=5000 p50=1.68ms p95=3.03ms frac_under_16ms=1.000 mem_delta=17.2MB
+GATE : budget=16ms under_need>=0.99 p95_need<=16ms  (POPULATION n=5000, WINDOW 100 queries, <=2 threads)
+RESULT: PASS
