@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -1122,15 +1123,19 @@ static bool cut_final_only(ClipSession* s, std::string* note, std::string* field
     return ok;
 }
 
-static void stdin_handle(const std::string& line, bool too_long,
-                         ClipSession* sess, uint64_t* clip_index)
+// What the last line did, reported to the loop so the run's cut counts are COUNTED, never
+// guessed from the text of the line.  0 = a non-cut command served, 1 = a clip was really
+// finalised, 2 = a cut was asked for and REFUSED (nothing open, or the muxer refused),
+// 3 = the line never reached a verb at all (malformed, duplicated key, forged, unknown cmd).
+static int stdin_handle(const std::string& line, bool too_long,
+                        ClipSession* sess, uint64_t* clip_index)
 {
     std::string fields;
     if (too_long) {
         fields = jf_str("error", "line too long");
         fields += ",\"ok\":false";
         stdin_write_reply(probe_json(fields));
-        return;
+        return 3;
     }
     std::string cmd;
     // The parser is the gate: a line it does not fully accept NEVER reaches a verb, so a
@@ -1139,19 +1144,20 @@ static void stdin_handle(const std::string& line, bool too_long,
         fields = jf_str("error", "unsupported or malformed command");
         fields += ",\"ok\":false";
         stdin_write_reply(probe_json(fields));
-        return;
+        return 3;
     }
-    if (cmd == "ping") { stdin_write_reply(probe_json("\"ok\":true")); return; }
+    if (cmd == "ping") { stdin_write_reply(probe_json("\"ok\":true")); return 0; }
     if (cmd == "cut") {
         std::string note, f;
-        cut_finalise_and_reopen(sess, clip_index ? *clip_index : 0, &note, &f);
+        const bool ok = cut_finalise_and_reopen(sess, clip_index ? *clip_index : 0, &note, &f);
         if (clip_index) ++*clip_index;
         stdin_write_reply(probe_json(f));
-        return;
+        return ok ? 1 : 2;
     }
     fields = jf_str("error", "unsupported or malformed command");
     fields += ",\"ok\":false";
     stdin_write_reply(probe_json(fields));
+    return 3;
 }
 
 // The arm.  Opens clip 0, feeds it on ONE thread, then serves {"cmd":"cut"} on the SAME stdin
@@ -1189,11 +1195,13 @@ static int arm_cut_session(const Options& o)
     log_line("  clip 0 open: %s", sess.path_for(0).c_str());
 
     std::atomic<bool> stop{false};
+    // JOINABLE, not detached: the last clip is finalised after the feeder has stopped, and a
+    // detached thread still inside append_locked would be writing to a writer the main thread is
+    // closing.  join() is what makes the shutdown ordered; a Sleep would only hope for it.
     std::thread feeder(session_feeder, &sess, &src.aus, &src.is_idr, &stop);
-    feeder.detach();                                       // joined by the stop flag below
 
     HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-    uint64_t served = 0, cuts_sent = 0, cuts_ok = 0, cuts_refused = 0;
+    uint64_t served = 0, cuts_sent = 0, cuts_ok = 0, cuts_refused = 0, refused_lines = 0;
     uint64_t clip_index = 1;
     if (in && in != INVALID_HANDLE_VALUE) {
         std::string line;
@@ -1204,25 +1212,18 @@ static int arm_cut_session(const Options& o)
             if (!stdin_read_line(in, &line, &too_long)) break;
             if (line.empty() && !too_long) continue;
             ++served;
-            uint64_t c0 = 0, r0 = 0;
-            {   // read the session's own counters before and after, under its lock
-                std::lock_guard<std::mutex> lk(sess.mu);
-                c0 = sess.closed; r0 = sess.refused;
-            }
-            const bool is_cut = line.find("\"cut\"") != std::string::npos;
-            if (is_cut) ++cuts_sent;
-            stdin_handle(line, too_long, &sess, &clip_index);
-            if (is_cut) {
-                std::lock_guard<std::mutex> lk(sess.mu);
-                if (sess.closed > c0) ++cuts_ok;
-                else if (sess.refused > r0) ++cuts_refused;
-            }
+            // One line in, ONE reply out, and the loop continues: this is the same proven read
+            // loop as the generic arm -- it never returns after the first line.
+            const int r = stdin_handle(line, too_long, &sess, &clip_index);
+            if (r == 1)      { ++cuts_sent; ++cuts_ok; }
+            else if (r == 2) { ++cuts_sent; ++cuts_refused; }
+            else if (r == 3) { ++refused_lines; }
         }
     } else {
         log_line("CUT SESSION: no stdin HANDLE (started detached with no pipe) - channel OFF");
     }
     stop.store(true);
-    Sleep(120);                        // let the feeder notice the stop before the final write
+    feeder.join();
 
     std::string note, f;
     cut_final_only(&sess, &note, &f);
@@ -1240,6 +1241,10 @@ static int arm_cut_session(const Options& o)
     log_line("  commands_served=%llu  cuts_sent=%llu  clips_opened=%llu  clips_closed=%llu  cuts_refused=%llu",
              (unsigned long long)served, (unsigned long long)cuts_sent, (unsigned long long)opened,
              (unsigned long long)closed, (unsigned long long)refused);
+    log_line("  cuts_executed=%llu  cuts_refused_by_session=%llu  lines_refused_by_gate=%llu  (pinges=%llu)",
+             (unsigned long long)cuts_ok, (unsigned long long)cuts_refused,
+             (unsigned long long)refused_lines,
+             (unsigned long long)(served - cuts_sent - refused_lines));
     log_line("  frames_written=%llu  bytes_written=%llu  largest_clip_bytes=%llu  aus_waited_for_idr=%llu",
              (unsigned long long)frames, (unsigned long long)bytes, (unsigned long long)largest,
              (unsigned long long)waiting);
@@ -1275,17 +1280,17 @@ int main(int argc, char** argv)
             log_line("STDIN CONTROL: listening on the stdin HANDLE (blocking ReadFile, one line)");
             std::string line;
             bool too_long = false;
+            size_t served_here = 0;
             // LOOP, not a single read: the client sends a command stream, and reading once
             // answered exactly one line and dropped the rest (200 in -> 1 reply, measured).
             for (;;) {
                 line.clear();
                 too_long = false;
                 if (!stdin_read_line(in, &line, &too_long)) {
-                    log_line("STDIN CONTROL: stdin closed (%zu commands served)",
-                             (size_t)0);
+                    log_line("STDIN CONTROL: stdin closed (%zu commands served)", served_here);
                     break;
                 }
-                if (!line.empty() || too_long) stdin_handle(line, too_long, nullptr, nullptr);
+                if (!line.empty() || too_long) { stdin_handle(line, too_long, nullptr, nullptr); ++served_here; }
             }
         } else {
             log_line("STDIN CONTROL: no stdin HANDLE (started detached with no pipe) - channel OFF");
