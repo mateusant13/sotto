@@ -15,7 +15,10 @@ imported (the owner's stutter at 731.9% CPU came from probes like this one).
 Usage:  python slice_scale_probe.py [N] [n_queries] [chunk]
 
 EXIT:  0 only if every one of the N embeddings landed AND every query returned
-       at least one hit.  A gate that cannot say NO is useless.
+       at least one hit AND the measured latency threshold is met (>=99% of
+       the timed queries under 16 ms AND p95 <= 16 ms).  A gate that cannot
+       say NO is useless -- see the gate() docstring for how this one shipped
+       a PASS on a 3.3x budget miss.  Non-zero on every FAIL.
 """
 import os
 
@@ -25,7 +28,6 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ[_v] = "2"
 
 import pathlib  # noqa: E402
-import statistics  # noqa: E402
 import sys  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
@@ -43,6 +45,17 @@ CHANNEL = "visual"           # one of search.VECTOR_CHANNELS, as at n=1
 MODEL = "slice-scale-rng-v1"
 SEED = 20261007
 BUDGET_MS = 16.0
+
+# --- the gate's thresholds, declared here so they are auditable -------------
+# A query MEETS the budget when it returns in under BUDGET_MS.  PASS requires
+# BOTH clauses below, so that neither one alone can carry a broken measurement:
+#   UNDER_MIN_FRAC : at least this fraction of the timed queries under budget
+#   P95_MAX_MS     : the p95 of the timed queries at or under this ceiling
+# UNDER_MIN_FRAC is 0.99 and not 1.00 because a single GC pause in a timing
+# sample should not decide the verdict; the p95 clause is what stops the tail
+# from being waved through.  Every threshold the gate uses must appear here.
+UNDER_MIN_FRAC = 0.99
+P95_MAX_MS = BUDGET_MS
 
 
 # --------------------------------------------------------------------------
@@ -91,6 +104,84 @@ def rss_source():
 
 
 # --------------------------------------------------------------------------
+# THE GATE.
+#
+# DEFECT (measured, not hypothetical): this file printed "RESULT: PASS" at
+# n=211200 with frac_under_16ms=0.000 -- p50 52.94 ms, p95 68.35 ms, max
+# 86.25 ms, NOT ONE of 100 queries inside the 16 ms budget.  The exact logic
+# error was this: the verdict was the accumulator
+#         ok = True
+#         if landed != n: ...  ok = False      # data completeness only
+#         if empty:     ...  ok = False      # data completeness only
+# which never mentions BUDGET_MS, under, p50 or p95 anywhere.  The latency was
+# measured, printed and printed again in the SCALE line -- and then discarded
+# by the one thing whose job was to judge it.  `ok` was a COMPLETENESS check
+# wearing the label of a THRESHOLD check: it could only say NO if rows went
+# missing, so it said PASS to a total miss.  A gate that cannot say NO is
+# worse than no gate, because it manufactures confidence.
+#
+# The fix is not a bigger `ok`.  It is that the latency threshold is now a
+# clause of the verdict, computed from the same numbers that are printed, and
+# _main/scale_gate_selftest.py feeds this gate a deliberately broken
+# measurement and asserts it goes RED.
+# --------------------------------------------------------------------------
+def latency_stats(times_ms):
+    """(count, min, p50, p95, max, frac_under_budget) from query times in ms.
+
+    THE SINGLE SOURCE OF THE PRINTED NUMBERS: main() prints what the gate
+    judged, so a gate and its own evidence can never drift apart.
+    """
+    t = sorted(times_ms)
+    n = len(t)
+    if n == 0:
+        raise ValueError("latency_stats: no query timings collected")
+    # Nearest-rank, kept bit-for-bit as the probe has always computed it
+    # (index min(len-1, int(q*len))) so the p95 printed here stays comparable
+    # with the 68.35 ms recorded in _main/scale-verdict.md.  It reads one rank
+    # high at q=0.95, which makes the gate STRICTER, never looser.
+    p50 = t[min(n - 1, int(0.50 * n))]
+    p95 = t[min(n - 1, int(0.95 * n))]
+    under = sum(1 for x in t if x < BUDGET_MS) / n
+    return n, t[0], p50, p95, t[-1], under
+
+
+def gate(n, landed, n_queries, empty, times_ms,
+         under_min=UNDER_MIN_FRAC, p95_max=P95_MAX_MS):
+    """Decide the verdict from MEASURED numbers.  -> (ok: bool, reasons: list[str])
+
+    `reasons` is empty if and only if ok.  Each reason names the population it
+    was measured over, so a FAIL line is evidence and not an assertion.
+    """
+    reasons = []
+    if landed != n:
+        reasons.append(f"only {landed}/{n} embeddings landed in the store")
+    if empty:
+        reasons.append(f"{empty}/{n_queries} queries returned no hit")
+
+    if not times_ms:
+        reasons.append(
+            f"no query timings collected over a population of "
+            f"{n_queries} queries at n={n}: unmeasured is not a pass")
+        return False, reasons
+
+    cnt, lo, p50, p95, hi, under = latency_stats(times_ms)
+    window = f"POPULATION n={n}, WINDOW {cnt} timed queries, <=2 threads"
+
+    if under < under_min:
+        reasons.append(
+            f"latency budget MISSED: {under * 100:.1f}% of {cnt} queries under "
+            f"{BUDGET_MS:g} ms, need {under_min * 100:.1f}% "
+            f"(min={lo:.2f} p50={p50:.2f} p95={p95:.2f} max={hi:.2f} ms; "
+            f"{window})")
+    if p95 > p95_max:
+        reasons.append(
+            f"p95 {p95:.2f} ms over the {p95_max:g} ms ceiling: {cnt} timed "
+            f"queries, p50={p50:.2f} max={hi:.2f} ms ({window})")
+
+    return (not reasons), reasons
+
+
+# --------------------------------------------------------------------------
 def main(argv):
     n = int(argv[1]) if len(argv) > 1 else 211200
     n_queries = int(argv[2]) if len(argv) > 2 else 100
@@ -101,6 +192,8 @@ def main(argv):
 
     mem_source = rss_source()
     mem_start = rss_mb()
+    win_t0 = time.perf_counter()
+    win_start = time.strftime('%Y-%m-%d %H:%M:%S')
     print(f"n               : {n}  dim={DIM} channel={CHANNEL} fp32")
     print(f"thread budget   : 2 (env set pre-numpy) mem_source={mem_source}")
     print(f"rss before      : {mem_start:.1f} MB")
@@ -194,28 +287,34 @@ def main(argv):
         if not hits:
             empty += 1
 
-    times_ms.sort()
-    p50 = statistics.median(times_ms)
-    p95 = times_ms[min(len(times_ms) - 1, int(0.95 * len(times_ms)))]
-    under = sum(1 for t in times_ms if t < BUDGET_MS) / len(times_ms)
     mem_end = rss_mb()
+    mem_delta = mem_end - mem_start
 
-    print(f"\nquery ms        : min={times_ms[0]:.2f} p50={p50:.2f} "
-          f"p95={p95:.2f} max={times_ms[-1]:.2f}")
-    print(f"under {BUDGET_MS:g} ms     : {under * 100:.1f}%")
+    # window + population header: every count below is denominated by these
+    t_end = time.perf_counter()
+    print(f"\nwindow          : {win_start} -> {time.strftime('%H:%M:%S')} "
+          f"({t_end - win_t0:.1f}s elapsed)")
+    print(f"population      : n={n} vectors, {n_queries} timed queries, "
+          f"<=2 threads (OMP={os.environ['OMP_NUM_THREADS']})")
+
+    cnt, lo, p50, p95, hi, under = latency_stats(times_ms)
+    print(f"query ms        : min={lo:.2f} p50={p50:.2f} "
+          f"p95={p95:.2f} max={hi:.2f}   (n={cnt} timed queries)")
+    print(f"under {BUDGET_MS:g} ms     : {under * 100:.1f}% "
+          f"({sum(1 for t in times_ms if t < BUDGET_MS)}/{cnt} queries; "
+          f"gate needs {UNDER_MIN_FRAC * 100:.1f}%)")
     print(f"empty results   : {empty}/{n_queries}")
-    print(f"rss after       : {mem_end:.1f} MB  delta={mem_end - mem_start:+.1f} MB")
+    print(f"rss after       : {mem_end:.1f} MB  delta={mem_delta:+.1f} MB")
 
-    ok = True
-    if landed != n:
-        print(f"FAIL: {landed} embeddings landed, expected {n}")
-        ok = False
-    if empty:
-        print(f"FAIL: {empty} queries returned no hit")
-        ok = False
+    ok, reasons = gate(n, landed, n_queries, empty, times_ms)
+    for r in reasons:
+        print(f"FAIL: {r}")
 
     print(f"\nSCALE: n={n} p50={p50:.2f}ms p95={p95:.2f}ms "
-          f"frac_under_16ms={under:.3f} mem_delta={mem_end - mem_start:.1f}MB")
+          f"frac_under_{BUDGET_MS:g}ms={under:.3f} mem_delta={mem_delta:.1f}MB")
+    print(f"GATE : budget={BUDGET_MS:g}ms under_need>={UNDER_MIN_FRAC:.2f} "
+          f"p95_need<={P95_MAX_MS:g}ms  "
+          f"(POPULATION n={n}, WINDOW {cnt} queries, <=2 threads)")
 
     conn.close()
     print("RESULT: PASS" if ok else "RESULT: FAIL")
