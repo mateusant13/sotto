@@ -77,9 +77,10 @@ def main():
     hits = idx.search(vec, k=5)
     print(f"\nSearchIndex     : n={idx.n} dim={idx.dim}")
     print(f"ranked hits     : {len(hits)}")
-    for h in hits:
-        print(f"  rank={h['rank']} seg_id={h['seg_id']} "
-              f"score={h['score']:.6f} channels={sorted(h['channels'])}")
+    for rank, h in enumerate(hits, 1):
+        print(f"  rank={rank} seg_id={h['seg_id']} video_id={h['video_id']} "
+              f"score={h['score']:.6f} channels={sorted(h['channels'])} "
+              f"cosine={h['evidence'][CHANNEL]['cosine']:.6f} at={h['at']}")
     assert len(hits) == 1, f"expected exactly 1 hit, got {len(hits)}"
     assert hits[0]["seg_id"] == seg_id, f"hit is the wrong segment: {hits[0]}"
 
