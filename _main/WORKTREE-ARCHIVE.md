@@ -1,0 +1,1 @@
+lane/archplan2 worktree archive plan — placeholder anchor (populated by this lane).
