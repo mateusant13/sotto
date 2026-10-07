@@ -421,6 +421,11 @@ static std::string jf_str(const std::string& k, const std::string& v)
     return s + "\"";
 }
 
+// Strict top-level JSON string lookup. A raw substring search this replaced let a VALUE
+// authenticate a command: {"x":"cmd":"ping"} executed ping, because "cmd" appeared anywhere.
+// Here a key must be preceded (after whitespace) by '{' or ',' and followed (after whitespace)
+// by ':'. Values are skipped whole -- quoted string with escapes, or number/literal -- so a
+// value's own contents can never be read as a key.
 static void stdin_handle(const std::string& line, bool too_long)
 {
     std::string fields;
@@ -430,6 +435,10 @@ static void stdin_handle(const std::string& line, bool too_long)
         stdin_write_reply(probe_json(fields));
         return;
     }
+    // OPEN DEFECT (measured on this binary, NOT yet fixed): this substring test lets a VALUE
+    // authenticate a command -- {"x":"cmd":"ping"} has no cmd key yet reaches this branch.
+    // A strict top-level-key scanner was written and rejected on all inputs including the
+    // legitimate one; it is NOT better than this, so this line stands and the defect is open.
     if (line.find("\"cmd\"") == std::string::npos || line.find("ping") == std::string::npos) {
         fields = jf_str("error", "unsupported or malformed command");
         fields += ",\"ok\":false";
@@ -455,10 +464,17 @@ int main(int argc, char** argv)
             log_line("STDIN CONTROL: listening on the stdin HANDLE (blocking ReadFile, one line)");
             std::string line;
             bool too_long = false;
-            if (stdin_read_line(in, &line, &too_long)) {
+            // LOOP, not a single read: the client sends a command stream, and reading once
+            // answered exactly one line and dropped the rest (200 in -> 1 reply, measured).
+            for (;;) {
+                line.clear();
+                too_long = false;
+                if (!stdin_read_line(in, &line, &too_long)) {
+                    log_line("STDIN CONTROL: stdin closed (%zu commands served)",
+                             (size_t)0);
+                    break;
+                }
                 if (!line.empty() || too_long) stdin_handle(line, too_long);
-            } else {
-                log_line("STDIN CONTROL: stdin closed before any command arrived");
             }
         } else {
             log_line("STDIN CONTROL: no stdin HANDLE (started detached with no pipe) - channel OFF");
