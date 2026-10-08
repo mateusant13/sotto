@@ -164,6 +164,117 @@ body {
   flex: none;
 }
 
+/* ── FIXED HEADER ORDER (BASE, NOT THEME) ───────────────────────────────────
+ * The arrangement is the panel's, never a direction's: a theme that could
+ * reorder the cluster would move Hide away from last or Pause away from it,
+ * and the owner reads position as meaning. Flex `order` keeps DOM order
+ * (tab order, screen readers) untouched while the paint order stays
+ * [theme][chevron][clear][quit][pause][hide] in every direction. Hide stays
+ * LAST (it has always had the last slot) and Pause stays next to it.
+ */
+.panel__controls #theme-button,
+.panel__controls [data-theme-button] {
+  order: 1;
+}
+.panel__controls #theme-chevron,
+.panel__controls [data-theme-chevron] {
+  order: 2;
+}
+.panel__controls #clear-button {
+  order: 3;
+}
+.panel__controls #quit-button {
+  order: 4;
+}
+.panel__controls #panel-pause-button,
+.panel__controls [data-pause-trigger] {
+  order: 5;
+}
+.panel__controls #hide-button {
+  order: 6;
+}
+
+/* ── THE THEME CHEVRON (BASE) ───────────────────────────────────────────────
+ * A 28 px icon button like the rest of the cluster: it opens the theme list
+ * WITHOUT cycling, while the theme button itself keeps cycling WITHOUT
+ * opening anything. `no-drag` like every control (see `.icon-button`); the
+ * svg is drawn by `theme-switcher.js` and sized here so a direction cannot
+ * forget it. */
+.theme-chevron {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.theme-chevron svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+/* ── THE THEME DROPDOWN (BASE) ──────────────────────────────────────────────
+ * The chevron's list: five options, hover (or focus) previews instantly
+ * without persisting, click (or Enter/Space) commits through the same store
+ * path as the cycle button, mouse-away or Escape reverts to the commit.
+ * Positioned like the picker's (top-right, above the slab) and usable in ANY
+ * direction: these BASE tokens are deliberately neutral, and each theme file
+ * may restyle below without moving or hiding the list. `[hidden]` wins over
+ * every display so `hidden=true` always closes it. */
+.theme-dropdown {
+  position: absolute;
+  top: 46px;
+  right: 12px;
+  z-index: 40;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--line-strong, rgba(148, 163, 184, 0.28));
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-slab-strong, rgba(13, 18, 26, 0.97));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.theme-dropdown[hidden] {
+  display: none;
+}
+.theme-dropdown__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.theme-dropdown__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-dropdown__swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--theme-swatch, currentColor);
+}
+.theme-dropdown__option:hover {
+  background: var(--accent-soft, rgba(148, 163, 184, 0.14));
+  color: var(--text-primary, #f1f5f9);
+}
+.theme-dropdown__option[aria-current="true"] {
+  border-color: var(--accent, #7dd3fc);
+  color: var(--text-primary, #f1f5f9);
+  font-weight: 600;
+}
+.theme-dropdown__option:focus-visible,
+.theme-chevron:focus-visible {
+  outline: 2px solid var(--accent-to, #a78bfa);
+  outline-offset: 1px;
+}
+
 .icon-button {
   display: grid;
   place-items: center;
