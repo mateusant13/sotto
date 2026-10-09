@@ -1,7 +1,0 @@
-steps=32 gate=25 control=6 skipped=0 expect-red=1 missing=0 failed=0
-rcs:  pycompile-sotto_webview=0 pycompile-webview-helpers=0 pycompile-sotto_worker=0 pycompile-wasapi+lang=0 transcript-append-oracle=0 live-vs-history-source-oracle=0 historico-vs-redux-probe=0 history-producer-gate=0 panel-state-guard-gate=0 verdict-gate=0 lane2-reset-probe=0 lane3-verdict-probe=0 lane4-tap-stop-probe=0 audit-history-dead=0 panel2-repeat-probe=0 worker-start-wiring=0 embedded-js-check=0 lane1-worker-default-arms=0 review-f1f3=0 review-tapstop=0 hotkey-registration=0 hotkey-delivery=0 autostart-status=0 control-verdict-gate-unguard=0 control-history-producer-stamp-nvidia=0 control-redux-flag-neg-arm=0 control-panel-exit3-neg-arm=0 control-wasapi-com-init=0 control-panel2-repeat-revert=0 red-as-expected-historico-gate-off=1 fresh-processor-probe=0 skip-verdict-guard=0
-controls:  control-verdict-gate-unguard(rc=0) control-history-producer-stamp-nvidia(rc=0) control-redux-flag-neg-arm(rc=0) control-panel-exit3-neg-arm(rc=0) control-wasapi-com-init(rc=0) control-panel2-repeat-revert(rc=0) red-as-expected-historico-gate-off(rc=1)
-skipped: -none-
-failed: -none-
-exit-code: 0
-BATTERY-VERDICT: GREEN - every step held and every control went RED on its broken copy
