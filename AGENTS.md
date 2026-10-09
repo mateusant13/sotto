@@ -640,6 +640,84 @@ undone. Three rules, both earned today:
    "nothing stamps this field" are all claims that a single grep, or a 60 s census, cannot support. Name
    the instrument, its cadence and its count — the same rule the panel's own windows and the segment-rerun
    canary were held to.
+
+## CORRECTIONS 2026-10-07 (lane/docs) — every claim below was re-measured; see `_main/AGENTS-AUDIT.md`
+
+Appended, not rewritten: the retractions above are the record and they stay. Rule 2 applies to this
+section too — every size/sha below is the 2026-10-07 measurement.
+
+### 0. **THE WEIGHTS ARE NOT IN A WORKTREE, BY DESIGN — TEST `H:\sotto`, NEVER THE WORKTREE.** *(the fix this lane was opened for)*
+`worker/models/` is **git-ignored** (`.gitignore:64`), so it exists **only** in the product root
+`H:\sotto`. Measured 2026-10-07: `H:\sotto\worker\models` = **9 dirs** (population `Get-ChildItem -Directory`,
+window `H:\sotto`); `H:\sotto-wt\ArbV8\worker\models` = **0 dirs and `Test-Path` = False** — the directory
+is not even present. The `Layout` row above (`worker/models/nemotron-3.5-asr-streaming-0.6b-{int4,int8,fp16}/`)
+names a path that **cannot exist in any `git worktree` of this repo**, and `worker/config.json` resolves
+`model.dir` to `models/nemotron-3.5-asr-streaming-0.6b-int8` — so a lane that reads the config, tests the
+worktree, and finds no model dir reaches "weights absent", which is **the wrong answer, twice already made.**
+`history/` is ignored the same way (`.gitignore:28`) and likewise lives only in `H:\sotto` (`history/2026-10-06/`,
+`history/2026-10-07/`; absent from the worktree) — so the archive cited in the "HISTORY FEED IS EMPTY" bullet
+is also product-root-only. **Rule: any claim about weights, `.onnx.data` sidecars or `history/` must name
+`H:\sotto` as the root, and "absent from `H:\sotto-wt\ArbV8`" is never evidence of absence.**
+
+### 1. `app/package.json` still advertises the DEAD toolchain — do not run any npm script here.
+Not named anywhere above. It carries `"main": "_legacy-electron/main.js"`, `"start": "electron ."`,
+`"dev": "vite"`, `"build": "vite build"`, `"check": "svelte-check"`, `"tauri": "tauri"`, and
+`@tauri-apps/*` + `svelte` devDependencies. **The product has NO build step and NO npm in its live path** —
+measured, `npm|vite|svelte|tauri` = **ZERO matches** across `app/webview/run.cmd`,
+`app/webview/sotto_webview.py` and `app/webview/hot_reload.py` (the only hit is a prose mention of
+`_legacy-electron`, `run.cmd:21`). `run.cmd` → `sotto_webview.py` → pywebview/WebView2 serves
+`app/panel/*` **as-is**. `npm run build` / `npm start` would launch the shell this file declares DEAD.
+
+### 2. The "native `H:\` paths only" rule above points at that dead shell — read it as a PATH rule only.
+`H:/sotto/app/node_modules/electron/dist/electron.exe` **exists** (measured), and the rule's finding is
+still true (`./node_modules/.bin/electron` → rc=127). But the bullet above at "The app is
+`app/webview/run.cmd`" and the `app/_legacy-electron/` row say Electron is **DEAD, not a fallback**.
+**Do not launch that binary as the app**; keep the rule only for "never execute a `./node_modules` shim".
+Note it also only resolves in the product root — the worktree has no `node_modules` at all.
+
+### 3. There is no C++ in this product, but a parked C++ tree greps as if there were.
+Measured: **28** native sources (`*.c/*.cpp/*.h/CMakeLists.txt/Makefile/build.cmd`, population
+`Get-ChildItem -Recurse` over `H:\sotto-wt\ArbV8` minus `node_modules`/`.git`, window: this worktree) and
+**every one is under `_moved/aireplay/`** (346 tracked files) — parked, not the product. That tree's
+`src/capture/build.cmd:3,7` is the only statement of the host compiler:
+**mingw-w64 g++ 15.2.0 at `H:\msys64\mingw64\bin\g++.exe`** — and `cl.exe` and `nvcc.exe` are both
+**absent from PATH** on this host (no MSVC, no CUDA toolkit). Its link line (`:19`) carries
+`-ld3d11 -ldxgi -luuid -lole32 -loleaut32 -lruntimeobject -lwindowsapp -lpsapi -lgdi32 -luser32`;
+**`-lwasapi` appears nowhere** (it does not exist). Treat that file as the only evidence of the toolchain.
+
+### 4. `--audio` IS SILENTLY IGNORED without `--selftest`. Not documented anywhere above.
+`worker/sotto_worker.py:2921` declares `--audio`, and `:3299` reads it as
+`(args.audio if args.selftest else None)` — so a bare `--audio X` is accepted by argparse and then
+**never used**. To transcribe a file, pass `--selftest --audio <path>` (or `SOTTO_AUDIO_FILE`).
+
+### 5. Five fake-worker scripts exist; only ONE is named above, generically. *(correction to a belief in circulation)*
+The `--arm-e-real` bullet names "a fake worker" (singular). The **population** `_main/*fake*.py` in this
+worktree is **5 files**: `_armE-fake-worker.py` (2866 B), `_audit-fake-worker.py` (2544 B),
+`_fake-worker-stdout.py` (1703 B), `_restart-30s-fake-worker.py` (3725 B), `_tap-restart-fake-worker.py`
+(5190 B). **A fake worker is not the real transcriber** — see bullet 4's measured `peak=0.44` from the
+real one. If you cite one, name the file.
+
+### 6. `TMPDIR` MUST BE `I:\cc-tmp`. Not documented anywhere above.
+`G:` fills and kills lanes with **ENOSPC**. Every lane on this box sets it first.
+
+### 7. `parakeet-redux-onnx-int4/` was RE-DOWNLOADED — the "APAGADO" note is now stale.
+The "LEI DA STACK" bullet says it was deleted on the owner's order and is "re-baixável em ~20 s". It is
+**back on disk** (measured, `H:\sotto\worker\models\parakeet-redux-onnx-int4\`), and its files carry exactly
+the byte counts that bullet quotes — `encoder-model.onnx` 343841943, `decoder_joint-model.onnx` 72552270,
+`preprocessor.onnx` 1224294, `vad-model.onnx` 18300687, `transcribe.py` 17844 — so it is the same export.
+**Do not spend 20 s re-downloading what is already there**; do not assume it is gone either.
+
+### 8. Stale sizes/sha in this file, in one place, per rule 2. *(the doc's own rule, violated by the doc)*
+| claim in this file | measured 2026-10-07 |
+|---|---|
+| worker `173388 B`; shell `4326 lines` | worker **236802 B / 4511 lines**, shell **276894 B / 5679 lines** (`H:\sotto-wt\ArbV8`; product root 246517 B / 397180 B) |
+| `_audit-verify-all.cmd` "len=18595, 337 CRLF / 0 bare LF, sha256 `9DA38ECF…`" | **26692 B / 456 CRLF / 0 bare LF, sha `038B5167…`** (worktree); **32203 B / 538 CRLF / 0 bare LF, sha `EBF715E9…`** (`H:\sotto`) |
+| `app/panel/` module list | also holds `history-gallery.js`, `package.json`, `_fonts/`, `fonts/` |
+| `worker/models/…{int4,int8,fp16}/` "the three exports" | **9 dirs** in `H:\sotto`, incl. `fp32`, both parakeet dirs, and two `qwen*` dirs |
+
+**The CRLF property the battery bullet relies on still HOLDS (0 bare LF in both trees) — only the size and
+the hash aged.** Every `file:line` in the bullets above is a hint from an older revision; re-grep before
+citing one (rule 1 and rule 2).
 ---
 
 ## THE SHELL'S OWN CONTRACT — moved to `docs/shell-contract.md` (2026-10-08)

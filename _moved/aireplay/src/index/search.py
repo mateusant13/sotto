@@ -48,27 +48,56 @@ class SearchIndex:
 
     def __init__(self, conn: sqlite3.Connection, *, include_missing: bool = False):
         self.conn = conn
-        self.vecs, self.seg_ids, self.channels, self.video_ids = store.load_matrix(
-            conn, include_missing=include_missing)
+        (self.vecs, self.seg_ids, self.channels, self.video_ids,
+         self._blocks) = store.load_matrix(conn, include_missing=include_missing)
         self.n, self.dim = (self.vecs.shape[0], self.vecs.shape[1]
                             if self.vecs.size else 0)
-        chan = np.asarray(self.channels, dtype=object)
-        # One boolean mask per channel: scanning each channel separately is the
-        # point of RRF, and the mask itself costs nothing (07 sec 1).
-        self._masks = {c: (chan == c) for c in VECTOR_CHANNELS}
 
     # -- one channel --------------------------------------------------------
     def knn(self, query: np.ndarray, *, channel: str, k: int = K_PER_CHANNEL,
             video_id: int | None = None, t0_ms: int | None = None,
             t1_ms: int | None = None) -> list[tuple[int, int, float]]:
-        """Returns [(seg_id, rank, cosine)] for one channel, best first."""
-        if self.n == 0 or channel not in self._masks:
+        """Returns [(seg_id, rank, cosine)] for one channel, best first.
+
+        SCANS ONLY THIS CHANNEL'S ROWS.  `store.load_matrix` groups the matrix by
+        channel, so the block is a contiguous view and the scan is this channel's
+        rows -- not the whole matrix with the other channels masked out
+        afterwards.  A channel with no rows is absent from `_blocks` and costs
+        nothing at all.
+
+        Measured at n=211200 (POPULATION n=211200, WINDOW 60 queries, <=2
+        threads) this took the query from 3 whole-matrix scans to 1 block scan;
+        see _main/index_perf_profile.md for the before/after.
+        """
+        if self.n == 0:
             return []
+        block = self._blocks.get(channel)
+        if block is None:
+            return []                       # no rows for this channel: no scan
+        lo, hi = block
         q = _l2(query)
-        sims = self.vecs @ q                      # the whole-matrix scan
-        mask = self._masks[channel].copy()
+        sims = self.vecs[lo:hi] @ q         # this channel's rows only
+        if video_id is not None or t0_ms is not None or t1_ms is not None:
+            sims = np.where(self._filter_mask(lo, hi, video_id, t0_ms, t1_ms),
+                            sims, -np.inf)
+        take = min(k, sims.shape[0])
+        if take <= 0:
+            return []
+        # ascending partition then take the tail: same k as np.argpartition(-sims,
+        # take-1)[:take] without allocating and negating a full-length array.
+        top = np.argpartition(sims, sims.shape[0] - take)[-take:]
+        top = top[np.argsort(-sims[top])]
+        seg_ids = self.seg_ids
+        return [(int(seg_ids[lo + i]), rank + 1, float(sims[i]))
+                for rank, i in enumerate(top) if np.isfinite(sims[i])]
+
+    def _filter_mask(self, lo: int, hi: int, video_id: int | None,
+                     t0_ms: int | None, t1_ms: int | None) -> np.ndarray:
+        """Row filter over the channel block.  Built ONLY when a filter is asked
+        for: the unfiltered case needs no mask at all, which is the whole query."""
+        mask = np.ones(hi - lo, dtype=bool)
         if video_id is not None:
-            mask &= (self.video_ids == video_id)
+            mask &= (self.video_ids[lo:hi] == video_id)
         if t0_ms is not None or t1_ms is not None:
             # start_ms is RELATIVE TO EACH VIDEO'S OWN START, so a window is
             # always (video_id, t0_ms, t1_ms) -- never a bare library-wide range.
@@ -79,14 +108,8 @@ class SearchIndex:
                 tuple(x for x in (video_id, t0_ms or 0, t1_ms if t1_ms is not None
                                   else 2 ** 62) if x is not None)).fetchall()
             ok = np.array([int(r["seg_id"]) for r in rows], dtype=np.int64)
-            keep = np.isin(self.seg_ids, ok)
-            mask &= keep
-        sims = np.where(mask, sims, -np.inf)
-        take = min(k, self.n)
-        top = np.argpartition(-sims, take - 1)[:take]
-        top = top[np.argsort(-sims[top])]
-        return [(int(self.seg_ids[i]), rank + 1, float(sims[i]))
-                for rank, i in enumerate(top) if np.isfinite(sims[i])]
+            mask &= np.isin(self.seg_ids[lo:hi], ok)
+        return mask
 
     # -- the fused query ----------------------------------------------------
     def search(self, query: np.ndarray, *, k: int = 10,

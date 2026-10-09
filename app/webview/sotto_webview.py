@@ -567,10 +567,26 @@ WS_EX_CONTROLPARENT = 0x00010000
 
 SW_SHOWNOACTIVATE = 4
 SW_HIDE = 0
+SW_SHOW = 5
+SW_RESTORE = 9
 HWND_TOPMOST = -1
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
+
+#: Double-press window for Alt+C: two presses within this many ms open the
+#: RIGHT side panel; a single press toggles the bottom strip. Timestamp is
+#: taken in the hotkey handler (`SottoShell.hotkey_pressed`) with
+#: `time.monotonic()`, so wall-clock jumps cannot mis-split a double.
+HOTKEY_DOUBLE_MS = 400
+
+#: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
+#: from the strip-surface measurements (height read from `--strip-height` in
+#: the CSS, never hard-coded); STRIP_HEIGHT_FALLBACK exists only so a missing
+#: CSS value still leaves a usable strip, and every use is logged.
+STRIP_WIDTH = 1040
+STRIP_HEIGHT = 150
+STRIP_HEIGHT_FALLBACK = 148
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
@@ -687,8 +703,100 @@ def set_topmost(hwnd) -> bool:
                                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
 
 
+#: Exact Win32 signatures for the calls the strip lane makes. `SetWindowPos`
+#: without declared argtypes fails SILENTLY with `last_error=1400` (measured,
+#: strip-surface): `HWND_TOPMOST=-1` must travel as a 64-bit HWND, not a
+#: 32-bit int default. Every call below goes through these, never bare.
+user32.ShowWindow.restype = wt.BOOL
+user32.ShowWindow.argtypes = [wt.HWND, ctypes.c_int]
+user32.IsWindowVisible.restype = wt.BOOL
+user32.IsWindowVisible.argtypes = [wt.HWND]
+user32.SetWindowPos.restype = wt.BOOL
+user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
+                                ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+user32.GetForegroundWindow.restype = wt.HWND
+user32.SetForegroundWindow.restype = wt.BOOL
+user32.SetForegroundWindow.argtypes = [wt.HWND]
+
+
 def foreground_window() -> int:
     return int(user32.GetForegroundWindow() or 0)
+
+
+#: `SetWindowPos` insert-after for "move me, keep my Z order". `HWND_TOPMOST`
+#: re-asserts topmost (the strip must stay above the game); `HWND_TOP` (0) is
+#: for geometry moves that must NOT change the Z slot.
+HWND_TOP = 0
+SWP_SHOWWINDOW = 0x0040
+
+
+def foreground_unlock(hwnd) -> bool:
+    """Bring the Sotto panel to the foreground and free the mouse (Alt+C).
+
+    The no-focus invariant (`SW_SHOWNOACTIVATE`, `focusable=false` parity)
+    holds for every path EXCEPT the owner's own Alt+C: when he presses the
+    app's only control he is asking for the panel, so the shell SHOWS with
+    activation (`SW_RESTORE` + `SW_SHOW`), re-asserts TopMost (the game is a
+    fullscreen topmost window; without this the strip paints under it) and
+    calls `SetForegroundWindow` on the panel form handle so clicks land on
+    Sotto. Pointer-lock RELEASE itself belongs to the game (a fullscreen
+    pointer-lock holder un-locks when it loses foreground); the shell only
+    takes foreground, never touches `ClipCursor`/`SetFocus`. Returns the
+    `SetForegroundWindow` answer, never raises.
+    """
+    if not hwnd:
+        return False
+    try:
+        set_topmost(hwnd)
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.ShowWindow(hwnd, SW_SHOW)
+        ok = bool(user32.SetForegroundWindow(hwnd))
+    except Exception as exc:  # noqa: BLE001 -- report, never kill the hotkey
+        log(f'PANEL_FOREGROUND_UNLOCK_FAILED error={exc!r}')
+        return False
+    log(f'PANEL_FOREGROUND_UNLOCK ok={str(ok).lower()} hwnd={hwnd}')
+    return ok
+
+
+def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
+               margin=PANEL_MARGIN):
+    """Dock a wide short strip to the bottom centre of `work`.
+
+    The twin of `dock_right`: same pure-function contract (output contained
+    in the work area whatever it is), same DIP units. `STRIP_HEIGHT` is the
+    measured strip height; when the caller passes a non-number (panel asked
+    for a height the CSS did not provide) the fallback is used and the use
+    is logged by the caller. The strip never takes more than the full width
+    minus margins, and never leaves the work area.
+    """
+    want_width = width if isinstance(width, (int, float)) else STRIP_WIDTH
+    want_height = height if isinstance(height, (int, float)) else STRIP_HEIGHT
+    if not isinstance(height, (int, float)):
+        log(f'STRIP_HEIGHT_FALLBACK used={STRIP_HEIGHT_FALLBACK}')
+        want_height = STRIP_HEIGHT_FALLBACK
+    w = max(0, work['width'])
+    h = max(0, work['height'])
+    m = max(0, min(margin if isinstance(margin, (int, float)) else PANEL_MARGIN,
+                   w / 8, h / 8))
+    strip_width = min(want_width, max(0, w - 2 * m))
+    strip_height = min(want_height, max(0, h - 2 * m))
+    x = work['x'] + round((w - strip_width) / 2)
+    y = work['y'] + h - strip_height - m
+    geometry = {
+        'workX': work['x'],
+        'workY': work['y'],
+        'workWidth': w,
+        'workHeight': h,
+        'x': max(work['x'], round(x)),
+        'y': max(work['y'], round(y)),
+        'width': max(1, round(strip_width)),
+        'height': max(1, round(strip_height)),
+        'margin': m,
+        'docked': 'bottom-strip',
+    }
+    geometry['x'] = min(geometry['x'], work['x'] + w - geometry['width'])
+    geometry['y'] = min(geometry['y'], work['y'] + h - geometry['height'])
+    return geometry
 
 
 # ===========================================================================
@@ -1464,7 +1572,7 @@ def arm_hotkey(shell, requested: str):
     order = [requested] + [a for a in HOTKEY_FALLBACKS if a != requested]
     tried = []
     for accelerator in order:
-        thread = HotkeyThread(accelerator, lambda: shell.toggle_panel('hotkey'))
+        thread = HotkeyThread(accelerator, lambda: shell.hotkey_pressed())
         thread.start()
         thread.wait_ready(5)
         if thread.registered:
@@ -1744,6 +1852,13 @@ BOOTSTRAP_JS = r"""
 
     setPointerInteractive: function (active) {
       post('pointer', { active: Boolean(active) });
+    },
+
+    // Strip lane: panel asks the shell for click-through chrome while it
+    // keeps painting captions. Documented shell message `sotto:transparency`
+    // with `{ on: bool }`. No-op honest when the shell has no window yet.
+    setTransparency: function (on) {
+      post('transparency', { on: Boolean(on) });
     },
 
     // preload.js resolves a Promise here (ipcRenderer.invoke). The WebView2
@@ -2252,6 +2367,8 @@ class SottoHost:
             'renderer-ready': self._renderer_ready,
             'page-error': self._page_error,
             'pointer': self._pointer,
+            'transparency': self._transparency,
+            'sotto:transparency': self._transparency,
             'history-append': self._history_append,
             'history-tail': self._history_tail,
             'history-search': self._history_search,
@@ -2322,6 +2439,9 @@ class SottoHost:
     def _pointer(self, payload):
         self._shell.set_pointer_interactive(bool((payload or {}).get('active')))
 
+    def _transparency(self, payload):
+        self._shell.set_transparency(bool((payload or {}).get('on')))
+
     def _info(self, payload):
         info_id = (payload or {}).get('id', '')
         self._shell.reply_info(info_id, self._shell.info())
@@ -2383,6 +2503,13 @@ class SottoShell:
         # and not a claim.
         self.panel_show_refused = 0
         self.pointer_interactive = False
+        self.transparent = False   # panel-requested click-through (captions stay)
+        #: Last Alt+C stamp (`time.monotonic()`): a second press within
+        #: `HOTKEY_DOUBLE_MS` opens the RIGHT side panel instead of the strip.
+        self._last_hotkey_press = 0.0
+        #: Where the panel lives when shown: 'strip' (bottom, the default) or
+        #: 'side' (right, after a double-press). Single Alt+C toggles the strip.
+        self.panel_mode = 'strip'
         self.caption_log = []
         self.last_status = ''
         self.bridge_installed = None  # None until measured, True/False after
@@ -3734,6 +3861,140 @@ class SottoShell:
         self.visible = live
         return (self.hide_panel(reason) if live else self.show_panel(reason))
 
+    # -- Alt+C: strip toggle, double-press side panel, mouse unlock ---------
+    def hotkey_pressed(self):
+        """Alt+C: single press toggles the bottom STRIP, double-press opens SIDE.
+
+        The timestamp is `time.monotonic()`, so a wall-clock jump cannot
+        mis-split a double. A second press within `HOTKEY_DOUBLE_MS` (400 ms)
+        opens the RIGHT side panel; anything later is a new single press and
+        toggles the strip. Runs on the hotkey thread — every window call below
+        is thread-safe (`SetWindowPos`/`ShowWindow`/`SetForegroundWindow` on the
+        hwnd, `_ui` for the .NET form members).
+        """
+        now = time.monotonic()
+        prev = self._last_hotkey_press
+        self._last_hotkey_press = now
+        dt_ms = round((now - prev) * 1000)
+        if prev and (now - prev) <= (HOTKEY_DOUBLE_MS / 1000.0):
+            log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
+                f'mode=side')
+            return self.show_side('hotkey-double')
+        live = window_visible(self.hwnd) if self.hwnd else False
+        if live:
+            return self.hide_panel('hotkey')
+        return self.show_strip('hotkey')
+
+    def place_panel(self, mode):
+        """Move/resize the panel window to `mode` geometry ('strip'|'side').
+
+        Recomputes from the LIVE work area (`primary_display`, not the cached
+        `self.display`: the owner may have changed monitors since startup),
+        moves with `SetWindowPos` in PHYSICAL pixels (DIP geometry times the
+        scale factor — the same units `_fit_client_area` pins the client area
+        with), re-pins the client area through `_ui`, and tells the page the
+        new geometry over the existing `send_geometry` seam. Never raises:
+        a failed place is a log line and `False`, and the show that called it
+        still foregrounds whatever is on screen.
+        """
+        try:
+            self.display = primary_display()
+        except Exception as exc:  # noqa: BLE001 -- stale cache beats no window
+            warn(f'PANEL_PLACE_DISPLAY_FAILED mode={mode} error={exc!r}')
+        if not self.display:
+            warn(f'PANEL_PLACE_FAILED mode={mode} reason=no-display')
+            return False
+        work = self.display['workArea']
+        geometry = dock_strip(work) if mode == 'strip' else dock_right(work)
+        self.geometry = geometry
+        self.panel_mode = mode
+        if self.hwnd:
+            try:
+                scale = self.display.get('scaleFactor') or 1
+                user32.SetWindowPos(
+                    self.hwnd, HWND_TOP,
+                    int(geometry['x'] * scale), int(geometry['y'] * scale),
+                    int(geometry['width'] * scale),
+                    int(geometry['height'] * scale),
+                    SWP_SHOWWINDOW)
+            except Exception as exc:  # noqa: BLE001 -- report, never kill Alt+C
+                log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
+                return False
+            form = self.form or self._form()
+            if form is not None:
+                try:
+                    self._ui(lambda: self._fit_client_area(form))
+                except Exception as exc:  # noqa: BLE001 -- same contract
+                    log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
+        self.send_geometry()
+        log(f'PANEL_PLACED mode={mode} {summary(geometry)}')
+        return True
+
+    def show_strip(self, reason):
+        """Show the bottom strip AND take foreground (the Alt+C mouse unlock).
+
+        `show_panel`'s `SW_SHOWNOACTIVATE` invariant holds for every path
+        EXCEPT the owner's own Alt+C: pressing the app's only control is asking
+        for the panel, so the shell places the strip, then SHOWS with
+        activation (`foreground_unlock`: TopMost re-assert + `SW_RESTORE` +
+        `SW_SHOW` + `SetForegroundWindow`) so clicks land on Sotto. The game
+        releases its pointer lock itself when it loses foreground; the shell
+        never touches `ClipCursor`/`SetFocus`.
+        """
+        if self.hwnd is None:
+            return False
+        self.place_panel('strip')
+        foreground_unlock(self.hwnd)
+        self.visible = window_visible(self.hwnd)
+        log(f'PANEL_SHOWN reason={reason} mode=strip '
+            f'visible={str(self.visible).lower()} '
+            'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
+        self.publish_panel_visibility(reason)
+        return True
+
+    def show_side(self, reason):
+        """Show the RIGHT side panel AND take foreground (double-press path).
+
+        Same activation contract as `show_strip` — the only difference is the
+        geometry: `dock_right` instead of `dock_strip`. Kept as its own method
+        (not a `show_panel(mode)` flag) so the `mode=` field in the log tells
+        which geometry the owner is looking at.
+        """
+        if self.hwnd is None:
+            return False
+        self.place_panel('side')
+        foreground_unlock(self.hwnd)
+        self.visible = window_visible(self.hwnd)
+        log(f'PANEL_SHOWN reason={reason} mode=side '
+            f'visible={str(self.visible).lower()} '
+            'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
+        self.publish_panel_visibility(reason)
+        return True
+
+    def set_transparency(self, on):
+        """Honor the panel's `sotto:transparency {on: bool}` request.
+
+        ON = shell chrome goes click-through (`WS_EX_TRANSPARENT`, the same
+        style `set_pointer_interactive` drives) while the page keeps painting
+        captions; OFF restores hit-testing. The page owns the pixels — the
+        shell only moves the one style bit — so this is a log line and a style
+        call, never a layout change. `TRANSPARENCY_ON/OFF` is the greppable
+        receipt the dispatch map promises even when the panel never asks.
+        """
+        state = 'ON' if on else 'OFF'
+        if self.hwnd is None:
+            log(f'TRANSPARENCY_{state} pending=no-hwnd')
+            return False
+        try:
+            make_click_through(self.hwnd, bool(on))
+        except Exception as exc:  # noqa: BLE001 -- report, never kill the page
+            log(f'TRANSPARENCY_{state}_FAILED error={exc!r}')
+            return False
+        self.transparent = bool(on)
+        log(f'TRANSPARENCY_{state} '
+            f'click_through={str(bool(on)).lower()} captions=kept')
+        return True
+
     # -- page -> host handlers --------------------------------------------
     def info(self):
         return {
@@ -4239,6 +4500,10 @@ class SottoShell:
 
         The press is a real WM_HOTKEY posted to the registering thread's own
         queue, so the delivery path under test is the one the OS writes to.
+        The two presses land ~800 ms apart — OUTSIDE the `HOTKEY_DOUBLE_MS`
+        (400 ms) window — so each is a single press: press 1 SHOWS the strip
+        (with the intentional Alt+C foreground unlock, `focus_stolen=true`
+        EXPECTED), press 2 hides it again.
         """
         rc = 0
         if self.hotkey is None:

@@ -1,0 +1,145 @@
+# BLIND CORPUS v2 -- adversarial stdin parser corpus, Sotto aireplay-capture
+# Target: _moved/aireplay/src/capture/main.cpp  json_cmd_value() / stdin_read_line() / stdin_handle()
+#          at commit bdeda02 ("stdin: skip arrays and objects whole; trim keys").
+# Author: worker lane, blind2 worktree.  REPORT ONLY -- no src/ edit.
+#
+# WHY THIS FILE EXISTS: the parser shipped through FOUR versions (4852381 loop, db0cf35 forge,
+# 952f3bf dup/walk, bdeda02 array+trim) and each version was fixed by a defect found by hand-fed
+# input.  Every existing matrix (13, 15, 17 and 24 cases) was authored by the same agent that
+# wrote the parser, so it tests what the AUTHOR EXPECTED.  This corpus is written from the RFC
+# 8259 grammar and from the parser's own source, and every case below is NEW BYTES relative to
+# the case lists published in db0cf35 / 952f3bf / bdeda02 (those lists are quoted in
+# blind2-report.md so the novelty claim is checkable).
+#
+# ---------------------------------------------------------------------------------------------
+# THE ORACLE (written before any run)
+#
+#   ACCEPT (reply contains "ok":true) is CORRECT only when a strict JSON reader sees:
+#     (a) one top-level JSON object, and
+#     (b) a top-level member whose key is the 3 bytes 63 6D 64 ("cmd"), and
+#     (c) that member's value is a JSON STRING whose decoded bytes are exactly 70 69 6E 67 ("ping"), and
+#     (d) no second top-level member has that key.
+#   Every other input MUST be refused.  A refusal is always safe; an accept is only safe under
+#   (a)-(d).  So the bar is: never crash, never execute a command that is not literally cmd="ping".
+#
+#   EXPECT column, one of:
+#     TRUE     -> exactly one reply, {"ok":true}
+#     FALSE    -> exactly one reply, {"error":"unsupported or malformed command","ok":false}
+#     TOOLONG  -> exactly one reply, {"error":"line too long","ok":false}
+#     NOREPLY  -> zero replies for this line
+#
+# ---------------------------------------------------------------------------------------------
+# ATTACK CLASSES (declared before running anything, so no case can be rationalised afterwards)
+#
+#  A-WHITESPACE  key bytes that are <= 0x20 at the TAIL (the bdeda02 right-trim) and at the HEAD
+#                (which is never trimmed).  JSON whitespace is only 20 09 0A 0D -- the parser trims
+#                every byte <= 0x20, which is a wider set than JSON permits.
+#  B-TABCRLF     0x09 / 0x0B inside VALUES, and 0x0D anywhere.  stdin_read_line() drops every 0x0D
+#                it sees (main.cpp:396) and keeps every other control byte, so CR is normalised
+#                away while TAB is not.  A normalisation that changes the command value is a forge.
+#  C-DUPCASE     duplicate command keys that differ in CASE (CMD/Cmd are not the key "cmd") and
+#                duplicate keys that differ only in trailing whitespace (both trim to "cmd").
+#  D-NESTED      a nested object/array/string whose own bytes literally contain  "cmd":"ping" ,
+#                including a '}' inside a string value.
+#  E-UNICODE     \u escapes (never decoded by this parser), a UTF-8 BOM, valid 4-byte UTF-8, and
+#                non-ASCII bytes inside the KEY.
+#  F-ESCAPE      legal and illegal JSON escapes.  Line 502-506 validates the escape letter but
+#                appends the LETTER, not the decoded byte: \n becomes the letter 'n'.  A legal
+#                escape therefore DELETES the backslash and can spell a different command.
+#  G-PREFIX      key prefixes and near-misses: cmdx, cmd+space, cmu escapes, wrong value case.
+#  H-LONG        payload lengths 4095 / 4096 / 4097 / 65600 bytes around the 4096 cap at
+#                main.cpp:388-397, including an over-cap line whose PREFIX is a complete ping.
+#  I-NUL         raw 0x00 in a key, in a value, as the whole line, and after the closing brace.
+#                0x00 <= 0x20 so it is both "whitespace" for skipws() and a trim candidate.
+#  J-BADUTF8     invalid UTF-8 sequences (lone continuation, FF, FE) in key and value.
+#  K-EMPTY       empty line, spaces only, tab only, {}, {,}, and a trailing comma.
+#  L-NONEWLINE   the final line carries no 0x0A.  stdin_read_line() returns false when ReadFile
+#                reports got==0, which DISCARDS the bytes already accumulated.
+#  M-CRLF        whole-stream 0x0D0A endings (arm-level, not a single line).
+#  N-TOPLEVEL    valid JSON whose top level is an array or a scalar, plus an UNQUOTED scalar
+#                command value ({"cmd":ping}) which the scalar branch stores as raw text.
+#
+# ---------------------------------------------------------------------------------------------
+# FILE FORMAT:  ID|CLASS|EXPECT|PAYLOAD|NOTE
+#   PAYLOAD is a C-escape string, decoded by blind_run.ps1:
+#     \\  -> 0x5C      \"  -> 0x22      \n  -> 0x0A      \r  -> 0x0D      \t  -> 0x09
+#     \xHH-> one raw byte HH      <A*N> -> N copies of 0x41      \X (any other) -> 0x5C then X
+#   NO trailing 0x0A is stored in a PAYLOAD; the runner appends the line terminator per arm.
+# ---------------------------------------------------------------------------------------------
+
+01|A-WHITESPACE|TRUE|{"cmd ":"ping"}|CONTROL: tail space also right-trimmed by the same code path as bdeda02 defect D
+02|A-WHITESPACE|FALSE|{"cmd\x0b":"ping"}|VT 0x0B is NOT json whitespace; trim uses <=0x20 so it matches "cmd"
+03|A-WHITESPACE|FALSE|{"cmd\x0c":"ping"}|FF 0x0C likewise
+04|A-WHITESPACE|FALSE|{"\x09cmd":"ping"}|leading tab: only the TAIL is trimmed, so this must not match
+05|A-WHITESPACE|TRUE|\x20\x20\x20{"cmd":"ping"}|legal json whitespace before the brace
+06|A-WHITESPACE|FALSE|{\x0b"cmd":"ping"}|VT before the opening brace
+07|B-TABCRLF|FALSE|{"cmd":"pi\x09ng"}|TAB inside the value is kept -> not ping
+08|B-TABCRLF|FALSE|{"cmd":"pi\x0bng"}|VT inside the value is kept -> not ping
+09|B-TABCRLF|FALSE|{"cmd":"pi\rng"}|main.cpp:396 DROPS the 0x0D, the value becomes ping
+10|B-TABCRLF|FALSE|{"cm\rd":"ping"}|0x0D dropped, the key becomes cmd
+11|B-TABCRLF|FALSE|{"cmd":"pi\ing"}|ILLEGAL escape \i -> refused (the db0cf35 claim, control)
+12|B-TABCRLF|FALSE|{"cmd":"ping"\x0b}|trailing control byte after the brace
+13|B-TABCRLF|FALSE|{"cmd":"ping"\x20}|trailing SPACE after the brace: a padded legal line gets silence
+14|C-DUPCASE|TRUE|{"cmd":"ping","CMD":"evil"}|CMD is a different key, so the executed command is ping
+15|C-DUPCASE|FALSE|{"cmd":"evil","CMD":"ping"}|CMD must not authorise anything
+16|C-DUPCASE|FALSE|{"cmd":"evil","Cmd":"ping"}|same, different case
+17|C-DUPCASE|FALSE|{"cmd ":"evil","cmd":"ping"}|two keys that BOTH trim to cmd -> duplicate
+18|C-DUPCASE|FALSE|{"cmd":"ping","cmd":"ping"}|exact duplicate (db0cf35 class, different value)
+19|D-NESTED|FALSE|{"a":{"b":{"cmd":"ping"}},"cmd":"evil"}|two-level nesting, the inner cmd must be invisible
+20|D-NESTED|FALSE|{"a":"\"cmd\":\"ping\"","cmd":"evil"}|a STRING VALUE containing the literal forge
+21|D-NESTED|TRUE|{"a":["{\"cmd\":\"ping\"}"],"cmd":"ping"}|array of one string holding a whole fake command
+22|D-NESTED|TRUE|{"cmd":"ping","a":{"cmd":"evil"}}|nested cmd AFTER a legal one must not veto it
+23|D-NESTED|FALSE|{"cmd":{"inner":"ping"},"cmd":"evil"}|non-string command then a second command -> duplicate
+24|D-NESTED|FALSE|{"a":{"b":"}"},"cmd":"evil"}|a } inside a string value must not close the object
+25|E-UNICODE|FALSE|{"cmd":"ping\u0000"}|\u0000 is legal json; parser does not decode -> not ping
+26|E-UNICODE|FALSE|{"cmd":"p\u0069ng"}|\u0069 is legal json for 'i'; parser does not decode -> not ping
+27|E-UNICODE|FALSE|{"cmd":"ping\xf0\x9f\x92\xa9"}|valid 4-byte utf8 appended to the value
+28|E-UNICODE|FALSE|\xef\xbb\xbf{"cmd":"ping"}|UTF-8 BOM before the brace -> a BOM client gets no reply
+29|E-UNICODE|FALSE|{"cmd\xd0\xba":"ping"}|non-ascii bytes inside the KEY
+30|F-ESCAPE|FALSE|{"cmd":"pi\\ng"}|LEGAL json escape: decoded value is 70 69 0A 67, parser keeps the letter n
+31|F-ESCAPE|FALSE|{"cmd":"\\\\ping"}|json \\ decodes to one backslash, so the value is \ping not ping
+32|F-ESCAPE|FALSE|{"cmd":"ping\\\\"}|json \\ then end of string
+33|F-ESCAPE|FALSE|{"cmd":"\""}|value decodes to a single quote character
+34|F-ESCAPE|FALSE|{"a":"x\\",\"cmd\":\"ping\"","cmd":"evil"}|escaped quotes inside a string value
+35|F-ESCAPE|FALSE|{"cm\u0064":"ping"}|legal \u0064 in the KEY: key decodes to cmd, parser does not decode
+36|F-ESCAPE|TRUE|{"cmd":"ping","a":"\\"}|a trailing backslash in another value must not break the walk
+37|G-PREFIX|FALSE|{"cmdx":"ping"}|key prefix, not the key
+38|G-PREFIX|FALSE|{"cmd":"ping "}|trailing space in the VALUE is not trimmed
+39|G-PREFIX|FALSE|{"cmd":" ping"}|leading space in the VALUE
+40|G-PREFIX|TRUE|{"cmdx":"ping","cmd":"ping"}|near-miss key is just another field
+41|G-PREFIX|TRUE|{"cmd":"ping","cmdx":"evil"}|near-miss key must not veto a legal command
+42|G-PREFIX|FALSE|{"cmd":"PING"}|wrong case in the value
+43|G-PREFIX|FALSE|{"cmd":"ping\nx"}|value is ping + a newline + x
+44|G-PREFIX|TRUE|{"cmd":"ping"}|CONTROL: the one input that must be accepted
+45|H-LONG|TRUE|{"pad":"<A*4071>","cmd":"ping"}|4095 bytes total: just under the 4096 cap
+46|H-LONG|TRUE|{"pad":"<A*4072>","cmd":"ping"}|4096 bytes total: exactly at the cap
+47|H-LONG|TOOLONG|{"pad":"<A*4073>","cmd":"ping"}|4097 bytes: one over the cap
+48|H-LONG|TOOLONG|{"pad":"<A*65576>","cmd":"ping"}|65600 bytes: over 64 KB
+49|H-LONG|TOOLONG|{"cmd":"ping","pad":"<A*5000>"}|over cap AND the prefix is a complete legal ping
+50|H-LONG|TOOLONG|<A*65600>|over 64 KB with no command at all
+51|I-NUL|FALSE|{"cmd":"ping\x00"}|NUL inside the value: 5 bytes vs 4, must not compare equal
+52|I-NUL|FALSE|{"cm\x00d":"ping"}|NUL INSIDE the key: not a tail, so no trim
+53|I-NUL|FALSE|{"cmd\x00":"ping"}|NUL at the key tail: trimmed, so it becomes "cmd"
+54|I-NUL|FALSE|{"cmd":"ping"}\x00|NUL after the closing brace
+55|I-NUL|FALSE|\x00|one NUL is the whole line
+56|J-BADUTF8|FALSE|{"cmd":"ping\xff"}|invalid utf8 in the value
+57|J-BADUTF8|FALSE|{"\xff":"ping"}|invalid utf8 as the key
+58|J-BADUTF8|FALSE|{"cmd":"\xff\xfe"}|invalid utf8 alone in the value
+59|K-EMPTY|NOREPLY||an empty line produces no reply at all (main.cpp:573)
+60|K-EMPTY|FALSE|\x20\x20\x20|three spaces only
+61|K-EMPTY|FALSE|\x09|one tab only
+62|K-EMPTY|FALSE|{}|empty object: no cmd member
+63|K-EMPTY|FALSE|{,}|comma then close
+64|K-EMPTY|TRUE|{"cmd":"ping",}|trailing comma: illegal json but the command IS ping (laxness only)
+65|K-EMPTY|FALSE|{"cmd":"ping","a":}|member with no value
+66|N-TOPLEVEL|FALSE|[{"cmd":"ping"}]|valid json, top level is an array
+67|N-TOPLEVEL|FALSE|"ping"|valid json, top level is a string
+68|N-TOPLEVEL|FALSE|42|valid json, top level is a number
+69|N-TOPLEVEL|FALSE|null|valid json, top level is the null literal
+70|N-TOPLEVEL|FALSE|[1,2,3]|valid json, top level is an array of numbers
+71|N-TOPLEVEL|FALSE|{"cmd":"ping"} {"cmd":"ping"}|two objects on one line
+72|N-TOPLEVEL|FALSE|{"cmd":ping}|UNQUOTED scalar: the scalar branch stores the raw text "ping"
+73|N-TOPLEVEL|FALSE|{"cmd":true}|unquoted literal
+74|N-TOPLEVEL|FALSE|{"cmd":"ping"}extra|trailing junk after the closing brace
+75|N-TOPLEVEL|FALSE|{"cmd":"ping","a":[1,2,{"b":{"c":"}"}]},"z":1}|deep-ish nesting with a brace inside a string
+76|D-NESTED|FALSE|{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"cmd":"ping"}}}}}}}}}}|ten levels of nesting must recurse safely

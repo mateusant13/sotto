@@ -1,0 +1,515 @@
+// check-dispatch-role.mjs - PreToolUse hook, matcher `task`.
+//
+// THE LAW. A read-only role cannot be given a file to write. Three lanes were lost
+// to that mismatch. The check is one question at dispatch time: can this seat write
+// what I am asking it to write? Owner directive 2026-10-03.
+//
+// WHY PreToolUse ON `task` AND NOT SubagentStart.
+//
+// The brief asked for the role check on SubagentStart. That surface keys on
+// `agent_type`, which is UNPROVEN on this host - see probe-agent-type.mjs for the
+// census and why "unproven" is the correct word rather than "absent". Building the
+// enforcer on an unmeasured field would make the enforcer's behaviour unknown.
+//
+// `PreToolUse` keyed on `tool_name` is the better-founded surface: the contract
+// enumerates `task` among the exact native tool names a matcher may use
+// (references/local-plugin-hooks.md:61-62), and it hands us the dispatch payload
+// itself. The role the caller assigned is IN the payload, so the check does not
+// depend on any field the runtime might not populate. It reads the dispatch, not an
+// echo of it.
+//
+// WHAT IT MATCHES, AND WHAT IT DELIBERATELY DOES NOT.
+//
+// Deny requires BOTH, and the first is structured on purpose:
+//   1. a read-only seat assigned in a machine-readable field of tool_input
+//      (role / agent_type / subagent_type / subagentType / agent), AND
+//   2. an explicit write directive somewhere in the payload.
+//
+// A read-only seat merely MENTIONED IN PROSE does not trigger a deny. It is
+// recorded as OBSERVE instead. This is the conservative choice and it is the whole
+// point: briefs routinely say "scout this, then have a writer fix it", and a deny
+// keyed on prose would block correct dispatches and teach the fleet to route around
+// enforcement. What this hook catches is the specific, machine-detectable shape of
+// the bug - a structured read-only seat plus a write order - which is the shape
+// that actually cost the three lanes.
+//
+// A deny is recoverable by construction: the reason names the mismatch and the two
+// lawful resolutions, so a false positive costs one re-dispatch, not a dead turn.
+
+import { parsePayload, readStdin, record } from "./ledger.mjs";
+
+const READONLY_SEATS = new Set([
+  "scout",
+  "explore",
+  "explorer",
+  "verifier",
+  "verify",
+  "review",
+  "reviewer",
+  "auditor",
+  "readonly",
+  "read-only",
+  "observe",
+  "observer",
+]);
+
+// SEAT FIELD, ORDER IS THE ARGUMENT.
+//
+// PRIMARY: `agent_name` - MEASURED, not guessed. Census
+//   tools/census-task-toolcalls.mjs over 127 messages.jsonl under
+//   C:\Users\Administrador\.minimax\v2\sessions, window
+//   2026-10-02T22:48:01Z -> 2026-10-03T05:56:51Z, 15,156 lines, 0 unparsed,
+//   7,992 tool-call blocks, of which 22 were `task`.
+//   ARGUMENT KEY TALLY over those 22: agent_name 22/22, description 22/22,
+//   prompt 22/22, run_in_background 22/22. The single key-set shape was
+//   (agent_name, description, prompt, run_in_background), 22/22.
+//   Every alternative this file used to probe scored ZERO:
+//     role 0/22, agent 0/22, agent_type 0/22, subagent_type 0/22,
+//     subagentType 0/22, agentName 0/22.
+//   So the previous six-candidate list was wrong on all six, and the hook would
+//   have matched nothing on every real dispatch - a permanent green.
+//
+// FALLBACKS: kept so a future schema change does not silently blind the hook, but
+// they are strictly secondary and WHICH field matched is recorded on every event.
+// A field that is present but not a read-only seat does not stop the search.
+const SEAT_FIELDS = ["agent_name", "agentName", "agent", "role", "agent_type", "subagent_type", "subagentType"];
+
+// Verbs that order an artifact into existence. "analyse", "audit", "review" are
+// absent on purpose: a review seat doing analysis is doing its job.
+const WRITE_VERB =
+  /\b(write|create|produce|generate|author|implement|save|edit|patch|fill in|complete)\b/gi;
+
+// A negated order is not an order. "Do not write any file" is the single most
+// common sentence in a read-only brief, and matching it would deny correct
+// dispatches - a false block that teaches the fleet to route around enforcement.
+// Caught by the self-test, not by inspection: the first version of this rule
+// denied a scout explicitly told NOT to write.
+const NEGATION =
+  /\b(do not|do n[o']t|don'?t|never|without|no need to|avoid|must not|should not|shall not|is not to|there is no need)\b/i;
+
+// How far back a negation can still reach the verb it governs. "Do not write" is
+// adjacent; a negation 200 characters earlier is governing a different clause.
+const NEGATION_REACH = 60;
+
+// ---- the SECOND form of negation: the quantifier TRAILS the verb ------------
+//
+// MEASURED FALSE POSITIVE, 2026-10-04. NEGATION above only matches a marker that
+// PRECEDES the verb, so the very common order-shaped negative
+//   "Produce no artifacts on disk."
+// was scored as an unnegated write order and DENIED. Four lawful read-only
+// dispatches were refused on that sentence, which is the false block that teaches
+// a fleet to route around enforcement - the exact failure this hook is for.
+//
+// THE FIX IS NOT "ADD `no` TO NEGATION". That is the tempting one-word change and
+// it is wrong: NEGATION looks BACKWARD up to 60 characters, so a bare `no` there
+// would swallow the preceding clause of
+//   "You write NO files. Do NOT write, edit or create any file anywhere."
+// and flip the correct DENY to an ALLOW - restoring, in the other direction, the
+// bug this hook exists to stop. The self-test arms D1 and D2 are exactly this
+// pair, and --mutant=no-imperative-test proves D1 has teeth.
+//
+// The repair therefore keeps BACKWARD and FORWARD negation as two separate rules,
+// and the forward one is admitted ONLY on an imperative clause. That is the load
+// -bearing design decision, and it is a real grammatical distinction rather than a
+// list of extra words:
+//
+//   "Produce no artifacts on disk."   imperative: the order IS the clause, and
+//                                     the negative quantity is the whole point.
+//   "You write NO files."             declarative: the clause asserts what the
+//                                     seat does; it is not an order, and the
+//                                     hook is only in the business of orders.
+//
+// CLAUSE BOUNDARIES INCLUDE ':' on purpose. The hook judges JSON.stringify of
+// tool_input, so a prompt is reached through `..."prompt":"Produce no...`; with
+// ':' as a boundary the prefix before the verb is a bare quote and the imperative
+// test still sees a clean clause start. In prose a colon ends a clause too, so the
+// same rule is correct in both registers instead of correct only for the payload.
+const CLAUSE_BOUNDARY_CHARS = [".", ";", ":", "!", "?", "\n"];
+// Words that can legitimately lead an imperative without supplying a subject.
+const IMPERATIVE_LEAD = /^(?:and|then|also|plus|only|just|please|now|next|finally|first|second|third|instead|rather|so|ok|okay|hey)$/i;
+// The negative quantity itself, immediately after the verb.
+const TRAILING = /^\s+(?:(?:additional|any|single|further)\s+)?(?:no|not\s+one|none|nothing|zero)\b/i;
+// How far the quantifier may sit from the verb. "no" is adjacent; a noun phrase is
+// a few tokens long; a quantifier further away is governing something else.
+const TRAILING_REACH = 24;
+// ---- the THIRD false-positive class: a NAME is not an order -------------------
+//
+// MEASURED 2026-10-04, second pass. A bare \bverb\b match over free prose cannot
+// tell a subsystem's NAME from an instruction. A 5,093-character brief that
+// ordered no artifact at all was DENIED for exactly one verb hit: `Edit` inside
+// the proper noun "C Edit Contract". A second brief was denied for `produce`
+// inside "A red is the most valuable output this cron can produce" - a sentence
+// lifted verbatim from this project's own rule text. The false positive is
+// therefore CONTAGIOUS into the house laws, and it makes a whole subject
+// undispatchable: the lanes that would measure the roadmap are the ones that
+// name the roadmap.
+//
+// Neither is fixable with a negation token, because there is no negation in
+// either. Two exemptions are added, each narrow, and each with its cost stated
+// rather than buried:
+//
+//   (1) PROPER NOUN. A Capitalised hit that does NOT open its clause is a name.
+//       "C Edit Contract" - `Edit` follows "C", so it is a name. "Edit the file"
+//       - `Edit` opens the clause, so it is an instruction and still counts. A
+//       bare capital check would have failed that acceptance pair, because a
+//       sentence-initial capital is not a proper noun.
+//       COST: a genuine imperative starting mid-clause with a capitalised verb is
+//       missed ("...then Edit the file."). Named here, not hidden.
+//
+//   (2) CAPACITY MODAL. A hit whose immediately preceding word is can/could/may/
+//       might/will/would states what the system can do, not what this seat is
+//       ordered to do. "this cron can produce" is exempt; "Produce the census" is
+//       not, because nothing precedes it.
+//       COST: a real order phrased as "you will produce the report" is missed, and
+//       a capacity claim carrying no modal ("the hook is what makes a cron
+//       produce a red") is still counted. This closes the MEASURED instance, not
+//       the whole class. The alternative - blacklisting the ambiguous verbs - was
+//       rejected because it discards real orders and still cannot tell a noun
+//       from an instruction.
+const CAPACITY_MODAL = /^(?:can|could|may|might|will|would|shall)$/i;
+
+/** Text between the last clause boundary and the verb: the clause's left context. */
+function clauseHead(flat, index) {
+  let boundary = -1;
+  for (const ch of CLAUSE_BOUNDARY_CHARS) {
+    const at = flat.lastIndexOf(ch, index - 1);
+    if (at > boundary) boundary = at;
+  }
+  return flat.slice(boundary + 1, index);
+}
+
+/** Word tokens of a fragment. Punctuation, markdown and JSON noise all vanish. */
+function wordsOf(text) {
+  return String(text).replace(/[^A-Za-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+}
+
+/** True when nothing at all precedes the verb inside its clause. */
+function isClauseInitial(flat, index) {
+  return wordsOf(clauseHead(flat, index)).length === 0;
+}
+
+/**
+ * True when the verb opens its clause as an ORDER - i.e. nothing but a connective
+ * precedes the clause's FIRST verb, so there is no subject to make the clause
+ * declarative.
+ *
+ * The clause head is cut at that first verb rather than at the verb under test,
+ * which is what makes a COORDINATED imperative work: in "Write no files and
+ * create none." the words before `create` are the object of `Write`, not a
+ * subject, so `create` is still an imperative and its trailing `none` negates it.
+ * In "You write NO files." the word before `write` IS a subject, so the clause is
+ * declarative and the forward quantifier is not read as a negation.
+ *
+ * Returns false on any doubt, because the caller uses this to WIDEN an ALLOW: a
+ * false `true` here is a lost deny, a false `false` is only a preserved one.
+ */
+function isImperative(flat, index) {
+  const prefix = clauseHead(flat, index);
+  const firstVerb = new RegExp(WRITE_VERB.source, WRITE_VERB.flags).exec(prefix);
+  const head = firstVerb ? prefix.slice(0, firstVerb.index) : prefix;
+  const words = wordsOf(head);
+  return words.length === 0 || words.every((w) => IMPERATIVE_LEAD.test(w));
+}
+
+/** (1) A Capitalised hit that does not open its clause is a NAME, not an order. */
+function isProperNounUse(flat, m) {
+  if (!/^[A-Z]/.test(m[0])) return false;
+  return !isClauseInitial(flat, m.index);
+}
+
+/**
+ * (3) A verb INSIDE A QUOTED SPAN is being cited, not ordered.
+ *
+ * MEASURED FALSE POSITIVE, 2026-10-06. A lawful read-only dispatch was denied four times on the
+ * sentence `A suggestion of "write it in AGENTS.md" is NOT reinforcement.` The verb `write` there
+ * is quoted text the brief is DISCUSSING. Neither exemption above saw it: it is not a tooling
+ * noun, and the clause really does open with a subject, so the imperative test correctly called
+ * it declarative. The remedy the hook emitted ("make the sentence imperative") would not have
+ * helped either -- the author did not choose that wording.
+ *
+ * This is the narrowest possible third class: it exempts a verb only when an UNESCAPED quote
+ * opened before it and has not closed yet. An order is never written inside quotation marks. The
+ * two existing denies are untouched, because a real order sits in unquoted text where
+ * quote-depth is zero.
+ */
+function isInsideQuotedSpan(flat, index) {
+  let open = false;
+  for (let i = 0; i < index && i < flat.length; i += 1) {
+    const ch = flat[i];
+    if (ch === "\\") {
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === '`' || ch === "'") open = !open;
+  }
+  return open;
+}
+
+/** (2) A hit governed by a capacity modal describes ability, not instruction. */
+function isCapacityStatement(flat, m) {
+  const words = wordsOf(clauseHead(flat, m.index));
+  const last = words.length > 0 ? words[words.length - 1] : "";
+  return last !== "" && CAPACITY_MODAL.test(last);
+}
+
+/** True only if at least one write verb is NOT under a negation or an exemption. */
+export function hasWriteOrder(flat) {
+  return findWriteOrder(flat) !== null;
+}
+
+// ---- WHY findWriteOrder EXISTS: a deny that cannot be acted on ---------------
+//
+// MEASURED FALSE POSITIVE, 2026-10-05, third pass. A read-only `explore` brief was
+// denied twice for a sentence that ORDERS NOTHING:
+//
+//   "Do not run `git add`, `git commit`, or any write command."
+//
+// `write` in "or any write command" is not an order to write; it is the noun in a
+// prohibition about tooling. The two other sentences in the same brief ("Do not
+// create, edit, move, or delete any file") were correctly EXEMPTED by NEGATION,
+// because a negation marker sits within the 60-character backward window of each
+// of those verbs. `write` had no negation inside its own window, so it denied.
+//
+// The cost was not one blocked dispatch. The REASON string names the SEAT and the
+// DELIVERABLE as the things to change, and in this case BOTH were already correct:
+// the seat was genuinely read-only and the brief genuinely produced no file. Both
+// suggested resolutions would have been wrong - changing the seat to a writer
+// destroys the read-only property the caller wanted, and dropping "the file" from
+// a brief that named no file removes nothing. The one sentence that needed
+// attention was named nowhere in the denial.
+//
+// So the fix here is DIAGNOSTIC ONLY, and that is deliberate. Adding an exemption
+// for "any write command" would be a new rule with a new false-negative surface,
+// and this file has already been bitten twice by exactly that shape of change
+// (the NEGATION and the CAPACITY_MODAL rules above each document a real order
+// their exemption silently discards). Behaviour is UNCHANGED: findWriteOrder
+// returns the same verdict hasWriteOrder always did.
+//
+// What changes is that a deny now names the verb, the offset, the containing
+// field, and the surrounding text - so the caller can see WHICH sentence fired
+// and fix that sentence, instead of being sent to re-architect a correct brief.
+//
+// `kind` is a DIAGNOSTIC LABEL, NOT AN EXEMPTION. A `meta-reference` label does
+// not license the brief; the verdict is still a deny. It exists so a reader can
+// tell "this sentence orders an artifact" from "this sentence talks about
+// writing" without re-deriving the caller's intent from the whole prompt.
+const TOOLING_NOUN =
+  /\b(command|commands|tool|tools|script|scripts|cli|flag|flags|option|options|hook|hooks|gate|oracle|lint|subcommand|subcommand)\b/i;
+const CONTEXT_RADIUS = 45;
+
+/** The field of `tool_input` whose text contains the match, or null if undeterminable. */
+function locateField(toolInput, needle) {
+  if (!toolInput || typeof toolInput !== "object") return null;
+  for (const [key, value] of Object.entries(toolInput)) {
+    if (typeof value !== "string") continue;
+    if (value.toLowerCase().includes(needle.toLowerCase())) return key;
+  }
+  return null;
+}
+
+/**
+ * The FIRST un-exempted write verb, plus the evidence needed to act on the denial.
+ * Returns null when `hasWriteOrder` would return false. The two cannot disagree:
+ * hasWriteOrder is defined as this being non-null.
+ */
+export function findWriteOrder(flat, toolInput) {
+  if (!flat) return null;
+  const re = new RegExp(WRITE_VERB.source, WRITE_VERB.flags);
+  let m;
+  while ((m = re.exec(flat)) !== null) {
+    const before = flat.slice(Math.max(0, m.index - NEGATION_REACH), m.index);
+    if (NEGATION.test(before)) continue;
+    if (isProperNounUse(flat, m)) continue;
+    if (isCapacityStatement(flat, m)) continue;
+    // A verb inside an open quotation is cited text, not an order (class 3, see the block above).
+    if (isInsideQuotedSpan(flat, m.index)) continue;
+    // The window starts AFTER the matched verb, not at it: the quantifier is
+    // what follows the verb, and anchoring at m.index would feed the regex the
+    // verb itself.
+    const after = flat.slice(m.index + m[0].length, m.index + m[0].length + TRAILING_REACH);
+    const imperative = isImperative(flat, m.index);
+    const trailingNegated = imperative && TRAILING.test(after);
+    if (trailingNegated) continue;
+    const context = flat.slice(
+      Math.max(0, m.index - CONTEXT_RADIUS),
+      m.index + m[0].length + CONTEXT_RADIUS,
+    );
+    // Three classes, and the middle one is the measured false positive. The hook
+    // exempts a trailing quantifier ONLY on an imperative clause (see the isImperative
+    // block above), so a DECLARATIVE "You write NO files." denies - conservatively,
+    // because a false deny is recoverable and a lost deny is not. Labelling it
+    // `order` sends the reader to re-architect a correct brief; the sentence is
+    // already a denial of writing, and the caller only has to make it imperative.
+    let kind = "order";
+    if (TOOLING_NOUN.test(context)) kind = "meta-reference";
+    else if (!imperative) kind = "declarative-statement";
+    return {
+      verb: m[0],
+      offset: m.index,
+      field: locateField(toolInput, m[0]),
+      kind,
+      context: context.replace(/\s+/g, " "),
+    };
+  }
+  return null;
+}
+
+const REASON =
+  "Dispatch blocked: the seat you selected is read-only and the brief orders it to write a " +
+  "file. A read-only role cannot be given a file to write - the mismatch is silent, the seat " +
+  "reports progress, and no artifact appears. Two lawful resolutions: (a) change the seat to a " +
+  "write-capable one, or (b) drop the file from the brief and keep the seat read-only. " +
+  "'Review and fix' is two roles and needs two dispatches. " +
+  "(mcode-dispatch-guard, PreToolUse/task)";
+
+/**
+ * The denial text, with the EVIDENCE appended.
+ *
+ * The original reason names the two lawful resolutions, and both were wrong in the
+ * measured case: the seat was read-only on purpose and the brief produced no file.
+ * The missing third option - "the sentence that fired is not an order" - is now
+ * actionable, because the caller is told which verb, in which field, inside which
+ * text. Rewriting THAT sentence is a one-minute fix; re-architecting a correct
+ * brief is not.
+ */
+function reasonFor(match) {
+  if (!match) return REASON;
+  const field = match.field ? `field "${match.field}"` : "the payload";
+  const remedy =
+    match.kind === "declarative-statement"
+      ? `\nThis sentence is a DECLARATION ("You <verb> NO files"), not an order. The hook ` +
+        `exempts a trailing quantifier only on an IMPERATIVE clause, so a declarative one denies ` +
+        `on doubt - deliberately, because a false deny is recoverable and a lost deny is not. ` +
+        `The brief is already correct; make the sentence imperative and it passes: ` +
+        `"Produce no artifacts." instead of "You produce NO files."\n`
+      : match.kind === "meta-reference"
+        ? `\nThis sentence mentions writing as a TOOL or NOUN rather than ordering an artifact. ` +
+          `It is still a deny: the label is for your reading, not an exemption. Rephrase the ` +
+          `sentence so it does not carry the verb.\n`
+        : `\nThis is an ordinary imperative order. If the brief is not meant to produce an ` +
+          `artifact, remove the order; if it is, this seat cannot carry it and needs a writer.\n`;
+  return (
+    REASON +
+    `\n\nWHAT ACTUALLY FIRED: verb "${match.verb}" at offset ${match.offset} in ${field}, ` +
+    `classified as ${match.kind} (a label for your reading, NOT an exemption - this is a deny). ` +
+    `Surrounding text: ...${match.context}...\n` +
+    remedy +
+    `In the measured false positive BOTH suggested resolutions were wrong: the seat was ` +
+    `read-only on purpose and the brief produced no file. Rephrase the sentence above.`
+  );
+}
+
+/**
+ * Find the seat in a structured field.
+ *
+ * Returns four facts, and the separation is the point of the function:
+ *   present     - at least one candidate field was PRESENT, regardless of value.
+ *                 `present === false` means the hook is reading a payload shape it
+ *                 does not understand, which must never be recorded as CLEAN.
+ *   readField   - the candidate field the hook actually READ. Recorded even when
+ *                 the seat is write-capable, so a reader can prove where the hook
+ *                 looked. A CLEAN record with readField === null would be
+ *                 indistinguishable from a blind one, which is the defect this
+ *                 function exists to prevent.
+ *   seatField   - the field that yielded a READ-ONLY seat, else null.
+ *   seat        - the normalised read-only seat, else null.
+ */
+export function declaredSeat(toolInput) {
+  const none = { seat: null, seatField: null, readField: null, present: false };
+  if (!toolInput || typeof toolInput !== "object") return none;
+  let readField = null;
+  for (const field of SEAT_FIELDS) {
+    const value = toolInput[field];
+    if (typeof value !== "string" || value.trim() === "") continue;
+    if (readField === null) readField = field;
+    const norm = value.trim().toLowerCase();
+    if (READONLY_SEATS.has(norm)) {
+      return { seat: norm, seatField: field, readField, present: true };
+    }
+  }
+  return { seat: null, seatField: null, readField, present: readField !== null };
+}
+
+async function main() {
+  const raw = await readStdin();
+  const payload = parsePayload(raw);
+  const toolName = payload.tool_name || "";
+  const toolInput = payload.tool_input;
+
+  // Cheap guard for the case this script is ever wired to a broader matcher.
+  if (toolName && toolName !== "task") {
+    process.exit(0);
+  }
+
+  // Serialise defensively: the payload shape is not guaranteed, and a circular or
+  // exotic value must not become a crash that silently fails open.
+  let flat = "";
+  try {
+    flat = typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput) || "";
+  } catch {
+    flat = "";
+  }
+
+  const seatInfo = declaredSeat(toolInput);
+  const seat = seatInfo.seat;
+  const match = findWriteOrder(flat, toolInput);
+  const wantsWrite = match !== null;
+
+  if (seat && wantsWrite) {
+    record({ event: "PreToolUse", verdict: "VIOLATION", action: "deny", seat, matched_field: seatInfo.seatField, read_field: seatInfo.readField, tool: toolName, fired_verb: match.verb, fired_offset: match.offset, fired_field: match.field, fired_kind: match.kind, session: payload.session_id || "unknown" });
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: reasonFor(match),
+        },
+      }) + "\n",
+    );
+    process.exit(0);
+  }
+
+  // NO MATCH - the loud state, and the reason this function exists in this shape.
+  //
+  // Not one candidate seat field was present in the payload. That is NOT a clean
+  // dispatch: it means the hook is reading a payload whose shape it does not
+  // understand, so every rule it holds is vacuous for this call. Recording CLEAN
+  // here is what produced the original defect - a hook that matched nothing and
+  // reported success forever, which is worse than no hook because it is trusted.
+  //
+  // It does not block. Blocking on an unreadable payload would be a false positive
+  // on every call, which is the other failure mode. It is recorded as its own
+  // verdict, and tools/hook-liveness.mjs treats a non-zero count of these as RED.
+  if (!seatInfo.present) {
+    record({
+      event: "PreToolUse",
+      verdict: "NO_SEAT_FIELD",
+      action: "none",
+      matched_field: null,
+      read_field: null,
+      probed: SEAT_FIELDS,
+      payload_keys: toolInput && typeof toolInput === "object" ? Object.keys(toolInput).sort() : null,
+      wants_write: wantsWrite,
+      session: payload.session_id || "unknown",
+    });
+    process.exit(0);
+  }
+
+  // CLEAN, and observably so: a seat field was present and it was write-capable,
+  // or it was read-only with no write order. `read_field` proves the hook actually
+  // looked in the right place this time.
+  record({
+    event: "PreToolUse",
+    verdict: "CLEAN",
+    action: "none",
+    seat: seat || null,
+    matched_field: seatInfo.seatField,
+    read_field: seatInfo.readField,
+    seat_field_present: true,
+    wants_write: wantsWrite,
+    session: payload.session_id || "unknown",
+  });
+  process.exit(0);
+}
+
+main();

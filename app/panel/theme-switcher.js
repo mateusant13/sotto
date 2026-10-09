@@ -111,6 +111,22 @@
    */
   var picker = null;
 
+  /* ── the chevron dropdown (panel header, 2026-10-08) ───────────────────────
+   * Same persist contract as the picker, plus LIVE PREVIEW: hovering (or
+   * focusing) an option paints it instantly WITHOUT persisting
+   * (`api.set(name, { persist:false })`), clicking (or Enter/Space) COMMITS it
+   * through the same `api.set(name)` persist path the cycle button uses, and
+   * leaving the dropdown or pressing Escape REVERTS to the committed theme
+   * (`api.set(committed, { persist:false })` — the store still holds it, so no
+   * write is needed). The strip lane owns its own dropdown under the same
+   * contract; this is an independent implementation, not an import.
+   */
+  var chevron = null;
+  var dropdown = null;
+  var committedTheme = null;
+  var previewTheme = null;
+  var dropdownOpen = false;
+
   function ensurePicker(doc) {
     if (picker) return picker;
     picker = doc.createElement('div');
@@ -211,6 +227,236 @@
       if (on) opts[i].setAttribute('aria-current', 'true');
       else opts[i].removeAttribute('aria-current');
     }
+  }
+
+  /* The committed theme is the store's answer, not the attribute's: while a
+   * preview is painted the attribute wears the preview and the store still
+   * holds the commit. */
+  function committed() {
+    var stored = readStore();
+    return known(stored) ? stored : currentTheme();
+  }
+
+  function syncDropdown() {
+    if (!dropdown) return;
+    var name = previewTheme || currentTheme();
+    var opts = dropdown.querySelectorAll('.theme-dropdown__option');
+    for (var i = 0; i < opts.length; i += 1) {
+      var on = opts[i].dataset.themeChoice === name;
+      if (on) opts[i].setAttribute('aria-current', 'true');
+      else opts[i].removeAttribute('aria-current');
+    }
+  }
+
+  /* Hover/focus = instant preview, no persistence: the owner sees the theme
+   * before he decides to keep it. */
+  function preview(name) {
+    if (!known(name)) return;
+    previewTheme = name;
+    api.set(name, { persist: false });
+    syncDropdown();
+  }
+
+  /* Click/Enter = commit through the SAME persist path the cycle button and
+   * the picker use: one attribute write plus the store write inside `set`. */
+  function commit(name) {
+    if (!known(name)) return;
+    committedTheme = api.set(name);
+    previewTheme = null;
+    closeDropdown();
+  }
+
+  /* Leaving the dropdown or pressing Escape = revert to the committed theme.
+   * The store still holds it, so the revert is `persist:false` — no write,
+   * just the attribute back where it was. */
+  function revertPreview() {
+    if (!previewTheme) return;
+    previewTheme = null;
+    api.set(committedTheme || FALLBACK, { persist: false });
+    syncDropdown();
+  }
+
+  function openDropdown() {
+    var doc = root.document;
+    if (!doc) return;
+    ensureDropdown(doc);
+    closePicker();
+    committedTheme = committed();
+    previewTheme = null;
+    dropdown.hidden = false;
+    dropdownOpen = true;
+    if (chevron) {
+      chevron.setAttribute('aria-expanded', 'true');
+      paintChevron();
+    }
+    syncDropdown();
+    var first = dropdown.querySelector('.theme-dropdown__option[aria-current="true"]')
+      || dropdown.querySelector('.theme-dropdown__option');
+    if (first) first.focus();
+  }
+
+  function closeDropdown(revert) {
+    if (revert !== false) revertPreview();
+    if (dropdown) dropdown.hidden = true;
+    dropdownOpen = false;
+    if (chevron) {
+      chevron.setAttribute('aria-expanded', 'false');
+      paintChevron();
+    }
+  }
+
+  function toggleDropdown() {
+    if (dropdownOpen && dropdown && !dropdown.hidden) closeDropdown(true);
+    else openDropdown();
+  }
+
+  /* The chevron: its own 28 px button next to the theme button, so the owner
+   * can cycle WITHOUT opening anything and list WITHOUT cycling. Created once
+   * and inserted right after the header's theme button (or at the front of the
+   * cluster when the harness has no theme button yet); the BASE `panel.css`
+   * order rules, not this insert, decide the final arrangement. */
+  function paintChevron() {
+    if (!chevron) return;
+    var name = currentTheme();
+    chevron.title = 'Theme list: ' + labelOf(name) + ' — open for all five, hover previews';
+    chevron.setAttribute('aria-label', chevron.title);
+    if (known(name)) chevron.style.setProperty('--theme-swatch', known(name).swatch);
+  }
+
+  function ensureChevron(doc) {
+    if (chevron && chevron.isConnected) return chevron;
+    var existing = doc.getElementById('theme-chevron');
+    if (existing) {
+      chevron = existing;
+      if (!chevron.dataset.wired) {
+        chevron.dataset.wired = 'true';
+        wireChevron(chevron);
+      }
+      paintChevron();
+      return chevron;
+    }
+    var host = doc.querySelector('.panel__controls');
+    if (!host) return null;
+    var btn = doc.createElement('button');
+    btn.type = 'button';
+    btn.className = 'icon-button theme-chevron';
+    btn.id = 'theme-chevron';
+    btn.dataset.themeChevron = 'true';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-controls', 'theme-dropdown');
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = doc.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = doc.createElementNS(svgNS, 'path');
+    path.setAttribute('d', 'M4 6.5L8 10.5L12 6.5');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    btn.appendChild(svg);
+    var anchor = doc.getElementById('theme-button');
+    if (anchor && anchor.parentNode === host && anchor.nextSibling) host.insertBefore(btn, anchor.nextSibling);
+    else if (anchor && anchor.parentNode === host) host.appendChild(btn);
+    else host.insertBefore(btn, host.firstChild);
+    chevron = btn;
+    wireChevron(btn);
+    paintChevron();
+    return btn;
+  }
+
+  function wireChevron(btn) {
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleDropdown();
+    });
+    btn.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        if (dropdownOpen && dropdown && !dropdown.hidden) {
+          var first = dropdown.querySelector('.theme-dropdown__option[aria-current="true"]')
+            || dropdown.querySelector('.theme-dropdown__option');
+          if (first) first.focus();
+        } else {
+          openDropdown();
+        }
+      } else if (ev.key === 'Escape') {
+        closeDropdown(true);
+      }
+    });
+  }
+
+  function ensureDropdown(doc) {
+    if (dropdown && dropdown.isConnected) return dropdown;
+    var existing = doc.getElementById('theme-dropdown');
+    if (existing) {
+      dropdown = existing;
+      syncDropdown();
+      return dropdown;
+    }
+    var box = doc.createElement('div');
+    box.className = 'theme-dropdown';
+    box.id = 'theme-dropdown';
+    box.hidden = true;
+    box.setAttribute('role', 'listbox');
+    box.setAttribute('aria-label', 'Choose a theme — hover previews, click keeps');
+    var list = doc.createElement('div');
+    list.className = 'theme-dropdown__list';
+    list.setAttribute('role', 'group');
+    THEMES.forEach(function (theme) {
+      var b = doc.createElement('button');
+      b.type = 'button';
+      b.className = 'theme-dropdown__option';
+      b.dataset.themeChoice = theme.name;
+      b.setAttribute('role', 'option');
+      b.style.setProperty('--theme-swatch', theme.swatch);
+      b.textContent = theme.label;
+      var chip = doc.createElement('span');
+      chip.className = 'theme-dropdown__swatch';
+      chip.setAttribute('aria-hidden', 'true');
+      b.insertBefore(chip, b.firstChild);
+      /* HOVER = preview: `mouseenter` paints instantly, `click` commits. */
+      b.addEventListener('mouseenter', function () { preview(theme.name); });
+      b.addEventListener('focus', function () { preview(theme.name); });
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        commit(theme.name);
+      });
+      b.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          commit(theme.name);
+        } else if (ev.key === 'Escape') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeDropdown(true);
+          if (chevron) chevron.focus();
+        } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var opts = dropdown.querySelectorAll('.theme-dropdown__option');
+          var at = -1;
+          for (var i = 0; i < opts.length; i += 1) {
+            if (opts[i] === b) { at = i; break; }
+          }
+          var next = ev.key === 'ArrowDown'
+            ? opts[(at + 1) % opts.length]
+            : opts[(at - 1 + opts.length) % opts.length];
+          if (next) next.focus();
+        }
+      });
+      list.append(b);
+    });
+    box.append(list);
+    /* Mouse-away = revert: leaving the whole box gives back the commit. */
+    box.addEventListener('mouseleave', function () { closeDropdown(true); });
+    doc.body.append(box);
+    dropdown = box;
+    return dropdown;
   }
 
   function paintButton(btn) {
@@ -338,7 +584,9 @@
       if (!opts || opts.persist !== false) writeStore(theme.name);
 
       syncPicker();
+      syncDropdown();
       paintAll(root.document);
+      paintChevron();
       return theme.name;
     },
 
@@ -379,10 +627,11 @@
       return t && t.variant ? t.variant : null;
     },
 
-    /* mount() — idempotent. Wires the header button (the host's or our own) and
-     * the picker, then re-applies the stored choice. Called once at load and
-     * again if the harness injects a button later; a second call must not
-     * duplicate a listener or a picker, which is what `wired` guards. */
+    /* mount() — idempotent. Wires the header button (the host's or our own),
+     * the chevron + dropdown, and the picker, then re-applies the stored
+     * choice. Called once at load and again if the harness injects a button
+     * later; a second call must not duplicate a listener or a picker, which
+     * is what `wired` guards. */
     mount: function () {
       var doc = root.document;
       if (!doc || !doc.body) return false;
@@ -393,7 +642,10 @@
         b.dataset.wired = 'true';
         wireButton(b);
       });
+      ensureChevron(doc);
+      ensureDropdown(doc);
       syncPicker();
+      syncDropdown();
       return Boolean(btn) || all.length > 0;
     },
 
@@ -417,9 +669,16 @@
 
         var boot = function () {
           api.mount();
-          /* Dismissing the picker: a click outside it, Escape, or focus leaving
-           * the header. No caption element is ever a target of these listeners. */
+          /* Dismissing the picker AND the dropdown: a click outside them,
+           * Escape, or focus leaving the header. No caption element is ever a
+           * target of these listeners. A dropdown cancel REVERTS the preview
+           * (`closeDropdown(true)`); a commit already closed it. */
           root.document.addEventListener('click', function (ev) {
+            if (dropdownOpen && dropdown && !dropdown.hidden) {
+              if (dropdown.contains(ev.target)) return;
+              if (chevron && chevron.contains(ev.target)) return;
+              closeDropdown(true);
+            }
             if (!picker || picker.hidden) return;
             if (picker.contains(ev.target)) return;
             var b = root.document.getElementById('theme-button');
@@ -427,7 +686,18 @@
             closePicker();
           });
           root.document.addEventListener('keydown', function (ev) {
-            if (ev.key === 'Escape') closePicker();
+            if (ev.key === 'Escape') {
+              if (dropdownOpen) closeDropdown(true);
+              closePicker();
+            }
+          });
+          root.document.addEventListener('focusin', function (ev) {
+            if (!dropdownOpen || !dropdown || dropdown.hidden) return;
+            if (dropdown.contains(ev.target)) return;
+            if (chevron && chevron.contains(ev.target)) return;
+            var t = ev.target;
+            if (t && t.classList && t.classList.contains('theme-dropdown__option')) return;
+            closeDropdown(true);
           });
         };
 

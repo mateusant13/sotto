@@ -1,0 +1,249 @@
+{
+  "probe_instant_utc": "2026-10-08T00:26:03Z",
+  "horizon_s": 3600,
+  "q_session_dirs": {
+    "population": "directories at depth 4 under ROOT (year/month/day/session)",
+    "count": 2644
+  },
+  "q_recent_session_dirs": {
+    "population": "session dirs (depth 4) whose NEWEST file mtime is within 3600s of probe instant",
+    "count": 125
+  },
+  "q_newest_file_anywhere_in_tree": {
+    "mtime_utc": "2026-10-08T00:26:03Z"
+  },
+  "q5_samples": {
+    "population": "top 5 recent session dirs by newest-file mtime",
+    "samples": [
+      {
+        "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\07\\14-17-05-700-session_bXZzX2EwMDY2MmJmZjU1MjQyY2I5YjU2YzBmMTE2NWJkYWQ3",
+        "n_files": 5,
+        "newest_file_name": "user-message-locators.jsonl",
+        "newest_file_mtime_utc": "2026-10-08T00:26:03Z",
+        "newest_file_size": 31794,
+        "newest_file_age_s": 0.416,
+        "dir_total_bytes": 227544,
+        "messages_jsonl_size": 129311
+      },
+      {
+        "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-25-20-513-session_bXZzX2Q2OTYxNWU2M2Y5OTQ3MjFhZmNlNGQ1Mzg2NzhmZWM5",
+        "n_files": 5,
+        "newest_file_name": "messages.jsonl",
+        "newest_file_mtime_utc": "2026-10-08T00:26:03Z",
+        "newest_file_size": 55019,
+        "newest_file_age_s": 0.416,
+        "dir_total_bytes": 102754,
+        "messages_jsonl_size": 55019
+      },
+      {
+        "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-23-59-859-session_bXZzXzgwNzk4OWJlNTFmYjQ1YjJiOTU5ZTg5YjZhNjRmZmFh",
+        "n_files": 5,
+        "newest_file_name": "user-message-locators.jsonl",
+        "newest_file_mtime_utc": "2026-10-08T00:26:03Z",
+        "newest_file_size": 228,
+        "newest_file_age_s": 0.442,
+        "dir_total_bytes": 687160,
+        "messages_jsonl_size": 639424
+      },
+      {
+        "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-25-21-128-session_bXZzX2VjODY1ZDc2MjBkNDQyNTI5ZGFlODYzZGI2OGI1Yzdl",
+        "n_files": 5,
+        "newest_file_name": "messages.jsonl",
+        "newest_file_mtime_utc": "2026-10-08T00:26:03Z",
+        "newest_file_size": 23975,
+        "newest_file_age_s": 0.462,
+        "dir_total_bytes": 105069,
+        "messages_jsonl_size": 23975
+      },
+      {
+        "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-23-54-574-session_bXZzXzM5Y2FkZTcyNzM4NDRkMzA5ZWQ5Yzk2ZjhmYzVjYzIw",
+        "n_files": 5,
+        "newest_file_name": "user-message-locators.jsonl",
+        "newest_file_mtime_utc": "2026-10-08T00:26:01Z",
+        "newest_file_size": 228,
+        "newest_file_age_s": 1.763,
+        "dir_total_bytes": 178679,
+        "messages_jsonl_size": 130943
+      }
+    ]
+  },
+  "q5_file_breakdown": [
+    {
+      "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\07\\14-17-05-700-session_bXZzX2EwMDY2MmJmZjU1MjQyY2I5YjU2YzBmMTE2NWJkYWQ3",
+      "dir_name_start_stamp": "14-17-05",
+      "files": [
+        {
+          "name": "manifest.json",
+          "mtime_utc": "2026-10-07T14:17:05Z",
+          "size": 1213
+        },
+        {
+          "name": "llm-call.json",
+          "mtime_utc": "2026-10-08T00:22:57Z",
+          "size": 62712
+        },
+        {
+          "name": "messages.jsonl",
+          "mtime_utc": "2026-10-08T00:26:01Z",
+          "size": 129311
+        },
+        {
+          "name": "history-catalog.json",
+          "mtime_utc": "2026-10-08T00:26:03Z",
+          "size": 2514
+        },
+        {
+          "name": "user-message-locators.jsonl",
+          "mtime_utc": "2026-10-08T00:26:03Z",
+          "size": 31794
+        }
+      ]
+    },
+    {
+      "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-25-20-513-session_bXZzX2Q2OTYxNWU2M2Y5OTQ3MjFhZmNlNGQ1Mzg2NzhmZWM5",
+      "dir_name_start_stamp": "00-25-20",
+      "files": [
+        {
+          "name": "manifest.json",
+          "mtime_utc": "2026-10-08T00:25:20Z",
+          "size": 1213
+        },
+        {
+          "name": "llm-call.json",
+          "mtime_utc": "2026-10-08T00:25:24Z",
+          "size": 45832
+        },
+        {
+          "name": "history-catalog.json",
+          "mtime_utc": "2026-10-08T00:25:54Z",
+          "size": 462
+        },
+        {
+          "name": "user-message-locators.jsonl",
+          "mtime_utc": "2026-10-08T00:25:54Z",
+          "size": 228
+        },
+        {
+          "name": "messages.jsonl",
+          "mtime_utc": "2026-10-08T00:26:03Z",
+          "size": 55019
+        }
+      ]
+    },
+    {
+      "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-23-59-859-session_bXZzXzgwNzk4OWJlNTFmYjQ1YjJiOTU5ZTg5YjZhNjRmZmFh",
+      "dir_name_start_stamp": "00-23-59",
+      "files": [
+        {
+          "name": "manifest.json",
+          "mtime_utc": "2026-10-08T00:23:59Z",
+          "size": 1213
+        },
+        {
+          "name": "llm-call.json",
+          "mtime_utc": "2026-10-08T00:24:01Z",
+          "size": 45832
+        },
+        {
+          "name": "messages.jsonl",
+          "mtime_utc": "2026-10-08T00:26:02Z",
+          "size": 639424
+        },
+        {
+          "name": "history-catalog.json",
+          "mtime_utc": "2026-10-08T00:26:03Z",
+          "size": 463
+        },
+        {
+          "name": "user-message-locators.jsonl",
+          "mtime_utc": "2026-10-08T00:26:03Z",
+          "size": 228
+        }
+      ]
+    },
+    {
+      "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-25-21-128-session_bXZzX2VjODY1ZDc2MjBkNDQyNTI5ZGFlODYzZGI2OGI1Yzdl",
+      "dir_name_start_stamp": "00-25-21",
+      "files": [
+        {
+          "name": "manifest.json",
+          "mtime_utc": "2026-10-08T00:25:21Z",
+          "size": 1213
+        },
+        {
+          "name": "llm-call.json",
+          "mtime_utc": "2026-10-08T00:25:52Z",
+          "size": 79192
+        },
+        {
+          "name": "history-catalog.json",
+          "mtime_utc": "2026-10-08T00:26:00Z",
+          "size": 461
+        },
+        {
+          "name": "user-message-locators.jsonl",
+          "mtime_utc": "2026-10-08T00:26:00Z",
+          "size": 228
+        },
+        {
+          "name": "messages.jsonl",
+          "mtime_utc": "2026-10-08T00:26:03Z",
+          "size": 23975
+        }
+      ]
+    },
+    {
+      "session_dir": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-23-54-574-session_bXZzXzM5Y2FkZTcyNzM4NDRkMzA5ZWQ5Yzk2ZjhmYzVjYzIw",
+      "dir_name_start_stamp": "00-23-54",
+      "files": [
+        {
+          "name": "manifest.json",
+          "mtime_utc": "2026-10-08T00:23:54Z",
+          "size": 1213
+        },
+        {
+          "name": "llm-call.json",
+          "mtime_utc": "2026-10-08T00:23:56Z",
+          "size": 45832
+        },
+        {
+          "name": "history-catalog.json",
+          "mtime_utc": "2026-10-08T00:26:01Z",
+          "size": 463
+        },
+        {
+          "name": "messages.jsonl",
+          "mtime_utc": "2026-10-08T00:26:01Z",
+          "size": 130943
+        },
+        {
+          "name": "user-message-locators.jsonl",
+          "mtime_utc": "2026-10-08T00:26:01Z",
+          "size": 228
+        }
+      ]
+    }
+  ],
+  "sqlite_inventory": {
+    "dir": "C:\\Users\\Administrador\\.minimax\\v2\\sqlite",
+    "stores": [
+      {
+        "name": "runtime-state.sqlite",
+        "size": 3598225408,
+        "mtime_utc": "2026-10-08T00:26:00Z"
+      },
+      {
+        "name": "runtime-state.sqlite-shm",
+        "size": 196608,
+        "mtime_utc": "2026-10-07T22:45:34Z"
+      },
+      {
+        "name": "runtime-state.sqlite-wal",
+        "size": 89082672,
+        "mtime_utc": "2026-10-08T00:26:00Z"
+      }
+    ]
+  },
+  "scan_errors": [],
+  "scan_error_count": 0
+}

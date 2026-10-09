@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -33,6 +34,112 @@ THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
 def set_thread_budget(n: int = 2) -> None:
     for var in THREAD_ENV:
         os.environ[var] = str(n)
+
+
+# ---------------------------------------------------------------------------
+# HOST LOAD -- the number a latency measurement is worthless without.
+#
+# MEASURED CONTAMINATION, not a hypothetical: the same probe at n=211200 was
+# recorded at p50 15.14 ms on a 13-lane host (57% under the 16 ms budget) and
+# p50 5.34 ms at n=20000 on a quiet one (100% under), with NO code change
+# between the runs.  A latency figure quoted without the machine state it was
+# taken on is not a measurement of this code -- it is a measurement of this
+# code PLUS whatever else the box was doing, and the reader cannot tell which.
+# That is why the SAME n gave a 3.3x miss in one run and 4.7x in another.
+#
+# So the load state travels WITH the figure.  `host_load()` is the single
+# source of that declaration; every number in _main/index_perf_profile.md is
+# quoted beside the dict this function returns at the time of the run.
+#
+# Cheap on purpose: called once per measurement, never in the hot loop.
+# psutil is optional -- without it every field degrades to None and the
+# declaration says so out loud rather than silently omitting the machine.
+# ---------------------------------------------------------------------------
+
+# A "lane" is any OTHER python process whose command line looks like one of
+# this project's workers.  Self is excluded: a probe is always at least one
+# process, and counting yourself would make the number never reach zero.
+_LANE_CMDLINE_HINTS = ("sotto-wt", "sotto", "_main", "probe", "lane")
+
+
+def host_load(*, cpu_interval: float = 0.25) -> dict:
+    """The machine state a latency number must be quoted beside.  -> dict
+
+    Fields, all measured at call time, never cached:
+      logical_cores, physical_cores  -- os.cpu_count() / psutil.cpu_count(False)
+      cpu_util_pct                   -- psutil, sampled over `cpu_interval` s
+      concurrent_lanes               -- OTHER python procs matching the hints
+      lanes_uninspectable            -- procs that could not be inspected
+      total_processes                -- psutil.pids() length
+      ram_used_pct                   -- psutil.virtual_memory()
+      source                         -- "psutil" | "stdlib"
+    Every field may be None; None means UNKNOWN, never zero.
+    """
+    me = os.getpid()
+    load = {
+        "logical_cores": os.cpu_count(),
+        "physical_cores": None,
+        "cpu_util_pct": None,
+        "concurrent_lanes": None,
+        "lanes_uninspectable": None,
+        "total_processes": None,
+        "ram_used_pct": None,
+        "source": "stdlib",
+    }
+    try:
+        import psutil
+    except Exception:
+        return load
+    load["source"] = "psutil"
+    load["physical_cores"] = psutil.cpu_count(logical=False)
+    load["cpu_util_pct"] = round(psutil.cpu_percent(interval=cpu_interval), 1)
+    load["total_processes"] = len(psutil.pids())
+    load["ram_used_pct"] = round(psutil.virtual_memory().percent, 1)
+
+    lanes = 0
+    skipped = 0
+    for p in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            if p.info["pid"] == me:
+                continue
+            if not (p.info["name"] or "").lower().startswith("python"):
+                continue
+            cmd = " ".join(p.info["cmdline"] or []).lower()
+            if any(h in cmd for h in _LANE_CMDLINE_HINTS):
+                lanes += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # LOUD on purpose: a process that vanished mid-walk is COUNTED, not
+            # silently dropped.  Without this the count is a LOWER BOUND and
+            # would print like a total -- i.e. would fake a quiet host, which
+            # is the exact failure this function exists to prevent.
+            skipped += 1
+    load["concurrent_lanes"] = lanes
+    load["lanes_uninspectable"] = skipped
+    if skipped:
+        sys.stderr.write(
+            f"[host_load] WARNING: {skipped} process(es) uninspectable "
+            f"(AccessDenied/NoSuchProcess); concurrent_lanes={lanes} is a "
+            f"LOWER BOUND, not a total.\n")
+    return load
+
+
+def host_load_line(load: dict | None = None) -> str:
+    """One line, for printing beside the figures.  Unknowns print as `?`."""
+    ld = host_load() if load is None else load
+
+    def s(key, suffix=""):
+        v = ld.get(key)
+        return "?" if v is None else f"{v}{suffix}"
+
+    cores = s("logical_cores")
+    phys = s("physical_cores")
+    core_txt = cores if phys == "?" or phys == cores else f"{phys}p/{cores}l"
+    skip = ld.get("lanes_uninspectable") or 0
+    bound = f"+{skip} uninspectable" if skip else ""
+    return (f"host load        : cpu {s('cpu_util_pct', '%')} of {core_txt} "
+            f"cores, {s('concurrent_lanes')} concurrent lanes {bound}, "
+            f"{s('total_processes')} procs, ram {s('ram_used_pct', '%')} used "
+            f"(src={s('source')})")
 
 
 def connect(path: str | os.PathLike, *, create: bool = True) -> sqlite3.Connection:
@@ -241,10 +348,46 @@ def upsert_marker(conn: sqlite3.Connection, *, seg_id: int, kind: str,
 # DISK decision, never a compute one -- native fp16 matvec measured 8.8x slower).
 # ---------------------------------------------------------------------------
 
+def channel_blocks(rows) -> tuple[np.ndarray, dict[str, tuple[int, int]]]:
+    """(order, blocks) for grouping loaded rows by channel.
+
+    `order` is the permutation that puts the rows of each channel together;
+    `blocks[channel] = (lo, hi)` is that channel's half-open range in the
+    PERMUTED array.  Channels with no rows are simply absent from `blocks`, and
+    an absent channel is how search.py knows it may skip the scan entirely.
+    """
+    if not rows:
+        return np.zeros(0, np.int64), {}
+    codes = np.array([r["channel"] for r in rows], dtype=object)
+    uniq, code = np.unique(codes, return_inverse=True)
+    order = np.argsort(code, kind="stable")
+    sorted_code = code[order]
+    blocks: dict[str, tuple[int, int]] = {}
+    for i, name in enumerate(uniq):
+        lo = int(np.searchsorted(sorted_code, i, side="left"))
+        hi = int(np.searchsorted(sorted_code, i, side="right"))
+        if hi > lo:
+            blocks[str(name)] = (lo, hi)
+    return order, blocks
+
+
 def load_matrix(conn: sqlite3.Connection, *, channels: tuple[str, ...] | None = None,
                 include_missing: bool = False) -> tuple[np.ndarray, np.ndarray,
-                                                         list[str], np.ndarray]:
-    """Returns (vectors fp32 [N,dim], seg_ids [N], channels [N], video_ids [N])."""
+                                                         list[str], np.ndarray,
+                                                         dict[str, tuple[int, int]]]:
+    """Returns (vectors fp32 [N,dim], seg_ids [N], channels [N], video_ids [N],
+    blocks {channel: (lo, hi)}).
+
+    ROWS ARE GROUPED BY CHANNEL.  This is the fix for the measured scale defect
+    (_main/index_perf_profile.md): search.py used to scan the whole matrix once
+    per RRF channel and mask the other channels' rows out afterwards, so with 3
+    channels it moved 3x the bytes it needed and threw 2x of them away -- 93.7%
+    of a query at n=211200, and O(N) on top of that.  Grouping at load makes each
+    channel ONE CONTIGUOUS SLICE, so its KNN is a scan of its own rows only.
+
+    Grouping costs no memory: the buffer is filled through `order`, and
+    `vecs[lo:hi]` is then a view, not a copy.
+    """
     sql = ("SELECT e.seg_id, e.channel, e.dim, e.dtype, e.vec, s.video_id "
            "FROM embedding e JOIN segment s ON s.seg_id = e.seg_id "
            "JOIN video v ON v.id = s.video_id")
@@ -259,19 +402,22 @@ def load_matrix(conn: sqlite3.Connection, *, channels: tuple[str, ...] | None = 
     rows = conn.execute(sql, args).fetchall()
 
     if not rows:
-        return (np.zeros((0, 0), np.float32), np.zeros(0, np.int64), [], np.zeros(0, np.int64))
+        return (np.zeros((0, 0), np.float32), np.zeros(0, np.int64), [],
+                np.zeros(0, np.int64), {})
 
     dim = max(int(r["dim"]) for r in rows)
+    order, blocks = channel_blocks(rows)
     vecs = np.empty((len(rows), dim), dtype=np.float32)
-    for i, r in enumerate(rows):
+    for i, oi in enumerate(order):
+        r = rows[oi]
         blob = r["vec"]
         a = np.frombuffer(blob, dtype=np.float16 if r["dtype"] == "fp16" else np.float32)
         vecs[i, :len(a)] = a.astype(np.float32)   # the one-and-only cast
     vecs /= np.linalg.norm(vecs, axis=1, keepdims=True).clip(1e-12)
-    seg_ids = np.array([int(r["seg_id"]) for r in rows], dtype=np.int64)
-    chans = [r["channel"] for r in rows]
-    video_ids = np.array([int(r["video_id"]) for r in rows], dtype=np.int64)
-    return vecs, seg_ids, chans, video_ids
+    seg_ids = np.array([int(rows[oi]["seg_id"]) for oi in order], dtype=np.int64)
+    chans = [rows[oi]["channel"] for oi in order]
+    video_ids = np.array([int(rows[oi]["video_id"]) for oi in order], dtype=np.int64)
+    return vecs, seg_ids, chans, video_ids, blocks
 
 
 def segments_for(conn: sqlite3.Connection, seg_ids: list[int]) -> dict[int, sqlite3.Row]:

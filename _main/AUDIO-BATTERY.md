@@ -1,0 +1,1 @@
+# AUDIO-BATTERY — placeholder anchor (replaced by the battery doc at commit time)

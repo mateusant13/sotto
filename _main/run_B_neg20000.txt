@@ -1,0 +1,26 @@
+n               : 20000  dim=256 channel=visual fp32
+thread budget   : 2 (env set pre-numpy) mem_source=psutil
+rss before      : 36.1 MB
+queries         : 100  budget=16.0 ms
+chunk           : 4096 rows per upsert_embeddings call
+db              : I:\cc-tmp\slice-scale-u5hk3vbq\scratch.sqlite  journal=wal
+video_id        : 1
+segments        : 20000 in 0.15s (0.0076 ms/row)
+  upserted 4096/20000 (0.3s)
+upsert          : 20000/20000 in 2.19s (0.1095 ms/row)
+embeddings in db: 20000
+db on disk      : 28.1 MiB (page_size=4096)
+SearchIndex     : n=20000 dim=256 load=0.32s rss=58.3 MB
+
+window          : 2026-10-07 16:35:33 -> 16:35:37 (4.8s elapsed)
+population      : n=20000 vectors, 100 timed queries, <=2 threads (OMP=2)
+query ms        : min=8.14 p50=15.98 p95=40.11 max=62.78   (n=100 timed queries)
+under 16 ms     : 51.0% (51/100 queries; gate needs 99.0%)
+empty results   : 0/100
+rss after       : 83.1 MB  delta=+47.0 MB
+FAIL: latency budget MISSED: 51.0% of 100 queries under 16 ms, need 99.0% (min=8.14 p50=15.98 p95=40.11 max=62.78 ms; POPULATION n=20000, WINDOW 100 timed queries, <=2 threads)
+FAIL: p95 40.11 ms over the 16 ms ceiling: 100 timed queries, p50=15.98 max=62.78 ms (POPULATION n=20000, WINDOW 100 timed queries, <=2 threads)
+
+SCALE: n=20000 p50=15.98ms p95=40.11ms frac_under_16ms=0.510 mem_delta=47.0MB
+GATE : budget=16ms under_need>=0.99 p95_need<=16ms  (POPULATION n=20000, WINDOW 100 queries, <=2 threads)
+RESULT: FAIL
