@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -33,6 +34,112 @@ THREAD_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
 def set_thread_budget(n: int = 2) -> None:
     for var in THREAD_ENV:
         os.environ[var] = str(n)
+
+
+# ---------------------------------------------------------------------------
+# HOST LOAD -- the number a latency measurement is worthless without.
+#
+# MEASURED CONTAMINATION, not a hypothetical: the same probe at n=211200 was
+# recorded at p50 15.14 ms on a 13-lane host (57% under the 16 ms budget) and
+# p50 5.34 ms at n=20000 on a quiet one (100% under), with NO code change
+# between the runs.  A latency figure quoted without the machine state it was
+# taken on is not a measurement of this code -- it is a measurement of this
+# code PLUS whatever else the box was doing, and the reader cannot tell which.
+# That is why the SAME n gave a 3.3x miss in one run and 4.7x in another.
+#
+# So the load state travels WITH the figure.  `host_load()` is the single
+# source of that declaration; every number in _main/index_perf_profile.md is
+# quoted beside the dict this function returns at the time of the run.
+#
+# Cheap on purpose: called once per measurement, never in the hot loop.
+# psutil is optional -- without it every field degrades to None and the
+# declaration says so out loud rather than silently omitting the machine.
+# ---------------------------------------------------------------------------
+
+# A "lane" is any OTHER python process whose command line looks like one of
+# this project's workers.  Self is excluded: a probe is always at least one
+# process, and counting yourself would make the number never reach zero.
+_LANE_CMDLINE_HINTS = ("sotto-wt", "sotto", "_main", "probe", "lane")
+
+
+def host_load(*, cpu_interval: float = 0.25) -> dict:
+    """The machine state a latency number must be quoted beside.  -> dict
+
+    Fields, all measured at call time, never cached:
+      logical_cores, physical_cores  -- os.cpu_count() / psutil.cpu_count(False)
+      cpu_util_pct                   -- psutil, sampled over `cpu_interval` s
+      concurrent_lanes               -- OTHER python procs matching the hints
+      lanes_uninspectable            -- procs that could not be inspected
+      total_processes                -- psutil.pids() length
+      ram_used_pct                   -- psutil.virtual_memory()
+      source                         -- "psutil" | "stdlib"
+    Every field may be None; None means UNKNOWN, never zero.
+    """
+    me = os.getpid()
+    load = {
+        "logical_cores": os.cpu_count(),
+        "physical_cores": None,
+        "cpu_util_pct": None,
+        "concurrent_lanes": None,
+        "lanes_uninspectable": None,
+        "total_processes": None,
+        "ram_used_pct": None,
+        "source": "stdlib",
+    }
+    try:
+        import psutil
+    except Exception:
+        return load
+    load["source"] = "psutil"
+    load["physical_cores"] = psutil.cpu_count(logical=False)
+    load["cpu_util_pct"] = round(psutil.cpu_percent(interval=cpu_interval), 1)
+    load["total_processes"] = len(psutil.pids())
+    load["ram_used_pct"] = round(psutil.virtual_memory().percent, 1)
+
+    lanes = 0
+    skipped = 0
+    for p in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            if p.info["pid"] == me:
+                continue
+            if not (p.info["name"] or "").lower().startswith("python"):
+                continue
+            cmd = " ".join(p.info["cmdline"] or []).lower()
+            if any(h in cmd for h in _LANE_CMDLINE_HINTS):
+                lanes += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # LOUD on purpose: a process that vanished mid-walk is COUNTED, not
+            # silently dropped.  Without this the count is a LOWER BOUND and
+            # would print like a total -- i.e. would fake a quiet host, which
+            # is the exact failure this function exists to prevent.
+            skipped += 1
+    load["concurrent_lanes"] = lanes
+    load["lanes_uninspectable"] = skipped
+    if skipped:
+        sys.stderr.write(
+            f"[host_load] WARNING: {skipped} process(es) uninspectable "
+            f"(AccessDenied/NoSuchProcess); concurrent_lanes={lanes} is a "
+            f"LOWER BOUND, not a total.\n")
+    return load
+
+
+def host_load_line(load: dict | None = None) -> str:
+    """One line, for printing beside the figures.  Unknowns print as `?`."""
+    ld = host_load() if load is None else load
+
+    def s(key, suffix=""):
+        v = ld.get(key)
+        return "?" if v is None else f"{v}{suffix}"
+
+    cores = s("logical_cores")
+    phys = s("physical_cores")
+    core_txt = cores if phys == "?" or phys == cores else f"{phys}p/{cores}l"
+    skip = ld.get("lanes_uninspectable") or 0
+    bound = f"+{skip} uninspectable" if skip else ""
+    return (f"host load        : cpu {s('cpu_util_pct', '%')} of {core_txt} "
+            f"cores, {s('concurrent_lanes')} concurrent lanes {bound}, "
+            f"{s('total_processes')} procs, ram {s('ram_used_pct', '%')} used "
+            f"(src={s('source')})")
 
 
 def connect(path: str | os.PathLike, *, create: bool = True) -> sqlite3.Connection:
