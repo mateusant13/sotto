@@ -1,0 +1,6 @@
+# scratch databases and probe artefacts -- MEASURED, reproducible, never committed
+_scratch/
+*.db
+*.db-wal
+*.db-shm
+*.npy
