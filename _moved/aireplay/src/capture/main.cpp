@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -302,14 +303,102 @@ static bool stdin_read_line(HANDLE in, std::string* line, bool* too_long)
     }
 }
 
-static void stdin_write_reply(const std::string& reply)
+// ------------------------------------------------------------------ reply channel
+// One line out per line in, and the line must arrive WHOLE.  Two ways that used to fail:
+//   * WriteFile is allowed to accept only PART of a buffer.  The old code threw the count
+//     away, so a short write silently truncated a json reply and desynced the parent.
+//   * CancelSynchronousIo() at shutdown cancels the reply too, not only the blocked read,
+//     so a shutdown could cut a reply in half and hand the client a half-line.
+//
+// Chosen shape: ONE mutex around the whole write, not a reply queue.  A queue would need its
+// own thread, and that thread would be another thing shutdown has to cancel and join - which
+// is the lane that owns shutdown, not this one.  A lock gives the same "no two writers
+// interleave a prefix" guarantee with no new thread and no new shutdown ordering.
+//
+// And a failed write LATCHES the channel shut.  A partial line is already on the wire and
+// cannot be recalled, so the only safe move left is to stop speaking: no further reply is
+// attempted, the reader stops, and the parent's next read hits EOF on a line with no newline
+// in it - which is detectable.  Writing anything more would only glue a second reply onto the
+// broken one and make it un-misparseable in a quieter way.
+
+// Checked under the lock, so one writer closing the channel stops every later writer too.
+static std::atomic<bool> g_reply_closed{false};
+static std::atomic<long> g_reply_last_error{0};
+
+static const char* reply_closed_reason()
 {
+    switch (g_reply_last_error.load()) {
+        case ERROR_BROKEN_PIPE:        return "the parent closed the pipe";
+        case ERROR_PIPE_NOT_CONNECTED: return "the parent closed the pipe";
+        case ERROR_NO_DATA:            return "the parent closed the pipe";
+        case ERROR_OPERATION_ABORTED:  return "the write was CANCELLED at shutdown";
+        case ERROR_INVALID_HANDLE:     return "the stdout handle is gone";
+        case ERROR_WRITE_FAULT:        return "the write stopped making progress";
+        case ERROR_INSUFFICIENT_BUFFER:return "the write ran past the runaway byte budget";
+        default:                       return "the write failed";
+    }
+}
+
+static std::mutex& reply_mutex()
+{
+    static std::mutex m;   // one lock for the channel, not one per reply
+    return m;
+}
+
+// TRUE  = every byte of the line (newline included) is on the wire.
+// FALSE = the channel is CLOSED and must not be used again.  No third answer exists: a reply
+//         is either complete, or the stream is finished.
+static bool stdin_write_reply(const std::string& reply)
+{
+    // A reply is assembled in memory and is at most a few hundred bytes.  These two limits are
+    // runaway guards for a pipe that accepts bytes forever without ever finishing the line -
+    // a spinning loop here would hold the lock and wedge the channel.
+    const size_t kMaxReplyBytes = 1u << 20;
+    const int    kNoProgressMax = 64;
+
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (!out || out == INVALID_HANDLE_VALUE) return;
+    if (!out || out == INVALID_HANDLE_VALUE) {
+        g_reply_last_error = ERROR_INVALID_HANDLE;
+        g_reply_closed = true;
+        return false;
+    }
     std::string s = reply + "\n";
-    DWORD wrote = 0;
-    WriteFile(out, s.c_str(), (DWORD)s.size(), &wrote, nullptr);
+
+    std::lock_guard<std::mutex> lk(reply_mutex());
+    if (g_reply_closed.load()) return false;   // re-read under the lock, never before it
+
+    size_t sent = 0;
+    int    stalled = 0;
+
+    auto close_channel = [&](long err, const char* why) {
+        g_reply_last_error = err;
+        g_reply_closed = true;
+        log_line("STDIN CONTROL: reply channel CLOSED (%s, err=%ld) after %llu of %llu bytes - a "
+                 "partial json line is already on the wire, so no further reply is attempted",
+                 why, err, (unsigned long long)sent, (unsigned long long)s.size());
+        return false;
+    };
+
+    while (sent < s.size()) {
+        size_t left = s.size() - sent;
+        DWORD want  = (DWORD)(left > 0x7fffffffu ? 0x7fffffffu : left);
+        DWORD wrote = 0;
+        // ERROR_BROKEN_PIPE here is the client saying goodbye, not a fault to retry: there is
+        // nobody left to read the rest of the line, so this is the clean end of the channel.
+        if (!WriteFile(out, s.data() + sent, want, &wrote, nullptr))
+            return close_channel(GetLastError(), reply_closed_reason());
+        sent += wrote;
+        if (wrote == 0) {
+            if (++stalled >= kNoProgressMax)
+                return close_channel(ERROR_WRITE_FAULT, "WriteFile accepted 0 bytes, repeatedly");
+        } else {
+            stalled = 0;
+        }
+        if (sent > kMaxReplyBytes)
+            return close_channel(ERROR_INSUFFICIENT_BUFFER, "the write overran the byte budget");
+    }
     FlushFileBuffers(out);   // the parent reads line by line; a buffered reply looks like a hang
+    return true;
 }
 
 struct StdinCtl {
@@ -337,24 +426,26 @@ struct StdinCtl {
         }
     }
 
-    static void reply(const std::string& fields) { stdin_write_reply(probe_json(fields)); }
+    static bool reply(const std::string& fields) { return stdin_write_reply(probe_json(fields)); }
 
-    static void reply_ok()
+    static bool reply_ok()
     {
         std::string f;
         jf_bool(f, "ok", true);
-        reply(f);
+        return reply(f);
     }
 
-    static void reply_err(const char* code)
+    static bool reply_err(const char* code)
     {
         std::string f;
         jf_bool(f, "ok", false);
         jf_str(f, "error", code);
-        reply(f);
+        return reply(f);
     }
 
-    void handle(const std::string& line, bool too_long);
+    // FALSE = the reply did not go out whole, the channel is CLOSED, and the loop must stop:
+    // the parent is reading a stream whose next line can no longer be trusted.
+    bool handle(const std::string& line, bool too_long);
 
     void loop()
     {
@@ -375,20 +466,27 @@ struct StdinCtl {
                 return;
             }
             if (line.empty() && !too_long) continue;   // a blank line asked nothing
-            handle(line, too_long);
+            // A reply that did not go out whole has already left a fragment on the wire.  The
+            // channel latched itself shut, so stop here instead of reading a command whose
+            // reply can never arrive: the parent gets EOF on the broken line and can tell.
+            if (!handle(line, too_long)) {
+                log_line("STDIN CONTROL: reply channel is CLOSED (%s) - no further reply will be "
+                         "attempted", reply_closed_reason());
+                return;
+            }
         }
     }
 };
 
-void StdinCtl::handle(const std::string& line, bool too_long)
+bool StdinCtl::handle(const std::string& line, bool too_long)
 {
-    if (too_long) { reply_err("line-too-long"); return; }
+    if (too_long) return reply_err("line-too-long");
     size_t a = line.find_first_not_of(" \t\r");
-    if (a == std::string::npos || line[a] != '{') { reply_err("not-a-json-object"); return; }
+    if (a == std::string::npos || line[a] != '{') return reply_err("not-a-json-object");
     std::string cmd;
-    if (!json_find_string(line, "cmd", &cmd)) { reply_err("no-cmd-field"); return; }
-    if (cmd == "ping") { reply_ok(); return; }
-    reply_err("unknown-cmd");
+    if (!json_find_string(line, "cmd", &cmd)) return reply_err("no-cmd-field");
+    if (cmd == "ping") return reply_ok();
+    return reply_err("unknown-cmd");
 }
 
 // ------------------------------------------------------------------ arms
