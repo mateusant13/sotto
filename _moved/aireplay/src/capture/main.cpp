@@ -255,30 +255,109 @@ static void jf_null(std::string& acc, const char* k)
     acc += '"'; acc += k; acc += "\":null";
 }
 
+// End index of the string token whose opening '"' is at `from`, or npos if it never closes.
+// Backslash escapes are SKIPPED so the closing quote is found on the right side of an escaped
+// quote; the bytes themselves are never decoded here.
+static size_t json_string_end(const std::string& s, size_t from)
+{
+    for (size_t j = from + 1; j < s.size(); ++j) {
+        if (s[j] == '\\') { ++j; continue; }
+        if (s[j] == '"') return j;
+    }
+    return std::string::npos;
+}
+
+// Advance *i past ONE non-string value (number, true/false/null, object, array).  Nesting and
+// strings are respected, so a '}' or ',' that belongs to a nested value is not mistaken for
+// the end of THIS object - otherwise the pair after a nested value would be read as a
+// top-level key.  FALSE when the value never closes.
+static bool json_skip_value(const std::string& s, size_t* i)
+{
+    size_t j = *i;
+    if (j >= s.size()) return false;
+    if (s[j] != '{' && s[j] != '[') {          // a scalar runs to the next delimiter
+        while (j < s.size() && s[j] != ',' && s[j] != '}' && s[j] != ' ' && s[j] != '\t' &&
+               s[j] != '\r' && s[j] != '\n') ++j;
+        *i = j;
+        return true;
+    }
+    int depth = 0;
+    for (; j < s.size(); ++j) {
+        if (s[j] == '"') {                     // a string in here can hide a } or ,
+            size_t e = json_string_end(s, j);
+            if (e == std::string::npos) return false;
+            j = e;                             // the for-loop ++j steps past the closing quote
+            continue;
+        }
+        if (s[j] == '{' || s[j] == '[') ++depth;
+        else if (s[j] == '}' || s[j] == ']') {
+            if (--depth == 0) { *i = j + 1; return true; }
+        }
+    }
+    return false;
+}
+
 // The one question this reader answers.  It is NOT a json parser and does not pretend to
 // be: no escapes are decoded (a value containing one is refused, not mangled), nesting is
-// not followed, and anything it cannot read confidently is a FALSE with the caller free to
-// say why.
+// skipped rather than entered, and anything it cannot read confidently is a FALSE with the
+// caller free to say why.
+//
+// AUTHORISATION: this decides what the process is allowed to DO, so a key only counts at the
+// TOP LEVEL of the object.  The old version searched for the raw substring "cmd" anywhere in
+// the line, which let a VALUE forge a command: {"x":"cmd":"ping"} ran ping.  A key must now
+// be a real pair - a '"' that opens right after '{' or ',', and a ':' that closes it - found
+// by walking tokens.  Text sitting inside some other string is that string's data and is
+// consumed whole, so it can never be read as a key.
 static bool json_find_string(const std::string& s, const char* key, std::string* out)
 {
-    std::string pat = "\"";
-    pat += key;
-    pat += "\"";
-    size_t k = s.find(pat);
-    if (k == std::string::npos) return false;
-    size_t i = k + pat.size();
-    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
-    if (i >= s.size() || s[i] != ':') return false;
+    const std::string kKey(key);
+    size_t i = 0;
+    auto skip_ws = [&]() {
+        while (i < s.size() &&
+               (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')) ++i;
+    };
+
+    skip_ws();
+    if (i >= s.size() || s[i] != '{') return false;   // no object: no top level to be inside
     ++i;
-    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
-    if (i >= s.size() || s[i] != '"') return false;
-    ++i;
-    out->clear();
-    while (i < s.size() && s[i] != '"') {
-        if (s[i] == '\\') return false;
-        *out += s[i++];
+    skip_ws();
+    if (i < s.size() && s[i] == '}') return false;     // {}
+
+    for (;;) {
+        if (i >= s.size() || s[i] != '"') return false; // a pair starts with a quoted key
+        const size_t kbeg = i + 1;
+        const size_t kend = json_string_end(s, i);
+        if (kend == std::string::npos) return false;    // unterminated key
+        const std::string k = s.substr(kbeg, kend - kbeg);
+        i = kend + 1;
+
+        skip_ws();
+        if (i >= s.size() || s[i] != ':') return false; // "cmd" with no value is not a pair
+        ++i;
+        skip_ws();
+        if (i >= s.size()) return false;
+
+        const bool matched = (k == kKey);
+        if (s[i] == '"') {
+            const size_t vbeg = i + 1;
+            const size_t vend = json_string_end(s, i);
+            if (vend == std::string::npos) return false;
+            if (!matched) { i = vend + 1; }              // skip the data, look at the next pair
+            else {
+                const std::string raw = s.substr(vbeg, vend - vbeg);
+                if (raw.find('\\') != std::string::npos) return false;  // not decoded -> not read
+                out->assign(raw);
+                return true;
+            }
+        } else {
+            if (matched) return false;                   // present, but not a string
+            if (!json_skip_value(s, &i)) return false;   // must still land on the next pair
+        }
+
+        skip_ws();
+        if (i < s.size() && s[i] == ',') { ++i; skip_ws(); continue; }
+        return false;      // '}' with the object walked out, or malformed: either way, no pair
     }
-    return i < s.size();
 }
 
 // TRUE = a whole line arrived.  FALSE = the read failed (pipe closed) or we were cancelled.
@@ -307,8 +386,19 @@ static void stdin_write_reply(const std::string& reply)
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
     if (!out || out == INVALID_HANDLE_VALUE) return;
     std::string s = reply + "\n";
-    DWORD wrote = 0;
-    WriteFile(out, s.c_str(), (DWORD)s.size(), &wrote, nullptr);
+    // A pipe write may land SHORT (pipe buffer full between two readers).  The old code threw
+    // `wrote` away, so the tail of the reply was silently dropped and every later line the
+    // parent read was misaligned - a truncated JSON line is a broken stream, not a short one.
+    // WriteFile counts NUL bytes, not std::string::size(), so the total must be passed too.
+    const char* p = s.data();
+    DWORD left = (DWORD)s.size();
+    while (left > 0) {
+        DWORD wrote = 0;
+        if (!WriteFile(out, p, left, &wrote, nullptr)) break;   // pipe gone: nothing left to say
+        if (wrote == 0) break;                                  // no progress: never spin
+        p += wrote;
+        left -= wrote;
+    }
     FlushFileBuffers(out);   // the parent reads line by line; a buffered reply looks like a hang
 }
 
