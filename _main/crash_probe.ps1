@@ -56,7 +56,9 @@ public static extern bool CloseHandle(IntPtr hObject);
 
 $PROCESS_TERMINATE          = 0x0001
 $PROCESS_QUERY_LIMITED_INFO = 0x1000
-$KILL_EXITCODE             = 0xC000013A   # STATUS_CONTROL_C_EXIT
+# NOTE: PowerShell parses 0xC000013A as a NEGATIVE Int32 (-1073741510), so it cannot be cast
+# straight to UInt32. Convert through the hex string instead, or the cast throws.
+$KILL_EXITCODE             = [System.Convert]::ToUInt32('C000013A', 16)   # STATUS_CONTROL_C_EXIT
 
 function Invoke-HardKill([int]$ProcId) {
     # Returns $true only if TerminateProcess() itself succeeded on a live handle.
@@ -297,6 +299,16 @@ function Invoke-Run {
 
 # ------------------------------------------------------------------ main
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+
+# Reap orphans from an aborted earlier attempt. Scoped to THIS lane's exe name only
+# (crash4-capture.exe), so it can never touch another lane's aireplay-capture.exe.
+$orphans = @(Get-Process -Name 'crash4-capture' -ErrorAction SilentlyContinue)
+if ($orphans.Count -gt 0) {
+    Write-Host ("reaping {0} orphan capture process(es) from a previous attempt" -f $orphans.Count)
+    foreach ($o in $orphans) { Stop-Process -Id $o.Id -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 800
+}
+
 $results = New-Object System.Collections.ArrayList
 
 $phases = @(
