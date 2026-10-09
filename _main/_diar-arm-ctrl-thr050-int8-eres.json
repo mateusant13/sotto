@@ -1,0 +1,93 @@
+{
+  "instrument": "_diar-run.py (sherpa-onnx OfflineSpeakerDiarization)",
+  "tag": "ctrl-thr050-int8-eres",
+  "wav": "H:\\sotto\\_main\\diar-models\\0-four-speakers-zh.wav",
+  "wav_bytes": 1819586,
+  "channels_in": 1,
+  "rate_in": 16000,
+  "rate_model": 16000,
+  "audio_s": 56.8606875,
+  "seg_model": "H:\\sotto\\_main\\diar-models\\sherpa-onnx-pyannote-segmentation-3-0\\model.int8.onnx",
+  "emb_model": "H:\\sotto\\_main\\diar-models\\3dspeaker_eres2net_base_16k.onnx",
+  "threads": 2,
+  "provider": "cpu",
+  "num_clusters_arg": -1,
+  "threshold": 0.5,
+  "min_duration_on": 0.3,
+  "min_duration_off": 0.5,
+  "window_shift_ratio": null,
+  "window_shift_ratio_supported": false,
+  "load_s": 0.00482689999989816,
+  "model_load_s": 0.6325174000012339,
+  "wall_s": 15.075144700000237,
+  "cpu_s": 25.5,
+  "rtf": 0.26512420730052266,
+  "cpu_pct_of_one_core": 169.1526052151234,
+  "rss_before_mb": 115.974144,
+  "rss_after_mb": 220.286976,
+  "n_segments": 10,
+  "n_speakers": 7,
+  "speakers": [
+    0,
+    1,
+    3,
+    5,
+    7,
+    8,
+    10
+  ],
+  "speech_s": 30.459377765655518,
+  "speech_frac": 0.5356843032482771,
+  "segments": [
+    {
+      "start": 0.6384687423706055,
+      "end": 6.848468780517578,
+      "speaker": 0
+    },
+    {
+      "start": 7.017219066619873,
+      "end": 10.679094314575195,
+      "speaker": 1
+    },
+    {
+      "start": 11.472219467163086,
+      "end": 13.547843933105469,
+      "speaker": 1
+    },
+    {
+      "start": 12.906594276428223,
+      "end": 16.990345001220703,
+      "speaker": 3
+    },
+    {
+      "start": 22.154094696044922,
+      "end": 24.837221145629883,
+      "speaker": 5
+    },
+    {
+      "start": 27.655345916748047,
+      "end": 29.460969924926758,
+      "speaker": 7
+    },
+    {
+      "start": 30.017845153808594,
+      "end": 31.502845764160156,
+      "speaker": 7
+    },
+    {
+      "start": 33.96659469604492,
+      "end": 37.91534423828125,
+      "speaker": 8
+    },
+    {
+      "start": 48.04034423828125,
+      "end": 50.487220764160156,
+      "speaker": 10
+    },
+    {
+      "start": 52.54597091674805,
+      "end": 54.60472106933594,
+      "speaker": 0
+    }
+  ]
+}

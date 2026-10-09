@@ -1,9 +1,203 @@
 #include "test_window.h"
 
+#include <algorithm>
+
 namespace aireplay {
 
 static const wchar_t* kClass = L"AireplayCaptureTestWindow";
 static TestWindow*    g_self  = nullptr;
+
+// ------------------------------------------------------------------ the output desktop
+//
+// Measured, not assumed, and the two sources are cross-checked against each other rather
+// than one being trusted blindly:
+//
+//   EnumDisplaySettings(ENUM_CURRENT_SETTINGS)  -> dmPelsWidth/dmPelsHeight are the mode's
+//       PHYSICAL pixel counts.  This is the number a capture pipeline must use.
+//   GetSystemMetrics(SM_CXVIRTUALSCREEN)       -> for a DPI-UNAWARE process these are
+//       LOGICAL (virtualised) pixels.  At 100% scaling they coincide; at 150% on a 4K panel
+//       they do not, and capturing the logical number would silently capture a 2560x1440
+//       crop of a 3840x2160 desktop.
+//
+// So the monitor size comes from EnumDisplaySettings when it is available, and the
+// disagreement is reported rather than resolved silently.
+
+static bool dpi_awareness_of_this_thread(int* awareness, uint32_t* dpi)
+{
+    // Resolved dynamically: these are USER32 exports added in Windows 10 1607, and binding
+    // them statically would make the binary refuse to load on an older user32.dll.
+    typedef void* (WINAPI *PFN_GetThreadDpiAwarenessContext)();
+    typedef int   (WINAPI *PFN_GetAwarenessFromDpiAwarenessContext)(void*);
+    typedef UINT  (WINAPI *PFN_GetDpiForSystem)();
+
+    *awareness = -1;
+    *dpi = 0;
+
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32) return false;
+
+    FARPROC p_ctx = GetProcAddress(user32, "GetThreadDpiAwarenessContext");
+    FARPROC p_aw  = GetProcAddress(user32, "GetAwarenessFromDpiAwarenessContext");
+    FARPROC p_dpi = GetProcAddress(user32, "GetDpiForSystem");
+    PFN_GetThreadDpiAwarenessContext        get_ctx = (PFN_GetThreadDpiAwarenessContext)(void*)p_ctx;
+    PFN_GetAwarenessFromDpiAwarenessContext get_aw  = (PFN_GetAwarenessFromDpiAwarenessContext)(void*)p_aw;
+    PFN_GetDpiForSystem get_dpi = (PFN_GetDpiForSystem)(void*)p_dpi;
+
+    if (get_ctx && get_aw) *awareness = get_aw(get_ctx());
+    else if (get_dpi) *dpi = get_dpi();
+    if (!*dpi) {
+        // LOGPIXELSX off the desktop DC is the classic fallback and is available everywhere.
+        HDC screen = GetDC(nullptr);
+        int lx = screen ? GetDeviceCaps(screen, LOGPIXELSX) : 0;
+        ReleaseDC(nullptr, screen);
+        if (lx > 0) *dpi = (uint32_t)lx;
+    }
+    return *awareness != -1 || *dpi != 0;
+}
+
+// ENUM_CURRENT_SETTINGS against the NULL device = the primary display's current mode.
+static bool primary_mode_physical_size(uint32_t* w, uint32_t* h)
+{
+    DEVMODEW dm;
+    memset(&dm, 0, sizeof(dm));
+    dm.dmSize = (WORD)sizeof(dm);
+    if (!EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm)) return false;
+    if (dm.dmPelsWidth == 0 || dm.dmPelsHeight == 0) return false;
+    *w = dm.dmPelsWidth;
+    *h = dm.dmPelsHeight;
+    return true;
+}
+
+DesktopInfo query_output_desktop()
+{
+    DesktopInfo d;
+
+    d.awareness = -1;
+    dpi_awareness_of_this_thread(&d.awareness, &d.dpi);
+    // DPI_AWARENESS_UNAWARE == 0: SM_* values are then LOGICAL pixels.
+    d.metrics_virtualised = (d.awareness == DPI_AWARENESS_UNAWARE);
+
+    d.virt_w = (uint32_t)std::max(0, GetSystemMetrics(SM_CXVIRTUALSCREEN));
+    d.virt_h = (uint32_t)std::max(0, GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    if (d.virt_w == 0) d.virt_w = (uint32_t)std::max(0, GetSystemMetrics(SM_CXSCREEN));
+    if (d.virt_h == 0) d.virt_h = (uint32_t)std::max(0, GetSystemMetrics(SM_CYSCREEN));
+
+    uint32_t pw = 0, ph = 0;
+    if (primary_mode_physical_size(&pw, &ph)) {
+        d.mon_w = pw;
+        d.mon_h = ph;
+        d.mon_is_physical = true;
+    }
+
+    if (d.mon_w == 0 || d.mon_h == 0) {
+        // No physical size available: fall back to the virtual desktop, which is the best
+        // remaining estimate.  Saying so is the point.
+        d.mon_w = d.virt_w;
+        d.mon_h = d.virt_h;
+        d.note = "EnumDisplaySettings unavailable; monitor size taken from the VIRTUAL DESKTOP";
+    } else if (d.metrics_virtualised && (d.mon_w != d.virt_w || d.mon_h != d.virt_h)) {
+        d.note = "this process is DPI-UNAWARE: GetSystemMetrics reports LOGICAL " +
+                 std::to_string(d.virt_w) + "x" + std::to_string(d.virt_h) +
+                 " while the display mode is PHYSICAL " + std::to_string(d.mon_w) + "x" +
+                 std::to_string(d.mon_h) + " — the PHYSICAL mode is the one used";
+    } else {
+        d.note = "measured: display mode " + std::to_string(d.mon_w) + "x" + std::to_string(d.mon_h) +
+                 ", virtual desktop " + std::to_string(d.virt_w) + "x" + std::to_string(d.virt_h);
+    }
+    if (d.dpi) d.note += ", dpi=" + std::to_string(d.dpi);
+    if (d.awareness >= 0) {
+        static const char* kAware[3] = { "DPI_AWARENESS_UNAWARE", "DPI_AWARENESS_SYSTEM_AWARE",
+                                         "DPI_AWARENESS_PER_MONITOR_AWARE" };
+        if (d.awareness >= 0 && d.awareness <= 2) d.note += std::string(", ") + kAware[d.awareness];
+    }
+
+    d.valid = (d.mon_w > 0 && d.mon_h > 0);
+    return d;
+}
+
+// ------------------------------------------------------------------ the negotiation, pure
+const char* window_source_name(WindowDecision::Source s)
+{
+    switch (s) {
+    case WindowDecision::Source::Fallback:                return "fallback";
+    case WindowDecision::Source::Desktop:                 return "output-desktop";
+    case WindowDecision::Source::Monitor:                 return "primary-monitor";
+    case WindowDecision::Source::RequestedAsIs:           return "requested";
+    case WindowDecision::Source::RequestedClampedToMonitor: return "requested-clamped-to-monitor";
+    }
+    return "unknown";
+}
+
+static uint32_t even_floor(uint32_t v) { return (v >= 2 && (v & 1u)) ? v - 1u : v; }
+
+WindowDecision negotiate_capture_window(uint32_t req_w, uint32_t req_h, const DesktopInfo& d)
+{
+    WindowDecision r;
+    r.requested_auto = (req_w == 0 || req_h == 0);
+
+    // A request with only one side set is not a resolution; treat it as auto rather than
+    // inventing the other side, and let the desktop supply it.
+    const uint32_t rw = (req_w && req_h) ? req_w : 0;
+    const uint32_t rh = (req_w && req_h) ? req_h : 0;
+
+    // The desktop's own size is the ceiling we can honestly honour: a window larger than
+    // the display cannot be composed, and WGC would deliver a smaller frame than the
+    // pipeline was armed for.
+    const uint32_t cap_w = d.mon_w;
+    const uint32_t cap_h = d.mon_h;
+
+    if (rw == 0 || rh == 0) {
+        // AUTO: take the output desktop's own size.
+        if (d.valid && cap_w > 0 && cap_h > 0) {
+            r.source = d.mon_is_physical ? WindowDecision::Source::Desktop
+                                         : WindowDecision::Source::Monitor;
+            r.w = even_floor(cap_w);
+            r.h = even_floor(cap_h);
+            r.note = "AUTO: capture window follows the output desktop";
+        } else {
+            r.source = WindowDecision::Source::Fallback;
+            r.w = kDefaultCaptureW;
+            r.h = kDefaultCaptureH;
+            r.note = "AUTO but the output desktop could NOT be measured (" + d.note +
+                     "); falling back to the product anchor";
+        }
+    } else if (d.valid && cap_w > 0 && cap_h > 0 && (rw > cap_w || rh > cap_h)) {
+        // The caller asked for more than the display has.  Capture what exists.
+        r.source = WindowDecision::Source::RequestedClampedToMonitor;
+        r.clamped = true;
+        r.w = even_floor(std::min(rw, cap_w));
+        r.h = even_floor(std::min(rh, cap_h));
+        r.note = "REQUESTED " + std::to_string(rw) + "x" + std::to_string(rh) +
+                 " CLAMPED to the display's " + std::to_string(cap_w) + "x" +
+                 std::to_string(cap_h) + " (a window larger than the display cannot be composed)";
+    } else {
+        r.source = WindowDecision::Source::RequestedAsIs;
+        r.w = rw;
+        r.h = rh;
+        r.note = "REQUESTED " + std::to_string(rw) + "x" + std::to_string(rh) +
+                 " fits the output desktop; used as given";
+    }
+
+    // NV12's plane 1 is a half-size R8G8 view of the same texture, so both sides must be
+    // even.  Floor, never round up: rounding up would exceed the display again.
+    const uint32_t ew = even_floor(r.w);
+    const uint32_t eh = even_floor(r.h);
+    if (ew != r.w || eh != r.h) {
+        r.even_floored = true;
+        r.w = ew;
+        r.h = eh;
+        r.note += "; floored to " + std::to_string(ew) + "x" + std::to_string(eh) +
+                  " because NV12 plane 1 is a half-size view (both sides must be even)";
+    }
+
+    if (r.w == 0 || r.h == 0) {
+        r.source = WindowDecision::Source::Fallback;
+        r.w = kDefaultCaptureW;
+        r.h = kDefaultCaptureH;
+        r.note += "; produced a degenerate size, using the product anchor";
+    }
+    return r;
+}
 
 TestWindow::~TestWindow() { stop(); }
 
@@ -74,6 +268,27 @@ LRESULT CALLBACK TestWindow::wnd_proc(HWND h, UINT m, WPARAM w, LPARAM l)
     }
     case WM_CLOSE:
         return 0;
+    // ---- the output desktop changed under us ----------------------------------------------
+    // WM_DISPLAYCHANGE carries the new resolution in its wParam (LOWORD x, HIWORD y).  It is
+    // the mode-change notification Windows sends to top-level windows; WM_SIZE covers the
+    // case where the desktop is resized by something that does not send it.
+    case WM_DISPLAYCHANGE: {
+        if (self) {
+            const uint32_t nw = (uint32_t)LOWORD(l);
+            const uint32_t nh = (uint32_t)HIWORD(l);
+            self->note_display_size(nw, nh, true);
+            log_line("  TEST WINDOW: WM_DISPLAYCHANGE -> the OUTPUT DESKTOP is now %ux%u "
+                     "(was %ux%u) — the capture window cannot be silently re-fitted; "
+                     "the run must refuse rather than encode the new size into an old stream",
+                     nw, nh, self->desktop_w_.load(), self->desktop_h_.load());
+        }
+        return 0;
+    }
+    case WM_SIZE:
+        if (self && self->tracking_) {
+            self->note_display_size((uint32_t)LOWORD(l), (uint32_t)HIWORD(l), true);
+        }
+        return 0;
     case WM_DESTROY:
         if (self) self->quit_ = true;
         PostQuitMessage(0);
@@ -85,6 +300,16 @@ LRESULT CALLBACK TestWindow::wnd_proc(HWND h, UINT m, WPARAM w, LPARAM l)
 }
 
 DWORD WINAPI TestWindow::thread_entry(LPVOID self) { thread_main((TestWindow*)self); return 0; }
+
+void TestWindow::note_display_size(uint32_t nw, uint32_t nh, bool from_user)
+{
+    (void)from_user;
+    if (nw == 0 || nh == 0) return;
+    if (nw == desktop_w_.load() && nh == desktop_h_.load()) return;
+    desktop_w_.store(nw);
+    desktop_h_.store(nh);
+    display_changes_.fetch_add(1);
+}
 
 void TestWindow::thread_main(TestWindow* self)
 {
@@ -193,6 +418,12 @@ void TestWindow::thread_main(TestWindow* self)
                  : "WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|HWND_BOTTOM; only a 4x4 px corner of this "
                    "window is on the desktop, at its bottom-right, under the taskbar -- and MEASURED, "
                    "an off-desktop window is captured as uniform BLACK");
+
+    // From here on a WM_SIZE means the desktop moved, not that we were shown.  The baseline
+    // is the size we were actually created at, so a mode change is a COMPARISON against it.
+    self->tracking_ = true;
+    self->desktop_w_.store(self->w_);
+    self->desktop_h_.store(self->h_);
 
     // MEASURED (smoke-10): a 1 ms MsgWaitForMultipleObjects timeout is quantised to the
     // system tick (~15.6 ms), so the loop ran at 68 iterations/s and painted at 34/s

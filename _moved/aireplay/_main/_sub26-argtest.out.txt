@@ -1,0 +1,5 @@
+ARGC=4
+  argv[0]='H:\\sotto\\_moved\\aireplay\\_main\\_sub26_argtest.py'
+  argv[1]='DBARG'
+  argv[2]='PARENTARG'
+  argv[3]='SELFARG'

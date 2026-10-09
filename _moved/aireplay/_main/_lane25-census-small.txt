@@ -1,0 +1,20 @@
+==========================================================================
+ CENSUS - locale-dependent group separators (pt-BR renders them as ".")
+==========================================================================
+WINDOW     : G:\Temp\lane25-small-da052161
+IN SCOPE  : 1 source file(s) (extensions: .ps1 .psm1 .cmd .bat .py .cpp .c .h .hpp .js .mjs .cjs)
+OUT OF SCOPE: 0 document/output file(s) - hits counted, listed below
+TREE TOTAL : 1 file(s)
+
+POPULATION : 2 placeholder site(s) on 2 line(s), in 1 file(s)
+             1 MEMORY · 1 DURATION · 0 SAFE
+EXCLUDED   : 0 comment line(s) skipped; 0 pattern(s) in documents/output
+             0 ToString('N') GUID site(s) (no-dashes format, not a number)
+             0 file(s) unreadable (a live lane holds them open) and were SKIPPED
+
+SITES (MEMORY and DURATION are the ones a reader parses with a decimal point)
+  MEMORY    _main\demo.ps1:1  {0,9:N1}  unit 'MB'
+  DURATION  _main\demo.ps1:2  {0:N1}    unit 's'
+
+A census is a MEASUREMENT, not a verdict: it exits 0 whenever it ran.
+The verdict belongs to _lane25-locale-number-gate.ps1.

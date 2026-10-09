@@ -1,0 +1,5 @@
+warning: in the working copy of '_moved/aireplay/src/capture/main.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '_moved/aireplay/src/capture/replay.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '_moved/aireplay/src/capture/replay.h', LF will be replaced by CRLF the next time Git touches it
+[main 664644d] capture: offline --cut-from-h264 proves the muxer without WGC or NVENC
+ 3 files changed, 133 insertions(+), 3 deletions(-)

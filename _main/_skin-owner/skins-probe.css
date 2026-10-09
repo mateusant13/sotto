@@ -1,0 +1,7 @@
+/* A stand-in for the freeze lane's app.css: two real rules and one the shim must carry. */
+body { color: rgb(10, 20, 30); background: rgb(40, 50, 60); }
+html, body, #root { height: 100%; }
+.frozen { color: rgb(200, 100, 50); font-size: 24px; letter-spacing: 0.2em; }
+.animated { animation: softIn 2s linear both; }
+@keyframes softIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes caretBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }

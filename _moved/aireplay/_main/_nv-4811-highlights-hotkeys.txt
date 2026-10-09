@@ -1,0 +1,48 @@
+What are the Highlights keyboard shortcuts? | NVIDIA
+Skip Navigation
+Your browser either does not have JavaScript enabled or does not appear to support enough features of JavaScript to be used well on this site.
+NVIDIA SUPPORT
+NVIDIA Home > Support Home Page > Knowledgebase Home Page > What are the Highlights keyboard shortcuts?
+Log In | Sign Up
+What are the Highlights keyboard shortcuts?
+Updated 09/29/2021 01:10 PM
+What are the Highlights keyboard shortcuts?
+You can find a complete list of keyboard shortcuts by opening the in-game overlay and navigating to Settings > Keyboard shortcuts.
+You can find a complete list of keyboard shortcuts by opening the in-game overlay and navigating to Settings > Keyboard shortcuts.
+Keyboard Shortcut
+Windows
+macOS
+Open/Close the Share In-Game Overlay (IGO)
+Ctrl+G
+command( Ôîÿ) +G
+Save a screenshot
+Ctrl+1
+command( Ôîÿ) +1
+Toggle Instant Replay on/off
+Ctrl+Shift+0
+command( Ôîÿ) +shift+0
+Save last [user defined] mins/seconds recorded
+Ctrl+0
+command( Ôîÿ) +0
+Toggle Record on/off
+Ctrl+9
+command( Ôîÿ) +9
+Toggle Microphone on/off
+Ctrl+M
+command( Ôîÿ) +M
+Is this answer helpful?
+Yes
+No
+Answers others found helpful
+How do I enable NVIDIA Highlights on GeForce NOW?
+NVIDIA App In-Game Performance and Latency Overlay
+Where are the Highlights videos and screenshots stored?
+NVIDIA Highlights now available in GeForce NOW
+SHIELD TV Shortcuts
+Live Chat
+Chat online with one of our support agents
+CHAT NOW
+ASK US A QUESTION
+Contact Support for assistance
+800.797.6530
+Ask a Question

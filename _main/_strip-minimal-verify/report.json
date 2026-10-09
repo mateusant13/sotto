@@ -1,0 +1,59 @@
+{
+  "ok": true,
+  "failed": [],
+  "errors": [],
+  "checks": {
+    "rule_picker_strip_none_important": true,
+    "rule_tune_strip_none_important": true,
+    "surface_is_strip": true,
+    "picker_exists_after_open": true,
+    "picker_open_but_hidden_on_strip": true,
+    "tune_open_but_hidden_on_strip": true,
+    "strip_controls_visible": true,
+    "static_hides_hold_on_strip": true,
+    "picker_usable_on_panel": true,
+    "tune_usable_on_panel": true
+  },
+  "detail": {
+    "obs": {
+      "pickerRule": {
+        "sel": "body[data-surface=\"strip\"] .theme-picker, body[data-surface=\"strip\"] #tune-dialog",
+        "display": "none",
+        "prio": "important"
+      },
+      "tuneRule": {
+        "sel": "body[data-surface=\"strip\"] .theme-picker, body[data-surface=\"strip\"] #tune-dialog",
+        "display": "none",
+        "prio": "important"
+      },
+      "surface": "strip",
+      "stripThemeButtonDisplay": "flex",
+      "pickerExists": true,
+      "pickerHiddenAttr": false,
+      "pickerDisplayOnStrip": "none",
+      "tuneOpenAttempt": true,
+      "tuneOpenError": null,
+      "tuneExists": true,
+      "tuneOpenAttr": true,
+      "tuneDisplayOnStrip": "none",
+      "stripbarDisplay": "flex",
+      "stripLiveDisplay": "flex",
+      "stripPauseDisplay": "flex",
+      "stripOpenDisplay": "flex",
+      "stripStateDisplay": "flex",
+      "headerDisplay": "none",
+      "historyDisplay": "none",
+      "skinDisplay": "none",
+      "surfaceBack": "panel",
+      "panelThemeButtonExists": true,
+      "panelThemeButtonDisplay": "block",
+      "panelThemeButtonParent": "panel__controls",
+      "activeBefore": "BODY",
+      "pickerDisplayOnPanel": "block",
+      "pickerHiddenOnPanel": false,
+      "activeAfter": "theme-picker__option",
+      "tuneDisplayOnPanel": "block",
+      "tuneOpenOnPanel": true
+    }
+  }
+}

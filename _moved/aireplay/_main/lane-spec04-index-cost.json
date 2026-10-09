@@ -1,0 +1,195 @@
+{
+  "lane": "spec04-index-cost",
+  "corpus_shape": {
+    "videos": 1000,
+    "segments": 120000,
+    "transcripts": 72000,
+    "ocr": 19200,
+    "window_ms": 5000,
+    "note": "speech 60% / ocr 16% are research 07 section 6 ASSUMPTIONS"
+  },
+  "arms": {
+    "ARM-0-fts5": {
+      "with_fts5": true,
+      "census": {
+        "sqlite_version": "3.43.1",
+        "threads": 20,
+        "python": "3.11.8"
+      },
+      "populate": {
+        "relational_s": 0.184,
+        "transcript_s": 1.674,
+        "transcript_rows_per_s": 43009,
+        "ocr_s": 0.084,
+        "ocr_rows_per_s": 228229
+      },
+      "light_commit": {
+        "n": 200,
+        "min_ms": 0.036,
+        "median_ms": 0.0458,
+        "p95_ms": 0.167,
+        "max_ms": 18.1258,
+        "shape": "segment + transcript + fts5 trigger, one commit per window"
+      },
+      "lexical": {
+        "one_token": {
+          "ms": 12.7403,
+          "n_rows": 10,
+          "raised": null,
+          "sample": [
+            [
+              15603
+            ],
+            [
+              5098
+            ]
+          ]
+        },
+        "phrase": {
+          "ms": 15.6925,
+          "n_rows": 10,
+          "raised": null,
+          "sample": [
+            [
+              15603
+            ],
+            [
+              5098
+            ]
+          ]
+        },
+        "prefix": {
+          "ms": 12.7552,
+          "n_rows": 10,
+          "raised": null,
+          "sample": [
+            [
+              15603
+            ],
+            [
+              5098
+            ]
+          ]
+        },
+        "hex_code": {
+          "ms": 12.5826,
+          "n_rows": 10,
+          "raised": null,
+          "sample": [
+            [
+              38752
+            ],
+            [
+              47278
+            ]
+          ]
+        },
+        "hyphen_unquoted": {
+          "ms": 0.0325,
+          "n_rows": 0,
+          "raised": "OperationalError: no such column: feira",
+          "sample": []
+        },
+        "hyphen_quoted": {
+          "ms": 15.5425,
+          "n_rows": 10,
+          "raised": null,
+          "sample": [
+            [
+              55086
+            ],
+            [
+              3066
+            ]
+          ]
+        },
+        "joined_answer_path": {
+          "ms": 37.5716,
+          "n_rows": 10,
+          "raised": null,
+          "sample": [
+            [
+              "H:\\clips\\clip_0130.mp4",
+              15000,
+              "jogador matou o chefe ERRO 0x80070005 kit de suprimento vida baixa kit de suprimento kit de suprimento clique em Confirmar"
+            ],
+            [
+              "H:\\clips\\clip_0042.mp4",
+              290000,
+              "segunda-feira vida baixa sala de espera ERRO 0x80070005 jogador matou o chefe vida baixa sala de espera"
+            ]
+          ]
+        },
+        "k100": {
+          "min": 14.0106,
+          "median": 14.583,
+          "max": 16.9881
+        }
+      },
+      "reconcile": {
+        "segments_not_indexed": 120201,
+        "scan_ms": 8.667,
+        "transcripts_absent_from_fts": 0,
+        "orphan_scan_ms": 55.584,
+        "surfaces_agree": true
+      },
+      "sizes": {
+        "file_bytes": 33624064,
+        "file_MB": 33.62,
+        "file_MiB": 32.07
+      },
+      "rows": {
+        "video": 1000,
+        "segment": 120201,
+        "transcript": 72200,
+        "ocr": 19200
+      }
+    },
+    "ARM-NEG-no-fts5": {
+      "with_fts5": false,
+      "census": {
+        "sqlite_version": "3.43.1",
+        "threads": 20,
+        "python": "3.11.8"
+      },
+      "populate": {
+        "relational_s": 0.18,
+        "transcript_s": 0.565,
+        "transcript_rows_per_s": 127327,
+        "ocr_s": 0.13,
+        "ocr_rows_per_s": 147150
+      },
+      "light_commit": {
+        "n": 200,
+        "min_ms": 0.0364,
+        "median_ms": 0.0448,
+        "p95_ms": 0.0892,
+        "max_ms": 23.5846,
+        "shape": "segment + transcript + fts5 trigger, one commit per window"
+      },
+      "sizes": {
+        "file_bytes": 29687808,
+        "file_MB": 29.69,
+        "file_MiB": 28.31
+      },
+      "rows": {
+        "video": 1000,
+        "segment": 120201,
+        "transcript": 72200,
+        "ocr": 19200
+      }
+    }
+  },
+  "overhead": {
+    "file_bytes_delta": 3936256,
+    "file_MiB_delta": 3.75,
+    "light_commit_median_ms": {
+      "with_fts5": 0.0458,
+      "no_fts5": 0.0448,
+      "ratio": 1.02
+    }
+  },
+  "oracle_verdict": "GREEN",
+  "oracle_problems": [],
+  "oracle_note": "ARM-NEG is the control that proves the fts5 cost is attributable to fts5 and not to the corpus or the disk."
+}

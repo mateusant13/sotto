@@ -1,0 +1,38 @@
+[
+  {
+    "file": "src\\asr\\engine.py",
+    "sha256": "D3053191DC2CA7A1C5203FD006E6618BFD6DEE27ED3B6E3CC4FF2AC382E7D2AB",
+    "bytes": 14918,
+    "mtime": "2026-10-07T13:09:59"
+  },
+  {
+    "file": "src\\asr\\gate.py",
+    "sha256": "69EBA549925B4043D7932D2599EDD93E2347DBD573FC5FD18DB3FE1C6FCDBECA",
+    "bytes": 35759,
+    "mtime": "2026-10-07T13:05:14"
+  },
+  {
+    "file": "src\\asr\\runner.py",
+    "sha256": "A401DBA05FECBB48DD57187212E2A35F17EF3FA51A70E733D55E669B41112851",
+    "bytes": 12225,
+    "mtime": "2026-10-07T13:09:59"
+  },
+  {
+    "file": "src\\asr\\transcribe.py",
+    "sha256": "3C2BCD31388624DFD5BA1B8219265E8F124CE8286B3065E4F1AFE614961045FE",
+    "bytes": 6729,
+    "mtime": "2026-10-07T13:09:59"
+  },
+  {
+    "file": "_main\\_lane9-asr-gate.ps1",
+    "sha256": "33B6AFEE98467660C292A2EB609A6469DB066A292DBB897A38E592B74FFC1CC5",
+    "bytes": 4391,
+    "mtime": "2026-10-07T12:46:07"
+  },
+  {
+    "file": "receipts\\receipt-17-asr-parity.md",
+    "sha256": "C39485496E3C66CBEEC0C610D2B3A98678FC11BCDDC25858E62D80118AB9AE6F",
+    "bytes": 22911,
+    "mtime": "2026-10-07T13:07:06"
+  }
+]

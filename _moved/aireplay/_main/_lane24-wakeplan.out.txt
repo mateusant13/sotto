@@ -1,0 +1,2 @@
+SESSION-STATE session=mvs_a00662bff55242cb9b56c0f1165bdad7 status=started busy=YES reason=turn-lease-held lease=held lease_expires=2026-10-07 13:57:30 open_turn=turn_muybjd9w_le886n open_turn_age_min=2.4 max_open_turn_mins=45 status_says_busy=YES (status DISAGREES=NO)
+WORKSPACE C:\Users\Administrador

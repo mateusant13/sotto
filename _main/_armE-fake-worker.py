@@ -11,7 +11,12 @@ stand-in. Mode is chosen by `SOTTO_ARME_MODE`:
   recover  run 1 writes the same death and exits 3; run 2 comes back, writes
            `model-loading` (held behind the death), then ONE real caption and
            goes quiet, so the page's own hold timer (`COMMIT_MAX_HOLD_MS`,
-           panel.js) commits it. The DOM must show 'Receiving captions'.
+           panel.js) commits it. The DOM must show the LIVE state -- which since
+           2026-10-08 is the footer's `status--live` class and an EMPTY
+           `#status-text`, NOT the sentence 'Receiving captions' the owner had
+           removed (*"tira o 'receiving captions'. deixa só um icone dinamico"*).
+           The sentence is still pushed by the shell and acknowledged by the page;
+           it is the PAINT that changed, so this mode's contract is the class.
 
 It records its own run count in `_armE-worker-runs.txt` so run 1 and run 2 can
 differ; the oracle deletes that file before each run.

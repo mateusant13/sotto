@@ -1,0 +1,20 @@
+ok= True n= 19 failed= 0
+    [ok  ] asr-transcribe.resolves: asr.runner.transcribe resolved from src/asr/runner.py:139
+    [ok  ] asr-transcribe.signature: signature matches
+    [ok  ] asr-segment.resolves: asr.segment.segments_for_mode resolved from src/asr/segment.py:119
+    [ok  ] asr-segment.signature: signature matches
+    [ok  ] asr-audio-read.resolves: asr.audio.read_slice resolved from src/asr/audio.py:64
+    [ok  ] asr-audio-read.signature: signature matches
+    [ok  ] index-ingest-clip.resolves: index.store.ingest_clip resolved from src/index/store.py:248
+    [ok  ] index-ingest-clip.signature: signature matches
+    [ok  ] index-ingest-asr.resolves: index.store.ingest_asr_done resolved from src/index/store.py:257
+    [ok  ] index-ingest-asr.signature: signature matches
+    [ok  ] index-search.resolves: index.search.search_text resolved from src/index/search.py:167
+    [ok  ] index-search.signature: signature matches
+    [ok  ] index-open.resolves: index.schema.open_index resolved from src/index/schema.py:317
+    [ok  ] index-open.signature: signature matches
+    [ok  ] capture-cut-result.header: read H:\sotto\_moved\aireplay\src\capture\replay.h
+    [ok  ] capture-cut-result.members: all 16 CutResult members present in replay.h
+    [ok  ] capture-cut-result.map.clip_path: path -> clip_path
+    [ok  ] capture-cut-result.map.duration_s: clip_seconds -> duration_s
+    [ok  ] capture-cut-result.map.size_bytes: bytes -> size_bytes

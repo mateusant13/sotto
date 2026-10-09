@@ -1,0 +1,15 @@
+POP sends=146 deliveries=122  drift=24
+TARGET from the brief: POP=121 min=979s median=2537s max=6019s
+
+  P1 index send[i]->del[i]   POP=122 min=979s median=2549s max=6019s
+  P2 index tail-121          POP=122 min=-4592s median=-2637s max=585s
+  P3 cumsum of gaps          POP=122 min=0s median=14636s max=30631s
+  P4 first-delivery-at-or-after POP=146 min=27s median=104s max=2066s
+  P5 delivery-minus-first-send POP=122 min=2066s median=16702s max=32697s
+
+READING: if P1/P2/P5 reproduce median~2537s, the brief's latency column
+is an INDEX-OR-CUMULATIVE artifact of the 25-slot drift, not a per-wake
+latency. A gate must assert the column that means "how long the owner
+waited for THIS wake", which is P4 -- and P4 must be printed too, so the
+two readings are never confused again.
+

@@ -1,0 +1,73 @@
+POP queue_items = 4 (whole table)
+
+--- rowid 4200 ---
+   session_id = 'mvs_ea552229fe164f9e8856fcca8589c41a'
+   item_id = 'queue_1dfd5c7c-167f-432e-9438-9de13687489d'
+   status = 'queued'
+   source = 'api'
+   client_request_id = 'minimax-code_muxb4fuq_3eklcv0p'
+   dedupe_key = None
+   expires_at_ms = None
+   claim_id = None
+   claim_lease_expires_at_ms = None
+   created = 2026-10-06 20:25:46
+   fp = SET len=241
+   data keys = ['agentName', 'clientRequestId', 'createdAt', 'deliveryAttempts', 'itemId', 'message', 'model', 'requestedTurnId', 'sessionId', 'source', 'status', 'userMessageId']
+   status_in_json = queued  source_in_json = api
+   requestedTurnId = turn_3be0675b-25ed-4ab7-9e97-1174cbe1e958
+   clientRequestId = minimax-code_muxb4fuq_3eklcv0p
+   content = '"  E ├® uma ponte, n├úo uma corre├º├úo: mcode update substitui o install inteiro e leva o patch. A corre├º├úo que dura ├® a\n    montante." nao quero que isso ocorra. entao resolve. e tua regra de despachar tudo tem que ser quase literal. entao refor├ºa ela de algum jeito. nao sei se s├│ regras, ou hooks que fazem algo pra te manter como orquestrador'
+
+--- rowid 4613 ---
+   session_id = 'mvs_a00662bff55242cb9b56c0f1165bdad7'
+   item_id = 'queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162'
+   status = 'queued'
+   source = 'api'
+   client_request_id = 'minimax-code_hb_e3619b1e68aa'
+   dedupe_key = None
+   expires_at_ms = None
+   claim_id = None
+   claim_lease_expires_at_ms = None
+   created = 2026-10-07 11:51:49
+   fp = SET len=241
+   data keys = ['agentName', 'clientRequestId', 'createdAt', 'itemId', 'message', 'model', 'requestedTurnId', 'sessionId', 'source', 'status', 'userMessageId']
+   status_in_json = queued  source_in_json = api
+   requestedTurnId = turn_633acf0e-40de-4e05-b8ff-5120e5f426f4
+   clientRequestId = minimax-code_hb_e3619b1e68aa
+   content = '[HEARTBEAT] Pass automatico. Continua o plano do Sotto: H:\\sotto\\_moved\\aireplay\\ROADMAP.md. Pesquisa primeiro, roadmap, depois constroi. Frontend no fim. Um so app. Le o ultimo receipt antes de repetir trabalho. Se estiveres bloqueado, diz o bloqueio pelo nome em vez de fingir progresso.'
+
+--- rowid 4614 ---
+   session_id = 'mvs_a00662bff55242cb9b56c0f1165bdad7'
+   item_id = 'queue_f6b00dc4-fd6c-4fdb-a911-2246c1a00aee'
+   status = 'queued'
+   source = 'api'
+   client_request_id = 'minimax-code_muy8d702_vtgpdjqj'
+   dedupe_key = None
+   expires_at_ms = None
+   claim_id = None
+   claim_lease_expires_at_ms = None
+   created = 2026-10-07 11:56:22
+   fp = SET len=241
+   data keys = ['agentName', 'clientRequestId', 'createdAt', 'itemId', 'message', 'model', 'requestedTurnId', 'sessionId', 'source', 'status', 'userMessageId']
+   status_in_json = queued  source_in_json = api
+   requestedTurnId = turn_7e58c697-4ace-4a03-b05d-1971d77b7e11
+   clientRequestId = minimax-code_muy8d702_vtgpdjqj
+   content = 'reiniciei. que workspace estamos? s├│ responde em uma frase'
+
+--- rowid 4615 ---
+   session_id = 'mvs_b7a9f3a7db404912b32d28fc11b83645'
+   item_id = 'queue_88e53fbb-2565-4684-9afc-d83c58551d80'
+   status = 'queued'
+   source = 'api'
+   client_request_id = 'minimax-code_hb_a5ab2099099a4f27'
+   dedupe_key = None
+   expires_at_ms = None
+   claim_id = None
+   claim_lease_expires_at_ms = None
+   created = 2026-10-07 12:06:18
+   fp = SET len=241
+   data keys = ['agentName', 'clientRequestId', 'createdAt', 'deliveryAttempts', 'itemId', 'message', 'model', 'requestedTurnId', 'sessionId', 'source', 'status', 'userMessageId']
+   status_in_json = queued  source_in_json = api
+   requestedTurnId = turn_1bc002af-f359-459b-906f-e34f73aa2474
+   clientRequestId = minimax-code_hb_a5ab2099099a4f27
+   content = 'WAKE-TEST-A3F1 12:07: acorda. Se leste isto, a injecao na fila foi entregue como mensagem de utilizador. Responde so: ACORDADO.'

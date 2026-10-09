@@ -1,0 +1,53 @@
+usage: wake-fix.py [-h] [--session SESSION] [--item ITEM] [--text TEXT]
+                   [--text-file TEXT_FILE] [--project PROJECT] [--allow-stack]
+                   [--fallback-session FALLBACK_SESSION] [--delay DELAY]
+                   [--stale-mins STALE_MINS] [--every EVERY] [--all-sessions]
+                   [--orphan-min-mins ORPHAN_MIN_MINS]
+                   [--row-ttl-mins ROW_TTL_MINS]
+                   [--max-open-turn-mins MAX_OPEN_TURN_MINS]
+                   {status,repair,inject,arm-cron,prune,session-workspace,cron-alarm,wake-plan}
+
+positional arguments:
+  {status,repair,inject,arm-cron,prune,session-workspace,cron-alarm,wake-plan}
+
+options:
+  -h, --help            show this help message and exit
+  --session SESSION
+  --item ITEM
+  --text TEXT
+  --text-file TEXT_FILE
+                        read the message from a file. Preferred over --text: a
+                        multi-line argv is fragile on Windows, and the
+                        orchestrator mandate is ~4 KB with newlines.
+  --project PROJECT
+  --allow-stack
+  --fallback-session FALLBACK_SESSION
+                        borrow the runtime-written template from this session
+                        when the target has none of its own
+  --delay DELAY         first run in N seconds
+  --stale-mins STALE_MINS
+                        a queued row older than this that was never claimed is
+                        pruned instead of wedging the channel forever
+  --every EVERY         cron minutes
+  --all-sessions        prune orphans in EVERY session, not just --session.
+                        D-5: the wedge predicate is keyed on session_id, so a
+                        session-scoped prune can never reach an orphan that
+                        belongs to a session nobody is attached to.
+  --orphan-min-mins ORPHAN_MIN_MINS
+                        with --all-sessions, a FOREIGN session's row must be
+                        older than this before it is reaped. Deliberately
+                        larger than --stale-mins and larger than the runtime's
+                        own 30 min cron-queue TTL, so a live wake is never the
+                        thing that gets swept.
+  --row-ttl-mins ROW_TTL_MINS
+                        expires_at_ms written on insert. 30 = the runtime's
+                        own in-memory cron-queue TTL (OCe = 1800*1e3 in
+                        chunk-U7ACBEGU.js). Belt to the sweep's braces: no row
+                        in this store has ever carried it, so honouring it is
+                        unproven.
+  --max-open-turn-mins MAX_OPEN_TURN_MINS
+                        D-7: an open turn older than this no longer marks the
+                        session busy. 45 sits just above the measured p90 turn
+                        duration (41.8 min over POP 3743 completed turns);
+                        unbounded, this signal would wedge the channel, which
+                        is the D-3 defect class.

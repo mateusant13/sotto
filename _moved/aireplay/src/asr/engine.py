@@ -21,17 +21,57 @@ from .constants import (
     MODEL_DIR,
     MODEL_FILE_SIZES,
     MODEL_NAME,
+    PROVIDER,
     PROVIDERS,
     QUANTIZATION,
     SAMPLE_RATE,
     THREAD_ENV_VARS,
 )
 
-__all__ = ["pin_thread_env", "ModelDirError", "OnnxAsrEngine", "verify_model_dir"]
+__all__ = [
+    "pin_thread_env", "ModelDirError", "ProviderUnavailableError", "LanguageNotSupportedError",
+    "OnnxAsrEngine", "verify_model_dir", "LANGUAGE_INPUT_NAMES",
+]
 
 
 class ModelDirError(RuntimeError):
     """The model directory is not the verified artefact -- refuse, never run degraded."""
+
+
+class ProviderUnavailableError(RuntimeError):
+    """The requested execution provider did not load -- refuse, never run degraded on another.
+
+    MEASURED on this box (2026-10-07, `_main/lane9-asr-gate.ps1` ARM P): `--provider cuda`
+    exits **0**, prints the same transcript as `--provider cpu`, and ORT's own stderr says
+    `Failed to create CUDAExecutionProvider ... cublasLt64_13.dll which is missing` -- while
+    `session.get_providers()` reports `['CPUExecutionProvider']`. ORT falls back silently and
+    the exit code says nothing. AGENTS.md:230-234 records the same fact; the gap was that no
+    code compared the REQUEST against the LOADED provider.
+    """
+
+
+class LanguageNotSupportedError(ValueError):
+    """A language was asked for on an export that declares no language input -- refuse, never
+    silently ignore it.
+
+    MEASURED (2026-10-07, ARM B): `nemo-parakeet-tdt-0.6b-v3` declares **no** language input on
+    either graph -- encoder inputs are exactly `['audio_signal', 'length']`, decoder_joint's
+    are `['encoder_outputs','targets','target_length','input_states_1','input_states_2']`
+    (`_main/lane9-asr-gate.ps1` ARM B reads them off the model). `onnx_asr` accepts
+    `recognize(..., language=...)` for Whisper/Canary (`onnx_asr/adapters.py:50`,
+    `models/nemo.py:232-238`) and for this TDT export the kwarg is **swallowed**: the
+    transducer path (`asr.py:192-229 _AsrWithTransducerDecoding._decoding`) reads only
+    `need_logprobs`. Measured: `language='pt'`, `'en'`, `'Portuguese'` and even
+    `'klingon'` all return the byte-identical transcript (sha256 prefix `6a5d7b8acad6` on
+    `src-pt-15s.wav`). A caller who believes they selected a language selected NOTHING --
+    the same failure class as the SOTTO worker's silent lang defaults, which cost a language
+    twice (docs/model-specs/README.md section 3).
+    """
+
+
+# The input names that would mean "this export is prompt-conditioned". Checked against the
+# DECLARED graph inputs, never inferred from the model name.
+LANGUAGE_INPUT_NAMES = ("lang_id", "language", "language_id", "lang")
 
 
 def pin_thread_env(threads: int) -> dict[str, str]:
@@ -94,6 +134,8 @@ class OnnxAsrEngine:
         self.env: dict[str, str] = {}
         self.session_providers: list = []
         self.threads_reported: dict = {}
+        self.graph_inputs: dict = {}
+        self.language_conditioned: bool | None = None
 
     def load(self):
         pin_thread_env(self.intra_op_num_threads)
@@ -126,11 +168,23 @@ class OnnxAsrEngine:
             for s in (getattr(asr, "_encoder", None), getattr(asr, "_decoder_joint", None))
             if s is not None
         ]
+        self.graph_inputs = {
+            name: [i.name for i in s.get_inputs()]
+            for name, s in (("encoder", getattr(asr, "_encoder", None)),
+                            ("decoder_joint", getattr(asr, "_decoder_joint", None)))
+            if s is not None
+        }
+        self.language_conditioned = any(
+            n in LANGUAGE_INPUT_NAMES for names in self.graph_inputs.values() for n in names
+        )
+        self._verify_provider(providers)
         self.threads_reported = {
             "intra": self.intra_op_num_threads,
             "inter": self.inter_op_num_threads,
             "env": self.env,
             "session_providers": self.session_providers,
+            "graph_inputs": self.graph_inputs,
+            "language_conditioned": self.language_conditioned,
             "model_name": MODEL_NAME,
             "quantization": self.quantization,
             "provider_requested": self.provider,
@@ -140,10 +194,77 @@ class OnnxAsrEngine:
         }
         return self.load_s
 
+    def _verify_provider(self, requested: list[str]) -> None:
+        """THE CURE: a provider that did not load is a refusal, never a silent downgrade.
+
+        `session.get_providers()` is what the session REPORTS it bound. That is a READBACK,
+        not proof of execution: a session can list a provider it never ran work on. It is
+        still the only signal available, and it is what catches the real defect here -- ORT's
+        provider requests are best-effort, so a missing provider is dropped in silence while
+        the process still exits 0. So the check compares the first REQUESTED entry against
+        what every loaded session reports, and says "reported", never "actually".
+
+        FAIL-CLOSED on an unreadable session (MEASURED 2026-10-07, lane 9 self-audit; F4 fixed
+        after verifier pass 2): an empty `session_providers` used to make `missing` empty, so
+        a `--provider cuda` request with no session to read was ACCEPTED -- a verification
+        that cannot verify must not pass. Verifier pass 2 also showed the `cpu` arm passed the
+        same way, through `all([])`, which is vacuously True: zero sessions means zero stray
+        providers, so the check passed without having checked anything. Both arms now refuse
+        when there is nothing to read. That costs a real, harmless case -- a model whose
+        adapter exposes no encoder session -- so it is a deliberate refusal, not an oversight.
+        """
+        if not self.session_providers:
+            raise ProviderUnavailableError(
+                f"provider {self.provider!r} was requested but no session was available to "
+                f"verify what ORT reports it bound; refusing rather than reporting an "
+                f"unverified provider (an empty session list verifies nothing, on either arm). "
+                f"available={self.threads_reported_available()}."
+            )
+        if self.provider == "cpu":
+            # The shipped arm: CPU must be the only provider reported, so a silent CUDA
+            # promotion (or a TensorRT fallback) can never be mistaken for the measured config.
+            stray = [p for ps in self.session_providers for p in ps if p != PROVIDER]
+            if stray:
+                raise ProviderUnavailableError(
+                    f"requested CPU-only but a session reported {sorted(set(stray))}; "
+                    f"sessions={self.session_providers}"
+                )
+            return
+        wanted = requested[0]
+        missing = [ps for ps in self.session_providers if wanted not in ps]
+        if missing:
+            raise ProviderUnavailableError(
+                f"provider {wanted!r} did not load (ORT fell back silently): "
+                f"sessions={self.session_providers}, available={self.threads_reported_available()}. "
+                f"On this box CUDA is requested but not loadable (AGENTS.md:230-234); use --provider cpu."
+            )
+
+    def threads_reported_available(self) -> list:
+        import onnxruntime as ort  # noqa: PLC0415
+
+        return list(ort.get_available_providers())
+
     # -- inference -------------------------------------------------------------------
-    def recognize(self, audio, sample_rate: int = SAMPLE_RATE) -> str:
+    def recognize(self, audio, sample_rate: int = SAMPLE_RATE, language: str | None = None) -> str:
+        """Transcribe. `language` is accepted ONLY by an export that declares a language input.
+
+        The parameter exists so a caller who wants to select a language has to say it here,
+        where it can be REFUSED, instead of passing it to `onnx_asr`, which swallows it on this
+        transducer path and returns the same text for every value (MEASURED, ARM B). For
+        `nemo-parakeet-tdt-0.6b-v3` `language_conditioned` is False and any non-None value
+        raises -- there is no prompt slot to condition on, so a silent no-op would be a lie.
+        """
         if self.model is None:
             raise RuntimeError("engine.recognize() before engine.load()")
+        if language is not None:
+            if self.language_conditioned is not True:
+                raise LanguageNotSupportedError(
+                    f"language={language!r} cannot be honoured: {MODEL_NAME} declares no language "
+                    f"input (graph inputs={self.graph_inputs}). onnx_asr accepts the kwarg for "
+                    f"Whisper/Canary and IGNORES it here, returning the identical transcript for "
+                    f"every value -- a silent no-op. See docs/model-specs/README.md section 3."
+                )
+            return self.model.recognize(audio, sample_rate=sample_rate, language=language)
         return self.model.recognize(audio, sample_rate=sample_rate)
 
     def phase_probe(self, audio) -> dict:

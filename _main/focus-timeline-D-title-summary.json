@@ -1,0 +1,148 @@
+{
+  "label": "D-title",
+  "arm": "D",
+  "mode": "live",
+  "secs_declared": 90.0,
+  "wall_s": 90.014,
+  "poll_ms": 15.0,
+  "queue_depth": 5,
+  "ghost_filter": true,
+  "hook_installed": true,
+  "hook_ok": true,
+  "hook_flags": 0,
+  "hook_events": 10,
+  "poll_events": 12,
+  "events_total": 22,
+  "latency_ms": {
+    "n": 10,
+    "min": 0,
+    "p50": 0,
+    "p95": 16,
+    "max": 16,
+    "mean": 1.6
+  },
+  "latency_hi_ms": {
+    "n": 10,
+    "min": 1,
+    "p50": 1,
+    "p95": 17,
+    "max": 17,
+    "mean": 2.6
+  },
+  "latency_zero_frac": 0.9,
+  "handle_ms": {
+    "n": 23,
+    "min": 0.025,
+    "p50": 8.365,
+    "p95": 28.523,
+    "max": 39.601,
+    "mean": 9.923
+  },
+  "cpu_pct_of_one_core": 0.295,
+  "wall_cpu_100ns": 2656250,
+  "rss_mb": 25.61,
+  "peak_wset_mb": 26.4,
+  "threads": 4,
+  "thread_ids": [
+    19692,
+    19784,
+    31168,
+    36608
+  ],
+  "threads_at_start": [
+    2988,
+    13884,
+    19784,
+    22840,
+    31168
+  ],
+  "threads_before_poller": 5,
+  "threads_with_poller": 6,
+  "threads_added_by_lane": 1,
+  "self_pid": 22148,
+  "sotto_pids": {
+    "28428": {
+      "name": "pythonw.exe",
+      "which": "sotto_webview.py"
+    },
+    "29008": {
+      "name": "python.exe",
+      "which": "sotto_worker.py"
+    }
+  },
+  "sotto_pid_source": "psutil-ok",
+  "sotto_windows": [
+    {
+      "hwnd": "0x00030078",
+      "pid": 28428,
+      "tid": 28384,
+      "exe": "C:\\Program Files\\Python311\\pythonw.exe",
+      "title": "MSCTFIME UI",
+      "title_len": 11,
+      "class": "MSCTFIME UI",
+      "rule": "pid-in-sotto-cmdline",
+      "visible": false
+    },
+    {
+      "hwnd": "0x000C14B2",
+      "pid": 28428,
+      "tid": 28384,
+      "exe": "C:\\Program Files\\Python311\\pythonw.exe",
+      "title": "Default IME",
+      "title_len": 11,
+      "class": "IME",
+      "rule": "pid-in-sotto-cmdline",
+      "visible": false
+    },
+    {
+      "hwnd": "0x000914AA",
+      "pid": 28428,
+      "tid": 28384,
+      "exe": "C:\\Program Files\\Python311\\pythonw.exe",
+      "title": "Sotto",
+      "title_len": 5,
+      "class": "WindowsForms10.Window.8.app.0.aec740_r16_ad1",
+      "rule": "pid-in-sotto-cmdline",
+      "visible": false
+    },
+    {
+      "hwnd": "0x0015149A",
+      "pid": 28428,
+      "tid": 7880,
+      "exe": "C:\\Program Files\\Python311\\pythonw.exe",
+      "title": "GDI+ Window (pythonw.exe)",
+      "title_len": 25,
+      "class": "GDI+ Hook Window Class",
+      "rule": "pid-in-sotto-cmdline",
+      "visible": false
+    },
+    {
+      "hwnd": "0x000914BE",
+      "pid": 28428,
+      "tid": 7880,
+      "exe": "C:\\Program Files\\Python311\\pythonw.exe",
+      "title": "Default IME",
+      "title_len": 11,
+      "class": "IME",
+      "rule": "pid-in-sotto-cmdline",
+      "visible": false
+    },
+    {
+      "hwnd": "0x000C0270",
+      "pid": 28428,
+      "tid": 28384,
+      "exe": "C:\\Program Files\\Python311\\pythonw.exe",
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.aec740.0",
+      "title_len": 42,
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.aec740.0",
+      "rule": "pid-in-sotto-cmdline",
+      "visible": false
+    }
+  ],
+  "z_census_windows": 421,
+  "exe_cache_entries": 74,
+  "openprocess_calls": 74,
+  "dwm_calls": 220,
+  "errors": [],
+  "jsonl": "H:\\sotto\\_main\\focus-timeline-D-title.jsonl"
+}

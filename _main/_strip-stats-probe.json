@@ -1,0 +1,175 @@
+{
+  "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
+  "standin": "H:\\sotto\\_main\\_strip-stats-worker.py",
+  "stamp": "37900-1791391324",
+  "arms": {
+    "fed": {
+      "tag": "fed",
+      "rc": 0,
+      "log": "H:\\sotto\\_main\\_strip-stats-fed-37900-1791391324.log",
+      "wall_s": 13.34,
+      "cost": {
+        "cpu_s": 1.5,
+        "peak_ws_bytes": 118112256
+      },
+      "autostart": [
+        "sotto: WORKER_AUTOSTART=started reason=with-worker"
+      ],
+      "probe": [
+        "sotto: PANEL_STATS_PROBE {\"bars\":[\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\"],\"emits\":{\"geometry\":1,\"stats\":153,\"status\":2},\"have\":10,\"level\":\"live\"}"
+      ],
+      "armed": [
+        "sotto: PANEL_STATS_PROBE_ARMED s=8.0"
+      ],
+      "replies": [
+        "sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={}"
+      ],
+      "pushes": [
+        "sotto: BRIDGE_STATS_PUSH count=1 in_window_s=0.0 rate_hz=first payload={\"peak\":0.443448,\"blocks\":812.0}"
+      ],
+      "panel_shown": [],
+      "page_errors": [],
+      "receiver_ready": [
+        "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      ]
+    },
+    "unfed": {
+      "tag": "unfed",
+      "rc": 0,
+      "log": "H:\\sotto\\_main\\_strip-stats-unfed-37900-1791391324.log",
+      "wall_s": 14.11,
+      "cost": {
+        "cpu_s": 1.234,
+        "peak_ws_bytes": 116867072
+      },
+      "autostart": [
+        "sotto: WORKER_AUTOSTART=declined reason=no-worker by=start_worker"
+      ],
+      "probe": [
+        "sotto: PANEL_STATS_PROBE {\"bars\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"emits\":{\"geometry\":1,\"status\":1},\"have\":10,\"level\":\"none\"}"
+      ],
+      "armed": [
+        "sotto: PANEL_STATS_PROBE_ARMED s=8.0"
+      ],
+      "replies": [
+        "sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={}"
+      ],
+      "pushes": [],
+      "panel_shown": [],
+      "page_errors": [],
+      "receiver_ready": [
+        "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      ]
+    }
+  },
+  "fed_probe": {
+    "bars": [
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443"
+    ],
+    "emits": {
+      "geometry": 1,
+      "stats": 153,
+      "status": 2
+    },
+    "have": 10,
+    "level": "live"
+  },
+  "unfed_probe": {
+    "bars": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "emits": {
+      "geometry": 1,
+      "status": 1
+    },
+    "have": 10,
+    "level": "none"
+  },
+  "checks": [
+    {
+      "what": "fed: the shell started the stand-in (reason=with-worker)",
+      "ok": true
+    },
+    {
+      "what": "fed: the panel POLLED and was answered",
+      "ok": true
+    },
+    {
+      "what": "fed: the shell PUSHED the worker counters",
+      "ok": true
+    },
+    {
+      "what": "fed: the push carries the worker's own peak",
+      "ok": true
+    },
+    {
+      "what": "fed: the panel's own DOM says data-level=live",
+      "ok": true
+    },
+    {
+      "what": "fed: the meter bars carry a --meter-h",
+      "ok": true
+    },
+    {
+      "what": "fed: the PUSH really landed in the page (emit counts.stats >= 2)",
+      "ok": true
+    },
+    {
+      "what": "fed: the push is logged at most once per interval, not per sample",
+      "ok": true
+    },
+    {
+      "what": "fed: no page error",
+      "ok": true
+    },
+    {
+      "what": "fed: the window was never shown",
+      "ok": true
+    },
+    {
+      "what": "unfed: the control did NOT go live (absent is not zero)",
+      "ok": true
+    },
+    {
+      "what": "unfed: the control has no bars painted",
+      "ok": true
+    },
+    {
+      "what": "unfed: the control still POLLED and was answered",
+      "ok": true
+    },
+    {
+      "what": "unfed: the control pushed nothing (no worker, no counters)",
+      "ok": true
+    },
+    {
+      "what": "unfed: no page error",
+      "ok": true
+    }
+  ],
+  "verdict": "GREEN",
+  "failed": [],
+  "probe_cost": {
+    "cpu_s": 0.062,
+    "peak_ws_bytes": 20590592
+  },
+  "shell_cpu_total_s": 2.734
+}

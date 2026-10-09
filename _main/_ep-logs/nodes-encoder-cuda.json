@@ -1,0 +1,80 @@
+{
+  "graph": "encoder",
+  "requested": "CUDAExecutionProvider",
+  "REAL_get_providers": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "inputs": {
+    "audio_signal": [
+      [
+        1,
+        65,
+        128
+      ],
+      "float32"
+    ],
+    "length": [
+      [
+        1
+      ],
+      "int64"
+    ],
+    "cache_last_channel": [
+      [
+        1,
+        24,
+        70,
+        1024
+      ],
+      "float32"
+    ],
+    "cache_last_time": [
+      [
+        1,
+        24,
+        1024,
+        8
+      ],
+      "float32"
+    ],
+    "cache_last_channel_len": [
+      [
+        1
+      ],
+      "int64"
+    ],
+    "lang_id": [
+      [
+        1
+      ],
+      "int64"
+    ]
+  },
+  "inference_error": null,
+  "nodes_total": 1793,
+  "nodes_by_provider": {
+    "CUDAExecutionProvider": 1792,
+    "CPUExecutionProvider": 1
+  },
+  "pct_nodes_by_provider": {
+    "CUDAExecutionProvider": 99.94,
+    "CPUExecutionProvider": 0.06
+  },
+  "dur_us_by_provider": {
+    "CUDAExecutionProvider": 61221949,
+    "CPUExecutionProvider": 94
+  },
+  "pct_dur_by_provider": {
+    "CUDAExecutionProvider": 100.0,
+    "CPUExecutionProvider": 0.0
+  },
+  "top_cpu_kernels_us": [
+    [
+      "Tile",
+      94
+    ]
+  ],
+  "profile_file": "H:\\sotto\\ortprof_encoder_2026-10-07_12-42-20_631.json",
+  "verdict": "GPU-EXECUTES"
+}

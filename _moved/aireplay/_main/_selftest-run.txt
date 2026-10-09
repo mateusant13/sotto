@@ -1,0 +1,108 @@
+=== SELF-TEST: the aggregate gate, both colours ===
+Self-test arms live in H:\sotto\_moved\aireplay\_main\_selftest-gates\arm* and are NEVER in the real _main population (the glob is non-recursive).
+
+ARM-A green is PASS        rc=0    final='ALL-GATES PASS'  expect='ALL-GATES PASS' rcExpectNonZero=True  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:47.1265009-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armA_good glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane90-selftest-good-gate.ps1  2495 B  mtime=2026-10-07T15:20:45.1526356Z  glob
+    | RESULT TABLE
+    | GATE                            EXIT     DURATION  VERDICT
+    | ----------------------------------------------------------
+    | _lane90-selftest-good-gate.ps1  0            0.4s  PASS
+    | SUMMARY gates=1 passed=1 failed=0  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131047
+    | ALL-GATES PASS
+
+ARM-B broken is FAIL       rc=1    final='ALL-GATES FAIL'  expect='ALL-GATES FAIL' rcExpectNonZero=False  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:48.2741304-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armB_broken glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane91-selftest-broken-gate.ps1  3310 B  mtime=2026-10-07T15:20:48.4331446Z  glob
+    | RESULT TABLE
+    | GATE                              EXIT     DURATION  VERDICT
+    | ------------------------------------------------------------
+    | _lane91-selftest-broken-gate.ps1  3            0.3s  FAIL/EXIT3
+    | SUMMARY gates=1 passed=0 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131048
+    |   FAILED: _lane91-selftest-broken-gate.ps1  FAIL/EXIT3
+    | ALL-GATES FAIL
+
+ARM-C no gates is FAIL     rc=1    final='ALL-GATES FAIL'  expect='ALL-GATES FAIL' rcExpectNonZero=False  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:49.0495209-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armC_empty glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 0   (globbed + explicitly included, deduped by path)
+    | FAIL NO-GATES: the glob matched 0 gates. A project with no checks is not green, it is UNVERIFIED.
+    | ALL-GATES FAIL
+
+ARM-D exit0 but FAIL       rc=1    final='ALL-GATES FAIL'  expect='ALL-GATES FAIL' rcExpectNonZero=False  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:49.3757929-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armD_silentfail glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane92-selftest-silentfail-gate.ps1  2043 B  mtime=2026-10-07T15:20:54.8211550Z  glob
+    | RESULT TABLE
+    | GATE                                  EXIT     DURATION  VERDICT
+    | ----------------------------------------------------------------
+    | _lane92-selftest-silentfail-gate.ps1  0            0.3s  FAIL/VERDICT  <- exit 0 but the gate declared GATE-VERDICT FAIL
+    | SUMMARY gates=1 passed=0 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131049
+    |   FAILED: _lane92-selftest-silentfail-gate.ps1  FAIL/VERDICT
+    | ALL-GATES FAIL
+
+ARM-D2 no line passes      rc=0    final='ALL-GATES PASS'  expect='ALL-GATES PASS' rcExpectNonZero=True  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:50.1793697-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armI_launder glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane96-selftest-launder-gate.ps1  313 B  mtime=2026-10-07T15:37:05.6827591Z  glob
+    | RESULT TABLE
+    | GATE                               EXIT     DURATION  VERDICT
+    | -------------------------------------------------------------
+    | _lane96-selftest-launder-gate.ps1  0            0.4s  PASS
+    | SUMMARY gates=1 passed=1 failed=0  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131050
+    | ALL-GATES PASS
+
+ARM-D2b line required      rc=1    final='ALL-GATES FAIL'  expect='ALL-GATES FAIL' rcExpectNonZero=False  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:51.4045990-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armI_launder glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=True
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane96-selftest-launder-gate.ps1  313 B  mtime=2026-10-07T15:37:05.6827591Z  glob
+    |     | ALL-GATES PASS
+    | RESULT TABLE
+    | GATE                               EXIT     DURATION  VERDICT
+    | -------------------------------------------------------------
+    | _lane96-selftest-launder-gate.ps1  0            0.4s  FAIL/NO-VERDICT  <- exit 0 but no GATE-VERDICT line was printed
+    | SUMMARY gates=1 passed=0 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131051
+    |   FAILED: _lane96-selftest-launder-gate.ps1  FAIL/NO-VERDICT
+    | ALL-GATES FAIL
+
+ARM-E hang is FAIL         rc=1    final='ALL-GATES FAIL'  expect='ALL-GATES FAIL' rcExpectNonZero=False  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:52.4854452-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armE_hang glob=_lane*-gate.ps1 timeout=5s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane93-selftest-hang-gate.ps1  1519 B  mtime=2026-10-07T15:18:26.0680640Z  glob
+    | HUNG GATE: _lane93-selftest-hang-gate.ps1  exceeded 5s with no exit; process tree killed; marked FAIL.
+    | RESULT TABLE
+    | GATE                            EXIT     DURATION  VERDICT
+    | ----------------------------------------------------------
+    | _lane93-selftest-hang-gate.ps1  -1           5.1s  FAIL/TIMEOUT  <- no exit within budget; process tree killed
+    | SUMMARY gates=1 passed=0 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131052
+    |   FAILED: _lane93-selftest-hang-gate.ps1  FAIL/TIMEOUT
+    | ALL-GATES FAIL
+
+ARM-F absent expect FAIL   rc=1    final='ALL-GATES FAIL'  expect='ALL-GATES FAIL' rcExpectNonZero=False  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:58.0623512-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armA_good glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane90-selftest-good-gate.ps1  2495 B  mtime=2026-10-07T15:20:45.1526356Z  glob
+    | RESULT TABLE
+    | GATE                            EXIT     DURATION  VERDICT
+    | ----------------------------------------------------------
+    | _lane90-selftest-good-gate.ps1  0            0.3s  PASS
+    | _lane99-nope-gate.ps1           n/a          0.0s  FAIL/MISSING  <- expected by -Expect but not in the population
+    | SUMMARY gates=2 passed=1 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131058
+    |   FAILED: _lane99-nope-gate.ps1  FAIL/MISSING
+    | ALL-GATES FAIL
+
+ARM-G opt-out hole         rc=0    final='ALL-GATES PASS'  expect='ALL-GATES PASS' rcExpectNonZero=True  => GREEN
+    | ALL-GATES window=2026-10-07T13:10:58.7915307-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armD_silentfail glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=False, line-required=False
+    | GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+    |   [ok] _lane92-selftest-silentfail-gate.ps1  2043 B  mtime=2026-10-07T15:20:54.8211550Z  glob
+    |   ! _lane92-selftest-silentfail-gate.ps1 printed GATE-VERDICT FAIL but exited 0; the aggregate followed the EXIT CODE. Drop -NoVerdictLine to close this hole.
+    | RESULT TABLE
+    | GATE                                  EXIT     DURATION  VERDICT
+    | ----------------------------------------------------------------
+    | _lane92-selftest-silentfail-gate.ps1  0            0.3s  PASS
+    | SUMMARY gates=1 passed=1 failed=0  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-131058
+    | ALL-GATES PASS
+
+SELFTEST arms=8 failed=0   [expect 0]
+SELFTEST PASS

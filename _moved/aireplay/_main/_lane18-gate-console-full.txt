@@ -1,0 +1,237 @@
+LANE18 GATE  n=6  cadence_ms=25  window_s=6
+
+ARM PASS-5-reachable GREEN states_rendered=11 of 11 tokens=HIDDEN,ARMING,IDLE,RECORDING,SAVING,HIDDEN_EXCLUSIVE,ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED
+ARM PASS-5-no-state-looks-idle GREEN painted_states=9 states_sharing_IDLEs_glyph=0 offenders=none HIDDEN_EXCLUSIVE_glyph=4292891962 IDLE_glyph=4283874936 (PASS-5's named falsifier)
+ARM PASS-5-error-never-reads-as-recording GREEN error_states=5 sharing_RECORDINGs_glyph=0 error_glyph=0xFFE0553A recording_glyph=0xFFE24A4A (SPEC §1.3)
+ARM PASS-5-groups-match-spec-3.1 GREEN glyph_groups=saving:[ARMING,SAVING] armed:[IDLE] recording:[RECORDING] error:[ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED] expected_§3.1=saving:2,armed:1,recording:1,error:5
+ARM PASS-6-silent-device-facts GREEN line2="peak 9.2e-05 < floor 0.002 - nothing is routed into it" has_peak=true has_floor=true
+ARM PASS-6-unmeasured-says-so GREEN line2="digital silence below the floor (peak not measured) - nothing is routed into the device" says_not_measured=true prints_a_fake_zero=false
+ARM PASS-9-line1-is-enum-name GREEN mismatched=0 observed=none
+ARM SPEC-1.1-three-line-ceiling GREEN max_lines=3 states_over=0 over=none
+ARM SPEC-1.1-ceiling-holds-at-4000-chars GREEN chars_in=4000 line_count=2 line2_len=4000 (clamped by the binder's ellipsis, not here)
+ARM SPEC-3.4-error-carries-a-datum GREEN error_states=5 with_line2=5 tokens=ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED
+ARM SPEC-4.3-binding-line-not-silent GREEN line3="Alt+F9 taken by another app · Ctrl+F9 live · Alt+F10 live · Alt+F11 live · Ctrl+F12 live · PrintScreen live · Ctrl+F10 live · Alt+Z live · Alt+S live · Alt+F7 live"
+ARM SPEC-5-dpi-and-25pct-cap GREEN dpi96@1920:w=480 font=13 share=25.0% | dpi96@2560:w=480 font=13 share=18.8% | dpi96@3840:w=480 font=13 share=12.5% | dpi144@3840:w=720 font=20 share=18.8% | dpi192@3840:w=960 font=22 share=25.0% cap_ok=true font_clamped_12_22=true
+ARM SPEC-7-no-inert-param GREEN params_declared=12 dangling=none names=corner_radius_px,fade_in_ms,fade_out_ms,font_px_primary,font_px_secondary_floor,font_px_secondary_ratio,glyph_px,inset_px,plate_max_w_px,plate_min_w_px,ring_seconds_decimals,success_hold_ms
+ARM DEAL-6.3-overlay-vs-replay-disjoint GREEN pairs=0 overlays=[Alt+C,Alt+Shift+C,Ctrl+Alt+C,Ctrl+Shift+C] ladder=[Ctrl+Alt+R,Alt+F11,Ctrl+F12,F11,F10,Alt+F10,Alt+F9,PrintScreen,F12]
+ARM DEAL-6.3-overlay-vs-hud-disjoint GREEN pairs=0 overlaps=none
+ARM DEAL-6.3-hud-overlaps-all-declared GREEN hud_rows_mirroring_a_rung=5 declared_via_dup_of=5 undeclared=none declared=H1:Alt+F9<-Alt+F9 H3:Alt+F10<-Alt+F10 H4:Alt+F11<-Alt+F11 H5:Ctrl+F12<-Ctrl+F12 H6:PrintScreen<-PrintScreen
+ARM DEAL-2.2-F12-last GREEN ladder_tail=Ctrl+Alt+R > Alt+F11 > Ctrl+F12 > F11 > F10 > Alt+F10 > Alt+F9 > PrintScreen > F12 last=F12
+ARM CONTROL-collisions-detects-real-duplicate GREEN input=X(vk=0x78,mods=1),Y(same) vs [X] detected=2 found=X <-> X | Y <-> X expected=2 (|a|x|b|)
+ARM CONTROL-collisions-clean-on-distinct GREEN input=X(vk=0x78,mods=1) vs Z(vk=0x78,mods=2) detected=0 found=none (same vk, different mods => not a pair)
+
+POPULATION arms=19 states_rendered=11 bindings_declared=10 dpi_cases=5
+WINDOW none - headless, no window was created, no audio, no display required (see the file header for why)
+VERDICT PASS green=19 red=0
+
+BOX ARM1-oracle-runs                           GREEN arm=live     node_rc=0 arms_parsed=19 green=19 red=0 stderr_len=0 POPULATION: arms=19 states_rendered=11 bindings_declared=10 dpi_cases=5
+True
+BOX ARM1/PASS-5-reachable                      GREEN arm=live     observed: states_rendered=11 of 11 tokens=HIDDEN,ARMING,IDLE,RECORDING,SAVING,HIDDEN_EXCLUSIVE,ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED
+True
+BOX ARM1/PASS-5-no-state-looks-idle            GREEN arm=live     observed: painted_states=9 states_sharing_IDLEs_glyph=0 offenders=none HIDDEN_EXCLUSIVE_glyph=4292891962 IDLE_glyph=4283874936 (PASS-5's named falsifier)
+True
+BOX ARM1/PASS-5-error-never-reads-as-recording GREEN arm=live     observed: error_states=5 sharing_RECORDINGs_glyph=0 error_glyph=0xFFE0553A recording_glyph=0xFFE24A4A (SPEC §1.3)
+True
+BOX ARM1/PASS-5-groups-match-spec-3.1          GREEN arm=live     observed: glyph_groups=saving:[ARMING,SAVING] armed:[IDLE] recording:[RECORDING] error:[ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED] expected_§3.1=saving:2,armed:1,recording:1,error:5
+True
+BOX ARM1/PASS-6-silent-device-facts            GREEN arm=live     observed: line2="peak 9.2e-05 < floor 0.002 - nothing is routed into it" has_peak=true has_floor=true
+True
+BOX ARM1/PASS-6-unmeasured-says-so             GREEN arm=live     observed: line2="digital silence below the floor (peak not measured) - nothing is routed into the device" says_not_measured=true prints_a_fake_zero=false
+True
+BOX ARM1/PASS-9-line1-is-enum-name             GREEN arm=live     observed: mismatched=0 observed=none
+True
+BOX ARM1/SPEC-1.1-three-line-ceiling           GREEN arm=live     observed: max_lines=3 states_over=0 over=none
+True
+BOX ARM1/SPEC-1.1-ceiling-holds-at-4000-chars  GREEN arm=live     observed: chars_in=4000 line_count=2 line2_len=4000 (clamped by the binder's ellipsis, not here)
+True
+BOX ARM1/SPEC-3.4-error-carries-a-datum        GREEN arm=live     observed: error_states=5 with_line2=5 tokens=ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED
+True
+BOX ARM1/SPEC-4.3-binding-line-not-silent      GREEN arm=live     observed: line3="Alt+F9 taken by another app · Ctrl+F9 live · Alt+F10 live · Alt+F11 live · Ctrl+F12 live · PrintScreen live · Ctrl+F10 live · Alt+Z live · Alt+S live · Alt+F7 live"
+True
+BOX ARM1/SPEC-5-dpi-and-25pct-cap              GREEN arm=live     observed: dpi96@1920:w=480 font=13 share=25.0% | dpi96@2560:w=480 font=13 share=18.8% | dpi96@3840:w=480 font=13 share=12.5% | dpi144@3840:w=720 font=20 share=18.8% | dpi192@3840:w=960 font=22 share=25.0% cap_ok=true font_clamped_12_22=true
+True
+BOX ARM1/SPEC-7-no-inert-param                 GREEN arm=live     observed: params_declared=12 dangling=none names=corner_radius_px,fade_in_ms,fade_out_ms,font_px_primary,font_px_secondary_floor,font_px_secondary_ratio,glyph_px,inset_px,plate_max_w_px,plate_min_w_px,ring_seconds_decimals,success_hold_ms
+True
+BOX ARM1/DEAL-6.3-overlay-vs-replay-disjoint   GREEN arm=live     observed: pairs=0 overlays=[Alt+C,Alt+Shift+C,Ctrl+Alt+C,Ctrl+Shift+C] ladder=[Ctrl+Alt+R,Alt+F11,Ctrl+F12,F11,F10,Alt+F10,Alt+F9,PrintScreen,F12]
+True
+BOX ARM1/DEAL-6.3-overlay-vs-hud-disjoint      GREEN arm=live     observed: pairs=0 overlaps=none
+True
+BOX ARM1/DEAL-6.3-hud-overlaps-all-declared    GREEN arm=live     observed: hud_rows_mirroring_a_rung=5 declared_via_dup_of=5 undeclared=none declared=H1:Alt+F9<-Alt+F9 H3:Alt+F10<-Alt+F10 H4:Alt+F11<-Alt+F11 H5:Ctrl+F12<-Ctrl+F12 H6:PrintScreen<-PrintScreen
+True
+BOX ARM1/DEAL-2.2-F12-last                     GREEN arm=live     observed: ladder_tail=Ctrl+Alt+R > Alt+F11 > Ctrl+F12 > F11 > F10 > Alt+F10 > Alt+F9 > PrintScreen > F12 last=F12
+True
+BOX ARM1/CONTROL-collisions-detects-real-duplicate GREEN arm=live     observed: input=X(vk=0x78,mods=1),Y(same) vs [X] detected=2 found=X <-> X | Y <-> X expected=2 (|a|x|b|)
+True
+BOX ARM1/CONTROL-collisions-clean-on-distinct  GREEN arm=live     observed: input=X(vk=0x78,mods=1) vs Z(vk=0x78,mods=2) detected=0 found=none (same vk, different mods => not a pair)
+True
+VARIANT tag=nogate path=hud-shell-nogate.py sha256_live=11582cb2ae9ed326 sha256_variant=950bda2db677d82b edits=1 assets_copied=4
+VARIANT tag=reassert path=hud-shell-reassert.py sha256_live=11582cb2ae9ed326 sha256_variant=c1e550c66f8d8757 edits=1 assets_copied=4
+VARIANT tag=nonet path=hud-shell-nonet.py sha256_live=11582cb2ae9ed326 sha256_variant=4d59b1f09a59540f edits=2 assets_copied=4
+=== ARM live shell=hud-shell.py n=6 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=live i=0/6 rc=0 samples=176 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=1/6 rc=0 samples=170 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=2/6 rc=0 samples=157 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=3/6 rc=0 samples=158 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=4/6 rc=0 samples=114 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=5/6 rc=0 samples=159 opaque=0 longest_ms=0 pids=9
+ARM-LAUNCHABLE tag=live reaching_HUD_READY=6/6 rcs=[0] launchable=True
+ARM-SUMMARY tag=live launches=6 launches_with_opaque_window=0/6 samples=934 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=6 reassert_total=6 nets2_lines=6 hud_show_mapped_lines=0 exstyle_set_equality_lines=12 rcs=[0]
+=== ARM nonet shell=hud-shell-nonet.py n=6 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=nonet i=0/6 rc=0 samples=133 opaque=100 longest_ms=6178 pids=9
+LAUNCH tag=nonet i=1/6 rc=0 samples=164 opaque=136 longest_ms=6785 pids=9
+LAUNCH tag=nonet i=2/6 rc=0 samples=170 opaque=147 longest_ms=7140 pids=9
+LAUNCH tag=nonet i=3/6 rc=0 samples=168 opaque=139 longest_ms=6692 pids=9
+LAUNCH tag=nonet i=4/6 rc=0 samples=166 opaque=141 longest_ms=6960 pids=9
+LAUNCH tag=nonet i=5/6 rc=0 samples=174 opaque=148 longest_ms=6961 pids=9
+ARM-LAUNCHABLE tag=nonet reaching_HUD_READY=6/6 rcs=[0] launchable=True
+ARM-SUMMARY tag=nonet launches=6 launches_with_opaque_window=6/6 samples=975 opaque_catch_samples=811 longest_opaque_ms=7140 show_refused_total=0 reassert_total=0 nets2_lines=6 hud_show_mapped_lines=0 exstyle_set_equality_lines=12 rcs=[0]
+=== ARM nogate shell=hud-shell-nogate.py n=6 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=nogate i=0/6 rc=0 samples=167 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=nogate i=1/6 rc=0 samples=140 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=nogate i=2/6 rc=0 samples=137 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=nogate i=3/6 rc=0 samples=136 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=nogate i=4/6 rc=0 samples=157 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=nogate i=5/6 rc=0 samples=145 opaque=0 longest_ms=0 pids=9
+ARM-LAUNCHABLE tag=nogate reaching_HUD_READY=6/6 rcs=[0] launchable=True
+ARM-SUMMARY tag=nogate launches=6 launches_with_opaque_window=0/6 samples=882 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=0 reassert_total=6 nets2_lines=6 hud_show_mapped_lines=0 exstyle_set_equality_lines=12 rcs=[0]
+=== ARM show shell=hud-shell.py n=6 cadence_ms=25 secs=6.0 x=-10000 extra=['--show-hud'] ===
+LAUNCH tag=show i=0/6 rc=0 samples=132 opaque=102 longest_ms=6562 pids=9
+LAUNCH tag=show i=1/6 rc=0 samples=135 opaque=101 longest_ms=5824 pids=9
+LAUNCH tag=show i=2/6 rc=0 samples=153 opaque=121 longest_ms=6621 pids=9
+LAUNCH tag=show i=3/6 rc=0 samples=147 opaque=147 longest_ms=8362 pids=467
+LAUNCH tag=show i=4/6 rc=0 samples=146 opaque=118 longest_ms=6629 pids=9
+LAUNCH tag=show i=5/6 rc=0 samples=155 opaque=122 longest_ms=6421 pids=9
+ARM-LAUNCHABLE tag=show reaching_HUD_READY=6/6 rcs=[0] launchable=True
+ARM-SUMMARY tag=show launches=6 launches_with_opaque_window=6/6 samples=868 opaque_catch_samples=711 longest_opaque_ms=8362 show_refused_total=0 reassert_total=0 nets2_lines=6 hud_show_mapped_lines=6 exstyle_set_equality_lines=12 rcs=[0]
+
+POPULATION launches_per_arm=6 window_s=6.0 cadence_ms=25 arms=4
+WINDOW every arm ran with x=-10000 (off-screen), so no arm can put a window on the desk; the axis measured is WS_VISIBLE and not-alpha-occluded, neither of which reads a rect
+
+BOX ARM2-census-produced-json                  GREEN arm=live     census_rc=0 arms=4 launches_per_arm=6 window_s=6 cadence_ms=25
+True
+BOX ARM2/live/launchable                       GREEN arm=live     reaching_HUD_READY=6/6 rcs= nets2_lines=6 exstyle_set_equality_lines=12
+True
+BOX ARM2/nonet/launchable                      GREEN arm=nonet    reaching_HUD_READY=6/6 rcs= nets2_lines=6 exstyle_set_equality_lines=12
+True
+BOX ARM2/nogate/launchable                     GREEN arm=nogate   reaching_HUD_READY=6/6 rcs= nets2_lines=6 exstyle_set_equality_lines=12
+True
+BOX ARM2/show/launchable                       GREEN arm=show     reaching_HUD_READY=6/6 rcs= nets2_lines=6 exstyle_set_equality_lines=12
+True
+BOX PASS-1-live-maps-nothing-unless-asked      GREEN arm=live     launches_with_opaque_window=0/6 samples=934 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=6 reassert_total=6 nets2_lines=6 hud_show_mapped_lines=0 POPULATION=6 launches WINDOW=6s @ 25ms, x=-10000
+True
+BOX CONTROL-nonet-maps-the-window              GREEN arm=nonet    launches_with_opaque_window=6/6 opaque_catch_samples=811 longest_opaque_ms=7139.87160000033 show_refused_total=0 reassert_total=0 -- THIS is the arm that proves the census can see a window; a control that stays green is a failing control
+True
+BOX PASS-1b-show-hud-maps-the-window           GREEN arm=show     launches_with_opaque_window=6/6 opaque_catch_samples=711 longest_opaque_ms=8361.90999999963 hud_show_mapped_lines=6 -- the second clause of PASS-1, so a panel that never maps cannot pass
+True
+BOX ARM2-nogate-reported-not-asserted          GREEN arm=nogate   launches_with_opaque_window=0/6 opaque_catch_samples=0 reassert_total=6 show_refused_total=0 -- MEASURED GREEN: the re-assert runs in the same dispatch as pywebview's Show, so the map is shorter than the 25ms grid. This arm does NOT prove the instance gate alone is load-bearing; nonet does. See receipt.
+True
+sotto-hud: HUD_WINDOW_GEOMETRY dpi=144.0 display_w=3840 width=794 height=120 plate_w=720 inset=36 derivation=plate_max_w+2*inset+2border (SPEC ┬º5)
+sotto-hud: HUD_SHELL_READY note=navigation-hook-arms-in-before-show
+sotto-hud: shell=webview2 python=3.11.8 pid=24184 panel=hud-panel.html panel_bytes=3473
+sotto-hud: HUD_FAILSAFE_ARMED after=6.0 armed_before=webview.start
+sotto-hud: HUD_SHOW_GATE_ARMED cure=_gate_form_show show_hud=false mechanism=instance-shadow-of-Form.Show measured=_pythonnet-show-shadow-test.py
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=17376150 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: HUD_NAV_HOOK_ARMED event=WebView2.NavigationStarting source=edgechromium.py:102 ordering=pywebview-Show-then-reassert nets_armed=2
+sotto-hud: HUD_BEFORE_SHOW hwnd=17376150 show_hud=false
+sotto-hud: HUD_SHOW_REFUSED reason=not-asked opacity=1.0 show_hud=false hud_mapped=false count=1 cure=_gate_form_show source=edgechromium.py:348
+sotto-hud: HUD_NAV_START n=1 action=reassert-hidden refused_total=1
+sotto-hud: HUD_LOADED stage=panel
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=17376150 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: hud_state=ERROR_SILENT_DEVICE reason=flag:state token_is_enum_name=true
+sotto-hud: HUD_PROBE {"anchor": "top-left", "glyph_name": "error", "glyph_rgb": "rgb(224, 85, 58)", "line1": "ERROR_SILENT_DEVICE", "line2": "digital silence below the floor (peak not measured) ÔÇö nothing is routed into the device", "line3": "", "mapped": "0", "painted_lines": 2, "plate_alpha_px": "rgb(12, 12, 16)", "plate_opacity": "0", "plate_rect": {"h": 70, "w": 667, "x": 36, "y": 36}, "plate_visible": "hidden", "state": "ERROR_SILENT_DEVICE", "timer": ""}
+sotto-hud: HUD_STARTUP_FLASH_CENSUS nav_starts=1 show_refused=1 nets_armed=2 hud_mapped=false show_requested=false exstyle_exact_set_equality=True
+sotto-hud: HUD_READY
+sotto-hud: HUD_FAILSAFE_FIRE after=6.0 panel_loaded=true nav_starts=1 show_refused=1 note=if panel_loaded=false the shell hung BEFORE on_loaded
+BOX ARM3-shell-exits-clean                     GREEN arm=live     rc=0 reached_HUD_READY=True panel_loaded=True nets_armed=2
+True
+BOX ARM3-probe-returned-json                   GREEN arm=live     state=ERROR_SILENT_DEVICE mapped=0 glyph_name=error plate_visible=hidden plate_opacity=0 plate=667x70 painted_lines=2
+True
+BOX PASS-1c-not-mapped-means-not-painted       GREEN arm=live     data-mapped=0 computed_visibility=hidden computed_opacity=0 -- SPEC §1.6: an unmapped HUD is never-published, not published-at-alpha-0
+True
+BOX PASS-9-live-plate-shows-the-enum-name      GREEN arm=live     data-state=ERROR_SILENT_DEVICE line1_text=ERROR_SILENT_DEVICE -- the HUD's word and the log's word are the same string
+True
+BOX SPEC-1.1-live-three-line-ceiling           GREEN arm=live     painted_lines=2 line2_len=87
+True
+sotto-hud: HUD_WINDOW_GEOMETRY dpi=144.0 display_w=3840 width=794 height=120 plate_w=720 inset=36 derivation=plate_max_w+2*inset+2border (SPEC ┬º5)
+sotto-hud: HUD_SHELL_READY note=navigation-hook-arms-in-before-show
+sotto-hud: shell=webview2 python=3.11.8 pid=33516 panel=hud-panel.html panel_bytes=3473
+sotto-hud: HUD_FAILSAFE_ARMED after=6.0 armed_before=webview.start
+sotto-hud: HUD_SHOW_GATE_ARMED cure=_gate_form_show show_hud=false mechanism=instance-shadow-of-Form.Show measured=_pythonnet-show-shadow-test.py
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=7873704 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: HUD_NAV_HOOK_ARMED event=WebView2.NavigationStarting source=edgechromium.py:102 ordering=pywebview-Show-then-reassert nets_armed=2
+sotto-hud: HUD_BEFORE_SHOW hwnd=7873704 show_hud=false
+sotto-hud: HUD_SHOW_REFUSED reason=not-asked opacity=1.0 show_hud=false hud_mapped=false count=1 cure=_gate_form_show source=edgechromium.py:348
+sotto-hud: HUD_NAV_START n=1 action=reassert-hidden refused_total=1
+sotto-hud: HUD_LOADED stage=panel
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=7873704 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: hud_state=ERROR_SILENT_DEVICE reason=flag:state token_is_enum_name=true
+sotto-hud: HUD_PROBE {"anchor": "top-left", "glyph_name": "error", "glyph_rgb": "rgb(224, 85, 58)", "line1": "ERROR_SILENT_DEVICE", "line2": "digital silence below the floor (peak not measured) ÔÇö nothing is routed into the device", "line3": "", "mapped": "0", "painted_lines": 2, "plate_alpha_px": "rgb(12, 12, 16)", "plate_opacity": "0", "plate_rect": {"h": 70, "w": 667, "x": 36, "y": 36}, "plate_visible": "hidden", "state": "ERROR_SILENT_DEVICE", "timer": ""}
+sotto-hud: HUD_STARTUP_FLASH_CENSUS nav_starts=1 show_refused=1 nets_armed=2 hud_mapped=false show_requested=false exstyle_exact_set_equality=True
+sotto-hud: HUD_READY
+sotto-hud: HUD_FAILSAFE_FIRE after=6.0 panel_loaded=true nav_starts=1 show_refused=1 note=if panel_loaded=false the shell hung BEFORE on_loaded
+BOX SPEC-5-live-dpi-144                        GREEN arm=live     dpi=144 display_w=3840 plate_measured_w=667 spec_range=[360..720] (SPEC §5 'plate min x max') rc=0 painted_lines=2 line1=ERROR_SILENT_DEVICE
+True
+sotto-hud: HUD_WINDOW_GEOMETRY dpi=192.0 display_w=3840 width=1058 height=128 plate_w=960 inset=48 derivation=plate_max_w+2*inset+2border (SPEC ┬º5)
+sotto-hud: HUD_SHELL_READY note=navigation-hook-arms-in-before-show
+sotto-hud: shell=webview2 python=3.11.8 pid=38428 panel=hud-panel.html panel_bytes=3473
+sotto-hud: HUD_FAILSAFE_ARMED after=6.0 armed_before=webview.start
+sotto-hud: HUD_SHOW_GATE_ARMED cure=_gate_form_show show_hud=false mechanism=instance-shadow-of-Form.Show measured=_pythonnet-show-shadow-test.py
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=10167402 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: HUD_NAV_HOOK_ARMED event=WebView2.NavigationStarting source=edgechromium.py:102 ordering=pywebview-Show-then-reassert nets_armed=2
+sotto-hud: HUD_BEFORE_SHOW hwnd=10167402 show_hud=false
+sotto-hud: HUD_SHOW_REFUSED reason=not-asked opacity=1.0 show_hud=false hud_mapped=false count=1 cure=_gate_form_show source=edgechromium.py:348
+sotto-hud: HUD_NAV_START n=1 action=reassert-hidden refused_total=1
+sotto-hud: HUD_LOADED stage=panel
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=10167402 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: hud_state=ERROR_SILENT_DEVICE reason=flag:state token_is_enum_name=true
+sotto-hud: HUD_PROBE {"anchor": "top-left", "glyph_name": "error", "glyph_rgb": "rgb(224, 85, 58)", "line1": "ERROR_SILENT_DEVICE", "line2": "digital silence below the floor (peak not measured) ÔÇö nothing is routed into the device", "line3": "", "mapped": "0", "painted_lines": 2, "plate_alpha_px": "rgb(12, 12, 16)", "plate_opacity": "0", "plate_rect": {"h": 76, "w": 750, "x": 48, "y": 48}, "plate_visible": "hidden", "state": "ERROR_SILENT_DEVICE", "timer": ""}
+sotto-hud: HUD_STARTUP_FLASH_CENSUS nav_starts=1 show_refused=1 nets_armed=2 hud_mapped=false show_requested=false exstyle_exact_set_equality=True
+sotto-hud: HUD_READY
+sotto-hud: HUD_FAILSAFE_FIRE after=6.0 panel_loaded=true nav_starts=1 show_refused=1 note=if panel_loaded=false the shell hung BEFORE on_loaded
+[1007/132812.871:ERROR:ui\gfx\win\window_impl.cc:172] Failed to unregister class Chrome_WidgetWin_0. Error = 1411
+BOX SPEC-5-live-dpi-192                        GREEN arm=live     dpi=192 display_w=3840 plate_measured_w=750 spec_range=[480..960] (SPEC §5 'plate min x max') rc=0 painted_lines=2 line1=ERROR_SILENT_DEVICE
+True
+
+--- BOXES ---
+GREEN    ARM1-oracle-runs
+GREEN    ARM1/PASS-5-reachable
+GREEN    ARM1/PASS-5-no-state-looks-idle
+GREEN    ARM1/PASS-5-error-never-reads-as-recording
+GREEN    ARM1/PASS-5-groups-match-spec-3.1
+GREEN    ARM1/PASS-6-silent-device-facts
+GREEN    ARM1/PASS-6-unmeasured-says-so
+GREEN    ARM1/PASS-9-line1-is-enum-name
+GREEN    ARM1/SPEC-1.1-three-line-ceiling
+GREEN    ARM1/SPEC-1.1-ceiling-holds-at-4000-chars
+GREEN    ARM1/SPEC-3.4-error-carries-a-datum
+GREEN    ARM1/SPEC-4.3-binding-line-not-silent
+GREEN    ARM1/SPEC-5-dpi-and-25pct-cap
+GREEN    ARM1/SPEC-7-no-inert-param
+GREEN    ARM1/DEAL-6.3-overlay-vs-replay-disjoint
+GREEN    ARM1/DEAL-6.3-overlay-vs-hud-disjoint
+GREEN    ARM1/DEAL-6.3-hud-overlaps-all-declared
+GREEN    ARM1/DEAL-2.2-F12-last
+GREEN    ARM1/CONTROL-collisions-detects-real-duplicate
+GREEN    ARM1/CONTROL-collisions-clean-on-distinct
+GREEN    ARM2-census-produced-json
+GREEN    ARM2/live/launchable
+GREEN    ARM2/nonet/launchable
+GREEN    ARM2/nogate/launchable
+GREEN    ARM2/show/launchable
+GREEN    PASS-1-live-maps-nothing-unless-asked
+GREEN    CONTROL-nonet-maps-the-window
+GREEN    PASS-1b-show-hud-maps-the-window
+GREEN    ARM2-nogate-reported-not-asserted
+GREEN    ARM3-shell-exits-clean
+GREEN    ARM3-probe-returned-json
+GREEN    PASS-1c-not-mapped-means-not-painted
+GREEN    PASS-9-live-plate-shows-the-enum-name
+GREEN    SPEC-1.1-live-three-line-ceiling
+GREEN    SPEC-5-live-dpi-144
+GREEN    SPEC-5-live-dpi-192
+
+POPULATION boxes=36 arms_run=36 red=0
+WINDOW launches_per_census_arm=6 window_s=6s census_cadence_ms=25 live_dom_window=6s states_walked=19 (headless)
+VERDICT PASS
+
+WROTE H:\sotto\_moved\aireplay\_main\_lane18-gate.out.txt

@@ -1,0 +1,32 @@
+{
+  "consts": [
+    "`wire` is the JSON string the page sent as the pywebview func_param.",
+    "BRIDGE_BAD_MESSAGE error=",
+    "BRIDGE_BAD_MESSAGE shape=",
+    "kind",
+    "payload",
+    "caption-observed",
+    "status-observed",
+    "caption-applied",
+    "status-applied",
+    "caption-cleared",
+    "renderer-ready",
+    "page-error",
+    "pointer",
+    "history-append",
+    "history-tail",
+    "history-search",
+    "history-root",
+    "history-reveal",
+    "hide",
+    "toggle",
+    "quit",
+    "info",
+    "BRIDGE_UNKNOWN_KIND kind=",
+    "BRIDGE_HANDLER_FAILED kind=",
+    " error="
+  ],
+  "has_panel_surface": false,
+  "has_stats": false,
+  "nconsts": 30
+}

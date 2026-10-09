@@ -1,0 +1,11 @@
+busy p50 0.1519 max 0.2872
+  rise=1.5 -> 1 hits [(3.7, 0.213, 0.1276, 1.67)]
+  rise=2.0 -> 1 hits [(3.9, 0.434, 0.1293, 3.36)]
+  rise=2.5 -> 1 hits [(3.9, 0.434, 0.1293, 3.36)]
+  rise=3.0 -> 1 hits [(3.9, 0.434, 0.1293, 3.36)]
+  rise=3.5 -> 0 hits []
+shipped(3.5) via normal ctor on spike-on-busy: 0
+Traceback (most recent call last):
+  File "<string>", line 21, in <module>
+  File "<string>", line 21, in <lambda>
+ValueError: assignment destination is read-only

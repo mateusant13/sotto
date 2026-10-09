@@ -3,10 +3,12 @@
   'use strict';
   if (window.sotto) return;   // a second injection must not replace a live bridge
 
-  var subs = { caption: [], status: [], geometry: [] };
+  var subs = { caption: [], status: [], geometry: [], stats: [] };
   var queue = [];
   var infoSeq = 0;
   var infoPending = {};
+  var statsSeq = 0;
+  var statsPending = {};
 
   function emit(kind, payload) {
     var list = subs[kind] || [];
@@ -94,16 +96,35 @@
     return { text: value, meta: (meta && typeof meta === 'object') ? meta : {} };
   }
 
+  // A COUNT OF WHAT ARRIVED, per kind. Not decoration: the panel's level meter
+  // is fed BOTH by a poll (`getStats`, every 1000 ms) and by this push, so a
+  // measurement that only saw `data-level="live"` could not tell a working push
+  // from a poll doing all the work. `_main/_strip-stats-probe.py` reads this
+  // counter and requires the PUSH to have landed more than once.
   window.__sotto_emit = function (kind, json) {
     var payload = null;
     try { payload = JSON.parse(json); } catch (err) { payload = null; }
+    window.__sotto_emit.counts[kind] = (window.__sotto_emit.counts[kind] || 0) + 1;
     emit(kind, payload);
   };
+  window.__sotto_emit.counts = {};
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];
     if (!resolve) return;
     delete infoPending[id];
+    try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
+  };
+
+  // The worker's OWN counters, on the same id round-trip as `getInfo`, so
+  // `bridge.getStats()` really resolves with a measurement instead of a
+  // synchronous guess. The payload is the panel's whitelist and nothing else —
+  // `peak` and `blocks` — and a field the worker never printed stays ABSENT
+  // (`panel.js:1709` trusts only the fields it actually carries).
+  window.__sotto_stats = function (id, json) {
+    var resolve = statsPending[id];
+    if (!resolve) return;
+    delete statsPending[id];
     try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
   };
 
@@ -156,6 +177,7 @@
     onCaption: function (cb) { return subscribe('caption', cb); },
     onStatus: function (cb) { return subscribe('status', cb); },
     onGeometry: function (cb) { return subscribe('geometry', cb); },
+    onStats: function (cb) { return subscribe('stats', cb); },
 
     hide: function () { post('hide', null); },
     toggle: function () { post('toggle', null); },
@@ -174,6 +196,40 @@
         infoPending[id] = resolve;
         post('info', { id: id });
       });
+    },
+
+    // ── THE WORKER'S OWN COUNTERS (`getStats`/`onStats`) ────────────────────
+    // `panel.js:1695-1724` (`wireLevel`) subscribes to `onStats` AND polls
+    // `getStats` once a second; it reads `peak` and `blocks` and nothing else,
+    // and a MISSING field is not a measurement, so it must stay missing rather
+    // than arrive as a zero this shell invented. The numbers come from the
+    // worker's own `WORKER_STATS` line, which `WorkerBridge._pump` already
+    // parses into `last_worker_stats`.
+    getStats: function () {
+      return new Promise(function (resolve) {
+        var id = 's' + (++statsSeq);
+        statsPending[id] = resolve;
+        post('stats', { id: id });
+      });
+    },
+
+    // ── THE SURFACE CONTRACT (the shell resizes; the page only wears it) ─────
+    // `app/panel/panel.js:1239-1243` calls THIS member and nothing else:
+    //
+    //     bridge.setPanelSurface('panel', reason)
+    //
+    // Its absence is not cosmetic. Without it `openFullPanel` falls through to
+    // `panel.js:1245-1247` — "switch the layout here ... The strip is NOT short
+    // until the window is" — so the strip's own "Open panel" button left the
+    // window strip-sized. The shell answers by setting the document surface
+    // (`window.SottoSurfaces.set`, the API `surface.js` defines) AND moving the
+    // HWND to that surface's geometry, in the same breath.
+    setPanelSurface: function (surface, reason) {
+      post('panel-surface', {
+        surface: String(surface == null ? '' : surface),
+        reason: String(reason == null ? '' : reason)
+      });
+      return true;
     },
 
     captionApplied: function (text) {

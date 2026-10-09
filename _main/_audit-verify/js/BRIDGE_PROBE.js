@@ -12,7 +12,10 @@
     hasPanelElement: !!document.getElementById('panel'),
     methods: ['pushCaption', 'setStatus', 'onCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
-              'captionApplied', 'statusApplied', 'ready', 'clearApplied']
+              'captionApplied', 'statusApplied', 'ready', 'clearApplied',
+              // The two members this shell owed the panel: the surface switch
+              // (it must resize the window) and the worker's own counters.
+              'setPanelSurface', 'getStats', 'onStats']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,

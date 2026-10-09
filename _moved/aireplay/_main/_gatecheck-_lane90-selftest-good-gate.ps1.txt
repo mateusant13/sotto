@@ -1,0 +1,5 @@
+ARM-A0 src-subdirs-present     = True   [expect True  = the live check]
+ARM-A1 flipped-check-fails     = True   [expect True  = the flip really bites]
+ARM-A2 arithmetic-floor        = True   [expect True
+ARMS FAILED = 0   [expect 0]
+GATE-VERDICT PASS

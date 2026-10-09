@@ -46,9 +46,12 @@ REM  closes the app, that arm stops being skipped and moves from `skipped=` to
 REM  `gate=` in the same line -- the transition is visible, never silent.
 REM
 REM  THE SKIP GUARD closes the other direction: after every step has written its log,
-REM  one sweep fails the run if any log carries `VERDICT: SKIPPED` while its step is
-REM  not declared skip-capable. An instrument that skips an arm and still exits 0 must
-REM  not be printed as a pass by a battery that cannot see it.            (skip-verdict-guard)
+REM  one sweep fails the run if any STEP log carries `VERDICT: SKIPPED` while its step
+REM  is not declared skip-capable. An instrument that skips an arm and still exits 0
+REM  must not be printed as a pass by a battery that cannot see it.       (skip-verdict-guard)
+REM  "STEP log" is load-bearing: the battery's OWN console carries the same literal
+REM  text (its beacon ECHOES it), so a sweep that reads the console fails on its own
+REM  output -- measured, and cured at the step below.
 REM
 REM  A MISSING INSTRUMENT IS A FAILURE, NEVER A PASS: a step whose file does not
 REM  exist is recorded as rc=MISSING and fails the run. `else ( echo ... MISSING )`
@@ -147,6 +150,24 @@ if exist _main\_panel2-repeat-probe.js (
   call :record panel2-repeat-probe !ERRORLEVEL!
 ) else ( call :record panel2-repeat-probe MISSING )
 
+echo === the day/hour gallery: the module arithmetic, and the DOM that shows it ===
+REM Two instruments, two claims. `history-gallery-oracle.js` requires the SHIPPED
+REM `app/panel/history-gallery.js` as a plain module (no DOM, no jsdom) and checks the
+REM bucketing plus the LOCAL-time stamp; its `--neg-arm` is the control row below.
+REM `_panel2-dom-probe.js` is the jsdom probe that presses the real buttons in the real
+REM document -- 78 arms, ARM G being the gallery's. Measured 2026-10-08: GREEN 78/78 on
+REM the shipped panel, and RED on exactly the two arms that name the auto-append the
+REM owner had removed when the same probe was pointed at a mutant copy via
+REM `SOTTO_PANEL_DIR` (the other 76 stayed green).
+if exist _main\history-gallery-oracle.js (
+  node _main\history-gallery-oracle.js > "%OUT%\gallery-oracle.log" 2>&1
+  call :record history-gallery-oracle !ERRORLEVEL!
+) else ( call :record history-gallery-oracle MISSING )
+if exist _main\_panel2-dom-probe.js (
+  node _main\_panel2-dom-probe.js > "%OUT%\panel2-dom-probe.log" 2>&1
+  call :record panel2-dom-probe !ERRORLEVEL!
+) else ( call :record panel2-dom-probe MISSING )
+
 echo === the wiring and the embedded JS (the two things the other gates cannot see) ===
 if exist _main\_audit-worker-start-wiring.py (
   python _main\_audit-worker-start-wiring.py > "%OUT%\wiring-worker-start.log" 2>&1
@@ -170,6 +191,40 @@ if exist _main\_review-tapstop.py (
   python _main\_review-tapstop.py > "%OUT%\review-tapstop.log" 2>&1
   call :record review-tapstop !ERRORLEVEL!
 ) else ( call :record review-tapstop MISSING )
+
+echo === the strip surface, the wave, and the hot reload that must never wait forever ===
+REM Five instruments from the strip-surface lane. The ORACLE builds FOUR broken
+REM copies of today's shell (the JS member removed, the dispatch routing removed,
+REM the CSS height blinded, the per-sample log restored) and requires each to go
+REM RED on its own claim -- so it is a `:control`, and it prints its control
+REM verdict. The LOG probe does the same with ONE copy (the per-sample push) and
+REM prints its own. The other three are plain gates: each exits 0 only after its
+REM arms held, and each is launched with `--no-worker`/`--no-hotkey` so no model
+REM is loaded and no audio device is opened.
+if exist _main\_strip-surface-oracle.py (
+  python _main\_strip-surface-oracle.py > "%OUT%\strip-surface-oracle.log" 2>&1
+  call :control strip-surface-oracle !ERRORLEVEL! "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS"
+) else ( call :control strip-surface-oracle MISSING "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS" )
+if exist _main\_strip-stats-log-probe.py (
+  python _main\_strip-stats-log-probe.py > "%OUT%\strip-stats-log.log" 2>&1
+  call :control strip-stats-log-budget !ERRORLEVEL! "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS"
+) else ( call :control strip-stats-log-budget MISSING "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" )
+if exist _main\_strip-reload-probe.py (
+  python _main\_strip-reload-probe.py > "%OUT%\strip-reload.log" 2>&1
+  call :record strip-hot-reload !ERRORLEVEL!
+) else ( call :record strip-hot-reload MISSING )
+if exist _main\_strip-surface-probe.py (
+  python _main\_strip-surface-probe.py > "%OUT%\strip-surface.log" 2>&1
+  call :record strip-surface-runtime !ERRORLEVEL!
+) else ( call :record strip-surface-runtime MISSING )
+if exist _main\_strip-restore-probe.py (
+  python _main\_strip-restore-probe.py > "%OUT%\strip-restore.log" 2>&1
+  call :record strip-geometry-restore !ERRORLEVEL!
+) else ( call :record strip-geometry-restore MISSING )
+if exist _main\_strip-stats-probe.py (
+  python _main\_strip-stats-probe.py > "%OUT%\strip-stats.log" 2>&1
+  call :record strip-stats-wave !ERRORLEVEL!
+) else ( call :record strip-stats-wave MISSING )
 
 echo === Alt+C, the only control: registration table, delivery+fallback+mutex, autostart ===
 if exist _main\_audit-hotkey-probe.py (
@@ -244,6 +299,16 @@ if exist _main\_panel2-repeat-probe.js (
   node _main\_panel2-repeat-probe.js --revert > "%OUT%\control-panel2-repeat-revert.log" 2>&1
   call :control control-panel2-repeat-revert !ERRORLEVEL! "%OUT%\control-panel2-repeat-revert.log" "CONTROL PASS" "control copy removed: true"
 ) else ( call :control control-panel2-repeat-revert MISSING "%OUT%\control-panel2-repeat-revert.log" "CONTROL PASS" "control copy removed: true" )
+REM `history-gallery-oracle.js --neg-arm` injects the bare-date stamp
+REM (`new Date(entry.date)`) into a COPY of the module's parse and requires the LOCAL-time
+REM arm to go RED while the stamp-independent arms stay green. The box is GMT-0300
+REM (offsetMinutes=180, printed by the run), so the trap is OBSERVABLE here; on a UTC box
+REM the same injection moves nothing and the oracle says so instead of claiming a control
+REM it did not have -- that vacuity is the failure this row exists to catch.
+if exist _main\history-gallery-oracle.js (
+  node _main\history-gallery-oracle.js --neg-arm > "%OUT%\control-history-gallery-neg-arm.log" 2>&1
+  call :control control-history-gallery-neg-arm !ERRORLEVEL! "%OUT%\control-history-gallery-neg-arm.log" "NEG-ARM-VERDICT: PASS" "local-arm-red=true"
+) else ( call :control control-history-gallery-neg-arm MISSING "%OUT%\control-history-gallery-neg-arm.log" "NEG-ARM-VERDICT: PASS" "local-arm-red=true" )
 REM `historico-vs-redux-probe.js --gate-off` has NO control mode of its own: the
 REM flag loads the store with the one guard line DELETED, so the probe is RED BY
 REM DESIGN and exits 1 (its own "FAIL" code) with the violation named. That is why
@@ -264,10 +329,27 @@ REM Every step above wrote its log. An instrument that silently skips an arm and
 REM exits 0 is a skip wearing a pass, and the difference is visible only in its log --
 REM so this single sweep refuses the whole run if ANY step's log carries a skip verdict
 REM (`VERDICT: SKIPPED`) while that step is not declared skip-capable. The declared
-REM logs are named by `:skipped` itself, and `_run-*.log` (kept run consoles) are out of
-REM scope by construction. One check covers every step, including ones added later.
-python -c "import io,os,sys,glob;d=sys.argv[1];ex=set(x for x in sys.argv[2].split(',') if x);bad=[os.path.basename(p) for p in glob.glob(os.path.join(d,'*.log')) if not os.path.basename(p).startswith('_run-') and os.path.basename(p) not in ex and b'VERDICT: SKIPPED' in io.open(p,'rb').read()];print('SKIP-VERDICT IN THE LOG OF A STEP THAT IS NOT DECLARED SKIP-CAPABLE: ' + ','.join(bad) if bad else 'no skip verdict outside the declared skip step(s)');sys.exit(1 if bad else 0)" "%OUT%" "!SKIPLOGS!" > "%OUT%\_skip-guard.log" 2>&1
-call :record skip-verdict-guard !ERRORLEVEL!
+REM logs are named by `:skipped` itself and handed to the instrument in `--exclude`.
+REM
+REM IT USED TO READ ITS OWN TRANSCRIPT -- measured 2026-10-08, do not narrow this
+REM back. The sweep was an inline python that globbed `%OUT%\*.log` and excluded only
+REM `_run-*`. The battery's own console, kept in `%OUT%` as `_battery-run-<ts>.log`,
+REM carries the literal `VERDICT: SKIPPED` -- because `:skipped` ECHOES the skip text
+REM in its beacon line -- so the guard failed the whole run for a DECLARED skip,
+REM naming `_battery-run-20261007-130942.log` and `_battery-run-20261007-131528.log`.
+REM A guard that fails on its own output is not measuring the steps. THE RULE NOW: a
+REM STEP LOG is a `*.log` in `%OUT%` whose basename does NOT start with `_`, because
+REM every artifact the battery itself writes is `_`-prefixed (`_battery-run-*`,
+REM `_run-*`, `_skip-guard.log`, `_battery-summary.txt`) and a run console is a
+REM transcript of the whole run, not the log of a step.
+REM The instrument ALSO runs a five-arm control on EVERY invocation, so it cannot be
+REM green by reading nothing. Both colours, one command each:
+REM   python _main\_skip-verdict-guard.py --dir _main\_audit-verify --exclude ",hotkey-delivery.log,"   -> rc 0, 64 logs read
+REM   python _main\_skip-verdict-guard.py --dir _main\_skip-guard-redcheck --exclude ","                   -> rc 1, names bogus-step.log only
+if exist _main\_skip-verdict-guard.py (
+  python _main\_skip-verdict-guard.py --dir "%OUT%" --exclude "!SKIPLOGS!" > "%OUT%\_skip-guard.log" 2>&1
+  call :record skip-verdict-guard !ERRORLEVEL!
+) else ( call :record skip-verdict-guard MISSING )
 
 echo.
 echo =============== BATTERY SUMMARY ===============

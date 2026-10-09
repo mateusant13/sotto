@@ -1,0 +1,6 @@
+981:             ON expired_diff.session_id = retention_queue.session_id
+982:            AND expired_diff.turn_id = retention_queue.item_id
+1011:             ON expired_rewind.session_id = retention_queue.session_id
+1012:            AND expired_rewind.operation_id = retention_queue.item_id
+1016:             AND expired_rewind.updated_at_ms = retention_queue.eligible_at_ms
+1467:rain("removed"),n+=1);return n}async drain(e){let r=Mr(),n=Date.now(),s=[],i=[];for(let[a,o]of this.queue)o.sessionId===e&&(i.push(a),n-o.enqueuedAt<OCe?s.push(o):(o.resolveDrain("expired"),tt.debug(r,`[cron] Discarding expired queued entry: sessionId=${e} cronName=${o.cronName}`)));for(let a of i)this.queue.delete(a);for(let a of s)try{await a.sendFn(),a.resolveDrain("sent"),tt.info(r,`[cron] Drained queued m

@@ -1,0 +1,9 @@
+census FAILED rc=1 (tmp=G:\Temp\rev-census-fe1a60cd)
+Traceback (most recent call last):
+  File "G:\Temp\rev-census-fe1a60cd\census.py", line 2, in <module>
+    DB = sys.argv[1]; PARENT = sys.argv[2]; SELF = sys.argv[3]
+                                                   ~~~~~~~~^^^
+IndexError: list index out of range
+
+CENSUS-RC 1
+TMP-LEFT-BEHIND G:\Temp\rev-census-fe1a60cd

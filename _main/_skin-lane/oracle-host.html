@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>frozen skin host — 380x900</title>
+<style>
+  /* The host page carries NO styling that could reach the skin: everything the skin needs
+   * is inside its shadow root, which is the point of the measurement. */
+  html, body { margin: 0; padding: 0; background: #000; }
+  #box { width: 380px; height: 900px; }
+</style>
+</head>
+<body>
+<!-- The shadow host IS this box, exactly 380x900 CSS px, so `:host{height:100%}` resolves
+     without the document helping. -->
+<div id="box"></div>
+<script>
+  /* Mounts the frozen artifacts the way the integrator will: a shadow root, the rewritten
+   * vendor sheet adopted INTO that root, the design's 15 variables on a `.skin-root` that
+   * mirrors the vendor's App root, and the four fragments as its children in the vendor's
+   * own DOM order. Payload comes from the oracle over executeJavaScript, so no file://
+   * fetch and no URL in the fragment is ever resolved by the browser. */
+  window.__mountFrozen = function (payload) {
+    var box = document.getElementById('box');
+    if (box.shadowRoot) box.shadowRoot.innerHTML = '';
+
+    /* The fonts are loaded into the DOCUMENT, not the shadow root: `@font-face` matching
+     * is document-global (analysis §9.6), which is exactly how the real panel works —
+     * `app/panel/themes/fonts.css` is loaded by the panel page and the shadow-inner text
+     * uses it. Same files, so the gate measures the deployment's typography. */
+    if (payload.fontsCss && !document.getElementById('sotto-skin-fonts')) {
+      var fs = document.createElement('style');
+      fs.id = 'sotto-skin-fonts';
+      fs.textContent = payload.fontsCss;
+      document.head.appendChild(fs);
+    }
+
+    var root = box.shadowRoot || box.attachShadow({ mode: 'open' });
+
+    var style = document.createElement('style');
+    style.textContent = payload.css;
+    root.appendChild(style);
+
+    var skin = document.createElement('div');
+    // The vendor's own App root, class for class, so `.relative h-full w-full
+    // overflow-hidden` resolves against the sheet's own utilities.
+    skin.className = 'skin-root relative h-full w-full overflow-hidden';
+    /* `vars` arrives as an OBJECT (the 15 design variables, verbatim, which is how the
+     * contract carries them). Handing that object to `setAttribute` writes the string
+     * "[object Object]" and the skin then has NO variables at all — measured: every
+     * `var(--page)` resolved to nothing and the stage painted transparent. */
+    if (payload.vars && typeof payload.vars === 'object') {
+      skin.setAttribute('style', Object.keys(payload.vars).map(function (k) {
+        return k + ':' + payload.vars[k];
+      }).join(';'));
+    } else {
+      skin.setAttribute('style', payload.vars || '');
+    }
+    root.appendChild(skin);
+
+    ['stage', 'chrome', 'caption', 'panel'].forEach(function (part) {
+      var html = payload.fragments[part];
+      if (!html) return;
+      var holder = document.createElement('div');
+      holder.innerHTML = html;
+      while (holder.firstChild) skin.appendChild(holder.firstChild);
+    });
+
+    // The SAME normalization the vendor's reference frame gets, so neither side can differ
+    // merely because a caret was mid-blink.
+    var kill = document.createElement('style');
+    kill.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+    root.appendChild(kill);
+
+    return {
+      mounted: true,
+      skinChildren: skin.children.length,
+      cssChars: payload.css.length,
+      hostRect: (function () { var r = box.getBoundingClientRect();
+        return [r.width, r.height]; })()
+    };
+  };
+</script>
+</body>
+</html>

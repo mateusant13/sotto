@@ -1,0 +1,33 @@
+=== Q1 queue rows for this session (POPULATION = whole table = 0 rows) ===
+
+=== Q2 role='user' rows newer than id 0 (POPULATION = whole table) ===
+  id=224086 2026-10-07 12:00:13 src=api turn_id=None
+      'continua: \n              ÔûêÔûêÔûêÔòù   ÔûêÔûêÔûêÔòùÔûêÔûêÔòùÔûêÔûêÔûêÔòù   ÔûêÔûêÔòùÔûêÔûêÔòùÔûêÔûêÔûêÔòù   ÔûêÔûêÔûêÔòù ÔûêÔûêÔûêÔûêÔûêÔòù ÔûêÔûêÔòù  ÔûêÔûêÔòù     ÔûêÔûêÔûêÔûêÔûêÔûêÔòù ÔûêÔûêÔûêÔûêÔûêÔûêÔòù ÔûêÔûêÔûêÔûêÔûêÔûêÔòù ÔûêÔûêÔûêÔûêÔûêÔûêÔûêÔòù\n              ÔûêÔûêÔûêÔûêÔòù ÔûêÔûêÔûêÔûêÔòæÔûêÔûêÔòæÔûêÔûêÔûêÔûêÔòù  ÔûêÔûêÔòæÔûêÔûêÔòæÔûêÔûê'
+  id=224090 2026-10-07 12:01:37 src=api turn_id=None
+      'mcode --session mvs_a00662bff55242cb9b56c0f1165bdad7 C:\\Users\\Administrador> e essa era a sessao. continua tambem o prompt ou tarefas verdadeiras dessa sessao.'
+  id=224099 2026-10-07 12:03:10 src=api turn_id=None
+      'veja se o cronjob de 3 em 3 minutos ta funcionando aqui. testa um cronjob unico, ve se ele te manda mensagem como eu mando.'
+  id=224144 2026-10-07 12:08:02 src=api turn_id=None
+      'oq eu quero de voce: fa├ºa subagents trabalharem no projeto atual. depois disso, usa o cronjob. se ele te acordar uma vez enquanto vc espera os subagents, otimo.'
+  id=224149 2026-10-07 12:09:18 src=api turn_id=None
+      'nao ignore esse loop q to falnado. ├® pra garantir que vc funcione sozinho, com gambiarra ou nao, ate vc nao precisar mais da gambiarra. nao estarei aqui, entao '
+  id=227835 2026-10-07 12:40:54 src=api turn_id=None
+      '# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis is the text the 3-minute wake injects. It is written to be read by an agent that\nknows NOTHING abou'
+  id=228892 2026-10-07 12:49:03 src=api turn_id=None
+      '# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis is the text the 3-minute wake injects. It is written to be read by an agent that\nknows NOTHING abou'
+  rows found = 7
+
+=== Q4 marker match: role='user' rows containing 'msg-user-v1-wake' ===
+  HIT id=228892 2026-10-07 12:49:03 src=api turn_id=None queue_linked=False
+  HIT id=227835 2026-10-07 12:40:54 src=api turn_id=None queue_linked=False
+  marker hits = 2   of which NOT queue-linked = 2
+  MARKER_MATCHES_ARE_NOT_PROOF: a hit here proves only that the text arrived. It is DELIVERY BY THE QUEUE only if turn_ingress names the queue item for it (see Q3). A hand-pushed `mcode exec --session` produces a role='user' row with turn_id NULL and no ingress row at all -- measured twice in this store.
+
+=== the authoritative proof, whole store (newest 20) ===
+  DELIVERED_BY_QUEUE = 20/20
+
+=== Q5 runtime cron scheduler health (D-2 + D-4) ===
+  cron_runs rows (POPULATION) = 1442
+  newest run = 2026-10-06 10:11:00  age = 1618 min
+  undeleted crons joined to an ACTIVE job = 5
+  verdict = ALARM (threshold 15 min)

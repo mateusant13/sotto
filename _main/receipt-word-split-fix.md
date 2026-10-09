@@ -1,13 +1,22 @@
 # RECEIPT — the word split in the captions ("shi t"), fixed
 
 **Lane:** SottoWordSplit · **Scope:** ONE thing — the caption text must not split words.
-**File changed:** `worker/sotto_worker.py` only — **228 079 B**, sha256
-`73A4CA72D8A50D4FD404EFC5DD0D205313958B79BB715B80E6CD7946C927543A`
-(the registration's line hints were re-read against THIS revision; every number below is from it).
+**File changed:** `worker/sotto_worker.py` only. The word-split change was verified at
+**228 079 B** / sha256 `73A4CA72D8A50D4FD404EFC5DD0D205313958B79BB715B80E6CD7946C927543A`; the file
+then gained the audio meter (task 2, `receipt-audio-meter.md`), later defaulted **OFF** by the owner's
+decision, and is now **237 024 B** / sha256
+`CEFD18689BD54F681E7F5666437DCECA28E9E61B3F3C41666697E4FD3829BAF1`. **Every number below was
+re-measured on that final revision**: `_main/word-split-trace.json` records
+`worker_sha256: CEFD18689BD54F68…` with the same 26 chunks and the same split, and every oracle was
+re-run — **12/12 GREEN**, `--neg-arm` **PASS** (7 RED), caption-lines **12/12**, verdict-gate
+**GREEN 14/14**, `py_compile` rc 0.
+The registration's line hints were re-read against THIS revision; every number below is from it.
 **Not touched:** `app/panel/`, `app/webview/sotto_webview.py`, `history-*.js`,
 `caption-formulation.js`, the owner's shell (pid 28428) or worker (pid 29008).
 **No audio device was opened.** Every measurement below is the offline file path
 (`soundfile` + `StreamAsr.run_chunk`), because the owner's worker holds the endpoint.
+**The owner's RUNNING worker predates this fix** (pid 29008, started 08:01:56): the fixed text
+reaches him when his worker next restarts, not before.
 
 ---
 
@@ -158,3 +167,48 @@ tokens and skips specials*.
 | `_main/word-split-oracle.py` | **the oracle**, `--neg-arm` = the pre-fix colour |
 | `_main/_wordsplit-run-hidden.py` | window-free command runner (house rule) |
 | `_main/word-split-trace.json`, `_wordsplit-{before,after}.jsonl`, `_wordsplit-oracle{,-neg}.out` | the evidence |
+
+## 8. The registration is CLOSED — `AGENTS.md`, edited 2026-10-08
+
+The defect was registered as **OPEN, with its falsifier** in `AGENTS.md` (the panel/caption bullet).
+That line became false the moment the fix landed, and by the file's OWN rule 1 (*"a false line here is
+not a doc defect — it is work done twice"*) it could not be left standing. **I did not edit it on my
+own authority**: `AGENTS.md` is not in this lane's ownership map and it is the file every agent loads,
+so I flagged it to the coordinating agent, **who authorized the edit and supplied both substitutions
+verbatim** (`session-ab8603de-dc05-40ba-966c-f756dd2a5a4c`). Credit for the decision is theirs; the
+numbers are mine.
+
+| what | value |
+|---|---|
+| the marker | `:481-483` — `**CLOSED 2026-10-08 — FIXED AND GATED. The resolution is at the END of this bullet;` / `the text that follows is the HISTORICAL description of the defect, kept because the` / `mechanism is the transferable part:**` (85 / 85 / 98 chars; the third line also carries the paragraph's pre-existing continuation, `words were split at CHUNK boundaries (…)`, unchanged) |
+| the resolution block | `:488-498`, inserted after the paragraph's end (`across a chunk boundary (seconds today).`) |
+| `AGENTS.md` after the two edits | **54 797 B**, sha256 `F3EBB4EF90DDC35F195A063C7FB8F5DA7DF67EE5E5D2CDCCEDC55DB88022B9F8` |
+| `AGENTS.md` after the rewrap | **54 801 B**, sha256 `3D5E06B01CA5CB09C4D1880221A959F7E4C6182257A8E7008D2EB2E2DCFBDD84` (was **53 517 B** at the start) |
+| line endings | **LF only, unchanged in kind** — 599 bare LF / 0 CRLF after the two edits, **601 bare LF / 0 CRLF** after the rewrap (+2, exactly the two new line breaks) |
+| `grep 'OPEN, with its falsifier' AGENTS.md` | **0 matches** (re-checked after the rewrap) |
+
+**The rewrap, and why it needed its own proof.** The marker went in as ONE 246-char line (the
+authorised text, verbatim) and the coordinating agent then authorised breaking it into three. That is
+finishing an insertion **the same agent wrote**, not rewriting someone else's edit — a distinction
+worth stating, because my first instinct was to refuse the rewrap on the grounds that literal
+substitutions must stay literal, and that instinct was right for *preserved* text and wrong for *the
+author's own* text. The break was done by `_main/_agents-md-rewrap.py`, which is an **instrument, not a
+text editor**: it refuses to write unless the whitespace-normalised concatenation of the new lines is
+byte-identical to the old line, so a dropped or added space fails the run instead of shipping.
+Measured: `WORDS UNCHANGED: True (43 words)`, 266 chars → 3 lines. The +4 bytes are exactly the two
+breaks (each replaces one space with `\n` + the 2-space indent) and the +2 LF is the same fact counted
+in line endings — **the arithmetic closes, which is how I know nothing else moved.**
+
+Both anchors matched **byte for byte**, so no ASCII fallback was needed — including the `▁` and the
+accented text, which were inside the replaced region and came through unchanged. The historical
+paragraph was kept deliberately (the parent's instruction): the mechanism — `detok` turning the
+word-start marker into a space and `.strip()`ing it away — is the transferable part, and the
+resolution block sits at the end of the same bullet where a reader arriving from a stale note will
+find it.
+
+**The division of labour, recorded because it is the part that generalises:** the lane MEASURED and
+raised the false line instead of letting it rot; it did NOT edit `AGENTS.md` on its own authority,
+because the file is outside its ownership map and is loaded by every agent; and it proposed the fix
+with the numbers only it had. The authorisation and the text are the coordinating agent's; the
+measurements and the proofs are this lane's. §8 exists so that a later reader can tell those two apart
+without asking.

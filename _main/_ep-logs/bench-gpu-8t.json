@@ -1,0 +1,49 @@
+{
+  "label": "gpu-8t",
+  "python": "3.11.8",
+  "executable": "H:\\sotto\\_main\\_epvenvs\\gpu\\Scripts\\python.exe",
+  "requested": "CUDAExecutionProvider",
+  "threads_env": 8,
+  "model_dir": "nemotron-3.5-asr-streaming-0.6b-int8",
+  "wav": "pt-br-sample.wav",
+  "cuda_dlls": true,
+  "load_s": 6.025,
+  "REAL_get_providers": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "REAL_decoder": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "REAL_joint": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "intra_op_num_threads_effective": 8,
+  "rss_after_load_mb": 1299.2,
+  "audio_s": 15.0,
+  "chunks": 26,
+  "reps": 1,
+  "wall_s_per_pass": [
+    1.93
+  ],
+  "wall_s_best": 1.93,
+  "rtf_best": 0.1326,
+  "chunk_ms_median": 72.99,
+  "chunk_ms_mean": 74.23,
+  "chunk_ms_p95": 89.42,
+  "chunk_ms_max": 96.3,
+  "chunk_ms_min": 56.7,
+  "cores_used_infer": 3.76,
+  "rss_peak_mb": 1952.9,
+  "rss_end_mb": 1952.9,
+  "tokens_total": 70,
+  "text_sha256": "11a57224e862cd4c5fb377baf623cfdf27f93467e0c46256e0fd2af1b12ee90c",
+  "text_chars": 150,
+  "text_head": "rádio anunciou que aponte sobre o vai ser interditada na próxima segunda-feira.  Os moradores precim de um caminho alter",
+  "gpu_util_mean": 30.0,
+  "gpu_util_max": 60.0,
+  "gpu_mem_mb_max": 6599.0,
+  "gpu_samples": 88
+}

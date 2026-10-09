@@ -1,0 +1,32 @@
+NOW_LOCAL 2026-10-07 12:13:11 epoch_ms 1791385991526
+POP local_runtime_queue_items = 4
+POP local_runtime_message_rows = 116996
+POP local_runtime_v2_cron_definitions = 30
+POP local_runtime_v2_scheduler_jobs = 30
+POP local_runtime_v2_cron_runs = 1442
+
+== SCHEMA queue_items ==
+   id INTEGER
+   session_id TEXT
+   item_id TEXT
+   status TEXT
+   created_at_ms INTEGER
+   data_json TEXT
+   source TEXT
+   client_request_id TEXT
+   dedupe_key TEXT
+   expires_at_ms INTEGER
+   claim_id TEXT
+   claim_lease_expires_at_ms INTEGER
+   routing_fingerprint TEXT
+
+== SCHEMA message_rows ==
+   id INTEGER
+   session_id TEXT
+   msg_id TEXT
+   role TEXT
+   turn_id TEXT
+   created_at_ms INTEGER
+   data_json TEXT
+   source TEXT
+   source_context_json TEXT

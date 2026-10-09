@@ -1,0 +1,59 @@
+
+=== POPULATION / WINDOW ===
+  message_rows (whole table)      : 137411
+  wake payload markers enumerated : 4
+  cron_runs (whole table)         : 1442
+  role=user AND source=cron rows  : 1383
+  queued rows (whole table)       : 0
+  linked turn_ingress (claim=api) : 80   (full population, no LIMIT)
+  linked turn_ingress (ALL srcs)  : 1229   (full population, no LIMIT)
+  heartbeat window                : last 15 min
+
+[PASS] A1-queue-linked-delivery-proven: queue-driven deliveries: POPULATED OVER THE WHOLE TABLE -- turn_ingress rows with queue_item_ids_json NOT NULL AND claim_source='api' = 80; of those, carrying >=1 role='user' row = 80; COUNTER-EXAMPLES = 0 (want 0). WINDOW = whole table, no LIMIT. For contrast, the PRE-FIX predicate (limit 20 + -ge 1) would have seen 20 user-bearing rows in its 20-row sample -> PASS on 0 of these counter-examples. Latest: turn=turn_4bb0112f-87a7-44eb-a135-0656d70b803a accepted=2026-10-07 12:55:18 session=mvs_b7a9f3a7db -> user_rows=1
+[PASS] A1b-queue-linked-delivery-proven-wider: POPULATION 2x wider: turn_ingress rows with queue_item_ids_json NOT NULL AND claim_source IN ('api','background-task') AND status='completed' = 357; carrying >=1 role='user' row = 357; COUNTER-EXAMPLES = 0 (want 0). WINDOW = whole table.
+
+=== LINKED-TURN CENSUS (REPORT, every claim_source) ===
+  queue-linked turn_ingress rows (any claim_source) : 1229
+  of those carrying >=1 role='user' row              : 1228
+  counter-examples                                  : 1
+  with_user/pop by claim_source/status               : questionnaire/completed=3/3  background-task/aborted=580/580  background-task/accepted=9/9  background-task/completed=294/294  background-task/failed=84/84  api/completed=63/63  api/aborted=3/3  api/failed=14/14  communication/failed=42/42  communication/completed=133/134  communication/aborted=3/3
+  NOT ASSERTED, NAMED: turn=turn_43d6e94b-aa31-4120-9424-d7782851eaa0 claim_source=communication status=completed accepted=2026-10-03 10:22:22
+
+[PASS] A2-control-textsearch-would-lie: CONTROL: 139 role='user' row(s) carry a wake payload whose turn has NO queue linkage (queue_item_ids_json IS NULL) - hand-pushed, not cron-delivered. A text search credits these to the wake; that is the false green.
+[PASS/VACUOUS-POP] A3-no-duplicate-delivery: live queued rows: attempts=0, proven deliveries=0, rows delivered more than once=0. A row CAN legitimately burn many attempts before the session goes idle - that is the retry, not a duplicate.
+[PASS] A4-no-expiry-strand: queued rows carrying expires_at_ms = 0 (want 0); oldest queued row =  min old; rows older than 60 min for a non-target session = 0 -> nothing ages them out
+[PASS] B1-cron-scheduler-stale: POPULATION = cron_runs whole table (1442 rows), WINDOW = whole table. Newest row 2026-10-06 10:11:00, age 2152,2 min (want > 60: the outage this gate measures).
+[PASS] B2-cron-user-delivery-stopped: role=user AND source=cron rows=1383, newest 2026-10-06 10:11:00, age 2152,2 min (want >60)
+[PASS] B3-probe-cron-never-ran: armed probe crons overdue with run_count=0 and 0 run rows: 1/1
+[PASS] B4-control-cron-regime-is-two-sided: POPULATION = cron_runs whole table (1442 rows), WINDOW = whole table. CONTROL, two-sided: newest run age 2152,2 min sits in EXACTLY ONE of ALIVE (<=15) / DEAD (>60); measured regime = DEAD. RED in the flapping band (15,60] -- a scheduler that fires but not on the cron interval, which the old -gt 0 on a 1442-row table called PASS.
+[PROSE] cron_runs non-empty = 1442 rows. NOT asserted, NOT a control: the table only grows.
+[FAIL] B5-minted-userMessageId-shape: wake-fix.py mints msg-user-v1-wake+hex32 (source=False); runtime writes msg_id len 55; live queue rows have len  (0 of them off-shape); rows carrying the minted prefix = 2
+[FAIL] C1-task-fires-in-window: POP fires in last 15 min = 4; max inter-fire gap = 5,92 min (want >=3 fires, gap<=5)
+[PASS] C2-latest-fire-is-healthy: latest pass in the 15-min window: [2026-10-07 22:01:0 :: ] WAKE sending -> session mvs_a00662bff55242cb9b56c0f1165bdad7 chars=4262 transport=detached-exec || failures still inside the window = 0 (scars age out; the latest one is the contract)
+[PASS] C3-every-fire-accounted: lines carrying a pass outcome in the whole log = 361; the task fires and every pass reaches a decision - fire != wake, but fire != silence is the contract.
+[PASS] C4-control-window-is-load-bearing: CONTROL: same parser, truncated copy -> 0 fires in the 15-min window (want <3); whole log over a 180-min window -> 46 fires (want >=3). C1 measures LIVENESS, not file existence.
+
+=== ARM L -- TWO COLUMNS. THE REQUIREMENT IS LATENCY, NOT GAP. ===
+  WINDOW = whole log, 2026-10-07 11:26:32 -> 2026-10-07 22:02:07
+  sends POP=154  deliveries POP=126  drift=28  unfulfilled sends=28
+  [THE REQUIREMENT] send->delivery   POP=126 min=27s median=88s (1,48 min) p90=233s max=585s under180s=104/126
+  [SUPPORTING, NOT the requirement] delivery->delivery POP=125 median=191s (3,18 min) max=2206s under180s=51/125
+  [ARTIFACT, REPORTED NEVER ASSERTED] naive index-pair send[i]->delivery[i] POP=126 min=979s median=2568s max=6792s
+
+[PASS] L1-REQUIREMENT-send-to-delivery-latency: *** THIS IS THE REQUIREMENT: how long the owner waited for THIS wake. *** POP=126 (each send paired with the FIRST delivery at-or-after it), WINDOW = whole log 2026-10-07 11:26:32 -> 2026-10-07 22:02:07. median=88s (1,48 min, want <=2 min), p90=233s (want <=5 min), max=585s, under 180 s = 104/126, unfulfilled sends (overtaken, NOT counted as slow) = 28. NOT the delivery->delivery gap: that column is measured by L2 and is not what the owner waits for.
+[PASS] L2-supporting-delivery-to-delivery-gap: SUPPORTING METRIC -- NOT THE REQUIREMENT. This column says deliveries keep ARRIVING; it says NOTHING about how long one wake took to arrive. POP=125, WINDOW = whole log 2026-10-07 11:26:32 -> 2026-10-07 22:02:07. median=191s (3,18 min, want <=6 min), max=2206s, under 180 s = 51/125. A green L2 ALONE IS NOT A PASS ON THE OWNER'S WAIT -- read L1.
+[PASS] L3-control-pairing-is-load-bearing: CONTROL, two-sided: sends POP=154 vs deliveries POP=126 -- drift 28 slots. Identity pairing gives median 88s; the NAIVE index pairing gives median 2568s, a 2480s difference. The gate must read the IDENTITY column: an index pair over a drift of 28 silently measures backlog as latency (that artifact reads as a 42-min 'regression' and is WRONG). Red if the two agree, because then the pairing rule is not carrying weight.
+[PASS] L4-control-no-latency-regression-from-the-gap: CONTROL: the claim 'the owner's latency got an order of magnitude worse' is asserted FALSE on this log by the identity pairing (median 88s, want <=2 min). It was produced by index-pairing across a 28-slot drift, NOT by the wake. If a real regression appears, it must appear in send->delivery -- L1 will go red and this control will go red with it.
+[PASS] D0-dedupe-predicate-still-in-source: wake-fix.py still refuses on count(status='queued') = True; live count for target session = 0
+[PASS] D1-stale-row-refuses-forever: CURE REVERTED IN A COPY (the shipped predicate, no expiry): 5 consecutive injections -> rc 2,2,2,2,2. A row already queued refuses every future injection.
+[PASS] D2-control-expiry-clears-the-wedge: CONTROL (cure: stale row cleared): 5 consecutive injections -> rc 0,0,0,0,0, compared with -eq '0,0,0,0,0' (EQUALITY, not -match '0', which also answers True for 2,2,2,2,0 and 20,2,2,2,2). Only the cure changes the outcome, which is what makes D1 a real control.
+[PASS] D3-stale-row-never-blocks-a-wake: live stale rows for the target session = 0; defences present = wake-fix.py prune mode + heartbeat.ps1 calls prune. RED only when a stale row exists AND nothing prunes or expires it - that is the permanent wedge.
+[PASS] E1-no-visible-window-from-this-gate: samples=462 at 50 ms over the probe's life, WS_VISIBLE window seen 0 time(s) (want 0); probe rc=0
+[PASS] F1-runtime-process-identified: mcode runtime processes = 1; pid 8084 started 07/10/2026 11:59:30; newest cron run was 2026-10-06 10:11:00 - the cron table predates this process by design of the outage.
+
+=== NEG-ARM: same doctored measurements, reverted copy vs fixed gate ===
+  revert applied: D2: -eq 0,0,0,0,0 -> -match 0
+  revert applied: A1: full-population equality -> -ge 1
+  revert applied: B4: two-sided regime test -> cron_runs_pop -gt 0
+  revert applied: L1: send->delivery latency -> delivery->delivery gap (wrong column)
+  child fixed: rc=1 report=H:\sotto\_moved\aireplay\_main\_lane16-gate-revert\doctored-fixed.out.txt

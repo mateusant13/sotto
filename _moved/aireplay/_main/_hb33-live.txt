@@ -1,0 +1,91 @@
+cadence-probe.py  --  2026-10-07T13:45:49  driver=H:\sotto\_moved\aireplay\_main\heartbeat.ps1
+heartbeat.log: 12 passes parsed (7 v5, 5 v6)
+==============================================================================
+ARM-L1  MECHANISM PREDICATE (real log, real task settings)
+==============================================================================
+  task.Settings.MultipleInstances  = IgnoreNew
+  task.Settings.StartWhenAvailable = False
+  task.Triggers[0].Repetition.Interval = PT3M
+  IgnoreNew => a tick arriving during a running pass is DISCARDED, not deferred, and StartWhenAvailable=False means it is never made up.
+
+  fire         pass_s   fireGap   drop overran_tick outcome    rc
+  13:07:05        229       182     ok         no delivered  0
+  13:13:02         98       357   DROP        YES delivered  0
+  13:16:02        185       180     ok         no delivered  0
+  13:22:01        131       359   DROP        YES delivered  0
+  13:25:03        162       182     ok         no delivered  0
+  13:28:02        128       179     ok         no delivered  0
+
+  PREDICATE  'tick dropped IFF previous pass overran its own next tick': 6 of 6 correct.
+
+==============================================================================
+ARM-L2  LIVE PASS CADENCE (the thing v6 changed)
+==============================================================================
+  fire=13:31:01 pass_ms=527    exec_ms=99545   outcome=delivered
+  fire=13:34:02 pass_ms=589    exec_ms=-       outcome=pending
+  fire=13:37:01 pass_ms=650    exec_ms=258465  outcome=delivered
+  fire=13:40:02 pass_ms=956    exec_ms=-       outcome=pending
+  fire=13:43:02 pass_ms=801    exec_ms=-       outcome=pending
+
+  pass wall time   : n=5 min=1s median=1s mean=1s max=1s   (interval is 180s)
+  fire gap         : n=4 min=179s median=180s mean=180s max=181s
+  ticks DROPPED    : 0 of 4   (IgnoreNew dropped a tick)
+  passes >interval : 0 of 5
+  VERDICT PASS -- every tick is served
+
+==============================================================================
+ARM-L3  LIVE DELIVERY CADENCE + the causal identity
+==============================================================================
+  POPULATION = 9 deliveries   WINDOW = 13:06:39 -> 13:38:21 (31.7 min)
+  gaps (s)      : 255, 226, 267, 305, 213, 145, 152, 339
+  distribution  : n=8 min=145s median=240s mean=238s max=339s
+  met the 180 s target: 2 of 8 gaps
+
+  IDENTITY  delivery_gap(N+1) = fire_gap(N+1) + exec(N+1) - exec(N)
+   13:04:03 -> 13:07:05  fire_gap= 182 exec   155->  227 rc 0->0  predicted=  254 actual=  255  ok
+   13:07:05 -> 13:13:02  fire_gap= 357 exec   227->   98 rc 0->0  predicted=  228 actual=  226  ok
+   13:13:02 -> 13:16:02  fire_gap= 180 exec    98->  184 rc 0->0  predicted=  266 actual=  267  ok
+   13:16:02 -> 13:22:01  fire_gap= 359 exec   184->  130 rc 0->0  predicted=  305 actual=  305  ok
+   13:22:01 -> 13:25:03  fire_gap= 182 exec   130->  162 rc 0->0  predicted=  214 actual=  213  ok
+   13:25:03 -> 13:28:02  fire_gap= 179 exec   162->  128 rc 0->0  predicted=  145 actual=  145  ok
+   13:28:02 -> 13:31:01  fire_gap= 179 exec   128->  100 rc 0->0  predicted=  151 actual=  152  ok
+  identity holds within 3 s on 7 of 7 pairs (log resolution is 1 s).
+
+  CEILING: exec duration is the agent turn itself -- measured n=9 min=98s median=155s mean=160s max=258s.
+  The runtime refuses a prompt into a session with an open turn, so no
+  cron can deliver faster than that session's turns close. Delivery
+  cadence is therefore bounded BELOW by this number, not by the cron.
+  VERDICT OVER-CADENCE (median 240s vs acceptance 210s)
+
+==============================================================================
+ARM-L4  SEND -> DELIVERY LATENCY  (the owner's quantity)
+==============================================================================
+
+  PRE-EDIT  (v5, before 13:30:59)
+    POPULATION = 7 sends with a delivery   WINDOW = 13:04:04 -> 13:30:10 (26.1 min)
+    latencies (s): 155, 227, 98, 184, 130, 162, 128
+    n=7 min=98s median=155s mean=155s max=227s
+    under the 180 s target: 5 of 7
+
+  POST-EDIT (v6, from 13:31:01)
+    POPULATION = 1 sends with a delivery   WINDOW = 13:31:02 -> 13:32:42 (1.7 min)
+    latencies (s): 100
+    n=1 min=100s median=100s mean=100s max=100s
+    under the 180 s target: 1 of 1
+
+    send->delivery == exec_ms on 1 of 1 instrumented passes
+    (expected: `mcode exec` runs the turn synchronously and returns
+     when the turn ends, so the owner's latency IS the turn length.)
+
+  POST-EDIT VERDICT PASS (median 100s vs acceptance 210s, n=1)
+  pre-edit median was 155s; post-edit median 100s; delta -55s
+
+==============================================================================
+VERDICT SUMMARY
+==============================================================================
+  L1  PASS
+  L2  PASS
+  L3  OVER-CADENCE
+  L4  PASS
+
+VERDICT PASS

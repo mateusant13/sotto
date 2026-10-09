@@ -1,0 +1,16 @@
+== the 11/1 marker == 'reiniciei. que workspace estamos'
+
+== markers derived from LIVE queue rows (first 60 chars) ==
+  qid=4200 sess=mvs_ea552229 status=queued created=2026-10-06 20:25:46 attempts=1
+      marker='"  E ├® uma ponte, n├úo uma corre├º├úo: mcode update substitui o'
+  qid=4691 sess=mvs_b7a9f3a7 status=queued created=2026-10-07 12:14:55 attempts=20
+      marker='# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis'
+
+== ALL role=user rows in session mvs_a00662bf since 11:56 ==
+  id=223676 src='api' at=2026-10-07 11:46:02 :: 'quero saber se seu cronjob de 3 em 3 minutos ta funcionando, disparando, te mandando mensagem, te fazendo continuar'
+  id=223950 src='api' at=2026-10-07 11:50:00 :: '"\n  ÔùÅ O seam" me explica o que ├® o seam e como desativamos ele. e me arruma o cronjob REALMENTE te fazendo trabalhar e ler a mensagem dele e tu relame'
+  id=223966 src='api' at=2026-10-07 11:50:35 :: 'sim, voce pode. checa seu runtime e codigo etc e muda'
+  id=223986 src='api' at=2026-10-07 11:50:55 :: 'e nao e pro cronjob criar sessao nova. ├® pra ele injetar mensagem em voce. tipo um usuario'
+  id=224061 src='api' at=2026-10-07 11:53:58 :: 'tu leu a mensagem do cronjob, agora? como se fosse EU digitando?'
+  id=225247 src='api' at=2026-10-07 11:51:49 :: '[HEARTBEAT] Pass automatico. Continua o plano do Sotto: H:\\sotto\\_moved\\aireplay\\ROADMAP.md. Pesquisa primeiro, roadmap, depois constroi. Frontend no '
+  id=225419 src='api' at=2026-10-07 12:21:19 :: '# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis is the text the 3-minute wake injects. It is written to be read by an agent that\nknows NO'

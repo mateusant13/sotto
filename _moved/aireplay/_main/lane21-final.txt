@@ -1,0 +1,49 @@
+LANE21-AGENTS-TRUTH-GATE  repo=H:\sotto\_moved\aireplay
+  target: H:\sotto\_moved\aireplay\AGENTS.md
+  control: a COPY with the cure reverted MUST go RED (ARM-C)
+
+  [LIVE]  H:\sotto\_moved\aireplay\AGENTS.md
+    POPULATION = 483 lines / 39314 B
+    ARM-1 false claims asserted : 0
+    ARM-2 corrected truths missing : 0
+    ARM-3 undated measurement lines : 0
+    ARM-4 future-dated measurement lines : 0
+
+  [ARM-C CONTROL (cure reverted in a COPY)]  H:\sotto\_moved\aireplay\_main\lane21-agents-truth-PRE-CURE-COPY.md
+    POPULATION = 483 lines / 38999 B
+    ARM-1 false claims asserted : 3
+      RED  1a ring budget sized for a 16 GB machine  x1  '16 GB box'
+      RED  1a (alt form)  x1  'breaks a 16 GB'
+      RED  1b no hotkey in src/capture  x1  '0 hits for a hotkey'
+    ARM-2 corrected truths missing : 4
+      RED  2a this host really has 47.74 GiB  '47.74 GiB'
+      RED  2b the trigger files are named  'trigger.cpp'
+      RED  2c the build gap is named  'NOT on the'
+      RED  2d receipt-29 is cited  'receipt-29'
+    ARM-3 undated measurement lines : 17
+      RED      line   97: **CAPTURE / ENCODER ÔÇö MEASURED on this box  (`docs/research/03-nvenc-sessions.md`):**
+      RED      line  110: - **Traps, all measured :** `tuningInfo = 0` (UNDEFINED) is invalid ÔåÆ status 12; a
+      RED      line  145: 179 MB ÔåÆ 3.90 GB Redux lesson applies here too. **Measured on this box  (re-verified
+      RED      line  170: - **"179 MB" IS A FILE SIZE AND MUST NEVER BE QUOTED AS A COST.** MEASURED on this box
+      RED      line  182: 51 262 832 640 B, re-measured  13:03) ÔÇö that assumption was false, and it was the
+      RED      line  192: is off by 30 000 B; the five files on disk sum to **670 619 803 B**, re-measured  by
+      RED      line  226: - **AND THE COMPARISON IS NOT FAIR YET: the ternary's 5ÔÇô14├ù was measured  at
+      RED      line  232: RTFx measured at default threads on this box (measured ) is an artifact, and **the
+      RED      line  264: **ASR THREAD POLICY ÔÇö measured  (`docs/research/11-onnx-threads.md`): the knee is 4 threads,
+      RED      line  273: memory. Load 1.88ÔÇô2.30 s warm. **CPU% measured  = exactly N (100/200/400/600 %) ÔÇö the pin
+      RED      line  278: 4: pin the KNEE MEASURED , not the minimum.** The Ôëñ2-thread budget belongs to OUR
+      RED      line  345: **THE GATE IS REAL AND MEASURED : `replay.cpp:168-173` runs `do_gate()`
+      RED      line  348: **BUT THE HOTKEY IS NOT IN THE PRODUCT YET ÔÇö measured  13:05, and this is the single
+      RED      line  363: 7. **THE RING IS BUDGETED BY MEASURED HARDWARE, NOT BY TASTE ÔÇö measured .** The replay
+      RED      line  373: (measured  13:03). The cap binds at **2.0 % of the pool it should be reading.** Two
+      RED      line  439: | `models/` | the int8 ONNX export actually used (`parakeet-tdt-0.6b-v3-onnx`, 5 payload files summing to 670 619 803 B, re-measured ) |
+      RED      line  451: | **Redux weights** (179 MB ternary) | `H:\sotto\worker\models\parakeet-redux-ternary\` | CC-BY-4.0, sha256 recorded. Re-measured : 17 files, **179 020 262 B** |
+    ARM-4 future-dated measurement lines : 1
+      RED      line  338: 2026-10-08
+
+  ARM-C expected: false-claims>=2 (3), truths-missing>=2 (4), undated>=1 (17), future-dated>=1 (1)
+  ARM-C verdict: RED as expected -- the control CAN say NO
+
+  ARM-1..4 verdict on the LIVE file: GREEN
+  copy written: H:\sotto\_moved\aireplay\_main\lane21-agents-truth-PRE-CURE-COPY.md
+LANE21-AGENTS-TRUTH-GATE PASS

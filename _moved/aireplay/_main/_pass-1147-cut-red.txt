@@ -1,0 +1,6 @@
+aireplay-capture ÔÇö spec 03 prototype (D3D11 -> NVENC -> replay ring -> clip.mp4)
+  pid=23452  exe=aireplay-capture.exe
+  nv-codec-headers nvEncodeAPI.h 13.1  sha256 8776FDDCB8FEBC6AEC4D73989B1F21831EB30306BC583DA55B4BF0C14A1DC228
+=== OFFLINE CUT (no WGC, no NVENC): the muxer path, proven on its own ===
+OFFLINE CUT FAILED: no NAL units found
+EXIT=2

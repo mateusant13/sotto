@@ -1,0 +1,129 @@
+/* ── SKIN SHIM — the stylesheet a FROZEN VENDOR PANEL loads INSIDE its shadow root ──
+ *
+ * WHY IT EXISTS. A frozen design is the vendor's own markup plus the vendor's own
+ * compiled CSS (`skins/<zip>/app.css`), mounted in a shadow root so the two style
+ * universes cannot leak into each other. A shadow root has no `html` and no `body`,
+ * so the two rules in the vendor sheet that address them match NOTHING:
+ *
+ *     html,body,#root{height:100%}      (measured in the vendor's built sheet)
+ *     body{margin:0;background:…;color:…;font-family:…;overflow:hidden}
+ *
+ * The first is fatal: the design's root div is `h-full`, its parent chain has no
+ * definite height, and the whole panel collapses to 0 px. The generator rewrites
+ * those two selectors to `:host` before shipping `app.css`; this file carries the
+ * rest of what a shadow tree loses — the boxes and the composition.
+ *
+ * MEASURED, not assumed, in `_main/_skin-owner/csp/` (Electron, the panel's own
+ * CSP): an inline `style` attribute inside the shadow root applies, an inline
+ * custom property applies, an external <link> inside the shadow root loads (6
+ * rules, 2 of them @keyframes), a `body{}` rule does NOT reach the host, and the
+ * vendor's `@keyframes` ARE visible in the shadow tree. That last one matters most:
+ * the design's caption plate animates in with `.soft-in`, whose `both` fill would
+ * otherwise leave it at `opacity:0` — an invisible caption, from a missing
+ * keyframe, with no error anywhere.
+ *
+ * LAYOUT. We cannot reproduce the vendor's SIDE-BY-SIDE stage: its caption column
+ * is `right: panel.width + 34px` (402 px for cellar) and our window is 380 px, so
+ * the vendor's own arithmetic collapses the caption to a ~40 px sliver (measured,
+ * `_main/_skin-owner/click-after.png`). So the vendor's four layers are composed in
+ * a COLUMN — stage behind, the transcript panel below the chrome, the live caption
+ * plate at the bottom — each layer keeping every unit the design gave it. Only the
+ * arrangement is ours; nothing is scaled and nothing is recoloured.
+ */
+
+/* The two rules the vendor sheet's `html,body,#root` rewrite lands on. */
+:host {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* `rem` follows the DOCUMENT root font size, and the vendor design assumes 16. */
+  font-size: 16px;
+  /* The design is internally opaque, but `mix-blend-overlay` on its grain layer
+     would otherwise blend with OUR page: the vendor's root div creates no stacking
+     context. `isolation` gives it one. */
+  isolation: isolate;
+  background: var(--page, #0a0d10);
+  color: var(--text, #e8eef2);
+}
+
+/* Tailwind's preflight `*,::before,::after{box-sizing:border-box}` lives in the
+   vendor sheet and its `*` DOES match inside a shadow tree, so this is a belt on
+   top of braces for the handful of nodes that arrive outside that rule's reach. */
+*, *::before, *::after { box-sizing: border-box; }
+
+.skin {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--page, #0a0d10);
+}
+
+/* LAYER 1 — the stage: wallpaper, overlays, vignette, grain, particles. The
+   vendor positions it `absolute inset-0` inside its root and we keep that. */
+.skin__stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* LAYER 2 — the design's own chrome (top bar, floating pill or sidebar head).
+   Pointer events are OFF: every control in it is a React handler that no longer
+   exists in a frozen tree, and a dead button that looks alive is worse than a
+   decorative bar. OUR controls float above it (see skin-layout.css). */
+.skin__chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.skin__chrome * { pointer-events: none; }
+
+/* LAYER 3 — the column: the transcript panel, then the live caption plate. */
+.skin__col {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.skin__panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.skin__caption {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+/* The frozen panel is `absolute right-0 top-0 bottom-0` with its own width in the
+   vendor; here it is a flex child, so it is re-based only in as much as our column
+   needs — its width, clamp, radius, borders and inner layout are untouched. */
+.skin__panel > * {
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  right: auto !important;
+  left: auto !important;
+  height: 100%;
+  flex: 0 1 auto;
+}
+
+/* The transcript rows keep the vendor's own scrollbar styling (`.quiet-scroll` is
+   in the vendor sheet and its pseudo-elements DO match in a shadow tree), but the
+   scroller must be allowed to shrink inside a flex column. */
+.skin__panel .quiet-scroll { min-height: 0; }
+
+/* A word the design is still forming. The vendor puts `word-in` on the newest word
+   of the live line; the reveal animation itself is in the vendor sheet. */
+.skin .word-in { will-change: opacity, transform; }
+
+/* The composition is in the panel document, not here: see `skin-layout.css`. */

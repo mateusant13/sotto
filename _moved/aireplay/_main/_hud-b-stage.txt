@@ -1,0 +1,5 @@
+--- rc=1 killed=False wall=0.21s args=
+sotto-hud: HUD_WINDOW_GEOMETRY dpi=96.0 display_w=1920 width=530 height=112 plate_w=480 inset=24 derivation=plate_max_w+2*inset+2border (SPEC º5)
+sotto-hud: HUD_FATAL detail=NameError("name 'STAGE_HTML' is not defined")
+
+LOADED=False

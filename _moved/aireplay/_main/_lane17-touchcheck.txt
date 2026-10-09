@@ -1,0 +1,35 @@
+=== files modified since this lane started, outside my ownership ===
+  13:13:50  src\capture\audio_contract.h  [2150B]
+  13:19:20  src\capture\replay.cpp  [27495B]
+  13:09:59  src\capture\replay.h  [7453B]
+  13:18:57  src\capture\ring_buffer.cpp  [11148B]
+  13:18:35  src\capture\ring_buffer.h  [7512B]
+  13:09:59  src\capture\run_battery.ps1  [28290B]
+  13:09:59  src\capture\test_window.cpp  [24136B]
+  13:09:59  src\capture\test_window.h  [7637B]
+  13:09:59  src\asr\engine.py  [14918B]
+  13:05:14  src\asr\gate.py  [35759B]
+  13:09:59  src\asr\runner.py  [12225B]
+  13:09:59  src\asr\transcribe.py  [6729B]
+  13:10:16  src\asr\__pycache__\engine.cpython-311.pyc  [19435B]
+  13:05:18  src\asr\__pycache__\gate.cpython-311.pyc  [47422B]
+  13:10:16  src\asr\__pycache__\runner.cpython-311.pyc  [17997B]
+  13:10:31  src\asr\__pycache__\transcribe.cpython-311.pyc  [10244B]
+  13:10:26  src\index\_index-green-probe.py  [12354B]
+  13:10:26  src\index\schema.sql  [10570B]
+  13:10:26  src\index\search.py  [9740B]
+  13:10:26  src\index\store.py  [14746B]
+  13:10:40  src\index\__pycache__\search.cpython-311.pyc  [14310B]
+  13:10:40  src\index\__pycache__\store.cpython-311.pyc  [20998B]
+  13:05:07  src\ui\hud-contract.js  [22056B]
+  13:01:42  src\ui\hud-panel.css  [7603B]
+  13:01:24  src\ui\hud-panel.html  [3473B]
+  13:01:59  src\ui\hud-panel.js  [7683B]
+  13:15:54  src\ui\hud-shell.py  [27121B]
+  13:16:01  src\ui\__pycache__\hud-shell.cpython-311.pyc  [32445B]
+=== my own files ===
+  13:04:08  src\pipeline\__init__.py  [1000B]  sha=C9608FC9DA3D5277
+  13:12:58  src\pipeline\contracts.py  [30015B]  sha=5C207ADCA906E2AB
+  13:13:17  src\pipeline\chain.py  [47878B]  sha=0E38FA35A7BEB16E
+  13:17:37  _main\_lane17-chain-gate.ps1  [22572B]  sha=0FC4A8E4179CD542
+  13:20:10  receipts\receipt-24-clip-to-asr-chain.md  [18312B]  sha=2A235726FB807A74

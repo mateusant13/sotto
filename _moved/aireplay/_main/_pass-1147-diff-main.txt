@@ -1,0 +1,78 @@
+warning: in the working copy of '_moved/aireplay/src/capture/main.cpp', LF will be replaced by CRLF the next time Git touches it
+diff --git a/_moved/aireplay/src/capture/main.cpp b/_moved/aireplay/src/capture/main.cpp
+index 499e3a9..5ebc5d8 100644
+--- a/_moved/aireplay/src/capture/main.cpp
++++ b/_moved/aireplay/src/capture/main.cpp
+@@ -89,6 +89,8 @@ struct Options {
+     bool     monitor = false;
+     bool     window_top = false;
+     int      window_alpha = -1;
++    std::string cut_from;
++    uint32_t cut_fps = 60, cut_w = 1920, cut_h = 1080;
+     std::string out;
+     std::string log;
+     uint32_t st_w = 1920, st_h = 1080;
+@@ -116,6 +118,10 @@ static void usage()
+              "window at alpha N (N=1 is imperceptible); needed because an off-desktop window is "
+              "captured as uniform BLACK");
+     log_line("  --out FILE                 clip path (default _main\\runs\\clip-<ts>.mp4)");
++    log_line("  --cut-from-h264 FILE       OFFLINE: fill the ring from a real Annex-B H.264 elementary");
++    log_line("                             stream and run the SAME cut. No WGC, no NVENC. Proves the");
++    log_line("                             muxer even when capture is unavailable (receipt 03 ┬º7)");
++    log_line("  --cut-fps N --cut-size WxH  what the offline stream is, for the container header");
+     log_line("  --log FILE                 also write the log here");
+     log_line("  --help");
+ }
+@@ -143,6 +149,15 @@ static bool parse(int argc, char** argv, Options* o, std::string* err)
+         else if (a == "--monitor") o->monitor = true;
+         else if (a == "--window-top") o->window_top = true;
+         else if (a == "--window-alpha") o->window_alpha = atoi(next("--window-alpha").c_str());
++        else if (a == "--cut-from-h264") o->cut_from = next("--cut-from-h264");
++        else if (a == "--cut-fps") o->cut_fps = (uint32_t)atoi(next("--cut-fps").c_str());
++        else if (a == "--cut-size") {
++            std::string s = next("--cut-size");
++            size_t x = s.find('x');
++            if (x == std::string::npos) { *err = "--cut-size wants WxH"; return false; }
++            o->cut_w = (uint32_t)atoi(s.substr(0, x).c_str());
++            o->cut_h = (uint32_t)atoi(s.substr(x + 1).c_str());
++        }
+         else if (a == "--out") o->out = next("--out");
+         else if (a == "--log") o->log = next("--log");
+         else { *err = "unknown argument: " + a; return false; }
+@@ -363,7 +378,9 @@ int main(int argc, char** argv)
+     std::string err;
+     if (!parse(argc, argv, &o, &err)) { log_line("ARGS_REJECTED: %s", err.c_str()); usage(); return 2; }
+     if (!o.log.empty()) log_open_file(o.log);
+-    if (o.help || (!o.selftest && !o.run)) { usage(); log_close_file(); return o.help ? 0 : 2; }
++    if (o.help || (!o.selftest && !o.run && o.cut_from.empty())) {
++        usage(); log_close_file(); return o.help ? 0 : 2;
++    }
+ 
+     NvencEncoder::set_fault(parse_fault(o.fault));
+ 
+@@ -372,7 +389,24 @@ int main(int argc, char** argv)
+     log_line("  nv-codec-headers nvEncodeAPI.h %d.%d  sha256 8776FDDCB8FEBC6AEC4D73989B1F21831EB30306BC583DA55B4BF0C14A1DC228",
+              NVENCAPI_MAJOR_VERSION, NVENCAPI_MINOR_VERSION);
+ 
+-    int rc = o.selftest ? arm_selftest(o) : arm_run(o);
++    int rc;
++    if (!o.cut_from.empty()) {
++        Replay rep;
++        std::string e2;
++        std::string outp = o.out;
++        if (outp.empty()) {
++            char b[512];
++            _snprintf_s(b, sizeof(b), _TRUNCATE, "H:\\aireplay\\_main\\runs\\offline-cut-%s.mp4",
++                        timestamp_slug().c_str());
++            outp = b;
++        }
++        log_line("=== OFFLINE CUT (no WGC, no NVENC): the muxer path, proven on its own ===");
++        rc = rep.cut_from_h264(o.cut_from, outp, o.cut_fps, o.cut_w, o.cut_h, &e2) ? 0 : 2;
++        if (rc != 0) log_line("OFFLINE CUT FAILED: %s", e2.c_str());
++        else         log_line("OFFLINE CUT OK: %s", outp.c_str());
++    } else {
++        rc = o.selftest ? arm_selftest(o) : arm_run(o);
++    }
+     log_line("EXIT=%d", rc);
+     log_close_file();
+     return rc;

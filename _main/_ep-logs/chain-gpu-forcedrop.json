@@ -1,0 +1,38 @@
+{
+  "executable": "H:\\sotto\\_main\\_epvenvs\\gpu\\Scripts\\python.exe",
+  "ort_version": "1.30.0",
+  "available": [
+    "TensorrtExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "preference_order": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "force_fail_level": 0,
+  "chosen": "CPUExecutionProvider",
+  "trace": [
+    {
+      "level": 0,
+      "provider": "CUDAExecutionProvider",
+      "registered": true,
+      "attempted": false,
+      "used": null,
+      "seconds": 0.0,
+      "result": "FORCED-FAIL (instrument: this level was told to fail)"
+    },
+    {
+      "level": 1,
+      "provider": "CPUExecutionProvider",
+      "registered": true,
+      "attempted": true,
+      "used": [
+        "CPUExecutionProvider"
+      ],
+      "seconds": 3.751,
+      "result": "OK"
+    }
+  ],
+  "startup_log_line": "EP_CHAIN chosen=CPUExecutionProvider available=TensorrtExecutionProvider,CUDAExecutionProvider,CPUExecutionProvider trace=CUDAExecutionProvider:FORCED-FAIL (instrument: this level was told to fail) > CPUExecutionProvider:OK"
+}

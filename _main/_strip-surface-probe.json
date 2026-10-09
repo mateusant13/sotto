@@ -1,0 +1,277 @@
+{
+  "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
+  "visibility_file": "H:\\sotto\\_main\\panel-visibility.json",
+  "stamp": "41264-1791391253",
+  "arms": {
+    "A": "ok",
+    "B": "ok",
+    "C": "ok",
+    "D": "ok"
+  },
+  "A": {
+    "pid": 38056,
+    "rc": 0,
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-a-41264-1791391253.log",
+    "probe": [
+      "sotto: OUTSIDE_CLICK_PROBE begin opacity=0 visible_but_not_seen=true",
+      "sotto: OUTSIDE_CLICK_PROBE shown visible=true armed=true rect=(440,834,1480,984)",
+      "sotto: OUTSIDE_CLICK_PROBE after_outside_click visible=false",
+      "sotto: OUTSIDE_CLICK_PROBE after_inside_click visible=true"
+    ],
+    "surface": [
+      "sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"strip\" window=1040x150@(440,834) docked=bottom-centre edit_mode=false"
+    ],
+    "window_geometry": [
+      "sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 window=1040x150@(440,834) docked=bottom-centre visible=false"
+    ],
+    "strip_height": [
+      "sotto: STRIP_HEIGHT from=148 to=150 source=css css_value=150 extra=0 reason=surface-probe-outside-click"
+    ],
+    "client_area": [
+      "sotto: panel client area forced to 380x900 (window 380x900)",
+      "sotto: panel client area forced to 1040x150 (window 1040x150)"
+    ],
+    "panel_shown": [
+      "sotto: PANEL_SHOWN reason=probe-outside-click visible=true show=SW_SHOWNOACTIVATE focus_stolen=false",
+      "sotto: PANEL_SHOWN reason=probe-inside-click visible=true show=SW_SHOWNOACTIVATE focus_stolen=false"
+    ],
+    "outside_click": [
+      "sotto: OUTSIDE_CLICK source=probe-startup point=(0,0) decision=not-armed closed=false armed=false visible=false",
+      "sotto: OUTSIDE_CLICK source=probe point=(420,844) decision=outside closed=true armed=true visible=true",
+      "sotto: OUTSIDE_CLICK source=probe point=(960,909) decision=inside closed=false armed=true visible=true"
+    ],
+    "restored": [],
+    "clamped": [],
+    "page_errors": [],
+    "receiver_ready": [
+      "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+    ],
+    "preload": [
+      "sotto: PRELOAD_ACTIVE hasSotto=true methods=17 hotkey=Alt+C platform=win32"
+    ],
+    "shell_exit": [
+      "sotto: SHELL_EXIT rc=0 reason=probe-outside-click statsPushes=0 statsReplies=5 meterPushes=0"
+    ],
+    "rect_after_show": [
+      "sotto: OUTSIDE_CLICK_PROBE shown visible=true armed=true rect=(440,834,1480,984)"
+    ],
+    "applied_strip": true,
+    "strip_line": "sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"strip\" window=1040x150@(440,834) docked=bottom-centre edit_mode=false",
+    "wall_s": 10.17,
+    "cost": {
+      "cpu_s": 1.484,
+      "peak_ws_bytes": 116887552
+    }
+  },
+  "B": {
+    "pid": 2024,
+    "rc": 0,
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-b-41264-1791391253.log",
+    "census_ms": 100,
+    "census_samples_visible": 0,
+    "census_visible_detail": [],
+    "panel_shown_lines": [],
+    "window_geometry": [],
+    "visibility_at_startup": [
+      "sotto: PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=18488602 form.Visible=false opacity=1.0 show_requested=false"
+    ],
+    "receiver_ready": [
+      "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+    ],
+    "shell_exit": [
+      "sotto: SHELL_EXIT_ARMED where=window-created after_s=68.0 (exit_after=8.0 + grace=60)",
+      "sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0 statsReplies=8 meterPushes=0"
+    ],
+    "no_visible_sample": true,
+    "wall_s": 12.39,
+    "cost": {
+      "cpu_s": 1.25,
+      "peak_ws_bytes": 117055488
+    }
+  },
+  "C": {
+    "pid": 40296,
+    "rc": 0,
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-c-41264-1791391253.log",
+    "tray_menu": [
+      "sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
+    ],
+    "tray_window": [
+      "sotto: TRAY_WINDOW created=true hwnd=11084922 class=SottoTrayWindow message_only=true"
+    ],
+    "tray_icon_add": [
+      "sotto: TRAY_ICON_ADD ok=true uid=45297 cbSize=976 hicon=82781699 icon=H:\\sotto\\app\\webview\\sotto.ico"
+    ],
+    "tray_icon_delete": [
+      "sotto: TRAY_ICON_DELETE ok=true uid=45297"
+    ],
+    "has_edit_item": true,
+    "has_quit_item": true,
+    "has_open_item": true,
+    "wall_s": 10.07,
+    "cost": {
+      "cpu_s": 1.094,
+      "peak_ws_bytes": 116928512
+    }
+  },
+  "D": {
+    "pid": 4292,
+    "rc": 0,
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-d-41264-1791391253.log",
+    "probe_begin": [
+      "sotto: PANEL_EDIT_PROBE begin opacity=0 visible_but_not_seen=true"
+    ],
+    "enter": [
+      "sotto: PANEL_EDIT_MODE on=true reason=tray surface=strip click_through=false noactivate=false rect=(440,834,1480,984) hint=drag_the_band"
+    ],
+    "after_enter": [
+      "sotto: PANEL_EDIT_PROBE after_enter visible=true edit_mode=true rect=(440,834,1480,984)"
+    ],
+    "outside_while_editing": [
+      "sotto: PANEL_EDIT_PROBE outside_click_while_editing closed=false visible=true decision=edit-mode"
+    ],
+    "drag": [
+      "sotto: PANEL_EDIT_PROBE drag from=(440,834) to=(700,400)"
+    ],
+    "saved": [
+      "sotto: PANEL_EDIT_GEOMETRY_SAVED surface=strip window=1040x150@(700,400) moves=1 work=1920x1032@(0,0)"
+    ],
+    "file_line": [
+      "sotto: PANEL_EDIT_PROBE file_geometry={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 1040, \"height\": 150, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032} file_pid=4292 file_schema=\"sotto.panel-visibility/1\" file_visible=true"
+    ],
+    "leave": [
+      "sotto: PANEL_EDIT_MODE on=false reason=tray moves=1 geometry={'surface': 'strip', 'x': 700, 'y': 400, 'width': 1040, 'height': 150, 'docked': 'edited', 'workWidth': 1920, 'workHeight': 1032} click_through=true noactivate=true"
+    ],
+    "after_leave": [
+      "sotto: PANEL_EDIT_PROBE after_leave edit_mode=false saved={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 1040, \"height\": 150, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032}"
+    ],
+    "surface": [
+      "sotto: PANEL_SURFACE surface=strip reason=edit-tray document_surface=\"strip\" window=1040x150@(440,834) docked=bottom-centre edit_mode=true"
+    ],
+    "window_geometry": [
+      "sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 window=1040x150@(440,834) docked=bottom-centre visible=false"
+    ],
+    "no_drag_warning": [],
+    "style_failures": [],
+    "page_errors": [],
+    "shell_exit": [
+      "sotto: SHELL_EXIT_ARMED where=window-created after_s=85.0 (exit_after=25.0 + grace=60)",
+      "sotto: SHELL_EXIT rc=0 reason=probe-edit-mode statsPushes=0 statsReplies=4 meterPushes=0"
+    ],
+    "file_geometry": {
+      "surface": "strip",
+      "x": 700,
+      "y": 400,
+      "width": 1040,
+      "height": 150,
+      "docked": "edited",
+      "workWidth": 1920,
+      "workHeight": 1032
+    },
+    "outside_file": {
+      "pid": 28428,
+      "schema": "sotto.panel-visibility/1",
+      "visible": false,
+      "geometry": null,
+      "writtenAt": "2026-10-07T13:41:31-03:00"
+    },
+    "wall_s": 7.61,
+    "cost": {
+      "cpu_s": 1.234,
+      "peak_ws_bytes": 116555776
+    }
+  },
+  "checks": [
+    {
+      "what": "A the Alt+C path applies the STRIP surface",
+      "ok": true
+    },
+    {
+      "what": "A the strip height came FROM THE STYLESHEET (source=css css_value=150)",
+      "ok": true
+    },
+    {
+      "what": "A the strip window is 1040x150@(440,834)",
+      "ok": true
+    },
+    {
+      "what": "A SetWindowPos SUCCEEDED (ok=true, last_error=0)",
+      "ok": true
+    },
+    {
+      "what": "A the window rect really is the strip rect",
+      "ok": true
+    },
+    {
+      "what": "A the document wears the strip layout",
+      "ok": true
+    },
+    {
+      "what": "A the client area was forced to the strip size",
+      "ok": true
+    },
+    {
+      "what": "A no page error",
+      "ok": true
+    },
+    {
+      "what": "A the bridge carries the new members (methods=17)",
+      "ok": true
+    },
+    {
+      "what": "B 0 visible samples at a 100 ms census",
+      "ok": true
+    },
+    {
+      "what": "B nothing was ever shown",
+      "ok": true
+    },
+    {
+      "what": "B the shell reached RECEIVER_READY",
+      "ok": true
+    },
+    {
+      "what": "C the tray menu carries Edit caption position",
+      "ok": true
+    },
+    {
+      "what": "C the tray menu still carries Open panel and Quit",
+      "ok": true
+    },
+    {
+      "what": "D edit mode entered through the tray id",
+      "ok": true
+    },
+    {
+      "what": "D the drag sample was applied and persisted",
+      "ok": true
+    },
+    {
+      "what": "D edit mode left and the ex-styles restored",
+      "ok": true
+    },
+    {
+      "what": "D an outside click while editing does NOT close the band",
+      "ok": true
+    },
+    {
+      "what": "D the geometry key is in panel-visibility.json, read back by the shell",
+      "ok": true
+    },
+    {
+      "what": "D no style failure",
+      "ok": true
+    },
+    {
+      "what": "D no page error",
+      "ok": true
+    }
+  ],
+  "verdict": "GREEN",
+  "failed": [],
+  "probe_cost": {
+    "cpu_s": 0.422,
+    "peak_ws_bytes": 22585344
+  },
+  "shell_cpu_total_s": 5.062
+}

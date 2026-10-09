@@ -1,0 +1,34 @@
+ok= False n= 19 failed= 7
+    [ok  ] asr-transcribe.resolves: asr.runner.transcribe resolved from src/asr/runner.py:139
+    [FAIL] asr-transcribe.signature: DRIFT
+      declared: (cfg: TranscribeConfig, on_event: Callable[[dict], None] | None = None) -> dict
+      producer: (cfg: 'TranscribeConfig', on_event: 'Callable[[dict], None] | None' = None) -> 'dict'
+    [ok  ] asr-segment.resolves: asr.segment.segments_for_mode resolved from src/asr/segment.py:119
+    [FAIL] asr-segment.signature: DRIFT
+      declared: (x, mode: str = 'silence', max_segment_s: float = 15.0, fixed_chunk_s: float = 10.0, sample_rate: int = 16000)
+      producer: (x, mode: 'str' = 'silence', max_segment_s: 'float' = 15.0, fixed_chunk_s: 'float' = 10.0, sample_rate: 'int' = 16000)
+    [ok  ] asr-audio-read.resolves: asr.audio.read_slice resolved from src/asr/audio.py:64
+    [FAIL] asr-audio-read.signature: DRIFT
+      declared: (path: str | Path, offset_s: float = 0.0, max_s: float = 0.0)
+      producer: (path: 'str | Path', offset_s: 'float' = 0.0, max_s: 'float' = 0.0)
+    [ok  ] index-ingest-clip.resolves: index.store.ingest_clip resolved from src/index/store.py:248
+    [FAIL] index-ingest-clip.signature: DRIFT
+      declared: (con: sqlite3.Connection, clip: ClipRecord | Mapping[str, Any]) -> IngestResult
+      producer: (con: 'sqlite3.Connection', clip: 'ClipRecord | Mapping[str, Any]') -> 'IngestResult'
+    [ok  ] index-ingest-asr.resolves: index.store.ingest_asr_done resolved from src/index/store.py:257
+    [FAIL] index-ingest-asr.signature: DRIFT
+      declared: (con: sqlite3.Connection, clip_id: str, done: Mapping[str, Any], *, producer: str = 'asr:parakeet-tdt-0.6b-v3:int8', model_sha256: str | None = None) -> IngestResult
+      producer: (con: 'sqlite3.Connection', clip_id: 'str', done: 'Mapping[str, Any]', *, producer: 'str' = 'asr:parakeet-tdt-0.6b-v3:int8', model_sha256: 'str | None' = None) -> 'IngestResult'
+    [ok  ] index-search.resolves: index.search.search_text resolved from src/index/search.py:167
+    [FAIL] index-search.signature: DRIFT
+      declared: (con: sqlite3.Connection, query: str, filt: SearchFilter | None = None, *, limit: int = 50, require_all: bool = True, use_fts: bool | None = None) -> SearchResult
+      producer: (con: 'sqlite3.Connection', query: 'str', filt: 'SearchFilter | None' = None, *, limit: 'int' = 50, require_all: 'bool' = True, use_fts: 'bool | None' = None) -> 'SearchResult'
+    [ok  ] index-open.resolves: index.schema.open_index resolved from src/index/schema.py:317
+    [FAIL] index-open.signature: DRIFT
+      declared: (db_path: str | Path, *, create: bool = True) -> sqlite3.Connection
+      producer: (db_path: 'str | Path', *, create: 'bool' = True) -> 'sqlite3.Connection'
+    [ok  ] capture-cut-result.header: read H:\sotto\_moved\aireplay\src\capture\replay.h
+    [ok  ] capture-cut-result.members: all 16 CutResult members present in replay.h
+    [ok  ] capture-cut-result.map.clip_path: path -> clip_path
+    [ok  ] capture-cut-result.map.duration_s: clip_seconds -> duration_s
+    [ok  ] capture-cut-result.map.size_bytes: bytes -> size_bytes

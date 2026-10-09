@@ -1,0 +1,48 @@
+665:      CREATE TABLE IF NOT EXISTS local_runtime_turn_diff_retention_queue (
+673:        ON local_runtime_turn_diff_retention_queue(
+793:    CREATE TABLE IF NOT EXISTS local_runtime_turn_diff_retention_queue (
+801:      ON local_runtime_turn_diff_retention_queue(
+811:      INSERT OR REPLACE INTO local_runtime_turn_diff_retention_queue
+823:      DELETE FROM local_runtime_turn_diff_retention_queue
+828:      INSERT OR REPLACE INTO local_runtime_turn_diff_retention_queue
+844:      DELETE FROM local_runtime_turn_diff_retention_queue
+854:      DELETE FROM local_runtime_turn_diff_retention_queue
+863:      INSERT OR REPLACE INTO local_runtime_turn_diff_retention_queue
+875:      DELETE FROM local_runtime_turn_diff_retention_queue
+879:      INSERT OR REPLACE INTO local_runtime_turn_diff_retention_queue
+890:      DELETE FROM local_runtime_turn_diff_retention_queue
+900:      INSERT OR REPLACE INTO local_runtime_turn_diff_retention_queue
+910:      DELETE FROM local_runtime_turn_diff_retention_queue
+914:      INSERT OR REPLACE INTO local_runtime_turn_diff_retention_queue
+924:      DELETE FROM local_runtime_turn_diff_retention_queue
+933:      DELETE FROM local_runtime_turn_diff_retention_queue
+939:      SELECT retention_queue.session_id, retention_queue.item_id AS turn_id
+940:      FROM local_runtime_turn_diff_retention_queue AS retention_queue
+942:        ON terminal_turn.session_id = retention_queue.session_id
+943:       AND terminal_turn.turn_id = retention_queue.item_id
+944:      WHERE retention_queue.entry_kind = 'turn'
+945:        AND retention_queue.eligible_at_ms < ?
+949:        AND terminal_turn.finalized_at_ms = retention_queue.eligible_at_ms
+956:      ORDER BY retention_queue.eligible_at_ms,
+957:               retention_queue.session_id,
+958:               retention_queue.item_id
+979:           FROM local_runtime_turn_diff_retention_queue AS retention_queue
+981:             ON expired_diff.session_id = retention_queue.session_id
+982:            AND expired_diff.turn_id = retention_queue.item_id
+983:           WHERE retention_queue.entry_kind = 'diff'
+984:             AND retention_queue.eligible_at_ms < ?
+986:                 retention_queue.eligible_at_ms
+1001:           ORDER BY retention_queue.eligible_at_ms,
+1002:                    retention_queue.session_id,
+1003:                    retention_queue.item_id
+1009:           FROM local_runtime_turn_diff_retention_queue AS retention_queue
+1011:             ON expired_rewind.session_id = retention_queue.session_id
+1012:            AND expired_rewind.operation_id = retention_queue.item_id
+1013:           WHERE retention_queue.entry_kind = 'rewind'
+1014:             AND retention_queue.eligible_at_ms < ?
+1016:             AND expired_rewind.updated_at_ms = retention_queue.eligible_at_ms
+1017:           ORDER BY retention_queue.eligible_at_ms,
+1018:                    retention_queue.session_id,
+1019:                    retention_queue.item_id
+1599:ng",description:"Token usage and turn-level tool file-change accounting.",tables:["local_runtime_token_usage","local_runtime_turn_diffs","local_runtime_turn_diff_journal","local_runtime_turn_diff_rewind_operations","local_runtime_turn_diff_retention_queue"]},{role:"operational_state",label:"Operational state",description:"Native runtime feature state unrelated to legacy migration naming.",tables:["local_runtime_
+1599:/after snapshots before finalization."},local_runtime_turn_diff_rewind_operations:{alias:"turn file-change rewind operation",description:"Stores immutable batch Undo plans and terminal receipts for Session Rewind."},local_runtime_turn_diff_retention_queue:{alias:"turn file-change retention queue",description:"Indexes newly written terminal Turn Diff state for bounded time-ordered retention without scanning histo

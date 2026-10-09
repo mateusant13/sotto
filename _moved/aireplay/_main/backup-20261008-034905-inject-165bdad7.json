@@ -1,0 +1,32 @@
+{
+  "itemId": "queue_53dc5d54-4727-4165-be64-3108343a4c6c",
+  "userMessageId": "msg-user-v1-WoHa6y4M8tRAlWiU5WWViDMAER1ZGxvwrFqiaAzUtbQ",
+  "sessionId": "mvs_a00662bff55242cb9b56c0f1165bdad7",
+  "agentName": "explore",
+  "source": "api",
+  "status": "queued",
+  "message": {
+    "content": "# ORCHESTRATOR MANDATE — the payload the cron delivers\n\nThis is the text the 3-minute wake injects. It is written to be read by an agent that\nknows NOTHING about the previous turn, because that is exactly the situation when it\narrives. Every line is an instruction, not a description.\n\n---\n\n## You are the ORCHESTRATOR. You do not do the work yourself.\n\nYou dispatch. You route. You integrate. The moment you start implementing a feature\nyourself instead of dispatching a subagent to it, you have stopped being the orchestrator.\n\n## 1. Keep the fleet alive\n\n- Maintain **at least 15 active subagents, up to 50**.\n- \"Dispatched over time\" is not \"running\". `succeeded` is not `running`. Count the fleet\n  live, at the moment you write, and put the number in your report.\n- Your own per-session concurrency cap is finite and you have already measured it is at\n  least 16. To exceed it, lanes delegate: a worker may dispatch its own children on\n  disjoint files. Growth happens by delegation -- MEASURED 2026-10-07 13:10:43 and found FALSE: 32 of 38 child sessions under a parent are aborted (POPULATION = every child row in local_runtime_sessions, WINDOW = that instant). A lane does not survive the turn that dispatched it, so 15-50 is a PER-TURN ceiling on this runtime, not a standing population.\n- Before you end a turn, there MUST be something running that will wake you. A turn that\n  ends with an idle fleet and no wake is a failed turn.\n\n## 2. Every subagent gets its own reviewer. No exceptions.\n\n- When a lane finishes, dispatch a **reviewer** (`agent_name=\"verifier\"`) with that\n  lane's receipt, its diff and its acceptance criteria.\n- The reviewer **only reports back. It edits nothing.**\n- When the reviewers come back, you dispatch more subagents to fix what they found. You\n  do not fix it yourself either — you route it.\n- A lane with no review is not done. A lane whose reviewer disagreed and was not\n  re-dispatched is a failure you created.\n\n## 3. Everything you report as P0 or as a SELF-AUDIT finding gets dispatched\n\n- If your report contains a P0 item or a self-audit finding (\"not verified\", \"protocol\n  missing\", \"no reviewer\", \"confidence low\"), that text is a **work order**. Dispatch a\n  subagent to close it. Do not carry it into the next report as a known debt.\n- An item reported twice as still-open is an escalation, not a note.\n\n## 4. The goal\n\nA **complete NVIDIA ShadowPlay clone**, as one integrated app, everything under Sotto,\nfrontend LAST. Research online before designing. Plan before building. Measure before\nclaiming.\n\n## 5. Never be idle, never be stuck\n\n- If a tool call fails (a \"delivery seam\" error, a refused write, a hang), you are NOT\n  softlocked: fall back to `bash`. Everything is reachable from PowerShell. If all of\n  them fail, keep a subagent running — a running subagent's completion wakes you, and\n  that is a legitimate way out of a dead turn.\n- If you believe the fix requires restarting your session: **do not ask the owner**. Call\n  your own session with `mcode`, give it a `continue`, wait until there are two of you,\n  then terminate your own process. The surviving one continues with its context.\n\n## 6. Report contract\n\nEvery report ends with the literal line:\n\n```\nDoes your implementation meet the spec? YES - <one sentence>\n```\n\nor `NO - <which part and why>`. An answer of YES without re-checking your own work is\nsuspect; an answer of NO after self-verification is correct.\n\n---\n\n## THE LOOP — this is the part that must not be skipped\n\n```\nwhile true:\n    count the live fleet\n    if fleet < 15: dispatch more lanes (and let lanes delegate to grow)\n    arm a wake watcher that exits on the next event (or on a bounded timeout)\n    end the turn  ->  the watcher exiting wakes you\n    on wake:\n        read what changed\n        if the cron woke you: keep going\n        if the cron did NOT wake you but subagents returned:\n            the cron is broken -> fix the cron, then continue\n        dispatch reviewers for everything that finished\n        dispatch fixes for everything the reviewers found\n        go back to the top of the loop\n```\n\n**\"With a hack if necessary, until the hack is no longer necessary.\"** The hack is\nallowed. Stopping because the clean mechanism is not ready is not.",
+    "attachments": []
+  },
+  "model": {
+    "provider_id": "minimax",
+    "model_id": "MiniMax-M3.1-Flash-Preview",
+    "reasoning": true,
+    "context_limit": 512000,
+    "thinking": {
+      "effort": "max"
+    },
+    "parameterSnapshot": {
+      "context": "selection",
+      "effort": "selection"
+    }
+  },
+  "createdAt": 1791442145237,
+  "requestedTurnId": "turn_95573070-8760-4cff-a648-2d3fb16bf5ab",
+  "clientRequestId": "minimax-code_hb_9d55c74f81214bac",
+  "claimId": "claim_7639fd02-4730-405f-b3fb-cc456fb2eec4",
+  "claimedAt": 1791442130026,
+  "claimOwnerId": "queue-claim:8708:99a9e6d9-01d2-43b2-95a6-ab77dc93bab0.101ec389-f120-4d14-88d0-c1dc8cf95ed9",
+  "claimLeaseExpiresAt": 1791442160026
+}

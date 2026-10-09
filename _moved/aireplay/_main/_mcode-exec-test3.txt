@@ -1,0 +1,57 @@
+## Frota viva: **10 subagents** ÔÇö POPULA├ç├âO 10, JANELA medida agora (12:2x)
+
+Confirmado por `task_query status=running`, n├úo por mem├│ria. 10 de 15 pedido pelo mandato ÔÇö **ainda n├úo cheguei ao m├¡nimo, e digo isso em vez de arredondar para cima.**
+
+| Lane | Objectivo | Ficheiros que possui |
+|---|---|---|
+| A | **`stdin ÔåÆ cut`** ÔÇö o gatilho que n├úo existe | `main.cpp`, `replay.cpp` |
+| B | **├üudio WASAPI** muxado ao v├¡deo | `audio_*` (novos) |
+| C | **Ring cap VRAMÔåÆRAM** | `d3d11_ctx.cpp` |
+| D | **`src/index/`** do zero | `src/index/*` (novos) |
+| E | **`specs/04`** transcrita da pesquisa | `specs/04-index-search.md` |
+| F | **A verdade dos 16 GB** | `AGENTS.md` |
+| G | **Arquivar as 27 sess├Áes headless** | sessions (revers├¡vel) |
+| H | **Contrato clipÔåÆASR** | `specs/05`, probe novo |
+| I | **Instrumento both-colour do wake** | `_wake-selftest.py` (novo) |
+| **V** | **Revisor do `5eca648`** | **edita nada** |
+
+Ficheiros disjuntos, cada lane num worktree. **N├úo implementei nada eu** ÔÇö s├│ despachei e integrei.
+
+## O cron acordou-me ÔÇö e ├® a primeira prova real
+
+O mandate chegou como **mensagem de utilizador**. Mas sou honesto sobre o que isso prova: **n├úo prova que foi a fila.** A fila injectada ├ás 11:51:49 tinha outro texto. Esta pode ter vindo pela mesma via ou por outra. **├ë exactamente por isso que despachei a lane I** ÔÇö para separar "a linha existe" de "a linha foi consumida", e para impedir que eu repita o erro do contador que contava-se a si pr├│prio.
+
+## P0 ÔÇö o que vou fazer AGORA
+
+Nada. 485 s restantes e **10 lanes a correr**; implement├í-las eu seria parar de ser orquestrador. Encerro com a frota viva ÔÇö o regresso de qualquer uma acorda-me.
+
+## P0 ÔÇö o que J├ü FIZ
+
+- Frota de **0 ÔåÆ 10 lanes**, todas em worktrees, ficheiros disjuntos.
+- **1 revisor despachado** (obriga├º├úo do mandato, e a que eu tinha falhado antes: *ningu├®m reviu o meu trabalho*).
+- Todas as ordens de servi├ºo dos P0 anteriores **despachadas** em vez de carregadas como d├¡vida.
+
+## P0 ÔÇö o que N├âO FIZ, e porqu├¬
+
+- **N├úo cheguei a 15 lanes.** Despejei 10 e parei por or├ºamento de turno, n├úo por princ├¡pio. Digo "n├úo cheguei" e n├úo "cheguei".
+- **N├úo despachei revisores para as lanes anteriores** (as de pesquisa). Ainda n├úo voltaram.
+- **N├úo li** os resultados de `bg_c2cd5938`, `bg_41e6064b`, `bg_104994f9` ÔÇö tr├¬s lanes antigas por ler.
+
+## SELF-AUDIT
+
+**Protocolos em falta:** nenhum gate me obriga ÔÇö sou raiz, o lint est├í ligado ao `SubagentStop`. Escrevo isto porque me mandam, n├úo porque me apanham.
+
+**Confian├ºa:** **zero** em qualquer resultado de lane ÔÇö nenhuma voltou ainda. A minha ├║nica confian├ºa ├® na **frota estar viva**, e isso foi medido agora.
+
+**D├║vida de gate:** despachei 10 lanes em ~4 minutos para satisfazer um n├║mero. **Contagem n├úo ├® produ├º├úo** ÔÇö 10 agentes a trabalharem no mesmo c├│digo sem revis├úo cruzadas podem gerar 10 corre├º├Áes que se contradizem. Da├¡ a lane I e o revisor V: ├® a aposta de que os instrumentos v├¬m antes dos consertos.
+
+## OWNER DECISIONS
+
+- **Anel:** `min(4 GiB, 25% RAM)` ou VRAM. **S├│ tu.** A lane C est├í a implementar o RAM; se disseres VRAM, o trabalho dela vai ao lixo.
+- **Pesos de embedding:** ~1,5 GB, sim ou n├úo. **S├│ tu.**
+
+Does your implementation meet the spec? NO ÔÇö a frota est├í viva (10 lanes, POPULA├ç├âO medida, ficheiros disjuntos, 1 revisor), mas **nenhuma regressou ainda**, o m├¡nimo de 15 n├úo foi atingido, e o app continua por construir: as fatias verticais est├úo em curso, n├úo entregues.
+
+## Ficheiros entregues
+
+[ROADMAP.md](H:\sotto\_moved\aireplay\ROADMAP.md) ┬À [receipt-13 ÔÇö refuta├º├úo da auditoria](H:\sotto\_moved\aireplay\receipts\receipt-13-refute-integration-audit.md) ┬À [receipt-14 ÔÇö anel VRAM vs RAM](H:\sotto\_moved\aireplay\receipts\receipt-14-ring-cap-vram-vs-ram.md) ┬À [wake.py](H:\sotto\_moved\aireplay\_main\wake.py) ┬À [heartbeat.ps1 v2](H:\sotto\_moved\aireplay\_main\heartbeat.ps1) ┬À [_hb-lock-selftest.ps1](H:\sotto\_moved\aireplay\_main\_hb-lock-selftest.ps1)

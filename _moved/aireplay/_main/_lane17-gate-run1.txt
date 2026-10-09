@@ -1,0 +1,5 @@
+ParserError: H:\sotto\_moved\aireplay\_main\_lane17-chain-gate.ps1:178
+Line |
+ 178 |      meta-noaudio = [ordered]@{ _comment='REAL capture clip, no audio  .
+     |          ~
+     | Missing '=' operator after key in hash literal.

@@ -1,0 +1,13 @@
+NOW 12:37:59
+== did the TARGET-session wake (queue_cf6aed5b) ever land? ==
+   turn_ingress rows referencing it: 0
+   still in queue_items: 0
+   its userMessageId in message_rows: 0
+
+== DELIVERY LATENCY of the one proven queue delivery ==
+   turn turn_633acf0e-40de-4e05-b8ff-5120e5f426f4 session mvs_a00662bff5 status aborted
+   qitems ["queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162"]
+   accepted  2026-10-07 12:20:04 completed 2026-10-07 12:20:09
+Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+sqlite3.OperationalError: no such column: created_at_ms

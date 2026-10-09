@@ -1,0 +1,11 @@
+==========================================================================
+ LANE 25 GATE ÔÇö locale group separator must never publish a memory number
+==========================================================================
+ROOT G:\
+HOST culture=pt-BR   ("pt-BR" of 48888) renders as 48.888
+      -> the group separator is a PERIOD. The defect class is LIVE on this host,
+         so a green verdict below is a real measurement and not a vacuous pass.
+
+RENDER PROOF ÔÇö 48888 (the magnitude receipt-32 published wrong)
+  DEFECTIVE  locale "-f {0:N1}"   -> 48.888,0   [readable as forty-eight ÔÇö WRONG BY 1000x]
+  FIXED      ToString(F1,inv)    -> 48888.0   [readable only as 48888]

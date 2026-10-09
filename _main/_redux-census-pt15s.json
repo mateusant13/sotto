@@ -1,0 +1,249 @@
+{
+  "instrument": "_redux-token-census.py (faithful copy of transcribe.py greedy, lines 235-262)",
+  "reference_loop": "H:\\sotto\\worker\\models\\parakeet-redux-reference\\transcribe.py",
+  "model_dir": "H:\\sotto\\worker\\models\\parakeet-redux-onnx-int4",
+  "wav": "H:\\sotto\\_main\\_redux-long\\src-pt-15s.wav",
+  "audio_s": 15.0,
+  "threads": 2,
+  "model_load_s": 1.25,
+  "encode_s": 2.618,
+  "encoder_frames": 188,
+  "arms": [
+    {
+      "seed": null,
+      "seed_piece": "(blank 8192)",
+      "wall_s": 0.47,
+      "n_steps": 66,
+      "frames": 188,
+      "n_nonblank": 54,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 12
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 0.0,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 0.0,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 0.0,
+          "best_rank": 280,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 0.0,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 0.0,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 0.0,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 12,
+          "max_prob": 1.0,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.996808,
+      "tokens_sha256": "f52dad4ebb76d98d830f32956cdb8dcceb5ca6759db790f15db2bcba905f7956",
+      "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho."
+    },
+    {
+      "seed": 12,
+      "seed_piece": "<|diarize|>",
+      "wall_s": 0.39,
+      "n_steps": 68,
+      "frames": 188,
+      "n_nonblank": 54,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 14
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 1.0367e-08,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 9.378e-09,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 9.285e-09,
+          "best_rank": 271,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 9.685e-09,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 1.0994e-08,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 9.16e-09,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 14,
+          "max_prob": 1.0,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.987474,
+      "tokens_sha256": "03a6d7810c884b873db008097b371cb77767cc7f1f7e3123303ab0e3b628c393",
+      "text": "o rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho."
+    },
+    {
+      "seed": 13,
+      "seed_piece": "<|nodiarize|>",
+      "wall_s": 0.398,
+      "n_steps": 67,
+      "frames": 188,
+      "n_nonblank": 54,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 13
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 1.05e-10,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 9.9e-11,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 1e-10,
+          "best_rank": 267,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 9.9e-11,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 1.17e-10,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 9.8e-11,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 13,
+          "max_prob": 1.0,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.988231,
+      "tokens_sha256": "74705be747b9efdae661fd3197f6d545912f4d4680c2b338516f459418a0a38e",
+      "text": "o rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho."
+    },
+    {
+      "seed": 15,
+      "seed_piece": "<|audioseparator|>",
+      "wall_s": 0.388,
+      "n_steps": 68,
+      "frames": 188,
+      "n_nonblank": 54,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 14
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 6e-12,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 5e-12,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 5e-12,
+          "best_rank": 280,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 6e-12,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 6e-12,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 6e-12,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 14,
+          "max_prob": 1.0,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.993651,
+      "tokens_sha256": "177f18c968c023467bb432ab2fc28b5f49c037b8340d6f7b01148c5c1908b416",
+      "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho."
+    }
+  ]
+}

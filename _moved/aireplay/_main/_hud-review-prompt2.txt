@@ -1,0 +1,33 @@
+READ-ONLY VERIFIER. Edit NOTHING. Report as text only.
+
+THE FILE YOU MUST AUDIT IS THIS EXACT ABSOLUTE PATH:
+
+    H:\sotto\_moved\aireplay\specs\05-overlay-hud.md
+
+Its first line is exactly:  "# SPEC 05 - THE OVERLAY HUD (the surface the user actually touches)"
+Confirm in your FIRST line of output that you opened THAT file and quote that first line back.
+A previous verifier run mistakenly audited specs\03-capture-encode.md. DO NOT audit spec 03.
+Do NOT audit specs 01, 02, 04, 07. There is exactly ONE file in scope and it is spec 05.
+
+Context you may read (not audit targets): H:\sotto\_moved\aireplay\AGENTS.md (laws + verification rule),
+H:\sotto\_moved\aireplay\_main\LANE-BRIEF.md, and src\capture\trigger.h for the hotkey contract.
+
+YOUR ONE QUESTION:
+"Find the ONE thing in this spec that CANNOT WORK ON WINDOWS."
+That means: an API, a compositing claim, a window-style combination, a detection method, or a pass
+condition that is impossible, self-contradictory, or will not behave as the spec asserts on Windows 11.
+
+BE ADVERSARIAL, NOT AGREEABLE. Scrutinise in particular:
+  - WS_EX_LAYERED together with UpdateLayeredWindow and SetLayeredWindowAttributes (section 1.2/1.3/1.6)
+  - whether a DXGI/GDI render into a layered window via UpdateLayeredWindow is coherent (section 1.3)
+  - whether SetWindowPos(HWND_TOPMOST) can appear over an exclusive-fullscreen app (section 2)
+  - whether EnumDisplaySettings can actually detect exclusive fullscreen (section 2.4)
+  - whether a Windows.Graphics.Capture MONITOR item can see a WS_EX_LAYERED topmost window at all (PASS-4)
+  - whether any pass condition in section 6 is unmeasurable on this machine
+
+OUTPUT FORMAT (under 400 words):
+VERDICT: <the one thing that cannot work on Windows, or NONE FOUND>
+QUOTE: <exact line from spec 05, with its section number>
+WHY: <3-6 sentences, technical>
+MINIMUM FIX: <smallest edit that makes it true, or why your objection is wrong>
+HONESTY NOTE: <what you could not verify, and any tool call that failed>

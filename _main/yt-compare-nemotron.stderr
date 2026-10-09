@@ -1,0 +1,13 @@
+lang_id      : 101 (auto) source=config:auto table=languages.json
+--- selftest ---
+audio        : _main/en-us-sample.wav
+audio_s      : 8.400
+load_s       : 7.250
+infer_wall_s : 3.507
+rtf          : 0.417
+tokens       : 59
+blank_frac   : 0.6402 (frames=164 empty_chunks=2 vad_gated_chunks=0 music_gated_chunks=0 gate=off)
+peak_rss_mb  : 2409.2
+providers    : ['CUDAExecutionProvider', 'CPUExecutionProvider']
+RECOGNISED   : 'The Radio anoud that the bridge over the river will be closed next Mone.  Residents need an alternative route to get to work'
+--- end selftest ---

@@ -1,0 +1,252 @@
+ M AGENTS.md
+ M README.md
+ M _main/_audit-render/panel-chrome-frame.html
+ M _main/_audit-render/panel-chrome-real.html
+ M _main/_audit-render/panel-harness.html
+ M _main/_design-lane/gen_themes.py
+ M _main/_panel-chrome-arm.py
+ M _main/_panel-chrome-probe.js
+ M _main/_panel-clear-lifted-mutant.py
+ M _main/_panel-verdict-benign-mutant.py
+ M _main/_panel2-dom-probe.js
+ M _main/no-python-icon-after.json
+ M _main/panel-visibility.json
+ M _main/receipt-word-split-fix.md
+ M _main/word-split-trace.json
+ M _moved/aireplay/_main/heartbeat.ps1
+ M _moved/aireplay/_main/panel-tema-1-teleprompter-1920x1080.png
+ M _moved/aireplay/_main/panel-tema-1-teleprompter.png
+ M _moved/aireplay/_main/panel-tema-2-broadcast-1920x1080.png
+ M _moved/aireplay/_main/panel-tema-2-broadcast.png
+ M _moved/aireplay/_main/panel-tema-3-manuscrito-1920x1080.png
+ M _moved/aireplay/_main/panel-tema-3-manuscrito.png
+ M _moved/aireplay/_main/panel-tema-4-cinema-card-1920x1080.png
+ M _moved/aireplay/_main/panel-tema-4-cinema-card.png
+ M _moved/aireplay/_main/panel-tema-5-instrumento-1920x1080.png
+ M _moved/aireplay/_main/panel-tema-5-instrumento.png
+ M _moved/aireplay/_main/panel-temas-comparacao.png
+ M _moved/aireplay/_main/panel-temas-manifest.json
+ M _moved/aireplay/_main/panel-temas-tabela.md
+ M _moved/aireplay/_main/wgc-probe.cpp
+ M _moved/aireplay/_main/wgc-probe.exe
+ M _moved/aireplay/specs/03-capture-encode.md
+ M app/panel/panel.css
+ M app/panel/panel.html
+ M app/panel/panel.js
+ M app/panel/themes/theme-1.css
+ M app/panel/themes/theme-2.css
+ M app/panel/themes/theme-3.css
+ M app/panel/themes/theme-4.css
+ M app/panel/themes/theme-5.css
+ M app/webview/sotto_webview.py
+ M worker/sotto_worker.py
+?? .depwire/
+?? Sotto.cmd
+?? _main/_agents-md-rewrap.py
+?? _main/_audit-render/panel-geometry-frame.html
+?? _main/_audit-render/panel-geometry-neg-order.html
+?? _main/_audit-render/panel-geometry-neg-rows.css
+?? _main/_audit-render/panel-geometry-neg-rows.html
+?? _main/_audit-render/panel-geometry-real.html
+?? _main/_dbg-consts.json
+?? _main/_dbg-consts.py
+?? _main/_dbg-depth.js
+?? _main/_ep_bench.py
+?? _main/_ep_chain.py
+?? _main/_ep_probe.py
+?? _main/_epvenvs/
+?? _main/_focus-cen-smoke.json
+?? _main/_focus-cloak-census.py
+?? _main/_focus-launch.py
+?? _main/_focus-oracle-smoke.json
+?? _main/_focus-smoke.json
+?? _main/_focus-thread-baseline.py
+?? _main/_focus-thread-diag.py
+?? _main/_focus-title-oracle.py
+?? _main/_focus-window-census.py
+?? _main/_hb-inspect.py
+?? _main/_hb-sessions.py
+?? _main/_libs/
+?? _main/_live-seam-en.json
+?? _main/_live-seam-en.out.rc
+?? _main/_live-seam-neg.json
+?? _main/_live-seam-neg.out.rc
+?? _main/_live-seam-probe.json
+?? _main/_live-seam-show.py
+?? _main/_meter-default-live.jsonl.rc
+?? _main/_panel-geometry-after-expanded.json
+?? _main/_panel-geometry-after.json
+?? _main/_panel-geometry-arm.py
+?? _main/_panel-geometry-before.json
+?? _main/_panel-geometry-brand-strip.json
+?? _main/_panel-geometry-brand.json
+?? _main/_panel-geometry-controls.json
+?? _main/_panel-geometry-debug.json
+?? _main/_panel-geometry-post-b.json
+?? _main/_panel-geometry-rep1.json
+?? _main/_panel-geometry-rep2.json
+?? _main/_panel-geometry-rep3.json
+?? _main/_panel-geometry-strip.json
+?? _main/_panel-geometry.js
+?? _main/_panel-layout-reorder.py
+?? _main/_panel-worker-cpu-sampler.ps1
+?? _main/_q.py
+?? _main/_q2.py
+?? _main/_q3.py
+?? _main/_q4.py
+?? _main/_qfinal.py
+?? _main/_qmsg.py
+?? _main/_qmsg2.py
+?? _main/_qrows.py
+?? _main/_qstate.py
+?? _main/_qtxt.py
+?? _main/_qtxt2.py
+?? _main/_rb-probe-apis.py
+?? _main/_rb-probe-ort.py
+?? _main/_rb-probe-ort2.py
+?? _main/_rb-probe-ort3.py
+?? _main/_rb-probe-pkgs.py
+?? _main/_run-outside-click-probe.py
+?? _main/_strip-procs.ps1
+?? _main/_strip-reload-probe.json
+?? _main/_strip-reload-probe.py
+?? _main/_strip-restore-probe.json
+?? _main/_strip-restore-probe.py
+?? _main/_strip-stats-log-probe.json
+?? _main/_strip-stats-log-probe.py
+?? _main/_strip-stats-probe.json
+?? _main/_strip-stats-probe.py
+?? _main/_strip-stats-worker.py
+?? _main/_strip-surface-oracle.json
+?? _main/_strip-surface-oracle.py
+?? _main/_strip-surface-probe.json
+?? _main/_strip-surface-probe.py
+?? _main/_strip-work-area-probe.ps1
+?? _main/_swap.py
+?? _main/_syntax.ok
+?? _main/_theme-backup-113556/
+?? _main/_verify.py
+?? _main/_wordsplit-live-compare.py
+?? _main/_wordsplit-live-default.jsonl.rc
+?? _main/_wordsplit-live-off.jsonl.rc
+?? _main/_wordsplit-live-off0.jsonl.rc
+?? _main/_wordsplit-live-off0b.jsonl.rc
+?? _main/_wordsplit-live-on.jsonl.rc
+?? _main/_wordsplit-live-on10.jsonl.rc
+?? _main/_wordsplit-meter-neg-arm.out.rc
+?? _main/_wordsplit-meter-neg-cadence.out.rc
+?? _main/_wordsplit-meter-neg-default.out.rc
+?? _main/_wordsplit-meter-neg.out.rc
+?? _main/_wordsplit-meter.out.rc
+?? _main/as-analyze.py
+?? _main/as-audible-analyze.py
+?? _main/as-displayname-census.py
+?? _main/as-indicator-analyze.py
+?? _main/as-tabs-deep.json
+?? _main/as-tabs-deep2.json
+?? _main/as-tabs.json
+?? _main/ask-deepseek-vision.ps1
+?? _main/ask-vision.ps1
+?? _main/audio-meter-oracle.py
+?? _main/audio-source-probe.py
+?? _main/audio-tab-audible-probe.py
+?? _main/audio-tab-title-probe.py
+?? _main/cargoprobe/
+?? _main/focus-cloak-census.json
+?? _main/focus-thread-baseline.json
+?? _main/focus-thread-diag.json
+?? _main/focus-timeline-A-census.json
+?? _main/focus-timeline-A-live-summary.json
+?? _main/focus-timeline-A2-census.json
+?? _main/focus-timeline-A2-live-summary.json
+?? _main/focus-timeline-B-poll1s-summary.json
+?? _main/focus-timeline-C-nofilter-summary.json
+?? _main/focus-timeline-D-title-summary.json
+?? _main/focus-timeline-oracle.json
+?? _main/focus-timeline-oracle.py
+?? _main/focus-timeline-probe.py
+?? _main/focus-title-oracle.json
+?? _main/live-seam-probe.py
+?? _main/live-seam-two-colours.py
+?? _main/meter-wave-two-colours.py
+?? _main/receipt-audio-meter.md
+?? _main/receipt-audio-source-metadata.md
+?? _main/receipt-live-seam-verification.md
+?? _main/receipt-panel-remainder.md
+?? _main/receipt-shell-window-behaviour.md
+?? _main/receipt-strip-surface.md
+?? _main/receipt-tray-quit.md
+?? _main/redux-engine-cost-probe.py
+?? _main/redux-gemm8-probe.py
+?? _main/redux-live-window-probe.py
+?? _main/src/
+?? _moved/aireplay/_main/LANE-BRIEF.md
+?? _moved/aireplay/_main/_aicomp-aico-work.py
+?? _moved/aireplay/_main/_aicomp-hunt17.py
+?? _moved/aireplay/_main/_aicomp-premise.py
+?? _moved/aireplay/_main/_lane7-gitlog.txt
+?? _moved/aireplay/_main/_lane7-gitstatus.txt
+?? _moved/aireplay/_main/_pass-1147-build.txt
+?? _moved/aireplay/_main/_pass-1147-commit.txt
+?? _moved/aireplay/_main/_pass-1147-cut-red.txt
+?? _moved/aireplay/_main/_pass-1147-cut.txt
+?? _moved/aireplay/_main/_pass-1147-diff-main.txt
+?? _moved/aireplay/_main/_pass-1147-diff-replay.txt
+?? _moved/aireplay/_main/_pass-1147-ffprobe.txt
+?? _moved/aireplay/_main/_pass-1147-msg.txt
+?? _moved/aireplay/_main/_pass-1147-staged.txt
+?? _moved/aireplay/_main/_research-audio-census.txt
+?? _moved/aireplay/_main/_research-ddg1.html
+?? _moved/aireplay/_main/_research-ffprobe-version.txt
+?? _moved/aireplay/_main/_research-provenance.txt
+?? _moved/aireplay/_main/_worker1-audiobridge.py
+?? _moved/aireplay/_main/_worker2-todosweep.py
+?? _moved/aireplay/_main/backup-20261007-120602-repair-queue_ec7ae0a0-d.json
+?? _moved/aireplay/_main/backup-20261007-120611-armcron-probe-ea7da67473ce.json
+?? _moved/aireplay/_main/backup-20261007-120618-inject-11b83645.json
+?? _moved/aireplay/_main/cron-triage.py
+?? _moved/aireplay/_main/lane-index-spec04-storecheck.txt
+?? _moved/aireplay/_main/queue-doctor.py
+?? _moved/aireplay/_main/queue-triage.py
+?? _moved/aireplay/_main/wake-fix.py
+?? _moved/aireplay/_main/watch-wake.py
+?? _moved/aireplay/docs/design-notes/
+?? _moved/aireplay/receipts/receipt-03-capture-impl.md
+?? _moved/aireplay/receipts/receipt-15-offline-cut-pass1147.md
+?? _moved/aireplay/src/capture/trigger.h
+?? _moved/aireplay/src/engine/
+?? _pano.txt
+?? _wasa.txt
+?? app/src-tauri/Cargo.lock
+?? control/
+?? flicker-injection-harness.js
+?? flicker-injection-harness.js.shrink-declared.json
+?? history-verify/
+?? package-lock.json
+?? package.json
+?? pesquisarsobre.txt
+?? pip-metadata-37es_9lh/
+?? pip-metadata-735aszmq/
+?? pip-metadata-8cu2s_9g/
+?? pip-metadata-8om_mkix/
+?? pip-metadata-a9xpbsh1/
+?? pip-metadata-byblehnn/
+?? pip-metadata-g1dnd7m3/
+?? pip-metadata-hyvk42_4/
+?? pip-unpack-fo72vo22/
+?? pip-unpack-kplj8fau/
+?? pip-unpack-ldmwx1wc/
+?? pip-unpack-od98eoan/
+?? pip-unpack-q8r_5tkv/
+?? pip-unpack-qbns73i9/
+?? pip-unpack-suk9tb3k/
+?? pip-unpack-y9zsspgi/
+?? pip-unpack-yd8b7eoo/
+?? pythonw_TbBXlO9YfE.png
+?? simple_test.js
+?? sotto-app-design-directions.zip
+?? sotto-transcription-panel-designs.zip
+?? test.js
+?? test_cure_specific.js
+?? test_cure_toggle.js
+?? worker/redux_live.py

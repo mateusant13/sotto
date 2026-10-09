@@ -1,0 +1,21 @@
+NOW 2026-10-07 12:15:14
+== deliveryAttempts per queue row ==
+  id=4200 session=mvs_ea552229 status=queued claim=None created=2026-10-06 20:25:46 deliveryAttempts=[{'claimId': 'claim_c60bc898-f900-4a9f-b46d-8852e0e1d25b', 'turnId': 'turn_3be0675b-25ed-4ab7-9e97-1174cbe1e958'}]
+  id=4613 session=mvs_a00662bf status=queued claim=None created=2026-10-07 11:51:49 deliveryAttempts=<absent>
+  id=4614 session=mvs_a00662bf status=queued claim=None created=2026-10-07 11:56:22 deliveryAttempts=<absent>
+  id=4691 session=mvs_b7a9f3a7 status=queued claim=None created=2026-10-07 12:14:55 deliveryAttempts=[{'claimId': 'claim_07c3ae6c-7085-481e-ae76-88f47d79e9e1', 'turnId': 'turn_69a5c2b0-eb8f-43ed-8ab6-7a3783b46ad5'}]
+
+== cron_runs: newest 8 (POP= 1442 ) ==
+  2026-10-06 10:11:00 cron=e8568051-0d4b- src=scheduled status=delivered sess=mvs_003c17c1 delivered=2026-10-06 10:11:00 err=None err_txt=''
+  2026-10-06 10:02:00 cron=deca88d4-c625- src=scheduled status=delivered sess=mvs_ea552229 delivered=2026-10-06 10:02:01 err=None err_txt=''
+  2026-10-06 10:00:00 cron=e8568051-0d4b- src=scheduled status=delivered sess=mvs_003c17c1 delivered=2026-10-06 10:00:04 err=None err_txt=''
+  2026-10-06 10:00:00 cron=1dfa81c4-eb83- src=scheduled status=delivered sess=mvs_ea552229 delivered=2026-10-06 10:00:04 err=None err_txt=''
+  2026-10-06 10:00:00 cron=e4c2b73d-fb13- src=scheduled status=delivered sess=mvs_fb9f05f0 delivered=2026-10-06 10:00:04 err=None err_txt=''
+  2026-10-06 10:00:00 cron=d43fb9be-283d- src=scheduled status=delivered sess=mvs_ea552229 delivered=2026-10-06 10:00:00 err=None err_txt=''
+  2026-10-06 09:56:00 cron=d43fb9be-283d- src=scheduled status=failed sess=mvs_ea552229 delivered=- err=CRON_DELIVERY_ACTIVE_TURN err_txt='Cron steer delivery was rejected: active-turn'
+  2026-10-06 09:55:00 cron=e8568051-0d4b- src=scheduled status=delivered sess=mvs_003c17c1 delivered=2026-10-06 09:55:01 err=None err_txt=''
+
+== probe crons (name like %probe%) ==
+  cron=probe-ea7da67473ce name='probe single cron (wake test)' deleted=None state=active run_count=0 next=2026-10-07 12:07:51 upd=2026-10-07 12:06:11
+
+== active scheduler jobs: how many */3 and when updated ==

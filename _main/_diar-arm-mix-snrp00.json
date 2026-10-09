@@ -1,0 +1,96 @@
+{
+  "instrument": "_diar-run.py (sherpa-onnx OfflineSpeakerDiarization)",
+  "tag": "mix-snrp00",
+  "wav": "H:\\sotto\\_main\\diar-mix\\mix-snr+00.wav",
+  "wav_bytes": 1819586,
+  "channels_in": 1,
+  "rate_in": 16000,
+  "rate_model": 16000,
+  "audio_s": 56.8606875,
+  "seg_model": "H:\\sotto\\_main\\diar-models\\sherpa-onnx-pyannote-segmentation-3-0\\model.onnx",
+  "emb_model": "H:\\sotto\\_main\\diar-models\\3dspeaker_eres2net_base_16k.onnx",
+  "threads": 2,
+  "provider": "cpu",
+  "num_clusters_arg": -1,
+  "threshold": 0.9,
+  "min_duration_on": 0.3,
+  "min_duration_off": 0.5,
+  "window_shift_ratio": null,
+  "window_shift_ratio_supported": false,
+  "load_s": 0.0037069999998493586,
+  "model_load_s": 0.5267609000002267,
+  "wall_s": 16.071363200000633,
+  "cpu_s": 22.59375,
+  "rtf": 0.28264454593519706,
+  "cpu_pct_of_one_core": 140.5839051661723,
+  "rss_before_mb": 120.99584,
+  "rss_after_mb": 225.636352,
+  "n_segments": 11,
+  "n_speakers": 5,
+  "speakers": [
+    0,
+    1,
+    2,
+    3,
+    5
+  ],
+  "speech_s": 23.152498841285706,
+  "speech_frac": 0.40717936872088833,
+  "segments": [
+    {
+      "start": 0.5878437757492065,
+      "end": 3.8109688758850098,
+      "speaker": 0
+    },
+    {
+      "start": 4.536593914031982,
+      "end": 5.970968723297119,
+      "speaker": 0
+    },
+    {
+      "start": 8.620344161987305,
+      "end": 9.767844200134277,
+      "speaker": 1
+    },
+    {
+      "start": 13.800969123840332,
+      "end": 16.821596145629883,
+      "speaker": 2
+    },
+    {
+      "start": 13.83471965789795,
+      "end": 14.965344429016113,
+      "speaker": 1
+    },
+    {
+      "start": 22.170970916748047,
+      "end": 24.465970993041992,
+      "speaker": 0
+    },
+    {
+      "start": 27.638471603393555,
+      "end": 31.452220916748047,
+      "speaker": 5
+    },
+    {
+      "start": 33.69659423828125,
+      "end": 36.32909393310547,
+      "speaker": 0
+    },
+    {
+      "start": 36.97034454345703,
+      "end": 37.6622200012207,
+      "speaker": 0
+    },
+    {
+      "start": 48.14159393310547,
+      "end": 50.031593322753906,
+      "speaker": 2
+    },
+    {
+      "start": 52.54597091674805,
+      "end": 54.41909408569336,
+      "speaker": 3
+    }
+  ]
+}

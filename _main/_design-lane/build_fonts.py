@@ -67,18 +67,46 @@ SIDE = os.path.join(PANEL, '_fonts', 'node_modules', '@fontsource')
 # `400` file is 21 164 B; there is no reason to approximate a weight that is
 # already vendored.
 FAMILIES = [
-    ('Barlow Condensed', 'barlow-condensed', (400, 700)),
-    ('IBM Plex Mono',    'ibm-plex-mono',    (400, 500, 600, 700)),
-    ('Newsreader',       'newsreader',       (400, 600)),
-    ('Fraunces',         'fraunces',         (400, 500, 600)),
-    ('Space Grotesk',    'space-grotesk',    (400, 500, 700)),
+    # (family, @fontsource package, normal weights, italic weights)
+    #
+    # EXTENDED 2026-10-08 (the owner's own instruction): *"eu gostei de todas as
+    # fontes, entao inclua toda as fontes"*. The three `cinematic` design zips he
+    # added name SIXTEEN families between them, so all sixteen are bundled and the
+    # old five are a subset of this list. Weights are still only the ones a design
+    # actually asks for, which is what keeps this at ~1.1 MB instead of the ~40 MB
+    # of the sixteen whole packages; the packages are read from
+    # `app/panel/_fonts/node_modules` and never vendored.
+    #
+    # THE ITALIC COLUMN IS NOT DECORATION. The designs italicise their reading
+    # faces — a quote in a history panel, a serif caption drifting like a title
+    # card (`cinematic-2` "Night Swim") — and with no italic face bundled the
+    # browser SYNTHESISES an oblique, which is a sheared upright: measurably
+    # different letterforms, and exactly the kind of "close enough" that makes a
+    # design look wrong without anyone being able to say why. `()` means the
+    # family has no italic in this bundle because no design asks for one.
+    ('Barlow Condensed',    'barlow-condensed',    (400, 500, 600, 700), ()),
+    ('IBM Plex Mono',       'ibm-plex-mono',       (400, 500, 600),      (400,)),
+    ('Newsreader',          'newsreader',          (400, 500, 600),      (400, 500)),
+    ('Fraunces',            'fraunces',            (400, 500, 600),      (400, 500)),
+    ('Space Grotesk',       'space-grotesk',       (400, 500, 600, 700), ()),
+    ('Inter',               'inter',               (300, 400, 500, 600), ()),
+    ('Instrument Serif',    'instrument-serif',    (400,),               (400,)),
+    ('Instrument Sans',     'instrument-sans',     (400, 500, 600),      (400,)),
+    ('Lora',                'lora',                (400, 500, 600),      (400, 500)),
+    ('Cormorant Garamond',  'cormorant-garamond',  (300, 400, 500),      (300, 400)),
+    ('DM Mono',             'dm-mono',             (300, 400, 500),      (400,)),
+    ('JetBrains Mono',      'jetbrains-mono',      (300, 400, 500),      ()),
+    ('Bricolage Grotesque', 'bricolage-grotesque', (300, 400, 500, 600, 700, 800), ()),
+    ('Jost',                'jost',                (300, 400, 500),      ()),
+    ('Manrope',             'manrope',             (300, 400, 500, 600), ()),
+    ('Outfit',              'outfit',              (300, 400, 500, 600), ()),
 ]
 
 SUBSET = 'latin'
 
 
-def source_file(pkg, weight):
-    """The vendored `.woff2` for one family/weight, whatever its naming scheme.
+def source_file(pkg, weight, style='normal'):
+    """The vendored `.woff2` for one family/weight/style, whatever its naming scheme.
 
     @fontsource is not consistent: most packages name the file
     `<pkg>-<subset>-<weight>-normal.woff2`, but this run of `ibm-plex-mono`
@@ -89,7 +117,7 @@ def source_file(pkg, weight):
     files = os.path.join(SIDE, pkg, 'files')
     if not os.path.isdir(files):
         return None
-    want = '-%s-%d-normal.woff2' % (SUBSET, weight)
+    want = '-%s-%d-%s.woff2' % (SUBSET, weight, style)
     hits = [f for f in os.listdir(files) if f.endswith(want)]
     if not hits:
         return None
@@ -105,10 +133,10 @@ def unicode_range(pkg):
 
 def main():
     if not os.path.isdir(SIDE):
-        print('MISSING: %s — install the packs first:\n'
-              '  cd app/panel/_fonts && npm install @fontsource/barlow-condensed '
-              '@fontsource/ibm-plex-mono @fontsource/newsreader '
-              '@fontsource/fraunces @fontsource/space-grotesk' % SIDE,
+        hint = ('  cd app/panel/_fonts && npm install '
+                + ' '.join('@fontsource/' + pkg for _, pkg, _, _ in FAMILIES)
+                + ' --no-audit --no-fund')
+        print('MISSING: %s \u2014 install the packs first:\n%s' % (SIDE, hint),
               file=sys.stderr)
         return 2
 
@@ -118,57 +146,67 @@ def main():
     missing = []
     blocks = []
     total = 0
-    for family, pkg, weights in FAMILIES:
+    for family, pkg, weights, italics in FAMILIES:
         rng = unicode_range(pkg)
-        for weight in weights:
-            src = source_file(pkg, weight)
+        # One face per (weight, style): `normal` always, `italic` only where a
+        # design asks for it. The family's `unicode-range` is read once and is
+        # the same for every face of that family.
+        faces = [(w, 'normal') for w in weights] + [(w, 'italic') for w in italics]
+        for weight, style in faces:
+            src = source_file(pkg, weight, style)
             if not src:
-                missing.append('%s %d' % (family, weight))
+                missing.append('%s %d %s' % (family, weight, style))
                 continue
-            name = '%s-%s-%d-normal.woff2' % (pkg, SUBSET, weight)
+            name = '%s-%s-%d-%s.woff2' % (pkg, SUBSET, weight, style)
             dst = os.path.join(FONTS_OUT, name)
             shutil.copyfile(src, dst)
             size = os.path.getsize(dst)
             total += size
             blocks.append(
-                "/* %s %d — %s, %d B */\n"
+                "/* %s %d %s \u2014 %s, %d B */\n"
                 '@font-face {\n'
                 "  font-family: '%s';\n"
-                '  font-style: normal;\n'
+                '  font-style: %s;\n'
                 '  font-weight: %d;\n'
                 '  font-display: swap;\n'
-                '  src: url(../fonts/%s) format(\'woff2\');\n'
+                "  src: url(../fonts/%s) format('woff2');\n"
                 '  unicode-range: %s;\n'
-                '}\n' % (family, weight, pkg, size, family, weight, name, rng))
+                '}\n' % (family, weight, style, pkg, size, family, style, weight,
+                          name, rng))
 
     if missing:
         print('MISSING font files: %s' % ', '.join(missing), file=sys.stderr)
         return 1
 
     header = (
-        '/* Sotto — THE BUNDLED TYPEFACES OF THE FIVE DESIGN DIRECTIONS.\n'
+        '/* Sotto \u2014 THE BUNDLED TYPEFACES OF THE DESIGN DIRECTIONS AND OF THE\n'
+        ' * `cinematic` TEMPLATE SET.\n'
         ' *\n'
         ' * GENERATED by `_main/_design-lane/build_fonts.py`. Do not hand-edit.\n'
         ' *\n'
-        ' * Linked by `panel.html` BEFORE `panel.css`, once for ALL five themes:\n'
-        ' * an `@font-face` has no selector, paints nothing and declares no colour,\n'
-        ' * so it cannot collide with a theme. Each theme then NAMES one of these\n'
+        ' * Linked by `panel.html` BEFORE `panel.css`, once for EVERY theme: an\n'
+        ' * `@font-face` has no selector, paints nothing and declares no colour, so\n'
+        ' * it cannot collide with a theme. Each theme then NAMES one of these\n'
         ' * families in its `--font-sans` / `--font-mono` token.\n'
         ' *\n'
-        ' * latin only (U+0000-00FF): that is where Portuguese lives — a, o, c with\n'
-        ' * tilde/cedilla are all below U+0100. The files are the latin `.woff2`\n'
-        ' * subsets of the @fontsource packages, %d in all, %.1f KB on disk.\n'
+        ' * THE OWNER ASKED FOR ALL OF THEM, verbatim (2026-10-08): *"eu gostei de\n'
+        ' * todas as fontes, entao inclua toda as fontes"* \u2014 the sixteen families\n'
+        ' * the design zips name. %d faces, %.1f KB, latin only (U+0000-00FF): that\n'
+        ' * is where Portuguese lives, a/o/c with tilde/cedilla all below U+0100.\n'
+        ' * Weight AND italic are bundled only where a design asks for them, which\n'
+        ' * is what keeps this near 1 MB instead of the sixteen whole packages.\n'
         ' *\n'
-        ' * LICENCES (all redistributable, all require attribution — see\n'
-        ' * `fonts/LICENSE-NOTES.md`): Barlow Condensed, Newsreader, Fraunces and\n'
-        ' * Space Grotesk are SIL OFL 1.1; IBM Plex Mono is SIL OFL 1.1 as well.\n'
+        ' * LICENCES (all redistributable, all require attribution \u2014 see\n'
+        ' * `fonts/LICENSE-NOTES.md`): all sixteen families are SIL OFL 1.1.\n'
         ' */\n\n' % (len(blocks), total / 1024.0))
 
     with open(CSS_OUT, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(header + '\n'.join(blocks))
 
-    for family, pkg, weights in FAMILIES:
-        print('%-18s %s' % (family, ' '.join(str(w) for w in weights)))
+    for family, pkg, weights, italics in FAMILIES:
+        print('%-20s normal=[%s] italic=[%s]'
+              % (family, ' '.join(str(w) for w in weights),
+                 ' '.join(str(w) for w in italics)))
     print('wrote %d @font-face block(s) -> %s' % (len(blocks), CSS_OUT))
     print('copied %d file(s), %.1f KB -> %s' % (len(blocks), total / 1024.0, FONTS_OUT))
     return 0

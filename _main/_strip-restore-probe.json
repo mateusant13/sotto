@@ -1,0 +1,111 @@
+{
+  "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
+  "visibility_file": "H:\\sotto\\_main\\panel-visibility.json",
+  "stamp": "7736-1791391293",
+  "cases": {
+    "in-bounds": {
+      "expected_clamped": false,
+      "attempts": [
+        {
+          "attempt": 1,
+          "seeded": true,
+          "rc": 0,
+          "reseeded": false
+        }
+      ],
+      "attempt": 1,
+      "seeded": true,
+      "seed_note": "seeded over pid=28428",
+      "tag": "in-bounds-a1",
+      "rc": 0,
+      "log": "H:\\sotto\\_main\\_strip-restore-in-bounds-a1-7736-1791391293.log",
+      "reseeded": false,
+      "wall_s": 13.35,
+      "cost": {
+        "cpu_s": 1.141,
+        "peak_ws_bytes": 116740096
+      },
+      "restored": [
+        "sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(700,400) writtenAt=2026-10-07T13:41:34-03:00 clamped=false"
+      ],
+      "clamped": [],
+      "refused": [],
+      "failed": [],
+      "window_geometry": [],
+      "panel_shown": [],
+      "visibility": [
+        "sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1791391296216"
+      ]
+    },
+    "off-screen": {
+      "expected_clamped": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "seeded": true,
+          "rc": 0,
+          "reseeded": false
+        }
+      ],
+      "attempt": 1,
+      "seeded": true,
+      "seed_note": "seeded over pid=28428",
+      "tag": "off-screen-a1",
+      "rc": 0,
+      "log": "H:\\sotto\\_main\\_strip-restore-off-screen-a1-7736-1791391293.log",
+      "reseeded": false,
+      "wall_s": 15.41,
+      "cost": {
+        "cpu_s": 1.328,
+        "peak_ws_bytes": 116887552
+      },
+      "restored": [
+        "sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(880,884) writtenAt=2026-10-07T13:41:49-03:00 clamped=true"
+      ],
+      "clamped": [
+        "sotto: PANEL_GEOMETRY_CLAMPED surface=strip was=1040x148@(5000,5000) now=1040x148@(880,884) work=1920x1032@(0,0)"
+      ],
+      "refused": [],
+      "failed": [],
+      "window_geometry": [],
+      "panel_shown": [],
+      "visibility": [
+        "sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1791391313720"
+      ]
+    }
+  },
+  "original_len": 425,
+  "file_restored": true,
+  "checks": [
+    {
+      "what": "in-bounds: the shell restored the saved rect and clamped=False",
+      "ok": true
+    },
+    {
+      "what": "in-bounds: a clamp line is present iff it moved",
+      "ok": true
+    },
+    {
+      "what": "in-bounds: the window was never shown",
+      "ok": true
+    },
+    {
+      "what": "off-screen: the shell restored the saved rect and clamped=True",
+      "ok": true
+    },
+    {
+      "what": "off-screen: a clamp line is present iff it moved",
+      "ok": true
+    },
+    {
+      "what": "off-screen: the window was never shown",
+      "ok": true
+    }
+  ],
+  "verdict": "GREEN",
+  "failed": [],
+  "probe_cost": {
+    "cpu_s": 0.062,
+    "peak_ws_bytes": 20840448
+  }
+}

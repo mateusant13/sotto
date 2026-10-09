@@ -1,0 +1,19 @@
+ALL-GATES window=2026-10-07T12:36:14.7201669-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armH_midrun glob=_lane*-gate.ps1 timeout=300s verdict-line=False
+
+GATES POPULATION = 2   (globbed + explicitly included, deduped by path)
+  [ok] _lane94-selftest-killer-gate.ps1  488 B  mtime=2026-10-07T15:36:14.2407083Z  glob
+  [ok] _lane95-selftest-victim-gate.ps1  121 B  mtime=2026-10-07T15:36:14.2422202Z  glob
+
+  ! _lane95-selftest-victim-gate.ps1 printed no GATE-VERDICT line - its exit code was the ONLY signal.
+    | The argument 'H:\sotto\_moved\aireplay\_main\_selftest-gates\armH_midrun\_lane95-selftest-victim-gate.ps1' is not recognized as the name of a script file. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+
+RESULT TABLE
+GATE                              EXIT     DURATION  VERDICT
+------------------------------------------------------------
+_lane94-selftest-killer-gate.ps1  0            1.8s  PASS
+_lane95-selftest-victim-gate.ps1  64           0.2s  FAIL/EXIT64
+
+SUMMARY gates=2 passed=1 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-123614
+  FAILED: _lane95-selftest-victim-gate.ps1  FAIL/EXIT64
+
+ALL-GATES FAIL

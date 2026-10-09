@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- SAME POLICY AS `H:\sotto\app\panel\panel.html`, for the same reason:
+         this is a `file://` document with no network, and the CSP is what keeps
+         a HUD that is up on the owner's screen from fetching anything. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:;"
+    />
+    <title>Aireplay HUD</title>
+    <!-- ONE stylesheet, then the contract and the binder. Order is load-bearing:
+         `hud-contract.js` publishes `window.HudContract` and the binder calls
+         into it at load, so it must be first. -->
+    <link rel="stylesheet" href="hud-panel.css" />
+  </head>
+  <!-- `data-mapped="0"` IS THE PANEL-SIDE HALF OF SPEC §1.6, and it is in the
+       MARKUP, not in a script, so it is true before any JavaScript runs.
+       SPEC §1.6: "The HUD window is NOT CREATED VISIBLE and NOTHING IS PAINTED
+       OR PUBLISHED until a HUD binding fires or the owner passed `--show-hud`."
+       The shell refuses the window MAPPING (`hud-shell.py`, `_gate_form_show`);
+       this attribute refuses the PAINT, so a panel that is somehow mapped
+       without being asked still shows nothing. Two independent nets, same rule. -->
+  <body data-mapped="0" data-state="HIDDEN" data-anchor="top-left">
+    <!-- THE PLATE. SPEC §1.1: "a single translucent plate, top-left of the
+         foreground window's monitor, carrying at most three lines of text plus
+         one status glyph plus one right-aligned timer." SPEC §1.1 also says a
+         fourth line "is a design failure, not a feature" — so this markup has
+         exactly four children and no `overflow` that could grow a fifth. -->
+    <div class="plate" id="plate" role="status" aria-live="polite">
+      <!-- The glyph. `aria-hidden` because the STATE NAME right beside it is
+           the accessible text and a bare coloured disc is noise to a screen
+           reader (SPEC §1.4 step 3 draws it 12 px, ~1 % of the plate). -->
+      <span class="glyph" id="glyph" aria-hidden="true"></span>
+
+      <!-- Line 1 is the state name, and SPEC §3.4 rule 2 makes it the ENUM NAME,
+           verbatim: no localised string, no emoji, no paraphrase. -->
+      <span class="line line--primary" id="line1">HIDDEN</span>
+
+      <!-- Line 2: the reason or the facts. SPEC §3.4 rule 3 — it must carry the
+           one number that lets the owner act. -->
+      <span class="line line--secondary" id="line2"></span>
+
+      <!-- Line 3: only in RECORDING (mode/bitrate/ring) and otherwise the
+           binding line (SPEC §4.3). Emptied by the binder when unused, never
+           left holding a stale binding list. -->
+      <span class="line line--tertiary" id="line3"></span>
+
+      <!-- SPEC §1.4 step 7: `Segoe UI Semibold` with TABULAR figures, because a
+           timer that reflows every second is a timer the eye cannot hold. -->
+      <span class="timer" id="timer"></span>
+    </div>
+
+    <!-- THE BINDING LINE LIVES IN THE PLATE, so nothing outside it is painted.
+         SPEC §1.1: "Never drawn: a metrics graph, a timer bigger than the state
+         name, a logo, a call-to-action, a 'press X to...' hint while
+         recording." There is deliberately no controls element here. -->
+    <script src="hud-contract.js"></script>
+    <script src="hud-panel.js"></script>
+  </body>
+</html>

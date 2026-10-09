@@ -1,0 +1,20 @@
+== row 4200 claim turn turn_3be0675b... ==
+   turn_ingress: 0
+   message_rows with that turn_id: 0
+
+== session mvs_ea552229 : user rows around 2026-10-06 20:25 ==
+
+== search WHOLE table for the exact injected text of row 4200 ==
+   'nao quero que isso ocorra': any=2 user=0
+     id=224005 sess=mvs_a00662bf role='assistant' src='api' at=2026-10-07 11:51:18
+     id=224598 sess=mvs_6052bc5f role='assistant' src='background-task' at=2026-10-07 12:13:19
+
+== ALL role='user' AND source='cron' rows: newest 3 and count by day ==
+   POP cron-user rows = 1383
+     id=194867 sess=mvs_003c17c1 at=2026-10-06 10:11:00
+     id=194540 sess=mvs_ea552229 at=2026-10-06 10:02:12
+     id=194539 sess=mvs_ea552229 at=2026-10-06 10:02:12
+
+== probe cron state NOW ==
+   cron=probe-ea7da67473ce run_count=0 next=2026-10-07 12:07:51 updated=2026-10-07 12:06:11 state=active
+   POP cron_runs for probe crons = 0

@@ -1,0 +1,49 @@
+{
+  "executable": "H:\\sotto\\_main\\_epvenvs\\dml\\Scripts\\python.exe",
+  "ort_version": "1.24.4",
+  "available": [
+    "DmlExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "preference_order": [
+    "DmlExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "force_fail_level": -1,
+  "chosen": "CPUExecutionProvider",
+  "trace": [
+    {
+      "level": 0,
+      "provider": "DmlExecutionProvider",
+      "registered": true,
+      "attempted": true,
+      "used": [
+        "CPUExecutionProvider"
+      ],
+      "seconds": 3.865,
+      "result": "silently-dropped (session fell back to ['CPUExecutionProvider'])"
+    },
+    {
+      "level": 1,
+      "provider": "CUDAExecutionProvider",
+      "registered": false,
+      "attempted": false,
+      "used": null,
+      "seconds": 0.0,
+      "result": "not-registered (package does not offer it)"
+    },
+    {
+      "level": 2,
+      "provider": "CPUExecutionProvider",
+      "registered": true,
+      "attempted": true,
+      "used": [
+        "CPUExecutionProvider"
+      ],
+      "seconds": 1.879,
+      "result": "OK"
+    }
+  ],
+  "startup_log_line": "EP_CHAIN chosen=CPUExecutionProvider available=DmlExecutionProvider,CPUExecutionProvider trace=DmlExecutionProvider:silently-dropped (session fell back to ['CPUExecutionProvider']) > CUDAExecutionProvider:not-registered (package does not offer it) > CPUExecutionProvider:OK"
+}

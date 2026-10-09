@@ -1,0 +1,249 @@
+{
+  "instrument": "_redux-token-census.py (faithful copy of transcribe.py greedy, lines 235-262)",
+  "reference_loop": "H:\\sotto\\worker\\models\\parakeet-redux-reference\\transcribe.py",
+  "model_dir": "H:\\sotto\\worker\\models\\parakeet-redux-onnx-int4",
+  "wav": "H:\\sotto\\_main\\live-sample-cable-input-90s.wav",
+  "audio_s": 90.0,
+  "threads": 2,
+  "model_load_s": 1.639,
+  "encode_s": 25.357,
+  "encoder_frames": 1125,
+  "arms": [
+    {
+      "seed": null,
+      "seed_piece": "(blank 8192)",
+      "wall_s": 4.264,
+      "n_steps": 362,
+      "frames": 1125,
+      "n_nonblank": 107,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 255
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 3.83e-10,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 3.64e-10,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 3.59e-10,
+          "best_rank": 273,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 3.77e-10,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 3.84e-10,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 3.76e-10,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 255,
+          "max_prob": 0.999999880791,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.970307,
+      "tokens_sha256": "04a6deea4db7e642b431f3ebafdc0ea4b21bf26e7430473d995e5cc67c570dcc",
+      "text": "Eu não consigo pegar nenhum de força, né? Luvas do perseguidor. Foca nas sacudares e fazer as DGs que são os pontos. Foca nas saqueudares e faz a DG, que são os pontos em interrogação. Elas aumentam sua barra vermelha embaixo no mapa e dá a UP para sua asa. Ó, info nova."
+    },
+    {
+      "seed": 12,
+      "seed_piece": "<|diarize|>",
+      "wall_s": 4.165,
+      "n_steps": 362,
+      "frames": 1125,
+      "n_nonblank": 107,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 255
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 3.46779e-07,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 3.09556e-07,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 2.98709e-07,
+          "best_rank": 278,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 3.16741e-07,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 3.1674e-07,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 3.10605e-07,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 255,
+          "max_prob": 0.999999880791,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.965107,
+      "tokens_sha256": "5b07864cdb36f596b11a35453cafe5f06435e959b2be8609dbb98f9a5e38c8a5",
+      "text": "eu não consigo pegar nenhum de força, né? Luvas do perseguidor. Foca nas sacudares e fazer as DGs que são os pontos. Foca nas saqueudares e faz a DG, que são os pontos em interrogação. Elas aumentam sua barra vermelha embaixo no mapa e dá a UP para sua asa. Ó, info nova."
+    },
+    {
+      "seed": 13,
+      "seed_piece": "<|nodiarize|>",
+      "wall_s": 3.384,
+      "n_steps": 362,
+      "frames": 1125,
+      "n_nonblank": 106,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 256
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 3.967e-09,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 4.116e-09,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 4.16e-09,
+          "best_rank": 275,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 3.995e-09,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 4.141e-09,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 3.971e-09,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 256,
+          "max_prob": 0.999999880791,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.961468,
+      "tokens_sha256": "38d8139ff73e1fe2984e2db4297f17370aeb3eced211d4312d44c6ba9a816a60",
+      "text": "não consigo pegar nenhum de força, né? Luvas do perseguidor. Foca nas sacudares e fazer as DGs que são os pontos. Foca nas saqueudares e faz a DG, que são os pontos em interrogação. Elas aumentam sua barra vermelha embaixo no mapa e dá a UP para sua asa. Ó, info nova."
+    },
+    {
+      "seed": 15,
+      "seed_piece": "<|audioseparator|>",
+      "wall_s": 3.828,
+      "n_steps": 361,
+      "frames": 1125,
+      "n_nonblank": 107,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 254
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 6.849e-09,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 7.122e-09,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 6.742e-09,
+          "best_rank": 277,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 6.762e-09,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 6.953e-09,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 7.067e-09,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 254,
+          "max_prob": 0.999999880791,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.959849,
+      "tokens_sha256": "92fd74933d1f85d76bd136deaee31158f140c9f53b626271e49f3b4089992730",
+      "text": "Eu não consigo pegar nenhum de força, né? Luvas do perseguidor. Foca nas sacudares e fazer as DGs que são os pontos. Foca nas saqueudares e faz a DG, que são os pontos em interrogação. Elas aumentam sua barra vermelha embaixo no mapa e dá a UP para sua asa. Ó, info nova."
+    }
+  ]
+}

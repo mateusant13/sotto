@@ -1,0 +1,15 @@
+{
+  "id": 4614,
+  "session_id": "mvs_a00662bff55242cb9b56c0f1165bdad7",
+  "item_id": "queue_f6b00dc4-fd6c-4fdb-a911-2246c1a00aee",
+  "status": "queued",
+  "created_at_ms": 1791384982710,
+  "data_json": "{\"itemId\":\"queue_f6b00dc4-fd6c-4fdb-a911-2246c1a00aee\",\"userMessageId\":\"msg-user-v1-cj18A9GmUBNiOeg64ezk9YUAvjgrqUIbZHlHalw223Q\",\"sessionId\":\"mvs_a00662bff55242cb9b56c0f1165bdad7\",\"agentName\":\"mavis\",\"source\":\"api\",\"status\":\"queued\",\"message\":{\"content\":\"reiniciei. que workspace estamos? só responde em uma frase\",\"attachments\":[]},\"model\":{\"provider_id\":\"minimax\",\"model_id\":\"MiniMax-M3.1-Flash-Preview\",\"reasoning\":true,\"context_limit\":512000,\"thinking\":{\"effort\":\"max\"},\"parameterSnapshot\":{\"context\":\"default\",\"effort\":\"selection\"}},\"createdAt\":1791384982710,\"requestedTurnId\":\"turn_7e58c697-4ace-4a03-b05d-1971d77b7e11\",\"clientRequestId\":\"minimax-code_muy8d702_vtgpdjqj\"}",
+  "source": "api",
+  "client_request_id": "minimax-code_muy8d702_vtgpdjqj",
+  "dedupe_key": null,
+  "expires_at_ms": null,
+  "claim_id": null,
+  "claim_lease_expires_at_ms": null,
+  "routing_fingerprint": "queue-routing/v1:[[\"source\",\"api\"],[\"platform\",null],[\"client\",null],[\"agent\",\"mavis\"],[\"agentBinding\",null],[\"binding\",null],[\"channel\",null],[\"channelId\",null],[\"thread\",null],[\"chat\",null],[\"scope\",null],[\"chatType\",null],[\"sender\",null]]"
+}

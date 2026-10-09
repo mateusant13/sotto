@@ -1,0 +1,15 @@
+ALL-GATES window=2026-10-07T12:37:07.7004347-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armI_launder glob=_lane*-gate.ps1 timeout=300s verdict-line=False
+
+GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+  [ok] _lane96-selftest-launder-gate.ps1  313 B  mtime=2026-10-07T15:37:05.6827591Z  glob
+
+  ! _lane96-selftest-launder-gate.ps1 printed no GATE-VERDICT line - its exit code was the ONLY signal.
+
+RESULT TABLE
+GATE                               EXIT     DURATION  VERDICT
+-------------------------------------------------------------
+_lane96-selftest-launder-gate.ps1  0            0.5s  PASS
+
+SUMMARY gates=1 passed=1 failed=0  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-123707
+
+ALL-GATES PASS

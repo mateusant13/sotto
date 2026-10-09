@@ -21,8 +21,26 @@
          `default-src 'none'` the fonts were silently refused. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:;"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:;"
     />
+    <!-- `style-src` GAINED `'unsafe-inline'` ON 2026-10-08, AND THE REASON IS THE
+         FROZEN SKINS (`skin-host.js`). A frozen vendor design is the mockup's own
+         markup, byte for byte, and that markup carries its layout in `style=`
+         attributes — 15 custom properties on the root, a measured `right:` on the
+         caption column, a `background` on every plate. `style-src 'self'` refuses
+         an inline style ATTRIBUTE, so under the old value every skin would have
+         painted unstyled, with no error on screen and nothing in the log naming
+         the cause. `script-src` is UNCHANGED and still `'self'`: no inline script,
+         no remote script, no `eval` — the loosening is style-only, on a `file://`
+         document with no network and no third-party bytes.
+         MEASURED before the change, in `_main/_skin-owner/csp/` (Electron, this
+         exact CSP): an inline `style` attribute inside a shadow root applies
+         (`rgb(255,0,0)`, and a custom property reads back `7px`), an external
+         `<link>` inside a shadow root loads (6 rules, 2 of them `@keyframes`), and
+         a `body{}` rule does NOT reach the shadow host. The strict arm of that
+         probe did not load its page, so "the old value would have blocked it" is
+         the SPEC of `style-src`, not a second measurement. -->
+
     <title>Sotto</title>
     <!-- The typefaces come FIRST: an @font-face has no selector and paints
          nothing, so it cannot collide with a theme, and a theme only has to NAME
@@ -39,6 +57,31 @@
     <link rel="stylesheet" href="themes/theme-3.css" />
     <link rel="stylesheet" href="themes/theme-4.css" />
     <link rel="stylesheet" href="themes/theme-5.css" />
+    <!-- THE TEMPLATE SET (owner, 2026-10-08): *"gostei de alguns designs que botei
+         ai no workspace. sao .zip novos… eu nao quero só a paleta de cores. eu
+         quero uma mudança mesmo, a cada tema/template. super parecida com o que ta
+         no zip, ou igual"*. These are the `cinematic` designs from the three zips he
+         added, re-implemented as panel themes: a REAL structural change per theme
+         (its own live-caption treatment, its own backdrop, its own typography), not
+         a recolour. ONE file, not thirty links, because it is generated whole by
+         `_main/_design-lane/gen_cinematic.py` and a theme that forgot to declare a
+         token is caught by that generator's own self-check instead of silently
+         inheriting another design's value. It loads AFTER the five so a cinematic
+         theme's rules win where they overlap, and the five are untouched by it. -->
+    <link rel="stylesheet" href="themes/cinematic.css" />
+    <!-- ── THE SKINS (owner, 2026-10-08) ────────────────────────────────────────
+         Verbatim: *"eu nao quero o painel que temos, padrao. eu nao quero a base.
+         eu nao quero que os outros sejam um 'bandaid' por cima. uma roupa. eu quero
+         que cada painel dos .zip que eu te mandei … sejam IGUAIS aos deles. a UNICA
+         coisa que vai mudar, e os botoes adicionais que temos."*
+         So the `cinematic` themes above are no longer the whole story: a theme that
+         has a SKIN is painted by the MOCKUP'S OWN markup and the MOCKUP'S OWN
+         compiled CSS, mounted in a shadow root (`skin-host.js`) and driven with
+         live audio. `skin-layout.css` is the only rule file of ours that touches
+         it, and it hides our caption box, our transcript drawer and our
+         per-direction chrome exactly while a skin is on. A theme with no skin keeps
+         the markup it has always had. -->
+    <link rel="stylesheet" href="skin-layout.css" />
   </head>
   <!-- TWO SURFACES, ONE DOCUMENT (owner, 2026-10-08).
        `data-surface="panel"` is the FULL column this page has always been.
@@ -56,27 +99,29 @@
          space inside the always-on-top region and clips the slab's own shadow.
 
          THE LAYER ORDER IS THE PRODUCT'S, top to bottom, and it is also the
-         document order (the two are kept identical on purpose):
-           HEADER      the wordmark and the three controls.   panel surface only.
-           LIVE        `.captions` — the streaming caption growing line by line.
-                       THE PRODUCT, and the only flexible row in the grid. BOTH
-                       surfaces: in the strip it is the WHOLE point of the window.
-           STRIPBAR    `.stripbar` — Live on/off, Pause, Open panel.  strip only.
+         document order (the two are kept identical on purpose, because `.panel`
+         is a CSS grid and its `grid-template-rows` is assigned IN THIS ORDER):
+           HEADER      the wordmark and the four controls.  panel surface only.
            TRANSCRIPT  `.history` — the canonical transcript, read back from
                        disk. It COLLAPSES to one ~50 px bar because no canonical
                        (batch) producer exists yet: an empty feed holding half
                        the panel reads as a broken app. panel.js adds/removes
                        `.history--collapsed`; the expanded feed is capped so the
                        live box keeps the height.          panel surface only.
-           HUD         `.hud` — the numbers the panel can REALLY read, each row
-                       saying plainly when a value needs a shell call that does
-                       not exist yet. It carries the "open in folder" control, so
-                       the folder lives in exactly one place in the panel.
+           LIVE        `.captions` — the streaming caption growing line by line.
+                       THE PRODUCT, and the only flexible row in the grid. BOTH
+                       surfaces: in the strip it is the WHOLE point of the window.
+           STRIPBAR    `.stripbar` — Live on/off, Pause, Open panel.  strip only.
            FOOTER      `.status` — the status line, up to two lines so the
                        worker's own cause is not the part that gets cut. In the
                        strip it is one compact line (`#strip-state` + the dot).
-         The section order itself is what the shell's own probe reads: see
-         `historyAboveLive` in sotto_webview.py, which this reorder inverts. -->
+         THE TRANSCRIPT IS ABOVE THE LIVE BOX — the owner's own rule, verbatim
+         (2026-10-08): *"a legenda ao vivo, no painel, tem que ficar embaixo do
+         painel. o historico a cima"*. The two sections were swapped in THIS
+         markup and `panel.css`'s `grid-template-rows` moved with them, because a
+         template that does not match this order hands the `1fr` to the wrong
+         block and the live box collapses to its floor. The shell's own readback
+         of the section order is `historyAboveLive`, and it now reads TRUE. -->
     <main class="panel" id="panel">
       <header class="panel__header">
         <div class="wordmark">
@@ -107,7 +152,7 @@
             <rect x="22" y="23" width="4" height="18" rx="2" fill="#A78BFA" opacity="0.75" />
           </svg>
           <div class="wordmark__text">
-            <h1 class="wordmark__name">Sotto</h1>
+            <h1 class="wordmark__name">sotto</h1>
             <p class="wordmark__tag">live captions</p>
           </div>
         </div>
@@ -122,8 +167,19 @@
              state indicator, taken from the mockups
              (`H:\aireplay\docs\design\sotto-app-design-directions\src\components\
              Panel.tsx`, `...\sotto-transcription-panel-designs\src\components\
-             panels.tsx`): `SOTTO / LENDO`, `REC / CH·01`, `rascunho ao vivo /
-             pág. 1`, `SOTTO / · ao vivo ·`, `ON / STBY`.
+             panels.tsx`): `SOTTO / LENDO`, `REC / CH·01`, `rascunho live /
+             pág. 1`, `SOTTO / · live ·`, `ON / STBY`.
+
+             THE WORD FOR "LIVE" IS `live`, DECIDED THEME BY THEME (owner,
+             2026-10-08): *"tambem nao escreve ao vivo. escreve live. nos temas
+             relevantes."* Three of the five said `ao vivo` and all three changed —
+             `bcast`'s footer (`AO VIVO` → `LIVE`), `mano`'s header (`rascunho ao
+             vivo` → `rascunho live`), `cine`'s header (`· ao vivo ·` → `· live ·`).
+             The other two were LEFT ALONE because they do not say it: `tele`'s
+             `LENDO` ("reading") and `inst`'s `OUVINDO` ("listening") are the
+             direction's own words for the act, not a translation of "live", and
+             `bcast`'s header `REC` is a recorder's own lamp. Forcing `LIVE` into
+             those would have flattened two directions into one.
 
              FIVE BLOCKS, ALL INERT, ONE VISIBLE. Every block is `display:none`
              in `panel.css` and exactly one is turned on by its own theme
@@ -146,37 +202,49 @@
         </div>
 
         <div class="chrome chrome--bcast" data-chrome="head">
+          <span class="chrome__brand">sotto</span>
           <span class="chrome__rec" aria-hidden="true"></span>
           <span class="chrome__state">
             <span class="chrome__on">REC</span><span class="chrome__off">STBY</span>
           </span>
           <span class="chrome__chan">CH·01</span>
-          <span class="chrome__tc" data-chrome-clock>--:--:--</span>
+          <span class="chrome__tc" data-chrome-tc>--:--:--:--</span>
         </div>
 
         <div class="chrome chrome--mano" data-chrome="head">
-          <span class="chrome__draft">rascunho ao vivo</span>
+          <span class="chrome__brand">sotto</span>
+          <span class="chrome__draft">rascunho live</span>
           <span class="chrome__page">pág. 1</span>
         </div>
 
         <div class="chrome chrome--cine" data-chrome="head">
-          <span class="chrome__brand">SOTTO</span>
+          <span class="chrome__brand">sotto</span>
           <span class="chrome__state">
-            <span class="chrome__on">· ao vivo ·</span><span class="chrome__off">· em espera ·</span>
+            <span class="chrome__on">· live ·</span><span class="chrome__off">· em espera ·</span>
           </span>
         </div>
 
         <div class="chrome chrome--inst" data-chrome="head">
+          <span class="chrome__brand">sotto</span>
           <span class="chrome__led" aria-hidden="true"></span>
           <span class="chrome__state">
             <span class="chrome__on">ON</span><span class="chrome__off">STBY</span>
           </span>
         </div>
 
-        <!-- Four controls, and no more. Clear empties the live box AND the
-             engine's buffer; Quit is the only way to close the app (there was
-             none); Hide puts the panel away and keeps the last slot it has
-             always had; Pause came up here from the deleted HUD. -->
+        <!-- TWO controls, and no more. This paragraph said "Four" until
+             2026-10-08, from the era of Clear and Quit; both buttons are GONE and
+             the note explaining each removal is inside the cluster below, so the
+             loss of Clear's capability is documented where the cluster lives, not
+             implied here. What survives on the panel surface is Pause (up from the
+             deleted HUD) and Hide.
+             (The comment TERMINATOR that used to sit on the line above was removed on
+             2026-10-08: the prose below had been written AFTER it, so the prose was naked
+             text in the body and the panel PAINTED it — a wall of developer prose over the
+             caption box, caught from a screenshot. One comment, opened once, closed once,
+             at the end. NOTE for the next editor: never write the terminator sequence
+             itself inside a comment — it ends the comment at that character, which is how
+             this defect was born, and how a note ABOUT it would be born again.)
 
              WHERE THEY SIT IS NO LONGER THE THEME'S BUSINESS — THE OWNER RULED.
              Verbatim, 2026-10-08: *"move todos os botoes la pra cima tambem."*
@@ -198,65 +266,23 @@
              surface carries its own theme button below (`#strip-theme-button`),
              which is the reachability half of the same rule. -->
         <div class="panel__controls">
-          <button
-            type="button"
-            class="icon-button"
-            id="clear-button"
-            title="Clear the live caption box"
-            aria-label="Clear the live caption box"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.3"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="icon-button"
-            id="quit-button"
-            title="Quit Sotto (stops the captions and closes the app)"
-            aria-label="Quit Sotto"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M8 2.4v5.3"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-              <path
-                d="M4.9 4.1a4.6 4.6 0 1 0 6.2 0"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.4"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="icon-button"
-            id="hide-button"
-            title="Hide"
-            aria-label="Hide panel"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M4 4l8 8M12 4l-8 8"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
+          <!-- THE OWNER REMOVED TWO BUTTONS, and neither removal is silent.
+
+               `#quit-button` is GONE because the capability is not lost: the tray
+               menu carries "Quit Sotto" (`app/webview/sotto_webview.py`, the
+               `ID_TRAY_QUIT` item) and the owner found it by TEXT — the probe
+               `_main/tray-quit-probe.py` is what established that. So the app is
+               still closable from the panel's own tray without this control.
+
+               `#clear-button` is GONE AND ITS CAPABILITY IS UNREACHABLE. It was the
+               only caller of `engine.reset()` — the one operation that drops the
+               engine's committed and provisional words AND its re-cover watermark
+               (`emittedStart`/`emittedWords`/`emittedEnd`) so that the next fragment
+               starts a genuinely NEW line instead of being read as a continuation of
+               the one just wiped. There is no tray equivalent and no hotkey. What
+               survives is the natural line boundary: a `final:true` from the worker
+               closes the line on its own. The owner was told this in the receipt
+               (`_main/receipt-panel-stale-oracles.md`, §11). -->
           <!-- MOVED HERE FROM THE DELETED HUD. It was the panel surface's only
                Pause control, so removing the HUD without moving it would have
                taken a real function away. `[data-pause-trigger]` is how
@@ -279,8 +305,194 @@
               />
             </svg>
           </button>
+          <!-- HIDE IS LAST, AND THAT IS THE OWNER'S RULING — 2026-10-08, verbatim:
+               *"bota o botao de hide o sotto na direita, nao no meio dos botoes,
+               em q ele esta."*
+
+               WHY A DOM SWAP AND NOT AN `order:` — measured, not assumed. The
+               cluster is a plain `flex` row (`panel.css` `.panel__controls`) and
+               NO theme sets `order` on it or on its `.icon-button`s: every
+               `order:` in `themes/theme-{1..5}.css` targets something else
+               (`theme-1:613,616`, `theme-2:646,650`, `theme-3:614`,
+               `theme-4:604`, `theme-5:660,664`). And all five themes RIGHT-ANCHOR
+               this cluster — `justify-content: space-between` on `.panel__header`
+               for themes 1/3/4, `justify-self: end` on `.panel__controls` for
+               themes 2/5. So with the cluster pinned right, the LAST child is the
+               rightmost control in every direction, and document order IS visual
+               order here: `panel.js` never re-parents these two (zero
+               `insertBefore`/`appendChild` for controls), it only looks them up by
+               id (`#hide-button`, `panel.js:69`) and by `[data-pause-trigger]`
+               (`:93`, loops `:1505`, `:1652`).
+
+               WHAT MUST NOT REGRESS: both buttons keep
+               `-webkit-app-region: no-drag` from `panel.css`, because the header
+               AROUND them is the panel's drag handle; and the strip surface has
+               no header at all (`body[data-surface="strip"] .panel__header`,
+               `panel.css:1211`) and no hide button, so it is untouched. -->
+          <button
+            type="button"
+            class="icon-button"
+            id="hide-button"
+            title="Hide"
+            aria-label="Hide panel"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
         </div>
       </header>
+
+      <!-- ── THE SKIN MOUNT POINT ───────────────────────────────────────────────
+           Empty and `hidden` unless the active theme HAS a skin. It is not a grid
+           item while hidden (`display: none`), so the four-row template above is
+           untouched for every theme that ships without one; when a skin is on,
+           `skin-layout.css` makes `.panel` a plain block and this element covers
+           the whole window with the design's own layers. `skin-host.js` owns the
+           shadow root inside it and nothing else in this document reaches in. -->
+      <div id="skin" hidden></div>
+
+      <!-- ── PANEL SURFACE ONLY: the canonical transcript ───────────────────
+           A FEED READ BACK FROM DISK, written by the batch pass and by nothing
+           else. No batch producer exists today, so panel.js keeps this section
+           collapsed to one bar: the label, the folder path (the button that
+           proves where the data lives), a one-line honest note saying why it is
+           empty, and a chevron to open it anyway. The search input is disabled
+           while no writer exists — a search box that can never match is a
+           promise the app cannot keep. All of it lights up by itself the day
+           `history.root()` reports a canonical producer. Rows stay in the DOM
+           while collapsed (CSS-only collapse), so a read-back probe still sees
+           them. -->
+      <section class="history history--collapsed" id="history" aria-label="Transcript">
+        <div class="history__bar">
+          <button
+            type="button"
+            class="history__toggle"
+            id="history-toggle"
+            aria-expanded="false"
+            aria-controls="history-body"
+            title="Expand the transcript"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M6 3.5L10.5 8 6 12.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <span
+            class="history__label"
+            id="history-label"
+            title="The canonical transcript — written by the batch pass (Parakeet Redux). No producer exists yet, so it stays read-only."
+          >Transcript</span>
+          <button
+            type="button"
+            class="history__path"
+            id="history-root"
+            aria-label="Open the transcript folder"
+            title="Open the transcript folder"
+          >
+            <!-- The folder affordance, in place of the path that used to be
+                 painted here. `panel.js` empties this button's TEXT (the path went
+                 off screen at the owner's request) but this glyph is markup, so it
+                 stays: the capability must remain visible, not merely reachable. -->
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path
+                d="M1.75 4.25a1 1 0 0 1 1-1h3.1l1.2 1.5h6.2a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <span class="history__count" id="history-count" hidden></span>
+        </div>
+
+        <!-- THE BAR CARRIES NO SENTENCE AND NO PATH. It used to read
+             `H:\sotto\history` + `400 lines · no canonical writer — the transcript
+             stays read-only.`, and the owner had both taken off the screen
+             (2026-10-08): *"tambem tira essas coisas como 'h sotto history 400
+             lines no canonial writer 400 lines the transcript'"*. `panel.js` owns
+             the text of both nodes and now writes nothing into them; the honest
+             sentence survives as this paragraph's `title` (a hover) and the folder
+             path as the button's `title`, and both survive in the internal state.
+             The empty paragraph is hidden by the rule below so it costs no height. -->
+        <p class="history__note" id="transcript-note" hidden
+           title="The canonical transcript is written by the batch pass (Parakeet Redux). No producer exists yet, so it stays read-only."
+        ></p>
+
+        <div class="history__body" id="history-body">
+          <div class="history__tools">
+            <form class="search" id="search-form" role="search">
+              <input
+                type="search"
+                class="search__input"
+                id="search-input"
+                placeholder="Search transcript&hellip;"
+                aria-label="Search the transcript"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button type="submit" class="search__button" id="search-button" title="Search the transcript">
+                Search
+              </button>
+              <button type="button" class="search__clear" id="search-clear" title="Clear search" hidden>
+                Clear
+              </button>
+            </form>
+            <!-- ONE of the two "show in folder" affordances panel.js keeps (the
+                 other is the path button above): this one names the SELECTED
+                 line, so it is disabled until a line is selected. It is hidden
+                 with the drawer body, so the PANEL also carries the always-live
+                 folder control in the HUD below. -->
+            <button
+              type="button"
+              class="reveal-button"
+              id="reveal-button"
+              title="Select a transcript line first"
+              disabled
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M1.5 4.2a1 1 0 0 1 1-1h3.1l1.3 1.4h5.6a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>Show in folder</span>
+            </button>
+          </div>
+
+          <p class="history__note history__note--status" id="history-status" hidden></p>
+
+          <!-- THE GALLERY — navigation over the days and hours the store holds,
+               and the ONLY way the list below is filled. OWNER 2026-10-08,
+               verbatim: *"na pesquisa dos transcript, tira o historico que ja
+               mostra sozinho. tem que ter apenas botoes pra navegar entre a
+               'galeria' de dias/horas"*. So the buttons are BUILT by panel.js from
+               the entries it already loaded (no extra read of the store) and the
+               list stays EMPTY until one is pressed: the wall of lines that used
+               to paint itself on open is gone, and a range (24 h, then 1 h) plus
+               its days and hours replace it. The search box above is untouched —
+               it answers a different question ("where did he say X"). -->
+          <nav class="gallery" id="history-gallery" aria-label="Transcript by day and hour"></nav>
+
+          <ol class="history__list" id="history-list" aria-live="off"></ol>
+        </div>
+      </section>
 
       <!-- ── THE PRODUCT: the live caption box ─────────────────────────────
            Lines arrive through the bridge, are formulated by
@@ -331,6 +543,13 @@
            DOM order is left-to-right order (Live, Pause, Open panel), and the
            status sits last because it is a READOUT, not a control. -->
       <section class="stripbar" id="strip-controls" aria-label="Caption controls">
+        <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
+             todos os temas"*, and the strip is one of the two surfaces). The strip
+             hides `.panel__header`, so the header's own brand is not on this
+             surface at all and the strip carries its own: `sotto`, lowercase, in
+             the strip's own type and colour, before the controls and after nothing
+             — it is the leftmost thing, the way a wordmark sits. -->
+        <span class="stripbar__brand">sotto</span>
         <button
           type="button"
           class="strip-button strip-button--toggle"
@@ -430,105 +649,7 @@
         </span>
       </section>
 
-      <!-- ── PANEL SURFACE ONLY: the canonical transcript ───────────────────
-           A FEED READ BACK FROM DISK, written by the batch pass and by nothing
-           else. No batch producer exists today, so panel.js keeps this section
-           collapsed to one bar: the label, the folder path (the button that
-           proves where the data lives), a one-line honest note saying why it is
-           empty, and a chevron to open it anyway. The search input is disabled
-           while no writer exists — a search box that can never match is a
-           promise the app cannot keep. All of it lights up by itself the day
-           `history.root()` reports a canonical producer. Rows stay in the DOM
-           while collapsed (CSS-only collapse), so a read-back probe still sees
-           them. -->
-      <section class="history history--collapsed" id="history" aria-label="Transcript">
-        <div class="history__bar">
-          <button
-            type="button"
-            class="history__toggle"
-            id="history-toggle"
-            aria-expanded="false"
-            aria-controls="history-body"
-            title="Expand the transcript"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M6 3.5L10.5 8 6 12.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <span
-            class="history__label"
-            id="history-label"
-            title="The canonical transcript — written by the batch pass (Parakeet Redux). No producer exists yet, so it stays read-only."
-          >Transcript</span>
-          <button
-            type="button"
-            class="history__path"
-            id="history-root"
-            title="Open the transcript folder"
-          >&hellip;</button>
-          <span class="history__count" id="history-count" hidden></span>
-        </div>
-
-        <p class="history__note" id="transcript-note">
-          No canonical writer yet — the transcript stays read-only.
-        </p>
-
-        <div class="history__body" id="history-body">
-          <div class="history__tools">
-            <form class="search" id="search-form" role="search">
-              <input
-                type="search"
-                class="search__input"
-                id="search-input"
-                placeholder="Search transcript&hellip;"
-                aria-label="Search the transcript"
-                autocomplete="off"
-                spellcheck="false"
-              />
-              <button type="submit" class="search__button" id="search-button" title="Search the transcript">
-                Search
-              </button>
-              <button type="button" class="search__clear" id="search-clear" title="Clear search" hidden>
-                Clear
-              </button>
-            </form>
-            <!-- ONE of the two "show in folder" affordances panel.js keeps (the
-                 other is the path button above): this one names the SELECTED
-                 line, so it is disabled until a line is selected. It is hidden
-                 with the drawer body, so the PANEL also carries the always-live
-                 folder control in the HUD below. -->
-            <button
-              type="button"
-              class="reveal-button"
-              id="reveal-button"
-              title="Select a transcript line first"
-              disabled
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  d="M1.5 4.2a1 1 0 0 1 1-1h3.1l1.3 1.4h5.6a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1z"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.3"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              <span>Show in folder</span>
-            </button>
-          </div>
-
-          <p class="history__note history__note--status" id="history-status" hidden></p>
-
-          <ol class="history__list" id="history-list" aria-live="off"></ol>
-        </div>
-      </section>
+      
 
       <!-- ── THE HUD IS GONE (owner, 2026-10-08) ─────────────────────────────
            Verbatim: *"tira a hud, nao quero mais. deixa tudo clean."* The
@@ -542,7 +663,10 @@
              * PAUSE was unique to it. Deleting the HUD would have taken the
                panel surface's only Pause control with it, so the button was
                MOVED, not deleted: it now sits in `.panel__controls` at the top
-               of the panel with Clear, Quit and Hide, which is also what the
+               of the panel, alongside Hide. (This line said "with Clear, Quit and
+               Hide" until 2026-10-08; those two buttons were removed from the row
+               and the note explaining each removal is in the cluster itself.) It
+               is also what the
                owner asked for in the same breath (*"move todos os botoes la pra
                cima tambem"*). `dom.pauseButtons` finds it by its
                `[data-pause-trigger]` attribute, so the wiring did not change.
@@ -570,7 +694,7 @@
         </span>
         <span class="chrome chrome--bcast" data-chrome="foot" data-slot="end">
           <span class="chrome__state">
-            <span class="chrome__on">AO VIVO</span><span class="chrome__off">EM ESPERA</span>
+            <span class="chrome__on">LIVE</span><span class="chrome__off">EM ESPERA</span>
           </span>
         </span>
 
@@ -638,6 +762,12 @@
          DOM-free for the same reason, and also BEFORE panel.js: `recordHistory`
          calls it on every caption. See `history-source.js`. -->
     <script src="history-source.js"></script>
+    <!-- THE DAY/HOUR GALLERY — the time-range query and the bucketing under it.
+         DOM-free for the same reason as the two above, and BEFORE panel.js, which
+         builds the drawer's navigation buttons from it. See `history-gallery.js`
+         for why the owner asked for it: *"tem que ter apenas botoes pra navegar
+         entre a 'galeria' de dias/horas"*. -->
+    <script src="history-gallery.js"></script>
     <!-- WHICH SURFACE this document is wearing. Before panel.js, which asks it
          which layout it is painting into, and before the harness's driver, which
          picks a surface from its own URL hash. -->
@@ -648,7 +778,37 @@
          stored theme and mounts the picker button. Both BEFORE panel.js: the
          stored choice has to be on <html> before the panel paints. -->
     <script src="themes/themes.js"></script>
+    <!-- ── THE FROZEN SKINS (owner, 2026-10-08) ───────────────────────────────
+         `skins/skins.js` is GENERATED (`_main/_skin-owner/pack_skins.py`). It is a
+         SCRIPT, not data: `fetch()` of a `file://` URL is refused, which is the same
+         reason the theme manifest above is a script. It carries, per design, the
+         mockup's own 15 custom properties and the mockup's own markup — four frozen
+         fragments: the stage, the chrome, the transcript panel and the live caption
+         plate — plus the vocabulary of everything the mockup INVENTED, so the host
+         can remove the fiction instead of printing it.
+         IT LOADS HERE, BEFORE THE SWITCHER, because it also APPENDS the designs our
+         theme manifest does not carry yet: the freeze lane froze all twenty designs
+         of the newest zip and only six of them had been shipped. -->
+    <script src="skins/skins.js"></script>
     <script src="theme-switcher.js"></script>
+    <!-- THE TEMPLATE LAYER — per-theme edits, from inside the panel (owner,
+         2026-10-08): *"quero que os temas sejam templates. e quero modificar
+         coisas de cada templete de um jeito facil, pelo painel."* After the
+         switcher, because it reads the manifest the switcher also reads, follows
+         the `data-theme` attribute the switcher writes (via a MutationObserver,
+         so neither module calls the other), and puts its own gear button in
+         `.panel__controls` BEFORE the pause button so HIDE STAYS LAST — the
+         owner's rightmost ruling, which `panel.html` above makes load-bearing.
+         Before `panel.js`, which null-checks its own lookups and never asks
+         about this one. See `theme-tune.js` for why the edits are inline custom
+         properties on `<html>` and why only tokens a shipped rule CONSUMES are
+         offered as knobs. -->
+    <script src="theme-tune.js"></script>
+    <!-- THE HOST: it mounts the frozen fragments in a shadow root and writes audio
+         into the slots it finds. It calls nothing — `panel.js` calls it as it
+         renders — so a skin can never take the transcription down with it, and a
+         theme with no skin is untouched by it. -->
+    <script src="skin-host.js"></script>
     <script src="panel.js"></script>
   </body>
 </html>

@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "electron": "^44.5.1",
+    "jsdom": "^29.1.1"
+  }
+}

@@ -1,0 +1,57 @@
+[
+ {
+  "name": "mix-clean",
+  "snr_db": null,
+  "path": "_main\\diar-mix\\mix-clean.wav",
+  "rms": 0.06697972863912582,
+  "peak": 1.0,
+  "note": "target alone"
+ },
+ {
+  "name": "mix-snr+15",
+  "snr_db": 15.0,
+  "path": "_main\\diar-mix\\mix-snr+15.wav",
+  "bed_gain": 0.4665196341260642,
+  "out_gain": 0.9287330238169436,
+  "out_peak": 0.9500000476837158,
+  "out_rms": 0.06320097297430038,
+  "snr_measured_db": 15.000000000000002
+ },
+ {
+  "name": "mix-snr+05",
+  "snr_db": 5.0,
+  "path": "_main\\diar-mix\\mix-snr+05.wav",
+  "bed_gain": 1.475264617026779,
+  "out_gain": 0.8834374740525818,
+  "out_peak": 0.949999988079071,
+  "out_rms": 0.06793670356273651,
+  "snr_measured_db": 5.0
+ },
+ {
+  "name": "mix-snr+00",
+  "snr_db": 0.0,
+  "path": "_main\\diar-mix\\mix-snr+00.wav",
+  "bed_gain": 2.6234326928176777,
+  "out_gain": 0.8332861158847311,
+  "out_peak": 0.949999988079071,
+  "out_rms": 0.07899991422891617,
+  "snr_measured_db": 0.0
+ },
+ {
+  "name": "mix-snr-05",
+  "snr_db": -5.0,
+  "path": "_main\\diar-mix\\mix-snr-05.wav",
+  "bed_gain": 4.665196341260643,
+  "out_gain": 0.7532349534061453,
+  "out_peak": 0.9500000476837158,
+  "out_rms": 0.10300519317388535,
+  "snr_measured_db": -5.000000000000002
+ },
+ {
+  "name": "mix-bedonly",
+  "snr_db": null,
+  "path": "_main\\diar-mix\\mix-bedonly.wav",
+  "out_rms": 0.06697972863912582,
+  "note": "bed alone at the target's rms; must yield ~0 speech"
+ }
+]

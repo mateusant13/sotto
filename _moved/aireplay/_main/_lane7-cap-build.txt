@@ -1,0 +1,21 @@
+H:\aireplay\src\capture\main.cpp: In member function 'void StdinCtl::shutdown()':
+H:\aireplay\src\capture\main.cpp:335:49: error: invalid conversion from 'std::thread::native_handle_type' {aka 'long long unsigned int'} to 'HANDLE' {aka 'void*'} [-fpermissive]
+  335 |             CancelSynchronousIo(th.native_handle());
+      |                                 ~~~~~~~~~~~~~~~~^~
+      |                                                 |
+      |                                                 std::thread::native_handle_type {aka long long unsigned int}
+In file included from H:/msys64/mingw64/include/winbase.h:21,
+                 from H:/msys64/mingw64/include/windows.h:70,
+                 from H:\aireplay\src\capture\common.h:16,
+                 from H:\aireplay\src\capture\main.cpp:16:
+H:/msys64/mingw64/include/ioapiset.h:36:57: note: initializing argument 1 of 'WINBOOL CancelSynchronousIo(HANDLE)'
+   36 |   WINBASEAPI WINBOOL WINAPI CancelSynchronousIo (HANDLE hThread);
+      |                                                  ~~~~~~~^~~~~~~
+H:\aireplay\src\capture\main.cpp: At global scope:
+H:\aireplay\src\capture\main.cpp:252:13: warning: 'void jf_null(std::string&, const char*)' defined but not used [-Wunused-function]
+  252 | static void jf_null(std::string& acc, const char* k)
+      |             ^~~~~~~
+H:\aireplay\src\capture\main.cpp:240:13: warning: 'void jf_num(std::string&, const char*, uint64_t)' defined but not used [-Wunused-function]
+  240 | static void jf_num(std::string& acc, const char* k, uint64_t v)
+      |             ^~~~~~
+BUILD FAILED 

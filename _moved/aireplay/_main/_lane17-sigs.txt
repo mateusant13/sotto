@@ -1,0 +1,12 @@
+asr.runner.transcribe(cfg: 'TranscribeConfig', on_event: 'Callable[[dict], None] | None' = None) -> 'dict'
+asr.segment.segments_for_mode(x, mode: 'str' = 'silence', max_segment_s: 'float' = 15.0, fixed_chunk_s: 'float' = 10.0, sample_rate: 'int' = 16000)
+asr.audio.wav_info(path: 'str | Path') -> 'WavInfo'
+asr.audio.read_slice(path: 'str | Path', offset_s: 'float' = 0.0, max_s: 'float' = 0.0)
+index.store.ingest_clip(con: 'sqlite3.Connection', clip: 'ClipRecord | Mapping[str, Any]') -> 'IngestResult'
+index.store.ingest_asr_done(con: 'sqlite3.Connection', clip_id: 'str', done: 'Mapping[str, Any]', *, producer: 'str' = 'asr:parakeet-tdt-0.6b-v3:int8', model_sha256: 'str | None' = None) -> 'IngestResult'
+index.search.search_text(con: 'sqlite3.Connection', query: 'str', filt: 'SearchFilter | None' = None, *, limit: 'int' = 50, require_all: 'bool' = True, use_fts: 'bool | None' = None) -> 'SearchResult'
+index.schema.open_index(db_path: 'str | Path', *, create: 'bool' = True) -> 'sqlite3.Connection'
+index.search.SearchFilter.where(self) -> 'tuple[str, list[Any]]'
+TranscribeConfig fields: ['wav', 'model_dir', 'quantization', 'provider', 'offset_s', 'max_s', 'segment_mode', 'max_segment_s', 'fixed_chunk_s', 'intra_op_num_threads', 'inter_op_num_threads', 'level', 'phases', 'verify_model', 'label', 'language']
+ClipRecord fields: ['clip_id', 'clip_path', 'h264_path', 'aac_path', 'started_at_s', 'duration_s', 'width', 'height', 'fps', 'size_bytes', 'source_device', 'mode', 'content_key', 'file_key', 'mtime_ns', 'state', 'missing']
+SearchFilter fields: ['device', 'since_s', 'until_s', 'min_duration_s', 'max_duration_s', 'clip_id', 'include_missing']

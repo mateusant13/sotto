@@ -1,0 +1,4 @@
+_main\_hl07-synth-16k.wav: sr=16000 ch=1 dur=180.0s first20s rms_med=0.08827 rms_p10=0.08784 rms_p90=0.08880 peak=0.1526
+_main\onnx-asr-scratch\slice-30s.wav: sr=16000 ch=1 dur=30.0s first20s rms_med=0.05175 rms_p10=0.00000 rms_p90=0.12544 peak=0.6364
+_main\redux-2t\slice-900-1020.wav: sr=16000 ch=1 dur=120.0s first20s rms_med=0.01350 rms_p10=0.01286 rms_p90=0.08605 peak=0.5607
+_main\onnx-asr-scratch\slice-300s.wav: sr=16000 ch=1 dur=300.0s first20s rms_med=0.05175 rms_p10=0.00000 rms_p90=0.12544 peak=0.6364

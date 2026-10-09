@@ -1,0 +1,6 @@
+{
+  "name": "sotto-panel",
+  "private": true,
+  "description": "MODULE-TYPE MARKER ONLY — this is not a package and nothing installs it. The panel's .js files are classic scripts: panel.html loads them with <script src>, and the Node oracles in _main/ load the SAME bytes with require(). Node picks a .js file's module type from the NEAREST package.json walking up from that file, and the nearest one above this directory is app/package.json, which is \"type\": \"module\" (it belongs to the older Vite/Svelte/Tauri tree at app/src). Without this marker every require('app/panel/<file>.js') resolves as ESM and returns an EMPTY namespace, so the oracles die with 'createEngine is not a function' — measured 2026-10-07, the day the panel moved here from app/electron/, whose own package.json happened to carry no type field. Do not delete this file: it is the only thing that keeps panel.js, caption-formulation.js, history-source.js and history-store.js loadable as CommonJS from _main/.",
+  "type": "commonjs"
+}

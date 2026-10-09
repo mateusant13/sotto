@@ -1,0 +1,54 @@
+{
+  "label": "appcuda",
+  "python": "3.11.8",
+  "executable": "C:\\Program Files\\Python311\\python.exe",
+  "requested": "CUDAExecutionProvider",
+  "threads_env": 4,
+  "model_dir": "nemotron-3.5-asr-streaming-0.6b-int8",
+  "wav": "pt-br-sample.wav",
+  "cuda_dlls": true,
+  "load_s": 4.149,
+  "REAL_get_providers": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "REAL_decoder": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "REAL_joint": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "intra_op_num_threads_effective": 4,
+  "rss_after_load_mb": 1666.2,
+  "audio_s": 15.0,
+  "chunks": 26,
+  "reps": 2,
+  "wall_s_per_pass": [
+    1.932,
+    1.829
+  ],
+  "wall_s_best": 1.829,
+  "rtf_best": 0.1256,
+  "chunk_ms_median": 70.27,
+  "chunk_ms_mean": 72.32,
+  "chunk_ms_p95": 86.84,
+  "chunk_ms_max": 91.75,
+  "chunk_ms_min": 59.16,
+  "cores_used_infer": 4.78,
+  "cpu_percent_process": 478.7,
+  "system_cpu_percent": 92.5,
+  "cpu_count_logical": 20,
+  "cpu_count_physical": 14,
+  "rss_peak_mb": 2406.1,
+  "rss_end_mb": 2406.1,
+  "tokens_total": 144,
+  "text_sha256": "1baf08c24b5cd540701b6047d290ecf72b2513e43149d24368b9fd6f53060c76",
+  "text_chars": 305,
+  "text_head": "rádio anunciou que aponte sobre o vai ser interditada na próxima segunda-feira.  Os moradores precim de um caminho alter",
+  "gpu_util_mean": 46.4,
+  "gpu_util_max": 74.0,
+  "gpu_mem_mb_max": 6550.0,
+  "gpu_samples": 35
+}

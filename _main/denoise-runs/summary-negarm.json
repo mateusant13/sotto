@@ -1,0 +1,920 @@
+{
+  "audio": "H:\\sotto\\_main\\live-sample-cable-input-90s.wav",
+  "audio_bytes": 17280080,
+  "threads": 4,
+  "passes": 1,
+  "gate_on": false,
+  "order": [
+    "A",
+    "B"
+  ],
+  "problems": [
+    "A and B differ beyond the denoise status line (p1): [{'index': 13, 'state': 'caption', 'key': 'text', 'a': 'Foca das missões se', 'b': 'FALSO-controle'}]"
+  ],
+  "runs": [
+    {
+      "lines": [
+        {
+          "type": "status",
+          "state": "boot",
+          "stage": "start",
+          "pid": 8968,
+          "argv": [
+            "--selftest",
+            "--audio",
+            "H:\\sotto\\_main\\live-sample-cable-input-90s.wav",
+            "--model",
+            "H:\\sotto\\worker\\models\\nemotron-3.5-asr-streaming-0.6b-int8",
+            "--config",
+            "H:\\sotto\\_main\\denoise-frozen\\config-false.json",
+            "--threads",
+            "4"
+          ],
+          "mode": "file"
+        },
+        {
+          "type": "status",
+          "state": "boot",
+          "stage": "lang",
+          "lang_id": 101,
+          "lang": "auto",
+          "requested": "auto",
+          "source": "config:auto",
+          "table": "H:\\sotto\\worker\\models\\nemotron-3.5-asr-streaming-0.6b-fp16\\languages.json",
+          "note": "the model's own auto slot, asked for explicitly"
+        },
+        {
+          "type": "status",
+          "state": "boot",
+          "stage": "providers",
+          "providers_available": [
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "providers_selected": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "note": "",
+          "cuda_probe_model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "cuda_dirs_ms": 1336,
+          "provider_probe_ms": 308
+        },
+        {
+          "type": "status",
+          "state": "model-loading",
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8"
+        },
+        {
+          "type": "status",
+          "state": "model-loaded",
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "providers": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "load_s": 2.89,
+          "rss_mb": 1669.2,
+          "peak_rss_mb": 1687.0,
+          "lang_id": 101,
+          "lang": "auto",
+          "lang_input": "lang_id"
+        },
+        {
+          "type": "status",
+          "state": "gate",
+          "gate": "off",
+          "source": "file-default",
+          "db_range_min": 18.0,
+          "rms_floor": 0.004,
+          "hold_chunks": 3
+        },
+        {
+          "type": "status",
+          "state": "selftest-start",
+          "audio": "live-sample-cable-input-90s.wav",
+          "audio_s": 90.0,
+          "chunks": 160
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força",
+          "start": 2.8,
+          "end": 3.36,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas",
+          "start": 2.8,
+          "end": 6.72,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas do PC",
+          "start": 2.8,
+          "end": 7.28,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas do PCor",
+          "start": 2.8,
+          "end": 7.84,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca",
+          "start": 31.36,
+          "end": 31.92,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas do PCor",
+          "start": 2.8,
+          "end": 7.84,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões se",
+          "start": 31.36,
+          "end": 32.48,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer",
+          "start": 31.36,
+          "end": 33.04,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDG",
+          "start": 31.36,
+          "end": 33.6,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são",
+          "start": 31.36,
+          "end": 34.16,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos",
+          "start": 31.36,
+          "end": 35.28,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos.  Foca na",
+          "start": 31.36,
+          "end": 36.96,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária",
+          "start": 31.36,
+          "end": 37.52,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD",
+          "start": 37.52,
+          "end": 38.08,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária",
+          "start": 31.36,
+          "end": 37.52,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os po",
+          "start": 37.52,
+          "end": 38.64,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos",
+          "start": 37.52,
+          "end": 39.2,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interro",
+          "start": 37.52,
+          "end": 39.76,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação",
+          "start": 37.52,
+          "end": 40.32,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aument",
+          "start": 37.52,
+          "end": 40.88,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra",
+          "start": 37.52,
+          "end": 41.44,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha",
+          "start": 37.52,
+          "end": 42.0,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em",
+          "start": 37.52,
+          "end": 42.56,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa",
+          "start": 42.56,
+          "end": 43.12,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em",
+          "start": 37.52,
+          "end": 42.56,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa e as",
+          "start": 42.56,
+          "end": 44.24,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa e as.",
+          "start": 42.56,
+          "end": 48.16,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa e as.",
+          "start": 42.56,
+          "end": 48.16,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Inf",
+          "start": 48.72,
+          "end": 49.28,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Info nova",
+          "start": 48.72,
+          "end": 49.84,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Info nova",
+          "start": 48.72,
+          "end": 49.84,
+          "final": true
+        },
+        {
+          "type": "status",
+          "state": "selftest-done",
+          "text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundárias em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova",
+          "empty": false,
+          "tokens": 118,
+          "labels_pruned": 0,
+          "text_chars": 222,
+          "text_truncated": false,
+          "audio_s": 89.6,
+          "infer_wall_s": 3.769,
+          "rtf": 0.042,
+          "frames": 524,
+          "blanks": 406,
+          "blank_frac": 0.7748,
+          "empty_chunks": 32,
+          "vad_gated_chunks": 102,
+          "music_gated_chunks": 0,
+          "gate": "off",
+          "peak_rss_mb": 2409.1
+        }
+      ],
+      "done": {
+        "type": "status",
+        "state": "selftest-done",
+        "text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundárias em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova",
+        "empty": false,
+        "tokens": 118,
+        "labels_pruned": 0,
+        "text_chars": 222,
+        "text_truncated": false,
+        "audio_s": 89.6,
+        "infer_wall_s": 3.769,
+        "rtf": 0.042,
+        "frames": 524,
+        "blanks": 406,
+        "blank_frac": 0.7748,
+        "empty_chunks": 32,
+        "vad_gated_chunks": 102,
+        "music_gated_chunks": 0,
+        "gate": "off",
+        "peak_rss_mb": 2409.1
+      },
+      "denoise": null,
+      "gate": {
+        "type": "status",
+        "state": "gate",
+        "gate": "off",
+        "source": "file-default",
+        "db_range_min": 18.0,
+        "rms_floor": 0.004,
+        "hold_chunks": 3
+      },
+      "start": {
+        "type": "status",
+        "state": "selftest-start",
+        "audio": "live-sample-cable-input-90s.wav",
+        "audio_s": 90.0,
+        "chunks": 160
+      },
+      "done_text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundárias em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova",
+      "tokens": 118,
+      "frames": 524,
+      "vad_gated_chunks": 102,
+      "music_gated_chunks": 0,
+      "empty_chunks": 32,
+      "blank_frac": 0.7748,
+      "rtf": 0.042,
+      "infer_wall_s": 3.769,
+      "inner_rss_mb": 2409.1,
+      "audio_s": 89.6,
+      "final_text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em baixo no mapa e as. Info nova",
+      "partial_text": "de força de força luvas de força luvas do PC de força luvas do PCor Foca Foca das missões se Foca das missões secundárias e fazer Foca das missões secundárias e fazer SDG Foca das missões secundárias e fazer SDGs que são Foca das missões secundárias e fazer SDGs que são os pontos Foca das missões secundárias e fazer SDGs que são os pontos.  Foca na Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária s em fazer SD s em fazer SD que são os po s em fazer SD que são os pontos s em fazer SD que são os pontos em interro s em fazer SD que são os pontos em interrogação s em fazer SD que são os pontos em interrogação.  Elas aument s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em baixo no mapa baixo no mapa e as baixo no mapa e as. Inf Info nova",
+      "n_final": 5,
+      "n_partial": 26,
+      "err_tail": [
+        "infer_wall_s : 3.769",
+        "rtf          : 0.042",
+        "tokens       : 118",
+        "blank_frac   : 0.7748 (frames=524 empty_chunks=32 vad_gated_chunks=102 music_gated_chunks=0 gate=off)",
+        "peak_rss_mb  : 2409.1",
+        "providers    : ['CUDAExecutionProvider', 'CPUExecutionProvider']",
+        "RECOGNISED   : 'de for�a luvas do PCor Foca das miss�es secund�rias e fazer SDGs que s�o os pontos.  Foca na��es secund�rias em fazer SD que s�o os pontos em interroga��o.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova'",
+        "--- end selftest ---"
+      ],
+      "arm": "A",
+      "label": "off-worker  use_denoise:false",
+      "tag": "p1",
+      "rc": 0,
+      "wall": 9.2,
+      "outer_rss_mb": 2409.1,
+      "outer_cpu_s": 36.8,
+      "cores": 4.0,
+      "script": "H:\\sotto\\_main\\denoise-frozen\\off\\sotto_worker.py",
+      "config": "H:\\sotto\\_main\\denoise-frozen\\config-false.json",
+      "out_path": "H:\\sotto\\_main\\denoise-runs\\A-p1.jsonl",
+      "err_path": "H:\\sotto\\_main\\denoise-runs\\A-p1.err"
+    },
+    {
+      "lines": [
+        {
+          "type": "status",
+          "state": "boot",
+          "stage": "start",
+          "pid": 5424,
+          "argv": [
+            "--selftest",
+            "--audio",
+            "H:\\sotto\\_main\\live-sample-cable-input-90s.wav",
+            "--model",
+            "H:\\sotto\\worker\\models\\nemotron-3.5-asr-streaming-0.6b-int8",
+            "--config",
+            "H:\\sotto\\_main\\denoise-frozen\\config-false.json",
+            "--threads",
+            "4"
+          ],
+          "mode": "file"
+        },
+        {
+          "type": "status",
+          "state": "boot",
+          "stage": "lang",
+          "lang_id": 101,
+          "lang": "auto",
+          "requested": "auto",
+          "source": "config:auto",
+          "table": "H:\\sotto\\worker\\models\\nemotron-3.5-asr-streaming-0.6b-fp16\\languages.json",
+          "note": "the model's own auto slot, asked for explicitly"
+        },
+        {
+          "type": "status",
+          "state": "boot",
+          "stage": "providers",
+          "providers_available": [
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "providers_selected": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "note": "",
+          "cuda_probe_model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "cuda_dirs_ms": 1538,
+          "provider_probe_ms": 279
+        },
+        {
+          "type": "status",
+          "state": "model-loading",
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8"
+        },
+        {
+          "type": "status",
+          "state": "model-loaded",
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "providers": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "load_s": 3.08,
+          "rss_mb": 1669.4,
+          "peak_rss_mb": 1687.6,
+          "lang_id": 101,
+          "lang": "auto",
+          "lang_input": "lang_id"
+        },
+        {
+          "type": "status",
+          "state": "gate",
+          "gate": "off",
+          "source": "file-default",
+          "db_range_min": 18.0,
+          "rms_floor": 0.004,
+          "hold_chunks": 3
+        },
+        {
+          "type": "status",
+          "state": "denoise",
+          "denoise": "off",
+          "reason": "config-false",
+          "config_key": "use_denoise"
+        },
+        {
+          "type": "status",
+          "state": "selftest-start",
+          "audio": "live-sample-cable-input-90s.wav",
+          "audio_s": 90.0,
+          "chunks": 160
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força",
+          "start": 2.8,
+          "end": 3.36,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas",
+          "start": 2.8,
+          "end": 6.72,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas do PC",
+          "start": 2.8,
+          "end": 7.28,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas do PCor",
+          "start": 2.8,
+          "end": 7.84,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca",
+          "start": 31.36,
+          "end": 31.92,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "de força luvas do PCor",
+          "start": 2.8,
+          "end": 7.84,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões se",
+          "start": 31.36,
+          "end": 32.48,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer",
+          "start": 31.36,
+          "end": 33.04,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDG",
+          "start": 31.36,
+          "end": 33.6,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são",
+          "start": 31.36,
+          "end": 34.16,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos",
+          "start": 31.36,
+          "end": 35.28,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos.  Foca na",
+          "start": 31.36,
+          "end": 36.96,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária",
+          "start": 31.36,
+          "end": 37.52,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD",
+          "start": 37.52,
+          "end": 38.08,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária",
+          "start": 31.36,
+          "end": 37.52,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os po",
+          "start": 37.52,
+          "end": 38.64,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos",
+          "start": 37.52,
+          "end": 39.2,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interro",
+          "start": 37.52,
+          "end": 39.76,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação",
+          "start": 37.52,
+          "end": 40.32,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aument",
+          "start": 37.52,
+          "end": 40.88,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra",
+          "start": 37.52,
+          "end": 41.44,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha",
+          "start": 37.52,
+          "end": 42.0,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em",
+          "start": 37.52,
+          "end": 42.56,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa",
+          "start": 42.56,
+          "end": 43.12,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em",
+          "start": 37.52,
+          "end": 42.56,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa e as",
+          "start": 42.56,
+          "end": 44.24,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa e as.",
+          "start": 42.56,
+          "end": 48.16,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "baixo no mapa e as.",
+          "start": 42.56,
+          "end": 48.16,
+          "final": true
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Inf",
+          "start": 48.72,
+          "end": 49.28,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Info nova",
+          "start": 48.72,
+          "end": 49.84,
+          "final": false
+        },
+        {
+          "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+          "type": "caption",
+          "text": "Info nova",
+          "start": 48.72,
+          "end": 49.84,
+          "final": true
+        },
+        {
+          "type": "status",
+          "state": "selftest-done",
+          "text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundárias em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova",
+          "empty": false,
+          "tokens": 118,
+          "labels_pruned": 0,
+          "text_chars": 222,
+          "text_truncated": false,
+          "audio_s": 89.6,
+          "infer_wall_s": 3.775,
+          "rtf": 0.042,
+          "frames": 524,
+          "blanks": 406,
+          "blank_frac": 0.7748,
+          "empty_chunks": 32,
+          "vad_gated_chunks": 102,
+          "music_gated_chunks": 0,
+          "gate": "off",
+          "peak_rss_mb": 2409.9
+        }
+      ],
+      "done": {
+        "type": "status",
+        "state": "selftest-done",
+        "text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundárias em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova",
+        "empty": false,
+        "tokens": 118,
+        "labels_pruned": 0,
+        "text_chars": 222,
+        "text_truncated": false,
+        "audio_s": 89.6,
+        "infer_wall_s": 3.775,
+        "rtf": 0.042,
+        "frames": 524,
+        "blanks": 406,
+        "blank_frac": 0.7748,
+        "empty_chunks": 32,
+        "vad_gated_chunks": 102,
+        "music_gated_chunks": 0,
+        "gate": "off",
+        "peak_rss_mb": 2409.9
+      },
+      "denoise": {
+        "type": "status",
+        "state": "denoise",
+        "denoise": "off",
+        "reason": "config-false",
+        "config_key": "use_denoise"
+      },
+      "gate": {
+        "type": "status",
+        "state": "gate",
+        "gate": "off",
+        "source": "file-default",
+        "db_range_min": 18.0,
+        "rms_floor": 0.004,
+        "hold_chunks": 3
+      },
+      "start": {
+        "type": "status",
+        "state": "selftest-start",
+        "audio": "live-sample-cable-input-90s.wav",
+        "audio_s": 90.0,
+        "chunks": 160
+      },
+      "done_text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundárias em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova",
+      "tokens": 118,
+      "frames": 524,
+      "vad_gated_chunks": 102,
+      "music_gated_chunks": 0,
+      "empty_chunks": 32,
+      "blank_frac": 0.7748,
+      "rtf": 0.042,
+      "infer_wall_s": 3.775,
+      "inner_rss_mb": 2409.9,
+      "audio_s": 89.6,
+      "final_text": "de força luvas do PCor Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em baixo no mapa e as. Info nova",
+      "partial_text": "de força de força luvas de força luvas do PC de força luvas do PCor Foca Foca das missões se Foca das missões secundárias e fazer Foca das missões secundárias e fazer SDG Foca das missões secundárias e fazer SDGs que são Foca das missões secundárias e fazer SDGs que são os pontos Foca das missões secundárias e fazer SDGs que são os pontos.  Foca na Foca das missões secundárias e fazer SDGs que são os pontos.  Foca nações secundária s em fazer SD s em fazer SD que são os po s em fazer SD que são os pontos s em fazer SD que são os pontos em interro s em fazer SD que são os pontos em interrogação s em fazer SD que são os pontos em interrogação.  Elas aument s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha s em fazer SD que são os pontos em interrogação.  Elas aumentam sua barra vermelha em baixo no mapa baixo no mapa e as baixo no mapa e as. Inf Info nova",
+      "n_final": 5,
+      "n_partial": 26,
+      "err_tail": [
+        "infer_wall_s : 3.775",
+        "rtf          : 0.042",
+        "tokens       : 118",
+        "blank_frac   : 0.7748 (frames=524 empty_chunks=32 vad_gated_chunks=102 music_gated_chunks=0 gate=off)",
+        "peak_rss_mb  : 2409.9",
+        "providers    : ['CUDAExecutionProvider', 'CPUExecutionProvider']",
+        "RECOGNISED   : 'de for�a luvas do PCor Foca das miss�es secund�rias e fazer SDGs que s�o os pontos.  Foca na��es secund�rias em fazer SD que s�o os pontos em interroga��o.  Elas aumentam sua barra vermelha embaixo no mapa e as.  Info nova'",
+        "--- end selftest ---"
+      ],
+      "arm": "B",
+      "label": "on-worker   use_denoise:false",
+      "tag": "p1",
+      "rc": 0,
+      "wall": 9.63,
+      "outer_rss_mb": 2409.9,
+      "outer_cpu_s": 34.73,
+      "cores": 3.61,
+      "script": "H:\\sotto\\_main\\denoise-frozen\\on\\sotto_worker.py",
+      "config": "H:\\sotto\\_main\\denoise-frozen\\config-false.json",
+      "out_path": "H:\\sotto\\_main\\denoise-runs\\B-p1.jsonl",
+      "err_path": "H:\\sotto\\_main\\denoise-runs\\B-p1.err",
+      "neg_arm_applied": true
+    }
+  ],
+  "stream_sha256": {
+    "Ap1": "03723ebd9e5f9fb3bf9300f78800f928870885285b1f8de01c5eae1cb811e768",
+    "Bp1": "fbbed655409d4804e4050a4e70861cdce1815fd6ca3ce0c5aa1437f65d6b1ae5"
+  },
+  "masked_run_to_run_keys": [
+    "cuda_dirs_ms",
+    "duration_s",
+    "elapsed_s",
+    "infer_wall_s",
+    "load_s",
+    "peak_rss_mb",
+    "pid",
+    "provider_probe_ms",
+    "rss_mb",
+    "rtf",
+    "wall_s"
+  ],
+  "ab_structural_diff": {
+    "Ap1|Bp1": [
+      {
+        "index": 13,
+        "state": "caption",
+        "key": "text",
+        "a": "Foca das missões se",
+        "b": "FALSO-controle"
+      }
+    ]
+  }
+}

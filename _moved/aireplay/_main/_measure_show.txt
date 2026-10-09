@@ -1,0 +1,14 @@
+87efeaf lane25: census 18 locale-grouped format sites; 1 defective memory site fixed
+ _main/_lane25-gate-console.txt              |  67 +++++++
+ _main/_lane25-locale-number-gate.ps1        | 290 ++++++++++++++++++++++++++++
+ _main/_lane25-regress-durability.log        |   5 +
+ _main/_lane25-stage-durability.ps1          |  61 ++++++
+ _main/_lane25-stage-probe.log               |   3 +
+ _main/_lane25-stage-probe.ps1               |  64 ++++++
+ _main/_lane25-stage.log                     |   6 +
+ _main/_lane3_ringcap_probe.cpp              |  16 +-
+ _main/durability-gate.ps1                   |  13 +-
+ _main/font-lag-probe.ps1                    |   9 +-
+ _main/font-shots.ps1                        |   7 +-
+ receipts/receipt-33-locale-number-census.md | 237 +++++++++++++++++++++++
+ 12 files changed, 769 insertions(+), 9 deletions(-)

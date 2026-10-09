@@ -1,0 +1,3 @@
+/* CONTROL COPY — the row template reverted to the shipped
+   one while the markup keeps the new order. */
+.panel { grid-template-rows: auto minmax(140px, 1fr) auto auto !important; }

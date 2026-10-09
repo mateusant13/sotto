@@ -47,7 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--wav", required=True, help="16 kHz mono PCM16 wav (anything else is refused)")
     p.add_argument("--model-dir", default=str(MODEL_DIR))
     p.add_argument("--quant", default=QUANTIZATION, help="onnx-asr quantization glob suffix")
-    p.add_argument("--provider", default="cpu", choices=["cpu", "cuda"])
+    p.add_argument("--provider", default="cpu", choices=["cpu", "cuda"],
+                   help="execution provider; a provider that does not LOAD is refused (exit 2), "
+                        "never silently downgraded to CPU")
     p.add_argument("--offset-s", type=float, default=0.0)
     p.add_argument("--max-s", type=float, default=0.0, help="0 = to the end of the file")
     p.add_argument("--segment-mode", default=DEFAULT_SEGMENT_MODE, choices=list(SEGMENT_MODES),
@@ -63,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="print ONLY the final done object")
     p.add_argument("--out-text", default="", help="also write the transcript to this file")
     p.add_argument("--label", default="")
+    p.add_argument("--language", default=None,
+                   help="language prompt; REFUSED (exit 2) unless the export declares a language "
+                        "input. nemo-parakeet-tdt-0.6b-v3 does NOT, and onnx_asr ignores the "
+                        "kwarg there -- so this is a refusal, not a selector.")
     return p
 
 
@@ -88,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         level=(args.level == "on"),
         phases=args.phases,
         label=args.label,
+        language=args.language,
     )
 
     done: dict | None = None
@@ -118,7 +125,9 @@ def main(argv: list[str] | None = None) -> int:
             f"(med {done['seg_median_s']}s max {done['seg_max_s']}s) audio {done['audio_s']}s "
             f"load {done['load_s']}s infer {done['infer_s']}s rtfx(infer/steady/slice)="
             f"{done['rtfx_infer']}/{done['rtfx_steady']}/{done['rtfx_slice']} "
-            f"threads(intra={t['intra']},inter={t['inter']}) cpu(infer med/max)={done['cpu_median_pct']}/"
+            f"threads(intra={t['intra']},inter={t['inter']}) "
+            f"provider(requested={done['provider_requested']},loaded={t['session_providers']},"
+            f"lang_conditioned={t.get('language_conditioned')}) cpu(infer med/max)={done['cpu_median_pct']}/"
             f"{done['cpu_max_pct']}% cpu(load med/max)={done['cpu_load_median_pct']}/"
             f"{done['cpu_load_max_pct']}% rss(load/peak/peak_wset)={done['rss_after_load_mb']}/"
             f"{done['rss_peak_mb']}/{done['rss_peak_wset_mb']}MB "

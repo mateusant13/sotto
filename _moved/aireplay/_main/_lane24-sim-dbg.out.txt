@@ -1,0 +1,1 @@
+NO TEMPLATE ANYWHERE: no runtime-written queue row exists in this store. Refusing to invent a shape -- inventing the shape is exactly what produced the corrupt row.

@@ -1,0 +1,6 @@
+src/pipeline/chain.py defs: 45 possibly-unused defs: ['Doubles', 'capture', 'asr']
+   imports: 43 unused: ['annotations', 'Callable', 'ASR_SAMPWIDTH', 'CUT_RESULT_TO_CLIP_PAYLOAD']
+src/pipeline/contracts.py defs: 16 possibly-unused defs: ['Provenance', 'verify_contracts', 'table']
+   imports: 11 unused: []
+STALE in src/pipeline/chain.py : [('ingest_clip', 3)]
+STALE in src/pipeline/contracts.py : [('ingest_clip', 2), ('ingest_asr_done', 2), ('ClipRecord', 3), ('SearchFilter', 1), ('open_index', 2)]

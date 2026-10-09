@@ -1,0 +1,26 @@
+Certain keyboard shortcuts do not work on GeForce NOW when playing on a Steam Deck with an external keyboard. How can I fix that? | NVIDIA
+Skip Navigation
+Your browser either does not have JavaScript enabled or does not appear to support enough features of JavaScript to be used well on this site.
+NVIDIA SUPPORT
+NVIDIA Home > Support Home Page > Knowledgebase Home Page > Certain keyboard shortcuts do not work on GeForce NOW when playing on a Steam Deck with an external keyboard. How can I fix that?
+Log In | Sign Up
+Certain keyboard shortcuts do not work on GeForce NOW when playing on a Steam Deck with an external keyboard. How can I fix that?
+Updated 04/19/2022 02:59 PM
+Certain keyboard shortcuts do not work on GeForce NOW when playing on a Steam Deck with an external keyboard. How can I fix that?
+Most keyboard shortcuts work except for certain system hotkeys like Ctrl+Alt+F4. This hotkey, and similar function keys, switch to a new command line session, since SteamOS is based on Linux. At this time, we do not have a fix for those hotkeys.
+Is this answer helpful?
+Yes
+No
+Answers others found helpful
+What are the Highlights keyboard shortcuts?
+How do I use Steam DeckÔÇÖs built-in controls to play games on GeForce NOW?
+Can I use the Steam DeckÔÇÖs trackpad as a mouse when playing games on GeForce NOW?
+Which browsers can I use on Steam Deck to access GeForce NOW?
+When using GeForce NOW, why donÔÇÖt I see the correct characters show up when I type on my keyboard?
+Live Chat
+Chat online with one of our support agents
+CHAT NOW
+ASK US A QUESTION
+Contact Support for assistance
+800.797.6530
+Ask a Question

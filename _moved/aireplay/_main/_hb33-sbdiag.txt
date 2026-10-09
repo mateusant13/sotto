@@ -1,0 +1,46 @@
+cadence-probe.py  --  2026-10-07T13:46:00  driver=H:\sotto\_moved\aireplay\_main\heartbeat.ps1
+heartbeat.log: 12 passes parsed (7 v5, 5 v6)
+
+==============================================================================
+ARM-S  SANDBOX: the shipped driver text, FIXED vs NEGATIVE
+==============================================================================
+  Scheduler model  = MultipleInstances:IgnoreNew (measured), PT3M
+  Clock compressed by 30x: interval 6.0s, exec durations scaled from
+  the REAL v5 population so the exec/interval RATIO is preserved.
+  log timestamp resolution is 1 s, which is 17% of the scaled interval.
+  Measured exec durations used (real seconds): 155, 227, 98, 184, 130, 162, 128
+  Scaled               (seconds)            : 5.17, 7.57, 3.27, 6.13, 4.33, 5.40, 4.27
+
+  --- arm FIXED: heartbeat-fixed.ps1
+      passes=4 deliveries=1 queued=2 ticks_dropped=0
+      fire gaps : 6.0, 6.0, 6.0
+      deliveries: n=0
+
+  --- arm NEG: heartbeat-neg.ps1
+      DIAGNOSTIC: 0 passes parsed. The spawned process said:
+        | [31;1mParserError: [0mH:\sotto\_moved\aireplay\_main\_cadence-sandbox\NEG\_main\heartbeat-neg.ps1:489[0m
+        | [31;1m[0m[36;1mLine |[0m
+        | [31;1m[0m[36;1m[36;1m 489 | [0m     try [36;1m{[0m
+        | [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m         ~[0m
+        | [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mMissing closing '}' in statement block or type definition.[0m
+        | [31;1mParserError: [0mH:\sotto\_moved\aireplay\_main\_cadence-sandbox\NEG\_main\heartbeat-neg.ps1:489[0m
+        | [31;1m[0m[36;1mLine |[0m
+        | [31;1m[0m[36;1m[36;1m 489 | [0m     try [36;1m{[0m
+      passes=0 deliveries=0 queued=0 ticks_dropped=0
+      fire gaps : 
+      deliveries: n=0
+
+  SCALE BACK TO REAL SECONDS (x30)
+    FIXED : drops=0   deliveries=1   median_gap=0s (=0.0 min real)
+    NEG   : drops=0   deliveries=0   median_gap=0s (=0.0 min real)
+
+    FIXED median 0s vs NEG median 0s -- the fix moves the median
+    by 0 scaled seconds (+0%) and removes 0 dropped ticks.
+
+==============================================================================
+VERDICT SUMMARY
+==============================================================================
+  S-FIXED RED  drops=0 median=-1.0s
+  S-NEG   GREEN  drops=0 median=-1.0s
+
+VERDICT FAIL(rc=2)

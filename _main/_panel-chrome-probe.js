@@ -87,12 +87,25 @@
 
   /* The five directions, in the owner's order, with the theme each one is.
    * Kept here as the EXPECTED side: a probe that reads its expectation out of
-   * the thing it is testing cannot fail. */
+   * the thing it is testing cannot fail.
+   *
+   * UPDATED 2026-10-08 WITH THE OWNER'S OWN WORDS, and the reason this table had
+   * to move TWICE is worth keeping: the ARM (`_panel-chrome-arm.py`) keeps its own
+   * `EXPECTED` table, and this probe kept a second copy. Updating only the arm left
+   * four RED problems whose messages named the PANEL while the disagreement was
+   * between two copies of the expectation — the probe matched `'AO VIVO'`,
+   * `'rascunho ao vivo'` and `'SOTTO'`, all three of which the owner had changed.
+   *   * `bcast`'s footer says `LIVE` (was `AO VIVO`);
+   *   * `mano`'s header says `rascunho live` (was `rascunho ao vivo`);
+   *   * `cine`'s header says `sotto`, LOWERCASE (was `SOTTO`), and its state word
+   *     is `· live ·` (was `· ao vivo ·`).
+   * `headWord` for `cine` is the NAME now, not a state word: the direction's header
+   * leads with the brand, so that is what the header check must find there. */
   var DIRS = [
     { id: 'tele', theme: 'theme-1', label: 'Teleprompter', headWord: 'LENDO', stateWord: 'LENDO', foot: '▲ EM CURSO' },
-    { id: 'bcast', theme: 'theme-2', label: 'Broadcast', headWord: 'REC', stateWord: 'REC', foot: 'AO VIVO' },
-    { id: 'mano', theme: 'theme-3', label: 'Manuscrito', headWord: 'rascunho ao vivo', stateWord: 'rascunho ao vivo', foot: '— escrito ao ouvido' },
-    { id: 'cine', theme: 'theme-4', label: 'Cinema Card', headWord: 'SOTTO', stateWord: '· ao vivo ·', foot: '· · ·' },
+    { id: 'bcast', theme: 'theme-2', label: 'Broadcast', headWord: 'REC', stateWord: 'REC', foot: 'LIVE' },
+    { id: 'mano', theme: 'theme-3', label: 'Manuscrito', headWord: 'rascunho live', stateWord: 'rascunho live', foot: '— escrito ao ouvido' },
+    { id: 'cine', theme: 'theme-4', label: 'Cinema Card', headWord: 'sotto', stateWord: '· live ·', foot: '· · ·' },
     { id: 'inst', theme: 'theme-5', label: 'Instrumento', headWord: 'ON', stateWord: 'ON', foot: 'OUVINDO' }
   ];
 
@@ -319,6 +332,28 @@
     var rampTop = ops.length ? Math.max.apply(null, ops) : null;
     var rampBottom = ops.length ? Math.min.apply(null, ops) : null;
 
+    /* THE NAME, COUNTED OVER RENDERED ELEMENTS ONLY — computed here so the report
+     * below can use it twice (the text and the count) without an IIFE that cannot
+     * see its own sibling. */
+    var headerTextPainted = (function () {
+      var h = document.querySelector('.panel__header');
+      if (!h) return '';
+      var out = '';
+      (function walk(node) {
+        var kids = node.childNodes;
+        for (var z = 0; z < kids.length; z += 1) {
+          var nd = kids[z];
+          if (nd.nodeType === 3) { out += nd.data; continue; }
+          if (nd.nodeType !== 1) continue;
+          if (!shown(nd)) continue;
+          walk(nd);
+        }
+      }(h));
+      return out.replace(/\s+/g, ' ').trim();
+    }());
+    var brandEl = document.querySelector('.panel__header .chrome__brand')
+      || document.querySelector('.panel__header .wordmark__name');
+
     var meterBars = head ? [] : [];
     var meters = document.querySelectorAll('.chrome--' + dir.id + ' .chrome__meter i');
     for (var b = 0; b < meters.length; b += 1) {
@@ -470,6 +505,40 @@
       rowOrdinals: ordinals,
       rowCount: allRows.length,
       formingIndex: index ? String(index.textContent) : null,
+
+      /* ── THE ORDINAL IS NOT PAINTED ANY MORE (owner, 2026-10-08) ─────────────
+       * `indexShown`/`indexText`/`formingIndex` above still read `.caption__index`,
+       * and they are kept so a probe can see the element come BACK — but the claim
+       * has inverted, and an inverted claim is where an oracle starts lying: "the
+       * element is absent" is also true when the whole caption line has vanished.
+       * So the absence is paired with the thing that must still be there: the
+       * CLOCK, on a committed row and on the forming one, with the forming row's
+       * clock a DIFFERENT colour (the owner described it as yellow against grey).
+       * `paintedIndexCount` counts the element anywhere in the list, and the
+       * ordinal's survival as STATE is read through `rowOrdinals` (`data-index`).
+       */
+      paintedIndexCount: document.querySelectorAll('#caption-list .caption__index').length,
+      paintedIndexTexts: (function () {
+        var els = document.querySelectorAll('#caption-list .caption__index');
+        var out = [];
+        for (var z = 0; z < els.length; z += 1) out.push(String(els[z].textContent));
+        return out;
+      }()),
+      committedTimeText: pastTime ? String(pastTime.textContent) : null,
+      committedTimeColor: pastTime ? cs(pastTime).color : null,
+      formingTimeText: liveTime ? String(liveTime.textContent) : null,
+      formingTimeColor: liveTime ? cs(liveTime).color : null,
+      timesDiffer: Boolean(pastTime && liveTime && cs(pastTime).color !== cs(liveTime).color),
+
+      /* ── THE NAME `sotto`, IN THIS DIRECTION'S PAINTED HEADER ───────────────
+       * Counted over RENDERED elements only: the four chrome blocks that are not
+       * this direction's are `display: none` and their text is still in the DOM,
+       * so a naive read would find five names where the eye sees one.
+       */
+      headerText: headerTextPainted,
+      brandCount: (headerTextPainted.match(/sotto/gi) || []).length,
+      brandTextTransform: brandEl ? cs(brandEl).textTransform : null,
+      brandText: brandEl ? String(brandEl.textContent).trim() : null,
       ledShown: shown(led),
       ledAnimation: ledC ? ledC.animationName : null,
       ledWidth: ledC ? ledC.width : null,

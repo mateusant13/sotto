@@ -1,0 +1,8 @@
+--- rc=0 killed=False wall=28.05s args=
+sotto-hud: HUD_WINDOW_GEOMETRY dpi=96.0 display_w=1920 width=530 height=112 plate_w=480 inset=24 derivation=plate_max_w+2*inset+2border (SPEC º5)
+sotto-hud: HUD_SHELL_READY note=navigation-hook-arms-in-before-show
+sotto-hud: shell=webview2 python=3.11.8 pid=49680 panel=hud-panel.html panel_bytes=3473
+sotto-hud: HUD_FAILSAFE_ARMED after=14.0 armed_before=webview.start
+sotto-hud: HUD_FAILSAFE_FIRE after=14.0 panel_loaded=false nav_starts=0 show_refused=0 note=if panel_loaded=false the shell hung BEFORE on_loaded
+
+LOADED=False

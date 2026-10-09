@@ -1,0 +1,36 @@
+[
+  {
+    "arm": "gpuwatch-cuda-ctrl",
+    "provider": "cuda",
+    "pid": 3148,
+    "exit": 0,
+    "samples": 64,
+    "instrument_live_samples": 64,
+    "max_pids_in_compute_apps": 29,
+    "max_gpu_util_pct": 78,
+    "pid_in_compute_apps": 0,
+    "max_gpu_mem_mb": 0,
+    "wall_s": 19.06104989999949,
+    "rtf": 0.3352236973919721,
+    "n_speakers": 4,
+    "rss_after_mb": 1124.708352,
+    "log": "H:\\sotto\\_main\\_diar-gpuwatch-gpuwatch-cuda-ctrl.csv"
+  },
+  {
+    "arm": "gpuwatch-cpu-ctrl",
+    "provider": "cpu",
+    "pid": 35160,
+    "exit": 0,
+    "samples": 65,
+    "instrument_live_samples": 65,
+    "max_pids_in_compute_apps": 29,
+    "max_gpu_util_pct": 58,
+    "pid_in_compute_apps": 0,
+    "max_gpu_mem_mb": 0,
+    "wall_s": 20.929055500000686,
+    "rtf": 0.36807601913010085,
+    "n_speakers": 4,
+    "rss_after_mb": 277.87264,
+    "log": "H:\\sotto\\_main\\_diar-gpuwatch-gpuwatch-cpu-ctrl.csv"
+  }
+]

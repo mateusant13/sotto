@@ -1,0 +1,1 @@
+{"target":"H:/sotto/flicker-injection-harness.js","before":2714,"after":2529,"reason":"Removing problematic app.name line that caused TypeError since app object doesn't have name property in this Electron context"}

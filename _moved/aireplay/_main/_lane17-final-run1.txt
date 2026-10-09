@@ -1,0 +1,80 @@
+  fresh-index: 4 stale db file(s) cleared
+LANE17 GATE -- clip -> audio -> transcript -> index row -> search
+  repo : H:\sotto\_moved\aireplay
+  work : H:\sotto\_moved\aireplay\_main\_lane17-gate
+  python: py -3
+
+[FIXTURES] built from artefacts already on this box
+  ok  H:\sotto\_moved\aireplay\_main\runs\cap-offline-gaming.mp4  [97820321 B]
+  ok  H:\sotto\_moved\aireplay\_main\runs\clip-20261007-105609.mp4  [12181 B]
+  ok  H:\sotto\_main\live-sample-cable-input.wav  [5779280 B]
+  built H:\sotto\_moved\aireplay\_main\_lane17-gate\clip-speech.mp4  [98099914 B]
+  built H:\sotto\_moved\aireplay\_main\_lane17-gate\clip-silent.mp4  [15489 B]
+  built H:\sotto\_moved\aireplay\_main\_lane17-gate\clip-short-audio.mp4
+
+[ARM 0] the CONTRACTS against the LIVE producers
+  ARM 0   PASS  25/25 contract check(s), 0 failed, live producers
+
+[ARM H] THE HEADLINE -- which stages ran for real?
+PIPELINE CHAIN -- provenance table
+  loaded from: H:\sotto\_moved\aireplay\src\pipeline\chain.py
+  stage              provenance       what actually ran                            numbers
+  ------------ ----  ---------------- -------------------------------------------- ------------------------
+  capture      ok    DOUBLE           CutResultMeta (this lane) + real clip on disk bytes=98099914 device=CABLE Input (VB-Audio Virtual Cable) via MME render / DirectSound capture
+  probe        ok    REAL_SUBSTITUTE  ffprobe (external binary)                    n_streams=2 n_video=1 n_audio=1 dur_s=16.733 vcodec=h264
+  extract      ok    REAL_SUBSTITUTE  C:\Users\Administrador\AppData\Local\Microsoft\WinGet\Links\ffmpeg.EXE dur_s=16.725 rate=16000 ch=1 sampwidth=2 peak=0.304382 rms=0.028366 floor=0.001 bytes=535288 extract_s=0.2
+  ingest-clip  ok    REAL             store.upsert_video                           video_id=1 content_key=c6e345b1fb9f duration_ms=16733 started_at_s_source=NOT WRITABLE: the rewritten schema has no epoch column on `video` (schema.sql:41-63); only mtime_ns. The old store's started_at_s filter axis is gone. db_bytes=4096
+  segments     ok    REAL             asr.segment.segments_for_mode                mode=silence n_segments=5 audio_s=16.725 covered_s=17.005
+  asr          ok    REAL             asr.runner.transcribe                        n_segments=5 chars=50 audio_s=16.725 rtfx_steady=7.56 rss_peak_mb=815.8 providers=['CPUExecutionProvider']x['CPUExecutionProvider'] wall_s=5.65
+  ingest-asr   ok    REAL             store.upsert_segment + store.upsert_transcript segments=5 expected=5 text_fts_rows=5 producer=asr:parakeet-tdt-0.6b-v3:int8 unit=seconds in, ms stored (converted here)
+  search       ok    REAL             search.SearchIndex.search_text               query=fazer n_lexical_hits=1 video_ids=[1] paths=1 population=1
+  contracts: 25 check(s), 0 failed
+  provenance counts: DOUBLE=1  REAL=5  REAL_SUBSTITUTE=2
+  SCAFFOLD: False
+  VERDICT: ok  clip_id=c6e345b1fb9fbe8ca95f289b8aafed435d52441ad731414d6438cbf2d273bd5f
+  transcript (50 chars): She know that she's a fake. Bora fazer um plan de.
+pipeline.chain: OK  verdict=ok  real_stages=5  double_stages=1
+
+  ARM H   PASS  verdict=ok REAL=5 REAL_SUBSTITUTE=2 DOUBLE=1 scaffold=False transcript=50ch search_hits=1
+
+[ARM N] a REAL capture clip with NO audio -> must refuse, loudly, with no row
+  ARM N   PASS  rc=0 verdict=no-audio-stream evidence=yes video rows written=0 (must be 0)
+
+[ARM S] DIGITAL SILENCE -> must refuse silent-device with peak and floor
+  ARM S   PASS  rc=0 verdict=silent-device peak=0.0 floor=0.001 (a VALID green outcome on this box)
+
+[ARM E] a real transcript of 0 characters -> empty-transcript, NOTHING invented
+  ARM E   PASS  rc=0 verdict=empty-transcript transcript rows with invented text=0
+
+[ARM D] THE LEAK DETECTOR -- a double's transcript must be REJECTED
+  ARM D   PASS  rc=1 (expected non-zero) leak detected=yes
+
+[ARM C1] THE CONTROL -- no-audio refusal REVERTED in a COPY must go RED
+  (control C1 rc=1 fromCopy=True contractsGreen=True namesFailure=True)
+  ARM C1  PASS  reverted refusal -> rc=1 red=True mutatedBytesRan=True contractsGreen=True namesTheCure(bad-wav)=True
+
+[ARM C2] THE CONTROL -- silent-device refusal REVERTED in a COPY must go RED
+  (control C2 rc=1 fromCopy=True contractsGreen=True namesFailure=True)
+  ARM C2  PASS  reverted refusal -> rc=1 red=True mutatedBytesRan=True contractsGreen=True namesTheCure=True
+
+  GATED SOURCE (sha256, first 16) -- the bytes these verdicts are about:
+    __init__.py      C9608FC9DA3D5277
+    chain.py         3BD5F54D58B720DA
+    contracts.py     5C207ADCA906E2AB
+    gate.ps1         0146D9A51F4E161E
+
+
+Arm   Ok Detail
+---   -- ------
+0   True 25/25 contract check(s), 0 failed, live producers
+H   True verdict=ok REAL=5 REAL_SUBSTITUTE=2 DOUBLE=1 scaffold=False transcript=50ch search_hits=1
+N   True rc=0 verdict=no-audio-stream evidence=yes video rows written=0 (must be 0)
+S   True rc=0 verdict=silent-device peak=0.0 floor=0.001 (a VALID green outcome on this box)
+E   True rc=0 verdict=empty-transcript transcript rows with invented text=0
+D   True rc=1 (expected non-zero) leak detected=yes
+C1  True reverted refusal -> rc=1 red=True mutatedBytesRan=True contractsGreen=True namesTheCure(bad-wav)=True
+C2  True reverted refusal -> rc=1 red=True mutatedBytesRan=True contractsGreen=True namesTheCure=True
+
+
+  evidence: H:\sotto\_moved\aireplay\_main\_lane17-gate\evidence
+LANE17-GATE PASS

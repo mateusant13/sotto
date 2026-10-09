@@ -1,0 +1,3440 @@
+{
+ "zip": "cinematic-2",
+ "css": "app.css",
+ "viewport": [
+  380,
+  900
+ ],
+ "frozen": [
+  "rainline",
+  "blue-plate",
+  "cellar",
+  "linen",
+  "side-b",
+  "north-window",
+  "adobe",
+  "glasshouse",
+  "film-club",
+  "nightswim",
+  "reading-hour",
+  "snowline",
+  "last-train",
+  "dusk-highway",
+  "harbor",
+  "fireside",
+  "blue-hour",
+  "paper-rain",
+  "terrace",
+  "quiet-marina"
+ ],
+ "complete": true,
+ "designs": [
+  "rainline",
+  "blue-plate",
+  "cellar",
+  "linen",
+  "side-b",
+  "north-window",
+  "adobe",
+  "glasshouse",
+  "film-club",
+  "nightswim",
+  "reading-hour",
+  "snowline",
+  "last-train",
+  "dusk-highway",
+  "harbor",
+  "fireside",
+  "blue-hour",
+  "paper-rain",
+  "terrace",
+  "quiet-marina"
+ ],
+ "fragments": {
+  "rainline": {
+   "stage": "rainline.stage.html",
+   "chrome": "rainline.chrome.html",
+   "caption": "rainline.caption.html",
+   "panel": "rainline.panel.html"
+  },
+  "blue-plate": {
+   "stage": "blue-plate.stage.html",
+   "chrome": "blue-plate.chrome.html",
+   "caption": "blue-plate.caption.html",
+   "panel": "blue-plate.panel.html"
+  },
+  "cellar": {
+   "stage": "cellar.stage.html",
+   "chrome": "cellar.chrome.html",
+   "caption": "cellar.caption.html",
+   "panel": "cellar.panel.html"
+  },
+  "linen": {
+   "stage": "linen.stage.html",
+   "chrome": "linen.chrome.html",
+   "caption": "linen.caption.html",
+   "panel": "linen.panel.html"
+  },
+  "side-b": {
+   "stage": "side-b.stage.html",
+   "chrome": "side-b.chrome.html",
+   "caption": "side-b.caption.html",
+   "panel": "side-b.panel.html"
+  },
+  "north-window": {
+   "stage": "north-window.stage.html",
+   "chrome": "north-window.chrome.html",
+   "caption": "north-window.caption.html",
+   "panel": "north-window.panel.html"
+  },
+  "adobe": {
+   "stage": "adobe.stage.html",
+   "chrome": "adobe.chrome.html",
+   "caption": "adobe.caption.html",
+   "panel": "adobe.panel.html"
+  },
+  "glasshouse": {
+   "stage": "glasshouse.stage.html",
+   "chrome": "glasshouse.chrome.html",
+   "caption": "glasshouse.caption.html",
+   "panel": "glasshouse.panel.html"
+  },
+  "film-club": {
+   "stage": "film-club.stage.html",
+   "chrome": "film-club.chrome.html",
+   "caption": "film-club.caption.html",
+   "panel": "film-club.panel.html"
+  },
+  "nightswim": {
+   "stage": "nightswim.stage.html",
+   "chrome": "nightswim.chrome.html",
+   "caption": "nightswim.caption.html",
+   "panel": "nightswim.panel.html"
+  },
+  "reading-hour": {
+   "stage": "reading-hour.stage.html",
+   "chrome": "reading-hour.chrome.html",
+   "caption": "reading-hour.caption.html",
+   "panel": "reading-hour.panel.html"
+  },
+  "snowline": {
+   "stage": "snowline.stage.html",
+   "chrome": "snowline.chrome.html",
+   "caption": "snowline.caption.html",
+   "panel": "snowline.panel.html"
+  },
+  "last-train": {
+   "stage": "last-train.stage.html",
+   "chrome": "last-train.chrome.html",
+   "caption": "last-train.caption.html",
+   "panel": "last-train.panel.html"
+  },
+  "dusk-highway": {
+   "stage": "dusk-highway.stage.html",
+   "chrome": "dusk-highway.chrome.html",
+   "caption": "dusk-highway.caption.html",
+   "panel": "dusk-highway.panel.html"
+  },
+  "harbor": {
+   "stage": "harbor.stage.html",
+   "chrome": "harbor.chrome.html",
+   "caption": "harbor.caption.html",
+   "panel": "harbor.panel.html"
+  },
+  "fireside": {
+   "stage": "fireside.stage.html",
+   "chrome": "fireside.chrome.html",
+   "caption": "fireside.caption.html",
+   "panel": "fireside.panel.html"
+  },
+  "blue-hour": {
+   "stage": "blue-hour.stage.html",
+   "chrome": "blue-hour.chrome.html",
+   "caption": "blue-hour.caption.html",
+   "panel": "blue-hour.panel.html"
+  },
+  "paper-rain": {
+   "stage": "paper-rain.stage.html",
+   "chrome": "paper-rain.chrome.html",
+   "caption": "paper-rain.caption.html",
+   "panel": "paper-rain.panel.html"
+  },
+  "terrace": {
+   "stage": "terrace.stage.html",
+   "chrome": "terrace.chrome.html",
+   "caption": "terrace.caption.html",
+   "panel": "terrace.panel.html"
+  },
+  "quiet-marina": {
+   "stage": "quiet-marina.stage.html",
+   "chrome": "quiet-marina.chrome.html",
+   "caption": "quiet-marina.caption.html",
+   "panel": "quiet-marina.panel.html"
+  }
+ },
+ "vars": {
+  "rainline": {
+   "--page": "#060c11",
+   "--text": "#eaf3f7",
+   "--dim": "#93a9b4",
+   "--accent": "#9fc9dd",
+   "--accent-2": "#d9b486",
+   "--live": "#8fd0c9",
+   "--surface": "rgba(10,20,27,.74)",
+   "--surface-2": "rgba(255,255,255,.055)",
+   "--line": "rgba(200,226,238,.14)",
+   "--radius": "16px",
+   "--blur": "22px",
+   "--shadow": "0 24px 70px -30px rgba(0,0,0,.85)",
+   "--cap-bg": "rgba(8,18,24,.62)",
+   "--cap-text": "#f2f8fb",
+   "--cap-edge": "rgba(220,240,250,.16)"
+  },
+  "blue-plate": {
+   "--page": "#0d0703",
+   "--text": "#f7ecda",
+   "--dim": "#b9986f",
+   "--accent": "#e8a860",
+   "--accent-2": "#8fc0b6",
+   "--live": "#e8a860",
+   "--surface": "rgba(24,15,7,.78)",
+   "--surface-2": "rgba(255,226,182,.07)",
+   "--line": "rgba(240,206,158,.16)",
+   "--radius": "14px",
+   "--blur": "20px",
+   "--shadow": "0 26px 76px -32px rgba(0,0,0,.9)",
+   "--cap-bg": "rgba(12,7,2,.86)",
+   "--cap-text": "#fdf3e3",
+   "--cap-edge": "rgba(240,200,150,.24)"
+  },
+  "cellar": {
+   "--page": "#0c0807",
+   "--text": "#f3e8d7",
+   "--dim": "#a88f6d",
+   "--accent": "#d9a94f",
+   "--accent-2": "#c98f7a",
+   "--live": "#d9a94f",
+   "--surface": "rgba(20,15,11,.7)",
+   "--surface-2": "rgba(255,236,196,.06)",
+   "--line": "rgba(226,196,140,.16)",
+   "--radius": "18px",
+   "--blur": "18px",
+   "--shadow": "0 30px 80px -34px rgba(0,0,0,.9)",
+   "--cap-bg": "rgba(18,12,8,.46)",
+   "--cap-text": "#f8efe0",
+   "--cap-edge": "rgba(230,196,138,.22)"
+  },
+  "linen": {
+   "--page": "#efe7da",
+   "--text": "#2e2a24",
+   "--dim": "#8a7f6f",
+   "--accent": "#a8672f",
+   "--accent-2": "#5f7a6a",
+   "--live": "#7d9c6d",
+   "--surface": "rgba(251,247,240,.86)",
+   "--surface-2": "rgba(46,42,36,.05)",
+   "--line": "rgba(90,78,62,.16)",
+   "--radius": "18px",
+   "--blur": "16px",
+   "--shadow": "0 22px 60px -34px rgba(70,54,36,.45)",
+   "--cap-bg": "rgba(252,249,243,.9)",
+   "--cap-text": "#332d26",
+   "--cap-edge": "rgba(120,104,84,.18)"
+  },
+  "side-b": {
+   "--page": "#120c07",
+   "--text": "#f4e8d4",
+   "--dim": "#a9926d",
+   "--accent": "#c98a3f",
+   "--accent-2": "#8ba394",
+   "--live": "#d99a4f",
+   "--surface": "rgba(24,17,11,.74)",
+   "--surface-2": "rgba(255,232,190,.06)",
+   "--line": "rgba(232,200,152,.15)",
+   "--radius": "10px",
+   "--blur": "18px",
+   "--shadow": "0 26px 70px -32px rgba(0,0,0,.88)",
+   "--cap-bg": "rgba(20,14,9,.5)",
+   "--cap-text": "#fbf1de",
+   "--cap-edge": "rgba(232,196,142,.2)"
+  },
+  "north-window": {
+   "--page": "#0b161b",
+   "--text": "#eaf3f4",
+   "--dim": "#9bb3b6",
+   "--accent": "#8fc7c2",
+   "--accent-2": "#e0b183",
+   "--live": "#a8ddd6",
+   "--surface": "rgba(14,26,31,.7)",
+   "--surface-2": "rgba(226,244,246,.07)",
+   "--line": "rgba(206,232,234,.16)",
+   "--radius": "20px",
+   "--blur": "20px",
+   "--shadow": "0 26px 70px -32px rgba(0,0,0,.85)",
+   "--cap-bg": "rgba(12,24,29,.5)",
+   "--cap-text": "#f1f8f9",
+   "--cap-edge": "rgba(210,236,240,.2)"
+  },
+  "adobe": {
+   "--page": "#150f0a",
+   "--text": "#f8efe3",
+   "--dim": "#bfa184",
+   "--accent": "#d99055",
+   "--accent-2": "#8fae9b",
+   "--live": "#d99055",
+   "--surface": "rgba(28,19,13,.7)",
+   "--surface-2": "rgba(255,232,206,.07)",
+   "--line": "rgba(238,208,178,.17)",
+   "--radius": "22px",
+   "--blur": "18px",
+   "--shadow": "0 24px 66px -32px rgba(0,0,0,.85)",
+   "--cap-bg": "rgba(24,16,10,.66)",
+   "--cap-text": "#fdf5ea",
+   "--cap-edge": "rgba(238,206,172,.2)"
+  },
+  "glasshouse": {
+   "--page": "#08120e",
+   "--text": "#e9f2ea",
+   "--dim": "#94ae9c",
+   "--accent": "#a8d4b0",
+   "--accent-2": "#d6c48f",
+   "--live": "#9fd0a8",
+   "--surface": "rgba(10,20,16,.72)",
+   "--surface-2": "rgba(224,240,226,.06)",
+   "--line": "rgba(200,226,206,.15)",
+   "--radius": "14px",
+   "--blur": "20px",
+   "--shadow": "0 24px 66px -32px rgba(0,0,0,.85)",
+   "--cap-bg": "rgba(8,18,14,.4)",
+   "--cap-text": "#f0f7f0",
+   "--cap-edge": "rgba(206,232,212,.18)"
+  },
+  "film-club": {
+   "--page": "#080808",
+   "--text": "#f3f1ea",
+   "--dim": "#9a978e",
+   "--accent": "#cfc7b0",
+   "--accent-2": "#9fb0c0",
+   "--live": "#cfc7b0",
+   "--surface": "rgba(14,14,14,.76)",
+   "--surface-2": "rgba(255,255,255,.05)",
+   "--line": "rgba(240,238,230,.16)",
+   "--radius": "4px",
+   "--blur": "14px",
+   "--shadow": "0 24px 66px -32px rgba(0,0,0,.95)",
+   "--cap-bg": "rgba(6,6,6,.8)",
+   "--cap-text": "#fbfaf5",
+   "--cap-edge": "rgba(240,238,230,.22)"
+  },
+  "nightswim": {
+   "--page": "#100c1a",
+   "--text": "#f7eceb",
+   "--dim": "#ab9bb0",
+   "--accent": "#f0a68c",
+   "--accent-2": "#9fb6d8",
+   "--live": "#f0a68c",
+   "--surface": "rgba(22,17,34,.68)",
+   "--surface-2": "rgba(255,226,226,.07)",
+   "--line": "rgba(240,210,214,.17)",
+   "--radius": "16px",
+   "--blur": "18px",
+   "--shadow": "0 26px 72px -32px rgba(0,0,0,.9)",
+   "--cap-bg": "rgba(18,13,28,.44)",
+   "--cap-text": "#fdf1ee",
+   "--cap-edge": "rgba(242,208,204,.2)"
+  },
+  "reading-hour": {
+   "--page": "#110c07",
+   "--text": "#f2e6d3",
+   "--dim": "#a58e6c",
+   "--accent": "#c9a447",
+   "--accent-2": "#a8b695",
+   "--live": "#c9a447",
+   "--surface": "rgba(22,16,10,.74)",
+   "--surface-2": "rgba(255,234,196,.06)",
+   "--line": "rgba(232,200,148,.16)",
+   "--radius": "12px",
+   "--blur": "18px",
+   "--shadow": "0 24px 68px -32px rgba(0,0,0,.88)",
+   "--cap-bg": "rgba(20,14,9,.56)",
+   "--cap-text": "#fbf2e1",
+   "--cap-edge": "rgba(232,198,142,.2)"
+  },
+  "snowline": {
+   "--page": "#e6edf1",
+   "--text": "#1d2c33",
+   "--dim": "#71858f",
+   "--accent": "#3f7c86",
+   "--accent-2": "#8a7a52",
+   "--live": "#3f7c86",
+   "--surface": "rgba(248,251,252,.82)",
+   "--surface-2": "rgba(29,44,51,.05)",
+   "--line": "rgba(60,86,98,.18)",
+   "--radius": "20px",
+   "--blur": "18px",
+   "--shadow": "0 22px 56px -32px rgba(40,64,76,.4)",
+   "--cap-bg": "rgba(252,254,255,.82)",
+   "--cap-text": "#233139",
+   "--cap-edge": "rgba(70,100,112,.16)"
+  },
+  "last-train": {
+   "--page": "#0b1113",
+   "--text": "#e8efe9",
+   "--dim": "#93a399",
+   "--accent": "#a9c4a0",
+   "--accent-2": "#cbb488",
+   "--live": "#a9c4a0",
+   "--surface": "rgba(14,21,21,.72)",
+   "--surface-2": "rgba(226,240,226,.06)",
+   "--line": "rgba(200,224,204,.15)",
+   "--radius": "16px",
+   "--blur": "18px",
+   "--shadow": "0 24px 68px -32px rgba(0,0,0,.86)",
+   "--cap-bg": "rgba(10,16,16,.5)",
+   "--cap-text": "#f0f6f0",
+   "--cap-edge": "rgba(204,228,208,.18)"
+  },
+  "dusk-highway": {
+   "--page": "#120e20",
+   "--text": "#f6ece3",
+   "--dim": "#ab9dae",
+   "--accent": "#e5a06e",
+   "--accent-2": "#9db2cf",
+   "--live": "#e5a06e",
+   "--surface": "rgba(22,17,34,.7)",
+   "--surface-2": "rgba(255,228,210,.06)",
+   "--line": "rgba(240,214,200,.16)",
+   "--radius": "14px",
+   "--blur": "18px",
+   "--shadow": "0 24px 68px -32px rgba(0,0,0,.88)",
+   "--cap-bg": "rgba(18,13,28,.36)",
+   "--cap-text": "#fdf3ea",
+   "--cap-edge": "rgba(242,214,198,.18)"
+  },
+  "harbor": {
+   "--page": "#061317",
+   "--text": "#eaf2f3",
+   "--dim": "#95afb2",
+   "--accent": "#e0a869",
+   "--accent-2": "#8fc0c9",
+   "--live": "#e0a869",
+   "--surface": "rgba(8,22,26,.76)",
+   "--surface-2": "rgba(226,242,246,.06)",
+   "--line": "rgba(206,232,236,.16)",
+   "--radius": "16px",
+   "--blur": "22px",
+   "--shadow": "0 26px 72px -32px rgba(0,0,0,.9)",
+   "--cap-bg": "rgba(6,19,23,.5)",
+   "--cap-text": "#f4f8f8",
+   "--cap-edge": "rgba(210,236,240,.2)"
+  },
+  "fireside": {
+   "--page": "#150c05",
+   "--text": "#f6e9d6",
+   "--dim": "#b09272",
+   "--accent": "#f0b26b",
+   "--accent-2": "#93a89a",
+   "--live": "#f0b26b",
+   "--surface": "rgba(26,17,10,.74)",
+   "--surface-2": "rgba(255,230,190,.07)",
+   "--line": "rgba(240,206,158,.17)",
+   "--radius": "18px",
+   "--blur": "18px",
+   "--shadow": "0 26px 70px -32px rgba(0,0,0,.9)",
+   "--cap-bg": "rgba(22,14,8,.52)",
+   "--cap-text": "#fdf3e3",
+   "--cap-edge": "rgba(242,208,160,.2)"
+  },
+  "blue-hour": {
+   "--page": "#0a111c",
+   "--text": "#e9eef6",
+   "--dim": "#93a2b8",
+   "--accent": "#e0a894",
+   "--accent-2": "#9ab6cf",
+   "--live": "#e0a894",
+   "--surface": "rgba(13,20,32,.72)",
+   "--surface-2": "rgba(228,238,250,.06)",
+   "--line": "rgba(208,222,240,.15)",
+   "--radius": "18px",
+   "--blur": "20px",
+   "--shadow": "0 24px 70px -32px rgba(0,0,0,.88)",
+   "--cap-bg": "rgba(10,16,26,.4)",
+   "--cap-text": "#f2f6fb",
+   "--cap-edge": "rgba(212,226,244,.18)"
+  },
+  "paper-rain": {
+   "--page": "#dee6ec",
+   "--text": "#1f2c36",
+   "--dim": "#6d818e",
+   "--accent": "#4a6b86",
+   "--accent-2": "#7c7f9a",
+   "--live": "#4a6b86",
+   "--surface": "rgba(247,250,252,.84)",
+   "--surface-2": "rgba(31,44,54,.05)",
+   "--line": "rgba(64,86,102,.18)",
+   "--radius": "14px",
+   "--blur": "18px",
+   "--shadow": "0 22px 58px -32px rgba(40,60,76,.38)",
+   "--cap-bg": "rgba(250,252,254,.88)",
+   "--cap-text": "#22303b",
+   "--cap-edge": "rgba(70,96,112,.16)"
+  },
+  "terrace": {
+   "--page": "#171a11",
+   "--text": "#f5f2e4",
+   "--dim": "#b3b295",
+   "--accent": "#c9cf8f",
+   "--accent-2": "#e0b98a",
+   "--live": "#c9cf8f",
+   "--surface": "rgba(26,29,18,.72)",
+   "--surface-2": "rgba(246,246,226,.07)",
+   "--line": "rgba(232,234,208,.16)",
+   "--radius": "16px",
+   "--blur": "18px",
+   "--shadow": "0 24px 66px -32px rgba(0,0,0,.85)",
+   "--cap-bg": "rgba(22,25,15,.56)",
+   "--cap-text": "#faf8ec",
+   "--cap-edge": "rgba(234,236,206,.18)"
+  },
+  "quiet-marina": {
+   "--page": "#071119",
+   "--text": "#e8eff5",
+   "--dim": "#93a8b5",
+   "--accent": "#d8a35f",
+   "--accent-2": "#8fb0c9",
+   "--live": "#d8a35f",
+   "--surface": "rgba(9,19,27,.76)",
+   "--surface-2": "rgba(222,236,246,.06)",
+   "--line": "rgba(202,224,238,.16)",
+   "--radius": "14px",
+   "--blur": "20px",
+   "--shadow": "0 26px 70px -32px rgba(0,0,0,.9)",
+   "--cap-bg": "rgba(7,16,23,.54)",
+   "--cap-text": "#f2f7fa",
+   "--cap-edge": "rgba(206,228,242,.2)"
+  }
+ },
+ "bindings": {
+  "rainline": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".mr-3",
+   "statusWord": ".inline-flex",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span"
+  },
+  "blue-plate": {
+   "live": "div > div > div > div > div:nth-of-type(2) > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".uppercase",
+   "statusWord": "div > div > div > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)",
+   "meter": null,
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span"
+  },
+  "cellar": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(3) > span",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "linen": {
+   "live": "div > div > div > div > div:nth-of-type(2) > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".uppercase",
+   "statusWord": "div > div > div > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)",
+   "meter": null,
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > div > span:nth-of-type(2)"
+  },
+  "side-b": {
+   "live": "div > div > div > div:nth-of-type(3)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": null,
+   "statusWord": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "north-window": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(3) > span",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "adobe": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(1) > span:nth-of-type(2)",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "glasshouse": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".mr-3",
+   "statusWord": ".inline-flex",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > div > span:nth-of-type(2)"
+  },
+  "film-club": {
+   "live": "div > div > div > div > div:nth-of-type(2) > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".uppercase",
+   "statusWord": "div > div > div > div > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)",
+   "meter": null,
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "nightswim": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".mr-3",
+   "statusWord": ".inline-flex",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "reading-hour": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(1) > span:nth-of-type(2)",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "snowline": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(3) > span",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "last-train": {
+   "live": "div > div > div > div:nth-of-type(3)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": null,
+   "statusWord": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "dusk-highway": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".mr-3",
+   "statusWord": ".inline-flex",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "harbor": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(3) > span",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span"
+  },
+  "fireside": {
+   "live": "div > div > div > div:nth-of-type(3)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": null,
+   "statusWord": "div > div > div > div:nth-of-type(1) > div > span:nth-of-type(2)",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "blue-hour": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": ".mr-3",
+   "statusWord": ".inline-flex",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "paper-rain": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)",
+   "statusWord": "div > div > div > div:nth-of-type(1) > span:nth-of-type(2)",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > span:nth-of-type(2)"
+  },
+  "terrace": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > span:nth-of-type(1)",
+   "statusWord": ".ml-auto",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > div > span:nth-of-type(2)"
+  },
+  "quiet-marina": {
+   "live": "div > div > div > div:nth-of-type(2)",
+   "wordTemplate": ".word-in",
+   "caret": ".caret",
+   "speaker": "div > div > div > div:nth-of-type(1) > span:nth-of-type(1)",
+   "statusWord": ".ml-auto",
+   "meter": ".items-end",
+   "historyList": ".quiet-scroll",
+   "historyRow": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+   "historyTime": "div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span"
+  }
+ },
+ "branches": {
+  "rainline": {
+   "caption": "bare",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "rain"
+  },
+  "blue-plate": {
+   "caption": "plate",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "none"
+  },
+  "cellar": {
+   "caption": "glass",
+   "panel": "rail",
+   "chrome": "float",
+   "particle": "dust"
+  },
+  "linen": {
+   "caption": "plate",
+   "panel": "list",
+   "chrome": "bar",
+   "particle": "dust"
+  },
+  "side-b": {
+   "caption": "stack",
+   "panel": "memo",
+   "chrome": "float",
+   "particle": "dust"
+  },
+  "north-window": {
+   "caption": "glass",
+   "panel": "cards",
+   "chrome": "bar",
+   "particle": "snow"
+  },
+  "adobe": {
+   "caption": "chip",
+   "panel": "cards",
+   "chrome": "bar",
+   "particle": "dust"
+  },
+  "glasshouse": {
+   "caption": "bare",
+   "panel": "list",
+   "chrome": "sidebarHead",
+   "particle": "rain"
+  },
+  "film-club": {
+   "caption": "plate",
+   "panel": "memo",
+   "chrome": "bar",
+   "particle": "dust"
+  },
+  "nightswim": {
+   "caption": "bare",
+   "panel": "rail",
+   "chrome": "float",
+   "particle": "none"
+  },
+  "reading-hour": {
+   "caption": "chip",
+   "panel": "cards",
+   "chrome": "bar",
+   "particle": "dust"
+  },
+  "snowline": {
+   "caption": "glass",
+   "panel": "cards",
+   "chrome": "sidebarHead",
+   "particle": "snow"
+  },
+  "last-train": {
+   "caption": "stack",
+   "panel": "rail",
+   "chrome": "bar",
+   "particle": "none"
+  },
+  "dusk-highway": {
+   "caption": "bare",
+   "panel": "memo",
+   "chrome": "float",
+   "particle": "dust"
+  },
+  "harbor": {
+   "caption": "glass",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "none"
+  },
+  "fireside": {
+   "caption": "stack",
+   "panel": "cards",
+   "chrome": "sidebarHead",
+   "particle": "ember"
+  },
+  "blue-hour": {
+   "caption": "bare",
+   "panel": "rail",
+   "chrome": "float",
+   "particle": "none"
+  },
+  "paper-rain": {
+   "caption": "chip",
+   "panel": "memo",
+   "chrome": "bar",
+   "particle": "rain"
+  },
+  "terrace": {
+   "caption": "karaoke",
+   "panel": "list",
+   "chrome": "sidebarHead",
+   "particle": "dust"
+  },
+  "quiet-marina": {
+   "caption": "karaoke",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "snow"
+  }
+ },
+ "bindingFragments": {
+  "live": "caption",
+  "wordTemplate": "caption",
+  "caret": "caption",
+  "speaker": "caption",
+  "statusWord": "caption",
+  "meter": "caption",
+  "historyList": "panel",
+  "historyRow": "panel",
+  "historyTime": "panel"
+ },
+ "bindingProof": {
+  "rainline": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "JuneYou're on the night shift with me an"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight505:21:18JuneYou're on th"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:18JuneYou're on the night shift wi"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:18"
+   }
+  },
+  "blue-plate": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "speaking now"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": false,
+    "fragment": "caption",
+    "reason": "the role \"meter\" has no element in the caption fragment"
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight55:21:20 amJuneYou're on "
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:21:20 amJuneYou're on the night shift "
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:21:20 am"
+   }
+  },
+  "cellar": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "live track"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June05:21:23copiedYou're"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June05:21:23copiedYou're on the night sh"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:23"
+   }
+  },
+  "linen": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "speaking now"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": false,
+    "fragment": "caption",
+    "reason": "the role \"meter\" has no element in the caption fragment"
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5JUJune5:21:28 amYou're o"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "JUJune5:21:28 amYou're on the night shif"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:21:28 am"
+   }
+  },
+  "side-b": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": false,
+    "fragment": "caption",
+    "reason": "the role \"speaker\" has no element in the caption fragment"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight500105:21:30June97%You're"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "00105:21:30June97%You're on the night sh"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:30"
+   }
+  },
+  "north-window": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "live track"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June05:21:32You're on th"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June05:21:32You're on the night shift wi"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:32"
+   }
+  },
+  "adobe": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "Which means the calls are about to get h"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "Which"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "Marlow"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "capturing"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June5:21:34 amYou're on "
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June5:21:34 amYou're on the night shift "
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:21:34 am"
+   }
+  },
+  "glasshouse": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "JuneYou're on the night shift with me an"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5JUJune05:21:41You're on "
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "JUJune05:21:41You're on the night shift "
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:41"
+   }
+  },
+  "film-club": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "speaking now"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": false,
+    "fragment": "caption",
+    "reason": "the role \"meter\" has no element in the caption fragment"
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight500105:21:44June97%You're"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "00105:21:44June97%You're on the night sh"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:44"
+   }
+  },
+  "nightswim": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "JuneYou're on the night shift with me an"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June5:21:47 amcopiedYou'"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June5:21:47 amcopiedYou're on the night "
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:21:47 am"
+   }
+  },
+  "reading-hour": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "capturing"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June05:21:50You're on th"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June05:21:50You're on the night shift wi"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:50"
+   }
+  },
+  "snowline": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "live track"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June05:21:54You're on th"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June05:21:54You're on the night shift wi"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:54"
+   }
+  },
+  "last-train": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": false,
+    "fragment": "caption",
+    "reason": "the role \"speaker\" has no element in the caption fragment"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June05:21:56copiedYou're"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June05:21:56copiedYou're on the night sh"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:56"
+   }
+  },
+  "dusk-highway": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "JuneYou're on the night shift with me an"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight500105:21:59June97%You're"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "00105:21:59June97%You're on the night sh"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:21:59"
+   }
+  },
+  "harbor": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "live track"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight505:22:02JuneYou're on th"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:22:02JuneYou're on the night shift wi"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:22:02"
+   }
+  },
+  "fireside": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": false,
+    "fragment": "caption",
+    "reason": "the role \"speaker\" has no element in the caption fragment"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June5:22:06 amYou're on "
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June5:22:06 amYou're on the night shift "
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:22:06 am"
+   }
+  },
+  "blue-hour": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "JuneYou're on the night shift with me an"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "listening"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5June5:22:08 amcopiedYou'"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "June5:22:08 amcopiedYou're on the night "
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:22:08 am"
+   }
+  },
+  "paper-rain": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "capturing"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight500105:22:11June97%You're"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "00105:22:11June97%You're on the night sh"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:22:11"
+   }
+  },
+  "terrace": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "night"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "read-along"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight5JUJune5:22:14 amYou're o"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "JUJune5:22:14 amYou're on the night shif"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "5:22:14 am"
+   }
+  },
+  "quiet-marina": {
+   "live": {
+    "key": "live",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": true,
+    "text": "You're on the night shift with me and it"
+   },
+   "wordTemplate": {
+    "key": "wordTemplate",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "the"
+   },
+   "caret": {
+    "key": "caret",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "speaker": {
+    "key": "speaker",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "caption",
+    "unique": false,
+    "text": "June"
+   },
+   "statusWord": {
+    "key": "statusWord",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": "read-along"
+   },
+   "meter": {
+    "key": "meter",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "caption",
+    "unique": true,
+    "text": ""
+   },
+   "historyList": {
+    "key": "historyList",
+    "resolved": true,
+    "strategy": "semantic-class",
+    "fragment": "panel",
+    "unique": true,
+    "text": "Earlier tonight505:22:18JuneYou're on th"
+   },
+   "historyRow": {
+    "key": "historyRow",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:22:18JuneYou're on the night shift wi"
+   },
+   "historyTime": {
+    "key": "historyTime",
+    "resolved": true,
+    "strategy": "structural-path",
+    "fragment": "panel",
+    "unique": true,
+    "text": "05:22:18"
+   }
+  }
+ },
+ "stats": {
+  "rainline": {
+   "arrows": 18,
+   "liveAfterMs": 0,
+   "chromeShownAs": "01 · Rainline",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/9488153/pexels-photo-9488153.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/9488153.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 418px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 384px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.mr-3.align-middle",
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 16,
+    "speakerCandidates": [
+     "Ext. rain-spec :: text-[10px] tracking-[0.32em] uppercase",
+     "Rainline :: hidden xl:inline",
+     "01/20 :: hidden sm:inline",
+     "listening :: uppercase",
+     "June :: mr-3 align-middle",
+     "transcribing J :: (no class)"
+    ]
+   }
+  },
+  "blue-plate": {
+   "arrows": 19,
+   "liveAfterMs": 0,
+   "chromeShownAs": "02 · Blue Plate",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/8887627/pexels-photo-8887627.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/8887627.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 426px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 392px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. all-night :: text-[10px] tracking-[0.32em] uppercase",
+     "Blue Plate :: hidden xl:inline",
+     "02/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "transcript his :: uppercase",
+     "Earlier tonigh :: (no class)"
+    ]
+   }
+  },
+  "cellar": {
+   "arrows": 0,
+   "liveAfterMs": 0,
+   "chromeShownAs": "03 · Cellar Sessions",
+   "chromeNodes": 3,
+   "chromeWrapped": true,
+   "droppedTransitionLayers": 0,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/35258949/pexels-photo-35258949.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/35258949.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 402px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. cellar ba :: text-[10px] tracking-[0.32em] uppercase",
+     "Late Shift Rad :: (no class)",
+     "Cellar Session :: hidden xl:inline",
+     "June :: uppercase",
+     "transcribing J :: (no class)",
+     " :: h-3 w-px"
+    ]
+   }
+  },
+  "linen": {
+   "arrows": 1,
+   "liveAfterMs": 0,
+   "chromeShownAs": "04 · Linen Hours",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/18405036/pexels-photo-18405036.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/18405036.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 414px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 380px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. sunroom c :: text-[10px] tracking-[0.32em] uppercase",
+     "Linen Hours :: hidden xl:inline",
+     "04/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "transcript his :: uppercase",
+     "Earlier tonigh :: (no class)"
+    ]
+   }
+  },
+  "side-b": {
+   "arrows": 2,
+   "liveAfterMs": 0,
+   "chromeShownAs": "05 · Side B",
+   "chromeNodes": 3,
+   "chromeWrapped": true,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/31272472/pexels-photo-31272472.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/31272472.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 410px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. record ro :: text-[10px] tracking-[0.32em] uppercase",
+     "Late Shift Rad :: (no class)",
+     "Side B :: hidden xl:inline",
+     "listening :: uppercase",
+     "rolling :: ml-auto uppercase",
+     "transcript his :: uppercase"
+    ]
+   }
+  },
+  "north-window": {
+   "arrows": 3,
+   "liveAfterMs": 0,
+   "chromeShownAs": "06 · North Window",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/35542566/pexels-photo-35542566.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/35542566.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 406px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 372px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Ext. cabin, fi :: text-[10px] tracking-[0.32em] uppercase",
+     "North Window :: hidden xl:inline",
+     "06/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "transcribing J :: (no class)",
+     " :: h-3 w-px"
+    ]
+   }
+  },
+  "adobe": {
+   "arrows": 4,
+   "liveAfterMs": 1800,
+   "chromeShownAs": "07 · Adobe Afternoon",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/34686220/pexels-photo-34686220.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/34686220.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 418px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 384px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. tiled cou :: text-[10px] tracking-[0.32em] uppercase",
+     "Adobe Afternoo :: hidden xl:inline",
+     "07/20 :: hidden sm:inline",
+     "Marlow :: uppercase",
+     "capturing :: uppercase",
+     "transcript his :: uppercase"
+    ]
+   }
+  },
+  "glasshouse": {
+   "arrows": 5,
+   "liveAfterMs": 0,
+   "chromeShownAs": "08 · Glasshouse",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/38663879/pexels-photo-38663879.png?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/38663879.png"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 394px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.mr-3.align-middle",
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 16,
+    "speakerCandidates": [
+     "Int. glasshous :: text-[10px] tracking-[0.32em] uppercase",
+     "Glasshouse :: hidden xl:inline",
+     "Designs :: hidden sm:inline",
+     "listening :: uppercase",
+     "June :: mr-3 align-middle",
+     "transcribing J :: (no class)"
+    ]
+   }
+  },
+  "film-club": {
+   "arrows": 6,
+   "liveAfterMs": 0,
+   "chromeShownAs": "09 · Film Club",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/20494415/pexels-photo-20494415.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/20494415.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 406px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 372px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Screening room :: text-[10px] tracking-[0.32em] uppercase",
+     "Film Club :: hidden xl:inline",
+     "09/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "transcript his :: uppercase",
+     "Earlier tonigh :: (no class)"
+    ]
+   }
+  },
+  "nightswim": {
+   "arrows": 7,
+   "liveAfterMs": 0,
+   "chromeShownAs": "10 · Night Swim",
+   "chromeNodes": 3,
+   "chromeWrapped": true,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/34569888/pexels-photo-34569888.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/34569888.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 390px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.mr-3.align-middle",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 16,
+    "speakerCandidates": [
+     "Ext. lake dock :: text-[10px] tracking-[0.32em] uppercase",
+     "Late Shift Rad :: (no class)",
+     "Night Swim :: hidden xl:inline",
+     "listening :: uppercase",
+     "June :: mr-3 align-middle",
+     "transcribing J :: (no class)"
+    ]
+   }
+  },
+  "reading-hour": {
+   "arrows": 8,
+   "liveAfterMs": 0,
+   "chromeShownAs": "11 · Reading Hour",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/13278838/pexels-photo-13278838.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/13278838.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 406px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 372px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. reading r :: text-[10px] tracking-[0.32em] uppercase",
+     "Reading Hour :: hidden xl:inline",
+     "11/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "capturing :: uppercase",
+     "transcript his :: uppercase"
+    ]
+   }
+  },
+  "snowline": {
+   "arrows": 9,
+   "liveAfterMs": 0,
+   "chromeShownAs": "12 · Snowline",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/30252333/pexels-photo-30252333.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/30252333.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 406px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Ext. snowy pie :: text-[10px] tracking-[0.32em] uppercase",
+     "Snowline :: hidden xl:inline",
+     "Designs :: hidden sm:inline",
+     "June :: uppercase",
+     "transcribing J :: (no class)",
+     " :: h-3 w-px"
+    ]
+   }
+  },
+  "last-train": {
+   "arrows": 10,
+   "liveAfterMs": 0,
+   "chromeShownAs": "13 · Last Train",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/18502603/pexels-photo-18502603.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/18502603.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 402px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 368px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. carriage  :: text-[10px] tracking-[0.32em] uppercase",
+     "Last Train :: hidden xl:inline",
+     "13/20 :: hidden sm:inline",
+     "listening :: uppercase",
+     "rolling :: ml-auto uppercase",
+     "transcript his :: uppercase"
+    ]
+   }
+  },
+  "dusk-highway": {
+   "arrows": 11,
+   "liveAfterMs": 0,
+   "chromeShownAs": "14 · Dusk Highway",
+   "chromeNodes": 3,
+   "chromeWrapped": true,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/7022830/pexels-photo-7022830.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/7022830.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 406px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.mr-3.align-middle",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 16,
+    "speakerCandidates": [
+     "Ext. highway 1 :: text-[10px] tracking-[0.32em] uppercase",
+     "Late Shift Rad :: (no class)",
+     "Dusk Highway :: hidden xl:inline",
+     "listening :: uppercase",
+     "June :: mr-3 align-middle",
+     "transcribing J :: (no class)"
+    ]
+   }
+  },
+  "harbor": {
+   "arrows": 12,
+   "liveAfterMs": 0,
+   "chromeShownAs": "15 · Harbor Lights",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/16966474/pexels-photo-16966474.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/16966474.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 422px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 388px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Ext. harbor mo :: text-[10px] tracking-[0.32em] uppercase",
+     "Harbor Lights :: hidden xl:inline",
+     "15/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "transcribing J :: (no class)",
+     " :: h-3 w-px"
+    ]
+   }
+  },
+  "fireside": {
+   "arrows": 13,
+   "liveAfterMs": 0,
+   "chromeShownAs": "16 · Fireside",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/33454123/pexels-photo-33454123.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/33454123.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 406px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. lodge, fi :: text-[10px] tracking-[0.32em] uppercase",
+     "Fireside :: hidden xl:inline",
+     "Designs :: hidden sm:inline",
+     "listening :: uppercase",
+     "rolling :: ml-auto uppercase",
+     "transcript his :: uppercase"
+    ]
+   }
+  },
+  "blue-hour": {
+   "arrows": 14,
+   "liveAfterMs": 0,
+   "chromeShownAs": "17 · Blue Hour",
+   "chromeNodes": 3,
+   "chromeWrapped": true,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/15183904/pexels-photo-15183904.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/15183904.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 398px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.mr-3.align-middle",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 16,
+    "speakerCandidates": [
+     "Ext. balcony,  :: text-[10px] tracking-[0.32em] uppercase",
+     "Late Shift Rad :: (no class)",
+     "Blue Hour :: hidden xl:inline",
+     "listening :: uppercase",
+     "June :: mr-3 align-middle",
+     "transcribing J :: (no class)"
+    ]
+   }
+  },
+  "paper-rain": {
+   "arrows": 15,
+   "liveAfterMs": 0,
+   "chromeShownAs": "18 · Paper Rain",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/38026077/pexels-photo-38026077.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/38026077.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 414px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 380px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Ext. suburb in :: text-[10px] tracking-[0.32em] uppercase",
+     "Paper Rain :: hidden xl:inline",
+     "18/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "capturing :: uppercase",
+     "transcript his :: uppercase"
+    ]
+   }
+  },
+  "terrace": {
+   "arrows": 16,
+   "liveAfterMs": 0,
+   "chromeShownAs": "19 · Terrace Sun",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/14955235/pexels-photo-14955235.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/14955235.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 398px",
+     "after": "right: 0px"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Int. terrace,  :: text-[10px] tracking-[0.32em] uppercase",
+     "Terrace Sun :: hidden xl:inline",
+     "Designs :: hidden sm:inline",
+     "June :: uppercase",
+     "read-along :: ml-auto uppercase",
+     "transcribing J :: (no class)"
+    ]
+   }
+  },
+  "quiet-marina": {
+   "arrows": 17,
+   "liveAfterMs": 0,
+   "chromeShownAs": "20 · Quiet Marina",
+   "chromeNodes": 1,
+   "chromeWrapped": false,
+   "droppedTransitionLayers": 1,
+   "captionHadRight": true,
+   "rewrites": [
+    {
+     "kind": "wall-url",
+     "before": "https://images.pexels.com/photos/10636454/pexels-photo-10636454.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+     "after": "img/10636454.jpg"
+    },
+    {
+     "kind": "caption-right",
+     "before": "right: 418px",
+     "after": "right: 0px"
+    },
+    {
+     "kind": "chrome-right",
+     "before": "right: 384px",
+     "after": "right: 0px",
+     "where": "single chrome node"
+    }
+   ],
+   "liveCensus": {
+    "tag": "div",
+    "cls": "",
+    "children": [
+     "span.",
+     "span.",
+     "span.word-in",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.",
+     "span.caret.ml-1.5.inline-block.align-baseline"
+    ],
+    "childCount": 15,
+    "speakerCandidates": [
+     "Ext. marina, f :: text-[10px] tracking-[0.32em] uppercase",
+     "Quiet Marina :: hidden xl:inline",
+     "20/20 :: hidden sm:inline",
+     "June :: uppercase",
+     "read-along :: ml-auto uppercase",
+     "transcribing J :: (no class)"
+    ]
+   }
+  }
+ },
+ "mustResolve": [
+  "live",
+  "historyRow"
+ ],
+ "failures": []
+}

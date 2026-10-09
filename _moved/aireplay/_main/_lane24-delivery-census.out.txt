@@ -1,0 +1,36 @@
+POP queue-driven turns (claim_source='api' AND queue_item_ids_json IS NOT NULL), newest 20 of 80
+  12:55:18 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_f6e768e9-a3a5-
+  12:43:50 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_4d760084-bc97-
+  12:20:04 aborted   ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_ec7ae0a0-d5ad-
+  03:35:56 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_e4cf0eb3-27d1-
+  22:05:51 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=3 item=queue_8227b34d-c4ea-
+  21:18:29 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=19 item=queue_ee61e8e8-c31f-
+  20:59:42 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=9 item=queue_3ad56b26-c14a-
+  20:56:29 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_b68d0f9f-05df-
+  20:46:33 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=2 item=queue_a5fe78bf-42d0-
+  20:32:57 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=3 item=queue_e7e44209-e8b8-
+  12:15:08 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_ee128deb-a057-
+  10:45:58 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=5 item=queue_b33556e3-edce-
+  08:29:13 failed    ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=15 item=queue_7f46b318-f287-
+  04:31:01 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=2 item=queue_8db0a4dd-29ae-
+  03:39:39 failed    ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_60bdccde-1115-
+  01:57:46 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=3 item=queue_83fa980d-8e39-
+  01:56:25 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_396e1960-76d2-
+  01:52:49 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_29408f4d-9f6f-
+  01:50:42 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_dbdcd80e-35c4-
+  01:48:37 completed ack=True  queue_row=GONE(deleted) user_rows_by_msg_id=0 user_rows_by_turn_id=1 item=queue_a0b6b576-f70a-
+
+STRICT (user row carries the queue item's own userMessageId): 0/20
+LOOSE  (user row carries the msg_id OR the turn_id):            20/20
+
+=== our own injected rows (client_request_id LIKE 'minimax-code_hb_%') ===
+POP still present: 0
+  (rows pruned/deleted leave no trace here; the message-row search below does)
+
+=== CONTROL probe: a role='user' text match whose turn is NOT queue-linked ===
+POP role='user' rows carrying a wake-minted msg_id: 2
+  id=228892 12:49:03 turn_id=None turn_ingress=NONE queue_rows_with_msg_id=0
+  id=227835 12:40:54 turn_id=None turn_ingress=NONE queue_rows_with_msg_id=0
+
+=== does ANY turn in the store name one of OUR wake msg_ids? ===
+turn_ingress rows naming one of our wake msg_ids: 0 (of 2 wake user rows)

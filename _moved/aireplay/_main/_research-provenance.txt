@@ -1,0 +1,51 @@
+
+Path                                        FmtEnc        StreamEnc
+----                                        ------        ---------
+_main\_census09-ctl\ctl-faststart.mp4       Lavf62.12.101 Lavc62.28.101 libx264,
+_main\_census09-ctl\ctl-frag.mp4            Lavf62.12.101 Lavc62.28.101 libx264,
+_main\_census09-ctl\ctl-hevc.mp4            Lavf62.12.101 Lavc62.28.101 libx265
+_main\_census09-ctl\ctl-normal.mp4          Lavf62.12.101 Lavc62.28.101 libx264,
+_main\_census09-ctl\ctl-novid.mkv           Lavf62.12.101 Lavc62.28.101 libx264
+_main\_import-bench\synth-180s-1080p30.mp4  Lavf62.12.101 Lavc62.28.101 libx264,
+_main\logs\_off-offline-desktop.mp4         Lavf62.12.101 
+_main\logs\_off-offline-desktop54.mp4       Lavf62.12.101 
+_main\logs\_off-offline-gaming.mp4          Lavf62.12.101 
+_main\logs\_ref-from-ffmpeg.mp4             Lavf62.12.101 Lavc62.28.101 h264_qsv
+_main\logs\_remux-A-gaming-default-ring.mp4 Lavf62.12.101 
+_main\logs\_remux-B-gaming-evict.mp4        Lavf62.12.101 
+_main\logs\_remux-C-desktop.mp4             Lavf62.12.101 
+_main\logs\_remux-D-ring-256.mp4            Lavf62.12.101 
+_main\logs\_remux-E-ring-1024.mp4           Lavf62.12.101 
+_main\logs\_remux.mp4                       Lavf62.12.101 
+_main\runs\clip-20261007-104648.mp4                       
+_main\runs\clip-20261007-104735.mp4                       
+_main\runs\clip-20261007-104847.mp4                       
+_main\runs\clip-20261007-105010.mp4                       
+_main\runs\clip-20261007-105430.mp4                       
+_main\runs\clip-20261007-105603.mp4                       
+_main\runs\clip-20261007-105609.mp4                       
+_main\runs\clip-20261007-105709.mp4                       
+_main\runs\clip-20261007-105827.mp4                       
+_main\runs\clip-20261007-105919.mp4                       
+_main\runs\clip-20261007-110102.mp4                       
+_main\runs\clip-20261007-110227.mp4                       
+_main\runs\clip-20261007-110729.mp4                       
+_main\runs\clip-20261007-111014.mp4                       
+_main\runs\clip-20261007-111115.mp4                       
+_main\runs\clip-20261007-111200.mp4                       
+_main\runs\clip-20261007-111226.mp4                       
+_main\runs\clip-20261007-111303.mp4                       
+_main\runs\clip-20261007-111451.mp4                       
+_main\runs\clip-20261007-111551.mp4                       
+_main\runs\clip-20261007-111636.mp4                       
+_main\runs\clip-20261007-111702.mp4                       
+_main\runs\clip-20261007-111740.mp4                       
+_main\runs\clip-20261007-112006.mp4                       
+_main\runs\clip-20261007-112431.mp4                       
+_main\runs\clip-jogo-offline.mp4                          
+_main\runs\offline-desktop.mp4                            
+_main\runs\offline-desktop54.mp4                          
+_main\runs\offline-gaming.mp4                             
+_main\runs\pass1147-cut-gaming.mp4                        
+
+

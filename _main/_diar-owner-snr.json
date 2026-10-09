@@ -1,0 +1,52 @@
+{
+ "owner_snr_db": 2.62,
+ "speech_region_dbfs": -29.33,
+ "bed_region_dbfs": -31.96,
+ "target_speech_frame_dbfs": -20.83,
+ "target_nonspeech_frame_dbfs": -40.37,
+ "ladder": [
+  {
+   "mix": "mix-clean",
+   "ladder_snr_db": null,
+   "speech_frame_dbfs": -20.83,
+   "true_snr_db": 19.54,
+   "DER_pct": 0.03
+  },
+  {
+   "mix": "mix-snr+15",
+   "ladder_snr_db": 15.0,
+   "speech_frame_dbfs": -21.4,
+   "true_snr_db": 15.33,
+   "DER_pct": 2.98
+  },
+  {
+   "mix": "mix-snr+05",
+   "ladder_snr_db": 5.0,
+   "speech_frame_dbfs": -21.25,
+   "true_snr_db": 7.74,
+   "DER_pct": 21.88
+  },
+  {
+   "mix": "mix-snr+00",
+   "ladder_snr_db": 0.0,
+   "speech_frame_dbfs": -20.62,
+   "true_snr_db": 4.07,
+   "DER_pct": 48.38
+  },
+  {
+   "mix": "mix-snr-05",
+   "ladder_snr_db": -5.0,
+   "speech_frame_dbfs": -19.11,
+   "true_snr_db": 1.51,
+   "DER_pct": 71.77
+  },
+  {
+   "mix": "mix-bedonly",
+   "ladder_snr_db": null,
+   "speech_frame_dbfs": -23.74,
+   "true_snr_db": -0.55,
+   "DER_pct": 100.0
+  }
+ ],
+ "interp_DER_at_owner_snr_pct": 61.61
+}

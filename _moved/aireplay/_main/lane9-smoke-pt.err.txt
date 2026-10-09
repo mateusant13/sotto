@@ -1,0 +1,1 @@
+RESULT src-pt-15s.wav: silence 2 segs (med 8.0s max 8.0s) audio 15.0s load 4.385s infer 3.215s rtfx(infer/steady/slice)=4.63/6.57/4.67 threads(intra=4,inter=1) cpu(infer med/max)=475.0/475.0% cpu(load med/max)=119.6/119.6% rss(load/peak/peak_wset)=737.8/797.0/802.4MB level(n=150,hz=10.0) chars=159

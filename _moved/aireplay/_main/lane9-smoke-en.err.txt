@@ -1,0 +1,1 @@
+RESULT src-en-8s.wav: silence 2 segs (med 4.64s max 4.64s) audio 8.543s load 2.654s infer 2.118s rtfx(infer/steady/slice)=3.97/5.26/4.03 threads(intra=4,inter=1) cpu(infer med/max)=840.6/840.6% cpu(load med/max)=133.2/133.2% rss(load/peak/peak_wset)=740.3/773.5/776.4MB level(n=86,hz=10.0) chars=130

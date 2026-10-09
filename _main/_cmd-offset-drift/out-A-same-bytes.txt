@@ -1,0 +1,6 @@
+SUBJECT-BEGIN
+SUBJECT-INSIDE-SLOW
+[step] alpha rc=0
+[step] beta rc=0
+[step] gamma rc=0
+SUBJECT-SUMMARY N=3

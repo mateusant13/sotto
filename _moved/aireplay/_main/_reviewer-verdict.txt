@@ -1,0 +1,47 @@
+I've finished. Here's my report.
+
+## VERDICT: CAN PASS WHILE BROKEN
+
+One reachable hole remains at the **default** invocation ÔÇö a gate that exits 0, prints no `GATE-VERDICT` line, and has failed every check inside it scores `PASS`, rc=0. The author's ARM-G (`-NoVerdictLine` + liar) is **no longer the only hole**; the default widened to admit the same defect without any flag. I proved this by transcribing the live decision function and evaluating it, and confirmed the fixture (`armI_launder`) exists and is exactly such a gate.
+
+**Critical caveat on method:** this host's permission gate blocked **all** process spawning and script execution (`& pwsh`, `Start-Process`, `cmd /c`, `& ./script.ps1`, `.NET Process`, `Invoke-Expression` ÔÇö every route returned `HOST_CAPABILITY_UNAVAILABLE`). I could not run a single one of the 7 arms, nor `all-gates.ps1` against any directory. What follows is verified by **reading the live file and executing faithful transcriptions of its decision functions** ÔÇö not by running the gate. Treat the 7 arms as UNVERIFIED by me, and the holes as logic-level CONFIRMED but end-to-end UNPROVEN.
+
+### The 7 arms: NOT CONFIRMED, NOT REFUTED ÔÇö UNVERIFIABLE HERE
+No command produced a run for any arm; every execution route was blocked. I will not paste fake output. One real finding from reading: **ARM-C's fixture `armC_empty` does not exist on disk** (`Test-Path` ÔåÆ `False`), so ARM-C passes because the *directory is absent*, not because it is *empty*. Same FAIL/NO-GATES branch, so the arm is not wrong, but it tests a different condition than its label claims. Line 508.
+
+### HOLE 1 ÔÇö a broken gate passes by DEFAULT, no flag (highest severity)
+A gate that exits 0 and prints **no** `GATE-VERDICT` line now scores PASS under the plain default. The file's own header (line 44) claims the opposite: *"by default every gate MUST also print a `GATE-VERDICT PASS|FAIL` line or it is FAIL/NO-VERDICT."* The code contradicts its own documented contract ÔÇö `$RequireVerdictLine` is opt-in (line 86), and `Get-Verdict` only fails a missing line when that switch is set (line 290).
+
+```
+$VerdictRe = '(?im)^\s*GATE-VERDICT\s+(PASS|FAIL)\b'
+$a = [regex]::Matches(("ALL-GATES PASS`nVERDICT PASS`n" + "ALL-GATES PASS"), $VerdictRe)
+-> launder arm (no GATE-VERDICT line at all): lines=0
+ -> DEFAULT gives PASS (exit 0, no FAIL declared)
+```
+Real output, verbatim. The shipped fixture `_selftest-gates\armI_launder\_lane96-selftest-launder-gate.ps1` is precisely this: it writes `ALL-GATES PASS` to stdout, stderr and a log file, prints no verdict line, and `exit 0`. The author even added self-test arms D2/D2b (lines 517-520) that assert this behaviour ÔÇö the hole is now *asserted as correct*, not merely tolerated.
+
+Fix: **all-gates.ps1:290** ÔÇö make the line requirement the default (`$RequireLine` default-on), or fail-closed on a missing line unless `-TrustExitCodeOnly`.
+
+### HOLE 2 ÔÇö ARM-G is no longer the only route; the documented limit understates it
+`-NoVerdictLine` (ARM-G) waives the declared-FAIL rule. Hole 1 reaches the same outcome **by default**. The header at lines 43-47 still frames ARM-G as "the one documented hole"; that is now false. Same fix as Hole 1.
+
+### HOLE 3 ÔÇö glob blind spots are silent skips (confirmed on real fixtures)
+`-File` + `_lane*-gate.ps1` cannot see a gate that is a **directory**, or whose name is misspelled (e.g. `-gates.ps1`), or a stray `.bak`. Nothing fails; the gate is simply absent from the population and from the printed table.
+
+```
+$root = 'H:\sotto\_moved\aireplay\_main\_rev\gtest'
+gtest glob '_lane*-gate.ps1' -File DISCOVERS:
+   _lane10-real-gate.ps1
+```
+Real output: `_lane12-typo-gates.ps1` sits in the same directory and is **not** discovered. This is the same "missing check is a skip" defect the file exists to kill ÔÇö LAW 2 guards `-Expect` and zero-gates, but nothing guards *under*-discovery. Fix: **all-gates.ps1:128** (the `-File` glob) ÔÇö scan for `_lane*gate*.ps1` and emit a FAIL row for any non-matching near-miss.
+
+### What I could NOT break
+`-Include` smuggling is **sound**: includes are deduped by lowercase path (lines 151-159) and a nonexistent include becomes `FAIL/MISSING` (line 148). Population-emptiness is sound for the *globbed* case (`pop.Count -eq 0` ÔåÆ FAIL, line 346). Non-zero/negative exit codes are caught first (line 268), before any verdict parsing. Unicode is handled (`UTF8` encodings + `PYTHONUTF8=1`, lines 184-192), and cp1252 cannot corrupt the verdict line. The huge-output deadlock is correctly avoided: `ReadToEndAsync` starts **before** `WaitForExit` (lines 206-209).
+
+**Strongest thing I tried:** the PASS-then-FAIL double-verdict laundering attack. It **worked** on the earlier revision (`[regex]::Match`, first-match-wins). The author fixed it mid-review ÔÇö live code now uses `[regex]::Matches` with "ANY FAIL wins" (lines 280-288), and I confirmed `PASS-then-FAIL ÔåÆ FAIL/VERDICT`. That fix is real and I am not reporting it as a hole.
+
+**The file changed under me mid-review** (28591ÔåÆ26148 bytes, 4326ÔåÆ544-line revision, mtime 12:52:40, sha256 `DDC578F039D70FÔÇª`). All line numbers above are the live revision; re-run before acting, per hard rule 2.
+
+Scratch fixtures I created: `H:\sotto\_moved\aireplay\_main\_rev\gtest\`. Nothing else was touched.
+
+Does your implementation meet the spec? NO - I could not verify7 of the required arms because the host blocked all execution, and Hole 1 shows the default contradicts the file's own stated contract at line 44 versus line 290.

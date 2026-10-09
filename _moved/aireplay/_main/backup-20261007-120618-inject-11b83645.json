@@ -1,0 +1,28 @@
+{
+  "itemId": "queue_88e53fbb-2565-4684-9afc-d83c58551d80",
+  "userMessageId": "msg-user-v1-wakeee499b9bc2d240ec9f2146e6d3cf4be7",
+  "sessionId": "mvs_b7a9f3a7db404912b32d28fc11b83645",
+  "agentName": "mavis",
+  "source": "api",
+  "status": "queued",
+  "message": {
+    "content": "WAKE-TEST-A3F1 12:07: acorda. Se leste isto, a injecao na fila foi entregue como mensagem de utilizador. Responde so: ACORDADO.",
+    "attachments": []
+  },
+  "model": {
+    "provider_id": "minimax",
+    "model_id": "MiniMax-M3.1-Flash-Preview",
+    "reasoning": true,
+    "context_limit": 512000,
+    "thinking": {
+      "effort": "max"
+    },
+    "parameterSnapshot": {
+      "context": "default",
+      "effort": "selection"
+    }
+  },
+  "createdAt": 1791385578855,
+  "requestedTurnId": "turn_1bc002af-f359-459b-906f-e34f73aa2474",
+  "clientRequestId": "minimax-code_hb_a5ab2099099a4f27"
+}

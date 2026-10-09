@@ -1,0 +1,149 @@
+NOW 12:16:14
+== queue table RIGHT NOW ==
+  id=4200 sess=mvs_ea552229 item=queue_1dfd5c7c status=queued claim=None created=2026-10-06 20:25:46 attempts=[{'claimId': 'claim_c60bc898-f900-4a9f-b46d-8852e0e1d25b', 'turnId': 'turn_3be0675b-25ed-4ab7-9e97-1174cbe1e958'}]
+      content='"  E ├® uma ponte, n├úo uma corre├º├úo: mcode update substitui o install inteiro e leva o patc'
+  id=4613 sess=mvs_a00662bf item=queue_ec7ae0a0 status=queued claim=None created=2026-10-07 11:51:49 attempts=<absent>
+      content='[HEARTBEAT] Pass automatico. Continua o plano do Sotto: H:\\sotto\\_moved\\aireplay\\ROADMAP.m'
+  id=4614 sess=mvs_a00662bf item=queue_f6b00dc4 status=queued claim=None created=2026-10-07 11:56:22 attempts=<absent>
+      content='reiniciei. que workspace estamos? s├│ responde em uma frase'
+  id=4691 sess=mvs_b7a9f3a7 item=queue_cf6aed5b status=queued claim=None created=2026-10-07 12:14:55 attempts=[{'claimId': 'claim_07c3ae6c-7085-481e-ae76-88f47d79e9e1', 'turnId': 'turn_69a5c2b0-eb8f-43ed-8ab6-7a3783b46ad5'}, {'claimId': 'claim_40f99fad-bd5a-4315-951e-9af502d0ed23', 'turnId': 'turn_5ef4b809-4fb1-4967-b708-008054ccf04d'}, {'claimId': 'claim_b90772af-28e8-4df1-8648-6bfbb9ec54d5', 'turnId': 'turn_e33579f4-04c8-449d-ad59-05ea52872728'}]
+      content='# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis is the text the 3-minute wake'
+
+== rows with turn_id of the claim, or role IS NULL (last 20) ==
+
+POP rows role IS NULL (whole table) = 1906
+  NULLROLE id=224799 sess=mvs_b7a9f3a7 src='api' at=2026-10-07 12:15:15
+      '{"msg_id":"todo_1791386115687_1","msg_type":3,"msg_content":"{\\"eventType\\":\\"todo_updated\\",\\"todos\\":[{\\"content\\":\\"Diagnosticar por que a fila injectada era ┬½corrupt┬╗ e reparar a linha (damage viva)\\",\\"status\\":\\"completed\\",\\"priority\\":\\"high\\"},{\\"content\\":\\"Despachar frota de subagents no projeto (16 lanes, ficheiros disjuntos)\\",\\"status\\":\\"completed\\",\\"priority\\":\\"high\\"},{\\"content\\":\\"Cron do runtime: arm-cron de teste e medir se dispara (0 runs
+  NULLROLE id=224085 sess=mvs_a00662bf src='api' at=2026-10-07 11:55:27
+      '{"msg_id":"evt_turn_muy84yxt_152zfu_runtime_warning_1732","turn_id":"turn_muy84yxt_152zfu","timestamp":1791384927111,"msg_type":3,"msg_content":"{\\"eventType\\":\\"runtime.warning\\",\\"message\\":\\"Plugin \\\\\\"mcode-dispatch-guard\\\\\\" Hook could not complete and was skipped during Stop. The conversation continued without this Hook.\\",\\"source\\":\\"plugin-hook\\",\\"category\\":\\"diagnostic\\",\\"code\\":\\"HOOK_INVALID_OUTPUT\\",\\"pluginName\\":\\"mcode-dispatch-guard\\",\\"hookEve
+  NULLROLE id=224078 sess=mvs_a00662bf src='api' at=2026-10-07 11:54:56
+      '{"msg_id":"evt_turn_muy84yxt_152zfu_runtime_warning_1529","turn_id":"turn_muy84yxt_152zfu","timestamp":1791384896948,"msg_type":3,"msg_content":"{\\"eventType\\":\\"runtime.warning\\",\\"message\\":\\"Plugin \\\\\\"mcode-dispatch-guard\\\\\\" Hook could not complete and was skipped during Stop. The conversation continued without this Hook.\\",\\"source\\":\\"plugin-hook\\",\\"category\\":\\"diagnostic\\",\\"code\\":\\"HOOK_PROCESS_EXITED\\",\\"pluginName\\":\\"mcode-dispatch-guard\\",\\"hookEve
+  NULLROLE id=224053 sess=mvs_a00662bf src='api' at=2026-10-07 11:53:29
+      '{"msg_id":"todo_1791384809324_6","msg_type":3,"msg_content":"{\\"eventType\\":\\"todo_updated\\",\\"todos\\":[{\\"content\\":\\"Move H:\\\\\\\\aireplay into H:\\\\\\\\sotto (reversible via junction)\\",\\"priority\\":\\"high\\",\\"status\\":\\"completed\\"},{\\"content\\":\\"Arm a working 3-minute heartbeat\\",\\"priority\\":\\"high\\",\\"status\\":\\"completed\\"},{\\"content\\":\\"Close durability hole: git clean risk 419 paths -> 2\\",\\"priority\\":\\"high\\",\\"status\\":\\"completed\\"},{
+  NULLROLE id=223931 sess=mvs_a00662bf src='api' at=2026-10-07 11:49:20
+      '{"msg_id":"evt_turn_muy7zv69_qs4bxl_runtime_warning_682","turn_id":"turn_muy7zv69_qs4bxl","timestamp":1791384560599,"msg_type":3,"msg_content":"{\\"eventType\\":\\"runtime.warning\\",\\"message\\":\\"Plugin \\\\\\"mcode-dispatch-guard\\\\\\" Hook could not complete and was skipped during Stop. The conversation continued without this Hook.\\",\\"source\\":\\"plugin-hook\\",\\"category\\":\\"diagnostic\\",\\"code\\":\\"HOOK_INVALID_OUTPUT\\",\\"pluginName\\":\\"mcode-dispatch-guard\\",\\"hookEven
+
+== any row ANYWHERE containing 'ACORDADO' or 'acorda.' ==
+  'ACORDADO': any=118 user=96
+     id=124 sess=mvs_5bd14ee2 role='assistant' src='background-task' at=2026-10-02 19:51:25
+     id=152 sess=mvs_5bd14ee2 role='assistant' src='background-task' at=2026-10-02 19:54:58
+     id=5102 sess=mvs_ea552229 role='assistant' src='api' at=2026-10-03 00:01:48
+     id=5662 sess=mvs_46bb844e role='assistant' src='background-task' at=2026-10-03 00:23:50
+     id=6108 sess=mvs_ef5fccf0 role='assistant' src='background-task' at=2026-10-03 00:28:24
+     id=51359 sess=mvs_ea27a70c role='assistant' src='background-task' at=2026-10-03 14:38:03
+     id=142700 sess=mvs_003c17c1 role='assistant' src='api' at=2026-10-05 09:45:14
+     id=142706 sess=mvs_003c17c1 role='assistant' src='api' at=2026-10-05 09:45:48
+     id=142717 sess=mvs_003c17c1 role='assistant' src='api' at=2026-10-05 09:46:06
+     id=143298 sess=mvs_9eb3cbf9 role='assistant' src='cron' at=2026-10-05 09:55:20
+     id=143306 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 09:55:27
+     id=143676 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 10:00:33
+     id=144134 sess=mvs_9029b6ba role='assistant' src='communication' at=2026-10-05 10:06:36
+     id=144452 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 10:11:58
+     id=145080 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 10:22:40
+     id=145944 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 10:34:37
+     id=147431 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 10:56:27
+     id=147726 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 11:01:47
+     id=148283 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 11:11:01
+     id=148719 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 11:22:41
+     id=149596 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 11:33:00
+     id=150435 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 11:44:02
+     id=151229 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 11:55:10
+     id=151729 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 12:06:10
+     id=152022 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 12:22:00
+     id=152957 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 12:33:02
+     id=153518 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 12:44:32
+     id=154218 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 12:55:51
+     id=154464 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 13:02:41
+     id=155287 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 13:11:04
+     id=156353 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 13:22:42
+     id=157400 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 13:33:33
+     id=159289 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 13:53:40
+     id=159533 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 13:56:52
+     id=160304 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 14:05:20
+     id=160852 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 14:11:05
+     id=162056 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 14:22:46
+     id=163183 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 14:34:01
+     id=164218 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 14:45:37
+     id=165120 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 14:56:17
+     id=165516 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 15:00:53
+     id=166504 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 15:11:22
+     id=167468 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 15:22:31
+     id=168228 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 15:33:05
+     id=168817 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 15:44:30
+     id=169153 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 15:55:00
+     id=169287 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 16:00:04
+     id=169584 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 16:11:01
+     id=169780 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 16:22:11
+     id=169998 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 16:33:00
+     id=170154 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 16:44:00
+     id=170349 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 16:55:00
+     id=170447 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 17:00:30
+     id=170594 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 17:11:33
+     id=170756 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 17:22:08
+     id=170884 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 17:33:00
+     id=171034 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 17:44:01
+     id=171338 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 17:55:00
+     id=171465 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 18:00:27
+     id=171695 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 18:11:00
+     id=171843 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 18:22:00
+     id=171995 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 18:33:00
+     id=172215 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 18:44:00
+     id=172350 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 18:55:05
+     id=172416 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 19:00:00
+     id=172525 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 19:11:00
+     id=172935 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 19:22:00
+     id=173300 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 19:33:09
+     id=173435 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 19:44:11
+     id=173650 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:05:32
+     id=173651 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:05:32
+     id=173687 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:11:15
+     id=173840 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:22:07
+     id=174060 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:34:32
+     id=174220 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:44:00
+     id=174488 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 20:55:00
+     id=174611 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 21:00:27
+     id=175057 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 21:11:00
+     id=175773 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 21:22:57
+     id=176183 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 21:33:03
+     id=176579 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 21:44:08
+     id=177055 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 21:55:00
+     id=177274 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 22:00:42
+     id=177730 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 22:11:00
+     id=178313 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 22:22:38
+     id=178724 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 22:33:00
+     id=179081 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 22:44:00
+     id=179551 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 22:55:45
+     id=179754 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 23:00:08
+     id=180269 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 23:11:08
+     id=180752 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 23:22:13
+     id=181362 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 23:33:32
+     id=182030 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 23:44:00
+     id=182928 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-05 23:55:23
+     id=183257 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 00:00:29
+     id=183902 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 00:11:07
+     id=184435 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 00:22:21
+     id=184803 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 00:33:46
+     id=185182 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 00:45:55
+     id=185308 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 01:33:00
+     id=185555 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 01:44:00
+     id=194290 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 09:55:01
+     id=194455 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 10:00:08
+     id=194867 sess=mvs_003c17c1 role='user' src='cron' at=2026-10-06 10:11:00
+     id=194970 sess=mvs_ea552229 role='assistant' src='api' at=2026-10-06 10:45:47
+     id=195004 sess=mvs_ea552229 role='assistant' src='api' at=2026-10-06 10:48:08
+     id=195015 sess=mvs_ea552229 role='assistant' src='api' at=2026-10-06 10:49:09
+     id=204691 sess=mvs_ea552229 role='user' src='api' at=2026-10-06 20:05:09
+     id=214816 sess=mvs_d0dcb852 role='assistant' src='api' at=2026-10-06 21:19:54
+     id=218601 sess=mvs_834a2d85 role='assistant' src='api' at=2026-10-07 03:41:45
+     id=223950 sess=mvs_a00662bf role='user' src='api' at=2026-10-07 11:50:00
+     id=223959 sess=mvs_a00662bf role='assistant' src='api' at=2026-10-07 11:50:24
+     id=224019 sess=mvs_a00662bf role='assistant' src='api' at=2026-10-07 11:51:41
+     id=224086 sess=mvs_b7a9f3a7 role='user' src='api' at=2026-10-07 12:00:13
+     id=224117 sess=mvs_b7a9f3a7 role='assistant' src='api' at=2026-10-07 12:05:58
+     id=224121 sess=mvs_b7a9f3a7 role='assistant' src='api' at=2026-10-07 12:06:11
+     id=224125 sess=mvs_b7a9f3a7 role='assistant' src='api' at=2026-10-07 12:06:18
+     id=224598 sess=mvs_6052bc5f role='assistant' src='background-task' at=2026-10-07 12:13:19
+  'acorda. Se leste isto': any=3 user=0
+     id=224121 sess=mvs_b7a9f3a7 role='assistant' src='api' at=2026-10-07 12:06:11
+     id=224125 sess=mvs_b7a9f3a7 role='assistant' src='api' at=2026-10-07 12:06:18
+     id=224598 sess=mvs_6052bc5f role='assistant' src='background-task' at=2026-10-07 12:13:19

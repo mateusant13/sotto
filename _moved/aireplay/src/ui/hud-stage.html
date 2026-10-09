@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:;"
+    />
+    <title>Aireplay HUD — stage</title>
+  </head>
+  <!-- THE STAGING PAGE. Opened FIRST, so the bridge injection pywebview does on
+       its OWN `NavigationStarting` has one navigation of ordering before the
+       panel's first parse. Same reason, same shape, as the sibling project's
+       `H:\sotto\app\webview\stage.html` — read there, copied here in FORM only.
+       It paints nothing and holds no state: the HUD's whole content is
+       `hud-panel.html`. -->
+  <body></body>
+</html>

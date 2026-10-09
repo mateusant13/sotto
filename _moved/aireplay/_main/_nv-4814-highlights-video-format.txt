@@ -1,0 +1,26 @@
+What video format does NVIDIA Highlights use? | NVIDIA
+Skip Navigation
+Your browser either does not have JavaScript enabled or does not appear to support enough features of JavaScript to be used well on this site.
+NVIDIA SUPPORT
+NVIDIA Home > Support Home Page > Knowledgebase Home Page > What video format does NVIDIA Highlights use?
+Log In | Sign Up
+What video format does NVIDIA Highlights use?
+Updated 09/29/2021 01:10 PM
+What video format does NVIDIA Highlights use?
+NVIDIA Highlight videos are encoded in H.264 and saved as MP4 files
+Is this answer helpful?
+Yes
+No
+Answers others found helpful
+How do I enable NVIDIA Highlights on GeForce NOW?
+Where are the Highlights videos and screenshots stored?
+NVIDIA Highlights now available in GeForce NOW
+Is there a limit to how many videos of screenshots I can create with Highlights on GeForce NOW?
+Does Highlights work on GeForce NOW for SHIELD TV?
+Live Chat
+Chat online with one of our support agents
+CHAT NOW
+ASK US A QUESTION
+Contact Support for assistance
+800.797.6530
+Ask a Question

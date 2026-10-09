@@ -1,0 +1,12 @@
+
+LastRunTime           : 07/10/2026 13:25:01
+LastTaskResult        : 267009
+NextRunTime           : 07/10/2026 13:28:00
+NumberOfMissedRuns    : 0
+TaskName              : SottoReplayHeartbeat
+TaskPath              : 
+PSComputerName        : 
+CimClass              : Root/Microsoft/Windows/TaskScheduler:MSFT_TaskDynamicInfo
+CimInstanceProperties : {LastRunTime, LastTaskResult, NextRunTime, NumberOfMissedRuns…}
+CimSystemProperties   : Microsoft.Management.Infrastructure.CimSystemProperties
+

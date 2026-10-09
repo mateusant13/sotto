@@ -1,0 +1,40 @@
+{
+  "secs": 300.0,
+  "cadence_ms": 50.0,
+  "samples": 5995,
+  "wall_s": 300.024,
+  "watch_pids": [
+    11868
+  ],
+  "watch_visible_samples": {
+    "11868": 0
+  },
+  "watch_examples": {},
+  "control_pids": [
+    21492
+  ],
+  "control_visible_samples": {
+    "21492": 5995
+  },
+  "control_examples": {
+    "21492": [
+      {
+        "hwnd": "0x001B1FD6",
+        "title": "Pesquisa e roadmap do clone do H:\\aireplay",
+        "class": "CASCADIA_HOSTING_WINDOW_CLASS"
+      },
+      {
+        "hwnd": "0x00020660",
+        "title": "Administrador: Windows PowerShell",
+        "class": "CASCADIA_HOSTING_WINDOW_CLASS"
+      }
+    ]
+  },
+  "foreground_visible_samples": 5995,
+  "avg_visible_windows_per_sample": 23.13,
+  "self_pid": 8260,
+  "verdict": {
+    "watch_is_clean": true,
+    "control_is_alive": true
+  }
+}

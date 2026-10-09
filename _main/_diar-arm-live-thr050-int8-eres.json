@@ -1,0 +1,75 @@
+{
+  "instrument": "_diar-run.py (sherpa-onnx OfflineSpeakerDiarization)",
+  "tag": "live-thr050-int8-eres",
+  "wav": "H:\\sotto\\_main\\live-sample-cable-input-90s.wav",
+  "wav_bytes": 17280080,
+  "channels_in": 1,
+  "rate_in": 48000,
+  "rate_model": 16000,
+  "audio_s": 90.0,
+  "seg_model": "H:\\sotto\\_main\\diar-models\\sherpa-onnx-pyannote-segmentation-3-0\\model.int8.onnx",
+  "emb_model": "H:\\sotto\\_main\\diar-models\\3dspeaker_eres2net_base_16k.onnx",
+  "threads": 2,
+  "provider": "cpu",
+  "num_clusters_arg": -1,
+  "threshold": 0.5,
+  "min_duration_on": 0.3,
+  "min_duration_off": 0.5,
+  "window_shift_ratio": null,
+  "window_shift_ratio_supported": false,
+  "load_s": 0.02138059999924735,
+  "model_load_s": 0.6608978000003844,
+  "wall_s": 14.316228499999852,
+  "cpu_s": 24.296875,
+  "rtf": 0.1590692055555539,
+  "cpu_pct_of_one_core": 169.71561329857408,
+  "rss_before_mb": 251.244544,
+  "rss_after_mb": 415.60064,
+  "n_segments": 7,
+  "n_speakers": 4,
+  "speakers": [
+    0,
+    1,
+    5,
+    6
+  ],
+  "speech_s": 20.13187539577484,
+  "speech_frac": 0.22368750439749824,
+  "segments": [
+    {
+      "start": 1.7522188425064087,
+      "end": 3.321593761444092,
+      "speaker": 0
+    },
+    {
+      "start": 5.835968971252441,
+      "end": 7.253468990325928,
+      "speaker": 1
+    },
+    {
+      "start": 29.61284637451172,
+      "end": 35.18159484863281,
+      "speaker": 5
+    },
+    {
+      "start": 36.27846908569336,
+      "end": 36.97034454345703,
+      "speaker": 5
+    },
+    {
+      "start": 36.97034454345703,
+      "end": 43.97346878051758,
+      "speaker": 6
+    },
+    {
+      "start": 44.4965934753418,
+      "end": 46.470970153808594,
+      "speaker": 6
+    },
+    {
+      "start": 47.46659469604492,
+      "end": 49.373470306396484,
+      "speaker": 6
+    }
+  ]
+}

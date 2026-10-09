@@ -1,0 +1,218 @@
+{
+  "ok": true,
+  "failed": [],
+  "errors": [],
+  "checks": {
+    "the_skin_manifest_carries_designs": true,
+    "every_skin_theme_mounts": true,
+    "the_mockups_own_stylesheet_is_adopted": true,
+    "the_mockups_keyframes_survive_the_shadow_boundary": true,
+    "no_frozen_fragment_reaches_the_network": true,
+    "our_own_caption_box_is_hidden_while_a_skin_is_on": true,
+    "our_own_transcript_drawer_is_hidden_while_a_skin_is_on": true,
+    "the_hide_button_is_still_on_screen": true,
+    "the_pause_button_is_still_on_screen": true,
+    "the_status_line_is_still_on_screen": true,
+    "a_caption_word_lands_in_the_designs_own_plate": true,
+    "a_closed_line_lands_in_the_designs_own_row": true,
+    "the_mockups_invented_numbers_are_gone": true,
+    "the_designs_brand_slot_says_sotto": true,
+    "a_theme_without_a_skin_keeps_the_old_panel": true
+  },
+  "detail": {
+    "observations": {
+      "skinThemes": 20,
+      "mounted": 20,
+      "cssRules": 87,
+      "keyframes": 9,
+      "plate": "a linha confirmada com palavras suficientes para o motor aceitar extraordinario",
+      "rows": 1,
+      "ourRows": 1,
+      "lineCalls": 1,
+      "liveCalls": 8,
+      "slotKeys": [
+        "captionRoot",
+        "wordHost",
+        "wordTemplate",
+        "caret",
+        "stateWord",
+        "panelRoot",
+        "historyList",
+        "historyTemplate",
+        "chromeRoot",
+        "vars",
+        "varNames",
+        "silenced"
+      ],
+      "silenced": 59
+    },
+    "shoot": [
+      "cine-cellar-live",
+      "cine-cellar-line",
+      "cine-adobe",
+      "cine-blue-hour",
+      "cine-blue-plate",
+      "cine-cellar",
+      "cine-dusk-highway",
+      "cine-film-club",
+      "cine-fireside",
+      "cine-glasshouse",
+      "cine-harbor",
+      "cine-last-train",
+      "cine-linen",
+      "cine-nightswim",
+      "cine-north-window",
+      "cine-paper-rain",
+      "cine-quiet-marina",
+      "cine-rainline",
+      "cine-reading-hour",
+      "cine-side-b",
+      "cine-snowline",
+      "cine-terrace"
+    ],
+    "themes": [
+      "cine-adobe",
+      "cine-blue-hour",
+      "cine-blue-plate",
+      "cine-cellar",
+      "cine-dusk-highway",
+      "cine-film-club",
+      "cine-fireside",
+      "cine-glasshouse",
+      "cine-harbor",
+      "cine-last-train",
+      "cine-linen",
+      "cine-nightswim",
+      "cine-north-window",
+      "cine-paper-rain",
+      "cine-quiet-marina",
+      "cine-rainline",
+      "cine-reading-hour",
+      "cine-side-b",
+      "cine-snowline",
+      "cine-terrace"
+    ],
+    "shootPlan": [
+      {
+        "name": "cine-adobe",
+        "theme": "cine-adobe",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-blue-hour",
+        "theme": "cine-blue-hour",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-blue-plate",
+        "theme": "cine-blue-plate",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-cellar",
+        "theme": "cine-cellar",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-dusk-highway",
+        "theme": "cine-dusk-highway",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-film-club",
+        "theme": "cine-film-club",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-fireside",
+        "theme": "cine-fireside",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-glasshouse",
+        "theme": "cine-glasshouse",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-harbor",
+        "theme": "cine-harbor",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-last-train",
+        "theme": "cine-last-train",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-linen",
+        "theme": "cine-linen",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-nightswim",
+        "theme": "cine-nightswim",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-north-window",
+        "theme": "cine-north-window",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-paper-rain",
+        "theme": "cine-paper-rain",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-quiet-marina",
+        "theme": "cine-quiet-marina",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-rainline",
+        "theme": "cine-rainline",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-reading-hour",
+        "theme": "cine-reading-hour",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-side-b",
+        "theme": "cine-side-b",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-snowline",
+        "theme": "cine-snowline",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      },
+      {
+        "name": "cine-terrace",
+        "theme": "cine-terrace",
+        "first": "a legenda ao vivo chega aqui palavra a palavra",
+        "second": "e a linha fecha quando o motor decide."
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+VARIANT tag=nogate path=hud-shell-nogate.py sha256_live=fcead9c866396d82 sha256_variant=0b39cc29839813f0 edits=1 assets_copied=4
+VARIANT tag=reassert path=hud-shell-reassert.py sha256_live=fcead9c866396d82 sha256_variant=6294c2a6438a3c80 edits=1 assets_copied=4
+VARIANT tag=nonet path=hud-shell-nonet.py sha256_live=fcead9c866396d82 sha256_variant=23b17e89d55d288b edits=2 assets_copied=4
+=== ARM nonet shell=hud-shell-nonet.py n=2 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=nonet i=0/2 rc=0 samples=132 opaque=102 longest_ms=6382 pids=9
+LAUNCH tag=nonet i=1/2 rc=0 samples=146 opaque=108 longest_ms=5846 pids=9
+ARM-LAUNCHABLE tag=nonet reaching_HUD_READY=2/2 rcs=[0] launchable=True
+ARM-SUMMARY tag=nonet launches=2 launches_with_opaque_window=2/2 samples=278 opaque_catch_samples=210 longest_opaque_ms=6382 show_refused_total=0 reassert_total=0 nets2_lines=2 hud_show_mapped_lines=0 exstyle_set_equality_lines=4 rcs=[0]
+=== ARM live shell=hud-shell.py n=2 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=live i=0/2 rc=0 samples=159 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=1/2 rc=0 samples=173 opaque=0 longest_ms=0 pids=9
+ARM-LAUNCHABLE tag=live reaching_HUD_READY=2/2 rcs=[0] launchable=True
+ARM-SUMMARY tag=live launches=2 launches_with_opaque_window=0/2 samples=332 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=2 reassert_total=2 nets2_lines=2 hud_show_mapped_lines=0 exstyle_set_equality_lines=4 rcs=[0]
+
+POPULATION launches_per_arm=2 window_s=6.0 cadence_ms=25 arms=2
+WINDOW every arm ran with x=-10000 (off-screen), so no arm can put a window on the desk; the axis measured is WS_VISIBLE and not-alpha-occluded, neither of which reads a rect

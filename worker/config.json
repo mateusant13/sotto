@@ -1,4 +1,5 @@
 {
+  "_comment_use_denoise": "The noise remover (lane SottoDenoise). ADDITIVE, TOP-LEVEL, and FALSE by default: with this key absent or false the worker's audio path is byte-identical to its pre-denoise behaviour, which is the only safe way to ship it next to a live app. Set it to true and ONE call site inside StreamAsr.run_chunk cleans each chunk immediately BEFORE the encoder sees it -- after the speech/music gate (so that gate's dB-range/RMS features still come from the ORIGINAL audio) and before the cache-aware mel window + Silero VAD (so the VAD does see the cleaned audio and `vad_gated_chunks` may legitimately move). The implementation is worker/denoise.py: a pure-NumPy, causal, streaming spectral gate (512-sample frame / 256 hop at 16 kHz, 16 ms of declared latency, min gain -18 dB). It needs NO install -- numpy only. It is NOT a speech separator: it does not know what speech is, it does not touch the sample rate, and it cannot make a recording cleaner than the recording. Measured on the owner's own 90 s capture (_main/receipt-denoise.md): -0.21 dB overall RMS change, gate open on 85% of frames -- honest verdict, not a rescue.",
   "audio": {
     "device": null,
     "preferred_devices": [],
@@ -19,5 +20,6 @@
     "partial": true,
     "_comment_done_text_max_chars": "LIVE as of 2026-10-07 (lane F17): the maximum NUMBER OF CHARACTERS the run's whole text may occupy in the ONE JSONL line it ships at exit (`state=done`, key `text`; the same bound applies to `selftest-done.text`, which is the same claim about a file-mode run). Without it that line was unbounded: a multi-hour stream produced a single line nobody can read and a consumer has to hold. The HEAD of the transcript is kept; `text_chars` (the untruncated length) and `text_truncated` travel beside the text so a truncated line is visible from the numbers. 0 means NO cap. A value that is not an integer, or is negative, is refused back to 20000, loudly (worker/sotto_worker.py reads it next to min_chars/partial). The list it is detokenised from is bounded too, independently: `StreamAsr.labels` keeps its newest 200000 symbols (MAX_RETAINED_LABELS) and reports `labels_pruned`.",
     "done_text_max_chars": 20000
-  }
+  },
+  "use_denoise": false
 }

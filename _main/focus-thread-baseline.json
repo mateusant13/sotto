@@ -1,0 +1,7 @@
+{
+  "pid": 24836,
+  "python": "3.11.8 (tags/v3.11.8:db85d51, Feb  6 2024, 22:03:32) [MSC v.1937 64 bit (AMD64)]",
+  "threads_before_psutil_import": null,
+  "threads_after_psutil_import": 5,
+  "tasklist": "\"pythonw.exe\",\"24836\",\"Console\",\"1\",\"22.608 K\""
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- Sotto — the RENDER instrument for the per-theme template layer.
+     Loads the REAL stylesheets of the panel (panel.css, themes/fonts.css and all
+     five themes/theme-N.css) and the REAL `theme-tune.js` + `theme-switcher.js`
+     under a real Chromium engine, so "an edit changes what is painted" is
+     MEASURED and not argued. A custom property on `<html>` beating a
+     `:root[data-theme='theme-N']` rule is a cascade claim, and a cascade claim
+     with no renderer behind it is exactly the kind of assertion this repo has
+     been burned by.
+
+     Driven by `_main/theme-tune-render-test/main.js` (Electron, `show: false`, so
+     nothing appears on the owner's screen). The paths point at the SHIPPED files
+     on purpose: nothing here is a copy, so this instrument cannot pass against a
+     stylesheet nobody ships. `fonts.css` resolves its own `../fonts/*.woff2`
+     against its own location, so linking it from another directory is fine. -->
+<html lang="en" data-theme="theme-1">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sotto — theme-tune render test</title>
+    <link rel="stylesheet" href="../../app/panel/themes/fonts.css" />
+    <link rel="stylesheet" href="../../app/panel/panel.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-1.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-2.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-3.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-4.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-5.css" />
+    <!-- The generated TEMPLATE SET, exactly as `panel.html` links it, so this
+         instrument measures the document the app really ships. -->
+    <link rel="stylesheet" href="../../app/panel/themes/cinematic.css" />
+  </head>
+  <body data-surface="panel">
+    <main class="panel" id="panel">
+      <!-- The control cluster with the two buttons the real header carries, so
+           `theme-tune.js` inserts its gear in the real place and this instrument
+           can check that HIDE IS STILL LAST (the owner's rightmost ruling). -->
+      <header class="panel__header">
+        <div class="panel__controls">
+          <button type="button" class="icon-button icon-button--danger" id="panel-pause-button">pause</button>
+          <button type="button" class="icon-button" id="hide-button">hide</button>
+        </div>
+      </header>
+      <!-- The caption tier the knobs move, wired to the same classes the panel
+           uses (`themes/theme-1.css:215-232` is what this element picks up). -->
+      <div class="captions" id="captions">
+        <p class="caption__text" id="probe-caption">bom dia, isto e uma legenda</p>
+        <p class="caption__text caption--provisional" id="probe-provisional">e esta ainda esta a ser dita</p>
+      </div>
+    </main>
+    <script src="../../app/panel/themes/themes.js"></script>
+    <script src="../../app/panel/theme-switcher.js"></script>
+    <script src="../../app/panel/theme-tune.js"></script>
+  </body>
+</html>

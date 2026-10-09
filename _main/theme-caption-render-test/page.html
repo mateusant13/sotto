@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- Sotto — the RENDER instrument for the STRUCTURE of the template set.
+
+     WHY A SECOND RENDER INSTRUMENT. `theme-tune-render-test` proves the TOKENS: that
+     every theme declares all of them, that a swatch matches its accent, that an edit
+     beats the theme's own rule. It cannot prove the thing the owner actually asked for
+     — *"eu nao quero só a paleta de cores. eu quero uma mudança mesmo, a cada
+     tema/template"* — because its page carries a two-element stand-in instead of the
+     caption the panel really builds. A theme whose structural rules never matched a
+     single element would pass it.
+
+     So this page carries the REAL caption markup, copied from the builder in
+     `app/panel/panel.js:595-645` and `:700-740` rather than invented:
+
+       section#captions > .captions__bar > .captions__hint
+                        > .captions__body > .captions__placeholder
+                                         > ol.captions__list > li.caption
+                                             > span.caption__led + span.caption__time
+                                             > span.caption__text
+                                                 > span.caption__confirmed
+                                                 > span.caption__provisional
+                                                     > span.caption__word[data-typing]
+                                                         > span.caption__ch[--c-i]
+
+     Every stylesheet is the SHIPPED file, read from `app/panel/`, and nothing here is a
+     copy of one. Driven by `main.js` (Electron, `show: false`: nothing appears on the
+     owner's screen). -->
+<html lang="en" data-theme="theme-1">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sotto — caption structure render test</title>
+    <link rel="stylesheet" href="../../app/panel/themes/fonts.css" />
+    <link rel="stylesheet" href="../../app/panel/panel.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-1.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-2.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-3.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-4.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/theme-5.css" />
+    <link rel="stylesheet" href="../../app/panel/themes/cinematic.css" />
+  </head>
+  <body data-surface="panel">
+    <main class="panel" id="panel">
+      <header class="panel__header">
+        <div class="panel__controls">
+          <button type="button" class="icon-button icon-button--danger" id="panel-pause-button">pause</button>
+          <button type="button" class="icon-button" id="hide-button">hide</button>
+        </div>
+      </header>
+
+      <section class="captions" id="captions" aria-live="polite" aria-label="Live caption">
+        <div class="captions__bar">
+          <span class="captions__chip" id="stats-chip" hidden></span>
+          <span class="captions__hint" id="captions-hint">live</span>
+        </div>
+        <div class="captions__body" id="captions-body">
+          <div class="captions__placeholder" id="placeholder" hidden>
+            <p class="captions__placeholder-title">Waiting for audio</p>
+            <p class="captions__placeholder-body">No worker in this instrument.</p>
+          </div>
+          <ol class="captions__list" id="caption-list">
+            <li class="caption" id="line-old">
+              <span class="caption__led"></span>
+              <span class="caption__time">12:04</span>
+              <span class="caption__text" id="probe-caption"><span class="caption__confirmed">bom dia, isto e uma legenda antiga</span></span>
+            </li>
+            <li class="caption caption--latest caption--provisional" id="line-live">
+              <span class="caption__led"></span>
+              <span class="caption__time">12:05</span>
+              <span class="caption__text" id="probe-provisional"><span class="caption__confirmed">e agora </span><span class="caption__provisional">esta parte ainda <span class="caption__word" data-typing><span class="caption__ch" style="--c-i:0">e</span><span class="caption__ch" style="--c-i:1">s</span><span class="caption__ch" style="--c-i:2">t</span><span class="caption__ch" style="--c-i:3">a</span></span></span></span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <footer class="status" id="status">captions · live</footer>
+    </main>
+    <script src="../../app/panel/themes/themes.js"></script>
+  </body>
+</html>

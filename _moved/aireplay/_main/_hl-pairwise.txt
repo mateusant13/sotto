@@ -1,0 +1,16 @@
+pairwise last-frame(A) vs first-frame(B) mean abs diff:
+  0.0126   _main/runs/cap-mux-1080p.mp4  ->  _main/logs/cap-nvenc-2160p60-run1.mp4
+  0.0219   _main/runs/cap-mux-1080p.mp4  ->  _main/logs/_ref-from-ffmpeg.mp4
+  0.0101   _main/runs/cap-mux-1080p.mp4  ->  _main/_import-bench/synth-180s-1080p30.mp4
+  0.0126   _main/runs/cap-mux-1080p.mp4  ->  _main/runs/cap-mux-4k.mp4
+  0.0100   _main/runs/cap-mux-1080p.mp4  ->  _main/logs/cap-nvenc-1080p60-run1.mp4
+  0.0239   _main/logs/cap-nvenc-2160p60-run1.mp4  ->  _main/logs/_ref-from-ffmpeg.mp4
+  0.0120   _main/logs/cap-nvenc-2160p60-run1.mp4  ->  _main/_import-bench/synth-180s-1080p30.mp4
+  0.0054   _main/logs/cap-nvenc-2160p60-run1.mp4  ->  _main/runs/cap-mux-4k.mp4
+  0.0120   _main/logs/cap-nvenc-2160p60-run1.mp4  ->  _main/logs/cap-nvenc-1080p60-run1.mp4
+  0.0208   _main/logs/_ref-from-ffmpeg.mp4  ->  _main/_import-bench/synth-180s-1080p30.mp4
+  0.0239   _main/logs/_ref-from-ffmpeg.mp4  ->  _main/runs/cap-mux-4k.mp4
+  0.0208   _main/logs/_ref-from-ffmpeg.mp4  ->  _main/logs/cap-nvenc-1080p60-run1.mp4
+  0.0126   _main/_import-bench/synth-180s-1080p30.mp4  ->  _main/runs/cap-mux-4k.mp4
+  0.0100   _main/_import-bench/synth-180s-1080p30.mp4  ->  _main/logs/cap-nvenc-1080p60-run1.mp4
+  0.0120   _main/runs/cap-mux-4k.mp4  ->  _main/logs/cap-nvenc-1080p60-run1.mp4

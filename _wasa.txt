@@ -1,0 +1,33 @@
+wasapi-com-init-oracle  ticket=140ba250c2f890e1e8bbf62d  root=H:\sotto
+NO AUDIO DEVICE IS OPENED BY ANY ARM (see module docstring).
+
+==============================================================================
+SUBJECT: H:\sotto\worker\wasapi_loopback.py
+==============================================================================
+  s-false-is-success           hr=0x00000001 expect=proceed  got=proceed  OK  balance[init=1 uninit=1] balanced  owes-ref=yes
+  s-ok-is-success              hr=0x00000000 expect=proceed  got=proceed  OK  balance[init=1 uninit=1] balanced  owes-ref=yes
+  changed-mode-no-ref          hr=0x80010106 expect=proceed  got=proceed  OK  balance[init=1 uninit=0] balanced  owes-ref=no
+  genuine-failure-raises       hr=0x8000FFFF expect=raise    got=raise    OK  balance[init=1 uninit=0] balanced  owes-ref=no  -- CoInitializeEx failed: Falha catastr¾fica (0x8000FFFF)
+  real-second-call-is-sfalse   real API hr1=0x00000000 hr2=0x00000001  expect hr1=S_OK hr2=S_FALSE  OK
+  real-mismatch-owes-nothing   real API in an STA -> admitted:already   OK
+                               raw api in an STA -> 0x80010106
+  -> PASS  (6 arms, 0 failed)
+
+==============================================================================
+### NEGATIVE ARM -- the pre-fix copy must be RED ###
+
+==============================================================================
+SUBJECT: H:\sotto\_main\_wasapi-com-before-20261006-063555.py
+==============================================================================
+  s-false-is-success           hr=0x00000001 expect=proceed  got=raise    RED  balance[init=1 uninit=0] UNBALANCED owes-ref=yes  -- CoInitializeEx failed: FunþÒo incorreta. (0x00000001)
+  s-ok-is-success              hr=0x00000000 expect=proceed  got=proceed  RED  balance[init=1 uninit=0] UNBALANCED owes-ref=yes
+  changed-mode-no-ref          hr=0x80010106 expect=proceed  got=proceed  OK  balance[init=1 uninit=0] balanced  owes-ref=no
+  genuine-failure-raises       hr=0x8000FFFF expect=raise    got=CRASH    RED  balance[init=1 uninit=0] balanced  owes-ref=no  -- OverflowError: Python int too large to convert to C long
+  real-second-call-is-sfalse   real API hr1=0x00000000 hr2=0x00000001  expect hr1=S_OK hr2=S_FALSE  OK
+  real-mismatch-owes-nothing   SKIPPED -- module has no _com_init() (pre-fix shape)
+  -> FAIL  (6 arms, 3 failed, failed=s-false-is-success,s-ok-is-success,genuine-failure-raises)
+
+LIVE   : PASS
+NEGARM : PASS (pre-fix copy RED on 3 arm(s))
+
+VERDICT PASS

@@ -1,0 +1,32 @@
+NOW 12:25:54
+== LIVE queue rows: full identity ==
+  qid=4200 sess=mvs_ea552229fe164f9e8856fcca8589c41a
+     item_id=queue_1dfd5c7c-167f-432e-9438-9de13687489d
+     userMessageId='msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOjxOWKWZNKfhg'
+     clientRequestId='minimax-code_muxb4fuq_3eklcv0p'
+     created=2026-10-06 20:25:46  content_sha256=96cef6b8ff4a7897
+     content_head='"  E ├® uma ponte, n├úo uma corre├º├úo: mcode update substitui o install inteiro e leva o patc'
+  qid=4691 sess=mvs_b7a9f3a7db404912b32d28fc11b83645
+     item_id=queue_cf6aed5b-b9e5-4ce9-8946-3c473ee05a09
+     userMessageId='msg-user-v1-wakeff0ab6840666476d94d3d1717d471a54'
+     clientRequestId='minimax-code_hb_0d3a427a5f21407d'
+     created=2026-10-07 12:14:55  content_sha256=8953abb1ca9d9ea3
+     content_head='# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis is the text the 3-minute wake'
+
+== the two delivered user rows: full identity ==
+  id=225247 sess=mvs_a00662bff55242cb9b56c0f1165bdad7 role='user' src='api'
+     created=2026-10-07 11:51:49 msg_id='msg-user-v1-D52aPwtIrpQdxgTD0f57LtdRvhNVHic3WgefMuudXhX' turn=turn_633acf0e-40de-4e05-b8ff-5120e5f426f4
+     content_sha256=2b1759afa851cc6e
+     content_head='[HEARTBEAT] Pass automatico. Continua o plano do Sotto: H:\\sotto\\_moved\\aireplay\\ROADMAP.m'
+     sourceContext='None'
+     timestamp_field=1791384709757
+  id=225419 sess=mvs_a00662bff55242cb9b56c0f1165bdad7 role='user' src='api'
+     created=2026-10-07 12:21:19 msg_id='msg-user-v1-WrAKVrbNWw2NLuIswIxZqQZ8OP61wtY03opNAWYrSRU' turn=turn_muy999ue_j6wgbj
+     content_sha256=8953abb1ca9d9ea3
+     content_head='# ORCHESTRATOR MANDATE ÔÇö the payload the cron delivers\n\nThis is the text the 3-minute wake'
+     sourceContext='None'
+     timestamp_field=1791386479412
+
+== cross-match: msg_id of delivered rows vs userMessageId of queue rows ==
+  qid=4200 userMessageId='msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOjxOWKWZ' -> 0 matching row(s) []
+  qid=4691 userMessageId='msg-user-v1-wakeff0ab6840666476d94d3d1717d471a54' -> 0 matching row(s) []

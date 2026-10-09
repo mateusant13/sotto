@@ -1,0 +1,86 @@
+{
+  "instrument": "_diar-run.py (sherpa-onnx OfflineSpeakerDiarization)",
+  "tag": "mix-snrp05",
+  "wav": "H:\\sotto\\_main\\diar-mix\\mix-snr+05.wav",
+  "wav_bytes": 1819586,
+  "channels_in": 1,
+  "rate_in": 16000,
+  "rate_model": 16000,
+  "audio_s": 56.8606875,
+  "seg_model": "H:\\sotto\\_main\\diar-models\\sherpa-onnx-pyannote-segmentation-3-0\\model.onnx",
+  "emb_model": "H:\\sotto\\_main\\diar-models\\3dspeaker_eres2net_base_16k.onnx",
+  "threads": 2,
+  "provider": "cpu",
+  "num_clusters_arg": -1,
+  "threshold": 0.9,
+  "min_duration_on": 0.3,
+  "min_duration_off": 0.5,
+  "window_shift_ratio": null,
+  "window_shift_ratio_supported": false,
+  "load_s": 0.004508099998929538,
+  "model_load_s": 0.4904912999991211,
+  "wall_s": 21.14364679999926,
+  "cpu_s": 28.09375,
+  "rtf": 0.37185000269297236,
+  "cpu_pct_of_one_core": 132.87088204671005,
+  "rss_before_mb": 120.270848,
+  "rss_after_mb": 218.824704,
+  "n_segments": 9,
+  "n_speakers": 5,
+  "speakers": [
+    0,
+    1,
+    2,
+    4,
+    5
+  ],
+  "speech_s": 29.10937225818634,
+  "speech_frac": 0.5119419679578503,
+  "segments": [
+    {
+      "start": 0.5878437757492065,
+      "end": 6.747219085693359,
+      "speaker": 0
+    },
+    {
+      "start": 6.983469009399414,
+      "end": 10.645343780517578,
+      "speaker": 1
+    },
+    {
+      "start": 11.522844314575195,
+      "end": 12.23159408569336,
+      "speaker": 1
+    },
+    {
+      "start": 13.784093856811523,
+      "end": 16.905969619750977,
+      "speaker": 2
+    },
+    {
+      "start": 22.120346069335938,
+      "end": 24.955345153808594,
+      "speaker": 0
+    },
+    {
+      "start": 27.638471603393555,
+      "end": 31.485971450805664,
+      "speaker": 4
+    },
+    {
+      "start": 33.69659423828125,
+      "end": 37.91534423828125,
+      "speaker": 5
+    },
+    {
+      "start": 48.057220458984375,
+      "end": 50.30159378051758,
+      "speaker": 2
+    },
+    {
+      "start": 52.54597091674805,
+      "end": 54.857845306396484,
+      "speaker": 0
+    }
+  ]
+}

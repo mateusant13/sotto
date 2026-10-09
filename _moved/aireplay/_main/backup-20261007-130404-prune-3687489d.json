@@ -1,0 +1,15 @@
+{
+  "id": 4200,
+  "session_id": "mvs_ea552229fe164f9e8856fcca8589c41a",
+  "item_id": "queue_1dfd5c7c-167f-432e-9438-9de13687489d",
+  "status": "queued",
+  "created_at_ms": 1791329146949,
+  "data_json": "{\"itemId\":\"queue_1dfd5c7c-167f-432e-9438-9de13687489d\",\"userMessageId\":\"msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOjxOWKWZNKfhg\",\"sessionId\":\"mvs_ea552229fe164f9e8856fcca8589c41a\",\"agentName\":\"mavis\",\"source\":\"api\",\"status\":\"queued\",\"message\":{\"content\":\"\\\"  E é uma ponte, não uma correção: mcode update substitui o install inteiro e leva o patch. A correção que dura é a\\n    montante.\\\" nao quero que isso ocorra. entao resolve. e tua regra de despachar tudo tem que ser quase literal. entao reforça ela de algum jeito. nao sei se só regras, ou hooks que fazem algo pra te manter como orquestrador\",\"attachments\":[]},\"model\":{\"provider_id\":\"minimax\",\"model_id\":\"MiniMax-M3.1-Flash-Preview\",\"reasoning\":true,\"context_limit\":512000,\"thinking\":{\"effort\":\"max\"},\"parameterSnapshot\":{\"context\":\"default\",\"effort\":\"selection\"}},\"createdAt\":1791329146949,\"requestedTurnId\":\"turn_3be0675b-25ed-4ab7-9e97-1174cbe1e958\",\"clientRequestId\":\"minimax-code_muxb4fuq_3eklcv0p\",\"deliveryAttempts\":[{\"claimId\":\"claim_c60bc898-f900-4a9f-b46d-8852e0e1d25b\",\"turnId\":\"turn_3be0675b-25ed-4ab7-9e97-1174cbe1e958\"}]}",
+  "source": "api",
+  "client_request_id": "minimax-code_muxb4fuq_3eklcv0p",
+  "dedupe_key": null,
+  "expires_at_ms": null,
+  "claim_id": null,
+  "claim_lease_expires_at_ms": null,
+  "routing_fingerprint": "queue-routing/v1:[[\"source\",\"api\"],[\"platform\",null],[\"client\",null],[\"agent\",\"mavis\"],[\"agentBinding\",null],[\"binding\",null],[\"channel\",null],[\"channelId\",null],[\"thread\",null],[\"chat\",null],[\"scope\",null],[\"chatType\",null],[\"sender\",null]]"
+}

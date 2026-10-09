@@ -1,0 +1,33 @@
+What resolution does ShadowPlay support? | NVIDIA
+Skip Navigation
+Your browser either does not have JavaScript enabled or does not appear to support enough features of JavaScript to be used well on this site.
+NVIDIA SUPPORT
+NVIDIA Home > Support Home Page > Knowledgebase Home Page > What resolution does ShadowPlay support?
+Log In | Sign Up
+What resolution does ShadowPlay support?
+Updated 10/19/2021 01:55 PM
+ShadowPlay can record at the following resolutions. If the gameplay aspect ratio is different, black bars are added to preserve the original aspect ratio of the captured footage.
+Resolution:
+In-game
+4320p 8K
+2160p 4K
+1440P HD
+1080p HD
+720p HD
+480p
+360p
+Is this answer helpful?
+Yes
+No
+Answers others found helpful
+ShadowPlay install failure due to DirectX
+What's the performance impact of ShadowPlay?
+Shadowplay videos captured higher than 1920x1080 won't play back in Windows Media Player.
+Is ShadowPlay supported with Nvidia Surround?
+What games do ShadowPlay support?
+Live Chat
+Chat online with one of our support agents
+CHAT NOW
+ASK US A QUESTION
+Contact Support for assistance
+Ask a Question

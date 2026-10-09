@@ -1,0 +1,362 @@
+[
+ {
+  "n": "01",
+  "id": "rainline",
+  "name": "Rainline",
+  "photo": "9488153",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/9488153/pexels-photo-9488153.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/9488153.jpg",
+  "mood": "Rain on the glass at one in the morning. Cold blue room, warm tea, everything slow.",
+  "scene": "Ext. rain-specked window",
+  "scene_note": "late shift · recorder on the sill",
+  "branch": {
+   "caption": "bare",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "rain"
+  }
+ },
+ {
+  "n": "02",
+  "id": "blue-plate",
+  "name": "Blue Plate",
+  "photo": "8887627",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/8887627/pexels-photo-8887627.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/8887627.jpg",
+  "mood": "An all-night diner with three people left in it. Amber bulbs, coffee going cold.",
+  "scene": "Int. all-night diner",
+  "scene_note": "booth by the window · refills free",
+  "branch": {
+   "caption": "plate",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "none"
+  }
+ },
+ {
+  "n": "03",
+  "id": "cellar",
+  "name": "Cellar Sessions",
+  "photo": "35258949",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/35258949/pexels-photo-35258949.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/35258949.jpg",
+  "mood": "A basement bar after last call. Brass lamp, one table, a long rambling conversation.",
+  "scene": "Int. cellar bar",
+  "scene_note": "table 6 · lamp down low",
+  "branch": {
+   "caption": "glass",
+   "panel": "rail",
+   "chrome": "float",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "04",
+  "id": "linen",
+  "name": "Linen Hours",
+  "photo": "18405036",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/18405036/pexels-photo-18405036.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/18405036.jpg",
+  "mood": "A paper-lit café at eight in the morning. Ink on linen, nothing urgent.",
+  "scene": "Int. sunroom café",
+  "scene_note": "table 3 · first coffee",
+  "branch": {
+   "caption": "plate",
+   "panel": "list",
+   "chrome": "bar",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "05",
+  "id": "side-b",
+  "name": "Side B",
+  "photo": "31272472",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/31272472/pexels-photo-31272472.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/31272472.jpg",
+  "mood": "Record room, sleeves on the floor, needle down. Seventies lamp, nine p.m.",
+  "scene": "Int. record room",
+  "scene_note": "side B · track 4",
+  "branch": {
+   "caption": "stack",
+   "panel": "memo",
+   "chrome": "float",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "06",
+  "id": "north-window",
+  "name": "North Window",
+  "photo": "35542566",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/35542566/pexels-photo-35542566.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/35542566.jpg",
+  "mood": "First snow outside the cabin. Everything inside is lamplight and quiet.",
+  "scene": "Ext. cabin, first snow",
+  "scene_note": "17:40 · flakes, no wind",
+  "branch": {
+   "caption": "glass",
+   "panel": "cards",
+   "chrome": "bar",
+   "particle": "snow"
+  }
+ },
+ {
+  "n": "07",
+  "id": "adobe",
+  "name": "Adobe Afternoon",
+  "photo": "34686220",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/34686220/pexels-photo-34686220.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/34686220.jpg",
+  "mood": "Terracotta walls, warm tiles, an unhurried interview recorded off the cuff.",
+  "scene": "Int. tiled courtyard",
+  "scene_note": "16:20 · shade on the left",
+  "branch": {
+   "caption": "chip",
+   "panel": "cards",
+   "chrome": "bar",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "08",
+  "id": "glasshouse",
+  "name": "Glasshouse",
+  "photo": "38663879",
+  "ext": "png",
+  "wall_src": "https://images.pexels.com/photos/38663879/pexels-photo-38663879.png?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/38663879.png",
+  "mood": "Green light through wet glass. Foliage, rain, a voice taking its time.",
+  "scene": "Int. glasshouse",
+  "scene_note": "14:05 · watering day",
+  "branch": {
+   "caption": "bare",
+   "panel": "list",
+   "chrome": "sidebarHead",
+   "particle": "rain"
+  }
+ },
+ {
+  "n": "09",
+  "id": "film-club",
+  "name": "Film Club",
+  "photo": "20494415",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/20494415/pexels-photo-20494415.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/20494415.jpg",
+  "mood": "Black and white on the wall, four chairs, a projector ticking. Subtitles feel at home.",
+  "scene": "Screening room B",
+  "scene_note": "20:00 · reel 2 of 3",
+  "branch": {
+   "caption": "plate",
+   "panel": "memo",
+   "chrome": "bar",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "10",
+  "id": "nightswim",
+  "name": "Night Swim",
+  "photo": "34569888",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/34569888/pexels-photo-34569888.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/34569888.jpg",
+  "mood": "A dock at dusk, water going still. Serif type drifting like a title card.",
+  "scene": "Ext. lake dock, dusk",
+  "scene_note": "19:25 · no wind, one lantern",
+  "branch": {
+   "caption": "bare",
+   "panel": "rail",
+   "chrome": "float",
+   "particle": "none"
+  }
+ },
+ {
+  "n": "11",
+  "id": "reading-hour",
+  "name": "Reading Hour",
+  "photo": "13278838",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/13278838/pexels-photo-13278838.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/13278838.jpg",
+  "mood": "Lamplight between shelves, armchairs, a very low volume evening.",
+  "scene": "Int. reading room",
+  "scene_note": "21:50 · lamp 4",
+  "branch": {
+   "caption": "chip",
+   "panel": "cards",
+   "chrome": "bar",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "12",
+  "id": "snowline",
+  "name": "Snowline",
+  "photo": "30252333",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/30252333/pexels-photo-30252333.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/30252333.jpg",
+  "mood": "A pier in the snow, whistle of a lantern, bright grey light that somehow feels warm.",
+  "scene": "Ext. snowy pier",
+  "scene_note": "16:55 · ice on the boards",
+  "branch": {
+   "caption": "glass",
+   "panel": "cards",
+   "chrome": "sidebarHead",
+   "particle": "snow"
+  }
+ },
+ {
+  "n": "13",
+  "id": "last-train",
+  "name": "Last Train",
+  "photo": "18502603",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/18502603/pexels-photo-18502603.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/18502603.jpg",
+  "mood": "Carriage four, mostly empty, window doubling the sky. Sage and graphite.",
+  "scene": "Int. carriage four",
+  "scene_note": "23:02 · one stop to go",
+  "branch": {
+   "caption": "stack",
+   "panel": "rail",
+   "chrome": "bar",
+   "particle": "none"
+  }
+ },
+ {
+  "n": "14",
+  "id": "dusk-highway",
+  "name": "Dusk Highway",
+  "photo": "7022830",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/7022830/pexels-photo-7022830.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/7022830.jpg",
+  "mood": "Long road, sky going lilac, tape deck low. Field notes read out loud.",
+  "scene": "Ext. highway 12, dusk",
+  "scene_note": "19:05 · nothing on the radio",
+  "branch": {
+   "caption": "bare",
+   "panel": "memo",
+   "chrome": "float",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "15",
+  "id": "harbor",
+  "name": "Harbor Lights",
+  "photo": "16966474",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/16966474/pexels-photo-16966474.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/16966474.jpg",
+  "mood": "A moored boat, reflections like oil paint, brass fittings on dark teal.",
+  "scene": "Ext. harbor mooring",
+  "scene_note": "22:10 · tide coming in",
+  "branch": {
+   "caption": "glass",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "none"
+  }
+ },
+ {
+  "n": "16",
+  "id": "fireside",
+  "name": "Fireside",
+  "photo": "33454123",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/33454123/pexels-photo-33454123.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/33454123.jpg",
+  "mood": "A lodge with the fire still going. Amber, wool, slow voices, no clock in sight.",
+  "scene": "Int. lodge, fire going",
+  "scene_note": "23:30 · snow against the glass",
+  "branch": {
+   "caption": "stack",
+   "panel": "cards",
+   "chrome": "sidebarHead",
+   "particle": "ember"
+  }
+ },
+ {
+  "n": "17",
+  "id": "blue-hour",
+  "name": "Blue Hour",
+  "photo": "15183904",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/15183904/pexels-photo-15183904.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/15183904.jpg",
+  "mood": "Eight fifteen from a balcony. The city is soft-edged and nobody is hurrying.",
+  "scene": "Ext. balcony, blue hour",
+  "scene_note": "20:15 · windows starting to glow",
+  "branch": {
+   "caption": "bare",
+   "panel": "rail",
+   "chrome": "float",
+   "particle": "none"
+  }
+ },
+ {
+  "n": "18",
+  "id": "paper-rain",
+  "name": "Paper Rain",
+  "photo": "38026077",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/38026077/pexels-photo-38026077.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/38026077.jpg",
+  "mood": "A suburban afternoon in the rain, mist on glass, grey-blue and unhurried like paper.",
+  "scene": "Ext. suburb in rain",
+  "scene_note": "15:30 · umbrella forgotten",
+  "branch": {
+   "caption": "chip",
+   "panel": "memo",
+   "chrome": "bar",
+   "particle": "rain"
+  }
+ },
+ {
+  "n": "19",
+  "id": "terrace",
+  "name": "Terrace Sun",
+  "photo": "14955235",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/14955235/pexels-photo-14955235.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/14955235.jpg",
+  "mood": "Late sun on a quiet terrace. Green, cream, unhurried, the whole afternoon to talk.",
+  "scene": "Int. terrace, late sun",
+  "scene_note": "17:15 · shade on the table",
+  "branch": {
+   "caption": "karaoke",
+   "panel": "list",
+   "chrome": "sidebarHead",
+   "particle": "dust"
+  }
+ },
+ {
+  "n": "20",
+  "id": "quiet-marina",
+  "name": "Quiet Marina",
+  "photo": "10636454",
+  "ext": "jpeg",
+  "wall_src": "https://images.pexels.com/photos/10636454/pexels-photo-10636454.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+  "wall_local": "img/10636454.jpg",
+  "mood": "Frost on the docks, steel blue water, one warm lamp swinging above it all.",
+  "scene": "Ext. marina, frost",
+  "scene_note": "20:45 · hulls creaking softly",
+  "branch": {
+   "caption": "karaoke",
+   "panel": "sheet",
+   "chrome": "bar",
+   "particle": "snow"
+  }
+ }
+]

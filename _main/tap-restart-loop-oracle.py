@@ -56,7 +56,11 @@ FAKE = os.path.join(HERE, '_tap-restart-fake-worker.py')
 MUTANT = os.path.join(HERE, '_tap-restart-prefix-mutant.py')
 
 #: The guard under test, and the exact revert that reproduces the pre-fix shell.
-GUARD = 'if self.no_audio:'
+#: Two-line form: a second `if self.no_audio:` exists in `_consume` (the
+#: caption-lift, 2026-10-08), so the bare one-liner matches 2x and the control
+#: cannot be built from it. The `# BENIGN` comment is unique to `_on_silence`.
+#: Single-line revert (no newline): the control must change exactly one line.
+GUARD = 'if self.no_audio:  # __TAP_RESTART_GUARD__'
 REVERT = 'if False:  # NEG-ARM: the pre-fix shell killed on silence, unconditionally'
 
 SILENCE_MS = 600          # 15 s in the field; 0.6 s is the same decision

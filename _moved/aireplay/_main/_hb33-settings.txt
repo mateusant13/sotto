@@ -1,0 +1,9 @@
+
+MultipleInstances          : IgnoreNew
+ExecutionTimeLimit         : PT72H
+StartWhenAvailable         : False
+DisallowStartIfOnBatteries : True
+StopIfGoingOnBatteries     : True
+Enabled                    : True
+RunOnlyIfNetworkAvailable  : False
+

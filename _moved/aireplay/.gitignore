@@ -1,0 +1,238 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# SOTTO — o que NÃO entra no git neste clone
+#
+# Este clone vive em  H:\sotto\_moved\aireplay  e é alcançado por  H:\aireplay
+# (uma JUNCTION). O repositório DESTE ficheiro é um repo NOVO, criado dentro
+# deste diretório — é por isso que ele pode ter regras próprias sem tocar no
+# `.gitignore` do Sotto que está por fora.
+#
+# A LIÇÃO QUE ESTE FICHEIRO EXISTE PARA NÃO REPETIR (a "lição dos 2,8 GB"):
+#   no Sotto, um `git add` varreu 2,8 GB de pesos de modelo porque `*.onnx`
+#   NÃO casa `*.onnx.data`. O `.onnx` é o CABEÇALHO do grafo; o `.onnx.data`
+#   são OS PESOS, ~150× maiores. O `push` foi recusado (limite de 2 GB do
+#   GitHub). Aqui, `models\parakeet-tdt-0.6b-v3-onnx\` tem 670 619 803 B.
+#   É por isso que `*.onnx` e `*.onnx.data` são DUAS linhas, não uma.
+#
+# EXCLUIR DO GIT NÃO É APAGAR DO DISCO. Nada listado aqui foi removido: todos
+# estes ficheiros continuam no lugar. O inventário do que ficou de fora, com o
+# tamanho de cada item, está em `HANDOVER.md` §4.
+#
+# ── OS NÚMEROS ABAIXO SÃO UM INSTANTE, NÃO UMA CONSTANTE ──────────────────────
+# Medidos por censo em 2026-10-07 12:24:26 (hora local), com os instrumentos do
+# próprio git (`git ls-files --others --ignored --exclude-standard`). **A árvore
+# estava QUENTE**: outras lanes escrevem aqui em paralelo, e no quarto de hora
+# anterior ela cresceu ~345 MB (de 7 860 023 411 B para 8 208 353 651 B de
+# excluídos) enquanto o conjunto versionado ia de 837 para 963 ficheiros. Ou
+# seja: se um número abaixo parecer baixo para o que está em disco, o número não
+# está errado — está VELHO. Re-corra o censo antes de o citar.
+#
+# A contagem por padrão é de ATRIBUIÇÃO ÚNICA (first-match-wins), com
+# `node_modules/` contabilizado PRIMEIRO: é uma dependência vendorizada que se
+# reinstala com `npm ci`, não um binário nosso, e sem essa precedência os
+# `.exe`/`.node` lá dentro apareceriam contados duas vezes.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── 1. PESOS DE MODELO E SIDECARS ─────────────────────────────────────────────
+
+# O CABEÇALHO do grafo ONNX. Aqui: 3 ficheiros, 670 525 767 B juntos
+# (encoder int8 652 183 999 + decoder_joint int8 18 202 004 + nemo128 139 764).
+# Sozinho ele NÃO é o modelo — é o índice que aponta para os pesos.
+*.onnx
+
+# OS PESOS. Padrão SEPARADO de `*.onnx` de propósito: `*.onnx` não o casa, e foi
+# exatamente essa assimetria que custou 2,8 GB no Sotto. Esta linha é a defesa.
+# 0 ficheiros nesta árvore hoje (este export int8 é de ficheiro único) — e é
+# precisamente por isso que a linha FICA: no dia em que alguém exportar com
+# sidecar, ela já cá está. Uma regra que só existe depois do acidente não serve.
+*.onnx.data
+
+# Pesos no formato HuggingFace `safetensors`. 0 ficheiros AQUI; no Redux ternary,
+# na outra árvore (`H:\sotto\worker\models\parakeet-redux-ternary\`),
+# `model.safetensors` = 177 774 490 B — é o número que justifica a linha.
+*.safetensors
+
+# `kestrel_cpu.kstlc` — o payload do kernel int8 compilado do kestrel. Binário de
+# runtime, não fonte. 0 ficheiros aqui; existe no ambiente do kestrel.
+*.kstlc
+
+# A árvore de modelos inteira: 18 ficheiros, 670 736 714 B (os 3 `.onnx` acima
+# mais 15 ficheiros de 210 947 B — `vocab.txt` 93 939, `config.json` 97, e o
+# cache do HuggingFace).
+# Re-baixável: HuggingFace `istupakov/parakeet-tdt-0.6b-v3-onnx`, revisão
+# `8f23f0c0…` — os 5 ficheiros do export foram verificados 5/5 por sha256 contra
+# a API pública (docs/research/05-onnx-asr.md). Este é o único item excluído que
+# o dono precisa de RE-BAIXAR para reconstruir o produto; tudo o resto é derivado
+# ou reconstruível localmente.
+models/
+
+# ── 2. BINÁRIOS DE BUILD ──────────────────────────────────────────────────────
+
+# Binários compilados das lanes de probe. No censo de 12:24:26: 15 ficheiros,
+# 8 655 485 B fora de `node_modules/`; UM MINUTO DEPOIS já eram 20 ficheiros e
+# 10 084 940 B, porque as lanes compilam probes enquanto isto é escrito. É o
+# exemplo mais claro de que os números deste ficheiro são um instante.
+# Todos se reconstroem: o comando de build está no CABEÇALHO do `.cpp` que os
+# produz (`g++ -std=c++17 -O2 -I third_party <fonte>.cpp -o <saida>.exe …`).
+# Dentro de `docs/design/*/node_modules` há 2 `.exe` mais (22 772 736 B) — esses
+# são contados na regra `node_modules/`, não aqui.
+*.exe
+
+# Objeto intermédio do compilador. Nunca é fonte. Aqui: 1 ficheiro,
+# `_main\build\wasapi_audio.obj`, 117 935 B.
+*.obj
+
+# Símbolos de depuração. Derivados da fonte, regeneráveis. 0 ficheiros aqui
+# (a toolchain é mingw g++ 15.2.0, que não os emite por omissão).
+*.pdb
+
+# Biblioteca de importação estática. Derivada. 0 ficheiros aqui — as dependências
+# ligam-se por import lib do sistema (ole32, windowsapp, …), não por `.lib`
+# versionado.
+*.lib
+
+# Diretório de saída de build. `_main\build\` = 20 `.exe` + 1 `.obj` no censo,
+# todos já apanhados pelas regras acima — ou seja, ESTA regra não apanha nada
+# sozinha nesta árvore, e fica como rede de segurança para o dia em que um build
+# largar um artefacto sem extensão conhecida.
+#
+# `build/*` e NÃO `build/`, por uma razão medida: este clone guarda FONTE dentro
+# de `_main\build\` — `guid-probe.cpp` (335 B) e `hdr-probe.cpp` (290 B) — e uma
+# fonte nunca se exclui. Um diretório excluído INTEIRO (`build/`) não pode ser
+# re-incluído ficheiro a ficheiro: o git nem desce lá dentro, então uma negação
+# contra ele é letra morta. Com `build/*` o diretório continua visitável e as
+# negações abaixo valem. (As linhas `.txt` de 173 B juntas são o log da lane que
+# compilou esses probes — evidência, fica.)
+# Verificado: ignorados sob `_main/build/` que NÃO sejam `.exe`/`.obj` = 0.
+build/*
+!build/*.cpp
+!build/*.txt
+
+# Módulos nativos do Node: 8 ficheiros, 33 937 408 B (rollup, tailwindcss-oxide,
+# lightningcss), TODOS dentro de `docs/design/*/node_modules` — contados na regra
+# `node_modules/`. Código de terceiros compilado, reinstalado por `npm ci`.
+*.node
+
+# ── 3. CACHES ─────────────────────────────────────────────────────────────────
+
+# Bytecode Python por interpretador. Recriado no primeiro `import`.
+__pycache__/
+# O bytecode em si: 28 ficheiros, 391 432 B no censo.
+*.pyc
+# Estado do pytest. Nunca é fonte. 0 ficheiros aqui (não há suite pytest).
+.pytest_cache/
+
+# Dependências vendorizadas de `docs/design/sotto-*-designs/`: 5 898 ficheiros,
+# 179 084 294 B — ou seja, 99,6 % de `docs/design/`, cujo conteúdo REAL são
+# 36 ficheiros / 662 233 B. Reinstalam-se com `npm ci` (os `package-lock.json`
+# dos dois projetos FICAM versionados, e são eles a garantia de reprodutibilidade).
+node_modules/
+
+# ── 4. BASES DE ÍNDICE E DADOS DERIVADOS GRANDES ──────────────────────────────
+
+# Stores SQLite dos probes de índice: 16 ficheiros, 3 034 505 216 B — os dois
+# maiores da árvore inteira (`_main\_index-store\index.db` 1 101 152 256 B e
+# `_main\_index-store2\C_partition_video.db` 1 094 725 632 B). São MEDIÇÕES, não
+# fonte — reconstroem-se correndo `_main\_index-*-probe.py`, que é o que fica
+# versionado. O resultado medido vive em `_main\index-*.json`.
+*.db
+# Write-ahead log e shared-memory do SQLite. Estado transitório do `.db`, e o
+# `.db-wal` pode estar ABERTO por um processo neste momento. 1 + 1 ficheiros.
+*.db-shm
+*.db-wal
+
+# Índice ANN serializado: 1 ficheiro, 141 371 558 B. Reconstruído pelo probe.
+*.faiss
+
+# Clipes de captura: 52 ficheiros, 3 623 054 661 B no censo — o maior grupo
+# excluído, e o que mais cresce. São (a) gravações do ecrã do dono — conteúdo
+# privado, a mesma razão pela qual este bundle não se publica — e (b) remuxes
+# derivados delas. Os NÚMEROS medidos (contagem de frames, bytes, duração) vivem
+# nos recibos 03 e 15, que ficam versionados.
+*.mp4
+
+# Streams elementares Annex-B: 4 ficheiros, 437 499 144 B, extraídos de um `.mp4`
+# para provar o caminho `--cut-from-h264` sem WGC. Derivados; o comando de
+# extração (`ffmpeg -bsf:v h264_mp4toannexb`) está no recibo 03 §5c.
+*.h264
+
+# Áudio de teste: 4 ficheiros, 20 162 156 B (fatias ≤120 s). Áudio do dono.
+*.wav
+
+# Roda descarregada: 1 ficheiro, 27 275 208 B. Re-obtém-se com `pip download`.
+*.whl
+
+# ── 5. OUTPUT DE RUN EM IMAGEM (grande e derivado) ────────────────────────────
+
+# Frames extraídos de vídeo para o banco de OCR: 9 ficheiros, 22 946 173 B.
+# Re-extraem-se com `_main\ocr-real-frames.py`. As MÉTRICAS de OCR ficam nos
+# `_main\ocr-bench-*.json` e `_main\ocr-score-02.json`, versionados.
+_main/ocr-frames/
+
+# Renders "ANTES" da investigação de fontes: 22 055 007 B em 13 PNG
+# (10 033 865 + 10 162 382 + 1 858 760). São estados HISTÓRICOS de uma correção
+# já fechada; os renders "DEPOIS" (`_main\preview-fontes-*.png`,
+# `_main\font-fraunces-specimen-depois*.png`) e TODOS os diagnósticos em texto
+# (`_main\font-diag-*.txt`, `font-dom-*.html`) FICAM versionados — a comparação
+# antes/depois continua legível pelo texto e pelos `_crop-*-diff.png`.
+_main/_fontes-antes/
+_main/_fontes-antes-instrumento/
+_main/_fontes-ruido/
+
+# Dumps do profiler do ONNX Runtime: 9 ficheiros, 20 465 893 B — dos quais
+# 20 464 135 B são 2 (`_main\onnx-asr-scratch\prof\ort_*.json`) e os outros 7 são
+# ~251 B cada. Trace bruto por-operador, derivado de uma run; re-obtém-se ligando
+# o profiling no probe. A CONCLUSÃO que ele produziu ("o encoder é ≥95 % do
+# tempo") está em docs/research/05-onnx-asr.md.
+ort_*.json
+
+# ── 6. TRANSIENTES VIVOS ──────────────────────────────────────────────────────
+
+# `_main\heartbeat.lock` é o lock exclusivo do driver de heartbeat. É readquirido
+# a cada pass e pode estar ABERTO por um processo neste momento: commitá-lo seria
+# commitar um handle, não um estado. (1 ficheiro, 0 B.)
+*.lock
+
+# Pid de um probe a correr. Ruído de uma run, não estado. (1 ficheiro, 7 B.)
+*.pid
+
+# ── 7. BUNDLES ────────────────────────────────────────────────────────────────
+
+# O artefacto de ENTREGA. Fica deliberadamente FORA desta árvore
+# (`H:\aireplay-AAAAMMDD.bundle`) para nunca ser apanhado por um `git add` do
+# repositório de fora. Este padrão é a segunda linha de defesa, não a primeira.
+# 0 ficheiros aqui, e é assim que deve estar.
+*.bundle
+
+# --- ADICAO 2026-10-07 21:45 (orquestrador) ---------------------------------
+# MEDIDO por censo: artefactos GERADOS, nao fontes.
+#   _main\logs            1 067,1 MB
+#   _main\runs            2 717,3 MB
+#   _main\build              18,8 MB
+#   _main\_all-gates-logs     0,3 MB
+#   TOTAL ~3 803,5 MB de saida de gate/exec.
+# POPULACAO: 253 .txt + 72 .log + 33 .err + 19 .out + 19 .json em _main\ (censo 21:45).
+# A LEICAO JA ESTA ACIMA NESTE FICHEIRO (os 2,8 GB de pesos .onnx.data): um `git add -A`
+# varre isto e o push e recusado por limite de tamanho. Estes caminhos sao saida, nao fonte.
+#
+# EXCLUIR DO GIT NAO E APAGAR DO DISCO. Nada aqui foi removido do disco.
+_main/logs/
+_main/runs/
+_main/build/
+_main/_all-gates-logs/
+_main/_lane4-run/
+_main/_lane3-before/
+_main/heartbeat-run-*.md
+
+# Saida de exec/gate dentro de _main (medido: 377 ficheiros)
+_main/*.log
+_main/*.out
+_main/*.err
+_main/*-gate.out.txt
+_main/*-console.txt
+_main/*-stdout.txt
+_main/*-copy.log
+
+# Pesos e modelos (a regra original ja cobre; reforcada aqui)
+*.onnx
+*.onnx.data
+models/

@@ -1,0 +1,8 @@
+87efeaf lane25: census 18 locale-grouped format sites; 1 defective memory site fixed
+9787983 Close the review-on-disk debt: 25 receipts/review-*.md (CHK-REV-1)
+d51447c RETRACT the retraction: the "227835 is unlinked / hand-pushed" claim is FALSE
+13e4da2 durability: versionar 15 receipts nunca staged + indice receipts/README.md
+fd156a0 Persist the L4 and L16 reviewer verdicts to disk (CHK-REV-1)
+a999c49 receipts/receipt-21: four reviewer corrections, first time under version control
+917509b wake: apply the six receipt-21 defects + D-7 (wrong transport predictor)
+cdfffda cadence re-measured with a CORRECTED counter: POP of passes, not lines

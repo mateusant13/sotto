@@ -1,0 +1,103 @@
+{
+  "graph": "encoder",
+  "requested": "CPUExecutionProvider",
+  "REAL_get_providers": [
+    "CPUExecutionProvider"
+  ],
+  "inputs": {
+    "audio_signal": [
+      [
+        1,
+        65,
+        128
+      ],
+      "float32"
+    ],
+    "length": [
+      [
+        1
+      ],
+      "int64"
+    ],
+    "cache_last_channel": [
+      [
+        1,
+        24,
+        70,
+        1024
+      ],
+      "float32"
+    ],
+    "cache_last_time": [
+      [
+        1,
+        24,
+        1024,
+        8
+      ],
+      "float32"
+    ],
+    "cache_last_channel_len": [
+      [
+        1
+      ],
+      "int64"
+    ],
+    "lang_id": [
+      [
+        1
+      ],
+      "int64"
+    ]
+  },
+  "inference_error": null,
+  "nodes_total": 1800,
+  "nodes_by_provider": {
+    "CPUExecutionProvider": 1800
+  },
+  "pct_nodes_by_provider": {
+    "CPUExecutionProvider": 100.0
+  },
+  "dur_us_by_provider": {
+    "CPUExecutionProvider": 285306
+  },
+  "pct_dur_by_provider": {
+    "CPUExecutionProvider": 100.0
+  },
+  "top_cpu_kernels_us": [
+    [
+      "MatMulNBits",
+      154773
+    ],
+    [
+      "Conv",
+      80144
+    ],
+    [
+      "Transpose",
+      14344
+    ],
+    [
+      "Split",
+      4647
+    ],
+    [
+      "Concat",
+      4252
+    ],
+    [
+      "LayerNormalization",
+      3811
+    ],
+    [
+      "MatMul",
+      3769
+    ],
+    [
+      "Add",
+      2934
+    ]
+  ],
+  "profile_file": "H:\\sotto\\ortprof_encoder_2026-10-07_12-46-27_763.json",
+  "verdict": "GPU-EXECUTES"
+}

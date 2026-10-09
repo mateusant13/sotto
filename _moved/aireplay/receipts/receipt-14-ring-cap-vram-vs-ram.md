@@ -42,11 +42,11 @@ MEASURED log evidence — `arm-A-gaming-default-ring.txt:12` prints
 *"the GPU class caps at 998 MB"*. The arithmetic, at the code's own bitrate law
 (`replay.cpp:98-102`):
 
-| mode | resolution | wants (120 s) | kept | |
-|---|---|---|---|---|
-| gaming | 1080p60 | 643.7 MiB | **120 s** | fits |
-| gaming | 1440p60 | 1 144.4 MiB | **104.7 s** | **clipped** |
-| gaming | 4K60 | 2 574.9 MiB | **46.5 s** | **clipped** |
+| mode | resolution | wants (120 s) | kept | | status |
+|---|---|---|---|---|---|
+| gaming | 1080p60 | 643.7 MiB | **120 s** | fits | **MEASURED** (a run produced this row) |
+| gaming | 1440p60 | 1 144.4 MiB | **104.7 s** | **clipped** | **DERIVED** (arithmetic only) |
+| gaming | 4K60 | 2 574.9 MiB | **46.5 s** | **clipped** | **DERIVED** (arithmetic only) |
 
 **At 4K60 the ring silently keeps 46.5 s, not the 120 s the spec promises.**
 And `AGENTS.md:151` reasons about "what breaks a **16 GB box**" — **this box has
@@ -76,9 +76,16 @@ The casual-user path is untouched: 1080p60 still selects 643.7 MiB.
 it legitimately belongs.
 
 ## What is NOT verified, by name
-- **N=0 executions at 1440p or 4K.** `replay.cpp:57` hard-codes the test window to
-  1920×1080, so every 4K/1440p number above is **arithmetic, not measurement**.
-  Only the 1080p60 row is corroborated by a run.
+- **N=0 executions at 1440p or 4K, and that is still true after lane 7.** The window is no
+  longer hardcoded: `replay.cpp` now negotiates it at run time from the measured output
+  desktop (`negotiate_capture_window()`, `test_window.cpp`; gate `_lane7-window-gate.ps1`,
+  ARM B). So the 1440p/4K numbers above are no longer blocked by a hardcoded constant —
+  they are blocked by this box: **the display measures 1920x1080**, and both WGC paths
+  refuse (`CreateForWindow` and `CreateForMonitor` both `0x80070005`, receipt 03 §7), so a
+  1440p or 4K capture cannot be run here at all. **They remain DERIVED, not MEASURED.**
+  What lane 7 did buy is that they are now *reachable* on a 4K display with no code change,
+  and that the 1080p default is provably unchanged (ARM A: the offline cut is
+  **byte-identical, 97 820 321 bytes**, before vs after).
 - **The owner's real content bitrate is unmeasured** (`specs/03:277-278`). The
   45/80/180 Mbps inputs are judgement, and the synthetic desktop harness
   overshoots its target by a measured **2.00×**, so desktop 600 s may really be ~300 s.

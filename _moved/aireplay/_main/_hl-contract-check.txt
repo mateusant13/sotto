@@ -1,0 +1,7 @@
+[ok ] trigger.h readable: src/capture/trigger.h
+[ok ] CutRequest fields: all 10 fields present
+[ok ] consumer take(CutRequest*) exists: src/capture/trigger.h:175 shape found
+[ok ] RingSpanProbe::span_seconds() exists: the one-method probe the clip window must ASK, not assume
+[ok ] a public CutRequest injection point exists: FOUND -- a detector can now inject a CutRequest; wire to_cut_request_payload() to it and re-check this file
+[ok ] Replay::issue_cut reachable from outside: src/capture/replay.h declares issue_cut PUBLIC
+[GAP] seconds -> QPC conversion available: seconds -> QPC nanoseconds. `Highlight.t_peak_s` is seconds on the detector's analysis clock; `CutRequest.t_cut_ns` is QPC ns. No producer on this box converts between them (`src/pipeline/contracts.py` CONTRACT_GAPS[1] carries the same gap for `CutResult.base_qpc_ns`). OWNER: the replay lane, which owns the QPC base. Until it exists this lane emits SECONDS and says so.  (declared RED deliberately: until the replay lane owns this conversion, a highlight cannot name its own ring position)

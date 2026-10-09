@@ -1,0 +1,16 @@
+ALL-GATES window=2026-10-07T12:37:06.1811717-03:00 dir=H:\sotto\_moved\aireplay\_main\_selftest-gates\armI_launder glob=_lane*-gate.ps1 timeout=300s verdict-line=True
+
+GATES POPULATION = 1   (globbed + explicitly included, deduped by path)
+  [ok] _lane96-selftest-launder-gate.ps1  313 B  mtime=2026-10-07T15:37:05.6827591Z  glob
+
+    | ALL-GATES PASS
+
+RESULT TABLE
+GATE                               EXIT     DURATION  VERDICT
+-------------------------------------------------------------
+_lane96-selftest-launder-gate.ps1  0            0.6s  FAIL/NO-VERDICT  <- exit 0 but no GATE-VERDICT line was printed
+
+SUMMARY gates=1 passed=0 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-123706
+  FAILED: _lane96-selftest-launder-gate.ps1  FAIL/NO-VERDICT
+
+ALL-GATES FAIL

@@ -1,0 +1,38 @@
+What are the keyboard shortcuts when streaming GeForce NOW from Safari browsers on macOS? | NVIDIA
+Skip Navigation
+Your browser either does not have JavaScript enabled or does not appear to support enough features of JavaScript to be used well on this site.
+NVIDIA SUPPORT
+NVIDIA Home > Support Home Page > Knowledgebase Home Page > What are the keyboard shortcuts when streaming GeForce NOW from Safari browsers on macOS?
+Log In | Sign Up
+What are the keyboard shortcuts when streaming GeForce NOW from Safari browsers on macOS?
+Updated 08/04/2025 10:27 PM
+What are the keyboard shortcuts when streaming GeForce NOW from Safari browsers on macOS?
+Members can use play.geforcenow.com to stream directly from Safari browsers on Mac devices. For the best experience, NVIDIA recommends downloading the GeForce NOW app .
+If you prefer to play from the Safari browser (version 16.4 or later), here are the differences in keyboard shortcuts:
+Intended Action
+Standard GFN macOS Shortcut
+Safari GFN Browser Shortcut
+Bring up in-game menu
+ESC
+Cmd + Delete
+Pressing the ESC key will exit the browser full-screen mode instead
+Paste text
+Cmd + V
+Cmd + V then approve dialog
+When using paste in Safari, a dialog will appear. Upon clicking ÔÇ£YesÔÇØ on the dialog, another ÔÇ£PasteÔÇØ button appears. Press the second paste button to activate paste in-stream
+Is this answer helpful?
+Yes
+No
+Answers others found helpful
+How do I manage my connected accounts on GeForce NOW?
+What are the Highlights keyboard shortcuts?
+How do I use GeForce NOW on iOS (iPhone) or iPadOS (iPad)?
+Is my Windows or macOS operating system supported on GeForce NOW?
+How do I test my network for GeForce NOW?
+Live Chat
+Chat online with one of our support agents
+CHAT NOW
+ASK US A QUESTION
+Contact Support for assistance
+800.797.6530
+Ask a Question

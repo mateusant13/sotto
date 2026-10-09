@@ -1,0 +1,16 @@
+POP TASK-FIRE lines      = 160
+POP lines matching C1    = 164
+  SENT (wake dispatched)             147
+  QUEUED (not yet delivered)         7
+  REFUSED (already queued)           6
+  NO-OP (session already awake)      3
+  ABORT                              1
+
+FIRES WITH NO WAKE SENT  = 0 of 164 = 0.0% of the C1-visible outcomes
+... but against the DENOMINATOR that matters -- every TASK-FIRE:
+   0 of 160 fires produced a QUEUE-FAILED = 0.0% delivery loss
+
+QUEUE-FAILED reasons (POP, whole log):
+  exec-child-inflight          19
+  plan-busy                    7
+

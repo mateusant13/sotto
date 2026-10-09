@@ -1,0 +1,29 @@
+ALL-GATES window=2026-10-07T13:00:19.1865937-03:00 dir=H:\sotto\_moved\aireplay\_main glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+
+GATES POPULATION = 8   (globbed + explicitly included, deduped by path)
+  [ok] _lane1-trigger-gate.ps1  11956 B  mtime=2026-10-07T15:37:06.5170477Z  glob
+  [ok] _lane16-wake-gate.ps1  30116 B  mtime=2026-10-07T15:38:32.3829238Z  glob
+  [ok] _lane2-audio-gate.ps1  32249 B  mtime=2026-10-07T15:58:08.4358610Z  glob
+  [ok] _lane23-trigger-defects-gate.ps1  13674 B  mtime=2026-10-07T15:40:02.0953229Z  glob
+  [ok] _lane3-ringcap-gate.ps1  20673 B  mtime=2026-10-07T15:31:24.8011753Z  glob
+  [ok] _lane4-index-gate.ps1  9060 B  mtime=2026-10-07T15:31:34.3688424Z  glob
+  [ok] _lane7-window-gate.ps1  23027 B  mtime=2026-10-07T15:51:16.1927970Z  glob
+  [ok] _lane9-asr-gate.ps1  4391 B  mtime=2026-10-07T15:46:07.5324876Z  glob
+
+
+RESULT TABLE
+GATE                              EXIT     DURATION  VERDICT
+------------------------------------------------------------
+_lane1-trigger-gate.ps1           0           70.3s  PASS
+_lane16-wake-gate.ps1             1           89.6s  FAIL/EXIT1
+_lane2-audio-gate.ps1             0           43.5s  PASS
+_lane23-trigger-defects-gate.ps1  0           21.5s  PASS
+_lane3-ringcap-gate.ps1           0           26.4s  PASS
+_lane4-index-gate.ps1             0            4.2s  PASS
+_lane7-window-gate.ps1            0          132.9s  PASS
+_lane9-asr-gate.ps1               0          208.2s  PASS
+
+SUMMARY gates=8 passed=7 failed=1  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-130019
+  FAILED: _lane16-wake-gate.ps1  FAIL/EXIT1
+
+ALL-GATES FAIL

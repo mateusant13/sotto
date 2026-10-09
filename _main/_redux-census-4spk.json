@@ -1,0 +1,249 @@
+{
+  "instrument": "_redux-token-census.py (faithful copy of transcribe.py greedy, lines 235-262)",
+  "reference_loop": "H:\\sotto\\worker\\models\\parakeet-redux-reference\\transcribe.py",
+  "model_dir": "H:\\sotto\\worker\\models\\parakeet-redux-onnx-int4",
+  "wav": "H:\\sotto\\_main\\diar-models\\0-four-speakers-zh.wav",
+  "audio_s": 56.8606875,
+  "threads": 2,
+  "model_load_s": 1.951,
+  "encode_s": 15.639,
+  "encoder_frames": 711,
+  "arms": [
+    {
+      "seed": null,
+      "seed_piece": "(blank 8192)",
+      "wall_s": 2.182,
+      "n_steps": 279,
+      "frames": 711,
+      "n_nonblank": 53,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 226
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 1.96214e-07,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 1.81266e-07,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 1.88605e-07,
+          "best_rank": 847,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 1.80336e-07,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 1.85215e-07,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 1.84714e-07,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 226,
+          "max_prob": 0.999999046326,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.864415,
+      "tokens_sha256": "3ed3d6d1139bdaf08d2dbc4cfbfc685327c0611d14a0d3fb81cd189ee9142f0c",
+      "text": "Chez Igo, sous showan urso da impin. Same omen la bufanicia, so je limpin. Legwin da so schönpin. Che go de soya da soci impin."
+    },
+    {
+      "seed": 12,
+      "seed_piece": "<|diarize|>",
+      "wall_s": 1.893,
+      "n_steps": 288,
+      "frames": 711,
+      "n_nonblank": 42,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 246
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 1.356091e-06,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 1.338183e-06,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 1.337259e-06,
+          "best_rank": 569,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 1.34421e-06,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 1.375756e-06,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 1.345826e-06,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 246,
+          "max_prob": 0.999987840652,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.864886,
+      "tokens_sha256": "4cfe3d69d9840becc4b48100a858a8b3c13cef3aeb824e76abd94b9ec01ad641",
+      "text": "da inping. Same omen la bufanicia, soy impin. Legwind that so impinience. Check out a soyota so impin."
+    },
+    {
+      "seed": 13,
+      "seed_piece": "<|nodiarize|>",
+      "wall_s": 1.739,
+      "n_steps": 290,
+      "frames": 711,
+      "n_nonblank": 46,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 244
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 1.507141e-06,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 1.524128e-06,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 1.491556e-06,
+          "best_rank": 716,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 1.481205e-06,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 1.483962e-06,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 1.48465e-06,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 244,
+          "max_prob": 0.999964475632,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.858224,
+      "tokens_sha256": "efb1c006aa202fd5b21bee3b7f2b152c6dc00c3467cabc50a809754dba94bf69",
+      "text": ", Chez Igo, sohar impin. Same omen la bufanicia, soy impin. Legwind that so impin. Check out a soyota so impin."
+    },
+    {
+      "seed": 15,
+      "seed_piece": "<|audioseparator|>",
+      "wall_s": 2.219,
+      "n_steps": 283,
+      "frames": 711,
+      "n_nonblank": 40,
+      "counts": {
+        "12": 0,
+        "13": 0,
+        "14": 0,
+        "15": 0,
+        "218": 0,
+        "219": 0,
+        "8192": 243
+      },
+      "probe": {
+        "12": {
+          "count": 0,
+          "max_prob": 7.98318e-07,
+          "piece": "<|diarize|>"
+        },
+        "13": {
+          "count": 0,
+          "max_prob": 7.96156e-07,
+          "piece": "<|nodiarize|>"
+        },
+        "14": {
+          "count": 0,
+          "max_prob": 7.9376e-07,
+          "best_rank": 692,
+          "steps_top": 0,
+          "piece": "<|spkchange|>"
+        },
+        "15": {
+          "count": 0,
+          "max_prob": 7.84441e-07,
+          "piece": "<|audioseparator|>"
+        },
+        "218": {
+          "count": 0,
+          "max_prob": 7.69527e-07,
+          "piece": "<|spk0|>"
+        },
+        "219": {
+          "count": 0,
+          "max_prob": 7.90111e-07,
+          "piece": "<|spk1|>"
+        },
+        "8192": {
+          "count": 243,
+          "max_prob": 0.999973773956,
+          "piece": "<blk>"
+        }
+      },
+      "mean_argmax_prob": 0.870005,
+      "tokens_sha256": "4da8a6730be3d2f840e209016107444b81a049038c303c470e889aeff0d8e5e3",
+      "text": ", Chez Schuh, Urda Impin. Same omen la bufanicia, soy impin. Che go de soja da socia empin."
+    }
+  ]
+}

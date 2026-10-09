@@ -70,20 +70,24 @@ ASSETS = ('panel.css', 'caption-formulation.js', 'history-source.js', 'surface.j
 # The five directions as the owner's `designs.ts` declares them and as the
 # shipped manifest repeats them. THE EXPECTED SIDE of every comparison.
 EXPECTED = {
+    # `wordmark` is the name `sotto` as THIS direction paints it. theme-1's name is
+    # its wordmark; the other four carry `.chrome__brand` in their own header line.
+    # LOWERCASE EVERYWHERE — the owner wrote it that way and `text-transform` used
+    # to overrule him on two of the five.
     'theme-1': dict(id='tele', label='Teleprompter', family='Barlow Condensed',
-                    head_word='LENDO', state_word='LENDO', wordmark='SOTTO',
+                    head_word='LENDO', state_word='LENDO', wordmark='sotto',
                     foot_start='HISTÓRICO', foot_end='▲ EM CURSO',
                     index=False, led=False, meter=False, ramp=False, fog=False),
     'theme-2': dict(id='bcast', label='Broadcast', family='IBM Plex Mono',
                     head_word='REC', state_word='REC', wordmark=None,
-                    foot_start=None, foot_end='AO VIVO',
+                    foot_start=None, foot_end='LIVE',
                     index=True, led=False, meter=True, ramp=False, fog=False),
     'theme-3': dict(id='mano', label='Manuscrito', family='Newsreader',
-                    head_word='rascunho ao vivo', state_word=None, wordmark=None,
+                    head_word='rascunho live', state_word=None, wordmark=None,
                     foot_start='— escrito ao ouvido', foot_end=None,
                     index=False, led=False, meter=False, ramp=True, fog=False),
     'theme-4': dict(id='cine', label='Cinema Card', family='Fraunces',
-                    head_word='SOTTO', state_word='· ao vivo ·', wordmark=None,
+                    head_word='sotto', state_word='· live ·', wordmark=None,
                     foot_start='· · ·', foot_end=None,
                     index=False, led=False, meter=False, ramp=False, fog=True),
     'theme-5': dict(id='inst', label='Instrumento', family='Space Grotesk',
@@ -428,26 +432,63 @@ def check_theme(t, exp, problems, motion):
         bad('the theme button reads %r, expected the theme name %r'
             % (label, exp['label']))
 
+    # ── THE ORDINAL IS NOT PAINTED (owner, 2026-10-08) ─────────────────────────
+    # This block asserted the OPPOSITE until today: "the per-line ORDINAL is shown
+    # on the forming row" plus a `\d{3,}` match on the painted element. The owner
+    # had it removed TWICE — *"tira esse numero de 033 11:21:03"*, then *"to falando
+    # desse numero a esquerda. o vermelho. nao é pra ter mais ele"* — so the claim
+    # INVERTS, and that is exactly where an oracle starts lying: "the element is
+    # absent" is ALSO TRUE when the entire caption line has vanished. THE PAIR IS
+    # THE PROOF, and it is the owner's own pair: the ordinal must be absent from
+    # the paint AND the clock must still be there, on a committed row and on the
+    # forming one, with the forming row's clock a DIFFERENT colour (yellow against
+    # grey in his screenshot). The ordinal itself must survive as STATE, which is
+    # what `rowOrdinals` reads from `data-index`.
     if exp['index']:
-        if not t.get('indexShown'):
-            bad('the per-line ORDINAL is not shown on the forming row')
-        for name in ('committedIndex', 'formingIndex'):
+        if t.get('paintedIndexCount'):
+            bad('the per-line ORDINAL IS STILL PAINTED: %d element(s) %r'
+                % (t['paintedIndexCount'], t.get('paintedIndexTexts')))
+        # THE STATE HALF, READ FROM `data-index` AND NOT FROM THE PAINT. The first
+        # version of this assertion reused `indexShown`, which the probe computes
+        # from the `.caption__index` ELEMENT — so after the element was removed it
+        # could never be true, and the oracle would have demanded the very thing the
+        # owner had deleted. The ordinal's survival is a claim about `data-index`.
+        rows_state = [x for x in (t.get('rowOrdinals') or []) if str(x).isdigit()]
+        if not rows_state:
+            bad('the ordinal left the paint, but it must survive as STATE: no row '
+                'in the box carries a numeric data-index (%r)' % (t.get('rowOrdinals'),))
+        for name in ('committedTimeText', 'formingTimeText'):
             v = t.get(name)
-            if not (isinstance(v, str) and re.fullmatch(r'\d{3,}', v)):
-                bad('%s = %r, expected a 3-digit ordinal' % (name, v))
-        try:
-            if int(t['formingIndex']) != int(t['lastCommittedIndex']) + 1:
-                bad('forming ordinal %s is not the last committed %s + 1'
-                    % (t['formingIndex'], t['lastCommittedIndex']))
-        except (TypeError, ValueError):
-            pass
+            if not (isinstance(v, str) and re.fullmatch(r'\d{2}:\d{2}:\d{2}', v)):
+                bad('%s = %r, expected an HH:MM:SS clock beside the missing ordinal'
+                    % (name, v))
+        if not t.get('timesDiffer'):
+            bad("the forming row's clock is the SAME colour as the committed row's "
+                '(%r) — the owner\'s yellow-against-grey pair is gone'
+                % t.get('formingTimeColor'))
         # MONOTONIC ACROSS THE WHOLE BOX: trimming `MAX_CAPTIONS` must never
         # renumber what was said, so the ordinals of the rows on screen must rise.
         rows = [int(x) for x in (t.get('rowOrdinals') or []) if str(x).isdigit()]
         if len(rows) >= 2 and any(rows[k] <= rows[k - 1] for k in range(1, len(rows))):
             bad('the ordinals on screen are not strictly increasing: %r' % rows)
-    elif t.get('indexShown'):
-        bad('the per-line ordinal is shown, but this direction does not print one')
+    elif t.get('paintedIndexCount'):
+        bad('the per-line ordinal is PAINTED, but this direction does not print one')
+
+    # ── THE NAME `sotto`, IN EVERY DIRECTION (owner, 2026-10-08) ───────────────
+    # *"e bota o nome 'sotto' em todos os temas."* Counted over RENDERED elements
+    # only — the four chrome blocks that are not this direction's hold their own
+    # text in the DOM and would otherwise read as five names where the eye sees one.
+    # Lowercase is the point: `text-transform` is the one property that silently
+    # overrules his spelling, so it is asserted separately from the count.
+    if t.get('brandCount') != 1:
+        bad('the header paints the name %r time(s), expected exactly once: %r'
+            % (t.get('brandCount'), t.get('headerText')))
+    if str(t.get('brandTextTransform') or 'none') != 'none':
+        bad('the name is being text-transformed (%r) — the owner wrote it lowercase'
+            % t.get('brandTextTransform'))
+    if t.get('brandText') != 'sotto':
+        bad('the name reads %r, expected the lowercase %r'
+            % (t.get('brandText'), 'sotto'))
 
     if exp['led']:
         if not t.get('ledShown'):
@@ -573,7 +614,7 @@ def run_arm(browser, arm, page, wait_ms, problems, motion=False):
                                '' if not t.get('themeButtonLabelClipped') else ' CLIPPED')
             ind = []
             if exp.get('index'):
-                ind.append('index=%s' % t.get('formingIndex'))
+                ind.append('data-index=%s' % (t.get('rowOrdinals') or [])[-1:])
             if exp.get('led'):
                 ind.append('led=%s' % (t.get('ledAnimation') or 'static'))
             if exp.get('ramp'):
@@ -583,7 +624,12 @@ def run_arm(browser, arm, page, wait_ms, problems, motion=False):
             print('     %-6s %-22s %-22s %-16s %-9s %s'
                   % (t.get('theme'), (t.get('headText') or '')[:22],
                      (t.get('footEndText') or t.get('footStartText') or '')[:22],
-                     btn, 'yes' if exp.get('index') else 'no',
+                     btn,
+                     # THE COLUMN NO LONGER SAYS "yes" FOR A DIRECTION THAT PRINTS
+                     # ONE — nothing prints one any more, and a summary column that
+                     # still answers `yes` beside `index=None` is the same class of
+                     # lie this whole pass is about. It reports what is PAINTED.
+                     ('%d painted' % t['paintedIndexCount']) if t.get('paintedIndexCount') else 'none',
                      ' '.join(ind) or '-'))
         for r in (surface or {}).get('strip') or []:
             print('     strip %-6s button=%sx%s label=%r'

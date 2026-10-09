@@ -1,0 +1,504 @@
+{
+ "title": "Mumble · Live Transcription Room",
+ "url": "file:///H:/sotto/_main/_design-lane/zips/cinematic-2/dist/index.html",
+ "hash": "",
+ "search": "",
+ "viewport": [
+  380,
+  900
+ ],
+ "styleSheets": 2,
+ "rootChildren": [
+  {
+   "tag": "div",
+   "id": null,
+   "cls": "relative h-full w-full overflow-hidden",
+   "rect": [
+    0,
+    0,
+    380,
+    900
+   ],
+   "pos": "relative",
+   "bg": "rgba(0, 0, 0, 0)",
+   "font": "Inter, ui-sans-serif, system-ui, sans-serif",
+   "kids": 6,
+   "text": "Int. cellar bartable 6 · lamp down lowMumbleLate Shift RadioListening0:02‹03 · Cellar Sess"
+  }
+ ],
+ "varHosts": [
+  {
+   "tag": "div",
+   "id": null,
+   "cls": "relative h-full w-full overflow-hidden",
+   "depth": 1,
+   "vars": "--page: #0c0807; --text: #f3e8d7; --dim: #a88f6d; --accent: #d9a94f; --accent-2: #c98f7a; --live: #d9a94f; --surface: rgba(20,15,11,.7); --surface-2: rgba(255,236,196,.06); --line: rgba(226,196,140,.16); --radius: 18px; --blur: 18px; --shadow: 0 30px 80px -34px rgba(0,0,0,.9); --cap-bg: rgba(18,12,8,.46); --cap-text: #f8efe0; --cap-edge: rgba(230,196,138,.22);"
+  },
+  {
+   "tag": "div",
+   "id": null,
+   "cls": "absolute inset-0 overflow-hidden",
+   "depth": 2,
+   "vars": "background: var(--page);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "h-[7px] w-[7px] rounded-full",
+   "depth": 5,
+   "vars": "background: var(--accent); box-shadow: 0 0 14px var(--accent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "text-[10px] tracking-[0.32em] uppercase",
+   "depth": 5,
+   "vars": "color: color-mix(in srgb, var(--text) 78%, transparent);"
+  },
+  {
+   "tag": "div",
+   "id": null,
+   "cls": "mt-1.5 text-[10.5px] tracking-[0.18em] italic",
+   "depth": 4,
+   "vars": "color: color-mix(in srgb, var(--text) 46%, transparent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "absolute h-5 w-5 top-4 left-4 border-t border-l",
+   "depth": 4,
+   "vars": "border-color: color-mix(in srgb, var(--text) 22%, transparent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "absolute h-5 w-5 top-4 right-4 border-t border-r",
+   "depth": 4,
+   "vars": "border-color: color-mix(in srgb, var(--text) 22%, transparent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "absolute h-5 w-5 bottom-4 left-4 border-b border-l",
+   "depth": 4,
+   "vars": "border-color: color-mix(in srgb, var(--text) 22%, transparent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "absolute h-5 w-5 bottom-4 right-4 border-b border-r",
+   "depth": 4,
+   "vars": "border-color: color-mix(in srgb, var(--text) 22%, transparent);"
+  },
+  {
+   "tag": "div",
+   "id": null,
+   "cls": "flex items-center gap-3 rounded-full px-4 py-2.5",
+   "depth": 3,
+   "vars": "background: var(--surface); backdrop-filter: blur(var(--blur)); border: 1px solid var(--line); box-shadow: var(--shadow);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "absolute inset-0 rounded-full",
+   "depth": 6,
+   "vars": "background: color-mix(in srgb, var(--accent) 24%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": "h-1.5 w-1.5 rounded-full",
+   "depth": 6,
+   "vars": "background: var(--accent);"
+  },
+  {
+   "tag": "span",
+   "id": null,
+   "cls": null,
+   "depth": 5,
+   "vars": "font-family: \"Cormorant Garamond\", serif; font-size: 0.98rem; letter-spacing: -0.01em; color: var(--text);"
+  }
+ ],
+ "designControls": [
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "inline-flex items-center gap-2 rounded-full transition-colors duration-200 px-3 py-1.5 whitespace-nowrap order-first",
+   "label": "Start / pause listening (Space)",
+   "rect": [
+    -8,
+    25,
+    115,
+    29
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "px-2.5 py-1.5 transition-opacity hover:opacity-70",
+   "label": "Previous design (←)",
+   "rect": [
+    116,
+    27,
+    25,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "px-1 py-1.5 whitespace-nowrap transition-opacity hover:opacity-80",
+   "label": "All twenty designs (G)",
+   "rect": [
+    141,
+    26,
+    32,
+    27
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "px-2.5 py-1.5 transition-opacity hover:opacity-70",
+   "label": "Next design (→)",
+   "rect": [
+    173,
+    27,
+    25,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "inline-flex items-center gap-2 rounded-full transition-colors duration-200 px-3 py-1.5 whitespace-nowrap",
+   "label": "Playback speed (S)",
+   "rect": [
+    207,
+    25,
+    40,
+    29
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "inline-flex items-center gap-2 rounded-full transition-colors duration-200 px-3 py-1.5 whitespace-nowrap",
+   "label": "Designs (G)",
+   "rect": [
+    255,
+    26,
+    39,
+    27
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "inline-flex items-center gap-2 rounded-full transition-colors duration-200 px-3 py-1.5 whitespace-nowrap",
+   "label": "Toggle history panel (H)",
+   "rect": [
+    302,
+    26,
+    39,
+    27
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "inline-flex items-center gap-2 rounded-full transition-colors duration-200 px-3 py-1.5 whitespace-nowrap",
+   "label": "Immersive mode (I)",
+   "rect": [
+    349,
+    26,
+    39,
+    27
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2 py-1 transition-opacity hover:opacity-100",
+   "label": "Hide panel (H)",
+   "rect": [
+    300,
+    33,
+    47,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "everyone",
+   "rect": [
+    57,
+    140,
+    83,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "June",
+   "rect": [
+    146,
+    140,
+    53,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "Marlow",
+   "rect": [
+    205,
+    140,
+    74,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "Sofia",
+   "rect": [
+    285,
+    140,
+    57,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "Toma",
+   "rect": [
+    57,
+    170,
+    56,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "Reader",
+   "rect": [
+    119,
+    170,
+    68,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "rounded-full px-2.5 py-1 transition-colors",
+   "label": "Host",
+   "rect": [
+    192,
+    170,
+    54,
+    24
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "transition-opacity hover:opacity-70",
+   "label": "Export .txt",
+   "rect": [
+    57,
+    836,
+    83,
+    15
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "transition-opacity hover:opacity-70",
+   "label": "Follow on",
+   "rect": [
+    186,
+    836,
+    75,
+    15
+   ]
+  },
+  {
+   "tag": "button",
+   "selector": null,
+   "cls": "transition-opacity hover:opacity-70",
+   "label": "Clear",
+   "rect": [
+    306,
+    836,
+    41,
+    15
+   ]
+  }
+ ],
+ "textSamples": [
+  {
+   "text": "You're",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "night",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "shift",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "with",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "it's",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "just",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "gone",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "quarter",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "past",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "one.",
+   "size": 28.48,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "The room, so far",
+   "size": 19.2,
+   "tag": "h2",
+   "cls": "mt-1.5"
+  },
+  {
+   "text": "Mumble",
+   "size": 15.68,
+   "tag": "span",
+   "cls": null
+  },
+  {
+   "text": "You're on the night shift with me and it's just gone quarter past one.",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Which means the calls are about to get honest, that's how it always go",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Every week. Twelve to two and people start telling me the truth about ",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "I still think about the man who called about the kettle he kept in the",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Some objects get a face and you can't throw them out. That's just bein",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Hi, sorry, I know it's late where you are.",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Not at all, the desk is open until midnight. How can I help?",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "The calmer one is the one by the window, if that's possible.",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Low-key is a perfectly good way to spend an evening. Confirmed.",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Rain on a metal roof is the cheapest orchestra, and we had front row s",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "I learned that laughter needs no wattage, though it does need someone.",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "Stay for the second half, there's tea at the back.",
+   "size": 13.44,
+   "tag": "p",
+   "cls": "mt-1"
+  },
+  {
+   "text": "June",
+   "size": 10.56,
+   "tag": "span",
+   "cls": "uppercase"
+  }
+ ]
+}

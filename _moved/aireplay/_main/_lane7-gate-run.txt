@@ -1,0 +1,61 @@
+=== LANE 7 GATE ===
+  probe built (links the REAL src/capture/test_window.cpp): rc=0
+  capture binary built: rc=0
+
+--- ARM A: at 1920x1080 the output is BYTE-IDENTICAL to the pre-change capture ---
+    pre-change replay.cpp from bae4e1e extracted byte-faithfully (git blob e92c0b0fbdb1925bace182d7b73f974a52460044)
+    pre-change replay.h from bae4e1e extracted byte-faithfully (git blob c289914bb46f0594506843a5e27acab96874b4e6)
+    pre-change test_window.cpp from bae4e1e extracted byte-faithfully (git blob c7a13972c39622f538639f664d97563d57197f66)
+    pre-change test_window.h from bae4e1e extracted byte-faithfully (git blob cc409e427a0d908df76c3c788cf70da3ec9862da)
+  baseline bae4e1e CONFIRMED pre-lane by content (hardcodes 1920x1080, has no negotiation)
+  PRE binary built from the pinned pre-lane sources: rc=0
+  [A/pre] PASS  pre-change offline cut rc=0
+  [A/post] PASS  post-change offline cut rc=0
+  [A] PASS  both clips exist (pre=True post=True)
+  [A/len] PASS  byte length pre=97820321 post=97820321
+  [A/bytes] PASS  ACTUAL BYTES identical over 97820321 bytes (sha256 pre=A583975C755CA6E683E73566E6923399B58FD4DC5D3D1CAE0CB80EDA76B75AC1 post=A583975C755CA6E683E73566E6923399B58FD4DC5D3D1CAE0CB80EDA76B75AC1)
+  [A/negotiated] PASS  live arm negotiated 1920x1080 on this 1920x1080 desktop (the pre-lane literal)
+  [A/texture] PASS  NV12 texture created at 1920x1080
+
+--- ARM B: 2560x1440 and 3840x2160 negotiated; the named failure modes too ---
+  POPULATION: 6 output desktops x 4 requests = 24 decisions
+  WINDOW: negotiate_capture_window() as compiled from src/capture/test_window.cpp
+  [B/run] PASS  probe rc=0
+  [B/1440p] PASS  1440p -> 2560x1440 source=output-desktop clamped=0 auto=1
+  [B/1440p/req1080p] PASS  1440p/req1080p -> 1920x1080 source=requested clamped=0 auto=0
+  [B/1440p/req4k] PASS  1440p/req4k -> 2560x1440 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/1440p/req-odd] PASS  1440p/req-odd -> 2558x1438 source=requested clamped=0 auto=0
+  [B/4k] PASS  4k -> 3840x2160 source=output-desktop clamped=0 auto=1
+  [B/4k/req1080p] PASS  4k/req1080p -> 1920x1080 source=requested clamped=0 auto=0
+  [B/4k/req4k] PASS  4k/req4k -> 3840x2160 source=requested clamped=0 auto=0
+  [B/4k/req-odd] PASS  4k/req-odd -> 2558x1438 source=requested clamped=0 auto=0
+  [B/4k60] PASS  4k60 -> 3840x2160 source=output-desktop clamped=0 auto=1
+  [B/4k60/req1080p] PASS  4k60/req1080p -> 1920x1080 source=requested clamped=0 auto=0
+  [B/4k60/req4k] PASS  4k60/req4k -> 3840x2160 source=requested clamped=0 auto=0
+  [B/4k60/req-odd] PASS  4k60/req-odd -> 2558x1438 source=requested clamped=0 auto=0
+  [B/1080p] PASS  1080p -> 1920x1080 source=output-desktop clamped=0 auto=1
+  [B/1080p/req1080p] PASS  1080p/req1080p -> 1920x1080 source=requested clamped=0 auto=0
+  [B/1080p/req4k] PASS  1080p/req4k -> 1920x1080 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/1080p/req-odd] PASS  1080p/req-odd -> 1920x1080 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/small-monitor] PASS  small-monitor -> 1366x768 source=output-desktop clamped=0 auto=1
+  [B/small-monitor/req1080p] PASS  small-monitor/req1080p -> 1366x768 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/small-monitor/req4k] PASS  small-monitor/req4k -> 1366x768 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/small-monitor/req-odd] PASS  small-monitor/req-odd -> 1366x768 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/highdpi-logical] PASS  highdpi-logical -> 2560x1440 source=output-desktop clamped=0 auto=1
+  [B/highdpi-logical/req1080p] PASS  highdpi-logical/req1080p -> 1920x1080 source=requested clamped=0 auto=0
+  [B/highdpi-logical/req4k] PASS  highdpi-logical/req4k -> 2560x1440 source=requested-clamped-to-monitor clamped=1 auto=0
+  [B/highdpi-logical/req-odd] PASS  highdpi-logical/req-odd -> 2558x1438 source=requested clamped=0 auto=0
+  [B/population] PASS  POPULATION CHECK: 24 of 24 decisions observed
+  [B/every-case-hit] PASS  COVERAGE CHECK: 24 distinct labels exercised, 24 declared
+  failure modes named explicitly:
+  [B/mode/monitor-smaller-than-request] PASS  a 3840x2160 request on a 1366x768 monitor clamps to 1366x768 (source=requested-clamped-to-monitor clamped=1)
+  [B/mode/high-dpi-desktop] PASS  a 2560x1440 desktop takes 2560x1440 at AUTO and clamps a 4K request (source=requested-clamped-to-monitor)
+  [B/mode/odd-dimensions-floor] PASS  2559x1439 floors to 2558x1438 (even_floored=1) for NV12's half-size chroma plane
+  [B/real] PASS  real-desktop probe rc=0
+  [B/real-size] PASS  this box negotiated 1920x1080 from its own display mode
+
+--- ARM C (control): NOT RUN in this invocation. Re-run with -NegArm. ---
+  A gate that passes on both sides is worthless; run:
+    pwsh -File _lane7-window-gate.ps1 -NegArm
+
+LANE7-GATE PASS

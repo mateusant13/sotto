@@ -1,0 +1,6 @@
+POP sends=146 deliveries=121 other-outcomes=17
+GAP      POP=120 min=76s median=190s (3.2 min) max=2206s (36.8 min) p90=397s under180s=49/120 (41%)
+LATENCY  POP=121 min=27s median=87s (1.4 min) max=585s (9.8 min) p90=216s under180s=101/121 (83%)
+unfulfilled sends=25 (no delivery before the next send)
+window first=2026-10-07 12:22:04 last=2026-10-07 21:22:02
+

@@ -1,0 +1,66 @@
+== turn_ingress for the two delivered turns ==
+
+  turn_id=turn_633acf0e-40de-4e05-b8ff-5120e5f426f4
+     turn_id = 'turn_633acf0e-40de-4e05-b8ff-5120e5f426f4'
+     session_id = 'mvs_a00662bff55242cb9b56c0f1165bdad7'
+     source = 'turn'
+     client_request_id = 'minimax-code_hb_e3619b1e68aa'
+     claim_id = 'claim_4c7d86b7-7a57-444a-bcd2-3be683cf839b'
+     claim_source = 'api'
+     queue_item_ids_json = '["queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162"]'
+     input_json = '{}'
+     status = 'aborted'
+     accepted_at_ms = '2026-10-07 12:20:04'
+     accepted_sequence = '3687'
+     completed_at_ms = '2026-10-07 12:20:09'
+     queue_acknowledged_at_ms = '2026-10-07 12:20:04'
+     input_digest = 'sha256:1ca86a99e64a6677fe6a0c4521b781eb6a1554583f62a9c57157764f39b82ad6'
+     input_metadata_json = '{"attachmentCount":0,"hasContent":true,"source":"api","foreground":true,"pluginHookSession":{"ownership":{"claimId":"turn-lease:11228:8d9e0ed6-fb9a-4f31-b54d-53c2da62d2c4.d5401a05-'
+
+  turn_id=turn_muy999ue_j6wgbj
+     turn_id = 'turn_muy999ue_j6wgbj'
+     session_id = 'mvs_a00662bff55242cb9b56c0f1165bdad7'
+     source = 'turn'
+     client_request_id = 'None'
+     claim_id = 'None'
+     claim_source = 'None'
+     queue_item_ids_json = 'None'
+     input_json = '{}'
+     status = 'completed'
+     accepted_at_ms = '2026-10-07 12:21:19'
+     accepted_sequence = '3688'
+     completed_at_ms = '2026-10-07 12:23:27'
+     queue_acknowledged_at_ms = 'None'
+     input_digest = 'sha256:1839bfc6ed88b71af3b8ad9e1a42d537d0890a60254e3441b45c88efe27f4319'
+     input_metadata_json = '{"attachmentCount":0,"hasContent":true,"source":"api","foreground":true,"consumeQueuePause":true,"pluginHookSession":{"ownership":{"claimId":"turn-lease:14780:8e305d9f-ae01-45da-86'
+
+== turn_ingress newest 8 by rowid: session vs queue items ==
+  2026-10-07 12:23:11  sess=mvs_ff0eee1f8c src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_8e76f208-2083-4842-bffc-e24b qitems=["queue_a5056f48-ce4a-482d-a1e7-ced60f36c3f7"]
+  2026-10-07 12:23:09  sess=mvs_162c0f9fb2 src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_a8c31c7b-f126-4cb6-b17b-0ec7 qitems=["queue_51770ef3-1ac6-40e4-ba19-3871703a9401"]
+  2026-10-07 12:22:54  sess=mvs_d02f94523a src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_554605b5-bc52-4155-af0f-4be2 qitems=["queue_2f0ed28a-e91d-4224-9f85-f2a1c1aad372"]
+  2026-10-07 12:22:52  sess=mvs_32bc22a205 src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_2b52ca44-186d-4dc7-bfc8-3882 qitems=["queue_916acf19-4d1e-406f-a30a-bf76c2f7cba1"]
+  2026-10-07 12:22:30  sess=mvs_8cb1874c75 src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_9a718913-28e8-4b32-9af8-7246 qitems=["queue_df0440af-5809-4953-a85e-9a702d7d0751"]
+  2026-10-07 12:22:29  sess=mvs_00c97900f6 src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_a5462b0a-e339-4dc3-81c2-1281 qitems=["queue_18e84ceb-1fc0-4332-91cf-32a097e32742"]
+  2026-10-07 12:22:14  sess=mvs_c151e1021f src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_4aee946b-20ca-4fbe-951d-6f61 qitems=["queue_ba4bea23-92f0-41ac-8570-bb0f40dea93b"]
+  2026-10-07 12:22:13  sess=mvs_eb96cdb150 src=turn claim_src=background-task status=aborted
+      turn=turn_task_bg_bg_c12ffaa4-9fe3-41ab-a8ea-8f47 qitems=["queue_5a62e8dd-4b4a-4319-9356-d1b1c57ceca6"]
+
+== ingress rows referencing ANY queue_cf6aed5b or queue_1dfd5c7c or queue_f6b00dc4 or queue_ec7ae0a0 ==
+   queue_cf6aed5b: 0
+   queue_1dfd5c7c: 0
+   queue_f6b00dc4: 0
+   queue_ec7ae0a0: 1
+
+== turn_ingress rows for session mvs_a00662bf, newest 5 ==
+  2026-10-07 12:21:19 turn=turn_muy999ue_j6wgbj claim_src=None status=completed q=None
+  2026-10-07 12:20:04 turn=turn_633acf0e-40de-4e05-b8ff-5 claim_src=api status=aborted q=["queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162"]
+  2026-10-07 11:50:00 turn=turn_muy84yxt_152zfu claim_src=None status=completed q=None
+  2026-10-07 11:46:02 turn=turn_muy7zv69_qs4bxl claim_src=None status=completed q=None
+  2026-10-07 11:17:05 turn=turn_muy6yn26_eh0ecu claim_src=None status=completed q=None

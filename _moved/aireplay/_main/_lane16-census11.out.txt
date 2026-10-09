@@ -1,0 +1,13 @@
+NOW 12:21:04
+== queue rows NOW ==
+  id=4200 sess=mvs_ea552229 item=queue_1dfd5c7c status=queued claim=None created=2026-10-06 20:25:46 attempts=1
+  id=4691 sess=mvs_b7a9f3a7 item=queue_cf6aed5b status=queued claim=None created=2026-10-07 12:14:55 attempts=12
+
+== role='user' rows for TARGET session since 12:19 ==
+
+== ALL role='user' rows (any session) created since 12:15 ==
+
+== ORCHESTRATOR MANDATE marker: any role vs user ==
+   any= 22  user= 0
+
+== heartbeat.log tail ==

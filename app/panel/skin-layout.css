@@ -1,0 +1,124 @@
+/* ── WHERE THE SKIN SITS IN OUR OWN PANEL ────────────────────────────────────
+ *
+ * A skin is a FROZEN vendor design, mounted in a shadow root by `skin-host.js`.
+ * When one is active, `body[data-skin]` is set, our own caption box, transcript
+ * drawer and per-direction chrome are HIDDEN (the design paints those itself) and
+ * what remains of ours is exactly what the owner said would remain — verbatim:
+ * *"a UNICA coisa que vai mudar, e os botoes adicionais que temos"*. So the header
+ * keeps its control cluster (theme, gear, pause, hide) and the footer keeps the
+ * status line, because that line carries the WORKER'S OWN CAUSE and is the thing
+ * the owner clicks to revive the pipeline. Both float over the design.
+ *
+ * THE DESIGN PAINTS THE WINDOW. `#skin` is `position: absolute; inset: 0` over the
+ * slab, and the slab itself loses its border, its radius and its background: the
+ * window is the design's, edge to edge.
+ *
+ * OUR FLOATING CHROME WEARS THE DESIGN'S OWN PALETTE. `skin-host.js` copies the
+ * design's 15 custom properties onto `<body>` when it mounts, so the buttons and
+ * the status line take the design's `--surface`, `--line`, `--text` and `--accent`
+ * and read as part of it, while still being our controls.
+ *
+ * THE STRIP SURFACE IS UNTOUCHED: it has no room for a stage, so a skin never
+ * mounts there.
+ */
+
+#skin { display: none; }
+
+body[data-skin] #skin {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+body[data-surface="strip"] #skin { display: none !important; }
+
+/* The slab becomes a plain window: the design supplies the surface. */
+body[data-skin] .panel {
+  display: block;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+body[data-skin] .panel::before { display: none; }
+
+/* HIDDEN, because the design paints them. `!important` because the five directions
+   and the cinematic set turn some of these on with a theme-scoped rule of their
+   own, and a skin must win over any of them. */
+body[data-skin] .history,
+body[data-skin] .captions,
+body[data-skin] .chrome { display: none !important; }
+
+/* THE HEADER, REDUCED TO THE CONTROL CLUSTER. The design's own chrome already
+   carries a brand, so our wordmark would be the second one on screen. */
+body[data-skin] .panel__header {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  left: auto;
+  bottom: auto;
+  z-index: 40;
+  display: block;
+  margin: 0;
+}
+body[data-skin] .wordmark { display: none !important; }
+
+body[data-skin] .panel__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.16));
+  border-radius: 999px;
+  background: var(--surface, rgba(10, 14, 18, 0.72));
+  -webkit-backdrop-filter: blur(calc(var(--blur, 14px) / 2));
+  backdrop-filter: blur(calc(var(--blur, 14px) / 2));
+  box-shadow: var(--shadow, 0 18px 40px -28px rgba(0, 0, 0, 0.9));
+}
+
+/* THE STATUS LINE KEEPS ITS JOB: the worker's own cause, one line, and the target
+   the owner clicks to revive the pipeline. It sits in the strip of empty stage
+   under the caption plate, on the design's own surface colour. */
+body[data-skin] .status {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 3px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  padding: 3px 9px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  background: var(--surface, rgba(8, 12, 16, 0.66));
+  -webkit-backdrop-filter: blur(calc(var(--blur, 14px) / 2));
+  backdrop-filter: blur(calc(var(--blur, 14px) / 2));
+  color: var(--text, #e8eef2);
+  font-size: 10.5px;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+/* The per-direction footer labels are chrome, not information. */
+body[data-skin] .status .chrome { display: none !important; }
+body[data-skin] .status__text {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-skin] .status__dot { flex: 0 0 auto; }
+
+/* A worker failure still has to be visible on a skinned panel: the design's own
+   layers are decorative, this line is the only place the cause is printed. */
+body[data-skin] .status.status--error {
+  border-color: color-mix(in srgb, #f87171 55%, transparent);
+  color: #fecaca;
+}

@@ -27,7 +27,12 @@ function VerdictoFr([string]$tag) {
   $t = [System.IO.File]::ReadAllText($o)
   $m = [regex]::Match($t, 'Fraunces normal 300=([0-9.]+) \(([^)]*)\)')
   $res = if ($m.Success) { $m.Groups[2].Value } else { 'sem leitura' }
-  $line = "  {0,-22} t={1,5:N1}s  Fraunces normal300={2}  -> {3}" -f $tag, $sw.Elapsed.TotalSeconds, $m.Groups[1].Value, $res
+  # INVARIANT CULTURE, on purpose: this box runs pt-BR, whose number group separator is a
+  # PERIOD, so `{1,5:N1}` would render 1024.5 as "1.024,5" - read as one second, meant as a
+  # thousand.  `F1` under InvariantCulture prints "1024.5".  Same precedent as
+  # all-gates.ps1:356.  Gate: _lane25-locale-number-gate.ps1
+  $inv = [System.Globalization.CultureInfo]::InvariantCulture
+  $line = "  {0,-22} t={1,5}s  Fraunces normal300={2}  -> {3}" -f $tag, $sw.Elapsed.TotalSeconds.ToString('F1', $inv), $m.Groups[1].Value, $res
   Write-Output $line
   if (Test-Path -LiteralPath $udd) {
     $full = (Resolve-Path -LiteralPath $udd).Path
@@ -62,4 +67,4 @@ Start-Sleep -Seconds 6
 $c += (VerdictoFr "reposto +6s #4")
 $c += (VerdictoFr "reposto +6s #5")
 Write-Output ("  -> ainda viam AUSENTE: {0} de 5" -f (($c | Where-Object { $_ -match 'AUSENTE' }) | Measure-Object).Count)
-Write-Output ("tempo total: {0:N0}s   estado final: {1}" -f ((Get-Date) - $t0).TotalSeconds, (Get-ItemProperty -LiteralPath $k).$N1)
+Write-Output ("tempo total: {0}s   estado final: {1}" -f ((Get-Date) - $t0).TotalSeconds.ToString('F0', $inv), (Get-ItemProperty -LiteralPath $k).$N1)

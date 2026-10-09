@@ -1,0 +1,50 @@
+ALL-GATES window=2026-10-07T20:57:12.2477854-03:00 dir=H:\sotto\_moved\aireplay\_main glob=_lane*-gate.ps1 timeout=300s verdict-line=declare-FAIL-honoured=True, line-required=False
+
+GATES POPULATION = 15   (globbed + explicitly included, deduped by path)
+  [ok] _lane1-trigger-gate.ps1  11956 B  mtime=2026-10-07T15:37:06.5170477Z  glob
+  [ok] _lane16-wake-gate.ps1  52016 B  mtime=2026-10-07T16:46:42.3295676Z  glob
+  [ok] _lane17-chain-gate.ps1  26616 B  mtime=2026-10-07T16:31:10.5544526Z  glob
+  [ok] _lane18-ui-gate.ps1  16967 B  mtime=2026-10-07T16:22:58.4189042Z  glob
+  [ok] _lane19-receipt-audit-gate.ps1  15535 B  mtime=2026-10-07T16:28:51.5215621Z  glob
+  [ok] _lane2-audio-gate.ps1  32249 B  mtime=2026-10-07T15:58:08.4358610Z  glob
+  [ok] _lane21-agents-truth-gate.ps1  12482 B  mtime=2026-10-07T16:15:35.7076195Z  glob
+  [ok] _lane22-storage-gate.ps1  18045 B  mtime=2026-10-07T16:21:33.3913645Z  glob
+  [ok] _lane23-trigger-defects-gate.ps1  13674 B  mtime=2026-10-07T15:40:02.0953229Z  glob
+  [ok] _lane24-wake-defects-gate.ps1  32565 B  mtime=2026-10-07T16:23:32.0872455Z  glob
+  [ok] _lane25-locale-number-gate.ps1  15614 B  mtime=2026-10-07T16:48:47.6762474Z  glob
+  [ok] _lane3-ringcap-gate.ps1  36787 B  mtime=2026-10-07T16:25:42.4301700Z  glob
+  [ok] _lane4-index-gate.ps1  9060 B  mtime=2026-10-07T15:31:34.3688424Z  glob
+  [ok] _lane7-window-gate.ps1  23027 B  mtime=2026-10-07T15:51:16.1927970Z  glob
+  [ok] _lane9-asr-gate.ps1  4391 B  mtime=2026-10-07T15:46:07.5324876Z  glob
+
+    | [31;1mWrite-Error: [0mH:\sotto\_moved\aireplay\_main\_lane4-index-gate.ps1:51[0m
+    | [31;1m[0m[36;1mLine |[0m
+    | [31;1m[0m[36;1m[36;1m  51 | [0m .  (Test-Path $Gate)) { [36;1mWrite-Error "index gate: missing $Gate"[0m; exit 2 .[0m
+    | [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    | [31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mindex gate: missing H:\sotto\_moved\aireplay\src\index\selftest.py[0m
+
+RESULT TABLE
+GATE                              EXIT     DURATION  VERDICT
+------------------------------------------------------------
+_lane1-trigger-gate.ps1           0           67.7s  PASS
+_lane16-wake-gate.ps1             1           31.8s  FAIL/EXIT1
+_lane17-chain-gate.ps1            0           17.5s  PASS
+_lane18-ui-gate.ps1               0          223.2s  PASS
+_lane19-receipt-audit-gate.ps1    0           21.4s  PASS
+_lane2-audio-gate.ps1             0           62.2s  PASS
+_lane21-agents-truth-gate.ps1     0            0.5s  PASS
+_lane22-storage-gate.ps1          0            5.4s  PASS
+_lane23-trigger-defects-gate.ps1  0           11.3s  PASS
+_lane24-wake-defects-gate.ps1     0           89.5s  PASS
+_lane25-locale-number-gate.ps1    0           60.3s  PASS
+_lane3-ringcap-gate.ps1           0           21.3s  PASS
+_lane4-index-gate.ps1             1            0.5s  FAIL/EXIT1
+_lane7-window-gate.ps1            1           26.2s  FAIL/EXIT1
+_lane9-asr-gate.ps1               0           40.2s  PASS
+
+SUMMARY gates=15 passed=12 failed=3  logs=H:\sotto\_moved\aireplay\_main\_all-gates-logs\20261007-205712
+  FAILED: _lane16-wake-gate.ps1  FAIL/EXIT1
+  FAILED: _lane4-index-gate.ps1  FAIL/EXIT1
+  FAILED: _lane7-window-gate.ps1  FAIL/EXIT1
+
+ALL-GATES FAIL

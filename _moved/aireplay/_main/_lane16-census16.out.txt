@@ -1,0 +1,12 @@
+=== INDEPENDENT RE-CHECK of the headline claim ===
+  queue-driven turns (POP) = 78; with >=1 role='user' row = 78; WITHOUT = 0
+
+=== the traced delivery, re-read ===
+  ingress turn=turn_633acf0e-40de-4e05-b8ff-5120e5f426f4 qitems=["queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162"] status=aborted
+  user row id=225247 role='user' msg_id=msg-user-v1-D52aPwtIrpQdxgTD0f57LtdRvhNVHic3WgefMuudXhX
+
+=== control: the unlinked hand-pushed row ===
+  msg row 225419 turn=turn_muy999ue_j6wgbj -> qitems=None claim_source=None  => NOT a queue delivery
+
+=== runtime cron still dead? ===
+  newest cron_runs: 2026-10-06 10:11:00 (age 1591 min)

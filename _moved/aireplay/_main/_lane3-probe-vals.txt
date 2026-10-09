@@ -1,0 +1,12 @@
+PROBE total_physical_bytes=51262832640 total_physical_mib=48888 query_ok=1
+PROBE quarter_mib=12222 ceiling_binds=1 floor_applied=0
+PROBE dedicated_vram_bytes=16755195904 dedicated_vram_mib=15979
+PROBE old_cap_bytes=1047199744 old_cap_mib=998
+PROBE new_cap_bytes=4294967296 new_cap_mib=4096
+PROBE old_pct_of_ram=2.0428 new_pct_of_ram=8.3783
+PROBE clamp_probe_under=536870912 clamp_probe_over=4294967296
+PROBE case=1080p60 bitrate_mbps=45.00 want_mib=643.73 old_kept_s=186.17 new_kept_s=763.55 old_clipped=0 new_clipped=0 basis=DERIVED
+PROBE livepath case=1080p60 want_mib=0.00 chose_today_mib=643.73 chose_with_hookup_mib=643.73 hookup_needed=0 today_kept_s=120.00 hooked_kept_s=120.00 basis=DERIVED
+PROBE case=4K60 bitrate_mbps=180.00 want_mib=2574.92 old_kept_s=46.54 new_kept_s=190.89 old_clipped=1 new_clipped=0 basis=DERIVED
+PROBE livepath case=4K60 want_mib=0.00 chose_today_mib=998.69 chose_with_hookup_mib=2574.92 hookup_needed=1 today_kept_s=46.54 hooked_kept_s=120.00 basis=DERIVED
+PROBE done

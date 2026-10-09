@@ -1,0 +1,49 @@
+{
+ "page.html": {
+  "result": {
+   "href": "file:///H:/sotto/_main/_skin-owner/csp/page.html",
+   "violations": [],
+   "results": {
+    "shadowRoot": true,
+    "inlineStyleAttribute": "rgb(255, 0, 0)",
+    "inlineCustomProperty": "7px",
+    "childInlineAttribute": "700",
+    "inlineStyleElement": "rgb(0, 255, 0)",
+    "shadowStyleSheets": 2,
+    "vendorRuleApplied": "24px",
+    "vendorLetterSpacing": "4.8px",
+    "sheets": [
+     {
+      "href": "(inline)",
+      "rules": 1,
+      "types": [
+       1
+      ]
+     },
+     {
+      "href": "file:///H:/sotto/_main/_skin-owner/skins-probe.css",
+      "rules": 6,
+      "types": [
+       1,
+       1,
+       1,
+       1,
+       7,
+       7
+      ]
+     }
+    ],
+    "hostBackground": "rgba(0, 0, 0, 0)",
+    "bodyRuleReachedHost": false,
+    "animationName": "softIn",
+    "dotColor": "rgb(0, 0, 0)"
+   },
+   "errors": []
+  },
+  "console": []
+ },
+ "page-strict.html": {
+  "loadError": "ERR_FAILED (-2) loading 'file:///H:/sotto/_main/_skin-owner/csp/page-strict.html'",
+  "console": []
+ }
+}

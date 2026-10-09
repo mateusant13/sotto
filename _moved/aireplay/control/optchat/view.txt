@@ -4,8 +4,8 @@
 # project: h:\sotto\_moved\aireplay
 # entries: 0 (ceiling 40)
 # bytes-ceiling: 16384 chars
-# window rows read: 1 (ceiling 20000)
-# window: 2026-10-07T14:29:18Z .. 2026-10-07T14:29:18Z
-# newest message id in window: 221783
-# skipped: unparsed=0 not-owner=1
+# window rows read: 1055 (ceiling 20000)
+# window: 2026-10-07T14:29:18Z .. 2026-10-07T16:02:37Z
+# newest message id in window: 229833
+# skipped: unparsed=0 not-owner=1048
 [view] no owner directive found in the window.

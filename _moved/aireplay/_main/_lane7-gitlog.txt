@@ -1,0 +1,8 @@
+d6257ec heartbeat v2: wake the OWNER's session instead of spawning headless ones
+664644d capture: offline --cut-from-h264 proves the muxer without WGC or NVENC
+402251c receipts: refute pass on the integration audit + the ring-cap VRAM/RAM defect
+10ddd5f roadmap: correct P0 after the refute pass (glue vs missing features)
+a66da94 durability: track the moved ShadowPlay clone so git clean cannot take it
+5eca648 src-tauri: fix the Tauri 2 work_area() API so the shell builds
+a3c288f panel+shell+worker: verified work of 2026-10-07/08 (five design themes, per-theme chrome, HUD/Clear removed, typewriter reveal, measured transparency/blur, real audio-level wave contract; window icon + AUMID + taskbar ex-style, tray with Quit, centered surface, click-outside, edit mode; word-split fix with oracle, 10 Hz per-window meter; instruments and receipts with both-colour controls)
+11df66e docs: pin the post-report ls-files count (267 at the durability commit, 268 after the report)

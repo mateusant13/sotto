@@ -1,0 +1,23 @@
+ARM PASS-5-reachable GREEN states_rendered=11 of 11 tokens=HIDDEN,ARMING,IDLE,RECORDING,SAVING,HIDDEN_EXCLUSIVE,ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED
+ARM PASS-5-no-state-looks-idle GREEN painted_states=9 states_sharing_IDLEs_glyph=0 offenders=none HIDDEN_EXCLUSIVE_glyph=4292891962 IDLE_glyph=4283874936 (PASS-5's named falsifier)
+ARM PASS-5-error-never-reads-as-recording GREEN error_states=5 sharing_RECORDINGs_glyph=0 error_glyph=0xFFE0553A recording_glyph=0xFFE24A4A (SPEC ┬º1.3)
+ARM PASS-5-groups-match-spec-3.1 GREEN glyph_groups=saving:[ARMING,SAVING] armed:[IDLE] recording:[RECORDING] error:[ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED] expected_┬º3.1=saving:2,armed:1,recording:1,error:5
+ARM PASS-6-silent-device-facts GREEN line2="peak 9.2e-05 < floor 0.002 ÔÇö nothing is routed into it" has_peak=true has_floor=true
+ARM PASS-6-unmeasured-says-so GREEN line2="digital silence below the floor (peak not measured) ÔÇö nothing is routed into the device" says_not_measured=true prints_a_fake_zero=false
+ARM PASS-9-line1-is-enum-name GREEN mismatched=0 observed=none
+ARM SPEC-1.1-three-line-ceiling GREEN max_lines=3 states_over=0 over=none
+ARM SPEC-1.1-ceiling-holds-at-4000-chars GREEN chars_in=4000 line_count=2 line2_len=4000 (clamped by the binder's ellipsis, not here)
+ARM SPEC-3.4-error-carries-a-datum GREEN error_states=5 with_line2=5 tokens=ERROR_SILENT_DEVICE,ERROR_DEVICE_EXHAUSTED,ERROR_CORRUPT_ROW,ERROR_ENCODER_REFUSED,ERROR_PROTECTED
+ARM SPEC-4.3-binding-line-not-silent GREEN line3="Alt+F9 taken by another app ┬À Ctrl+F9 live ┬À Alt+F10 live ┬À Alt+F11 live ┬À Ctrl+F12 live ┬À PrintScreen live ┬À Ctrl+F10 live ┬À Alt+Z live ┬À Alt+S live ┬À Alt+F7 live"
+ARM SPEC-5-dpi-and-25pct-cap GREEN dpi96@1920:w=480 font=13 share=25.0% | dpi96@2560:w=480 font=13 share=18.8% | dpi96@3840:w=480 font=13 share=12.5% | dpi144@3840:w=720 font=20 share=18.8% | dpi192@3840:w=960 font=22 share=25.0% cap_ok=true font_clamped_12_22=true
+ARM SPEC-7-no-inert-param GREEN params_declared=12 dangling=none names=corner_radius_px,fade_in_ms,fade_out_ms,font_px_primary,font_px_secondary_floor,font_px_secondary_ratio,glyph_px,inset_px,plate_max_w_px,plate_min_w_px,ring_seconds_decimals,success_hold_ms
+ARM DEAL-6.3-overlay-vs-replay-disjoint GREEN pairs=0 overlays=[Alt+C,Alt+Shift+C,Ctrl+Alt+C,Ctrl+Shift+C] ladder=[Ctrl+Alt+R,Alt+F11,Ctrl+F12,F11,F10,Alt+F10,Alt+F9,PrintScreen,F12]
+ARM DEAL-6.3-overlay-vs-hud-disjoint GREEN pairs=0 overlaps=none
+ARM DEAL-6.3-hud-overlaps-all-declared GREEN hud_rows_mirroring_a_rung=5 declared_via_dup_of=5 undeclared=none declared=H1:Alt+F9<-Alt+F9 H3:Alt+F10<-Alt+F10 H4:Alt+F11<-Alt+F11 H5:Ctrl+F12<-Ctrl+F12 H6:PrintScreen<-PrintScreen
+ARM DEAL-2.2-F12-last GREEN ladder_tail=Ctrl+Alt+R > Alt+F11 > Ctrl+F12 > F11 > F10 > Alt+F10 > Alt+F9 > PrintScreen > F12 last=F12
+ARM CONTROL-collisions-detects-real-duplicate GREEN input=X(vk=0x78,mods=1),Y(same) vs [X] detected=2 found=X <-> X | Y <-> X expected=2 (|a|x|b|)
+ARM CONTROL-collisions-clean-on-distinct GREEN input=X(vk=0x78,mods=1) vs Z(vk=0x78,mods=2) detected=0 found=none (same vk, different mods => not a pair)
+
+POPULATION arms=19 states_rendered=11 bindings_declared=10 dpi_cases=5
+WINDOW none ÔÇö headless, no window was created, no audio, no display required (see the file header for why)
+VERDICT PASS green=19 red=0

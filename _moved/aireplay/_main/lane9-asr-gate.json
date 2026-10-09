@@ -1,0 +1,207 @@
+{
+ "arms": [
+  {
+   "arm": "A-en",
+   "wav": "H:\\sotto\\_main\\_redux-long\\src-en-8s.wav",
+   "wav_audio_s": 8.543,
+   "wav_format": {
+    "path": "H:\\sotto\\_main\\_redux-long\\src-en-8s.wav",
+    "sample_rate": 16000,
+    "channels": 1,
+    "sampwidth": 2,
+    "frames": 136689,
+    "duration_s": 8.543
+   },
+   "language_of_clip": "English",
+   "transcript": "The radio announced that the bridge over the river will be closed next Monday. Residents need an alternative route to get to work.",
+   "transcript_sha256": "b7e338fa06da53015bdddaec588a55967f51a95ce2d2ea2e943bed6a5680a790",
+   "transcript_chars": 130,
+   "oracle": "H:\\sotto\\_main\\redux-en.txt",
+   "oracle_ref_kind": "DIFFERENT ENGINE (Redux ternary) -- not human labels",
+   "agrees_with_oracle": true,
+   "wer_vs_oracle": {
+    "wer": 0.0,
+    "wer_pct": 0.0,
+    "errors": 0,
+    "substitutions": 0,
+    "deletions": 0,
+    "insertions": 0,
+    "ref_words": 23,
+    "hyp_words": 23
+   },
+   "wer_caveat": "agreement with another engine's transcript, NOT a human-labelled WER",
+   "n_segments": 2,
+   "provider_requested": "cpu",
+   "provider_loaded": [
+    [
+     "CPUExecutionProvider"
+    ],
+    [
+     "CPUExecutionProvider"
+    ]
+   ],
+   "provider_cpu_only": true,
+   "language_conditioned": false,
+   "metrics": {
+    "load_s": 3.552,
+    "infer_s": 1.322,
+    "rtfx_steady": 11.52,
+    "rss_after_load_mb": 740.8,
+    "cpu_median_pct": 914.1,
+    "audio_s": 8.543,
+    "n_segments": 2
+   },
+   "max_wer": 0.0,
+   "verdict": "PASS",
+   "why": "2 segments, 130 chars, exact match with the oracle"
+  },
+  {
+   "arm": "A-pt",
+   "wav": "H:\\sotto\\_main\\_redux-long\\src-pt-15s.wav",
+   "wav_audio_s": 15.0,
+   "wav_format": {
+    "path": "H:\\sotto\\_main\\_redux-long\\src-pt-15s.wav",
+    "sample_rate": 16000,
+    "channels": 1,
+    "sampwidth": 2,
+    "frames": 240000,
+    "duration_s": 15.0
+   },
+   "language_of_clip": "Portuguese",
+   "transcript": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho.",
+   "transcript_sha256": "4ab078ed0898ac0e68ed50bc855074e2ec45b07ded79dd438a13c9f1f4c7a2c4",
+   "transcript_chars": 159,
+   "oracle": "H:\\sotto\\_main\\redux-ptbr.txt",
+   "oracle_ref_kind": "DIFFERENT ENGINE (Redux ternary) -- not human labels",
+   "agrees_with_oracle": true,
+   "wer_vs_oracle": {
+    "wer": 0.0,
+    "wer_pct": 0.0,
+    "errors": 0,
+    "substitutions": 0,
+    "deletions": 0,
+    "insertions": 0,
+    "ref_words": 27,
+    "hyp_words": 27
+   },
+   "wer_caveat": "agreement with another engine's transcript, NOT a human-labelled WER",
+   "n_segments": 2,
+   "provider_requested": "cpu",
+   "provider_loaded": [
+    [
+     "CPUExecutionProvider"
+    ],
+    [
+     "CPUExecutionProvider"
+    ]
+   ],
+   "provider_cpu_only": true,
+   "language_conditioned": false,
+   "metrics": {
+    "load_s": 4.273,
+    "infer_s": 1.457,
+    "rtfx_steady": 15.03,
+    "rss_after_load_mb": 741.3,
+    "cpu_median_pct": 1053.5,
+    "audio_s": 15.0,
+    "n_segments": 2
+   },
+   "max_wer": 0.0,
+   "verdict": "PASS",
+   "why": "2 segments, 159 chars, exact match with the oracle"
+  },
+  {
+   "arm": "B-lang",
+   "graph_inputs": {
+    "encoder": [
+     "audio_signal",
+     "length"
+    ],
+    "decoder_joint": [
+     "encoder_outputs",
+     "targets",
+     "target_length",
+     "input_states_1",
+     "input_states_2"
+    ]
+   },
+   "language_inputs_declared": [],
+   "language_conditioned": false,
+   "onnx_asr_raw_by_language": {
+    "en": {
+     "sha256": "6a5d7b8acad6babf7a614adc0da2d3ddc90e118329490b3468af339900a5d5f9",
+     "chars": 159,
+     "identical_to_no_arg": true
+    },
+    "pt": {
+     "sha256": "6a5d7b8acad6babf7a614adc0da2d3ddc90e118329490b3468af339900a5d5f9",
+     "chars": 159,
+     "identical_to_no_arg": true
+    },
+    "Portuguese": {
+     "sha256": "6a5d7b8acad6babf7a614adc0da2d3ddc90e118329490b3468af339900a5d5f9",
+     "chars": 159,
+     "identical_to_no_arg": true
+    },
+    "klingon": {
+     "sha256": "6a5d7b8acad6babf7a614adc0da2d3ddc90e118329490b3468af339900a5d5f9",
+     "chars": 159,
+     "identical_to_no_arg": true
+    }
+   },
+   "onnx_asr_swallows_every_language": true,
+   "swallowed": [
+    "en",
+    "pt",
+    "Portuguese",
+    "klingon"
+   ],
+   "our_engine_by_language": {
+    "en": "refused: LanguageNotSupportedError",
+    "pt": "refused: LanguageNotSupportedError",
+    "klingon": "refused: LanguageNotSupportedError"
+   },
+   "our_engine_refuses_all": true,
+   "probe_audio_s": 15.0,
+   "verdict": "PASS",
+   "why": "graph declares NO language input; onnx_asr ignores the kwarg for all 4 values (identical transcript); our engine refuses all of them"
+  },
+  {
+   "arm": "D-provider-live",
+   "provider_requested": "cuda",
+   "outcome": "refused: provider 'CUDAExecutionProvider' did not load (ORT fell back silently): sessions=[['CPUExecutionProvider'], ['CPUExecutionProvider']], available=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']. On this box CUDA is requested but not loadable (AGENTS.md:230-234); use --provider cpu.",
+   "refused": true,
+   "cpu_arm_loads": true,
+   "cpu_session_providers": [
+    [
+     "CPUExecutionProvider"
+    ],
+    [
+     "CPUExecutionProvider"
+    ]
+   ],
+   "cpu_only": true,
+   "verdict": "PASS",
+   "why": "the LIVE engine refuses --provider cuda (ProviderUnavailableError) and still loads cpu-only [['CPUExecutionProvider'], ['CPUExecutionProvider']]"
+  },
+  {
+   "arm": "C-control",
+   "copy_dir": "G:\\Temp\\lane9-ctl\\asr",
+   "copy_engine_sha256": "7c2dbe3f2ad8407ccdcf73e1f1cec4cb209663b99b4a929458a38df8627b8be9",
+   "findings": {
+    "control_imported_from": "G:\\Temp\\lane9-ctl\\asr\\__init__.py",
+    "control_model_dir": "H:\\sotto\\_moved\\aireplay\\models\\parakeet-tdt-0.6b-v3-onnx",
+    "cuda_silently_accepted": true,
+    "ctl_recognize_takes_language": false,
+    "ctl_recognize_accepts_pt": "TypeError (pre-cure signature): OnnxAsrEngine.recognize() got an unexpected keyword argument 'language'",
+    "ctl_recognize_accepts_en": "TypeError (pre-cure signature): OnnxAsrEngine.recognize() got an unexpected keyword argument 'language'",
+    "onnx_asr_swallow_pt": "159 chars, sha 6a5d7b8acad6, identical_to_no_arg=True",
+    "onnx_asr_swallow_en": "159 chars, sha 6a5d7b8acad6, identical_to_no_arg=True"
+   },
+   "expect": "cures removed => cuda is silently accepted and onnx_asr swallows a language",
+   "verdict": "PASS",
+   "why": "control reproduced the pre-cure defect: the copy accepted a provider that did not load, and onnx_asr accepted a language the export cannot honour",
+   "files_copied": 10
+  }
+ ]
+}

@@ -1,0 +1,8 @@
+EXCLUSIONS FROM ARM-3 (printed so they cannot hide):
+  ARM-3 is LINE-scoped by design: a line containing the word 'measured' must carry
+  an ISO date on that same line.  There is NO allowlist of exempted lines -- a
+  blanket exemption is how a 'measured with no date' claim would survive.  Lines
+  that merely NAME the bad 2026-10-08 stamp (the correction note at the top of the
+  file) contain no word 'measured', so ARM-3/ARM-4 never see them.
+
+  ARM-4 exempts nothing either: it only fires on lines that also assert a measurement.

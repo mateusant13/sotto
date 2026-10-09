@@ -1,0 +1,40 @@
+=== each refusal, reconstructed at the instant (POP=2) ===
+
+  13:05:05 exec REFUSED rc=4 (ground truth: a turn WAS active)
+    A  sessions.status            = 'idle'   -> PREDICTS-BUSY? False
+    D  newest turn accepted       = 13:04:10 completed_at=13:06:31
+       was it OPEN at 13:05:05?      = True   -> PREDICTS-BUSY? True
+
+  13:08:59 exec REFUSED rc=4 (ground truth: a turn WAS active)
+    A  sessions.status            = 'idle'   -> PREDICTS-BUSY? False
+    D  newest turn accepted       = 13:07:11 completed_at=13:10:53
+       was it OPEN at 13:08:59?      = True   -> PREDICTS-BUSY? True
+
+=== TURN DURATION DISTRIBUTION, whole population (not top-N) ===
+  POP completed turns = 3743
+    min          0.0 min
+    median      11.8 min
+    p90         41.8 min
+    p99         98.9 min
+    max        253.6 min
+
+=== unfinished turns: can the ingress signal WEDGE the channel? ===
+  POP unfinished (whole store) = 10
+    sess=mvs_447d824a122e4973bd7be4d063bb49b4 status=accepted accepted=12:11:46 age=60.3min
+    sess=mvs_706338a16e5b4ba298f8041acc0c89c4 status=accepted accepted=12:12:31 age=59.5min
+    sess=mvs_eba1736b3c1b438d9661d84bc6328f53 status=accepted accepted=12:53:24 age=18.6min
+    sess=mvs_02ae37853c5c427f9e7c8e0dcf27ffcd status=accepted accepted=12:57:01 age=15.0min
+    sess=mvs_39df0aab0ac847ffb973efd8c1f7c652 status=accepted accepted=12:57:15 age=14.8min
+    sess=mvs_3ba7e94ca8864584b60c4840a1284ff5 status=accepted accepted=12:58:27 age=13.6min
+    sess=mvs_97c6a61dfa3642ab8a80f3f7f17346d4 status=accepted accepted=13:02:36 age=9.4min
+    sess=mvs_48975f0c39d24d1a890c25faf43b397b status=accepted accepted=13:02:46 age=9.3min
+    sess=mvs_b7a9f3a7db404912b32d28fc11b83645 status=accepted accepted=13:03:47 age=8.2min
+    sess=mvs_9d79f4d4da2b4bf8a7f3a61267e8be0f status=accepted accepted=13:06:29 age=5.5min
+  The ingress signal carries NO expiry of its own, so it is used only
+  BOUNDED BY AGE; the lease carries a real expiry and is used as the
+  primary.  Both are backstops: no pre-flight signal can be perfect,
+  which is why the driver also falls back to the QUEUE on refusal.
+
+=== locks table hygiene (why the lease cannot rot) ===
+  POP rows (whole table) = 10
+    owner_kind='turn' n=10 without_expiry=0 already_expired=0

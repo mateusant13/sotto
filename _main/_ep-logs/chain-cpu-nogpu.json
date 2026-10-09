@@ -1,0 +1,47 @@
+{
+  "executable": "H:\\sotto\\_main\\_epvenvs\\cpu\\Scripts\\python.exe",
+  "ort_version": "1.30.0",
+  "available": [
+    "AzureExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "preference_order": [
+    "DmlExecutionProvider",
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "force_fail_level": -1,
+  "chosen": "CPUExecutionProvider",
+  "trace": [
+    {
+      "level": 0,
+      "provider": "DmlExecutionProvider",
+      "registered": false,
+      "attempted": false,
+      "used": null,
+      "seconds": 0.0,
+      "result": "not-registered (package does not offer it)"
+    },
+    {
+      "level": 1,
+      "provider": "CUDAExecutionProvider",
+      "registered": false,
+      "attempted": false,
+      "used": null,
+      "seconds": 0.0,
+      "result": "not-registered (package does not offer it)"
+    },
+    {
+      "level": 2,
+      "provider": "CPUExecutionProvider",
+      "registered": true,
+      "attempted": true,
+      "used": [
+        "CPUExecutionProvider"
+      ],
+      "seconds": 3.459,
+      "result": "OK"
+    }
+  ],
+  "startup_log_line": "EP_CHAIN chosen=CPUExecutionProvider available=AzureExecutionProvider,CPUExecutionProvider trace=DmlExecutionProvider:not-registered (package does not offer it) > CUDAExecutionProvider:not-registered (package does not offer it) > CPUExecutionProvider:OK"
+}

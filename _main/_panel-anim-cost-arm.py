@@ -60,7 +60,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, os.pardir))
-PANEL = os.path.join(REPO, 'app', 'panel')
+# `SOTTO_PANEL_DIR` points the WHOLE arm — both the copies `build_copy` reads and
+# the `/panel/` route the server serves — at a DIFFERENT copy of the panel, so an
+# arm can be run against a panel with exactly ONE feature removed while every other
+# byte, and the media state, stay identical. Same name and same purpose as
+# `_main/_panel2-dom-probe.js`'s override (L72-73): a real run of a MUTANT COPY is a
+# control; an expectation written from the same intuition as the code under test is
+# not. Unset = the shipped panel, byte for byte.
+PANEL = os.environ.get('SOTTO_PANEL_DIR') or os.path.join(REPO, 'app', 'panel')
 OUTDIR = os.path.join(HERE, '_audit-render')
 REL = '../../app/panel/'
 
@@ -92,7 +99,14 @@ LIMITS = {
     ('frame', 'p95'): 4.0,             # ms on the 95th percentile frame
     ('frame', 'over50'): 2,            # frames over 50 ms it may add
     ('push', 'mean'): 0.30,            # ms per partial on the panel's own path
+    ('forcedLayout', 'mean'): 0.25,    # ms/frame a compositor-only animation may add
+                                       # to a READ that forces a pending layout
 }
+
+# The forced-layout channel is only worth having if the CONTROL moves it. This
+# is the smallest delta that counts as "moved": below it, the channel cannot
+# resolve a relayout and its green on the real arms would be an empty promise.
+FORCED_MIN_DELTA = 0.05
 
 
 def find_browser(which):
@@ -150,7 +164,7 @@ class Beacon(BaseHTTPRequestHandler):
             self.end_headers()
             return
         route = self.path.split('?')[0]
-        for prefix, root in (('/panel/', os.path.join(REPO, 'app', 'panel')),
+        for prefix, root in (('/panel/', PANEL),
                              ('/probe/', HERE),
                              ('/arm/', OUTDIR)):
             if route.startswith(prefix):
@@ -297,6 +311,7 @@ def main():
                 all_ok = False
                 continue
             rows[arm] = payload
+            fl = payload.get('forcedLayout') or {}
             print('   %-9s reducedMotion=%-5s loaf=%s styleAndLayout=%s blocking=%s '
                   'frame.p50=%s p95=%s max=%s over50=%s push.mean=%s'
                   % (arm, payload.get('reducedMotion'), payload['loaf']['count'],
@@ -306,10 +321,75 @@ def main():
                      (payload.get('frame') or {}).get('max'),
                      (payload.get('frame') or {}).get('over50'),
                      payload['push']['mean']))
-            if not payload.get('loafSupported'):
-                print('        NOTE: no long-animation-frame entries at all — the '
-                      'style/layout channel is empty for this arm')
+            print('   %-9s windowMs=%s loaf.seen=%s loaf.dropped=%s '
+                  'longtask.seen=%s longtask.dropped=%s '
+                  'forcedLayout n=%s skipped=%s mean=%s max=%s'
+                  % ('', payload.get('windowMs'), payload['loaf'].get('seen'),
+                     payload['loaf'].get('dropped'),
+                     payload['longtask'].get('seen'),
+                     payload['longtask'].get('dropped'),
+                     fl.get('count'), fl.get('skipped'), fl.get('mean'), fl.get('max')))
+            print('   %-9s forcedLayout split: led.mean=%s list.mean=%s  (the theme animates '
+                  'the led; the control dirties the list)'
+                  % ('', (payload.get('forcedLed') or {}).get('mean'),
+                     (payload.get('forcedList') or {}).get('mean')))
+            ctl = payload.get('control') or {}
+            print('   %-9s control installed=%s writes=%s skipped=%s applied=%s'
+                  % ('', ctl.get('installed'), ctl.get('writes'), ctl.get('skipped'),
+                     ctl.get('applied')))
+            # THE CONTROL'S PROOF OF LIFE, GATED. `installed` alone is a claim
+            # about intent and was already wrong once (the old version injected a
+            # <style> element, which `panel.html`'s `style-src 'self'` meta CSP
+            # refuses, so the rule never reached the CSSOM and the control arm was
+            # behaviourally identical to `on`). `writes` counts the CSSOM writes
+            # this probe itself made, so it cannot be faked that way. An arm that
+            # says it installed a control and then wrote nothing is a FAILURE.
+            if arm == 'relayout':
+                if not ctl.get('installed'):
+                    all_ok = False
+                    print('        FAIL: the relayout arm did not install the control — '
+                          'nothing distinguishes it from the `on` arm')
+                elif not ctl.get('writes'):
+                    all_ok = False
+                    print('        FAIL: the control installed and made ZERO writes '
+                          '(%s frame(s) skipped) — a vacuous control, so any PASS on the '
+                          'real arms means nothing' % ctl.get('skipped'))
+            if not payload.get('loafObserver'):
+                print('        NOTE: the long-animation-frame OBSERVER could not be '
+                      'installed — the style/layout channel does not exist for this arm')
+            elif not payload['loaf'].get('count'):
+                print('        NOTE: the observer is installed and saw %s entr(ies), but '
+                      '%s of them started before the measurement window — the style/layout '
+                      'channel is EMPTY inside the window'
+                      % (payload['loaf'].get('seen'), payload['loaf'].get('dropped')))
+            if not fl.get('count'):
+                all_ok = False
+                print('        FAIL: the forced-layout read never ran (%s frame(s) skipped '
+                      'for a missing node) — the channel is empty' % fl.get('skipped'))
         results[theme] = rows
+
+        # THE PAIR'S PREMISE, GATED — NOT MERELY PRINTED. `reduced` vs `on` is a PAIR
+        # only if the two arms really ran in DIFFERENT media states; every delta below
+        # rests on that and nothing else. `reducedMotion` used to be PRINTED per arm and
+        # never asserted, so if headless Edge had defaulted to `no-preference` both arms
+        # would carry motion, the delta would measure the noise between two identical
+        # runs, and the instrument would still print a number and a verdict. That is the
+        # same defect the `<style>`-injection control had three times: a premise that is
+        # only printed is not gated. Expected values are MEASURED, not assumed — all ten
+        # `_panel-anim-cost-*.log` runs agree: reduced=True, on=False, relayout=False.
+        want_motion = {'reduced': True, 'on': False, 'relayout': False}
+        for _arm, _want in sorted(want_motion.items()):
+            if _arm not in rows:
+                continue
+            _got = rows[_arm].get('reducedMotion')
+            if _got is not _want:
+                all_ok = False
+                print('   MEDIA PAIR: FAIL — the %s arm reported reducedMotion=%r, '
+                      'expected %r: the arms are NOT in different media states, so every '
+                      'on-vs-reduced delta below compares an arm with itself and is '
+                      'VACUOUS' % (_arm, _got, _want))
+            else:
+                print('   MEDIA PAIR: %s reducedMotion=%r as expected' % (_arm, _got))
 
         if 'reduced' in rows and 'on' in rows:
             v = violations(rows['on'], rows['reduced'])
@@ -324,18 +404,60 @@ def main():
         else:
             all_ok = False
 
+        # THE CONTROL'S OWN QUESTION, STATED CORRECTLY. This block used to apply
+        # the `on`-vs-`reduced` LIMITS to a `relayout`-vs-`on` delta and, when
+        # they did not fire, print "THAT IS A FAILING CONTROL" AND set
+        # all_ok=False — while the pair assertion 20 lines below printed PASS for
+        # the same control. Two opposite verdicts on one control is a bug in the
+        # arm, not a finding: those limits judge MAGNITUDE (is the animation's
+        # cost above the owner's threshold?) and this is a SENSITIVITY question
+        # (can the channel see a relayout at all?). The sensitivity claim is the
+        # pair assertion below, and only it. What is worth printing here is the
+        # measured fact that the magnitude limits do NOT catch a per-frame
+        # relayout on their own.
         if 'on' in rows and 'relayout' in rows:
-            v = violations(rows['relayout'], rows['on'])
-            if v:
-                print('   CONTROL (width-animated copy) vs ON: RED-as-expected — the '
-                      'same limits catch it:')
-                for name, d, lim in v:
-                    print('     - %s +%s (limit %s)' % (name, d, lim))
-            else:
+            d = delta(rows['relayout'], rows['on'], ('forcedLayout', 'mean'))
+            lim = LIMITS.get(('forcedLayout', 'mean'))
+            if d is not None and d < lim:
+                print('   CONTROL (relayout-forcing copy) vs ON: +%s ms/frame, UNDER the '
+                      '%s limit — so these limits judge MAGNITUDE only and would NOT flag a '
+                      'per-frame relayout by themselves; the channel\'s SENSITIVITY is '
+                      'asserted by the pair below, not by this limit' % (round(d, 3), lim))
+            elif d is not None:
+                print('   CONTROL (relayout-forcing copy) vs ON: +%s ms/frame, over the %s '
+                      'limit — the limits catch a per-frame relayout too'
+                      % (round(d, 3), lim))
+        else:
+            all_ok = False
+
+        # THE PAIR THE FORCED-LAYOUT CHANNEL NEEDS. The control being caught by
+        # `loaf.styleAndLayout` alone would leave the new channel decorative: a
+        # channel that never moves cannot say NO, so its green on the real arms
+        # is worth nothing. This asserts the control DOES move it, by a margin
+        # the channel can resolve.
+        if 'on' in rows and 'relayout' in rows:
+            d = delta(rows['relayout'], rows['on'], ('forcedLed', 'mean'))
+            base_mean = (rows['on'].get('forcedLed') or {}).get('mean')
+            cand_mean = (rows['relayout'].get('forcedLed') or {}).get('mean')
+            if d is None:
                 all_ok = False
-                print('   CONTROL (width-animated copy) vs ON: GREEN — THAT IS A '
-                      'FAILING CONTROL: the instrument cannot tell a relayout-forcing '
-                      'animation from a compositor-only one, so its PASS means nothing')
+                print('   FORCED-LAYOUT CHANNEL: FAIL — a payload has no forcedLed.mean')
+            elif d < FORCED_MIN_DELTA:
+                all_ok = False
+                print('   FORCED-LAYOUT CHANNEL: FAIL — the control moved it by only '
+                      '+%s ms/frame (on=%s relayout=%s, floor %s): the instrument '
+                      'cannot see a relayout through this channel, so its PASS on the '
+                      'real arms means nothing'
+                      % (round(d, 3), base_mean, cand_mean, FORCED_MIN_DELTA))
+            else:
+                print('   FORCED-LAYOUT CHANNEL: PASS — the control added +%s ms/frame '
+                      'to the FIRST read, which is the one that flushes the pending '
+                      'style+layout (on=%s relayout=%s, floor %s)'
+                      % (round(d, 3), base_mean, cand_mean, FORCED_MIN_DELTA))
+            print('        (the second read is a cache hit by construction — it measured '
+                  'on=%s relayout=%s, i.e. the flush was already paid for)'
+                  % ((rows['on'].get('forcedList') or {}).get('mean'),
+                     (rows['relayout'].get('forcedList') or {}).get('mean')))
         else:
             all_ok = False
 

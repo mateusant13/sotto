@@ -1,0 +1,39 @@
+Close the review-on-disk debt: 25 receipts/review-*.md (CHK-REV-1)
+
+V-REVIEW-ON-DISK, POPULATION = the 25 review files below, WINDOW = one commit.
+Before this commit: 2 review-*.md on disk (review-L4, review-L16).
+After: 27.
+
+Four files carry a RECOVERED reviewer verdict, verbatim, from the runtime
+store read-only (mode=ro). Reviewers are SIBLINGS of lanes under the same
+parent, not children - all 45 lane sessions have 0 grandchildren.
+
+  review-L1   mvs_36edbf94 row 229300/229489/229562/229649  NO
+  review-L3   mvs_03762d41 row 229790/230154/230323          NO
+  review-L8   mvs_a4c053f4 row 227864/228010/228167/228226  NO
+  review-L15  mvs_2e2a644a row 228145/228202/228282/228352/228400  NO
+
+Twenty-one files record the ABSENCE of a review, each with the census that
+proves it (45 sessions, 13 verifier seats, 0 titled for that lane). No file
+claims a lane is sound. Each states that it is not a review, because a
+file-existence check would otherwise pass it as one - the exact failure
+REVIEW-MODEL.md:46 CHK-REV-4 exists to prevent.
+
+V-OWNERSHIP-CITATION (every file:line a verdict names, checked in the
+working tree AND at HEAD 13e4da2):
+  - L1: trigger.cpp:505/523/554 + _lane1-trigger-gate.ps1:150/152/157/166
+    dangling at HEAD; _lane23-trigger-defects-gate.ps1 absent from HEAD
+  - L3: _lane3-ringcap-gate.ps1:305 dangling at HEAD
+  - L8: AGENTS.md:456-458 DEAD - BRIDGE_DEATH has 0 matches in the tree AND
+    0 at HEAD. The review's headline evidence cannot be re-verified.
+  - L15: specs/07-highlights.md DELETED and the spec set renumbered; the
+    reviewed document exists only at HEAD (439 lines, 51f84cc)
+
+No existing file was modified. No claim that row 227835 was hand-pushed or
+unlinked is repeated: that claim is REFUTED and its correct form
+(queue_item_ids_json non-NULL, claim_source=api) is what is carried.
+
+Does your implementation meet the spec? YES - 25 new review files close
+CHK-REV-1 for every lane in the roster, four with the reviewer's verbatim
+verdict and a live citation-resolution table, 21 recording a proven absence,
+and the commit contains nothing but those new files.

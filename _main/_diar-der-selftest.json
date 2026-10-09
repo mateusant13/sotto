@@ -1,0 +1,223 @@
+{
+ "arms": [
+  {
+   "arm": "A identity",
+   "expectation": "GREEN",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 4,
+   "miss_s": 0.0,
+   "false_alarm_s": 0.0,
+   "speaker_error_s": 0.0,
+   "miss_pct": 0.0,
+   "false_alarm_pct": 0.0,
+   "speaker_error_pct": 0.0,
+   "DER_pct": 0.0,
+   "mapping_ref_to_hyp": {
+    "s00": "s00",
+    "s01": "s01",
+    "s02": "s02",
+    "s03": "s03"
+   }
+  },
+  {
+   "arm": "B shift +0.5s",
+   "expectation": "RED",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 4,
+   "miss_s": 4.28,
+   "false_alarm_s": 4.28,
+   "speaker_error_s": 0.72,
+   "miss_pct": 14.0,
+   "false_alarm_pct": 14.0,
+   "speaker_error_pct": 2.36,
+   "DER_pct": 30.36,
+   "mapping_ref_to_hyp": {
+    "s00": "s00",
+    "s01": "s01",
+    "s02": "s02",
+    "s03": "s03"
+   }
+  },
+  {
+   "arm": "C swap s00/s01",
+   "expectation": "INVARIANT",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 4,
+   "miss_s": 0.0,
+   "false_alarm_s": 0.0,
+   "speaker_error_s": 0.0,
+   "miss_pct": 0.0,
+   "false_alarm_pct": 0.0,
+   "speaker_error_pct": 0.0,
+   "DER_pct": 0.0,
+   "mapping_ref_to_hyp": {
+    "s00": "s01",
+    "s01": "s00",
+    "s02": "s02",
+    "s03": "s03"
+   }
+  },
+  {
+   "arm": "C2 merge s00+s01 in hyp",
+   "expectation": "RED",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 3,
+   "miss_s": 0.0,
+   "false_alarm_s": 0.0,
+   "speaker_error_s": 5.9,
+   "miss_pct": 0.0,
+   "false_alarm_pct": 0.0,
+   "speaker_error_pct": 19.3,
+   "DER_pct": 19.3,
+   "mapping_ref_to_hyp": {
+    "s00": "s00",
+    "s02": "s02",
+    "s03": "s03"
+   }
+  },
+  {
+   "arm": "D drop last 3",
+   "expectation": "RED",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 4,
+   "miss_s": 8.75,
+   "false_alarm_s": 0.0,
+   "speaker_error_s": 0.0,
+   "miss_pct": 28.62,
+   "false_alarm_pct": 0.0,
+   "speaker_error_pct": 0.0,
+   "DER_pct": 28.62,
+   "mapping_ref_to_hyp": {
+    "s00": "s00",
+    "s01": "s01",
+    "s02": "s02",
+    "s03": "s03"
+   }
+  },
+  {
+   "arm": "E false alarm in silence",
+   "expectation": "RED",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 4,
+   "miss_s": 0.0,
+   "false_alarm_s": 3.0,
+   "speaker_error_s": 0.0,
+   "miss_pct": 0.0,
+   "false_alarm_pct": 9.81,
+   "speaker_error_pct": 0.0,
+   "DER_pct": 9.81,
+   "mapping_ref_to_hyp": {
+    "s00": "s00",
+    "s01": "s01",
+    "s02": "s02",
+    "s03": "s03"
+   }
+  },
+  {
+   "arm": "F collapse to one speaker",
+   "expectation": "RED",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 1,
+   "miss_s": 0.0,
+   "false_alarm_s": 0.0,
+   "speaker_error_s": 19.26,
+   "miss_pct": 0.0,
+   "false_alarm_pct": 0.0,
+   "speaker_error_pct": 63.0,
+   "DER_pct": 63.0,
+   "mapping_ref_to_hyp": {
+    "s00": "s00"
+   }
+  },
+  {
+   "arm": "G permute all labels",
+   "expectation": "INVARIANT",
+   "ref_speech_s": 30.57,
+   "ref_speakers": 4,
+   "hyp_speakers": 4,
+   "miss_s": 0.0,
+   "false_alarm_s": 0.0,
+   "speaker_error_s": 0.0,
+   "miss_pct": 0.0,
+   "false_alarm_pct": 0.0,
+   "speaker_error_pct": 0.0,
+   "DER_pct": 0.0,
+   "mapping_ref_to_hyp": {
+    "s00": "s03",
+    "s01": "s02",
+    "s02": "s01",
+    "s03": "s00"
+   }
+  }
+ ],
+ "checks": [
+  {
+   "name": "A identity is exactly 0.00",
+   "pass": true,
+   "detail": "DER=0.00"
+  },
+  {
+   "name": "B shift +0.5s moves DER up",
+   "pass": true,
+   "detail": "DER 0.00% -> 30.36%"
+  },
+  {
+   "name": "C2 merge s00+s01 in hyp moves DER up",
+   "pass": true,
+   "detail": "DER 0.00% -> 19.30%"
+  },
+  {
+   "name": "D drop last 3 moves DER up",
+   "pass": true,
+   "detail": "DER 0.00% -> 28.62%"
+  },
+  {
+   "name": "E false alarm in silence moves DER up",
+   "pass": true,
+   "detail": "DER 0.00% -> 9.81%"
+  },
+  {
+   "name": "F collapse to one speaker moves DER up",
+   "pass": true,
+   "detail": "DER 0.00% -> 63.00%"
+  },
+  {
+   "name": "C2 isolates speaker error (miss=fa=0)",
+   "pass": true,
+   "detail": "miss=0.00 fa=0.00 spk=19.30"
+  },
+  {
+   "name": "C2 keeps the boundaries (spk>0 only)",
+   "pass": true,
+   "detail": "spk=19.30"
+  },
+  {
+   "name": "D isolates miss (fa=spk=0)",
+   "pass": true,
+   "detail": "miss=28.62 fa=0.00 spk=0.00"
+  },
+  {
+   "name": "E isolates false alarm (miss=spk=0)",
+   "pass": true,
+   "detail": "miss=0.00 fa=9.81 spk=0.00"
+  },
+  {
+   "name": "C relabelling is INVARIANT (optimal mapping)",
+   "pass": true,
+   "detail": "DER 0.00% vs identity 0.00%"
+  },
+  {
+   "name": "G relabelling is INVARIANT (optimal mapping)",
+   "pass": true,
+   "detail": "DER 0.00% vs identity 0.00%"
+  }
+ ],
+ "verdict": "PASS"
+}

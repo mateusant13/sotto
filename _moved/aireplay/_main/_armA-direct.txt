@@ -1,0 +1,5 @@
+ARM-A0 src-subdirs-present = True   [expect True]
+ARM-A1 same-expr-flipped   = False   [expect True = the flip really moved it]
+ARM-A2 arithmetic-floor    = True   [expect True]
+ARMS FAILED = 1   [expect 0]
+GATE-VERDICT FAIL

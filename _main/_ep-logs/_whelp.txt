@@ -1,0 +1,79 @@
+usage: sotto_worker.py [-h] [--config CONFIG] [--selftest] [--audio AUDIO]
+                       [--device DEVICE] [--model MODEL] [--lang-id LANG_ID]
+                       [--max-chunks MAX_CHUNKS] [--providers PROVIDERS]
+                       [--max-seconds MAX_SECONDS] [--threads THREADS]
+                       [--stats-interval STATS_INTERVAL] [--meter-hz METER_HZ]
+                       [--tap-window TAP_WINDOW]
+                       [--tap-peak-floor TAP_PEAK_FLOOR] [--redux-when-hidden]
+                       [--redux-hidden-after REDUX_HIDDEN_AFTER]
+                       [--redux-batch-interval REDUX_BATCH_INTERVAL]
+                       [--redux-max-audio REDUX_MAX_AUDIO]
+                       [--redux-batch REDUX_BATCH]
+                       [--panel-visibility PANEL_VISIBILITY]
+                       [--redux-runner-timeout REDUX_RUNNER_TIMEOUT]
+                       [--redux-min-free-mb REDUX_MIN_FREE_MB]
+
+Sotto caption worker (JSONL on stdout)
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG
+  --selftest            transcribe a file, no audio device needed
+  --audio AUDIO         audio for --selftest (default: bundled sample1.flac)
+  --device DEVICE       substring of the input device name
+  --model MODEL
+  --lang-id LANG_ID     language prompt for the model: an id (12), a tag (pt-
+                        BR), 'auto' (101; the shipped config default), or 'os'
+                        = the host's user locale (falls back to auto).
+                        Overrides SOTTO_LANG_ID and config.json's
+                        model.lang_id. An undeclared value is refused, never
+                        clamped.
+  --max-chunks MAX_CHUNKS
+                        stop after N chunks (0 = forever)
+  --providers PROVIDERS
+                        comma list, or 'auto'
+  --max-seconds MAX_SECONDS
+                        stop after N seconds of wall time
+  --threads THREADS     BLAS/OMP threads (0 = auto)
+  --stats-interval STATS_INTERVAL
+                        seconds between WORKER_STATS stage counters on stderr
+                        (0 = off)
+  --meter-hz METER_HZ   audio-level events per second on stdout (default 10; 0
+                        = off)
+  --tap-window TAP_WINDOW
+                        seconds a flat tap is given before rotating (0 =
+                        built-in default)
+  --tap-peak-floor TAP_PEAK_FLOOR
+                        peak amplitude a tap must reach to count as carrying
+                        audio (0 = built-in default)
+  --redux-when-hidden   STACK LAW (default OFF): while the panel is HIDDEN for
+                        longer than --redux-hidden-after, stop the streaming
+                        decode and transcribe the accumulated audio with the
+                        batch engine (worker/redux_batch.py), stamping every
+                        line producer='redux'. Panel visible again ->
+                        streaming immediately. Refused, and the run keeps
+                        streaming, if the runner is not on disk. Off = byte-
+                        identical to a run without this flag.
+  --redux-hidden-after REDUX_HIDDEN_AFTER
+                        seconds the panel must stay hidden before the batch
+                        engine takes over (0 = built-in default 20.0)
+  --redux-batch-interval REDUX_BATCH_INTERVAL
+                        seconds of accumulated audio per batch invocation (0 =
+                        built-in default 15.0)
+  --redux-max-audio REDUX_MAX_AUDIO
+                        bound on the audio held in RAM while the panel is
+                        hidden, seconds (0 = built-in default 120.0)
+  --redux-batch REDUX_BATCH
+                        the batch runner (another lane's file). Contract:
+                        `--wav PATH --json` -> JSONL caption lines on stdout
+  --panel-visibility PANEL_VISIBILITY
+                        the shell's panel-visibility.json the mode switch
+                        reads
+  --redux-runner-timeout REDUX_RUNNER_TIMEOUT
+                        hard cap on ONE batch invocation, seconds (0 = built-
+                        in default 180.0)
+  --redux-min-free-mb REDUX_MIN_FREE_MB
+                        defer an INTERVAL batch pass while free physical
+                        memory is below this, MB (0 = built-in default
+                        4600.0); a tail attempts anyway and says so. 0
+                        explicitly disables the gate.

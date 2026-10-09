@@ -125,6 +125,19 @@ CAPTION_TEXT = 'ola mundo'
 #: live state is painted by the page, not the shell: the shell only FORWARDS the
 #: caption, so a stub that returns this is modelling panel.js, not inventing it.
 LIVE_STATUS_TEXT = 'Receiving captions'
+#: ── WHAT THE PANEL ACTUALLY PAINTS FOR A HEALTHY FEED (owner, 2026-10-08) ────
+#: Verbatim: *"tira o 'receiving captions'. deixa só um icone dinamico"*. The
+#: sentence is still PUSHED by the shell and still ACKNOWLEDGED by the page (which
+#: is why `LIVE_STATUS_TEXT` above stays), but the panel no longer PAINTS it: the
+#: status is an icon (`#status-dot[data-state]`) plus, on the strip, one short word.
+#: This constant is the PAINTED half, and it is `''` on purpose — the assertions
+#: below use it as a PAIR with the live class, because "no sentence" is also true
+#: of a panel whose whole status block has fallen off.
+LIVE_STATUS_PAINTED = ''
+#: The class the footer carries while the feed is live. The POSITIVE half of the
+#: pair above: it is what the icon is drawn from, and it cannot be satisfied by an
+#: empty document.
+LIVE_FOOTER_CLASS = 'status--live'
 #: ARM E's negative arm: the CLEAR path removed from a COPY of TODAY's shell.
 MUTANT_E = os.path.join(HERE, '_panel-clear-lifted-mutant.py')
 MUTANT_E_FIXED = (
@@ -613,8 +626,22 @@ def arm0_recovery(report: dict) -> list[str]:
     # death stays on screen until the caption lifts it. A caption that did not
     # lift leaves the panel in the DEATH state, which is the RED this arm exists
     # to catch.
+    #
+    # ── AND THE LIVE HALF IS A PAIR, NOT A SENTENCE (owner, 2026-10-08) ───────
+    # Until today this composed `footer = LIVE_STATUS_TEXT` and asserted the panel
+    # "is showing the live footer 'Receiving captions'". The owner had the sentence
+    # removed from the paint — the status is an ICON now — so the assertion INVERTS,
+    # and that is exactly where an oracle starts lying: `footer == ''` is also true
+    # of a panel that never came back, or whose status block is gone. So BOTH halves
+    # are carried: the PAINTED text must be empty AND the footer must wear the live
+    # class the icon is drawn from AND the error flag must be false. The pushed
+    # sentence is still asserted separately (`pushed`), because the shell's half of
+    # the contract did NOT change and a panel that stopped ACKNOWLEDGING the shell's
+    # text would be a different defect.
     live_state = {
-        'footer': LIVE_STATUS_TEXT if lifted else error_state['footer'],
+        'pushed': LIVE_STATUS_TEXT,
+        'footer': LIVE_STATUS_PAINTED if lifted else error_state['footer'],
+        'footerClass': LIVE_FOOTER_CLASS if lifted else 'status--error',
         'error': not lifted,
         'placeholderHidden': lifted,
         'delivered': delivered,
@@ -623,9 +650,17 @@ def arm0_recovery(report: dict) -> list[str]:
         failures.append('ARM E/E5: the panel did NOT return to live after the '
                         f"caption -- it stayed in ERROR showing "
                         f"{error_state['footer']!r}")
-    if live_state['footer'] != LIVE_STATUS_TEXT:
-        failures.append('ARM E/E5: the panel is not showing the live footer '
-                        f'{LIVE_STATUS_TEXT!r}: {live_state["footer"]!r}')
+    if live_state['footer'] != LIVE_STATUS_PAINTED:
+        failures.append('ARM E/E5: the panel is painting a healthy SENTENCE, and '
+                        'the owner removed it (the status is an icon now): '
+                        f'{live_state["footer"]!r}')
+    # THE POSITIVE CONTROL: an empty footer is only a PASS because the icon's own
+    # class says LIVE. Without this line the assertion above passes on a blank page.
+    if live_state['footerClass'] != LIVE_FOOTER_CLASS:
+        failures.append('ARM E/E5: the footer is not wearing the live class '
+                        f'{LIVE_FOOTER_CLASS!r} ({live_state["footerClass"]!r}) -- '
+                        'the icon that carries the state is not there either, so '
+                        'the empty sentence above proves nothing')
     if not live_state['placeholderHidden']:
         failures.append('ARM E/E5: the placeholder is still up after the caption '
                         '(panel.js:156 hides it on the first committed line)')
@@ -866,9 +901,14 @@ def arm_e_real_shell(report: dict) -> list[str]:
     if not lr['live']:
         failures.append(f'ARM E-real/recover: the panel is not LIVE (status--live '
                         f'not set): {lr!r}')
-    if str(lr['text']).strip() != LIVE_STATUS_TEXT:
-        failures.append('ARM E-real/recover: the footer is not '
-                        f'{LIVE_STATUS_TEXT!r}: {lr["text"]!r}')
+    # ── THE PAIR, FROM THE REAL DOM (owner, 2026-10-08) ───────────────────────
+    # The painted sentence is GONE by design and the live CLASS asserted immediately
+    # above is what carries the state now. Both halves are checked here so the real
+    # arm and the unit arm cannot drift apart.
+    if str(lr['text']).strip() != LIVE_STATUS_PAINTED:
+        failures.append('ARM E-real/recover: the panel is painting a healthy '
+                        'SENTENCE and the owner removed it: '
+                        f'{lr["text"]!r} (expected {LIVE_STATUS_PAINTED!r})')
     if not lr.get('placeholderHidden'):
         failures.append('ARM E-real/recover: the placeholder is still up after a '
                         f'committed caption: {lr!r}')

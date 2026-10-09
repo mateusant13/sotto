@@ -1,0 +1,35 @@
+== userMessageId in each QUEUE row (ours vs template) ==
+   qid=4200 sess=mvs_ea552229 userMessageId='msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOjxOWKWZNKfhg' len=55
+   qid=4613 sess=mvs_a00662bf userMessageId='msg-user-v1-D52aPwtIrpQdxgTD0f57LtdRvhNVHic3WgefMuudXhX' len=55
+   qid=4614 sess=mvs_a00662bf userMessageId='msg-user-v1-cj18A9GmUBNiOeg64ezk9YUAvjgrqUIbZHlHalw223Q' len=55
+   qid=4691 sess=mvs_b7a9f3a7 userMessageId='msg-user-v1-wakeff0ab6840666476d94d3d1717d471a54' len=48
+
+== msg_id shape in DELIVERED user rows (runtime's own) ==
+   msg_id='msg-user-v1-5jn0HqdkPd6iH3oY9n_gr7WvAXkA1RCKkGIg0gzX93I' len=55
+   msg_id='msg-user-v1-qB7FORF9LeN1zZ6gf1zV2XPXaiv5hFpzSw-z6zQfzoM' len=55
+   msg_id='msg-user-v1-FfVYyn293TVrhVWq5VOr_dqd8pXc_rP22Bn-pPnAo0c' len=55
+   msg_id='msg-user-v1-vc-5ctIhOtYcs914ZWTiT4GsRwCHML3b0vKsl8SZTkE' len=55
+   msg_id='msg-user-v1-20XhPygLa_-NcODyi4Gt5rBgrC-svHyc1QEsnhH7YDM' len=55
+   msg_id='msg-user-v1-5roTYC_PaNxfzQilZiYVp1DVdV33d78TbmKq9hD9vms' len=55
+
+== do any DELIVERED user msg_ids match a queue row userMessageId? ==
+   qid=4200 userMessageId='msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOj'... matching_message_rows=0
+   qid=4613 userMessageId='msg-user-v1-D52aPwtIrpQdxgTD0f57LtdRvhNVHic3'... matching_message_rows=0
+   qid=4614 userMessageId='msg-user-v1-cj18A9GmUBNiOeg64ezk9YUAvjgrqUIb'... matching_message_rows=0
+   qid=4691 userMessageId='msg-user-v1-wakeff0ab6840666476d94d3d1717d47'... matching_message_rows=0
+
+== does ANY message row exist with our wake prefix? ==
+   POP msg_id LIKE 'msg-user-v1-wake%' = 0
+
+== a real delivered user row: full keys for shape comparison ==
+    {
+  "msg_id": "msg-user-v1-GvK_nESXJOx10058ErcvsgqhsDRa4O5zfgdWY5nWf1I",
+  "role": "user",
+  "msg_content": "Voc├¬ foi acordado para CONTINUAR o trabalho do projeto `jogo` (H:\\!jogo) ÔÇö um jo",
+  "msg_type": "1",
+  "timestamp": "1791292260080",
+  "query_key": "turn:turn_04cc28c9-ec64-4a0b-ba62-ec1c7166b1da",
+  "turnId": "turn_04cc28c9-ec64-4a0b-ba62-ec1c7166b1da",
+  "source": "cron",
+  "sourceContext": "{'cronId': 'e8568051-0d4b-4106-be88-cd3284e9f99f', 'runId': 'f37c41f8-551f-40c9-"
+}

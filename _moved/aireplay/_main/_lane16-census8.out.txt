@@ -1,0 +1,24 @@
+== turn_ingress rows for TARGET session (POP for session) ==
+  POP = 1
+   turn= turn_muy8i3nv_99626o src= turn crid= None claim_src= None
+      status= accepted accepted= 2026-10-07 12:00:13 completed= None qack= None
+      queue_items= None
+
+== ingress rows whose client_request_id is a heartbeat inject ==
+
+== ingress rows carrying ANY of our injected item_ids ==
+   queue_88e53fbb-2565-4684-9afc-d83c58551d80: ingress_rows=0
+   queue_cf6aed5b: ingress_rows=0
+   queue_ec7ae0a0: ingress_rows=0
+   queue_f6b00dc4: ingress_rows=0
+
+== distinct turn_ingress.status values (whole table, POP=3686) ==
+   'completed': 2742
+   'failed': 818
+   'aborted': 109
+   'accepted': 17
+
+== claim turnIds from our rows: do they exist anywhere? ==
+   turn_69a5c2b0-eb8f-43ed-8ab6-7a3783b46ad5: turn_ingress=0 message_rows=0
+   turn_5ef4b809-4fb1-4967-b708-008054ccf04d: turn_ingress=0 message_rows=0
+   turn_e33579f4-04c8-449d-ad59-05ea52872728: turn_ingress=0 message_rows=0

@@ -1,0 +1,43 @@
+{
+  "graph": "joint",
+  "requested": "CUDAExecutionProvider",
+  "REAL_get_providers": [
+    "CUDAExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "inputs": {
+    "encoder_output": [
+      [
+        1,
+        1,
+        1024
+      ],
+      "float32"
+    ],
+    "decoder_output": [
+      [
+        1,
+        1,
+        640
+      ],
+      "float32"
+    ]
+  },
+  "inference_error": null,
+  "nodes_total": 11,
+  "nodes_by_provider": {
+    "CUDAExecutionProvider": 11
+  },
+  "pct_nodes_by_provider": {
+    "CUDAExecutionProvider": 100.0
+  },
+  "dur_us_by_provider": {
+    "CUDAExecutionProvider": 11145364
+  },
+  "pct_dur_by_provider": {
+    "CUDAExecutionProvider": 100.0
+  },
+  "top_cpu_kernels_us": [],
+  "profile_file": "H:\\sotto\\ortprof_joint_2026-10-07_12-46-31_382.json",
+  "verdict": "GPU-EXECUTES"
+}

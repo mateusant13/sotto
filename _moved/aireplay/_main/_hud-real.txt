@@ -1,0 +1,14 @@
+--- rc=0 killed=False wall=16.66s args=
+sotto-hud: HUD_WINDOW_GEOMETRY dpi=96.0 display_w=1920 width=530 height=112 plate_w=480 inset=24 derivation=plate_max_w+2*inset+2border (SPEC º5)
+sotto-hud: HUD_SHELL_READY note=navigation-hook-arms-in-before-show
+sotto-hud: shell=webview2 python=3.11.8 pid=9824 panel=hud-panel.html panel_bytes=3473
+sotto-hud: HUD_FAILSAFE_ARMED after=14.0 armed_before=webview.start
+sotto-hud: HUD_SHOW_GATE_ARMED cure=_gate_form_show show_hud=false mechanism=instance-shadow-of-Form.Show measured=_pythonnet-show-shadow-test.py
+sotto-hud: HUD_EXSTYLE_APPLIED hwnd=22160856 exstyle=0x080800A8 required=0x080800A8 exact_set_equality=True
+sotto-hud: HUD_NAV_HOOK_ARMED event=WebView2.NavigationStarting source=edgechromium.py:102 ordering=pywebview-Show-then-reassert nets_armed=2
+sotto-hud: HUD_BEFORE_SHOW hwnd=22160856 show_hud=false
+sotto-hud: HUD_SHOW_REFUSED reason=not-asked opacity=1.0 show_hud=false hud_mapped=false count=1 cure=_gate_form_show source=edgechromium.py:348
+sotto-hud: HUD_NAV_START n=1 action=reassert-hidden refused_total=1
+sotto-hud: HUD_FAILSAFE_FIRE after=14.0 panel_loaded=false nav_starts=1 show_refused=1 note=if panel_loaded=false the shell hung BEFORE on_loaded
+
+LOADED=False

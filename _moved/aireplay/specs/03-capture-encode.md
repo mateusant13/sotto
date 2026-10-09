@@ -5,6 +5,16 @@
 This is the component `AGENTS.md` names as **the one thing to prototype first**
 (*"D3D11 → NVENC → replay buffer → clip, with no frame loss"*).
 
+**One environmental limit belongs in the status line, not in a footnote:** the live WGC capture arm
+became unrunnable between **11:24:37 and 11:26:32** on this box (`CreateForWindow` → `E_ACCESSDENIED`
+for *every* window and for the monitor, while `GraphicsCaptureSession::IsSupported` still returns true
+and the OS consent store still says `Allow`). The measurements in the receipt were taken before that,
+and the **cut path was re-proven afterwards without WGC** (`--cut-from-h264`, receipt §5c) precisely
+so that one broken component cannot take the whole proof with it. **The documented recovery,
+`GraphicsCaptureAccess::RequestAccessAsync(Programmatic)`, was called and does NOT restore access** —
+so the block is not a per-app consent denial. Details, the refuted TDR hypothesis, and the two-line
+human action: receipt §7.
+
 `MEASURED` = a command on this box produced it · `READ` = vendor/other doc, URL given · `UNKNOWN` = nobody
 has shown it. Host: Win11 26200 · i5-13600K (14C/20T) · RTX 5080 `0x2C02` · Intel UHD 770 `0x8086` ·
 driver 617.14 / `nvEncodeAPI64.dll` 32.0.16.1714.
@@ -269,11 +279,23 @@ failing control.
   encoder, and 0.4 % blend, so it is imperceptible. **This is a test-harness fact, not a product one:**
   the product captures a window the owner chose, which is on screen by definition.
 - **UNKNOWN — CBR overshoot on pathological content.** Full-frame random noise at 1920×1080 hit
-  **43.98–45.32 Mbps** against the 45 Mbps target in GAMING (≈1.00×) but **16.03 Mbps against the
+  **42.50–45.32 Mbps** against the 45 Mbps target in GAMING (≈0.94–1.01×) but **16.03 Mbps against the
   8 Mbps target in DESKTOP (2.00×)**. Both arms encoded the same synthetic content at the same
   `vbvBufferSize = bitrate`; the desktop arm simply has fewer bits to spend per pixel at 30 fps. If
   the owner's real desktop content is anywhere near this hard, §2.6's 600 s of desktop ring is 300 s.
   **The ring budget must be re-derived from real content, not from this synthetic source.**
+- **NEW — WGC can stop granting capture items machine-wide, and it is not a code defect.**
+  Measured: `IGraphicsCaptureItemInterop::CreateForWindow` and `CreateForMonitor` return
+  `E_ACCESSDENIED` for our own window, another process's foreground window, the desktop window, the
+  taskbar and the primary monitor — while `IsSupported` is true and the consent store says `Allow`.
+  It began between 11:24:37 (last success) and 11:26:32 (first failure) and has held for 40 minutes.
+  **`GraphicsCaptureAccess::RequestAccessAsync(Programmatic)` was called and does NOT restore it**
+  (S_OK, async Completed, errorCode 0 — receipt §7c), so the block is not a per-app consent denial.
+  A display-driver reset (TDR) is **refuted**: no event 4101 in 24 h and no Display/nvlddmkm/Dwm
+  event in 3 h, against 321 System events in that window. Consequence for the product: **a
+  capture-item failure must be retryable with a bounded retry and a loud message**, and the recorder
+  must never claim to be recording while it is failing. The human action is a sign-out/reboot
+  (receipt §7d).
 - **UNKNOWN — the real average bitrate of the owner's content** at the chosen preset, so §2.6's RAM is
   a budget, not a measurement of *his* content.
 - **UNKNOWN — WGC on protected content and exclusive fullscreen** (`01-` §4(c)) — not measured here.

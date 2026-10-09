@@ -1,0 +1,109 @@
+{
+  "secs": 24.0,
+  "repeat": 3,
+  "runs": [
+    {
+      "arm": "shipped",
+      "pid": 30800,
+      "rc": 1,
+      "alive_at_end": true,
+      "quiet_for_s": 49.5,
+      "push_lines": 0,
+      "last_push_count": 0,
+      "pushes_total_from_exit": null,
+      "bytes": 3266,
+      "reached": [
+        "STAGING_LOADED",
+        "PANEL_SHOW_REFUSED"
+      ],
+      "cpu_s": "1,328125",
+      "log": "H:\\sotto\\_main\\_strip-logmutant-shipped-12092-432557.log"
+    },
+    {
+      "arm": "per-sample",
+      "pid": 37596,
+      "rc": 1,
+      "alive_at_end": true,
+      "quiet_for_s": 49.7,
+      "push_lines": 0,
+      "last_push_count": 0,
+      "pushes_total_from_exit": null,
+      "bytes": 4456,
+      "reached": [
+        "RECEIVER_READY",
+        "PRELOAD_ACTIVE",
+        "STAGING_LOADED",
+        "PANEL_SHOW_REFUSED"
+      ],
+      "cpu_s": "1,53125",
+      "log": "H:\\sotto\\_main\\_strip-logmutant-per-sample-12092-482099.log"
+    },
+    {
+      "arm": "shipped",
+      "pid": 11436,
+      "rc": 1,
+      "alive_at_end": true,
+      "quiet_for_s": 49.3,
+      "push_lines": 0,
+      "last_push_count": 0,
+      "pushes_total_from_exit": null,
+      "bytes": 3268,
+      "reached": [
+        "STAGING_LOADED",
+        "PANEL_SHOW_REFUSED"
+      ],
+      "cpu_s": "1,3125",
+      "log": "H:\\sotto\\_main\\_strip-logmutant-shipped-12092-532310.log"
+    },
+    {
+      "arm": "per-sample",
+      "pid": 41444,
+      "rc": 1,
+      "alive_at_end": true,
+      "quiet_for_s": 51.4,
+      "push_lines": 0,
+      "last_push_count": 0,
+      "pushes_total_from_exit": null,
+      "bytes": 3274,
+      "reached": [
+        "STAGING_LOADED",
+        "PANEL_SHOW_REFUSED"
+      ],
+      "cpu_s": "1,1875",
+      "log": "H:\\sotto\\_main\\_strip-logmutant-per-sample-12092-581724.log"
+    },
+    {
+      "arm": "shipped",
+      "pid": 40276,
+      "rc": 1,
+      "alive_at_end": true,
+      "quiet_for_s": 49.2,
+      "push_lines": 0,
+      "last_push_count": 0,
+      "pushes_total_from_exit": null,
+      "bytes": 3041,
+      "reached": [
+        "PANEL_SHOW_REFUSED"
+      ],
+      "cpu_s": "1,125",
+      "log": "H:\\sotto\\_main\\_strip-logmutant-shipped-12092-633215.log"
+    },
+    {
+      "arm": "per-sample",
+      "pid": 40572,
+      "rc": 1,
+      "alive_at_end": true,
+      "quiet_for_s": 49.4,
+      "push_lines": 0,
+      "last_push_count": 0,
+      "pushes_total_from_exit": null,
+      "bytes": 3034,
+      "reached": [
+        "PANEL_SHOW_REFUSED"
+      ],
+      "cpu_s": "1,203125",
+      "log": "H:\\sotto\\_main\\_strip-logmutant-per-sample-12092-683092.log"
+    }
+  ],
+  "verdict": "BOTH-ARMS-STALL-EQUALLY"
+}

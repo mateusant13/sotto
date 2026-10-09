@@ -1,0 +1,114 @@
+=== H:\sotto\_moved\aireplay\_main\runs\clip-20261007-104847.mp4 [2562B]
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1920,
+            "height": 1080,
+            "duration": "4.186200"
+        }
+    ]
+}
+=== H:\sotto\_moved\aireplay\_main\_census09-ctl\ctl-hevc.mp4 [10583B]
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "hevc",
+            "codec_type": "video",
+            "width": 320,
+            "height": 240,
+            "duration": "2.000000"
+        }
+    ]
+}
+=== H:\sotto\_moved\aireplay\_main\runs\clip-20261007-105609.mp4 [12181B]
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1920,
+            "height": 1080,
+            "duration": "3.266667"
+        }
+    ]
+}
+=== H:\sotto\_moved\aireplay\_main\runs\clip-20261007-105709.mp4 [12195B]
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1920,
+            "height": 1080,
+            "duration": "3.233333"
+        }
+    ]
+}
+=== H:\sotto\_moved\aireplay\_main\runs\clip-20261007-105603.mp4 [12500B]
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1920,
+            "height": 1080,
+            "duration": "3.300000"
+        }
+    ]
+}
+=== H:\sotto\_moved\aireplay\_main\runs\clip-20261007-105430.mp4 [15776B]
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 1920,
+            "height": 1080,
+            "duration": "4.350000"
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+{
+  "anchor": "top-left",
+  "glyph_name": "error",
+  "glyph_rgb": "rgb(224, 85, 58)",
+  "line1": "ERROR_SILENT_DEVICE",
+  "line2": "digital silence below the floor (peak not measured) — nothing is routed into the device",
+  "line3": "",
+  "mapped": "0",
+  "painted_lines": 2,
+  "plate_alpha_px": "rgb(12, 12, 16)",
+  "plate_opacity": "0",
+  "plate_rect": {
+    "h": 70,
+    "w": 667,
+    "x": 36,
+    "y": 36
+  },
+  "plate_visible": "hidden",
+  "state": "ERROR_SILENT_DEVICE",
+  "timer": ""
+}

@@ -1,0 +1,35 @@
+==========================================================================
+ LANE 25 GATE - locale group separator must never publish a memory number
+==========================================================================
+ROOT G:\Temp\lane25-unfixed2-ba512647
+HOST culture=pt-BR   ("pt-BR" of 48888) renders as 48.888
+      -> the group separator is a PERIOD. The defect class is LIVE on this host,
+         so a green verdict below is a real measurement and not a vacuous pass.
+
+RENDER PROOF - 48888 (the magnitude receipt-32 published wrong)
+  DEFECTIVE  locale "-f {0:N1}"   -> 48.888,0   [readable as forty-eight - WRONG BY 1000x]
+  FIXED      ToString(F1,inv)    -> 48888.0   [readable only as 48888]
+
+CENSUS - every `N`-specifier composite-format placeholder in the tree
+  POPULATION = 1 placeholder(s) in 3 scanned file(s)
+  WINDOW     = the whole tree under Root, read from disk at gate time (not a sample)
+               scanned extensions: .ps1 .py .cpp .h .cmd .bat .js .mjs .cjs  - .md/.txt/.log/.json are DOCUMENTS or
+               OUTPUT, and are counted by _lane25-locale-census.ps1, not by this gate.
+               0 file(s) unreadable (a live lane holds them open) and were SKIPPED:
+  CLASS      = MEMORY/DURATION are the ones a reader parses with a decimal point.
+               SAFE = the value carries no group separator (percent, ratio, sub-1000 s).
+
+  OWNED    _main\durability-gate.ps1         :721  {0,9:N1}  MEMORY 'MB'
+
+VERDICT INPUT
+  owned files scanned        : _main\durability-gate.ps1, _main\font-lag-probe.ps1, _main\font-shots.ps1
+  owned DEFECTIVE sites      : 1
+  DEFERRED sites (other lane): 0  of which memory/duration: 0
+
+VERDICT FAIL
+  - _main\durability-gate.ps1:721  {0,9:N1} publishes a 'MB' quantity through a locale-dependent
+      group separator.  Fix: pass the operand through ToString('F<k>', InvariantCulture)
+      and drop the specifier from the placeholder.
+
+POPULATION: one host (pt-BR), one tree scan of 3 file(s) under G:\Temp\lane25-unfixed2-ba512647, WINDOW: this run.
+NO FLAKINESS CLAIM IS MADE. Re-running is a new measurement, not a confirmation.

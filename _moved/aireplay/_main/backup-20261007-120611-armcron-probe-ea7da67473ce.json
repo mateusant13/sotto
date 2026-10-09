@@ -1,0 +1,13 @@
+{
+  "cron_id": "probe-ea7da67473ce",
+  "scheduler_id": "sched-7f2c94e7c5eb",
+  "prompt": "CRON-TEST-B7A9 12:07: mensagem de teste do cron unico do proprio runtime. Se a chegou, o cron do runtime entrega mensagens a sessoes vivas.",
+  "target_session_id": "mvs_b7a9f3a7db404912b32d28fc11b83645",
+  "schedule": {
+    "kind": "cron",
+    "expression": "*/3 * * * *",
+    "timezone": "America/Sao_Paulo"
+  },
+  "first_run_local": "2026-10-07 12:07:51",
+  "now_local": "2026-10-07 12:06:11"
+}

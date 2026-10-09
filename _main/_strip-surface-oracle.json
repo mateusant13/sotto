@@ -1,0 +1,331 @@
+{
+  "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
+  "arms": {
+    "real": {
+      "failures": [],
+      "facts": {
+        "strip.width@1920": 1040,
+        "strip.height-fallback": 148,
+        "strip.x@1920": 440,
+        "strip.y@1920": 836,
+        "strip.docked": "bottom-centre",
+        "strip.work": [
+          0,
+          0,
+          1920,
+          1032
+        ],
+        "strip.height@css150": 150,
+        "strip.y@css150": 834,
+        "strip.width@1280": 794,
+        "strip.x@1280": 243,
+        "strip.y@1280": 524,
+        "contained.tiny": {
+          "workX": 0,
+          "workY": 0,
+          "workWidth": 300,
+          "workHeight": 100,
+          "x": 0,
+          "y": 0,
+          "width": 300,
+          "height": 100,
+          "margin": 48,
+          "docked": "bottom-centre"
+        },
+        "contained.short": {
+          "workX": -1920,
+          "workY": 100,
+          "workWidth": 1920,
+          "workHeight": 90,
+          "x": -1480,
+          "y": 100,
+          "width": 1040,
+          "height": 90,
+          "margin": 48,
+          "docked": "bottom-centre"
+        },
+        "strip.height.runtime": 220,
+        "strip.y.runtime": 764,
+        "panel.width": 380,
+        "panel.height": 900,
+        "panel.pos": [
+          1528,
+          66
+        ],
+        "clamp.moved": true,
+        "clamp.x": 0,
+        "clamp.y": 884,
+        "clamp.noop.moved": false,
+        "clamp.noop.x": 440,
+        "surface_name('strip')": "strip",
+        "surface_name('panel')": "panel",
+        "surface_name('  STRIP ')": "strip",
+        "surface_name('surface--strip')": "strip",
+        "surface_name('surface-panel')": "panel",
+        "surface_name('bogus')": null,
+        "surface_name(None)": null,
+        "surface_name('')": null,
+        "js.setPanelSurface:": true,
+        "js.getStats:": true,
+        "js.onStats:": true,
+        "js.__sotto_stats": true,
+        "js.'panel-surface'": true,
+        "js.'stats'": true,
+        "js.stats: []": true,
+        "dispatch.calls": [
+          [
+            "set_panel_surface",
+            "panel",
+            "strip-open"
+          ],
+          [
+            "stats"
+          ],
+          [
+            "reply_stats",
+            "s1",
+            {
+              "peak": 0.5,
+              "blocks": 12.0
+            }
+          ]
+        ],
+        "dispatch.source_tail": "          'info': self._info,\n            'stats': self._stats,\n            'panel-surface': self._panel_surface,\n        }.get(kind)\n        if handler is None:\n            log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')\n            return\n        try:\n            handler(payload)\n        except Exception as exc:  # a page callback must not kill the host\n            log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')\n",
+        "host._panel_surface": true,
+        "host._stats": true,
+        "shell.set_panel_surface": true,
+        "shell.stats": true,
+        "shell.reply_stats": true,
+        "shell.on_worker_stats": true,
+        "shell.set_edit_mode": true,
+        "shell.edit_drag_to": true,
+        "shell.set_strip_height": true,
+        "shell.geometry_for": true,
+        "shell.geometry_snapshot": true,
+        "shell.restore_saved_geometry": true,
+        "shell.work_area": true,
+        "shell._apply_window_geometry": true,
+        "show_panel.params": [
+          "self",
+          "reason",
+          "surface"
+        ],
+        "tray.menu_src": "    def _build_menu(self):\n        \"\"\"Built, LOGGED, and then drawn — so the log proves every item exists\n        (its id and its text) without anyone having to click.\n\n        THREE items now, and the two shipped ids keep their numbers: `[1]` Open\n        panel (the FULL panel — Alt+C is what opens the strip), `[3]` Edit\n        caption position, `[2]` Quit Sotto. `_main/tray-quit-probe.py` finds the\n        Quit by its TEXT (`[2]='Quit Sotto'`), so a new item cannot break it.\n        \"\"\"\n        menu = user32.CreatePopupMenu()\n        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Open panel')\n        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_EDIT,\n                           'Edit caption position')\n        user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)\n        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, 'Quit Sotto')\n        self.menu = int(menu)\n        items = menu_items(menu)\n        self.log('TRAY_MENU ' + ' '.join(\n            f\"[{i['id']}]={i['text']!r}\" if i['id'] else '[sep]'\n            for i in items))\n        return menu\n",
+        "tray.edit_id": 3,
+        "writer.params": [
+          "self",
+          "path",
+          "observe",
+          "log",
+          "interval_s",
+          "extra"
+        ],
+        "writer.path": "H:\\sotto\\_main\\panel-visibility.json",
+        "stats.payload": {
+          "peak": 0.443448,
+          "blocks": 812.0
+        },
+        "stats.empty": {},
+        "stats.partial": {
+          "blocks": 3.0
+        },
+        "geometry_for.clamped": [
+          0,
+          884,
+          1040,
+          148
+        ],
+        "geometry_for.default": [
+          440,
+          836,
+          1040,
+          148
+        ],
+        "geometry_snapshot.surface": "panel",
+        "show_call": true,
+        "SetWindowPos.argtypes": [
+          "<class 'ctypes.c_void_p'>",
+          "<class 'ctypes.c_void_p'>",
+          "<class 'ctypes.c_long'>",
+          "<class 'ctypes.c_long'>",
+          "<class 'ctypes.c_long'>",
+          "<class 'ctypes.c_long'>",
+          "<class 'ctypes.c_ulong'>"
+        ],
+        "run_edit_mode_probe.exits": true,
+        "run_stats_probe.exits": true,
+        "strip.css_var": "--strip-height",
+        "strip.css.adopted": [
+          true,
+          150,
+          150
+        ],
+        "strip.css.idempotent": false,
+        "strip.css.padded": [
+          true,
+          150
+        ],
+        "strip.override": [
+          190,
+          40
+        ],
+        "strip.css.fallback.empty": [
+          false,
+          148,
+          null
+        ],
+        "strip.css.fallback.null": [
+          false,
+          148,
+          null
+        ],
+        "strip.css.fallback.garbage": [
+          false,
+          148,
+          null
+        ],
+        "strip.css.fallback.zero": [
+          false,
+          148,
+          null
+        ],
+        "strip.css.fallback.negative": [
+          false,
+          148,
+          null
+        ],
+        "stats.log_budget": {
+          "samples": 500,
+          "log_lines": 1,
+          "emitted": 500
+        },
+        "stats.log.500-samples-1-line": 1,
+        "stats.log.feed-not-throttled": 500,
+        "stats.log.payload-shape": {
+          "peak": 0.5,
+          "blocks": 3.0
+        },
+        "reload": {
+          "deferred_while_capturing": {
+            "restarts": 0,
+            "deferred": [
+              "HOT_RELOAD_WORKER_DEFERRED files=[\"worker/sotto_worker.py\"] reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=true sha256_disk=ea014d8f2cacd72e sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
+            ],
+            "pending": true
+          },
+          "closed_line": {
+            "restarts": 1,
+            "lines": [
+              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=[\"worker/sotto_worker.py\"] waited_ms=781",
+              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=[\"worker/sotto_worker.py\"] reason=closed-line waited_ms=781"
+            ]
+          },
+          "ceiling": {
+            "restarts": 1,
+            "forced": [
+              "HOT_RELOAD_WORKER_FORCED files=[\"worker/sotto_worker.py\"] reason=no-boundary-in-250ms waited_ms=250 code_is_stale=true sha256_disk=ea014d8f2cacd72e sha256_at_spawn=deadbeefdeadbeef cost=one-model-warm-up"
+            ],
+            "pending": false
+          },
+          "floor": {
+            "restarts": 0,
+            "cooldown": [
+              "HOT_RELOAD_WORKER_COOLDOWN files=[\"worker/sotto_worker.py\"] left_ms=59812 min_interval_ms=60000 waited_ms=188 code_is_stale=true sha256_disk=ea014d8f2cacd72e sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
+            ],
+            "pending": true
+          }
+        },
+        "reload.capture-guard.holds": 0,
+        "reload.capture-guard.visible": 1,
+        "reload.capture-guard.deferral-is-bounded-and-named": true,
+        "reload.status-line-is-not-a-boundary-while-capturing": 0,
+        "reload.closed-line-applies-while-capturing": 1,
+        "reload.closed-line-is-named": true,
+        "reload.ceiling-applies-with-no-boundary": 1,
+        "reload.ceiling-says-so": true,
+        "reload.ceiling-leaves-nothing-pending": null,
+        "reload.floor-bounds-the-rate": 0,
+        "reload.floor-keeps-the-request": true,
+        "reload.clock-equal-is-not-a-respawn": false,
+        "meter": {
+          "samples": 500,
+          "log_lines": 1,
+          "unknown_lines": 0,
+          "delivered": 500
+        },
+        "meter.branch-exists": 500,
+        "meter.delivered-to-the-page-callback": 500,
+        "meter.unknown-kind-path-not-taken": 0,
+        "meter.log-aggregated-to-one-line": 1,
+        "meter.sample-shape": [
+          "blocks",
+          "peak"
+        ],
+        "meter.stats_payload": {
+          "peak": 0.12000000000000001,
+          "blocks": 12.0
+        },
+        "meter.stats-prefers-the-window-peak": {
+          "peak": 0.12000000000000001,
+          "blocks": 12.0
+        },
+        "meter.stats_fallback": {
+          "peak": 0.443448,
+          "blocks": 812.0
+        },
+        "meter.stats-falls-back-to-the-running-maximum-when-stale": {
+          "peak": 0.443448,
+          "blocks": 812.0
+        }
+      }
+    },
+    "mutant": {
+      "failures": [
+        "the injected bridge has no 'setPanelSurface:'",
+        "the injected bridge has no \"'panel-surface'\"",
+        "setPanelSurface does not take (surface, reason) — panel.js:1242 calls it with exactly those two"
+      ],
+      "red_on_the_member": true,
+      "control_failures": [
+        "the injected bridge has no 'setPanelSurface:'",
+        "the injected bridge has no \"'panel-surface'\"",
+        "setPanelSurface does not take (surface, reason) — panel.js:1242 calls it with exactly those two"
+      ]
+    },
+    "mutant2": {
+      "failures": [
+        "dispatch does not route 'panel-surface' to set_panel_surface(surface, reason) — the member panel.js:1242 calls would still be a no-op",
+        "dispatch does not route 'stats' to reply_stats(id, payload)"
+      ],
+      "red_on_the_routing": true,
+      "control_failures": [
+        "dispatch does not route 'panel-surface' to set_panel_surface(surface, reason) — the member panel.js:1242 calls would still be a no-op",
+        "dispatch does not route 'stats' to reply_stats(id, payload)"
+      ]
+    },
+    "mutant3": {
+      "failures": [
+        "strip.css.adopted: got (False, 148, None), expected (True, 150, 150)",
+        "strip.css.padded: got (False, 148), expected (True, 150)",
+        "strip.override: got (190, 42), expected (190, 40)"
+      ],
+      "red_on_the_css_height": true,
+      "control_failures": [
+        "strip.css.adopted: got (False, 148, None), expected (True, 150, 150)",
+        "strip.css.padded: got (False, 148), expected (True, 150)"
+      ]
+    },
+    "mutant4": {
+      "failures": [
+        "on_worker_stats does not aggregate its log line",
+        "stats.log.500-samples-1-line: got 500, expected 1"
+      ],
+      "red_on_the_log_budget": true,
+      "control_failures": [
+        "stats.log.500-samples-1-line: got 500, expected 1"
+      ]
+    }
+  },
+  "verdict": "GREEN",
+  "reason": "the real shell passes every arm; the member-removed COPY goes RED on the member it is missing, the routing-removed COPY goes RED on the driven dispatch arm, the CSS-blind COPY goes RED on the stylesheet height, and the per-sample-log COPY goes RED on the log budget"
+}

@@ -39,7 +39,12 @@ foreach ($v in $Views) {
   $sw.Stop()
   $len = if (Test-Path -LiteralPath $shot) { (Get-Item -LiteralPath $shot).Length } else { -1 }
   $sha = if ($len -gt 0) { (Get-FileHash -LiteralPath $shot -Algorithm SHA256).Hash.Substring(0,16) } else { '-' }
-  Write-Output ("SHOT  {0,-8} {1,9} B  {2}  rc={3} {4:N1}s  {5}" -f $v, $len, $sha, $p.ExitCode, $sw.Elapsed.TotalSeconds, $shot)
+  # INVARIANT CULTURE, on purpose: this box runs pt-BR, whose number group separator is a
+  # PERIOD, so `{4:N1}` would render 1024.5 as "1.024,5" - read as one second, meant as a
+  # thousand.  `F1` under InvariantCulture prints "1024.5".  Same precedent as
+  # all-gates.ps1:356.  Gate: _lane25-locale-number-gate.ps1
+  $inv = [System.Globalization.CultureInfo]::InvariantCulture
+  Write-Output ("SHOT  {0,-8} {1,9} B  {2}  rc={3} {4}s  {5}" -f $v, $len, $sha, $p.ExitCode, $sw.Elapsed.TotalSeconds.ToString('F1', $inv), $shot)
   if (Test-Path -LiteralPath $udd) {
     $full = (Resolve-Path -LiteralPath $udd).Path
     if ($full.StartsWith($env:TEMP, [System.StringComparison]::OrdinalIgnoreCase) -and $full -match 'fontes-shot-') {

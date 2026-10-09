@@ -1,0 +1,50 @@
+=== ARM A-en :: real speech (English) -> transcript ===
+  wav        : H:\sotto\_main\_redux-long\src-en-8s.wav
+  audio      : 8.543s, 16000 Hz 1ch sampwidth=2
+  transcript : The radio announced that the bridge over the river will be closed next Monday. Residents need an alternative route to get to work.
+  oracle     : H:\sotto\_main\redux-en.txt  [DIFFERENT ENGINE (Redux ternary) -- not human labels]
+  agrees     : True   chars=130
+  WER vs oracle: 0.0%  (0 errors over 23 ref words; sub=0 del=0 ins=0)
+  CAVEAT     : agreement with another engine's transcript, NOT a human-labelled WER
+  provider   : requested=cpu loaded=[['CPUExecutionProvider'], ['CPUExecutionProvider']] cpu_only=True
+  VERDICT    : PASS  2 segments, 130 chars, exact match with the oracle
+
+=== ARM A-pt :: real speech (Portuguese) -> transcript ===
+  wav        : H:\sotto\_main\_redux-long\src-pt-15s.wav
+  audio      : 15.0s, 16000 Hz 1ch sampwidth=2
+  transcript : O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira. Os moradores precisam de um caminho alternativo para chegar ao trabalho.
+  oracle     : H:\sotto\_main\redux-ptbr.txt  [DIFFERENT ENGINE (Redux ternary) -- not human labels]
+  agrees     : True   chars=159
+  WER vs oracle: 0.0%  (0 errors over 27 ref words; sub=0 del=0 ins=0)
+  CAVEAT     : agreement with another engine's transcript, NOT a human-labelled WER
+  provider   : requested=cpu loaded=[['CPUExecutionProvider'], ['CPUExecutionProvider']] cpu_only=True
+  VERDICT    : PASS  2 segments, 159 chars, exact match with the oracle
+
+=== ARM B :: the language prompt, both directions ===
+  graph encoder      : ['audio_signal', 'length']
+  graph decoder_joint: ['encoder_outputs', 'targets', 'target_length', 'input_states_1', 'input_states_2']
+  language inputs    : NONE -- not prompt-conditioned
+  onnx_asr ignores kwarg for all 4 values: True  (en, pt, Portuguese, klingon)
+  our engine         : {'en': 'refused: LanguageNotSupportedError', 'pt': 'refused: LanguageNotSupportedError', 'klingon': 'refused: LanguageNotSupportedError'}
+  VERDICT    : PASS  graph declares NO language input; onnx_asr ignores the kwarg for all 4 values (identical transcript); our engine refuses all of them
+
+=== ARM D :: the LIVE engine refuses a provider this box cannot load ===
+  requested  : cuda  -> refused: provider 'CUDAExecutionProvider' did not load (ORT fell back silently): sessions=[['CPUExecutionProvider'], ['CPUExecutionProvider']], available=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']. On this box CUDA is requested but not loadable (AGENTS.md:230-234); use --provider cpu.
+  cpu arm    : loads=True cpu_only=True [['CPUExecutionProvider'], ['CPUExecutionProvider']]
+  VERDICT    : PASS  the LIVE engine refuses --provider cuda (ProviderUnavailableError) and still loads cpu-only [['CPUExecutionProvider'], ['CPUExecutionProvider']]
+
+=== ARM C :: the control: cures reverted in a COPY, must go red ===
+  copy        : G:\Temp\lane9-ctl\asr  (10 modules, engine.py sha256 7c2dbe3f2ad8407c)
+  imported    : G:\Temp\lane9-ctl\asr\__init__.py
+  control_model_dir         : H:\sotto\_moved\aireplay\models\parakeet-tdt-0.6b-v3-onnx
+  cuda_silently_accepted    : True
+  ctl_recognize_takes_language: False
+  ctl_recognize_accepts_pt  : TypeError (pre-cure signature): OnnxAsrEngine.recognize() got an unexpected keyword argument 'language'
+  ctl_recognize_accepts_en  : TypeError (pre-cure signature): OnnxAsrEngine.recognize() got an unexpected keyword argument 'language'
+  onnx_asr_swallow_pt       : 159 chars, sha 6a5d7b8acad6, identical_to_no_arg=True
+  onnx_asr_swallow_en       : 159 chars, sha 6a5d7b8acad6, identical_to_no_arg=True
+  VERDICT    : PASS  control reproduced the pre-cure defect: the copy accepted a provider that did not load, and onnx_asr accepted a language the export cannot honour
+
+ARMS 5  pass=5  fail=0
+PROVIDERS(shipped, requested, verified) = ['CPUExecutionProvider']
+LANE9-GATE PASS

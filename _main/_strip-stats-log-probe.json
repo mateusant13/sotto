@@ -1,0 +1,106 @@
+{
+  "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
+  "hz": 20.0,
+  "run_s": 24.0,
+  "settle_s": 6.0,
+  "per_sample": {
+    "tag": "per-sample-a1",
+    "shell": "H:\\sotto\\app\\webview\\_strip-logmutant_sotto_webview.py",
+    "log": "H:\\sotto\\_main\\_strip-stats-log-per-sample-a1-36920-1791391188.log",
+    "rc": 0,
+    "killed": false,
+    "ready": true,
+    "window_s": 22.36,
+    "baseline_bytes": 11409,
+    "final_bytes": 41893,
+    "grew_bytes": 30484,
+    "bytes_per_min": 81804.9,
+    "push_lines": 467,
+    "push_bytes": 35384,
+    "push_bytes_per_min": 94954.2,
+    "pushes_total": 467,
+    "delivered": 467,
+    "autostart": [
+      "sotto: WORKER_AUTOSTART=started reason=with-worker"
+    ],
+    "push_sample": [
+      "sotto: BRIDGE_STATS_PUSH count=1 payload={\"peak\":0.443448,\"blocks\":812.0}",
+      "sotto: BRIDGE_STATS_PUSH count=2 payload={\"peak\":0.443448,\"blocks\":812.0}"
+    ],
+    "attempt": 1,
+    "attempts": [
+      {
+        "attempt": 1,
+        "ready": true,
+        "killed": false,
+        "delivered": 467
+      }
+    ]
+  },
+  "aggregated": {
+    "tag": "aggregated-a1",
+    "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
+    "log": "H:\\sotto\\_main\\_strip-stats-log-aggregated-a1-36920-1791391188.log",
+    "rc": 0,
+    "killed": false,
+    "ready": true,
+    "window_s": 22.35,
+    "baseline_bytes": 5279,
+    "final_bytes": 6133,
+    "grew_bytes": 854,
+    "bytes_per_min": 2292.5,
+    "push_lines": 1,
+    "push_bytes": 104,
+    "push_bytes_per_min": 279.2,
+    "pushes_total": 471,
+    "delivered": 471,
+    "autostart": [
+      "sotto: WORKER_AUTOSTART=started reason=with-worker"
+    ],
+    "push_sample": [
+      "sotto: BRIDGE_STATS_PUSH count=1 in_window_s=0.0 rate_hz=first payload={\"peak\":0.443448,\"blocks\":812.0}"
+    ],
+    "attempt": 1,
+    "attempts": [
+      {
+        "attempt": 1,
+        "ready": true,
+        "killed": false,
+        "delivered": 471
+      }
+    ]
+  },
+  "checks": [
+    {
+      "what": "both arms ran the stand-in worker at the same rate",
+      "ok": true
+    },
+    {
+      "what": "both arms reached the live page (READY) and exited on their own",
+      "ok": true
+    },
+    {
+      "what": "the per-sample arm logged a line PER SAMPLE (>= 100 lines)",
+      "ok": true
+    },
+    {
+      "what": "the aggregated arm logged at most a handful of lines",
+      "ok": true
+    },
+    {
+      "what": "the feed's bytes per minute fall by at least 50x",
+      "ok": true
+    },
+    {
+      "what": "the aggregated arm still DELIVERED the feed (delivered > 100)",
+      "ok": true
+    },
+    {
+      "what": "the per-sample arm delivered the same feed (the control is not idle)",
+      "ok": true
+    }
+  ],
+  "verdict": "GREEN",
+  "failed": [],
+  "ratio": 340.1
+}

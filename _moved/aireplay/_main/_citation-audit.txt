@@ -1,0 +1,34 @@
+CITATION-AUDIT  run 2026-10-07 12:34:33
+
+N1    PASS   bytes=80012    needle='DVR-style Instant Replay'
+N1b   PASS   bytes=80012    needle='last 30 seconds'
+N1c   PASS   bytes=80012    needle='8K HDR at 30 fps'
+N1d   PASS   bytes=80012    needle='noise and room echo removal'
+N1e   PASS   bytes=80012    needle='clutch kills'
+N2    PASS   bytes=9387     needle='Save last [user defined] mins/seconds recorded'
+N2b   PASS   bytes=9387     needle='Toggle Instant Replay on/off'
+N2c   PASS   bytes=9387     needle='Ctrl+Shift+0'
+N3    PASS   bytes=9779     needle='Alt+Shift+R'
+N3b   PASS   bytes=9779     needle='Alt+R to toggle the statistics overlay'
+N4    PASS   bytes=9120     needle='automatically capture key moments, clutch kills, and match-winning plays'
+N5    PASS   bytes=8899     needle='encoded in H.264 and saved as MP4 files'
+N6    PASS   bytes=9170     needle='black bars are added'
+M1    PASS   bytes=13000    needle='bypass desktop composition entirely'
+M1b   PASS   bytes=13000    needle='Instead of using the DWM swapchain to display on the screen, the application swapchain is used'
+L1    FAIL   bytes=6641     needle='GNU Lesser General Public License (LGPL) version 2.1 or later'
+        URL: https://ffmpeg.org/legal.html
+L1b   PASS   bytes=6641     needle='If those parts get used the GPL applies to all of FFmpeg'
+G1    FAIL   bytes=6847     needle='"spdx_id":"Apache-2.0"'
+        URL: https://api.github.com/repos/tauri-apps/global-hotkey
+G2    FAIL   bytes=6924     needle='"spdx_id":"GPL-2.0"'
+        URL: https://api.github.com/repos/obsproject/obs-studio
+G3    FAIL   bytes=6812     needle='"spdx_id":"Apache-2.0"'
+        URL: https://api.github.com/repos/microsoft/windows-rs
+C1    PASS   bytes=43390    needle='"max_version":"0.8.0"'
+C2    PASS   bytes=1456971  needle='"max_version":"0.62.2"'
+X1    PASS   bytes=124      needle='Not Found'
+X2    PASS   INVERTED: crates.io/transparency must NOT exist
+X3    PASS   bytes=124      needle='Not Found'
+
+CASES=25  PASS=21  FAIL=4
+VERDICT FAIL - 4 citation(s) do not assert

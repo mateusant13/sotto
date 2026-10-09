@@ -123,18 +123,48 @@
     list.className = 'theme-picker__list';
     list.setAttribute('role', 'group');
 
+    /* THE LIST IS GROUPED AND BADGED (owner, 2026-10-08). He asked for the
+     * near-duplicate designs to be shippable as alternatives for A/B/C testing —
+     * *"pros que sao bem parecidos, faça outra alternativa, a b c testing"* — and
+     * a flat list of thirty names makes two variants of ONE design look like two
+     * unrelated themes. So the manifest's `group` becomes a heading and its
+     * `variant` becomes the badge, which is what lets him find the pair he wants
+     * to compare. Nothing here decides anything: it renders what the manifest
+     * says, so a variant that is mislabelled is a manifest bug and not a UI one. */
+    var lastGroup = null;
     THEMES.forEach(function (theme) {
+      var group = theme.group || null;
+      if (group && group !== lastGroup) {
+        var head = doc.createElement('div');
+        head.className = 'theme-picker__group';
+        head.textContent = theme.groupLabel || group;
+        list.append(head);
+      }
+      lastGroup = group;
+
       var b = doc.createElement('button');
       b.type = 'button';
       b.className = 'theme-picker__option';
       b.dataset.themeChoice = theme.name;
       b.style.setProperty('--theme-swatch', theme.swatch);
-      b.textContent = theme.label;
 
       var chip = doc.createElement('span');
       chip.className = 'theme-picker__swatch';
       chip.setAttribute('aria-hidden', 'true');
-      b.insertBefore(chip, b.firstChild);
+      b.append(chip);
+
+      var label = doc.createElement('span');
+      label.className = 'theme-picker__label';
+      label.textContent = theme.label;
+      b.append(label);
+
+      if (theme.variant) {
+        var badge = doc.createElement('span');
+        badge.className = 'theme-picker__variant';
+        badge.textContent = theme.variant;
+        badge.title = 'Variante ' + theme.variant + ' deste design';
+        b.append(badge);
+      }
 
       b.addEventListener('click', function () {
         api.set(theme.name);
@@ -160,7 +190,16 @@
     buttons(doc).forEach(function (b) { b.setAttribute('aria-expanded', 'true'); });
     var first = picker.querySelector('.theme-picker__option[aria-current="true"]')
       || picker.querySelector('.theme-picker__option');
-    if (first) first.focus();
+    if (first) {
+      first.focus();
+      /* With the full set in the list, the current theme can be well below the
+       * fold, and a picker that opens on somebody else's theme reads as "my
+       * choice was lost". `scrollIntoView` with `block:'nearest'` scrolls only
+       * when it has to, so the common case does not move at all. */
+      if (typeof first.scrollIntoView === 'function') {
+        first.scrollIntoView({ block: 'nearest' });
+      }
+    }
   }
 
   function syncPicker() {
@@ -211,18 +250,34 @@
 
   function wireButton(btn) {
     if (!btn) return;
+    /* THE TWO CLICKS ARE THE OWNER'S, verbatim (2026-10-08): *"clique esquerdo
+     * avança, direito retrocede nos temas"*. So the right button now walks
+     * BACKWARDS, which is a change of contract: it used to OPEN THE PICKER. The
+     * picker did not lose its home — it moved to the keyboard (ArrowDown /
+     * ArrowUp / Enter), where it already was — and the reason that is the right
+     * trade is the owner's OTHER request: walking the flat manifest order means
+     * the A/B/C variants of one design sit next to each other, so one click each
+     * way flips between them, which is the comparison he asked to be able to do. */
     btn.addEventListener('click', function () {
       api.next();
     });
     btn.addEventListener('contextmenu', function (ev) {
       ev.preventDefault();
-      if (picker && !picker.hidden) closePicker();
-      else openPicker();
+      api.previous();
     });
     btn.addEventListener('keydown', function (ev) {
-      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter') {
         ev.preventDefault();
-        openPicker();
+        if (picker && !picker.hidden) closePicker();
+        else openPicker();
+        return;
+      }
+      if (ev.key === 'ArrowRight') {
+        ev.preventDefault();
+        api.next();
+      } else if (ev.key === 'ArrowLeft') {
+        ev.preventDefault();
+        api.previous();
       }
     });
     paintButton(btn);
@@ -254,11 +309,14 @@
     return btn;
   }
 
+  /* list() — the five themes, in order, as the manifest declares them. */
   var api = {
-    /* list() — the five themes, in order, as the manifest declares them. */
     list: function () {
       return THEMES.map(function (t) {
-        return { name: t.name, label: t.label, swatch: t.swatch };
+        return {
+          name: t.name, label: t.label, swatch: t.swatch,
+          group: t.group || null, variant: t.variant || null
+        };
       });
     },
 
@@ -291,6 +349,34 @@
         if (THEMES[i].name === name) return api.set(THEMES[(i + 1) % THEMES.length].name);
       }
       return api.set(FALLBACK);
+    },
+
+    /* previous() — the SAME walk, one step back, on the owner's right button
+     * (2026-10-08). Wrapping is deliberate: the ends of the list are not a wall,
+     * they are the ends of a ring, so a wrong click costs one more click instead
+     * of a trip to the picker. */
+    previous: function () {
+      var name = currentTheme();
+      for (var i = 0; i < THEMES.length; i += 1) {
+        if (THEMES[i].name === name) {
+          return api.set(THEMES[(i - 1 + THEMES.length) % THEMES.length].name);
+        }
+      }
+      return api.set(FALLBACK);
+    },
+
+    /* group(name) — the A/B/C family a theme belongs to, or null. Exposed because
+     * "which designs are variants of one another" is a claim the picker renders
+     * and an oracle should be able to check without reading the buttons. */
+    group: function (name) {
+      var t = known(name || currentTheme());
+      return t && t.group ? t.group : null;
+    },
+
+    /** variant(name) — 'A' | 'B' | 'C' | null. */
+    variant: function (name) {
+      var t = known(name || currentTheme());
+      return t && t.variant ? t.variant : null;
     },
 
     /* mount() — idempotent. Wires the header button (the host's or our own) and

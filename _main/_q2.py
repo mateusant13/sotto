@@ -1,0 +1,11 @@
+import sqlite3, json
+c = sqlite3.connect(r"C:\Users\Administrador\.minimax\v2\sqlite\runtime-state.sqlite")
+r = c.execute("select id,session_id,item_id,status,source,dedupe_key,data_json from local_runtime_queue_items limit 1").fetchone()
+print("id       :", r[0])
+print("session  :", r[1])
+print("item_id  :", r[2])
+print("status   :", r[3])
+print("source   :", r[4])
+print("dedupe   :", r[5])
+print("data_json:")
+print(json.dumps(json.loads(r[6]), indent=2)[:1600])

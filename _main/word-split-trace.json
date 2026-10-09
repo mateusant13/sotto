@@ -3,12 +3,12 @@
  "wav_s": 15.0,
  "model": "nemotron-3.5-asr-streaming-0.6b-int8",
  "model_dir": "worker/models/nemotron-3.5-asr-streaming-0.6b-int8",
- "worker_sha256": "73A4CA72D8A50D4FD404EFC5DD0D205313958B79BB715B80E6CD7946C927543A",
+ "worker_sha256": "CEFD18689BD54F681E7F5666437DCECA28E9E61B3F3C41666697E4FD3829BAF1",
  "lang_id": 101,
  "lang": "auto",
  "use_vad": true,
  "chunk": 8960,
- "load_s": 2.08,
+ "load_s": 2.49,
  "chunks": [
   {
    "i": 0,

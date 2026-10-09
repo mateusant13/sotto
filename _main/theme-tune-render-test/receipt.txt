@@ -1,0 +1,81 @@
+
+[43976:1008/034020.915:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Acesso negado. (0x5)
+[43976:1008/034020.915:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Acesso negado. (0x5)
+[43976:1008/034020.915:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Acesso negado. (0x5)
+[43976:1008/034020.916:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[43976:1008/034020.916:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[43976:1008/034020.916:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[43976:1008/034020.916:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[43976:1008/034020.916:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[43976:1008/034020.916:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+RESULT {
+  "ok": true,
+  "failed": [],
+  "errors": [],
+  "observations": {
+    "baseline": {
+      "token": "30px",
+      "px": "30px"
+    },
+    "gearId": "tune-button",
+    "tuneRows": 17,
+    "edited": {
+      "token": "41px",
+      "px": "41px",
+      "inline": "41px"
+    },
+    "otherTheme": {
+      "theme": "theme-2",
+      "token": "20px",
+      "px": "20px"
+    },
+    "backAgain": {
+      "theme": "theme-1",
+      "token": "41px",
+      "px": "41px"
+    },
+    "afterReset": {
+      "token": "30px",
+      "px": "30px",
+      "inline": ""
+    },
+    "accent": {
+      "accent": "#ff0000",
+      "swatch": "#ff0000",
+      "halo": "rgba(255, 0, 0, 0.12)",
+      "line": "rgba(255, 0, 0, 0.16)"
+    },
+    "typeStep": "0ms",
+    "finalToken": "30px",
+    "store": "{}"
+  },
+  "checks": {
+    "api_present": true,
+    "gear_in_controls": true,
+    "gear_before_pause": true,
+    "hide_is_last": true,
+    "dialog_exists": true,
+    "dialog_outside_panel": true,
+    "dialog_open": true,
+    "dialog_closes": true,
+    "edit_lands_on_html": true,
+    "cascade_moves_the_paint": true,
+    "token_and_paint_agree": true,
+    "switched": true,
+    "isolation": true,
+    "other_theme_owns_the_value": true,
+    "no_inline_on_the_other_theme": true,
+    "memory": true,
+    "reset_returns_the_theme_value": true,
+    "reset_clears_the_inline": true,
+    "accent_written": true,
+    "swatch_follows_the_accent": true,
+    "halo_follows_the_accent": true,
+    "halo_keeps_the_theme_alpha": true,
+    "hairline_follows_the_accent": true,
+    "zero_is_written": true,
+    "final_is_the_theme_value": true,
+    "store_is_json_or_unavailable": true
+  }
+}
+VERDICT: PASS

@@ -1,0 +1,151 @@
+--- H:\sotto\_main\denoise-frozen\off\sotto_worker.py
++++ H:\sotto\worker\sotto_worker.py
+@@ -1311,34 +1311,7 @@
+ # every other consumer. `blocks` travels with the level so a consumer can see a
+ # window that was longer or shorter than one block period (a stalled tap, a
+ # dropped block).
+-#
+-# ── THE SHIPPED DEFAULT IS ON AT 10 Hz — REVERSED 2026-10-08, ON THE OWNER'S ──
+-# ── OWN REPORT: "a animação de áudio sendo capturado não tá funcionando" ─────
+-# This was briefly `0.0`, to stop the shell logging an unknown `type` once per
+-# sample. **That was the wrong cure: it silenced a LOG by switching off the
+-# DATA**, and the panel's wave is the thing that starves. A feature must not be
+-# disabled to keep a log quiet — the limit belongs on the LOG side, where the
+-# flood is actually produced (the consumer that logs an unknown key per sample).
+-#
+-# MEASURED, so the rate is a number and not a taste: the tap's own block period
+-# is `audio.block_ms: 100` = 10 Hz, and `AudioMeter.blocks_per_window` is
+-# `round(interval / block_s)` = 1, so the meter publishes **exactly one point per
+-# block: 81 blocks -> 81 events -> 10.0 points/s** on the live loop
+-# (`_main/receipt-audio-meter.md` §3). 10 Hz IS the tap's native rate; a faster
+-# window would have to invent points between blocks, a slower one would throw
+-# away blocks the tap already measured.
+-#
+-# THE FLOOD IS STILL REAL AND IS STILL THE SHELL'S TO FIX, named so it cannot be
+-# forgotten: `_consume`'s `else` branch (`app/webview/sotto_webview.py:6274-6275`
+-# at revision 347517 B, mtime 11:44:04) still does `self.malformed += 1` and
+-# `self.log(f'BRIDGE_UNKNOWN type={kind!r}')` per event with no rate limit, while
+-# the SAME file has already rate-limited the sibling push
+-# (`_stats_log_maybe`, `:4847-4860`, one line per `STATS_LOG_INTERVAL_S = 30.0`
+-# with a count). The pattern to copy is in that file, not in this one.
+-# `--meter-hz 0` / `SOTTO_METER_HZ=0` remains the escape hatch, and with it off
+-# not one byte is added to stdout.
+ METER_HZ = 10.0
+-METER_HZ_DEFAULT = 10.0
+ 
+ 
+ class AudioMeter:
+@@ -1349,23 +1322,10 @@
+     without opening the device the owner's worker is holding.
+     """
+ 
+-    def __init__(self, hz=METER_HZ, now=0.0, block_s=0.0):
++    def __init__(self, hz=METER_HZ, now=0.0):
+         self.interval = (1.0 / float(hz)) if hz and float(hz) > 0 else 0.0
+         self.enabled = self.interval > 0.0
+         self.next = now + self.interval
+-        # ── HOW MANY BLOCKS ONE WINDOW HOLDS, when the tap's period is known ──
+-        # A pure time window BEATS against a block rate that equals it, and the
+-        # beat is not academic: MEASURED on the live loop fed from a file
+-        # (`SOTTO_FILE_TAP`, 100 ms blocks, 10 Hz window) — **80 blocks produced
+-        # 48 events over 8 s of audio, i.e. 6.0 points/s, not 10**. Jitter in the
+-        # tap's pacing pushes a block just before the boundary, the window then
+-        # swallows two blocks, and the wave loses 40 % of its points.
+-        # The window therefore closes on the FIRST of "enough blocks" and
+-        # "enough time": the block count pins the cadence to the tap, and the
+-        # time bound is still what closes a window when blocks are sparse.
+-        self.blocks_per_window = 0
+-        if block_s and float(block_s) > 0:
+-            self.blocks_per_window = max(1, int(round(self.interval / float(block_s))))
+         self.reset()
+ 
+     def reset(self):
+@@ -1385,9 +1345,7 @@
+         self.blocks += 1
+         if block_peak > self.peak:
+             self.peak = block_peak
+-        # ENOUGH TIME **or** ENOUGH BLOCKS — see `blocks_per_window`.
+-        if now < self.next and not (self.blocks_per_window
+-                                    and self.blocks >= self.blocks_per_window):
++        if now < self.next:
+             return None
+         out = {"peak": round(self.peak, 4), "blocks": self.blocks}
+         self.reset()
+@@ -2981,18 +2939,17 @@
+         default=10.0,
+         help="seconds between WORKER_STATS stage counters on stderr (0 = off)",
+     )
+-    # ── the panel's WAVE (lane SottoWordSplit, task 2) — DEFAULT ON at 10 Hz ──
++    # ── the panel's WAVE (lane SottoWordSplit, task 2) — default ON at 10 Hz ──
+     # `SOTTO_METER_HZ` overrides it, like every other capture knob that has to
+     # travel by environment because the shell's argv puts extra flags before the
+-    # script path. The shipped default is `METER_HZ_DEFAULT` = 10, and the reason
+-    # is spelled out beside `METER_HZ`: the panel's wave is fed by this event, and
+-    # switching the DATA off to quiet a LOG was the wrong cure (the limit belongs
+-    # on the log side — see the note beside `METER_HZ` for the exact site).
++    # script path. 0 turns the event off completely: with it off, not one read,
++    # not one line, not one branch of `on_block`'s meter block is taken, so a run
++    # with `--meter-hz 0` is byte-identical to the run before this existed.
+     ap.add_argument(
+         "--meter-hz",
+         type=float,
+-        default=METER_HZ_DEFAULT,
+-        help="audio-level events per second on stdout (default 10; 0 = off)",
++        default=METER_HZ,
++        help="audio-level events per second on stdout (0 = off)",
+     )
+     ap.add_argument(
+         "--tap-window",
+@@ -3541,37 +3498,6 @@
+             )
+         return line
+ 
+-    # ── the panel's WAVE: the level of the window, published at ~10 Hz ────────
+-    # DEFAULT ON (`METER_HZ_DEFAULT` = 10): the panel's wave is fed by this
+-    # event, and the owner reported the animation dead. The flood it used to
+-    # cause is a LOG-side problem (the shell logs an unknown `type` once per
+-    # sample) and is fixed at the log side — switching the datum off was the
+-    # wrong cure. `--meter-hz 0` / `SOTTO_METER_HZ=0` still turns it fully off.
+-    # Built HERE, before the tap exists, because `on_block` is the tap's callback.
+-    meter = None
+-    meter_hz = args.meter_hz
+-    _meter_env = os.environ.get("SOTTO_METER_HZ")
+-    if _meter_env not in (None, ""):
+-        try:
+-            meter_hz = float(_meter_env)
+-        except (TypeError, ValueError):
+-            err(f"SOTTO_METER_HZ={_meter_env!r} is not a number; using {args.meter_hz}")
+-            meter_hz = args.meter_hz
+-    if meter_hz > 0:
+-        meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
+-    # ANNOUNCED ON STDERR, not as a stdout `status`: stdout is the channel that
+-    # also carries the captions, and a new lifecycle token there would be painted
+-    # by the panel as a state this build does not name. The meter's own events are
+-    # the announcement on stdout; this line is for the log.
+-    err(
+-        "meter        : "
+-        + (f"{meter_hz:.1f} Hz per-window peak on stdout (interval {meter.interval:.3f}s, "
+-           f"blocks/window={meter.blocks_per_window or 'time-only'}, "
+-           f"source={'env' if _meter_env not in (None, '') else 'cli'})"
+-           if meter is not None else
+-           "off (stdout carries no meter event; --meter-hz 0 or SOTTO_METER_HZ=0)")
+-    )
+-
+     def on_block(block):
+         counters["blocks"] += 1
+         counters["block_samples"] += int(block.size)
+@@ -3581,14 +3507,6 @@
+             counters["peak"] = p
+         if p > device_peak["value"]:
+             device_peak["value"] = p
+-        # THE WAVE. `p` is the peak of THIS block and is already computed above;
+-        # the meter only refuses to let it accumulate past its own window. The
+-        # payload is `peak`/`blocks` — the two fields the panel's shipped
+-        # `wireStatsSource` reads — and nothing else.
+-        if meter is not None:
+-            level = meter.tick(p, time.time())
+-            if level is not None:
+-                emit(type="meter", **level)
+         if p > 1e-4:
+             counters["nonzero_blocks"] += 1
+         counters["sumsq"] += float((block.astype("float64") ** 2).sum())

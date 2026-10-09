@@ -1,0 +1,10 @@
+shipped cfg OK: rise_threshold=3.5
+unchecked rise=1.0 built: 1.0
+M1 quiet, rise open: abs_floor=0.065 -> 0 ; abs_floor=0 -> 7
+M2 busy,  rise open: burst=1 -> 29 ; burst=600 -> 35
+   rise_threshold=2.00 -> busy 0 (unchecked)
+   rise_threshold=2.50 -> busy 0 (unchecked)
+   rise_threshold=3.00 -> busy 0 (unchecked)
+   rise_threshold=3.17 -> busy 0 (unchecked)
+   rise_threshold=3.20 -> busy 0 (unchecked)
+   rise_threshold=3.50 -> busy 0 (unchecked)

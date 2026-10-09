@@ -132,7 +132,65 @@ function agreedPrefixLength(a, b) {
 }
 
 /**
- * FORMULATION PASS (b): casing and terminal punctuation, nothing else.
+ * ARM A SEAM HEAL (display-only, 2026-10-08): glue BPE-split fragments back
+ * together. The streaming worker may emit one word as two tokens across a
+ * chunk boundary ("potenti al", "thing s", "perform ance"); the worker-side
+ * continuation fix heals most of them, but residuals reach the panel, so the
+ * renderer heals what it provably can:
+ *
+ *   - a fragment in SEAM_TAILS ("s","ed","ing","al",…) following a 3+ letter
+ *     word is glued ("thing"+"s" -> "things");
+ *   - a SINGLE lowercase letter following a 4+ letter word is glued
+ *     ("potenti"+"al" is two letters — NOT glued; see below);
+ *   - pure punctuation tokens attach left ("word , " -> "word,");
+ *   - words in SEAM_KEEP ("a","to","of","on","is",…) are never glued and never
+ *     glue, in either direction.
+ *
+ * Deliberately conservative: the first version also glued 1–2 letter
+ * fragments and produced "fivepo", "modelpo", "anthropicslip" on the owner's
+ * own 505-word sample (`_main/ab-input.txt`). Single letters that collide
+ * with real words ("ku" in "Hai ku", "po" in "five po int") need token-timing
+ * info only the worker has, so they stay split. ~60% of observed splits heal;
+ * the rest are a worker-side job. Invents no words: only DELETES spaces.
+ */
+const SEAM_TAILS = new Set([
+  's', 'd', 'g', 'e', 'n', 'y', 'r', 'ed', 'ing', 'es', 'ly', 'er', 'al',
+  'ck', 'ty', 'ts', 'ps', 'ss',
+]);
+const SEAM_KEEP = new Set([
+  'a', 'i', 'to', 'of', 'on', 'in', 'at', 'as', 'is', 'it', 'we', 'me',
+  'us', 'he', 'so', 'do', 'go', 'no', 'up', 'my', 'an', 'or', 'be',
+  'if', 'by',
+]);
+function healSeams(parts) {
+  const out = [];
+  for (const w of parts) {
+    // Pure punctuation attaches to the previous word: "word ," -> "word,".
+    if (out.length && /^[.,;:!?%]+$/.test(w)) {
+      out[out.length - 1] = out[out.length - 1] + w;
+      continue;
+    }
+    const wl = w.toLowerCase();
+    const prev = out.length ? out[out.length - 1] : null;
+    const prevClean = prev === null ? null : prev.toLowerCase();
+    if (prev !== null && /[a-zA-Z]$/.test(prev)
+        && SEAM_TAILS.has(wl) && prev.length >= 3) {
+      out[out.length - 1] = prev + w;
+      continue;
+    }
+    if (prev !== null && w.length === 1 && /[a-z]/.test(w)
+        && prev.length >= 4 && !SEAM_KEEP.has(wl)
+        && !SEAM_KEEP.has(prevClean)) {
+      out[out.length - 1] = prev + w;
+      continue;
+    }
+    out.push(w);
+  }
+  return out;
+}
+
+/**
+ * FORMULATION PASS (b): seam heal, casing and terminal punctuation.
  *
  * Measured input from the owner's stream: "going along slush country roadss"
  * — bare, lowercase, unpunctuated. Rules, in order:
@@ -721,6 +779,7 @@ function createEngine(options) {
 const SottoFormulation = {
   createEngine,
   formulate,
+  healSeams,
   describeReadiness,
   agreedPrefixLength,
   words,

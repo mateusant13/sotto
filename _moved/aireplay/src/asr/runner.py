@@ -56,6 +56,7 @@ class TranscribeConfig:
     phases: bool = False
     verify_model: bool = True
     label: str = ""
+    language: str | None = None  # REFUSED unless the export declares a language input
 
     def __post_init__(self):
         self.wav = Path(self.wav)
@@ -223,7 +224,7 @@ def transcribe(cfg: TranscribeConfig, on_event: Callable[[dict], None] | None = 
                 phases = phases or {}
                 phases[key] = {"error": f"{type(exc).__name__}: {exc}"}
         c0 = time.perf_counter()
-        text = engine.recognize(audio, sample_rate=SAMPLE_RATE)
+        text = engine.recognize(audio, sample_rate=SAMPLE_RATE, language=cfg.language)
         wall = time.perf_counter() - c0
         clock["audio_s"] = cfg.offset_s + b
         texts.append(text or "")
@@ -268,6 +269,8 @@ def transcribe(cfg: TranscribeConfig, on_event: Callable[[dict], None] | None = 
             "inter": cfg.inter_op_num_threads,
             "env": env,
             "session_providers": engine.session_providers,
+            "graph_inputs": engine.graph_inputs,
+            "language_conditioned": engine.language_conditioned,
             "model_name": engine.threads_reported.get("model_name"),
             "onnx_asr": engine.threads_reported.get("onnx_asr"),
             "onnxruntime": engine.threads_reported.get("onnxruntime"),

@@ -1,0 +1,16 @@
+item queue_1dfd5c7c-167f-432e-9438-9de13687489d sess mvs_ea552229fe164f9e8856fcca8589c41a status queued exp None
+  agentName = 'mavis'
+  clientRequestId = 'minimax-code_muxb4fuq_3eklcv0p'
+  createdAt = '1791329146949'
+  deliveryAttempts = "[{'claimId': 'claim_c60bc898-f900-4a9f-b46d-8852e0e1d25b', 'turnId': 'turn_3be0675b-25ed-4"
+  itemId = 'queue_1dfd5c7c-167f-432e-9438-9de13687489d'
+  message = '{\'content\': \'"  E ├® uma ponte, n├úo uma corre├º├úo: mcode update substitui o install inteiro '
+  model = "{'provider_id': 'minimax', 'model_id': 'MiniMax-M3.1-Flash-Preview', 'reasoning': True, 'c"
+  requestedTurnId = 'turn_3be0675b-25ed-4ab7-9e97-1174cbe1e958'
+  sessionId = 'mvs_ea552229fe164f9e8856fcca8589c41a'
+  source = 'api'
+  status = 'queued'
+  userMessageId = 'msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOjxOWKWZNKfhg'
+userMessageId len = 55 'msg-user-v1-q0ca3dhwpZb9hWFFFtb-Q9j7Zido0pOjxOWKWZNKfhg'
+body len 43 urlsafe-decodable: 32
+has expiresAtMs key in data_json: False

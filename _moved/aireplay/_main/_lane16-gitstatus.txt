@@ -1,0 +1,304 @@
+ M _main/_all-gates-census.log
+ M _main/_lane1-trigger-gate.ps1
+ M _main/_lane16-control-log-copy.log
+ M _main/_lane16-gate-console.txt
+ M _main/_lane16-gate.out.txt
+ M _main/_lane16-probe.stdout.txt
+ M _main/_lane16-wake-gate.ps1
+ M _main/_lane3-ringcap-gate.ps1
+ M _main/_lane3_ringcap_probe.cpp
+ M _main/_lane4-run/armA.log
+ M _main/_lane4-run/armB.log
+ D _main/_lane4-run/armC-v.log
+ M _main/_lane4-run/armC.json
+ M _main/_lane4-run/armC.log
+ M _main/_lane4-run/armD.json
+ M _main/_lane4-run/armD.log
+ M _main/_lane4-run/work/d1.json
+ M _main/_lane4-run/work/d2.json
+ D _main/_lane4-run/work/mutant-escape/index/__init__.py
+ D _main/_lane4-run/work/mutant-escape/index/schema.py
+ D _main/_lane4-run/work/mutant-escape/index/search.py
+ D _main/_lane4-run/work/mutant-escape/index/selftest.py
+ D _main/_lane4-run/work/mutant-escape/index/store.py
+ D _main/_lane4-run/work/mutant-escape/mutant.json
+ D _main/_lane4-run/work/mutant-unit/index/__init__.py
+ D _main/_lane4-run/work/mutant-unit/index/schema.py
+ D _main/_lane4-run/work/mutant-unit/index/search.py
+ D _main/_lane4-run/work/mutant-unit/index/selftest.py
+ D _main/_lane4-run/work/mutant-unit/index/store.py
+ D _main/_lane4-run/work/mutant-unit/mutant.json
+ M _main/_lane7-build-post.txt
+ M _main/_lane9-ctl/asr/engine.py
+ M _main/_lane9-ctl/asr/gate.py
+ M _main/_selftest-run.txt
+ M _main/all-gates.ps1
+ M _main/build/_lane1-trigger-mutant/trigger-mutant.cpp
+ M _main/build/lane1-gate-console.txt
+ M _main/build/lane1-trigger-selftest.log
+ M _main/durability-gate.ps1
+ M _main/heartbeat-exec-output.txt
+ M _main/heartbeat.log
+ M _main/lane-spec04-review.out
+ M _main/lane9-asr-gate.json
+ M _main/lane9-asr-gate.log
+ M _main/lane9-asr-gate.stderr.txt
+ M _main/lane9-asr-gate.stdout.txt
+ M _main/lane9-gate-run.txt
+ M _main/logs/cap-battery-RUN1.txt
+ M _main/logs/cap-gate-normal.stdout.txt
+ M _main/logs/cap-gate-normal.txt
+ M _main/logs/cap-gate-tuning.stdout.txt
+ M _main/logs/cap-gate-tuning.txt
+ M _main/logs/cap-mux-1080p.txt
+ M _main/logs/cap-mux-4k.txt
+ M _main/logs/cap-wgc-now.txt
+ M _main/logs/lane1-repobuild.txt
+ M _main/logs/lane1-trigger-gate.txt
+ M _main/logs/lane3-falsify-gate.log
+ M _main/logs/lane3-gate-probe-run.log
+ M _main/logs/lane3-gate-run.log
+ M specs/04-index-search.md
+ M src/asr/engine.py
+ M src/asr/gate.py
+ M src/capture/run_battery.ps1
+ M src/capture/test_window.cpp
+ M src/capture/trigger.cpp
+ M src/capture/trigger.h
+ M src/capture/trigger_selftest.cpp
+ M src/capture/wasapi_audio.cpp
+?? _main/_adv-launder-noflag.txt
+?? _main/_adv-launder.txt
+?? _main/_adv-race.txt
+?? _main/_all-gates-logs/20261007-122745/
+?? _main/_all-gates-logs/20261007-122853/
+?? _main/_all-gates-logs/20261007-123009/
+?? _main/_all-gates-logs/20261007-123010/
+?? _main/_all-gates-logs/20261007-123012/
+?? _main/_all-gates-logs/20261007-123014/
+?? _main/_all-gates-logs/20261007-123021/
+?? _main/_all-gates-logs/20261007-123450/
+?? _main/_all-gates-logs/20261007-123512/
+?? _main/_all-gates-logs/20261007-123614/
+?? _main/_all-gates-logs/20261007-123706/
+?? _main/_all-gates-logs/20261007-123707/
+?? _main/_all-gates-logs/20261007-124004/
+?? _main/_all-gates-logs/20261007-124005/
+?? _main/_all-gates-logs/20261007-124006/
+?? _main/_all-gates-logs/20261007-124007/
+?? _main/_all-gates-logs/20261007-124013/
+?? _main/_all-gates-logs/20261007-124015/
+?? _main/_all-gates-real.txt
+?? _main/_citation-audit-run2.txt
+?? _main/_citation-audit.ps1
+?? _main/_citation-audit.txt
+?? _main/_durability-scratch/
+?? _main/_hud-review-2.err
+?? _main/_hud-review-2.log
+?? _main/_hud-review-3.err
+?? _main/_hud-review-3.log
+?? _main/_hud-review-4.err
+?? _main/_hud-review-4.log
+?? _main/_hud-review-5.err
+?? _main/_hud-review-5.log
+?? _main/_hud-review-6.err
+?? _main/_hud-review-6.log
+?? _main/_hud-review-prompt.txt
+?? _main/_hud-review-prompt2.txt
+?? _main/_hud-review-verdict.md
+?? _main/_hud-review-verdict2.md
+?? _main/_hud-review-verdict3.md
+?? _main/_hud-review.err
+?? _main/_hud-review.log
+?? _main/_lane-spec04-ddl-check.py
+?? _main/_lane-spec04-raisestate.py
+?? _main/_lane-spec04-rebuild-check.py
+?? _main/_lane-spec04-rebuild2.py
+?? _main/_lane-spec04-rebuild3.py
+?? _main/_lane-spec04-rebuild4.py
+?? _main/_lane-spec04-rebuild5.py
+?? _main/_lane1-who-holds-capture-exe.ps1
+?? _main/_lane16-census15.out.txt
+?? _main/_lane16-census16.out.txt
+?? _main/_lane16-gitstatus.txt
+?? _main/_lane2-audio-gate.ps1
+?? _main/_lane23-armprobe.cpp
+?? _main/_lane23-modprobe.cpp
+?? _main/_lane23-trigger-defects-gate.ps1
+?? _main/_lane4-final/
+?? _main/_lane4-final2/
+?? _main/_lane4-final3/
+?? _main/_lane4-gate-console.log
+?? _main/_lane4-run/arm0-fixture.log
+?? _main/_lane4-run/armA.json
+?? _main/_lane4-run/armB.json
+?? _main/_lane4-run/d-race/
+?? _main/_lane4-run/gate.log
+?? _main/_lane4-run/meta-123248/
+?? _main/_lane4-run/mutant-escape/
+?? _main/_lane4-run/mutant-unit/
+?? _main/_lane4-run/work/ready1
+?? _main/_lane4-run/work/ready2
+?? _main/_lane7-cap-build.txt
+?? _main/_lane7-gate-run.txt
+?? _main/_lane7-pre-src/
+?? _main/_lane7-prebuild.txt
+?? _main/_lane7-probe-build.txt
+?? _main/_lane7-window-gate.ps1
+?? _main/_lane7-window-gate.txt
+?? _main/_lane7_window_probe.cpp
+?? _main/_probe-lane9.txt
+?? _main/_selftest-gates/armG_race/
+?? _main/_selftest-gates/armH_midrun/
+?? _main/_selftest-gates/armI_launder/
+?? _main/_selftest-timed.txt
+?? _main/backup-20261007-122803-prune-3ee05a09.json
+?? _main/backup-20261007-124054-inject-11b83645.json
+?? _main/build/_lane23-build-fixed.txt
+?? _main/build/_lane23-build-reverted.txt
+?? _main/build/_lane23-console.txt
+?? _main/build/_lane23-lane1gate.txt
+?? _main/build/_lane23-modprobe-build.txt
+?? _main/build/_lane23-modprobe-build2.txt
+?? _main/build/_lane23-trigger-mutant/
+?? _main/build/build2.txt
+?? _main/build/g14.txt
+?? _main/build/g14o.txt
+?? _main/build/g15.txt
+?? _main/build/g15o.txt
+?? _main/build/g16.txt
+?? _main/build/g16o.txt
+?? _main/build/gate-run1.txt
+?? _main/build/gdb-cmds.txt
+?? _main/build/gdb-cmds2.txt
+?? _main/build/gdb-out.txt
+?? _main/build/gdb-out2.txt
+?? _main/build/lane1-holder.txt
+?? _main/build/lane2-gate/
+?? _main/build/lane2-r1.out
+?? _main/build/lane2-r2.out
+?? _main/build/lane2-r3.out
+?? _main/build/lane23-modprobe-after.txt
+?? _main/build/lane23-modprobe-before.txt
+?? _main/build/m10-0.out
+?? _main/build/m10-1.out
+?? _main/build/m10.cpp
+?? _main/build/m11-0.out
+?? _main/build/m11-1.out
+?? _main/build/m11.cpp
+?? _main/build/m12-build.txt
+?? _main/build/m12.cpp
+?? "_main/build/m13-0 0.out"
+?? "_main/build/m13-0 1.out"
+?? "_main/build/m13-1 0.out"
+?? "_main/build/m13-1 1.out"
+?? _main/build/m13.cpp
+?? _main/build/m13b.txt
+?? _main/build/m14.cpp
+?? _main/build/m14.out
+?? _main/build/m14b.txt
+?? _main/build/m15.cpp
+?? _main/build/m15b.txt
+?? _main/build/m2-r1.out
+?? _main/build/m2-r2.out
+?? _main/build/m2-r3.out
+?? _main/build/m9.cpp
+?? _main/build/m9.out
+?? _main/build/o0-build.txt
+?? _main/build/o0-run.txt
+?? _main/build/rb-check.o
+?? _main/build/run-fixed.txt
+?? _main/lane-spec04-ddl-check.log
+?? _main/lane-spec04-raisestate.log
+?? _main/lane-spec04-rebuild-check.log
+?? _main/lane-spec04-rebuild2.log
+?? _main/lane-spec04-rebuild3.log
+?? _main/lane-spec04-rebuild4.log
+?? _main/lane-spec04-rebuild5.log
+?? _main/lane-spec04-review-verdict.md
+?? _main/lane9-parity.txt
+?? _main/lane9-selftest-post.txt
+?? _main/logs/cap-battery-20261007-122811.txt
+?? _main/logs/cap-battery-20261007-123421.txt
+?? _main/logs/cap-battery-20261007-124045.txt
+?? _main/logs/cap-battery-RUN2.txt
+?? _main/logs/cap-battery-RUN3.txt
+?? _main/logs/cap-build-mutant.txt
+?? _main/logs/cap-build-mutant.txt.err
+?? _main/logs/cap-build.txt
+?? _main/logs/cap-build.txt.err
+?? _main/logs/cap-gate-MUTANT-control.stdout.txt
+?? _main/logs/cap-gate-MUTANT-control.stdout.txt.err
+?? _main/logs/cap-gate-MUTANT-control.txt
+?? _main/logs/cap-gate-no-nvenc.stdout.txt
+?? _main/logs/cap-gate-no-nvenc.stdout.txt.err
+?? _main/logs/cap-gate-no-nvenc.txt
+?? _main/logs/cap-gate-normal.stdout.txt.err
+?? _main/logs/cap-gate-skip-map.stdout.txt
+?? _main/logs/cap-gate-skip-map.stdout.txt.err
+?? _main/logs/cap-gate-skip-map.txt
+?? _main/logs/cap-gate-tuning.stdout.txt.err
+?? _main/logs/cap-gen-small.txt
+?? _main/logs/cap-gen-small.txt.err
+?? _main/logs/cap-mux-1080p.run1.stdout.txt
+?? _main/logs/cap-mux-1080p.run1.stdout.txt.err
+?? _main/logs/cap-mux-1080p.run2.stdout.txt
+?? _main/logs/cap-mux-1080p.run2.stdout.txt.err
+?? _main/logs/cap-mux-4k-LIED.boxes.txt
+?? _main/logs/cap-mux-4k-LIED.run1.stdout.txt
+?? _main/logs/cap-mux-4k-LIED.run1.stdout.txt.err
+?? _main/logs/cap-mux-4k-LIED.run2.stdout.txt
+?? _main/logs/cap-mux-4k-LIED.run2.stdout.txt.err
+?? _main/logs/cap-mux-4k-LIED.txt
+?? _main/logs/cap-mux-4k.run1.stdout.txt
+?? _main/logs/cap-mux-4k.run1.stdout.txt.err
+?? _main/logs/cap-mux-4k.run2.stdout.txt
+?? _main/logs/cap-mux-4k.run2.stdout.txt.err
+?? _main/logs/cap-mux-junk.stdout.txt
+?? _main/logs/cap-mux-junk.stdout.txt.err
+?? _main/logs/cap-mux-junk.txt
+?? _main/logs/cap-mux-small.stdout.txt
+?? _main/logs/cap-mux-small.stdout.txt.err
+?? _main/logs/cap-mux-small.txt
+?? _main/logs/cap-nvenc-1080p60-run1.txt
+?? _main/logs/cap-nvenc-1080p60-run1.txt.err
+?? _main/logs/cap-nvenc-1080p60-run2.txt
+?? _main/logs/cap-nvenc-1080p60-run2.txt.err
+?? _main/logs/cap-nvenc-2160p60-run1.txt
+?? _main/logs/cap-nvenc-2160p60-run1.txt.err
+?? _main/logs/cap-nvenc-2160p60-run2.txt
+?? _main/logs/cap-nvenc-2160p60-run2.txt.err
+?? _main/logs/cap-wgc-now.txt.err
+?? _main/logs/handover-wgc-verify-2.txt
+?? _main/logs/lane1/
+?? _main/logs/lane23/
+?? _main/logs/lane3-mine-compile.log
+?? _main/runs/lane7-gate-A-post.log
+?? _main/runs/lane7-gate-A-post.out
+?? _main/runs/lane7-gate-A-post.out.err
+?? _main/runs/lane7-gate-A-pre.log
+?? _main/runs/lane7-gate-A-pre.out
+?? _main/runs/lane7-gate-A-pre.out.err
+?? _main/runs/lane7-gate-A-run.log
+?? _main/runs/lane7-gate-A-run.out
+?? _main/runs/lane7-gate-A-run.out.err
+?? _main/runs/lane7-gate-B-real.out
+?? _main/runs/lane7-gate-B-real.out.err
+?? _main/runs/lane7-gate-B.out
+?? _main/runs/lane7-gate-B.out.err
+?? _main/runs/lane7-mon-run.log
+?? _main/runs/lane7-mon-run.out.txt
+?? _main/runs/lane7-off-post1.log
+?? _main/runs/lane7-off-post1.out.txt
+?? _main/runs/lane7-post-run.log
+?? _main/runs/lane7-post-run.out.txt
+?? _main/src/cap-junk-not-h264.bin
+?? _main/wake-inflight.txt
+?? receipts/receipt-15-instant-replay-trigger.md
+?? receipts/receipt-16-ring-cap-from-system-ram.md
+?? receipts/receipt-17-asr-parity.md
+?? receipts/receipt-18-capture-capability-battery.md
+?? receipts/receipt-20-durability-git-coverage.md
+?? receipts/receipt-21-wake-mechanism-audit.md
+?? research/
+?? specs/05-overlay-hud.md

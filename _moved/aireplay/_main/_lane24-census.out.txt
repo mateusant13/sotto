@@ -1,0 +1,86 @@
+==============================================================================
+D-1  userMessageId shape
+==============================================================================
+POP: 20 most recent role='user' rows (whole-table filter role='user')
+  len= 55  msg-user-v1-Ncd8ugXcX5GF8Kro2ljKeZsQ_Wn7t6A_iGdt83ouDYQ  src=background-task
+  len= 55  msg-user-v1-v6J-lSR-nu1TjgKw6RXXKnswY0ctAHrbn-txlOQeedg  src=background-task
+  len= 55  msg-user-v1-0tmBFkbVxFyi5Uo4DQg_eekjL55HxisLJntSZDMyBTw  src=background-task
+  len= 55  msg-user-v1-i7hVKejit_bQj1BRV2b-ZmteDv35JTZep4gzgjq8c7M  src=background-task
+  len= 55  msg-user-v1-MmiICAtcjLu46ghLJ9m4kllySDQ6obREhZLpQxKF1U4  src=api
+  len= 55  msg-user-v1-FiOdIbghQ80g9orAw3u8BdxECU_A0atuW7NR5nTNWcU  src=background-task
+  len= 55  msg-user-v1-j_OxtO3T4NteyZZg97pRZAhOOGy4Eg1dENdXPd-jC9M  src=api
+  len= 55  msg-user-v1-JR0WfE4J9ObdbGV5-gXnRrZ_i3tJVKgL-a9jRv4irWs  src=background-task
+  len= 55  msg-user-v1--6eLkBnLZpV2xZUplRCsl13KrvbQ1ri3yxq-3UCPzY4  src=background-task
+  len= 55  msg-user-v1-XLgnw1bno9KfnToDClflFnIoigGdYWCHN27CE8Y6gus  src=background-task
+  len= 55  msg-user-v1-8ihCGGrbMSFXjAPZx8uowRJwWzYCAVeFyPmiAmAXvcs  src=background-task
+  len= 55  msg-user-v1-JwBm70HJMqLTxKDd-Sa8FblbVGVj4woOAvlMJA91VEk  src=api
+  len= 48  msg-user-v1-wake14c1ccd40a834dceaf30d1001571ce95  src=api
+  len= 55  msg-user-v1-W4HZh1__k16AK_UeiYPj7NQ-MI3j3aO2-_xw6XJjqhI  src=api
+  len= 55  msg-user-v1-Juonl8j49OolD_sRCQCU1oAxzMk0mtB757Tyn0jabNQ  src=api
+  len= 55  msg-user-v1-isr8f_BtLC5YVtXuJQIIrEzyikSaBK3aJDI43LtMK-I  src=api
+  len= 55  msg-user-v1-L5DUFTM9FQdlWVwF7iQvJx7mliyhvtuysYCtAWm5MIk  src=api
+  len= 55  msg-user-v1-KsICOrv-WUiqspXPutC6_DuJ___5liPa3dAkyNGQHGE  src=background-task
+  len= 55  msg-user-v1-Ll6Na_EES6-nL74qgUqbcvoKmeBI9Izi6zxKtmumdRk  src=background-task
+  len= 55  msg-user-v1-wz3JTpKTvcKuLLChfYUR03NjQLwYzHxgNFjpcjirrfU  src=background-task
+  length histogram: {55: 19, 48: 1}
+POP 'msg-user-v1-wake%' = 35
+
+==============================================================================
+D-2  cron schedule_json shape
+==============================================================================
+POP scheduler jobs (whole table) = 30
+  like '%* * * * *' -> 0   <-- shipped query
+  like '%* * * *'   -> 0   <-- candidate fix
+  cancelled  {"kind":"cron","expression":"2,9,16,23,30,37,44,51 * * * *","timezone":"America/Sao_Paulo"}
+  completed  {"kind":"once","runAtMs":1791008911600}
+  cancelled  {"kind":"once","runAtMs":1791019887092}
+  cancelled  {"kind":"cron","expression":"*/11 * * * *"}
+  cancelled  {"kind":"cron","expression":"7-59/23 * * * *","timezone":"America/Sao_Paulo"}
+  active     {"kind": "cron", "expression": "*/3 * * * *", "timezone": "America/Sao_Paulo"}
+  distinct schedule_json values:
+    n=3   {"kind":"cron","expression":"*/11 * * * *","timezone":"America/Sao_Paulo"}
+    n=2   {"kind":"cron","expression":"2,9,16,23,30,37,44,51 * * * *","timezone":"America/Sao_Paulo"}
+    n=2   {"kind":"cron","expression":"0 0 1 1 *"}
+    n=1   {"kind":"once","runAtMs":1791130401985}
+    n=1   {"kind":"once","runAtMs":1791110840048}
+    n=1   {"kind":"once","runAtMs":1791109806266}
+    n=1   {"kind":"once","runAtMs":1791091552421}
+    n=1   {"kind":"once","runAtMs":1791090710058}
+    n=1   {"kind":"once","runAtMs":1791089481758}
+    n=1   {"kind":"once","runAtMs":1791088727010}
+
+==============================================================================
+D-3/D-5  queue table shape + expiry + orphans
+==============================================================================
+columns: ['id', 'session_id', 'item_id', 'status', 'created_at_ms', 'data_json', 'source', 'client_request_id', 'dedupe_key', 'expires_at_ms', 'claim_id', 'claim_lease_expires_at_ms', 'routing_fingerprint']
+POP rows total = 2
+POP rows with expires_at_ms NOT NULL = 0
+live queued rows:
+  queue_1dfd5c7c-167f-432e-9438-9de13687489d sess=mvs_ea552229fe164f9e8856fcca8589c41a age=988.6min claim=None exp=None
+  queue_f6e768e9-a3a5-4fdf-bf44-2afbe44a5b56 sess=mvs_b7a9f3a7db404912b32d28fc11b83645 age=5.3min claim=None exp=None
+
+==============================================================================
+D-4  runtime cron scheduler aliveness
+==============================================================================
+POP cron_runs rows (whole table) = 1442
+  newest created_at_ms = 1791292260022 -> 2026-10-06 10:11:00
+  age = 26.72 h  (1603.3 min)
+POP undeleted cron definitions joined to an ACTIVE scheduler job = 5
+
+==============================================================================
+D-6  shutdown deadline occurrences in heartbeat.log
+==============================================================================
+POP heartbeat.log lines = 56  (window = whole log)
+  'shutdown deadline exceeded' lines = 2
+    [2026-10-07 12:31:09] WAKE no-op rc=4 :: [minimax-code] embedded Runtime cleanup failed: Runtime shutdown deadline exceeded after 60000ms | [minimax-code] share
+    [2026-10-07 12:47:07] WAKE no-op rc=4 :: [minimax-code] embedded Runtime cleanup failed: Runtime shutdown deadline exceeded after 60000ms | [minimax-code] share
+  wake outcome lines (WAKE rc=/delivered) = 1
+
+==============================================================================
+turn_ingress / delivery linkage (authoritative proof field)
+==============================================================================
+turn_ingress cols: ['turn_id', 'session_id', 'source', 'client_request_id', 'claim_id', 'claim_source', 'queue_item_ids_json', 'input_json', 'status', 'accepted_at_ms', 'accepted_sequence', 'completed_at_ms', 'queue_acknowledged_at_ms', 'input_digest', 'input_metadata_json']
+POP queue-driven turns = 79
+   accepted mvs_d5a317164fe842dc8a3c1bb7115c7166 ["queue_c63a4232-cc0c-46b7-9847-571bc23e541a"]
+   accepted mvs_41dbdaf429c14a8fb346ed4f2c6139aa ["queue_1baf76cc-f04c-4bfc-a7c2-09c8030ee61c"]
+   accepted mvs_9af2ba09db7c4c94aca33e61a3903627 ["queue_70f0c238-fa72-4ee9-a6d9-d37f079ae4f3"]

@@ -1,0 +1,314 @@
+RECEIPT-AUDIT  repo=H:\sotto\_moved\aireplay
+WINDOW = the whole repository as of 2026-10-07 21:02:53 (unbounded, not sampled)
+POPULATION = every receipts/*.md, plus every text file under the repo
+             except .git/node_modules/target and log/run/build dirs.
+
+Words are load-bearing: OK = checked and passed. FINDING = checked and
+defective. UNVERIFIABLE = COULD NOT BE CHECKED (never a pass).
+
+==============================================================================
+Q1  CLAIM PROVENANCE - is every number labelled MEASURED or DERIVED?
+==============================================================================
+POPULATION = 67 receipt files in receipts/
+  FINDING      README.md                                            62 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  OK           receipt-01-capture-encode.md                         6 number sites, 5 labels
+  FINDING      receipt-02-asr-impl.md                               88 number sites vs 6 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-03-capture-impl.md                           151 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  OK           receipt-03-nvenc-sessions.md                         5 number sites, 1 labels
+  OK           receipt-04-asr.md                                    5 number sites, 2 labels
+  FINDING      receipt-05-onnx-asr.md                               62 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-06-embeddings.md                             11 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-07-index-search.md                           71 number sites vs 3 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-08-import-library.md                         36 number sites vs 4 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-10-redux-2-threads.md                        61 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-11-onnx-threads.md                           52 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-12-audio-level-contract.md                   35 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-13-refute-integration-audit.md               9 number sites, 0 provenance labels - every figure unlabelled
+  OK           receipt-14-ring-cap-vram-vs-ram.md                   50 number sites, 9 labels
+  FINDING      receipt-15-instant-replay-trigger.md                 45 number sites vs 2 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-15-offline-cut-pass1147.md                   58 number sites vs 6 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-16-ring-cap-from-system-ram.md               87 number sites vs 6 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-16-wasapi-audio-loopback.md                  81 number sites vs 6 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-17-asr-parity.md                             120 number sites vs 5 labels (<1 label per 8 sites) - sparse
+  OK           receipt-18-capture-capability-battery.md             211 number sites, 32 labels
+  FINDING      receipt-19-aggregate-gate.md                         107 number sites vs 3 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-20-durability-git-coverage.md                89 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-21-wake-mechanism-audit.md                   170 number sites vs 3 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-22-single-cron-delivers.md                   22 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-23-cron-woke-this-session.md                 56 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-23-trigger-defects.md                        82 number sites vs 2 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-24-clip-to-asr-chain.md                      133 number sites vs 7 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-24-wake-defects-fixed.md                     171 number sites vs 2 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-25-overlay-panel.md                          137 number sites vs 7 labels (<1 label per 8 sites) - sparse
+  OK           receipt-26-receipt-audit.md                          193 number sites, 35 labels
+  FINDING      receipt-27-queue-delivery-latency.md                 35 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-28-review-synthesis.md                       392 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-29-agents-truth.md                           91 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-30-clip-storage-retention.md                 71 number sites vs 4 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-32-ring-defects-closed.md                    101 number sites vs 4 labels (<1 label per 8 sites) - sparse
+  FINDING      receipt-33-cadence-three-minutes.md                  102 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-33-locale-number-census.md                   88 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-preview-designs.md                           47 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      receipt-render-panel-temas.md                        120 number sites, 0 provenance labels - every figure unlabelled
+  FINDING      review-L1.md                                         100 number sites vs 3 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L10.md                                        51 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L12.md                                        51 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L13.md                                        50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L14.md                                        50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L15.md                                        113 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L16.md                                        152 number sites vs 2 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L17.md                                        49 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L18.md                                        49 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L19.md                                        50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L2.md                                         50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L20.md                                        51 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L21.md                                        50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L22.md                                        50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L23.md                                        50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L3.md                                         99 number sites vs 6 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L4.md                                         113 number sites vs 2 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L5.md                                         49 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L6.md                                         50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L7.md                                         49 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L8.md                                         101 number sites vs 4 labels (<1 label per 8 sites) - sparse
+  FINDING      review-L9.md                                         50 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-aggregate-gate.md                             49 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-preview-designs.md                            46 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-receipt-audit.md                              48 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-render-panel-temas.md                         47 number sites vs 1 labels (<1 label per 8 sites) - sparse
+  FINDING      review-review-synthesis.md                           48 number sites vs 1 labels (<1 label per 8 sites) - sparse
+
+  UNLABELLED / UNDER-LABELLED receipts: 61 of 67
+  skipped (no number sites): 0
+
+==============================================================================
+Q2  GATE EXISTENCE - does every cited gate exist on disk?
+==============================================================================
+POPULATION = every backticked *.ps1/*.py/*.log/... token in receipts/*.md
+  citations=917  resolved=743  DANGLING=4  unverifiable=170 (globs/commands)
+  self-documented regions masked (this tool's own findings being quoted
+  back as new defects -- an unbounded feedback loop): 5
+
+  DANGLING - a citation that resolves to NOTHING:
+    receipt-33-locale-number-census.md:232  `_main\_lane25-stage-durability.ps1`
+    receipt-33-locale-number-census.md:233  `_main\_lane25-stage-probe.ps1`   <-- GATE/ORACLE citation
+    review-L16.md:117  `receipts/receipt-24-wake-minted-id-delivered.md`
+    review-L16.md:318  `receipt-24-wake-minted-id-delivered.md`
+
+  UNVERIFIABLE - patterns and command lines, NOT counted as resolved
+  (a glob is not a path; asserting a glob exists is the bug this hunts):
+    README.md:87  `review-L*.md`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-01-capture-encode.md:3  `python _main\nvenc-caps-probe.py`  [shell command line, not a citation]
+    receipt-01-capture-encode.md:6  `powershell -NoProfile -File _main\wgc-probe.ps1`  [shell command line, not a citation]
+    receipt-02-asr-impl.md:10  `src/asr/{__init__,constants,audio,segment,level,engine,runner,transcribe,parity}.py`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-02-asr-impl.md:11  `_main/{asr02-selftest,asr02-threadprobe,asr02-run,asr02-census,oracle-02-asr}.py`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-02-asr-impl.md:29  `.wav`  [bare extension, not a filename]
+    receipt-02-asr-impl.md:32  `pythonw.exe`  [shell command line, not a citation]
+    receipt-02-asr-impl.md:125  `pythonw.exe _main\asr02-selftest.py`  [shell command line, not a citation]
+    receipt-02-asr-impl.md:126  `pythonw.exe _main\asr02-threadprobe.py`  [shell command line, not a citation]
+    receipt-02-asr-impl.md:127  `pythonw.exe _main\asr02-run.py`  [shell command line, not a citation]
+    receipt-02-asr-impl.md:128  `pythonw.exe _main\oracle-02-asr.py`  [shell command line, not a citation]
+    receipt-03-nvenc-sessions.md:3  `.utf8.txt`  [bare suffix in prose, not a filename]
+    receipt-05-onnx-asr.md:80  `-timeline.jsonl`  [shared-suffix token in prose, not a filename]
+    receipt-05-onnx-asr.md:81  `onnx-asr-census-*.txt`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-07-index-search.md:3  `pythonw.exe`  [shell command line, not a citation]
+    receipt-07-index-search.md:7  `pythonw.exe _main\_index-final-probe.py --json _main\index-final.json`  [shell command line, not a citation]
+    receipt-07-index-search.md:8  `pythonw.exe _main\_index-ann-probe2.py --json _main\index-ann.json`  [shell command line, not a citation]
+    receipt-07-index-search.md:12  `pythonw.exe _main\_index-hnsw-probe.py`  [shell command line, not a citation]
+    receipt-07-index-search.md:68  `pythonw.exe`  [shell command line, not a citation]
+    receipt-07-index-search.md:72  `sotto_webview.py`  [bare module name; may be an installed package, not a repo file]
+    receipt-08-import-library.md:3  `.log`  [bare extension, not a filename]
+    receipt-08-import-library.md:23  `DVR.mp4`  [bare module name; may be an installed package, not a repo file]
+    receipt-08-import-library.md:36  `pythonw.exe`  [shell command line, not a citation]
+    receipt-08-import-library.md:51  `*> *.out.log`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-10-redux-2-threads.md:38  `_main/redux-2t/arm-*.json`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-10-redux-2-threads.md:81  `pythonw.exe`  [shell command line, not a citation]
+    receipt-12-audio-level-contract.md:18  `sotto_worker.py`  [bare module name; may be an installed package, not a repo file]
+    receipt-12-audio-level-contract.md:20  `sotto_webview.py`  [bare module name; may be an installed package, not a repo file]
+    receipt-12-audio-level-contract.md:28  `worker\runs\*.jsonl`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-12-audio-level-contract.md:31  `sotto_worker.py`  [bare module name; may be an installed package, not a repo file]
+    receipt-12-audio-level-contract.md:34  `sotto_webview.py`  [bare module name; may be an installed package, not a repo file]
+    receipt-13-refute-integration-audit.md:28  `Test-Path H:\sotto\app\src-tauri\target\debug\sotto.exe`  [shell command line, not a citation]
+    receipt-15-instant-replay-trigger.md:74  `.exe`  [bare extension, not a filename]
+    receipt-15-instant-replay-trigger.md:77  `_main\build\*.txt`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-15-instant-replay-trigger.md:124  `pwsh -NoProfile -File H:\sotto\_moved\aireplay\_main\_lane1-trigger-gate.ps1`  [shell command line, not a citation]
+    receipt-15-offline-cut-pass1147.md:109  `.exe`  [bare extension, not a filename]
+    receipt-16-ring-cap-from-system-ram.md:173  `_main\build\lane3-f6-*.log`  [glob/brace/placeholder expansion - not a literal path]
+    receipt-16-wasapi-audio-loopback.md:74  `pwsh -NoProfile -File _main\_lane2-audio-gate.ps1`  [shell command line, not a citation]
+    receipt-16-wasapi-audio-loopback.md:148  `g++.exe`  [bare tool name, resolvable on PATH not in-repo]
+    receipt-16-wasapi-audio-loopback.md:148  `cc1plus.exe`  [bare module name; may be an installed package, not a repo file]
+    ... and 130 more
+
+==============================================================================
+Q3  REVIEWER COVERAGE - dispatched (structural) vs read (not recordable)
+==============================================================================
+store : opened read-only
+ledger: parsed 16 lane rows
+POPULATION = 22 lanes; store census = local_runtime_background_tasks
+             where kind='subagent'
+  reviewer DISPATCHED : 8
+  not dispatched      : 14
+  unverifiable        : 0
+  reviewer verdict READ: 0
+  ^ and that number is UNREACHABLE, not zero. The ledger's '0 of 16'
+    is a human claim; this tool cannot confirm or refute it.
+
+  L1    dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_3b0a0b54-9b status=succeeded child=mvs_36edbf94c9 output.log=present
+        ledger(DEBT-LEDGER.md:43): dispatched='`bg_3b0a0b54`' read='**read** — verdict `NO`, 13:01:05'
+  L2    dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_b13fe01e-03 agent=mavis, bg_e4960d96-15 agent=explore, bg_91d353cd-a7 agent=worker
+        ledger(DEBT-LEDGER.md:44): dispatched='—' read='—'
+  L3    dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_1d034503-25 status=succeeded child=mvs_03762d410f output.log=present; bg_67951ba6-8f status=succeeded child=mvs_cba42e5b9a output.log=present
+        ledger(DEBT-LEDGER.md:45): dispatched='`bg_1d034503`' read='**read** — verdict `NO`, 13:07:09'
+  L4    dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_86b2306c-97 status=succeeded child=mvs_9c1a6ee2dc output.log=present; bg_04c2a908-57 status=succeeded child=mvs_25670c59a6 output.log=present; bg_0ac58abb-bd status=succeeded child=mvs_d4cd50d00d o
+        ledger(DEBT-LEDGER.md:46): dispatched='`bg_86b2306c`' read='**read** — verdict `NO`, 13:10:15'
+  L5    dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_30aa8858-42 agent=explore, bg_761dba6a-4e agent=worker
+        ledger(DEBT-LEDGER.md:47): dispatched='— (landed 12:51)' read='—'
+  L6    dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_55babd59-31 agent=worker
+        ledger(DEBT-LEDGER.md:48): dispatched='— (still running)' read='—'
+  L7    dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_c7297a22-17 agent=worker
+        ledger(DEBT-LEDGER.md:49): dispatched='— (still running)' read='—'
+  L8    dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_5cc75264-b7 status=succeeded child=mvs_a4c053f4d2 output.log=present
+        ledger(DEBT-LEDGER.md:50): dispatched='`bg_5cc75264`' read='**read** — verdict `NO`, 12:50:04'
+  L9    dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_3c44217a-00 agent=worker
+        ledger(DEBT-LEDGER.md:51): dispatched='— (still running)' read='—'
+  L10   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_b58a9764-38 agent=worker
+        ledger(DEBT-LEDGER.md:52): dispatched='— (still running)' read='—'
+  L11   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_3cb575ea-d9 agent=worker
+        ledger(DEBT-LEDGER.md:53): dispatched='— (still running)' read='—'
+  L12   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_ec962285-fb agent=worker
+        ledger(DEBT-LEDGER.md:54): dispatched='— (landed 12:49)' read='—'
+  L13   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_d3d50a19-e3 agent=worker
+        ledger(DEBT-LEDGER.md:55): dispatched='— (landed 12:50)' read='—'
+  L14   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_71c50ea5-2d agent=worker
+        ledger(DEBT-LEDGER.md:56): dispatched='— (still running)' read='—'
+  L15   dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_feb2d120-54 status=succeeded child=mvs_2e2a644a67 output.log=present
+        ledger(DEBT-LEDGER.md:57): dispatched='`bg_feb2d120`' read='**read** — verdict `NO`, 12:51:16 (verdict read; the TARGET is gone: `specs/07-highlights.md` deleted, `specs/07-engine-process.md` is a 936 B stub)'
+  L16   dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_57f798ae-40 status=succeeded child=mvs_116b631846 output.log=present; bg_04c2a908-57 status=succeeded child=mvs_25670c59a6 output.log=present
+        ledger(DEBT-LEDGER.md:58): dispatched='`bg_57f798ae`' read='**read** — verdict `NO`, 13:10:20. **This is the verdict that filed the false retraction; its stated evidence is refuted in `receipts/receipt-23-cron-woke-this-session.md` §1**'
+  L17   dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_2f2482d1-29 status=succeeded child=mvs_3ce7acf239 output.log=present
+  L18   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_73962e4b-6f agent=worker
+  L19   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_02f116f3-ba agent=worker
+  L20   dispatched=OK            read=UNVERIFIABLE
+        evidence: bg_a4a5e2d5-0d status=succeeded child=mvs_97c6a61dfa output.log=present; bg_39fe4841-e8 status=succeeded child=mvs_e968a220e9 output.log=present
+  L21   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_9dd9695e-27 agent=worker
+  L22   dispatched=FINDING       read=UNVERIFIABLE
+        evidence: subagent(s) exist but none is agent=verifier: bg_2e14b4f5-7e agent=worker
+
+  WHY 'read' is UNVERIFIABLE rather than 0:
+  NO STRUCTURAL LINK EXISTS for 'read'. MEASURED 2026-10-07: local_runtime_message_rows.source_context_json.origin.taskIds names ONLY the background-task poll driver, never a reviewer task - so the runtime does not record that a verdict was read. The only available signal is a TEXT MATCH on assistant prose, which is the self-match trap (Q4). STRUCTURAL LINK TO USE INSTEAD: read the reviewer's own local_runtime_background_tasks row (kind='subagent', metadata.agentName='verifier'), follow metadata.childSessionId and outputRef.uri to the reviewer's transcript, and require the ORCHESTRATOR's own turn to cite that childSessionId. Better still: require the reviewer to write its verdict to a lane-named file and assert THAT FILE EXISTS.
+
+==============================================================================
+Q4  THE SELF-MATCH TRAP - claims resting on a text match, not a link
+==============================================================================
+POPULATION = 1957 text files read. A line counts if it carries a
+  delivery/health claim AND a text-match instrument word
+  (marker/grep/substring/text search/...).
+  claim lines with a textmatch instrument : 55
+  substantiated by TEXT MATCH ONLY       : 26
+
+  SELF-EXCLUDED (this tool's own artefacts — an instrument that matches
+  its own output proves nothing; see receipts 21/22): 16 file(s)
+    receipts\receipt-26-receipt-audit.md
+    receipts\review-receipt-audit.md
+    _main\receipt-audit.py
+    _main\_lane19-gate-console.txt
+    _main\_lane19-receipt-audit-gate.ps1
+    _main\_receipt-audit-run.txt
+    _main\_receipt-audit-stderr.txt
+    _main\_receipt-audit-stdout.txt
+
+    _main\_lane16-gate-revert\_lane16-wake-gate-reverted.ps1:219
+        # turn has NO queue linkage. Text search would credit these to the wake.
+    _main\_lane16-gate-revert\_lane16-wake-gate-reverted.ps1:403
+        # ==== ARM A : delivery needs a QUEUE LINK, not a text match.
+    _main\_lane16-wake-gate.ps1:219
+        # turn has NO queue linkage. Text search would credit these to the wake.
+    _main\_lane16-wake-gate.ps1:403
+        # ==== ARM A : delivery needs a QUEUE LINK, not a text match.
+    _main\_lane24-gate-console.txt:58
+        --- delivery: the authoritative link, never a marker ---
+    _main\_lane24-wake-defects-gate.ps1:401
+        Write-Host '--- delivery: the authoritative link, never a marker ---'
+    _main\_rv-dump\mvs_116b6318.txt:217
+        Recomputed every load-bearing number against the live store at four timestamped snapshots; refuted the retraction on three independent runtime fields; recovered two deleted queue items from backups to test the negative c
+    _main\_rv-dump\mvs_116b6318.txt:230
+        - **Confidence** — S1 (retraction false): **HIGH**, four independent fields, two snapshots. S2 (D-1 refuted): **HIGH**, id string identical in message row and inject backup. S4 (D-2 fix broken): **HIGH**, parameter-bound
+    _main\_rv-dump\mvs_25670c59.txt:144
+        | **S5 MEDIUM** | `_main/_lane16-wake-gate.ps1:527`, `:305`, `:102`, `:359-362` | 6 controls are real | `D2` uses `$cureRc -match '0'` — **substring regex**; `'20,2,2,2,2' -match '0'` → **True**; `A1` = `limit 20` + `-ge
+    _main\_rv-dump\mvs_a4c053f4.txt:220
+        `test_window.cpp` `WaitForSingleObjectEx` location (S7) — `grep` not run; and I could not run the trigger gate or build, since both would write artifacts. The in-game delivery question (`NOT MEASURED` by both docs) is un
+    _main\_rv-dump\mvs_a4c053f4.txt:356
+        5. **One promised check not delivered.** I said I would `grep` for the real `WaitForSingleObjectEx` site behind `test_window.cpp:197` and **never ran it**. **S7's finding stands; its correction is still owed.**
+    _main\_rv-final\row227864-mvs_a4c0.md:135
+        `test_window.cpp` `WaitForSingleObjectEx` location (S7) — `grep` not run; and I could not run the trigger gate or build, since both would write artifacts. The in-game delivery question (`NOT MEASURED` by both docs) is un
+    _main\_rv-final\row228167-mvs_a4c0.md:13
+        5. **One promised check not delivered.** I said I would `grep` for the real `WaitForSingleObjectEx` site behind `test_window.cpp:197` and **never ran it**. **S7's finding stands; its correction is still owed.**
+    _main\_rv-tree.log:215
+        title= Fix the substring-regex bugs in the wake gate
+    _main\cadence.py:18
+        It never greps the store for a payload marker. Delivery is claimed only from
+    _main\check-delivery.py:5
+        "delivery" question could be answered by a TEXT MATCH, and a text match lies.
+    _main\check-delivery.py:199
+        description="queue-LINKED delivery check; a text match is not proof")
+    _main\wake-loop.py:26
+        py -3 wake-loop.py --secs 240 --session <id> [--marker TEXT]
+    _main\watch-wake.py:6
+        the marker.  This is the only thing that counts as "the cron woke the
+    receipts\receipt-21-wake-mechanism-audit.md:371
+        (a marker set that shrank when a queue row was consumed; a lifetime-vs-window
+    receipts\receipt-23-cron-woke-this-session.md:3
+        **This receipt previously claimed the cron woke this live session, from a text match. That
+    receipts\receipt-24-wake-defects-fixed.md:321
+        | 20 | A3-doctored-store-marker-matches-but-nothing-is-linked | 0/0 where a grep would say "delivered" |
+    receipts\receipt-27-queue-delivery-latency.md:81
+        `_main/delivery-latency.py` never greps for a marker. It walks the ingress table, keeps only
+    receipts\review-L16.md:88
+        | **S5** | MEDIUM | `_lane16-wake-gate.ps1:527` (`-match '0'`), `:102` + `:305` (`limit 20`), `:359-362` (B4), `:182` (the sentence D2 supports) | the 6 controls certify the cure; `:182` *"Only the cure changes the outco
+    specs\06-broadcast-and-capture-card.md:540
+        | **C2** `repo-symbol-existence` | grep `src/**` for every CamelCase symbol this spec attributes to a repo file | **22/22 PASS**; control (invented `NoSuchCaptureClass`) fired |
+    specs\06-broadcast-and-capture-card.md:541
+        | **C3** `citation-range-substring` | for each `file:a-b` + quoted phrase, assert the phrase occurs inside `a..b`, **and** that `b` is within the file's line count | **31 citations: 29 in range, 2 off-box** (the two GitH
+
+  STRUCTURAL LINKS to use instead of a text match:
+   * delivery  -> a NEW local_runtime_message_rows row with role='user'
+     whose msg_id equals the injected id. Never a payload LIKE.
+     (receipt-22-single-cron-delivers.md:20-28 names this trap)
+   * queue->turn -> turn_ingress.queue_item_ids_json IS NOT NULL and
+     claim_source set. NULL means hand-pushed, not delivered
+     (receipt-21-wake-mechanism-audit.md:66-78: 22 rows any role, 1 as
+      role='user', and THAT one had queue_item_ids_json=NULL)
+   * reviewer dispatched -> local_runtime_background_tasks row,
+     kind='subagent', metadata.agentName='verifier', childSessionId set
+   * reviewer read -> follow that task's outputRef.uri and require the
+     ORCHESTRATOR turn to cite the childSessionId. There is no runtime
+     'read' event (MEASURED: origin.taskIds never names a reviewer).
+
+==============================================================================
+TOTALS  findings=105  (q1=61 q2-dangling=4 q3-not-dispatched=14 q4=26)
+         unverifiable=192  (q2 patterns=170 + every lane's 'read')
+         unreadable-inputs=0
+VERDICT FINDINGS PRESENT - this is a report, not a pass/fail of the repo
+REMINDER: this tool REPORTS. It does not fix. And it did not check the
+         truth of any figure - only whether the figure was labelled and
+         whether the file it cites exists.

@@ -1,0 +1,39 @@
+cadence-probe.py  --  2026-10-07T13:47:05  driver=H:\sotto\_moved\aireplay\_main\heartbeat.ps1
+heartbeat.log: 13 passes parsed (7 v5, 6 v6)
+
+==============================================================================
+ARM-S  SANDBOX: the shipped driver text, FIXED vs NEGATIVE
+==============================================================================
+  Scheduler model  = MultipleInstances:IgnoreNew (measured), PT3M
+  Clock compressed by 30x: interval 6.0s, exec durations scaled from
+  the REAL v5 population so the exec/interval RATIO is preserved.
+  log timestamp resolution is 1 s, which is 17% of the scaled interval.
+  Measured exec durations used (real seconds): 155, 227, 98, 184, 130, 162, 128
+  Scaled               (seconds)            : 5.17, 7.57, 3.27, 6.13, 4.33, 5.40, 4.27
+
+  --- arm FIXED: heartbeat-fixed.ps1
+      passes=21 deliveries=15 queued=4 ticks_dropped=0
+      fire gaps : 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0
+      deliveries: n=14 min=5s median=8s mean=8s max=11s
+      gaps within one interval: 1 of 14
+
+  --- arm NEG: heartbeat-neg.ps1
+      passes=12 deliveries=12 queued=0 ticks_dropped=9
+      fire gaps : 12.0, 12.0, 6.0, 12.0, 12.0, 12.0, 6.0, 12.0, 12.0, 12.0, 12.0
+      deliveries: n=11 min=7s median=11s mean=11s max=14s
+      gaps within one interval: 0 of 11
+
+  SCALE BACK TO REAL SECONDS (x30)
+    FIXED : drops=0   deliveries=15  median_gap=8s (=4.0 min real)
+    NEG   : drops=9   deliveries=12  median_gap=11s (=5.5 min real)
+
+    FIXED median 8s vs NEG median 11s -- the fix moves the median
+    by 3 scaled seconds (-27%) and removes 9 dropped ticks.
+
+==============================================================================
+VERDICT SUMMARY
+==============================================================================
+  S-FIXED GREEN  drops=0 median=8.0s
+  S-NEG   RED  drops=9 median=11.0s
+
+VERDICT PASS

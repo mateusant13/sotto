@@ -1,0 +1,12 @@
+PROBE POPULATION = 4183 message rows across 46 child sessions
+ROWS WHERE content()==None = 8
+BY ROLE = {'assistant': 8}
+  NULL-CONTENT mvs_082052f804bc43f1 mid=227743 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_f22e0078c1664f53 mid=225060 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_5fd5581003be46c7 mid=224682 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_5fd5581003be46c7 mid=224783 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_5fd5581003be46c7 mid=225025 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_706338a16e5b4ba2 mid=225099 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_706338a16e5b4ba2 mid=227430 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+  NULL-CONTENT mvs_97c6a61dfa3642ab mid=230915 role=assistant json_keys=['committedRevision', 'kind', 'metadata', 'msg_id', 'operationId', 'role', 'source', 'timestamp', 'turnId']
+CRASH-WORTHY = YES

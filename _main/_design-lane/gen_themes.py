@@ -86,7 +86,12 @@ THEMES = [
         leading_caption='1.06', leading_closed='1.24',
         weight_caption='700', weight_closed='400', weight_brand='700',
         tracking_caption='0.006em', tracking_brand='0.42em',
-        brand_upper='uppercase', caption_upper='uppercase',
+        # THE NAME IS LOWERCASE IN EVERY DIRECTION (owner, 2026-10-08: *"bota o nome
+        # 'sotto' em todos os temas"*, written lowercase by him). This direction's
+        # wordmark is where theme-1's name lives, and `uppercase` here would render
+        # the markup's `sotto` as `SOTTO` — the one property that silently overrules
+        # the owner's own spelling. `caption_upper` is a different decision and stays.
+        brand_upper='none', caption_upper='uppercase',
         slab_opacity='0.97',
         radius_dialog='16px',
         shadow_slab=('0 30px 70px -28px rgba(0, 0, 0, 0.78), '
@@ -252,7 +257,7 @@ THEMES = [
         text_confirmed='#F2F5F8',
         text_provisional='#9BA3AC',
         text_secondary='#9BA3AC',
-        text_muted='#757C85',
+        text_muted='#7F8A97',  # 2026-10-08 audit: was #757C85 (4.45:1, the panel's only AA fail)
         line='rgba(95, 211, 167, 0.16)', line_strong='rgba(95, 211, 167, 0.38)',
         accent='#5FD3A7', accent_soft='rgba(95, 211, 167, 0.12)',
         ok='#5FD3A7', busy='#C9D0D8', error='#FF8F8F', idle='#4E555C',
@@ -441,6 +446,17 @@ SKIN = """
    line — still past, so still grey: the owner's rule is binary ("o atual"
    vs "os que ficaram pra tras"), and a third colour would blur it. */
 {B} .caption--latest .caption__time{{ color: var(--text-muted); }}
+/* The forming line's tail marker ('▍', painted by `panel.js`). A monitor's
+   block cursor: present, then absent, on a stepped 1.06 s loop — the one
+   keyframed thing a caption carries besides the typing reveal, and it touches
+   only the marker element, never the words. `prefers-reduced-motion` parks it
+   ON (the MOTION block's kill-list spares nothing here, so this rule re-asserts
+   stillness explicitly rather than trusting the cascade). */
+{B} .caption__mark{{ animation: sotto-caret 1.06s steps(1) infinite; }}
+@keyframes sotto-caret{{
+  0%, 49%{{ opacity: 1; }}
+  50%, 100%{{ opacity: 0; }}
+}}
 
 /* the rail that says WHICH line is being spoken */
 {B} .caption--provisional{{
@@ -657,10 +673,18 @@ SKIN = """
 
 /* ── motion ─────────────────────────────────────────────────────────────────
    ONE thing moves in this skin, it is a COLOUR, and it is shorter than 180 ms:
-   --motion-in. Nothing that carries the caption's text is animated: a line that
-   is rewritten in place must not also slide, fade or pulse, and the switch
-   between themes must never animate the text at all. */
-{S} *{{
+   --motion-in. This skin adds NO keyframe and NO transform to anything that
+   carries the caption's text: a line rewritten in place must not slide, fade or
+   pulse, and switching themes must never animate the text. The panel's typing
+   reveal is the ONE exception in the whole document (it animates the opacity of
+   the forming line's newest characters), it is declared in `panel.css`, and
+   rule 4 of the header above is what keeps it from being declared twice.
+   P2-2 (2026-10-08 audit): the transition used to hang on `{S} *` — every
+   element in the document, so every DOM write anywhere paid a colour
+   transition. It now hangs on the chrome only (header, footer, state
+   indicators): the caption column and the history list change instantly. */
+{S} .panel__header, {S} .panel__header *, {S} .status, {S} .status *,
+{S} .chrome, {S} .chrome *{{
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -673,11 +697,20 @@ SKIN = """
   transition-duration: var(--motion-in);
 }}
 @media (prefers-reduced-motion: reduce){{
-  {S} *,
+  /* IMPORTANT, and the reason is measured rather than theoretical. `.caption__ch`
+     is the TYPING REVEAL's own character span, declared in `panel.css`. This
+     block used to silence it with a plain `{S} *` — and on the owner's machine
+     Windows reports client-area animations OFF, so Chromium answers
+     `prefers-reduced-motion: reduce` and the reveal was disabled by the very
+     query written to honour the setting. The exclusion below is what keeps the
+     reveal alive; the reveal's own off switch is the token `--type-step: 0ms`.
+     Do not re-widen this selector to `{S} *`. */
+  {S} *:not(.caption__ch),
   {B} .caption,
   {B} .caption__text,
   {B} .caption__confirmed,
-  {B} .caption__provisional{{
+  {B} .caption__provisional,
+  {B} .caption__mark{{
     transition-duration: 0ms;
     animation: none;
   }}
@@ -703,8 +736,21 @@ HEAD = """/* Sotto — theme {n}: {name}.
  *    block at the end of this file, added 2026-10-08 when the owner asked for
  *    each direction to have its own face); what it never does is touch the
  *    caption's TEXT, the transcript's rows or the shell's own status sentence.
- * 4. The caption text is never animated. `--motion-in` covers colour only.
- * 5. `prefers-reduced-motion: reduce` zeroes it.
+ * 4. This file adds NO keyframe and NO transform to a caption's text. Here
+ *    `--motion-in` covers colour and surface only. The single keyframe
+ *    animation a caption carries is the TYPING REVEAL on the forming line's
+ *    newest word, and it is declared in `panel.css`, never in a theme: one
+ *    owner per animation, so a theme cannot fight it or double it.
+ * 5. `prefers-reduced-motion: reduce` zeroes THIS file's colour transitions and
+ *    the chrome's movement, and it deliberately does NOT silence the typing
+ *    reveal: that reveal is the owner's explicit request (2026-10-08) and it is
+ *    the reason the reduced-motion blocks below exclude `.caption__ch`. The
+ *    reveal's own off switch is the token `--type-step: 0ms`. Before
+ *    2026-10-08 this file (and `panel.css`) silenced it under reduced motion,
+ *    which made the feature INVISIBLE on the owner's own machine: Windows
+ *    reports client-area animations off there, so Chromium answers
+ *    `prefers-reduced-motion: reduce` and the animation was disabled by the
+ *    very query written to honour it.
  *
  * MEASURED FROM: `docs/design/incoming/design-{n}.png`
  *   slab    {slab}   (median of the quiet dark rows inside the panel region)
@@ -906,6 +952,18 @@ CHROME[2] = """
    which is where a machine's operation keys belong. The wordmark is replaced by
    the channel line — the direction's own header has no logo. */
 @S@ .wordmark{ display: none; }
+/* THE NAME, IN THIS DIRECTION'S OWN VOICE (owner, 2026-10-08: *"e bota o nome
+   'sotto' em todos os temas"*). Not a logo pasted on top: it is set in the
+   monitor's own mono face at the channel line's own size and muted, so it reads as
+   the machine's nameplate. `text-transform: none` because he wrote it lowercase. */
+@S@ .chrome--bcast .chrome__brand{
+  font-family: var(--font-mono);
+  font-size: var(--size-time);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: none;
+  color: var(--text-secondary);
+}
 @S@ body:not([data-surface="strip"]) .panel__header{
   display: grid;
   grid-template-columns: 1fr auto;
@@ -936,9 +994,12 @@ CHROME[2] = """
   background: var(--accent);
   animation: sotto-2-rec 1.6s ease-out infinite;
 }
+/* P2-1: the pulse is OPACITY only — the old keyframe animated `box-shadow`
+   spread, which is a paint property and a layout-adjacent cost every frame. */
 @keyframes sotto-2-rec{
-  0%{ box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
-  100%{ box-shadow: 0 0 0 8px transparent; }
+  0%{ opacity: 1; }
+  70%{ opacity: 0.35; }
+  100%{ opacity: 1; }
 }
 @S@ .chrome--bcast .chrome__chan{ color: var(--text-muted); }
 @S@ .chrome--bcast .chrome__tc{
@@ -956,16 +1017,15 @@ CHROME[2] = """
   gap: 4px;
 }
 @S@ .panel__controls .icon-button{ border-radius: 3px; }
-/* THE PER-LINE ORDINAL: the one thing the panel had to be taught to say. */
-@S@ .caption{ grid-template-columns: auto auto 1fr; }
-@S@ .caption__index{
-  display: inline;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--size-time);
-  letter-spacing: 0.02em;
-}
-@S@ .caption--provisional .caption__index{ color: var(--accent); }
+/* THE PER-LINE ORDINAL IS NOT PAINTED. This direction's mockup prints `001`,
+   `002`, … beside the clock (`pad3(h.id)` in `Panel.tsx`), and the element that
+   carried it was removed from the screen at the OWNER's own instruction
+   (2026-10-08, twice): *"tira esse numero de 033 11:21:03"*, then *"to falando
+   desse numero a esquerda. o vermelho. nao é pra ter mais ele"*. The `033` was
+   the INDEX OF THE ROW, red on the forming line and grey on the closed ones, and
+   he wants none of them. The ordinal survives as `li[data-index]` for the probes.
+   The `grid-template-columns` that used to reserve its track went with it — and
+   it was INERT anyway: nothing ever set `display: grid` on `.caption`. */
 @S@ .chrome--bcast[data-chrome="foot"]{
   display: inline-flex;
   flex: none;
@@ -993,6 +1053,18 @@ CHROME[3] = """
    `rascunho ao vivo ····· pág. 1` on the header line; the controls become the
    second header row (a manuscript has no buttons at the top of the page). */
 @S@ .wordmark{ display: none; }
+/* THE NAME, IN THIS DIRECTION'S OWN VOICE (owner, 2026-10-08: *"e bota o nome
+   'sotto' em todos os temas"*). A manuscript signs itself quietly: the name is set
+   in the same hand as the page, lowercase, in the ink colour, at the margin. */
+@S@ .chrome--mano .chrome__brand{
+  font-family: var(--font-serif);
+  font-size: var(--size-time);
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--text-muted);
+}
 @S@ body:not([data-surface="strip"]) .panel__header{
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1009,7 +1081,25 @@ CHROME[3] = """
   color: var(--text-muted);
 }
 @S@ .chrome--mano .chrome__draft{ font-size: 12.5px; font-style: italic; color: var(--text-secondary); }
-@S@ .chrome--mano .chrome__page{ margin-left: auto; font-size: 11px; }
+/* THE PAGE NUMBER IS WHAT THE NAME COST (owner, 2026-10-08: *"e bota o nome
+   'sotto' em todos os temas"*, then *"Não espremas"*). MEASURED, not guessed —
+   `_main\_panel-geometry.js` on a real 380x900 panel, theme-3, header 350 px wide:
+     header grid columns       138.594px 201.406px   (1fr auto; the controls own col 2)
+     .chrome--mano   (the cell) 138.6 px
+       .chrome__brand  24.1 x 15.0   = ONE line (10px/15px)      <- the name is free
+       .chrome__draft  68.0 x 37.5   = TWO lines (12.5px/18.75px)  <- it wrapped
+       .chrome__page   26.5 x 33.0   = TWO lines (11px/16.5px)     <- it wrapped
+   Sum of the three WRAPPED widths + the two 10px gaps = 138.6 px: the cell is
+   exactly full, so both wider items were compressed and re-flowed, the block grew
+   37.5, and the header row grew 28 -> 41.5 px, taking 13.5 px off the live box
+   (760.5 -> 747). A ONE-LINE header is impossible at 380 px, not tight: the
+   wrapped widths alone already need 138.6 + a 10px column gap + the controls'
+   201.4 = 350.0, and the two items were compressed to reach that. So the name
+   cannot be added for free while all three texts stay — one of them has to go.
+   The page number goes: it is static, it names a page in a transcript that has
+   none, and the owner removed this class of decoration twice already (item B,
+   item 3). The name stays, at its own size, unsqueezed. Revert = this one line. */
+@S@ .chrome--mano .chrome__page{ display: none; }
 @S@ body:not([data-surface="strip"]) .panel__controls{ grid-column: 2; grid-row: 1; justify-self: end; gap: 4px; }
 @S@ .chrome--mano[data-chrome="foot"]{
   display: inline-flex;
@@ -1063,7 +1153,12 @@ CHROME[4] = """
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.34em;
-  text-transform: uppercase;
+  /* LOWERCASE, KEPT LOWERCASE. The mockup prints `SOTTO` and this rule used to
+     force it with `text-transform: uppercase`, so the markup's `sotto` came out
+     shouting. The owner wrote the name in lowercase (2026-10-08: *"bota o nome
+     'sotto' em todos os temas"*) and `text-transform` is exactly the property that
+     would silently overrule him. */
+  text-transform: none;
   color: var(--accent);
 }
 @S@ .chrome--cine .chrome__state{ margin-left: auto; font-size: 11px; font-style: italic; }
@@ -1080,21 +1175,22 @@ CHROME[4] = """
 @S@ .chrome--cine[data-chrome="foot"][data-slot="start"]{ order: 9; }
 
 /* ── THE FORMING FOG: "a frase fechada é sólida; a em curso vive na névoa" ───
-   TWO TIERS, BOTH STATIC: the confirmed part of the forming line is barely
-   misted, and the tail that is still being rewritten is misted harder and held
-   back in opacity. It is a `filter` (and an `opacity`), never a per-word
-   keyframe — and the transition is what makes the fog DISSOLVE when the line
-   commits, which is the direction's own "the finished phrase is solid". */
+   TWO TIERS, BOTH STATIC, OPACITY ONLY (P2-6, 2026-10-08 audit): this used to be
+   a `filter: blur()` on the live line — 0.45 px on the confirmed part, 0.95 px
+   on the tail. A blur on text the worker rewrites every few hundred ms is a
+   repaint of the most expensive kind on the exact line the owner is reading, and
+   at sub-pixel radii it reads as unfocused rather than misted. The direction
+   keeps its two tiers — confirmed barely held back, tail harder — as opacity
+   steps, and the transition still dissolves the fog when the line commits. */
 @B@ .caption--provisional .caption__text{
-  filter: blur(0.45px);
-  transition: filter 600ms ease;
+  opacity: 0.92;
+  transition: opacity 600ms ease;
 }
 @B@ .caption--provisional .caption__provisional{
-  filter: blur(0.95px);
   opacity: 0.55;
-  transition: filter 600ms ease, opacity 600ms ease;
+  transition: opacity 600ms ease;
 }
-@B@ .caption:not(.caption--provisional) .caption__text{ filter: none; }
+@B@ .caption:not(.caption--provisional) .caption__text{ opacity: 1; }
 """
 
 CHROME[5] = """
@@ -1104,6 +1200,18 @@ CHROME[5] = """
    replaced by the state line — the direction's header says whether the thing is
    ON, not what it is called. */
 @S@ .wordmark{ display: none; }
+/* THE NAME, IN THIS DIRECTION'S OWN VOICE (owner, 2026-10-08: *"e bota o nome
+   'sotto' em todos os temas"*). An instrument is LABELLED: the name is silkscreened
+   in the panel's own mono legend face, tracked wide like the other legends, in the
+   legend colour rather than the accent, so it never competes with the state lamp. */
+@S@ .chrome--inst .chrome__brand{
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: none;
+  color: var(--text-muted);
+}
 @S@ body:not([data-surface="strip"]) .panel__header{
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1527,7 +1635,15 @@ def main():
     for t in THEMES:
         path = os.path.join(OUT, 'theme-%d.css' % t['n'])
         text = build(t)
-        with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        # CRLF, NOT LF, and that is measured rather than a preference. The five
+        # files on disk in `app/panel/themes/` are 100 % CRLF (theme-1: 633 CRLF /
+        # 0 bare LF, and the same N/N for all five), and `core.autocrlf=true`, so
+        # CRLF is this working tree's convention. Writing LF here would rewrite
+        # every line of every theme on the next generation run — a whole-file diff
+        # that buries the one line someone meant to change. Verified before the
+        # change: with `newline='\n'` the output was byte-identical to disk
+        # EXCEPT for exactly +1 byte per line.
+        with open(path, 'w', encoding='utf-8', newline='\r\n') as fh:
             fh.write(text)
         print('wrote %-46s %6d bytes  %4d lines' % (path, len(text.encode('utf-8')),
                                                    text.count('\n')))

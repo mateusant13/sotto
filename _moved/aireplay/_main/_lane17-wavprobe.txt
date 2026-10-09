@@ -1,0 +1,30 @@
+codec_name=pcm_f32le
+sample_rate=48000
+channels=1
+bits_per_sample=32
+duration=30.100000
+  ^-- H:\sotto\_main\live-sample-cable-input.wav
+codec_name=pcm_f32le
+sample_rate=48000
+channels=1
+bits_per_sample=32
+duration=90.000000
+  ^-- H:\sotto\_main\live-sample-cable-input-90s.wav
+codec_name=pcm_s16le
+sample_rate=22050
+channels=1
+bits_per_sample=16
+duration=8.543039
+  ^-- H:\sotto\_main\en-us-sample.wav
+codec_name=pcm_s16le
+sample_rate=22050
+channels=1
+bits_per_sample=16
+duration=15.000000
+  ^-- H:\sotto\_main\pt-br-sample.wav
+codec_name=pcm_s16le
+sample_rate=16000
+channels=1
+bits_per_sample=16
+duration=30.016000
+  ^-- H:\sotto\_moved\aireplay\_main\onnx-asr-scratch\slice-30s.wav

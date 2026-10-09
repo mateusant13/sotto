@@ -1,0 +1,343 @@
+cadence-probe.py  --  2026-10-07T21:35:54  driver=H:\sotto\_moved\aireplay\_main\heartbeat.ps1
+heartbeat.log: 169 passes parsed (7 v5, 162 v6)
+==============================================================================
+ARM-L1  MECHANISM PREDICATE (real log, real task settings)
+==============================================================================
+  task.Settings.MultipleInstances  = IgnoreNew
+  task.Settings.StartWhenAvailable = False
+  task.Triggers[0].Repetition.Interval = PT3M
+  IgnoreNew => a tick arriving during a running pass is DISCARDED, not deferred, and StartWhenAvailable=False means it is never made up.
+
+  fire         pass_s   fireGap   drop overran_tick outcome    rc
+  13:07:05        229       182     ok         no delivered  0
+  13:13:02         98       357   DROP        YES delivered  0
+  13:16:02        185       180     ok         no delivered  0
+  13:22:01        131       359   DROP        YES delivered  0
+  13:25:03        162       182     ok         no delivered  0
+  13:28:02        128       179     ok         no delivered  0
+
+  PREDICATE  'tick dropped IFF previous pass overran its own next tick': 6 of 6 correct.
+
+==============================================================================
+ARM-L2  LIVE PASS CADENCE (the thing v6 changed)
+==============================================================================
+  fire=13:31:01 pass_ms=527    exec_ms=99545   outcome=delivered
+  fire=13:34:02 pass_ms=589    exec_ms=-       outcome=pending
+  fire=13:37:01 pass_ms=650    exec_ms=258465  outcome=delivered
+  fire=13:40:02 pass_ms=956    exec_ms=-       outcome=pending
+  fire=13:43:02 pass_ms=801    exec_ms=-       outcome=queue-failed
+  fire=13:46:02 pass_ms=789    exec_ms=405768  outcome=delivered
+  fire=13:49:01 pass_ms=567    exec_ms=106374  outcome=delivered
+  fire=13:52:01 pass_ms=416    exec_ms=19052   outcome=refused
+  fire=13:55:01 pass_ms=713    exec_ms=82417   outcome=delivered
+  fire=13:58:01 pass_ms=459    exec_ms=84611   outcome=refused
+  fire=14:01:01 pass_ms=421    exec_ms=9032    outcome=refused
+  fire=14:04:01 pass_ms=470    exec_ms=10873   outcome=refused
+  fire=14:07:01 pass_ms=466    exec_ms=9629    outcome=refused
+  fire=14:10:01 pass_ms=456    exec_ms=54784   outcome=delivered
+  fire=14:13:01 pass_ms=440    exec_ms=97242   outcome=delivered
+  fire=14:16:02 pass_ms=551    exec_ms=10620   outcome=refused
+  fire=14:19:01 pass_ms=418    exec_ms=-       outcome=pending
+  fire=14:22:01 pass_ms=465    exec_ms=270442  outcome=delivered
+  fire=14:25:01 pass_ms=460    exec_ms=122353  outcome=delivered
+  fire=14:28:01 pass_ms=430    exec_ms=78564   outcome=delivered
+  fire=14:31:01 pass_ms=432    exec_ms=55085   outcome=delivered
+  fire=14:34:01 pass_ms=382    exec_ms=26291   outcome=delivered
+  fire=14:37:01 pass_ms=488    exec_ms=47998   outcome=delivered
+  fire=14:40:01 pass_ms=460    exec_ms=39070   outcome=delivered
+  fire=14:43:01 pass_ms=405    exec_ms=98552   outcome=delivered
+  fire=14:46:01 pass_ms=444    exec_ms=30190   outcome=delivered
+  fire=14:49:01 pass_ms=455    exec_ms=31446   outcome=delivered
+  fire=14:52:01 pass_ms=409    exec_ms=77850   outcome=delivered
+  fire=14:55:01 pass_ms=408    exec_ms=45639   outcome=delivered
+  fire=14:58:01 pass_ms=424    exec_ms=97948   outcome=delivered
+  fire=15:01:01 pass_ms=421    exec_ms=71466   outcome=delivered
+  fire=15:04:01 pass_ms=407    exec_ms=45962   outcome=delivered
+  fire=15:07:01 pass_ms=400    exec_ms=87273   outcome=delivered
+  fire=15:10:01 pass_ms=456    exec_ms=78781   outcome=delivered
+  fire=15:13:01 pass_ms=412    exec_ms=100960  outcome=delivered
+  fire=15:16:01 pass_ms=424    exec_ms=55503   outcome=delivered
+  fire=15:19:01 pass_ms=419    exec_ms=51869   outcome=delivered
+  fire=15:22:01 pass_ms=414    exec_ms=86369   outcome=delivered
+  fire=15:25:01 pass_ms=489    exec_ms=43974   outcome=delivered
+  fire=15:28:01 pass_ms=405    exec_ms=-       outcome=pending
+  fire=15:31:02 pass_ms=881    exec_ms=254294  outcome=delivered
+  fire=15:34:01 pass_ms=402    exec_ms=-       outcome=pending
+  fire=15:37:02 pass_ms=945    exec_ms=-       outcome=queue-failed
+  fire=15:40:02 pass_ms=862    exec_ms=406026  outcome=delivered
+  fire=15:43:02 pass_ms=566    exec_ms=169129  outcome=delivered
+  fire=15:46:01 pass_ms=408    exec_ms=81707   outcome=delivered
+  fire=15:49:01 pass_ms=397    exec_ms=-       outcome=pending
+  fire=15:52:03 pass_ms=1169   exec_ms=185296  outcome=refused
+  fire=15:55:01 pass_ms=407    exec_ms=86431   outcome=delivered
+  fire=15:58:01 pass_ms=423    exec_ms=67678   outcome=delivered
+  fire=16:01:01 pass_ms=395    exec_ms=36143   outcome=delivered
+  fire=16:04:01 pass_ms=392    exec_ms=98020   outcome=delivered
+  fire=16:07:01 pass_ms=387    exec_ms=113451  outcome=delivered
+  fire=16:10:01 pass_ms=404    exec_ms=98261   outcome=delivered
+  fire=16:13:02 pass_ms=417    exec_ms=33585   outcome=delivered
+  fire=16:16:01 pass_ms=385    exec_ms=78832   outcome=delivered
+  fire=16:19:02 pass_ms=392    exec_ms=82984   outcome=delivered
+  fire=16:22:02 pass_ms=504    exec_ms=63119   outcome=delivered
+  fire=16:25:02 pass_ms=390    exec_ms=43147   outcome=delivered
+  fire=16:28:02 pass_ms=408    exec_ms=-       outcome=pending
+  fire=16:31:02 pass_ms=454    exec_ms=206122  outcome=delivered
+  fire=16:34:02 pass_ms=414    exec_ms=-       outcome=pending
+  fire=16:37:03 pass_ms=1358   exec_ms=-       outcome=queue-failed
+  fire=16:40:04 pass_ms=3414   exec_ms=377040  outcome=delivered
+  fire=16:43:02 pass_ms=409    exec_ms=145615  outcome=delivered
+  fire=16:46:02 pass_ms=405    exec_ms=59118   outcome=delivered
+  fire=16:49:02 pass_ms=389    exec_ms=60733   outcome=delivered
+  fire=16:52:02 pass_ms=396    exec_ms=138754  outcome=delivered
+  fire=16:55:02 pass_ms=408    exec_ms=93309   outcome=delivered
+  fire=16:58:02 pass_ms=387    exec_ms=49174   outcome=delivered
+  fire=17:01:02 pass_ms=383    exec_ms=59176   outcome=delivered
+  fire=17:04:02 pass_ms=409    exec_ms=49235   outcome=delivered
+  fire=17:07:02 pass_ms=391    exec_ms=40774   outcome=delivered
+  fire=17:10:02 pass_ms=396    exec_ms=46801   outcome=delivered
+  fire=17:13:02 pass_ms=388    exec_ms=92856   outcome=delivered
+  fire=17:16:02 pass_ms=413    exec_ms=119713  outcome=delivered
+  fire=17:19:02 pass_ms=385    exec_ms=59506   outcome=delivered
+  fire=17:22:02 pass_ms=375    exec_ms=-       outcome=pending
+  fire=17:25:02 pass_ms=430    exec_ms=232197  outcome=delivered
+  fire=17:28:02 pass_ms=393    exec_ms=-       outcome=pending
+  fire=17:31:02 pass_ms=472    exec_ms=215759  outcome=delivered
+  fire=17:34:02 pass_ms=379    exec_ms=64534   outcome=delivered
+  fire=17:37:02 pass_ms=415    exec_ms=51986   outcome=delivered
+  fire=17:40:02 pass_ms=402    exec_ms=48418   outcome=delivered
+  fire=17:43:02 pass_ms=382    exec_ms=42514   outcome=delivered
+  fire=17:46:02 pass_ms=392    exec_ms=47954   outcome=delivered
+  fire=17:49:02 pass_ms=399    exec_ms=34725   outcome=delivered
+  fire=17:52:02 pass_ms=391    exec_ms=64935   outcome=delivered
+  fire=17:55:02 pass_ms=393    exec_ms=41736   outcome=delivered
+  fire=17:58:02 pass_ms=417    exec_ms=47957   outcome=delivered
+  fire=18:01:02 pass_ms=394    exec_ms=-       outcome=pending
+  fire=18:04:02 pass_ms=496    exec_ms=-       outcome=queue-failed
+  fire=18:07:02 pass_ms=662    exec_ms=510760  outcome=refused
+  fire=18:10:02 pass_ms=433    exec_ms=166413  outcome=delivered
+  fire=18:13:02 pass_ms=367    exec_ms=126097  outcome=delivered
+  fire=18:16:02 pass_ms=373    exec_ms=118694  outcome=delivered
+  fire=18:19:02 pass_ms=413    exec_ms=107338  outcome=delivered
+  fire=18:22:02 pass_ms=367    exec_ms=147939  outcome=delivered
+  fire=18:25:02 pass_ms=427    exec_ms=156032  outcome=delivered
+  fire=18:28:02 pass_ms=399    exec_ms=144949  outcome=delivered
+  fire=18:31:03 pass_ms=1399   exec_ms=155743  outcome=delivered
+  fire=18:34:04 pass_ms=1812   exec_ms=-       outcome=pending
+  fire=18:37:10 pass_ms=4608   exec_ms=184132  outcome=refused
+  fire=18:40:05 pass_ms=3388   exec_ms=197564  outcome=delivered
+  fire=18:43:04 pass_ms=2098   exec_ms=30352   outcome=pending
+  fire=18:46:02 pass_ms=436    exec_ms=57176   outcome=refused
+  fire=18:49:02 pass_ms=376    exec_ms=56791   outcome=refused
+  fire=18:52:02 pass_ms=380    exec_ms=56923   outcome=refused
+  fire=18:55:02 pass_ms=390    exec_ms=56825   outcome=refused
+  fire=18:58:02 pass_ms=385    exec_ms=57054   outcome=refused
+  fire=19:01:02 pass_ms=399    exec_ms=56916   outcome=refused
+  fire=19:04:02 pass_ms=381    exec_ms=56892   outcome=refused
+  fire=19:07:02 pass_ms=387    exec_ms=56937   outcome=refused
+  fire=19:10:02 pass_ms=431    exec_ms=56904   outcome=refused
+  fire=19:13:02 pass_ms=385    exec_ms=57168   outcome=refused
+  fire=19:16:02 pass_ms=450    exec_ms=76158   outcome=delivered
+  fire=19:19:02 pass_ms=503    exec_ms=53883   outcome=delivered
+  fire=19:22:03 pass_ms=773    exec_ms=-       outcome=pending
+  fire=19:25:02 pass_ms=485    exec_ms=-       outcome=queue-failed
+  fire=19:28:02 pass_ms=582    exec_ms=507855  outcome=delivered
+  fire=19:31:02 pass_ms=447    exec_ms=175318  outcome=delivered
+  fire=19:34:02 pass_ms=503    exec_ms=-       outcome=pending
+  fire=19:37:04 pass_ms=1714   exec_ms=186090  outcome=delivered
+  fire=19:40:02 pass_ms=454    exec_ms=-       outcome=pending
+  fire=19:43:06 pass_ms=4256   exec_ms=223345  outcome=delivered
+  fire=19:46:01 pass_ms=439    exec_ms=115153  outcome=delivered
+  fire=19:49:01 pass_ms=405    exec_ms=106887  outcome=delivered
+  fire=19:52:02 pass_ms=848    exec_ms=80287   outcome=delivered
+  fire=19:55:01 pass_ms=554    exec_ms=-       outcome=pending
+  fire=19:58:01 pass_ms=578    exec_ms=215374  outcome=delivered
+  fire=20:01:01 pass_ms=396    exec_ms=121586  outcome=delivered
+  fire=20:04:01 pass_ms=498    exec_ms=65242   outcome=delivered
+  fire=20:07:01 pass_ms=369    exec_ms=33168   outcome=delivered
+  fire=20:10:01 pass_ms=444    exec_ms=-       outcome=pending
+  fire=20:13:01 pass_ms=507    exec_ms=252413  outcome=delivered
+  fire=20:16:01 pass_ms=544    exec_ms=160215  outcome=delivered
+  fire=20:19:01 pass_ms=474    exec_ms=55715   outcome=delivered
+  fire=20:22:01 pass_ms=424    exec_ms=46025   outcome=delivered
+  fire=20:25:01 pass_ms=414    exec_ms=50537   outcome=delivered
+  fire=20:28:01 pass_ms=468    exec_ms=89646   outcome=delivered
+  fire=20:31:01 pass_ms=684    exec_ms=115698  outcome=delivered
+  fire=20:34:01 pass_ms=405    exec_ms=84855   outcome=delivered
+  fire=20:37:01 pass_ms=614    exec_ms=40767   outcome=delivered
+  fire=20:40:02 pass_ms=592    exec_ms=50475   outcome=delivered
+  fire=20:43:01 pass_ms=540    exec_ms=42529   outcome=delivered
+  fire=20:46:01 pass_ms=429    exec_ms=-       outcome=pending
+  fire=20:49:01 pass_ms=639    exec_ms=-       outcome=queue-failed
+  fire=20:52:02 pass_ms=761    exec_ms=-       outcome=queue-failed
+  fire=20:55:01 pass_ms=779    exec_ms=585168  outcome=delivered
+  fire=20:58:02 pass_ms=518    exec_ms=75532   outcome=delivered
+  fire=21:01:01 pass_ms=468    exec_ms=79625   outcome=delivered
+  fire=21:04:02 pass_ms=615    exec_ms=170241  outcome=delivered
+  fire=21:07:01 pass_ms=699    exec_ms=119072  outcome=delivered
+  fire=21:10:01 pass_ms=505    exec_ms=82620   outcome=delivered
+  fire=21:13:01 pass_ms=444    exec_ms=98640   outcome=delivered
+  fire=21:16:01 pass_ms=546    exec_ms=42098   outcome=delivered
+  fire=21:19:01 pass_ms=516    exec_ms=110055  outcome=delivered
+  fire=21:22:01 pass_ms=464    exec_ms=-       outcome=pending
+  fire=21:25:02 pass_ms=884    exec_ms=298263  outcome=delivered
+  fire=21:28:01 pass_ms=1195   exec_ms=116179  outcome=delivered
+  fire=21:31:03 pass_ms=2860   exec_ms=-       outcome=pending
+  fire=21:34:07 pass_ms=8227   exec_ms=-       outcome=queue-failed
+
+  pass wall time   : n=162 min=0s median=0s mean=1s max=8s   (interval is 180s)
+  fire gap         : n=161 min=175s median=180s mean=180s max=186s
+  ticks DROPPED    : 0 of 161   (IgnoreNew dropped a tick)
+  passes >interval : 0 of 162
+
+  TICK COVERAGE: passes=169, produced a wake=159, produced NOTHING=10
+  ticks that woke nobody: 10 of 169 (5.9%)
+  of those, 8 took the queue path and FAILED (dead transport)
+  VERDICT PASS -- every tick is served
+
+==============================================================================
+ARM-L3  LIVE DELIVERY CADENCE + the causal identity
+==============================================================================
+  POPULATION = 121 deliveries   WINDOW = 13:06:39 -> 21:29:59 (503.3 min)
+  gaps (s)      : 255, 226, 267, 305, 213, 145, 152, 339, 508, 240, 336, 872, 222, 533, 212, 137, 156, 151, 202, 171, 239, 112, 181, 227, 148, 232, 153, 155, 221, 172, 202, 135, 176, 215, 137, 390, 512, 304, 92, 545, 161, 148, 242, 196, 164, 116, 225, 184, 161, 159, 343, 531, 309, 93, 182, 258, 135, 136, 189, 171, 171, 186, 226, 207, 120, 353, 343, 209, 167, 177, 174, 185, 167, 210, 157, 186, 839, 140, 172, 169, 220, 189, 169, 193, 412, 2206, 158, 635, 206, 191, 397, 251, 172, 155, 314, 265, 124, 148, 400, 267, 76, 170, 185, 219, 206, 149, 136, 190, 172, 722, 211, 184, 271, 129, 143, 196, 123, 248, 369, 178
+  distribution  : n=120 min=76s median=190s mean=252s max=2206s
+  met the 180 s target: 50 of 120 gaps
+
+  IDENTITY  delivery_gap(N+1) = fire_gap(N+1) + exec(N+1) - exec(N)
+   13:04:03 -> 13:07:05  fire_gap= 182 exec   155->  227 rc 0->0  predicted=  254 actual=  255  ok
+   13:07:05 -> 13:13:02  fire_gap= 357 exec   227->   98 rc 0->0  predicted=  228 actual=  226  ok
+   13:13:02 -> 13:16:02  fire_gap= 180 exec    98->  184 rc 0->0  predicted=  266 actual=  267  ok
+   13:16:02 -> 13:22:01  fire_gap= 359 exec   184->  130 rc 0->0  predicted=  305 actual=  305  ok
+   13:22:01 -> 13:25:03  fire_gap= 182 exec   130->  162 rc 0->0  predicted=  214 actual=  213  ok
+   13:25:03 -> 13:28:02  fire_gap= 179 exec   162->  128 rc 0->0  predicted=  145 actual=  145  ok
+   13:28:02 -> 13:31:01  fire_gap= 179 exec   128->  100 rc 0->0  predicted=  151 actual=  152  ok
+   13:46:02 -> 13:49:01  fire_gap= 179 exec   406->  106 rc 0->0  predicted= -120 actual=  240  OFF
+   14:10:01 -> 14:13:01  fire_gap= 180 exec    55->   97 rc 0->0  predicted=  222 actual=  222  ok
+   14:22:01 -> 14:25:01  fire_gap= 180 exec   270->  122 rc 0->0  predicted=   32 actual=  212  OFF
+   14:25:01 -> 14:28:01  fire_gap= 180 exec   122->   79 rc 0->0  predicted=  136 actual=  137  ok
+   14:28:01 -> 14:31:01  fire_gap= 180 exec    79->   55 rc 0->0  predicted=  157 actual=  156  ok
+   14:31:01 -> 14:34:01  fire_gap= 180 exec    55->   26 rc 0->0  predicted=  151 actual=  151  ok
+   14:34:01 -> 14:37:01  fire_gap= 180 exec    26->   48 rc 0->0  predicted=  202 actual=  202  ok
+   14:37:01 -> 14:40:01  fire_gap= 180 exec    48->   39 rc 0->0  predicted=  171 actual=  171  ok
+   14:40:01 -> 14:43:01  fire_gap= 180 exec    39->   99 rc 0->0  predicted=  239 actual=  239  ok
+   14:43:01 -> 14:46:01  fire_gap= 180 exec    99->   30 rc 0->0  predicted=  112 actual=  112  ok
+   14:46:01 -> 14:49:01  fire_gap= 180 exec    30->   31 rc 0->0  predicted=  181 actual=  181  ok
+   14:49:01 -> 14:52:01  fire_gap= 180 exec    31->   78 rc 0->0  predicted=  226 actual=  227  ok
+   14:52:01 -> 14:55:01  fire_gap= 180 exec    78->   46 rc 0->0  predicted=  148 actual=  148  ok
+   14:55:01 -> 14:58:01  fire_gap= 180 exec    46->   98 rc 0->0  predicted=  232 actual=  232  ok
+   14:58:01 -> 15:01:01  fire_gap= 180 exec    98->   71 rc 0->0  predicted=  154 actual=  153  ok
+   15:01:01 -> 15:04:01  fire_gap= 180 exec    71->   46 rc 0->0  predicted=  154 actual=  155  ok
+   15:04:01 -> 15:07:01  fire_gap= 180 exec    46->   87 rc 0->0  predicted=  221 actual=  221  ok
+   15:07:01 -> 15:10:01  fire_gap= 180 exec    87->   79 rc 0->0  predicted=  172 actual=  172  ok
+   15:10:01 -> 15:13:01  fire_gap= 180 exec    79->  101 rc 0->0  predicted=  202 actual=  202  ok
+   15:13:01 -> 15:16:01  fire_gap= 180 exec   101->   56 rc 0->0  predicted=  135 actual=  135  ok
+   15:16:01 -> 15:19:01  fire_gap= 180 exec    56->   52 rc 0->0  predicted=  176 actual=  176  ok
+   15:19:01 -> 15:22:01  fire_gap= 180 exec    52->   86 rc 0->0  predicted=  215 actual=  215  ok
+   15:22:01 -> 15:25:01  fire_gap= 180 exec    86->   44 rc 0->0  predicted=  138 actual=  137  ok
+   15:40:02 -> 15:43:02  fire_gap= 180 exec   406->  169 rc 0->0  predicted=  -57 actual=  304  OFF
+   15:43:02 -> 15:46:01  fire_gap= 179 exec   169->   82 rc 0->0  predicted=   92 actual=   92  ok
+   15:55:01 -> 15:58:01  fire_gap= 180 exec    86->   68 rc 0->0  predicted=  161 actual=  161  ok
+   15:58:01 -> 16:01:01  fire_gap= 180 exec    68->   36 rc 0->0  predicted=  148 actual=  148  ok
+   16:01:01 -> 16:04:01  fire_gap= 180 exec    36->   98 rc 0->0  predicted=  242 actual=  242  ok
+   16:04:01 -> 16:07:01  fire_gap= 180 exec    98->  113 rc 0->0  predicted=  195 actual=  196  ok
+   16:07:01 -> 16:10:01  fire_gap= 180 exec   113->   98 rc 0->0  predicted=  165 actual=  164  ok
+   16:10:01 -> 16:13:02  fire_gap= 181 exec    98->   34 rc 0->0  predicted=  116 actual=  116  ok
+   16:13:02 -> 16:16:01  fire_gap= 179 exec    34->   79 rc 0->0  predicted=  224 actual=  225  ok
+   16:16:01 -> 16:19:02  fire_gap= 181 exec    79->   83 rc 0->0  predicted=  185 actual=  184  ok
+   16:19:02 -> 16:22:02  fire_gap= 180 exec    83->   63 rc 0->0  predicted=  160 actual=  161  ok
+   16:22:02 -> 16:25:02  fire_gap= 180 exec    63->   43 rc 0->0  predicted=  160 actual=  159  ok
+   16:40:04 -> 16:43:02  fire_gap= 178 exec   377->  146 rc 0->0  predicted=  -53 actual=  309  OFF
+   16:43:02 -> 16:46:02  fire_gap= 180 exec   146->   59 rc 0->0  predicted=   94 actual=   93  ok
+   16:46:02 -> 16:49:02  fire_gap= 180 exec    59->   61 rc 0->0  predicted=  182 actual=  182  ok
+   16:49:02 -> 16:52:02  fire_gap= 180 exec    61->  139 rc 0->0  predicted=  258 actual=  258  ok
+   16:52:02 -> 16:55:02  fire_gap= 180 exec   139->   93 rc 0->0  predicted=  135 actual=  135  ok
+   16:55:02 -> 16:58:02  fire_gap= 180 exec    93->   49 rc 0->0  predicted=  136 actual=  136  ok
+   16:58:02 -> 17:01:02  fire_gap= 180 exec    49->   59 rc 0->0  predicted=  190 actual=  189  ok
+   17:01:02 -> 17:04:02  fire_gap= 180 exec    59->   49 rc 0->0  predicted=  170 actual=  171  ok
+   17:04:02 -> 17:07:02  fire_gap= 180 exec    49->   41 rc 0->0  predicted=  172 actual=  171  ok
+   17:07:02 -> 17:10:02  fire_gap= 180 exec    41->   47 rc 0->0  predicted=  186 actual=  186  ok
+   17:10:02 -> 17:13:02  fire_gap= 180 exec    47->   93 rc 0->0  predicted=  226 actual=  226  ok
+   17:13:02 -> 17:16:02  fire_gap= 180 exec    93->  120 rc 0->0  predicted=  207 actual=  207  ok
+   17:16:02 -> 17:19:02  fire_gap= 180 exec   120->   60 rc 0->0  predicted=  120 actual=  120  ok
+   17:31:02 -> 17:34:02  fire_gap= 180 exec   216->   65 rc 0->0  predicted=   29 actual=  209  OFF
+   17:34:02 -> 17:37:02  fire_gap= 180 exec    65->   52 rc 0->0  predicted=  167 actual=  167  ok
+   17:37:02 -> 17:40:02  fire_gap= 180 exec    52->   48 rc 0->0  predicted=  176 actual=  177  ok
+   17:40:02 -> 17:43:02  fire_gap= 180 exec    48->   43 rc 0->0  predicted=  174 actual=  174  ok
+   17:43:02 -> 17:46:02  fire_gap= 180 exec    43->   48 rc 0->0  predicted=  185 actual=  185  ok
+   17:46:02 -> 17:49:02  fire_gap= 180 exec    48->   35 rc 0->0  predicted=  167 actual=  167  ok
+   17:49:02 -> 17:52:02  fire_gap= 180 exec    35->   65 rc 0->0  predicted=  210 actual=  210  ok
+   17:52:02 -> 17:55:02  fire_gap= 180 exec    65->   42 rc 0->0  predicted=  157 actual=  157  ok
+   17:55:02 -> 17:58:02  fire_gap= 180 exec    42->   48 rc 0->0  predicted=  186 actual=  186  ok
+   18:10:02 -> 18:13:02  fire_gap= 180 exec   166->  126 rc 0->0  predicted=  140 actual=  140  ok
+   18:13:02 -> 18:16:02  fire_gap= 180 exec   126->  119 rc 0->0  predicted=  173 actual=  172  ok
+   18:16:02 -> 18:19:02  fire_gap= 180 exec   119->  107 rc 0->0  predicted=  169 actual=  169  ok
+   18:19:02 -> 18:22:02  fire_gap= 180 exec   107->  148 rc 0->0  predicted=  221 actual=  220  ok
+   18:22:02 -> 18:25:02  fire_gap= 180 exec   148->  156 rc 0->0  predicted=  188 actual=  189  ok
+   18:25:02 -> 18:28:02  fire_gap= 180 exec   156->  145 rc 0->0  predicted=  169 actual=  169  ok
+   18:28:02 -> 18:31:03  fire_gap= 181 exec   145->  156 rc 0->0  predicted=  192 actual=  193  ok
+   19:16:02 -> 19:19:02  fire_gap= 180 exec    76->   54 rc 0->0  predicted=  158 actual=  158  ok
+   19:28:02 -> 19:31:02  fire_gap= 180 exec   508->  175 rc 0->0  predicted= -153 actual=  206  OFF
+   19:43:06 -> 19:46:01  fire_gap= 175 exec   223->  115 rc 0->0  predicted=   67 actual=  251  OFF
+   19:46:01 -> 19:49:01  fire_gap= 180 exec   115->  107 rc 0->0  predicted=  172 actual=  172  ok
+   19:49:01 -> 19:52:02  fire_gap= 181 exec   107->   80 rc 0->0  predicted=  154 actual=  155  ok
+   19:58:01 -> 20:01:01  fire_gap= 180 exec   215->  122 rc 0->0  predicted=   86 actual=  265  OFF
+   20:01:01 -> 20:04:01  fire_gap= 180 exec   122->   65 rc 0->0  predicted=  124 actual=  124  ok
+   20:04:01 -> 20:07:01  fire_gap= 180 exec    65->   33 rc 0->0  predicted=  148 actual=  148  ok
+   20:13:01 -> 20:16:01  fire_gap= 180 exec   252->  160 rc 0->0  predicted=   88 actual=  267  OFF
+   20:16:01 -> 20:19:01  fire_gap= 180 exec   160->   56 rc 0->0  predicted=   76 actual=   76  ok
+   20:19:01 -> 20:22:01  fire_gap= 180 exec    56->   46 rc 0->0  predicted=  170 actual=  170  ok
+   20:22:01 -> 20:25:01  fire_gap= 180 exec    46->   51 rc 0->0  predicted=  185 actual=  185  ok
+   20:25:01 -> 20:28:01  fire_gap= 180 exec    51->   90 rc 0->0  predicted=  219 actual=  219  ok
+   20:28:01 -> 20:31:01  fire_gap= 180 exec    90->  116 rc 0->0  predicted=  206 actual=  206  ok
+   20:31:01 -> 20:34:01  fire_gap= 180 exec   116->   85 rc 0->0  predicted=  149 actual=  149  ok
+   20:34:01 -> 20:37:01  fire_gap= 180 exec    85->   41 rc 0->0  predicted=  136 actual=  136  ok
+   20:37:01 -> 20:40:02  fire_gap= 181 exec    41->   50 rc 0->0  predicted=  191 actual=  190  ok
+   20:40:02 -> 20:43:01  fire_gap= 179 exec    50->   43 rc 0->0  predicted=  171 actual=  172  ok
+   20:55:01 -> 20:58:02  fire_gap= 181 exec   585->   76 rc 0->0  predicted= -329 actual=  211  OFF
+   20:58:02 -> 21:01:01  fire_gap= 179 exec    76->   80 rc 0->0  predicted=  183 actual=  184  ok
+   21:01:01 -> 21:04:02  fire_gap= 181 exec    80->  170 rc 0->0  predicted=  272 actual=  271  ok
+   21:04:02 -> 21:07:01  fire_gap= 179 exec   170->  119 rc 0->0  predicted=  128 actual=  129  ok
+   21:07:01 -> 21:10:01  fire_gap= 180 exec   119->   83 rc 0->0  predicted=  144 actual=  143  ok
+   21:10:01 -> 21:13:01  fire_gap= 180 exec    83->   99 rc 0->0  predicted=  196 actual=  196  ok
+   21:13:01 -> 21:16:01  fire_gap= 180 exec    99->   42 rc 0->0  predicted=  123 actual=  123  ok
+   21:16:01 -> 21:19:01  fire_gap= 180 exec    42->  110 rc 0->0  predicted=  248 actual=  248  ok
+   21:25:02 -> 21:28:01  fire_gap= 179 exec   298->  116 rc 0->0  predicted=   -3 actual=  178  OFF
+  identity holds within 3 s on 87 of 98 pairs (log resolution is 1 s).
+
+  CEILING: exec duration is the agent turn itself -- measured n=141 min=9s median=82s mean=111s max=585s.
+  The runtime refuses a prompt into a session with an open turn, so no
+  cron can deliver faster than that session's turns close. Delivery
+  cadence is therefore bounded BELOW by this number, not by the cron.
+  VERDICT PASS (median 190s vs acceptance 210s)
+
+==============================================================================
+ARM-L4  SEND -> DELIVERY LATENCY  (the owner's quantity)
+==============================================================================
+
+  PRE-EDIT  (v5, before 13:30:59)
+    POPULATION = 7 sends with a delivery   WINDOW = 13:04:04 -> 13:30:10 (26.1 min)
+    latencies (s): 155, 227, 98, 184, 130, 162, 128
+    n=7 min=98s median=155s mean=155s max=227s
+    under the 180 s target: 5 of 7
+
+  POST-EDIT (v6, from 13:31:01)
+    POPULATION = 97 sends with a delivery   WINDOW = 13:31:02 -> 21:29:59 (478.9 min)
+    latencies (s): 100, 107, 83, 55, 97, 122, 79, 55, 27, 48, 39, 98, 30, 31, 78, 46, 98, 71, 46, 87, 79, 101, 56, 52, 87, 44, 170, 82, 87, 68, 36, 98, 114, 98, 34, 79, 83, 64, 43, 146, 59, 61, 139, 94, 50, 59, 50, 41, 47, 93, 120, 60, 65, 52, 49, 43, 48, 35, 65, 42, 48, 167, 127, 119, 108, 148, 157, 146, 157, 77, 54, 176, 116, 108, 81, 122, 65, 34, 160, 56, 46, 51, 90, 116, 85, 41, 51, 43, 76, 80, 171, 120, 83, 99, 42, 110, 117
+    n=97 min=27s median=79s mean=82s max=176s
+    under the 180 s target: 97 of 97
+
+    send->delivery == exec_ms on 97 of 97 instrumented passes
+    (expected: `mcode exec` runs the turn synchronously and returns
+     when the turn ends, so the owner's latency IS the turn length.)
+
+  POST-EDIT VERDICT PASS (median 79s vs acceptance 210s, n=97)
+  pre-edit median was 155s; post-edit median 79s; delta -76s
+
+==============================================================================
+VERDICT SUMMARY
+==============================================================================
+  L1  PASS
+  L2  PASS
+  L3  PASS
+  L4  PASS
+
+VERDICT PASS

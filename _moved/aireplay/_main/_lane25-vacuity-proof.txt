@@ -1,0 +1,44 @@
+==========================================================================
+ LANE 25 GATE - locale group separator must never publish a memory number
+==========================================================================
+ROOT G:\Temp\lane25-vacuity-86f43a78
+HOST culture=pt-BR   ("pt-BR" of 48888) renders as 48.888
+      -> the group separator is a PERIOD. The defect class is LIVE on this host,
+         so a green verdict below is a real measurement and not a vacuous pass.
+
+RENDER PROOF - 48888 (the magnitude receipt-32 published wrong)
+  DEFECTIVE  locale "-f {0:N1}"   -> 48.888,0   [readable as forty-eight - WRONG BY 1000x]
+  FIXED      ToString(F1,inv)    -> 48888.0   [readable only as 48888]
+
+CENSUS - every `N`-specifier composite-format placeholder in the tree
+  POPULATION = 0 placeholder(s) in 3 scanned file(s)
+  WINDOW     = the whole tree under Root, read from disk at gate time (not a sample)
+  CLASS      = MEMORY/DURATION are the ones a reader parses with a decimal point.
+               SAFE = the value carries no group separator (percent, ratio, sub-1000 s).
+
+  (none)
+
+VERDICT INPUT
+  owned files scanned        : _main\durability-gate.ps1, _main\font-lag-probe.ps1, _main\font-shots.ps1
+  owned DEFECTIVE sites      : 0
+  DEFERRED sites (other lane): 0  of which memory/duration: 0
+
+VERDICT PASS - no memory or duration quantity owned by this lane is
+            published through a locale-dependent group separator.
+
+==========================================================================
+ FALSIFY ARM - copy of the owned files with ONLY the fix from this lane reverted
+==========================================================================
+  reverts applied: 0 of 5
+  REVERT DID NOT MATCH (the fix was edited without updating REVERTS): _main\durability-gate.ps1 :: {0,9} MB
+  REVERT DID NOT MATCH (the fix was edited without updating REVERTS): _main\durability-gate.ps1 :: $_.MB.ToString('F1', $inv)
+  REVERT DID NOT MATCH (the fix was edited without updating REVERTS): _main\durability-gate.ps1 :: duration={6}s
+  REVERT DID NOT MATCH (the fix was edited without updating REVERTS): _main\font-lag-probe.ps1 :: {1,5}s
+  REVERT DID NOT MATCH (the fix was edited without updating REVERTS): _main\font-shots.ps1 :: {4}s
+
+  reverted copy - sites the detector now finds:
+
+  FALSIFY DID NOT GO RED - the detector is not a detector. Treat the green above as unproven.
+
+POPULATION: one host (pt-BR), one tree scan of 3 file(s) under G:\Temp\lane25-vacuity-86f43a78, WINDOW: this run.
+NO FLAKINESS CLAIM IS MADE. Re-running is a new measurement, not a confirmation.

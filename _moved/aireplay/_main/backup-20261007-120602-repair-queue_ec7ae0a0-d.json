@@ -1,0 +1,15 @@
+{
+  "id": 4613,
+  "session_id": "mvs_a00662bff55242cb9b56c0f1165bdad7",
+  "item_id": "queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162",
+  "status": "queued",
+  "created_at_ms": 1791384709757,
+  "data_json": "{\"itemId\": \"queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162\", \"userMessageId\": \"msg-user-v1-D52aPwtIrpQdxgTD0f57LtdRvhNVHic3WgefMuudXhX\", \"sessionId\": \"mvs_a00662bff55242cb9b56c0f1165bdad7\", \"agentName\": \"mavis\", \"source\": \"heartbeat\", \"status\": \"queued\", \"message\": {\"content\": \"[HEARTBEAT] Pass automatico. Continua o plano do Sotto: H:\\\\sotto\\\\_moved\\\\aireplay\\\\ROADMAP.md. Pesquisa primeiro, roadmap, depois constroi. Frontend no fim. Um so app. Le o ultimo receipt antes de repetir trabalho. Se estiveres bloqueado, diz o bloqueio pelo nome em vez de fingir progresso.\", \"attachments\": []}, \"model\": {\"provider_id\": \"minimax\", \"model_id\": \"MiniMax-M3.1-Flash-Preview\", \"reasoning\": true, \"context_limit\": 512000, \"thinking\": {\"effort\": \"max\"}, \"parameterSnapshot\": {\"context\": \"default\", \"effort\": \"selection\"}}, \"createdAt\": 1791384709757, \"clientRequestId\": \"minimax-code_hb_e3619b1e68aa\", \"deliveryAttempts\": []}",
+  "source": "heartbeat",
+  "client_request_id": "minimax-code_hb_e3619b1e68aa",
+  "dedupe_key": "hb-1791384709757",
+  "expires_at_ms": null,
+  "claim_id": null,
+  "claim_lease_expires_at_ms": null,
+  "routing_fingerprint": null
+}

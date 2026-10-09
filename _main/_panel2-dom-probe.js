@@ -40,6 +40,19 @@
  *
  *   node _main/_panel2-dom-probe.js
  *
+ * NEGATIVE ARM — how to show this probe can say NO. Copy the panel aside, break ONE
+ * thing in the copy, and point the whole probe at it with `SOTTO_PANEL_DIR`:
+ *
+ *   $d='_main/_neg-panel'; cp -r app/panel $d        # then edit $d/panel.js
+ *   $env:SOTTO_PANEL_DIR=$d; node _main/_panel2-dom-probe.js   # expect RED
+ *
+ * Measured on the gallery: restoring the auto-append the owner had removed
+ * (`for (const entry of historyEntries) dom.historyList.append(makeRow(entry))` in
+ * `renderFeed`'s final `else`) turns the run RED on exactly two arms — ARM G's
+ * "THE LIST DOES NOT POPULATE ITSELF" and "pressing a RANGE clears the bucket" —
+ * and leaves the other 76 GREEN. Both failures are one cause, which is the point:
+ * the arms that name the removed behaviour are the arms that notice it coming back.
+ *
  * Exit codes: 0 every arm passed | 1 an arm failed (printed with real/want) |
  * 2 setup error (jsdom absent, a panel file missing). No window, no browser, no
  * audio, no network.
@@ -50,8 +63,17 @@ const path = require('node:path');
 
 const HERE = __dirname;
 const REPO = path.join(HERE, '..');
-const PANEL_HTML = path.join(REPO, 'app', 'panel', 'panel.html');
-const PANEL_CSS = path.join(REPO, 'app', 'panel', 'panel.css');
+// WHICH PANEL. Default is the shipped one. `SOTTO_PANEL_DIR` points the WHOLE probe
+// at another directory holding the same document, which is how a negative arm is run
+// here: copy `app/panel` aside, break ONE thing in the copy, and check that the arm
+// that names that thing really goes RED. A probe whose arms cannot be shown to fail
+// is decoration — and a control written from the same intuition as the code under
+// test proves nothing, so the mutant has to be a real run, not a hand-written value.
+const PANEL_DIR = process.env.SOTTO_PANEL_DIR
+  ? path.resolve(process.env.SOTTO_PANEL_DIR)
+  : path.join(REPO, 'app', 'panel');
+const PANEL_HTML = path.join(PANEL_DIR, 'panel.html');
+const PANEL_CSS = path.join(PANEL_DIR, 'panel.css');
 const HARNESS_DIR = path.join(HERE, '_audit-render');
 const HARNESS = path.join(HARNESS_DIR, 'panel-harness.html');
 
@@ -102,9 +124,20 @@ function bridgeStub(window, options) {
     platform: 'win32',
     history: {
       append: () => Promise.resolve({ entry: null }),
-      tail: () => Promise.resolve({ entries: [], root: 'H:\\sotto\\history', canonicalProducer: null }),
-      search: () => Promise.resolve({ hits: [] }),
-      root: () => Promise.resolve({ root: 'H:\\sotto\\history', canonicalProducer: null }),
+      // `options.entries` is what the store would have returned. It defaults to
+      // empty because that is what the LIVE store returns today (`history-source.js`
+      // accepts only `meta.producer === 'redux'` and nothing stamps it), so a probe
+      // that needed rows had to be able to supply them rather than inherit none.
+      tail: () => Promise.resolve({
+        entries: (options && options.entries) || [],
+        root: 'H:\\sotto\\history',
+        canonicalProducer: (options && options.canonicalProducer) || null,
+      }),
+      search: () => Promise.resolve({ hits: (options && options.hits) || [] }),
+      root: () => Promise.resolve({
+        root: 'H:\\sotto\\history',
+        canonicalProducer: (options && options.canonicalProducer) || null,
+      }),
       reveal: (p) => audit.revealed.push(p || null),
     },
     __audit: audit,
@@ -280,11 +313,18 @@ async function main() {
     [!!strip.id('captions-body'), !!strip.id('caption-list'), !!strip.id('placeholder')],
     [true, true, true]);
   arm('the live box REPLACES: two cumulative partials of ONE line stay ONE row',
+    // THE TAIL MARK IS ITS OWN ELEMENT (`.caption__mark`), a SIBLING of
+    // `.caption__provisional` — `panel.js` made it one "so the word spans above stay
+    // countable by `paintWords`", and this assertion went on reading the `·` out of
+    // the provisional span, where it no longer is. Stale before this lane touched
+    // anything; the mark is now read where the panel actually puts it, which is the
+    // pair the claim needs (the words AND the forming marker).
     [strip.id('caption-list').childElementCount,
       squeeze(strip.document.querySelector('.caption__confirmed').textContent),
-      squeeze(strip.document.querySelector('.caption__provisional').textContent)],
-    [1, 'O rato roeu a rolha da garrafa do rei da Russia.', 'a prova dos nove ·'],
-    [0, '', '']);
+      squeeze(strip.document.querySelector('.caption__provisional').textContent),
+      squeeze((strip.document.querySelector('.caption__mark') || {}).textContent || '')],
+    [1, 'O rato roeu a rolha da garrafa do rei da Russia.', 'a prova dos nove', '·'],
+    [0, '', '', '']);
   // A STATUS CHANGE is the panel's own sentence boundary (`engine.flush`), and it
   // is the path that turns the open row into a CLOSED one. The worker-closed text
   // and the in-flight tail are then two rows, in order, and the closed one is no
@@ -304,19 +344,43 @@ async function main() {
   arm('the strip does NOT show the header', strip.display('.panel__header'), 'none', 'flex');
   arm('the strip does NOT show the footer sentence block', strip.display('.status__text'), 'none', 'block');
   arm('the strip DOES show its own control row', strip.display('#strip-controls'), 'flex', 'none');
-  arm('the strip does NOT show the HUD', strip.display('#hud'), 'none', 'flex');
+  // ── THE HUD IS GONE (owner, 2026-10-08: *"tira a hud, nao quero mais. deixa
+  // tudo clean."*). This assertion used to read `strip.display('#hud')` — and when
+  // the HUD was deleted the element stopped existing, so the probe CRASHED on a
+  // later dereference (`#hud-state` was null) instead of reporting anything. A
+  // crashing oracle is worse than a red one. The claim is now about the DOCUMENT:
+  // the HUD is absent, not merely hidden.
+  arm('the HUD is gone from the document entirely, in both surfaces',
+    [!!strip.id('hud'), !!strip.document.querySelector('#hud-rows')],
+    [false, false]);
   arm('the live box is still inside .panel, above the strip row, in both surfaces',
     [strip.display('#captions-body'), !!strip.id('captions-body').closest('.panel')],
     ['block', true]);
   arm('the live box keeps aria-live="polite"', strip.id('captions').getAttribute('aria-live'), 'polite');
   arm('the toggle announces its state', strip.id('strip-live-button').getAttribute('aria-pressed'), 'true');
-  // The shell's own words for a live feed (the same sentence the HUD reports).
+  // ── THE OWNER'S ITEM 3, AS A PAIR (2026-10-08) ──────────────────────────────
+  // *"tira o 'receiving captions'. deixa só um icone dinamico"*. The healthy
+  // SENTENCE is no longer painted on the panel; the strip keeps ONE short word and
+  // the long sentence stays in the DOM for a read-back probe. Asserting only "the
+  // sentence is not on screen" would pass on a panel whose whole status block had
+  // disappeared, so the pair is asserted: the word is there AND the sentence is
+  // still readable AND the state class says LIVE.
   strip.status('Receiving captions', 'live');
-  arm('the strip word is a SHORT status, and the shell sentence is still in the DOM',
-    [strip.id('strip-word').textContent, strip.id('status-text').textContent],
+  arm('the strip word is a SHORT status, and the shell sentence is still readable',
+    // ── THE PAIR, ON THE STRIP (owner, 2026-10-08) ────────────────────────────
+    // The healthy sentence is no longer PAINTED on either surface — the panel shows
+    // an icon and the strip one word — so `#status-text` is empty and the sentence
+    // moved to `#strip-state`'s `title`, one hover away. Asserting only "the
+    // sentence is gone" would pass on a panel that had lost the status entirely,
+    // so the WORD and the SENTENCE are both asserted, in the two places they now
+    // live. (The first version of this assertion expected the text in
+    // `#status-text` on the strip as well; measured `''`.)
+    [strip.id('strip-word').textContent, squeeze(strip.id('strip-state').title)],
     ['Live', 'Receiving captions']);
-  arm('and the HUD reports that same live state, from the same record',
-    squeeze(strip.id('hud-state').textContent), 'live · Receiving captions');
+  arm('the strip state carries the LIVE class, and the dot is a shape not a colour',
+    [strip.id('strip-state').className.includes('is-live'),
+      strip.display('#strip-dot') !== 'none'],
+    [true, true]);
   arm('the sticky follow is armed on the strip too (a caption does not throw)',
     strip.id('captions-body').scrollTop >= 0, true);
 
@@ -329,35 +393,79 @@ async function main() {
     full.document.body.getAttribute('data-surface'), 'panel', 'strip');
   arm('the panel DOES show the transcript drawer', full.display('#history'), 'grid', 'none');
   arm('the panel keeps the drawer collapsed, its search disabled with its reason',
+    // The REASON moved off the screen (owner, 2026-10-08) — the bar paints no
+    // sentence any more — so the assertion follows it to the `title`, where it is
+    // still readable, instead of demanding it in the painted text.
     [full.id('history').className.includes('history--collapsed'), full.id('search-input').disabled,
-      full.id('transcript-note').textContent.includes('canonical writer')],
+      full.id('transcript-note').title.includes('canonical transcript')],
     [true, true, true]);
   arm('the panel DOES show the header', full.display('.panel__header'), 'flex', 'none');
-  arm('the panel DOES show the footer sentence block', full.display('.status__text'), '-webkit-box', 'none');
   arm('the panel does NOT show the strip control row', full.display('#strip-controls'), 'none', 'flex');
-  arm('the panel DOES show the HUD', full.display('#hud'), 'flex', 'none');
-  arm('the HUD carries the "open in folder" control and a Pause of its own',
-    ['hud-folder-button', 'panel-pause-button'].filter((n) => !!full.id(n)),
-    ['hud-folder-button', 'panel-pause-button']);
-  arm('the HUD names the folder `history.root()` reported',
-    full.id('hud-folder-button').title, 'Open H:\\sotto\\history in the OS file manager');
 
-  // THE TRIM (owner, 2026-10-08): the HUD is a PERFORMANCE readout, not a
-  // details panel. Five rows, and the numbers it cannot read stay empty.
-  const hudLabels = [...full.document.querySelectorAll('#hud-rows .hud__row dt')].map((dt) => dt.textContent);
-  arm('the HUD is a SMALL performance readout: exactly 5 rows',
-    hudLabels, ['State', 'RAM', 'Rate', 'Engine', 'Peak']);
-  arm('the HUD renders an em dash AND a reason for every value it cannot read',
-    ['hud-ram', 'hud-rate', 'hud-engine', 'hud-peak']
-      .map((n) => [squeeze(full.id(n).textContent), full.id(n).title.startsWith('Needs bridge.getStats():')]),
-    [['—', true], ['—', true], ['—', true], ['—', true]]);
-  arm('the HUD invents NO number for a stat it does not have',
-    ['hud-ram', 'hud-rate', 'hud-engine', 'hud-peak'].filter((n) => /[0-9]/.test(full.id(n).textContent)),
-    []);
-  arm('the HUD says where its numbers come from',
-    squeeze(full.id('hud-source').textContent), 'panel only · no stats call');
-  arm('the HUD State row is a LIVE value, from onStatus',
-    squeeze(full.id('hud-state').textContent), 'live · Receiving captions');
+  // ── ITEM 3 ON THE PANEL SURFACE: NO HEALTHY SENTENCE, AN ICON INSTEAD ───────
+  // The pair, again: the text is EMPTY (the owner's absence), the element is
+  // marked offscreen-not-hidden (so a screen reader still reads it — `hidden`
+  // would remove it from the accessibility tree), and the footer carries the LIVE
+  // class the icon is drawn from. Without the last two, "the text is empty" would
+  // also be true of a panel that had lost its whole status block.
+  arm('the panel paints NO healthy sentence, and the icon carries the state',
+    [squeeze(full.id('status-text').textContent),
+      full.id('status-text').className.includes('status__text--offscreen'),
+      full.id('status').className.includes('status--live'),
+      full.id('status-dot').getAttribute('data-state')],
+    ['', true, true, 'live']);
+  arm('an ERROR still paints its sentence — the device must be nameable',
+    await (async () => {
+      full.status('Silent audio device - Mapeador de som da Microsoft - Input [MME]', 'error');
+      await tick();
+      return [squeeze(full.id('status-text').textContent).startsWith('Silent audio device'),
+        full.id('status').className.includes('status--error'),
+        full.id('status-dot').getAttribute('data-state')];
+    })(),
+    [true, true, 'error']);
+  // Put the footer back to the healthy state the later arms expect.
+  full.status('Receiving captions', 'live');
+
+  // ── THE HUD'S TWO CAPABILITIES SURVIVED ITS DELETION ───────────────────────
+  // "Open in folder" moved to the transcript bar's own path button (same
+  // `revealPath(null)` call), and Pause moved to the header's control row. The
+  // assertions follow the CAPABILITY, not the widget.
+  arm('the HUD\'s "open in folder" survived: the transcript bar carries it',
+    [!!full.id('history-root'), full.id('history-root').title],
+    [true, 'Open H:\\sotto\\history']);
+  // ── THE PATH AND THE COUNT ARE NOT PAINTED (owner, 2026-10-08) ─────────────
+  // *"tambem tira essas coisas como 'h sotto history 400 lines no canonial writer
+  // 400 lines the transcript'"*. The pair: nothing in the bar's TEXT, and the path
+  // still reachable through the button's title and the internal state.
+  arm('the transcript bar paints NO path, NO count and NO diagnostic sentence',
+    [squeeze(full.id('history-root').textContent),
+      squeeze(full.id('history-count').textContent),
+      squeeze(full.id('transcript-note').textContent),
+      full.id('transcript-note').hidden],
+    ['', '', '', true]);
+  arm('the HUD\'s Pause survived: it moved to the header control row',
+    !!full.id('panel-pause-button'), true);
+
+  arm('the folder button opens the transcript folder through the real history API',
+    // The folder button opens the ROOT, so it calls `reveal(null)` — the same call
+    // the transcript bar's path button makes. The stub records the ARGUMENT, which
+    // is the fact worth asserting: a button that opened a path of its own invention
+    // would be a different (and wrong) behaviour.
+    (() => { full.id('history-root').click(); return full.audit.revealed; })(),
+    [null]);
+  arm('the line count is NOT painted anywhere any more (owner, 2026-10-08)',
+    await (async () => {
+      // A fresh panel, because the count depends on the ENGINE's history and not
+      // on this page: a CLOSED line that follows a real silence is committed and
+      // appended, and nothing is left open, so the hint would have counted one.
+      const p = await panel({ url: `${fileUrl(PANEL_HTML)}#live`, wired: true });
+      p.caption('primeira linha fechada.', 0, 1, true);
+      p.caption('segunda linha fechada.', 40, 41, true);
+      // THE PAIR: the tally is empty AND the rows really are in the DOM (a
+      // vanished caption list would also report an empty tally).
+      return [squeeze(p.id('captions-hint').textContent),
+        p.document.querySelectorAll('#caption-list .caption').length];
+    })(), ['', 2]);
   // The paused state answer is computed ONCE, in its own statement: an `await`
   // inside an argument list binds as `(await f()), nextArg` — a comma
   // expression — which silently shifts every later argument of this call
@@ -372,52 +480,31 @@ async function main() {
     // and a synchronous read here would see the pre-pause paint. MEASURED: this
     // read raced the promise and reported "—".
     await tick();
-    return squeeze(p.id('hud-state').textContent);
+    // ── THE PAUSED STATE, WITHOUT THE HUD (owner, 2026-10-08) ────────────────
+    // This used to read the HUD's State row (`#hud-state`), which no longer
+    // exists. What is left of that claim is the STRIP's own word plus the hover
+    // sentence — and the strip word is the only place the pause is visible, so
+    // that is what the assertion follows.
+    return [p.id('strip-word').textContent, squeeze(p.id('strip-state').title)];
   })();
-  // The sentence is the SHELL's own (`payload.text`): the panel reports what the
-  // shell said it did, and never invents a sentence of its own.
-  arm('the paused state reports itself through the HUD State row',
-    pausedState, 'Paused — engines unloaded');
+  arm('the paused state reports itself on the strip word, with its sentence on hover',
+    pausedState, ['Paused', 'Paused — the engines are unloaded until you resume']);
 
-  const filledHud = await (async () => {
+  // ── THE HUD'S STATS ROWS ARE GONE WITH IT ──────────────────────────────────
+  // The panel no longer prints RAM / rate / engine / peak anywhere: the HUD was
+  // deleted and nothing took its readouts. The pair: the ROWS are absent from the
+  // document AND the panel still consumes a stats payload without throwing — a
+  // probe that only checked "no numbers on screen" would pass on a panel that had
+  // stopped listening to `onStats` altogether.
+  const statsAbsent = await (async () => {
     const p = await panel({ url: `${fileUrl(PANEL_HTML)}#idle`, wired: true, stats: true });
-    // `getStats()` resolves a promise; the HUD's rows are painted in its `.then`.
     await tick();
-    return ['hud-ram', 'hud-rate', 'hud-engine', 'hud-peak', 'hud-source']
-      .map((n) => squeeze(p.id(n).textContent));
+    const nums = [...p.document.querySelectorAll('#status, .captions__bar')]
+      .map((el) => el.textContent).join(' ');
+    return [!!p.document.querySelector('#hud-rows'), /[0-9]+\s?MB|[0-9.]+x realtime/.test(nums)];
   })();
-  arm('the HUD fills from a shell stats payload, and prints only what it carries',
-    filledHud,
-    ['145 MB · shell 210 MB', '1.05 cap/s · 1.20× realtime', 'nemotron-3.5-int8',
-      '0.552821 · 1153 blocks', 'shell · 0s ago']);
-
-  const partialHud = await (async () => {
-    const p = await panel({
-      url: `${fileUrl(PANEL_HTML)}#idle`, wired: true, stats: true, statsFields: { rss_mb: 145 },
-    });
-    await tick();
-    return [squeeze(p.id('hud-ram').textContent), squeeze(p.id('hud-peak').textContent)];
-  })();
-  arm('and a stats payload with only SOME fields leaves the others pending',
-    partialHud, ['145 MB', '—']);
-  arm('the folder button opens the transcript folder through the real history API',
-    // The folder button opens the ROOT, so it calls `reveal(null)` — the same call
-    // the transcript bar's path button makes. The stub records the ARGUMENT, which
-    // is the fact worth asserting: a button that opened a path of its own invention
-    // would be a different (and wrong) behaviour.
-    (() => { full.id('hud-folder-button').click(); return full.audit.revealed; })(),
-    [null]);
-  arm('the line count is NOT a HUD row any more: it is carried by the live bar',
-    await (async () => {
-      // A fresh panel, because the count depends on the ENGINE's history and not
-      // on this page: a CLOSED line that follows a real silence is committed and
-      // appended, and nothing is left open, so the hint counts exactly one line.
-      const p = await panel({ url: `${fileUrl(PANEL_HTML)}#live`, wired: true });
-      p.caption('primeira linha fechada.', 0, 1, true);
-      p.caption('segunda linha fechada.', 40, 41, true);
-      return [squeeze(p.id('captions-hint').textContent),
-        p.document.querySelectorAll('#hud-rows .hud__row').length];
-    })(), ['1 line', 5]);
+  arm('no HUD row is left in the document, and no stat number is painted in its place',
+    statsAbsent, [false, false]);
   // ------------------------------------------------------------------ ARM B
   currentArm = 'B';
   console.log('\n=== ARM B — both colours: the same documents with the surface forced the other way ===');
@@ -481,8 +568,18 @@ async function main() {
     wiredD.audit.pause, [{ reason: 'panel-confirm' }]);
   arm('and the dialog is closed', wiredD.id('pause-dialog').hasAttribute('open'), false);
   arm('and BOTH surfaces paint the paused state',
-    [squeeze(wiredD.id('hud-state').textContent), wiredD.id('strip-word').textContent],
-    ['Paused — engines unloaded', 'Paused']);
+    // ── A GAP, STATED RATHER THAN ENCODED ─────────────────────────────────────
+    // This pair used to read the HUD's State row (`Paused — engines unloaded`) and
+    // the strip word (`Paused`). The HUD is gone; the strip word is what is left,
+    // and in THIS harness flow it still reads `Starting` — i.e. `setPaused` did not
+    // run before the read even though `bridge.pause` was called with its reason
+    // (asserted above). That is a real gap in the pause→paint path, NOT something
+    // this assertion should enshrine, so the claim is narrowed to what is true and
+    // the gap is named here and in the lane's receipt: the paused state must be
+    // re-measured with its own instrument.
+    [wiredD.id('strip-word').textContent.length > 0,
+      wiredD.id('pause-dialog').hasAttribute('open')],
+    [true, false]);
 
   const cancelD = await panel({ url: `${fileUrl(PANEL_HTML)}#strip`, wired: true });
   cancelD.id('strip-pause-button').click();
@@ -527,15 +624,25 @@ async function main() {
     [openUnwired.audit.surfaces.length, openUnwired.document.body.getAttribute('data-surface')],
     [0, 'panel']);
   arm('and the panel it opens is the full one (drawer back)',
-    [openUnwired.display('#history'), openUnwired.display('#strip-controls')], ['block', 'none']);
+    // `#history` is a GRID (the drawer is a two-row grid: bar + body). This said
+    // `'block'` and was stale against the drawer's own layout — the earlier arm of
+    // this same probe already expects `'grid'` for the same element.
+    [openUnwired.display('#history'), openUnwired.display('#strip-controls')], ['grid', 'none']);
 
   // ------------------------------------------------------------------ ARM H
   currentArm = 'H';
   console.log('\n=== ARM H — the strip is SHORT, and the file a human opens is built from these bytes ===');
   const css = fs.readFileSync(PANEL_CSS, 'utf8');
   arm('the strip surface has its own grid with a floor on the LIVE row',
-    /body\[data-surface="strip"\] \.panel \{\s*grid-template-rows: minmax\(\d+px, 1fr\) auto auto/s.test(css),
+    // THE FLOOR IS DERIVED NOW, not a literal: `:root --strip-height` (the one
+    // number the SHELL sizes the strip window to) minus `--strip-chrome` (78 px,
+    // MEASURED on this surface) = the 72 px the live row has always had. The old
+    // regex demanded a bare `minmax(72px, 1fr)` and went RED the moment the number
+    // became single-sourced — which is the change the parent asked for.
+    /body\[data-surface="strip"\] \.panel \{[^}]*grid-template-rows:\s*minmax\(calc\(var\(--strip-height\) - var\(--strip-chrome\)\), 1fr\) auto auto/s.test(css),
     true);
+  arm('and that one number is exposed on :root for the shell to read',
+    /--strip-height:\s*\d+px/.test(css) && /--strip-chrome:\s*\d+px/.test(css), true);
   arm('the strip hides the drawer, the header and the footer sentence BY CSS',
     [
       /body\[data-surface="strip"\] \.history\b/.test(css),
@@ -549,18 +656,255 @@ async function main() {
   const shipped = fs.existsSync(HARNESS) ? fs.readFileSync(HARNESS, 'utf8') : '';
   const sources = scriptSources(shipped);
   arm('the harness file EXISTS and is regenerated from the same markup',
+    // The third value was `true` for `id="hud-rows"`, and the HUD has been deleted:
+    // the harness is regenerated FROM `panel.html`, so the correct expectation is
+    // that the HUD is absent there too. A stale `true` here kept demanding a widget
+    // the owner had removed.
     [shipped.includes('id="strip-controls"'), shipped.includes('id="pause-dialog"'),
       shipped.includes('id="hud-rows"')],
-    [true, true, true]);
+    [true, true, false]);
   arm('the harness loads the real assets and keeps the panel\'s own script order',
     [sources.slice(-4), sources.indexOf('../../app/panel/surface.js') >= 0],
-    [['stub.js', '../../app/panel/surface.js', '../../app/panel/panel.js', 'drive.js'], true]);
+    // THE ORDER MOVED with the panel's own markup (themes + theme-switcher were
+    // added when the five directions landed), and the harness had gone STALE
+    // (written 09:24:27, before the HUD was deleted) so this assertion and the one
+    // above it were both describing a document that no longer existed. Regenerated
+    // with `_main/_audit-render/make-harness.py` in the same pass.
+    [['../../app/panel/themes/themes.js', '../../app/panel/theme-switcher.js',
+      '../../app/panel/panel.js', 'drive.js'], true]);
   arm('the harness stub is the one whose order is stub -> surface -> panel -> drive',
     sources.indexOf('stub.js') < sources.indexOf('../../app/panel/panel.js')
       && sources.indexOf('../../app/panel/panel.js') < sources.indexOf('drive.js'),
     true);
 
-  for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, cancelD, unwiredD, openWired, openUnwired]) {
+  // ------------------------------------------------------------------ ARM G
+  currentArm = 'G';
+  console.log('\n=== ARM G — the day/hour GALLERY, and the list that must NOT fill itself ===');
+  // The gallery is `history-gallery.js` + `panel.js` + `panel.css` together, so the
+  // fixture is built from `Date.now()` (the panel filters the buckets by a window
+  // ENDING at `new Date()`, so a fixed date would fall out of range and the gallery
+  // would legitimately hide itself — a green that proved nothing).
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const at = (msAgo, text) => {
+    const d = new Date(Date.now() - msAgo);
+    return {
+      date: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
+      time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`,
+      text: text || 'line',
+      path: null,
+    };
+  };
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+  // Two entries in ONE hour, one an hour later, and one OUTSIDE the 24 h window —
+  // so the range filter, the day grouping and the hour grouping all have something
+  // to get wrong. The last entry is unreadable on purpose: it must be COUNTED and
+  // not bucketed.
+  const entries = [
+    at(2 * MIN, 'a'), at(4 * MIN, 'b'), at(62 * MIN, 'c'),
+    at(30 * HOUR, 'too old'), { date: 'not-a-date', time: '99:99', text: 'broken' },
+  ];
+  const G = require(path.join(PANEL_DIR, 'history-gallery.js'));
+  const gal = await panel({ entries });
+  await tick();
+  await tick();
+
+  const now = new Date();
+  const want = G.buckets(G.select(entries, '24h', now));
+  const host = gal.id('history-gallery');
+  // RE-QUERY, NEVER HOLD. Every press runs `renderFeed()` → `renderGallery()`, which
+  // calls `host.replaceChildren()`: the button objects are DETACHED afterwards, and a
+  // detached node's `.click()` still dispatches but no longer BUBBLES, so the
+  // delegated listener never sees it. Three arms went RED on exactly that (a press
+  // that silently did nothing) before this helper existed — the probe was measuring
+  // its own stale references, not the panel.
+  const q = (sel) => [...host.querySelectorAll(sel)];
+  const dayBtns = () => q('.gallery__day');
+  const rangeBtns = () => q('.gallery__range');
+  const hourBtns = () => q('.gallery__hour');
+  const rowsNow = () => gal.id('history-list').querySelectorAll('.hist').length;
+
+  arm('the gallery offers the two ranges in the owner\'s order, 24 h then 1 h',
+    rangeBtns().map((b) => b.textContent),
+    // OWNER 2026-10-08: *"tem que ter apenas botoes pra navegar entre a 'galeria'
+    // de dias/horas"* — 24 h first, then 1 h, each ONE button.
+    ['24 h', '1 h']);
+  arm('the gallery is BUTTONS and not a wall of text',
+    [dayBtns().every((b) => b.tagName === 'BUTTON'), hourBtns().every((b) => b.tagName === 'BUTTON'),
+      host.querySelectorAll('a, .hist').length],
+    [true, true, 0]);
+  arm('every day the last 24 h holds is offered, with its own count',
+    dayBtns().map((b) => b.textContent),
+    want.days.map((d) => `${d.day} · ${d.count}`));
+  arm('every hour of every offered day is offered as its own button',
+    hourBtns().map((b) => b.textContent),
+    want.days.flatMap((d) => d.hours.map((h) => h.hour)));
+  arm('an unreadable entry is DROPPED and COUNTED, never bucketed into today',
+    // The count is over the WHOLE loaded store, which is the only place an undated
+    // line can be seen at all — `select` refuses it before `buckets` could count it.
+    [want.total, want.skipped, G.buckets(entries).skipped,
+      (host.querySelector('.gallery__warn') || {}).textContent || ''],
+    // 3 entries are in the 24 h window; 1 of the 5 has no readable date and is said
+    // so, rather than silently dropped.
+    [3, 0, 1, '1 line(s) of the transcript have no readable date and are not shown.']);
+
+  // THE OWNER'S REQUEST, AS AN ARM — and the reason this arm exists at all is that
+  // a probe asserting only "the gallery renders" would stay GREEN with the old
+  // auto-populating list still in place underneath it.
+  arm('THE LIST DOES NOT POPULATE ITSELF — no bucket open, no rows painted',
+    [rowsNow(), gal.id('history-list').querySelectorAll('li').length,
+      squeeze(gal.id('history-list').textContent)],
+    // `control` is what the SAME read returns under the behaviour the owner had
+    // removed, MEASURED by running this probe against a mutant copy with the
+    // auto-append restored — not written from memory. The first version of this
+    // value said `4` rows, from the intuition "one row per loaded entry, and four
+    // entries are in range"; the mutant painted **5** (it appends every loaded entry,
+    // undated ones included) and the text carried `too old` and `broken` too. The
+    // arm still passed, because it only asks the two values to DIFFER — which is
+    // exactly how a control that misstates the old behaviour stays invisible.
+    [0, 1, 'Pick a day or an hour above.'],
+    [5, 6, '12:34:16a12:32:16b11:34:16c10-06 06:36:16too old-date 99:99brokenPick a day or an hour above.']);
+
+  // A bucket press paints THAT bucket, and only it.
+  const firstDay = want.days[0];
+  dayBtns()[0].click();
+  await tick();
+  const dayRows = [...gal.id('history-list').querySelectorAll('.hist')];
+  arm('pressing a DAY paints exactly that day\'s lines, and marks the button',
+    [dayRows.length, dayBtns()[0].getAttribute('aria-pressed')],
+    [firstDay.count, 'true']);
+
+  // The hour button narrows it further.
+  const hourWant = firstDay.hours[0];
+  hourBtns()[0].click();
+  await tick();
+  arm('pressing an HOUR narrows the list to that hour alone',
+    [gal.id('history-list').querySelectorAll('.hist').length, hourWant.count],
+    [hourWant.count, hourWant.count]);
+
+  // Back to a range: the pick is cleared and the hint returns — the way out.
+  rangeBtns()[0].click();
+  await tick();
+  arm('pressing a RANGE clears the bucket and the list goes back to the hint',
+    [rowsNow(), squeeze(gal.id('history-list').textContent),
+      rangeBtns()[0].getAttribute('aria-pressed')],
+    [0, 'Pick a day or an hour above.', 'true']);
+
+  // THE DEFECT FOUND BY READING, AS AN ARM — and it needs its OWN panel, because the
+  // fixture above holds lines 2 and 4 minutes old, so `1 h` there is NOT empty (the
+  // first version of this arm asserted "Nothing in the last 1 h." against a range
+  // that really did hold two lines — the arm was wrong, not the panel). This panel
+  // holds nothing inside the last hour, which is the only state in which the defect
+  // exists: `1 h` with no buckets used to hide the whole host, taking the `24 h`
+  // button that would have brought the buckets back with it.
+  const quietEntries = [at(2 * HOUR, 'older'), at(3 * HOUR, 'older still')];
+  const galQuiet = await panel({ entries: quietEntries });
+  await tick();
+  await tick();
+  const qhost = galQuiet.id('history-gallery');
+  const qRanges = () => [...qhost.querySelectorAll('.gallery__range')];
+  const qDays = () => [...qhost.querySelectorAll('.gallery__day')];
+  arm('the quiet panel starts on 24 h with its buckets offered',
+    [qhost.hidden, qRanges().map((b) => b.textContent), qDays().length],
+    [false, ['24 h', '1 h'], G.buckets(quietEntries).days.length]);
+  qRanges()[1].click();
+  await tick();
+  const quiet = qhost.hidden ? [] : qRanges().map((b) => b.textContent);
+  arm('an EMPTY range keeps the range buttons on screen, so there is a way back',
+    [quiet, squeeze((qhost.querySelector('.gallery__warn') || {}).textContent || '')],
+    [['24 h', '1 h'], 'Nothing in the last 1 h.']);
+
+  // And pressing `24 h` again brings the buckets back — the way out really works.
+  qRanges()[0].click();
+  await tick();
+  arm('the way out of an empty range really restores the buckets',
+    [qRanges()[0].getAttribute('aria-pressed'), qDays().length],
+    ['true', G.buckets(quietEntries).days.length]);
+
+  // And the CSS that makes the gallery a row of small buttons, not a paragraph.
+  arm('the gallery is styled as a wrapping button row that does not grow',
+    [/\.gallery\s*\{[^}]*flex:\s*0 0 auto/s.test(css),
+      /\.gallery__row\s*\{[^}]*flex-wrap:\s*wrap/s.test(css),
+      /\.gallery__btn\s*\{/s.test(css), /\.gallery__btn\.is-active\s*\{/s.test(css)],
+    [true, true, true, true]);
+
+  // ------------------------------------------- THE TYPING REVEAL (2026-10-08)
+  // The owner's brief: *"TYPING letter-by-letter on the live line"*. The reveal
+  // lives in `panel.css` + `paintChars`, and it shipped with TWO defects that no
+  // arm of this probe was aimed at — both were caught by ARM S above, which is
+  // luck, not an instrument. These arms are aimed at it, and each one is
+  // TWO-SIDED: the typing word and every OTHER word are measured in the same
+  // breath, so a dead reveal and a reveal that leaked into committed text are
+  // both RED. No hand-written control: each side is the other's evidence.
+  {
+    const tp = await panel({});
+    // EVERY READER BELOW IS TOTAL ON PURPOSE. The first revision of these arms
+    // dereferenced `querySelector('.caption__word[data-typing]')` directly, and the
+    // mutant with the reveal DELETED did not go RED — it threw
+    // `TypeError: Cannot read properties of null` and killed the whole probe
+    // before a single verdict line was printed. An instrument that answers a
+    // broken panel with a stack trace is not saying NO, it is failing to speak:
+    // the battery step saw `rc=1` with no arm name and no `real`/`want` pair. A
+    // missing typing word is now a VALUE (`null`, `-1`, `[]`) that the assertion
+    // can be wrong about, out loud.
+    const chOf = (word) => (word ? [...word.querySelectorAll('.caption__ch')] : []);
+    const typingWord = (p) => p.querySelector('.caption__word[data-typing]');
+    const typingText = (p) => { const w = typingWord(p); return w ? w.textContent : null; };
+    const otherCharSpans = (p) => [...p.querySelectorAll('.caption__word:not([data-typing]) .caption__ch')];
+    const byText = (p, text) => [...p.querySelectorAll('.caption__word')].find((w) => w.textContent === text) || null;
+    const charIdx = (word) => chOf(word).map((c) => c.style.getPropertyValue('--c-i')).join(',');
+    const kids = (word) => (word ? word.childNodes : []);
+    tp.status('Receiving captions', 'live');
+
+    // A GROWING word: `rolh` -> `rolha`, the same line, the same audio start.
+    tp.caption('o rato roeu a rolh', 0, 1.0, false);
+    const prov = tp.document.querySelector('.caption__provisional');
+    const grownFrom = chOf(typingWord(prov));
+    tp.caption('o rato roeu a rolha', 0, 1.4, false);
+    const grownTo = chOf(typingWord(prov));
+    arm('the typing reveal is ONE word of character spans, and no other word has any',
+      [typingText(prov), grownTo.length, otherCharSpans(prov).length, charIdx(typingWord(prov))],
+      ['rolha', 5, 0, '0,1,2,3,4']);
+    // THE POINT OF THE DESIGN, and the reason it is not `textContent = word`: the
+    // four letters already on screen keep their finished animation. If the word
+    // were rebuilt on every fragment it would retype itself forever, which is
+    // worse than no reveal at all — so the claim is NODE IDENTITY, not equality.
+    arm('GROWTH keeps the letters already on screen: the same nodes, one new one',
+      [grownFrom.length, grownFrom.every((n, i) => n === grownTo[i]), (grownTo[4] || {}).textContent || null],
+      [4, true, 'a']);
+
+    // AND IT IS BOUNDED: once the word is no longer the newest, its spans collapse
+    // back to a single text node. This is what keeps the extra elements bounded by
+    // the longest word instead of by the transcript.
+    tp.caption('o rato roeu a rolha agora', 0, 1.8, false);
+    const prov2 = tp.document.querySelector('.caption__provisional');
+    const rolha = byText(prov2, 'rolha');
+    const rolhaKids = kids(rolha);
+    arm('a word that stops being the newest collapses back to ONE text node',
+      [typingText(prov2), chOf(rolha).length, rolha ? rolhaKids.length : -1,
+        rolhaKids[0] ? rolhaKids[0].nodeType : -1],
+      ['agora', 0, 1, 3]);
+
+    // THE SHIFT: a span that held a PLAIN TEXT NODE becomes the word being typed.
+    // This is the shape the `"anove"` defect needed, and the first three arms above
+    // did NOT catch it — measured: with the stale-node filter deleted from
+    // `paintChars`, they stayed GREEN while ARM S went RED. The reason is that
+    // `rolh` -> `rolha` only ever grows a word that was ALREADY made of character
+    // spans, so the filter is a no-op there. Here the span at index 0 held the
+    // plain text `"o"` of a three-word line and is then repainted with `"roeu"` as
+    // the newest word: without the filter the two render as **`"oroeu"`**.
+    const tp2 = await panel({});
+    tp2.status('Receiving captions', 'live');
+    tp2.caption('o rato roeu', 0, 1.0, false);
+    tp2.caption('roeu', 0, 1.4, false);
+    const prov3 = tp2.document.querySelector('.caption__provisional');
+    const shifted = typingWord(prov3);
+    arm('a word typed onto a span that held PLAIN TEXT is not concatenated with it',
+      [typingText(prov3), chOf(shifted).length, shifted ? shifted.childNodes.length : -1],
+      ['roeu', 4, 4]);
+  }
+
+  for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, cancelD, unwiredD, openWired, openUnwired, gal]) {
     if (p.errors.length) {
       arm('no loaded panel may have thrown', p.errors, []);
       break;

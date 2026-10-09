@@ -1,0 +1,25 @@
+=== PARITY en-8s [ternary] expect=pass -> GREEN ===
+  wav          : H:\sotto\_main\_redux-long\src-en-8s.wav  (silence, offset=0.0, max=0.0)
+  oracle       : H:\sotto\_main\redux-en.txt  encoding=utf-8
+  threads      : intra=4 inter=1
+  measured     : segs=2 med=4.64s max=4.64s infer=1.067s rtfx(steady/infer/slice)=13.22/7.89/8.01 rss(load/peak/wset)=738.0/773.3/775.8MB cpu(med/max)=1060.7/1060.7%
+  chars        : ref=130 hyp=130
+  EXACT        : True   ratio=1.0   word-ratio=1.0
+  diff blocks  : char=0 word=0
+  sha256 hyp   : b7e338fa06da53015bdddaec588a55967f51a95ce2d2ea2e943bed6a5680a790
+  why          : ratio 1.0 >= 1.0, char-diff blocks 0 <= 0
+  VERDICT      : PASS (GREEN)
+=== PARITY pt-15s [ternary] expect=pass -> GREEN ===
+  wav          : H:\sotto\_main\_redux-long\src-pt-15s.wav  (silence, offset=0.0, max=0.0)
+  oracle       : H:\sotto\_main\redux-ptbr.txt  encoding=cp1252
+  threads      : intra=4 inter=1
+  measured     : segs=2 med=8.0s max=8.0s infer=1.377s rtfx(steady/infer/slice)=14.44/10.82/10.89 rss(load/peak/wset)=740.1/799.0/804.8MB cpu(med/max)=992.2/992.2%
+  chars        : ref=159 hyp=159
+  EXACT        : True   ratio=1.0   word-ratio=1.0
+  diff blocks  : char=0 word=0
+  sha256 hyp   : 4ab078ed0898ac0e68ed50bc855074e2ec45b07ded79dd438a13c9f1f4c7a2c4
+  why          : ratio 1.0 >= 1.0, char-diff blocks 0 <= 0
+  VERDICT      : PASS (GREEN)
+
+ARMS 2  pass=2  fail=0  controls=0 (0 red-as-expected)
+PARITY-VERDICT: GREEN

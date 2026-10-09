@@ -1,0 +1,8 @@
+aireplay-capture ÔÇö spec 03 prototype (D3D11 -> NVENC -> replay ring -> clip.mp4)
+  pid=7576  exe=aireplay-capture.exe
+  nv-codec-headers nvEncodeAPI.h 13.1  sha256 8776FDDCB8FEBC6AEC4D73989B1F21831EB30306BC583DA55B4BF0C14A1DC228
+=== OFFLINE CUT (no WGC, no NVENC): the muxer path, proven on its own ===
+  CLIP TIMEBASE: measured 60.000 fps over 1004 frames -> timescale=60000, every sample 1000 ticks = 16.6667 ms (clip duration 16.733 s vs real 16.717 s)
+  OFFLINE CUT: _main\runs\src-gaming.h264 -> _main\runs\pass1147-cut-gaming.mp4  aus=1004  idr=first  frames_in_clip=1004  bytes=97820321  wall_ms=89.7  note=(none)
+OFFLINE CUT OK: _main\runs\pass1147-cut-gaming.mp4
+EXIT=0

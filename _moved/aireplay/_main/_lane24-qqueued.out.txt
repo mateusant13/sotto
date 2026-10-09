@@ -1,0 +1,82 @@
+23:queued":return["running","stopping","succeeded","failed","canceled","lost"].includes(e);case"running":return["stopping","succeeded","failed","canceled","lost"].includes(e);case"stopping"
+28:queued",fieldName:"drainQueued",wireName:"drain_queued",jsonName:"drain_queued",requiredness:"optional",value:{kind:"scalar"}},{thriftName:"continue_paused_queue",fieldName:"continuePaus
+28:queued",fieldName:"drainQueued",wireName:"drain_queued",jsonName:"drain_queued",kind:"implicitBody",fieldId:4,requiredness:"optional",tsType:"boolean",valueKind:"scalar"},{thriftName:"co
+162:queued"}}function fAe(t){return t.status==="answered"&&!t.injectedAt&&t.request.purpose!=="goal"&&!tf(t.request)}function xKt(t,e){let r=["<questionnaire-response>",`  <requestId>${ny(t.
+1467:queued messages for deleted task, agentName=${e}, cronName=${r}, count=${o}`);try{await this.executor.cleanupSessionsOnDelete(e,r)}catch(c){tt.warn(Mr(),`[cron] Session cleanup on delete
+1467:queued"||!n.queuedSend||n.queuedSend.then(s=>{if(s==="sent")return this.completeOnceTask(e,r).catch(i=>{tt.error({agentName:e,cronName:r,err:i.message},"[cron] Failed to complete once ta
+1467:queued send")})})}async completeOnceTask(e,r){let n=this.taskKey(e,r),s=this.tasks.get(n);!s||s.state.config.scheduleType!=="once"||s.state.config.deleteAfterRun!==!1&&(s.job.stop(),this
+1467:queued"?"enqueued":t.reason==="error"?"error":"skipped"}function kzt(t,e){return{...t,...e.schedule!==void 0?{schedule:e.schedule}:{},...e.timezone!==void 0?e.timezone===null?{timezone:v
+1467:queuedAt:Date.now(),agentName:a,cronName:o,sessionId:e,resolveDrain:l})})}removeCron(e,r){let n=0;for(let[s,i]of this.queue)i.agentName===e&&i.cronName===r&&(this.queue.delete(s),i.resol
+1467:queuedAt<OCe?s.push(o):(o.resolveDrain("expired"),tt.debug(r,`[cron] Discarding expired queued entry: sessionId=${e} cronName=${o.cronName}`)));for(let a of i)this.queue.delete(a);for(le
+1467:queued message to now-idle session: sessionId=${e} cronName=${a.cronName}`)}catch(o){a.resolveDrain("failed"),tt.error(r,`[cron] Failed to drain queued message: sessionId=${e} cronName=$
+1469:queued (latest-wins): agent=${e.agentName} cron=${e.cronName} sessionId=${a} queueSize=${this.busyQueue.size()} stored=${f.type} hasActiveTurn=${p} hasActiveSource=${g}`),e.lastRun=AR(),
+1469:queued",sessionId:a,queuedSend:y}}if(tt.info(n,`[cron] Executing task: agent=${e.agentName} cron=${e.cronName} sessionId=${a}`),this.eventBus?.emit("cron.triggered","cron-executor",{agen
+1489:queued"&&i.source==="cron");if(n.length===0)return;let s=await t.getSessionById(r);if(s)for(let i of n){if(t.activePiTurns.has(r))return;let a=await t.runQueuedTurn({session:s,queuedMess
+1489:queuedMessage:l});if(u.status!==409){if(u.status>=400){let m=await u.text().catch(()=>"");throw new Error(`Cron dispatch failed for session ${i}: HTTP ${u.status}${m?` ${m}`:""}`)}u.text
+1550:queued, processing, streaming, active, tool, system, permission, and questionnaire states are historical only and must not be resumed as executable state.";async function pMe(t){let e=hM
+1560:queued"||e==="processing"||e==="streaming"||e==="active"}function wy(t){return F9(t.legacyRawStatus)?[`legacy_session_status_preserved_as_interrupted:${t.legacyRawStatus}`]:[]}function $
+1599:queued messages.",tables:["local_runtime_sessions","local_runtime_agents","local_runtime_message_rows","local_runtime_pi_history_rows","local_runtime_queue_items","local_runtime_session_
+1599:queued-message blob row. Current reads backfill into local_runtime_queue_items."},local_runtime_preferences:{alias:"runtime preference key-value",description:"Small runtime preference KV
+1599:queued message row state",description:"Current queued user/channel turn items with per-session item ids."},local_runtime_queue_row_migrations:{alias:"queue backfill marker",description:"
+1599:queued",source:Ce(e.source),content:Ce(e.content),attachments:Cs(e.attachments).map(XOe),modelInfo:VOe(e.modelInfo??e.model_info??e.model),createdAt:nt(e.createdAt??e.created_at),expires
+1600:queued:r.drainQueued,continuePausedQueue:r.continuePausedQueue,continue_paused_queue:r.continuePausedQueue},signal:e.signal});return this.countSessionLifecycle("resume",n.ok?"ok":"error"
+1607:queued",triggeredAt:String(n.nowMs()),...a.reason?{reason:a.reason}:{},...a.sessionId?{sessionId:a.sessionId}:{}}})}async listCronSessions(e,r){let n=this.requireCron();return await n.ru
+1608:queued:0,running:0,stopping:0,succeeded:0,failed:0,canceled:0,lost:0};i.forEach(l=>{o[l.status]+=1});let c=[...i].sort(P9t).slice(0,C9t),d=[];for(let l of c){let u=await M9t(l,s),m=[...d
+1612:queued","running","stopping"]}))}async reminderSnapshot(e,r=5){return this.withDb(n=>{let s=n.prepare(`
+1650:queued:s!==void 0}}var ZZ=[1e3,2e3,5e3],cLe=6e4,u7t=6e4,m7t=3e5,dLe=3,f7t=2048,p7t=2048,ree=new WeakMap,nee=new WeakMap,Au=new WeakSet;function lLe(t){Au.add(t),ree.get(t)?.close()}funct
+1650:queued:new Set,cooling:[],inFlight:!1},this.sessions.set(s.ownerSessionId,a)),a.queued.has(e))return;a.queued.add(e),a.pending.set(e,i),!a.inFlight&&!a.batch&&this.scheduleNext(s.ownerSe
+1650:queued.delete(i);if(s==="delivered"&&!Au.has(this.host)){for(let i of n.taskIds)if(this.acknowledged.add(i),this.acknowledged.size>p7t){let a=this.acknowledged.values().next().value;a!==
+1660:queued",ownerSessionId:t.parentSession.sessionId,description:o,toolCallId:t.toolCtx.toolCallId,createdAt:a,updatedAt:a,metadata:{parentSessionId:t.parentSession.sessionId,parentTurnId:t.
+1661:queued","running","stopping"],wLe=["succeeded","failed","canceled","lost"];async function NLe(t,e,r){return(await yee(t,e,wLe,{kinds:["subagent"]})).filter(s=>s.ownerSessionId===e&&s.kin
+1661:queued:l}=aLe(n,e,()=>j7t(t,e,c,r,o));l&&xi("user_stop_cascade_queued",{sessionId:e,boundaryMs:c}),d.catch(u=>{xi("user_stop_cascade_flight_failed",{sessionId:e,error:yF(u)})}).finally((
+2097:queued"))};s.resolve=()=>{i(),r()},s.reject=o=>{i(),n(o)},e&&e.addEventListener("abort",a,{once:!0}),this.queue.push(s)})}release(){this.running--;let e=this.queue.shift();e&&(this.runni
+3146:queued"&&!i&&!this.awaitingRedelivery.has(e.goalId))return await this.consume(e),"consumed";if(n&&i&&e.status==="active"&&(await this.deps.external.cancelInitialContinuation(e.sessionId,
+3146:queued"),r&&this.deps.external.requestQueueDispatch(e.sessionId),"enqueued"}async refreshQueuedKickoff(e){let n=(this.refreshTails.get(e.sessionId)??Promise.resolve()).then(async()=>{let
+3146:queued")return;let r=X1(e.goalId);await this.deps.external.hasPendingInitialContinuation(e.sessionId,r)||await this.consume(e)}async consume(e){e.kickoffState!=="consumed"&&await this.de
+3146:queued")return!1;let r=e.turnTimingReader.getBySession(t.sessionId);return r?e.turnContext.getBinding(r.turnId)?.binding.goalId===t.goalId:!1}function n2e(t){return da(t.status)}var UW=c
+3146:queued"&&await this.deps.continuation.consumeDeliveredInitial(c);let d=a?c?this.deps.timeAccounting.elapsedSeconds(a,c):this.deps.turnTimingReader.elapsedSeconds(a):0,l=await this.deps.s
+3146:queued"||t==="consumed"?t:"consumed"}function I2e(t){if(!t)return[];try{let e=JSON.parse(t);return Array.isArray(e)?e.flatMap(r=>Fpr(r)?[{...r}]:[]):[]}catch{return[]}}function Fpr(t){if
+3186:queued')
+3195:queued",ownerSessionId:t.ownerSessionId,description:t.taskInput.description,toolCallId:t.toolCtx.toolCallId,createdAt:e,updatedAt:e,metadata:{parentSessionId:t.ownerSessionId,parentTurnI
+3209:queued"&&r.queue){let s={...n,queueItemId:r.queue.itemId};U.info(s,"Session send is cancelling the Queue item it admitted"),t.ingress.cancelQueued(e.sessionId,r.queue.itemId).then(i=>{i&
+3209:queued"?`The target Session was busy, so this message was queued and runs after the current Turn.${r}${F$e}`:`A new Turn started in the target Session.${r}${F$e}`}function G$e(t,e){if(!e
+3292:queued","running","stopping"],limit:1})).items.length>0,startContinuationTurn:async(u,m,f,p)=>{let g=this.requireRuntimeConversation("thread-goal continuation");try{let _=await g.ingress
+3293:queued";this.prune();let s=this.bufferedBySession.get(e)??[];if(s.push({bufferedAt:this.nowMs(),input:r}),s.length>mae){let i=s.length-mae;s.splice(0,i),U.warn({sessionId:e,droppedCount:
+3293:queued"):n?.hasFinishedTurn()?(this.getRuntimeReporter(e).reportRuntimeEvent(r,!0),"queued"):this.runtimeEvents.report(e,r,s=>{let i=this.reporters.get(e);return i?.hasActiveTurn()?i.rep
+3293:queuedMessageStore:N,runtimeMode:t.runtimeMode,capabilities:t.capabilities,shellFamily:t.shellFamily,capabilityProfile:t.capabilityProfile,mavisCronAdapterProvider:t.mavisCronAdapterProv
+3309:queued;disposed=!1;constructor(e){this.options=e}published(e,r,n){if(e.next==="complete"){this.succeeded(e.snapshot);return}this.schedule(e.snapshot,r.revision,n,e.next)}scopeChanged(){t
+3309:queued=void 0,this.capabilityKey="",this.failureCount=0}async dispose(){this.disposed=!0,this.cancelDelay(),this.queued=void 0,await iOr(Promise.allSettled([...this.tasks].flatMap(e=>e.o
+3309:queued={snapshot:e,expectedRevision:r,scopeKey:n};return}let s={};this.activeTask=s,this.tasks.add(s),s.operation=this.removeWhenSettled(this.discover(e,r,n),s)}async removeWhenSettled(e
+3309:queued)return;let e=this.queued;this.queued=void 0,this.start(e.snapshot,e.expectedRevision,e.scopeKey)}async discover(e,r,n){let s;try{s=await this.options.prepare(e)}catch{this.schedul
+3428:queued",source:r.source,...n?{admissionReason:n}:{},...i,...r.clientRequestId?{clientRequestId:r.clientRequestId}:{}}})}}},o0=class{options;constructor(e){this.options=e}async listQueueM
+3428:queued"&&!SI(i)).map(i=>Kw(i,s.pause?{status:"paused"}:{}))}}async getQueueItem(e,r){await this.invoke(()=>this.options.queue.requireMutableSession(r.id));let n=await this.invoke(()=>thi
+3428:queued"),s=n.filter(c=>!SI(c)).map(c=>c.itemId);if(!pUr(s,r.itemIds))throw sde();let i=0,a=n.map(c=>SI(c)?c.itemId:hUr(r.itemIds,i++)),o=await this.invoke(()=>this.options.queue.reorder(
+3428:queued item ids")}function pUr(t,e){return t.length===e.length&&new Set(t).size===t.length&&new Set(e).size===e.length&&t.every(r=>e.includes(r))}function hUr(t,e){let r=t[e];if(!r)throw
+3428:queued items can be ${r}: ${t}/${e}`)}import{randomUUID as AUr}from"node:crypto";function Rd(t,e,r){try{t?.counter(e,1,r)}catch{}}var wJe={unknown:To.Unknown,conversation:To.Conversation
+3428:queued-drain",queueItemIds:i}:{})}});let o={agentName:s.agentName,resourceAgentName:e.resourceAgentName??s.agentName,memoryWriteEnabled:s.memoryPolicy?.writeEnabled!==!1};return this.sta
+3450:queued",localRuntime:!0,signal:CK(a),decision:null})}async function tHr({store:t,nowMs:e,state:r}){let n=e();return r.history.unshift({type:"skill-evolve.revert",at:n}),await t.write(r),
+3485:queued notice delivery failed")}}async sendOutbound(e,r){try{let n=await A3r(this.clients.get(e),r);return this.options.metrics?.incr("channel_outbound_total",{channel:e.platform,status:
+3485:queued=new Map;active=new Map;async enqueue(e,r){let n=lYr(e),s=this.tails.get(n)??Promise.resolve();this.queued.set(n,(this.queued.get(n)??0)+1);let i,a=new Promise(c=>{i=c}),o=uYr(s,a)
+3485:queued.set(n,Math.max(0,(this.queued.get(n)??1)-1)),this.active.set(n,(this.active.get(n)??0)+1);try{return await r()}finally{this.active.set(n,Math.max(0,(this.active.get(n)??1)-1)),i()
+3485:queued.keys(),...this.active.keys(),...this.tails.keys()]),r={};for(let n of e)r[n]={queued:this.queued.get(n)??0,active:this.active.get(n)??0};return r}};function lYr(t){return typeof t
+3553:queued"):"disabled"}function Sln(t){let e=t.payload;return t.event_type==="sandbox.violation"||t.event_type==="sandbox.violation_summary"||e.runtime_state==="failed"||e.result==="failure
+3558:queued"}catch{return"failure"}}startInvocation(e,r){this.pruneAttribution();let n=Lft(),s=Object.freeze({...e}),i=new C4(s,this.#c.monotonicNow??(()=>performance.now()),{emit:(a,o,c,d)=>
+4733:queuedMessages"in r&&!Array.isArray(r.queuedMessages))throw new Error(`Ingress input queuedMessages must be an array for ${e}`);return r}function swn(t){let e=JSON.stringify(b_e(t)),r=t.
+4733:queuedMessages;return{digest:`sha256:${zyn("sha256").update(e).digest("hex")}`,metadata:{contentBytes:Vyn.byteLength(t.content??"","utf8"),attachmentCount:r?.length??0,queuedMessageCount
+4733:queuedMessageCount","hasModelSelection","hasChannelContext","hasQuotedMessage"],Kbt=[...Ybt].sort();function Jbt(t,e){if(!(t===null||t.trim().length===0)){if(!/^sha256:[a-f0-9]{64}$/.tes
+4733:queuedMessageCount:r.queuedMessageCount,hasModelSelection:r.hasModelSelection,hasChannelContext:r.hasChannelContext,hasQuotedMessage:r.hasQuotedMessage}}}function own(t){return cwn(t)&&d
+4733:queuedMessageCount)}function lwn(t){return typeof t.hasModelSelection=="boolean"&&typeof t.hasChannelContext=="boolean"&&typeof t.hasQuotedMessage=="boolean"}function uwn(t,e){return Ybt
+4824:queued")return"queued";if(e==="claimed")return e;throw new Error(`Queue migration encountered invalid Queue status: ${e}`)}}function Jwn(t){let e=ru(t,"Queue source");if(!Hwn.has(e))thro
+5761:queued_messages",message:"An earlier queued message has priority"},"queue-paused":{status:409,key:"local_session_queue_paused",message:"The session Queue is paused"},"ingress-conflict":{
+5761:queued")throw new Error("Queue-enabled submit returned a non-queued result");return{itemId:s.queue.itemId,status:"queued",position:s.queue.position}}async requestCompaction(e,r){return t
+5761:queued_messages","An earlier queued message has priority");if(t==="ingress-conflict")return new at(409,"local_turn_ingress_conflict","Turn ingress conflicts");let r=EIn(t);return r||(t==
+5761:queued")throw zEt(e.sessionId,n.itemId);return n}async endQueuePause(e){try{await this.options.queue.continueQueue(e)}catch{}}async invokeQueue(e){try{return await e()}catch(r){throw r i
+5761:queued item is available: ${t}`)}function zEt(t,e){return new at(409,"local_queue_item_claimed",`Queue item is already being dispatched: ${t}/${e}`)}var iye="input_rejected",XEt="msg-use
+5827:queued:p,receipt:g}})),o=a.filter(JAn);if(o.length>1)throw Eq("Both current and legacy Turn receipts exist");let c=o[0];if(c){await hRt(t,e,a.filter(f=>f.queued!==void 0&&f.identity!==c.
+5827:queued.status==="claimed")return;let l=d?.identity??r[0],u=d?.queued.agentName??(await t.queue.requireMutableSession(e)).agentName,m=await t.queue.enqueue({session:{sessionId:e,agentName
+5827:queued");dRt(m.item,l,s,i)}function YAn(t){return t.queued!==void 0}function JAn(t){return t.receipt!==void 0}async function ZAn(t,e,r,n){if(n.length<=1)return n[0];let s=n.filter(a=>a.q
+5827:queued.itemId);if(!s||s==="not_editable")throw Eq(`Queue alias ${n.identity} could not be cancelled`)}}function Eq(t){return new Vs("PLAN_IMPLEMENTATION_IDENTITY_CONFLICT",t)}function eC
+5839:queuedMessages??[]].map(({text:f})=>({content:f})),signal:m}),...t.sessionClio?{sessionClio:t.sessionClio.capture}:{},...t.sessionClio||t.product.turnSettlement?{turnSettlement:t.session
+5844:queued for later consolidation; it does not mean applied. Do not read or edit memory files directly.</memory-v2>"],tools:r?i:i.filter(a=>a.name==="memories_add_ad_hoc_note")}}async loadS
+5918:queuedCount:yo(e,["queuedCount","queued_count"]),failedReason:St(e,["failedReason","failed_reason"]),reason:St(e,["reason"]),admissionReason:St(e,["admissionReason","admission_reason"])}
+5918:queued","running","stopping"],n=["succeeded","failed","canceled","lost"],[s,i]=await Promise.all([this.cliService.listBackgroundTasks({ownerSessionId:e,statuses:r,kinds:["bash","workflow

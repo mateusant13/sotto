@@ -1,0 +1,64 @@
+=== LIKE experiment on schedule_json ===
+sample: '{"kind": "cron", "expression": "*/3 * * * *", "timezone": "America/Sao_Paulo"}'
+python '*/3 * * * *' in s -> True
+  like '%* * * *%'      -> 10
+  like '%* * * *'       -> 0
+  like '%*%*%*%*%'      -> 10
+  like '%* * * * *'     -> 0
+  like '*/3 * * * *'    -> 0
+  instr(s,'* * * *') = 37
+  glob '* * * *' -> 12
+  json_extract(expression) -> ['*/3 * * * *', '0 0 1 1 *', '0 0 1 1 *', '*/11 * * * *', '*/3 * * * *']
+  expression like '*/%' -> 7
+
+=== the 35 'msg-user-v1-wake%' rows ===
+POP = 39
+  id=228907 role=assistant src=background-task  2026-10-07 12:55:22 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e 3bacd088-2c1e-4d75-94a9-72fdef1c8bc1
+  id=228897 role=assistant src=background-task  2026-10-07 12:55:19 len=36 turn=turn_task_bg_bg_5ae28043-b759-4494-96a2-1a1193de7426 7ed603d1-c241-4566-8c22-3c08c0b32d55
+  id=228892 role=user      src=api              2026-10-07 12:49:03 len=48 turn=None msg-user-v1-wake81e67e020f4f450e8950c529
+  id=228773 role=assistant src=background-task  2026-10-07 12:54:25 len=36 turn=turn_task_bg_bg_5ae28043-b759-4494-96a2-1a1193de7426 df26399a-39e6-4fb4-8e0b-8a52f41ea237
+  id=228739 role=assistant src=background-task  2026-10-07 12:54:13 len=36 turn=turn_task_bg_bg_5ae28043-b759-4494-96a2-1a1193de7426 0095dcd2-c33f-419c-b3cf-ac78b67f7008
+  id=228688 role=assistant src=background-task  2026-10-07 12:53:45 len=36 turn=turn_task_bg_bg_5ae28043-b759-4494-96a2-1a1193de7426 6a75a36d-a77b-4a33-8ef9-35e5308ef2ff
+  id=228680 role=assistant src=background-task  2026-10-07 12:53:42 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e caca4493-232a-4ce5-8ffb-2812b42970fd
+  id=228662 role=assistant src=background-task  2026-10-07 12:53:33 len=36 turn=turn_task_bg_bg_5ae28043-b759-4494-96a2-1a1193de7426 abf08991-2f08-4406-9902-c5ef8cf405b8
+  id=228656 role=assistant src=background-task  2026-10-07 12:53:30 len=36 turn=turn_task_bg_bg_5ae28043-b759-4494-96a2-1a1193de7426 a9c5e768-249f-4faf-87a9-9a024c677311
+  id=228642 role=user      src=background-task  2026-10-07 12:53:24 len=55 turn=None msg-user-v1-FiOdIbghQ80g9orAw3u8BdxECU_A
+  id=228641 role=assistant src=api              2026-10-07 12:53:22 len=36 turn=turn_aeec7923-878b-4025-88ca-f34ed6f4f59e 117bb7c3-e46b-4b9a-894b-19ee765329a2
+  id=228632 role=assistant src=background-task  2026-10-07 12:53:17 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e 019e0823-7423-4507-9f20-8ae883f2b861
+  id=228576 role=assistant src=background-task  2026-10-07 12:52:43 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e 17a11a3d-732e-4fc6-ab88-75dd600fa2d2
+  id=228487 role=assistant src=background-task  2026-10-07 12:52:04 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e 800443ab-df36-4818-a45f-56ee205350fe
+  id=228434 role=assistant src=background-task  2026-10-07 12:51:29 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e eea34abd-e4b0-431a-9268-4c78ff09d1c5
+  id=228396 role=assistant src=background-task  2026-10-07 12:51:13 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e 7a35a1d2-ff6b-40e4-ac5b-147cfabdeb22
+  id=228384 role=assistant src=background-task  2026-10-07 12:51:09 len=36 turn=turn_task_bg_bg_57f798ae-400a-40af-82f2-17208d54998e 26a64d4b-1a73-4443-9247-129181b1f36c
+  id=228367 role=assistant src=api              2026-10-07 12:51:02 len=36 turn=turn_aeec7923-878b-4025-88ca-f34ed6f4f59e f60c234c-485a-4115-bd02-794a47b4d137
+  id=228303 role=assistant src=api              2026-10-07 12:50:36 len=36 turn=turn_aeec7923-878b-4025-88ca-f34ed6f4f59e 6e73f772-b3f2-4cee-8869-4487ceafaa19
+  id=228123 role=assistant src=background-task  2026-10-07 12:48:29 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 6c60b6a1-42ae-45c0-9f93-8dbed5ad1763
+  id=228080 role=assistant src=background-task  2026-10-07 12:47:45 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 6efc1804-af47-4020-8cac-69bac2bac133
+  id=227835 role=user      src=api              2026-10-07 12:40:54 len=48 turn=None msg-user-v1-wake14c1ccd40a834dceaf30d100
+  id=227651 role=assistant src=background-task  2026-10-07 12:41:11 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 ee2ba0e7-90f0-4001-86c7-f66ef63e307e
+  id=227610 role=assistant src=background-task  2026-10-07 12:40:53 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 7949f09b-d885-4762-8d9d-e07ce0985448
+  id=227362 role=assistant src=background-task  2026-10-07 12:38:15 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 4e4d028a-74f5-4740-a3df-6446cbafdf1f
+  id=227328 role=assistant src=background-task  2026-10-07 12:38:00 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 7276f6e3-5466-4b3b-9562-5f324e742cc0
+  id=227141 role=assistant src=background-task  2026-10-07 12:35:22 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 830672fd-e1a5-48f5-9818-14636e7b7cad
+  id=226630 role=assistant src=background-task  2026-10-07 12:30:07 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 9e8b9fb3-d4ee-4fbd-995c-6a5da51a7826
+  id=226199 role=assistant src=background-task  2026-10-07 12:26:16 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 a26d3a3a-940a-4362-9e53-a561d39506df
+  id=226165 role=assistant src=background-task  2026-10-07 12:25:55 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 e5215131-525f-464a-9935-770e4ea2110b
+  id=226032 role=assistant src=background-task  2026-10-07 12:25:07 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 a064cae6-03ea-4966-9009-18339c1a6cfd
+  id=225915 role=assistant src=background-task  2026-10-07 12:24:12 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 20b4880f-8d76-4846-8ed7-01a0a4d69217
+  id=225874 role=assistant src=background-task  2026-10-07 12:24:00 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 48ba4bdd-4d61-4bd9-ba52-d6d47f9ec174
+  id=225843 role=assistant src=background-task  2026-10-07 12:23:47 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 c0985cf1-162d-41b4-888c-28cda09211c8
+  id=225810 role=assistant src=background-task  2026-10-07 12:23:30 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 bb834556-b9c4-4ffd-8522-db3401e2c883
+  id=225380 role=assistant src=background-task  2026-10-07 12:20:56 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 1b098646-d0f6-4641-b272-e1ca6c892346
+  id=225216 role=assistant src=background-task  2026-10-07 12:19:54 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 81aa3fa7-1c72-40d3-9234-8a25d95eb537
+  id=224525 role=assistant src=background-task  2026-10-07 12:12:52 len=36 turn=turn_task_bg_bg_6e80075c-62d7-4697-99be-30750e8ef0f5 fcc7f65d-1d1a-48a2-86a6-f739192fb676
+  id=224113 role=assistant src=api              2026-10-07 12:05:38 len=36 turn=turn_muy8i3nv_99626o 719e275a-b9ad-4017-926f-a2c5776e2292
+
+=== is the 48-char wake id linked to a queue item + turn_ingress? ===
+
+ message id=228892 session=mvs_b7a9f3a7db404912b32d28fc11b83645 role=user src=api
+   msg_id=msg-user-v1-wake81e67e020f4f450e8950c52921939b6c  turn_id=None
+   queue rows carrying this msg_id: 0
+
+ message id=227835 session=mvs_b7a9f3a7db404912b32d28fc11b83645 role=user src=api
+   msg_id=msg-user-v1-wake14c1ccd40a834dceaf30d1001571ce95  turn_id=None
+   queue rows carrying this msg_id: 0

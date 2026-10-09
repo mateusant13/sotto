@@ -1,0 +1,215 @@
+{
+  "t": 1791386115.517,
+  "top_level_windows_walked": 417,
+  "visible": 23,
+  "passes_filter": 9,
+  "invisible": 394,
+  "toolwindow": 144,
+  "cloaked_any": 12,
+  "cloaked_values": {
+    "1": 9,
+    "2": 3
+  },
+  "cloaked_z_positions": [
+    4,
+    8,
+    9,
+    105,
+    289,
+    290,
+    375,
+    376,
+    377,
+    378,
+    379,
+    380
+  ],
+  "cloaked_min_z": 4,
+  "cloaked_examples": [
+    {
+      "z": 4,
+      "hwnd": "0x0001184A",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "Alternância de Tarefas",
+      "class": "XamlExplorerHostIslandWindow",
+      "visible": false,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "invisible",
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 8,
+      "hwnd": "0x00021846",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "ThumbnailDeviceHelperWnd",
+      "visible": true,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 9,
+      "hwnd": "0x0028169E",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "ThumbnailDeviceHelperWnd",
+      "visible": true,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 105,
+      "hwnd": "0x00010174",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "ApplicationManager_DesktopShellWindow",
+      "visible": false,
+      "cloaked": 2,
+      "cloaked_rc": 0,
+      "toolwindow": false,
+      "top_level": true,
+      "rejected_by": [
+        "invisible",
+        "cloaked(2)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 289,
+      "hwnd": "0x00040310",
+      "pid": 20112,
+      "exe": "C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\TextInputHost.exe",
+      "title": "Experiência de Entrada do Windows",
+      "class": "Windows.UI.Core.CoreWindow",
+      "visible": true,
+      "cloaked": 2,
+      "cloaked_rc": 0,
+      "toolwindow": false,
+      "top_level": true,
+      "rejected_by": [
+        "cloaked(2)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 290,
+      "hwnd": "0x000104D6",
+      "pid": 20112,
+      "exe": "C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\TextInputHost.exe",
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false,
+      "cloaked": 2,
+      "cloaked_rc": 0,
+      "toolwindow": false,
+      "top_level": true,
+      "rejected_by": [
+        "invisible",
+        "cloaked(2)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 375,
+      "hwnd": "0x000101C0",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "DummyDWMListenerWindow",
+      "visible": true,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 376,
+      "hwnd": "0x000101B8",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "EdgeUiInputTopWndClass",
+      "visible": true,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 377,
+      "hwnd": "0x00010192",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "DummyDWMListenerWindow",
+      "visible": true,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    },
+    {
+      "z": 378,
+      "hwnd": "0x0001018E",
+      "pid": 13748,
+      "exe": "C:\\Windows\\explorer.exe",
+      "title": "",
+      "class": "DummyDWMListenerWindow",
+      "visible": true,
+      "cloaked": 1,
+      "cloaked_rc": 0,
+      "toolwindow": true,
+      "top_level": true,
+      "rejected_by": [
+        "toolwindow",
+        "cloaked(1)"
+      ],
+      "passes_filter": false
+    }
+  ],
+  "dwm_rc_nonzero": 0,
+  "verdict": {
+    "cloak_filter_exercised_on_this_box": true,
+    "note": "o sub-filtro DWMWA_CLOAKED tem controlado positivo: 12 janela(s) cloaked"
+  }
+}

@@ -1,0 +1,67 @@
+[13:02:59] STATUS (read-only)  session=mvs_a00662bff55242cb9b56c0f1165bdad7
+
+-- queue rows for this session --
+   (POPULATION = whole table = 1 rows)
+
+-- cron: every CRON-EXPRESSION job (5 fields) and its staleness --
+   (D-2: the old 'like %* * * * *%' matched 0 of 30 jobs; a real
+    expression has FOUR trailing stars, and 'like %* * * *' with no
+    trailing % also matches 0. Count the fields instead.)
+  cron=f7b5c352-530e-45b6-885f-538f3a97a467 name='VOD.RIP drain - work the backlog until nothing is next'
+    expression='0 0 1 1 *' state=active run_count=0
+    next_run=2027-01-01 00:00:00  delta_from_now_min=123057.0
+    target=mvs_9eb3cbf9024c4d57bdefc4bf19d0ec03 mode=sessionId deleted=None
+  cron=d43fb9be-283d-4dd3-8e73-d9fb562fd181 name='CONSOLIDATED: P0 ledger + fleet + revival + report-back + audit'
+    expression='*/3 * * * *' state=active run_count=444
+    next_run=2026-10-06 11:00:32  delta_from_now_min=-1562.4
+    target=mvs_ea552229fe164f9e8856fcca8589c41a mode=sessionId deleted=None
+  cron=e8568051-0d4b-4106-be88-cd3284e9f99f name='jogo ÔÇö continuar trabalho (fleet-first)'
+    expression='*/11 * * * *' state=active run_count=95
+    next_run=2026-10-06 10:22:00  delta_from_now_min=-1601.0
+    target=mvs_003c17c18b6e47a6914396e775eb4ec7 mode=sessionId deleted=None
+  cron=31a25cf4-b35c-4915-b613-4a44480f207f name='Defender load watch ÔÇö weigh, and repair the exclusion gap'
+    expression='0 0 1 1 *' state=active run_count=0
+    next_run=2027-01-01 00:00:00  delta_from_now_min=123057.0
+    target=None mode=new deleted=None
+  cron=probe-ea7da67473ce name='probe single cron (wake test)'
+    expression='*/3 * * * *' state=active run_count=0
+    next_run=2026-10-07 12:07:51  delta_from_now_min=-55.1
+    target=mvs_b7a9f3a7db404912b32d28fc11b83645 mode=sessionId deleted=None
+  cron=82eb85ad-0e06-476a-a7f2-349f595f841a name='Retomada: 8 criativos Meta Ads via ChatGPT do dono'
+    expression='*/10 * * * *' state=cancelled run_count=2
+    next_run=None  delta_from_now_min=None
+    target=mvs_70718bb5d14c418b9fc3a8b0218e9d20 mode=sessionId deleted=1791113126385
+  cron=bc6ebc60-c140-4f21-bd81-8ad1d6745294 name='Dead subagent revival loop'
+    expression='*/11 * * * *' state=cancelled run_count=6
+    next_run=None  delta_from_now_min=None
+    target=mvs_ea552229fe164f9e8856fcca8589c41a mode=sessionId deleted=None
+  cron=c06a003a-4794-4f8e-b638-dcf4777d81aa name='Steal register: audit superharness repos'
+    expression='7-59/23 * * * *' state=cancelled run_count=29
+    next_run=None  delta_from_now_min=None
+    target=mvs_ea552229fe164f9e8856fcca8589c41a mode=sessionId deleted=None
+  cron=1dfa81c4-eb83-4ce0-9f89-d883397c4c0d name='Retry-any-dead-mcode-session'
+    expression='*/11 * * * *' state=cancelled run_count=115
+    next_run=None  delta_from_now_min=None
+    target=mvs_ea552229fe164f9e8856fcca8589c41a mode=sessionId deleted=None
+  cron=deca88d4-c625-4b32-b5fd-8845f6a6cc4b name='Subagent report-back DRAIN'
+    expression='2,9,16,23,30,37,44,51 * * * *' state=cancelled run_count=393
+    next_run=None  delta_from_now_min=None
+    target=mvs_ea552229fe164f9e8856fcca8589c41a mode=sessionId deleted=None
+  cron=01ec21b0-cc76-47f2-87bf-2bd8584d8043 name='Subagent report-back check'
+    expression='2,9,16,23,30,37,44,51 * * * *' state=cancelled run_count=0
+    next_run=None  delta_from_now_min=None
+    target=mvs_ea552229fe164f9e8856fcca8589c41a mode=sessionId deleted=None
+  cron=e4c2b73d-fb13-4d3f-8062-a7ca6a39ccbb name='Progressiva: fechar o que o dono mandou (nao perguntar)'
+    expression='*/11 * * * *' state=cancelled run_count=10
+    next_run=None  delta_from_now_min=None
+    target=None mode=new deleted=None
+  (cron-expression jobs listed = 12; once-jobs are excluded by definition)
+  CRON-SCHEDULER verdict=ALARM newest_run=2026-10-06 10:11:00 age=1612.0min armed_active_crons=5 threshold=15min
+
+-- last 6 cron runs, ANY cron (is the scheduler alive today?) --
+  2026-10-06 10:11:00 cron=e8568051 src=scheduled status=delivered session=mvs_003c17c18b6e47a6914396e775eb4ec7 err=None
+  2026-10-06 10:02:00 cron=deca88d4 src=scheduled status=delivered session=mvs_ea552229fe164f9e8856fcca8589c41a err=None
+  2026-10-06 10:00:00 cron=e8568051 src=scheduled status=delivered session=mvs_003c17c18b6e47a6914396e775eb4ec7 err=None
+  2026-10-06 10:00:00 cron=1dfa81c4 src=scheduled status=delivered session=mvs_ea552229fe164f9e8856fcca8589c41a err=None
+  2026-10-06 10:00:00 cron=e4c2b73d src=scheduled status=delivered session=mvs_fb9f05f01096462b825fac2d5e6d91c2 err=None
+  2026-10-06 10:00:00 cron=d43fb9be src=scheduled status=delivered session=mvs_ea552229fe164f9e8856fcca8589c41a err=None

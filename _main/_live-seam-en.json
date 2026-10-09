@@ -1,0 +1,533 @@
+{
+ "wav": "H:\\sotto\\_main\\en-us-sample.wav",
+ "rc": 0,
+ "cont": {
+  "true": 11,
+  "false": 36
+ },
+ "pushes": [
+  {
+   "text": "The",
+   "continues": false,
+   "line_before": "",
+   "line_after": "The",
+   "closed": []
+  },
+  {
+   "text": "Radio an",
+   "continues": false,
+   "line_before": "The",
+   "line_after": "The Radio an",
+   "closed": []
+  },
+  {
+   "text": "ced that the",
+   "continues": true,
+   "line_before": "The Radio an",
+   "line_after": "The Radio anced that the",
+   "closed": []
+  },
+  {
+   "text": "bridge over the",
+   "continues": false,
+   "line_before": "The Radio anced that the",
+   "line_after": "The Radio anced that the bridge over the",
+   "closed": []
+  },
+  {
+   "text": "river will",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the",
+   "line_after": "The Radio anced that the bridge over the river will",
+   "closed": []
+  },
+  {
+   "text": "be closed",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will",
+   "line_after": "The Radio anced that the bridge over the river will be closed",
+   "closed": []
+  },
+  {
+   "text": "next Mon",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will be closed",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mon",
+   "closed": []
+  },
+  {
+   "text": "e",
+   "continues": true,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mon",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone",
+   "closed": []
+  },
+  {
+   "text": "",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone",
+   "closed": []
+  },
+  {
+   "text": ".  Resident",
+   "continues": true,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone.  Resident",
+   "closed": []
+  },
+  {
+   "text": "s need",
+   "continues": true,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone.  Resident",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone.  Residents need",
+   "closed": []
+  },
+  {
+   "text": "an alternative",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone.  Residents need",
+   "line_after": "an alternative",
+   "closed": []
+  },
+  {
+   "text": "The",
+   "continues": false,
+   "line_before": "",
+   "line_after": "The",
+   "closed": []
+  },
+  {
+   "text": "Radio an",
+   "continues": false,
+   "line_before": "The",
+   "line_after": "The Radio an",
+   "closed": []
+  },
+  {
+   "text": "ced that the",
+   "continues": true,
+   "line_before": "The Radio an",
+   "line_after": "The Radio anced that the",
+   "closed": []
+  },
+  {
+   "text": "bridge over the",
+   "continues": false,
+   "line_before": "The Radio anced that the",
+   "line_after": "The Radio anced that the bridge over the",
+   "closed": []
+  },
+  {
+   "text": "river will",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the",
+   "line_after": "The Radio anced that the bridge over the river will",
+   "closed": []
+  },
+  {
+   "text": "be closed",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will",
+   "line_after": "The Radio anced that the bridge over the river will be closed",
+   "closed": []
+  },
+  {
+   "text": "next Mon",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will be closed",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mon",
+   "closed": []
+  },
+  {
+   "text": "e",
+   "continues": true,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mon",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone",
+   "closed": []
+  },
+  {
+   "text": "",
+   "continues": false,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone",
+   "closed": []
+  },
+  {
+   "text": ".  Resident",
+   "continues": true,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone.  Resident",
+   "closed": []
+  },
+  {
+   "text": "s need",
+   "continues": true,
+   "line_before": "The Radio anced that the bridge over the river will be closed next Mone.  Resident",
+   "line_after": "The Radio anced that the bridge over the river will be closed next Mone.  Residents need",
+   "closed": []
+  },
+  {
+   "text": "route to get",
+   "continues": false,
+   "line_before": "an alternative",
+   "line_after": "an alternative route to get",
+   "closed": []
+  },
+  {
+   "text": "to work",
+   "continues": false,
+   "line_before": "an alternative route to get",
+   "line_after": "an alternative route to get to work",
+   "closed": []
+  },
+  {
+   "text": "",
+   "continues": false,
+   "line_before": "an alternative route to get to work",
+   "line_after": "an alternative route to get to work",
+   "closed": []
+  },
+  {
+   "text": ".  The",
+   "continues": true,
+   "line_before": "an alternative route to get to work",
+   "line_after": "an alternative route to get to work.  The",
+   "closed": []
+  },
+  {
+   "text": "Radio",
+   "continues": false,
+   "line_before": "an alternative route to get to work.  The",
+   "line_after": "an alternative route to get to work.  The Radio",
+   "closed": []
+  },
+  {
+   "text": "announced that",
+   "continues": false,
+   "line_before": "an alternative route to get to work.  The Radio",
+   "line_after": "an alternative route to get to work.  The Radio announced that",
+   "closed": []
+  },
+  {
+   "text": "the bridge over",
+   "continues": false,
+   "line_before": "an alternative route to get to work.  The Radio announced that",
+   "line_after": "an alternative route to get to work.  The Radio announced that the bridge over",
+   "closed": []
+  },
+  {
+   "text": "the river",
+   "continues": false,
+   "line_before": "an alternative route to get to work.  The Radio announced that the bridge over",
+   "line_after": "an alternative route to get to work.  The Radio announced that the bridge over the river",
+   "closed": []
+  },
+  {
+   "text": "will be closed",
+   "continues": false,
+   "line_before": "an alternative route to get to work.  The Radio announced that the bridge over the river",
+   "line_after": "will be closed",
+   "closed": []
+  },
+  {
+   "text": "Alterna",
+   "continues": false,
+   "line_before": "",
+   "line_after": "Alterna",
+   "closed": []
+  },
+  {
+   "text": "tive route to get",
+   "continues": true,
+   "line_before": "Alterna",
+   "line_after": "Alternative route to get",
+   "closed": []
+  },
+  {
+   "text": "to work",
+   "continues": false,
+   "line_before": "Alternative route to get",
+   "line_after": "Alternative route to get to work",
+   "closed": []
+  },
+  {
+   "text": "",
+   "continues": false,
+   "line_before": "Alternative route to get to work",
+   "line_after": "Alternative route to get to work",
+   "closed": []
+  },
+  {
+   "text": "the",
+   "continues": false,
+   "line_before": "Alternative route to get to work",
+   "line_after": "Alternative route to get to work the",
+   "closed": []
+  },
+  {
+   "text": "radio",
+   "continues": false,
+   "line_before": "Alternative route to get to work the",
+   "line_after": "Alternative route to get to work the radio",
+   "closed": []
+  },
+  {
+   "text": "announced that",
+   "continues": false,
+   "line_before": "Alternative route to get to work the radio",
+   "line_after": "Alternative route to get to work the radio announced that",
+   "closed": []
+  },
+  {
+   "text": "the bridge over",
+   "continues": false,
+   "line_before": "Alternative route to get to work the radio announced that",
+   "line_after": "Alternative route to get to work the radio announced that the bridge over",
+   "closed": []
+  },
+  {
+   "text": "the river",
+   "continues": false,
+   "line_before": "Alternative route to get to work the radio announced that the bridge over",
+   "line_after": "Alternative route to get to work the radio announced that the bridge over the river",
+   "closed": []
+  },
+  {
+   "text": "next",
+   "continues": false,
+   "line_before": "will be closed",
+   "line_after": "will be closed next",
+   "closed": []
+  },
+  {
+   "text": "Monday",
+   "continues": false,
+   "line_before": "will be closed next",
+   "line_after": "will be closed next Monday",
+   "closed": []
+  },
+  {
+   "text": "",
+   "continues": false,
+   "line_before": "will be closed next Monday",
+   "line_after": "will be closed next Monday",
+   "closed": []
+  },
+  {
+   "text": "Clo",
+   "continues": false,
+   "line_before": "",
+   "line_after": "Clo",
+   "closed": []
+  },
+  {
+   "text": "sed next",
+   "continues": true,
+   "line_before": "Clo",
+   "line_after": "Closed next",
+   "closed": []
+  },
+  {
+   "text": "Monday",
+   "continues": false,
+   "line_before": "Closed next",
+   "line_after": "Closed next Monday",
+   "closed": []
+  }
+ ],
+ "captions": [
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The",
+   "start": 0.0,
+   "end": 0.56,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio an",
+   "start": 0.0,
+   "end": 1.12,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the",
+   "start": 0.0,
+   "end": 1.68,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the",
+   "start": 0.0,
+   "end": 2.24,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will",
+   "start": 0.0,
+   "end": 2.8,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will be closed",
+   "start": 0.0,
+   "end": 3.36,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will be closed next Mon",
+   "start": 0.0,
+   "end": 3.92,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will be closed next Mone",
+   "start": 0.0,
+   "end": 4.48,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will be closed next Mone.  Resident",
+   "start": 0.0,
+   "end": 5.6,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will be closed next Mone.  Residents need",
+   "start": 0.0,
+   "end": 6.16,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative",
+   "start": 6.16,
+   "end": 6.72,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "The Radio anced that the bridge over the river will be closed next Mone.  Residents need",
+   "start": 0.0,
+   "end": 6.16,
+   "final": true
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get",
+   "start": 6.16,
+   "end": 7.28,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get to work",
+   "start": 6.16,
+   "end": 7.84,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get to work.  The",
+   "start": 6.16,
+   "end": 8.96,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get to work.  The Radio",
+   "start": 6.16,
+   "end": 9.52,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get to work.  The Radio announced that",
+   "start": 6.16,
+   "end": 10.08,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get to work.  The Radio announced that the bridge over",
+   "start": 6.16,
+   "end": 10.64,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "an alternative route to get to work.  The Radio announced that the bridge over the river",
+   "start": 6.16,
+   "end": 11.2,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "will be closed",
+   "start": 11.2,
+   "end": 11.76,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "Alternative route to get to work the radio announced that the bridge over the river",
+   "start": 6.16,
+   "end": 11.2,
+   "final": true
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "will be closed next",
+   "start": 11.2,
+   "end": 12.32,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "will be closed next Monday",
+   "start": 11.2,
+   "end": 12.88,
+   "final": false
+  },
+  {
+   "model": "nemotron-3.5-asr-streaming-0.6b-int8",
+   "type": "caption",
+   "text": "Closed next Monday",
+   "start": 11.2,
+   "end": 12.88,
+   "final": true
+  }
+ ]
+}

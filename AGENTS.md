@@ -100,11 +100,13 @@ entirely on what the owner has routed into a virtual cable, and a name in
   This bullet said the opposite for most of 2026-10-07 ("the second pass is ABSENT today"), on the
   strength of a `grep -n 'def rerun|reset_stream_state|_last_symbol' worker/sotto_worker.py` that
   returned ZERO matches. The grep is now non-empty and the negative claim is FALSE. Measured against the
-  live file (173388 B, mtime 2026-10-07 03:21:10, sha256 `3ACD3247CE6EA302…`), `grep -rn` returns:
-  `def rerun` = `worker/sotto_worker.py:2654`, `reset_stream_state` = `:623`, `_last_symbol` =
+  live file (**242 082 B, sha256 `64E7EC6F6C35C33600E9D50C11AC7D8CE96FBE1FEF87C24CD628BDF03F314E61`,
+  re-verified 2026-10-08 — the numbers below were `:2654`/`:2748`/`:2771` in the 173 388 B revision
+  cited before**), `grep -rn` returns:
+  `def rerun` = `worker/sotto_worker.py:3637`, `reset_stream_state` = `:623`, `_last_symbol` =
   `:527` (`__init__`) / `:651` (the reset) / `:896` (the chunk seed) / `:2707`+`:2743` (the save/restore
-  pair), and `def finalise` = `:2748`, `def drain` = `:2771`, called from FIVE `drain()` sites in
-  `asr_thread` (`:2840`, `:2879`, `:2900`, `:2914`, `:2925`). **That revision moved by one line and one
+  pair), and `def finalise` = `:3732`, `def drain` = `:3755` (`drain_captions` is separate, at
+  `:2645`), called from FIVE `drain()` sites in `asr_thread`. **That revision moved by one line and one
   byte while this bullet was being written** (from 173389 B / `def rerun` `:2655` to 173388 B / `:2654`),
   which is the point of rule 2 below: treat every line number here as a HINT and re-run the grep. So the
   live path is `drain` → `finalise` → `rerun`, and the pass' text is what `final:true` ships. **How the
@@ -178,8 +180,40 @@ entirely on what the owner has routed into a virtual cable, and a name in
 - Model weights on disk: **int4 756 MB / int8 1020 MB / fp16 1230 MB**; RSS after load + one
   inference: **int4 924 MB / int8 1192 MB**. The `.onnx.data` sidecars ARE the weights; a
   listing that shows only the `.onnx` headers understates them by ~150×.
-- `CUDAExecutionProvider` is **requested but not loadable here** — ORT silently returns
-  `['CPUExecutionProvider']`. The box runs on CPU.
+- ~~`CUDAExecutionProvider` is **requested but not loadable here** — ORT silently returns
+  `['CPUExecutionProvider']`. The box runs on CPU.~~ **CORRECTED 2026-10-08 — THAT SENTENCE IS
+  FALSE. MEASURED: `ort.get_available_providers()` → `['TensorrtExecutionProvider',
+  'CUDAExecutionProvider', 'CPUExecutionProvider']`, and `get_device()` → `GPU`.** What is true is
+  narrower and more useful: **a CUDA-requesting session in a CLEAN shell falls back to CPU for
+  exactly ONE missing DLL** — `cublasLt64_13.dll`, WinError 126 — and **one directory fixes it**:
+  `site-packages\nvidia\cu13\bin\x86_64` on the DLL search path. `torch\lib` is CUDA 12 and does
+  NOT serve it. **The worker already does this** — `worker/sotto_worker.py:277`
+  (`_add_cuda_dll_dirs()`), called from `:3251` before the model load (both re-verified against the
+  242 082 B / sha256 `64E7EC6F…` revision) — so the live run IS GPU-backed. The old line was a
+  guess from a clean-shell provider probe; the live worker proved it wrong.
+- **THE LIVE ENGINE IS HYBRID, NOT "ORT-GenAI" — do not size a change by that name.**
+  `og.Model` + `StreamingProcessor` cover only the cache-aware mel window and the Silero VAD;
+  the encoder, decoder and joint are plain `onnxruntime.InferenceSession`, and the RNNT decode loop
+  is plain Python. So `onnxruntime-genai-cuda` buys **POUCO** here — and the INSTALLED
+  `onnxruntime-genai` 0.17.1 is **CPU-only** anyway (`og.is_cuda_available()` → `False`).
+- **THE SHIPPING RECIPE HAS A SILENT FAILURE MODE — MEASURED 2026-10-08.**
+  `pip install "onnxruntime-gpu[cuda,cudnn]" onnxruntime-genai` installs plain `onnxruntime` LAST (it is
+  `onnxruntime-genai`'s hard dep) and the plain wheel overwrites 21 shared `onnxruntime/capi/` files and
+  drops `providers_cuda` (`onnxruntime-1.30.0.dist-info` RECORD: `capi_entries=21`,
+  `providers_cuda_entries=0`; `onnxruntime_gpu-1.30.0.dist-info`: `23` / `1`). Result:
+  `available: ['AzureExecutionProvider','CPUExecutionProvider']` and a CUDA-requesting session returns
+  `['CPUExecutionProvider']` with **`error: null`** — CPU-only ORT, silently. The fix is one line after:
+  `pip install --force-reinstall --no-deps onnxruntime-gpu==1.30.0` → back to
+  `['TensorrtExecutionProvider','CUDAExecutionProvider','CPUExecutionProvider']`. **The three ORT packages
+  share the `onnxruntime` namespace; pip's install ORDER decides which one wins, file by file.**
+  **Three different questions, never interchangeable: `get_available_providers()` = what the PACKAGE
+  supports; `InferenceSession.get_providers()` = what the SESSION uses; only the ORT profiler says what
+  EXECUTES.** This is a DISTINCT failure from the `cublasLt64_13.dll` / WinError 126 one above: there the
+  provider is listed and fails to initialise; here it is not listed at all and the error is `null`.
+- **`nemotron-…-fp16` IS AN ORPHAN EXPORT — `og.Model()` cannot open it** (no
+  `genai_config.json`). Verified by census: present for **fp32 / int4 / int8**, ABSENT for **fp16**,
+  `redux-onnx-int4`, `redux-reference` and `redux-ternary`. Pick an export by the presence of that
+  file, not by its name.
 - WebView2 shell works and its layout is byte-identical to Electron's (14 DOM fields compared,
   0 mismatches), at **+33% memory** (416 MB vs 312 MB tree). The owner ruled: **no fallback,
   WebView2 is the app.**
@@ -478,13 +512,26 @@ entirely on what the owner has routed into a virtual cable, and a name in
   **14 → 25 rows** (≈1 row per CLOSED line) while hundreds of partials arrived — an append-per-partial
   would have been thousands. Order is oldest-at-top, and `scrollTop = scrollHeight` fires only when the
   reader is within 48 px of the bottom (`:285-290`), so reading back is never interrupted.
-  **OPEN, with its falsifier:** words are split at CHUNK boundaries (`"não comp arecer"`,
+  **CLOSED 2026-10-08 — FIXED AND GATED. The resolution is at the END of this bullet;
+  the text that follows is the HISTORICAL description of the defect, kept because the
+  mechanism is the transferable part:** words were split at CHUNK boundaries (`"não comp arecer"`,
   `"sse desequi líbrio"`) because `detok` converts the word-start marker `▁` to a space and then
   `.strip()`s it away (`sotto_worker.py:587`), while `push()` joins chunk texts with `" ".join(...)`
   over `frag.strip()` (`:1814`/`:1834`) — every chunk boundary becomes a word boundary. The fix touches
   `_words`/`line()`/the `max_chars` cap/`_close()` (~6 sites) and was deliberately NOT rushed: a wrong
   change there garbles every caption. Falsifier: run the worker 20 s on speech and look for a word split
   across a chunk boundary (seconds today).
+  **RESOLVED 2026-10-08 (`_main/receipt-word-split-fix.md`; worker 235345 B sha256 `9DF88827…`, then
+  237024 B `CEFD1868…` after the meter default):** a chunk boundary is no longer a word boundary.
+  `chunk_is_continuation` reads the continuation from the TOKENS, `join_fragments` is the single
+  separator decision, and the three emitters pass `continues=`; `detok` is untouched and `_close()` needed
+  no change (a reported deviation from the "~6 sites" hint). Same input, before → after:
+  `…na próx ima segunda-feira .  Os` → `…na próxima segunda-feira.  Os`; the two texts are **identical
+  once spaces are removed**, and `done.text` (the whole-run detok, which never had the defect) is
+  **byte-identical before and after**. Oracle `_main/word-split-oracle.py`: 12/12 PASS; `--neg-arm` (one
+  function reverted) → **7 FIX arms RED, 0 stayed green, 0 controls broken**. No regressions:
+  caption-lines 12/12, verdict-gate 14/14, fresh-processor GREEN, segment-rerun PASS. NOT proven: the
+  live DEVICE path (the owner's worker holds the endpoint) and the second pass end-to-end.
 
 - **A LEI DA STACK (decidida pelo dono, 2026-10-07) — e o que dela ainda NÃO existe.** Dois motores,
   dois regimes: o **nemotron streaming (0.6b int8, ONNX GenAI) é o motor AO VIVO** e só deve trabalhar
@@ -495,8 +542,15 @@ entirely on what the owner has routed into a virtual cable, and a name in
   e vira um transcritor LEVE ao contrario do nvidia."*
   **Estado real, verificado 2026-10-07 (23h): OS PESOS EXISTEM AGORA EM DISCO.** Baixados pela HF CLI
   e verificados por sha256 contra o que a API publica (5/5 `MATCH`), em `worker/models/`:
-  - ~~**`parakeet-redux-onnx-int4/`**~~ — **APAGADO a pedido do dono (2026-10-07, "usa o de 179m. o
-    outro deleta"); re-baixável em ~20 s com `hf download eschmidbauer/parakeet-redux-onnx`.** Os três
+  - ~~**`parakeet-redux-onnx-int4/`**~~ — **ESTÁ DE NOVO EM DISCO (2026-10-08): 27 ficheiros,
+    415,87 MB, re-baixado. O "APAGADO" abaixo ficou VALSO.** ~~APAGADO a pedido do dono (2026-10-07,
+    "usa o de 179m. o outro deleta"); re-baixável em ~20 s com
+    `hf download eschmidbauer/parakeet-redux-onnx`.~~ **E O QUE DECIDE A LEI DA STACK É O PREÇO EM
+    RAM, NÃO O NOME:** o ONNX int4 bate o ternário por **6,3× na RAM** — pico medido
+    **615,3 MB contra 3,90 GB** (`_main/redux-cost-onnx.log`: `rss_peak_mb 615.3`, `rtf 8.33`,
+    `text_matches_oracle: true`, 15,0 s de áudio em 1,80 s) com transcrição **byte-idêntica**. Para o
+    "transcritor LEVE de fundo", o int4 é o motor leve; o ternário é o mais leve **em disco**
+    (179 MB) e o mais pesado **em RAM**. Os três
     ficheiros pequenos que são a referência portátil ficaram em `worker/models/parakeet-redux-reference/`
     (`transcribe.py` 17.844 B — o laço TDT —, `config.json`, `vocab.txt`), e as transcrições de
     referência em `_main/redux-ptbr.txt` / `_main/redux-en.txt`. Era o export quantizado que a NOSSA stack
@@ -567,7 +621,7 @@ entirely on what the owner has routed into a virtual cable, and a name in
   já se perguntou: `docs/tools/consultgpt.md`** (o `codex` também existe mas a autenticação dele está
   morta aqui).
 
-- **`_main\_audit-verify-all.cmd` MUST STAY CRLF, AND ITS EXIT CODE IS ITS VERDICT — measured 2026-10-08, do not re-litigate (this file said nothing about the battery until now, which is how a green word and a red run coexisted).** The subroutines are reached by `call :label` / `exit /b`, and **cmd.exe seeks a batch file by BYTE OFFSET**: with LF-only endings those stored offsets drift and the step list runs **TWICE** — measured (`_main\_audit-verify\_run-20261008-LF-only-double-run.log`): pass 1 reported `steps : 16 gate=10` GREEN, then cmd resumed and re-ran the tail, printing a SECOND summary `steps : 40 gate=28 control=10 expect-red=2` — 40 beacons for **29 distinct steps**, every control twice, **two int8 model loads**. The file is CRLF today (`len=18595`, 337 CRLF / 0 bare LF, sha256 `9DA38ECFCD33C53889458F17087FAF35012AE3BD4B3CCC914384E6B6B3D45BB`); the same bytes converted to LF ran once. **Any tool that rewrites it with `\n` silently re-breaks it — convert back (`-replace "\n", "\r\n"`) or the aggregation lies.** The battery AGGREGATES and its **exit code IS the verdict**: three step kinds — `:record` (the gate), `:control` (passes ONLY when the instrument's control actually went RED on its broken copy AND printed its control verdict), `:expectred` (rc must be exactly 1 with the violation text) — a MISSING instrument is a FAILURE, and any failure exits 1. Measured: clean run `steps : 29 gate=23 control=5 expect-red=1 missing=0 / BATTERY-VERDICT: GREEN / exit-code: 0` (`_main\_audit-verify\_battery-summary.txt`); negative proof `INJECTED-FAILING-STEP rc=3 … BATTERY-VERDICT: RED - 1 step(s) failed … NEGPROOF-EXITCODE=1` (`_run-20261008-negproof.log`). **Before this, a run with THREE red steps (`hotkey-delivery`, `verdict-gate`, `history-producer-gate`) exited 0** — a failure answering as success. So read the `BATTERY-VERDICT` / exit-code pair, never a step's own `rc`, never a lone last line, and never a `steps :` count without checking there is only ONE of them.
+- **`_main\_audit-verify-all.cmd` MUST STAY CRLF, AND ITS EXIT CODE IS ITS VERDICT — measured 2026-10-08, do not re-litigate (this file said nothing about the battery until now, which is how a green word and a red run coexisted).** The subroutines are reached by `call :label` / `exit /b`, and **cmd.exe seeks a batch file by BYTE OFFSET**: with LF-only endings those stored offsets drift and the step list runs **TWICE** — measured (`_main\_audit-verify\_run-20261008-LF-only-double-run.log`): pass 1 reported `steps : 16 gate=10` GREEN, then cmd resumed and re-ran the tail, printing a SECOND summary `steps : 40 gate=28 control=10 expect-red=2` — 40 beacons for **29 distinct steps**, every control twice, **two int8 model loads**. The file is CRLF today (`len=18595`, 337 CRLF / 0 bare LF, sha256 `9DA38ECFCD33C53889458F17087FAF35012AE3BD4B3CCC914384E6B6B3D45BB`); the same bytes converted to LF ran once. **Any tool that rewrites it with `\n` silently re-breaks it — convert back (`-replace "\n", "\r\n"`) or the aggregation lies.** **AND CRLF IS NOT ENOUGH — A SECOND CAUSE, PROVEN 2026-10-08: A CONCURRENT EDIT OF THE FILE MID-RUN.** The byte-offset resume breaks on ANY length change in bytes cmd.exe has not yet read, LF or not. Reproducer, both arms, `_main\_cmd-offset-drift\subject.cmd` (pure CRLF, 919 B / 29 CRLF / 0 bare LF), with a `call :slow` outstanding while the controller rewrote it: **identical bytes → `SUBJECT-SUMMARY x1` / `[step] x3`; one `REM` inserted mid-run (919 → 964 B, sha256 `395A6E72…` → `C53C8A93…`) → cmd resumed at a stale offset, read `exit /b 0` as `'xit' não é reconhecido…`, and re-ran the tail: `SUBJECT-BEGIN` printed TWICE.** No LF involved. The strip lane measured the same on THIS file at 100 % CRLF (28 947 → 31 071 B mid-run); that edit IS the reproduction. So **a run whose `.cmd` sha256 changes mid-run is DIRTY: say so and repeat it, never present it as clean.** The size is a moving target: 18 595 B above, 31 071 B at that run, **32 203 B / 538 CRLF / 0 bare LF / sha256 `EBF715E9E4CF75B2FF5E62A529C2C375985246CBB7BFE8459EF2A9DD1BD0EB1C`** after the skip-guard cure. **`edit` preserves CRLF; the `write` tool emits LF-ONLY** (measured: a 29-line `.cmd` written by `write` came out 890 B / 0 CRLF / 29 bare LF) — never `write` this file. The battery AGGREGATES and its **exit code IS the verdict**: three step kinds — `:record` (the gate), `:control` (passes ONLY when the instrument's control actually went RED on its broken copy AND printed its control verdict), `:expectred` (rc must be exactly 1 with the violation text) — a MISSING instrument is a FAILURE, and any failure exits 1. Measured: clean run `steps : 29 gate=23 control=5 expect-red=1 missing=0 / BATTERY-VERDICT: GREEN / exit-code: 0` (`_main\_audit-verify\_battery-summary.txt`); negative proof `INJECTED-FAILING-STEP rc=3 … BATTERY-VERDICT: RED - 1 step(s) failed … NEGPROOF-EXITCODE=1` (`_run-20261008-negproof.log`). **Before this, a run with THREE red steps (`hotkey-delivery`, `verdict-gate`, `history-producer-gate`) exited 0** — a failure answering as success. So read the `BATTERY-VERDICT` / exit-code pair, never a step's own `rc`, never a lone last line, and never a `steps :` count without checking there is only ONE of them.
 
 ## Keeping THIS file true (it has been wrong twice in one day)
 
@@ -586,3 +640,16 @@ undone. Three rules, both earned today:
    "nothing stamps this field" are all claims that a single grep, or a 60 s census, cannot support. Name
    the instrument, its cadence and its count — the same rule the panel's own windows and the segment-rerun
    canary were held to.
+---
+
+## THE SHELL'S OWN CONTRACT — moved to `docs/shell-contract.md` (2026-10-08)
+
+The `strip-surface` measurements (strip geometry, `SetWindowPos` argtypes, edit mode, the meter
+branch and its log budget, worker hot reload) were moved **verbatim, byte for byte**, to
+`docs/shell-contract.md` **by instruction budget, NOT because they were wrong** — 16 490 B, sha256
+`DB2E81CB271D2B9DD0BBA755B635DF57D3DF90197A1A4F16DFEE1E3ECAC1A1D1`. Anchors: strip `1040×150`,
+height read from `--strip-height` in the CSS (never hard-coded; `STRIP_HEIGHT_FALLBACK = 148` logs
+every use); `SetWindowPos` without declared `argtypes` fails SILENTLY with `last_error=1400`;
+`BRIDGE_PROBE.methods` = 17; hot reload = DEBOUNCE 2000 ms → GUARD `capture-started` → BOUNDARY at
+the first closed line (`final:true`) → CEILING 25 000 ms forced → FLOOR 180 000 ms; the meter
+delivers EVERY sample to the page and limits only the LOG, 1 line per 30 s.

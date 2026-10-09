@@ -1,0 +1,28 @@
+wake: apply the six receipt-21 defects + D-7 (wrong transport predictor)
+
+receipt-21 (lane16) audited the wake machinery and reported six defects
+read-only. This applies them, and adds a seventh the orchestrator measured
+after the brief was written.
+
+D-1 userMessageId shape -> mint 'msg-user-v1-' + token_urlsafe(32) = 55 chars,
+   the measured runtime shape. NOT a delivery fix: two role='user' rows
+   already reached a session carrying our 48-char ids.
+D-2 cron query -> count cron FIELDS, not stars. Both the shipped
+   like '%* * * * *%' AND receipt-21's proposed like '%* * * *' return 0 of 30.
+D-3 dedupe wedge -> an expired row is not pending and cannot refuse a wake;
+   the refusal now names the blocking item, age, claim and expiry.
+D-4 dead cron alarm -> cron-alarm, rc=3 past 15 min while a cron is armed.
+   Firing in production on the live 27 h outage.
+D-5 orphans -> session-wide sweep (60 min foreign floor) AND expires_at_ms on
+   insert; neither alone is demonstrable, so both.
+D-6 shutdown deadline -> counted, not described. N=6, no rate claimed.
+D-7 local_runtime_sessions.status does NOT predict exec acceptance
+   (false negative on 2 of 2 refusals). Branch on the turn lease + a bounded
+   open turn, and fall back to the queue whenever exec is refused anyway.
+
+Two of receipt-21's numbers did not survive re-measurement; both are recorded
+in the receipt rather than quietly dropped.
+
+Gate: _main/_lane24-wake-defects-gate.ps1, 23 arms, 8 controls (each reverts
+its cure in a copy), exit 0. The gate went RED four times during construction
+and caught two defects in its own instruments.

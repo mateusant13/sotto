@@ -1,0 +1,51 @@
+{
+  "label": "appcpu",
+  "python": "3.11.8",
+  "executable": "C:\\Program Files\\Python311\\python.exe",
+  "requested": "CPUExecutionProvider",
+  "threads_env": 4,
+  "model_dir": "nemotron-3.5-asr-streaming-0.6b-int8",
+  "wav": "pt-br-sample.wav",
+  "cuda_dlls": true,
+  "load_s": 3.939,
+  "REAL_get_providers": [
+    "CPUExecutionProvider"
+  ],
+  "REAL_decoder": [
+    "CPUExecutionProvider"
+  ],
+  "REAL_joint": [
+    "CPUExecutionProvider"
+  ],
+  "intra_op_num_threads_effective": 4,
+  "rss_after_load_mb": 2082.9,
+  "audio_s": 15.0,
+  "chunks": 26,
+  "reps": 2,
+  "wall_s_per_pass": [
+    9.707,
+    16.584
+  ],
+  "wall_s_best": 9.707,
+  "rtf_best": 0.6667,
+  "chunk_ms_median": 470.92,
+  "chunk_ms_mean": 505.59,
+  "chunk_ms_p95": 898.74,
+  "chunk_ms_max": 965.92,
+  "chunk_ms_min": 245.84,
+  "cores_used_infer": 12.16,
+  "cpu_percent_process": 711.9,
+  "system_cpu_percent": 95.6,
+  "cpu_count_logical": 20,
+  "cpu_count_physical": 14,
+  "rss_peak_mb": 2435.4,
+  "rss_end_mb": 2435.4,
+  "tokens_total": 144,
+  "text_sha256": "1ce257cbdeb9abaef20a0f736b6e9b41487b88330fa6828b6db88ef0c07758a8",
+  "text_chars": 306,
+  "text_head": "rádio anunciou que a ponte sobre o vai ser interditada na próxima segunda-feira.  Os moradores precim de um caminho alte",
+  "gpu_util_mean": 27.8,
+  "gpu_util_max": 50.0,
+  "gpu_mem_mb_max": 4696.0,
+  "gpu_samples": 80
+}

@@ -1,0 +1,4 @@
+pass 1 rc=0
+  rows after pass 1: video 1 | segment 2 | transcript 2 | text_fts 2
+pass 2 rc=0
+  rows after pass 2: video 1 | segment 4 | transcript 4 | text_fts 4

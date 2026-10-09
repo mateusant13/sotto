@@ -1,0 +1,36 @@
+==========================================================================
+ CENSUS - locale-dependent group separators (pt-BR renders them as ".")
+==========================================================================
+WINDOW     : H:\sotto\_moved\aireplay
+IN SCOPE  : 3784 LIVE source file(s) (extensions: .ps1 .psm1 .cmd .bat .py .cpp .c .h .hpp .js .mjs .cjs)
+BACKUP    : 15 file(s) under _deleted-blob-backup - dead code, counted apart
+OUT OF SCOPE: 2152 document/output file(s) - hits counted, listed below
+TREE TOTAL : 8930 file(s)
+
+POPULATION : 15 placeholder site(s) on 15 line(s), in 3 file(s)
+             4 MEMORY / 6 DURATION / 5 SAFE
+EXCLUDED   : 63974 comment line(s); 6 quoted pattern(s) (revert tables); 2 pattern(s) in 15 backup file(s)
+             125 pattern(s) in documents/output; 9 ToString('N') GUID site(s) (no-dashes, not a number)
+             2 file(s) unreadable (a live lane holds them open) and were SKIPPED
+               unreadable: _lane25-census-run.txt
+               unreadable: heartbeat-exec-output.txt
+
+SITES (MEMORY and DURATION are the ones a reader parses with a decimal point)
+  SAFE      _main\_lane25-locale-number-gate.ps1:195  {0:N0}    unit ''
+  SAFE      _main\_lane25-locale-number-gate.ps1:215  {0:N1}    unit ''
+  MEMORY    _main\_lane3-ringcap-gate.ps1:497  {2:N2}    unit 'GiB'
+  MEMORY    _main\_lane3-ringcap-gate.ps1:499  {1:N2}    unit 'GiB'
+  SAFE      _main\_lane3-ringcap-gate.ps1:502  {4:N2}    unit 'of'
+  SAFE      _main\_lane3-ringcap-gate.ps1:506  {1:N2}    unit 'of'
+  DURATION  _main\_lane3-ringcap-gate.ps1:515  {2:N2}    unit 's'
+  DURATION  _main\_lane3-ringcap-gate.ps1:515  {3:N2}    unit 's'
+  DURATION  _main\_lane3-ringcap-gate.ps1:518  {2:N2}    unit 's'
+  DURATION  _main\_lane3-ringcap-gate.ps1:518  {3:N2}    unit 's'
+  MEMORY    _main\_lane3-ringcap-gate.ps1:524  {0:N2}    unit 'MiB'
+  DURATION  _main\_lane3-ringcap-gate.ps1:524  {1:N2}    unit 's'
+  MEMORY    _main\_lane3-ringcap-gate.ps1:524  {2:N2}    unit 'MiB'
+  DURATION  _main\_lane3-ringcap-gate.ps1:524  {3:N2}    unit 's'
+  SAFE      _main\font-crop-diff.ps1:60  {2:N3}    unit ''
+
+A census is a MEASUREMENT, not a verdict: it exits 0 whenever it ran.
+The verdict belongs to _lane25-locale-number-gate.ps1.

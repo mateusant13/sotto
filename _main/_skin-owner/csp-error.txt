@@ -1,0 +1,5 @@
+Error: ERR_FAILED (-2) loading 'file:///H:/sotto/_main/_skin-owner/csp/page-strict.html'
+    at rejectAndCleanup (node:electron/js2c/browser_init:2:89301)
+    at finishListener (node:electron/js2c/browser_init:2:89463)
+    at WebContents.stopLoadingListener (node:electron/js2c/browser_init:2:89850)
+    at WebContents.emit (node:events:521:24)

@@ -1,0 +1,13 @@
+file_bytes 144007168
+file_MB 144.01
+file_MiB 137.34
+rows_video 1000
+rows_segment 120000
+rows_transcript 72000
+rows_ocr 19200
+rows_embedding 211200
+rows_marker 0
+indices 4 ['segment_video', 'embedding_channel', 'transcript_seg', 'ocr_seg']
+embedding_by_channel [('ocr', 19200), ('speech', 72000), ('visual', 120000)]
+sum_len_vec_bytes 108134400
+distinct_dim_dtype [(256, 'float16', 211200)]

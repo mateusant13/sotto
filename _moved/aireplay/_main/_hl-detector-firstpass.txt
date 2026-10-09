@@ -1,0 +1,4 @@
+quiet clips: 10  busy clips: 35
+quiet total s: 323.0  busy total s: 660.2
+SHIPPED CONFIG fires on quiet: 0  on busy: 0
+max rise ceiling busy: 3.0015238616048365

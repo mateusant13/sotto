@@ -1,0 +1,5 @@
+ARM-B0 deliberate-break        = False  [expect False = the break took effect]
+ARM-B1 missing-file-claim      = False  [expect False = the break took effect]
+ARM-B2 inverted-arithmetic     = False  [expect False = the break took effect]
+ARMS FAILED = 3   [expect 3 - this gate is SUPPOSED to fail]
+GATE-VERDICT FAIL (expected: this control is deliberately broken)

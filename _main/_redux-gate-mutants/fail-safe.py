@@ -525,6 +525,13 @@ class StreamAsr:
         # decoding STATE, not a counter: `run_chunk(account=False)` still moves
         # it while moving no accounting number.
         self._last_symbol = None
+        # Does the LAST chunk's text continue the word the previous chunk left
+        # open? Read from the chunk's own TOKENS by `run_chunk`, and read by the
+        # emitters right after the call (`LineFormer.push(..., continues=...)`).
+        # `detok()` cannot carry this: it replaces `▁` with a space and strips
+        # it, so the fact is gone by the time the text exists. Initialised here
+        # so a caller that reads it before the first chunk gets a clean False.
+        self.chunk_continues = False
         self.lid = np.array([self.lang_id], np.int64)
 
         # READ-BACK, not a claim: the encoder graph must itself DECLARE the
@@ -920,6 +927,14 @@ class StreamAsr:
             if drop > 0:
                 del self.labels[:drop]
                 self.labels_pruned += drop
+        # THE WORD-BOUNDARY FACT, taken from the tokens and NOT from the text:
+        # `detok()` below turns `▁` into a space and strips it, so by the time
+        # `chunk_ids` is a string the "this continues the previous word" signal
+        # is already destroyed — the cause of the owner's "shi t". Published on
+        # the instance because `run_chunk`'s `(text, n)` contract is consumed by
+        # probes that must not change; every emitter reads it immediately after
+        # the call and hands it to `LineFormer.push(continues=...)`.
+        self.chunk_continues = chunk_is_continuation(self.vocab, chunk_ids)
         return self.detok(chunk_ids), len(chunk_ids)
 
 
@@ -1261,6 +1276,124 @@ class AutoGain:
             self.peak_out = p
         self.min_applied_db = min(self.min_applied_db, self.gain_db)
         self.max_applied_db = max(self.max_applied_db, self.gain_db)
+        return out
+
+
+# ── the audio level the PANEL draws a wave from (lane SottoWordSplit, task 2) ──
+# OWNER: asked for a wave in the panel. The contract lane measured that the datum
+# that exists does NOT serve one: `counters['peak']` is the MAXIMUM OF THE RUN
+# and only ever rises (three consecutive WORKER_STATS ticks printed the SAME
+# peak=0.554093 while `rms` drifted 0.06100197 -> 0.06181468), and the published
+# cadence is ONE POINT PER 10 s. A wave drawn from either is monotone, i.e.
+# decorative.
+#
+# THE TWO MISSING THINGS, and where each is fixed:
+#   1. a level PER WINDOW — this class: the peak of the CURRENT window, RESET on
+#      every tick. It is the same per-block peak `on_block` already computes; it
+#      is simply no longer allowed to accumulate.
+#   2. a cadence a wave can be drawn from — ~10 Hz, which is the tap's OWN block
+#      rate (`audio.block_ms: 100`). It is NOT `--stats-interval` lowered to
+#      0.1 s: that line is ~600 B, so 10 Hz would be ~6 KB/s on the channel that
+#      also carries the captions. The level travels as its own tiny event
+#      (`emit(type="meter", peak=…, blocks=…)`) on stdout, and the stderr
+#      WORKER_STATS tick is untouched.
+#
+# THE FIELD IS `peak`, NOT `peak_window`, and that is deliberate: the panel's
+# shipped `wireStatsSource` reads `fields.peak`/`fields.blocks`
+# (`app/panel/panel.js:1709` -> `pushLevel(fields.peak, fields.blocks)`), and its
+# own comment says the code is built against "`stats.peak` = the level OF ONE
+# WINDOW, plus `stats.blocks`". In a `meter` event `peak` IS the window level;
+# the RUN maximum keeps its name inside WORKER_STATS. Sending a differently named
+# field would arrive and be ignored.
+#
+# RAW, NOT SMOOTHED: instant attack / ~200 ms release is the PANEL's job (a
+# meter's legibility rule), and doing it here would hide the true level from
+# every other consumer. `blocks` travels with the level so a consumer can see a
+# window that was longer or shorter than one block period (a stalled tap, a
+# dropped block).
+#
+# ── THE SHIPPED DEFAULT IS ON AT 10 Hz — REVERSED 2026-10-08, ON THE OWNER'S ──
+# ── OWN REPORT: "a animação de áudio sendo capturado não tá funcionando" ─────
+# This was briefly `0.0`, to stop the shell logging an unknown `type` once per
+# sample. **That was the wrong cure: it silenced a LOG by switching off the
+# DATA**, and the panel's wave is the thing that starves. A feature must not be
+# disabled to keep a log quiet — the limit belongs on the LOG side, where the
+# flood is actually produced (the consumer that logs an unknown key per sample).
+#
+# MEASURED, so the rate is a number and not a taste: the tap's own block period
+# is `audio.block_ms: 100` = 10 Hz, and `AudioMeter.blocks_per_window` is
+# `round(interval / block_s)` = 1, so the meter publishes **exactly one point per
+# block: 81 blocks -> 81 events -> 10.0 points/s** on the live loop
+# (`_main/receipt-audio-meter.md` §3). 10 Hz IS the tap's native rate; a faster
+# window would have to invent points between blocks, a slower one would throw
+# away blocks the tap already measured.
+#
+# THE FLOOD IS STILL REAL AND IS STILL THE SHELL'S TO FIX, named so it cannot be
+# forgotten: `_consume`'s `else` branch (`app/webview/sotto_webview.py:6274-6275`
+# at revision 347517 B, mtime 11:44:04) still does `self.malformed += 1` and
+# `self.log(f'BRIDGE_UNKNOWN type={kind!r}')` per event with no rate limit, while
+# the SAME file has already rate-limited the sibling push
+# (`_stats_log_maybe`, `:4847-4860`, one line per `STATS_LOG_INTERVAL_S = 30.0`
+# with a count). The pattern to copy is in that file, not in this one.
+# `--meter-hz 0` / `SOTTO_METER_HZ=0` remains the escape hatch, and with it off
+# not one byte is added to stdout.
+METER_HZ = 10.0
+METER_HZ_DEFAULT = 10.0
+
+
+class AudioMeter:
+    """Per-WINDOW audio level at ~`hz`, PURE: no clock, no I/O, no audio device.
+
+    The caller owns the clock (`now`) and the emitting, so this class can be
+    driven at any rate by an oracle — which is the only way it can be tested
+    without opening the device the owner's worker is holding.
+    """
+
+    def __init__(self, hz=METER_HZ, now=0.0, block_s=0.0):
+        self.interval = (1.0 / float(hz)) if hz and float(hz) > 0 else 0.0
+        self.enabled = self.interval > 0.0
+        self.next = now + self.interval
+        # ── HOW MANY BLOCKS ONE WINDOW HOLDS, when the tap's period is known ──
+        # A pure time window BEATS against a block rate that equals it, and the
+        # beat is not academic: MEASURED on the live loop fed from a file
+        # (`SOTTO_FILE_TAP`, 100 ms blocks, 10 Hz window) — **80 blocks produced
+        # 48 events over 8 s of audio, i.e. 6.0 points/s, not 10**. Jitter in the
+        # tap's pacing pushes a block just before the boundary, the window then
+        # swallows two blocks, and the wave loses 40 % of its points.
+        # The window therefore closes on the FIRST of "enough blocks" and
+        # "enough time": the block count pins the cadence to the tap, and the
+        # time bound is still what closes a window when blocks are sparse.
+        self.blocks_per_window = 0
+        if block_s and float(block_s) > 0:
+            self.blocks_per_window = max(1, int(round(self.interval / float(block_s))))
+        self.reset()
+
+    def reset(self):
+        self.peak = 0.0
+        self.blocks = 0
+
+    def tick(self, block_peak, now):
+        """Feed ONE block's peak; return the payload when the window CLOSED.
+
+        Returns `{"peak": <window peak>, "blocks": <blocks in it>}` or None. The
+        window is closed by TIME, not by a block count: a tap that stalls gives a
+        LONGER window, and `blocks` is how a consumer sees that instead of
+        reading a smooth wave over a gap.
+        """
+        if not self.enabled:
+            return None
+        self.blocks += 1
+        if block_peak > self.peak:
+            self.peak = block_peak
+        # ENOUGH TIME **or** ENOUGH BLOCKS — see `blocks_per_window`.
+        if now < self.next and not (self.blocks_per_window
+                                    and self.blocks >= self.blocks_per_window):
+            return None
+        out = {"peak": round(self.peak, 4), "blocks": self.blocks}
+        self.reset()
+        # From `now`, not `+= interval`: a late tick must NOT emit a burst of
+        # catch-up windows carrying the same audio twice.
+        self.next = now + self.interval
         return out
 
 
@@ -1700,6 +1833,64 @@ SENTENCE_MAX_CHARS = 90
 # Sentence-ending marks. A line ending in one of these is closed where it is.
 LINE_TERMINAL = ".!?…"
 
+# The word-start marker of this model's SentencePiece vocabulary. `detok()`
+# turns it into a space and `.strip()`s it away, which is fine for the ONE
+# string a run ships at exit (`done.text`) and lossy for a STREAM, where the
+# marker is the only thing that says whether the next chunk CONTINUES the word
+# the previous one left open. These two helpers are that fact, read from the
+# TOKENS (`chunk_is_continuation`) and spent when fragments are joined
+# (`join_fragments`).
+WORD_MARK = "\u2581"
+
+
+def chunk_is_continuation(vocab, ids) -> bool:
+    """Does this chunk's text CONTINUE the word the previous chunk left open?
+
+    True when the chunk's first REAL token carries no `▁` word-start marker —
+    i.e. the model says "this is the rest of the word I was spelling", which is
+    exactly the fact `detok()`'s `.strip()` destroys. A chunk with nothing but
+    special tokens (`<...>`, dropped by `detok`) makes no claim: False.
+
+    MEASURED on `_main/pt-br-sample.wav` (`_main/word-split-trace.json`): the
+    chunk at 6.16 s decodes to the single token `ima`, no marker, right after
+    the chunk at 5.60 s decoded `▁próx` — one word, two chunks. The old join put
+    a space between them and the caption read "próx ima".
+    """
+    for i in ids:
+        t = vocab[i]
+        if t.startswith("<") and t.endswith(">"):
+            continue
+        return not t.startswith(WORD_MARK)
+    return False
+
+
+def join_fragments(frags) -> str:
+    """Join `(text, continues)` pairs: a CHUNK boundary is NOT a word boundary.
+
+    `continues` is `chunk_is_continuation`'s verdict for that fragment. A
+    fragment that continues the open word is glued to it with NO separator;
+    every other fragment starts a new word and takes ONE space. This is the
+    whole cure for the owner's "shi t" — the old `" ".join(...)` inserted a
+    space at every chunk seam, including the seams the model had explicitly
+    marked as mid-word.
+
+    It is deliberately the ONLY place that decides a separator: `line()` and the
+    `max_chars` lookahead both go through it, so the lookahead measures the line
+    that will actually exist and one revert of this function restores the old
+    text exactly (the oracle's negative arm).
+    """
+    out = ""
+    for text, cont in frags:
+        if not text:
+            continue
+        if not out:
+            out = text
+        elif cont:
+            out += text
+        else:
+            out += " " + text
+    return out.strip()
+
 
 class LineFormer:
     """Accumulate decoded chunk text into a LINE, and say when to emit it.
@@ -1724,6 +1915,9 @@ class LineFormer:
         self.reset()
 
     def reset(self):
+        # `_words` holds `(text, continues)` PAIRS, not bare strings: `continues`
+        # is the per-chunk word-boundary verdict the join needs. `line()` is the
+        # only reader and `join_fragments()` the only joiner.
         self._words = []
         self._start = None
         self._end = None
@@ -1748,7 +1942,7 @@ class LineFormer:
         return self._start
 
     def line(self):
-        return " ".join(self._words).strip()
+        return join_fragments(self._words)
 
     def _worthy(self, text):
         return len(text.strip()) >= self.min_chars
@@ -1809,8 +2003,17 @@ class LineFormer:
         self._closed = []
         return out
 
-    def push(self, text, start=None, end=None):
-        """Feed ONE decoded chunk; return the caption events to emit (0..2)."""
+    def push(self, text, start=None, end=None, continues=False):
+        """Feed ONE decoded chunk; return the caption events to emit (0..2).
+
+        `continues` is `StreamAsr.chunk_continues` — True when the model's own
+        tokens say this chunk's text is the REST OF THE WORD the previous chunk
+        left open. It is a keyword defaulting to False, so every existing caller
+        that pushes an already-whole fragment keeps the old text exactly; the
+        worker's three emitters pass the real verdict. It only ever means
+        something INSIDE an open line: a fragment that arrives after a close
+        starts a word, because the word it would have continued is gone.
+        """
         frag = (text or "").strip()
         if not frag:
             return []
@@ -1825,13 +2028,17 @@ class LineFormer:
         ):
             out += self._close()
         # (2) the cap is a LOOKAHEAD, so the fragment that would overflow opens
-        # the next line instead of being appended to a line already full.
-        if self._words and (len(self.line()) + 1 + len(frag)) > self.max_chars:
+        # the next line instead of being appended to a line already full. The
+        # lookahead measures the JOINED line (`join_fragments`), so a fragment
+        # that glues to the open word is charged its own length and no space.
+        cont = bool(continues) and bool(self._words)
+        if self._words and len(join_fragments(self._words + [(frag, cont)])) > self.max_chars:
             out += self._close()
+            cont = False
         # (3) append, remembering where the LINE began.
         if not self._words:
             self._start = start
-        self._words.append(frag)
+        self._words.append((frag, cont))
         if end is not None:
             self._end = end
         # (4) terminal punctuation closes AFTER this chunk — the model has
@@ -2503,6 +2710,7 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
             text,
             round(i * asr.chunk / TARGET_SR, 2),
             round((i + 1) * asr.chunk / TARGET_SR, 2),
+            continues=asr.chunk_continues,
         )):
             emit(model=asr.name, **event)
         # The close travels OUT OF BAND (M2) and must be published here too: the
@@ -2772,6 +2980,19 @@ def main():
         type=float,
         default=10.0,
         help="seconds between WORKER_STATS stage counters on stderr (0 = off)",
+    )
+    # ── the panel's WAVE (lane SottoWordSplit, task 2) — DEFAULT ON at 10 Hz ──
+    # `SOTTO_METER_HZ` overrides it, like every other capture knob that has to
+    # travel by environment because the shell's argv puts extra flags before the
+    # script path. The shipped default is `METER_HZ_DEFAULT` = 10, and the reason
+    # is spelled out beside `METER_HZ`: the panel's wave is fed by this event, and
+    # switching the DATA off to quiet a LOG was the wrong cure (the limit belongs
+    # on the log side — see the note beside `METER_HZ` for the exact site).
+    ap.add_argument(
+        "--meter-hz",
+        type=float,
+        default=METER_HZ_DEFAULT,
+        help="audio-level events per second on stdout (default 10; 0 = off)",
     )
     ap.add_argument(
         "--tap-window",
@@ -3320,6 +3541,37 @@ def main():
             )
         return line
 
+    # ── the panel's WAVE: the level of the window, published at ~10 Hz ────────
+    # DEFAULT ON (`METER_HZ_DEFAULT` = 10): the panel's wave is fed by this
+    # event, and the owner reported the animation dead. The flood it used to
+    # cause is a LOG-side problem (the shell logs an unknown `type` once per
+    # sample) and is fixed at the log side — switching the datum off was the
+    # wrong cure. `--meter-hz 0` / `SOTTO_METER_HZ=0` still turns it fully off.
+    # Built HERE, before the tap exists, because `on_block` is the tap's callback.
+    meter = None
+    meter_hz = args.meter_hz
+    _meter_env = os.environ.get("SOTTO_METER_HZ")
+    if _meter_env not in (None, ""):
+        try:
+            meter_hz = float(_meter_env)
+        except (TypeError, ValueError):
+            err(f"SOTTO_METER_HZ={_meter_env!r} is not a number; using {args.meter_hz}")
+            meter_hz = args.meter_hz
+    if meter_hz > 0:
+        meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
+    # ANNOUNCED ON STDERR, not as a stdout `status`: stdout is the channel that
+    # also carries the captions, and a new lifecycle token there would be painted
+    # by the panel as a state this build does not name. The meter's own events are
+    # the announcement on stdout; this line is for the log.
+    err(
+        "meter        : "
+        + (f"{meter_hz:.1f} Hz per-window peak on stdout (interval {meter.interval:.3f}s, "
+           f"blocks/window={meter.blocks_per_window or 'time-only'}, "
+           f"source={'env' if _meter_env not in (None, '') else 'cli'})"
+           if meter is not None else
+           "off (stdout carries no meter event; --meter-hz 0 or SOTTO_METER_HZ=0)")
+    )
+
     def on_block(block):
         counters["blocks"] += 1
         counters["block_samples"] += int(block.size)
@@ -3329,6 +3581,14 @@ def main():
             counters["peak"] = p
         if p > device_peak["value"]:
             device_peak["value"] = p
+        # THE WAVE. `p` is the peak of THIS block and is already computed above;
+        # the meter only refuses to let it accumulate past its own window. The
+        # payload is `peak`/`blocks` — the two fields the panel's shipped
+        # `wireStatsSource` reads — and nothing else.
+        if meter is not None:
+            level = meter.tick(p, time.time())
+            if level is not None:
+                emit(type="meter", **level)
         if p > 1e-4:
             counters["nonzero_blocks"] += 1
         counters["sumsq"] += float((block.astype("float64") ** 2).sum())
@@ -3454,6 +3714,7 @@ def main():
                         text,
                         round((k - 1) * asr.chunk / TARGET_SR, 2),
                         round(k * asr.chunk / TARGET_SR, 2),
+                        continues=asr.chunk_continues,
                     )):
                         parts.append(event["text"])
                 for event in line_events(second.flush()):
@@ -3677,7 +3938,9 @@ def main():
                 # everything is droppable — a stream that runs for hours must not
                 # hold an hour of PCM.
                 seg_pcm[idx] = (seg_in, speech)
-                for event in line_events(former.push(text, _start, _end)):
+                for event in line_events(former.push(
+                    text, _start, _end, continues=asr.chunk_continues
+                )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
                 for event in drain():

@@ -1,0 +1,25 @@
+VARIANT tag=nogate path=hud-shell-nogate.py sha256_live=fcead9c866396d82 sha256_variant=0b39cc29839813f0 edits=1 assets_copied=4
+VARIANT tag=reassert path=hud-shell-reassert.py sha256_live=fcead9c866396d82 sha256_variant=6294c2a6438a3c80 edits=1 assets_copied=4
+=== ARM live shell=hud-shell.py n=2 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=live i=0/2 rc=0 samples=120 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=live i=1/2 rc=0 samples=134 opaque=0 longest_ms=0 pids=9
+ARM-LAUNCHABLE tag=live reaching_HUD_READY=2/2 rcs=[0] launchable=True
+ARM-SUMMARY tag=live launches=2 launches_with_opaque_window=0/2 samples=254 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=2 reassert_total=2 nets2_lines=2 hud_show_mapped_lines=0 exstyle_set_equality_lines=4 rcs=[0]
+=== ARM nogate shell=hud-shell-nogate.py n=2 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=nogate i=0/2 rc=0 samples=126 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=nogate i=1/2 rc=0 samples=113 opaque=0 longest_ms=0 pids=9
+ARM-LAUNCHABLE tag=nogate reaching_HUD_READY=2/2 rcs=[0] launchable=True
+ARM-SUMMARY tag=nogate launches=2 launches_with_opaque_window=0/2 samples=239 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=0 reassert_total=2 nets2_lines=2 hud_show_mapped_lines=0 exstyle_set_equality_lines=4 rcs=[0]
+=== ARM reassert shell=hud-shell-reassert.py n=2 cadence_ms=25 secs=6.0 x=-10000 extra=[] ===
+LAUNCH tag=reassert i=0/2 rc=0 samples=130 opaque=0 longest_ms=0 pids=9
+LAUNCH tag=reassert i=1/2 rc=0 samples=138 opaque=0 longest_ms=0 pids=9
+ARM-LAUNCHABLE tag=reassert reaching_HUD_READY=2/2 rcs=[0] launchable=True
+ARM-SUMMARY tag=reassert launches=2 launches_with_opaque_window=0/2 samples=268 opaque_catch_samples=0 longest_opaque_ms=0 show_refused_total=2 reassert_total=0 nets2_lines=2 hud_show_mapped_lines=0 exstyle_set_equality_lines=4 rcs=[0]
+=== ARM show shell=hud-shell.py n=2 cadence_ms=25 secs=6.0 x=-10000 extra=['--show-hud'] ===
+LAUNCH tag=show i=0/2 rc=0 samples=139 opaque=107 longest_ms=5997 pids=9
+LAUNCH tag=show i=1/2 rc=0 samples=147 opaque=114 longest_ms=6406 pids=9
+ARM-LAUNCHABLE tag=show reaching_HUD_READY=2/2 rcs=[0] launchable=True
+ARM-SUMMARY tag=show launches=2 launches_with_opaque_window=2/2 samples=286 opaque_catch_samples=221 longest_opaque_ms=6406 show_refused_total=0 reassert_total=0 nets2_lines=2 hud_show_mapped_lines=2 exstyle_set_equality_lines=4 rcs=[0]
+
+POPULATION launches_per_arm=2 window_s=6.0 cadence_ms=25 arms=4
+WINDOW every arm ran with x=-10000 (off-screen), so no arm can put a window on the desk; the axis measured is WS_VISIBLE and not-alpha-occluded, neither of which reads a rect

@@ -1,0 +1,44 @@
+TARGET SESSION mvs_a00662bff55242cb9b56c0f1165bdad7
+NOW 2026-10-07 13:10:46
+
+=== A: local_runtime_sessions.status ===
+   {'session_id': 'mvs_a00662bff55242cb9b56c0f1165bdad7', 'status': 'started', 'workspace_dir': 'C:\\Users\\Administrador', 'updated_at_ms': 1791389267244}
+
+=== B: local_runtime_session_locks (ALL rows for this session) ===
+  columns: ['session_id', 'owner_id', 'owner_kind', 'acquired_at_ms', 'expires_at_ms']
+  POP locks for this session = 1
+    owner_kind='turn' owner_id='turn-lease:38332:1eeedb8f-925d-46fd-b43d-051ac51a462b.b20a8f1e-761b-4a6c-b4b7-583f87b4d4d1' acquired=2026-10-07 13:07:11 expires=2026-10-07 13:40:42
+
+=== C/D: turn_ingress for this session, most recent 12 ===
+  columns: ['turn_id', 'session_id', 'source', 'client_request_id', 'claim_id', 'claim_source', 'queue_item_ids_json', 'input_json', 'status', 'accepted_at_ms', 'accepted_sequence', 'completed_at_ms', 'queue_acknowledged_at_ms', 'input_digest', 'input_metadata_json']
+    2026-10-07 13:07:11 status=accepted  claim=None completed=NULL age=3.6min queue_items=None
+    2026-10-07 13:04:10 status=completed claim=None completed=2026-10-07 13:06:31 age=6.6min queue_items=None
+    2026-10-07 12:58:18 status=completed claim=None completed=2026-10-07 13:02:20 age=12.5min queue_items=None
+    2026-10-07 12:53:28 status=completed claim=None completed=2026-10-07 12:56:19 age=17.3min queue_items=None
+    2026-10-07 12:21:19 status=completed claim=None completed=2026-10-07 12:23:27 age=49.4min queue_items=None
+    2026-10-07 12:20:04 status=aborted   claim=api completed=2026-10-07 12:20:09 age=50.7min queue_items=["queue_ec7ae0a0-d5ad-44a4-9d53-7a824dc2d162"]
+    2026-10-07 11:50:00 status=completed claim=None completed=2026-10-07 11:55:27 age=80.8min queue_items=None
+    2026-10-07 11:46:02 status=completed claim=None completed=2026-10-07 11:49:20 age=84.7min queue_items=None
+    2026-10-07 11:17:05 status=completed claim=None completed=2026-10-07 11:44:48 age=113.7min queue_items=None
+
+=== all unfinished turns across the WHOLE store ===
+  POP rows with completed_at_ms IS NULL (whole table) = 15
+    sess=mvs_7890f0f734b0478387e46540cbeba6f5 status=accepted accepted=2026-10-07 13:09:44 age=1.0min
+    sess=mvs_3653c0aa68194c8fb69a250e28674f18 status=accepted accepted=2026-10-07 13:09:42 age=1.1min
+    sess=mvs_a00662bff55242cb9b56c0f1165bdad7 status=accepted accepted=2026-10-07 13:07:11 age=3.6min
+    sess=mvs_9d79f4d4da2b4bf8a7f3a61267e8be0f status=accepted accepted=2026-10-07 13:06:29 age=4.3min
+    sess=mvs_b7a9f3a7db404912b32d28fc11b83645 status=accepted accepted=2026-10-07 13:03:47 age=7.0min
+    sess=mvs_48975f0c39d24d1a890c25faf43b397b status=accepted accepted=2026-10-07 13:02:46 age=8.0min
+    sess=mvs_469f507aa8474ad1873c588fdebefe60 status=accepted accepted=2026-10-07 13:02:37 age=8.1min
+    sess=mvs_97c6a61dfa3642ab8a80f3f7f17346d4 status=accepted accepted=2026-10-07 13:02:36 age=8.2min
+    sess=mvs_3ba7e94ca8864584b60c4840a1284ff5 status=accepted accepted=2026-10-07 12:58:27 age=12.3min
+    sess=mvs_39df0aab0ac847ffb973efd8c1f7c652 status=accepted accepted=2026-10-07 12:57:15 age=13.5min
+
+=== VERDICT: which signal is TRUE right now ===
+  A status == 'idle'                  -> False
+  B a turn-lease lock is held         -> True
+  C an accepted-but-uncompleted turn  -> True
+  D any unfinished turn for session   -> True
+  Measured outcomes: exec was REFUSED at 13:05:05 and 13:08:59 with
+  'Session already has an active Turn' while the store said 'idle'.
+  So the honest reading is: A is NOT a predictor of exec acceptance.

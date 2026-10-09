@@ -1,0 +1,40 @@
+{
+  "secs": 240.0,
+  "cadence_ms": 50.0,
+  "samples": 4796,
+  "wall_s": 240.012,
+  "watch_pids": [
+    27056
+  ],
+  "watch_visible_samples": {
+    "27056": 0
+  },
+  "watch_examples": {},
+  "control_pids": [
+    21492
+  ],
+  "control_visible_samples": {
+    "21492": 4796
+  },
+  "control_examples": {
+    "21492": [
+      {
+        "hwnd": "0x019D1EEA",
+        "title": "Minimax Code",
+        "class": "CASCADIA_HOSTING_WINDOW_CLASS"
+      },
+      {
+        "hwnd": "0x00020660",
+        "title": "Administrador: Windows PowerShell",
+        "class": "CASCADIA_HOSTING_WINDOW_CLASS"
+      }
+    ]
+  },
+  "foreground_visible_samples": 4796,
+  "avg_visible_windows_per_sample": 23.01,
+  "self_pid": 13736,
+  "verdict": {
+    "watch_is_clean": true,
+    "control_is_alive": true
+  }
+}

@@ -1,0 +1,4 @@
+ARM-D0 missing-file-claim      = False  [expect False = the check FAILED]
+ARM-D1 arithmetic-break        = False  [expect False = the check FAILED]
+ARMS FAILED = 2   [expect 2 - every arm failed]
+GATE-VERDICT FAIL

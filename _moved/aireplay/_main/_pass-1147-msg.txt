@@ -1,0 +1,15 @@
+capture: offline --cut-from-h264 proves the muxer without WGC or NVENC
+
+WGC began refusing every capture item on this box (E_ACCESSDENIED, receipt 07 SS7),
+and a muxer that can only be exercised through the one component that broke is not
+provable. cut_from_h264() fills the ring from a real Annex-B H.264 elementary
+stream and runs the SAME perform_cut() the live path runs.
+
+MEASURED 2026-10-07 (heartbeat pass 11:47):
+  g++ 15.2.0 mingw-w64 build -> rc=0, 12.8 s, zero warnings
+  ARM-0 green: 1004 AUs -> 1004 frames, 97820321 B, 89.7 ms, rc=0
+             ffprobe rc=0: h264 1920x1080 nb_frames=1004, video only (no audio)
+  ARM-A red  : junk input -> rc=2 "no NAL units found"
+
+Not fixed here: the receipt-14 ring cap (VRAM vs system RAM) is still the owner
+decision, and the unverified _main/wgc-probe.cpp change stays uncommitted.

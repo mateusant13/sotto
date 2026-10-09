@@ -1,0 +1,37 @@
+LANE16 WAKE GATE  2026-10-07 13:48:43
+window_minutes=15
+cron_thresholds_min=fresh:15,dead:60
+PIN heartbeat.ps1  sha256=810F1A1C1BB52CF5CBCE447FB67A68C56CA5D44B32D870F0547A83AC7B350FD6  mtime=2026-10-07 13:43:19
+PIN wake-fix.py  sha256=56DA814D7008C32D2AA2CDD1DEB81821096E0224F580F0C71C1145BC41A58F4C  mtime=2026-10-07 13:27:02
+PIN watch-wake.py  sha256=A4FA5CE9AD8D90015C51B9D260E7A7305084865655BFF8B930FF2D270EFC6D83  mtime=2026-10-07 12:07:47
+PIN _lane16-wake-gate.ps1  sha256=066045DAD4AA93D2C4A793409CBAB1AD400C7A5F4AF73BC047B1F7115FDF26AF  mtime=2026-10-07 13:46:42
+CENSUS linked_turn_ingress_any_claim_source=631 with_user=630 counter_examples=1
+CENSUS NOT_ASSERTED_NAMED turn=turn_43d6e94b-aa31-4120-9424-d7782851eaa0 claim_source=communication status=completed accepted=2026-10-03 10:22:22
+PASS  A1-queue-linked-delivery-proven  [pop=80]  queue-driven deliveries: POPULATED OVER THE WHOLE TABLE -- turn_ingress rows with queue_item_ids_json NOT NULL AND claim_source='api' = 80; of those, carrying >=1 role='user' row = 80; COUNTER-EXAMPLES = 0 (want 0). WINDOW = whole table, no LIMIT. For contrast, the PRE-FIX predicate (limit 20 + -ge 1) would have seen 20 user-bearing rows in its 20-row sample -> PASS on 0 of these counter-examples. Latest: turn=turn_4bb0112f-87a7-44eb-a135-0656d70b803a accepted=2026-10-07 12:55:18 session=mvs_b7a9f3a7db -> user_rows=1
+PASS  A1b-queue-linked-delivery-proven-wider  [pop=235]  POPULATION 2x wider: turn_ingress rows with queue_item_ids_json NOT NULL AND claim_source IN ('api','background-task') AND status='completed' = 235; carrying >=1 role='user' row = 235; COUNTER-EXAMPLES = 0 (want 0). WINDOW = whole table.
+PASS  A2-control-textsearch-would-lie  [pop=]  CONTROL: 13 role='user' row(s) carry a wake payload whose turn has NO queue linkage (queue_item_ids_json IS NULL) - hand-pushed, not cron-delivered. A text search credits these to the wake; that is the false green.
+PASS/VACUOUS-POP  A3-no-duplicate-delivery  [pop=0]  live queued rows: attempts=0, proven deliveries=0, rows delivered more than once=0. A row CAN legitimately burn many attempts before the session goes idle - that is the retry, not a duplicate.
+PASS  A4-no-expiry-strand  [pop=]  queued rows carrying expires_at_ms = 0 (want 0); oldest queued row =  min old; rows older than 60 min for a non-target session = 0 -> nothing ages them out
+PASS  B1-cron-scheduler-stale  [pop=1442]  POPULATION = cron_runs whole table (1442 rows), WINDOW = whole table. Newest row 2026-10-06 10:11:00, age 1656,6 min (want > 60: the outage this gate measures).
+PASS  B2-cron-user-delivery-stopped  [pop=]  role=user AND source=cron rows=1383, newest 2026-10-06 10:11:00, age 1656,6 min (want >60)
+PASS  B3-probe-cron-never-ran  [pop=]  armed probe crons overdue with run_count=0 and 0 run rows: 1/1
+PASS  B4-control-cron-regime-is-two-sided  [pop=1442]  POPULATION = cron_runs whole table (1442 rows), WINDOW = whole table. CONTROL, two-sided: newest run age 1656,6 min sits in EXACTLY ONE of ALIVE (<=15) / DEAD (>60); measured regime = DEAD. RED in the flapping band (15,60] -- a scheduler that fires but not on the cron interval, which the old -gt 0 on a 1442-row table called PASS.
+FAIL  B5-minted-userMessageId-shape  [pop=]  wake-fix.py mints msg-user-v1-wake+hex32 (source=False); runtime writes msg_id len 55; live queue rows have len  (0 of them off-shape); rows carrying the minted prefix = 2
+FAIL  C1-task-fires-in-window  [pop=]  POP fires in last 15 min = 2; max inter-fire gap = 6,02 min (want >=3 fires, gap<=5)
+PASS  C2-latest-fire-is-healthy  [pop=]  latest pass in the 15-min window: [2026-10-07 13:46:0 :: ] PRUNE rc=0 all-sessions sweep_stale=999 :: [13:46:02] PRUNE --all-sessions target=mvs_a00662bff55242cb9b56c0f1165bdad7 stale_mins=999 orphan_min_mins=60 (POPULATION = whole queue table = 0 queued rows) pruned=0 kept=0 || failures still inside the window = 0 (scars age out; the latest one is the contract)
+PASS  C3-every-fire-accounted  [pop=]  lines carrying a pass outcome in the whole log = 58; the task fires and every pass reaches a decision - fire != wake, but fire != silence is the contract.
+PASS  C4-control-window-is-load-bearing  [pop=]  CONTROL: same parser, truncated copy -> 0 fires in the 15-min window (want <3); whole log over a 180-min window -> 33 fires (want >=3). C1 measures LIVENESS, not file existence.
+PASS  D0-dedupe-predicate-still-in-source  [pop=]  wake-fix.py still refuses on count(status='queued') = True; live count for target session = 0
+PASS  D1-stale-row-refuses-forever  [pop=]  CURE REVERTED IN A COPY (the shipped predicate, no expiry): 5 consecutive injections -> rc 2,2,2,2,2. A row already queued refuses every future injection.
+PASS  D2-control-expiry-clears-the-wedge  [pop=]  CONTROL (cure: stale row cleared): 5 consecutive injections -> rc 0,0,0,0,0, compared with -eq '0,0,0,0,0' (EQUALITY, not -match '0', which also answers True for 2,2,2,2,0 and 20,2,2,2,2). Only the cure changes the outcome, which is what makes D1 a real control.
+PASS  D3-stale-row-never-blocks-a-wake  [pop=]  live stale rows for the target session = 0; defences present = wake-fix.py prune mode + heartbeat.ps1 calls prune. RED only when a stale row exists AND nothing prunes or expires it - that is the permanent wedge.
+PASS  E1-no-visible-window-from-this-gate  [pop=]  samples=468 at 50 ms over the probe's life, WS_VISIBLE window seen 0 time(s) (want 0); probe rc=0
+PASS  F1-runtime-process-identified  [pop=]  mcode runtime processes = 1; pid 8084 started 07/10/2026 11:59:30; newest cron run was 2026-10-06 10:11:00 - the cron table predates this process by design of the outage.
+ARMS=20 FAILED=2 VACUOUS_POP=1
+NEGARMS=3 NEGFAILED=0
+PASS  NEG1-fixed-gate-goes-red-on-doctored-measurements  FIXED gate fed the doctored measurements (api-linked POP ~80 with 1 counter-example; cure vector '2,2,2,2,0' = 4 of 5 injections still refusing; newest cron run aged 30 min, inside the flapping band) -> RED on 3/3 arms: A1-queue-linked-delivery-proven, D2-control-expiry-clears-the-wedge, B4-control-cron-regime-is-two-sided. Report: H:\sotto\_moved\aireplay\_main\_lane16-gate-revert\doctored-fixed.out.txt
+PASS  NEG2-reverted-gate-cannot-see-them  COPY of this gate with ONLY the three fixes reverted fed the SAME doctored measurements -> GREEN on 3/3 arms: A1-queue-linked-delivery-proven, D2-control-expiry-clears-the-wedge, B4-control-cron-regime-is-two-sided. THAT is the defect: those three controls could not fail. Reverted copy: H:\sotto\_moved\aireplay\_main\_lane16-gate-revert\doctored-reverted.out.txt; rc=1.
+PASS  NEG3-live-store-green  LIVE run, no doctoring: 3/3 of the three arms GREEN on the real store (api-linked POP 80, cure rc '0,0,0,0,0', newest cron run age 1656,6 min). The fixed arms reject the doctored data and accept the real one -- they discriminate; the reverted ones accepted both.
+PIN reverted-copy  sha256=FD7A319B16C39DF64CBCB2E8B80A7B0012F47B86B6D832C6E15E62201BE60B77
+LANE16-GATE FAIL
+LANE16-NEGARM PASS

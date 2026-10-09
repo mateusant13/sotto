@@ -1,0 +1,72 @@
+{
+ "css": "app.css",
+ "negArm": false,
+ "designs": {
+  "cellar": {
+   "id": "cellar",
+   "diffs": [],
+   "vendorPixels": "917bf22133a14311",
+   "frozenPixels": "930ede4e3b056f15",
+   "wordText": "night ",
+   "diskMatch": [
+    {
+     "part": "stage",
+     "file": "cellar.stage.html",
+     "match": true,
+     "skeletonMatch": true,
+     "diskBytes": 9467,
+     "freshBytes": 9467
+    },
+    {
+     "part": "chrome",
+     "file": "cellar.chrome.html",
+     "match": false,
+     "skeletonMatch": false,
+     "diskBytes": 6631,
+     "freshBytes": 6632
+    },
+    {
+     "part": "caption",
+     "file": "cellar.caption.html",
+     "match": false,
+     "skeletonMatch": false,
+     "diskBytes": 3961,
+     "freshBytes": 3960
+    },
+    {
+     "part": "panel",
+     "file": "cellar.panel.html",
+     "match": false,
+     "skeletonMatch": true,
+     "diskBytes": 20801,
+     "freshBytes": 20801
+    }
+   ],
+   "wallURL": "https://images.pexels.com/photos/35258949/pexels-photo-35258949.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=900&w=1600",
+   "wallDecoded": 1600,
+   "mount": {
+    "mounted": true,
+    "skinChildren": 4,
+    "cssChars": 25787,
+    "hostRect": [
+     380,
+     900
+    ]
+   },
+   "fonts": {
+    "check16Manrope": false,
+    "faces": 66
+   },
+   "frozenWallLoad": "folded-into-mount: see wallDecoded below",
+   "frozenWallURL": "file:///H:/sotto/app/panel/skins/cinematic-2/img/35258949.jpg",
+   "frozenWallDecoded": 1600,
+   "pixelsEqual": false,
+   "rolesVendor": 23,
+   "rolesFrozen": 23,
+   "ms": 5165
+  }
+ },
+ "failures": [
+  "cellar"
+ ]
+}

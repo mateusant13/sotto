@@ -1,0 +1,326 @@
+{
+ "arms": {
+  "A_held": {
+   "capturing": true,
+   "deferred_line": "HOT_RELOAD_WORKER_DEFERRED files=[\"G:\\\\Temp\\\\sotto-reload-probe-vashq6lq\\\\sotto_worker_copy.py\"] reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a applies_at=next-closed-line-or-ceiling",
+   "pending_ms": 47,
+   "pid_after": 31692,
+   "pid_before": 31692,
+   "restarts": 0,
+   "stale_before_edit": false
+  },
+  "B_staleness": {
+   "after": {
+    "disk": "ef044e54f9e00e5c",
+    "loaded": "6ed474a1f2b32d2a",
+    "path": "G:\\Temp\\sotto-reload-probe-vashq6lq\\sotto_worker_copy.py",
+    "stale": true
+   },
+   "before": {
+    "disk": "6ed474a1f2b32d2a",
+    "loaded": "6ed474a1f2b32d2a",
+    "path": "G:\\Temp\\sotto-reload-probe-vashq6lq\\sotto_worker_copy.py",
+    "stale": false
+   }
+  },
+  "C_closed_line": {
+   "applied_lines": [
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=closed-line waited_ms=1530"
+   ],
+   "boundary_lines": [
+    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] waited_ms=1515",
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=closed-line waited_ms=1530"
+   ],
+   "captions": [
+    {
+     "meta": {
+      "end": 1.0,
+      "final": true,
+      "start": 0.0
+     },
+     "text": "stand-in closed line"
+    }
+   ],
+   "pid_after": 16276,
+   "pid_before": 22664,
+   "pid_while_held": 22664,
+   "restarts": 1,
+   "restarts_while_held": 0,
+   "still_capturing_after": true
+  },
+  "D_ceiling": {
+   "forced_lines": [
+    "HOT_RELOAD_WORKER_FORCED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=no-boundary-in-600ms waited_ms=655 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a cost=one-model-warm-up"
+   ],
+   "pid_after": 38448,
+   "pid_before": 38380,
+   "reload_lines": [
+    "HOT_RELOAD_WORKER_QUEUED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] debounce_ms=0 min_interval_ms=0 max_defer_ms=600",
+    "HOT_RELOAD_WORKER_DEFERRED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=capturing waited_ms=0 max_defer_ms=600 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a applies_at=next-closed-line-or-ceiling",
+    "HOT_RELOAD_WORKER_FORCED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=no-boundary-in-600ms waited_ms=655 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a cost=one-model-warm-up",
+    "HOT_RELOAD_WORKER_RESTART files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] after_idle_ms=0 waited_ms=655"
+   ],
+   "restarts": 1,
+   "still_capturing": true
+  },
+  "E_floor": {
+   "cooldown_lines": [
+    "HOT_RELOAD_WORKER_COOLDOWN files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] left_ms=59454 min_interval_ms=60000 waited_ms=438 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a applies_when=floor-elapses"
+   ],
+   "pending_held": true,
+   "pid_after": 7120,
+   "pid_before": 7120,
+   "restarts": 0
+  },
+  "F_wave": {
+   "distinct_peaks": [
+    0.07,
+    0.1,
+    0.12,
+    0.18,
+    0.23,
+    0.31,
+    0.42,
+    0.443448,
+    0.55
+   ],
+   "live_distinct": [
+    0.07,
+    0.1,
+    0.12,
+    0.18,
+    0.23,
+    0.31,
+    0.42,
+    0.55
+   ],
+   "meter_log_lines": 1,
+   "meter_pushes": 46,
+   "meters": 46,
+   "stats_now": {
+    "blocks": 12.0,
+    "peak": 0.55
+   },
+   "stderr_peak": "0.443448",
+   "unknown_lines": 0,
+   "warmup": [
+    0.443448
+   ]
+  },
+  "F_wave_nometer": {
+   "meter_pushes": 0,
+   "meters": 0,
+   "stats": {
+    "blocks": 812.0,
+    "peak": 0.443448
+   }
+  }
+ },
+ "checks": [
+  {
+   "detail": {
+    "pid": 31692
+   },
+   "ok": true,
+   "what": "A: the child is really capturing (the guard is not vacuous)"
+  },
+  {
+   "detail": {
+    "pid": 31692,
+    "restarts": 0
+   },
+   "ok": true,
+   "what": "A: the reload is HELD, not applied, while capturing"
+  },
+  {
+   "detail": "HOT_RELOAD_WORKER_DEFERRED files=[\"G:\\\\Temp\\\\sotto-reload-probe-vashq6lq\\\\sotto_worker_copy.py\"] reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a applies_at=next-closed-line-or-ceiling",
+   "ok": true,
+   "what": "A: the hold is VISIBLE with the reason, the wait and the ceiling"
+  },
+  {
+   "ok": true,
+   "what": "A: the wait is BOUNDED (a ceiling is declared)"
+  },
+  {
+   "detail": {
+    "disk": "6ed474a1f2b32d2a",
+    "loaded": "6ed474a1f2b32d2a",
+    "path": "G:\\Temp\\sotto-reload-probe-vashq6lq\\sotto_worker_copy.py",
+    "stale": false
+   },
+   "ok": true,
+   "what": "B: the query says CURRENT while the disk matches the spawn"
+  },
+  {
+   "detail": {
+    "disk": "ef044e54f9e00e5c",
+    "loaded": "6ed474a1f2b32d2a",
+    "path": "G:\\Temp\\sotto-reload-probe-vashq6lq\\sotto_worker_copy.py",
+    "stale": true
+   },
+   "ok": true,
+   "what": "B: the query says STALE after one byte changes on disk"
+  },
+  {
+   "detail": {
+    "disk": "ef044e54f9e00e5c",
+    "loaded": "6ed474a1f2b32d2a",
+    "path": "G:\\Temp\\sotto-reload-probe-vashq6lq\\sotto_worker_copy.py",
+    "stale": true
+   },
+   "ok": true,
+   "what": "B: both hashes are named (disk vs what the process loaded)"
+  },
+  {
+   "detail": {
+    "pid_while_held": 22664,
+    "restarts_while_held": 0
+   },
+   "ok": true,
+   "what": "C: the held request is not applied before the boundary"
+  },
+  {
+   "detail": [
+    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] waited_ms=1515",
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=closed-line waited_ms=1530"
+   ],
+   "ok": true,
+   "what": "C: the REAL child closed a line and the shell saw it as the boundary"
+  },
+  {
+   "detail": {
+    "pid_after": 16276,
+    "pid_before": 22664
+   },
+   "ok": true,
+   "what": "C: the held reload APPLIED on the closed line (a NEW pid)"
+  },
+  {
+   "ok": true,
+   "what": "C: it applied while the worker was still capturing (not on a stop)"
+  },
+  {
+   "detail": [
+    {
+     "meta": {
+      "end": 1.0,
+      "final": true,
+      "start": 0.0
+     },
+     "text": "stand-in closed line"
+    }
+   ],
+   "ok": true,
+   "what": "C: the closed line reached the panel as a caption"
+  },
+  {
+   "detail": {
+    "pid_after": 38448,
+    "pid_before": 38380
+   },
+   "ok": true,
+   "what": "D: with NO boundary the ceiling applies the reload anyway"
+  },
+  {
+   "detail": [
+    "HOT_RELOAD_WORKER_FORCED files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] reason=no-boundary-in-600ms waited_ms=655 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a cost=one-model-warm-up"
+   ],
+   "ok": true,
+   "what": "D: the log says it FORCED, with the reason and the wait"
+  },
+  {
+   "ok": true,
+   "what": "D: nothing is left pending after the ceiling applied"
+  },
+  {
+   "detail": {
+    "pid": 7120,
+    "restarts": 0
+   },
+   "ok": true,
+   "what": "E: the owner's floor bounds the RATE even after the ceiling"
+  },
+  {
+   "detail": [
+    "HOT_RELOAD_WORKER_COOLDOWN files=[\"H:\\\\sotto\\\\_main\\\\_strip-stats-worker.py\"] left_ms=59454 min_interval_ms=60000 waited_ms=438 code_is_stale=false sha256_disk=6ed474a1f2b32d2a sha256_at_spawn=6ed474a1f2b32d2a applies_when=floor-elapses"
+   ],
+   "ok": true,
+   "what": "E: the cooldown names how long is left and that the code is stale"
+  },
+  {
+   "detail": {
+    "meters": 46
+   },
+   "ok": true,
+   "what": "F: the meter events arrive at the worker's own cadence"
+  },
+  {
+   "detail": {
+    "meters": 46,
+    "pushed": 46
+   },
+   "ok": true,
+   "what": "F: every meter event was PUSHED to the page (no throttling of data)"
+  },
+  {
+   "detail": {
+    "live_distinct": [
+     0.07,
+     0.1,
+     0.12,
+     0.18,
+     0.23,
+     0.31,
+     0.42,
+     0.55
+    ],
+    "stats_now": {
+     "blocks": 12.0,
+     "peak": 0.55
+    },
+    "warmup": [
+     0.443448
+    ]
+   },
+   "ok": true,
+   "what": "F: the payload is the WINDOW peak, not the stderr running maximum"
+  },
+  {
+   "detail": {
+    "blocks": 12.0,
+    "peak": 0.55
+   },
+   "ok": true,
+   "what": "F: `stats()` agrees with the pushed payload (one shape, one value)"
+  },
+  {
+   "detail": {
+    "lines": 1
+   },
+   "ok": true,
+   "what": "F: the log grew by ONE line, not one per sample"
+  },
+  {
+   "detail": {
+    "unknown": 0
+   },
+   "ok": true,
+   "what": "F: the unknown-kind path no longer sees a meter sample"
+  },
+  {
+   "detail": {
+    "meter_pushes": 0,
+    "meters": 0,
+    "stats": {
+     "blocks": 812.0,
+     "peak": 0.443448
+    }
+   },
+   "ok": true,
+   "what": "F(no meter): no meter push happens, and the fallback is the stats line"
+  }
+ ],
+ "failed": [],
+ "traceback": null,
+ "verdict": "GREEN"
+}

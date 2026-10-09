@@ -1,0 +1,90 @@
+== ALL TABLES ==
+  agents                                                  10
+  local_runtime_agents                                    0
+  local_runtime_background_task_events                    330142
+  local_runtime_background_tasks                          51772
+  local_runtime_canvas_asset_references                   0
+  local_runtime_canvas_documents                          2
+  local_runtime_canvas_operations                         4
+  local_runtime_communication_messages                    0
+  local_runtime_cron_data_migrations                      0
+  local_runtime_cron_legacy_imports                       0
+  local_runtime_cron_session_history                      0
+  local_runtime_crons                                     0
+  local_runtime_file_api_uploads                          1012
+  local_runtime_ledger_watermarks                         0
+  local_runtime_legacy_migrations                         18
+  local_runtime_liveboard_state                           0
+  local_runtime_message_row_migrations                    1866
+  local_runtime_message_rows                              117168
+  local_runtime_messages                                  0
+  local_runtime_pi_history_file_migrations                1866
+  local_runtime_pi_history_row_migrations                 0
+  local_runtime_pi_history_rows                           0
+  local_runtime_plugin_local_disabled                     0
+  local_runtime_plugin_official_state                     1
+  local_runtime_preferences                               4
+  local_runtime_project_migrations                        0
+  local_runtime_projects                                  17
+  local_runtime_query_view_states                         3664
+  local_runtime_queue_items                               4
+  local_runtime_queue_migration_quarantine                0
+  local_runtime_queue_pauses                              0
+  local_runtime_queue_row_migrations                      1860
+  local_runtime_queues                                    0
+  local_runtime_schema_migrations                         34
+  local_runtime_session_agent_definitions                 1512
+  local_runtime_session_agent_state                       1866
+  local_runtime_session_asset_index_state                 89
+  local_runtime_session_assets                            619
+  local_runtime_session_clio_outbox                       0
+  local_runtime_session_clio_state                        0
+  local_runtime_session_fts_keys                          1884
+  local_runtime_session_locks                             17
+  local_runtime_session_projection_watermarks             0
+  local_runtime_session_schema_migrations                 0
+  local_runtime_sessions                                  1884
+  local_runtime_sessions_fts                              1884
+  local_runtime_sessions_fts_config                       1
+  local_runtime_sessions_fts_content                      1884
+  local_runtime_sessions_fts_data                         239
+  local_runtime_sessions_fts_docsize                      1884
+  local_runtime_sessions_fts_idx                          130
+  local_runtime_task_session_bindings                     1512
+  local_runtime_thread_goals                              0
+  local_runtime_token_usage                               110832
+  local_runtime_turn_diff_journal                         39587
+  local_runtime_turn_diff_retention_queue                 5018
+  local_runtime_turn_diff_rewind_operations               0
+  local_runtime_turn_diffs                                1466
+  local_runtime_turn_ingress                              3686
+  local_runtime_turn_ingress_client_requests              3332
+  local_runtime_turn_ingress_sequences                    3686
+  local_runtime_v2_agent_legacy_history_notice_repair     1
+  local_runtime_v2_cron_definitions                       30
+  local_runtime_v2_cron_runs                              1442
+  local_runtime_v2_memory_baseline_files                  0
+  local_runtime_v2_memory_capture_attempts                0
+  local_runtime_v2_memory_execution_calls                 0
+  local_runtime_v2_memory_execution_tasks                 0
+  local_runtime_v2_memory_scopes                          0
+  local_runtime_v2_memory_session_states                  0
+  local_runtime_v2_scheduler_jobs                         30
+  local_runtime_v2_schema_migrations                      40
+  local_runtime_workspace_indexing_revisions              0
+  local_runtime_workspace_indexing_sessions               0
+  questionnaire_requests                                  15
+  session_resources                                       0
+  session_turn_resources                                  0
+  sqlite_sequence                                         8
+
+== tables whose NAME mentions turn/claim/deliver/event/log ==
+   local_runtime_background_task_events
+   local_runtime_turn_diff_journal
+   local_runtime_turn_diff_retention_queue
+   local_runtime_turn_diff_rewind_operations
+   local_runtime_turn_diffs
+   local_runtime_turn_ingress
+   local_runtime_turn_ingress_client_requests
+   local_runtime_turn_ingress_sequences
+   session_turn_resources

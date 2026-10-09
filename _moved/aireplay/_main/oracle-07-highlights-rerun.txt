@@ -1,0 +1,9 @@
+A0-real   state=scored               emits=3   outside_speech=0 dur=120s
+          real: dr=19.897 segments=11 emits=3 rate=15.00 highlights / 10 min
+A1-tone   state=degenerate-signal    emits=0   outside_speech=- dur=180s
+A2-walk   state=degenerate-signal    emits=0   outside_speech=- dur=180s
+A3-tone   state=scored               emits=9   (NAIVE rule, no gates -- must be > 0)
+A3-walk   state=scored               emits=8   (NAIVE rule, no gates -- must be > 0)
+
+FP budget: alpha=20.0/10min (v1, measured 15.00) ┬À beta=1.0/10min (target, NOT reachable by audio alone)
+VERDICT PASS -- 0 highlights from 180 s of tone and 180 s of a walk; the control arm fires without the conjunct.

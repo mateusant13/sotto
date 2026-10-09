@@ -1,0 +1,22 @@
+2128:expiresAtMs:i.expiresAtMs};break;case"session.snapshot_created":break}re
+2144:expiresAtMs=="number"})}function lcr(t,e){if(!t||typeof t!="object")retu
+2144:expiresAtMs:r.expiresAtMs}]);return await this.markProjectionWatermark(n
+3297:expiresAtMs:l}}downloadToFile(e,r,n){return this.transport.downloadToFil
+3432:expiresAtMs:e.expiresAtMs,createdAtMs:s,updatedAtMs:s};return await r.pu
+3450:expiresAtMs:(this.options.nowMs??Date.now)()+uGr},m=!1;return{dispatchId
+3450:expiresAtMs:n.expiresAtMs}:{},...n.cloudSessionId?{cloudSessionId:n.clou
+3453:expiresAtMs:this.nowMs()+m2r,promise:r};for(let s of e)this.entries.set(
+3485:expiresAtMs:m+u.expiresInSec*1e3,intervalSec:u.intervalSec,skipUserAuth:
+3485:expiresAtMs:o,intervalSec:5,skipUserAuth:s,error:"FEISHU_ONBOARD_START_F
+3490:expiresAtMs:e+i*1e3},s}async assertOkAndParse(e,r){if(!e.ok)throw ao(new
+3558:expiresAtMs:n+g6,lastAccessedAtMs:n,...s.managed?{ownerToken:spt(18).toS
+3558:expiresAtMs=n+g6,d.lastAccessedAtMs=n,d.bridgeScriptTag=s.bridgeScriptTa
+3558:expiresAtMs=s+g6,{ok:!0}):n==="release"?{ok:!0}:ipt()}async readResource
+3558:expiresAtMs=s+g6),rpt(a,n,i.bridgeScriptTag)):a}close(){this.closed=!0,t
+5922:expiresAtMs:i+this.draftTtlMs};return this.makeDraftCapacity(),this.draf
+6804:expiresAtMs===void 0?{method:"status",status:n,generation:s}:{method:"st
+6804:expiresAtMs:rk(t.expiresAtMs,0,Number.MAX_SAFE_INTEGER)}}function QDn(t)
+6804:expiresAtMs:rk(t.expiresAtMs,0,Number.MAX_SAFE_INTEGER),generation:rk(t.
+6804:expiresAtMs:v.expiresAtMs,generation:v.generation,audience:Zq,scopes:eL}
+6804:expiresAtMs===void 0?{}:{expiresAtMs:e.expiresAtMs}}}async function Ejn(
+6805:expiresAtMs===void 0?{}:{expiresAtMs:r.expiresAtMs}});return{getStatus:a

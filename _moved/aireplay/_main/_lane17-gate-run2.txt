@@ -1,0 +1,5 @@
+ParserError: H:\sotto\_moved\aireplay\_main\_lane17-chain-gate.ps1:182
+Line |
+ 182 |      meta-speech = [ordered]@{ _comment='REAL capture video + REAL WAS .
+     |          ~
+     | Missing '=' operator after key in hash literal.
