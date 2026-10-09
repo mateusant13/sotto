@@ -274,3 +274,33 @@ What changed after that run is THIS file only (a section-12 heading restored in 
 the two additions below that carry the `.log` ignore rule and the corrected `git status` count).
 The two source files were not touched again — their sha256 in §2 are the bytes that run above
 executed, re-checked after the fact: `b1462fc7…` and `9d9e48ad…`, both unchanged.
+
+---
+
+## 13. CORRECAO 2026-10-10 - the DISCLOSURE above in section 11 is FALSE, verified against the bytes
+
+The section-11 disclosure ("**DISCLOSURE - the dispatch-named run file does not exist.** ...
+`_moved/aireplay/runs/P4-aireplay-clip-to-asr.md` **DOES NOT EXIST** - there is no `runs/`
+directory at all under `_moved/aireplay/`") is **WRONG ON BOTH COUNTS**, and it is inside a
+LANDED receipt, so it is corrected HERE instead of being edited away.
+
+- POPULATION: 4 files matching `P4*aireplay*.md` under `_moved/aireplay/runs/`. WINDOW:
+  measured 2026-10-10 with `Get-ChildItem -Recurse -Filter 'P4*aireplay*.md'`.
+- `H:/sotto/_moved/aireplay/runs/P4-aireplay-clip-to-asr.md` **EXISTS** - **5 089 B / 143 lines**,
+  mtime **2026-10-08T22:04:07.458Z**, first line `# P4 - CLIP TO ASR: FROM A FILE ON DISK TO A
+  ROW IN THE INDEX`, `Status: SPEC - ready for implementation`.
+- The `runs/` directory **EXISTS** (`H:/sotto/_moved/aireplay/runs/`), so "there is no `runs/`
+  directory at all" is false.
+- That plan's section 6 names `src/pipeline/clip_to_asr.py` and `src/pipeline/test_clip_to_asr.py`
+  with **ARM-A through ARM-E**; its section 7 carries `Word-level timestamps: UNVERIFIED` and
+  `Embedding runtime: UNKNOWN (B4 - no weights on disk)`, and its sections 2.1/2.3 describe the
+  index half this lane did NOT build (`insert_vector()`, speech vectors, word timestamps). Those
+  remain UNDELIVERED - the reviewer graded them as defects D-2/D-3/D-5, and they stay open.
+- The plan file is still **UNTRACKED** (`git ls-files` returns 0 rows for it; `git status` reports
+  `?? _moved/aireplay/runs/P4-aireplay-clip-to-asr.md`). Whether the `runs/P4-*.md` plans should
+  be committed at all is an OWNER question, recorded in TO-BE-ANSWERED-BY-OWNER.md.
+
+**What is NOT retracted:** every measurement in this receipt stands. The false claim is about a
+file's EXISTENCE, not about any number taken on this run. It is the same class of defect the
+plan-of-record chase existed to avoid, and it was caught by the independent reviewer
+(`_main/receipts/receipt-28-review-L2-clip-to-asr.md`, D-1 MAJOR), not by this lane.
