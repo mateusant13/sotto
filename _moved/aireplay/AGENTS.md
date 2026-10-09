@@ -148,7 +148,25 @@ thousands of events, waveforms, thumbnails, scrolling, animation). **150–300 M
   disk in RAM; an int8 artefact ~1.17×.**
 - **Budget per machine: ~1.0–1.2 GB with live captions only · ~3.9 GB if the Redux pass runs · never
   both at once (~5.1 GB), on top of the 0.6–2.9 GB replay ring.** The ring, not the ASR, is what
-  breaks a 16 GB box — consistent with law 7.
+  breaks a **low-end box** — consistent with law 7. **TWO STATEMENTS USED TO BE CONFLATED HERE; SPLIT
+  2026-10-07 — DO NOT MERGE THEM BACK:**
+  - **THE LOW-END USER WE DESIGN FOR: 16 GB of system RAM.** That is a **design floor for the product,
+    NOT a measurement of this house** — no 16 GB box has ever been measured here
+    (`UNKNOWN — not measured`). Law 7 exists so the product stays light for many such users; that
+    concern STANDS and this line must not be deleted as "wrong".
+  - **THE OWNER'S OWN BOX: 47.74 GiB = 51 262 832 640 B** (`Get-CimInstance Win32_ComputerSystem |
+    Select-Object -ExpandProperty TotalPhysicalMemory`, measured 2026-10-07). **Sizing the ring from
+    this host's RAM is NOT a law-7 measurement** — law 7 prices the weakest box in the fleet, never
+    this one. Each claim keeps its own basis; neither licenses the other's number.
+  - **WHY THE SPLIT MATTERS — a cap priced from the wrong pool binds where nothing hurts.** Verified
+    on `main` @ `bf82f07` 2026-10-07: `ring_cap_bytes()` at `src/capture/d3d11_ctx.cpp:70` still
+    returns `clamp(info.dedicated_vram / 16, 256 MiB, 2048 MiB)` — **VRAM, while the arena it bounds
+    is a `std::vector<uint8_t>` in SYSTEM RAM**. The ring-sizing lane reported 998.69 MiB (≈2 % of
+    the pool it should read), clipping 4K60 to 46.5 s instead of 120 s; **VRAM itself was NOT
+    re-measured here → `UNKNOWN — not measured`.** A RAM-derived
+    `clamp(0.25 × TotalPhysicalMemory, 256 MiB, 4096 MiB)` exists on `feat/ring-cap-ram-c`
+    (`caf7a9a`) but is **NOT an ancestor of `main`** — `git merge-base --is-ancestor caf7a9a main` →
+    exit 1, 2026-10-07. **Until that merge lands, the defect is LIVE, not history.**
 - **The measurement that could cut 3 GB:** run `onnx-asr` against the int8 ONNX export
   (istupakov v3-onnx, 670.4 MB) and measure peak RSS + RTFx. If it lands ~700–900 MB it replaces the
   3.90 GB runner outright. **Nobody here has run `onnx-asr` yet, and the download is the owner's
