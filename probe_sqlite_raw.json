@@ -1,0 +1,962 @@
+{
+  "db": "C:\\Users\\Administrador\\.minimax\\v2\\sqlite\\runtime-state.sqlite",
+  "size": 3598450688,
+  "probe_instant_utc": "2026-10-08T00:26:14Z",
+  "tables": [
+    "agents",
+    "local_runtime_agents",
+    "local_runtime_background_task_events",
+    "local_runtime_background_tasks",
+    "local_runtime_canvas_asset_references",
+    "local_runtime_canvas_documents",
+    "local_runtime_canvas_operations",
+    "local_runtime_communication_messages",
+    "local_runtime_cron_data_migrations",
+    "local_runtime_cron_legacy_imports",
+    "local_runtime_cron_session_history",
+    "local_runtime_crons",
+    "local_runtime_file_api_uploads",
+    "local_runtime_ledger_watermarks",
+    "local_runtime_legacy_migrations",
+    "local_runtime_liveboard_state",
+    "local_runtime_message_row_migrations",
+    "local_runtime_message_rows",
+    "local_runtime_messages",
+    "local_runtime_pi_history_file_migrations",
+    "local_runtime_pi_history_row_migrations",
+    "local_runtime_pi_history_rows",
+    "local_runtime_plugin_local_disabled",
+    "local_runtime_plugin_official_state",
+    "local_runtime_preferences",
+    "local_runtime_project_migrations",
+    "local_runtime_projects",
+    "local_runtime_query_view_states",
+    "local_runtime_queue_items",
+    "local_runtime_queue_migration_quarantine",
+    "local_runtime_queue_pauses",
+    "local_runtime_queue_row_migrations",
+    "local_runtime_queues",
+    "local_runtime_schema_migrations",
+    "local_runtime_session_agent_definitions",
+    "local_runtime_session_agent_state",
+    "local_runtime_session_asset_index_state",
+    "local_runtime_session_assets",
+    "local_runtime_session_clio_outbox",
+    "local_runtime_session_clio_state",
+    "local_runtime_session_fts_keys",
+    "local_runtime_session_locks",
+    "local_runtime_session_projection_watermarks",
+    "local_runtime_session_schema_migrations",
+    "local_runtime_sessions",
+    "local_runtime_sessions_fts",
+    "local_runtime_sessions_fts_config",
+    "local_runtime_sessions_fts_content",
+    "local_runtime_sessions_fts_data",
+    "local_runtime_sessions_fts_docsize",
+    "local_runtime_sessions_fts_idx",
+    "local_runtime_task_session_bindings",
+    "local_runtime_thread_goals",
+    "local_runtime_token_usage",
+    "local_runtime_turn_diff_journal",
+    "local_runtime_turn_diff_retention_queue",
+    "local_runtime_turn_diff_rewind_operations",
+    "local_runtime_turn_diffs",
+    "local_runtime_turn_ingress",
+    "local_runtime_turn_ingress_client_requests",
+    "local_runtime_turn_ingress_sequences",
+    "local_runtime_v2_agent_legacy_history_notice_repair",
+    "local_runtime_v2_cron_definitions",
+    "local_runtime_v2_cron_runs",
+    "local_runtime_v2_memory_baseline_files",
+    "local_runtime_v2_memory_capture_attempts",
+    "local_runtime_v2_memory_execution_calls",
+    "local_runtime_v2_memory_execution_tasks",
+    "local_runtime_v2_memory_scopes",
+    "local_runtime_v2_memory_session_states",
+    "local_runtime_v2_scheduler_jobs",
+    "local_runtime_v2_schema_migrations",
+    "local_runtime_workspace_indexing_revisions",
+    "local_runtime_workspace_indexing_sessions",
+    "questionnaire_requests",
+    "session_resources",
+    "session_turn_resources",
+    "sqlite_sequence"
+  ],
+  "columns": {
+    "agents": [
+      "agent_name",
+      "agent_role",
+      "framework_type",
+      "pid",
+      "port",
+      "process_alive",
+      "last_active_at",
+      "config_synced_hash",
+      "opencode_config_hash",
+      "main_session_id",
+      "source_project",
+      "harness_source_type",
+      "creation_source",
+      "enc_display_name",
+      "enc_description",
+      "enc_avatar",
+      "greeting_sent",
+      "star_timestamp",
+      "pinned",
+      "pinned_at",
+      "spawned_by_data_dir",
+      "created_at",
+      "updated_at",
+      "legacy_history_session_id"
+    ],
+    "local_runtime_agents": [
+      "name",
+      "record_json",
+      "updated_at_ms"
+    ],
+    "local_runtime_background_task_events": [
+      "id",
+      "event_id",
+      "task_id",
+      "owner_session_id",
+      "type",
+      "timestamp_ms",
+      "sequence",
+      "payload_json"
+    ],
+    "local_runtime_background_tasks": [
+      "task_id",
+      "owner_session_id",
+      "kind",
+      "status",
+      "created_at_ms",
+      "updated_at_ms",
+      "ended_at_ms",
+      "record_json",
+      "delivered_at_ms"
+    ],
+    "local_runtime_canvas_asset_references": [
+      "session_id",
+      "node_id",
+      "asset_id",
+      "created_at_ms"
+    ],
+    "local_runtime_canvas_documents": [
+      "session_id",
+      "canvas_id",
+      "document_json",
+      "change_seq",
+      "updated_at_ms"
+    ],
+    "local_runtime_canvas_operations": [
+      "session_id",
+      "operation_id",
+      "fingerprint",
+      "applied_change_seq",
+      "created_at_ms"
+    ],
+    "local_runtime_communication_messages": [
+      "message_id",
+      "from_session",
+      "to_session",
+      "command",
+      "content",
+      "status",
+      "error",
+      "created_at_ms"
+    ],
+    "local_runtime_cron_data_migrations": [
+      "migration_key",
+      "applied_at_ms",
+      "details_json"
+    ],
+    "local_runtime_cron_legacy_imports": [
+      "agent_name",
+      "cron_name",
+      "imported_at_ms"
+    ],
+    "local_runtime_cron_session_history": [
+      "id",
+      "agent_name",
+      "cron_name",
+      "session_id",
+      "created_at_ms"
+    ],
+    "local_runtime_crons": [
+      "agent_name",
+      "cron_name",
+      "config_json",
+      "updated_at_ms",
+      "cron_id"
+    ],
+    "local_runtime_file_api_uploads": [
+      "session_id",
+      "cache_key",
+      "content_hash",
+      "endpoint_hash",
+      "caller_identity_hash",
+      "ttl_sec",
+      "file_id",
+      "expires_at_ms",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_ledger_watermarks": [
+      "session_id",
+      "last_seq",
+      "last_event_id",
+      "updated_at_ms"
+    ],
+    "local_runtime_legacy_migrations": [
+      "legacy_session_id",
+      "local_session_id",
+      "source_runtime",
+      "status",
+      "migrated_at_ms",
+      "source_updated_at_ms",
+      "source_fingerprint",
+      "error_json",
+      "ledger_imported_at_ms",
+      "projection_ready_at_ms",
+      "display_ready_at_ms",
+      "pi_history_ready_at_ms",
+      "legacy_daemon_session_id",
+      "legacy_framework_session_id",
+      "source_schema_fingerprint",
+      "source_checksum",
+      "display_checksum",
+      "pi_history_strategy",
+      "pi_history_converter_version",
+      "source_manifest_json",
+      "source_message_count",
+      "imported_message_count",
+      "report_json",
+      "warnings_json"
+    ],
+    "local_runtime_liveboard_state": [
+      "plugin_id",
+      "accepted_source_digest",
+      "client_digest",
+      "node_digest",
+      "preferred_port",
+      "last_error_json",
+      "updated_at_ms"
+    ],
+    "local_runtime_message_row_migrations": [
+      "session_id",
+      "display_rows_backfilled_at_ms"
+    ],
+    "local_runtime_message_rows": [
+      "id",
+      "session_id",
+      "msg_id",
+      "role",
+      "turn_id",
+      "created_at_ms",
+      "data_json",
+      "source",
+      "source_context_json"
+    ],
+    "local_runtime_messages": [
+      "session_id",
+      "display_messages_json",
+      "pi_history_json"
+    ],
+    "local_runtime_pi_history_file_migrations": [
+      "session_id",
+      "migrated_at_ms",
+      "source",
+      "message_count",
+      "target_revision"
+    ],
+    "local_runtime_pi_history_row_migrations": [
+      "session_id",
+      "history_rows_backfilled_at_ms"
+    ],
+    "local_runtime_pi_history_rows": [
+      "id",
+      "session_id",
+      "role",
+      "created_at_ms",
+      "data_json"
+    ],
+    "local_runtime_plugin_local_disabled": [
+      "canonical_root",
+      "updated_at_ms"
+    ],
+    "local_runtime_plugin_official_state": [
+      "principal_id",
+      "deployment",
+      "state_json",
+      "updated_at_ms"
+    ],
+    "local_runtime_preferences": [
+      "key",
+      "value_json"
+    ],
+    "local_runtime_project_migrations": [
+      "migration_key",
+      "completed_at_ms"
+    ],
+    "local_runtime_projects": [
+      "project_id",
+      "project_kind",
+      "workspace_dir",
+      "pinned",
+      "hidden",
+      "order_index",
+      "recent_at_ms",
+      "latest_activity_at_ms",
+      "session_count",
+      "extra_data_json",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_query_view_states": [
+      "session_id",
+      "query_key",
+      "current_turn_id",
+      "force_expanded",
+      "processing_started_at_ms",
+      "processing_finished_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_queue_items": [
+      "id",
+      "session_id",
+      "item_id",
+      "status",
+      "created_at_ms",
+      "data_json",
+      "source",
+      "client_request_id",
+      "dedupe_key",
+      "expires_at_ms",
+      "claim_id",
+      "claim_lease_expires_at_ms",
+      "routing_fingerprint"
+    ],
+    "local_runtime_queue_migration_quarantine": [
+      "id",
+      "session_id",
+      "source_kind",
+      "source_key",
+      "raw_json",
+      "error"
+    ],
+    "local_runtime_queue_pauses": [
+      "session_id",
+      "cause",
+      "trigger_turn_id",
+      "paused_at_ms"
+    ],
+    "local_runtime_queue_row_migrations": [
+      "session_id",
+      "queue_rows_backfilled_at_ms"
+    ],
+    "local_runtime_queues": [
+      "session_id",
+      "items_json"
+    ],
+    "local_runtime_schema_migrations": [
+      "version",
+      "applied_at_ms"
+    ],
+    "local_runtime_session_agent_definitions": [
+      "session_id",
+      "definition_json"
+    ],
+    "local_runtime_session_agent_state": [
+      "session_id",
+      "turn_id",
+      "turn_sequence",
+      "runtime_seq",
+      "event_id",
+      "terminal_outcome",
+      "updated_at_ms"
+    ],
+    "local_runtime_session_asset_index_state": [
+      "session_id",
+      "index_version",
+      "indexed_through_message_row_id",
+      "indexed_at_ms",
+      "status",
+      "error_json"
+    ],
+    "local_runtime_session_assets": [
+      "id",
+      "session_id",
+      "msg_id",
+      "role",
+      "message_created_at_ms",
+      "asset_index",
+      "asset_key",
+      "source_tag",
+      "path",
+      "name",
+      "asset_type",
+      "artifact_id",
+      "drive_node_id",
+      "data_json",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_session_clio_outbox": [
+      "identity_key",
+      "session_id",
+      "seq",
+      "trajectory_id",
+      "capture_origin",
+      "biz_id",
+      "input_version",
+      "step_type",
+      "client_produced_ts",
+      "payload_json",
+      "created_at_ms",
+      "attempts",
+      "next_attempt_at_ms",
+      "last_error"
+    ],
+    "local_runtime_session_clio_state": [
+      "identity_key",
+      "session_id",
+      "trajectory_id",
+      "capture_origin",
+      "biz_id",
+      "input_version",
+      "eligibility",
+      "state_json",
+      "deadline_ms",
+      "sealed_at_ms",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_session_fts_keys": [
+      "fts_rowid",
+      "session_id"
+    ],
+    "local_runtime_session_locks": [
+      "session_id",
+      "owner_id",
+      "owner_kind",
+      "acquired_at_ms",
+      "expires_at_ms"
+    ],
+    "local_runtime_session_projection_watermarks": [
+      "session_id",
+      "last_seq",
+      "last_event_id",
+      "updated_at_ms"
+    ],
+    "local_runtime_session_schema_migrations": [
+      "migration_key",
+      "completed_at_ms"
+    ],
+    "local_runtime_sessions": [
+      "session_id",
+      "record_json",
+      "updated_at_ms",
+      "columnar_version",
+      "agent_name",
+      "runtime",
+      "session_type",
+      "status",
+      "archived",
+      "visibility",
+      "session_kind",
+      "purpose",
+      "purpose_kind",
+      "origin_cron_id",
+      "parent_session_id",
+      "workspace_dir",
+      "project_workspace_dir",
+      "is_default_workspace",
+      "title",
+      "created_at_ms",
+      "error_message",
+      "error_code",
+      "extra_data_json",
+      "project_id",
+      "history_relative_dir"
+    ],
+    "local_runtime_sessions_fts": [
+      "session_id",
+      "session_id_terms",
+      "agent_name_terms",
+      "title_terms",
+      "workspace_dir_terms",
+      "purpose_terms",
+      "status_terms",
+      "session_type_terms"
+    ],
+    "local_runtime_sessions_fts_config": [
+      "k",
+      "v"
+    ],
+    "local_runtime_sessions_fts_content": [
+      "id",
+      "c0",
+      "c1",
+      "c2",
+      "c3",
+      "c4",
+      "c5",
+      "c6",
+      "c7"
+    ],
+    "local_runtime_sessions_fts_data": [
+      "id",
+      "block"
+    ],
+    "local_runtime_sessions_fts_docsize": [
+      "id",
+      "sz"
+    ],
+    "local_runtime_sessions_fts_idx": [
+      "segid",
+      "term",
+      "pgno"
+    ],
+    "local_runtime_task_session_bindings": [
+      "session_id",
+      "definition_json"
+    ],
+    "local_runtime_thread_goals": [
+      "goal_id",
+      "session_id",
+      "objective",
+      "status",
+      "created_at_ms",
+      "updated_at_ms",
+      "tokens_used",
+      "time_used_seconds",
+      "token_budget",
+      "kickoff_attachments_json",
+      "objective_resources_json",
+      "kickoff_state",
+      "turns_used",
+      "reply_fingerprint",
+      "no_progress_streak",
+      "no_tool_streak",
+      "last_verification",
+      "last_worker_proposal",
+      "status_reason",
+      "execution_wait_reason",
+      "execution_wait_since_ms",
+      "execution_wait_epoch"
+    ],
+    "local_runtime_token_usage": [
+      "id",
+      "session_id",
+      "agent_name",
+      "framework_type",
+      "turn_id",
+      "model",
+      "ts",
+      "input_tokens",
+      "output_tokens",
+      "reasoning_tokens",
+      "cache_read_tokens",
+      "cache_write_tokens",
+      "cost_usd",
+      "raw"
+    ],
+    "local_runtime_turn_diff_journal": [
+      "journal_id",
+      "row_type",
+      "turn_id",
+      "session_id",
+      "agent_name",
+      "workspace_dir",
+      "start_message_row_id",
+      "turn_status",
+      "tool_call_id",
+      "tool_name",
+      "sequence",
+      "paths_json",
+      "before_json",
+      "after_json",
+      "tool_status",
+      "ambiguity_reason",
+      "created_at_ms",
+      "finalized_at_ms",
+      "completed_at_ms"
+    ],
+    "local_runtime_turn_diff_retention_queue": [
+      "entry_kind",
+      "session_id",
+      "item_id",
+      "eligible_at_ms"
+    ],
+    "local_runtime_turn_diff_rewind_operations": [
+      "operation_id",
+      "session_id",
+      "plan_json",
+      "receipt_json",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_turn_diffs": [
+      "change_set_id",
+      "session_id",
+      "turn_id",
+      "assistant_message_id",
+      "workspace_dir",
+      "captured_at_ms",
+      "status",
+      "file_changes_json",
+      "raw_diff",
+      "reverted_at_ms",
+      "agent_name",
+      "undo_json",
+      "undoable",
+      "updated_at_ms"
+    ],
+    "local_runtime_turn_ingress": [
+      "turn_id",
+      "session_id",
+      "source",
+      "client_request_id",
+      "claim_id",
+      "claim_source",
+      "queue_item_ids_json",
+      "input_json",
+      "status",
+      "accepted_at_ms",
+      "accepted_sequence",
+      "completed_at_ms",
+      "queue_acknowledged_at_ms",
+      "input_digest",
+      "input_metadata_json"
+    ],
+    "local_runtime_turn_ingress_client_requests": [
+      "session_id",
+      "client_request_id",
+      "turn_id",
+      "ordinal"
+    ],
+    "local_runtime_turn_ingress_sequences": [
+      "sequence",
+      "turn_id"
+    ],
+    "local_runtime_v2_agent_legacy_history_notice_repair": [
+      "singleton",
+      "cutoff_at_ms"
+    ],
+    "local_runtime_v2_cron_definitions": [
+      "cron_id",
+      "scheduler_id",
+      "agent_name",
+      "name",
+      "prompt",
+      "target_session_id",
+      "revision",
+      "deleted_at_ms",
+      "created_at_ms",
+      "updated_at_ms",
+      "project",
+      "model",
+      "session_target_mode"
+    ],
+    "local_runtime_v2_cron_runs": [
+      "run_id",
+      "cron_id",
+      "scheduler_trigger_id",
+      "manual_request_id",
+      "trigger_source",
+      "session_id",
+      "status",
+      "created_at_ms",
+      "execution_claimed_at_ms",
+      "delivered_at_ms",
+      "failed_at_ms",
+      "error_code",
+      "error"
+    ],
+    "local_runtime_v2_memory_baseline_files": [
+      "scope_key",
+      "file_name",
+      "content",
+      "updated_at_ms"
+    ],
+    "local_runtime_v2_memory_capture_attempts": [
+      "scope_key",
+      "session_id",
+      "source_revision",
+      "attempts",
+      "last_reason",
+      "retry_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_v2_memory_execution_calls": [
+      "call_id",
+      "task_id",
+      "ordinal",
+      "source_ref",
+      "model",
+      "reasoning_effort",
+      "started_at_ms",
+      "finished_at_ms",
+      "stop_reason",
+      "input_tokens",
+      "output_tokens",
+      "cache_read_tokens",
+      "cache_write_tokens",
+      "total_tokens"
+    ],
+    "local_runtime_v2_memory_execution_tasks": [
+      "task_id",
+      "stage",
+      "operation",
+      "source_ref",
+      "source_revision",
+      "preview_id",
+      "started_at_ms",
+      "finished_at_ms",
+      "status",
+      "reason"
+    ],
+    "local_runtime_v2_memory_scopes": [
+      "scope_key",
+      "reset_epoch",
+      "reset_at_ms",
+      "consolidated_digest",
+      "last_consolidated_at_ms",
+      "created_at_ms",
+      "updated_at_ms",
+      "governance_revision",
+      "consolidated_governance_revision"
+    ],
+    "local_runtime_v2_memory_session_states": [
+      "scope_key",
+      "session_id",
+      "session_created_at_ms",
+      "source_revision",
+      "source_digest",
+      "capture_contract_id",
+      "output_digest",
+      "content",
+      "forget_rules",
+      "agent_name",
+      "project_name",
+      "workspace_dir",
+      "captured_at_ms",
+      "last_used_at_ms",
+      "exclusion_reason",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_v2_scheduler_jobs": [
+      "scheduler_id",
+      "handler_key",
+      "schedule_json",
+      "run_count",
+      "state",
+      "next_run_at_ms",
+      "created_at_ms",
+      "updated_at_ms",
+      "schedule_generation"
+    ],
+    "local_runtime_v2_schema_migrations": [
+      "version",
+      "applied_at_ms"
+    ],
+    "local_runtime_workspace_indexing_revisions": [
+      "revision_id",
+      "session_id",
+      "workspace_id",
+      "sequence",
+      "kind",
+      "root_hash",
+      "base_revision_id",
+      "base_root_hash",
+      "archive_path",
+      "manifest_path",
+      "archive_sha256",
+      "manifest_sha256",
+      "archive_oss_key",
+      "manifest_oss_key",
+      "remote_state",
+      "retry_count",
+      "next_retry_at_ms",
+      "last_error_code",
+      "embedding_model",
+      "dimensions",
+      "normalization",
+      "index_sha256",
+      "index_size_bytes",
+      "index_archive_path",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "local_runtime_workspace_indexing_sessions": [
+      "session_id",
+      "workspace_id",
+      "workspace_real_path",
+      "status",
+      "initial_revision_id",
+      "latest_revision_id",
+      "latest_root_hash",
+      "skip_reason",
+      "created_at_ms",
+      "updated_at_ms",
+      "policy_workspace_version"
+    ],
+    "questionnaire_requests": [
+      "request_id",
+      "session_id",
+      "agent_name",
+      "msg_id",
+      "request_json",
+      "status",
+      "created_at",
+      "answered_at",
+      "reply_payload",
+      "injected_at",
+      "dismissed_at",
+      "origin_channel_context_json"
+    ],
+    "session_resources": [
+      "session_id",
+      "resource_index",
+      "resource_type",
+      "source_id",
+      "resource_key",
+      "resource_data_json",
+      "resource_data_version",
+      "created_at_ms",
+      "updated_at_ms"
+    ],
+    "session_turn_resources": [
+      "session_id",
+      "turn_id",
+      "msg_id",
+      "resource_index",
+      "resource_ordinal",
+      "tool_call_id",
+      "created_at_ms"
+    ],
+    "sqlite_sequence": [
+      "name",
+      "seq"
+    ]
+  },
+  "bounded_counts": {
+    "agents": [
+      10,
+      "capped at 200000"
+    ],
+    "local_runtime_agents": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_background_task_events": [
+      200000,
+      "capped at 200000"
+    ],
+    "local_runtime_background_tasks": [
+      62753,
+      "capped at 200000"
+    ],
+    "local_runtime_cron_session_history": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_session_agent_definitions": [
+      2234,
+      "capped at 200000"
+    ],
+    "local_runtime_session_agent_state": [
+      2644,
+      "capped at 200000"
+    ],
+    "local_runtime_session_asset_index_state": [
+      89,
+      "capped at 200000"
+    ],
+    "local_runtime_session_assets": [
+      774,
+      "capped at 200000"
+    ],
+    "local_runtime_session_clio_outbox": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_session_clio_state": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_session_fts_keys": [
+      2662,
+      "capped at 200000"
+    ],
+    "local_runtime_session_locks": [
+      19,
+      "capped at 200000"
+    ],
+    "local_runtime_session_projection_watermarks": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_session_schema_migrations": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions": [
+      2662,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions_fts": [
+      2662,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions_fts_config": [
+      1,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions_fts_content": [
+      2662,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions_fts_data": [
+      335,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions_fts_docsize": [
+      2662,
+      "capped at 200000"
+    ],
+    "local_runtime_sessions_fts_idx": [
+      145,
+      "capped at 200000"
+    ],
+    "local_runtime_task_session_bindings": [
+      2234,
+      "capped at 200000"
+    ],
+    "local_runtime_v2_agent_legacy_history_notice_repair": [
+      1,
+      "capped at 200000"
+    ],
+    "local_runtime_v2_memory_execution_tasks": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_v2_memory_session_states": [
+      0,
+      "capped at 200000"
+    ],
+    "local_runtime_workspace_indexing_sessions": [
+      0,
+      "capped at 200000"
+    ],
+    "session_resources": [
+      0,
+      "capped at 200000"
+    ],
+    "session_turn_resources": [
+      0,
+      "capped at 200000"
+    ]
+  }
+}
