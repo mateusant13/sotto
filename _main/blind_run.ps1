@@ -70,7 +70,10 @@ function Expand-Payload([string]$s) {
     # C-escape string -> raw bytes, latin1 style (one char == one byte for everything we emit)
     $out = [byte[]]::new($sb.Length)
     for ($k = 0; $k -lt $sb.Length; $k++) { $out[$k] = [byte][char]$sb[$k] }
-    return $out
+    # unary comma: prevent PowerShell from enumerating the byte[] into the output stream.
+    # Without it a multi-byte payload arrives as Object[] and an empty payload arrives as $null,
+    # which makes Process.StandardInput.BaseStream.Write throw "Value cannot be null. (Parameter 'buffer')".
+    return ,$out
 }
 
 # ---- read the corpus -------------------------------------------------------------------------
