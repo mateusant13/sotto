@@ -456,7 +456,33 @@ static bool json_cmd_value(const std::string& s, std::string* out)
     return true;
 }
 
-static void stdin_handle(const std::string& line, bool too_long)
+// The one and only way an offline cut is started.  main()'s --cut-from-h264 branch AND the
+// {"cmd":"cut"} stdin verb both call THIS, so the verb can never drift into a second cut path.
+// Body moved verbatim out of main(); returns what actually happened and never assumes success.
+static bool run_offline_cut(const Options& o, std::string* out_path, std::string* err)
+{
+    std::string outp = o.out;
+    if (outp.empty()) {
+        char b[512];
+        _snprintf_s(b, sizeof(b), _TRUNCATE, "H:\\aireplay\\_main\\runs\\offline-cut-%s.mp4",
+                    timestamp_slug().c_str());
+        outp = b;
+    }
+    log_line("=== OFFLINE CUT (no WGC, no NVENC): the muxer path, proven on its own ===");
+    Replay rep;
+    std::string e2;
+    const bool ok = rep.cut_from_h264(o.cut_from, outp, o.cut_fps, o.cut_w, o.cut_h, &e2);
+    *out_path = outp;
+    if (!ok) {
+        *err = e2;
+        log_line("OFFLINE CUT FAILED: %s", e2.c_str());
+    } else {
+        log_line("OFFLINE CUT OK: %s", outp.c_str());
+    }
+    return ok;
+}
+
+static void stdin_handle(const std::string& line, bool too_long, const Options& o)
 {
     std::string fields;
     if (too_long) {
@@ -465,14 +491,43 @@ static void stdin_handle(const std::string& line, bool too_long)
         stdin_write_reply(probe_json(fields));
         return;
     }
+    // The SAME strict first-key parse gates every verb, so the forgery guard that covers ping
+    // covers cut as well: a nested or value-position "cmd" still cannot reach a verb.
     std::string cmd;
-    if (!json_cmd_value(line, &cmd) || cmd != "ping") {
+    if (!json_cmd_value(line, &cmd)) {
         fields = jf_str("error", "unsupported or malformed command");
         fields += ",\"ok\":false";
         stdin_write_reply(probe_json(fields));
         return;
     }
-    stdin_write_reply(probe_json("\"ok\":true"));
+    if (cmd == "ping") {
+        stdin_write_reply(probe_json("\"ok\":true"));
+        return;
+    }
+    if (cmd == "cut") {
+        // Replay drives the cut.  This verb reaches the offline path via run_offline_cut and
+        // reports what really happened: the output path on success, the actual error otherwise.
+        if (o.cut_from.empty()) {
+            fields = jf_str("error", "no --cut-from-h264 input configured");
+            fields += ",\"ok\":false";
+            stdin_write_reply(probe_json(fields));
+            return;
+        }
+        std::string outp, e2;
+        if (!run_offline_cut(o, &outp, &e2)) {
+            fields = jf_str("error", e2.empty() ? "offline cut failed" : e2);
+            fields += ",\"ok\":false";
+            stdin_write_reply(probe_json(fields));
+            return;
+        }
+        fields = jf_str("detail", "offline cut ok: " + outp);
+        fields += ",\"ok\":true";
+        stdin_write_reply(probe_json(fields));
+        return;
+    }
+    fields = jf_str("error", "unsupported or malformed command");
+    fields += ",\"ok\":false";
+    stdin_write_reply(probe_json(fields));
 }
 
 int main(int argc, char** argv)
