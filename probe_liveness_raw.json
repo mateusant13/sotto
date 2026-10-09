@@ -1,0 +1,60 @@
+{
+  "probe_instant_utc": "2026-10-08T00:26:28Z",
+  "horizon_s": 3600,
+  "cutoff_ms": 1791415588516,
+  "sessions_table_range": {
+    "rows": 2663,
+    "created_min_ms": 1780316503453,
+    "created_max_ms": 1791419176564,
+    "updated_min_ms": 1780316564366,
+    "updated_max_ms": 1791419179448,
+    "now_ms": 1791419188516,
+    "note": "max(updated_at_ms) vs now_ms shows whether ms is epoch-based"
+  },
+  "all_registered_sessions": 2663,
+  "registered_sessions_updated_within_horizon": 125,
+  "registered_sessions_created_within_horizon": 121,
+  "recent_sessions_by_status": {
+    "idle": 55,
+    "aborted": 50,
+    "started": 20
+  },
+  "recent_session_dirs_on_disk": {
+    "population": "registered sessions updated within 3600s, capped at 400 rows",
+    "rows_examined": 125,
+    "dir_exists_on_disk": 125,
+    "dir_missing_or_no_path": 0,
+    "examples": [
+      {
+        "session_id": "mvs_bdd90efd8ad946a3b265f786d8b81cca",
+        "history_relative_dir": "2026/10/08/00-26-16-564-session_bXZzX2JkZDkwZWZkOGFkOTQ2YTNiMjY1Zjc4NmQ4YjgxY2Nh",
+        "resolved": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-26-16-564-session_bXZzX2JkZDkwZWZkOGFkOTQ2YTNiMjY1Zjc4NmQ4YjgxY2Nh",
+        "exists": true
+      },
+      {
+        "session_id": "mvs_ec865d7620d442529dae863db68b5c7e",
+        "history_relative_dir": "2026/10/08/00-25-21-128-session_bXZzX2VjODY1ZDc2MjBkNDQyNTI5ZGFlODYzZGI2OGI1Yzdl",
+        "resolved": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-25-21-128-session_bXZzX2VjODY1ZDc2MjBkNDQyNTI5ZGFlODYzZGI2OGI1Yzdl",
+        "exists": true
+      },
+      {
+        "session_id": "mvs_d69615e63f994721afce4d538678fec9",
+        "history_relative_dir": "2026/10/08/00-25-20-513-session_bXZzX2Q2OTYxNWU2M2Y5OTQ3MjFhZmNlNGQ1Mzg2NzhmZWM5",
+        "resolved": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-25-20-513-session_bXZzX2Q2OTYxNWU2M2Y5OTQ3MjFhZmNlNGQ1Mzg2NzhmZWM5",
+        "exists": true
+      },
+      {
+        "session_id": "mvs_b72854f1d652403fad7b8a4df4458083",
+        "history_relative_dir": "2026/10/08/00-24-42-529-session_bXZzX2I3Mjg1NGYxZDY1MjQwM2ZhZDdiOGE0ZGY0NDU4MDgz",
+        "resolved": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-24-42-529-session_bXZzX2I3Mjg1NGYxZDY1MjQwM2ZhZDdiOGE0ZGY0NDU4MDgz",
+        "exists": true
+      },
+      {
+        "session_id": "mvs_4531910d142549dfbc05ef2842743b1e",
+        "history_relative_dir": "2026/10/08/00-24-35-041-session_bXZzXzQ1MzE5MTBkMTQyNTQ5ZGZiYzA1ZWYyODQyNzQzYjFl",
+        "resolved": "C:\\Users\\Administrador\\.minimax\\v2\\sessions\\2026\\10\\08\\00-24-35-041-session_bXZzXzQ1MzE5MTBkMTQyNTQ5ZGZiYzA1ZWYyODQyNzQzYjFl",
+        "exists": true
+      }
+    ]
+  }
+}
