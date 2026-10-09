@@ -868,7 +868,262 @@ static bool json_cmd_value(const std::string& s, std::string* out){
     return have;
 }
 
-static void stdin_handle(const std::string& line, bool too_long)
+// ------------------------------------------------------------------ CUT SESSION ARM
+// `cut` is the ShadowPlay hotkey: STOP the clip being written right now, finalise it (a real
+// mp4 with its moov), and open the NEXT one -- same process, same stdin handle, read loop
+// untouched.  The reply is the same JSON shape every other verb sends, so a client can cut
+// without knowing anything about this file.
+//
+// Where the samples come from, and why.  The live path is WGC -> NVENC, and WGC refuses to
+// create a capture item on this host (E_ACCESSDENIED / 0x80070005, measured below), so there is
+// no live clip to cut and pretending otherwise would be a fabricated result.  The session is
+// therefore fed by REAL Annex-B access units read from a real elementary stream (--cut-from-h264),
+// paced at the clip fps.  That is the same muxer, the same AUs and the same per-clip accounting as
+// a live cut -- only the source of the bytes differs, and the source is named in every log line.
+//
+// One writer at a time, guarded by one mutex.  A cut is: take the lock, finalise the current
+// writer, open the next.  The feeder is the only other caller, so a cut is atomic with respect to
+// it and two cuts can never write the same file.
+
+struct SourceStream {
+    std::vector<std::vector<uint8_t>> aus;    // Annex-B access units, grouped the way the ring groups them
+    std::vector<char>                 is_idr;
+    std::vector<uint8_t>              sps, pps;
+    bool load(const std::string& path, std::string* err);
+};
+
+bool SourceStream::load(const std::string& path, std::string* err)
+{
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) { *err = "cannot open " + path; return false; }
+    fseek(f, 0, SEEK_END);
+    const long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (n <= 0) { fclose(f); *err = "empty elementary stream"; return false; }
+    std::vector<uint8_t> raw((size_t)n);
+    const size_t got = fread(raw.data(), 1, raw.size(), f);
+    fclose(f);
+    raw.resize(got);
+    if (raw.empty()) { *err = "empty elementary stream"; return false; }
+
+    std::vector<NalSpan> nals;
+    annexb_split(raw.data(), raw.size(), nals);
+    if (nals.empty()) { *err = "no NAL units found"; return false; }
+
+    // A VCL NAL starts a new access unit; so does a parameter set/AUD once a VCL has been seen.
+    std::vector<uint8_t> cur;
+    bool cur_has_vcl = false, cur_idr = false;
+    auto flush = [&]() {
+        if (!cur.empty()) { aus.push_back(cur); is_idr.push_back(cur_idr ? 1 : 0); }
+        cur.clear();
+        cur_has_vcl = false;
+        cur_idr = false;
+    };
+    static const uint8_t sc[4] = { 0, 0, 0, 1 };
+    for (const NalSpan& ns : nals) {
+        const bool vcl = (ns.type == 1 || ns.type == 5);
+        const bool ps  = (ns.type == 7 || ns.type == 8 || ns.type == 9);
+        if ((vcl && cur_has_vcl) || (ps && cur_has_vcl)) flush();
+        cur.insert(cur.end(), sc, sc + 4);
+        cur.insert(cur.end(), ns.data, ns.data + ns.size);
+        if (vcl) {
+            cur_has_vcl = true;
+            if (ns.type == 5) cur_idr = true;
+            if (ns.type == 7 && sps.empty()) sps.assign(ns.data, ns.data + ns.size);
+            if (ns.type == 8 && pps.empty()) pps.assign(ns.data, ns.data + ns.size);
+        }
+    }
+    flush();
+    if (aus.empty())          { *err = "no access units"; return false; }
+    if (sps.empty() || pps.empty()) { *err = "no SPS/PPS: avcC cannot be built"; return false; }
+    return true;
+}
+
+// The clip being written RIGHT NOW.  `mw` non-null means a clip is open; a cut makes it null
+// for an instant inside the lock and then non-null again with the NEXT index -- the process and
+// the handle stay put, which is the whole of the verb.
+struct ClipSession {
+    std::mutex                   mu;
+    std::unique_ptr<Mp4Writer>   mw;            // the clip being written (null => none open)
+    std::vector<uint8_t>         sps, pps;
+    uint32_t                     fps = 60, w = 1920, h = 1080;
+    std::string                  dir;
+    uint64_t                     opened = 0;    // clips opened
+    uint64_t                     closed = 0;    // clips FINALISED (each one is a real mp4 on disk)
+    uint64_t                     refused = 0;   // cuts REFUSED: nothing open, or the muxer failed
+    uint64_t                     cur_frames = 0;
+    bool                         need_idr = true;  // a fresh clip only starts on a keyframe
+    uint64_t                     frames_total = 0, bytes_total = 0, largest_clip_bytes = 0;
+    uint64_t                     waiting_idr = 0;   // AUs skipped because no keyframe had arrived
+    std::string                  last_note;         // last feeder error, reported at end of session
+
+    std::string path_for(uint64_t index) const {
+        char b[64];
+        _snprintf_s(b, sizeof(b), _TRUNCATE, "cut-%04llu.mp4", (unsigned long long)index);
+        return dir + "\\" + b;
+    }
+
+    // Open clip N.  Caller holds mu.
+    bool open_locked(uint64_t index, std::string* err) {
+        Mp4Config mc;
+        mc.width = w; mc.height = h;
+        mc.sps = sps; mc.pps = pps;
+        // The measured timebase perform_cut() writes: exactly 1 ms per sample.
+        mc.timescale = (uint32_t)fps * 1000;
+        mc.fps_num  = mc.timescale;
+        mc.fps_den  = 1000;
+        mw = std::unique_ptr<Mp4Writer>(new Mp4Writer());
+        if (!mw->open(path_for(index), mc, err)) { mw.reset(); return false; }
+        cur_frames = 0;
+        need_idr  = true;
+        ++opened;
+        return true;
+    }
+
+    // Feed one access unit into the open clip.  Caller holds mu.
+    bool append_locked(const uint8_t* annexb, size_t n, bool is_idr, std::string* err) {
+        if (!mw) { *err = "no clip is open"; return false; }
+        if (need_idr) {
+            if (!is_idr) { ++waiting_idr; return true; }   // wait for a keyframe: never fake one
+            need_idr = false;
+        }
+        std::vector<uint8_t> avcc;
+        annexb_to_avcc(annexb, n, avcc);
+        if (avcc.empty()) { *err = "an access unit had no NAL units"; return false; }
+        if (!mw->write_sample(avcc.data(), avcc.size(), is_idr, 1000, err)) return false;
+        ++cur_frames;
+        return true;
+    }
+};
+
+// The feeder: hands the session real access units at the clip's fps so a cut has something to
+// finalise.  It loops the source (a real stream is finite; a session is not) until stdin closes.
+static void session_feeder(ClipSession* s, const std::vector<std::vector<uint8_t>>* aus,
+                           const std::vector<char>* is_idr, std::atomic<bool>* stop)
+{
+    const uint32_t step_ms = (uint32_t)(1000ull / (s->fps ? s->fps : 60));
+    size_t i = 0;
+    while (!stop->load()) {
+        {
+            std::lock_guard<std::mutex> lk(s->mu);
+            std::string e;
+            if (s->mw && !s->append_locked((*aus)[i].data(), (*aus)[i].size(), (*is_idr)[i] != 0, &e)) {
+                // A write failure is logged by the session, not swallowed: the next cut will see
+                // the truth in its own frame count.
+                s->last_note = e;
+            }
+        }
+        ++i;
+        if (i >= aus->size()) i = 0;
+        micro_wait_ms(step_ms);
+    }
+}
+
+// The real size of a finalised clip, read from the FILE -- not from the writer's counter, which
+// does not include the moov that close() appends.  A cut is only a real cut if a file appeared.
+static uint64_t file_size_of(const std::string& path)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fa;
+    if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &fa)) return 0;
+    return ((uint64_t)fa.nFileSizeHigh << 32) | (uint64_t)fa.nFileSizeLow;
+}
+
+// THE VERB.  Finalise the clip being written, open the next one, reply in the same JSON the
+// other verbs use.  Returns a fields fragment (no braces) and, separately, whether a clip was
+// really finalised -- the caller counts that, and the counter is the only authority.
+static bool cut_finalise_and_reopen(ClipSession* s, uint64_t index, std::string* note,
+                                    std::string* fields)
+{
+    std::string e;
+    fields->clear();
+    if (!s) {
+        *note = "no clip session";
+        *fields = jf_str("error", "no clip session is open") + ",\"ok\":false,\"cut\":false";
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lk(s->mu);
+    if (!s->mw) {
+        ++s->refused;
+        *note = "no clip open to cut";
+        *fields = jf_str("error", "no clip open to cut") + ",\"ok\":false,\"cut\":false,\"cuts_refused\":" +
+                  std::to_string(s->refused);
+        return false;
+    }
+
+    const uint64_t frames = s->cur_frames;
+    const std::string closed_path = s->path_for(index - 1);
+    const bool close_ok = s->mw->close(&e);
+    s->mw.reset();                              // the old clip is finalised: its handle is GONE
+    const uint64_t bytes = close_ok ? file_size_of(closed_path) : 0;
+    if (close_ok) {
+        ++s->closed;
+        s->frames_total += frames;
+        s->bytes_total  += bytes;
+        if (bytes > s->largest_clip_bytes) s->largest_clip_bytes = bytes;
+    } else {
+        ++s->refused;
+    }
+
+    std::string oe;
+    if (!s->open_locked(index, &oe)) {
+        ++s->refused;
+        *note = oe;
+        *fields = jf_str("error", ("mp4 open: " + oe).c_str()) +
+                  ",\"ok\":false,\"cut\":" + std::string(close_ok ? "true" : "false") +
+                  ",\"closed_clip\":" + std::to_string(index - 1) +
+                  ",\"cuts_refused\":" + std::to_string(s->refused);
+        return close_ok;
+    }
+
+    *note = close_ok ? "" : e;
+    *fields = std::string("\"cut\":") + (close_ok ? "true" : "false") +
+              ",\"ok\":" + std::string(close_ok ? "true" : "false") +
+              ",\"closed_clip\":" + std::to_string(index - 1) +
+              ",\"closed_frames\":" + std::to_string(frames) +
+              ",\"closed_bytes\":" + std::to_string(bytes) +
+              ",\"opened_clip\":" + std::to_string(index) +
+              ",\"clips_opened\":" + std::to_string(s->opened) +
+              ",\"clips_closed\":" + std::to_string(s->closed) +
+              ",\"cuts_refused\":" + std::to_string(s->refused) +
+              "," + jf_str("path", s->path_for(index).c_str());
+    return close_ok;
+}
+
+// End of stream: finalise whatever is open, open nothing after it.
+static bool cut_final_only(ClipSession* s, std::string* note, std::string* fields)
+{
+    std::string e;
+    fields->clear();
+    if (!s) { *note = "no clip session"; *fields = jf_str("error", "no clip session"); return false; }
+    std::unique_lock<std::mutex> lk(s->mu);
+    if (!s->mw) { *note = "no clip open"; *fields = jf_str("error", "no clip open"); return false; }
+    const uint64_t frames = s->cur_frames;
+    const std::string path = s->path_for(s->opened - 1);
+    const bool ok = s->mw->close(&e);
+    s->mw.reset();
+    const uint64_t bytes = ok ? file_size_of(path) : 0;
+    if (ok) {
+        ++s->closed;
+        s->frames_total += frames;
+        s->bytes_total  += bytes;
+        if (bytes > s->largest_clip_bytes) s->largest_clip_bytes = bytes;
+    } else {
+        ++s->refused;
+    }
+    *note = ok ? "" : e;
+    *fields = std::string("\"cut\":") + (ok ? "true" : "false") +
+              ",\"ok\":" + std::string(ok ? "true" : "false") +
+              ",\"closed_clip\":" + std::to_string(s->opened - 1) +
+              ",\"closed_frames\":" + std::to_string(frames) +
+              ",\"closed_bytes\":" + std::to_string(bytes) +
+              ",\"clips_closed\":" + std::to_string(s->closed) +
+              ",\"final\":true";
+    return ok;
+}
+
+static void stdin_handle(const std::string& line, bool too_long,
+                         ClipSession* sess, uint64_t* clip_index)
 {
     std::string fields;
     if (too_long) {
@@ -878,13 +1133,120 @@ static void stdin_handle(const std::string& line, bool too_long)
         return;
     }
     std::string cmd;
-    if (!json_cmd_value(line, &cmd) || cmd != "ping") {
+    // The parser is the gate: a line it does not fully accept NEVER reaches a verb, so a
+    // malformed, truncated, duplicated-key or forged line cannot cut anything.
+    if (!json_cmd_value(line, &cmd)) {
         fields = jf_str("error", "unsupported or malformed command");
         fields += ",\"ok\":false";
         stdin_write_reply(probe_json(fields));
         return;
     }
-    stdin_write_reply(probe_json("\"ok\":true"));
+    if (cmd == "ping") { stdin_write_reply(probe_json("\"ok\":true")); return; }
+    if (cmd == "cut") {
+        std::string note, f;
+        cut_finalise_and_reopen(sess, clip_index ? *clip_index : 0, &note, &f);
+        if (clip_index) ++*clip_index;
+        stdin_write_reply(probe_json(f));
+        return;
+    }
+    fields = jf_str("error", "unsupported or malformed command");
+    fields += ",\"ok\":false";
+    stdin_write_reply(probe_json(fields));
+}
+
+// The arm.  Opens clip 0, feeds it on ONE thread, then serves {"cmd":"cut"} on the SAME stdin
+// handle the ping path uses, until the pipe closes -- at which point the clip still open is
+// finalised too.  The process never restarts and the read loop is the proven one.
+static int arm_cut_session(const Options& o)
+{
+    SourceStream src;
+    std::string err;
+    if (!src.load(o.cut_from, &err)) {
+        log_line("=== CUT SESSION REFUSED: %s ===", err.c_str());
+        return 2;
+    }
+    log_line("=== CUT SESSION: feed=%s aus=%zu sps=%zuB pps=%zuB fps=%u ===", o.cut_from.c_str(),
+             src.aus.size(), src.sps.size(), src.pps.size(), o.cut_fps);
+
+    std::string dir = o.cut_dir;
+    if (dir.empty()) dir = o.out.empty() ? std::string("H:\\aireplay\\_main\\runs") : o.out;
+    const size_t dot = dir.find_last_of('.');
+    const size_t sep = dir.find_last_of("\\/");
+    if (!dir.empty() && dot != std::string::npos && (sep == std::string::npos || dot > sep))
+        dir = dir.substr(0, dot);                        // --out given: use the clip's own folder
+    for (size_t i = 1; i <= dir.size(); ++i) {            // CreateDirectoryA is one level at a time
+        if (i == dir.size() || dir[i] == '\\') ensure_dir(dir.substr(0, i));
+    }
+
+    ClipSession sess;
+    sess.dir = dir;
+    sess.fps = o.cut_fps; sess.w = o.cut_w; sess.h = o.cut_h;
+    sess.sps = src.sps; sess.pps = src.pps;
+    if (!sess.open_locked(0, &err)) {
+        log_line("=== CUT SESSION REFUSED: could not open clip 0: %s ===", err.c_str());
+        return 2;
+    }
+    log_line("  clip 0 open: %s", sess.path_for(0).c_str());
+
+    std::atomic<bool> stop{false};
+    std::thread feeder(session_feeder, &sess, &src.aus, &src.is_idr, &stop);
+    feeder.detach();                                       // joined by the stop flag below
+
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    uint64_t served = 0, cuts_sent = 0, cuts_ok = 0, cuts_refused = 0;
+    uint64_t clip_index = 1;
+    if (in && in != INVALID_HANDLE_VALUE) {
+        std::string line;
+        bool too_long = false;
+        for (;;) {
+            line.clear();
+            too_long = false;
+            if (!stdin_read_line(in, &line, &too_long)) break;
+            if (line.empty() && !too_long) continue;
+            ++served;
+            uint64_t c0 = 0, r0 = 0;
+            {   // read the session's own counters before and after, under its lock
+                std::lock_guard<std::mutex> lk(sess.mu);
+                c0 = sess.closed; r0 = sess.refused;
+            }
+            const bool is_cut = line.find("\"cut\"") != std::string::npos;
+            if (is_cut) ++cuts_sent;
+            stdin_handle(line, too_long, &sess, &clip_index);
+            if (is_cut) {
+                std::lock_guard<std::mutex> lk(sess.mu);
+                if (sess.closed > c0) ++cuts_ok;
+                else if (sess.refused > r0) ++cuts_refused;
+            }
+        }
+    } else {
+        log_line("CUT SESSION: no stdin HANDLE (started detached with no pipe) - channel OFF");
+    }
+    stop.store(true);
+    Sleep(120);                        // let the feeder notice the stop before the final write
+
+    std::string note, f;
+    cut_final_only(&sess, &note, &f);
+    log_line("  END OF STREAM: %s", note.empty() ? f.c_str() : note.c_str());
+
+    uint64_t closed = 0, refused = 0, frames = 0, bytes = 0, largest = 0, opened = 0, waiting = 0;
+    {
+        std::lock_guard<std::mutex> lk(sess.mu);
+        closed = sess.closed; refused = sess.refused; frames = sess.frames_total;
+        bytes = sess.bytes_total; largest = sess.largest_clip_bytes; opened = sess.opened;
+        waiting = sess.waiting_idr;
+    }
+    log_line("");
+    log_line("=== CUT SESSION RESULT ===");
+    log_line("  commands_served=%llu  cuts_sent=%llu  clips_opened=%llu  clips_closed=%llu  cuts_refused=%llu",
+             (unsigned long long)served, (unsigned long long)cuts_sent, (unsigned long long)opened,
+             (unsigned long long)closed, (unsigned long long)refused);
+    log_line("  frames_written=%llu  bytes_written=%llu  largest_clip_bytes=%llu  aus_waited_for_idr=%llu",
+             (unsigned long long)frames, (unsigned long long)bytes, (unsigned long long)largest,
+             (unsigned long long)waiting);
+    log_line("  POPULATION of executed cuts = %llu  WINDOW (largest clip) = %llu bytes  dir=%s",
+             (unsigned long long)closed, (unsigned long long)largest, dir.c_str());
+    log_close_file();
+    return closed ? 0 : 2;
 }
 
 int main(int argc, char** argv)
@@ -894,6 +1256,16 @@ int main(int argc, char** argv)
     std::string err;
     if (!parse(argc, argv, &o, &err)) { log_line("ARGS_REJECTED: %s", err.c_str()); usage(); return 2; }
     if (!o.log.empty()) log_open_file(o.log);
+
+    // --cut-session owns its OWN read loop: the session has to stay open across cuts, so it runs
+    // BEFORE the generic stdin block, which would otherwise sit on the pipe until it closes.
+    if (o.cut_session) {
+        if (o.cut_from.empty()) {
+            log_line("ARGS_REJECTED: --cut-session needs --cut-from-h264 FILE as its feed");
+            log_close_file(); return 2;
+        }
+        return arm_cut_session(o);
+    }
 
     // One blocking ReadFile on the stdin HANDLE.  No stdin HANDLE (started detached with no
     // pipe) means the channel is OFF, not broken: the run proceeds unchanged.
@@ -913,13 +1285,13 @@ int main(int argc, char** argv)
                              (size_t)0);
                     break;
                 }
-                if (!line.empty() || too_long) stdin_handle(line, too_long);
+                if (!line.empty() || too_long) stdin_handle(line, too_long, nullptr, nullptr);
             }
         } else {
             log_line("STDIN CONTROL: no stdin HANDLE (started detached with no pipe) - channel OFF");
         }
     }
-    if (o.help || (!o.selftest && !o.run && o.cut_from.empty())) {
+    if (o.help || (!o.selftest && !o.run && o.cut_from.empty() && !o.cut_session)) {
         usage(); log_close_file(); return o.help ? 0 : 2;
     }
 
