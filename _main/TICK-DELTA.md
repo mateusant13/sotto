@@ -1,0 +1,1 @@
+TICK-DELTA placeholder — receipt anchor. Populated by lane/tickdelta.
