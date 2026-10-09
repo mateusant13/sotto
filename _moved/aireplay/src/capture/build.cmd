@@ -12,7 +12,11 @@ rem fails to compile: main.cpp:335 CancelSynchronousIo(native_handle()) is MSVC-
 rem while the repo copy hashes 87B39C8 (44758 bytes, compiles clean, rc=0, exe built).
 rem The recipe was therefore reporting the health of a stale tree.  Resolve from
 rem %~dp0 so the recipe builds the tree it actually lives in.
-set SRC=%~dp0
+rem NOTE: %~dp0 ends in a backslash.  A trailing backslash inside the quoted
+rem -I argument ESCAPES its closing quote, g++ swallows every input file, and it
+rem dies with "fatal error: no input files" (measured rc=1).  The ".:" keeps it a
+rem valid directory path with no trailing separator.
+set SRC=%~dp0.
 set OUT=%~dp0..\..\_main\build
 if not exist "%OUT%" mkdir "%OUT%"
 
