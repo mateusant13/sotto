@@ -1,0 +1,367 @@
+{
+ "seconds": 6,
+ "rateHz": 8,
+ "limits": {
+  "loaf.styleAndLayout": 4.0,
+  "loaf.blocking": 5.0,
+  "loaf.duration": 6.0,
+  "frame.p95": 4.0,
+  "frame.over50": 2,
+  "push.mean": 0.3,
+  "forcedLayout.mean": 0.25
+ },
+ "results": {
+  "theme-5": {
+   "reduced": {
+    "theme": "theme-5",
+    "arm": "reduced",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6007.4,
+    "reducedMotion": true,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 361,
+     "skipped": 0,
+     "total": 5.4,
+     "mean": 0.015,
+     "max": 0.2
+    },
+    "frame": {
+     "n": 360,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 22.3,
+     "mean": 0.485,
+     "max": 0.9
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "none"
+    }
+   },
+   "on": {
+    "theme": "theme-5",
+    "arm": "on",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6006,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 359,
+     "skipped": 0,
+     "total": 147.6,
+     "mean": 0.411,
+     "max": 1.7
+    },
+    "frame": {
+     "n": 358,
+     "mean": 16.71,
+     "p50": 16.7,
+     "p95": 16.7,
+     "max": 33.3,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 21.3,
+     "mean": 0.463,
+     "max": 1.2
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "sotto-5-led-live",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   },
+   "relayout": {
+    "theme": "theme-5",
+    "arm": "relayout",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6007.7,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 360,
+     "skipped": 0,
+     "total": 124.7,
+     "mean": 0.346,
+     "max": 0.9
+    },
+    "frame": {
+     "n": 359,
+     "mean": 16.71,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 33.3,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 23.4,
+     "mean": 0.509,
+     "max": 2.3
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "sotto-5-led-live",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   }
+  },
+  "theme-2": {
+   "reduced": {
+    "theme": "theme-2",
+    "arm": "reduced",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6003.3,
+    "reducedMotion": true,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 361,
+     "skipped": 0,
+     "total": 9.3,
+     "mean": 0.026,
+     "max": 0.8
+    },
+    "frame": {
+     "n": 360,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 18.7,
+     "mean": 0.407,
+     "max": 1.1
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "none"
+    }
+   },
+   "on": {
+    "theme": "theme-2",
+    "arm": "on",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6008.3,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 360,
+     "skipped": 0,
+     "total": 86.2,
+     "mean": 0.239,
+     "max": 0.7
+    },
+    "frame": {
+     "n": 359,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.7,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 16.2,
+     "mean": 0.352,
+     "max": 0.9
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   },
+   "relayout": {
+    "theme": "theme-2",
+    "arm": "relayout",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6002.3,
+    "reducedMotion": false,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 0,
+     "seen": 1,
+     "dropped": 1,
+     "duration": 0,
+     "blocking": 0,
+     "styleAndLayout": 0,
+     "render": 0,
+     "max": 0
+    },
+    "longtask": {
+     "count": 0,
+     "seen": 0,
+     "dropped": 0,
+     "duration": 0
+    },
+    "forcedLayout": {
+     "count": 361,
+     "skipped": 0,
+     "total": 89.5,
+     "mean": 0.248,
+     "max": 0.8
+    },
+    "frame": {
+     "n": 360,
+     "mean": 16.67,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 16.8,
+     "over33": 0,
+     "over50": 0
+    },
+    "push": {
+     "count": 46,
+     "total": 16.9,
+     "mean": 0.367,
+     "max": 0.7
+    },
+    "dom": {
+     "rows": 1,
+     "words": 46,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "color, background-color, border-color, box-shadow"
+    }
+   }
+  }
+ }
+}
