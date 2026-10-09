@@ -1,5 +1,7 @@
 #include "d3d11_ctx.h"
 
+#include <cstdlib>   // getenv / strtoull — the run-time override channel
+
 namespace aireplay {
 
 static void dump_adapters(IDXGIFactory1* f)
@@ -63,15 +65,83 @@ bool D3d11Context::create_on_vendor(UINT want_vendor, std::string* err)
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// Law 7 ring budget.
+//
+// The arena is HOST memory, not video memory: ring_buffer.cpp:15 does
+// arena_.assign(capacity_bytes, 0) on a std::vector<uint8_t>, so the whole cap is
+// committed out of the system pool at init().  Nothing in the ring path allocates
+// VRAM.  This function USED to divide info.dedicated_vram by 16, i.e. it budgeted
+// a host-memory arena out of video memory.
+//
+// MEASURED on the dev box, before this change:
+//   DedicatedVideoMemory = 15 979 MiB -> cap = 998.69 MiB
+//   TotalPhysicalMemory  = 47.74 GiB
+// so the cap bound at 2.0% of the pool the arena actually comes from, and at
+// 4K60 the ring silently kept 46.5 s of the 120 s the spec promises.  The divisor
+// is now host RAM, measured at RUN time — never hardcoded — and the log line names
+// the source so the number in a receipt is traceable.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The host memory pool, read at run time.  0 only if the call itself fails.
+uint64_t system_phys_bytes()
+{
+    MEMORYSTATUSEX ms;
+    memset(&ms, 0, sizeof(ms));
+    ms.dwLength = sizeof(ms);
+    if (!GlobalMemoryStatusEx(&ms)) return 0;
+    return (uint64_t)ms.ullTotalPhys;
+}
+
+const uint64_t kRingLoMb = 256;    // floor  — smaller cannot hold a useful window
+const uint64_t kRingHiMb = 4096;   // ceiling — the arena is committed in full at init()
+const char*     kRingMbEnv = "SOTTO_RING_MB";
+
+} // namespace
+
 uint64_t D3d11Context::ring_cap_bytes() const
 {
-    // Law 7: budget the ring from the measured hardware class, then derive seconds.
-    // clamp(VRAM/16, 256 MiB, 2048 MiB).
-    uint64_t cap = info.dedicated_vram / 16;
-    const uint64_t lo = 256ull << 20, hi = 2048ull << 20;
-    if (cap < lo) cap = lo;
-    if (cap > hi) cap = hi;
-    return cap;
+    // Everything below is in MiB so an absurd override cannot overflow a shift.
+    const uint64_t total_mb = system_phys_bytes() >> 20;   // the pool we actually take from
+    const uint64_t want_mb  = total_mb / 4;                // law 7: 25% of host RAM
+
+    uint64_t    pick_mb = want_mb;
+    const char* source  = "system RAM: GlobalMemoryStatusEx().ullTotalPhys / 4";
+
+    // Run-time override, so a receipt can reproduce the exact cap without a rebuild.
+    const char* env = getenv(kRingMbEnv);
+    if (env && *env) {
+        uint64_t asked_mb = strtoull(env, nullptr, 10);
+        if (asked_mb) {
+            pick_mb = asked_mb;
+            source  = "override: env SOTTO_RING_MB";
+        }
+    }
+
+    uint64_t cap_mb = pick_mb;
+    char     clamp[128];
+    clamp[0] = '\0';
+    if (cap_mb < kRingLoMb) {
+        snprintf(clamp, sizeof(clamp), "  [CLAMPED UP %llu -> %llu MB, floor]",
+                 (unsigned long long)cap_mb, (unsigned long long)kRingLoMb);
+        cap_mb = kRingLoMb;
+    } else if (cap_mb > kRingHiMb) {
+        snprintf(clamp, sizeof(clamp), "  [CLAMPED DOWN %llu -> %llu MB, ceiling]",
+                 (unsigned long long)cap_mb, (unsigned long long)kRingHiMb);
+        cap_mb = kRingHiMb;
+    }
+
+    // One line per fact: the source, the raw host pool, what was asked, what was
+    // applied, and the clamp when one fired.  dedicated_vram is printed too, so the
+    // receipt shows the pool that is deliberately NOT used for this budget.
+    log_line("  RING CAP (law 7): source=%s sysram=%lluMB asked=%lluMB -> cap=%lluMB%s  (vram=%lluMB NOT used: the arena is host RAM)",
+             source, (unsigned long long)total_mb, (unsigned long long)pick_mb,
+             (unsigned long long)cap_mb, clamp,
+             (unsigned long long)(info.dedicated_vram >> 20));
+
+    return cap_mb << 20;
 }
 
 void D3d11Context::release()
