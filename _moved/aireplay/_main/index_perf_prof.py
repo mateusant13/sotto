@@ -82,6 +82,9 @@ def phase_timers(idx, n_queries):
 
     Re-implements the exact arithmetic SearchIndex.search performs (via the real
     object, not a copy) so every stage is charged for what it actually costs.
+    KEPT IN STEP WITH search.py: when the channel scan moved to per-channel
+    blocks, these timers moved with it, or the before/after percentages would
+    be comparing different arithmetic.
     """
     qrng = np.random.default_rng(SEED + 1)
     queries = [idx.vecs[int(qrng.integers(0, idx.n))] for _ in range(n_queries)]
@@ -90,48 +93,52 @@ def phase_timers(idx, n_queries):
     for q in queries[:3]:
         idx.search(q, k=10)
 
-    tot = {k: 0.0 for k in ("l2", "matvec", "mask_copy", "where", "argpart",
+    tot = {k: 0.0 for k in ("l2", "matvec", "mask_build", "where", "argpart",
                             "argsort", "hitlist", "rrf", "materialise", "TOTAL")}
-    counts = {"matvec_calls": 0, "mask_copy_calls": 0, "where_calls": 0,
-              "argpart_calls": 0, "argsort_calls": 0, "hitlist_calls": 0}
+    counts = {"channels_scanned": 0, "channels_skipped": 0, "where_calls": 0,
+              "argpart_calls": 0, "hitlist_calls": 0}
     lat = []
 
     for q in queries:
         t_all = time.perf_counter()
         scores, detail = {}, {}
         for channel, weight in search.WEIGHTS.items():
+            block = idx._blocks.get(channel)
+            if block is None:
+                counts["channels_skipped"] += 1
+                continue
+            counts["channels_scanned"] += 1
+            lo, hi = block
             t = time.perf_counter()
             qn = search._l2(q)
             tot["l2"] += time.perf_counter() - t
 
             t = time.perf_counter()
-            sims = idx.vecs @ qn
+            sims = idx.vecs[lo:hi] @ qn
             tot["matvec"] += time.perf_counter() - t
-            counts["matvec_calls"] += 1
+
+            if video_filter_used(q):
+                t = time.perf_counter()
+                mask = idx._filter_mask(lo, hi, None, None, None)
+                tot["mask_build"] += time.perf_counter() - t
+                t = time.perf_counter()
+                sims = np.where(mask, sims, -np.inf)
+                tot["where"] += time.perf_counter() - t
+                counts["where_calls"] += 1
 
             t = time.perf_counter()
-            mask = idx._masks[channel].copy()
-            tot["mask_copy"] += time.perf_counter() - t
-            counts["mask_copy_calls"] += 1
-
-            t = time.perf_counter()
-            sims = np.where(mask, sims, -np.inf)
-            tot["where"] += time.perf_counter() - t
-            counts["where_calls"] += 1
-
-            t = time.perf_counter()
-            take = min(search.K_PER_CHANNEL, idx.n)
-            top = np.argpartition(-sims, take - 1)[:take]
+            take = min(search.K_PER_CHANNEL, sims.shape[0])
+            top = np.argpartition(sims, sims.shape[0] - take)[-take:]
             tot["argpart"] += time.perf_counter() - t
             counts["argpart_calls"] += 1
 
             t = time.perf_counter()
             top = top[np.argsort(-sims[top])]
             tot["argsort"] += time.perf_counter() - t
-            counts["argsort_calls"] += 1
 
             t = time.perf_counter()
-            knn = [(int(idx.seg_ids[i]), r + 1, float(sims[i]))
+            seg = idx.seg_ids
+            knn = [(int(seg[lo + i]), r + 1, float(sims[i]))
                    for r, i in enumerate(top) if np.isfinite(sims[i])]
             tot["hitlist"] += time.perf_counter() - t
             counts["hitlist_calls"] += 1
@@ -150,6 +157,12 @@ def phase_timers(idx, n_queries):
         lat.append((time.perf_counter() - t_all) * 1000.0)
 
     return tot, counts, lat
+
+
+def video_filter_used(q):
+    """The probe queries with no window filter, so no mask is built.  Kept as a
+    named predicate so the no-filter path is explicit instead of implied."""
+    return False
 
 
 def cprofile_queries(idx, n_queries=60):
@@ -171,12 +184,10 @@ def pct(tot, n_queries):
     t = tot["TOTAL"]
     print(f"\n  {'phase':<14}{'ms/query':>12}{'% of query':>14}{'calls/query':>15}")
     print("  " + "-" * 55)
-    for k in ("l2", "matvec", "mask_copy", "where", "argpart", "argsort",
+    for k in ("l2", "matvec", "mask_build", "where", "argpart", "argsort",
               "hitlist", "rrf", "materialise"):
         ms = tot[k] * 1000.0 / n_queries
-        calls = {"matvec": 3, "mask_copy": 3, "where": 3, "argpart": 3,
-                 "argsort": 3, "hitlist": 3}.get(k, 1)
-        print(f"  {k:<14}{ms:>12.4f}{tot[k] / t * 100:>13.2f}%{calls:>15}")
+        print(f"  {k:<14}{ms:>12.4f}{tot[k] / t * 100:>13.2f}%")
     print("  " + "-" * 55)
     print(f"  {'TOTAL':<14}{t * 1000.0 / n_queries:>12.4f}{100.0:>13.2f}%")
 
