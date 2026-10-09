@@ -192,22 +192,33 @@ def arm_B() -> None:
 
     t0 = time.perf_counter()
     vids = src.execute("SELECT id, path, size_bytes, mtime_ns, duration_ms"
-                       " FROM video").fetchall()
+                       " FROM video ORDER BY id").fetchall()
+    # content_key must be unique per LEGACY ROW (two legacy ids may share a
+    # path), and the new rowids are NOT the legacy ids -- so carry an explicit
+    # old_id -> new_id map.  On a fresh DB inserted in `id` order the new ids
+    # are 1..N; that is ASSERTED below rather than assumed.
+    payload = []
+    for r in vids:
+        payload.append((hashlib.sha256(f"legacy:{r['id']}".encode()).hexdigest(),
+                        r["path"], int(r["size_bytes"] or 0),
+                        int(r["mtime_ns"] or 0), int(r["duration_ms"] or 0)))
     dst.executemany(
-        "INSERT OR REPLACE INTO video (content_key, path, size_bytes, mtime_ns,"
-        " duration_ms, state) VALUES (?,?,?,?,'indexed')",
-        [(hashlib.sha256(f"legacy:{r['path']}".encode()).hexdigest(),
-          r["path"], int(r["size_bytes"] or 0), int(r["mtime_ns"] or 0),
-          int(r["duration_ms"] or 0)) for r in vids])
-    dst.execute("CREATE TEMP TABLE vmap (old_id INTEGER PRIMARY KEY, new_id INTEGER)")
-    dst.execute("INSERT INTO vmap SELECT id, id FROM video")
-
+        "INSERT INTO video (content_key, path, size_bytes, mtime_ns,"
+        " duration_ms, state) VALUES (?,?,?,?,?,'indexed')", payload)
+    new_ids = [int(r[0]) for r in
+               dst.execute("SELECT id FROM video ORDER BY rowid")]
+    if new_ids != list(range(1, len(vids) + 1)):
+        raise RuntimeError(f"new video ids are not 1..N: {new_ids[:5]}...")
+    idmap = {int(r["id"]): new_ids[i] for i, r in enumerate(vids)}
     segs = src.execute("SELECT seg_id, video_id, start_ms, end_ms FROM segment"
                        ).fetchall()
+    unknown = {int(r["video_id"]) for r in segs} - set(idmap)
+    if unknown:
+        raise RuntimeError(f"{len(unknown)} segments point at absent videos")
     dst.executemany("INSERT INTO segment (seg_id, video_id, start_ms, end_ms)"
                     " VALUES (?,?,?,?)",
-                    [(int(r["seg_id"]), int(r["video_id"]), int(r["start_ms"]),
-                      int(r["end_ms"])) for r in segs])
+                    [(int(r["seg_id"]), idmap[int(r["video_id"])],
+                      int(r["start_ms"]), int(r["end_ms"])) for r in segs])
 
     trs = src.execute("SELECT seg_id, text FROM transcript").fetchall()
     dst.executemany(
