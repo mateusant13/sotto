@@ -1,0 +1,122 @@
+======================================================================
+SCHEMA local_runtime_queue_items
+CREATE TABLE local_runtime_queue_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        status TEXT,
+        created_at_ms INTEGER NOT NULL,
+        data_json TEXT NOT NULL, source TEXT, client_request_id TEXT, dedupe_key TEXT, expires_at_ms INTEGER, claim_id TEXT, claim_lease_expires_at_ms INTEGER, routing_fingerprint TEXT,
+        UNIQUE(session_id, item_id)
+      )
+CREATE INDEX idx_local_runtime_queue_items_session_id
+        ON local_runtime_queue_items(session_id, id)
+CREATE INDEX idx_local_runtime_queue_items_session_item_id
+        ON local_runtime_queue_items(session_id, item_id)
+CREATE UNIQUE INDEX local_runtime_queue_items_session_item
+    ON local_runtime_queue_items(session_id, item_id)
+CREATE INDEX idx_local_runtime_queue_items_session_status_id
+        ON local_runtime_queue_items(session_id, status, id)
+CREATE INDEX idx_local_runtime_queue_items_session_client_request
+        ON local_runtime_queue_items(session_id, client_request_id)
+        WHERE client_request_id IS NOT NULL
+CREATE INDEX idx_local_runtime_queue_items_session_dedupe
+        ON local_runtime_queue_items(session_id, dedupe_key)
+        WHERE dedupe_key IS NOT NULL
+CREATE INDEX idx_local_runtime_queue_items_session_claim_id
+        ON local_runtime_queue_items(session_id, claim_id, id)
+        WHERE claim_id IS NOT NULL
+CREATE INDEX idx_local_runtime_queue_items_session_routing_id
+        ON local_runtime_queue_items(session_id, status, routing_fingerprint, id)
+        WHERE routing_fingerprint IS NOT NULL
+CREATE INDEX idx_local_runtime_queue_items_session_status_expiry_id
+        ON local_runtime_queue_items(session_id, status, id, expires_at_ms)
+======================================================================
+SCHEMA local_runtime_message_rows
+CREATE TABLE local_runtime_message_rows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        msg_id TEXT NOT NULL,
+        role TEXT,
+        turn_id TEXT,
+        created_at_ms INTEGER NOT NULL,
+        data_json TEXT NOT NULL, "source" TEXT, "source_context_json" TEXT,
+        UNIQUE(session_id, msg_id)
+      )
+CREATE INDEX idx_local_runtime_message_rows_session_id
+        ON local_runtime_message_rows(session_id, id)
+CREATE INDEX idx_local_runtime_message_rows_session_msg_id
+        ON local_runtime_message_rows(session_id, msg_id)
+CREATE UNIQUE INDEX local_runtime_message_rows_session_message
+    ON local_runtime_message_rows(session_id, msg_id)
+CREATE INDEX idx_local_runtime_message_rows_session_role_id
+    ON local_runtime_message_rows(session_id, role, id)
+CREATE INDEX idx_local_runtime_message_rows_turn_source
+    ON local_runtime_message_rows(session_id, turn_id, role, id)
+======================================================================
+SCHEMA local_runtime_turn_ingress
+CREATE TABLE local_runtime_turn_ingress (
+    turn_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    client_request_id TEXT,
+    claim_id TEXT,
+    claim_source TEXT,
+    queue_item_ids_json TEXT,
+    input_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('accepted', 'completed', 'failed', 'aborted')),
+    accepted_at_ms INTEGER NOT NULL,
+    accepted_sequence INTEGER,
+    completed_at_ms INTEGER,
+    queue_acknowledged_at_ms INTEGER,
+    input_digest TEXT,
+    input_metadata_json TEXT NOT NULL DEFAULT '{}'
+  )
+CREATE UNIQUE INDEX idx_local_runtime_turn_ingress_claim_id
+    ON local_runtime_turn_ingress(claim_id) WHERE claim_id IS NOT NULL
+CREATE UNIQUE INDEX idx_local_runtime_turn_ingress_client_request
+    ON local_runtime_turn_ingress(session_id, client_request_id)
+    WHERE client_request_id IS NOT NULL
+CREATE INDEX idx_local_runtime_turn_ingress_session_accepted_sequence
+    ON local_runtime_turn_ingress(session_id, accepted_sequence DESC)
+    WHERE status = 'accepted'
+CREATE UNIQUE INDEX idx_local_runtime_turn_ingress_sequence
+      ON local_runtime_turn_ingress(accepted_sequence)
+      WHERE accepted_sequence IS NOT NULL
+======================================================================
+QUEUE CENSUS
+======================================================================
+REFERENCE QUEUE ROW (newest, full)
+cols: ['id', 'session_id', 'item_id', 'status', 'created_at_ms', 'data_json', 'source', 'client_request_id', 'dedupe_key', 'expires_at_ms', 'claim_id', 'claim_lease_expires_at_ms', 'routing_fingerprint']
+======================================================================
+MESSAGE ROW sample (newest 2 user rows, whole store)
+cols: ['id', 'session_id', 'msg_id', 'role', 'turn_id', 'created_at_ms', 'data_json', 'source', 'source_context_json']
+    id                           = 232090
+    session_id                   = 'mvs_7b7c9685ea5041e1aed890687aafc1d9'
+    msg_id                       = 'msg-user-v1-QxnBPITDz0r7TG8G6umRyGTYylNnWyQGFgk2Y3ImCGc'
+    role                         = 'user'
+    turn_id                      = 'turn_task_bg_bg_4f21b45f-077b-45fa-997b-029851224f74'
+    created_at_ms                = 1791390209805
+    data_json                    = '{"msg_id":"msg-user-v1-QxnBPITDz0r7TG8G6umRyGTYylNnWyQGFgk2Y3ImCGc","role":"user","msg_content":"Lane P, Sotto project. Worktree off `main` in `H:\\\\sotto`, branch `feat/import-pipeline`.\\n\\n**FIRST ACTION IS A COMMIT.** MEASURED: 36 of 40 child sessions g
+    source                       = 'background-task'
+    source_context_json          = None
+   ---
+    id                           = 232083
+    session_id                   = 'mvs_fa9d0bf3583f473384c76251584371ae'
+    msg_id                       = 'msg-user-v1-XctLClYBMSwCYUkcHthljtZxMOejuLBJx3idlsBAkgk'
+    role                         = 'user'
+    turn_id                      = 'turn_task_bg_bg_c09ffe1a-a9ed-4405-9a47-7e383b70035f'
+    created_at_ms                = 1791390207824
+    data_json                    = '{"msg_id":"msg-user-v1-XctLClYBMSwCYUkcHthljtZxMOejuLBJx3idlsBAkgk","role":"user","msg_content":"Lane O, Sotto project. Worktree off `main` in `H:\\\\sotto`, branch `feat/ocr-impl`.\\n\\n**FIRST ACTION IS A COMMIT.** MEASURED: 36 of 40 child sessions get abor
+    source                       = 'background-task'
+    source_context_json          = None
+   ---
+======================================================================
+DISTINCT source values in message_rows
+   api 16036
+   background-task 70942
+   communication 20258
+   cron 9432
+   questionnaire 212
+   task 2898
+   turn-continuation 1094
