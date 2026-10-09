@@ -126,7 +126,7 @@ if ($SkipBuild) {
 } else {
   $common = @("$src\main.cpp","$src\common.cpp","$src\d3d11_ctx.cpp","$src\nv12_convert.cpp",
               "$src\wgc_capture.cpp","$src\nvenc_encoder.cpp","$src\ring_buffer.cpp",
-              "$src\mp4_writer.cpp","$src\selftest.cpp","$src\test_window.cpp","$src\replay.cpp")
+              "$src\mp4_writer.cpp","$src\selftest.cpp","$src\test_window.cpp","$src\trigger.cpp","$src\replay.cpp")
   $libs = @('-ld3d11','-ldxgi','-luuid','-lole32','-loleaut32','-lruntimeobject','-lwindowsapp',
             '-lpsapi','-lgdi32','-luser32')
   $bf = "$logs\cap-build.txt"
