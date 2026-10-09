@@ -133,6 +133,13 @@ struct Options {
     // {"cmd":"cut"} on the SAME stdin handle the ping path already uses.
     bool        cut_session = false;
     std::string cut_dir;
+    // THE INSTANT-REPLAY HOTKEY (the ShadowPlay key).  OFF by default: arming it registers GLOBAL
+    // keys on the owner's desktop, and a measurement run must never take them (replay.h:66-72).
+    // --hotkey is the opt-in; --hotkey-window overrides the per-key window (0 => the trigger's
+    // own 30 s default); --hotkey-dir writes ONE FILE PER PRESS instead of overwriting --out.
+    bool        hotkey = false;
+    double      hotkey_window = 0.0;
+    std::string hotkey_dir;
 };
 
 static void usage()
@@ -171,6 +178,13 @@ static void usage()
     log_line("                             --cut-from-h264 FILE as the feed (WGC refuses every capture");
     log_line("                             item on this host, so a live clip is not obtainable)");
     log_line("  --cut-dir DIR              where --cut-session writes its clips (default: --out's dir)");
+    log_line("  --hotkey                   ARM the instant-replay key (default OFF). It is armed ONLY");
+    log_line("                             after the law-6 gate passes: no encoder => no key, exit 3.");
+    log_line("                             Keys: F10/F11/Ctrl+F9/Alt+F9/Alt+F10/Alt+F11/Ctrl+F12/");
+    log_line("                             PrintScreen/F12; every one is ALSO polled, so a key another");
+    log_line("                             app owns still fires. A press cuts the last N s out of the ring");
+    log_line("  --hotkey-window S          the retroactive window a press asks for (0 => 30 s)");
+    log_line("  --hotkey-dir DIR           one clip per press under DIR (default: <out dir>\\hotkey-clips)");
     log_line("  --log FILE                 also write the log here");
     log_line("  --help");
 }
@@ -201,6 +215,9 @@ static bool parse(int argc, char** argv, Options* o, std::string* err)
         else if (a == "--cut-from-h264") o->cut_from = next("--cut-from-h264");
         else if (a == "--cut-session") o->cut_session = true;
         else if (a == "--cut-dir") o->cut_dir = next("--cut-dir");
+        else if (a == "--hotkey") o->hotkey = true;
+        else if (a == "--hotkey-window") o->hotkey_window = atof(next("--hotkey-window").c_str());
+        else if (a == "--hotkey-dir") o->hotkey_dir = next("--hotkey-dir");
         else if (a == "--cut-fps") o->cut_fps = (uint32_t)atoi(next("--cut-fps").c_str());
         else if (a == "--cut-size") {
             std::string s = next("--cut-size");
@@ -546,6 +563,29 @@ static int arm_run(const Options& o)
         cfg.out_path = "H:\\aireplay\\_main\\runs\\clip-" + timestamp_slug() + ".mp4";
     }
 
+    // THE HOTKEY, and it is OFF unless asked for.  Replay::arm() CONSTRUCTS the Trigger and calls
+    // arm_hotkey() ONLY after the law-6 gate passes (replay.cpp:408 -> :431), and Replay::run()
+    // drains its presses into request_cut() -- the SAME cut path --cut-at-s uses (replay.cpp:959,
+    // :591).  main.cpp ENABLES it (cfg.hotkey) and REPORTS it; it must NOT build a second Trigger,
+    // which would double-register the global keys and race the capture thread's capture_qpc_.
+    cfg.hotkey = o.hotkey;
+    cfg.hotkey_window_s = o.hotkey_window;
+    if (o.hotkey) {
+        if (!o.hotkey_dir.empty()) {
+            cfg.out_dir = o.hotkey_dir;
+        } else {
+            // ONE FILE PER PRESS.  Without a directory every press overwrites cfg_.out_path, so
+            // the second hotkey destroys the clip the owner just saved -- replay.h calls that
+            // "instant replacement, not instant replay".  Derive a folder beside --out.
+            std::string d = cfg.out_path;
+            const size_t sep = d.find_last_of("\\/");
+            d = (sep == std::string::npos) ? std::string(".") : d.substr(0, sep);
+            ensure_dir(d);                       // the parent must exist before the child
+            cfg.out_dir = d + "\\hotkey-clips";
+        }
+        ensure_dir(cfg.out_dir);
+    }
+
     Census census;
     census.start();
 
@@ -577,6 +617,35 @@ static int arm_run(const Options& o)
     log_line("  ARMED: codec=%s  %ux%u  fps=%u  bitrate=%.1f Mbps  ring=%llu MB",
              replay.armed_codec(), replay.width(), replay.height(), rc.fps, (double)rc.bitrate / 1e6,
              (unsigned long long)(replay.ring_capacity() >> 20));
+
+    // THE INSTANT-REPLAY HOTKEY, reported honestly.  The Trigger is CONSTRUCTED and OWNED by
+    // Replay::arm_hotkey(); this block only OBSERVES it through replay.hotkey() so the log names
+    // WHICH PATH IS LIVE per key.  A key whose RegisterHotKey was refused (already owned by another
+    // process) is NOT armed by the OS -- it is reachable ONLY through the poll thread, and this is
+    // the line that says so instead of claiming a registration that does not exist.
+    if (cfg.hotkey) {
+        Trigger* trig = replay.hotkey();
+        if (trig && trig->armed()) {
+            const uint32_t rid = Trigger::process_integrity_rid();
+            log_line("HOTKEY: %s", trig->arm_summary().c_str());
+            log_line("HOTKEY: pump_thread=%d poll_thread=%d integrity=%s(0x%X) queue_cap=%u",
+                     trig->pump_thread_live() ? 1 : 0, trig->poll_thread_live() ? 1 : 0,
+                     Trigger::integrity_name(rid), (unsigned)rid, Trigger::queue_capacity());
+            for (const BindingStatus& b : trig->status()) {
+                const std::string why = b.registered
+                                            ? std::string()
+                                            : std::string(" (") + b.register_error_text + ")";
+                log_line("HOTKEY: key=%-11s live_path=%s%s", b.binding.name,
+                         b.registered ? "RegisterHotKey" : "poll-only", why.c_str());
+            }
+        } else {
+            log_line("HOTKEY: NOT ARMED -- a press will do nothing; the timer cut still runs. "
+                     "Replay::arm_hotkey() logged the reason above.");
+        }
+    } else {
+        log_line("HOTKEY: off (pass --hotkey to arm the instant-replay key; default is off so a "
+                 "measurement run never takes the owner's keys)");
+    }
 
     // AUDIO: the tap is ON for the capture command and runs BESIDE the video capture, on the
     // last thread this process is allowed (the census spends one, the tap pump spends one,
