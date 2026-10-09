@@ -56,6 +56,15 @@ BUDGET_MS = 16.0
 # from being waved through.  Every threshold the gate uses must appear here.
 UNDER_MIN_FRAC = 0.99
 P95_MAX_MS = BUDGET_MS
+# RECALL_MIN is the clause that stops the gate from being satisfied by a search
+# that is FAST, COMPLETE and WRONG.  The probe draws each query from the store
+# itself, so the query vector's own row is its exact nearest neighbour at
+# cosine 1.0 -- ground truth with no labels and no extra cost.  Measured
+# 2026-10-07: healthy search returns it as the top hit 100/100; a one-character
+# regression that dropped the sort negation returned it 0/100 while every
+# latency and completeness clause still passed.  Latency and row-count clauses
+# cannot see that class of defect, so this clause is not optional.
+RECALL_MIN = 0.99
 
 
 # --------------------------------------------------------------------------
@@ -146,17 +155,29 @@ def latency_stats(times_ms):
 
 
 def gate(n, landed, n_queries, empty, times_ms,
-         under_min=UNDER_MIN_FRAC, p95_max=P95_MAX_MS):
+         under_min=UNDER_MIN_FRAC, p95_max=P95_MAX_MS,
+         recall=None, recall_n=0):
     """Decide the verdict from MEASURED numbers.  -> (ok: bool, reasons: list[str])
 
     `reasons` is empty if and only if ok.  Each reason names the population it
     was measured over, so a FAIL line is evidence and not an assertion.
+
+    `recall` is the fraction of `recall_n` ground-truth queries whose TOP hit
+    was the true nearest neighbour; None means the caller did not measure it,
+    which keeps the clause opt-in for synthetic arms that carry no ground truth.
     """
     reasons = []
     if landed != n:
         reasons.append(f"only {landed}/{n} embeddings landed in the store")
     if empty:
         reasons.append(f"{empty}/{n_queries} queries returned no hit")
+
+    if recall is not None and recall < RECALL_MIN:
+        reasons.append(
+            f"recall@1 MISSED: {recall * 100:.1f}% of {recall_n} ground-truth "
+            f"queries returned the true nearest neighbour as the top hit, need "
+            f"{RECALL_MIN * 100:.1f}% (POPULATION n={n} vectors, "
+            f"<=2 threads) -- fast, complete and WRONG")
 
     if not times_ms:
         reasons.append(
@@ -278,14 +299,22 @@ def main(argv):
     qrng = np.random.default_rng(SEED + 1)
     times_ms = []
     empty = 0
+    recall_hits = 0
     for _ in range(n_queries):
         qi = int(qrng.integers(0, idx.n))       # an in-population query
         q = idx.vecs[qi]
+        # q IS a stored vector, so its own row is its exact nearest neighbour
+        # (cosine 1.0, unique).  That is ground truth for free: no labels, no
+        # extra query cost.  The old probe drew qi and then threw it away.
+        truth = int(idx.seg_ids[qi])
         t0 = time.perf_counter()
         hits = idx.search(q, k=10)
         times_ms.append((time.perf_counter() - t0) * 1000.0)
         if not hits:
             empty += 1
+        elif int(hits[0]["seg_id"]) == truth:
+            recall_hits += 1
+    recall = recall_hits / max(1, n_queries)
 
     mem_end = rss_mb()
     mem_delta = mem_end - mem_start
@@ -304,16 +333,19 @@ def main(argv):
           f"({sum(1 for t in times_ms if t < BUDGET_MS)}/{cnt} queries; "
           f"gate needs {UNDER_MIN_FRAC * 100:.1f}%)")
     print(f"empty results   : {empty}/{n_queries}")
+    print(f"recall@1        : {recall * 100:.1f}% ({recall_hits}/{n_queries} "
+          f"ground-truth top hits; gate needs {RECALL_MIN * 100:.1f}%)")
     print(f"rss after       : {mem_end:.1f} MB  delta={mem_delta:+.1f} MB")
 
-    ok, reasons = gate(n, landed, n_queries, empty, times_ms)
+    ok, reasons = gate(n, landed, n_queries, empty, times_ms,
+                       recall=recall, recall_n=n_queries)
     for r in reasons:
         print(f"FAIL: {r}")
 
     print(f"\nSCALE: n={n} p50={p50:.2f}ms p95={p95:.2f}ms "
           f"frac_under_{BUDGET_MS:g}ms={under:.3f} mem_delta={mem_delta:.1f}MB")
     print(f"GATE : budget={BUDGET_MS:g}ms under_need>={UNDER_MIN_FRAC:.2f} "
-          f"p95_need<={P95_MAX_MS:g}ms  "
+          f"p95_need<={P95_MAX_MS:g}ms recall_need>={RECALL_MIN:.2f}  "
           f"(POPULATION n={n}, WINDOW {cnt} queries, <=2 threads)")
 
     conn.close()

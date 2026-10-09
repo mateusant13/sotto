@@ -185,6 +185,21 @@ def arm_x3_no_timings():
     return gate(20000, 20000, 100, 0, [])
 
 
+def arm_g3_recall_ok():
+    return gate(20000, 20000, 100, 0, compliant(), recall=1.0, recall_n=100)
+
+
+def arm_x4_wrong_results():
+    """THE BLIND-SPOT ARM.  Every other clause passes -- all 20000 rows landed,
+    no query came back empty, 100% of queries inside the 16 ms budget -- and the
+    search is still completely wrong: 0% of ground-truth top hits correct.
+    Measured 2026-10-07 on a one-character regression (the sort negation in
+    SearchIndex.knn dropped, so the take LEAST similar vectors ranked best):
+    the gate printed RESULT: PASS / exit 0 while recall@1 was 0/100.  This arm
+    is what stops that from coming back."""
+    return gate(20000, 20000, 100, 0, compliant(), recall=0.0, recall_n=100)
+
+
 # --------------------------------------------------------------------------
 # E1  END-TO-END on the real store/search path
 # --------------------------------------------------------------------------
@@ -213,12 +228,45 @@ def arm_e1_real_run_exits_nonzero():
     _results.append(("E1_real_run_nonzero", ok))
 
 
+def arm_e2_real_run_wrong_results():
+    """END-TO-END on the real path with the REAL defect: SearchIndex.knn is
+    wrapped so it returns the take LEAST similar members of its own result --
+    same cost, same length, still non-empty, still fast, still complete.  Only
+    the ANSWERS are wrong.  Before the recall clause this run exited 0; now it
+    must exit 1 with RESULT: FAIL.
+    POPULATION n=2000 vectors, WINDOW 20 timed queries, <=2 threads."""
+    real_knn = probe.search.SearchIndex.knn
+
+    def wrong_knn(self, query, **kw):
+        return real_knn(self, query, **kw)[-10:]
+
+    probe.search.SearchIndex.knn = wrong_knn
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            rc = probe.main(["selftest", "2000", "20", "1000"])
+    finally:
+        probe.search.SearchIndex.knn = real_knn
+    out = buf.getvalue()
+    tail = [ln for ln in out.splitlines()
+            if ln.startswith(("FAIL:", "SCALE:", "GATE :", "RESULT:"))]
+    verdict = [ln for ln in tail if ln.startswith("RESULT:")]
+    said = any("recall@1 MISSED" in ln for ln in tail)
+    ok = (rc == 1) and verdict == ["RESULT: FAIL"] and said
+    print(f"{'PASS' if ok else 'FAIL'} arm={'E2_wrong_results':<26} "
+          f"want=rc=1  got=rc={rc}  verdict={verdict or 'MISSING'}")
+    for ln in tail:
+        print(f"       probe: {ln}")
+    _results.append(("E2_wrong_results", ok))
+
+
 # --------------------------------------------------------------------------
 def main():
     print(f"probe under test: {_probe_path}")
     print(f"budget={BUDGET_MS:g}ms under_need>={probe.UNDER_MIN_FRAC:.2f} "
-          f"p95_need<={probe.P95_MAX_MS:g}ms")
-    print(f"arms            : 9 expected\n")
+          f"p95_need<={probe.P95_MAX_MS:g}ms "
+          f"recall_need>={probe.RECALL_MIN:.2f}")
+    print(f"arms            : 12 expected\n")
 
     arm_r1_old_logic_was_wrong()
     arm("R1_observed_miss", False, arm_r1_observed_miss,
@@ -227,10 +275,13 @@ def main():
         must_say="p95")
     arm("G1_compliant", True, arm_g1_compliant)
     arm("G2_tolerated_outlier", True, arm_g2_tolerated_outlier)
+    arm("G3_recall_ok", True, arm_g3_recall_ok)
     arm("X1_rows_missing", False, arm_x1_rows_missing, must_say="landed")
     arm("X2_empty_results", False, arm_x2_empty_results, must_say="no hit")
     arm("X3_no_timings", False, arm_x3_no_timings, must_say="no query timings")
+    arm("X4_wrong_results", False, arm_x4_wrong_results, must_say="recall@1 MISSED")
     arm_e1_real_run_exits_nonzero()
+    arm_e2_real_run_wrong_results()
 
     held = sum(1 for _, h in _results if h)
     total = len(_results)
