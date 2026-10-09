@@ -332,7 +332,9 @@ struct StdinCtl {
     {
         stop = true;
         if (th.joinable()) {
-            CancelSynchronousIo(th.native_handle());
+            // mingw's std::thread::native_handle_type is an integral handle type, not HANDLE:
+            // without the reinterpret_cast this does not compile under mingw g++ (measured).
+            CancelSynchronousIo(reinterpret_cast<HANDLE>(th.native_handle()));
             th.join();
         }
     }
