@@ -241,10 +241,46 @@ def upsert_marker(conn: sqlite3.Connection, *, seg_id: int, kind: str,
 # DISK decision, never a compute one -- native fp16 matvec measured 8.8x slower).
 # ---------------------------------------------------------------------------
 
+def channel_blocks(rows) -> tuple[np.ndarray, dict[str, tuple[int, int]]]:
+    """(order, blocks) for grouping loaded rows by channel.
+
+    `order` is the permutation that puts the rows of each channel together;
+    `blocks[channel] = (lo, hi)` is that channel's half-open range in the
+    PERMUTED array.  Channels with no rows are simply absent from `blocks`, and
+    an absent channel is how search.py knows it may skip the scan entirely.
+    """
+    if not rows:
+        return np.zeros(0, np.int64), {}
+    codes = np.array([r["channel"] for r in rows], dtype=object)
+    uniq, code = np.unique(codes, return_inverse=True)
+    order = np.argsort(code, kind="stable")
+    sorted_code = code[order]
+    blocks: dict[str, tuple[int, int]] = {}
+    for i, name in enumerate(uniq):
+        lo = int(np.searchsorted(sorted_code, i, side="left"))
+        hi = int(np.searchsorted(sorted_code, i, side="right"))
+        if hi > lo:
+            blocks[str(name)] = (lo, hi)
+    return order, blocks
+
+
 def load_matrix(conn: sqlite3.Connection, *, channels: tuple[str, ...] | None = None,
                 include_missing: bool = False) -> tuple[np.ndarray, np.ndarray,
-                                                         list[str], np.ndarray]:
-    """Returns (vectors fp32 [N,dim], seg_ids [N], channels [N], video_ids [N])."""
+                                                         list[str], np.ndarray,
+                                                         dict[str, tuple[int, int]]]:
+    """Returns (vectors fp32 [N,dim], seg_ids [N], channels [N], video_ids [N],
+    blocks {channel: (lo, hi)}).
+
+    ROWS ARE GROUPED BY CHANNEL.  This is the fix for the measured scale defect
+    (_main/index_perf_profile.md): search.py used to scan the whole matrix once
+    per RRF channel and mask the other channels' rows out afterwards, so with 3
+    channels it moved 3x the bytes it needed and threw 2x of them away -- 93.7%
+    of a query at n=211200, and O(N) on top of that.  Grouping at load makes each
+    channel ONE CONTIGUOUS SLICE, so its KNN is a scan of its own rows only.
+
+    Grouping costs no memory: the buffer is filled through `order`, and
+    `vecs[lo:hi]` is then a view, not a copy.
+    """
     sql = ("SELECT e.seg_id, e.channel, e.dim, e.dtype, e.vec, s.video_id "
            "FROM embedding e JOIN segment s ON s.seg_id = e.seg_id "
            "JOIN video v ON v.id = s.video_id")
@@ -259,19 +295,22 @@ def load_matrix(conn: sqlite3.Connection, *, channels: tuple[str, ...] | None = 
     rows = conn.execute(sql, args).fetchall()
 
     if not rows:
-        return (np.zeros((0, 0), np.float32), np.zeros(0, np.int64), [], np.zeros(0, np.int64))
+        return (np.zeros((0, 0), np.float32), np.zeros(0, np.int64), [],
+                np.zeros(0, np.int64), {})
 
     dim = max(int(r["dim"]) for r in rows)
+    order, blocks = channel_blocks(rows)
     vecs = np.empty((len(rows), dim), dtype=np.float32)
-    for i, r in enumerate(rows):
+    for i, oi in enumerate(order):
+        r = rows[oi]
         blob = r["vec"]
         a = np.frombuffer(blob, dtype=np.float16 if r["dtype"] == "fp16" else np.float32)
         vecs[i, :len(a)] = a.astype(np.float32)   # the one-and-only cast
     vecs /= np.linalg.norm(vecs, axis=1, keepdims=True).clip(1e-12)
-    seg_ids = np.array([int(r["seg_id"]) for r in rows], dtype=np.int64)
-    chans = [r["channel"] for r in rows]
-    video_ids = np.array([int(r["video_id"]) for r in rows], dtype=np.int64)
-    return vecs, seg_ids, chans, video_ids
+    seg_ids = np.array([int(rows[oi]["seg_id"]) for oi in order], dtype=np.int64)
+    chans = [rows[oi]["channel"] for oi in order]
+    video_ids = np.array([int(rows[oi]["video_id"]) for oi in order], dtype=np.int64)
+    return vecs, seg_ids, chans, video_ids, blocks
 
 
 def segments_for(conn: sqlite3.Connection, seg_ids: list[int]) -> dict[int, sqlite3.Row]:
