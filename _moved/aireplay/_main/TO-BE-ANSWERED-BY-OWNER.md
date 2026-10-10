@@ -78,3 +78,39 @@ falso. A mentira nasceu de um plano fora do git.
 **Pergunta:** comito os quatro `runs/P4-*.md` tal como estao (nenhum deles foi revisado por uma
 lane), ou preferes rever primeiro? E `p4-aireplay-status.md` (minusculo, 10 597 B) e um quarto
 plano ou um relatorio de estado - porque isso muda o commit message?
+
+## Q8 - OS TRES FICHEIROS DO GATE AUDIT EXISTEM FORA DO GIT, e o commit que os "guardava" nunca existiu
+Medido 2026-10-10. `_main/_gate-audit/gate-verdict-matrix.md` (17 565 B, mtime
+2026-10-09T23:18:50.203Z), `_main/_gate-audit/HONEST-BASELINE.md` (13 066 B, mtime
+2026-10-09T23:20:34.686Z) e `_main/_gate-audit/DO-NOT-RUN.md` (13 484 B, mtime
+2026-10-09T23:30:34.185Z) existem em disco e nenhum deles esta em commit nenhum:
+`git log --all -- _moved/aireplay/_main/_gate-audit/` e `git ls-files` devolvem vazio, e o repo
+aninhado reporta `?? _main/_gate-audit/`.
+
+No repo pai eles estao IGNORADOS, e vale a pena explicares porque isto voltou a acontecer:
+`.gitignore:105` (`_moved/aireplay/_main/*/`) casa apenas DIRETORIOS. Por isso os ficheiros
+directamente em `_main/` (AUDIT-FINDINGS, DEBT-LEDGER, TO-BE-ANSWERED-BY-OWNER) comitam sem
+`-f`, mas cada subdiretorio — `logs/`, `receipts/`, `runs/`, `src/`, `_gate-audit/` — precisa de
+`git add -f`. Foi exactamente isto que deixou os recibos e os logs fora ate hoje.
+
+**E a razao porque a linha do DEBT-LEDGER os dava por aterrados esta agora medida, nome e tudo:**
+a linha D-GATE-AUDIT citava o commit `f4ca6691`. `git cat-file -t f4ca6691` devolve
+`fatal: Not a valid object name` nos DOIS repos. E a identidade desse id nao e um mistério:
+`f4ca6691` sao os primeiros 8 caracteres hex de um ID de subagente —
+`f4ca6691-20f6-4718-aa5f-13d303894f08`, "Phase G - per-gate aggregate verdicts", filho desta
+sessao, INACTIVE. Nunca foi um commit. O erro foi de categoria: o id curto do proprio agente que
+escreveu os ficheiros foi citado como commit, e isso fez o trabalho parecer ja aterrado — que e
+como um erro de categoria se disfarca de "nada a fazer". Isto e DIFERENTE do F16.9 (la havia um
+commit que perdeu a casa; aqui nao havia casa nenhuma).
+
+**A minha recomendacao medida: comita os tres com `-f`.** O que eles contam e prova — o proprio
+DEBT-LEDGER rele o agregado e confirma que quatro alegacoes sobrevivem e duas foram corrigidas
+para F13. Nao os aterrar custa: nenhuma lane os pode citar com um sha, e um `git clean` leva-os
+sem deixar rasto. Aterrar custa tres ficheiros markdown novos e um `-f` — e o commit message tem de
+dizer que estao ignorados por causa de `.gitignore:105`, senao a proxima pessoa acha que o `-f`
+foi engano. Nao ha caminho partilhado com nada existente.
+
+**Pergunta:** comito os tres com `git add -f` tal como estao, ou preferes rever primeiro? E nota
+que `HONEST-BASELINE.md` tem um numero que ja sei estar errado (a sha do bateria foi medida de
+novo em 2026-10-10) — queres que o corrija no mesmo commit ou que o deixe como evidencia do que
+a lane mediu nessa altura?
