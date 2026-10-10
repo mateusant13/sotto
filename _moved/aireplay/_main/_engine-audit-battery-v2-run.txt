@@ -1,0 +1,87 @@
+BATTERY      : _engine-audit-battery-v2  subject=H:\sotto-wt\engproc\_moved\aireplay\src\engine
+GATE         : H:\sotto-wt\engproc\_moved\aireplay\src\engine\test_engine.py
+
+BATTERY CMD  : python src/engine/test_engine.py --keep
+BATTERY LOG  : I:/cc-tmp\battery-engine-v2.txt
+BATTERY START: 2026-10-10T01:42:59
+
+GATE ROOT      : I:\cc-tmp\engine-gate-19796
+SUBJECT        : H:\sotto-wt\engproc\_moved\aireplay\src\engine
+ARMS           : A,B,C1,C2,D,E,F,G   skipped=-
+RED CONTROLS   : stdout-leak,no-replay,capture-waits,preflight-ok,no-lock,commit-nokey,stale-lie,no-finalise
+
+ARM-A green       PASS    :: rc=0 cuts=4/4 ring=6 cuts_refused=0 rec=1 spine=5cmt,5key-ok,5sha-ok stop=cut-count-reached stdout=0B 
+ARM-A    green GREEN   5.3s  rc=0 cuts=4/4 ring=6 cuts_refused=0 rec=1 spine=5cmt,5key-ok,5sha-ok stop=cut-count-reached stdout=0B 
+ARM-B green       PASS    :: rc=0/0 ui1=5ms ui2=2ms replayed=14(30..44) exact=True cursor=30 ids=71 gaps=[] dupes=0 engring=100/120 live=41 cuts_while_unattended=219 clips=221 files=221 rows=221 orphan=- 
+ARM-B    green GREEN   33.6s  rc=0/0 ui1=5ms ui2=2ms replayed=14(30..44) exact=True cursor=30 ids=71 gaps=[] dupes=0 engring=100/120 live=41 cuts_while_unattended=219 clips=221 files=221 rows=221 orphan=- 
+ARM-C/stall green       PASS    :: rc=0 asr={'submitted': 12, 'done': 0, 'dead': 4, 'failed': 0, 'dropped': 1} clips=12/12 maxcut=1982ms intervals=[139, 942, 986, 995, 1005, 1012, 1030, 1071, 1125, 1982] keys_ok=12/12 ui=0 
+ARM-C/stall green GREEN   34.2s  rc=0 asr={'submitted': 12, 'done': 0, 'dead': 4, 'failed': 0, 'dropped': 1} clips=12/12 maxcut=1982ms intervals=[139, 942, 986, 995, 1005, 1012, 1030, 1071, 1125, 1982] keys_ok=12/12 ui=0 
+ARM-C/dead green       PASS    :: rc=0 asr={'submitted': 12, 'done': 0, 'dead': 0, 'failed': 12, 'dropped': 0} clips=12/12 maxcut=1398ms intervals=[714, 822, 903, 1022, 1032, 1065, 1075, 1238, 1287, 1398] keys_ok=12/12 ui=0 
+ARM-C/dead green GREEN   13.8s  rc=0 asr={'submitted': 12, 'done': 0, 'dead': 0, 'failed': 12, 'dropped': 0} clips=12/12 maxcut=1398ms intervals=[714, 822, 903, 1022, 1032, 1065, 1075, 1238, 1287, 1398] keys_ok=12/12 ui=0 
+ARM-D green       PASS    :: rc=3 stdout=0B verdict="[engine 01:44:26] pre-flight rc=3 decision='DECISION: REFUSED ? NO ENCODER INITIALISED - the rep" locks=False spine=False 
+ARM-D    green GREEN   0.8s  rc=3 stdout=0B verdict="[engine 01:44:26] pre-flight rc=3 decision='DECISION: REFUSED ? NO ENCODER INITIALISED - the rep" locks=False spine=False 
+ARM-E green       PASS    :: rc1=0 rc2=4 lock-file-seen=True refused_words=True lock_after=False 
+ARM-E    green GREEN   15.3s  rc1=0 rc2=4 lock-file-seen=True refused_words=True lock_after=False 
+ARM-F green       PASS    :: killed pid=34268 child=42708 committed=3 done=3 cutting=0 live_before_kill=3 keys_ok=3/3 files=3 integrity=ok committed_before_kill=True 
+ARM-F    green GREEN   6.2s  killed pid=34268 child=42708 committed=3 done=3 cutting=0 live_before_kill=3 keys_ok=3/3 files=3 integrity=ok committed_before_kill=True 
+ARM-G green       PASS    :: cursor=1 evicted_before=149 maxring=100/100 orc=3 to=102 n=100 truncated=True ui=8ms files=249 rows=249 orphan=- 
+ARM-G    green GREEN   46.3s  cursor=1 evicted_before=149 maxring=100/100 orc=3 to=102 n=100 truncated=True ui=8ms files=249 rows=249 orphan=- 
+ARM-A red         FAIL    :: rc=0 cuts=4/4 ring=6 cuts_refused=0 rec=1 spine=5cmt,5key-ok,5sha-ok stop=cut-count-reached stdout=2336B FAIL:stdout empty
+ARM-A    red   RED     5.4s  mutant=stdout-leak  rc=0 cuts=4/4 ring=6 cuts_refused=0 rec=1 spine=5cmt,5key-ok,5sha-ok stop=cut-count-reached stdout=2336B FAIL:stdout empty
+ARM-B red         FAIL    :: rc=0/0 ui1=5ms ui2=2ms replayed=0(24..33) exact=False cursor=24 ids=50 gaps=[{'prev': 24, 'next': 34}] dupes=0 engring=100/64 live=27 cuts_while_unattended=162 clips=163 files=163 rows=163 orphan=- FAIL:replay window is cursor-consistent,replay is the exact continuation,live ids continue exactly,ids gapless (no holes)
+ARM-B    red   RED     33.8s  mutant=no-replay  rc=0/0 ui1=5ms ui2=2ms replayed=0(24..33) exact=False cursor=24 ids=50 gaps=[{'prev': 24, 'next': 34}] dupes=0 engring=100/64 live=27 cuts_while_unattended=162 clips=163 files=163 rows=163 orphan=- FAIL:replay window is cursor-consistent,replay is the exact continuation,live ids continue exactly,ids gapless (no holes)
+ARM-C/stall red         FAIL    :: rc=0 asr={'submitted': 4, 'done': 0, 'dead': 4, 'failed': 0, 'dropped': 0} clips=4/4 maxcut=3753ms intervals=[3734, 3753] keys_ok=4/4 ui=0 FAIL:cuts >= 8,capture never waited (max interval 3753 ms < 2500)
+ARM-C/stall red   RED     14.1s  mutant=capture-waits  rc=0 asr={'submitted': 4, 'done': 0, 'dead': 4, 'failed': 0, 'dropped': 0} clips=4/4 maxcut=3753ms intervals=[3734, 3753] keys_ok=4/4 ui=0 FAIL:cuts >= 8,capture never waited (max interval 3753 ms < 2500)
+ARM-D red         FAIL    :: rc=0 stdout=0B verdict="[engine 01:46:28] pre-flight rc=3 decision='DECISION: REFUSED ? NO ENCODER INITIALISED - the rep" locks=False spine=False FAIL:rc==3,status exit_code 3
+ARM-D    red   RED     0.6s  mutant=preflight-ok  rc=0 stdout=0B verdict="[engine 01:46:28] pre-flight rc=3 decision='DECISION: REFUSED ? NO ENCODER INITIALISED - the rep" locks=False spine=False FAIL:rc==3,status exit_code 3
+ARM-E red         FAIL    :: rc1=0 rc2=0 lock-file-seen=False refused_words=False lock_after=False FAIL:second engine refused (rc 4),loud refusal words
+ARM-E    red   RED     36.8s  mutant=no-lock  rc1=0 rc2=0 lock-file-seen=False refused_words=False lock_after=False FAIL:second engine refused (rc 4),loud refusal words
+ARM-F red         FAIL    :: killed pid=46960 child=33468 committed=1 done=1 cutting=1 live_before_kill=1 keys_ok=0/1 files=1 integrity=ok committed_before_kill=True FAIL:engine published >=3 clips before the kill,spine still holds them all after the kill,>=3 clips committed by the kill,every key == file sha256
+ARM-F    red   RED     61.5s  mutant=commit-nokey  killed pid=46960 child=33468 committed=1 done=1 cutting=1 live_before_kill=1 keys_ok=0/1 files=1 integrity=ok committed_before_kill=True FAIL:engine published >=3 clips before the kill,spine still holds them all after the kill,>=3 clips committed by the kill,every key == file sha256
+ARM-G red         FAIL    :: cursor=1 evicted_before=141 maxring=100/100 orc=3 to=102 n=100 truncated=False ui=17ms files=240 rows=240 orphan=- FAIL:replay flags the loss (truncated)
+ARM-G    red   RED     46.3s  mutant=stale-lie  cursor=1 evicted_before=141 maxring=100/100 orc=3 to=102 n=100 truncated=False ui=17ms files=240 rows=240 orphan=- FAIL:replay flags the loss (truncated)
+ARM-G red         FAIL    :: cursor=1 evicted_before=136 maxring=100/100 orc=4 to=103 n=100 truncated=True ui=50ms files=238 rows=237 orphan=['cut-0237.wav'] FAIL:every clip file on disk has a spine row
+ARM-G    red   RED     46.3s  mutant=no-finalise  cursor=1 evicted_before=136 maxring=100/100 orc=4 to=103 n=100 truncated=True ui=50ms files=238 rows=237 orphan=['cut-0237.wav'] FAIL:every clip file on disk has a spine row
+
+VERDICT TABLE
+  PASS   ARM-A    green rc=0 cuts=4/4 ring=6 cuts_refused=0 rec=1 spine=5cmt,5key-ok,5sha-ok stop=cut-count-reached stdout=0B 
+  PASS   ARM-B    green rc=0/0 ui1=5ms ui2=2ms replayed=14(30..44) exact=True cursor=30 ids=71 gaps=[] dupes=0 engring=100/120 live=41 cuts_while_unattended=219 clips=221 files=221 rows=221 orphan=- 
+  PASS   ARM-C/stall green rc=0 asr={'submitted': 12, 'done': 0, 'dead': 4, 'failed': 0, 'dropped': 1} clips=12/12 maxcut=1982ms intervals=[139, 942, 986, 995, 1005, 1012, 1030, 1071, 1125, 1982] keys_ok=12/12 ui=0 
+  PASS   ARM-C/dead green rc=0 asr={'submitted': 12, 'done': 0, 'dead': 0, 'failed': 12, 'dropped': 0} clips=12/12 maxcut=1398ms intervals=[714, 822, 903, 1022, 1032, 1065, 1075, 1238, 1287, 1398] keys_ok=12/12 ui=0 
+  PASS   ARM-D    green rc=3 stdout=0B verdict="[engine 01:44:26] pre-flight rc=3 decision='DECISION: REFUSED ? NO ENCODER INITIALISED - the rep" locks=False spine=False 
+  PASS   ARM-E    green rc1=0 rc2=4 lock-file-seen=True refused_words=True lock_after=False 
+  PASS   ARM-F    green killed pid=34268 child=42708 committed=3 done=3 cutting=0 live_before_kill=3 keys_ok=3/3 files=3 integrity=ok committed_before_kill=True 
+  PASS   ARM-G    green cursor=1 evicted_before=149 maxring=100/100 orc=3 to=102 n=100 truncated=True ui=8ms files=249 rows=249 orphan=- 
+  REDok  ARM-A    red   rc=0 cuts=4/4 ring=6 cuts_refused=0 rec=1 spine=5cmt,5key-ok,5sha-ok stop=cut-count-reached stdout=2336B FAIL:stdout empty
+  REDok  ARM-B    red   rc=0/0 ui1=5ms ui2=2ms replayed=0(24..33) exact=False cursor=24 ids=50 gaps=[{'prev': 24, 'next': 34}] dupes=0 engring=100/64 live=27 cuts_while_unattended=162 clips=163 files=163 rows=163 orphan=- FAIL:replay window is cursor-consistent,replay is the exact continuation,live ids continue exactly,ids gapless (no holes)
+  REDok  ARM-C/stall red   rc=0 asr={'submitted': 4, 'done': 0, 'dead': 4, 'failed': 0, 'dropped': 0} clips=4/4 maxcut=3753ms intervals=[3734, 3753] keys_ok=4/4 ui=0 FAIL:cuts >= 8,capture never waited (max interval 3753 ms < 2500)
+  REDok  ARM-D    red   rc=0 stdout=0B verdict="[engine 01:46:28] pre-flight rc=3 decision='DECISION: REFUSED ? NO ENCODER INITIALISED - the rep" locks=False spine=False FAIL:rc==3,status exit_code 3
+  REDok  ARM-E    red   rc1=0 rc2=0 lock-file-seen=False refused_words=False lock_after=False FAIL:second engine refused (rc 4),loud refusal words
+  REDok  ARM-F    red   killed pid=46960 child=33468 committed=1 done=1 cutting=1 live_before_kill=1 keys_ok=0/1 files=1 integrity=ok committed_before_kill=True FAIL:engine published >=3 clips before the kill,spine still holds them all after the kill,>=3 clips committed by the kill,every key == file sha256
+  REDok  ARM-G    red   cursor=1 evicted_before=141 maxring=100/100 orc=3 to=102 n=100 truncated=False ui=17ms files=240 rows=240 orphan=- FAIL:replay flags the loss (truncated)
+  REDok  ARM-G    red   cursor=1 evicted_before=136 maxring=100/100 orc=4 to=103 n=100 truncated=True ui=50ms files=238 rows=237 orphan=['cut-0237.wav'] FAIL:every clip file on disk has a spine row
+
+arms=8 (ARM-A,ARM-B,ARM-C/dead,ARM-C/stall,ARM-D,ARM-E,ARM-F,ARM-G) green=8/8 red-controls-red=8/8 silent-controls=0
+CENSUS (own cadence, full artifact path): no gate process alive after the run
+GATE-VERDICT: GREEN   total 400.9s
+
+BATTERY GATE EXIT=0  wall=401.0s
+
+BATTERY RESULT
+  PASS  gate exit code 0
+  PASS  exactly one GATE-VERDICT line
+  PASS  gate verdict is GREEN
+  PASS  all 8 green arms ran and PASS
+  PASS  all 8 red controls ran and went RED
+  PASS  all 8 named mutants went RED
+  PASS  gate summary says 8/8, 8/8, 0 silent
+  PASS  stdout-leak control proves the stdout guard
+  PASS  engine stdout empty on every green arm
+  PASS  UI reconnect latency measured (ms)
+  PASS  no arm threw an exception
+  PASS  no silent control
+  PASS  census: no gate process left alive
+UI-RECONNECT LATENCY (attach -> first ui_ready health, ms): min=2 max=50 [2, 5, 8, 17, 50]
+
+BATTERY-VERDICT: GREEN - 13 step(s) pass
+exit-code: 0
