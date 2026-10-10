@@ -1,0 +1,1190 @@
+{
+ "instrument": "ods1.py",
+ "arm": "A (synthetic store, no device, no build, no capture)",
+ "run_started_utc": "2026-10-10T03:48:25.862963+00:00",
+ "run_finished_utc": "2026-10-10T03:48:25.878196+00:00",
+ "duplicate_room_policy": "NONE WRITTEN IN THIS TREE",
+ "root": "I:\\cc-tmp\\ods1-armA\\store-clean",
+ "layout_py": "H:\\sotto\\_moved\\aireplay\\src\\storage\\layout.py",
+ "layout_py_sha256": "fe02e34b9a6339c763e193323a6e9a8e970ca4f15fdf99127543a6b43830ebd6",
+ "db": "I:\\cc-tmp\\ods1-armA\\store-clean\\store.db",
+ "reads": {
+  "pixels": false,
+  "sps_pps": false,
+  "streams_decoded": false,
+  "audio_device_opened": false,
+  "bytes_written_into_root": 0
+ },
+ "tolerances": {
+  "PAD_S": 0.1,
+  "PAD_S_basis": "READ specs/02-asr.md:165",
+  "DUR_TOLERANCE_MS": 1,
+  "DUR_TOLERANCE_MS_basis": "chosen by this lane",
+  "CLIPID_KEY_TOLERANCE_S": 0.0,
+  "CLIPID_KEY_TOLERANCE_S_basis": "READ layout.py:433 (the key copies the clip id)",
+  "mp4_epoch_offset_s": -2082844800.0,
+  "mp4_epoch_offset_s_basis": "COMPUTED here: datetime(1904,1,1,utc).timestamp()"
+ },
+ "counts": {
+  "clips_visited": 4,
+  "foreign_visited": 0,
+  "rows_emitted": 4,
+  "db_rows": 4,
+  "db_duplicate_content_keys": 0,
+  "findings_red": 0,
+  "findings_info": 24,
+  "refusals": 0,
+  "audit_green": 7,
+  "audit_red": 0
+ },
+ "verdicts": {
+  "committed": 4
+ },
+ "zero_epoch_fields_formatted_as_dates": 0,
+ "zero_epoch_field_census": {
+  "mvhd:creation_time": 4,
+  "mvhd:modification_time": 4,
+  "tkhd:creation_time": 4,
+  "tkhd:modification_time": 4,
+  "mdhd:creation_time": 4,
+  "mdhd:modification_time": 4
+ },
+ "rows": [
+  {
+   "subject": "20261009T120000Z-0001",
+   "kind": "clip",
+   "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001",
+   "verdict": "committed",
+   "clip_id": "20261009T120000Z-0001",
+   "start": 1791547200.0,
+   "start_source": {
+    "rank": 1,
+    "source": "clip-id",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001",
+    "value": 1791547200.0,
+    "detail": "parse_clip_id(20261009T120000Z-0001).started_at_s"
+   },
+   "end": 1791547204.0,
+   "end_source": {
+    "rank": 2,
+    "source": "key.json",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\key.json",
+    "value": 1791547204.0,
+    "detail": "key ended_at_s"
+   },
+   "end_candidates": [
+    {
+     "rank": 2,
+     "source": "key.json",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\key.json",
+     "value": 1791547204.0,
+     "detail": "key ended_at_s"
+    },
+    {
+     "rank": 3,
+     "source": "db",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+     "value": 1791547204.0,
+     "detail": "db duration_ms=4000 added to the rank-1 start"
+    },
+    {
+     "rank": 4,
+     "source": "moov",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+     "value": 1791547204.0,
+     "detail": "moov trak handler='vide' duration_ms=4000 (video trak 1 traks)"
+    },
+    {
+     "rank": 5,
+     "source": "mtime",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+     "value": 1791547201.0,
+     "detail": "media mtime as the end anchor"
+    }
+   ],
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\key.json",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4"
+   ],
+   "container_refusal": {},
+   "zero_epoch_fields": {
+    "mvhd:creation_time": 1,
+    "mvhd:modification_time": 1,
+    "tkhd:creation_time": 1,
+    "tkhd:modification_time": 1,
+    "mdhd:creation_time": 1,
+    "mdhd:modification_time": 1
+   },
+   "key_error": null,
+   "sha256": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+   "key_content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+   "sidecars": {
+    "media": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+    "transcript": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\transcript.json",
+    "thumb": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\thumb.jpg",
+    "key": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\key.json"
+   },
+   "media_path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+   "container": {
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+    "bytes": 10230,
+    "refusal": {},
+    "moov_present": true,
+    "ftyp_seen": true,
+    "traks": [
+     {
+      "handler": "vide",
+      "mdhd": {
+       "timescale": 1000,
+       "duration_ticks": 4000,
+       "creation_time": 0,
+       "modification_time": 0
+      },
+      "stts": true,
+      "sample_count": 400,
+      "sample_ticks": 4000,
+      "duration_ms": 4000,
+      "duration_s": 4.0
+     }
+    ],
+    "zero_epoch_fields": {
+     "mvhd:creation_time": 1,
+     "mvhd:modification_time": 1,
+     "tkhd:creation_time": 1,
+     "tkhd:modification_time": 1,
+     "mdhd:creation_time": 1,
+     "mdhd:modification_time": 1
+    },
+    "mvhd_duration_s": 4.0,
+    "mvhd_timescale": 1000,
+    "mvhd_creation_time_iso": null,
+    "mvhd_modification_time_iso": null,
+    "trak_durations_s": [
+     4.0
+    ]
+   },
+   "mtime_ns": 1791547201000000000,
+   "key": {
+    "layout_version": 1,
+    "clip_id": "20261009T120000Z-0001",
+    "started_at_s": 1791547200.0,
+    "ended_at_s": 1791547204.0,
+    "media": "clip.mp4",
+    "transcript": null,
+    "thumb": null,
+    "size_bytes": 10230,
+    "mtime_ns": 1791547201000000000,
+    "duration_ms": 4000,
+    "source_device": "fixture",
+    "mode": "gaming",
+    "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+    "committed_at_s": 1791547204.0
+   },
+   "key_duration_ms": 4000,
+   "key_started_at_s": 1791547200.0,
+   "key_ended_at_s": 1791547204.0,
+   "has_key": true,
+   "db_row": {
+    "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+    "duration_ms": 4000,
+    "missing": 0,
+    "state": "indexed",
+    "size_bytes": 10230,
+    "mtime_ns": 1791547201000000000
+   },
+   "_cont_ms": 4000
+  },
+  {
+   "subject": "20261009T120004Z-0002",
+   "kind": "clip",
+   "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002",
+   "verdict": "committed",
+   "clip_id": "20261009T120004Z-0002",
+   "start": 1791547204.0,
+   "start_source": {
+    "rank": 1,
+    "source": "clip-id",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002",
+    "value": 1791547204.0,
+    "detail": "parse_clip_id(20261009T120004Z-0002).started_at_s"
+   },
+   "end": 1791547208.0,
+   "end_source": {
+    "rank": 2,
+    "source": "key.json",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\key.json",
+    "value": 1791547208.0,
+    "detail": "key ended_at_s"
+   },
+   "end_candidates": [
+    {
+     "rank": 2,
+     "source": "key.json",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\key.json",
+     "value": 1791547208.0,
+     "detail": "key ended_at_s"
+    },
+    {
+     "rank": 3,
+     "source": "db",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+     "value": 1791547208.0,
+     "detail": "db duration_ms=4000 added to the rank-1 start"
+    },
+    {
+     "rank": 4,
+     "source": "moov",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+     "value": 1791547208.0,
+     "detail": "moov trak handler='vide' duration_ms=4000 (video trak 1 traks)"
+    },
+    {
+     "rank": 5,
+     "source": "mtime",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+     "value": 1791547205.0,
+     "detail": "media mtime as the end anchor"
+    }
+   ],
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\key.json",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4"
+   ],
+   "container_refusal": {},
+   "zero_epoch_fields": {
+    "mvhd:creation_time": 1,
+    "mvhd:modification_time": 1,
+    "tkhd:creation_time": 1,
+    "tkhd:modification_time": 1,
+    "mdhd:creation_time": 1,
+    "mdhd:modification_time": 1
+   },
+   "key_error": null,
+   "sha256": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+   "key_content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+   "sidecars": {
+    "media": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+    "transcript": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\transcript.json",
+    "thumb": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\thumb.jpg",
+    "key": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\key.json"
+   },
+   "media_path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+   "container": {
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+    "bytes": 10230,
+    "refusal": {},
+    "moov_present": true,
+    "ftyp_seen": true,
+    "traks": [
+     {
+      "handler": "vide",
+      "mdhd": {
+       "timescale": 1000,
+       "duration_ticks": 4000,
+       "creation_time": 0,
+       "modification_time": 0
+      },
+      "stts": true,
+      "sample_count": 400,
+      "sample_ticks": 4000,
+      "duration_ms": 4000,
+      "duration_s": 4.0
+     }
+    ],
+    "zero_epoch_fields": {
+     "mvhd:creation_time": 1,
+     "mvhd:modification_time": 1,
+     "tkhd:creation_time": 1,
+     "tkhd:modification_time": 1,
+     "mdhd:creation_time": 1,
+     "mdhd:modification_time": 1
+    },
+    "mvhd_duration_s": 4.0,
+    "mvhd_timescale": 1000,
+    "mvhd_creation_time_iso": null,
+    "mvhd_modification_time_iso": null,
+    "trak_durations_s": [
+     4.0
+    ]
+   },
+   "mtime_ns": 1791547205000000000,
+   "key": {
+    "layout_version": 1,
+    "clip_id": "20261009T120004Z-0002",
+    "started_at_s": 1791547204.0,
+    "ended_at_s": 1791547208.0,
+    "media": "clip.mp4",
+    "transcript": null,
+    "thumb": null,
+    "size_bytes": 10230,
+    "mtime_ns": 1791547205000000000,
+    "duration_ms": 4000,
+    "source_device": "fixture",
+    "mode": "gaming",
+    "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+    "committed_at_s": 1791547208.0
+   },
+   "key_duration_ms": 4000,
+   "key_started_at_s": 1791547204.0,
+   "key_ended_at_s": 1791547208.0,
+   "has_key": true,
+   "db_row": {
+    "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+    "duration_ms": 4000,
+    "missing": 0,
+    "state": "indexed",
+    "size_bytes": 10230,
+    "mtime_ns": 1791547205000000000
+   },
+   "_cont_ms": 4000
+  },
+  {
+   "subject": "20261009T120008Z-0003",
+   "kind": "clip",
+   "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003",
+   "verdict": "committed",
+   "clip_id": "20261009T120008Z-0003",
+   "start": 1791547208.0,
+   "start_source": {
+    "rank": 1,
+    "source": "clip-id",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003",
+    "value": 1791547208.0,
+    "detail": "parse_clip_id(20261009T120008Z-0003).started_at_s"
+   },
+   "end": 1791547212.0,
+   "end_source": {
+    "rank": 2,
+    "source": "key.json",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\key.json",
+    "value": 1791547212.0,
+    "detail": "key ended_at_s"
+   },
+   "end_candidates": [
+    {
+     "rank": 2,
+     "source": "key.json",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\key.json",
+     "value": 1791547212.0,
+     "detail": "key ended_at_s"
+    },
+    {
+     "rank": 3,
+     "source": "db",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+     "value": 1791547212.0,
+     "detail": "db duration_ms=4000 added to the rank-1 start"
+    },
+    {
+     "rank": 4,
+     "source": "moov",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+     "value": 1791547212.0,
+     "detail": "moov trak handler='vide' duration_ms=4000 (video trak 1 traks)"
+    },
+    {
+     "rank": 5,
+     "source": "mtime",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+     "value": 1791547209.0,
+     "detail": "media mtime as the end anchor"
+    }
+   ],
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\key.json",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4"
+   ],
+   "container_refusal": {},
+   "zero_epoch_fields": {
+    "mvhd:creation_time": 1,
+    "mvhd:modification_time": 1,
+    "tkhd:creation_time": 1,
+    "tkhd:modification_time": 1,
+    "mdhd:creation_time": 1,
+    "mdhd:modification_time": 1
+   },
+   "key_error": null,
+   "sha256": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+   "key_content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+   "sidecars": {
+    "media": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+    "transcript": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\transcript.json",
+    "thumb": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\thumb.jpg",
+    "key": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\key.json"
+   },
+   "media_path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+   "container": {
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+    "bytes": 10230,
+    "refusal": {},
+    "moov_present": true,
+    "ftyp_seen": true,
+    "traks": [
+     {
+      "handler": "vide",
+      "mdhd": {
+       "timescale": 1000,
+       "duration_ticks": 4000,
+       "creation_time": 0,
+       "modification_time": 0
+      },
+      "stts": true,
+      "sample_count": 400,
+      "sample_ticks": 4000,
+      "duration_ms": 4000,
+      "duration_s": 4.0
+     }
+    ],
+    "zero_epoch_fields": {
+     "mvhd:creation_time": 1,
+     "mvhd:modification_time": 1,
+     "tkhd:creation_time": 1,
+     "tkhd:modification_time": 1,
+     "mdhd:creation_time": 1,
+     "mdhd:modification_time": 1
+    },
+    "mvhd_duration_s": 4.0,
+    "mvhd_timescale": 1000,
+    "mvhd_creation_time_iso": null,
+    "mvhd_modification_time_iso": null,
+    "trak_durations_s": [
+     4.0
+    ]
+   },
+   "mtime_ns": 1791547209000000000,
+   "key": {
+    "layout_version": 1,
+    "clip_id": "20261009T120008Z-0003",
+    "started_at_s": 1791547208.0,
+    "ended_at_s": 1791547212.0,
+    "media": "clip.mp4",
+    "transcript": null,
+    "thumb": null,
+    "size_bytes": 10230,
+    "mtime_ns": 1791547209000000000,
+    "duration_ms": 4000,
+    "source_device": "fixture",
+    "mode": "gaming",
+    "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+    "committed_at_s": 1791547212.0
+   },
+   "key_duration_ms": 4000,
+   "key_started_at_s": 1791547208.0,
+   "key_ended_at_s": 1791547212.0,
+   "has_key": true,
+   "db_row": {
+    "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+    "duration_ms": 4000,
+    "missing": 0,
+    "state": "indexed",
+    "size_bytes": 10230,
+    "mtime_ns": 1791547209000000000
+   },
+   "_cont_ms": 4000
+  },
+  {
+   "subject": "20261009T120012Z-0004",
+   "kind": "clip",
+   "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004",
+   "verdict": "committed",
+   "clip_id": "20261009T120012Z-0004",
+   "start": 1791547212.0,
+   "start_source": {
+    "rank": 1,
+    "source": "clip-id",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004",
+    "value": 1791547212.0,
+    "detail": "parse_clip_id(20261009T120012Z-0004).started_at_s"
+   },
+   "end": 1791547216.0,
+   "end_source": {
+    "rank": 2,
+    "source": "key.json",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\key.json",
+    "value": 1791547216.0,
+    "detail": "key ended_at_s"
+   },
+   "end_candidates": [
+    {
+     "rank": 2,
+     "source": "key.json",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\key.json",
+     "value": 1791547216.0,
+     "detail": "key ended_at_s"
+    },
+    {
+     "rank": 3,
+     "source": "db",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+     "value": 1791547216.0,
+     "detail": "db duration_ms=4000 added to the rank-1 start"
+    },
+    {
+     "rank": 4,
+     "source": "moov",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+     "value": 1791547216.0,
+     "detail": "moov trak handler='vide' duration_ms=4000 (video trak 1 traks)"
+    },
+    {
+     "rank": 5,
+     "source": "mtime",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+     "value": 1791547213.0,
+     "detail": "media mtime as the end anchor"
+    }
+   ],
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\key.json",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4"
+   ],
+   "container_refusal": {},
+   "zero_epoch_fields": {
+    "mvhd:creation_time": 1,
+    "mvhd:modification_time": 1,
+    "tkhd:creation_time": 1,
+    "tkhd:modification_time": 1,
+    "mdhd:creation_time": 1,
+    "mdhd:modification_time": 1
+   },
+   "key_error": null,
+   "sha256": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+   "key_content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+   "sidecars": {
+    "media": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+    "transcript": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\transcript.json",
+    "thumb": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\thumb.jpg",
+    "key": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\key.json"
+   },
+   "media_path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+   "container": {
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+    "bytes": 10230,
+    "refusal": {},
+    "moov_present": true,
+    "ftyp_seen": true,
+    "traks": [
+     {
+      "handler": "vide",
+      "mdhd": {
+       "timescale": 1000,
+       "duration_ticks": 4000,
+       "creation_time": 0,
+       "modification_time": 0
+      },
+      "stts": true,
+      "sample_count": 400,
+      "sample_ticks": 4000,
+      "duration_ms": 4000,
+      "duration_s": 4.0
+     }
+    ],
+    "zero_epoch_fields": {
+     "mvhd:creation_time": 1,
+     "mvhd:modification_time": 1,
+     "tkhd:creation_time": 1,
+     "tkhd:modification_time": 1,
+     "mdhd:creation_time": 1,
+     "mdhd:modification_time": 1
+    },
+    "mvhd_duration_s": 4.0,
+    "mvhd_timescale": 1000,
+    "mvhd_creation_time_iso": null,
+    "mvhd_modification_time_iso": null,
+    "trak_durations_s": [
+     4.0
+    ]
+   },
+   "mtime_ns": 1791547213000000000,
+   "key": {
+    "layout_version": 1,
+    "clip_id": "20261009T120012Z-0004",
+    "started_at_s": 1791547212.0,
+    "ended_at_s": 1791547216.0,
+    "media": "clip.mp4",
+    "transcript": null,
+    "thumb": null,
+    "size_bytes": 10230,
+    "mtime_ns": 1791547213000000000,
+    "duration_ms": 4000,
+    "source_device": "fixture",
+    "mode": "gaming",
+    "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+    "committed_at_s": 1791547216.0
+   },
+   "key_duration_ms": 4000,
+   "key_started_at_s": 1791547212.0,
+   "key_ended_at_s": 1791547216.0,
+   "has_key": true,
+   "db_row": {
+    "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+    "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+    "duration_ms": 4000,
+    "missing": 0,
+    "state": "indexed",
+    "size_bytes": 10230,
+    "mtime_ns": 1791547213000000000
+   },
+   "_cont_ms": 4000
+  }
+ ],
+ "findings": [
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120000Z-0001",
+   "detail": "mdhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120000Z-0001",
+   "detail": "mdhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120000Z-0001",
+   "detail": "mvhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120000Z-0001",
+   "detail": "mvhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120000Z-0001",
+   "detail": "tkhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120000Z-0001",
+   "detail": "tkhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120004Z-0002",
+   "detail": "mdhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120004Z-0002",
+   "detail": "mdhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120004Z-0002",
+   "detail": "mvhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120004Z-0002",
+   "detail": "mvhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120004Z-0002",
+   "detail": "tkhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120004Z-0002",
+   "detail": "tkhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120008Z-0003",
+   "detail": "mdhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120008Z-0003",
+   "detail": "mdhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120008Z-0003",
+   "detail": "mvhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120008Z-0003",
+   "detail": "mvhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120008Z-0003",
+   "detail": "tkhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120008Z-0003",
+   "detail": "tkhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120012Z-0004",
+   "detail": "mdhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120012Z-0004",
+   "detail": "mdhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mdhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120012Z-0004",
+   "detail": "mvhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120012Z-0004",
+   "detail": "mvhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "mvhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120012Z-0004",
+   "detail": "tkhd:creation_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:creation_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  },
+  {
+   "cls": "C04",
+   "name": "ZERO-EPOCH FIELD (not a date)",
+   "severity": "info",
+   "subject": "20261009T120012Z-0004",
+   "detail": "tkhd:modification_time is literal 0 in 1 box(es).  A 0 in an MP4 time field means 1904-01-01 and the writer of this product WRITES the 0 (mp4_writer.cpp), so this tree CANNOT carry a wall clock.  The instrument prints the literal, not a date.",
+   "evidence_paths": [
+    "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004"
+   ],
+   "ranks": [
+    4
+   ],
+   "values": {
+    "field": "tkhd:modification_time",
+    "count": 1,
+    "as_epoch_1904_utc": "0001-01-01T00:00:00+00:00"
+   }
+  }
+ ],
+ "self_audit": [
+  {
+   "name": "rows_emitted_equals_visited",
+   "ok": true,
+   "detail": "rows=4 clips_visited=4 foreign_visited=0"
+  },
+  {
+   "name": "no_duplicate_rows",
+   "ok": true,
+   "detail": "4 rows, 4 distinct"
+  },
+  {
+   "name": "zero_epoch_fields_formatted_as_dates",
+   "ok": true,
+   "detail": "0 row(s) printed a DATE derived from an mp4 stamp; the writer of this tree writes the literal 0 (mp4_writer.cpp:257, :272, :293)"
+  },
+  {
+   "name": "unknown_prints_as_the_literal_word",
+   "ok": true,
+   "detail": "0 row(s) carry at least one absent value; each prints 'UNKNOWN', never 0"
+  },
+  {
+   "name": "zero_is_never_an_absent_value",
+   "ok": true,
+   "detail": "0 row(s) use the number 0 as a value"
+  },
+  {
+   "name": "clip_start_is_rank_1_when_present",
+   "ok": true,
+   "detail": "4 of 4 clip rows started from the CLIP ID (rank 1), the only source that ranks above the key"
+  },
+  {
+   "name": "every_identity_claim_was_recomputed",
+   "ok": true,
+   "detail": "identity claims found=4, recomputed against the bytes=4"
+  }
+ ],
+ "expectation_checks": [
+  {
+   "store": "clean",
+   "class": "C01",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C02",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C03",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C04",
+   "expected": "NONE",
+   "actual": "24 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C05",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C06",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C07",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C08",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C09",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  },
+  {
+   "store": "clean",
+   "class": "C2TRAK",
+   "expected": "NONE",
+   "actual": "0 finding(s), 0 red",
+   "ok": true
+  }
+ ],
+ "expectation_checks_failed": 0,
+ "expectation_root_mismatch": null,
+ "expectation_notes": [],
+ "layout_errors": [],
+ "exit_code": 0
+}

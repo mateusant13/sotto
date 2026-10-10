@@ -1,0 +1,566 @@
+{
+ "reader": "check_armB.py -- independent second reader (own walk, own box parser, own priority)",
+ "reader_started_utc": "2026-10-10T04:57:08Z",
+ "reader_finished_utc": "2026-10-10T04:57:10Z",
+ "population_base": "H:/sotto/_moved/aireplay/_main/_lane22-run",
+ "stores": [
+  "armA-store",
+  "armB-store",
+  "armC-store",
+  "armE-store",
+  "layout-selftest/layout-root",
+  "negctl-D0-work/armA-store",
+  "negctl-LOUD-ALARM-work/armB-store",
+  "negctl-RECONCILE-PARTIAL-work/armC-store",
+  "negctl-RETENTION-BYTES-work/armA-store",
+  "negctl-WRITE-ADMISSION-work/armB-store"
+ ],
+ "clips": 99,
+ "checks": [
+  {
+   "name": "population_is_10_stores_under_lane22",
+   "ok": true,
+   "detail": "stores found=10 ['armA-store', 'armB-store', 'armC-store', 'armE-store', 'layout-selftest/layout-root', 'negctl-D0-work/armA-store', 'negctl-LOUD-ALARM-work/armB-store', 'negctl-RECONCILE-PARTIAL-work/armC-store', 'negctl-RETENTION-BYTES-work/armA-store', 'negctl-WRITE-ADMISSION-work/armB-store']",
+   "measure": false
+  },
+  {
+   "name": "population_is_99_clip_dirs",
+   "ok": true,
+   "detail": "clip dirs found=99",
+   "measure": false
+  },
+  {
+   "name": "no_sqlite_db_in_any_store",
+   "ok": true,
+   "detail": "db files=0",
+   "measure": false
+  },
+  {
+   "name": "no_media_carries_a_moov_box",
+   "ok": true,
+   "detail": "media with a moov box=0 of 99",
+   "measure": false
+  },
+  {
+   "name": "no_media_yields_a_duration_from_bytes",
+   "ok": true,
+   "detail": "refused=99 of 99 media; classes=['R-BOX-TRUNCATED', 'R-BOX-UNKNOWN']",
+   "measure": false
+  },
+  {
+   "name": "clips_with_no_usable_key_are_recorded_not_invented",
+   "ok": true,
+   "detail": "clips whose key.json is absent or unusable=4 ['20260101T000000Z-0001', '20261007T234421Z-0003', '20261008T000059Z-0006', '20261008T000101Z-0006']",
+   "measure": false
+  },
+  {
+   "name": "key_start_equals_clip_id_rank1",
+   "ok": true,
+   "detail": "parsed keys=95, disagreements=0",
+   "measure": false
+  },
+  {
+   "name": "content_key_equals_the_sha256_of_its_media_when_present",
+   "ok": true,
+   "detail": "keys carrying a content_key=95, all of them equal to their clip.mp4 sha256=True",
+   "measure": false
+  },
+  {
+   "name": "key_interval_vs_its_own_duration_ms_MEASURED_CONTRADICTION",
+   "ok": false,
+   "detail": "EXPECTED RED, NOT AN ABSENT MEASURE: 95 of 95 parsed key.json have an interval (ended_at_s - started_at_s) contradicting their own duration_ms by more than 1 ms; interval span min=1800066.681 ms max=86400625.539 ms, duration_ms span min=1000 max=30000; first 3 (clip_id, interval_ms, duration_ms)=[('20261007T130417Z-0013', 39600716.265, 30000), ('20261007T140417Z-0014', 36000733.869, 30000), ('20261007T150417Z-0015', 32400751.906, 30000)]; NO instrument class covers this (C05 fires only when the interval is <= 0; C08 needs a container duration and there is none)",
+   "measure": false
+  },
+  {
+   "name": "key_mtime_ns_and_size_bytes_match_the_media",
+   "ok": true,
+   "detail": "usable keys=95, mtime/size disagreements=0 []",
+   "measure": false
+  },
+  {
+   "name": "committed_at_s_minus_ended_at_s",
+   "ok": true,
+   "detail": "MEASURED (whether the two must be equal is UNKNOWN to this reader): usable keys=95, exactly equal=25, differing=70, min delta=0.000000000 s, max |delta|=0.001549959 s, first 3 (clip_id, delta s)=[('20261007T130417Z-0013', 0.0), ('20261007T140417Z-0014', 0.000993967056274414), ('20261007T150417Z-0015', 0.0009961128234863281)]",
+   "measure": true
+  },
+  {
+   "name": "no_multi_clip_store_where_every_clip_shares_one_end_instant",
+   "ok": true,
+   "detail": "stores with >1 clip whose keys all end at the same instant=0 []",
+   "measure": false
+  },
+  {
+   "name": "every_run_json_file_parses",
+   "ok": true,
+   "detail": "files=12 unparsable=[]",
+   "measure": false
+  },
+  {
+   "name": "one_arm_b_run_per_store",
+   "ok": true,
+   "detail": "distinct H store roots in runs=10, stores=10, json files=12",
+   "measure": false
+  },
+  {
+   "name": "every_clip_is_a_row_in_its_own_store_run",
+   "ok": true,
+   "detail": "clip dirs with no row=0 []",
+   "measure": false
+  },
+  {
+   "name": "run_rows_agree_with_the_independent_read",
+   "ok": true,
+   "detail": "disagreements=0 []",
+   "measure": false
+  },
+  {
+   "name": "refusal_findings_are_exactly_the_media_census",
+   "ok": true,
+   "detail": "per store (instrument refused subjects, independent reader refused media) diffs=[]; key-level refusals=3",
+   "measure": false
+  },
+  {
+   "name": "the_extra_refusals_are_key_level",
+   "ok": true,
+   "detail": "extra (second) refusals on already-listed clips=3 [('h:/sotto/_moved/aireplay/_main/_lane22-run/armc-store', '20261008T000059Z-0006', 1, \"R-BOX-UNKNOWN: box '\\\\x00\\\\x00\\\\x00\\\\x00' at 24 in top-level is outside th\"), ('h:/sotto/_moved/aireplay/_main/_lane22-run/layout-selftest/layout-root', '20260101T000000Z-0001', 1, 'R-BOX-TRUNCATED: box header at offset 0 in top-level extends past EOF '), ('h:/sotto/_moved/aireplay/_main/_lane22-run/negctl-reconcile-partial-work/armc-store', '20261008T000101Z-0006', 1, \"R-BOX-UNKNOWN: box '\\\\x00\\\\x00\\\\x00\\\\x00' at 24 in top-level is outside th\")]",
+   "measure": false
+  },
+  {
+   "name": "self_audit_is_7_green_in_every_run",
+   "ok": true,
+   "detail": "audit rows=70 (7 x 10 stores), red=0",
+   "measure": false
+  },
+  {
+   "name": "every_run_carries_the_lifted_guard_note",
+   "ok": true,
+   "detail": "distinct guard notes=1 ['E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-tree read)']",
+   "measure": false
+  },
+  {
+   "name": "every_run_exited_1_by_design",
+   "ok": true,
+   "detail": "exit codes over the 10 stores=[1] (1 = findings present, not a crash)",
+   "measure": false
+  },
+  {
+   "name": "c01_overlap_count_matches_the_instrument_per_store",
+   "ok": true,
+   "detail": "reader total pairs=621, instrument total findings=621, store-level diffs=[]",
+   "measure": false
+  },
+  {
+   "name": "I_mirror_is_byte_identical_for_every_store",
+   "ok": true,
+   "detail": "mismatching stores=0 []",
+   "measure": false
+  },
+  {
+   "name": "instrument_reproduces_identical_counts_on_the_I_mirror",
+   "ok": true,
+   "detail": "mirror runs=10; identical for=10; sample=[('arma-store', 1, {'clips_visited': 11, 'foreign_visited': 0, 'rows_emitted': 11, 'db_rows': 0, 'db_duplicate_content_keys': 0, 'findings_red': 77, 'findings_info': 0, 'refusals': 11, 'audit_green': 7, 'audit_red': 0}, {'clips_visited': 11, 'foreign_visited': 0, 'rows_emitted': 11, 'db_rows': 0, 'db_duplicate_content_keys': 0, 'findings_red': 77, 'findings_info': 0, 'refusals': 11, 'audit_green': 7, 'audit_red': 0}, True), ('armb-store', 1, {'clips_visited': 12, 'foreign_visited': 0, 'rows_emitted': 12, 'db_rows': 0, 'db_duplicate_content_keys': 0, 'findings_red': 90, 'findings_info': 0, 'refusals': 12, 'audit_green': 7, 'audit_red': 0}, {'clips_visited': 12, 'foreign_visited': 0, 'rows_emitted': 12, 'db_rows': 0, 'db_duplicate_content_keys': 0, 'findings_red': 90, 'findings_info': 0, 'refusals': 12, 'audit_green': 7, 'audit_red': 0}, True)]",
+   "measure": false
+  },
+  {
+   "name": "real_containers_outside_the_store_are_not_refused",
+   "ok": true,
+   "detail": "of 3 control mp4, refused=0; moov present in 3",
+   "measure": false
+  },
+  {
+   "name": "no_mtime_in_the_population_moved",
+   "ok": true,
+   "detail": "files whose mtime changed across the whole arm B run=0",
+   "measure": false
+  }
+ ],
+ "checks_passed": 24,
+ "measures": [
+  {
+   "name": "committed_at_s_minus_ended_at_s",
+   "ok": true,
+   "detail": "MEASURED (whether the two must be equal is UNKNOWN to this reader): usable keys=95, exactly equal=25, differing=70, min delta=0.000000000 s, max |delta|=0.001549959 s, first 3 (clip_id, delta s)=[('20261007T130417Z-0013', 0.0), ('20261007T140417Z-0014', 0.000993967056274414), ('20261007T150417Z-0015', 0.0009961128234863281)]",
+   "measure": true
+  }
+ ],
+ "checks_failed": 1,
+ "exit_code": 1,
+ "newest_layout_json_mtime_utc": "2026-10-08T00:04:21Z",
+ "control_mp4": [
+  {
+   "path": "H:/sotto/_moved/aireplay/_main/_census09-ctl/ctl-normal.mp4",
+   "refusal": null,
+   "types": [
+    "ftyp",
+    "free",
+    "mdat",
+    "moov"
+   ]
+  },
+  {
+   "path": "H:/sotto/_moved/aireplay/_main/_census09-ctl/ctl-faststart.mp4",
+   "refusal": null,
+   "types": [
+    "ftyp",
+    "moov",
+    "free",
+    "mdat"
+   ]
+  },
+  {
+   "path": "H:/sotto/_moved/aireplay/_main/_census09-ctl/ctl-frag.mp4",
+   "refusal": null,
+   "types": [
+    "ftyp",
+    "moov",
+    "moof",
+    "mdat",
+    "mfra"
+   ]
+  }
+ ],
+ "mirror_stores_on_I": 10,
+ "mirror_tree_hash": {
+  "arma-store": "identical",
+  "armb-store": "identical",
+  "armc-store": "identical",
+  "arme-store": "identical",
+  "layout-selftest/layout-root": "identical",
+  "negctl-d0-work/arma-store": "identical",
+  "negctl-loud-alarm-work/armb-store": "identical",
+  "negctl-reconcile-partial-work/armc-store": "identical",
+  "negctl-retention-bytes-work/arma-store": "identical",
+  "negctl-write-admission-work/armb-store": "identical"
+ },
+ "mirror_run_status": [
+  [
+   "arma-store",
+   1,
+   {
+    "clips_visited": 11,
+    "foreign_visited": 0,
+    "rows_emitted": 11,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 77,
+    "findings_info": 0,
+    "refusals": 11,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 11,
+    "foreign_visited": 0,
+    "rows_emitted": 11,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 77,
+    "findings_info": 0,
+    "refusals": 11,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "armb-store",
+   1,
+   {
+    "clips_visited": 12,
+    "foreign_visited": 0,
+    "rows_emitted": 12,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 90,
+    "findings_info": 0,
+    "refusals": 12,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 12,
+    "foreign_visited": 0,
+    "rows_emitted": 12,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 90,
+    "findings_info": 0,
+    "refusals": 12,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "armc-store",
+   1,
+   {
+    "clips_visited": 4,
+    "foreign_visited": 0,
+    "rows_emitted": 4,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 14,
+    "findings_info": 0,
+    "refusals": 5,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 4,
+    "foreign_visited": 0,
+    "rows_emitted": 4,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 14,
+    "findings_info": 0,
+    "refusals": 5,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "arme-store",
+   1,
+   {
+    "clips_visited": 1,
+    "foreign_visited": 0,
+    "rows_emitted": 1,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 2,
+    "findings_info": 0,
+    "refusals": 1,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 1,
+    "foreign_visited": 0,
+    "rows_emitted": 1,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 2,
+    "findings_info": 0,
+    "refusals": 1,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "layout-root",
+   1,
+   {
+    "clips_visited": 7,
+    "foreign_visited": 0,
+    "rows_emitted": 7,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 35,
+    "findings_info": 0,
+    "refusals": 8,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 7,
+    "foreign_visited": 0,
+    "rows_emitted": 7,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 35,
+    "findings_info": 0,
+    "refusals": 8,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "arma-store",
+   1,
+   {
+    "clips_visited": 11,
+    "foreign_visited": 0,
+    "rows_emitted": 11,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 77,
+    "findings_info": 0,
+    "refusals": 11,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 11,
+    "foreign_visited": 0,
+    "rows_emitted": 11,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 77,
+    "findings_info": 0,
+    "refusals": 11,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "armb-store",
+   1,
+   {
+    "clips_visited": 12,
+    "foreign_visited": 0,
+    "rows_emitted": 12,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 90,
+    "findings_info": 0,
+    "refusals": 12,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 12,
+    "foreign_visited": 0,
+    "rows_emitted": 12,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 90,
+    "findings_info": 0,
+    "refusals": 12,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "armc-store",
+   1,
+   {
+    "clips_visited": 5,
+    "foreign_visited": 0,
+    "rows_emitted": 5,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 19,
+    "findings_info": 0,
+    "refusals": 6,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 5,
+    "foreign_visited": 0,
+    "rows_emitted": 5,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 19,
+    "findings_info": 0,
+    "refusals": 6,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "arma-store",
+   1,
+   {
+    "clips_visited": 24,
+    "foreign_visited": 0,
+    "rows_emitted": 24,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 324,
+    "findings_info": 0,
+    "refusals": 24,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 24,
+    "foreign_visited": 0,
+    "rows_emitted": 24,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 324,
+    "findings_info": 0,
+    "refusals": 24,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ],
+  [
+   "armb-store",
+   1,
+   {
+    "clips_visited": 12,
+    "foreign_visited": 0,
+    "rows_emitted": 12,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 90,
+    "findings_info": 0,
+    "refusals": 12,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   {
+    "clips_visited": 12,
+    "foreign_visited": 0,
+    "rows_emitted": 12,
+    "db_rows": 0,
+    "db_duplicate_content_keys": 0,
+    "findings_red": 90,
+    "findings_info": 0,
+    "refusals": 12,
+    "audit_green": 7,
+    "audit_red": 0
+   },
+   true
+  ]
+ ],
+ "independent_overlap_pairs_per_store": {
+  "armA-store": 55,
+  "armB-store": 66,
+  "armC-store": 6,
+  "armE-store": 0,
+  "layout-selftest/layout-root": 21,
+  "negctl-D0-work/armA-store": 55,
+  "negctl-LOUD-ALARM-work/armB-store": 66,
+  "negctl-RECONCILE-PARTIAL-work/armC-store": 10,
+  "negctl-RETENTION-BYTES-work/armA-store": 276,
+  "negctl-WRITE-ADMISSION-work/armB-store": 66
+ },
+ "interval_vs_duration_violators": 95,
+ "interval_vs_duration_sample": [
+  [
+   "20261007T130417Z-0013",
+   39600716.265,
+   30000
+  ],
+  [
+   "20261007T140417Z-0014",
+   36000733.869,
+   30000
+  ],
+  [
+   "20261007T150417Z-0015",
+   32400751.906,
+   30000
+  ]
+ ],
+ "keys_parsed": 95,
+ "clips_without_a_usable_key": [
+  "20260101T000000Z-0001",
+  "20261007T234421Z-0003",
+  "20261008T000059Z-0006",
+  "20261008T000101Z-0006"
+ ],
+ "runs_dir": "I:/cc-tmp/ods1-armB/runs",
+ "run_files": 12
+}

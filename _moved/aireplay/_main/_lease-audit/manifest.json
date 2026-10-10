@@ -1,0 +1,1042 @@
+{
+ "generated_at_utc": "2026-10-10T02:10:33.671656+00:00",
+ "repo_files_used": {
+  "layout.py": "H:\\sotto\\_moved\\aireplay\\src\\storage\\layout.py",
+  "layout.py_sha256": "fe02e34b9a6339c763e193323a6e9a8e970ca4f15fdf99127543a6b43830ebd6",
+  "schema.sql": "H:\\sotto\\_moved\\aireplay\\src\\index\\schema.sql",
+  "schema.sql_sha256": "ed6a26685463eb8c4a83a105d8606d94ce1109f47b3c55c8c52e92a3b678842b"
+ },
+ "stores": {
+  "full": {
+   "root": "I:\\cc-tmp\\ods1-armA\\store",
+   "store": "full",
+   "S0_epoch": 1791547200.0,
+   "S0_utc": "2026-10-09T12:00:00+00:00",
+   "clips": [
+    {
+     "name": "A001",
+     "clip_id": "20261009T120000Z-0001",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120000Z-0001",
+     "chosen_started_at_s": 1791547200.0,
+     "chosen_key_started_at_s": 1791547200.0,
+     "chosen_key_ended_at_s": 1791547204.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547201000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A002",
+     "clip_id": "20261009T120004Z-0002",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120004Z-0002",
+     "chosen_started_at_s": 1791547204.0,
+     "chosen_key_started_at_s": 1791547204.0,
+     "chosen_key_ended_at_s": 1791547208.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547205000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A003",
+     "clip_id": "20261009T120008Z-0003",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120008Z-0003",
+     "chosen_started_at_s": 1791547208.0,
+     "chosen_key_started_at_s": 1791547208.0,
+     "chosen_key_ended_at_s": 1791547212.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547209000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A004",
+     "clip_id": "20261009T120012Z-0004",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120012Z-0004",
+     "chosen_started_at_s": 1791547212.0,
+     "chosen_key_started_at_s": 1791547212.0,
+     "chosen_key_ended_at_s": 1791547216.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547213000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A005",
+     "clip_id": "20261009T120020Z-0005",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120020Z-0005",
+     "chosen_started_at_s": 1791547220.0,
+     "chosen_key_started_at_s": 1791547220.5,
+     "chosen_key_ended_at_s": 1791547223.5,
+     "chosen_key_duration_ms": 3000,
+     "container_duration_s": 3.0,
+     "content_key": "c35f9514754c3bbcd896825a4319c182f9c240350422919e550ffb504b756ae4",
+     "size_bytes": 7830,
+     "mtime_ns": 1791547221000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C09"
+     ]
+    },
+    {
+     "name": "A006",
+     "clip_id": "20261009T120040Z-0006",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120040Z-0006",
+     "chosen_started_at_s": 1791547240.0,
+     "chosen_key_started_at_s": 1791547240.0,
+     "chosen_key_ended_at_s": 1791547244.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 5.0,
+     "content_key": "ec577d66d4bb9349430a62a401065c96659802fd160891e9432cd03f260edea5",
+     "size_bytes": 13341,
+     "mtime_ns": 1791547241000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C07",
+      "C2TRAK"
+     ]
+    },
+    {
+     "name": "A007",
+     "clip_id": "20261009T120100Z-0007",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120100Z-0007",
+     "chosen_started_at_s": 1791547260.0,
+     "chosen_key_started_at_s": 1791547260.0,
+     "chosen_key_ended_at_s": 1791547258.0,
+     "chosen_key_duration_ms": 3000,
+     "container_duration_s": 3.0,
+     "content_key": "f23ddaf2fce10e546240c259bcc471f6fdbdc5aabd8cf4a15c678a2c216669fb",
+     "size_bytes": 7830,
+     "mtime_ns": 1791547261000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C05"
+     ]
+    },
+    {
+     "name": "A008",
+     "clip_id": "20261009T120120Z-0008",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120120Z-0008",
+     "chosen_started_at_s": 1791547280.0,
+     "chosen_key_started_at_s": 1791547280.0,
+     "chosen_key_ended_at_s": 1791547284.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "bc61af69259b9f5bf1850cfef1eb10200d67491270bc95de621d10c3305022db",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547281000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C01",
+      "C02"
+     ]
+    },
+    {
+     "name": "A009",
+     "clip_id": "20261009T120121Z-0009",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120121Z-0009",
+     "chosen_started_at_s": 1791547281.0,
+     "chosen_key_started_at_s": 1791547281.0,
+     "chosen_key_ended_at_s": 1791547285.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "bc61af69259b9f5bf1850cfef1eb10200d67491270bc95de621d10c3305022db",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547282000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C01",
+      "C02"
+     ]
+    },
+    {
+     "name": "A010",
+     "clip_id": "20261009T120130Z-0010",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120130Z-0010",
+     "chosen_started_at_s": 1791547290.0,
+     "chosen_key_started_at_s": 1791547290.0,
+     "chosen_key_ended_at_s": 1791547293.0,
+     "chosen_key_duration_ms": 3000,
+     "container_duration_s": 3.0,
+     "content_key": "5f8ec8e4df3157980f6ebdb71ae21109c4fc1c95c614f648ff3fcf58b9ca7f17",
+     "size_bytes": 7830,
+     "mtime_ns": 1791547291000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C03"
+     ]
+    },
+    {
+     "name": "A011",
+     "clip_id": "20261009T120134Z-0011",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120134Z-0011",
+     "chosen_started_at_s": 1791547294.0,
+     "chosen_key_started_at_s": 1791547294.0,
+     "chosen_key_ended_at_s": 1791547297.0,
+     "chosen_key_duration_ms": 3000,
+     "container_duration_s": 3.0,
+     "content_key": "b9b258f3985393ab3088dfd279fd893e27d6a2f0bdb0047d9ac34366abdb9e35",
+     "size_bytes": 7830,
+     "mtime_ns": 1791547295000000000,
+     "partial": true,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "FINISH"
+     ]
+    },
+    {
+     "name": "A012",
+     "clip_id": "20261009T120138Z-0012",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120138Z-0012",
+     "chosen_started_at_s": 1791547298.0,
+     "chosen_key_started_at_s": null,
+     "chosen_key_ended_at_s": null,
+     "chosen_key_duration_ms": null,
+     "container_duration_s": null,
+     "content_key": "a094a0446c4b01cc49e4043b0596c54fd5ae9b2470d210af90388e6df5b52e53",
+     "size_bytes": 56,
+     "mtime_ns": 1791547299000000000,
+     "partial": true,
+     "key_present": false,
+     "media_present": true,
+     "plant": [
+      "DISCARD",
+      "R-NO-MOOV"
+     ]
+    },
+    {
+     "name": "A013",
+     "clip_id": "20261009T120150Z-0013",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120150Z-0013",
+     "chosen_started_at_s": 1791547310.0,
+     "chosen_key_started_at_s": 1791547310.0,
+     "chosen_key_ended_at_s": 1791547312.5,
+     "chosen_key_duration_ms": 2500,
+     "container_duration_s": 2.5,
+     "content_key": "6503bca6b57f1f03698ca77b2d8b0e3f8ec06d17041bc00141ab276c0266d99e",
+     "size_bytes": 6630,
+     "mtime_ns": 1791547311000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "R-VERSION"
+     ]
+    },
+    {
+     "name": "A014",
+     "clip_id": "20261009T120154Z-0014",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120154Z-0014",
+     "chosen_started_at_s": 1791547314.0,
+     "chosen_key_started_at_s": null,
+     "chosen_key_ended_at_s": null,
+     "chosen_key_duration_ms": null,
+     "container_duration_s": 2.0,
+     "content_key": "c7384ed2393aa1b572b7897a7c8ef23c29f16d45a821f50429360c5647f577e2",
+     "size_bytes": 5430,
+     "mtime_ns": 1791547315000000000,
+     "partial": false,
+     "key_present": false,
+     "media_present": true,
+     "plant": [
+      "ORPHAN"
+     ]
+    },
+    {
+     "name": "A015",
+     "clip_id": "20261009T120158Z-0015",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120158Z-0015",
+     "chosen_started_at_s": 1791547318.0,
+     "chosen_key_started_at_s": 1791547318.0,
+     "chosen_key_ended_at_s": 1791547320.0,
+     "chosen_key_duration_ms": 2000,
+     "container_duration_s": 2.0,
+     "content_key": "",
+     "size_bytes": 0,
+     "mtime_ns": 1791547319000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": false,
+     "plant": [
+      "MISSING-MEDIA"
+     ]
+    },
+    {
+     "name": "A016",
+     "clip_id": "20261009T120205Z-0016",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120205Z-0016",
+     "chosen_started_at_s": 1791547325.0,
+     "chosen_key_started_at_s": 1791547325.0,
+     "chosen_key_ended_at_s": 1791547328.0,
+     "chosen_key_duration_ms": 3000,
+     "container_duration_s": 3.0,
+     "content_key": "44e34765b2c03555e7448533a8d6a30779788c47d9fb314e87a989c0c958d6b6",
+     "size_bytes": 7830,
+     "mtime_ns": 1791547326000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "R-WRONG-DIR"
+     ]
+    },
+    {
+     "name": "A017",
+     "clip_id": "20261009T120220Z-0017",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120220Z-0017",
+     "chosen_started_at_s": 1791547340.0,
+     "chosen_key_started_at_s": 1791547340.0,
+     "chosen_key_ended_at_s": 1791547342.0,
+     "chosen_key_duration_ms": 2000,
+     "container_duration_s": 2.0,
+     "content_key": "dbc16d9f72fc9ca7bf51119a511fde384c4a1c67fee8e7f16db9c3caa65546e2",
+     "size_bytes": 5430,
+     "mtime_ns": 1791547341000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C02"
+     ]
+    }
+   ],
+   "foreign": [
+    {
+     "name": "legacy-2026-09-01.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\legacy-2026-09-01.mp4",
+     "container_duration_s": 3.0,
+     "mtime_ns": 1791547208000000000,
+     "sha256": "75aea253385ad2f6a94fa55ae903ab81b6f97df00a3c7c70a29fc0fbf0b2ba45",
+     "bytes": 7830,
+     "plant": [
+      "C08"
+     ],
+     "db_ms": 2500
+    },
+    {
+     "name": "moov-no-duration.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-no-duration.mp4",
+     "container_duration_s": null,
+     "mtime_ns": 1791547400000000000,
+     "sha256": "a594326798f04cbba4464def0f72c7985900f6b461e78ef9696fa8b498e6ba73",
+     "bytes": 630,
+     "plant": [
+      "R-NO-DURATION"
+     ],
+     "db_ms": null
+    },
+    {
+     "name": "not-really.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\not-really.mp4",
+     "container_duration_s": null,
+     "mtime_ns": 1791547410000000000,
+     "sha256": "04c39d1a8a6cc28f79e3b367b909e33c5e9fd9703198d7d68796c9d3bf94d13d",
+     "bytes": 61,
+     "plant": [
+      "R-NO-FTYP"
+     ],
+     "db_ms": null
+    },
+    {
+     "name": "moov-truncated.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-truncated.mp4",
+     "container_duration_s": null,
+     "mtime_ns": 1791547420000000000,
+     "sha256": "bf3f296698639affbf816a19a63db78731d80386cb64149d8568fe03e09673f0",
+     "bytes": 3252,
+     "plant": [
+      "R-TRUNCATED"
+     ],
+     "db_ms": null
+    },
+    {
+     "name": "mp4-unknown-box.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\mp4-unknown-box.mp4",
+     "container_duration_s": 2.0,
+     "mtime_ns": 1791547430000000000,
+     "sha256": "8e595f33b8ce5c9c84a512e6bf63a730e17fa4df2a6472c6118ce1d36256ec57",
+     "bytes": 5442,
+     "plant": [
+      "R-BOX-UNKNOWN"
+     ],
+     "db_ms": null
+    },
+    {
+     "name": "moov-no-timescale.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-no-timescale.mp4",
+     "container_duration_s": 2.0,
+     "mtime_ns": 1791547440000000000,
+     "sha256": "d5c484e18940b642395abd909b998826493c74239041abb9e97699b91793a74f",
+     "bytes": 5430,
+     "plant": [
+      "R-NO-TIMESCALE"
+     ],
+     "db_ms": null
+    },
+    {
+     "name": "mvhd-v1.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\mvhd-v1.mp4",
+     "container_duration_s": 2.0,
+     "mtime_ns": 1791547450000000000,
+     "sha256": "9b0150b9a41ad99c3ece3b1855d82ea2daa3a61c67069a5ab1a4acc703a5b9f0",
+     "bytes": 5430,
+     "plant": [
+      "R-BOX-VERSION"
+     ],
+     "db_ms": null
+    },
+    {
+     "name": "db-zero-duration.mp4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\db-zero-duration.mp4",
+     "container_duration_s": 2.0,
+     "mtime_ns": 1791547460000000000,
+     "sha256": "386b4226ee4f8d118f697887ecc0698f27d93f59589d147549c8fc9b539b07fb",
+     "bytes": 5430,
+     "plant": [
+      "C08"
+     ],
+     "db_ms": 0
+    }
+   ],
+   "db_rows": [
+    {
+     "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "c35f9514754c3bbcd896825a4319c182f9c240350422919e550ffb504b756ae4",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120020Z-0005\\clip.mp4",
+     "duration_ms": 3000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "ec577d66d4bb9349430a62a401065c96659802fd160891e9432cd03f260edea5",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120040Z-0006\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "f23ddaf2fce10e546240c259bcc471f6fdbdc5aabd8cf4a15c678a2c216669fb",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120100Z-0007\\clip.mp4",
+     "duration_ms": 3000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "bc61af69259b9f5bf1850cfef1eb10200d67491270bc95de621d10c3305022db",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120120Z-0008\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "5f8ec8e4df3157980f6ebdb71ae21109c4fc1c95c614f648ff3fcf58b9ca7f17",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\08\\20261008T110000Z-0099\\clip.mp4",
+     "duration_ms": 3000,
+     "missing": 1,
+     "state": "superseded"
+    },
+    {
+     "content_key": "b9b258f3985393ab3088dfd279fd893e27d6a2f0bdb0047d9ac34366abdb9e35",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120134Z-0011\\clip.mp4",
+     "duration_ms": 3000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "a094a0446c4b01cc49e4043b0596c54fd5ae9b2470d210af90388e6df5b52e53",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120138Z-0012\\clip.mp4",
+     "duration_ms": 0,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "6503bca6b57f1f03698ca77b2d8b0e3f8ec06d17041bc00141ab276c0266d99e",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120150Z-0013\\clip.mp4",
+     "duration_ms": 2500,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "c7384ed2393aa1b572b7897a7c8ef23c29f16d45a821f50429360c5647f577e2",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120154Z-0014\\clip.mp4",
+     "duration_ms": 0,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "44e34765b2c03555e7448533a8d6a30779788c47d9fb314e87a989c0c958d6b6",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120205Z-0016\\clip.mp4",
+     "duration_ms": 3000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "dbc16d9f72fc9ca7bf51119a511fde384c4a1c67fee8e7f16db9c3caa65546e2",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120220Z-0017\\clip.mp4",
+     "duration_ms": 2000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "75aea253385ad2f6a94fa55ae903ab81b6f97df00a3c7c70a29fc0fbf0b2ba45",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\legacy-2026-09-01.mp4",
+     "duration_ms": 2500,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "a594326798f04cbba4464def0f72c7985900f6b461e78ef9696fa8b498e6ba73",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-no-duration.mp4",
+     "duration_ms": 0,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "bf3f296698639affbf816a19a63db78731d80386cb64149d8568fe03e09673f0",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-truncated.mp4",
+     "duration_ms": 0,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "8e595f33b8ce5c9c84a512e6bf63a730e17fa4df2a6472c6118ce1d36256ec57",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\mp4-unknown-box.mp4",
+     "duration_ms": 2000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "d5c484e18940b642395abd909b998826493c74239041abb9e97699b91793a74f",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-no-timescale.mp4",
+     "duration_ms": 2000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "9b0150b9a41ad99c3ece3b1855d82ea2daa3a61c67069a5ab1a4acc703a5b9f0",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\mvhd-v1.mp4",
+     "duration_ms": 2000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "386b4226ee4f8d118f697887ecc0698f27d93f59589d147549c8fc9b539b07fb",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\db-zero-duration.mp4",
+     "duration_ms": 0,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\07\\20261007T000000Z-0001\\clip.mp4",
+     "duration_ms": 0,
+     "missing": 1,
+     "state": "failed"
+    }
+   ],
+   "expect": {
+    "C01": [
+     {
+      "name": "A008",
+      "clip_id": "20261009T120120Z-0008",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120120Z-0008"
+     },
+     {
+      "name": "A009",
+      "clip_id": "20261009T120121Z-0009",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120121Z-0009"
+     }
+    ],
+    "C02": [
+     {
+      "name": "A008",
+      "clip_id": "20261009T120120Z-0008",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120120Z-0008"
+     },
+     {
+      "name": "A009",
+      "clip_id": "20261009T120121Z-0009",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120121Z-0009"
+     },
+     {
+      "name": "A017",
+      "clip_id": "20261009T120220Z-0017",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120220Z-0017"
+     }
+    ],
+    "C03": [
+     {
+      "name": "A010",
+      "clip_id": "20261009T120130Z-0010",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120130Z-0010"
+     }
+    ],
+    "C04": [],
+    "C05": [
+     {
+      "name": "A007",
+      "clip_id": "20261009T120100Z-0007",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120100Z-0007"
+     }
+    ],
+    "C06": [],
+    "C07": [
+     {
+      "name": "A006",
+      "clip_id": "20261009T120040Z-0006",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120040Z-0006"
+     }
+    ],
+    "C08": [
+     {
+      "name": "legacy-2026-09-01.mp4",
+      "clip_id": "",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\legacy-2026-09-01.mp4"
+     },
+     {
+      "name": "db-zero-duration.mp4",
+      "clip_id": "",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\imports\\db-zero-duration.mp4"
+     }
+    ],
+    "C09": [
+     {
+      "name": "A005",
+      "clip_id": "20261009T120020Z-0005",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120020Z-0005"
+     }
+    ],
+    "C2TRAK": [
+     {
+      "name": "A006",
+      "clip_id": "20261009T120040Z-0006",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120040Z-0006"
+     }
+    ],
+    "REFUSAL": [
+     {
+      "class": "R-NO-MOOV",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120138Z-0012",
+      "name": "A012"
+     },
+     {
+      "class": "R-VERSION",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120150Z-0013",
+      "name": "A013"
+     },
+     {
+      "class": "R-WRONG-DIR",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120205Z-0016",
+      "name": "A016"
+     },
+     {
+      "class": "R-NO-DURATION",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-no-duration.mp4",
+      "name": "moov-no-duration.mp4"
+     },
+     {
+      "class": "R-NO-FTYP",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\imports\\not-really.mp4",
+      "name": "not-really.mp4"
+     },
+     {
+      "class": "R-BOX-TRUNCATED",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-truncated.mp4",
+      "name": "moov-truncated.mp4"
+     },
+     {
+      "class": "R-BOX-UNKNOWN",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\imports\\mp4-unknown-box.mp4",
+      "name": "mp4-unknown-box.mp4"
+     },
+     {
+      "class": "R-NO-TIMESCALE",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\imports\\moov-no-timescale.mp4",
+      "name": "moov-no-timescale.mp4"
+     },
+     {
+      "class": "R-BOX-VERSION",
+      "subject": "I:\\cc-tmp\\ods1-armA\\store\\imports\\mvhd-v1.mp4",
+      "name": "mvhd-v1.mp4"
+     }
+    ],
+    "FINISH": [
+     {
+      "name": "A011",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120134Z-0011"
+     }
+    ],
+    "DISCARD": [
+     {
+      "name": "A012",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120138Z-0012"
+     }
+    ],
+    "ORPHAN": [
+     {
+      "name": "A014",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120154Z-0014"
+     }
+    ],
+    "MISSING-MEDIA": [
+     {
+      "name": "A015",
+      "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120158Z-0015"
+     }
+    ]
+   },
+   "notes": [
+    "foreign-dir-under-clips: I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\not-a-clip-id",
+    "A010 PATH MOVED is a STALE path on the SAME row, not a second row: content_key is UNIQUE (schema.sql:41-63), so the pre-move row had to be UPDATEd.  The duplicate INSERT was tried first and refused.",
+    "A015 db row is a deadbeef content_key at a 2026-10-07 path that was never written: the index held a row for a clip missing on disk."
+   ],
+   "db_dup_refusals": [
+    {
+     "content_key": "bc61af69259b9f5bf1850cfef1eb10200d67491270bc95de621d10c3305022db",
+     "path": "I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120121Z-0009\\clip.mp4",
+     "error": "UNIQUE constraint failed: video.content_key"
+    }
+   ]
+  },
+  "clean": {
+   "root": "I:\\cc-tmp\\ods1-armA\\store-clean",
+   "store": "clean",
+   "S0_epoch": 1791547200.0,
+   "S0_utc": "2026-10-09T12:00:00+00:00",
+   "clips": [
+    {
+     "name": "A001",
+     "clip_id": "20261009T120000Z-0001",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001",
+     "chosen_started_at_s": 1791547200.0,
+     "chosen_key_started_at_s": 1791547200.0,
+     "chosen_key_ended_at_s": 1791547204.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547201000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A002",
+     "clip_id": "20261009T120004Z-0002",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002",
+     "chosen_started_at_s": 1791547204.0,
+     "chosen_key_started_at_s": 1791547204.0,
+     "chosen_key_ended_at_s": 1791547208.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547205000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A003",
+     "clip_id": "20261009T120008Z-0003",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003",
+     "chosen_started_at_s": 1791547208.0,
+     "chosen_key_started_at_s": 1791547208.0,
+     "chosen_key_ended_at_s": 1791547212.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547209000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A004",
+     "clip_id": "20261009T120012Z-0004",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004",
+     "chosen_started_at_s": 1791547212.0,
+     "chosen_key_started_at_s": 1791547212.0,
+     "chosen_key_ended_at_s": 1791547216.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547213000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    }
+   ],
+   "foreign": [],
+   "db_rows": [
+    {
+     "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-clean\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    }
+   ],
+   "expect": {
+    "C01": [],
+    "C02": [],
+    "C03": [],
+    "C04": [],
+    "C05": [],
+    "C06": [],
+    "C07": [],
+    "C08": [],
+    "C09": [],
+    "C2TRAK": [],
+    "REFUSAL": []
+   },
+   "notes": [],
+   "db_dup_refusals": []
+  },
+  "mutant": {
+   "root": "I:\\cc-tmp\\ods1-armA\\store-mutant",
+   "store": "mutant",
+   "S0_epoch": 1791547200.0,
+   "S0_utc": "2026-10-09T12:00:00+00:00",
+   "clips": [
+    {
+     "name": "A001",
+     "clip_id": "20261009T120000Z-0001",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120000Z-0001",
+     "chosen_started_at_s": 1791547200.0,
+     "chosen_key_started_at_s": 1791547200.0,
+     "chosen_key_ended_at_s": 1791547204.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547201000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A002",
+     "clip_id": "20261009T120004Z-0002",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120004Z-0002",
+     "chosen_started_at_s": 1791547204.0,
+     "chosen_key_started_at_s": 1791547204.0,
+     "chosen_key_ended_at_s": 1791547208.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547205000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A003",
+     "clip_id": "20261009T120008Z-0003",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120008Z-0003",
+     "chosen_started_at_s": 1791547208.0,
+     "chosen_key_started_at_s": 1791547208.0,
+     "chosen_key_ended_at_s": 1791547212.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547209000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A004",
+     "clip_id": "20261009T120012Z-0004",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120012Z-0004",
+     "chosen_started_at_s": 1791547212.0,
+     "chosen_key_started_at_s": 1791547212.0,
+     "chosen_key_ended_at_s": 1791547216.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547213000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": []
+    },
+    {
+     "name": "A900",
+     "clip_id": "20261009T120015Z-0900",
+     "dir": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120015Z-0900",
+     "chosen_started_at_s": 1791547215.0,
+     "chosen_key_started_at_s": 1791547215.0,
+     "chosen_key_ended_at_s": 1791547219.0,
+     "chosen_key_duration_ms": 4000,
+     "container_duration_s": 4.0,
+     "content_key": "a8458e1ae239fd8dc535db8cbcd7463415798adf4fa2699b9244044bdfd8e52e",
+     "size_bytes": 10230,
+     "mtime_ns": 1791547216000000000,
+     "partial": false,
+     "key_present": true,
+     "media_present": true,
+     "plant": [
+      "C01"
+     ]
+    }
+   ],
+   "foreign": [],
+   "db_rows": [
+    {
+     "content_key": "9e90376576ae9d91f966b0d946c237afc11239bcdb1dfbca3f4682ff35289f95",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120000Z-0001\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "40748433032c9d6824f215de2fbeff2a35c38c451b4c928902ce530db1669524",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120004Z-0002\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "06cfcad8be178ae45bc8c9a5b290cafed7feceb843e68161a053c3a448a15b8d",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120008Z-0003\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "0727a8975106aaf398bf4e77f04b3ebf8a1fbcce30bda0f5fb2e7d839a7e9342",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120012Z-0004\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    },
+    {
+     "content_key": "a8458e1ae239fd8dc535db8cbcd7463415798adf4fa2699b9244044bdfd8e52e",
+     "path": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120015Z-0900\\clip.mp4",
+     "duration_ms": 4000,
+     "missing": 0,
+     "state": "indexed"
+    }
+   ],
+   "expect": {
+    "C01": [
+     {
+      "name": "A900",
+      "clip_id": "20261009T120015Z-0900",
+      "path": "I:\\cc-tmp\\ods1-armA\\store-mutant\\clips\\2026\\10\\09\\20261009T120015Z-0900"
+     }
+    ],
+    "C02": [],
+    "C03": [],
+    "C04": [],
+    "C05": [],
+    "C06": [],
+    "C07": [],
+    "C08": [],
+    "C09": [],
+    "C2TRAK": [],
+    "REFUSAL": []
+   },
+   "notes": [],
+   "db_dup_refusals": []
+  }
+ },
+ "fixture_correction_20261009": {
+  "how": "the fixture list once named one planted refusal R-TRUNCATED, which was builder shorthand for a box that claims past EOF.  The instrument reports that first cause as R-BOX-TRUNCATED -> R-DURATION-UNKNOWN (terminal), so the expectation above is written in the codes the instrument actually emits.  No fixture byte on disk was changed by this correction.",
+  "a010_move": "A010 was first built as a SECOND video row for the same content_key.  The schema refuses that (content_key UNIQUE, schema.sql:41-63) -- measured, sqlite3.IntegrityError -- so the plant never reached the db at all.  The moved clip is now the SAME row still naming its OLD path with missing=1, which is the only shape of PATH MOVED this index can hold."
+ }
+}

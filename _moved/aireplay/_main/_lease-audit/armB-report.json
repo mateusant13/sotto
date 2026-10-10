@@ -1,0 +1,439 @@
+{
+ "lane": "ODS-1 ARM B (leitura dos clips reais, sem escrita)",
+ "report_md": "I:/cc-tmp/ods1-armB/armB-report.md",
+ "instrument": {
+  "path": "I:/cc-tmp/ods1-armB/ods1_armB.py",
+  "bytes": 80712,
+  "base": "I:/cc-tmp/ods1-armA/ods1.py",
+  "diff": "I:/cc-tmp/ods1-armB/DIFF-armA-vs-armB.txt",
+  "layout_py": "H:/sotto/_moved/aireplay/src/storage/layout.py",
+  "layout_py_sha256": "fe02e34b9a6339c763e193323a6e9a8e970ca4f15fdf99127543a6b43830ebd6",
+  "guard": "E-ROOT-INSIDE-REPO turned into a LOUD WARN under --arm b, recorded in output and as guard_note"
+ },
+ "verifier": {
+  "path": "I:/cc-tmp/ods1-armB/check_armB.py",
+  "output": "I:/cc-tmp/ods1-armB/check-armB-output.json",
+  "reader_started_utc": "2026-10-10T04:57:08Z",
+  "reader_finished_utc": "2026-10-10T04:57:10Z",
+  "checks_passed": 24,
+  "checks_failed": 1,
+  "exit_code": 1
+ },
+ "population": {
+  "path": "H:/sotto/_moved/aireplay/_main/_lane22-run",
+  "window": "2026-10-10T04:08:58Z (instrument runs) to 2026-10-10T04:57:10Z (verifier)",
+  "newest_layout_json_mtime_utc": "2026-10-08T00:04:21Z",
+  "stores": 10,
+  "clip_dirs": 99,
+  "clip_mp4": 99,
+  "key_json": 98,
+  "partial": 1,
+  "sqlite_dbs": 0,
+  "per_store": {
+   "armA-store": {
+    "C01": 55,
+    "C03": 11,
+    "REFUSAL": 11,
+    "rows": 11,
+    "committed": 11,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 11
+    },
+    "interval_ms_count": 11,
+    "iv_min": 3600924.0539073944,
+    "iv_max": 39600716.26496315,
+    "overlap_min_s": 3600.71626496315,
+    "overlap_max_s": 36000.71626496315,
+    "findings": 77,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "armB-store": {
+    "C01": 66,
+    "C03": 12,
+    "REFUSAL": 12,
+    "rows": 12,
+    "committed": 12,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 12
+    },
+    "interval_ms_count": 12,
+    "iv_min": 7200591.873884201,
+    "iv_max": 86400189.27407265,
+    "overlap_min_s": 7200.189274072647,
+    "overlap_max_s": 79200.18927407265,
+    "findings": 90,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "armC-store": {
+    "C01": 6,
+    "C03": 3,
+    "REFUSAL": 5,
+    "rows": 4,
+    "committed": 3,
+    "partial-uncommitted": 1,
+    "duration_hist": {
+     "1000": 3
+    },
+    "interval_ms_count": 3,
+    "iv_min": 1800066.6809082031,
+    "iv_max": 7200056.173086166,
+    "overlap_min_s": 200.04509902000427,
+    "overlap_max_s": 3600.0450990200043,
+    "findings": 14,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "armE-store": {
+    "C01": 0,
+    "C03": 1,
+    "REFUSAL": 1,
+    "rows": 1,
+    "committed": 1,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 1
+    },
+    "interval_ms_count": 1,
+    "iv_min": 86400625.5390644,
+    "iv_max": 86400625.5390644,
+    "overlap_min_s": null,
+    "overlap_max_s": null,
+    "findings": 2,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "layout-selftest/layout-root": {
+    "C01": 21,
+    "C03": 6,
+    "REFUSAL": 8,
+    "rows": 7,
+    "committed": 6,
+    "partial-uncommitted": 1,
+    "duration_hist": {
+     "1000": 1,
+     "1001": 1,
+     "1002": 1,
+     "1003": 1,
+     "1004": 1,
+     "1005": 1
+    },
+    "interval_ms_count": 6,
+    "iv_min": 39449206.19106293,
+    "iv_max": 57449285.03894806,
+    "overlap_min_s": 39449.20619106293,
+    "overlap_max_s": 57449.28503894806,
+    "findings": 35,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "negctl-D0-work/armA-store": {
+    "C01": 55,
+    "C03": 11,
+    "REFUSAL": 11,
+    "rows": 11,
+    "committed": 11,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 11
+    },
+    "interval_ms_count": 11,
+    "iv_min": 3600959.629058838,
+    "iv_max": 39600779.571056366,
+    "overlap_min_s": 3600.779571056366,
+    "overlap_max_s": 36000.779571056366,
+    "findings": 77,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "negctl-LOUD-ALARM-work/armB-store": {
+    "C01": 66,
+    "C03": 12,
+    "REFUSAL": 12,
+    "rows": 12,
+    "committed": 12,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 12
+    },
+    "interval_ms_count": 12,
+    "iv_min": 7200711.724996567,
+    "iv_max": 86400511.98792458,
+    "overlap_min_s": 7200.511987924576,
+    "overlap_max_s": 79200.51198792458,
+    "findings": 90,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "negctl-RECONCILE-PARTIAL-work/armC-store": {
+    "C01": 10,
+    "C03": 3,
+    "REFUSAL": 6,
+    "rows": 5,
+    "committed": 3,
+    "partial-uncommitted": 2,
+    "duration_hist": {
+     "1000": 3
+    },
+    "interval_ms_count": 3,
+    "iv_min": 1800983.8540554047,
+    "iv_max": 7200976.341962814,
+    "overlap_min_s": 200.96782803535461,
+    "overlap_max_s": 3600.9678280353546,
+    "findings": 19,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "negctl-RETENTION-BYTES-work/armA-store": {
+    "C01": 276,
+    "C03": 24,
+    "REFUSAL": 24,
+    "rows": 24,
+    "committed": 24,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 24
+    },
+    "interval_ms_count": 24,
+    "iv_min": 3600735.855102539,
+    "iv_max": 86400274.8670578,
+    "overlap_min_s": 3600.2748670578003,
+    "overlap_max_s": 82800.2748670578,
+    "findings": 324,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   },
+   "negctl-WRITE-ADMISSION-work/armB-store": {
+    "C01": 66,
+    "C03": 12,
+    "REFUSAL": 12,
+    "rows": 12,
+    "committed": 12,
+    "partial-uncommitted": 0,
+    "duration_hist": {
+     "30000": 12
+    },
+    "interval_ms_count": 12,
+    "iv_min": 7200248.455047607,
+    "iv_max": 86400046.00811005,
+    "overlap_min_s": 7200.046008110046,
+    "overlap_max_s": 79200.04600811005,
+    "findings": 90,
+    "audit": "7 green, 0 red",
+    "guard_note": "E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-"
+   }
+  },
+  "note": "clip_ids repeat across stores; every number is per store, never global"
+ },
+ "mirror": {
+  "path": "I:/cc-tmp/f13-2/jprod/_lane22-run",
+  "stores": 10,
+  "tree_hash_same_as_H": true,
+  "runs_dir": "I:/cc-tmp/ods1-armB/runs-mirror/",
+  "result": "identical counts for all 10 stores vs the H: runs",
+  "tree_hash": {
+   "arma-store": "identical",
+   "armb-store": "identical",
+   "armc-store": "identical",
+   "arme-store": "identical",
+   "layout-selftest/layout-root": "identical",
+   "negctl-d0-work/arma-store": "identical",
+   "negctl-loud-alarm-work/armb-store": "identical",
+   "negctl-reconcile-partial-work/armc-store": "identical",
+   "negctl-retention-bytes-work/arma-store": "identical",
+   "negctl-write-admission-work/armb-store": "identical"
+  },
+  "note": "tree hash of the I: mirror equals the tree hash of the H: population"
+ },
+ "duplicate_controls": [
+  "mirror-arme-store.json",
+  "mirror-armc-store.json same H: root re-run, identical counts"
+ ],
+ "totals": {
+  "rows": 99,
+  "rows_kinds": {
+   "clip": 99,
+   "db": 0,
+   "foreign": 0
+  },
+  "findings": 818,
+  "C01": 621,
+  "C03": 95,
+  "REFUSAL": 102,
+  "audit_rows": 70,
+  "audit_red": 0,
+  "exit_codes": "rc=1 in all 10 runs, by design (findings present)"
+ },
+ "refusal_census": {
+  "primary": {
+   "R-BOX-TRUNCATED": 94,
+   "R-BOX-UNKNOWN": 5
+  },
+  "terminal": {
+   "R-NO-MOOV": 98,
+   "R-NO-FTYP": 1
+  },
+  "unknown_box_clips": [
+   "armC-store/20261007T233419Z-0002",
+   "armC-store/20261008T000059Z-0006",
+   "negctl-RECONCILE-PARTIAL-work/armC-store/20261007T233421Z-0002",
+   "negctl-RECONCILE-PARTIAL-work/armC-store/20261007T234421Z-0003",
+   "negctl-RECONCILE-PARTIAL-work/armC-store/20261008T000101Z-0006"
+  ],
+  "no_ftyp_clips": [
+   "layout-selftest/layout-root/20260101T000000Z-0001 (4 bytes)"
+  ],
+  "control_mp4_outside_population": [
+   "H:/sotto/_moved/aireplay/_main/_census09-ctl/ctl-normal.mp4",
+   "ctl-faststart.mp4",
+   "ctl-frag.mp4"
+  ],
+  "controls_refused": 0,
+  "verdicts": {
+   "committed": 95,
+   "partial-uncommitted": 4
+  }
+ },
+ "headline_contradiction": {
+  "name": "key_interval_vs_its_own_duration_ms",
+  "check": "key_interval_vs_its_own_duration_ms_MEASURED_CONTRADICTION",
+  "status": "EXPECTED RED -- measured, not an absent measure",
+  "usable_keys": 95,
+  "violators": 95,
+  "tolerance_ms": 1,
+  "interval_ms_span": {
+   "min": 1800066.681,
+   "max": 86400625.539
+  },
+  "duration_ms_span": {
+   "min": 1000,
+   "max": 30000
+  },
+  "duration_ms_hist": {
+   "1000": 7,
+   "1001": 1,
+   "1002": 1,
+   "1003": 1,
+   "1004": 1,
+   "1005": 1,
+   "30000": 83
+  },
+  "sample": [
+   [
+    "20261007T130417Z-0013",
+    39600716.265,
+    30000
+   ],
+   [
+    "20261007T140417Z-0014",
+    36000733.869,
+    30000
+   ],
+   [
+    "20261007T150417Z-0015",
+    32400751.906,
+    30000
+   ]
+  ],
+  "instrument_classes_that_do_not_cover_it": {
+   "C05": "only fires when the interval is <= 0; all 95 are positive",
+   "C08": "needs a container duration; 99 of 99 clip.mp4 refuse one"
+  },
+  "proposed_new_class": "C10 KEY-SELF-DURATION (name to be confirmed by the owner)",
+  "first_example": {
+   "path": "H:/sotto/_moved/aireplay/_main/_lane22-run/armA-store/clips/2026/10/07/20261007T130417Z-0013/key.json",
+   "started_at_s": 1791378257,
+   "ended_at_s": 1791417857.716265,
+   "interval_ms": 39600716.265,
+   "duration_ms": 30000
+  }
+ },
+ "supporting_measures": {
+  "key_started_at_s_equals_clip_id_rank1": {
+   "keys": 95,
+   "disagreements": 0
+  },
+  "content_key_equals_own_sha256": {
+   "keys": 95,
+   "disagreements": 0
+  },
+  "key_mtime_ns_and_size_bytes_match_media": {
+   "keys": 95,
+   "disagreements": 0
+  },
+  "committed_at_s_minus_ended_at_s": "MEASURED (whether the two must be equal is UNKNOWN to this reader): usable keys=95, exactly equal=25, differing=70, min delta=0.000000000 s, max |delta|=0.001549959 s, first 3 (clip_id, delta s)=[('20261007T130417Z-0013', 0.0), ('20261007T140417Z-0014', 0.000993967056274414), ('20261007T150417Z-0015', 0.0009961128234863281)]"
+ },
+ "key_level_errors": [
+  {
+   "store": "armc-store",
+   "clip_id": "20261008T000059Z-0006",
+   "verdict": "partial-uncommitted",
+   "error": "LayoutError: key H:\\sotto\\_moved\\aireplay\\_main\\_lane22-run\\armC-store\\clips\\2026\\10\\08\\20261008T000059Z-0006\\key.json is not JSON: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)",
+   "end_source": "mtime",
+   "start_source": "clip-id"
+  },
+  {
+   "store": "layout-selftest-layout-root",
+   "clip_id": "20260101T000000Z-0001",
+   "verdict": "partial-uncommitted",
+   "error": "LayoutError: key H:\\sotto\\_moved\\aireplay\\_main\\_lane22-run\\layout-selftest\\layout-root\\clips\\2026\\01\\01\\20260101T000000Z-0001\\key.json is layout_version=99; this build has NO read rule for it (known: [1]). Refusing beats reading a v2 as v1.",
+   "end_source": "mtime",
+   "start_source": "clip-id"
+  },
+  {
+   "store": "negctl-reconcile-partial-work-armc-store",
+   "clip_id": "20261008T000101Z-0006",
+   "verdict": "partial-uncommitted",
+   "error": "LayoutError: key H:\\sotto\\_moved\\aireplay\\_main\\_lane22-run\\negctl-RECONCILE-PARTIAL-work\\armC-store\\clips\\2026\\10\\08\\20261008T000101Z-0006\\key.json is not JSON: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)",
+   "end_source": "mtime",
+   "start_source": "clip-id"
+  },
+  {
+   "store": "negctl-RECONCILE-PARTIAL-work/armC-store",
+   "clip_id": "20261007T234421Z-0003",
+   "verdict": "partial-uncommitted",
+   "error": null,
+   "note": "key.json absent; end from media mtime, rank 5"
+  }
+ ],
+ "clips_without_a_usable_key": [
+  "20260101T000000Z-0001",
+  "20261007T234421Z-0003",
+  "20261008T000059Z-0006",
+  "20261008T000101Z-0006"
+ ],
+ "correlation_measured": {
+  "partial_uncommitted_clips": 4,
+  "clips_without_a_usable_key": 4,
+  "identical_sets": true,
+  "cause": "UNKNOWN"
+ },
+ "gap_classes_stay_gap": [
+  "C02",
+  "C02-CONTENT-KEY-LIE",
+  "C04",
+  "C06",
+  "C07",
+  "C08",
+  "C09",
+  "C2TRAK",
+  "R-DATA-QUALITY",
+  "INFO-GAP"
+ ],
+ "c06_note": "C06 is NOT reproduced in Arm B -- this arm did not read ASR. schema.sql:65-68 puts ASR start_ms in segment, not video.",
+ "reads": {
+  "writes_to_population": 0,
+  "mtimes_changed": 0,
+  "git_add": false,
+  "commit_push": false,
+  "build": false,
+  "audio_device": false,
+  "network": false,
+  "visible_window": false,
+  "anything_in_G": false,
+  "tmpdir": "I:\\cc-tmp"
+ }
+}

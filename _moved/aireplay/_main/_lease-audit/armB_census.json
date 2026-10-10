@@ -1,0 +1,458 @@
+{
+ "census_started_utc": "2026-10-10T04:08:58.378446+00:00",
+ "bases": [
+  "H:/sotto/_moved/aireplay",
+  "I:/cc-tmp"
+ ],
+ "stores": [
+  {
+   "clip_dirs": 11,
+   "key_json": 11,
+   "clip_mp4": 11,
+   "partial_markers": 0,
+   "thumb_jpg": 11,
+   "transcript_json": 11,
+   "bytes_under_clips": 458744,
+   "newest_mtime_utc": "2026-10-08T00:04:17.924054+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:17.706005+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\armA-store",
+   "window_read_utc": "2026-10-10T04:08:58.378446+00:00"
+  },
+  {
+   "clip_dirs": 12,
+   "key_json": 12,
+   "clip_mp4": 12,
+   "partial_markers": 0,
+   "thumb_jpg": 12,
+   "transcript_json": 12,
+   "bytes_under_clips": 500438,
+   "newest_mtime_utc": "2026-10-08T00:04:18.593380+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:18.178221+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\armB-store",
+   "window_read_utc": "2026-10-10T04:08:58.379438+00:00"
+  },
+  {
+   "clip_dirs": 4,
+   "key_json": 4,
+   "clip_mp4": 4,
+   "partial_markers": 0,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 27847,
+   "newest_mtime_utc": "2026-10-08T00:04:19.087294+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:19.041583+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\armC-store",
+   "window_read_utc": "2026-10-10T04:08:58.380438+00:00"
+  },
+  {
+   "clip_dirs": 1,
+   "key_json": 1,
+   "clip_mp4": 1,
+   "partial_markers": 0,
+   "thumb_jpg": 1,
+   "transcript_json": 1,
+   "bytes_under_clips": 41703,
+   "newest_mtime_utc": "2026-10-07T16:19:05.627051+00:00",
+   "oldest_mtime_utc": "2026-10-07T16:19:05.609909+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\armE-store",
+   "window_read_utc": "2026-10-10T04:08:58.381950+00:00"
+  },
+  {
+   "clip_dirs": 7,
+   "key_json": 7,
+   "clip_mp4": 7,
+   "partial_markers": 0,
+   "thumb_jpg": 6,
+   "transcript_json": 6,
+   "bytes_under_clips": 29435,
+   "newest_mtime_utc": "2026-10-08T00:04:17.296119+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:17.195651+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\layout-selftest\\layout-root",
+   "window_read_utc": "2026-10-10T04:08:58.381950+00:00"
+  },
+  {
+   "clip_dirs": 11,
+   "key_json": 11,
+   "clip_mp4": 11,
+   "partial_markers": 0,
+   "thumb_jpg": 11,
+   "transcript_json": 11,
+   "bytes_under_clips": 458743,
+   "newest_mtime_utc": "2026-10-08T00:04:19.960635+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:19.768470+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\negctl-D0-work\\armA-store",
+   "window_read_utc": "2026-10-10T04:08:58.383485+00:00"
+  },
+  {
+   "clip_dirs": 12,
+   "key_json": 12,
+   "clip_mp4": 12,
+   "partial_markers": 0,
+   "thumb_jpg": 12,
+   "transcript_json": 12,
+   "bytes_under_clips": 500438,
+   "newest_mtime_utc": "2026-10-08T00:04:21.712727+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:21.500962+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\negctl-LOUD-ALARM-work\\armB-store",
+   "window_read_utc": "2026-10-10T04:08:58.385290+00:00"
+  },
+  {
+   "clip_dirs": 5,
+   "key_json": 4,
+   "clip_mp4": 5,
+   "partial_markers": 1,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 36052,
+   "newest_mtime_utc": "2026-10-08T00:04:21.993872+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:21.965825+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\negctl-RECONCILE-PARTIAL-work\\armC-store",
+   "window_read_utc": "2026-10-10T04:08:58.386297+00:00"
+  },
+  {
+   "clip_dirs": 24,
+   "key_json": 24,
+   "clip_mp4": 24,
+   "partial_markers": 0,
+   "thumb_jpg": 24,
+   "transcript_json": 24,
+   "bytes_under_clips": 1000874,
+   "newest_mtime_utc": "2026-10-08T00:04:20.736852+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:20.264757+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\negctl-RETENTION-BYTES-work\\armA-store",
+   "window_read_utc": "2026-10-10T04:08:58.387295+00:00"
+  },
+  {
+   "clip_dirs": 12,
+   "key_json": 12,
+   "clip_mp4": 12,
+   "partial_markers": 0,
+   "thumb_jpg": 12,
+   "transcript_json": 12,
+   "bytes_under_clips": 500435,
+   "newest_mtime_utc": "2026-10-08T00:04:21.249467+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:21.035474+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "H:/sotto/_moved/aireplay\\_main\\_lane22-run\\negctl-WRITE-ADMISSION-work\\armB-store",
+   "window_read_utc": "2026-10-10T04:08:58.390802+00:00"
+  },
+  {
+   "clip_dirs": 11,
+   "key_json": 11,
+   "clip_mp4": 11,
+   "partial_markers": 0,
+   "thumb_jpg": 11,
+   "transcript_json": 11,
+   "bytes_under_clips": 458744,
+   "newest_mtime_utc": "2026-10-08T00:04:17.924054+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:17.706005+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\armA-store",
+   "window_read_utc": "2026-10-10T04:08:58.392306+00:00"
+  },
+  {
+   "clip_dirs": 12,
+   "key_json": 12,
+   "clip_mp4": 12,
+   "partial_markers": 0,
+   "thumb_jpg": 12,
+   "transcript_json": 12,
+   "bytes_under_clips": 500438,
+   "newest_mtime_utc": "2026-10-08T00:04:18.593380+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:18.178221+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\armB-store",
+   "window_read_utc": "2026-10-10T04:08:58.395818+00:00"
+  },
+  {
+   "clip_dirs": 4,
+   "key_json": 4,
+   "clip_mp4": 4,
+   "partial_markers": 0,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 27847,
+   "newest_mtime_utc": "2026-10-08T00:04:19.087294+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:19.041583+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\armC-store",
+   "window_read_utc": "2026-10-10T04:08:58.399333+00:00"
+  },
+  {
+   "clip_dirs": 1,
+   "key_json": 1,
+   "clip_mp4": 1,
+   "partial_markers": 0,
+   "thumb_jpg": 1,
+   "transcript_json": 1,
+   "bytes_under_clips": 41703,
+   "newest_mtime_utc": "2026-10-07T16:19:05.627051+00:00",
+   "oldest_mtime_utc": "2026-10-07T16:19:05.609909+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\armE-store",
+   "window_read_utc": "2026-10-10T04:08:58.400326+00:00"
+  },
+  {
+   "clip_dirs": 7,
+   "key_json": 7,
+   "clip_mp4": 7,
+   "partial_markers": 0,
+   "thumb_jpg": 6,
+   "transcript_json": 6,
+   "bytes_under_clips": 29435,
+   "newest_mtime_utc": "2026-10-08T00:04:17.296119+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:17.195651+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\layout-selftest\\layout-root",
+   "window_read_utc": "2026-10-10T04:08:58.401328+00:00"
+  },
+  {
+   "clip_dirs": 11,
+   "key_json": 11,
+   "clip_mp4": 11,
+   "partial_markers": 0,
+   "thumb_jpg": 11,
+   "transcript_json": 11,
+   "bytes_under_clips": 458743,
+   "newest_mtime_utc": "2026-10-08T00:04:19.960635+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:19.768470+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\negctl-D0-work\\armA-store",
+   "window_read_utc": "2026-10-10T04:08:58.403352+00:00"
+  },
+  {
+   "clip_dirs": 12,
+   "key_json": 12,
+   "clip_mp4": 12,
+   "partial_markers": 0,
+   "thumb_jpg": 12,
+   "transcript_json": 12,
+   "bytes_under_clips": 500438,
+   "newest_mtime_utc": "2026-10-08T00:04:21.712727+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:21.500962+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\negctl-LOUD-ALARM-work\\armB-store",
+   "window_read_utc": "2026-10-10T04:08:58.407218+00:00"
+  },
+  {
+   "clip_dirs": 5,
+   "key_json": 4,
+   "clip_mp4": 5,
+   "partial_markers": 1,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 36052,
+   "newest_mtime_utc": "2026-10-08T00:04:21.993872+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:21.965825+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\negctl-RECONCILE-PARTIAL-work\\armC-store",
+   "window_read_utc": "2026-10-10T04:08:58.410723+00:00"
+  },
+  {
+   "clip_dirs": 24,
+   "key_json": 24,
+   "clip_mp4": 24,
+   "partial_markers": 0,
+   "thumb_jpg": 24,
+   "transcript_json": 24,
+   "bytes_under_clips": 1000874,
+   "newest_mtime_utc": "2026-10-08T00:04:20.736852+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:20.264757+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\negctl-RETENTION-BYTES-work\\armA-store",
+   "window_read_utc": "2026-10-10T04:08:58.412235+00:00"
+  },
+  {
+   "clip_dirs": 12,
+   "key_json": 12,
+   "clip_mp4": 12,
+   "partial_markers": 0,
+   "thumb_jpg": 12,
+   "transcript_json": 12,
+   "bytes_under_clips": 500435,
+   "newest_mtime_utc": "2026-10-08T00:04:21.249467+00:00",
+   "oldest_mtime_utc": "2026-10-08T00:04:21.035474+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json"
+   ],
+   "path": "I:/cc-tmp\\f13-2\\jprod\\_lane22-run\\negctl-WRITE-ADMISSION-work\\armB-store",
+   "window_read_utc": "2026-10-10T04:08:58.418371+00:00"
+  },
+  {
+   "clip_dirs": 17,
+   "key_json": 15,
+   "clip_mp4": 17,
+   "partial_markers": 2,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 143342,
+   "newest_mtime_utc": "2026-10-10T02:10:32.753729+00:00",
+   "oldest_mtime_utc": "2026-10-09T12:00:01+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "imports",
+    "layout.json",
+    "store.db",
+    "store.db-shm",
+    "store.db-wal"
+   ],
+   "path": "I:/cc-tmp\\ods1-armA\\store",
+   "window_read_utc": "2026-10-10T04:08:58.421884+00:00"
+  },
+  {
+   "clip_dirs": 4,
+   "key_json": 4,
+   "clip_mp4": 4,
+   "partial_markers": 0,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 42672,
+   "newest_mtime_utc": "2026-10-10T02:10:33.079361+00:00",
+   "oldest_mtime_utc": "2026-10-09T12:00:01+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json",
+    "store.db",
+    "store.db-shm",
+    "store.db-wal"
+   ],
+   "path": "I:/cc-tmp\\ods1-armA\\store-clean",
+   "window_read_utc": "2026-10-10T04:08:58.424887+00:00"
+  },
+  {
+   "clip_dirs": 5,
+   "key_json": 5,
+   "clip_mp4": 5,
+   "partial_markers": 0,
+   "thumb_jpg": 0,
+   "transcript_json": 0,
+   "bytes_under_clips": 53340,
+   "newest_mtime_utc": "2026-10-10T02:10:33.378574+00:00",
+   "oldest_mtime_utc": "2026-10-09T12:00:01+00:00",
+   "db_files_under_clips": [],
+   "layout_json_present": true,
+   "root_entries": [
+    "clips",
+    "layout.json",
+    "store.db",
+    "store.db-shm",
+    "store.db-wal"
+   ],
+   "path": "I:/cc-tmp\\ods1-armA\\store-mutant",
+   "window_read_utc": "2026-10-10T04:08:58.426390+00:00"
+  }
+ ],
+ "census_finished_utc": "2026-10-10T04:08:58.427895+00:00",
+ "store_count": 23
+}

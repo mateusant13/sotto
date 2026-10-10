@@ -1,0 +1,90 @@
+green store root exists (clean) :: I:\cc-tmp\ods1-armA\store-clean
+green run twin exists (clean) :: I:\cc-tmp\ods1-armA\out-clean.json
+green [clean] clip dirs on disk == manifest :: disk=4 manifest=4
+green [clean] disk foreign files == the instrument foreign rows :: disk=0 rows=0
+green [clean] each manifest foreign file exists on disk :: manifest foreign=0
+green [clean] db rows == manifest :: disk=4 manifest=4
+green [clean] no duplicate content_key in the index (schema.sql:44 UNIQUE) :: dups=0
+green store root exists (mutant) :: I:\cc-tmp\ods1-armA\store-mutant
+green run twin exists (mutant) :: I:\cc-tmp\ods1-armA\out-mutant.json
+green [mutant] clip dirs on disk == manifest :: disk=5 manifest=5
+green [mutant] disk foreign files == the instrument foreign rows :: disk=0 rows=0
+green [mutant] each manifest foreign file exists on disk :: manifest foreign=0
+green [mutant] db rows == manifest :: disk=5 manifest=5
+green [mutant] no duplicate content_key in the index (schema.sql:44 UNIQUE) :: dups=0
+green store root exists (full) :: I:\cc-tmp\ods1-armA\store
+green run twin exists (full) :: I:\cc-tmp\ods1-armA\out-full.json
+green [full] clip dirs on disk == manifest :: disk=17 manifest=17
+green [full] disk foreign files == the instrument foreign rows :: disk=9 rows=9
+green [full] each manifest foreign file exists on disk :: manifest foreign=8
+green [full] db rows == manifest :: disk=23 manifest=23
+green [full] no duplicate content_key in the index (schema.sql:44 UNIQUE) :: dups=0
+green [mutant] A900 -> finding class C01 at I:\cc-tmp\ods1-armA\store-mutant\clips\2026\10\09\20261009T120015Z-0900 :: 1 match(es)
+green [full] A008 -> finding class C01 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120120Z-0008 :: 1 match(es)
+green [full] A009 -> finding class C01 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120121Z-0009 :: 1 match(es)
+green [full] A008 -> finding class C02 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120120Z-0008 :: 1 match(es)
+green [full] A009 -> finding class C02 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120121Z-0009 :: 1 match(es)
+green [full] A017 -> finding class C02 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120220Z-0017 :: 1 match(es)
+green [full] A010 -> finding class C03 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120130Z-0010 :: 2 match(es)
+green [full] A007 -> finding class C05 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120100Z-0007 :: 1 match(es)
+green [full] A006 -> finding class C07 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120040Z-0006 :: 1 match(es)
+green [full] legacy-2026-09-01.mp4 -> finding class C08 at I:\cc-tmp\ods1-armA\store\imports\legacy-2026-09-01.mp4 :: 1 match(es)
+green [full] db-zero-duration.mp4 -> finding class C08 at I:\cc-tmp\ods1-armA\store\imports\db-zero-duration.mp4 :: 2 match(es)
+green [full] A005 -> finding class C09 at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120020Z-0005 :: 1 match(es)
+green [full] A006 -> finding class C2TRAK at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120040Z-0006 :: 1 match(es)
+green [full] A012 -> row verdict partial-uncommitted at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120138Z-0012 :: 1 match(es)
+green [full] A011 -> row verdict partial-committed at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120134Z-0011 :: 1 match(es)
+green [full] A015 -> row verdict missing-media at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120158Z-0015 :: 1 match(es)
+green [full] A014 -> row verdict orphan-key at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120154Z-0014 :: 1 match(es)
+green [full] A012 -> REFUSAL code R-NO-MOOV at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120138Z-0012 :: 1 match(es)
+green [full] A013 -> REFUSAL code R-VERSION at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120150Z-0013 :: 1 match(es)
+green [full] A016 -> REFUSAL code R-WRONG-DIR at I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120205Z-0016 :: 1 match(es)
+green [full] moov-no-duration.mp4 -> REFUSAL code R-NO-DURATION at I:\cc-tmp\ods1-armA\store\imports\moov-no-duration.mp4 :: 1 match(es)
+green [full] not-really.mp4 -> REFUSAL code R-NO-FTYP at I:\cc-tmp\ods1-armA\store\imports\not-really.mp4 :: 1 match(es)
+green [full] moov-truncated.mp4 -> REFUSAL code R-BOX-TRUNCATED at I:\cc-tmp\ods1-armA\store\imports\moov-truncated.mp4 :: 1 match(es)
+green [full] mp4-unknown-box.mp4 -> REFUSAL code R-BOX-UNKNOWN at I:\cc-tmp\ods1-armA\store\imports\mp4-unknown-box.mp4 :: 1 match(es)
+green [full] moov-no-timescale.mp4 -> REFUSAL code R-NO-TIMESCALE at I:\cc-tmp\ods1-armA\store\imports\moov-no-timescale.mp4 :: 1 match(es)
+green [full] mvhd-v1.mp4 -> REFUSAL code R-BOX-VERSION at I:\cc-tmp\ods1-armA\store\imports\mvhd-v1.mp4 :: 1 match(es)
+green A008 and A009 are byte-identical (one identity, two dirs) :: sha256 bc61af69259b9f5b
+green A008/A009 overlap by more than PAD_S = 0.10 s (specs/02-asr.md:165) :: overlap=3.000 s
+green twin fires C01 on that pair :: subject-subject pair
+green twin C02 on A008/A009 names the index UNIQUE(content_key) limit (schema.sql:44) :: 2 rows share one whole-file sha256; the index enforces UNIQUE(content_key) (schema.sql:44) so only ONE may be indexed -- the rest is DUPLICATE ROOM this tree does NOT write
+green twin C02 on the identical pair carries both member paths :: evidence=['I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120120Z-0008', 'I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\09\\20261009T120121Z-0009']
+green A017 key.content_key is a lie about its own bytes :: claimed=34743952a84bfff1 real=dbc16d9f72fc9ca7
+green twin fires C02 IDENTITY CLAIM LIES on A017 :: recomputed in-instrument
+green A005 key.started_at_s contradicts its own clip id :: delta=0.500 s
+green twin fires C09 on A005 with that delta :: values carry both starts
+green A007 key ends before it starts :: started=1791547260.0 ended=1791547258.0
+green twin fires C05 on A007 :: end <= start
+green A006 carries a vide and a soun trak (the independent reader sees both) :: handlers=vide,soun ms=5000,8000
+green A006 the two traks DISAGREE (this is the max() trap) :: vide=5000 soun=8000
+green twin row end_candidates names the vide trak, not the longer trak :: container bucket=None
+green twin C07 reads the moov VIDEO trak duration, not max(trak) :: container_ms=5000
+green twin C08 reads the same moov VIDEO trak duration against the db row :: container_ms=5000
+green twin C2TRAK fires on A006 with both durations :: values={'trak_durations_s': [5.0, 8.0], 'handlers': ['vide', 'soun'], 'max_minus_min_s': 3.0}
+green A010 the db path for that identity is NOT where the clip lives :: db=I:\cc-tmp\ods1-armA\store\clips\2026\10\08\20261008T110000Z-0099\clip.mp4 live=I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120130Z-0010
+green A010 the db-named file is gone from disk (the path moved) :: I:\cc-tmp\ods1-armA\store\clips\2026\10\08\20261008T110000Z-0099\clip.mp4
+green A010 the clip itself IS on disk at its clip-id dir (identity survived, the path did not) :: I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120130Z-0010\clip.mp4
+green the OTHER half of the identical pair is also flagged: UNIQUE(content_key) cannot index both :: DB ROW ABSENT
+green A015: a db row for its identity exists and names a path that was never written :: db rows for the deadbeef key
+green twin C03 names that deadbeef row rather than the clip id :: ['db path=I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\07\\20261007T000000Z-0001\\clip.mp4']
+green twin C03 PATH MOVED / DB ROW ABSENT fires for A010 :: C03 on the stale row
+green A015 holds no clip.mp4 on disk :: I:\cc-tmp\ods1-armA\store\clips\2026\10\09\20261009T120158Z-0015\clip.mp4
+green A015: a db row for its identity exists and names a path that was never written :: db rows for the deadbeef key
+green twin C03 names that deadbeef row rather than the clip id :: ['db path=I:\\cc-tmp\\ods1-armA\\store\\clips\\2026\\10\\07\\20261007T000000Z-0001\\clip.mp4']
+green legacy-2026-09-01.mp4 this reader derives its video trak duration :: video_ms=3000
+green twin C08 on legacy-2026-09-01.mp4 agrees with this reader :: container_ms=3000 mine=3000
+green db-zero-duration.mp4 this reader derives its video trak duration :: video_ms=2000
+green twin C08 on db-zero-duration.mp4 agrees with this reader :: container_ms=2000 mine=2000
+green clean arm: zero red findings :: findings_red=0
+green clean arm: exit code 0 :: exit_code=0
+green mutant arm: exactly one red finding :: red=1 classes=C01
+green mutant arm: the one red is C01 :: cls=C01
+green mutant arm: it lands on the planted A900 clip :: 20261009T120012Z-0004 vs 20261009T120015Z-0900
+green mutant arm: exit code 1 :: exit_code=1
+green full arm: exit code 1 :: exit_code=1
+green full arm: self audit 7 green 0 RED :: green=7 red=0
+green full arm: the instrument graded its own expectations and none went MISSING :: failed=0
+green full arm: every planted refusal fires (manifest REFUSAL count) :: manifest=9 fired=9
+
+checks=88 failures=0

@@ -1,0 +1,102 @@
+--- ods1.py (arm A, untouched, sha256 49e16b93...) 
++++ ods1_armB.py
+@@ -1041,7 +1041,7 @@
+ def main(argv=None):
+     ap = argparse.ArgumentParser(
+         prog="ods1",
+-        description="ODS arm A -- the on-disk search instrument (design THE-INSTRUMENT.md run "
++        description="ODS arm A/B -- the on-disk search instrument (design THE-INSTRUMENT.md run "
+                     "on a synthetic store).  Reads nodes and bytes; no pixels, no streams.")
+     ap.add_argument("--layout", required=True, help="path to the product's src/storage/layout.py")
+     ap.add_argument("--root", required=True, help="the store root (the dir that holds clips/)")
+@@ -1051,6 +1051,8 @@
+     ap.add_argument("--out-md", default=None)
+     ap.add_argument("--out-json", default=None)
+     ap.add_argument("--quiet", action="store_true")
++    ap.add_argument("--arm", default="a", choices=["a", "b"],
++                    help="a = the synthetic store (the guard below applies); b = the AUTHORISED read of the product's own clips (guard becomes a LOUD WARN)")
+     ap.add_argument("--expect-store", default=None,
+                     help="which manifest store to compare this run against")
+     args = ap.parse_args(argv)
+@@ -1059,7 +1061,20 @@
+     repo_root = layout_p.parent.parent.parent   # src/storage/layout.py -> repo root
+     root = Path(args.root).resolve()
+     # ---- the run guard: arm A must never read the product's own clips -------------------
+-    if root == repo_root or root.is_relative_to(repo_root):
++    # ods1.py (ARM A) REFUSES any root inside the repo.  ARM B is the AUTHORISED read of the
++    # product tree, so the same guard becomes a LOUD WARN recorded in the output -- never
++    # silent.  This is the only place the two arms differ besides the report title.
++    guard_note = ""
++    if getattr(args, "arm", "a") == "b":
++        if root == repo_root or root.is_relative_to(repo_root) or repo_root.is_relative_to(root):
++            guard_note = ("E-ROOT-INSIDE-REPO NOT APPLIED (--arm b, authorised product-tree read):"
++                          " --root %s is inside the repo %s.  The arms that must not read this "
++                          "tree are the ARM A ones; ARM B is exactly that authorised read."
++                          % (root, repo_root))
++        else:
++            guard_note = ("E-ROOT-INSIDE-REPO not applicable: --root %s is outside the repo %s."
++                          % (root, repo_root))
++    elif root == repo_root or root.is_relative_to(repo_root):
+         return refuse("E-ROOT-INSIDE-REPO", "--root %s is inside the repo %s.  Arm A NEVER reads "
+                       "the product tree: the real clips' clocks were rewritten by other lanes."
+                       % (root, repo_root))
+@@ -1195,13 +1210,21 @@
+     BT = chr(96)
+     lines = []
+     A = lines.append
+-    A("# ODS-1 ARM A -- the on-disk search run on a SYNTHETIC store")
++    A("# ODS-1 ARM %s -- the on-disk search run on a %s store"
++      % ("A" if getattr(args, "arm", "a") == "a" else "B",
++         "SYNTHETIC" if getattr(args, "arm", "a") == "a" else
++         "REAL (the product tree, READ ONLY, clocks NOT trusted)"))
+     A("")
+     A("DUPLICATE ROOM POLICY: NONE WRITTEN IN THIS TREE.")
+     A("Nothing under the root of this run was created, renamed, linked, copied or removed. Arm A")
+     A("does not repair, does not dedupe, and does not take the " + BT + "right" + BT + " side of a")
+     A("contradiction -- it prints the sides and ranks them. Every number below was measured at run")
+-    A("time; the synthetic fixture values are CHOSEN test inputs, never measurements.")
++    A("time; the synthetic fixture values are CHOSEN test inputs, never measurements."
++      if getattr(args, "arm", "a") == "a" else
++      "every number below is a MEASUREMENT of bytes on disk at the run window above.")
++    if guard_note:
++        A("")
++        A("GUARD: " + guard_note)
+     A("")
+     A("| run | value |")
+     A("|---|---|")
+@@ -1338,9 +1361,12 @@
+     A("* Whether an imported moov carries a usable creation_time is UNKNOWN: the only files this")
+     A("  product writes carry the literal 0, and no foreign file was measured on this box.")
+     A("")
+-    A("PROVENANCE: values under the synthetic store are CHOSEN test inputs; every other number was")
+-    A("measured by this run. The layout.py sha256 above names the exact revision every disk fact")
+-    A("was routed through.")
++    A("PROVENANCE: " + ("values under the synthetic store are CHOSEN test inputs; every other"
++                       "number was measured by this run." if getattr(args, "arm", "a") == "a" else
++                       "every value below was MEASURED from the bytes on disk at the run window"
++                       "above; the capturing lane wrote the clocks and this run reads what is"
++                       "THERE now.") + " The layout.py sha256 above names the exact revision")
++    A("every disk fact was routed through.")
+ 
+ 
+     # ---- expectations from the fixture manifest (if the caller passed one) -----------------
+@@ -1448,7 +1474,9 @@
+     # ---- the machine-readable twin --------------------------------------------------------
+     report = {
+         "instrument": "ods1.py",
+-        "arm": "A (synthetic store, no device, no build, no capture)",
++        "arm": ("A (synthetic store, no device, no build, no capture)" if getattr(args, "arm", "a") == "a"
++                else "B (READ of the store on disk under H:, no device, no build, no capture, no harm)"),
++        "guard_note": guard_note,
+         "run_started_utc": started,
+         "run_finished_utc": iso(time.time()),
+         "duplicate_room_policy": "NONE WRITTEN IN THIS TREE",
+@@ -1521,7 +1549,7 @@
+         Path(args.out_json).write_text(json.dumps(report, indent=1, ensure_ascii=True) + "\n",
+                                         encoding="utf-8")
+     if not args.quiet:
+-        print("ODS-1 ARM A  root=%s" % root)
++        print("ODS-1 ARM %s  root=%s" % (getattr(args, "arm", "a").upper(), root))
+         print("  clips=%d foreign=%d rows=%d db_rows=%d" %
+               (len(clips), len(foreign), len(rows), len(db_rows)))
+         print("  findings: red=%d info=%d refusals=%d" %
