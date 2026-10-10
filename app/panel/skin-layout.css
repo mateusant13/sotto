@@ -20,11 +20,25 @@
  *
  * THE STRIP SURFACE IS UNTOUCHED: it has no room for a stage, so a skin never
  * mounts there.
- */
+ *
+ * ── THAT SENTENCE USED TO BE A LIE, AND IT COST THE OWNER A BLANK STRIP ──────
+ * Measured 2026-10-09: `body[data-skin] .panel { background: none }` below was
+ * NOT surface-scoped, while `body[data-surface="strip"] #skin { display: none
+ * !important }` was. `data-skin` lives on `document.body` (`skin-host.js:304`)
+ * and is removed only by unmounting the skin (`:325`) - it is NOT cleared when
+ * the document switches surface, which the shell does from the URL hash. So on
+ * the strip, with a skin recorded from a panel session: `.panel` had its
+ * background stripped, `#skin` was hidden, and `body[data-skin] .captions`
+ * (`display: none !important`) took the live box away too. NOTHING painted, and
+ * a layered window shows the compositor's default - a 100% white strip, which
+ * is exactly what the owner reported (*"os dois paineis branco"*).
+ *
+ * Every rule below is now scoped to `[data-surface="panel"]`, so the code says
+ * what the comment above always claimed. The strip keeps its own slab. */
 
 #skin { display: none; }
 
-body[data-skin] #skin {
+body[data-skin][data-surface="panel"] #skin {
   display: block;
   position: absolute;
   inset: 0;
@@ -34,7 +48,7 @@ body[data-skin] #skin {
 body[data-surface="strip"] #skin { display: none !important; }
 
 /* The slab becomes a plain window: the design supplies the surface. */
-body[data-skin] .panel {
+body[data-skin][data-surface="panel"] .panel {
   display: block;
   padding: 0;
   gap: 0;
@@ -44,18 +58,18 @@ body[data-skin] .panel {
   box-shadow: none;
 }
 
-body[data-skin] .panel::before { display: none; }
+body[data-skin][data-surface="panel"] .panel::before { display: none; }
 
 /* HIDDEN, because the design paints them. `!important` because the five directions
    and the cinematic set turn some of these on with a theme-scoped rule of their
    own, and a skin must win over any of them. */
-body[data-skin] .history,
-body[data-skin] .captions,
-body[data-skin] .chrome { display: none !important; }
+body[data-skin][data-surface="panel"] .history,
+body[data-skin][data-surface="panel"] .captions,
+body[data-skin][data-surface="panel"] .chrome { display: none !important; }
 
 /* THE HEADER, REDUCED TO THE CONTROL CLUSTER. The design's own chrome already
    carries a brand, so our wordmark would be the second one on screen. */
-body[data-skin] .panel__header {
+body[data-skin][data-surface="panel"] .panel__header {
   position: absolute;
   top: 8px;
   right: 10px;
@@ -65,9 +79,9 @@ body[data-skin] .panel__header {
   display: block;
   margin: 0;
 }
-body[data-skin] .wordmark { display: none !important; }
+body[data-skin][data-surface="panel"] .wordmark { display: none !important; }
 
-body[data-skin] .panel__controls {
+body[data-skin][data-surface="panel"] .panel__controls {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -83,7 +97,7 @@ body[data-skin] .panel__controls {
 /* THE STATUS LINE KEEPS ITS JOB: the worker's own cause, one line, and the target
    the owner clicks to revive the pipeline. It sits in the strip of empty stage
    under the caption plate, on the design's own surface colour. */
-body[data-skin] .status {
+body[data-skin][data-surface="panel"] .status {
   position: absolute;
   left: 10px;
   right: 10px;

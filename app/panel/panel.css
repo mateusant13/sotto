@@ -46,10 +46,16 @@
 
      It is LOAD-BEARING and not decorative: the strip's own grid derives its live
      row's floor from it below, so changing this one value moves both the window
-     the shell opens and the floor the caption box keeps inside it. Measured at
-     380x900 with the strip surface on: the two non-live rows plus the slab's
-     padding and gaps come to 78 px, which is where that constant comes from. */
-  --strip-height: 150px;
+     the shell opens and the floor the caption box keeps inside it.
+
+     LANE lane/strip-controls (2026-10-09): the owner asked for a SMALLER strip
+     (~2/3 of the original). The ORIGINAL measurement this number came from was
+     150px, with the strip's chrome measured at 78px (control row + status + the
+     slab's padding and gaps, at 380x900 with the strip surface on). It is now
+     100px, and `--strip-chrome` below is still the derivation input — the grid
+     floor is `--strip-height` minus `--strip-chrome`, so both move together.
+     If a future lane re-measures the chrome, edit `--strip-chrome`, NOT the grid. */
+  --strip-height: 100px;
   --strip-chrome: 78px;
 
   --font: -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
@@ -60,7 +66,20 @@
      the reveal rule follows; a theme (or the shell) that wants NO typing at all
      sets `--type-step: 0ms`. Zero is a real off switch: every delay collapses
      to 0 and every character paints on its first frame. */
-  --type-step: 45ms;
+   --type-step: 45ms;
+
+  /* THE TRANSCRIPT TEXT SIZE, AS ONE NUMBER (owner, 2026-10-09): *"bota um botao
+     de aumentar ou diminuir a fonte das transcricoes, tanto no overlay abaixo,
+     que vamos criar, tanto no painel da direita"*. The two controls in
+     `panel.html` (`.panel__controls` and the strip) move THIS one number and
+     nothing else: every caption and history size below derives from it, so a
+     change lands on both surfaces at once and no theme can disagree. It is a
+     scale, not a size, because 15px is the DESIGN size and the owner asked for
+     a dial around it. JS owns the live value (and the localStorage persistence);
+     CSS owns the derivation. Reset = 1. */
+  --caption-scale: 1;
+  --caption-size: 15px;
+  --caption-time-size: 10.5px;
 }
 
 * {
@@ -72,8 +91,27 @@
 html,
 body {
   height: 100%;
-  /* Transparent by design: the window is transparent, so this must not paint. */
-  background: transparent;
+  /* ── THE RENDER PROTECTION (owner, 2026-10-09) ────────────────────────────
+     The window is WS_EX_LAYERED and the page is transparent by design, so
+     anything the page does NOT paint shows the compositor's own default —
+     WHITE. The owner reported exactly that: *"vejo os dois paineis branco.
+     parece so bug de render"* — BOTH surfaces, so it is not a per-surface rule.
+
+     `.panel` below owns the visible slab, and until now it was the ONLY thing
+     painting. That is a single point of failure: a theme rule that overrides
+     its background, a custom property that resolves to nothing, or a parse
+     error located after that one rule all leave the window white, and the
+     owner cannot tell a broken panel from a dead one.
+
+     So body carries the SAME dark base as its own background UNDERNEATH. This
+     is not a second design and it is not decoration: it is the failure mode,
+     made visible so it can never be white. When `.panel` paints, its gradients
+     sit on top and body is never seen; when `.panel` does not, body still
+     holds the panel. `border-radius` matches `.panel`'s (with a literal
+     fallback, so a broken `--radius` cannot turn the corners square and
+     re-expose the white) and `overflow: hidden` keeps the rounded shape. */
+  background: rgba(11, 15, 20, 0.98);
+  border-radius: var(--radius, 14px);
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
@@ -227,8 +265,11 @@ body {
  * reorder the cluster would move Hide away from last or Pause away from it,
  * and the owner reads position as meaning. Flex `order` keeps DOM order
  * (tab order, screen readers) untouched while the paint order stays
- * [theme][chevron][clear][quit][pause][hide] in every direction. Hide stays
- * LAST (it has always had the last slot) and Pause stays next to it.
+ * [theme][chevron][clear][quit][font-][font+][pause][hide] in every direction.
+ * Hide stays LAST (it has always had the last slot) and Pause stays next to it;
+ * the font dial (owner, 2026-10-09: *"aumentar ou diminuir a fonte das
+ * transcricoes... tanto no painel da direita"*) sits immediately before Pause so
+ * the two ACTIONS stay together at the end.
  */
 .panel__controls #theme-button,
 .panel__controls [data-theme-button] {
@@ -244,12 +285,16 @@ body {
 .panel__controls #quit-button {
   order: 4;
 }
-.panel__controls #panel-pause-button,
-.panel__controls [data-pause-trigger] {
+.panel__controls #font-smaller-button,
+.panel__controls #font-larger-button {
   order: 5;
 }
-.panel__controls #hide-button {
+.panel__controls #panel-pause-button,
+.panel__controls [data-pause-trigger] {
   order: 6;
+}
+.panel__controls #hide-button {
+  order: 7;
 }
 
 /* ── THE THEME CHEVRON (BASE) ───────────────────────────────────────────────
@@ -398,7 +443,7 @@ body {
 }
 
 /* The strip's own bar is the strip's handle: on the strip the header is hidden,
-   so without this the ~150 px surface could not be moved at all. */
+   so without this the ~100 px surface could not be moved at all. */
 .stripbar {
   -webkit-app-region: drag;
   app-region: drag;
@@ -630,6 +675,22 @@ body[data-level="none"] .chrome__meter i {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* THE FOLDER GLYPH HAS NO SIZE OF ITS OWN. An `<svg>` that carries only a
+   `viewBox` and no width/height attribute falls back to `width: 100%` and an
+   auto height drawn by the aspect ratio, so the 16x16 folder glyph rendered at
+   347x347 px inside a `flex: 1` bar and the COLLAPSED transcript measured 351
+   px tall instead of the bar-and-a-line this whole block is built on. Measured
+   with `_main/_design-lane/geom.py --surface panel`: `.history__bar` 343 px,
+   `#history-root` 347x351, and the panel grid row it owns 351 px -- the live
+   box below it was squeezed to 415 px and no mid-rail rule could rescue it.
+   Every other glyph in this file sizes itself; this one now does too. */
+.history__path svg {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 
 .history__path:hover {
@@ -892,7 +953,9 @@ body[data-level="none"] .chrome__meter i {
 }
 
 .hist__text {
-  font-size: 12.5px;
+  /* DERIVED from `--caption-scale` too: the transcript history is the same words
+     at a smaller size, so the owner's dial must reach it. */
+  font-size: calc(12.5px * var(--caption-scale));
   line-height: 1.45;
   color: var(--text-dim);
   overflow-wrap: anywhere;
@@ -1013,6 +1076,33 @@ body[data-level="none"] .chrome__meter i {
   mask-image: linear-gradient(180deg, transparent 0, #000 28px);
 }
 
+/* AND THE RAIL FILLS ITS BOX AND THE ROWS SIT ON ITS HEEL, so the live line
+   never rides under the fade and never jumps when history arrives. Two
+   declarations, one measurement each:
+   • `min-height: 100%` — without it the list is exactly as tall as its rows,
+     so on a short transcript the rail shows no scroll at all and the live row
+     is parked wherever the rows happen to END, i.e. at the top of a 700 px
+     box, inside the 28 px (and, in Manuscrito and the Cinema Card, the
+     120/150 px) transparent band — invisible. Measured with the list at its
+     natural height, 2 history rows + the live row on theme-3:
+     `liveTopWindow 278, railTop 116, mask to 236`, and with ONE live row only
+     the row starts at 126, i.e. inside the fade.
+   • `justify-content: flex-end` — with the minimum height the box is filled
+     but the rows still hang at its TOP; packed to the heel the live row sits
+     at the bottom of the list, which is the ONLY position it can hold for the
+     rest of the session, because a scroll box that overflows scrolls to its
+     bottom and stays there. So the row stops moving as history grows:
+     MEASURED (geom.py, panel surface, 2 rows) `fromBottom 518.9` before, and
+     `367.2` for theme-3 / `367.5` for theme-4 / `10.8` for theme-1,2,5 after —
+     the middle for the two mid-rail themes, the heel for the bottom-anchored
+     ones, in the empty rail, the short rail AND the overflowing one alike.
+     When the rail DOES overflow this declaration has nothing left to move
+     (no free space), so reading back is untouched. */
+.captions__list {
+  min-height: 100%;
+  justify-content: flex-end;
+}
+
 .captions__list {
   list-style: none;
   display: flex;
@@ -1069,14 +1159,17 @@ body[data-level="none"] .chrome__meter i {
 /* The live line is the newest word: bigger than the history chips above it. */
 .caption__time {
   font-family: var(--mono);
-  font-size: 10.5px;
+  /* DERIVED from `--caption-scale` (the owner's font dial), never a second
+     literal: move the number and the time column follows the text. */
+  font-size: calc(var(--caption-time-size) * var(--caption-scale));
   color: var(--text-faint);
   padding-top: 2px;
   white-space: nowrap;
 }
 
 .caption__text {
-  font-size: 15px;
+  /* DERIVED from `--caption-scale` — see `--caption-size` in `:root`. */
+  font-size: calc(var(--caption-size) * var(--caption-scale));
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -1313,8 +1406,8 @@ body[data-level="none"] .chrome__meter i {
    TWO SURFACES, ONE DOCUMENT (owner, 2026-10-08)
    ===========================================================================
    `body[data-surface="panel"]` is the full column this file has always styled.
-   `body[data-surface="strip"]` is what the app’s one control opens: the live captions and four
-   clipped controls, ~150 px tall, with the header, the transcript drawer and the
+   `body[data-surface="strip"]` is what the app’s one control opens: the live captions and its
+   control row, ~100 px tall (`--strip-height`), with the header, the transcript drawer and the
    footer block all hidden.
 
    ONE place switches, and it is the ATTRIBUTE — `app/panel/surface.js` owns
@@ -1364,7 +1457,7 @@ body[data-surface="strip"] .stripbar {
 /* Four rows of its own: the live box takes what is left, the control row and the
    status word are `auto`. The LIVE row keeps a floor so the product is never the
    row that disappears — the same rule the panel's grid carries — but a much
-   smaller one, because the whole window is ~150 px.
+   smaller one, because the whole window is ~100 px (`--strip-height`).
 
    `overflow: hidden` because the strip is sized to its content by the SHELL: if
    the shell hands this document a taller window than the strip needs, the slab
@@ -1372,10 +1465,12 @@ body[data-surface="strip"] .stripbar {
    box is the row that gives way. */
 body[data-surface="strip"] .panel {
   /* DERIVED FROM THE ONE NUMBER (`:root --strip-height`), not typed twice:
-     150px - 78px = the 72px floor the live row has always had, and the 78px is
-     the strip's own chrome (control row + status + the slab's padding and gaps),
-     MEASURED on this surface. Change `--strip-height` and the shell's window and
-     this floor move together. */
+     100px - 78px = 22px floor for the live row, and the 78px is the strip's own
+     chrome (control row + status + the slab's padding and gaps), MEASURED on
+     this surface at the original 150px. Change `--strip-height` and the shell's
+     window and this floor move together. THE DERIVATION IS THE POINT — the lane
+     that shrank the strip to 100px kept `calc(var(--strip-height) - var(--strip-chrome))`
+     rather than typing a second absolute floor, so the contract survives the resize. */
   grid-template-rows: minmax(calc(var(--strip-height) - var(--strip-chrome)), 1fr) auto auto;
   gap: 8px;
   padding: 10px 11px;
@@ -1386,7 +1481,7 @@ body[data-surface="strip"] .panel {
    and a word painted by `panel.js`. The bar above it is what makes the strip
    read as a finished slab rather than a cut-off panel. */
 body[data-surface="strip"] .status {
-  padding-top: 6px;
+  padding-top: 4px;
   align-items: center;
   justify-content: flex-start;
   gap: 6px;
@@ -1415,7 +1510,11 @@ body[data-surface="strip"] .caption {
 }
 
 body[data-surface="strip"] .caption__text {
-  font-size: 14px;
+  /* The strip's own base size is 14px, one less than the panel's 15px, and it
+     is DERIVED through `--caption-scale` exactly like the panel's — the owner's
+     dial must move BOTH surfaces (*"tanto no overlay abaixo... tanto no painel
+     da direita"*), and a literal here would silently beat the base rule. */
+  font-size: calc(14px * var(--caption-scale));
   line-height: 1.35;
 }
 
@@ -1550,14 +1649,14 @@ body[data-surface="strip"] .listening span {
   align-items: center;
   gap: 5px;
   flex: none;
-  min-height: 26px;
-  padding: 4px 8px;
+  min-height: 22px;
+  padding: 3px 7px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: rgba(148, 163, 184, 0.08);
   color: var(--text-dim);
   font-family: var(--font);
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.02em;
   cursor: pointer;
   transition:
@@ -1567,8 +1666,8 @@ body[data-surface="strip"] .listening span {
 }
 
 .strip-button svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   flex: none;
 }
 
@@ -1608,6 +1707,164 @@ body[data-surface="strip"] .listening span {
 
 .strip-button__label {
   white-space: nowrap;
+}
+
+/* ── THE STRIP BAR IS ICON GLYPHS, NOT SENTENCES ──────────────────────────────
+ * Owner, 2026-10-09, verbatim: *"the bottom panel should be really small and 
+ * minimalistic"*. Ten controls, a wordmark and a status word in a 1 040 × 100 
+ * bar used to be read as a toolbar; the same ten as 26 px round glyphs read as 
+ * the caption's own furniture. Nothing is DELETED — every label text stays in 
+ * the DOM and every button keeps (or has) a `title`, so the glyph's meaning is 
+ * one hover away; this is a PAINT decision, not a reachability one.
+ *
+ * THE TWO EXCEPTIONS, both deliberate:
+ *  1. `#strip-theme-button` keeps its label, because that label names the 
+ *     template the owner is LOOKING AT — it is a readout, not an action verb. 
+ *     It is also the button that stays in the same place while the template 
+ *     changes, so the word that moves is the word that says which one is up.
+ *  2. `#strip-live-label` keeps the word LIVE, in red, because the owner asked 
+ *     for that word in that colour on its own and it is the one text on the bar 
+ *     with state semantics.
+ *
+ * The 26 px circle is the recipe the last design direction shipped (a 36 px 
+ * round control at `bg-black/25 backdrop-blur-sm`, `active:scale-90`, no text 
+ * label); 26 px is this bar's size, not theirs — the strip window is ~100 px 
+ * tall and 26 leaves room for a 12 px glyph plus a 1 px border and a focus ring.
+ */
+/* NOTE THE `.stripbar` IN THE SELECTOR - it is not decoration. A generated
+ * theme writes the SAME property at `:root[data-theme='theme-N'] .strip-button`
+ * (three class-level parts, no element), which outranks a bare
+ * `body[data-surface="strip"] .strip-button` (two class-level, one element) on
+ * specificity *despite* the surface attribute being the more precise condition.
+ * Measured before the fix: `borderTopLeftRadius` came back 7px, i.e.
+ * `var(--radius-sm)`, and the circles were pills with square ends. Adding the
+ * bar class puts this at (0,3,1) and the round control is what actually paints.
+ */
+body[data-surface="strip"] .stripbar .strip-button {
+  width: 26px;
+  min-height: 26px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+body[data-surface="strip"] .strip-button .strip-button__label {
+  display: none;
+}
+
+/* The exceptions. `display: inline` (not `block`) keeps the label measured the 
+ * way flex already measures it, and BOTH carry the strip + id prefix so no 
+ * `:root[data-theme] .strip-button__label` rule (a=0) can bring text back. */
+body[data-surface="strip"] #strip-theme-button,
+body[data-surface="strip"] #strip-live-button {
+  width: auto;
+}
+body[data-surface="strip"] #strip-theme-button .strip-button__label,
+body[data-surface="strip"] #strip-live-button .strip-button__label {
+  display: inline;
+}
+body[data-surface="strip"] #strip-theme-button {
+  gap: 6px;
+  padding: 0 9px;
+}
+body[data-surface="strip"] #strip-live-button {
+  gap: 5px;
+  padding: 0 9px;
+}
+
+/* Twelve pixels of glyph in a twenty-six pixel box, rounded: the 12 px rule 
+ * above was tuned for a 22 px pill with a text baseline beside it, and the 
+ * circle gives the glyph the whole box. */
+body[data-surface="strip"] .strip-button svg {
+  width: 13px;
+  height: 13px;
+}
+body[data-surface="strip"] .strip-button--chevron {
+  justify-content: center;
+}
+
+
+/* ── THE STRIP'S FIXED ORDER (BASE, NOT THEME) ───────────────────────────────
+ * The arrangement is the strip's, never a direction's. Flex `order` keeps DOM
+ * order (tab order, screen readers) meaningful while the paint order is fixed:
+ * brand · Live · theme · theme-list · transparency · open · hide · font- ·
+ * font+ · Pause · status. The selectors carry `body[data-surface="strip"]` + an
+ * id (a=1) so no theme's `:root[data-theme] .class` rule (a=0) can reorder or
+ * move a control.
+ *
+ * The font dial is the owner's 2026-10-09 ask (*"aumentar ou diminuir a fonte das
+ * transcricoes, tanto no overlay abaixo... tanto no painel da direita"*) and it
+ * sits immediately before Pause here too, mirroring `.panel__controls`, so the
+ * same two controls mean the same thing on both surfaces. */
+body[data-surface="strip"] .stripbar__brand { order: 0; }
+body[data-surface="strip"] #strip-live-button { order: 1; }
+body[data-surface="strip"] #strip-theme-button { order: 2; }
+body[data-surface="strip"] #strip-theme-chevron { order: 3; }
+body[data-surface="strip"] #strip-transparency-button { order: 4; }
+body[data-surface="strip"] #strip-open-button { order: 5; }
+body[data-surface="strip"] #strip-hide-button { order: 6; }
+body[data-surface="strip"] #strip-font-smaller-button { order: 7; }
+body[data-surface="strip"] #strip-font-larger-button { order: 8; }
+body[data-surface="strip"] #strip-hide-button { order: 6; }
+body[data-surface="strip"] #strip-pause-button { order: 9; }
+body[data-surface="strip"] #strip-state { order: 99; }
+
+/* The wordmark, leftmost. It is the strip's brand, not a control: no hover, no
+ * pointer, and `flex: none` so it never eats the row. */
+.stripbar__brand {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+/* ── THE TEMPLATE PAIR: ONE PILL AND ONE CIRCLE ──────────────────────────────
+ * The cycle button and the list chevron keep the ONE shape the owner asked for
+ * — the theme control stays in the same place, a click cycles, the glyph beside
+ * it opens the hover-preview list. Only the trim changed: they are no longer
+ * squared together into one split control. A pill and a circle of equal height
+ * already read as one group, and the squared left/right corners were a
+ * compromise that only looked right when BOTH were rectangular pills.
+ *
+ * The chevron still has no label of its own (it never did): its glyph is the
+ * whole affordance, so it gets the tightest box on the bar.
+ */
+.strip-button--chevron {
+  min-width: 26px;
+  justify-content: center;
+}
+.strip-button--chevron svg {
+  width: 13px;
+  height: 13px;
+}
+
+
+/* ── THE LIVE LABEL IS RED, IN EVERY THEME ──────────────────────────────────
+ * The owner asked for the word LIVE in red. A theme rule on `.strip-button` or
+ * `.strip-button--toggle[aria-pressed]` would otherwise paint it, so the rule
+ * carries `body[data-surface="strip"]` + the id: a=1 beats any `:root[data-theme]
+ * .class` (a=0) rule, so no direction can override it — including a hypothetical
+ * theme rule that named the label class. */
+body[data-surface="strip"] #strip-live-label,
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] #strip-live-label {
+  color: #e5484d;
+}
+body[data-surface="strip"] #strip-live-button svg {
+  color: #e5484d;
+}
+
+/* ── TRANSPARENCY: CHROME OFF, CAPTIONS ON ─────────────────────────────────
+ * `panel.js applyTransparency` flips `body[data-transparency]`. When it is on,
+ * every strip control row and the caption box's own label row are hidden, so
+ * only the captions remain. The shell owns bringing the chrome back (it is the
+ * thing that can resize/click-through); this is the panel's half. */
+body[data-surface="strip"][data-transparency="on"] .stripbar,
+body[data-surface="strip"][data-transparency="on"] .captions__bar {
+  display: none;
 }
 
 /* A control whose backing shell call does not exist yet: visibly inert, and it
@@ -2106,11 +2363,32 @@ body[data-state="error"] .chrome__off {
   background: var(--theme-swatch, var(--accent-from));
 }
 
+/* ── THE THEME DROPDOWN ON THE STRIP SURFACE ────────────────────────────────
+ * The strip window is only ~100 px tall, so the header's vertical five-row list
+ * would be clipped. The strip is ~1040 px WIDE, so the SAME list is laid out as
+ * a row that fits the short window. Only the LAYOUT changes here; the module,
+ * the live preview and the persist path are the one the header uses. */
+body[data-surface="strip"] .theme-dropdown {
+  top: auto;
+  bottom: 6px;
+  left: 8px;
+  right: 8px;
+  min-width: 0;
+}
+body[data-surface="strip"] .theme-dropdown__list {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+body[data-surface="strip"] .theme-dropdown__option {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
 /* The footer chrome is a PANEL-surface thing: the strip keeps its dot and one
    word (the status block is the only footer it has). Specificity is deliberate —
    `body[data-surface] .status .chrome` (0,3,2) outranks a theme's
    `:root[data-theme] .chrome--x` (0,3,0), so no theme can leak a label into the
-   strip's ~150 px. */
+   strip's ~100 px. */
 body[data-surface="strip"] .status .chrome {
   display: none;
 }

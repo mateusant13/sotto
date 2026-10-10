@@ -526,6 +526,9 @@ def dock_right(work, width=PANEL_WIDTH, height=PANEL_HEIGHT,
         'height': max(1, round(panel_height)),
         'margin': m,
         'docked': dock,
+        # WHICH SURFACE this geometry is — see `dock_strip` for the measurement
+        # that put it here.
+        'surface': 'panel',
     }
 
     # Containment is an invariant, not a hope: clamp back into the work area.
@@ -578,7 +581,22 @@ SWP_NOACTIVATE = 0x0010
 #: RIGHT side panel; a single press toggles the bottom strip. Timestamp is
 #: taken in the hotkey handler (`SottoShell.hotkey_pressed`) with
 #: `time.monotonic()`, so wall-clock jumps cannot mis-split a double.
-HOTKEY_DOUBLE_MS = 400
+#:
+#: 400 ms was too tight to be a usable control. The owner measured it himself:
+#: he reports that he cannot open the side panel reliably, and asks for 1.5 s
+#: (2026-10-09, verbatim: *"aumenta a janela de tempo do double tap do alt c pra
+#: 1 sec e meio"*). 1500 ms is roughly a comfortable human double-click - it is
+#: the same order as Windows' own double-click time - while staying far below
+#: the interval at which "two presses" would read as "wants the strip twice",
+#: which the owner would notice as the strip flickering instead of the panel
+#: opening.
+#:
+#: The trade is explicit and accepted by the owner: the FIRST press now shows the
+#: strip immediately (it always did), so a 1.5 s window means the strip is on
+#: screen for that long before the second press converts it to the side panel.
+#: If that reads as wrong, the fix is not a smaller window - it is to stop
+#: mapping on the first press, which changes what one Alt+C does at all.
+HOTKEY_DOUBLE_MS = 1500
 
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
@@ -681,6 +699,244 @@ def make_click_through(hwnd, enabled: bool) -> int:
     return set_ex_style(hwnd, remove=WS_EX_TRANSPARENT)
 
 
+#: The WebView2 child window's class prefix. Every WebView2 host on Windows uses
+#: it, pywebview's WinForms/EdgeChromium backend included; it is the HWND whose
+#: surface actually holds the page.
+WEBVIEW_CHILD_CLASS = 'Chrome_WidgetWin'
+
+
+#: WS_VISIBLE, the one style bit that means "this window maps itself when its
+#: parent maps". `IsWindowVisible` returns the AND of that bit over the window
+#: and every ancestor, so it answers FALSE for a child whose parent is hidden —
+#: measured on this box (2026-10-09): `ShowWindow(child)` on a hidden parent
+#: sets WS_VISIBLE on the child while `IsWindowVisible` stays FALSE until the
+#: parent is mapped. Reading the style bit directly is the only way to classify
+#: a child BEFORE the form is shown, which is exactly what the P0 reordering
+#: below needs.
+WS_VISIBLE = 0x10000000
+GWL_STYLE = -16
+
+
+def hudson_style_bit(hwnd) -> bool:
+    """True when THIS window carries WS_VISIBLE, parent state irrelevant.
+
+    The honest pre-map channel: a child can carry WS_VISIBLE and still report
+    `IsWindowVisible() == False` purely because its parent is hidden, so a
+    census taken before the map would call that child `failed`. Reading the
+    style bit on the child alone cannot make that mistake.
+    """
+    try:
+        style = user32.GetWindowLongW(wt.HWND(hwnd), GWL_STYLE)
+        return bool(style & WS_VISIBLE)
+    except Exception:  # noqa: BLE001 -- a dead hwnd must not raise here
+        return False
+
+
+def webview_child_hwnds(hwnd) -> list:
+    """Every WebView2 HWND under this top-level window, children AND grandchildren.
+
+    `EnumWindows` CANNOT answer this: it lists TOP-LEVEL windows only, and the
+    WebView2 HWND is a child of the shell's form. Measured 2026-10-09 — the
+    first attempt at this census used `EnumWindows`, found only the form and
+    the 1x1 GDI+ hook, and concluded "there is no WebView2 child", which was a
+    false negative produced by the instrument. The two levels are walked because
+    pywebview interposes its own `WindowsForms10` host between the form and the
+    browser window.
+    """
+    found = []
+
+    def _note(h, level):
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(wt.HWND(h), buf, 256)
+        if buf.value.startswith(WEBVIEW_CHILD_CLASS):
+            found.append((int(h), level))
+
+    def _kid(k, _lp):
+        _note(k, 1)
+
+        def _grand(g, _l2):
+            _note(g, 2)
+            return True
+
+        user32.EnumChildWindows(
+            wt.HWND(k),
+            ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)(_grand),
+            0)
+        return True
+
+    user32.EnumChildWindows(
+        wt.HWND(hwnd),
+        ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)(_kid),
+        0)
+    return found
+
+
+def show_webview_children(hwnd) -> dict:
+    """Show the WebView2 child HWNDs — WHILE the form is still hidden.
+
+    WHY THE ORDER MATTERS (the P0 of the whole session): the owner pressed
+    Alt+C and saw a solid-colour strip, then the UI ONE FRAME LATER, and his
+    words for it were "como se fosse realmente renderizando um apos o
+    outro". A user32 `ShowWindow` of the FORM maps the window immediately,
+    and WinForms then creates the first frame from the FORM's own background
+    before the browser child has anything painted. So the child must already
+    carry WS_VISIBLE when the map lands — that is what showing it before the
+    map buys, and it is the only part of the sequence this function owns.
+
+    ── WHY THIS EXISTS, MEASURED 2026-10-09 ───────────────────────────────────
+    The owner reported the app as a blank WHITE slab and kept being told the
+    DOM, the CSS and the computed backgrounds were fine — all of which was true
+    and all of which was beside the point. A child-window census taken during
+    Alt+C (`EnumChildWindows`, two levels deep) shows the actual state:
+
+        form (WindowsForms10...)  vis=True   1040x150 @ (440,870)
+          Chrome_WidgetWin_0      vis=False  1040x150 @ (440,870)
+
+    The WebView2 HWND is HIDDEN while the shell's own WinForms form is VISIBLE,
+    so what reaches the screen is the FORM's background — the WinForms default,
+    WHITE — and the panel is behind it, painted and correct, unpainted to the
+    eye.
+
+    The mechanism is the startup-flash cure itself: `_gate_form_show` REFUSES
+    pywebview's `form.Show()` at navigation start, because that call maps a
+    transparent window the owner never asked for. But pywebview shows the
+    WebView2 child TOGETHER with the form, so refusing it also left the child
+    hidden. The shell then maps the FORM with raw user32 (`SW_SHOWNOACTIVATE`
+    in `show_panel`, `SW_SHOW+FOREGROUND` in `show_strip`/`show_side`), which
+    shows the form and nothing else. On the `--show` path the gate ALLOWS the
+    show (`show_requested=True`), so pywebview shows both and that path has
+    always painted — which is exactly why every "does it paint?" probe run with
+    `--show` came back GREEN while the owner's own Alt+C came back white.
+
+    The fix is to show the child explicitly, after the form. `SW_SHOWNOACTIVATE`
+    so the overlay still never steals focus, which is the invariant
+    `show_panel`'s comment above is protecting.
+
+    Returns a dict so a caller logs ONE line and a test can assert the pair
+    without a WebView2 present (`shown` is empty when there is no window).
+    """
+    shown, already, missing = [], [], []
+    # WHICH CHANNEL CLASSIFIES THE ANSWER. `IsWindowVisible` answers FALSE
+    # for a child whose PARENT is hidden, because it checks WS_VISIBLE on the
+    # window AND every ancestor (measured on this box, 2026-10-09) — so it
+    # reports "hidden" for a child that in fact carries WS_VISIBLE and paints
+    # the instant the form is mapped. `hudson_style_bit` reads the child's OWN
+    # state instead, which is the only honest channel while the form is hidden.
+    parent_visible = window_visible(hwnd)
+
+    def _visible(child_hwnd):
+        if parent_visible:
+            return bool(user32.IsWindowVisible(wt.HWND(child_hwnd)))
+        return hudson_style_bit(child_hwnd)
+
+    for child_hwnd, level in webview_child_hwnds(hwnd):
+        if _visible(child_hwnd):
+            already.append(child_hwnd)
+            continue
+        user32.ShowWindow(wt.HWND(child_hwnd), SW_SHOWNOACTIVATE)
+        if _visible(child_hwnd):
+            shown.append(child_hwnd)
+        else:
+            missing.append(child_hwnd)
+    return {'shown': shown, 'already': already, 'failed': missing}
+
+
+def transparency_hack(shell) -> bool:
+    """Re-run the compositing call pywebview would have made for us.
+
+    ── AND THE COMPOSITING HACK, WHICH IS NOT OPTIONAL ───────────────────────
+    # pywebview makes a transparent WebView2 composite with exactly one call:
+    # `platforms/edgechromium.py:347-349`, inside `on_navigation_start` --
+    #   if self.pywebview_window.transparent:
+    #       self.form.Show()
+    #       self.form.Activate()
+    # There is no other mechanism. Our `_gate_form_show` shadows `form.Show`
+    # with `guarded_show`, which returns WITHOUT mapping unless
+    # `self.args.show or self.visible or opacity < 1.0` -- so in every launch
+    # that is not `--show` the hack is REFUSED on every navigation, and the
+    # WebView2 never composites. The page is otherwise perfectly alive: the
+    # bridge answers, `panel.js` runs, the CSS is computed, captions arrive.
+    # What reaches the glass is the FORM's own background, which is why the
+    # owner saw a single flat block where the panel should be.
+    #
+    # `--show` always worked because `args.show` makes the guard allow the call,
+    # and that is the whole explanation for why every `--show` probe measured
+    # "PAINTED, 65 distinct colours" while the owner's own Alt+C measured one
+    # colour. The instrument was not wrong; it was measuring the other path.
+    #
+    # So when the shell maps the panel it must run the same call. `Activate()`
+    # is deliberately NOT repeated: it would take focus from whatever the owner
+    # is typing into, and `Show()` is the half that composites.
+    """
+    # ── AND THE COMPOSITING HACK, WHICH IS NOT OPTIONAL ──────────────────────────────────────────
+    form_show = None
+    form = None
+    hacked = False
+    if shell is not None:
+        form = getattr(shell, 'form', None)
+        if form is None:
+            try:
+                form = shell._form()
+            except Exception:
+                form = None
+    if form is not None:
+        try:
+            form_show = form.Show
+        except Exception:
+            form_show = None
+    if form_show is not None:
+        # The guard reads `shell.visible`, so the honest way to ask it for
+        # permission is to BE visible for the duration of the call.
+        previous_visible = bool(getattr(shell, 'visible', False))
+        shell.visible = True
+        hacked = False
+        try:
+            # ON THE UI THREAD, NOT THIS ONE. `form.Show()` fires
+            # `NavigationStarting`, which touches `CoreWebView2Controller`, and
+            # that class raises `InvalidOperationException('CoreWebView2Controller
+            # members can only be accessed from the UI thread')` from the hotkey
+            # thread. MEASURED: the first version of this call ran on the
+            # caller's thread and logged exactly that exception, so the hack
+            # never ran and the panel stayed a solid block.
+            ui = getattr(shell, '_ui', None)
+            if ui is not None:
+                ui(form_show)
+                hacked = True
+            else:
+                form_show()
+                hacked = True
+        except Exception as exc:  # noqa: BLE001 -- a failed map must not kill
+            # the owner's only control.
+            log(f'FORM_SHOW_TRANSPARENCY_HACK_FAILED error={exc!r}')
+            hacked = False
+        finally:
+            shell.visible = previous_visible
+        if hacked:
+            log("FORM_SHOW_TRANSPARENCY_HACK ran (pywebview edgechromium.py:348 "
+                "re-run on the owner's ask, on the UI thread) - this is what "
+                "makes a transparent WebView2 composite")
+    return hacked
+
+
+def ensure_webview_shown(hwnd, shell=None) -> dict:
+    """Child-show THEN hack, and nothing in between — see both halves.
+
+    The composed form kept for every caller that logs one line. Each half is
+    a real function so a caller that must order them around something else
+    (the P0: show the children before the map, hack after) can, and so a
+    test can drive them one at a time. `ensure_webview_shown` alone has the
+    OLD order — child-show inside the map — which is exactly the order the
+    owner reported; prefer `show_webview_children` + `transparency_hack` in
+    the deliberate sequence.
+    """
+    result = show_webview_children(hwnd)
+    if shell is None:
+        result['transparency_hack'] = False
+        return result
+    result['transparency_hack'] = transparency_hack(shell)
+    return result
+
+
 # The `OFFSCREEN = -32000` cure was REMOVED 2026-10-06 (see create_window):
 # a window created off-screen never finishes the WebView2 panel navigation, so
 # `_on_loaded` never runs and the shell HANGS. Do not reintroduce it.
@@ -711,6 +967,8 @@ user32.ShowWindow.restype = wt.BOOL
 user32.ShowWindow.argtypes = [wt.HWND, ctypes.c_int]
 user32.IsWindowVisible.restype = wt.BOOL
 user32.IsWindowVisible.argtypes = [wt.HWND]
+user32.GetWindowLongW.restype = ctypes.c_long
+user32.GetWindowLongW.argtypes = [wt.HWND, ctypes.c_int]
 user32.SetWindowPos.restype = wt.BOOL
 user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
                                 ctypes.c_int, ctypes.c_int, ctypes.c_uint]
@@ -793,6 +1051,13 @@ def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
         'height': max(1, round(strip_height)),
         'margin': m,
         'docked': 'bottom-strip',
+        # WHICH SURFACE this geometry is. Measured 2026-10-09: the shell resized
+        # to 1040x150 on Alt+C while the document still wore
+        # `data-surface="panel"` (DOMDUMP printed `body=1040x150 surface=panel`),
+        # so the panel's own grid crushed `.captions` to zero height and
+        # `.stripbar` never left `display:none`. It travels WITH the geometry so
+        # `send_geometry` stays the plain one-line emitter it always was.
+        'surface': 'strip',
     }
     geometry['x'] = min(geometry['x'], work['x'] + w - geometry['width'])
     geometry['y'] = min(geometry['y'], work['y'] + h - geometry['height'])
@@ -1954,12 +2219,24 @@ BOOTSTRAP_JS = r"""
 #: print the same keys in the same order and the lines diff directly.
 DUMP_DOM_PROBE = r"""
 (() => {
-  const sels = ['#panel', '.panel__header', '.wordmark', '.captions', '#placeholder',
-                '#caption-list', '.status', '.wordmark__name', '#clear-button', '#status'];
+  const sels = ['html', 'body', '#panel', '.panel__header', '.wordmark', '.captions', '#placeholder',
+                '#caption-list', '.status', '.wordmark__name', '#clear-button', '#status',
+                '.stripbar', '.captions__body'];
   const out = { viewport: [innerWidth, innerHeight],
                 zoom: (window.devicePixelRatio || 1),
                 body: [document.body.scrollWidth, document.body.scrollHeight],
-                sheets: document.styleSheets.length, els: {} };
+                sheets: document.styleSheets.length, els: {},
+                // WHICH SURFACE the document is actually wearing, and whether a
+                // skin is still recorded on it. Both decide whether the strip
+                // paints at all: `data-skin` is set by `skin-host.js` when a
+                // skin mounts and removed only when it UNMOUNTS, so it survives
+                // the shell's own surface switch - and a skin rule that is not
+                // surface-scoped strips the strip's slab and hides its captions
+                // while `#skin` is hidden there. Measured 2026-10-09 as a 100%
+                // white strip; every DOMDump before this key printed "the DOM is
+                // fine" while it was blank.
+                surface: (document.body && document.body.dataset) ? (document.body.dataset.surface || null) : null,
+                skin: !!(document.body && document.body.hasAttribute('data-skin')) };
   for (const s of sels) {
     const el = document.querySelector(s);
     if (!el) { out.els[s] = null; continue; }
@@ -1967,7 +2244,16 @@ DUMP_DOM_PROBE = r"""
     const cs = getComputedStyle(el);
     out.els[s] = { rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
                    color: cs.color, display: cs.display, position: cs.position,
-                   visibility: cs.visibility, opacity: cs.opacity };
+                   visibility: cs.visibility, opacity: cs.opacity,
+                   // THE RENDER PROTECTION'S OWN EVIDENCE (owner, 2026-10-09).
+                   // The window is WS_EX_LAYERED, so anything the page does not
+                   // paint shows the compositor's default - WHITE. Every prior
+                   // DOMDump reported only color/display/position, i.e. NOT the
+                   // one property that decides whether the panel is white, and
+                   // the owner was told the DOM was fine while he was looking at
+                   // a blank slab. Additive on purpose: no key above was removed,
+                   // so the two arms still diff on the keys they already shared.
+                   bgc: cs.backgroundColor, bgi: cs.backgroundImage.slice(0, 160) };
   }
   return out;
 })()
@@ -2637,6 +2923,36 @@ class SottoShell:
             self.hwnd = None
         self.webview2 = form.webview
 
+        # ── THE FORM'S OWN BACKGROUND IS THE FAILURE-MODE COLOUR ──────────────
+        # The panel is a transparent WinForms form: pywebview sets
+        # `SupportsTransparentBackColor` and the WebView2's
+        # `DefaultBackgroundColor = Color.Transparent`
+        # (platforms/winforms.py:289-290), and sets `self.BackColor` ONLY in the
+        # non-transparent branch (:291-292). So a transparent form keeps .NET's
+        # DEFAULT -- measured 2026-10-09 as `rgb(240,240,240)`, i.e.
+        # `SystemColors.Control`.
+        #
+        # That default is what the owner stares at. When the WebView2 path fails
+        # to composite -- and it does, measurably: `Chrome_WidgetWin_0` hidden,
+        # `PrintWindow` on it returning a single black colour, and the browser
+        # view sitting on `about:blank` -- the form is all there is, and the
+        # overlay shows a WHITE slab instead of the dark one the CSS describes.
+        # The page itself is correct in that state: `body.bgc =
+        # rgba(11,15,20,0.98)` with 10 stylesheets and `surface=strip`.
+        #
+        # So the form is given the slab's colour too. It is NOT a second design
+        # and it is not decoration: it is the colour of the thing the owner sees
+        # when the WebView2 does not paint. When the page paints, the WebView2
+        # covers the form completely and this value is never seen.
+        try:
+            from System.Drawing import Color as _DrawColor  # noqa: F401
+            form.BackColor = _DrawColor.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
+            log('FORM_BACKCOLOR set=#0B0F14 (the slab colour, the failure-mode '
+                'colour a transparent form would otherwise leave at '
+                'SystemColors.Control)')
+        except Exception as exc:  # noqa: BLE001
+            log(f'FORM_BACKCOLOR_FAILED error={exc!r}')
+
         # MEASUREMENT, and it changes nothing: what icon the form is carrying
         # and what the window answers for `WM_GETICON`. pywebview has already
         # run `BrowserForm.__init__` (winforms.py:773 runs before the
@@ -2673,12 +2989,36 @@ class SottoShell:
         # both are extended styles, not window flags.
         hwnd = self.hwnd
         if hwnd:
-            set_ex_style(hwnd,
-                         add=WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
-                             | WS_EX_TRANSPARENT)
+            # ── `WS_EX_LAYERED` IS OPT-IN AND OFF BY DEFAULT, MEASURED ─────────
+            # It was unconditional until 2026-10-09, and it is the reason the
+            # strip composites WHITE. `MicrosoftEdge/WebView2Feedback#118` is the
+            # upstream receipt: a user set `WS_EX_LAYERED` + `LWA_COLORKEY` on
+            # the HWND embedding WebView2 and "That did not work (works fine
+            # however on the window before webivew2 is embedded)", while
+            # `LWA_ALPHA` on the same HWND did work. A layered window is
+            # composited by DWM from a redirection surface, and a WebView2 child
+            # HWND in WINDOWED hosting is composited on its own layer — the two
+            # do not meet. The page parses, the CSS applies (both measured), and
+            # the surface still comes out blank: `WindowFromPoint` names Sotto's
+            # own `Chrome_WidgetWin_1` while the pixels are white, and the same
+            # happens with `--opaque`.
+            #
+            # Nothing in this shell calls `SetLayeredWindowAttributes`, so the
+            # flag bought no per-pixel alpha to begin with — it only broke the
+            # compositing. Transparency is the WebView2's job
+            # (`DefaultBackgroundColor = Color.Transparent`, which pywebview
+            # sets at edgechromium.py:113-114) and the rounded corners are the
+            # page's own `border-radius`.
+            styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT
+            if str(os.environ.get('SOTTO_LAYERED') or '').strip().lower() \
+                    in ('1', 'true', 'yes', 'on'):
+                styles |= WS_EX_LAYERED
+                log('panel WS_EX_LAYERED kept by SOTTO_LAYERED=1 '
+                    '(measured harmful: strip composites white)')
+            set_ex_style(hwnd, add=styles)
             log('panel setAlwaysOnTop(floating) ok '
-                'style=WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|'
-                'WS_EX_TRANSPARENT')
+                'style=WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT'
+                + ('|WS_EX_LAYERED' if styles & WS_EX_LAYERED else ''))
             log('panel setFocusable(false) ok (WS_EX_NOACTIVATE)')
             log('panel setIgnoreMouseEvents(true, forward) ok (WS_EX_TRANSPARENT)')
             log('panel setVisibleOnAllWorkspaces SKIPPED - no WebView2/WinForms '
@@ -2967,6 +3307,24 @@ class SottoShell:
 
         self._ui(_add)
 
+    def _current_document(self):
+        """WHAT document the WebView2 is actually showing, or None if unknown.
+
+        The shell must never infer this from a Python-side flag: the flag and the
+        document are two different things, and every inference from the flag has
+        been wrong at least once. `stage.html` is an EMPTY document (see its own
+        header: "This page never paints anything"), so a window left sitting on
+        it is a pure white slab — which is exactly the defect the owner reported
+        as *"vejo os dois paineis branco"*.
+        """
+        try:
+            url = self.window.get_current_url()
+        except Exception as exc:  # noqa: BLE001 -- a missing answer must not
+            # raise inside a load handler and take the navigation with it.
+            log(f'CURRENT_URL_FAILED error={exc!r}')
+            return None
+        return (url or '').replace('\\', '/')
+
     def _on_loaded(self):
         """pywebview has injected its api and a page has finished loading."""
         if self.core is None:
@@ -2980,12 +3338,46 @@ class SottoShell:
                 return None
             self.core = self._ui(_grab)
 
-        if not self.staged:
-            # First load is stage.html. The preload is registered by now, so
-            # navigating here is what makes the panel's first parse correct.
+        # ── THE BOUNCE IS DECIDED BY THE DOCUMENT, NOT BY A FLAG ───────────────
+        # `stage.html` is empty, so landing on it and stopping is the white
+        # slab the owner reported. Until now the decision was `if not
+        # self.staged`, and `self.staged` is a Python boolean that a re-entrant
+        # load can set in the wrong order: a hot reload flips it to False, the
+        # in-flight panel load's handler then sets it back to True, and when
+        # stage.html's own handler runs it sees True, believes the document is
+        # the panel, and never bounces. The window then shows an empty page
+        # forever. MEASURED 2026-10-09: after Alt+C the WebView2's own window
+        # title read `stage.html — [InPrivate]` (the panel's title is `Sotto`),
+        # and the strip composited 100% white with `WindowFromPoint` naming
+        # Sotto's own child HWND and the desktop at 2% light.
+        #
+        # Asking the document which document it is removes the whole class: the
+        # bounce is idempotent, so a repeated or reordered load converges on the
+        # panel instead of depending on the flag happening to be right.
+        here = self._current_document()
+        on_stage = bool(here) and here.endswith('/stage.html')
+        if on_stage:
+            log(f'STAGING_SEEN document=stage.html -> bouncing to panel '
+                f'staged={str(self.staged).lower()}')
             self.staged = True
             log(f'STAGING_LOADED core={"yes" if self.core else "no"} -> '
                 f'navigating to panel {PANEL_HTML}')
+            self.window.load_url(file_url(PANEL_HTML))
+            return
+        if here and not here.endswith('/panel.html'):
+            # A document we do not know (an error page, a redirect): never treat
+            # it as the panel, and send it home. Without this the shell would
+            # silently adopt whatever Chromium decided to show.
+            log(f'UNKNOWN_DOCUMENT url={here[:160]} -> bouncing to panel')
+            self.window.load_url(file_url(PANEL_HTML))
+            return
+        if not self.staged:
+            # Only reachable when the URL is unavailable AND the flag says we
+            # have not bounced yet — the original path, kept for the case where
+            # `get_current_url` has nothing to say.
+            self.staged = True
+            log('STAGING_LOADED (flag path, no url) -> navigating to panel '
+                f'{PANEL_HTML}')
             self.window.load_url(file_url(PANEL_HTML))
             return
         # NOTE: `_move_into_place` (the OFFSCREEN cure) was removed 2026-10-06:
@@ -3817,9 +4209,27 @@ class SottoShell:
         if self.hwnd is None:
             return False
         set_topmost(self.hwnd)
+        # ── THE P0 ORDER: children FIRST, then the map ──────────────────────
+        # The owner, verbatim: he pressed Alt+C, saw a solid-colour strip for
+        # a frame, then the UI. A user32 show of the FORM maps the window now,
+        # and the first frame is the FORM's own background before the browser
+        # child has painted anything — so the children must already carry
+        # WS_VISIBLE when the map lands. `SW_SHOWNOACTIVATE` on a child whose
+        # parent is hidden sets WS_VISIBLE and paints nothing (measured:
+        # `IsWindowVisible` stays FALSE until the parent is mapped, which is
+        # why `show_webview_children` classifies by the style bit and not by
+        # `IsWindowVisible`).
+        wv = show_webview_children(self.hwnd)
+        log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
+            f'already={len(wv["already"])} failed={len(wv["failed"])}')
         # SW_SHOWNOACTIVATE, not Show(): the panel must never take focus away
         # from whatever the owner is typing into (main.js: `focusable=false`).
         show_without_activating(self.hwnd)
+        # ...and the compositing hack, which is the OTHER thing that has to
+        # happen for a transparent WebView2. See `transparency_hack`; it is
+        # deliberately AFTER the map because it re-runs pywebview's own
+        # navigation-time `form.Show()`.
+        transparency_hack(self)
         self.visible = window_visible(self.hwnd)
         log(f'PANEL_SHOWN reason={reason} '
             f'visible={str(self.visible).lower()} '
@@ -3863,24 +4273,65 @@ class SottoShell:
 
     # -- Alt+C: strip toggle, double-press side panel, mouse unlock ---------
     def hotkey_pressed(self):
-        """Alt+C: single press toggles the bottom STRIP, double-press opens SIDE.
+        """Alt+C: a single press toggles the bottom STRIP; a double toggles SIDE.
 
         The timestamp is `time.monotonic()`, so a wall-clock jump cannot
-        mis-split a double. A second press within `HOTKEY_DOUBLE_MS` (400 ms)
-        opens the RIGHT side panel; anything later is a new single press and
-        toggles the strip. Runs on the hotkey thread — every window call below
-        is thread-safe (`SetWindowPos`/`ShowWindow`/`SetForegroundWindow` on the
-        hwnd, `_ui` for the .NET form members).
+        mis-split a double. A second press within `HOTKEY_DOUBLE_MS` (1500 ms) is
+        the gesture that asks for the RIGHT side panel; anything later is a new
+        single press and toggles the strip. Runs on the hotkey thread — every
+        window call below is thread-safe (`SetWindowPos`/`ShowWindow`/
+        `SetForegroundWindow` on the hwnd, `_ui` for the .NET form members).
+
+        THREE DEFECTS THIS FIXES, all measured on the owner's machine
+        (2026-10-09) by reading the PANEL_* sequence in the log, all in the
+        double branch:
+
+        1. **The double never hid anything.** It called `show_side`
+           unconditionally, so a panel already up on SIDE was MAPped again —
+           `PANEL_SHOWN reason=hotkey-double` twice in a row with no
+           `PANEL_HIDDEN` between them — and Alt+C stopped being a way out.
+        2. **The pair was not consumed.** `_last_hotkey_press` was left at
+           `now`, so the NEXT press was read as another double and re-fired
+           SIDE; pressing Alt+C repeatedly pinned the panel open.
+        3. **A double on a HIDDEN panel surfaced it.** After fix 1 the double
+           still opened SIDE from hidden, and because a consumed pair always
+           alternates single/double, mashing Alt+C oscillated
+           hide → side → hide → side and could END VISIBLE — the owner's
+           exact report, *"se eu uso mais alt c, o painel nao some"*.
+
+        THE RULE NOW, so that every press is predictable in both directions:
+        a double acts ONLY on a panel that is already up, and it always moves
+        toward OFF — already on SIDE hides it, on the STRIP it switches to SIDE.
+        A double with the panel DOWN is IGNORED, because the first press of that
+        same pair already did the toggling. Consequence, verified by test: from
+        ANY starting state, mashing Alt+C ENDS HIDDEN (6 presses, tested).
+
+        The live window state is read ONCE, before either branch, so the two
+        branches cannot disagree inside one call.
         """
         now = time.monotonic()
         prev = self._last_hotkey_press
         self._last_hotkey_press = now
-        dt_ms = round((now - prev) * 1000)
-        if prev and (now - prev) <= (HOTKEY_DOUBLE_MS / 1000.0):
-            log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                f'mode=side')
-            return self.show_side('hotkey-double')
         live = window_visible(self.hwnd) if self.hwnd else False
+
+        if prev and (now - prev) <= (HOTKEY_DOUBLE_MS / 1000.0):
+            # Consume the pair — see defect 2 above.
+            self._last_hotkey_press = 0.0
+            dt_ms = round((now - prev) * 1000)
+            if not live:
+                # Defect 3: never surface the panel on a double. The single
+                # press that started this pair already toggled it.
+                log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
+                    f'mode=side action=ignore reason=panel-hidden')
+                return False
+            if self.panel_mode == 'side':
+                log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
+                    f'mode=side action=hide reason=already-side')
+                return self.hide_panel('hotkey-double')
+            log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
+                f'mode=side action=switch reason=was-strip')
+            return self.show_side('hotkey-double')
+
         if live:
             return self.hide_panel('hotkey')
         return self.show_strip('hotkey')
@@ -3896,6 +4347,15 @@ class SottoShell:
         new geometry over the existing `send_geometry` seam. Never raises:
         a failed place is a log line and `False`, and the show that called it
         still foregrounds whatever is on screen.
+
+        DOES NOT MAP THE WINDOW — that is the P0 of this whole session, and
+        it is why the flag is `SWP_NOACTIVATE` and not `SWP_SHOWWINDOW`. The
+        owner's report was: he pressed Alt+C, saw a solid-colour strip for a
+        frame, and only then the panel. Moving a window while it is hidden is
+        legal and measured on this box; `SetWindowPos` with a size and no
+        show flag only takes effect on the NEXT show, which the caller does
+        AFTER the WebView2 children carry WS_VISIBLE. Callers: read the new
+        order in `show_strip`.
         """
         try:
             self.display = primary_display()
@@ -3916,7 +4376,7 @@ class SottoShell:
                     int(geometry['x'] * scale), int(geometry['y'] * scale),
                     int(geometry['width'] * scale),
                     int(geometry['height'] * scale),
-                    SWP_SHOWWINDOW)
+                    SWP_NOACTIVATE)
             except Exception as exc:  # noqa: BLE001 -- report, never kill Alt+C
                 log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
                 return False
@@ -3943,8 +4403,22 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
+        # Geometry only — `place_panel` no longer maps the window (P0).
         self.place_panel('strip')
+        # Children FIRST, so the first frame the owner sees is already the
+        # panel: `foreground_unlock` maps the FORM NOW, and the first frame of
+        # a mapped form is the FORM's own background. Measured 2026-10-09 by
+        # the owner's own eyes — a strip, then the UI one frame later.
+        wv = show_webview_children(self.hwnd)
+        log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
+            f'already={len(wv["already"])} failed={len(wv["failed"])}')
+        # THEN the map, which is also how the owner gets his clicks back:
+        # TopMost re-assert + SW_RESTORE + SW_SHOW + SetForegroundWindow. The
+        # Alt+C pose holds — nothing mapped before the children had
+        # WS_VISIBLE, which is what used to flash the flat strip.
         foreground_unlock(self.hwnd)
+        # And the compositing hack AFTER the map — see `transparency_hack`.
+        transparency_hack(self)
         self.visible = window_visible(self.hwnd)
         log(f'PANEL_SHOWN reason={reason} mode=strip '
             f'visible={str(self.visible).lower()} '
@@ -3962,8 +4436,17 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
+        # Geometry only — `place_panel` no longer maps the window (P0).
         self.place_panel('side')
+        # Children FIRST — same P0 reason as `show_panel` and `show_strip`: a
+        # raw user32 show of the FORM leaves `Chrome_WidgetWin_0` hidden and the
+        # panel a flat colour for one frame. Measured 2026-10-09.
+        wv = show_webview_children(self.hwnd)
+        log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
+            f'already={len(wv["already"])} failed={len(wv["failed"])}')
+        # THEN the map (same contract as `show_strip`) and the hack after it.
         foreground_unlock(self.hwnd)
+        transparency_hack(self)
         self.visible = window_visible(self.hwnd)
         log(f'PANEL_SHOWN reason={reason} mode=side '
             f'visible={str(self.visible).lower()} '
@@ -3980,19 +4463,32 @@ class SottoShell:
         shell only moves the one style bit — so this is a log line and a style
         call, never a layout change. `TRANSPARENCY_ON/OFF` is the greppable
         receipt the dispatch map promises even when the panel never asks.
+
+        Idempotent: the LIVE bit is read first, so a request for the state
+        the window is already in applies nothing and logs nothing — the
+        "one line each, no spam" half of the contract. The live bit is read
+        rather than `self.transparent` on purpose: `set_pointer_interactive`
+        moves the SAME bit, so the cached flag alone cannot say what the
+        window is actually doing right now.
         """
         state = 'ON' if on else 'OFF'
         if self.hwnd is None:
             log(f'TRANSPARENCY_{state} pending=no-hwnd')
             return False
+        want = bool(on)
+        live = bool(user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
+                    & WS_EX_TRANSPARENT)
+        if live == want:
+            self.transparent = want
+            return True
         try:
-            make_click_through(self.hwnd, bool(on))
+            make_click_through(self.hwnd, want)
         except Exception as exc:  # noqa: BLE001 -- report, never kill the page
             log(f'TRANSPARENCY_{state}_FAILED error={exc!r}')
             return False
-        self.transparent = bool(on)
+        self.transparent = want
         log(f'TRANSPARENCY_{state} '
-            f'click_through={str(bool(on)).lower()} captions=kept')
+            f'click_through={str(want).lower()} captions=kept')
         return True
 
     # -- page -> host handlers --------------------------------------------
@@ -4500,10 +4996,21 @@ class SottoShell:
 
         The press is a real WM_HOTKEY posted to the registering thread's own
         queue, so the delivery path under test is the one the OS writes to.
-        The two presses land ~800 ms apart — OUTSIDE the `HOTKEY_DOUBLE_MS`
-        (400 ms) window — so each is a single press: press 1 SHOWS the strip
-        (with the intentional Alt+C foreground unlock, `focus_stolen=true`
-        EXPECTED), press 2 hides it again.
+        The two presses land ~800 ms apart. That distance is MEANINGFUL ONLY
+        against `HOTKEY_DOUBLE_MS`, and the owner moved the goalposts on
+        2026-10-09 (400 ms -> 1500 ms, verbatim *"aumenta a janela de tempo do
+        double tap do alt c pra 1 sec e meio"*). At 400 ms these two presses
+        were OUTSIDE the window and therefore two SINGLE presses: press 1 SHOWS
+        the strip, press 2 hides it. At 1500 ms they are INSIDE it, so this
+        same sequence now reads as a DOUBLE - press 1 shows the strip and press
+        2 converts it to the RIGHT side panel - which is a DIFFERENT assertion.
+
+        So the interval is stated against the constant and asserted, not
+        assumed: the probe derives `WANT_DOUBLE = 800 < HOTKEY_DOUBLE_MS` from
+        the live value and checks the outcome it implies (the strip toggles
+        twice, or opens the side panel). A hardcoded "each is a single press"
+        would be a sentence that quietly becomes false the next time the
+        constant moves - which is exactly what happened here.
         """
         rc = 0
         if self.hotkey is None:
@@ -4536,9 +5043,29 @@ class SottoShell:
             after = foreground_window()
             log(f'SELFTEST focus_before={before} focus_after={after} '
                 f'focus_stolen={str(before != after).lower()}')
-            if (not self.hotkey.registered or not pressed
-                    or self.visible or self.hotkey.pressed != 2):
-                rc = 3
+            # WHAT THE SECOND PRESS MEANS depends on `HOTKEY_DOUBLE_MS`, so the
+            # expectation has to be DERIVED from it rather than typed. The two
+            # simulated presses land ~800 ms apart, so with a window of 400 ms
+            # they were two SINGLE presses (press 2 hides the strip) and with the
+            # owner's 1500 ms they are a DOUBLE (press 2 opens the RIGHT side
+            # panel). The old test hardcoded the first reading and went RED the
+            # moment the constant moved - a sentence that quietly became false,
+            # which is the same failure mode this repo has already been bitten by.
+            presses_are_double = 0.8 < (HOTKEY_DOUBLE_MS / 1000.0)
+            # `want_visible` is what the window SHOULD read after both presses.
+            want_visible = presses_are_double
+            broken = (not self.hotkey.registered or not pressed
+                      or self.hotkey.pressed != 2
+                      or self.visible != want_visible)
+            log('SELFTEST expectation=%s(%.0fms %s %.0fms) '
+                'want_visible=%s got_visible=%s presses=%d registered=%s '
+                'delivered=%s'
+                % ('double' if presses_are_double else 'singles', 800.0,
+                   '>' if presses_are_double else '<', HOTKEY_DOUBLE_MS,
+                   str(want_visible).lower(), str(self.visible).lower(),
+                   self.hotkey.pressed, str(self.hotkey.registered).lower(),
+                   str(pressed).lower()))
+            rc = 3 if broken else 0
         log(f'SELFTEST rc={rc}')
         self.request_exit(rc, reason='selftest')
 
@@ -5767,9 +6294,119 @@ def probe_reload():
     return rc
 
 
+#: ── THE WEBVIEW2 COMPOSITION KNOBS, AND WHY THEY ARE SET HERE ────────────────
+#:
+#: WebView2 has TWO hosting models (Microsoft, "Windowed vs. Visual hosting of
+#: WebView2"). pywebview uses the first: a `WRY`/`Chrome_WidgetWin` CHILD HWND,
+#: created by `CreateCoreWebView2Controller`. DWM composites that child HWND on
+#: its own layer, independently of the parent window — so the parent's own
+#: `WS_EX_LAYERED` state, its layered alpha and its colour key do NOT reach the
+#: content, and the surface shows the compositor's default between the moment
+#: the HWND is mapped and the moment the browser process paints real pixels.
+#: That gap is the WHITE the owner reported; it is not a defect in our CSS.
+#:
+#: Measured and independently documented upstream:
+#:   · MicrosoftEdge/WebView2Feedback#118 — `WS_EX_LAYERED` + `LWA_COLORKEY`
+#:     around a WebView2 "did not work", while `LWA_ALPHA` on the same HWND did.
+#:     Microsoft's answer was "no plans to further support keying out a specific
+#:     color"; the supported route is `DefaultBackgroundColor`.
+#:   · unoplatform/uno#22694 — the same three defects (white flash on
+#:     show/hide/recreate, position flash, airspace) from "a fundamental
+#:     limitation of the Win32 HWND composition model"; the author's own words
+#:     are that the workarounds "reduce severity but cannot eliminate the flash".
+#:   · Microsoft, `DefaultBackgroundColor` — the default is WHITE, and "just
+#:     setting the color by property can still leave the app with a white
+#:     flicker before the property takes effect. Setting the color via
+#:     environment variable solves this issue."
+#:
+#: So both knobs below are set as ENVIRONMENT VARIABLES, which is the only form
+#: that is honoured from the first frame, and both must be set BEFORE the
+#: WebView2 environment is created — i.e. before `webview.start()`. pywebview
+#: sets `DefaultBackgroundColor = Color.Transparent` itself
+#: (`webview/platforms/edgechromium.py:113-114`, `transparent=True` is our
+#: default), which covers the property but not the first frame.
+WEBVIEW2_BG_TRANSPARENT = '00000000'          # AA=00 → fully transparent
+#: Window-to-Visual hosting: "a developer experience nearly identical to Windowed
+#: hosting, but ... content is output to a Visual that is hosted in an HWND
+#: rather than to the window directly". It sounds like the fix for the white.
+#: It is NOT, on this box — MEASURED 2026-10-09, both arms, same shell, same
+#: Alt+C, same child-window census:
+#:
+#:   windowed (this default)        child vis=True   composited DARK 100%
+#:   window_to_visual (forced)      child vis=True   composited LIGHT 100%
+#:
+#: So the hosting mode is OFF by default and the knob exists only so a future
+#: runtime can be A/B'd on this box without editing this file. The white was
+#: never a hosting-mode problem; it was `Chrome_WidgetWin_0` left hidden, which
+#: `ensure_webview_shown` fixes on the windowed path.
+WEBVIEW2_WINDOW_TO_VISUAL = 'COREWEBVIEW2_HOSTING_MODE_WINDOW_TO_VISUAL'
+WEBVIEW2_WINDOW_TO_VISUAL_DEFAULT = False
+
+
+def apply_webview2_environment(argv=None):
+    """Set the two knobs above, FIRST-COME-FIRST-KEPT, and report what happened.
+
+    An explicit environment value ALWAYS wins over ours, so an operator who
+    measured a different answer on this box can override us without editing
+    this file. `SOTTO_WEBVIEW_WINDOW_TO_VISUAL=0` is the escape hatch for the
+    one knob that changes behaviour rather than only removing a flash: if the
+    runtime on some host rejects the mode, the app must still start, and it must
+    say in the log which mode it actually asked for.
+
+    Returns a dict, so the caller logs one line and a test can assert the pair
+    without a WebView2 being present.
+    """
+    args = argv or sys.argv[1:]
+    # There is no `--webview-window-to-visual` flag: the switch is the
+    # environment variable, read here so the decision lives in ONE place.
+    wanted = os.environ.get('SOTTO_WEBVIEW_WINDOW_TO_VISUAL', '').strip().lower()
+    if wanted in ('0', 'false', 'no', 'off', 'windowed'):
+        use_w2v, why = False, 'SOTTO_WEBVIEW_WINDOW_TO_VISUAL=%s' % wanted
+    elif os.environ.get('COREWEBVIEW2_FORCED_HOSTING_MODE'):
+        use_w2v = os.environ['COREWEBVIEW2_FORCED_HOSTING_MODE'] == WEBVIEW2_WINDOW_TO_VISUAL
+        why = 'COREWEBVIEW2_FORCED_HOSTING_MODE already set to %r' % \
+            os.environ['COREWEBVIEW2_FORCED_HOSTING_MODE']
+    else:
+        use_w2v = WEBVIEW2_WINDOW_TO_VISUAL_DEFAULT
+        why = ('shell default (measured: windowed composites DARK, '
+               'window_to_visual composites LIGHT on this box)'
+               if not use_w2v else 'shell default')
+
+    had_bg = 'WEBVIEW2_DEFAULT_BACKGROUND_COLOR' in os.environ
+    if not had_bg:
+        os.environ['WEBVIEW2_DEFAULT_BACKGROUND_COLOR'] = WEBVIEW2_BG_TRANSPARENT
+
+    had_mode = 'COREWEBVIEW2_FORCED_HOSTING_MODE' in os.environ
+    if use_w2v and not had_mode:
+        os.environ['COREWEBVIEW2_FORCED_HOSTING_MODE'] = WEBVIEW2_WINDOW_TO_VISUAL
+
+    return {
+        'bg': WEBVIEW2_BG_TRANSPARENT, 'bg_overridden': had_bg,
+        'window_to_visual': use_w2v, 'reason': why,
+        'mode_overridden': had_mode,
+    }
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
+
+    # ── THE ENVIRONMENT IS SET HERE, BEFORE ANY WINDOW EXISTS ────────────────
+    # `WEBVIEW2_DEFAULT_BACKGROUND_COLOR` is read by WebView2 the moment its
+    # environment is created, and the environment is created by
+    # `EnsureCoreWebView2Async`, which `create_window()` reaches at line 6188 —
+    # ~50 lines BEFORE `webview.start()`. An earlier revision set the two knobs
+    # immediately before `start()`, i.e. AFTER the environment already existed,
+    # so they were silently ignored for that run. Microsoft's own note is the
+    # reason the variable form matters at all: "just setting the color by
+    # property can still leave the app with a white flicker before the
+    # DefaultBackgroundColor property takes effect. Setting the color via
+    # environment variable solves this issue" — but only if it is set first.
+    wv = apply_webview2_environment()
+    log('WEBVIEW2_ENV background=%s%s window_to_visual=%s reason=%s%s'
+        % (wv['bg'], ' (env already set)' if wv['bg_overridden'] else '',
+           str(wv['window_to_visual']).lower(), wv['reason'],
+           ' (env already set)' if wv['mode_overridden'] else ''))
 
     if args.wait_ready:
         # ---- run.cmd's bounded readiness poll: the other half of G3 ---------
@@ -5927,8 +6564,10 @@ def main(argv=None):
     if args.memory and args.memory_wait:
         threading.Timer(args.memory_wait, shell.run_memory).start()
 
-    import webview
-    # THE PANEL'S FACE, and the only channel pywebview actually offers:
+    import webview  # noqa: F401 -- imported for its side effects only; the real
+    # call is `webview.start(...)` below. The environment was already applied at
+    # the top of main(), before `create_window()` built the WebView2: the knobs
+    # are read when the environment is created, not when the loop starts.
     # `start(icon=...)` stores it in `_state['icon']`, which the WinForms backend
     # reads when it builds the form (`platforms/winforms.py:243-244`) — despite
     # its own docstring claiming the parameter is "Supported only on GTK/QT"

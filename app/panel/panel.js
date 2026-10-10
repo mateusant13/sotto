@@ -44,6 +44,20 @@ const MAX_CAPTIONS = 200;
 const MAX_HISTORY = 500;
 /** How many entries a fresh `tail()` loads. */
 const HISTORY_LOAD = 400;
+/**
+ * THE TRANSCRIPT FONT DIAL — its bounds and its storage key (owner, 2026-10-09).
+ * The scale is a multiplier around the CSS DESIGN size (`--caption-size`, 15px),
+ * never an absolute size, because the owner asked for a dial rather than a fixed
+ * size. STEP is one click; the range is wide enough to be useful on a 4K panel and
+ * narrow enough that the strip's ~100 px row still holds its caption at the top
+ * end. The value is a STRING in localStorage so a half-written number can never
+ * be read as a scale.
+ */
+const FONT_SCALE_MIN = 0.8;
+const FONT_SCALE_MAX = 2.0;
+const FONT_SCALE_STEP = 0.1;
+const FONT_SCALE_DEFAULT = 1;
+const FONT_SCALE_KEY = 'sotto:caption-scale';
 const dom = {
   panel: document.getElementById('panel'),
   // live caption box
@@ -88,6 +102,17 @@ const dom = {
   stripState: document.getElementById('strip-state'),
   stripWord: document.getElementById('strip-word'),
   stripOpenButton: document.getElementById('strip-open-button'),
+  stripHideButton: document.getElementById('strip-hide-button'),
+  stripTransparencyButton: document.getElementById('strip-transparency-button'),
+  // the transcript font dial (owner, 2026-10-09). FOUR buttons, ONE number:
+  // two on the panel (`#font-*-button`) and two on the strip
+  // (`#strip-font-*-button`) all move the same `--caption-scale`, so the two
+  // surfaces cannot disagree. `null` on an older harness, and every handler
+  // below null-checks — the same contract the strip keys above carry.
+  fontSmallerButton: document.getElementById('font-smaller-button'),
+  fontLargerButton: document.getElementById('font-larger-button'),
+  stripFontSmallerButton: document.getElementById('strip-font-smaller-button'),
+  stripFontLargerButton: document.getElementById('strip-font-larger-button'),
   // the pause confirmation (`panel.html`, outside `.panel` so the slab's own
   // `overflow: hidden` cannot clip its backdrop)
   pauseDialog: document.getElementById('pause-dialog'),
@@ -202,6 +227,28 @@ let canonicalProducer = null;
  */
 let liveEnabled = true;
 let paused = false;
+/**
+ * TRANSPARENCY (strip only): true while the owner has asked the strip to drop
+ * its chrome and keep only the captions. The button flips it, `body[data-
+ * transparency]` paints it, and `bridge.setTransparency(on)` tells the shell
+ * (the documented `sotto:transparency` message with `{ on }`). Declared HERE,
+ * above the init block, for the temporal-dead-zone rule the 2026-10-07 bug
+ * bought: `wireStripControls()` reads it at load.
+ */
+let transparencyOn = false;
+/**
+ * THE TRANSCRIPT FONT DIAL (owner, 2026-10-09): the live `--caption-scale` value,
+ * clamped to FONT_SCALE_MIN..FONT_SCALE_MAX and persisted in localStorage so the
+ * size the owner chose survives a restart. FOUR buttons (two on the panel, two on
+ * the strip) all move this ONE number, and `panel.css` derives every caption and
+ * history size from it — so the two surfaces cannot disagree and no theme can
+ * override the size.
+ *
+ * Declared HERE, above the init block, for the temporal-dead-zone rule the
+ * 2026-10-07 bug bought: `wireFontDial()` reads it at load and re-applies the
+ * persisted value before the first caption paints.
+ */
+let captionScale = FONT_SCALE_DEFAULT;
 let pauseSupported = false;
 let liveSupported = false;
 let statusSnapshot = { text: '', kind: null };
@@ -1584,10 +1631,154 @@ function wireStripControls() {
   if (dom.stripOpenButton) {
     dom.stripOpenButton.addEventListener('click', () => openFullPanel('strip-open'));
   }
+  // TRANSPARENCY: hide the strip chrome and keep only the captions. The local
+  // state is the truth; the shell message is best-effort (see applyTransparency).
+  if (dom.stripTransparencyButton) {
+    dom.stripTransparencyButton.addEventListener('click', () => {
+      applyTransparency(!transparencyOn);
+    });
+  }
+  // HIDE: the strip's own dismiss. It calls the SAME `bridge.hide()` the panel's
+  // `#hide-button` calls — there is no second mechanism. The shell re-shows the
+  // strip on Alt+C. A shell without the method is left alone rather than throwing.
+  if (dom.stripHideButton) {
+    dom.stripHideButton.addEventListener('click', () => {
+      if (bridge && typeof bridge.hide === 'function') bridge.hide();
+    });
+  }
   // ONE handler per pause control, bound from a class so the strip's button and
   // the panel's own button cannot drift apart; `wirePause` owns the dialog.
   for (const button of dom.pauseButtons) {
     button.addEventListener('click', () => openPauseConfirm(button));
+  }
+  // The font dial is wired from the STRIP side too, so the strip's pair and the
+  // panel's pair reach the same apply function. See `wireFontDial`.
+  wireFontDial();
+}
+
+/**
+ * THE TRANSCRIPT FONT DIAL (owner, 2026-10-09, verbatim: *"bota um botao de
+ * aumentar ou diminuir a fonte das transcricoes, tanto no overlay abaixo, que
+ * vamos criar, tanto no painel da direita"*).
+ *
+ * FOUR BUTTONS, ONE NUMBER. Two live in `.panel__controls` (`#font-smaller-button`,
+ * `#font-larger-button`) and two in the strip (`#strip-font-smaller-button`,
+ * `#strip-font-larger-button`). All four call the same `applyCaptionScale`, which
+ * sets `--caption-scale` on the document element — the ONE value
+ * `panel.css` derives every caption, history and strip-caption size from. So the
+ * two surfaces can never disagree, and because the derivation lives in BASE rules
+ * (`body[data-surface="strip"] .caption__text` included), no theme can override it.
+ *
+ * WHAT IS DELIBERATELY NOT HERE: a second source of truth. The value is written to
+ * localStorage only so it survives a restart, and it is READ BACK HERE at load and
+ * applied before the first caption paints; nothing else stores a size, and no size
+ * is hard-coded in JS.
+ *
+ * FAILURE MODES, all silent by design: an older harness without the buttons leaves
+ * every handler unbound (no throw); a localStorage that throws (private mode) is
+ * caught, because losing a preference must never cost the panel its captions; a
+ * value outside the clamp is clamped rather than trusted.
+ */
+function wireFontDial() {
+  // Restore the persisted scale BEFORE wiring, so the first caption already paints
+  // at the size the owner chose.
+  const stored = readStoredFontScale();
+  if (stored !== null) applyCaptionScale(stored, { persist: false });
+
+  const bind = (button, delta) => {
+    if (!button) return;
+    button.addEventListener('click', () => {
+      applyCaptionScale(captionScale + delta * FONT_SCALE_STEP);
+    });
+  };
+  bind(dom.fontSmallerButton, -1);
+  bind(dom.fontLargerButton, +1);
+  bind(dom.stripFontSmallerButton, -1);
+  bind(dom.stripFontLargerButton, +1);
+}
+
+/** Read the persisted scale, or null when absent/unreadable/out of range. */
+function readStoredFontScale() {
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(FONT_SCALE_KEY);
+  } catch (_err) {
+    return null; // private mode / storage disabled: the default size stands.
+  }
+  if (raw === null) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  if (value < FONT_SCALE_MIN || value > FONT_SCALE_MAX) return null;
+  return value;
+}
+
+/**
+ * Apply a scale: clamp it, round to the step so the dial has real stops, set the
+ * custom property, remember it, and report which end of the range is reached on
+ * the buttons themselves (a disabled button at a limit is the honest UI; a button
+ * that does nothing is not).
+ */
+function applyCaptionScale(next, options) {
+  const opts = options || {};
+  const clamped = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, next));
+  // Round to the step so repeated clicks cannot drift into ugly values like 1.05.
+  const stepped = Math.round(clamped / FONT_SCALE_STEP) * FONT_SCALE_STEP;
+  captionScale = Number(stepped.toFixed(4));
+
+  document.documentElement.style.setProperty('--caption-scale', String(captionScale));
+
+  if (opts.persist !== false) {
+    try {
+      window.localStorage.setItem(FONT_SCALE_KEY, String(captionScale));
+    } catch (_err) {
+      /* a preference that cannot be remembered is not an error worth showing. */
+    }
+  }
+  reportFontScaleState();
+}
+
+/** Tell each button whether it is at the end of its travel, via `disabled`. */
+function reportFontScaleState() {
+  const atMin = captionScale <= FONT_SCALE_MIN + 1e-9;
+  const atMax = captionScale >= FONT_SCALE_MAX - 1e-9;
+  const set = (button, atEnd) => {
+    if (!button) return;
+    button.disabled = atEnd;
+    button.setAttribute('aria-disabled', atEnd ? 'true' : 'false');
+  };
+  set(dom.fontSmallerButton, atMin);
+  set(dom.stripFontSmallerButton, atMin);
+  set(dom.fontLargerButton, atMax);
+  set(dom.stripFontLargerButton, atMax);
+}
+
+/**
+ * TRANSPARENCY (strip only). The button hides every strip control and leaves the
+ * captions alone; the SHELL owns the rest (click-through / bringing the chrome
+ * back), because only the shell owns the window.
+ *
+ * THE MESSAGE. The bridge method `bridge.setTransparency(on)` posts the
+ * documented `sotto:transparency` message with `{ on: bool }` — the SAME
+ * bridge-method pattern every other panel->shell call in this file uses
+ * (`bridge.hide()`, `bridge.quit()`, `bridge.setPointerInteractive()`). The
+ * shell side may not exist yet: an absent method is NOT an error, and the local
+ * `body[data-transparency]` state stands on its own (fail silently, never throw).
+ */
+function applyTransparency(on) {
+  transparencyOn = Boolean(on);
+  document.body.dataset.transparency = transparencyOn ? 'on' : 'off';
+  if (dom.stripTransparencyButton) {
+    dom.stripTransparencyButton.setAttribute('aria-pressed', transparencyOn ? 'true' : 'false');
+    dom.stripTransparencyButton.title = transparencyOn
+      ? 'Chrome hidden — captions only. Press again (or use the shell) to bring the controls back.'
+      : 'Transparency: hide the strip chrome and keep only the captions';
+  }
+  if (bridge && typeof bridge.setTransparency === 'function') {
+    try {
+      bridge.setTransparency(transparencyOn);
+    } catch (err) {
+      // A throwing bridge must not take the local state down with it.
+    }
   }
 }
 
@@ -1625,7 +1816,10 @@ function applyLiveEnabled(enabled, options) {
         : 'Live captions are shown as off. This shell does not implement setLiveEnabled() yet, so nothing was actually stopped.');
   }
   if (dom.stripLiveLabel) {
-    dom.stripLiveLabel.textContent = liveEnabled ? 'Live on' : 'Live off';
+    // The word is the control's NAME, not its state: it stays "LIVE" (painted
+    // red by base CSS) in both states, and the state is carried by aria-pressed
+    // plus the title. `updateStripState` is what says "Live off" in the readout.
+    dom.stripLiveLabel.textContent = 'LIVE';
   }
   if (dom.stripLiveButton && !liveEnabled) dom.stripLiveButton.dataset.state = 'off';
   else if (dom.stripLiveButton) delete dom.stripLiveButton.dataset.state;
@@ -2148,6 +2342,22 @@ function wireStatus() {
     // different monitor.
     if (geometry && geometry.width) {
       document.documentElement.style.setProperty('--panel-width', `${geometry.width}px`);
+    }
+    // AND WHICH SURFACE that size belongs to. `place_panel` resizes the window
+    // to the strip's dock or the panel's, and that resize used to be the only
+    // signal: the document kept `data-surface="panel"` inside a 1040x150 strip
+    // window, so the panel's own grid squeezed `.captions` to zero height and
+    // `.stripbar` never left `display:none` -- Alt+C opened a bar with no live
+    // box and no controls. Measured 2026-10-09 (`body=1040x150
+    // surface=panel`).
+    //
+    // The name is REFUSED when it is not one of the two the panel owns
+    // (`SottoSurfaces.set` returns the CURRENT surface for an unknown name), so
+    // a shell that omits the field, or sends a misspelling, leaves the document
+    // exactly where it was rather than guessing. That is why this is safe to
+    // call on every geometry message.
+    if (geometry && typeof geometry.surface === 'string') {
+      setSurface(geometry.surface);
     }
   });
 }

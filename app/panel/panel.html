@@ -282,7 +282,54 @@
                the one just wiped. There is no tray equivalent and no hotkey. What
                survives is the natural line boundary: a `final:true` from the worker
                closes the line on its own. The owner was told this in the receipt
-               (`_main/receipt-panel-stale-oracles.md`, §11). -->
+                (`_main/receipt-panel-stale-oracles.md`, §11). -->
+          <!-- THE TRANSCRIPT FONT DIAL (owner, 2026-10-09, verbatim: *"bota um
+               botao de aumentar ou diminuir a fonte das transcricoes, tanto no
+               overlay abaixo, que vamos criar, tanto no painel da direita"*).
+
+               Two controls, ONE number: they move `--caption-scale` in `:root`
+               (`panel.css`) and every caption / history size derives from it, so
+               the SAME dial is on this panel and on the strip below — the two
+               surfaces cannot disagree, and no theme can override the size.
+
+               HIDE STAYS LAST (the owner's 2026-10-08 ruling), so these sit
+               BEFORE the pause button, not after hide. `panel.js` finds them by
+               id (`#font-smaller-button`, `#font-larger-button`) and persists the
+               value in localStorage, so the size survives a restart. -->
+          <button
+            type="button"
+            class="icon-button"
+            id="font-smaller-button"
+            title="Smaller transcript text"
+            aria-label="Smaller transcript text"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <text
+                x="8"
+                y="12"
+                text-anchor="middle"
+                font-size="9"
+                fill="currentColor"
+              >A</text>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="icon-button"
+            id="font-larger-button"
+            title="Larger transcript text"
+            aria-label="Larger transcript text"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <text
+                x="8"
+                y="12.5"
+                text-anchor="middle"
+                font-size="12"
+                fill="currentColor"
+              >A</text>
+            </svg>
+          </button>
           <!-- MOVED HERE FROM THE DELETED HUD. It was the panel surface's only
                Pause control, so removing the HUD without moving it would have
                taken a real function away. `[data-pause-trigger]` is how
@@ -534,14 +581,18 @@
       </section>
 
       <!-- ── STRIP SURFACE ONLY: the short control row the app’s one control opens ──
-           Four clipped controls and one compact status word. THE STRIP IS THE
-           SHORT SURFACE: transcript drawer, header and footer block are all
-           hidden here by `panel.css`, so the window can be sized to ~150 px
-           without any of them leaking into it. `panel.js` hides/moves nothing;
-           CSS owns the whole difference.
+           THE STRIP IS THE SHORT SURFACE: transcript drawer, header and footer
+           block are all hidden here by `panel.css`, so the window can be sized to
+           ~100 px without any of them leaking into it. `panel.js` hides/moves
+           nothing; CSS owns the whole difference.
 
-           DOM order is left-to-right order (Live, Pause, Open panel), and the
-           status sits last because it is a READOUT, not a control. -->
+           THE FIXED ORDER (base `order` rules, so no theme can reorder it):
+           brand · Live · theme cycle · theme list (chevron) · transparency ·
+           open panel · hide · smaller · larger · Pause · status. The brand is
+           leftmost and the status readout is last because it is a READOUT, not a
+           control. The two font buttons are the owner's 2026-10-09 dial and they
+           sit immediately before Pause, the same place their twins occupy in
+           `.panel__controls`. -->
       <section class="stripbar" id="strip-controls" aria-label="Caption controls">
         <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
              todos os temas"*, and the strip is one of the two surfaces). The strip
@@ -558,35 +609,117 @@
           title="Live captions are on. Turn them off to stop the streaming engine and release the memory it holds."
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.4" />
-            <path
-              d="M8 1.6v1.6M8 12.8v1.6M1.6 8h1.6M12.8 8h1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1"
+            <rect
+              x="1.6"
+              y="3"
+              width="12.8"
+              height="10"
+              rx="2"
               fill="none"
               stroke="currentColor"
               stroke-width="1.3"
+            />
+            <path
+              d="M5 7.1a1.75 1.75 0 1 0 0 1.8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.15"
+              stroke-linecap="round"
+            />
+            <path
+              d="M10.4 7.1a1.75 1.75 0 1 0 0 1.8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.15"
               stroke-linecap="round"
             />
           </svg>
-          <span class="strip-button__label" id="strip-live-label">Live on</span>
+          <span class="strip-button__label" id="strip-live-label">LIVE</span>
         </button>
 
+        <!-- ── THE THEME CONTROL ON THE STRIP SURFACE ─────────────────────────
+             THE TRAP THIS CLOSES. `.panel__header` is `display:none` in the
+             strip surface and the theme button has always lived inside it, so
+             the moment the shell switches to the strip the owner has NO WAY to
+             change the theme — the previous lane flagged exactly that and left
+             it standing ("the strip surface has no theme button"). It is the
+             owner's own rule that every theme must stay reachable, so the strip
+             gets its own control: same module, same one-attribute switch, a
+             second mount point. `theme-switcher.js` wires every
+             `[data-theme-button]` in the document (this one and the header's),
+             so the two can never drift apart — both are painted from the same
+             `paintButton()`. -->
         <button
           type="button"
-          class="strip-button"
-          id="strip-pause-button"
-          data-pause-trigger
-          title="Pause"
+          class="strip-button strip-button--theme"
+          id="strip-theme-button"
+          data-theme-button
+          aria-haspopup="true"
+          aria-expanded="false"
+          title="Theme"
+        >
+          <span class="strip-theme__swatch" aria-hidden="true"></span>
+          <span class="strip-button__label theme-button__label"></span>
+        </button>
+
+        <!-- ── THE THEME LIST (chevron), attached to the theme button's right ──
+             The theme button CYCLES on click; this chevron OPENS the list. Both
+             are wired by `theme-switcher.js`, which owns the one dropdown and the
+             one persist path, so the strip and the header can never drift. -->
+        <button
+          type="button"
+          class="strip-button strip-button--chevron"
+          id="strip-theme-chevron"
+          data-theme-chevron
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="theme-dropdown"
+          title="Theme list — hover to preview, click to keep"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path
-              d="M6 3.2v9.6M10 3.2v9.6"
+              d="M4 6.5L8 10.5L12 6.5"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.9"
+              stroke-width="1.5"
               stroke-linecap="round"
+              stroke-linejoin="round"
             />
           </svg>
-          <span class="strip-button__label">Pause</span>
+        </button>
+
+        <!-- ── TRANSPARENCY: hide the strip chrome, keep only the captions ─────
+             Posts the documented shell message `sotto:transparency` with
+             `{on:true|false}` through the bridge method (`panel.js`
+             `applyTransparency`). It also flips `body[data-transparency]`, which
+             is what hides every strip control. The shell side may not exist yet:
+             absent bridge method = the local state still stands. -->
+        <button
+          type="button"
+          class="strip-button strip-button--transparency"
+          id="strip-transparency-button"
+          aria-pressed="false"
+          title="Transparency: hide the strip chrome and keep only the captions"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <rect
+              x="2.4"
+              y="2.4"
+              width="11.2"
+              height="11.2"
+              rx="2"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.3"
+            />
+            <path
+              d="M8 2.4h3.6a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H8z"
+              fill="currentColor"
+              opacity="0.5"
+            />
+            <path d="M8 2.4v11.2" stroke="currentColor" stroke-width="1.1" />
+          </svg>
+          <span class="strip-button__label">Transparency</span>
         </button>
 
         <button
@@ -615,29 +748,93 @@
           <span class="strip-button__label">Open panel</span>
         </button>
 
-        <!-- ── THE THEME CONTROL ON THE STRIP SURFACE ─────────────────────────
-             THE TRAP THIS CLOSES. `.panel__header` is `display:none` in the
-             strip surface and the theme button has always lived inside it, so
-             the moment the shell switches to the strip the owner has NO WAY to
-             change the theme — the previous lane flagged exactly that and left
-             it standing ("the strip surface has no theme button"). It is the
-             owner's own rule that every theme must stay reachable, so the strip
-             gets its own control: same module, same one-attribute switch, a
-             second mount point. `theme-switcher.js` wires every
-             `[data-theme-button]` in the document (this one and the header's),
-             so the two can never drift apart — both are painted from the same
-             `paintButton()`. -->
+        <!-- ── HIDE: the strip's own dismiss. It calls the SAME `bridge.hide()`
+             the panel's `#hide-button` calls — there is no second mechanism; the
+             shell re-shows the strip on Alt+C. -->
         <button
           type="button"
-          class="strip-button strip-button--theme"
-          id="strip-theme-button"
-          data-theme-button
-          aria-haspopup="true"
-          aria-expanded="false"
-          title="Theme"
+          class="strip-button"
+          id="strip-hide-button"
+          title="Hide the strip (Alt+C brings it back)"
         >
-          <span class="strip-theme__swatch" aria-hidden="true"></span>
-          <span class="strip-button__label theme-button__label"></span>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="strip-button__label">Hide</span>
+        </button>
+
+        <!-- ── THE TRANSCRIPT FONT DIAL ON THE STRIP ─────────────────────────
+             Owner, 2026-10-09, verbatim: *"bota um botao de aumentar ou diminuir
+             a fonte das transcricoes, tanto no overlay abaixo, que vamos criar,
+             tanto no painel da direita"*. This is the "overlay abaixo" half, and it
+             moves the SAME `--caption-scale` the panel's pair moves — one number,
+             two surfaces, so they cannot disagree. Painted immediately before
+             Pause, mirroring `.panel__controls`: base `order: 7`/`order: 8`
+             (`panel.css`) against Pause's new `order: 9`, so no theme can move it. -->
+        <button
+          type="button"
+          class="strip-button strip-button--font"
+          id="strip-font-smaller-button"
+          title="Smaller transcript text"
+          aria-label="Smaller transcript text"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <text
+              x="8"
+              y="12"
+              text-anchor="middle"
+              font-size="9"
+              fill="currentColor"
+            >A</text>
+          </svg>
+          <span class="strip-button__label">Smaller</span>
+        </button>
+        <button
+          type="button"
+          class="strip-button strip-button--font"
+          id="strip-font-larger-button"
+          title="Larger transcript text"
+          aria-label="Larger transcript text"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <text
+              x="8"
+              y="12.5"
+              text-anchor="middle"
+              font-size="12"
+              fill="currentColor"
+            >A</text>
+          </svg>
+          <span class="strip-button__label">Larger</span>
+        </button>
+
+        <!-- Pause is `order: 9` now, after the font dial, so the two ACTIONS stay
+             at the end of the row and the dial stays next to the text it sizes.
+             `dom.pauseButtons` finds it by its `[data-pause-trigger]` attribute,
+             so the wiring did not change. -->
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-pause-button"
+          data-pause-trigger
+          title="Pause"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M6 3.2v9.6M10 3.2v9.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="strip-button__label">Pause</span>
         </button>
 
         <!-- The status, reduced to a dot + ONE short word. The long sentence is

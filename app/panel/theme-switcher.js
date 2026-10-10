@@ -111,17 +111,19 @@
    */
   var picker = null;
 
-  /* ── the chevron dropdown (panel header, 2026-10-08) ───────────────────────
+  /* ── the chevron dropdown (panel header + strip, 2026-10-08) ───────────────
    * Same persist contract as the picker, plus LIVE PREVIEW: hovering (or
    * focusing) an option paints it instantly WITHOUT persisting
    * (`api.set(name, { persist:false })`), clicking (or Enter/Space) COMMITS it
    * through the same `api.set(name)` persist path the cycle button uses, and
    * leaving the dropdown or pressing Escape REVERTS to the committed theme
    * (`api.set(committed, { persist:false })` — the store still holds it, so no
-   * write is needed). The strip lane owns its own dropdown under the same
-   * contract; this is an independent implementation, not an import.
+   * write is needed). There is ONE dropdown and it is shared by EVERY chevron
+   * (the header's and the strip's `#strip-theme-chevron`): the persist logic is
+   * not forked, and the two mount points can never disagree.
    */
-  var chevron = null;
+  var chevrons = [];
+  var activeChevron = null;
   var dropdown = null;
   var committedTheme = null;
   var previewTheme = null;
@@ -285,10 +287,8 @@
     previewTheme = null;
     dropdown.hidden = false;
     dropdownOpen = true;
-    if (chevron) {
-      chevron.setAttribute('aria-expanded', 'true');
-      paintChevron();
-    }
+    setChevronsExpanded(true);
+    paintChevrons();
     syncDropdown();
     var first = dropdown.querySelector('.theme-dropdown__option[aria-current="true"]')
       || dropdown.querySelector('.theme-dropdown__option');
@@ -299,10 +299,8 @@
     if (revert !== false) revertPreview();
     if (dropdown) dropdown.hidden = true;
     dropdownOpen = false;
-    if (chevron) {
-      chevron.setAttribute('aria-expanded', 'false');
-      paintChevron();
-    }
+    setChevronsExpanded(false);
+    paintChevrons();
   }
 
   function toggleDropdown() {
@@ -310,37 +308,50 @@
     else openDropdown();
   }
 
-  /* The chevron: its own 28 px button next to the theme button, so the owner
-   * can cycle WITHOUT opening anything and list WITHOUT cycling. Created once
-   * and inserted right after the header's theme button (or at the front of the
-   * cluster when the harness has no theme button yet); the BASE `panel.css`
-   * order rules, not this insert, decide the final arrangement. */
-  function paintChevron() {
-    if (!chevron) return;
+  /* The chevrons: their own compact buttons next to each theme button — the
+   * header's and the strip's — so the owner can cycle WITHOUT opening anything
+   * and list WITHOUT cycling. The host page may ship them in markup
+   * (`#strip-theme-chevron`), the module creates the header's when the harness
+   * has none, and this code creates either one when it is missing. The BASE
+   * `panel.css` order rules, not this insert, decide the final arrangement. */
+  function paintChevrons() {
+    if (!chevrons.length) return;
     var name = currentTheme();
-    chevron.title = 'Theme list: ' + labelOf(name) + ' — open for all five, hover previews';
-    chevron.setAttribute('aria-label', chevron.title);
-    if (known(name)) chevron.style.setProperty('--theme-swatch', known(name).swatch);
+    var theme = known(name);
+    chevrons.forEach(function (c) {
+      c.title = 'Theme list: ' + labelOf(name) + ' — open for all five, hover previews';
+      c.setAttribute('aria-label', c.title);
+      if (theme) c.style.setProperty('--theme-swatch', theme.swatch);
+    });
   }
 
-  function ensureChevron(doc) {
-    if (chevron && chevron.isConnected) return chevron;
-    var existing = doc.getElementById('theme-chevron');
-    if (existing) {
-      chevron = existing;
-      if (!chevron.dataset.wired) {
-        chevron.dataset.wired = 'true';
-        wireChevron(chevron);
-      }
-      paintChevron();
-      return chevron;
+  /* The dropdown is shared, so every chevron reports the same expanded state. */
+  function setChevronsExpanded(open) {
+    chevrons.forEach(function (c) { c.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+  }
+
+  function inAnyChevron(target) {
+    for (var i = 0; i < chevrons.length; i += 1) {
+      if (chevrons[i].contains(target)) return true;
     }
-    var host = doc.querySelector('.panel__controls');
-    if (!host) return null;
+    return false;
+  }
+
+  function registerChevron(btn) {
+    if (!btn || chevrons.indexOf(btn) >= 0) return btn;
+    chevrons.push(btn);
+    if (!btn.dataset.wired) {
+      btn.dataset.wired = 'true';
+      wireChevron(btn);
+    }
+    return btn;
+  }
+
+  function makeChevron(doc, id, className) {
     var btn = doc.createElement('button');
     btn.type = 'button';
-    btn.className = 'icon-button theme-chevron';
-    btn.id = 'theme-chevron';
+    btn.className = className;
+    btn.id = id;
     btn.dataset.themeChevron = 'true';
     btn.setAttribute('aria-haspopup', 'listbox');
     btn.setAttribute('aria-expanded', 'false');
@@ -358,22 +369,50 @@
     path.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(path);
     btn.appendChild(svg);
-    var anchor = doc.getElementById('theme-button');
-    if (anchor && anchor.parentNode === host && anchor.nextSibling) host.insertBefore(btn, anchor.nextSibling);
-    else if (anchor && anchor.parentNode === host) host.appendChild(btn);
-    else host.insertBefore(btn, host.firstChild);
-    chevron = btn;
-    wireChevron(btn);
-    paintChevron();
     return btn;
+  }
+
+  function ensureChevrons(doc) {
+    /* Every chevron the host page ships (the strip's is markup; the harness may
+     * ship both). */
+    var found = doc.querySelectorAll('#theme-chevron, #strip-theme-chevron, [data-theme-chevron]');
+    for (var i = 0; i < found.length; i += 1) registerChevron(found[i]);
+
+    /* The header's: created only when the host page has none. */
+    if (!doc.getElementById('theme-chevron')) {
+      var host = doc.querySelector('.panel__controls');
+      if (host) {
+        var hbtn = makeChevron(doc, 'theme-chevron', 'icon-button theme-chevron');
+        var anchor = doc.getElementById('theme-button');
+        if (anchor && anchor.parentNode === host && anchor.nextSibling) host.insertBefore(hbtn, anchor.nextSibling);
+        else if (anchor && anchor.parentNode === host) host.appendChild(hbtn);
+        else host.insertBefore(hbtn, host.firstChild);
+        registerChevron(hbtn);
+      }
+    }
+
+    /* The strip's: attached to the right of the strip theme button. */
+    if (!doc.getElementById('strip-theme-chevron')) {
+      var stripTheme = doc.getElementById('strip-theme-button');
+      if (stripTheme && stripTheme.parentNode) {
+        var sbtn = makeChevron(doc, 'strip-theme-chevron', 'strip-button strip-button--chevron');
+        stripTheme.parentNode.insertBefore(sbtn, stripTheme.nextSibling);
+        registerChevron(sbtn);
+      }
+    }
+
+    paintChevrons();
+    return chevrons;
   }
 
   function wireChevron(btn) {
     btn.addEventListener('click', function (ev) {
       ev.stopPropagation();
+      activeChevron = btn;
       toggleDropdown();
     });
     btn.addEventListener('keydown', function (ev) {
+      activeChevron = btn;
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
         if (dropdownOpen && dropdown && !dropdown.hidden) {
@@ -434,7 +473,7 @@
           ev.preventDefault();
           ev.stopPropagation();
           closeDropdown(true);
-          if (chevron) chevron.focus();
+          if (activeChevron) activeChevron.focus();
         } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
           ev.preventDefault();
           ev.stopPropagation();
@@ -586,7 +625,7 @@
       syncPicker();
       syncDropdown();
       paintAll(root.document);
-      paintChevron();
+      paintChevrons();
       return theme.name;
     },
 
@@ -642,7 +681,7 @@
         b.dataset.wired = 'true';
         wireButton(b);
       });
-      ensureChevron(doc);
+      ensureChevrons(doc);
       ensureDropdown(doc);
       syncPicker();
       syncDropdown();
@@ -676,7 +715,7 @@
           root.document.addEventListener('click', function (ev) {
             if (dropdownOpen && dropdown && !dropdown.hidden) {
               if (dropdown.contains(ev.target)) return;
-              if (chevron && chevron.contains(ev.target)) return;
+              if (inAnyChevron(ev.target)) return;
               closeDropdown(true);
             }
             if (!picker || picker.hidden) return;
@@ -694,7 +733,7 @@
           root.document.addEventListener('focusin', function (ev) {
             if (!dropdownOpen || !dropdown || dropdown.hidden) return;
             if (dropdown.contains(ev.target)) return;
-            if (chevron && chevron.contains(ev.target)) return;
+            if (inAnyChevron(ev.target)) return;
             var t = ev.target;
             if (t && t.classList && t.classList.contains('theme-dropdown__option')) return;
             closeDropdown(true);
