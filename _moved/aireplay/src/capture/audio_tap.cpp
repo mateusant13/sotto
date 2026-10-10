@@ -589,7 +589,12 @@ public:
     // format. Returns true when `out` received PCM. `out->samples` is valid until the
     // next call on THIS object. Bounded: it never blocks forever on a device that
     // stopped rendering -- the poll loop is driven by GetNextPacketSize, not by sleep.
-    bool pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::string* err);
+    bool pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::string* err)
+    { uint64_t q = 0; return pull(out, timeout_ms, err, &q); }
+    // Same pull, but reports the QPC stamp (ns, the qpc_now_ns() clock of common.h) of the
+    // first sample it delivered.  The audio ring stamps samples with it so one cut window
+    // [base_qpc_ns, cut_qpc_ns] spans BOTH rings.
+    bool pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::string* err, uint64_t* qpc_ns);
 
     void close();
     bool is_open() const { return client_ != nullptr; }
@@ -618,6 +623,7 @@ private:
     double resample_pos_ = 0.0;   // fractional source position, carried across calls so
                                   // block boundaries do not click
     double sum_sq_ = 0.0;
+    uint64_t last_qpc_ns_ = 0;    // QPC stamp of the newest packet converted, ns
 };
 
 const char* tap_state_name(TapState s) {
@@ -1111,6 +1117,19 @@ void LoopbackTap::append_pcm(const std::vector<float>& mono, uint32_t mono_rate,
     c_.pcm_bytes += static_cast<uint64_t>(out->size()) * kAsrWidth;
 }
 
+// qpc_now_ns() lives in common.h, which this file deliberately does not include (it must also
+// compile standalone under -DAUDIO_TAP_SELFTEST), so the SAME clock is taken here in the one
+// way this translation unit can: QueryPerformanceCounter on the same frequency.
+static uint64_t qpc_now_local_ns()
+{
+    LARGE_INTEGER c;
+    QueryPerformanceCounter(&c);
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    if (f.QuadPart <= 0) return 0;
+    return (uint64_t)((double)c.QuadPart * 1e9 / (double)f.QuadPart);
+}
+
 bool LoopbackTap::pump_once(std::vector<float>* mono, std::string* err) {
     UINT32 avail = 0;
     HRESULT hr = capture_->GetNextPacketSize(&avail);
@@ -1125,7 +1144,9 @@ bool LoopbackTap::pump_once(std::vector<float>* mono, std::string* err) {
     BYTE* data = nullptr;
     UINT32 frames = 0;
     DWORD flags = 0;
-    hr = capture_->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
+    UINT64 dev_pos = 0;          // frame index of the first sample in the packet
+    UINT64 qpc100   = 0;         // the packet render time, 100 ns QPC units
+    hr = capture_->GetBuffer(&data, &frames, &flags, &dev_pos, &qpc100);
     if (FAILED(hr)) {
         *err = "GetBuffer failed " + hresult_str(hr);
         return false;
@@ -1144,13 +1165,17 @@ bool LoopbackTap::pump_once(std::vector<float>* mono, std::string* err) {
         if (a > c_.peak) c_.peak = a;
         sum_sq_ += static_cast<double>(v) * static_cast<double>(v);
     }
+    // The stamp the ring needs.  A driver that reports 0 falls back to the CURRENT clock, which
+    // is still monotone on the same frequency and is never a fake zero.
+    const uint64_t stamp_ns = qpc100 ? (uint64_t)qpc100 * 100ull : qpc_now_local_ns();
+    last_qpc_ns_ = stamp_ns;
     c_.packets += 1;
     c_.frames += frames;
     capture_->ReleaseBuffer(frames);
     return true;
 }
 
-bool LoopbackTap::pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::string* err) {
+bool LoopbackTap::pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::string* err, uint64_t* qpc_ns) {
     if (!is_open()) {
         *err = "tap is not open";
         last_err_ = *err;
@@ -1162,6 +1187,8 @@ bool LoopbackTap::pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::stri
     const ULONGLONG deadline = GetTickCount64() + budget;
     std::vector<float> mono;
     out->clear();
+    if (qpc_ns) *qpc_ns = 0;
+    uint64_t first_qpc = 0;
     do {
         const size_t before = out->size();
         std::string perr;
@@ -1171,14 +1198,20 @@ bool LoopbackTap::pull(std::vector<int16_t>* out, uint32_t timeout_ms, std::stri
             return false;
         }
         if (!mono.empty()) append_pcm(mono, ep_.rate, out);
+        if (first_qpc == 0) first_qpc = last_qpc_ns_;
         if (out->size() > before) {
             ++c_.blocks;
+            // Measured defect (2026-10-09): the success path used to leave *qpc_ns == 0, which
+            // is the one value a ring push can never accept -- it would read as a zero stamp
+            // and synthesise the window as silence.  Reported on the way out, on BOTH paths.
+            if (qpc_ns) *qpc_ns = first_qpc;
             return true;
         }
         Sleep(2);
     } while (GetTickCount64() < deadline);
     *err = "no frames within " + std::to_string(budget) + " ms";
     last_err_ = *err;
+    if (qpc_ns) *qpc_ns = first_qpc;   // a timeout still reports what it DID deliver
     return false;
 }
 

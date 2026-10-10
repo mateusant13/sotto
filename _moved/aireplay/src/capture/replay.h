@@ -259,6 +259,22 @@ public:
     // thread (the run loop): it reads capture_qpc_ to count what the window should have held.
     void request_cut(uint64_t t_cut_ns, double requested_window_s, const std::string& origin);
 
+    // THE SOUND OF THE CLIP.  NULL (the default) means the cut writes VIDEO ONLY — the
+    // unchanged pre-audio shape.  When a ring is attached the cut reads the SAME window
+    // [base_qpc_ns, cut_qpc_ns] out of it, on the SAME qpc clock the video ring stamps
+    // f.qpc_ns with, and writes the samples into the clip the video loop is already writing.
+    void set_audio_ring(AudioRing* ring) { audio_ring_ = ring; }
+    AudioRing* audio_ring() const { return audio_ring_; }
+
+    // What the last cut did with audio.  Filled by perform_cut_body so a run log can state
+    // the route that actually shipped (aac or pcm or none) and why, instead of the reader
+    // having to infer it from the file.
+    const std::string& audio_route() const { return audio_route_; }
+    const std::string& audio_route_note() const { return audio_route_note_; }
+    uint64_t audio_frames_in_clip() const { return audio_frames_; }
+    double   audio_seconds_in_clip() const { return audio_seconds_; }
+    double   audio_skew_ms() const { return audio_skew_ms_; }
+
     // NULL by default: no index, no row, no anchor — and no clip is written in this process.
     void set_clip_anchor_sink(ClipAnchorSink* s) { clip_sink_ = s; }
     ClipAnchorSink* clip_anchor_sink() const { return clip_sink_; }
@@ -318,6 +334,14 @@ private:
 
     std::unique_ptr<Trigger> trigger_;          // null unless arm_hotkey() ran
     ClipAnchorSink*          clip_sink_ = nullptr;   // BORROWED; cleared before destruction
+    AudioRing*               audio_ring_ = nullptr;    // BORROWED; the tap owns the memory
+    std::string              audio_route_ = "none";    // "aac" | "pcm" | "none"
+                                                        // "none" = no audio ring was attached,
+                                                        // so no trak was written -- never "" 
+    std::string              audio_route_note_;        // WHY that route, in one line
+    uint64_t                 audio_frames_ = 0;        // samples-frames written to the last clip
+    double                   audio_seconds_ = 0.0;     // what the clip carries, measured
+    double                   audio_skew_ms_ = 0.0;     // audio minus video duration, in ms
     uint64_t                 hotkey_cuts_ = 0;
     uint64_t                 hotkey_dropped_ = 0;
 

@@ -284,4 +284,187 @@ bool RingBuffer::find_oldest_idr(size_t* index) const
     return false;
 }
 
+
+
+// ------------------------------------------------------------------ AudioRing
+// One qpc clock, two rings: copy_window() selects the exact frames that share the video
+// cut window, so an instant-replay cut taken NOW carries the SOUND of the last N seconds.
+//
+// Time model: absolute frame index a maps to qpc through a single anchor -- the newest
+// sample ever pushed ends at (head_abs_, head_qpc_ns_).  Because a gap is filled with
+// SILENCE rather than skipped, that mapping holds for real and synthesised samples alike,
+// which is the whole point: the sound stays aligned to the video.
+
+bool AudioRing::init(double seconds, std::string* err)
+{
+    std::lock_guard<std::mutex> g(mu_);
+    if (cap_frames_) { *err = "AudioRing::init() called twice"; return false; }
+    if (!(seconds > 0.5) || seconds > 3600.0) {
+        *err = "audio ring seconds must be in (0.5, 3600]";
+        return false;
+    }
+    requested_seconds_ = seconds;
+
+    // Priced from MEASURED resident RAM (GlobalMemoryStatusEx via query_ring_budget), never
+    // from VRAM: nvidia-smi is unusable on this host and the audio arena is SYSTEM heap.
+    budget_ = query_ring_budget();
+    const uint64_t want = ring_apply_budget((uint64_t)((double)seconds * audio::kAsrSampleRate
+                                                        * audio::kAsrChannels
+                                                        * audio::kAsrSampleWidth),
+                                            budget_);
+    clamped_from_ = want;
+    uint64_t want_frames = want / audio::kAsrChannels;
+    if (want_frames < (uint64_t)audio::kAsrSampleRate / 2) {
+        *err = "audio ring budget left less than half a second of audio";
+        return false;
+    }
+    try {
+        arena_.assign((size_t)want_frames, (int16_t)0);
+    } catch (const std::bad_alloc&) {
+        *err = "audio ring arena allocation failed (bad_alloc)";
+        return false;
+    } catch (const std::length_error&) {
+        *err = "audio ring arena allocation failed (length_error)";
+        return false;
+    }
+    cap_frames_ = want_frames;
+    return true;
+}
+
+void AudioRing::shutdown()
+{
+    std::lock_guard<std::mutex> g(mu_);
+    arena_.clear();
+    arena_.shrink_to_fit();
+    cap_frames_ = 0;
+    used_ = first_ = 0;
+    head_abs_ = head_qpc_ns_ = 0;
+    have_stamp_ = false;
+    pushed_ = dropped_ = silence_filled_ = 0;
+}
+
+void AudioRing::evict_front_locked()
+{
+    // Evict in whole seconds so the drop is always a multiple of the frame size.
+    uint64_t drop = (uint64_t)audio::kAsrSampleRate;
+    if (drop > used_) drop = used_;
+    first_ = (first_ + (size_t)drop) % (size_t)cap_frames_;
+    used_ -= drop;
+    dropped_ += drop;
+}
+
+bool AudioRing::push(const int16_t* pcm, uint32_t frames, uint64_t qpc_ns)
+{
+    std::lock_guard<std::mutex> g(mu_);
+    if (!cap_frames_) return false;
+
+    if (!have_stamp_) {
+        head_qpc_ns_ = qpc_ns;
+        have_stamp_ = true;
+    } else if (qpc_ns > head_qpc_ns_) {
+        const uint64_t span_ns = qpc_ns - head_qpc_ns_;
+        uint64_t span_frames = (uint64_t)((long double)span_ns * audio::kAsrSampleRate
+                                          / 1000000000.0L);
+        if (span_frames > frames) {
+            uint64_t gap = span_frames - frames;
+            if (gap > cap_frames_) gap = cap_frames_;   // never synthesise more than we hold
+            size_t w = (size_t)(head_abs_ % cap_frames_);
+            for (uint64_t i = 0; i < gap; ++i, w = (w + 1) % (size_t)cap_frames_) arena_[w] = 0;
+            head_abs_ += gap;
+            silence_filled_ += gap;
+            used_ += gap;
+            while (used_ > cap_frames_) evict_front_locked();
+        }
+    } else {
+        head_qpc_ns_ = qpc_ns;   // a backwards stamp is a clock anomaly: re-stamp
+    }
+
+    if (frames) {
+        size_t w = (size_t)(head_abs_ % cap_frames_);
+        for (uint32_t i = 0; i < frames; ++i, w = (w + 1) % (size_t)cap_frames_)
+            arena_[w] = pcm[i];
+        head_abs_ += frames;
+        used_ += frames;
+        while (used_ > cap_frames_) evict_front_locked();
+        pushed_ += frames;
+    }
+    head_qpc_ns_ = qpc_ns;
+    return true;
+}
+
+bool AudioRing::copy_window(uint64_t from_qpc_ns, uint64_t to_qpc_ns,
+                            std::vector<int16_t>* out, uint64_t* out_first_qpc_ns,
+                            uint64_t* silence_frames_filled, bool* head_clamped,
+                            std::string* err) const
+{
+    std::lock_guard<std::mutex> g(mu_);
+    if (out_first_qpc_ns) *out_first_qpc_ns = 0;
+    if (silence_frames_filled) *silence_frames_filled = 0;
+    if (head_clamped) *head_clamped = false;
+    out->clear();
+    if (!cap_frames_) { *err = "audio ring was never initialised"; return false; }
+    if (used_ == 0) { *err = "audio ring holds no samples; the clip would carry silence"; return false; }
+
+    // The newest sample ends at (head_abs_, head_qpc_ns_); sample a sits head_qpc_ns_ minus
+    // (head_abs_ - a) frames of time.
+    const uint64_t ns_per_frame = (uint64_t)(1000000000.0L / (long double)audio::kAsrSampleRate);
+    auto abs_of = [&](uint64_t q) -> long long {
+        if (q >= head_qpc_ns_) return (long long)head_abs_;
+        uint64_t back = head_qpc_ns_ - q;
+        uint64_t f = back / ns_per_frame;
+        return (long long)head_abs_ - (long long)f;
+    };
+    auto qpc_of = [&](uint64_t a) -> uint64_t {
+        if (a >= head_abs_) return head_qpc_ns_;
+        uint64_t back = (head_abs_ - a) * ns_per_frame;
+        return head_qpc_ns_ > back ? head_qpc_ns_ - back : 0;
+    };
+
+    const uint64_t oldest_abs = head_abs_ - used_;
+    long long a0 = abs_of(from_qpc_ns);
+    long long a1 = abs_of(to_qpc_ns);
+    if (a0 < (long long)oldest_abs) { a0 = (long long)oldest_abs; if (head_clamped) *head_clamped = true; }
+    if (a1 > (long long)head_abs_)   { a1 = (long long)head_abs_;   if (head_clamped) *head_clamped = true; }
+    if (a1 <= a0) {
+        if (out_first_qpc_ns) *out_first_qpc_ns = qpc_of((uint64_t)a0);
+        return true;                     // empty window: the caller pads to the video duration
+    }
+
+    const uint64_t n = (uint64_t)(a1 - a0);
+    out->resize((size_t)n);
+    size_t w = (size_t)((uint64_t)a0 % cap_frames_);
+    uint64_t zeros = 0;
+    for (uint64_t i = 0; i < n; ++i, w = (w + 1) % (size_t)cap_frames_) {
+        (*out)[(size_t)i] = arena_[w];
+        if (arena_[w] == 0) ++zeros;
+    }
+    if (out_first_qpc_ns) *out_first_qpc_ns = qpc_of((uint64_t)a0);
+    if (silence_frames_filled) *silence_frames_filled = zeros;
+    return true;
+}
+
+uint64_t AudioRing::bytes_used() const
+{
+    std::lock_guard<std::mutex> g(mu_);
+    return used_ * audio::kAsrChannels * audio::kAsrSampleWidth;
+}
+
+bool AudioRing::empty() const
+{
+    std::lock_guard<std::mutex> g(mu_);
+    return used_ == 0;
+}
+
+uint64_t AudioRing::frames_pushed() const
+{
+    std::lock_guard<std::mutex> g(mu_);
+    return pushed_;
+}
+
+double AudioRing::seconds_held() const
+{
+    std::lock_guard<std::mutex> g(mu_);
+    return cap_frames_ ? (double)cap_frames_ / audio::kAsrSampleRate : 0.0;
+}
+
 } // namespace aireplay

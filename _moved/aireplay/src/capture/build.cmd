@@ -20,7 +20,7 @@ set SRC=%~dp0.
 set OUT=%~dp0..\..\_main\build
 if not exist "%OUT%" mkdir "%OUT%"
 
-"%GXX%" -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter -I "%SRC%" -I "%SRC%\third_party" "%SRC%\main.cpp" "%SRC%\common.cpp" "%SRC%\d3d11_ctx.cpp" "%SRC%\nv12_convert.cpp" "%SRC%\wgc_capture.cpp" "%SRC%\nvenc_encoder.cpp" "%SRC%\ring_buffer.cpp" "%SRC%\mp4_writer.cpp" "%SRC%\selftest.cpp" "%SRC%\test_window.cpp" "%SRC%\trigger.cpp" "%SRC%\replay.cpp" -o "%OUT%\aireplay-capture.exe" -ld3d11 -ldxgi -luuid -lole32 -loleaut32 -lruntimeobject -lwindowsapp -lpsapi -lgdi32 -luser32
+"%GXX%" -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter -I "%SRC%" -I "%SRC%\third_party" "%SRC%\main.cpp" "%SRC%\common.cpp" "%SRC%\d3d11_ctx.cpp" "%SRC%\nv12_convert.cpp" "%SRC%\wgc_capture.cpp" "%SRC%\nvenc_encoder.cpp" "%SRC%\ring_buffer.cpp" "%SRC%\mp4_writer.cpp" "%SRC%\selftest.cpp" "%SRC%\test_window.cpp" "%SRC%\trigger.cpp" "%SRC%\replay.cpp" -o "%OUT%\aireplay-capture.exe" -ld3d11 -ldxgi -luuid -lole32 -loleaut32 -lruntimeobject -lwindowsapp -lpsapi -lgdi32 -luser32 -lmfplat -lmfuuid
 if errorlevel 1 (echo BUILD FAILED & exit /b 1)
 echo BUILD OK: %OUT%\aireplay-capture.exe
 endlocal

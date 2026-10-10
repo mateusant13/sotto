@@ -12,6 +12,7 @@
 //      the bytes being muxed.
 #pragma once
 #include "common.h"
+#include "audio_contract.h"   // aireplay::audio::kAsr* -- the ASR contract the AudioRing is priced in.
 
 #include <mutex>
 
@@ -136,6 +137,71 @@ private:
     bool                    pinned_ = false;
     uint64_t                pin_abs_ = 0;
     int                     idr_live_ = 0;
+};
+
+// ------------------------------------------------------------------ the AUDIO ring
+// The video ring above carries NVENC Annex-B access units and is silent by construction.
+// Instant replay needs the SOUND of the last N seconds too, so the same ring budget that
+// prices video now prices this one: PCM at the canonical contract (16 kHz, mono, int16 =
+// 32 B per frame, 32 000 B/s -- audio_contract.h), every frame stamped with the SAME qpc
+// clock the video ring stamps f.qpc_ns with, so the cut window [base_qpc_ns, cut_qpc_ns]
+// is ONE window across both rings.
+//
+// Design notes:
+//   * Circular arena of FRAMES with absolute frame indices, mirroring RingBuffer above.
+//     The size is derived from the MEASURED resident RAM via ring_budget_from(), never from
+//     VRAM (nvidia-smi is unusable on this host) and never larger than the caller asked for.
+//   * A GAP in the audio stream (a tap stall, a device restart) is filled with SILENCE and
+//     counted, never skipped: a skipped gap would shift the sound against the video for the
+//     rest of the replay.  copy_window() reports how many frames it manufactured.
+//   * copy_window() copies under the lock and returns owned memory, so a cut can be taken on
+//     the cut thread while the capture thread keeps appending.
+class AudioRing {
+public:
+    bool init(double seconds, std::string* err);
+    void shutdown();
+
+    // Appends silence up to qpc_ns when there was a gap, then frames of PCM.  Returns false
+    // only when the ring was never initialised.
+    bool push(const int16_t* pcm, uint32_t frames, uint64_t qpc_ns);
+
+    // Copies the frames whose time falls inside [from_qpc_ns, to_qpc_ns] and reports the qpc
+    // stamp of the first sample.  Silence frames synthesised to fill gaps are counted out.
+    bool copy_window(uint64_t from_qpc_ns, uint64_t to_qpc_ns, std::vector<int16_t>* out,
+                    uint64_t* out_first_qpc_ns, uint64_t* silence_frames_filled,
+                    bool* head_clamped, std::string* err) const;
+
+    uint64_t capacity_frames() const { return cap_frames_; }
+    uint64_t frames_pushed() const;
+    uint64_t frames_dropped() const { return dropped_; }
+    uint64_t silence_frames() const { return silence_filled_; }
+    uint64_t bytes_used() const;
+    bool    empty() const;
+    double  seconds_held() const;
+    double  seconds_requested() const { return requested_seconds_; }
+    const RingBudget& budget() const { return budget_; }
+    uint64_t clamped_from() const { return clamped_from_; }
+    uint32_t rate() const { return audio::kAsrSampleRate; }
+    uint32_t channels() const { return audio::kAsrChannels; }
+
+private:
+    void evict_front_locked();
+    void append_locked(uint32_t frames, uint64_t qpc_ns);
+
+    mutable std::mutex      mu_;
+    std::vector<int16_t>    arena_;        // cap_frames_ samples, mono
+    uint64_t                cap_frames_ = 0;
+    double                  requested_seconds_ = 0;
+    RingBudget              budget_;
+    uint64_t                clamped_from_ = 0;
+    size_t                  first_ = 0;      // arena index of the oldest held sample
+    uint64_t                used_ = 0;       // samples held
+    uint64_t                head_abs_ = 0;   // absolute index of the NEXT sample
+    uint64_t                head_qpc_ns_ = 0;// qpc stamp of head_abs_
+    bool                    have_stamp_ = false;
+    uint64_t                pushed_ = 0;     // real samples accepted
+    uint64_t                dropped_ = 0;
+    uint64_t                silence_filled_ = 0;
 };
 
 } // namespace aireplay

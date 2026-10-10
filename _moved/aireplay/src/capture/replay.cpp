@@ -7,6 +7,16 @@
 #include <cmath>
 #include <ctime>
 
+// The ASR contract: 16 kHz MONO PCM16.  This file converts from it; it never negotiates it.
+#include "audio_contract.h"
+
+// Windows Media Foundation — the AAC route.  AacEncoder (below) carries the measured recipe and
+// the three details that are easy to get wrong; these headers are all it needs.
+#include <mfapi.h>
+#include <mferror.h>
+#include <mfidl.h>
+#include <mftransform.h>
+
 namespace aireplay {
 
 // ------------------------------------------------------------------ epoch / clip identity
@@ -641,6 +651,404 @@ void Replay::fire_anchor(const CutResult& r, const WindowPlan& p, double fps_mea
     clip_sink_->on_clip_anchor(a);
 }
 
+// ------------------------------------------------------------------ AAC, route 1
+//
+// WHY AN ENCODER LIVES IN THIS TRANSLATION UNIT
+// -----------------------------------------------
+// audio_tap.cpp is #included by main.cpp, so its symbols exist in NO other translation unit, and
+// this file is compiled on its own.  An encoder defined in audio_tap.cpp could not be called from
+// the cut thread, which is the only thread that needs it.  It therefore lives HERE, beside its one
+// caller: no new production file, and no new source in build.cmd.
+//
+// THE RECIPE IS PORTED, NOT INVENTED.  It is the winning arm (A1) of the measured probe
+// _main/_audio-mft-probe.cpp, which printed
+//     BATTERY: WINNING ARM A1 with 683 bytes
+//     VERDICT: GREEN - a real AAC encoder exists on this box and produced bytes from a 440 Hz tone.
+// Three details in that recipe are why it works, and each was paid for inside that same battery:
+//   1. SetOutputType BEFORE SetInputType;
+//   2. a FRESH IMFSample + IMFMediaBuffer for EVERY ProcessOutput -- the first run of the battery
+//      returned E_INVALIDARG from all eight arms while a single buffer was reused;
+//   3. the output bytes are read out of od.pSample BEFORE the caller sample is released and
+//      od.pEvents is then released -- releasing the events first was a 0xC0000005 crash there.
+//
+// THE RATE CONVERSION IS EXACT, NOT A RESAMPLE.  The ring carries the contract of 16 kHz MONO
+// PCM16 (audio_contract.h) and the encoder is handed 48 kHz STEREO, because the AAC MFT REFUSES
+// 16 kHz mono at SetInputType (measured in that probe: hr=0xC00D36B4 MF_E_INVALIDMEDIATYPE, and
+// the winning input type ri is 48 k / 2 ch / 16-bit).  48 kHz is exactly 3 x 16 kHz, so each mono
+// frame becomes THREE stereo frames, every one of them carrying that value on both channels.  No
+// interpolation, no filter, no resampler error, and NO change of speed or pitch: the repetition
+// count is the entire conversion, and it is what makes the trak as long as the picture.  Written
+// down so nobody has to take it on faith, and so the next reader can re-check the 3 against the
+// constants.
+//
+// THE OUTPUT IS RAW AAC WITH NO ADTS SYNC, which is what an mp4 trak wants: the ASC rides in the
+// esds box the muxer already builds.  A frame that arrived WITH a sync word would put garbage in
+// the clip, so that case is counted and reported, not ignored.
+class AacEncoder {
+public:
+    // 48 kHz in AAC frames is the encoder domain; 16 kHz mono frames is the contract domain.
+    static const UINT32 kRate48      = 48000;
+    static const UINT32 kBlock       = 1024;    // AAC frames per block
+    static const UINT32 kOutBufBytes = 16000;   // arm A1 measured 683 bytes per block
+
+    // AAC AudioSpecificConfig for AOT=2 (LC), 48000 Hz, stereo: samplingFrequencyIndex 3
+    // (96000) in the top 4 bits, channelConfiguration 2 in the bottom 4, one pad bit.
+    static void audio_specific_config(std::vector<uint8_t>* asc)
+    {
+        asc->clear();
+        asc->push_back(0x11);
+        asc->push_back(0x90);
+    }
+
+    AacEncoder() {}
+
+    ~AacEncoder() { close(); }
+
+    bool is_open() const { return mft_ != nullptr; }
+
+    // NUMBERS, not adjectives: contract frames in, the exact number of them that were silence
+    // padding the final block, raw AAC frames out, the rare ADTS case, the byte total, and the
+    // one-line reason this route did or did not ship.  The receipt quotes all of them.
+    uint32_t mono_frames_in() const { return mono_frames_in_; }
+    uint32_t mono_pad_frames() const { return mono_pad_frames_; }
+    uint32_t aac_frames() const { return aac_frames_; }
+    uint32_t adts_frames() const { return adts_frames_; }
+    uint64_t out_bytes() const { return out_bytes_; }
+    const std::string& last_error() const { return last_err_; }
+
+    // WHY NOT AAC, in one line, for the run log and the receipt.  Empty on success.
+    bool open(std::string* why_not)
+    {
+        if (mft_) return true;
+        auto rel = [](IUnknown* p) { if (p) p->Release(); };
+        auto hx  = [](HRESULT hr) { char b[24];
+                                      snprintf(b, sizeof(b), "0x%08lX", (unsigned long)hr);
+                                      return std::string(b); };
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        com_ours_ = (hr == S_OK || hr == S_FALSE);
+        if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+            *why_not = "CoInitializeEx failed " + hx(hr);
+            return false;
+        }
+        hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        if (FAILED(hr)) { *why_not = "MFStartup failed " + hx(hr); return false; }
+        mf_ours_ = true;
+
+        IMFMediaType* tin = nullptr;
+        if (FAILED(MFCreateMediaType(&tin)) || !tin) {
+            *why_not = "MFCreateMediaType (input) failed " + hx(hr);
+            return false;
+        }
+        tin->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        tin->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+        tin->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+        tin->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kRate48);
+        tin->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2);
+        tin->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 4);
+        tin->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kRate48 * 4);
+
+        IMFMediaType* tout = nullptr;
+        if (FAILED(MFCreateMediaType(&tout)) || !tout) {
+            rel(tin);
+            *why_not = "MFCreateMediaType (aac) failed " + hx(hr);
+            return false;
+        }
+        tout->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        tout->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
+        tout->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kRate48);
+        tout->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2);
+        tout->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+        tout->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
+        tout->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 16000);
+
+        MFT_REGISTER_TYPE_INFO ri, ro;
+        ZeroMemory(&ri, sizeof(ri));
+        ZeroMemory(&ro, sizeof(ro));
+        tin->GetGUID(MF_MT_MAJOR_TYPE, &ri.guidMajorType);
+        tin->GetGUID(MF_MT_SUBTYPE, &ri.guidSubtype);
+        tout->GetGUID(MF_MT_MAJOR_TYPE, &ro.guidMajorType);
+        tout->GetGUID(MF_MT_SUBTYPE, &ro.guidSubtype);
+
+        IMFActivate** acts = nullptr;
+        UINT32 n = 0;
+        hr = MFTEnumEx(MFT_CATEGORY_AUDIO_ENCODER, MFT_ENUM_FLAG_ALL, &ri, &ro, &acts, &n);
+        rel(tin);
+        rel(tout);
+        if (FAILED(hr) || n == 0 || !acts) {
+            *why_not = "no AAC encoder MFT is registered on this host (MFTEnumEx) " + hx(hr);
+            return false;
+        }
+        IMFTransform* mft = nullptr;
+        hr = acts[0]->ActivateObject(IID_IMFTransform, (void**)&mft);
+        for (UINT32 i = 0; i < n; ++i) acts[i]->Release();
+        CoTaskMemFree(acts);
+        if (FAILED(hr) || !mft) {
+            *why_not = "the AAC encoder MFT could not be activated " + hx(hr);
+            return false;
+        }
+
+        // The measured ORDER of the type pair, and the measured field values.  The media types
+        // are rebuilt here on purpose: ORDER is the detail that must not drift, and this call
+        // pair is green on this box in the probe exactly as written.
+        IMFMediaType* ti = nullptr;
+        IMFMediaType* to = nullptr;
+        MFCreateMediaType(&ti);
+        MFCreateMediaType(&to);
+        if (!ti || !to) {
+            mft->Release();
+            if (ti) ti->Release();
+            if (to) to->Release();
+            *why_not = "the type pair could not be built after the encoder was found";
+            return false;
+        }
+        ti->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        ti->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+        ti->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+        ti->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kRate48);
+        ti->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2);
+        ti->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 4);
+        ti->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kRate48 * 4);
+        to->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        to->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
+        to->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kRate48);
+        to->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2);
+        to->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+        to->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
+        to->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 16000);
+        HRESULT ho = mft->SetOutputType(0, to, 0);   // detail 1: OUTPUT first,
+        HRESULT hi = mft->SetInputType(0, ti, 0);    //            INPUT second
+        rel(ti);
+        rel(to);
+        if (FAILED(ho) || FAILED(hi)) {
+            mft->Release();
+            *why_not = "the encoder refused the type pair (48k stereo PCM -> AAC) " +
+                       hx(ho) + " / " + hx(hi);
+            return false;
+        }
+        hr = mft->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
+        if (FAILED(hr)) {
+            // Arm A5 produced bytes WITHOUT this message, so it is a warning and not a refusal:
+            // a message the encoder does not want must not take the whole audio route down.
+            log_line("  AUDIO ROUTE: NOTIFY_BEGIN_STREAMING was refused (%s); proceeding",
+                     hx(hr).c_str());
+        }
+        mft_ = mft;
+        log_line("  AUDIO ROUTE: aac -- windows media foundation AAC encoder, 48 kHz stereo, "
+                 "%u-frame blocks, raw AAC with the ASC (11 90) in the esds box", kBlock);
+        return true;
+    }
+
+    void close()
+    {
+        if (mft_) {
+            mft_->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
+            mft_->Release();
+            mft_ = nullptr;
+        }
+        if (mf_ours_) { MFShutdown(); mf_ours_ = false; }
+        if (com_ours_) { CoUninitialize(); com_ours_ = false; }
+    }
+
+    // 16 kHz MONO PCM16 in, raw AAC frames appended in order.  A false return carries last_error().
+    bool encode_all(const std::vector<int16_t>& mono,
+                    std::vector<std::vector<uint8_t>>* frames)
+    {
+        last_err_.clear();
+        if (!mft_) { last_err_ = "AAC route: the encoder is not open"; return false; }
+        if (mono.empty()) return true;   // the caller supplies the silence if there is none
+
+        // 16 kHz MONO in, 48 kHz STEREO out is EXACTLY THREE stereo frames per contract frame:
+        // the value is written three times, left = right, with no interpolation and no filter, so
+        // the only quality claim is that repetition count -- and it is what keeps the trak as long
+        // as the picture.  A block is 1024 STEREO frames, so it carries 341 1/3 contract frames and
+        // the trailing block is short by less than one of them.
+        const size_t slots = (size_t)kBlock * 2u;   // 1024 frames x 2 channels, in int16
+        std::vector<int16_t> blk(slots, 0);
+        uint32_t blk_frames = 0;                    // STEREO frames filled in THIS block
+        for (size_t i = 0; i < mono.size(); ++i) {
+            const int16_t v = mono[i];
+            for (int rep = 0; rep < 3; ++rep) {
+                const size_t j = (size_t)blk_frames * 2u;
+                blk[j]     = v;   // left  = the contract sample,
+                blk[j + 1] = v;   // right = the SAME value, three times
+                ++blk_frames;
+                if (blk_frames == kBlock) {
+                    if (!feed_block(blk.data(), frames)) return false;
+                    blk_frames = 0;
+                    std::fill(blk.begin(), blk.end(), 0);
+                }
+            }
+        }
+        if (blk_frames) {
+            // The partial block is already zero past what was filled, so the encoder sees
+            // (used frames + zeros) and the LENGTH of that padding is a counted number rather
+            // than something the caller has to infer from the file.  It is rounded UP because a
+            // whole contract frame is the unit the log promises, and 1024 is not a multiple of 3,
+            // so a trailing block is short by at most one contract frame.
+            mono_pad_frames_ += (kBlock - blk_frames + 2u) / 3u;
+            if (!feed_block(blk.data(), frames)) return false;
+        }
+        // Everything fed is not yet in `frames`: the MFT answers some feeds with
+        // NEED_MORE_INPUT and only produces on the drain.  Collect that before returning, or the
+        // trak is silently short by a block or two (21.3 ms each) and the gate measures it.
+        if (!drain_frames(frames)) return false;
+        mono_frames_in_ += (uint32_t)mono.size();
+        return true;
+    }
+
+private:
+    bool feed_block(const int16_t* blk, std::vector<std::vector<uint8_t>>* frames)
+    {
+        auto hx = [](HRESULT hr) { char b[24];
+                                      snprintf(b, sizeof(b), "0x%08lX", (unsigned long)hr);
+                                      return std::string(b); };
+        const DWORD bytes = (DWORD)(slots_kBlock() * sizeof(int16_t));
+        IMFMediaBuffer* inbuf = nullptr;
+        if (FAILED(MFCreateMemoryBuffer(bytes, &inbuf)) || !inbuf) {
+            last_err_ = "AAC route: MFCreateMemoryBuffer (input) failed";
+            return false;
+        }
+        BYTE* p = nullptr;
+        DWORD dummy = 0;
+        inbuf->Lock(&p, &dummy, &dummy);
+        if (p) std::copy(blk, blk + (long)slots_kBlock(), (int16_t*)p);
+        inbuf->Unlock();
+        inbuf->SetCurrentLength(bytes);
+        IMFSample* s = nullptr;
+        if (FAILED(MFCreateSample(&s)) || !s) {
+            inbuf->Release();
+            last_err_ = "AAC route: MFCreateSample (input) failed";
+            return false;
+        }
+        s->AddBuffer(inbuf);
+        inbuf->Release();
+        const LONGLONG dur = (LONGLONG)kBlock * 10000000LL / kRate48;   // 100 ns units
+        s->SetSampleTime(next_time_100ns_);
+        s->SetSampleDuration(dur);
+        next_time_100ns_ += dur;
+        HRESULT hr = mft_->ProcessInput(0, s, 0);
+        s->Release();
+        if (FAILED(hr)) {
+            last_err_ = "AAC route: ProcessInput refused a block " + hx(hr);
+            return false;
+        }
+
+        // The answer to that ProcessInput is decoded in ONE place, so the feed path and the
+        // drain path below cannot disagree about what a ProcessOutput result means.
+        return pump_output(frames);
+    }
+
+    // Pull whatever the encoder has: a FRESH sample and buffer for EVERY ProcessOutput (detail 2),
+    // the bytes read out of od.pSample BEFORE the caller sample is released, and pEvents released
+    // after (detail 3).  NEED_MORE_INPUT is a perfectly good answer: it just means there is
+    // nothing to take yet, which is why it is true and not an error.
+    bool pump_output(std::vector<std::vector<uint8_t>>* frames)
+    {
+        auto hx  = [](HRESULT hr) { char b[24];
+                                      snprintf(b, sizeof(b), "0x%08lX", (unsigned long)hr);
+                                      return std::string(b); };
+        IMFSample* os = nullptr;
+        IMFMediaBuffer* ob = nullptr;
+        if (FAILED(MFCreateSample(&os)) || !os) {
+            last_err_ = "AAC route: MFCreateSample (output) failed";
+            return false;
+        }
+        if (FAILED(MFCreateMemoryBuffer(kOutBufBytes, &ob)) || !ob) {
+            os->Release();
+            last_err_ = "AAC route: MFCreateMemoryBuffer (output) failed";
+            return false;
+        }
+        os->AddBuffer(ob);
+        ob->Release();
+        MFT_OUTPUT_DATA_BUFFER od;
+        ZeroMemory(&od, sizeof(od));
+        od.dwStreamID = 0;
+        od.pSample   = os;
+        DWORD status = 0;
+        HRESULT h = mft_->ProcessOutput(0, 1, &od, &status);
+        if (h == MF_E_TRANSFORM_NEED_MORE_INPUT) {
+            os->Release();
+            if (od.pEvents) od.pEvents->Release();
+            return true;
+        }
+        if (h == MF_E_TRANSFORM_STREAM_CHANGE) {
+            // No measured arm needed this; the encoder kept producing without it.  Carry on.
+            log_line("  AUDIO ROUTE: the AAC encoder asked for MF_E_TRANSFORM_STREAM_CHANGE; "
+                     "continuing");
+            os->Release();
+            if (od.pEvents) od.pEvents->Release();
+            return true;
+        }
+        if (FAILED(h)) {
+            os->Release();
+            if (od.pEvents) { od.pEvents->Release(); od.pEvents = nullptr; }
+            last_err_ = "AAC route: ProcessOutput refused the output sample " + hx(h);
+            return false;
+        }
+
+        // Detail 3: READ pSample BEFORE releasing the sample, and release pEvents after.
+        IMFSample* got_s = od.pSample;
+        if (got_s) {
+            IMFMediaBuffer* mb = nullptr;
+            if (SUCCEEDED(got_s->GetBufferByIndex(0, &mb)) && mb) {
+                BYTE* q = nullptr;
+                DWORD maxl = 0, curl = 0;
+                if (SUCCEEDED(mb->Lock(&q, &maxl, &curl)) && q && curl) {
+                    if (curl >= 2 && q[0] == (BYTE)0xFF && (q[1] & (BYTE)0xF0) == (BYTE)0xF0)
+                        ++adts_frames_;   // must be 0: a sync word in an mp4 trak is garbage
+                    frames->push_back(std::vector<uint8_t>(q, q + curl));
+                    out_bytes_ += curl;
+                    ++aac_frames_;
+                }
+                mb->Unlock();
+                mb->Release();
+            }
+        }
+        os->Release();
+        if (od.pEvents) od.pEvents->Release();
+        return true;
+    }
+
+    // COMMAND_DRAIN, then keep pulling until the encoder has nothing left.  The MFT holds its last
+    // one or two blocks back -- every feed that was answered NEED_MORE_INPUT is a block that will
+    // only appear after the drain -- and a trak that stops one block early is 1024/48000 = 21.3 ms
+    // short of the picture.  That is the exact skew the gate measures, on the side where the sound
+    // stops BEFORE the picture does, which is the audible half.
+    bool drain_frames(std::vector<std::vector<uint8_t>>* frames)
+    {
+        if (!mft_) { last_err_ = "AAC route: the encoder is not open"; return false; }
+        HRESULT hr = mft_->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
+        if (FAILED(hr)) {
+            // A drain the encoder refuses must not take the audio route down: the blocks already
+            // collected are real audio, so this is counted and reported, and the run goes on with
+            // a trak that is short by whatever was being held.
+            log_line("  AUDIO ROUTE: the AAC encoder refused COMMAND_DRAIN (0x%08lX); the trak "
+                     "is short by whatever it was holding back", (unsigned long)hr);
+            return true;
+        }
+        for (int guard = 0; guard < 8; ++guard) {
+            const uint32_t before = aac_frames_;
+            if (!pump_output(frames)) return false;
+            if (aac_frames_ == before) break;   // nothing came back: the encoder is empty
+        }
+        return true;
+    }
+
+    // One place for the block size in int16 slots: kBlock frames x 2 channels.
+    static size_t slots_kBlock() { return (size_t)kBlock * 2u; }
+
+    IMFTransform* mft_ = nullptr;
+    bool           mf_ours_ = false;    // only the thing that started MF shuts it down
+    bool           com_ours_ = false;
+    uint32_t mono_frames_in_ = 0;
+    uint32_t mono_pad_frames_ = 0;
+    uint32_t aac_frames_ = 0;
+    uint32_t adts_frames_ = 0;
+    uint64_t out_bytes_ = 0;
+    LONGLONG next_time_100ns_ = 0;
+    std::string last_err_;
+};
+
 bool Replay::perform_cut_body(CutResult& r, const WindowPlan* plan)
 {
     const uint64_t t0 = qpc_now_ns();
@@ -724,6 +1132,103 @@ bool Replay::perform_cut_body(CutResult& r, const WindowPlan* plan)
              (double)dur * 1000.0 / (double)ts_meas, (double)n_frames * (double)dur / (double)ts_meas,
              (double)span_ns / 1e9);
 
+
+    // ---- THE SOUND OF THE CLIP ----------------------------------------------------
+    // audio_ring_ == nullptr means THIS CUT IS THE PRE-AUDIO, VIDEO-ONLY SHAPE: nothing below
+    // runs, no audio trak is written, and the file is the old clip exactly.  An attached ring
+    // means the last N seconds of 16 kHz MONO PCM16 (the ASR contract) travel in, stamped with the
+    // SAME QPC clock the video ring is stamped with, so the sound and the picture line up on one
+    // clock instead of on hope.
+    std::vector<int16_t> win;         // the window, 16 kHz mono, oldest first
+    uint64_t win_first_qpc_ns = 0;    // the QPC of win[0]
+    uint64_t win_silence_frames = 0;  // EXACT-ZERO samples in the window, not an energy guess
+    bool     win_clamped = false;     // the ring was asked for time it no longer holds
+    bool     audio_route_aac = false;
+    std::string audio_why_not = "the AAC route was not attempted";   // why PCM, when it was
+    AacEncoder aac;                    // only built when the route is wanted
+    if (audio_ring_) {
+        // The target is the clip's OWN container duration in nanoseconds: the sound must last
+        // exactly as long as the picture, and the gate measures the two to within 50 ms.
+        const double video_seconds_target = (double)n_frames * (double)dur / (double)ts_meas;
+        const uint64_t a0 = base.qpc_ns;
+        const uint64_t a1 = base.qpc_ns + (uint64_t)(video_seconds_target * 1e9);
+        std::string aerr;
+        if (!audio_ring_->copy_window(a0, a1, &win, &win_first_qpc_ns, &win_silence_frames,
+                                      &win_clamped, &aerr)) {
+            // LOUD: the tap is armed, the ring holds nothing for this window, and a trak of pure
+            // silence would be a recording that lies.  Nothing is written yet, so the clip that
+            // never appears is a better answer than the one it would tell.
+            log_line("  AUDIO ROUTE: REFUSED - %s", aerr.c_str());
+            r.note += " | audio window: " + aerr;
+            return false;
+        }
+        const uint64_t want_frames = (uint64_t)(video_seconds_target * 16000.0 + 0.5);
+        if (want_frames && win_silence_frames * 2 > want_frames) {
+            // More than half digital silence in the window is a BROKEN RECORDING, not a clip.
+            // On this host that is the normal answer when nothing is routed to the tap (see the
+            // routing law: a loopback with nothing playing reads exact zeros, and that is CORRECT).
+            char b[300];
+            snprintf(b, sizeof(b),
+                     "the window carries %llu of %llu frames of digital silence; a clip with a "
+                     "silence trak would be a recording that lies",
+                     (unsigned long long)win_silence_frames, (unsigned long long)want_frames);
+            log_line("  AUDIO ROUTE: REFUSED - %s", b);
+            r.note += std::string(" | audio window: ") + b;
+            return false;
+        }
+        // Pad or trim to the picture, and say which one happened and by how much: 50 ms is the
+        // tolerance the gate measures, so a short window is made whole with COUNTED silence at
+        // the end rather than stretched from the middle.
+        if (win.size() < want_frames) {
+            const uint64_t pad = want_frames - (uint64_t)win.size();
+            win.resize((size_t)want_frames, 0);
+            log_line("  AUDIO WINDOW: padded %.1f ms of silence at the end (%llu contract frames)",
+                     (double)pad * 1000.0 / 16000.0, (unsigned long long)pad);
+        } else if (win.size() > want_frames) {
+            win.resize((size_t)want_frames);
+        }
+        if (win_clamped)
+            log_line("  AUDIO WINDOW: the ring was asked for time it no longer holds; clamped");
+        log_line("  AUDIO WINDOW: %.3f s of 16 kHz mono PCM16, starting %.3f s before the cut, "
+                 "first_qpc=%llu",
+                 (double)win.size() / 16000.0,
+                 (double)(base.qpc_ns - win_first_qpc_ns) / 1e9,
+                 (unsigned long long)win_first_qpc_ns);
+
+        // ROUTE 1, AAC.  The encoder is opened HERE, before one byte of the file exists, because
+        // the route decides the esds the moov will carry (mp4a + ASC, or sowt) and a route
+        // discovered mid-write produces a file that cannot be finished.
+        if (aac.open(&audio_why_not)) {
+            audio_route_aac = true;
+            mc.audio.enabled = true;
+            mc.audio.pcm = false;
+            mc.audio.sample_rate = 48000;                   // the encoder's rate; the ASR
+            mc.audio.channels = 2;                          // contract of 16 kHz mono lives
+            mc.audio.sample_width = 2;                      // on the tap side of this cut
+            mc.audio.frame_samples = AacEncoder::kBlock;
+            mc.audio.bitrate = 128000;
+            AacEncoder::audio_specific_config(&mc.audio.asc);
+            audio_route_ = "aac";
+            audio_route_note_ = "windows media foundation AAC encoder (48 kHz stereo, raw AAC, "
+                                "ASC 11 90 in esds)";
+        } else {
+            // ROUTE 2, PCM.  The trak is a raw PCM trak and the reason the first route did not
+            // ship is IN the run log and in the receipt, because "AAC failed quietly" is exactly
+            // the kind of sentence this lane was opened to remove.
+            mc.audio.enabled = true;
+            mc.audio.pcm = true;
+            mc.audio.sample_rate = aireplay::audio::kAsrSampleRate;   // 16000, unchanged
+            mc.audio.channels = aireplay::audio::kAsrChannels;        // 1
+            mc.audio.sample_width = aireplay::audio::kAsrSampleWidth; // 2
+            mc.audio.frame_samples = 0;
+            mc.audio.bitrate = 256000;
+            mc.audio.asc.clear();
+            audio_route_ = "pcm";
+            audio_route_note_ = "the AAC route did not ship: " + audio_why_not +
+                                "; the trak is raw 16 kHz mono PCM16 instead";
+            log_line("  AUDIO ROUTE: %s", audio_route_note_.c_str());
+        }
+    }
     // THE ANCHOR, one line above the first byte of the clip.  Spec §2.1 T0: the row is written in
     // its own commit BEFORE the remux, because "a file with no row is invisible forever".  With no
     // sink installed this is a no-op and the cut proceeds exactly as before.
@@ -753,6 +1258,62 @@ bool Replay::perform_cut_body(CutResult& r, const WindowPlan* plan)
         ++samples;
     }
 
+
+    // ---- write the sound, into the SAME muxer and the SAME moov --------------------
+    if (audio_ring_) {
+        // Re-trim to what the video loop ACTUALLY wrote, so a read that broke inside that loop
+        // cannot leave a clip whose sound is longer than its picture.
+        const double v_seconds = (double)samples * (double)dur / (double)ts_meas;
+        const uint64_t want16 = (uint64_t)(v_seconds * 16000.0 + 0.5);
+        if (win.size() > want16) win.resize((size_t)want16);
+        if (audio_route_aac) {
+            std::vector<std::vector<uint8_t>> frames;
+            if (!aac.encode_all(win, &frames) || frames.empty()) {
+                r.note += " | AAC route: " +
+                          (aac.last_error().empty() ? "the encoder produced no frames"
+                                                       : aac.last_error());
+                return false;
+            }
+            for (size_t i = 0; i < frames.size(); ++i) {
+                // 1024 samples per AAC frame, in the audio media timescale the muxer chose
+                // (48000): duration_ticks is AUDIO ticks, never video ticks.
+                if (!mw.write_audio_sample(frames[i].data(), frames[i].size(),
+                                           AacEncoder::kBlock, &err)) {
+                    r.note += " | mp4 write_audio_sample: " + err;
+                    return false;
+                }
+            }
+            audio_frames_ = aac.mono_frames_in();
+            audio_seconds_ = (double)aac.aac_frames() * (double)AacEncoder::kBlock / 48000.0;
+            if (aac.adts_frames())
+                log_line("  AUDIO TRAK: %u AAC block(s) carried an ADTS sync word -- that is "
+                         "garbage inside an mp4 trak and is being REPORTED, not hidden",
+                         aac.adts_frames());
+            log_line("  AUDIO TRAK: aac, %u frame(s), %llu byte(s), %u contract frame(s) in, "
+                     "%u of them zero-padding the final block",
+                     aac.aac_frames(), (unsigned long long)aac.out_bytes(),
+                     aac.mono_frames_in(), aac.mono_pad_frames());
+        } else {
+            // PCM route: the contract shape itself, written in 20 ms chunks so a reader sees
+            // short, evenly sized samples.  duration_ticks is left at 0 and DERIVED from the
+            // length, so the chunk size and the chunk duration cannot disagree.
+            const size_t chunk = (size_t)(aireplay::audio::kAsrSampleRate / 50);   // 20 ms
+            uint64_t written = 0;
+            for (size_t off = 0; off < win.size(); off += chunk) {
+                const size_t n = (win.size() - off < chunk) ? (win.size() - off) : chunk;
+                if (!mw.write_audio_sample((const uint8_t*)(win.data() + off), n * 2u, 0, &err)) {
+                    r.note += " | mp4 write_audio_sample: " + err;
+                    return false;
+                }
+                written += n;
+            }
+            audio_frames_ = written;
+            audio_seconds_ = (double)written / 16000.0;
+            log_line("  AUDIO TRAK: pcm, %llu chunk frame(s) of 16 kHz mono PCM16",
+                     (unsigned long long)written);
+        }
+        audio_skew_ms_ = (audio_seconds_ - v_seconds) * 1000.0;
+    }
     if (!mw.close(&err)) { r.note += " | mp4 close: " + err; return false; }
 
     r.frames_in_clip = samples;
@@ -760,6 +1321,16 @@ bool Replay::perform_cut_body(CutResult& r, const WindowPlan* plan)
     r.bytes = mw.bytes_written();
     r.clip_seconds = (double)(r.cut_qpc_ns - r.base_qpc_ns) / 1e9;
     r.wall_ms = (double)(qpc_now_ns() - t0) / 1e6;
+
+    // ---- the sound's own numbers, next to the video's ------------------------------
+    if (audio_ring_) {
+        log_line("  CLIP SHAPE: %u video sample(s) + %s audio (%s), audio %.3f s, skew %+.1f ms",
+                 (unsigned)samples, audio_route_.c_str(), audio_route_note_.c_str(),
+                 audio_seconds_, audio_skew_ms_);
+        if (audio_skew_ms_ > 50.0 || audio_skew_ms_ < -50.0)
+            log_line("  AUDIO TRAK: WARNING - the audio and video container durations are more "
+                     "than 50 ms apart; the gate measures this and it is outside the tolerance");
+    }
     r.ok = (samples > 0);
     return r.ok;
 }

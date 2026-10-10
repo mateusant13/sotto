@@ -155,7 +155,12 @@ static void usage()
     log_line("  --codec H.264|HEVC|AV1|auto");
     log_line("  --fps N --bitrate BPS      override the mode");
     log_line("  --ring-mb MB --ring-seconds S   override the ring budget");
-    log_line("  --inject-fault none|no-nvenc|tuning-undefined|skip-map");
+    log_line("  --inject-fault none|no-nvenc|tuning-undefined|skip-map|audio-tap-missing|audio-mux-off");
+    log_line("                             the two audio faults are RED CONTROL ARMS: they exist to");
+    log_line("                             prove the audio path fails LOUDLY, and each ALWAYS fails the");
+    log_line("                             run -- 5 = the tap is missing, 6 = another process holds the");
+    log_line("                             endpoint (AUDCLNT_E_DEVICE_IN_USE, 0x8889000A), 7 = the clip");
+    log_line("                             was written with NO audio trak");
     log_line("                             faults exist ONLY for the law-6 negative control");
     log_line("  --monitor                  capture the PRIMARY MONITOR (the owner's real desktop)");
     log_line("  --window-top               put the 4x4 test-window sliver ABOVE the taskbar (visible, "
@@ -394,7 +399,33 @@ struct AudioTapResult {
     sotto::TapCounters counters;
     std::string verdict;
     double      seconds         = 0.0;
+    // Held the endpoint but was REFUSED: AUDCLNT_E_DEVICE_IN_USE.  Its own exit code.
+    bool        device_in_use   = false;
+    // --- THE AUDIO RING (what the CUT heard, which is NOT the same fact as the wav) ---
+    // A wav that filled and a ring that starved are two different claims, so the tap reports on
+    // the ring in the same breath as the file: the clip's audio trak is muxed from the ring.
+    uint64_t    ring_pushes        = 0;   // pull() calls whose PCM reached the ring
+    uint64_t    ring_frames        = 0;   // samples appended (16 kHz mono => 32 B/s of samples)
+    uint64_t    ring_silence       = 0;   // EXACT-ZERO samples in that PCM, not an energy guess
+    uint64_t    ring_first_qpc_ns  = 0;   // the stamp of the first sample that made it
+    uint64_t    ring_last_qpc_ns   = 0;   // the stamp of the newest one
+    double      ring_seconds_held  = 0.0; // seconds_held() at the last successful push
+    std::string ring_note;                // why the ring was NOT filled, when it was not
 };
+
+// AUDCLNT_E_DEVICE_IN_USE is 0x8889000A and it is a DIFFERENT FAILURE from "no such endpoint":
+// another process holds the render endpoint, and on this box the usual holder is the worker, which
+// restarts every 2 s.  Lumping the two together costs the operator the one sentence that tells him
+// what to do, so the busy case gets its own exit code (6).  hresult_str() renders the hrtex as
+// 0x8889000A, so the string carries it; the match is case-insensitive in case a future
+// hresult_str prints uppercase hex.
+static bool looks_like_device_in_use(const std::string& s)
+{
+    std::string lower;
+    lower.reserve(s.size());
+    for (char c : s) lower.push_back((char)((c >= 'A' && c <= 'Z') ? c + 32 : c));
+    return lower.find("0x8889000a") != std::string::npos;
+}
 
 // Opens a loopback tap on a background thread and writes what it carries to a WAV.
 //
@@ -405,10 +436,16 @@ struct AudioTapResult {
 // and then the video capture proceeds untouched.
 class AudioTapPump {
 public:
-    // Returns true when a tap is open and pumping. `res` is valid after join().
-    bool start(const std::string& want_name, const std::string& wav_path, AudioTapResult* res)
+    // Returns true when a tap is open and pumping. `res` is valid after join().  `ring` is
+    // OPTIONAL: when given, every PCM buffer is ALSO stamped and appended to the run's AudioRing,
+    // which is where the cut muxes the clip's audio from.  `fault_no_tap` is the RED control arm:
+    // the tap is not opened at all and the run must then fail loudly.
+    bool start(const std::string& want_name, const std::string& wav_path, AudioTapResult* res,
+               aireplay::AudioRing* ring = nullptr, bool fault_no_tap = false)
     {
         res_ = res;
+        ring_ = ring;
+        fault_no_tap_ = fault_no_tap;
         res_->attempted = true;
         th_ = std::thread(&AudioTapPump::run, this, want_name, wav_path);
         // Block only until the open has been decided, so the caller can log a verdict that
@@ -424,9 +461,26 @@ public:
         if (th_.joinable()) th_.join();
     }
 
+    // RAII, and it is NOT cosmetic: destroying a joinable std::thread calls std::terminate(),
+    // which aborts the process with exit code 3 and NO "EXIT=" line at all.  That is exactly what
+    // the audio-failure arms used to do -- arm_run returns early out of "this run cannot record
+    // sound" (:786, :801) and out of the ring-init failure (:762) WITHOUT calling join(), so the
+    // LOUDEST failure in the program answered as an unexplained 3 and never printed its verdict
+    // line.  Measured 2026-10-10 on runs\red6: exit code 3, log ends at the 0x8889000A sentence.
+    // Every path out of arm_run now joins through here, so the device-in-use answer (6) is the
+    // code the owner actually gets.
+    ~AudioTapPump() { join(); }
+
 private:
     void run(const std::string& want_name, const std::string& wav_path)
     {
+        if (fault_no_tap_) {
+            // The RED control arm: identical printing to the real failure, no endpoint touched.
+            res_->reason = "--inject-fault audio-tap-missing: the tap was NOT opened, by request";
+            res_->verdict = "fault_no_tap";
+            decide();
+            return;
+        }
         std::vector<sotto::Endpoint> eps;
         std::string err;
         if (!sotto::enumerate_endpoints(&eps, 300, &err)) {
@@ -475,10 +529,18 @@ private:
         if (!tap.open(*chosen, 100, &err)) {
             res_->reason = "open failed on '" + chosen->name + "': " + err;
             res_->verdict = "open_failed";
+            res_->device_in_use = looks_like_device_in_use(err);
             decide();
             return;
         }
         res_->opened = true;
+        // THE OPEN IS DECIDED, and start() is blocked on that decision, so decide() must fire
+        // HERE and not only at the end of run(): start() returned only when the open FAILED,
+        // and a successful open blocked the run's main thread forever -- measured 2026-10-09,
+        // the run hung at "AUDIO RING: ATTACHED" for 90 s with no further log line.  That is the
+        // defect the tap has carried since it was written, and it hid on the floor of every
+        // failure arm.
+        decide();
 
         WavSink sink;
         std::string werr;
@@ -493,11 +555,32 @@ private:
         uint64_t pulls = 0, samples = 0;
         while (!stop_.load()) {
             std::string perr;
-            if (tap.pull(&pcm, 200, &perr)) {
+            uint64_t stamp = 0;
+            if (tap.pull(&pcm, 200, &perr, &stamp)) {
                 ++pulls;
                 samples += pcm.size();
                 if (wav_ok && !sink.append(pcm)) {
                     res_->reason = "wav write failed after " + std::to_string(samples) + " samples";
+                }
+                // THE RING, which is what the clip's audio trak is muxed from: the tap's real
+                // output is here, not in the wav.  The stamp MUST be non-zero and MUST be the
+                // qpc clock the video ring stamps f.qpc_ns with -- pushing a zero would make the
+                // ring synthesise the whole window as silence and the cut would read a mute clip
+                // while the wav beside it plays sound.  A driver that supplies no stamp falls
+                // back to the process QPC, which is that same clock.
+                if (ring_ && !pcm.empty()) {
+                    const uint64_t use_stamp = stamp ? stamp : qpc_now_ns();
+                    if (!ring_->push(pcm.data(), (uint32_t)pcm.size(), use_stamp)) {
+                        if (res_->ring_note.empty())
+                            res_->ring_note = "AudioRing::push refused: " + audio_ring_last_err;
+                    } else {
+                        ++res_->ring_pushes;
+                        res_->ring_frames += pcm.size();
+                        for (int16_t v : pcm) if (v == 0) ++res_->ring_silence;
+                        if (!res_->ring_first_qpc_ns) res_->ring_first_qpc_ns = use_stamp;
+                        res_->ring_last_qpc_ns = use_stamp;
+                        res_->ring_seconds_held = ring_->seconds_held();
+                    }
                 }
             }
         }
@@ -525,6 +608,9 @@ private:
 
     std::thread             th_;
     std::atomic<bool>       stop_{false};
+    aireplay::AudioRing*    ring_ = nullptr;   // BORROWED: the run owns the ring, we only fill it
+    bool                    fault_no_tap_ = false;   // the RED control arm
+    std::string             audio_ring_last_err = "the ring was never initialised";
     std::mutex              m_;
     std::condition_variable decided_cv_;
     bool                    decided_ = false;
@@ -649,20 +735,88 @@ static int arm_run(const Options& o)
 
     // AUDIO: the tap is ON for the capture command and runs BESIDE the video capture, on the
     // last thread this process is allowed (the census spends one, the tap pump spends one,
-    // and the tap itself spawns none). Nothing here can fail the run: a host with no render
-    // endpoint, a name that matches nothing, and a refusal to open are all log lines.
+    // and the tap itself spawns none).
+    //
+    // THE DOCTRINE, CHANGED 2026-10-09 (the "DEGRADED -- the video capture continues unchanged"
+    // sentence that used to live here is gone with it): a run that PROMISES a clip with sound
+    // and hands the owner one without it is a recording that lies.  The cut now muxes the tap's
+    // own ring into the clip, so an unusable endpoint is a SETUP FAILURE with its own exit code
+    // -- the same rule the encoder's own failure already follows.  --audio-off is the one way to
+    // record video on purpose, and it says so in the log.
+    //
+    // The RED control arms, both reachable only through --inject-fault and both designed to FAIL:
+    //   audio-tap-missing  the tap is never opened  -> exit 5
+    //   audio-mux-off      the ring is NOT attached, so the clip is written with NO audio trak
+    //                      at all                             -> exit 7, said out loud
+    const bool want_tap = !o.audio_off;
+    const bool no_tap   = (o.fault == "audio-tap-missing");
+    const bool no_mux   = (o.fault == "audio-mux-off");
+
+    // The audio ring is sized for the LONGEST retroactive window this run can be asked for: a
+    // hotkey press cuts the last N seconds, so the ring must hold at least that much, and the
+    // mode's own ring seconds is the floor.  It is committed ONCE, from the measured RAM budget,
+    // and a refused init is a setup failure rather than a ring that is quietly too short.
+    aireplay::AudioRing audio_ring;
+    double ring_want = (double)o.ring_seconds;
+    if (cfg.hotkey_window_s > ring_want) ring_want = cfg.hotkey_window_s;
+    if (ring_want <= 0.0) ring_want = 30.0;
+    const bool attach_ring = want_tap && !no_tap && !no_mux;
+    if (attach_ring) {
+        std::string rerr;
+        if (!audio_ring.init(ring_want, &rerr)) {
+            log_line("=== SETUP FAILURE: the audio ring could not be initialised ===");
+            log_line("  %.1f s at %d Hz mono PCM16 was asked for", ring_want,
+                     (int)sotto::AudioTap::kSampleRate);
+            log_line("  %s", rerr.c_str());
+            census.finish();
+            return 2;
+        }
+        log_line("AUDIO RING: %.1f s requested at %d Hz mono PCM16 = %llu samples = %.2f MB committed",
+                 audio_ring.seconds_requested(), (int)sotto::AudioTap::kSampleRate,
+                 (unsigned long long)audio_ring.capacity_frames(),
+                 (double)audio_ring.capacity_frames() * 2.0 / 1048576.0);
+        log_line("AUDIO RING: the cut reads the same window out of it that it reads out of the"
+                 " video ring, out of the same qpc clock");
+        replay.set_audio_ring(&audio_ring);
+        log_line("AUDIO RING: ATTACHED -- the cut reads the same window out of it that it reads out"
+                 " of the video ring, on the same qpc clock");
+    }
+
     AudioTapResult audio;
     AudioTapPump  tap;
-    if (o.audio_off) {
-        log_line("AUDIO: --audio-off — no loopback tap opened for this run");
-    } else if (!tap.start(o.audio_endpoint, wav_sibling_of(cfg.out_path), &audio)) {
-        log_line("AUDIO: DEGRADED — no tap open; the VIDEO capture continues unchanged");
-        log_line("AUDIO:   endpoints_seen=%u  reason=%s", audio.endpoints_seen,
-                 audio.reason.c_str());
+    if (!want_tap) {
+        log_line("AUDIO: --audio-off -- no loopback tap opened for this run");
+    } else if (no_tap) {
+        log_line("=== AUDIO FAILED: this run cannot record sound (--inject-fault audio-tap-missing) ===");
+        log_line("  The RED arm: the tap was NOT opened, so this run has no audio input at all.");
+        log_line("  It exists to prove that a run which cannot record sound FAILS LOUDLY, and that");
+        log_line("  a clip with no sound is never written: a silent clip is a broken recording,");
+        log_line("  and handing the owner one is worse than handing him nothing.");
+        census.finish();
+        return 5;
+    } else if (!tap.start(o.audio_endpoint, wav_sibling_of(cfg.out_path), &audio,
+                         attach_ring ? &audio_ring : nullptr, false)) {
+        log_line("=== AUDIO FAILED: this run cannot record sound ===");
+        log_line("  The clip that would have come out of this run has no audio in it, and a clip");
+        log_line("  that promises sound and has none is a recording that lies.  So the run stops");
+        log_line("  here -- before the capture starts and before any file exists.");
+        log_line("  VERDICT=%s  endpoints_seen=%u  reason=%s", audio.verdict.c_str(),
+                 audio.endpoints_seen, audio.reason.c_str());
+        if (!audio.endpoint_name.empty())
+            log_line("  the endpoint that refused: NAME=\"%s\"", audio.endpoint_name.c_str());
+        if (audio.device_in_use)
+            log_line("  ANOTHER PROCESS HOLDS that endpoint (AUDCLNT_E_DEVICE_IN_USE, 0x8889000A): the");
+        log_line("  8889000A arm is exit 6 and it is a different answer from every other failure.");
+        census.finish();
+        return audio.device_in_use ? 6 : 5;
     } else {
         log_line("AUDIO: tap OPEN on endpoint NAME=\"%s\"", audio.endpoint_name.c_str());
         log_line("AUDIO:   endpoint_id=%s", audio.endpoint_id.c_str());
         log_line("AUDIO:   wav=%s  (16 kHz mono PCM16, the ASR contract)", audio.wav_path.c_str());
+        log_line("AUDIO:   ring=%s",
+                 attach_ring ? "ATTACHED (the clip's audio trak is muxed from it)"
+                             : "NOT attached (--inject-fault audio-mux-off: the clip is written with"
+                               " NO audio trak and the run answers 7)");
     }
 
     bool ok = replay.run(&err);
@@ -726,9 +880,11 @@ static int arm_run(const Options& o)
     if (o.audio_off) {
         log_line("  off by request (--audio-off)");
     } else if (!audio.opened) {
-        log_line("  NOT CAPTURED — no endpoint opened. The clip below is VIDEO-ONLY, and any");
-        log_line("    searchable memory cut from it has no audio input at all.");
-        log_line("  endpoints_seen=%u  reason=%s", audio.endpoints_seen, audio.reason.c_str());
+        log_line("  NOT CAPTURED -- no endpoint opened.  This run answered 5 (or 6, when another");
+        log_line("    process holds the endpoint) BEFORE any clip was written, so there is no clip");
+        log_line("    to describe and no silent recording was handed to anybody.");
+        log_line("  VERDICT=%s  endpoints_seen=%u  reason=%s", audio.verdict.c_str(),
+                 audio.endpoints_seen, audio.reason.c_str());
     } else {
         log_line("  endpoint NAME=\"%s\"", audio.endpoint_name.c_str());
         log_line("  endpoint_id=%s", audio.endpoint_id.c_str());
@@ -758,6 +914,36 @@ static int arm_run(const Options& o)
         if (!audio.reason.empty()) log_line("  note   : %s", audio.reason.c_str());
     }
     log_line("");
+    log_line("=== AUDIO RING (what the cut had to work with) ===");
+    if (o.audio_off) {
+        log_line("  off by request (--audio-off)");
+    } else if (no_mux) {
+        log_line("  NOT ATTACHED (--inject-fault audio-mux-off) -- the clip was written with no trak");
+    } else if (!audio.ring_pushes) {
+        log_line("  NO SAMPLES REACHED THE RING: %s",
+                 audio.ring_note.empty() ? "the tap delivered no PCM in this run" : audio.ring_note.c_str());
+    } else {
+        const double asr_s = (double)audio.ring_frames / (double)sotto::AudioTap::kSampleRate;
+        log_line("  pushes=%llu  frames=%llu (%.3f s at %d Hz)  exact_zero_samples=%llu (%.3f%%)",
+                 (unsigned long long)audio.ring_pushes, (unsigned long long)audio.ring_frames,
+                 asr_s, (int)sotto::AudioTap::kSampleRate,
+                 (unsigned long long)audio.ring_silence,
+                 audio.ring_frames ? 100.0 * (double)audio.ring_silence / (double)audio.ring_frames
+                                   : 0.0);
+        log_line("  held at the last push: %.1f s of %.1f s requested (capacity %llu samples)",
+                 audio.ring_seconds_held, audio_ring.seconds_requested(),
+                 (unsigned long long)audio_ring.capacity_frames());
+        log_line("  stamps: first=%.3f s  last=%.3f s of the qpc clock the video ring is stamped"
+                 " with (a zero stamp is impossible: the ring would read it as silence)",
+                 (double)audio.ring_first_qpc_ns / 1e9, (double)audio.ring_last_qpc_ns / 1e9);
+    }
+    log_line("");
+    log_line("=== AUDIO TRAK (what the clip actually carries) ===");
+    log_line("  route=%s  (%s)", replay.audio_route().c_str(), replay.audio_route_note().c_str());
+    log_line("  frames_in_clip=%llu  seconds=%.3f  audio_minus_video=%+.1f ms",
+             (unsigned long long)replay.audio_frames_in_clip(),
+             replay.audio_seconds_in_clip(), replay.audio_skew_ms());
+    log_line("");
     log_line("=== CLIP ===");
     log_line("  path=%s ok=%d", c.path.c_str(), c.ok ? 1 : 0);
     if (!c.note.empty()) log_line("  note=%s", c.note.c_str());
@@ -782,6 +968,15 @@ static int arm_run(const Options& o)
 
     replay.shutdown();
     if (!ok) { log_line("  RUN FAILED: %s", err.c_str()); return 2; }
+    if (no_mux) {
+        log_line("=== AUDIO FAULT: the clip was written WITHOUT its audio trak ===");
+        log_line("  --inject-fault audio-mux-off: the tap ran and the wav was written, but the");
+        log_line("  ring was deliberately NOT attached, so the muxer had no audio to write.  The");
+        log_line("  arm exists to prove the muxer does NOT invent a silent, empty trak when audio");
+        log_line("  is missing: the clip carries VIDEO ONLY and the run says so with its code.");
+        log_line("  route=%s  (%s)", replay.audio_route().c_str(), replay.audio_route_note().c_str());
+        return 7;
+    }
     return c.ok ? 0 : 2;
 }
 
