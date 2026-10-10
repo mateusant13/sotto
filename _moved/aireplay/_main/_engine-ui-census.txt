@@ -1,0 +1,68 @@
+2026-10-10 02:53:10  sample=1 tracked=1 visible=0 :: python.exe:39256:h=0:t=
+2026-10-10 02:53:11  sample=2 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:12  sample=3 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:12  sample=4 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:13  sample=5 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:13  sample=6 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:14  sample=7 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:14  sample=8 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:15  sample=9 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:15  sample=10 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:16  sample=11 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:16  sample=12 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:17  sample=13 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:17  sample=14 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:18  sample=15 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:18  sample=16 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:19  sample=17 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:20  sample=18 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:20  sample=19 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:21  sample=20 tracked=3 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t= python.exe:25212:h=0:t=
+2026-10-10 02:53:21  sample=21 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:22  sample=22 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:22  sample=23 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:23  sample=24 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:24  sample=25 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:24  sample=26 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:25  sample=27 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:25  sample=28 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:26  sample=29 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:26  sample=30 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:27  sample=31 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:27  sample=32 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:28  sample=33 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:28  sample=34 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:29  sample=35 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:29  sample=36 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:30  sample=37 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:31  sample=38 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:31  sample=39 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:32  sample=40 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:32  sample=41 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:33  sample=42 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:33  sample=43 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:34  sample=44 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:34  sample=45 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:35  sample=46 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:35  sample=47 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:36  sample=48 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:36  sample=49 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:37  sample=50 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:37  sample=51 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:38  sample=52 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:38  sample=53 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:39  sample=54 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:40  sample=55 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:40  sample=56 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:41  sample=57 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:41  sample=58 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:42  sample=59 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:42  sample=60 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:43  sample=61 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:43  sample=62 tracked=2 visible=0 :: python.exe:39256:h=0:t= python.exe:14120:h=0:t=
+2026-10-10 02:53:44  sample=63 tracked=1 visible=0 :: python.exe:39256:h=0:t=
+2026-10-10 02:53:44  sample=64 tracked=0 visible=0 :: 
+2026-10-10 02:53:45  sample=65 tracked=0 visible=0 :: 
+2026-10-10 02:53:45  sample=66 tracked=0 visible=0 :: 
+2026-10-10 02:53:46  sample=67 tracked=0 visible=0 :: 
+CENSUS-END samples=67

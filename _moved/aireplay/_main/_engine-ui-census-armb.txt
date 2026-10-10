@@ -1,0 +1,13 @@
+ARM-B-only re-run with a concurrent 200 ms window census - stdout record
+command     : py -3.11 H:\sotto-wt\engproc\_moved\aireplay\src\engine\test_engine.py --only B --keep
+census      : powershell -NoProfile -ExecutionPolicy Bypass -File I:\cc-tmp\lane-a-ui-census.ps1 (CREATE_NO_WINDOW)
+gate root   : I:\cc-tmp\engine-gate-40232   ARMS: B  skipped=A,C1,C2,D,E,F,G
+gate verdict: GATE-VERDICT: GREEN   total 35.6s
+verdict row : PASS   ARM-B    green rc=0/0 ui1=5ms ui2=5ms replayed=11(28..39) exact=True cursor=28 ids=63 gaps=[] dupes=0 engring=100/66 live=35 cuts_while_unattended=165 clips=166 files=166 rows=166 orphan=-
+census log  : I:\cc-tmp\lane-a-ui-census.txt  (committed here as _engine-ui-census.txt)
+instrument  : I:\cc-tmp\lane-a-ui-census.ps1  (committed here as _engine-ui-census.ps1)
+CENSUS-END  : samples=67
+census stats: samples=67 withTracked=63 maxTracked=3 visibleSamples=0 window=2026-10-10 02:53:10..2026-10-10 02:53:46 (36 s)
+pid sets    : 43 x [engine 39256, capture 14120]  18 x [engine 39256, capture 14120, ui_child 25212]  4 x [(none)]  2 x [engine 39256]
+pids named  : 39256 engine (BOOT pid=39256), 14120 capture child (capture child pid=14120 ... stub_capture.py), 25212 ui_child (present in samples 3..20 only, gone by sample 21)
+effective   : nominal 200 ms sleep + Win32_Process query -> ~0.54 s per sample; a flash shorter than that is outside this instrument

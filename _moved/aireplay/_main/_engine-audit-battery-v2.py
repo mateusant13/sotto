@@ -53,7 +53,7 @@ LAT = re.compile(r"\bui(?:1|2)?=(\d+)ms")
 def run_gate(log_path, keep):
     """Run the dual-colour gate; its ENTIRE output becomes the battery log."""
     argv = [sys.executable, GATE, "--mutants"] + (["--keep"] if keep else [])
-    print("BATTERY CMD  : python src/engine/test_engine.py %s" % " ".join(argv[3:]))
+    print("BATTERY CMD  : python src/engine/test_engine.py %s" % " ".join(argv[2:]))
     print("BATTERY LOG  : %s" % log_path)
     print("BATTERY START: %s" % time.strftime("%Y-%m-%dT%H:%M:%S"))
     print("")
