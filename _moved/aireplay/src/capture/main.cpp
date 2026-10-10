@@ -999,9 +999,15 @@ bool SourceStream::load(const std::string& path, std::string* err)
         if (vcl) {
             cur_has_vcl = true;
             if (ns.type == 5) cur_idr = true;
-            if (ns.type == 7 && sps.empty()) sps.assign(ns.data, ns.data + ns.size);
-            if (ns.type == 8 && pps.empty()) pps.assign(ns.data, ns.data + ns.size);
         }
+        // SPS/PPS are NOT VCL NALs (type 7 and 8), so this capture must NOT sit inside the
+        // if (vcl) guard: with it there, these two lines were UNREACHABLE on every feed, and
+        // load() refused all of them with "no SPS/PPS: avcC cannot be built".  The offline
+        // muxer path never took this route -- Replay::cut_from_h264 uses extract_sps_pps()
+        // (replay.cpp:248), which has no such guard, so the defect only ever broke the
+        // device-free --cut-session arm that the press-to-clip instrument runs against.
+        if (ns.type == 7 && sps.empty()) sps.assign(ns.data, ns.data + ns.size);
+        if (ns.type == 8 && pps.empty()) pps.assign(ns.data, ns.data + ns.size);
     }
     flush();
     if (aus.empty())          { *err = "no access units"; return false; }
