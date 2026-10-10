@@ -246,3 +246,78 @@ difference between a clip and no clip. **The task before any H1 activation is no
 two WGC binaries under one set of conditions - not to change the machine.**
 **SUPERSEDED 2026-10-10 by AUDIT-FINDINGS F18 - the two binaries ARE reconciled, and not by changing the machine.**
 F18 measured the cause: every executable image under `H:\sotto` carries the `S-1-16-4096` Low mandatory integrity label (explicit at the root, inherited), so such an image spawns a LOW-IL process, and a LOW-IL process cannot create a WGC item for a MEDIUM/HIGH-owned window - which is why `CreateForWindow` on all 4 named targets, `CreateForMonitor` and even the probe own window all return `0x80070005`. Measured both ways on the SAME bytes: 5 of 5 `S_OK` outside `H:\sotto` (`A_wgcunb` 2026-10-09T23:51:58Z, arms E04/E05/E06/E18) and 5 of 5 `0x80070005` inside (`A_product`, E01-E03/E09/E10/E13/E14); the scratch control moved the answer in both directions (remove the label -> `S_OK`, add it -> `0x80070005`); and a junction from `I:\cc-tmp\f13-2\jprod` to the very directory still measured `0x80070005`. **The label follows the FILE OBJECT, not the path string.** So the technical grounds for "UNRECONCILED" are gone, and the do-NOT-re-logon recommendation above now stands on COST ONLY - tearing down the lanes, the wake loop and the audit trail mid-flight. Still UNKNOWN, and owner-relevant: `GraphicsCaptureAccessStatus` was never read, the consent dialog was never seen, and **who set the label is not measured** (recorded as Q3 in `_main/TO-BE-ANSWERED-BY-OWNER.md`). **AND ONE BOUND F18 DOES NOT CLAIM: no frame was ever captured - `CreateCaptureSession` / `StartCapture` were out of scope by design, so F18 is a fact about ITEM CREATION only, and a WORKING CAPTURE PATH ON THIS BOX IS STILL UNKNOWN (AUDIT-FINDINGS F18.8, receipt-29 sec.12).**
+
+
+## CORRECTIONS 2026-10-10 - appended on bf845e30, nothing above rewritten
+
+Append-only. Lines 128-186 keep their text, including the sentences this section proves wrong: the
+file's own rule - every count stays where it was written so the order in which things were learned
+stays legible - is applied here too.
+
+### (a) TWO ROWS CITE SHAS THAT DO NOT EXIST
+
+PA: `git rev-parse --verify <sha>^{commit}` in `H:/sotto`. POP: the reviewer cells of the wave-2
+table. WINDOW: 2026-10-10, HEAD `bf845e30`.
+
+| row | cell says | instrument | result |
+|---|---|---|---|
+| L5 engine-process (137) | `47ed989e` (lane working) | `rev-parse --verify` | rc 128, `fatal: Needed a single revision` - NO SUCH COMMIT |
+| L6 specs 05-07 (138) | `6b3ddb1c` (lane working) | `rev-parse --verify` | rc 128, same fatal - NO SUCH COMMIT |
+
+`git grep 47ed989e|6b3ddb1c` over the whole repo returns exactly those TWO matches, so the false
+shas carry no other citation and the repair is bounded.
+
+What is TRUE instead, measured:
+- **L5** - the lane's real content is `faffdd609f9ce63439ced953af59f5711428022c` (parent
+  `0e1b7f5`, the wave base) plus receipt `53c7e122a122a63fd0415feeef8b2758c21ad8f2`; both are
+  LANDED at `bf845e30` as 5 explicit paths.
+- **L6** - the lane's real tip is `40f2cba7301fdef7f4ddd6c17bc728c808e3e253`
+  ("specs: write the 07-engine-process spec for the shipped Python Engine", 2026-10-10), one path
+  `_moved/aireplay/specs/07-engine-process.md`, +496 -16, landed at `1055e7ee`.
+
+Neither row has a reviewer.
+
+### (b) D-GATE-AUDIT: the "does not exist" half is now FALSE
+
+The row opened at 187 says the three `_gate-audit` files are untracked/gitignored and that "the
+commit that was said to hold them does not exist in either repo". They are LANDED in this repo at
+`2f9071c`. The sentence above stays where it is: it was the measurement it was.
+
+### (c) RULE 4 - THE SIXTH COUNT
+
+PA: this table plus `git log` of the landings. POP: 8 wave-2 rows + ODS1 + LANE A. WINDOW:
+2026-10-10, HEAD `bf845e30`.
+
+**5 verdicts READ** (L2 PASS, L4 PASS-WITH-DEFECTS, L15 NO, L17 PASS-WITH-DEFECTS, L18
+PASS-WITH-DEFECTS), **0 reviewers running**, and with NO reviewer row at all: **L5, L6, L7, ODS1
+and LANE A**. Rule 4 is NOT satisfied for those five, no matter how good the receipt (rule 4: 13,
+39). This supersedes the fifth count (176-181) for L5/L6/L7 only; the verdicts of
+L2/L4/L15/L17/L18 stand.
+
+### (k) THE INDEX INCIDENT 2026-10-10 05:50:23Z - RECORDED, WITH ITS RECOVERY MEASUREMENT
+
+The ODS1 landing (tree `7395ebae`, 25 A-paths, all verified) used a scratch index built with
+`GIT_INDEX_FILE` + `read-tree HEAD`. After it the other owner's five staged rows read `MM` ->
+` M`. The landing was correct; the damage was confined to the index. Mechanism UNVERIFIED - prime
+suspect that `read-tree` ran against the REAL index because the env var never reached the spawned
+child's environment.
+
+Recovery, exhaustive. PA: loose objects under `.git/objects` in the staging windows
+(`2026-10-09T22:10:50Z-22:11:30Z` and `2026-10-10T03:09:20-50Z`). POP: 68 loose objects.
+
+| path (worktree file INTACT, never edited by the lane) | normalised content | status |
+|---|---|---|
+| `app/panel/panel.css` 87 673 B | `e5df2ef5d6be...` 85 161 B | ABSENT from the object DB - re-edited 22:49, 38 min after the 22:11 batch |
+| `app/panel/panel.html` 55 727 B | `13f84250c48c61...` 54 716 B | unreachable loose object, recoverable by sha |
+| `app/panel/panel.js` 129 266 B | `2a130324e995fa...` 126 551 B | unreachable loose object, recoverable by sha |
+| `app/panel/theme-switcher.js` 30 537 B | `296e23d8ee84...` 29 782 B | REACHABLE history blob at the same path |
+| `app/webview/sotto_webview.py` 326 796 B | `926d33a7b2ae9...` 320 214 B | unreachable loose object, recoverable by sha |
+
+The size gaps (1 011 / 2 716 / 6 582 / 756 B) equal the line counts exactly, which is pure
+CRLF<->LF: the objects are the SAME content, not an older revision. Nothing foreign entered the
+object DB from any landing this day (same census, checked file by file).
+
+DECISION RECORDED: the recovered blobs are NOT re-staged here. Those five paths are the OTHER
+OWNER's work - files intact, mtimes unchanged - and re-staging a blob I did not see him stage would
+be this lane writing his index. The corruption is disclosed, the recovery path is named (three
+unreachable objects + one reachable history blob), and the index is left to its owner.

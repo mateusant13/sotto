@@ -958,3 +958,110 @@ did - if the answer is not a rebuild, the claim is a reading.**
 **F19.8 RULE 4.** L17 now has its reviewer row: PASS-WITH-DEFECTS, on the landed code. The defects are
 this file's, and they are recorded above rather than deleted from F16.
 
+
+## CORRECTIONS 2026-10-10 - appended after bf845e30, append-only, nothing above rewritten
+
+This section follows the file's own idiom: F19.6 items 1 and 2 correct F16.1 and F16.9 by
+APPENDING, because an audit that edits its own record has no record. The cadence that F16.6/F16.7
+never named is named here.
+
+### (d) THE F16.6/F16.7 NUMBERS HAVE NO SURVIVING LOG
+
+PA: `git grep` for `p50=1,249ms`, `p95=28,542ms`, `aus_waited_for_idr=1005` and the
+"5 of 10" refusal count, plus F16.9's measurement of the report of record itself (13 066 B / 200
+lines, mtime 2026-10-09T23:20:34.686Z, aggregate header `cap-battery-20261009-175104.txt:3-7`
+stamping no script sha). POP: the four F16.7 facts. WINDOW: 2026-10-10, HEAD `bf845e30`.
+
+RESULT: those numbers survive ONLY as the sentences at 624-633. No log behind them is in the tree.
+They may be quoted as "what a run once reported", never as "the state of the instrument".
+
+### (e) F16.8 IS CLOSED, NOT DROPPED - D0 WAS REPAIRED
+
+The defect F16.8 named (the first smoke run printed `VERDICT RED` over exit code 2, the probe's own
+contract's "could not measure a single cut", so an instrument's own failure looked like its
+subject's failure) was repaired in `c72268cc`, which landed
+`_main/_p95-instrument/press-to-clip-probe.ps1` and its `.red.ps1`. PA: the landed probe's bytes
+at 584-589, which now print `VERDICT FAIL`, a `REASON: no cut produced a measurable delta` line,
+a `HALF A (keypress -> cut decision) remains UNKNOWN` line and `exit 2`. The exit code is the
+verdict, and the word now agrees with it. No owner question opens on this and none did then.
+
+### (f) ON THE OLD WORDING - RECORDED WITHOUT A CADENCE
+
+F16.6 (606-618) and F16.7 (620-633) make cadence-free claims: "6 clips, 590 frames, 1 456 669 B,
+largest 354 474 B" and "p95 28 542 ms is 23x the p50". The reviewer's own re-measurement at other
+cadences (F19.5, 917-921: 6 clips, 686 frames, 1 687 907 B, `aus_waited_for_idr=1064` at
+2 600 ms; burst 411 ms giving 1 cut / 4 frames / 14 099 B) shows every total is cadence-set -
+`session_feeder` loops 300 AUs at 16 ms and the cut count is the clock, not the data (line 922).
+So those numbers are not wrong; they are UNNAMED. They cannot be compared to anything and must not
+be quoted as product behaviour. The paragraphs above stay exactly as landed.
+
+### (g) THE AUDIO PEAK/RMS ANOMALY - 3 OF 4 NON-SILENT ARMS, CAUSE UNKNOWN
+
+PA: the L7 gate logs in `I:/cc-tmp/l7-gate/`. POP: every arm that reported a `level` pair.
+WINDOW: the L7 four-colour arm gate, 2026-10-10.
+
+| log | line | arm | peak | rms |
+|---|---|---|---|---|
+| `capture2.out.log` | 65 | GREEN1 | 0.837463 | 0.000000 |
+| `g3-cap.log` | 66 | GREEN3 | 0.871136 | 0.000000 |
+| `r6-cap.log` | 62 | RED6b | 0.000000 | 0.000000 |
+| `r7-cap.log` | 58 | RED7 | 0.428103 | 0.000000 |
+
+Three non-zero peaks against a zero RMS, and one arm where both are zero. A real signal cannot have
+a peak without an RMS, and the pair is emitted by the same report in `audio_tap.cpp`. Mechanism
+UNKNOWN, not guessed; carried as an open instrument defect.
+
+### (h) F13.2 IS RESOLVED - THE CAUSE IS MANDATORY INTEGRITY LEVEL
+
+F13.2 (427-446) recorded the alternative as open: "build-time (manifest / integrity level) or
+run-time (session, input desktop, concurrent capture holder), and this audit has not measured
+which".
+
+PA: ONE merged binary, ONE argv, ONE box, TWO run locations, with `icacls` as the IL instrument -
+`Get-Acl` / `File::GetAccessControl` return the DACL only and so report a false NO-LABEL (its
+pt-BR output renders as mojibake, `Rotulo Obrigatorio\Nivel Obrigatorio Baixo:(I)(NW)`, so any IL
+probe must also be validated against a known-LOW control). POP: the same executable run from
+`H:/sotto` and from `H:/sotto-wt/audioclip/_merged-gate/`. WINDOW: 2026-10-10.
+
+- under `H:/sotto` (LOW, `S-1-16-4096`): `CreateForWindow failed 0x80070005`, EXIT=2, 0 frames,
+  wall 1 682 ms.
+- under `H:/sotto-wt/audioclip/_merged-gate/` (NO label => MEDIUM): EXIT=0, full capture.
+
+CONSEQUENCE FOR EVERY FUTURE CAPTURE GATE: run the binary from a MEDIUM-IL path, never from under
+`H:/sotto`.
+
+Any earlier sentence in this file type that said the low-IL premise "was refuted" was an artifact of
+that broken DACL-only instrument: it could not see the mandatory label at all, so it reported
+NO-LABEL for a path that is LOW. Carried with it, unchanged: the stale comment at
+`src/capture/main.cpp:183-184` ("WGC refuses every capture item on this host") is false in the
+merged binary at HEAD, and it is left to the lane that owns that file.
+
+### (i) THE F13.2 CENSUS LINE NAMES A DEAD LANE TIP
+
+Line 229 records `engproc  feat/engine-process  @0e1b7f5 ahead=1  dirty=0   (10 files +3289,
+engine/)`. `0e1b7f5b2806a48a92dcfbe3841cd01f812652c6` exists (LANE A's first commit, parent
+`399bc851`) but it is no longer the lane's tip. PA: `git diff --numstat 0e1b7f5 faffdd609`.
+RESULT: `src/engine/engine.py` +340 -12, `src/engine/test_engine.py` +311 -30,
+`src/engine/ui_child.py` +184 -77, and three `_engine-audit-battery-v2*` instruments +354. The
+spec-07 text written against `0e1b7f5` describes an engine that has since grown by 340 added lines
+of shipped behaviour.
+
+### (j) ODS1 / ARM B - A CONTRADICTION CARRIED AS UNKNOWN, WITH ITS POPULATION
+
+PA: `_main/_lease-audit/armA-report.md` and `armB-report.md`, both landed in ODS1 (tree
+`7395ebae7f0e5f84ef3ca4c008a131f492f55b4d`). POP: `H:/sotto/_moved/aireplay/_main/_lane22-run`
+(99 `clip.mp4`, 98 `key.json`, 0 `.db`). WINDOW: 2026-10-10, 10 runs - rc=1 in all of them,
+which is the instrument's own contract.
+
+The contradiction, stated without resolving it: Arm B counts 95/95 keys self-contradictory
+(`usable_keys 95, violators 95, tolerance_ms 1`) and 99/99 clips carrying neither `ftyp` nor
+`moov` (`.terminal R-NO-MOOV 98 / R-NO-FTYP 1`), so every clip has no duration. C01 overlaps 621
+clips in one store; the duration histogram is
+`{1000:7, 1001:1, 1002:1, 1003:1, 1004:1, 1005:1, 30000:83}`; per-store C01 spans 200.045 s to
+82 800.275 s (`armB-report.md:53-64`); `armB-report.md:150` itself writes
+`sobreposicoes de 3600 s a 82800 s em 9 de 10 stores: UNKNOWN`. Verdicts: `committed 95`,
+`partial-uncommitted 4`, and the 4 clips without a usable key ARE exactly the 4 partial-uncommitted -
+cause UNKNOWN. Controls outside the population refused 0.
+
+It is UNKNOWN whether these are two correct instruments reading two different populations, or one
+wrong predicate. No resolution is asserted here.
