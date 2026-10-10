@@ -124,3 +124,85 @@ Two things to keep honest about:
   read for this turn. Do not quote 3 m 08 s as "the wake arrives in 3 minutes".
 - The receiving agent's report is its own; I have not independently verified its claim of
   "14 subagents" with my own `task_query` for ITS session.
+
+## Wave 2 (2026-10-09) - the ShadowPlay-clone lanes, rule 4 applied up front
+
+A second wave of lanes works in dedicated worktrees under H:\sotto-wt\*. Every row below is
+OPEN until its reviewer verdict is READ, per rule 4 - a lane report is not a verdict.
+
+| wave-2 lane | owns | reviewer | verdict |
+|---|---|---|---|
+| L2 clip-to-asr | `src/pipeline/clip_to_asr.*` | `fd48ef91` | **READ - REVIEW-VERDICT: PASS** (`_main/receipts/receipt-28-review-L2-clip-to-asr.md`, 21 539 B / 257 lines, gate re-run rc 0, log 11 064 B sha256 `5f2db0e0…`, arms 9 / checks 107 / failed 0). Surviving: 8 of the lane's claims re-measured green; idempotence hash-identical; ARM-B COVERED (ARM-V + ARM-D2 over a real lavfi video-only clip); the gate is not green-but-empty (rename the module and it dies at `test_clip_to_asr.py:63`). Open defects the LANDING does not fix: D-1 MAJOR (receipt-20261009-clipasr.md:187-192 claims the plan `P4-aireplay-clip-to-asr.md` DOES NOT EXIST - it exists, 5 089 B / 142 lines, untracked, and it is the plan that mandates ARM-B and LAW-1 async), D-2 MINOR (video-only clip exits rc 2 instead of 3, clip_to_asr.py:715), D-3 MINOR (RSS printed at test_clip_to_asr.py:981/:1001, asserted nowhere - 798.3 MB is self-reported), D-4 MINOR (gate log gitignored, .gitignore:227 - clone-level verification impossible), D-5 MINOR-doc (P4 §2.1 `channels: []` / `insert_vector()` name a schema that does not exist). |
+| L4 wgc-unblock | `src/capture/wgc_probe*.cpp` | `5e550e7b` | **READ 2026-10-10 - REVIEW-VERDICT: PASS-WITH-DEFECTS** (`_main/receipts/receipt-26-review-L4-wgc-unblock.md`, 22 913 B / 320 lines, untracked, 10 sections). **Confirmed TRUE:** `build.cmd` append-only (1907->4244 B, the old blob a strict prefix, the one deleted byte the trailing-newline marker on `-endlocal`); both build colours reproduce (probe rc=0 / 19 025 ms / 230 samples @25 ms / 0 console-like / 0 new-visible; bare rc=0 / 16 299 ms / 200 samples / 0 / 0); `mediumspawn` fails `WinMain` without `-municode` and links with it; H2/H3 GREEN with all five colours, `hr=0x00000000`, zero `0x80070005`, 331 services, `IsSupported true`; H1 UNTESTABLE with a real method (231 readable tokens, 0 medium-IL donors, rc=3); no visible console proven twice; `wgc_capture.cpp` unmodified (identical blob `52a1d995` at both revs). **FOUR DEFECTS, none of them the premise:** **(a)** registered size `14 470 B / 329 lines` is FALSE - it is **14 150 B / 328 lines** (the 320-byte delta is LF->CRLF: the receipt measured the working copy); **(b)** "0 warnings" is FALSE - one `-Wunused-variable` from real shadowing, `wgc_probe_mediumspawn.cpp:64` vs a local `cands[512]` at `:88` shadowing the static `cands[256]`; **(c)** "1 commit ahead of `feat/build-verify-1`" is a MIS-DESCRIPTION - `rev-list --left-right --count` = **`3 1`**, i.e. 1 ahead and **3 behind**; **(d)** that stale base is a **LIVE BUILD BREAK** - `run_battery.ps1` on this tip drops `"$src\trigger.cpp"` while `main.cpp:627` and `replay.cpp:558-595` still need `Trigger`: measured rc=1 / **21 undefined references** / no exe, vs rc=0 / 783 865 B with the file restored (`431b423` on `feat/build-verify-1` already fixes it, and the product `build.cmd:23` is byte-identical at both revs, so the shipping build is safe). **Requirement before this lane counts as done: rebase/merge `feat/wgc-unblock` onto `feat/build-verify-1`, then correct (a), (b) and the shadowing.** **The lane's premise is now CONTRADICTED by a second instrument** - see the D-H1 correction below and AUDIT-FINDINGS F13.2: `_main/wgc-probe.exe` measured CreateForWindow E_ACCESSDENIED on 5 of 5 targets while this lane's ARM-D RED measured the same call S_OK. The reconciler for that contradiction is `72343ae5`, still running, and writes `receipts/receipt-29-review-wgc-instrument-contradiction.md` - so the contradiction is **OPEN, not closed by this verdict**. |
+| L5 engine-process | `src/engine/**` | `47ed989e` (lane working) / reviewer not dispatched | no reviewer |
+| L6 specs 05-07 | `docs/` specs 05,06,07 | `6b3ddb1c` (lane working) / reviewer not dispatched | no reviewer. The placeholder `REVIEW-SPECS` that used to sit in this row named no agent; the real lane id is recorded instead. |
+| L7 audio-in-clip | `src/capture/{audio_tap,mp4_writer,replay,ring_buffer}.*` | `d8d9c621` (lane working) / reviewer not dispatched | no reviewer. Supporting instrument, FINISHED 2026-10-10: the AAC-encoder MFT probe `c3fb3824` measured **MEASURED-POSITIVE** on this host - the encoder is creatable and functional, 10 audio encoders enumerated with one AAC `{93AF0C51-2275-45D2-A35B-F2BA21CAED00}`, and 4 of 4 rate-matched arms encoded (44100/1ch 3688 B, 44100/2ch 7337 B, 48000/1ch 3722 B, 48000/2ch 7414 B). **NO RESAMPLING NEEDED**, and the encoder emits raw AAC with NO ADTS, so a wrapper must add ADTS or an AudioSpecificConfig. NOT proven there: bytes were counted, not decoded; the WASAPI-to-encoder path and the mp4 mux are unmeasured. |
+| L15 docs lane | `_moved/aireplay/AGENTS.md`, `_main/AUDIT-FINDINGS.md` F13/F15, `_main/TO-BE-ANSWERED-BY-OWNER.md` | `d6853873` (dispatched 2026-10-09, running) | verdict not read yet. Landed as **`a12549d`** (`docs(audit): F15 - the Trigger IS on the build link line; wasapi_audio.cpp is compiled by nothing`), 4 files, 632 insertions. |
+| L17 F16 cut-session fix | `src/capture/main.cpp` (`SourceStream::load`) | `506e63b3` (dispatched 2026-10-10, running) | verdict not read yet. Lane `feat/cut-session-spspps` @ `117600e` (worktree `H:/sotto-wt/fixcut`), landed as **`cacc213`** on `feat/build-verify-1`; the audit text that found it landed as **`a172a95`** (blob `d38879b0`, 49 258 B LF / 49 936 B CRLF). F16's recorded after-fix numbers: sps=23 B, pps=4 B, 6 clips, 590 frames, 1 456 669 B, exit 0 - and its residual RED causes are recorded as UNKNOWN. |
+| L18 p95 press-to-clip | `_main/_p95-instrument/press-to-clip-probe.ps1` | - (instrument, not a product lane) | no reviewer. Its own defect is recorded as AUDIT-FINDINGS F16.8: the FAIL branch prints `VERDICT RED` over exit code 2, which its own contract calls "could not measure". Latency A (keypress to cut decision) stays UNKNOWN while `--hotkey` is off by default. |
+
+Wave-2 count, re-measured 2026-10-10 over the 8 rows above (window: this table, in this file): **2 verdicts READ**
+(L2 PASS, L4 PASS-WITH-DEFECTS), **3 reviewers dispatched and still running** (L6 has none; L15 `d6853873`,
+L17 `506e63b3`), **3 with no reviewer at all** (L5, L7, L18). Nothing in this wave is counted done on a lane
+report - rule 4.
+
+### D-GATE-AUDIT - the read-only gate audit; the "landed" half was FALSE and is corrected below
+`_gate-audit/{gate-verdict-matrix,HONEST-BASELINE,DO-NOT-RUN}.md`, 13 484-17 565 B each (re-measured 2026-10-10:
+gate-verdict-matrix 17 565 B mtime 2026-10-09T23:18:50.203Z, HONEST-BASELINE 13 066 B mtime 2026-10-09T23:20:34.686Z,
+DO-NOT-RUN 13 484 B mtime 2026-10-09T23:30:34.185Z; all pure ASCII). **CORRECTED 2026-10-10, on measurement:** the
+row used to attribute these files to commit `f4ca6691` and to call them "landed, nothing to land". Both halves are
+FALSE. `git cat-file -t f4ca6691` returns `fatal: Not a valid object name f4ca6691` in BOTH the parent and the
+nested repo - so the row's provenance was never a commit. **AND THE IDENTITY OF THAT ID IS MEASURED, so the
+defect is now NAMED rather than merely absent:** `f4ca6691` is the first 8 hex chars of a SUBAGENT id -
+`f4ca6691-20f6-4718-aa5f-13d303894f08`, "Phase G - per-gate aggregate verdicts", own child of this session, INACTIVE.
+It is an agent id, not a git object, and it never was one. So this is not the F16.9 defect class (a real commit that
+lost its home): it is a **category error** - a working session's agent id cited as a commit hash, which then made the
+files that agent wrote look as if they were already landed. **A warning to every reader of this ledger: an 8-hex string
+in this file is not necessarily a commit. Check `cat-file -t` before repeating it, the way rule 2 already says for line
+numbers.** The agent is INACTIVE and not needed to stay continuous; the files are its own product. And the three files are in NO
+commit: `git log --all --oneline -- _moved/aireplay/_main/_gate-audit/` and `ls-files` are both empty, and in the
+nested repo `git status --porcelain` reports `?? _main/_gate-audit/`. They are also **ignored** in the parent by
+`.gitignore:105` (`_moved/aireplay/_main/*/`), verified with `git check-ignore -v`. So the audit DOCUMENT is on disk
+but the three gate files were never landed; what was landed at `a12549d` is the F15 text that corrects them.
+**Refuses to claim** the row's "nothing to land" conclusion: landing the three files is an explicit-path write the
+owner has not been asked about, and the row's measured re-read of the aggregate stands on its own. The honest split re-verified read-only 2026-10-10 against the aggregate it cites:
+`_main/logs/cap-battery-20261009-175104.txt` (150 lines, 14 036 B) carries `:53 items_tried=5
+E_ACCESSDENIED=5`, `:53 IsSupported supported=1`, and `:54-58` five CreateFor* refusals. Four of the
+audit's claims survive re-reading; two were corrected and are recorded in AUDIT-FINDINGS F13 (the
+third NOT MEASURED row is an audio-index gap, not a WGC consequence; `run_battery.ps1:129` DOES carry
+trigger.cpp so the stale-source-list defect is not open). **Verdict, re-stated 2026-10-10: the honest split in the audit's own text stands (four claims survive the re-read,
+two were corrected into AUDIT-FINDINGS F13). The row no longer claims the gate files landed - they are untracked
+and gitignored, and the commit that was said to hold them does not exist in either repo. **The audit text was landed
+at `a12549d`; the three gate files were NOT, and their landing is now an open question for the owner, not a lane
+task.**
+
+### D-LANDING-DRY - the dry run that found the enumeration hazard BEFORE it lost work
+The dry landing of feat/wgc-unblock into feat/build-verify-1 (`GIT_INDEX_FILE` in I:/cc-tmp/landing)
+enumerated from the target tip and produced three ALREADY-LANDED files as DELETED plus one false
+modification - a tree that would have reverted L2's clip-to-asr landing. Re-enumerated from the merge
+base `399bc851`: 5 paths, intersection with target-side changes empty, `build.cmd` identical at base
+and target. **NOTHING WAS LANDED, no ref moved, `for-each-ref --contains` empty, refs unchanged.**
+The rule derived is written into LANDING-PROCEDURE.md §2/§2b and AUDIT-FINDINGS F14. This row is the
+receipt for "the procedure was proven, not assumed".
+
+### D-H1-MEDIUMIL - OPEN, and it needs the OWNER, not a lane
+
+The one hypothesis the wgc lane could not test is a genuine medium-IL capture process. Both routes
+to one are a BOX-WIDE, REBOOTABLE change: set HKLM\...\Policies\System\EnableLUA 0 -> 1 with a
+re-logon, or start the stopped `seclogon` service.
+
+**Measured recommendation: DO NOT DO IT NOW - and 2026-10-10 the stated REASON for that
+recommendation was retired as unproven, so the recommendation is re-stated on a different ground.**
+The old ground was "ARM-D neutralised the hypothesis as the cause (CreateForWindow returns S_OK at
+both colours, so access is not what blocks)". A second instrument now measures the OPPOSITE on this
+box: `_main/wgc-probe.exe` (307 103 B, mtime 2026-10-07T13:09:59Z-03:00), run 2026-10-09T17:51 by
+`src/capture/run_battery.ps1` §3, got `CreateForWindow` = 0x80070005 E_ACCESSDENIED on 5 of 5 targets
+(own window, foreground, desktop, taskbar, primary monitor) with `IsSupported supported=1` and probe
+rc=0, while this lane's ARM-D RED measured the SAME predicate S_OK. Same window class predicate,
+same call order, different binary. The cause of the WGC refusal is therefore **UNRECONCILED**, not
+MEASURED-and-neutralised (AUDIT-FINDINGS F13.2).
+What still stands, and is the reason the recommendation does NOT move: a re-logon would tear down
+every live lane of both waves, the 3-minute wake loop and the audit trail mid-flight. The hypothesis
+stays OPEN-UNTESTABLE and re-opens only if a reconciliation shows the medium-IL path is the
+difference between a clip and no clip. **The task before any H1 activation is now to reconcile the
+two WGC binaries under one set of conditions - not to change the machine.**
