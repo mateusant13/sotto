@@ -10,6 +10,7 @@
 // product's. A gate that cannot say NO is useless, so arm B is a deliberate
 // broken input that MUST fail -- if it passes, this instrument is broken.
 import { mkdtempSync, readdirSync, statSync, existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as barrel from "./index.js";
@@ -29,6 +30,26 @@ function census(label, dir, action, threw) {
     console.log(`GATE_LONGEST_UNIQUE_RUN: ${gate.longestUniqueRun}`);
     console.log(`GATE_SUFFICIENT: ${gate.contentSufficientToCoverClock}`);
   }
+  // SHA-256 IDENTITY, against the SEED this run pushed.
+  //
+  // A NOTE ON MY OWN COMMENT, which was false when written: an earlier revision of this
+  // file carried the comment "byte identity is checked by SHA-256" and contained NO
+  // crypto import and no digest anywhere. The check it described did not exist. That is
+  // the same failure I have been hunting in other documents all session -- a correct
+  // claim attached to a check that was never performed -- and it was in my own code.
+  // Implemented here, not described here.
+  let identity = false;
+  let seedSha = "n/a";
+  let landedSha = "n/a";
+  if (typeof SEED !== "undefined" && SEED && files.includes("0000.mp4")) {
+    const sha = (b) => createHash("sha256").update(b).digest("hex");
+    seedSha = sha(SEED);
+    landedSha = sha(readFileSync(join(dir, "0000.mp4")));
+    identity = seedSha === landedSha;
+  }
+  console.log(`SEED_SHA256: ${seedSha}`);
+  console.log(`LANDED_SHA256: ${landedSha}`);
+  console.log(`BYTE_IDENTICAL_TO_SEED: ${identity}`);
   // THE CORRECTED VERDICT.
   //
   // REVIEW FINDING (independent reviewer, POP=1 lane): the previous form was
@@ -39,13 +60,13 @@ function census(label, dir, action, threw) {
   // 621897 bytes on disk, verdict present, sufficient=true, and my census printed OK
   // and exited 0 with 128 KB of injected garbage in the shipped clip.
   //
-  // Two changes, both falsifiable:
-  //  1. sufficiency is now ASSERTED, not printed. A verdict that says insufficient is a
+  // Two changes, both falsifiable, both now actually implemented:
+  //  1. sufficiency is ASSERTED, not printed. A verdict that says insufficient is a
   //     non-save even when bytes landed.
-  //  2. byte identity is checked by SHA-256 against the seed, so "unmodified" has a
-  //     falsifier that a size match cannot fake.
+  //  2. byte identity is ASSERTED by SHA-256. A fixed-size reservation can match
+  //     TOTAL_BYTES and can never match a digest.
   const sufficient = !!gate && gate.contentSufficientToCoverClock === true;
-  const ok = threw === null && landed && !!gate && sufficient;
+  const ok = threw === null && landed && !!gate && sufficient && identity;
   console.log(`SUFFICIENCY_ASSERTED: ${sufficient}`);
   console.log(`SAVED: ${ok}`);
   return ok;
