@@ -677,3 +677,119 @@ proves only "small things are refused". Recorded as a defect in the RED arm's ge
 no owner question attached; the obvious repair is to size the junk fixture above the 16 MiB
 floor, or to add an explicit ring-capacity override to the one-shot path (none exists today:
 `main.cpp` parses no `--ring` flag).
+
+**F17. THE F15 CENSUS IS REFUTED BY THE REPO'S OWN GATE SCRIPTS: THE F15 REVIEWER RETURNS "NO" ON `a12549d`**
+
+POPULATION: the 15 `.cpp` under `src/capture`; every `.cmd` / `.ps1` / `.py` / `.md` under
+`H:/sotto/_moved/aireplay`, recursive = 843 files (32 `.cmd`, 98 `.ps1`, 331 `.py`, 382 `.md`).
+WINDOW: commit `a12549d` for the build-side facts (`build.cmd`, `main.cpp`); the WORKING TREE for
+the `.ps1` and artefact facts, which the parent repo does not track and which are unchanged;
+reviewer `d6853873-7aed-468d-8a5c-b89412188bb6`, READ-ONLY - no compiler invoked, no lane or probe
+run, no file written under `H:/sotto` or `H:/sotto-wt`, no git write. Measured 2026-10-10.
+
+**F17.1 THE VERDICT.** The F15 documents lane, parent commit `a12549d` (subject: "F15 - the Trigger
+IS on the build link line; wasapi_audio.cpp is compiled by nothing"), was reviewed and returned
+**VERDICT: NO**. Score 4 of 5 claims PASS. Claim 3 - the census and its "compiled by NOTHING" /
+"DEAD SOURCE" wording - is NO, and it is the load-bearing claim: **the commit's own subject line
+is one of the false sentences.** This section does not delete anything F15 asserted; it names the
+five sentences that are FALSE and records what is measured instead.
+
+**F17.2 WHAT SURVIVES THE REVIEW, AND IT IS MOST OF IT.** `build.cmd:23` is 483 characters / 483
+UTF-8 bytes / ASCII-only and carries exactly 12 `.cpp` (main, common, d3d11_ctx, nv12_convert,
+wgc_capture, nvenc_encoder, ring_buffer, mp4_writer, selftest, test_window, **trigger**, replay -
+trigger is the 11th); the compiler is mingw-w64 g++ 15.2.0 (`build.cmd:3`, `GXX` at `:7`);
+`main.cpp` never constructs a Trigger - zero `new Trigger` in the file, and the three code lines
+that name the type are `:627` the declaration, `:629` the two static calls and `:633` the reporting;
+`:627 Trigger* trig = replay.hotkey()` is exact and it is an OBSERVER, because `replay.hotkey()`
+returns a pointer owned by the `Replay` instance; the sole construction anywhere in the tree is
+`replay.cpp:558` `trigger_.reset(new Trigger())` inside `Replay::arm_hotkey()`, reached from `:433`
+only after the law-6 gate at `:407-408` with `gate_passed_ = true` at `:412`; the default is off at
+`main.cpp:140` and reported at `:646`. `audio_tap.cpp` (1 438 LF / 1 439 elements) is folded into
+`main.cpp`'s OWN translation unit at `main.cpp:51`, with `main.cpp:48-49` refusing the double-main
+case on purpose; `trigger_selftest.cpp` is 369 LF / 370 elements with its own `int main(argc, argv)`
+at `:352`; `wasapi_audio.cpp` is 1 058 LF / 1 059 elements and contains no `int main`; 12 + 1 + 2 =
+15. The engineering conclusion **built, unwired, off by default - not "unbuilt"** stands, and so
+do the F15 law and both citations of Claim 5.
+
+**F17.3 THE FIVE SENTENCES THAT ARE FALSE, AND WHAT IS MEASURED INSTEAD.**
+
+  FALSE: "2 are compiled by NOTHING".
+  FALSE: "the census of every `.cmd/.ps1/.py/.md` reference to those two names returns 73 hits, ALL
+         prose - no compile line, no `#include`".
+  FALSE: "`wasapi_audio.cpp` is a DEAD SOURCE: nothing builds it, nothing includes it."
+  FALSE: "THE TWO SOURCES ABSENT FROM THE LINK LINE ARE NOT THE TWO THE OLD SENTENCE NAMED."
+  FALSE: the commit subject, "`wasapi_audio.cpp` is compiled by nothing".
+
+  WHAT IS TRUE INSTEAD:
+
+  (1) `trigger_selftest.cpp` is COMPILED AND LINKED AND IT RAN. `_main/_lane1-trigger-gate.ps1`
+      names it in `$myFiles` at `:45`, appends it to `$all` at `:54`, and invokes `$gxx` with it at
+      `:58-59`; the `BuildSelftest` function is declared at `:50` and called from `:116`, `:128` and
+      `:161`. It was executed, not merely compiled: `_main/build/aireplay-trigger-selftest.exe`
+      846 850 B, mtime 2026-10-07T23:57:59Z, and `_main/build/lane1-trigger-selftest.log` 2 343 B,
+      mtime 2026-10-09T06:18:20Z, whose head carries the selftest's own runtime output
+      "TRIGGER key=F10 vk=0x79 ... registered=yes polled=true" and
+      "TRIGGER arm: 9 key(s), 6 registered, 3 polled-only".
+
+  (2) `wasapi_audio.cpp` is COMPILED TO AN OBJECT AND LINKED. `_main/_lane2-audio-gate.ps1` runs
+      `& $gxx @flags @incs -c "$src\wasapi_audio.cpp" -o $objA @libs` at `:82` and
+      `& $gxx @flags @incs "$src\wasapi_audio.cpp" "$src\common.cpp" $mainCpp -o $exeLive @libs`
+      at `:335`. Artefacts on disk, read-only: `_main/build/wasapi_audio.obj` 117 935 B
+      2026-10-07T15:20:51Z; `_main/build/lane2-gate/wasapi_audio.obj` 118 274 B
+      2026-10-08T00:03:19Z; `_main/build/lane2-audio-probe.exe` 2 047 568 B 2026-10-07T15:39:56Z;
+      `_main/build/lane2-gate/lane2-audio-probe.exe` and the control directory's
+      `lane2-audio-probe-CONTROL.exe`; `_main/build/wasapi_audio.cpp.PRISTINE` 47 739 B. A
+      `.PRISTINE` copy plus a `control\` directory is the shape of a lane that ran BOTH colours.
+      It is not the shape of a dead file.
+
+  (3) THE CENSUS, MEASURED INSTEAD OF ASSERTED. Pattern
+      `wasapi_audio[.]cpp|trigger_selftest[.]cpp` over the 843-file population gives **59 lines /
+      68 occurrences**. By extension: `.cmd` 0 / 0, `.ps1` 8 / 8, `.py` 2 / 2, `.md` 49 / 58. By
+      subtree: `_main` 28 / 32, `receipts` 15 / 19, `research` 8 / 8, `runs` 2 / 2, root 6 / 7. The
+      counts are identical with the control copies included and excluded. "73 hits" appears in no
+      nearby window: the two names at any extension are 132 lines / 147 occurrences; adding
+      `audio_tap.cpp` gives 77 / 87; adding `trigger.cpp` gives 285 / 327. And "none a build line"
+      is FALSE - of the 8 `.ps1` lines, 4 are build machinery and 2 are the compiler command line
+      itself (`:82` compiles, `:335` links). The 2 `.py` lines (`_main/_rv-absent.py:40`,
+      `_main/_rv-cite.py:16`) are indeed prose, and there are 0 `.cmd` lines.
+
+  (4) THREE names are absent from the link line, not two - `audio_tap.cpp` is the third, and it is
+      folded, so the two NON-folded absent names (`trigger_selftest.cpp`, `wasapi_audio.cpp`) ARE
+      the two the old sentence named. The genuinely new facts are that `trigger.cpp` is now ON the
+      line and `audio_tap.cpp` is folded in.
+
+  CORRECTED SENTENCE, offered as the replacement for the five above: *Of the 15 `.cpp`, 12 are on
+  the link line, 1 is folded into `main.cpp`'s own translation unit, and 2 are not on the line -
+  but both of those are compiled elsewhere, `trigger_selftest.cpp` by `_lane1-trigger-gate.ps1`
+  and `wasapi_audio.cpp` by `_lane2-audio-gate.ps1` (compile `:82`, link `:335`). `wasapi_audio.cpp`
+  is OFF THE PRODUCT LINK LINE, which is the defect `receipt-29-agents-truth.md:63` wanted fixed
+  and did not: that receipt prescribed appending BOTH `%SRC%\trigger.cpp` AND
+  `%SRC%\wasapi_audio.cpp`, and only the first landed (parent `399bc85`, nested `1b6f56e`).
+  `wasapi_audio.cpp` is therefore UNWIRED, not dead - and it is no longer claimed to be either.*
+
+**F17.4 TWO NUMBER DEFECTS, NEITHER FATAL TO THE CONCLUSION.** (a) `main.cpp` is asserted as
+"1401 lines" in F15's population line and again in the claim text. Unreproducible in either
+window: 1 400 elements / 1 399 LF with no trailing newline at the commit, 1 406 by
+`Get-Content -Count` and by `System.IO.File.ReadAllLines().Count` in the tree today (the LF+1
+convention gives 1 400, not 1 401). (b) "the only reference" at `:627` is loose - three code
+lines name the type and none of them constructs or deletes an object. Every line number F15 cites
+(`:566`, `:627`, `:646`) is still exact in the working tree.
+
+**F17.5 THE TRANSFERABLE PART, AND THE IRONY IT COST.** F15.5 argues - correctly, and it passes -
+that *absence of a NAME is not evidence of absence of a TRANSLATION UNIT*, citing the six warnings
+in `_main/_gate-audit/HONEST-BASELINE.md:48` which are attributed to a file no compile line names.
+F15.4, three paragraphs above it in the same landed section, commits exactly that error: the
+census of names across `.cmd/.ps1/.py/.md` found no compile line, and a translation unit that
+two `.ps1` gates compile, link, run and keep a control copy of - was pronounced dead. The
+instrument was right about names and wrong about units. The lesson is not "grep harder"; it is
+that a census whose population is the FILES you can name cannot answer for the files you cannot,
+and an artefact on disk with a mtime inside the lane's own run window is louder evidence than any
+absence. Note also that this error was found by a READ-ONLY reviewer that invoked no compiler:
+the `.ps1` text and the build directory were enough, which means it could have been caught before
+`a12549d` landed.
+
+**F17.6 OPEN AFTER THIS REVIEW, AND NOT BY THIS SECTION.** `wasapi_audio.cpp` is still off the
+product link line. This section refuses to decide whether it SHOULD be on it: that is
+`receipt-29-agents-truth.md:63`'s prescription and it is recorded as UNVERIFIED here, not argued.
+No owner question is opened by this section; it records a refuted claim, a corrected sentence and
+an artefact census.
