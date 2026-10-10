@@ -793,3 +793,168 @@ product link line. This section refuses to decide whether it SHOULD be on it: th
 `receipt-29-agents-truth.md:63`'s prescription and it is recorded as UNVERIFIED here, not argued.
 No owner question is opened by this section; it records a refuted claim, a corrected sentence and
 an artefact census.
+**F18. THE WGC CONTRADICTION IS RECONCILED - MEASURED 2026-10-10. THE BOX DOES NOT REFUSE CAPTURE:
+EVERY EXECUTABLE IMAGE UNDER `H:\sotto` CARRIES THE S-1-16-4096 LOW MANDATORY LABEL, AND A
+LOW-IL PROCESS CANNOT CREATE A CAPTURE ITEM.**
+
+Receipt, the only artefact that decides this section:
+`_main/receipts/receipt-29-review-wgc-instrument-contradiction.md` (59 465 B, sha256 `733E50C9...`,
+measured 2026-10-10). It was produced by a read-only lane that honoured `DO-NOT-RUN.md`, invoked no
+battery and no `run_battery.ps1`, created no capture session (`CreateForWindow` / `CreateForMonitor`
+ONLY - zero `CreateCaptureSession` and zero `StartCapture` in either source), built nothing, wrote no
+git ref, and confined its writes to `I:/cc-tmp` and `_main/receipts`. Its own window census, 81 samples
+at a 100 ms cadence, saw 0 consoles.
+
+**F18.1 THE ANSWER, IN THE FORM THE LEDGER ASKED FOR.** DEBT-LEDGER D-H1-MEDIUMIL asks "the cause of
+the WGC refusal is therefore UNRECONCILED, not MEASURED-and-neutralised". It is now MEASURED, and the
+measurement says: **this box does NOT refuse WGC capture.** Instrument B's number, `S_OK = 0x00000000`,
+is the truth of this box.
+
+**F18.2 THE MECHANISM.** Every image under `H:\sotto` carries the `S-1-16-4096` Low mandatory label,
+explicit at the `H:\sotto` root and inherited by everything below it. An image so labelled is launched
+as a **LOW-IL process**, and in a LOW-IL process Windows refuses WGC ITEM CREATION for every target
+owned at MEDIUM/HIGH: `CreateForWindow` on all 4 windows the probe names, `CreateForMonitor`, and the
+process's own window. That is instrument A's 5-of-5 `E_ACCESSDENIED 0x80070005` in full, with no
+access-denied-on-the-display, no OS setting and no box change anywhere in it.
+
+**F18.3 SAME BYTES, TWO POPULATIONS - AND THE LABEL FOLLOWS THE FILE OBJECT, NOT THE PATH.** A's own
+image, byte-identical, run from outside `H:\sotto`: **5 of 5 `S_OK`** (`A_wgcunb` 2026-10-09T23:51:58Z,
+and arms `E04` / `E05` / `E06` / `E18`). The identical image run from inside `H:\sotto`: **5 of 5
+`0x80070005`** (`A_product`, arms `E01`-`E03`, `E09`, `E10`, `E13`, `E14`). The reverse direction was
+measured on the reviewer's own scratch copies only: remove the label -> `S_OK` (`C2`); add it ->
+`0x80070005` (`D2` / `D3`). The decisive single-binary test is `E15`: **B's OWN bytes, run at LOW IL,**
+returned `0x80070005` on every ARM, in a run whose HIGH-IL predecessor on the same bytes returned
+`S_OK`. B's numbers were true of the box, not of the binary; A's were true of the label, not of the
+box. The `E13` junction earned its paragraph: A's own object launched through `I:\cc-tmp\f13-2\jprod`
+- an `I:` path STRING, junctioned to `H:\sotto\_moved\aireplay\_main` - was still denied. The label
+is carried by the FILE OBJECT the linker resolves, not by the text of the path.
+
+**F18.4 RULED OUT BY MEASUREMENT, EACH ONE NAMED.** byte difference, run order, token elevation, the
+embedded manifest, the PE subsystem, the session/desktop, `IsSupported`, and the path string. The
+per-token and per-machine scope of the label was not measured, and neither was MEDIUM IL nor SYSTEM -
+both are named as unknown rather than folded into the answer.
+
+**F18.5 WHAT IS ASSERTED PLAINLY AS NOT KNOWN (this is the honest part of the section).**
+`GraphicsCaptureAccessStatus` is **never read by either instrument** - B's GREEN arm resolved
+`Completed` with `errorCode 0x0` and was THEN denied, so neither probe can report the consent state at
+all. Whether a consent dialog ever appeared was not observed. Who set the label was not established.
+And A's `RequestAccessAsync` claim is ATTRIBUTED to A's own comments; it is not a measurement.
+
+**F18.6 WHAT THIS RETIRES, AND WHAT IT DOES NOT.** It retires D-H1-MEDIUMIL's closing task - "the task
+before any H1 activation is now to reconcile the two WGC binaries under one set of conditions - not to
+change the machine" - because that reconciliation is now done, and it retires the inference that a
+genuine MEDIUM-IL capture process might be required: **a HIGH-IL process from an unlabelled image
+measured `S_OK`**, so medium IL is not on the critical path on the strength of the same numbers that
+convict the label. It does NOT retire the D-H1-MEDIUMIL RECOMMENDATION to leave the machine alone:
+that recommendation now stands on exactly the ground it was already on when the reason fell away - a
+re-logon would tear down every live lane of both waves, the 3-minute wake loop and the audit trail
+mid-flight. Both halves stay in the ledger; neither is rewritten.
+
+**F18.7 THE OPERATIVE CONSEQUENCE, FOR ANY LANE THAT WANTS TO MEASURE WGC.** Instrument A, as built
+and as labelled, cannot measure WGC on this box - not because the box refuses, but because the
+instrument refuses itself. Re-run it from an **unlabelled copy on `I:`** or from `H:\sotto-wt\...`,
+and expect `S_OK`; expect `E_ACCESSDENIED` from anything under `H:\sotto`. This is also the first
+trap in this file that a whole-class of future instruments would otherwise walk into.
+
+**F18.8 AN HONEST BOUND RECEIPT-29 STATES AND THIS SECTION DID NOT: NO FRAME WAS EVER CAPTURED.**
+F18.1 says "this box does NOT refuse WGC capture", and the measured predicate is narrower than that
+sentence reads. Out of scope for the reconciler by its own design, and therefore UNMEASURED:
+`CreateCaptureSession`, `StartCapture`, and anything that opens a GPU encoder, a camera or a microphone.
+Every number in F18 is a number about ITEM CREATION. Receipt-29 sec.12 states it plainly - "whether
+`S_OK` at `CreateForWindow` is sufficient for a working capture path is UNKNOWN from these measurements
+alone" - and labels its own surrogate as a surrogate, not a proof: in every `0x00000000` case both
+instruments print a non-null `item=` COM pointer, in every `0x80070005` case the pointer is exactly
+zero (population: E18 and E07 non-null on all five targets; E01/E02/E03/E06/E09/E10 null). **So read F18
+as "the box does not refuse WGC ITEM CREATION, and the refusal in circulation was the label". A working
+capture path on this box is still UNKNOWN, and no artifact in this repo has yet produced a frame.**
+Two further bounds from the same receipt, both load-bearing for whoever measures next: the label was
+partly MOVED by the reviewer to prove causality - a constructed experiment, symmetrical in both
+directions, mitigated by measuring the original untouched state first (F18.3 already says the reverse
+direction was measured on scratch copies only); and the MEDIUM and SYSTEM IL neighbours were not
+reached at all (no linked token), so every conclusion here is bounded to {LOW: `0x80070005`, HIGH:
+`0x00000000`} on ONE host and ONE elevated admin account (`EnableLUA=0`).
+
+**F19. THE F16 CODE REVIEWER RETURNS PASS-WITH-DEFECTS ON `cacc213` - AND FIVE OF ITS SIX DEFECTS ARE
+THE AUDIT'S OWN NUMBERS, NOT THE SHIPPED CODE.**
+
+Verdict written by the lane dispatched for L17, delivered 2026-10-10 to `I:/cc-tmp/review-f16-code/
+` as `verdict.md` (15 943 B / 279 LF lines, pure ASCII) and `verdict-message.md` (16 747 B / 292 LF
+lines, the delivery copy, which records that its own `send_message` to the parent was REJECTED -
+`ToolCallError: subagent ... is unavailable` - twice, with `list_agents` returning empty for both
+children and descendants. Delivery-by-file instead of delivery-by-message is recorded here as the
+reason this verdict reached the ledger at all).
+
+**F19.1 SUBJECT AND DIFF.** `cacc21338c520d5bba1b01bd73e2ef193dba6acf` = lane commit `117600e` = landing
+`a172a95`. One file, `_moved/aireplay/src/capture/main.cpp`, **8 insertions / 2 deletions.** The hunk is
+`@@ -999,9 +999,15 @@`; the only removals are the pre-fix `:1002-1003` captures, the only additions are a 6-line
+comment and the same two statements at `:1009-1010`. Lines 1-998 are untouched.
+
+**F19.2 THE DEFECT WAS REAL - PROVEN ON THE PRE-FIX BYTES, BY REBUILDING THEM.** The reviewer rebuilt
+blob `92ebab41` (67 213 B / 1 400 LF lines) with g++ 15.2.0 mingw, rc=0, and ran
+`--cut-session --cut-from-h264 cap-small.h264 --cut-fps 60 --cut-size 320x180` with 10 cuts paced
+2 600 ms apart over a stdin PIPE: **exit 2**, stdout 63 B exactly
+`=== CUT SESSION REFUSED: no SPS/PPS: avcC cannot be built ===`, stderr 0 B, **0 clip files.** So the
+two assignments really were dead code, and the refusal message that only a fix could reach really was
+unreachable before it. That is the strongest form this finding can take.
+
+**F19.3 WHY THE BATTERY WAS BLIND - CONFIRMED.** `run_battery.ps1` blob `a84a9030`: `--cut-session` = 0,
+`cut-session` = 0, `--cut-from-h264` = 3. `extract_sps_pts` (`replay.cpp:248-257`) has no vcl guard;
+`ring_seed_from_h264` carries the idiom but captures nothing; the battery's only use of this feed is
+the deliberate ring-floor row at `:327-343`. A 0-count is a claim with a shelf life, and the
+shelf-life here is short.
+
+**F19.4 THE FIX ITSELF, AND WHY IT IS EXACTLY A HOIST.** `ps` (`:995`) and the two-disjunct flush
+(`:996`) are **byte-identical pre and post**, and the hunk starts at `:999` - so any framing that
+presents them as new is false. The reviewer's control over all 305 NALs, on its own `annexb_split`
+replica: with vs without the `ps` disjunct -> **identical** 300 AUs / 2 IDR AUs / sps 23 B / pps 4 B /
+histogram `{1:298,3:1,4:1}`; the disjunct fires exactly once (a mid-stream SPS at NAL 253) and makes
+AU[250] into `[7,8,5]`. AUD type 9 is **UNTESTABLE** on this feed (census of type 9 = 0), so the
+`ps` list carrying it is unexercised rather than wrong. `cur_has_vcl` is still assigned only inside
+`if (vcl)` (post `:1000`) and `cur_idr` at `:1001`; only `sps`/`pps` moved. Non-regression:
+`replay.cpp` blob `88f023ca` is identical at all three revisions, and both binaries on the one-shot arm
+-> exit 2, identical 522 B stdout, `OFFLINE CUT FAILED: ring capacity below 16 MiB`.
+
+**F19.5 AFTER THE FIX, MEASURED BY THE REVIEWER.** Post build sha256-16 `9A4AB2D7F5DBD790`, same arm
+and feed, 10 cuts 2 600 ms apart: **exit 0**, `aus=300 sps=23B pps=4B fps=60`, **6 clips MP4-OK**
+(386 839 / 344 302 / 299 594 / 255 521 / 220 157 / 181 494 B), 5 refusals, and 5 ftyp-only 40 B stubs
+(`bad box 'mdat' size=0 at 32`), with `frames_written=686 bytes_written=1687907 largest=386839
+aus_waited_for_idr=1064`. The same binary at burst cadence (411 ms) gave 1 executed cut / 4 frames /
+14 099 B. **So every total is cadence-set**: `session_feeder` loops 300 AUs at 16 ms and the cut
+count is the clock, not the data.
+
+**F19.6 THE SIX DEFECTS. NONE OF THEM IS IN THE SHIPPED BEHAVIOUR.**
+1. **F16.1 (audit text, ALREADY RECORDED).** F16.1 quotes the pre-fix `main.cpp` as "68 613 B / 1 401
+   lines" - that is the CRLF worktree render; blob `92ebab41` is **67 213 B / 1 400 LF lines**. The
+   file **GROWS** 539 B / 6 lines, it does not shrink 861 B. This is the defect already recorded in
+   ledger row L17 by an earlier measurement (`bad9fd9`); an independent rebuild confirms it.
+   Appended, not rewritten - F16.1 stays as landed and this is its correction.
+2. **F16.9 (audit text, NOT YET RECORDED).** F16.9 quotes `run_battery.ps1` as "28 309 B / 436 lines" -
+   the same CRLF-vs-blob confusion applied to a second file. Blob `a84a9030` is **27 874 B / 435 LF
+   lines.** The pattern, not the accident, is the finding: this file has now miscounted bytes the same
+   way in two different sections, which means the "measure the blob, never the worktree" rule is not
+   yet a habit here.
+3. **THE FRAMING (audit text).** `ps` and the two-disjunct flush are presented as new. They are
+   pre-identical at `:995`/`:996` and the hunk starts at `:999`. The fix IS the hoist - two statements -
+   which is why it is safe, and which is why the 6-line comment that landed with it carries more of
+   the value than the code does.
+4. **A CLAIM THAT WAS NOT A FIXED MEASUREMENT.** "590 frames / 1 456 669 B / largest 354 474 B" belongs
+   to the LANE'S 150 ms cadence. Burst gave 1 / 4 / 14 099; 2 600 ms gave 6 / 686 / 1 687 907. Recorded
+   in L17 as UNRECONCILED, that UNRECONCILED label is now RETIRED in favour of the sharper sentence:
+   **both sides were correct of different cadences, and the audit did not name a cadence.**
+5. **A PRODUCT RESIDUAL, PRE-EXISTING, AND NEW TO THIS FILE.** A cut with no IDR in front of it leaves a
+   40-byte ftyp-only stub (5 of 11 files), with `bad box 'mdat' size=0 at 32`. Cause UNKNOWN, and the
+   lane says so itself. Not fixed, not argued, and not blame for the fix that exposed it.
+6. **AN INSTRUMENT DEFECT, NAMED IN F16.8 AND NOW CONFIRMED.** `press-to-clip-probe.ps1` printed
+   `VERDICT RED` over exit code 2 - its own contract's "could not measure a single cut". An instrument
+   whose own failure is indistinguishable from its subject's failure.
+
+**F19.7 THE TRANSFERABLE PART.** The instrument that decided this section was a REBUILD OF THE PRE-FIX
+BLOB - available to anyone who could name the blob, before the audit section was written, exactly as the
+read-only `.ps1` + build-directory review was available before `a12549d` landed (F17.5). Two of the last
+three errors in this file were caught by an instrument that existed first and was run second. The rule
+that follows is narrower than "measure more": **when a lane claims a defect, ask what the pre-fix bytes
+did - if the answer is not a rebuild, the claim is a reading.**
+
+**F19.8 RULE 4.** L17 now has its reviewer row: PASS-WITH-DEFECTS, on the landed code. The defects are
+this file's, and they are recorded above rather than deleted from F16.
+

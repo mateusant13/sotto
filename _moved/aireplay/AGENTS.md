@@ -397,6 +397,45 @@ and the extra speed is FREE.**
     **AND "NOT ON THE LIST" IS NOT EVIDENCE OF "NOT BUILT"** - that is why the 6 warnings in
     `_main/_gate-audit/HONEST-BASELINE.md:48` name a file no compile line mentions. Absence of a
     NAME is not absence of a translation unit. Audit F15.
+
+    **SUPERSEDED 2026-10-10 - the two sentences above that call `trigger_selftest.cpp` and
+    `wasapi_audio.cpp` "compiled by NOTHING" / "a DEAD SOURCE" are FALSE, and the reviewer who
+    caught them did it with the compiler lines the same paragraph went looking for.** This is a
+    CORRECTION, not a rewrite: the false words above are left standing so the history is legible.
+    POPULATION: every `.cmd`/`.ps1`/`.py`/`.md` under `H:/sotto/_moved/aireplay`, excluding `.git`
+    and `node_modules`, walked 2026-10-10. WINDOW: the tree as it stood at that walk.
+    - **`trigger_selftest.cpp` IS compiled AND RUN.** `_main/_lane1-trigger-gate.ps1:45` lists it in
+      `$myFiles`, `:54` adds it to the g++ source list, and the exe is on disk with the log its own
+      run left: `_main/build/aireplay-trigger-selftest.exe` 846 850 B mtime 2026-10-07T23:57:59Z;
+      `_main/build/lane1-trigger-selftest.log` 2 343 B carries the RUN's output
+      (`TRIGGER key=F10 ... registered=yes polled=true`, and `key=Alt+F9 registered=NO
+      err=ERROR_HOTKEY_ALREADY_REGISTERED`).
+    - **`wasapi_audio.cpp` IS compiled AND linked.** `_main/_lane2-audio-gate.ps1:82` is
+      `& $gxx @flags @incs -c "$src\wasapi_audio.cpp" -o $objA @libs`, and `:335` links it into
+      `$exeLive` (`_main/build/lane2-audio-probe.exe` 2 047 568 B mtime 2026-10-07T15:39:56Z). The
+      object is on disk twice: `_main/build/wasapi_audio.obj` 117 935 B mtime
+      2026-10-07T15:20:51Z and `_main/build/lane2-gate/wasapi_audio.obj` 118 274 B mtime
+      2026-10-08T00:03:19Z.
+    - **So "73 hits, none a build line" is FALSE on BOTH counts.** Over the same population and
+      window the `.ps1` census is 15 occurrences over 12 lines in 3 files, and FOUR of those lines
+      are the build: `:45` and `:54` (lane 1) plus `:82` and `:335` (lane 2). The `.cmd` half of the
+      sentence is TRUE and stays: 0 hits in any `.cmd` on this box.
+    - **What SURVIVES the correction, re-measured here and unchanged:** 15 `.cpp` under
+      `src/capture` (15 measured 2026-10-10); 12 names on `build.cmd:23` (483 chars, worktree 1 932 B
+      / 25 CRLF / 0 bare LF); `trigger.cpp` IS one of them; `audio_tap.cpp` (65 959 B / 1 438 LF)
+      is folded into `main.cpp`'s OWN translation unit by `#include "audio_tap.cpp"` at
+      `main.cpp:51`; `trigger_selftest.cpp` (14 469 B / 370 lines) keeps its own `int main` at
+      `:352`, so it CANNOT share the exe; `wasapi_audio.cpp` is 47 739 B / 1 058 LF; and `main.cpp`
+      never constructs a Trigger - 0 `new Trigger` in `main.cpp`, construction is `replay.cpp:558`
+      `trigger_.reset(new Trigger())` inside `Replay::arm_hotkey()`.
+    - **Two numbers in the paragraph above are also wrong and are corrected here, not deleted:**
+      `main.cpp` is 67 752 B / 1 406 LF lines in the tree on 2026-10-10 (not 1 401), and `:627` is
+      not "the only reference" to `Trigger` in `main.cpp` - there are 3 code lines (`:627`, `:629`,
+      `:633`) and 4 comments (`:566`, `:569`, `:621`), and 0 constructions. The claim that matters
+      is TRUE and unchanged: **main.cpp does not build a Trigger, and the default stays off.**
+    - **The rule this correction carries, now measured:** a name's absence from `build.cmd` is not
+      evidence that nothing compiles it. The compiler line was in a `.ps1` next to it all along.
+      Read `_main/AUDIT-FINDINGS.md` F15 for the full counter-census and the reviewer's verdict NO.
 7. **THE RING IS BUDGETED BY MEASURED HARDWARE, NOT BY TASTE — measured 2026-10-07.** The replay
    buffer, NOT the AI, is the memory hog: 120 s of encoded frames is **572 MiB at 1080p60/40 Mbps,
    1 431 MiB at 4K60/100 Mbps and 2 861 MiB at 4K60/200 Mbps** (arithmetic in

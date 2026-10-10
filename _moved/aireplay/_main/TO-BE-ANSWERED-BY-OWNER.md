@@ -36,6 +36,25 @@ wake de 3 minutos e o rasto de auditoria a meio do trabalho, e o arm-4 já mediu
 não é o problema. Fica registado como OPEN-UNTESTABLE.
 
 **Pergunta:** autorizas a mudança alguma vez? Se sim, quando (e eu paro tudo antes)?
+**NOTA-RESPONDIDA-POR-MEDIÇÃO 2026-10-10 - a hipótese medium-IL está MEDIDA e a resposta é NÃO: o acesso
+NÃO é o que está a falhar num processo low-IL, e a causa medida é OUTRA (AUDIT-FINDINGS F18).**
+Todas as imagens executáveis debaixo de `H:\sotto` carregam o rótulo mandatório `S-1-16-4096`
+(Low integrity), explícito na raiz e herdado. Um executivo assim arranca um processo LOW-IL, e um processo
+LOW-IL NÃO consegue criar um item de captura WGC para uma janela MEDIUM/HIGH - daí `0x80070005` em
+`CreateForWindow` para os 4 alvos nomeados, em `CreateForMonitor`, e até na própria janela do probe.
+Medido nos dois sentidos com OS MESMOS bytes: 5 de 5 `S_OK` fora de `H:\sotto` e 5 de 5 `0x80070005`
+dentro, e o controlo scratch moveu a resposta nas duas direcções (retirar o rótulo -> `S_OK`, pôr ->
+`0x80070005`). O rótulo segue o OBJECTO ficheiro, não a cadeia de caminho. Por isso **nenhuma das duas
+mudanças de caixa acima é necessária para explicar a recusa** - e a minha recomendação continua NÃO AGORA,
+agora apenas por causa do custo (deitar abaixo as lanes vivas, o wake e o rasto de auditoria a meio).
+Fica **OPEN-UNTESTABLE** no que respeita à hipótese medium-IL em si, e MEDIDA no que respeita à causa da
+recusa WGC.
+
+**O que continua DESCONHECIDO e é assunto teu:** quem pôs o rótulo `S-1-16-4096` nesses ficheiros não
+está medido. Também não estão medidos: `GraphicsCaptureAccessStatus` nunca foi lido e o diálogo de
+consentimento nunca apareceu. O mesmo exercício está em
+`_main/receipts/receipt-29-review-wgc-instrument-contradiction.md` §10 (untracked, ver Q8).
+
 
 ## Q4 - O relógio do .mp4 não existe (lacuna das specs)
 O nosso escritor de mp4 escreve `creation_time`/`modification_time` como **0,0 literal**
