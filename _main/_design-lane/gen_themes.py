@@ -81,7 +81,7 @@ THEMES = [
         space=(4, 8, 13, 20, 30),
         font_sans='"Barlow Condensed", "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif',
         font_mono='"Cascadia Mono", ui-monospace, Consolas, monospace',
-        size_caption='30px', size_closed='18px', size_time='10px', size_chrome='11.5px',
+        size_caption='clamp(30px, 4.6vw, 54px)', size_closed='18px', size_time='10px', size_chrome='11.5px',
         size_meta='10.5px', size_small='12.5px',
         leading_caption='1.06', leading_closed='1.24',
         weight_caption='700', weight_closed='400', weight_brand='700',
@@ -114,6 +114,37 @@ THEMES = [
         # "a linha viva brilha" -- brilho, never a keyframe. Static on purpose:
         # rule 4 of every theme file is "the caption text is never animated".
         live_shadow='0 0 18px rgba(242, 233, 216, 0.30), 0 0 2px rgba(242, 233, 216, 0.55)',
+        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
+        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
+        # every animation rule inside is wrapped in prefers-reduced-motion so the
+        # MOTION kill-list still wins where it must.
+        sig='''/* -- SIGNATURE, direction "tele" ------------------------------------------
+   The live line BREATHES. That is the one thing this direction asks for that the
+   shared caption contract forbids (the caption text is never animated), and it is
+   honoured rather than fought: the glow is a TEXT-SHADOW keyframe on the one
+   element that already carries a static halo (live_shadow in SKIN), so the
+   resting state is the design\'s own and only the pulse is added. Words enter
+   with a 6 px rise; paintWords already stamps --w-i, so no JS is needed here. */
+@S@ .caption--provisional .caption__provisional .caption__word:last-child{
+  color: var(--text-primary);
+}
+@media (prefers-reduced-motion: no-preference){
+  @S@ .caption--provisional .caption__text{
+    animation: sotto-1-glow 2.6s ease-in-out infinite;
+  }
+  @S@ .caption--provisional .caption__provisional .caption__word{
+    display: inline-block;
+    animation: sotto-1-rise .34s cubic-bezier(.2, .7, .2, 1) both;
+  }
+}
+@keyframes sotto-1-glow{
+  0%, 100%{ text-shadow: 0 0 16px rgba(242, 233, 216, .26), 0 2px 22px rgba(0, 0, 0, .6); }
+  50%{ text-shadow: 0 0 30px rgba(242, 233, 216, .50), 0 2px 22px rgba(0, 0, 0, .6); }
+}
+@keyframes sotto-1-rise{
+  from{ opacity: 0; transform: translateY(6px); }
+  to{ opacity: 1; transform: none; }
+}''',
         cap_align='left',
     ),
     dict(
@@ -139,7 +170,7 @@ THEMES = [
         space=(3, 6, 10, 15, 22),
         font_sans='"IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace',
         font_mono='"IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='20px', size_closed='15px', size_time='11px', size_chrome='10.5px',
+        size_caption='clamp(18px, 2.3vw, 28px)', size_closed='15px', size_time='11px', size_chrome='10.5px',
         size_meta='10px', size_small='11.5px',
         leading_caption='1.38', leading_closed='1.35',
         weight_caption='600', weight_closed='400', weight_brand='700',
@@ -159,6 +190,35 @@ THEMES = [
         prov_rail_style='solid',
         closed_rail_w='0px',
   time_live='#FFD24A',
+        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
+        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
+        # every animation rule inside is wrapped in prefers-reduced-motion so the
+        # MOTION kill-list still wins where it must.
+        sig='''/* -- SIGNATURE, direction "bcast" ------------------------------------------
+   The live line is a TRANSMISSION: the caret is the signal colour and the
+   freshest word is amber, so "being said" and "was said" are told apart by HUE
+   on top of the 2 px red rail this direction already carries. */
+@S@ .caption--provisional .caption__text{
+  font-size: clamp(18px, 2.3vw, 28px);
+  line-height: 1.4;
+}
+@S@ .caption__mark{
+  animation: sotto-caret 1.1s steps(1) infinite;
+  color: var(--accent);
+}
+@S@ .caption--provisional .caption__provisional .caption__word:last-child{
+  color: #FFC46B;
+}
+@media (prefers-reduced-motion: no-preference){
+  @S@ .caption--provisional .caption__provisional .caption__word{
+    display: inline-block;
+    animation: sotto-2-rise .16s ease-out both;
+  }
+}
+@keyframes sotto-2-rise{
+  from{ opacity: .35; transform: translateY(2px); }
+  to{ opacity: 1; transform: none; }
+}''',
     ),
     dict(
         n=3,
@@ -189,6 +249,66 @@ THEMES = [
         leading_caption='1.62', leading_closed='1.45',
         weight_caption='400', weight_closed='400', weight_brand='600',
         tracking_caption='0.002em', tracking_brand='0.14em',
+        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
+        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
+        # every animated rule inside is wrapped in prefers-reduced-motion so the
+        # MOTION kill-list still wins where it must.
+        sig='''/* -- SIGNATURE, direction "mano" -------------------------------------------
+   The live line is a DRAFT ON PAPER: it sits on a thin baseline rule, it ends
+   in a 2 px BAR caret instead of the typed glyph every other theme uses, and
+   the words still in doubt are held back in ink while the ones already settled
+   inside it stand brighter. CHROME already ramps each word through --w-op
+   (stamped by paintWords); this signature is what makes that ramp slow enough
+   to read as ink drying rather than a fade-out. */
+/* underline uses the word itself: no box, no background, ever. */
+@S@ .caption--provisional .caption__text{
+  color: #DCE4ED;
+  border-bottom: 1px solid rgba(169, 193, 217, 0.35);
+  padding-bottom: 4px;
+}
+@S@ .caption--provisional .caption__provisional .caption__word{
+  opacity: var(--w-op, 1);
+  transition: opacity 700ms ease;
+}
+@S@ .caption--provisional .caption__mark{
+  animation: none;
+  color: transparent;
+  display: inline-block;
+  width: 2px;
+  height: .88em;
+  margin-left: 6px;
+  vertical-align: -0.06em;
+  background: rgba(220, 228, 237, 0.8);
+}
+@media (prefers-reduced-motion: no-preference){
+  @S@ .caption--provisional .caption__mark{
+    animation: sotto-caret 1.06s steps(1) infinite;
+  }
+}
+/* THE MID-RAIL (owner, 2026-10-09: the live line is read at the MIDDLE of the
+   panel, not glued to its heel). The rail is a scroll box and the live line is
+   its last row, so the space under it is the whole mechanism: the list keeps
+   empty scroll at the bottom and stickToNewest parks the live line at the
+   middle of the box. vh, not %, because percentage padding resolves against
+   the box WIDTH (380 px) and this rail is ~830 px tall.
+   WHY `calc(50vh - 94px)` AND NOT A ROUND vh: the value has to equal HALF THE
+   RAIL, and the rail is not the viewport — the panel chrome (header, the
+   collapsed transcript bar, the status bar, the gaps and the panel padding)
+   eats 166 px of the 900 px window, so the rail is 734 px and its middle is
+   367 px. A bare `44vh` (396 px) landed the live line 5% high, MEASURED
+   (`_main/_design-lane/geom.py --surface panel --themes theme-3`):
+   `live fromBottom=407.2` against `clientH=734`, i.e. half should be 367.
+   With pad = 50vh - 94 px the live line lands at 367 at every window height,
+   because the chrome is a CONSTANT 166 px and the relation is linear:
+   pad = (viewportH - 166)/2 - 10.8 (the 10.8 px is the rail's own bottom
+   inset, measured on the themes that have no padding at all).
+   PANEL ONLY: the strip is a 100 px bar at the bottom of the screen and its
+   subtitle is MEANT to be at the bottom. */
+@S@ body[data-surface="panel"] .captions__body{
+  padding-bottom: calc(50vh - 94px);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 120px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 120px);
+}''',
         brand_upper='none', caption_upper='none',
         slab_opacity='0.96',
         radius_dialog='12px',
@@ -224,7 +344,7 @@ THEMES = [
         space=(5, 10, 15, 23, 33),
         font_sans='"Fraunces", "Segoe UI Variable Display", "Segoe UI", Georgia, serif',
         font_mono='"Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='24px', size_closed='18px', size_time='10px', size_chrome='11.5px',
+        size_caption='clamp(24px, 3vw, 42px)', size_closed='clamp(13px, 1.3vw, 16px)', size_time='10px', size_chrome='11.5px',
         size_meta='10.5px', size_small='12.5px',
         leading_caption='1.52', leading_closed='1.42',
         weight_caption='400', weight_closed='400', weight_brand='600',
@@ -241,6 +361,36 @@ THEMES = [
         prov_rail_style='solid',
         closed_rail_w='0px',
         time_live='var(--accent)',
+        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
+        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
+        # every animation rule inside is wrapped in prefers-reduced-motion so the
+        # MOTION kill-list still wins where it must.
+        sig='''/* -- SIGNATURE, direction "cine" ------------------------------------------
+   Two things only, both the direction\'s own: the forming line holds back (opacity
+   .5) so a sentence reads as SETTLING rather than finished, and every word comes
+   out of focus (wordFog -- a chair moving in a dark room). */
+@S@ .caption--provisional .caption__text{
+  opacity: .5;
+}
+@media (prefers-reduced-motion: no-preference){
+  @S@ .caption--provisional .caption__provisional .caption__word{
+    animation: sotto-4-fog .6s ease both;
+  }
+}
+@keyframes sotto-4-fog{
+  from{ filter: blur(3px); opacity: .25; }
+  to{ filter: none; opacity: 1; }
+}/* THE MID-RAIL (owner, 2026-10-09). Same mechanism and the same measured value
+   as Manuscrito's: the rail is 734 px at a 900 px window, its middle is 367,
+   so `calc(50vh - 94px)` parks the live line exactly there at any height. The
+   cinema card gets a taller fade, because its wordmark sits at the bottom of
+   the card and must not be washed out by it.
+   PANEL ONLY: the strip's subtitle belongs at the bottom of the screen. */
+@S@ body[data-surface="panel"] .captions__body{
+  padding-bottom: calc(50vh - 94px);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 150px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 150px);
+}''',
     ),
     dict(
         n=5,
@@ -265,7 +415,7 @@ THEMES = [
         space=(4, 8, 12, 19, 28),
         font_sans='"Space Grotesk", "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif',
         font_mono='"Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='24px', size_closed='17px', size_time='10px', size_chrome='11px',
+        size_caption='clamp(24px, 3.1vw, 42px)', size_closed='17px', size_time='10px', size_chrome='11px',
         size_meta='10px', size_small='12px',
         leading_caption='1.30', leading_closed='1.30',
         weight_caption='700', weight_closed='400', weight_brand='700',
@@ -281,6 +431,26 @@ THEMES = [
         prov_rail_style='solid',
         closed_rail_w='0px',
   time_live='#FFD24A',
+        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
+        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
+        # every animation rule inside is wrapped in prefers-reduced-motion so the
+        # MOTION kill-list still wins where it must.
+        sig='''/* -- SIGNATURE, direction "inst" ------------------------------------------
+   The LED rail already breathes (sotto-5-led-live, emitted in CHROME with the
+   4 px border this direction uses as its mark). What is missing is the TEXT: the
+   direction is a heavy monitor face at tight leading, and its words should SNAP
+   into place in two steps rather than glide -- only opacity moves, so it costs
+   nothing composited. */
+@media (prefers-reduced-motion: no-preference){
+  @S@ .caption--provisional .caption__provisional .caption__word{
+    display: inline-block;
+    animation: sotto-5-snap .1s steps(2) both;
+  }
+}
+@keyframes sotto-5-snap{
+  from{ opacity: .3; }
+  to{ opacity: 1; }
+}''',
     ),
 ]
 
@@ -1627,6 +1797,7 @@ def build(t):
     )
     return (head + scope(skin, t['n']) + "\n"
             + scope(CHROME[t['n']], t['n']) + "\n"
+            + scope(t.get('sig', ''), t['n']) + "\n"
             + scope(STRIP_GUARD, t['n']) + "\n"
             + scope(MOTION, t['n']) + "\n")
 

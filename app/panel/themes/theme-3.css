@@ -250,6 +250,17 @@
 :root[data-theme='theme-3'] body .caption--latest .caption__time {
   color: var(--text-muted);
 }
+:root[data-theme='theme-3'] body .caption__mark {
+  animation: sotto-caret 1.06s steps(1) infinite;
+}
+@keyframes sotto-caret {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
 :root[data-theme='theme-3'] body .caption--provisional {
   border-left-color: var(--accent);
   border-left-width: 2px;
@@ -549,7 +560,8 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='theme-3'] * {
+:root[data-theme='theme-3'] .panel__header,  .panel__header *,  .status,  .status *,
+:root[data-theme='theme-3'] .chrome,  .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -566,7 +578,8 @@
   :root[data-theme='theme-3'] body .caption,
   :root[data-theme='theme-3'] body .caption__text,
   :root[data-theme='theme-3'] body .caption__confirmed,
-  :root[data-theme='theme-3'] body .caption__provisional {
+  :root[data-theme='theme-3'] body .caption__provisional,
+  :root[data-theme='theme-3'] body .caption__mark {
     transition-duration: 0ms;
     animation: none;
   }
@@ -629,6 +642,35 @@
 :root[data-theme='theme-3'] body .caption--provisional .caption__word {
   opacity: var(--w-op, 1);
   transition: opacity 260ms ease;
+}
+:root[data-theme='theme-3'] .caption--provisional .caption__text {
+  color: #DCE4ED;
+  border-bottom: 1px solid rgba(169, 193, 217, 0.35);
+  padding-bottom: 4px;
+}
+:root[data-theme='theme-3'] .caption--provisional .caption__provisional .caption__word {
+  opacity: var(--w-op, 1);
+  transition: opacity 700ms ease;
+}
+:root[data-theme='theme-3'] .caption--provisional .caption__mark {
+  animation: none;
+  color: transparent;
+  display: inline-block;
+  width: 2px;
+  height: .88em;
+  margin-left: 6px;
+  vertical-align: -0.06em;
+  background: rgba(220, 228, 237, 0.8);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme='theme-3'] .caption--provisional .caption__mark {
+    animation: sotto-caret 1.06s steps(1) infinite;
+  }
+}
+:root[data-theme='theme-3'] body[data-surface="panel"] .captions__body {
+  padding-bottom: calc(50vh - 94px);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 120px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 120px);
 }
 :root[data-theme='theme-3'] body[data-surface="strip"] .chrome[data-chrome="head"],
 :root[data-theme='theme-3'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
