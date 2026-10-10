@@ -284,6 +284,12 @@ def main():
     shell = argv[argv.index('--shell') + 1] if '--shell' in argv else SHELL
     secs = float(argv[argv.index('--secs') + 1]) if '--secs' in argv else 6.0
     span = float(argv[argv.index('--span') + 1]) if '--span' in argv else 2.5
+    #: --shows 2 measures a SECOND show of the strip with the renderer already
+    #: warm: press 1 shows, press 2 hides, press 3 shows again. Every press is
+    #: spaced WIDER than HOTKEY_DOUBLE_MS (1500 ms), because a second press
+    #: inside that window is read as the SIDE-panel gesture, not a toggle.
+    shows = int(argv[argv.index('--shows') + 1]) if '--shows' in argv else 1
+    gap = float(argv[argv.index('--gap') + 1]) if '--gap' in argv else 2.2
     report_path = (argv[argv.index('--report') + 1]
                    if '--report' in argv else REPORT)
     _REPORT_PATH.append(report_path)
@@ -328,17 +334,39 @@ def main():
     emit('PRELOAD_ACTIVE seen; settling %ss' % secs)
     time.sleep(secs)
 
-    s = Sampler(p.pid, budget=40000)
+    # The sampler self-stops when its budget is spent. Sampling a HIDDEN strip
+    # costs ~0.06 ms/row (16 000 rows/s) against ~18 ms/row when it is on
+    # screen, so a --shows 2 run burns the single-show budget during press 1
+    # and never reaches press 3. Scale it by the number of shows.
+    budget = 40000 if shows < 2 else 150000
+    emit('sampler budget=%d row(s)' % budget)
+    s = Sampler(p.pid, budget=budget)
     s.start()
     time.sleep(0.15)
     npress = len(s.rows)
     emit('sampler armed (rows=%d before the press)' % npress)
     tpress = time.perf_counter()
     send_alt_c()
-    emit('Alt+C sent')
+    emit('Alt+C sent (press 1: SHOW the strip)')
+    tpress2 = None
+    if shows >= 2:
+        # Press 2 must be OUTSIDE the double-press window, or it is read as the
+        # SIDE gesture instead of a toggle-to-hide.
+        time.sleep(gap)
+        tlast = time.perf_counter()
+        send_alt_c()
+        emit('Alt+C sent (press 2: HIDE, %.0f ms after press 1)'
+             % ((tlast - tpress) * 1000.0))
+        time.sleep(gap)
+        tpress2 = time.perf_counter()
+        send_alt_c()
+        emit('Alt+C sent (press 3: SHOW again, %.0f ms after press 2)'
+             % ((tpress2 - tlast) * 1000.0))
     time.sleep(span)
     s.stop = True
     s.join(timeout=8)
+    emit('EXIT CODE SCOPE: the arm exit code below describes the FIRST show '
+         'only; the second show has its own verdict line.')
     emit('sampler stopped: %d rows in %.2fs (%.0f rows/s)'
          % (len(s.rows), span, len(s.rows) / span))
 
@@ -378,6 +406,41 @@ def main():
     owned_ok = [r for r in win if r['own'] and r['ok']]
     flats = [r for r in owned_ok if r['flat']]
     colours = sorted({r['rgb'] for r in flats})
+
+    # --- THE SECOND SHOW: is the blank a first-map artefact or per-map? -----
+    if tpress2 is not None:
+        second = None
+        for i, r in enumerate(rows):
+            if r['t'] >= tpress2 and r['own']:
+                second = i
+                break
+        emit('--- SECOND SHOW (press 3, renderer already warm) ---')
+        if second is None:
+            emit('SECOND-SHOW VERDICT NO-CONFIDENCE -- no owned sample after the '
+                 'second show; Alt+C mapped nothing there')
+        else:
+            tmap2 = rows[second]['t']
+            win2 = [r for r in rows[second:]
+                    if (r['t'] - tmap2) * 1000.0 <= WINDOW_MS]
+            ok2 = [r for r in win2 if r['own'] and r['ok']]
+            flats2 = [r for r in ok2 if r['flat']]
+            col2 = sorted({r['rgb'] for r in flats2})
+            emit('  first pixel owned by the shell at row %d (+%.1f ms after '
+                 'press 3)' % (second, (tmap2 - tpress2) * 1000.0))
+            emit('  samples=%d  owned+classified=%d  flat-single-colour=%d'
+                 % (len(win2), len(ok2), len(flats2)))
+            if not ok2:
+                emit('SECOND-SHOW VERDICT NO-CONFIDENCE -- %d sample(s) in the '
+                     'second window, none owned+classified' % len(win2))
+            elif flats2:
+                emit('SECOND-SHOW VERDICT BLANK RECURS -- %d of %d classified '
+                     'sample(s) after the SECOND map were one colour (%s), so '
+                     'the blank is NOT a first-map artefact'
+                     % (len(flats2), len(ok2), col2))
+            else:
+                emit('SECOND-SHOW VERDICT CLEAN -- 0 of %d classified sample(s) '
+                     'after the second map were blank; the blank is specific to '
+                     'the first map of a process' % len(ok2))
 
     emit('--- the map ---')
     emit('  first pixel owned by the shell at row %d (+%.1f ms after the press)'

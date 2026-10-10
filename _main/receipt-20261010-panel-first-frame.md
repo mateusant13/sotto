@@ -145,6 +145,8 @@ cure (1) the only one that can work, and it would also tell us whether the owner
 actually sees it on every press or only on the first. `strip-first-frame.py` only
 presses once today; that is a small, additive arm.
 
+**RUN 2026-10-10, both colours, and the answer is CLEAN - see section 10.**
+
 ## 9. Decision recorded
 
 - The three-swap working-tree change (`git diff` was 17 insertions / 10 deletions,
@@ -158,4 +160,87 @@ presses once today; that is a small, additive arm.
 - P0(a) is closed as a NEGATIVE result. The residual defect stays OPEN and is now
   named: "the strip presents a uniform colour for ~190-216 ms before WebView2's
   first frame", cause = renderer first-present latency, not call order.
+
+## 10. The second show is CLEAN - the blank is a per-process FIRST map (measured 2026-10-10)
+
+The experiment section 8 asked for was run. The instrument gained two flags in the
+same change: `--shows` (default 1; 2 sends press 1 SHOW, press 2 HIDE, press 3 SHOW
+again) and `--gap` (default 2.2 s, which must exceed `HOTKEY_DOUBLE_MS` = 1500 ms or
+press 2 is read as the SIDE gesture instead of a hide). All three presses in both runs
+below were 2253-2271 ms apart, i.e. three distinct presses, and the run exercises the
+full hide/show round trip.
+
+### 10.1 The first attempt was an INSTRUMENT defect, and it is recorded because it
+### would have produced a false NO-CONFIDENCE
+
+`Sampler` self-stops when its row budget is spent. Sampling the strip when it is
+HIDDEN costs ~0.06 ms/row (16 000 rows/s: the grid `BitBlt` is skipped) but ~18 ms/row
+(~55 rows/s) when it is on screen. So the single-show budget of 40 000 rows was spent
+inside press 1's 2.5 s, the sampler stopped, and the report said
+
+    sampler stopped: 40000 rows in 2.50s (16000 rows/s)
+    SECOND-SHOW VERDICT NO-CONFIDENCE -- no owned sample after the second show; Alt+C mapped nothing there
+
+Nothing was wrong with the second show - it was never sampled. The budget is now
+`40000` for `--shows 1` (unchanged, so the committed first-show numbers keep their
+instrument) and `150000` for `--shows 2`; the report prints `sampler budget=N row(s)`.
+Any future multi-show arm has to re-check this line before it believes a NO-CONFIDENCE.
+
+### 10.2 Run 2, --arm flat --shows 2 --gap 2.2 --span 2.5 --secs 5.0, budget 150000
+
+    SUBJECT H:\sotto\app\webview\sotto_webview.py   pid=35276   --no-worker --exit-after 90
+    sampler budget=150000 row(s)
+    Alt+C sent (press 1: SHOW the strip)
+    Alt+C sent (press 2: HIDE, 2259 ms after press 1)
+    Alt+C sent (press 3: SHOW again, 2253 ms after press 2)
+
+FIRST show (press 1, renderer cold):
+
+    first pixel owned by the shell at row 2509 (+27.7 ms after the press)
+    samples=23  owned+classified=22  flat-single-colour=11
+    BLANK HELD for 216.4 ms after the map: the panel first painted at row 2521,
+      distinct=16, after 11 single-colour owned sample(s)
+    FIRST FLAT FRAME at +1.7 ms after the map (distinct=1, 1040x150)
+    colours seen: [(32, 32, 32)]; 0 of them were the form BackColor slab rgb(11,15,20)+/-2
+    VERDICT FLAT-FRAME SEEN   EXIT 0
+
+SECOND show (press 3, same process, renderer warm):
+
+    first pixel owned by the shell at row 32115 (+11.6 ms after press 3)
+    samples=24  owned+classified=23  flat-single-colour=0
+    SECOND-SHOW VERDICT CLEAN -- 0 of 23 classified sample(s) after the second map
+      were blank; the blank is specific to the first map of a process
+
+The 216.4 ms first-show figure sits inside the 191.8 / 205.1 / 216.3 ms band the
+earlier runs measured, so run 2 is not an outlier of the instrument. (32,32,32) again,
+again not the slab.
+
+### 10.3 What this closes, and what it does NOT
+
+- CLOSED: the blank is a FIRST-MAP property of the process, not a cost of every press.
+  Once the renderer has composited one frame, the very next show presents a painted
+  window from its first owned sample (+11.6 ms, and that sample is already
+  multi-colour). Cure (1) - one pre-composite at startup with `Opacity=0` - is
+  therefore the ONLY candidate that can remove the cost, and this run is the
+  measurement that makes that statement falsifiable rather than rhetorical.
+- NOT closed: the owner still sees a ~200 ms uniform rectangle on the FIRST Alt+C
+  after a launch. That is a real, visible defect and it is unchanged.
+- NOT claimed: that no sub-frame blank can hide inside the 25.69 ms worst-case row
+  gap of the second window. The claim is narrow and is exactly what the data shows:
+  0 of 23 classified owned samples in the 400 ms window after press 3 were a
+  single-colour window, against 11 of 22 after press 1 in the same run.
+- NOT tested: `--arm clean` (0 flat samples expected on the FIRST show). It has never
+  returned EXIT 0 on either call order, before or after this change.
+
+### 10.4 Repro
+
+    set TMPDIR=I:\cc-tmp
+    pythonw.exe _main\strip-first-frame.py --arm flat --shows 2 --gap 2.2 \
+      --span 2.5 --secs 5.0 --report I:\cc-tmp\second-show-report.txt
+
+Launch it the way the other arms are launched (`Start-Process -PassThru -WindowStyle
+Hidden`, then `WaitForExit`, then read `ExitCode`) - a GUI-subsystem pythonw gives no
+stdout. The report file is the only channel. No Sotto shell or worker may be live when
+the arm starts: the arm registers Alt+C and must own it.
+
 
