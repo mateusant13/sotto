@@ -681,7 +681,7 @@ Measured: **28** native sources (`*.c/*.cpp/*.h/CMakeLists.txt/Makefile/build.cm
 **every one is under `_moved/aireplay/`** (346 tracked files) — parked, not the product. That tree's
 `src/capture/build.cmd:3,7` is the only statement of the host compiler:
 **mingw-w64 g++ 15.2.0 at `H:\msys64\mingw64\bin\g++.exe`** — and `cl.exe` and `nvcc.exe` are both
-**absent from PATH** on this host (no MSVC, no CUDA toolkit). Its link line (`:19`) carries
+**absent from PATH** on this host (no MSVC, no CUDA toolkit). Its link line (`:23`) carries
 `-ld3d11 -ldxgi -luuid -lole32 -loleaut32 -lruntimeobject -lwindowsapp -lpsapi -lgdi32 -luser32`;
 **`-lwasapi` appears nowhere** (it does not exist). Treat that file as the only evidence of the toolchain.
 

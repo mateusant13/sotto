@@ -379,6 +379,24 @@ and the extra speed is FREE.**
    **So the ring is negotiated and cut by `--cut-at-s`; the key path is implemented, self-tested,
    unwired and unbuilt.** Do not describe instant replay as working, and do not describe it as
    absent. The exact hookup is in receipt-29.
+    **CORRECTED 2026-10-10 - "unbuilt" is now HALF FALSE, and the reason the old sentence gave for
+    the rest is void.** Measured directly, not re-read from receipt-29: `src/capture/build.cmd:23`
+    is 483 chars and carries 12 `.cpp`, and one of them is `trigger.cpp` - the build-side fix
+    `receipts/receipt-29-agents-truth.md:63` prescribed, applied by parent `399bc85` / nested
+    `1b6f56e`. Still true, and re-measured here: `main.cpp` (1401 lines) never constructs a
+    Trigger - `:627 Trigger* trig = replay.hotkey()` is the only reference and it is an OBSERVER,
+    construction is `Replay::arm()`'s job (`main.cpp:566`) and the default stays off (`:646`).
+    So the truth is **built, unwired, off by default** - not "unbuilt".
+    **THE TWO SOURCES ABSENT FROM THE LINK LINE ARE NOT THE TWO THE OLD SENTENCE NAMED, and a
+    third is absent that neither sentence mentions.** Of the 15 `.cpp` under `src/capture`: 12
+    are on the line, 1 (`audio_tap.cpp`, 1439 lines) is folded into `main.cpp`'s OWN translation
+    unit by `#include "audio_tap.cpp"` at `main.cpp:51`, and 2 are compiled by NOTHING -
+    `trigger_selftest.cpp` (370 lines, own `main()` at `:352`, so it CANNOT share the exe) and
+    `wasapi_audio.cpp` (1059 lines; every reference to those two names in `.cmd/.ps1/.py/.md` is
+    prose - 73 hits, none a build line). `wasapi_audio.cpp` is a DEAD SOURCE.
+    **AND "NOT ON THE LIST" IS NOT EVIDENCE OF "NOT BUILT"** - that is why the 6 warnings in
+    `_main/_gate-audit/HONEST-BASELINE.md:48` name a file no compile line mentions. Absence of a
+    NAME is not absence of a translation unit. Audit F15.
 7. **THE RING IS BUDGETED BY MEASURED HARDWARE, NOT BY TASTE — measured 2026-10-07.** The replay
    buffer, NOT the AI, is the memory hog: 120 s of encoded frames is **572 MiB at 1080p60/40 Mbps,
    1 431 MiB at 4K60/100 Mbps and 2 861 MiB at 4K60/200 Mbps** (arithmetic in
