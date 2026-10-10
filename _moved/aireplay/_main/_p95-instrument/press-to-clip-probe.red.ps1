@@ -1,7 +1,19 @@
 #Requires -Version 5.1
 <#
-  press-to-clip-probe.ps1 -- Sotto (ShadowPlay clone) press-to-clip latency instrument.
-  THIS FILE MEASURES THE CUT HALF ONLY.  Read the DECOMPOSITION block it prints every run.
+  press-to-clip-probe.red.ps1 -- CONTROL ARM.  THIS COPY IS DELIBERATELY BROKEN.
+  It is press-to-clip-probe.ps1 with ONE injected mutation (and the self-check that must catch
+  it).  It MUST go RED and exit 1.  A control that stays green is a failing control.
+
+  MUTATION A (baked in, -Mutation zero-t-cmd): the QPC stamp taken immediately before each cut
+    command is replaced by the constant 0.0, so every delta is the raw stopwatch epoch --
+    tens of thousands of ms -- instead of a latency.  Caught by the CONTROL-ARM SELF-CHECK,
+    which must find a median above 1000 ms, print RED-MUTATION: zero-t-cmd and exit 1.
+  MUTATION B (-Mutation close-on-first-sight): the completion test (top-level box walk, chain
+    well formed, ends at file length, LAST box = moov) is replaced by "the file exists", so
+    t_file_closed is stamped while the clip is still being written.  Caught because the size at
+    that instant cannot equal the reply closed_bytes and the box walk never ends in moov.
+
+  THIS FILE MEASURES THE CUT HALF ONLY, exactly like the file it was copied from.
 
   WHAT IT DOES
     Runs the REAL product binary (default: _main\build\aireplay-capture.exe) in its DEVICE-FREE
@@ -55,6 +67,7 @@ param(
     [int]    $CutTimeoutMs = 5000,
     [int]    $WarmupMs = 300,
     [double] $GoalP95Ms = 250.0,
+    [string] $Mutation = 'zero-t-cmd',
     [int]    $FirstCutIndex = 0,
     [string] $ResultJsonl = '',
     [switch] $KeepClips,
@@ -209,7 +222,7 @@ function Test-DeviceOwners {
 Say ''
 Say '================================================================================'
 Say ' SOTTO / PRESS-TO-CLIP LATENCY INSTRUMENT -- CUT HALF ONLY'
-Say ' press-to-clip-probe.ps1  (v1)  ASCII  QPC-stamped  ffprobe-free completion test'
+Say ' press-to-clip-probe.red.ps1 -- CONTROL ARM -- DELIBERATELY BROKEN -- MUST GO RED'
 Say '================================================================================'
 Say ''
 Say 'DECOMPOSITION (printed every run; read this before any number below)'
@@ -229,6 +242,13 @@ Say '       FlushFileBuffers, main.cpp:815-823), observed at the pipe, not at th
 Say '  NOT MEASURED EITHER: physical disk flush, encoder packet latency, the ring-buffer age of'
 Say '       the first frame in the clip, and anything at all about the capture device.'
 Say ''
+
+Say ''
+Say '################################################################################'
+Say (' CONTROL ARM: this file is press-to-clip-probe.ps1 with the mutation ' + $Mutation)
+Say ' injected on purpose.  Every number it prints is WRONG BY CONSTRUCTION and the run must'
+Say ' end RED with exit 1.  If it ends GREEN the control has failed, not the instrument.'
+Say '################################################################################'
 
 # ----------------------------------------------------------------- preflight
 $exePath = $Exe
@@ -426,8 +446,8 @@ for ($k = 0; $k -lt $Cuts -and -not $stop; $k++) {
     try { $p.StandardInput.WriteLine('{"cmd":"cut"}'); $p.StandardInput.Flush() }
     catch { Note-Failure ('stdin write failed at cut ' + $k + ': ' + $_.Exception.Message); break }
 
-    $tCmd = Now-Ms
-    $cadenceAnchor = $tCmd
+    if ($Mutation -eq 'zero-t-cmd') { $cadenceAnchor = Now-Ms; $tCmd = 0.0 }
+    else { $tCmd = Now-Ms; $cadenceAnchor = $tCmd }
 
     $expected  = Join-Path $resolvedClip ('cut-{0:D4}.mp4' -f ($first + $k))
     $deadline  = $tCmd + $CutTimeoutMs
@@ -447,7 +467,8 @@ for ($k = 0; $k -lt $Cuts -and -not $stop; $k++) {
             $st = Test-Mp4Finalised -Path $expected
             if ($st.size -ge 0 -and $tSeen -lt 0) { $tSeen = $now }
             $nextPoll = Now-Ms + $interval
-            if ($st.ok) { $tClosed = Now-Ms; $boxReason = $st.reason; $boxCount = $st.boxes; $boxLast = $st.last; break }
+            if ($Mutation -eq 'close-on-first-sight') { if ($st.size -ge 0) { $tClosed = Now-Ms; $boxReason = 'MUTATION-first-sight'; $boxCount = $st.boxes; $boxLast = $st.last; break } }
+            elseif ($st.ok) { $tClosed = Now-Ms; $boxReason = $st.reason; $boxCount = $st.boxes; $boxLast = $st.last; break }
             else { $boxReason = $st.reason; $boxCount = $st.boxes; $boxLast = $st.last }
         }
         if (($nextPoll - $now) -gt 1.2) { [System.Threading.Thread]::Sleep(1) } else { [System.Threading.Thread]::SpinWait(200) }
@@ -596,6 +617,32 @@ $p99 = Get-Percentile -Sorted $sorted -P 99
 $mn  = $sorted[0]
 $mx  = $sorted[$sorted.Count - 1]
 
+# ---- CONTROL-ARM SELF-CHECK (present only in this deliberately broken copy) ----
+$mutMed = Get-Percentile -Sorted $sorted -P 50
+if ($Mutation -eq 'zero-t-cmd' -and $mutMed -gt 1000.0) {
+    Say ''
+    Say 'RED-MUTATION: zero-t-cmd' 'Red'
+    Say  '  The stamp taken before the cut command was replaced by the constant 0.0, so every delta' 'Red'
+    Say ('  is the raw stopwatch epoch, not a latency.  median = ' + (F3 $mutMed) + ' ms, which no' ) 'Red'
+    Say  '  cut-side latency can be.  This copy is broken on purpose and must go RED.' 'Red'
+    Say  '  ACTION: run press-to-clip-probe.ps1 (the unmutated file) for a real measurement.' 'Red'
+    exit 1
+}
+$mutBadSizes = 0
+foreach ($r in $records) { if ($null -ne $r.size_matches_reply -and $r.size_matches_reply -ne $true) { $mutBadSizes++ } }
+if ($Mutation -eq 'close-on-first-sight' -and $mutBadSizes -gt 0) {
+    Say ''
+    Say 'RED-MUTATION: close-on-first-sight' 'Red'
+    Say  '  The completion test was replaced by "the file exists", so t_file_closed is stamped while' 'Red'
+    Say ('  the clip is still being written.  ' + $mutBadSizes + ' of ' + $records.Count + ' clips had a size that' ) 'Red'
+    Say  '  disagreed with the reply closed_bytes and no box walk ended in moov.  Must go RED.' 'Red'
+    exit 1
+}
+if ($Mutation -ne 'zero-t-cmd' -and $Mutation -ne 'close-on-first-sight') {
+    Say ('CONTROL-ARM ERROR: unknown -Mutation ' + $Mutation + ' -- expected zero-t-cmd or close-on-first-sight') 'Red'
+    exit 2
+}
+
 Say ''
 Say ('POLL     iterations = ' + $pollIters + '  observed ms = ' + ('{0:N1}' -f $pollMs) + '  achieved = ' + ('{0:N1}' -f $hz) + ' Hz  (contract >= ' + $MinPollHz + ' Hz; target ' + $PollHz + ' Hz)')
 Say ('         quantisation floor = ' + ('{0:N3}' -f $floorMs) + ' ms -- the true latency lies in [delta, delta + floor]')
@@ -650,7 +697,7 @@ else {
     $summaryRec['reply_p95_ms'] = $null
 }
 $runRec = [ordered]@{
-    kind = 'run'; instrument = 'press-to-clip-probe.ps1'; instrument_scope = 'CUT HALF ONLY'
+    kind = 'run'; instrument = 'press-to-clip-probe.red.ps1'; instrument_scope = 'CUT HALF ONLY'; control_arm = $true; mutation = $Mutation
     utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     exe = $exePath; exe_bytes = $exeLen; exe_sha256 = $exeHash
     feed = $Feed; feed_bytes = $feedLen; feed_sha256 = $feedHash
