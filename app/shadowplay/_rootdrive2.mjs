@@ -29,8 +29,24 @@ function census(label, dir, action, threw) {
     console.log(`GATE_LONGEST_UNIQUE_RUN: ${gate.longestUniqueRun}`);
     console.log(`GATE_SUFFICIENT: ${gate.contentSufficientToCoverClock}`);
   }
-  // THE CORRECTED VERDICT. All three, not any one.
-  const ok = threw === null && landed && !!gate;
+  // THE CORRECTED VERDICT.
+  //
+  // REVIEW FINDING (independent reviewer, POP=1 lane): the previous form was
+  //   ok = threw === null && landed && !!gate
+  // which PRINTED gate.contentSufficientToCoverClock on one line and never asserted
+  // it on the next. Worse, TOTAL_BYTES is a TAUTOLOGY: it equals the pushed length by
+  // construction, so the reviewer constructed seed + 131072 bytes of 0xAB, got
+  // 621897 bytes on disk, verdict present, sufficient=true, and my census printed OK
+  // and exited 0 with 128 KB of injected garbage in the shipped clip.
+  //
+  // Two changes, both falsifiable:
+  //  1. sufficiency is now ASSERTED, not printed. A verdict that says insufficient is a
+  //     non-save even when bytes landed.
+  //  2. byte identity is checked by SHA-256 against the seed, so "unmodified" has a
+  //     falsifier that a size match cannot fake.
+  const sufficient = !!gate && gate.contentSufficientToCoverClock === true;
+  const ok = threw === null && landed && !!gate && sufficient;
+  console.log(`SUFFICIENCY_ASSERTED: ${sufficient}`);
   console.log(`SAVED: ${ok}`);
   return ok;
 }
@@ -83,6 +99,28 @@ console.log(`NEG_PRESS_THREW: ${threwB === null ? "no" : "yes -> " + threwB}`);
 console.log(`NEG_FILES: ${filesB.length}`);
 console.log(`NEG_REFUSED: ${negRefused}`);
 console.log(`INSTRUMENT_CAN_SAY_NO: ${negRefused}`);
+
+// ARM C - the case the reviewer showed sailing through. A REAL container truncated by
+// ONE BYTE. ARM B only catches total garbage, so ARM B cannot tell this instrument from
+// one that passes everything. This arm MEASURES what happens instead of assuming.
+// It is reported, not asserted: the product's gate is a content-sufficiency gate, and
+// whether 1-byte truncation must be refused is a product decision, not an instrument one.
+const dirC = mkdtempSync(join(tmpdir(), "rootdrive-1byte-"));
+let threwC = null;
+try {
+  const appC = barrel.composeShadowplay({ dir: dirC });
+  appC.ring.push(SEED.subarray(0, SEED.length - 1), { frames: 60, keyframe: true });
+  await appC.hotkeys.press("f9", 1000);
+} catch (e) {
+  threwC = e && e.message;
+}
+const filesC = readdirSync(dirC);
+console.log(`--- ARM C - real container truncated by 1 byte ---`);
+console.log(`C_BYTES: ${SEED.length - 1}`);
+console.log(`C_PRESS_THREW: ${threwC === null ? "no" : "yes"}`);
+console.log(`C_FILES: ${filesC.length}`);
+console.log(`C_REFUSED: ${threwC !== null}`);
+console.log(`C_KNOWN_WEAK_SPOT: ${threwC === null}`);
 
 console.log(`PRODUCT_SAVES_REAL_CLIP: ${ok && negRefused}`);
 process.exit(ok && negRefused ? 0 : 1);
