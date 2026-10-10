@@ -1,0 +1,112 @@
+
+
+########## STRIP theme-1 ##########
+inner=1040x150  dpr=1  theme=theme-1 surface=strip  (asked viewport 1040x150)
+tag    class/id                     x       y      w      h  fs     color    bg                     text
+MAIN   panel                        0       0   1040    150  15px   rgb(255, 255, 255) rgba(0, 0, 0, 0)       
+SPAN   live-label                  12      11   23.5   17.3  11.5px rgb(126, 139, 153) rgba(0, 0, 0, 0)       Live
+DIV    captions-body               12    34.3   1016   50.8  15px   rgb(255, 255, 255) color(srgb 0.0705882 0 
+SPAN   caption__time               35  -112.7   46.9   22.3  10px   rgb(126, 139, 153) rgba(0, 0, 0, 0)       10:23:58
+SPAN   caption__text             91.9  -112.7  915.1   22.3  18px   rgb(169, 183, 198) rgba(0, 0, 0, 0)       O som chega antes da imagem.
+SPAN   caption__time               33   -71.4   46.9   22.3  10px   rgb(126, 139, 153) rgba(0, 0, 0, 0)       10:24:04
+SPAN   caption__text             89.9   -71.4  917.1   22.3  18px   rgb(169, 183, 198) rgba(0, 0, 0, 0)       Quando a frase fecha, ela ganha peso - e fica.
+SPAN   caption__time               33   -30.1   46.9  101.4  10px   rgb(255, 210, 74) rgba(0, 0, 0, 0)       10:24:01
+SPAN   caption__confirmed        89.9   -34.1  656.5     58  47.84px rgb(242, 233, 216) rgba(0, 0, 0, 0)       A legenda nasce enquanto a frase
+SPAN   caption__provisional      89.9   -34.1  867.1  108.7  47.84px rgb(143, 166, 192) rgba(0, 0, 0, 0)       ainda esta em formacao -
+SPAN   stripbar__brand             12    98.5   38.3     15  10px   rgb(126, 139, 153) rgba(0, 0, 0, 0)       sotto
+BUTTON strip-live-button         58.3      93   54.4     26  10.5px rgb(255, 255, 255) rgba(242, 233, 216, 0. 
+SPAN   strip-live-label          86.3    99.5   16.4     13  10.5px rgb(229, 72, 77) rgba(0, 0, 0, 0)       LIVE
+BUTTON strip-theme-button       118.7      93   85.2     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+SPAN   strip-theme__swatch      128.7   101.5      9      9  10.5px rgb(169, 183, 198) rgb(242, 233, 216)     
+SPAN   strip-button__label th   143.7    99.5   50.2     13  10.5px rgb(169, 183, 198) rgba(0, 0, 0, 0)       Teleprompter
+BUTTON strip-theme-chevron      209.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+BUTTON strip-transparency-but   241.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+BUTTON strip-open-button        273.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+BUTTON strip-hide-button        305.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+BUTTON strip-font-smaller-but   337.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+text   [object SVGAnimatedStr   348.3   102.3      5      8  9px    rgb(169, 183, 198) rgba(0, 0, 0, 0)       A
+BUTTON strip-font-larger-butt   369.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+text   [object SVGAnimatedStr   379.8    99.7      6     12  12px   rgb(169, 183, 198) rgba(0, 0, 0, 0)       A
+BUTTON strip-pause-button       401.9      93     26     26  10.5px rgb(169, 183, 198) rgba(242, 233, 216, 0. 
+SPAN   strip-dot                962.7     103      6      6  15px   rgb(255, 255, 255) rgb(91, 100, 114)      
+SPAN   strip-word               974.7    98.5   53.3     15  10px   rgb(126, 139, 153) rgba(0, 0, 0, 0)       Starting
+FOOTER status                      12     127   1016     12  12.5px rgb(169, 183, 198) rgba(0, 0, 0, 0)       
+SPAN   status-dot                  12     132      7      7  12.5px rgb(169, 183, 198) rgb(248, 113, 113)     
+
+
+########## STRIP theme-3 ##########
+inner=1040x150  dpr=1  theme=theme-3 surface=strip  (asked viewport 1040x150)
+tag    class/id                     x       y      w      h  fs     color    bg                     text
+MAIN   panel                        0       0   1040    150  15px   rgb(244, 247, 250) rgba(0, 0, 0, 0)       
+SPAN   live-label                  12      11   31.2   16.5  11px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       Live
+DIV    captions-body               12    33.5   1016   51.5  15px   rgb(244, 247, 250) color(srgb 0.0784314 0 
+SPAN   caption__time               36   -68.5   46.9   24.6  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       10:23:58
+SPAN   caption__text             92.9   -68.5  913.1   24.6  17px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       O som chega antes da imagem.
+SPAN   caption__time               34   -20.9   46.9   24.6  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       10:24:04
+SPAN   caption__text             90.9   -20.9  915.1   24.6  17px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       Quando a frase fecha, ela ganha peso - e fica.
+SPAN   caption__time               36    26.8   46.9   42.3  10px   rgb(255, 210, 74) rgba(0, 0, 0, 0)       10:24:01
+SPAN   caption__confirmed        92.9    33.8  320.9     23  23px   rgb(220, 228, 237) rgba(0, 0, 0, 0)       A legenda nasce enquanto a frase
+SPAN   caption__provisional     413.8    33.8  247.8     23  23px   rgb(151, 163, 176) rgba(0, 0, 0, 0)       ainda esta em formacao -
+SPAN   stripbar__brand             12    98.5   38.3     15  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       sotto
+BUTTON strip-live-button         58.3      93   62.7     26  10.5px rgb(244, 247, 250) rgba(169, 193, 217, 0. 
+SPAN   strip-live-label          86.3   100.5   24.7     11  10.5px rgb(229, 72, 77) rgba(0, 0, 0, 0)       LIVE
+BUTTON strip-theme-button         127      93   88.5     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+SPAN   strip-theme__swatch        137   101.5      9      9  10.5px rgb(174, 184, 196) rgb(169, 193, 217)     
+SPAN   strip-button__label th     152   100.5   53.5     11  10.5px rgb(174, 184, 196) rgba(0, 0, 0, 0)       Manuscrito
+BUTTON strip-theme-chevron      221.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON strip-transparency-but   253.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON strip-open-button        285.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON strip-hide-button        317.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON strip-font-smaller-but   349.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+text   [object SVGAnimatedStr   358.8   104.3      7      7  9px    rgb(174, 184, 196) rgba(0, 0, 0, 0)       A
+BUTTON strip-font-larger-butt   381.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+text   [object SVGAnimatedStr   389.9   102.7      9     10  12px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       A
+BUTTON strip-pause-button       413.5      93     26     26  10.5px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+SPAN   strip-dot                962.7     103      6      6  15px   rgb(244, 247, 250) rgb(93, 102, 115)      
+SPAN   strip-word               974.7    98.5   53.3     15  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       Starting
+FOOTER status                      12     127   1016     12  12px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       
+SPAN   status-dot                  12     132      7      7  12px   rgb(174, 184, 196) rgb(255, 155, 138)     
+
+
+########## PANEL theme-1 ##########
+FAIL theme-1/panel :: Traceback (most recent call last):
+  File "H:\sotto\_main\_design-lane\rects.py", line 115, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "H:\sotto\_main\_design-lane\rects.py", line 108, in main
+    print('%-6s %-22s %7s %7s %6s %6s  %-6s %-8s %-22s %s'
+  File "C:\Program Files\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_en
+
+########## PANEL theme-3 ##########
+inner=492x900  dpr=1  theme=theme-3 surface=panel  (asked viewport 380x900)
+tag    class/id                     x       y      w      h  fs     color    bg                     text
+MAIN   panel                        0       0    492    900  15px   rgb(244, 247, 250) rgba(0, 0, 0, 0)       
+SPAN   chrome__brand               15      28   24.1     15  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       sotto
+SPAN   chrome__draft             49.1      25   65.6   18.8  12.5px rgb(174, 184, 196) rgba(0, 0, 0, 0)       rascunho live
+BUTTON theme-button             243.6      15   73.4     28  9.5px  rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+SPAN   theme-button__label      250.6      24   48.4     10  9.5px  rgb(174, 184, 196) rgba(0, 0, 0, 0)       Manuscrito
+BUTTON theme-chevron              321      15     28     28  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON font-smaller-button        353      15     28     28  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+text   [object SVGAnimatedStr     363      25      8     10  9px    rgb(174, 184, 196) rgba(0, 0, 0, 0)       A
+BUTTON font-larger-button         385      15     28     28  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+text   [object SVGAnimatedStr     394    22.5     10     14  12px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       A
+BUTTON tune-button              211.6      15     28     28  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON panel-pause-button         417      15     28     28  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+BUTTON hide-button                449      15     28     28  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+SECTION history                     15    53.8    462     30  15px   rgb(244, 247, 250) rgba(0, 0, 0, 0)       
+BUTTON history-toggle              15    61.8     22     22  13.3333px rgb(174, 184, 196) rgba(169, 193, 217, 0. 
+SPAN   history-label               45    64.5     85   16.5  11px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       Transcript
+SPAN   live-label                  15    93.8   31.2   16.5  11px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       Live
+DIV    captions-body               15   116.3    462  735.8  15px   rgb(244, 247, 250) color(srgb 0.0784314 0 
+SPAN   caption__time               42   295.2   46.9   24.6  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       10:23:58
+SPAN   caption__text             98.9   295.2  353.1   24.6  17px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       O som chega antes da imagem.
+SPAN   caption__time               40   345.9   46.9   24.6  10px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       10:24:04
+SPAN   caption__text             96.9   345.9  355.1   24.6  17px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       Quando a frase fecha, ela ganha peso - e fica.
+SPAN   caption__time               42   396.5   46.9   79.5  10px   rgb(255, 210, 74) rgba(0, 0, 0, 0)       10:24:01
+SPAN   caption__confirmed        98.9   403.5  320.9     23  23px   rgb(220, 228, 237) rgba(0, 0, 0, 0)       A legenda nasce enquanto a frase
+SPAN   caption__provisional      98.9   440.8  242.5     23  23px   rgb(151, 163, 176) rgba(0, 0, 0, 0)       ainda esta em formacao -
+FOOTER status                      15     862    462     27  12px   rgb(174, 184, 196) rgba(0, 0, 0, 0)       
+SPAN   chrome chrome--mano        394   871.8     83   16.5  11px   rgb(127, 138, 151) rgba(0, 0, 0, 0)       � escrito ao ouvido
+SPAN   status-dot                  15   876.5      7      7  12px   rgb(174, 184, 196) rgb(255, 155, 138)     
+SPAN   status-text                 30     871    356     18  12px   color(srgb 0.987922 0.708863 0.664157) rgba(0, 0, 0, 0)       Preload bridge missing � captions are impossible
