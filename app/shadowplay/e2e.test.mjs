@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HotkeyRouter, ReplayRing, SavePath, ClipWriter,
-         Encoder, backToNearestIdr } from "./index.js";
+         Encoder, backToNearestIdr, composeShadowplay } from "./index.js";
 
 let passed = 0, failed = 0;
 // ASYNC runner: press() and instantReplay() are async (the delivery gate measures with
@@ -221,6 +221,54 @@ try {
         "the clip saved with the overlay off must still carry its bytes");
     } finally {
       rmSync(box.dir, { recursive: true, force: true });
+    }
+  });
+
+  // THE ARM THAT WAS MISSING. Every arm above builds its own object graph from leaf
+  // classes -- ClipWriter, SavePath, ReplayRing, HotkeyRouter -- assembled by hand in
+  // sandbox(). They prove each part and the way those parts were wired BY THE TEST.
+  //
+  // They never call composeShadowplay, which is the code a real caller enters. Measured
+  // 2026-10-10T23:31:56Z: `Select-String composeShadowplay` over POP=13 suites returned
+  // 0 call sites. So a wiring bug inside the composition root -- a directory not
+  // threaded through, a ring built with the wrong minutes budget, a router wired to the
+  // wrong writer -- would leave every arm above green.
+  //
+  // This arm enters through the public root and asserts the clip lands there. It is the
+  // difference between "the parts work" and "the assembled product works".
+  await t("the composition root wires a press through to a real file", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "shadowplay-root-"));
+    try {
+      // The real entry point, with only a directory injected. Everything else is the
+      // product's own wiring.
+      const app = composeShadowplay({ dir: rootDir });
+      assert.ok(app && app.ring && app.hotkeys,
+        "composeShadowplay must return a usable product, not a partial graph");
+
+      app.ring.push(SEED, { frames: 60, keyframe: true });
+      const action = await app.hotkeys.press("f9", 1000);
+
+      // The three conditions _rootdrive2.mjs established, asserted permanently here:
+      // the press did not refuse, bytes are on a real disk, and the gate read the file.
+      assert.equal(action.action, "instant-replay",
+        `a press through the root must save, not refuse: ${JSON.stringify(action.clip && action.clip.error)}`);
+      assert.equal(action.clip.name, "0000.mp4",
+        "the first press through the root takes the first name");
+
+      const landed = join(rootDir, "0000.mp4");
+      assert.ok(readdirSync(rootDir).includes("0000.mp4"),
+        "the composition root must land the clip in the directory it was given");
+      assert.equal(statSync(landed).size, SEED.byteLength,
+        `the root's clip must carry its encoded bytes, not a reservation: got ${statSync(landed).size} of ${SEED.byteLength}`);
+
+      // A verdict object can only exist if ffprobe and ffmpeg read the landed file, so
+      // this is the proof the bytes are playable rather than merely present.
+      assert.equal(typeof action.clip.verdict.longestUniqueRun, "number",
+        "the gate must have measured the clip the root wrote");
+      assert.equal(action.clip.verdict.contentSufficientToCoverClock, true);
+      assert.equal(action.clip.path, landed, "the returned path must be the real one");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
     }
   });
 } finally {
