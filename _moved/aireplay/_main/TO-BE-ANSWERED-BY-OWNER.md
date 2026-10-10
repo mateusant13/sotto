@@ -133,3 +133,92 @@ foi engano. Nao ha caminho partilhado com nada existente.
 que `HONEST-BASELINE.md` tem um numero que ja sei estar errado (a sha do bateria foi medida de
 novo em 2026-10-10) — queres que o corrija no mesmo commit ou que o deixe como evidencia do que
 a lane mediu nessa altura?
+
+---
+
+## RESPOSTAS 2026-10-10 — o dono autorizou "push and take all decisions and continue with everything"
+
+Todas as respostas abaixo são minhas (do agente), tomadas com essa autorização, e cada uma carrega a
+medição em que assenta. Nenhuma foi decidida por impressão. A Q1 já estava respondida por ti e está
+feita. Quando uma resposta cria trabalho novo, esse trabalho fica nomeado como tarefa de lane e não
+como decisão.
+
+### Q1 — O PUSH: respondido por ti e FEITO
+Push executado 2026-10-10 (`e36964e..40f5a35`). Tudo o que aterrou desde então — os 3 ficheiros do
+gate audit, os 4 planos, o receipt-29, o probe p95, mais o trabalho de design do produto original
+que veio de outra lane — está na mesma branch e já em `origin/feat/build-verify-1`.
+
+### Q2 — SPEC 06: fica escrita; L5 (motor) e L7 (áudio) aterram primeiro
+Decisão: a 06 **não** é o próximo passo a implementar. Fica como spec escrita, e a prioridade é L5 e
+L7 antes dela. Motivo medido, não preferência: L7 acabou de aterrar com prova de instrumento — o
+`ffprobe` dum corte real dá uma segunda pista `aac` a 48 kHz estéreo com o ASC no `esds`, o MFT de
+AAC é criável nesta máquina, e a reconstrução do commit é idêntica ao binário embarcado em 19 de 19
+secções (só `TimeDateStamp` e o `CheckSum` do PE diferem). L5 é o motor sem o qual nada do resto liga. E
+a 06 depende das 05 e 07 — a 07 é a spec do motor — portanto implementar a 06 antes do motor seria
+construir sobre nada. POP/JANELA: estado do repositório em 2026-10-10, parent `feat/build-verify-1`.
+
+### Q3 — MUDANÇA DE CAIXA: não, e já não é necessária
+A pergunta era "autorizas a mudança alguma vez?". A resposta é **não**, e a razão mudou: **não é
+preciso mudança de caixa nenhuma para explicar a recusa**, porque a causa medida é o rótulo
+`S-1-16-4096` (Low integrity) nos ficheiros, não a política. As duas mudanças (EnableLUA 0->1 com
+re-logon, arrancar o `seclogon`) só serviriam para testar a hipótese medium-IL, que fica
+**OPEN-UNTESTABLE** — não to peço. O que continua teu é o desconhecido: quem pôs o rótulo. Por
+medir: `GraphicsCaptureAccessStatus` nunca lido; diálogo de consentimento nunca visto. BOUND: um
+host, uma conta admin elevada, `EnableLUA=0`.
+
+### Q4 — RELÓGIO DO CLIP: mantém a ordem medida; mtime só corrobora
+Decisão: fica **clip-id > key.json > db > container > mtime**, e o **mtime é corroboração apenas,
+nunca fonte da verdade** — porque muda com `git clean`, com cópias e com backups, e um clip cujo
+instante dependa do mtime perde o instante no primeiro `cp`. O `container` (moov) hoje não traz
+relógio de parede (`mp4_writer.cpp:257,272,293` escreve 0,0 literal); isso fica registado como
+lacuna das specs, não como decisão. POP/JANELA: lido em `src/capture/mp4_writer.cpp`, árvore de
+2026-10-10.
+
+### Q5 — DUPLICADOS: por `content_key`, nunca por intervalo sozinho
+Decisão: a política é **duas condições juntas** — (1) `content_key` igual e só então (2) o intervalo,
+com o overlap de 0,10 s já escrito em `specs/02-asr.md:165`. **Nunca dedup por intervalo sozinho**:
+fundiria duas gravações diferentes do mesmo minuto (duas janelas, dois monitores) e apagava uma.
+**Nunca por hash de vídeo**: o mesmo conteúdo capturado duas vezes é o caso em que queres duas
+entradas na biblioteca. POP/JANELA: censo de 2026-10-09 — "duplicate room"/dup-room/room_dup = ZERO
+ocorrências na árvore; o instrumento continua a imprimir `DUPLICATE ROOM POLICY: NONE WRITTEN IN THIS
+TREE` até a política ser escrita.
+
+### Q6 — ORÇAMENTO DO RING: a regra medida, com o preço saído da RAM do sistema
+Decisão: **teto = min(4 GiB, 25% da RAM total, 50% da RAM disponível)**, hoje 4 GiB (8,4% de 47,74
+GiB). O piso de 256 MiB fica **inalcançável e é removido da regra** em vez de cumprido por decreto:
+o piso real é o do código, `ring_buffer.cpp:78` rejeita menos de 16 MiB. E esta decisão carrega um
+defeito a corrigir, que é a razão de a tomarmos agora: a lei 7 dos aireplay diz que o orçamento do
+ring sai da RAM do **sistema**, e `d3d11_ctx.cpp:70` tira-o da VRAM dedicada (998,69 MiB), dando um
+teto de ~62 MiB sobre uma arena que é RAM. A correção é tarefa de lane, não desta decisão.
+POP/JANELA: medido 2026-10-10 pela lane-C; caixa 47,74 GiB.
+
+### Q7 — OS QUATRO FICHEIROS DE PLANO: comitados, e um deles não é plano
+Feito em `5b8ddd7`, com caminhos explícitos. Resposta à tua segunda pergunta:
+`p4-aireplay-status.md` **não é um plano**, é um **relatório de estado** — o cabeçalho diz "# P4 —
+AIREPLAY PROJECT STATUS", Lane: aireplay (inspection), Owner: absent (11 prompts), data 2026-10-08.
+Não tem `Status: SPEC` nem lane própria, por isso **não entra na fila de trabalho**, e os seus
+números são um retrato de 2026-10-08, a reler contra o DEBT-LEDGER antes de serem acreditados. O
+commit message diz exactamente isso. Os outros três são SPEC abertos; o do WGC tem a pergunta
+"porquê `0x80070005` quando a política parece permitir" **respondida por medição** (F18 +
+receipt-29): a caixa não recusa por política, recusa pelo rótulo LOW, e o braço de correcção como
+está escrito precisa de uma mudança de máquina que não autorizas — por isso aterrou como registo da
+pergunta, com o "porquê" resolvido e o "o que fazer" aberto.
+
+### Q8 — OS TRÊS FICHEIROS DO GATE AUDIT: comitados com `-f` e corrigidos por acréscimo
+Feito em `2f9071c`, com dois companheiros: receipt-29 em `c0581e0` e o probe p95 em `19a031c`. A
+razão do `-f` está no commit message: `.gitignore:105` (`_moved/aireplay/_main/*/`) casa apenas
+DIRETÓRIOS, logo cada subdiretório do `_main/` precisa de `git add -f`. Sobre o número errado —
+**corrigi por acréscimo, não reescrevi**: o `HONEST-BASELINE.md` ganhou uma secção 14 datada de
+2026-10-10 que diz qual era a frase falsa ("p95 ... no run yet": hoje é falso, o instrumento existe e
+correu, F16.7) e deixa a frase original de pé. E uma confirmação medida, porque eu esperava que a sha
+da bateria estivesse errada e **não estava**: `_main/build/aireplay-capture.exe` dá
+`6CADE9A3...A05296` hoje, 783 865 B — a linha do binário continua VERDADEIRA, e a linha do
+instrumento de registo (`run_battery.ps1`, 28 309 B / 436 linhas) é exactamente verdadeira. A única
+linha falsa era a do p95. O `f4ca6691` fica registado como o que é: um id de subagente citado como
+commit — erro de categoria, não commit perdido.
+
+### O que continua em aberto depois destas respostas
+Quem pôs o rótulo `S-1-16-4096` (teu, por medição — não adivinho). O veredicto do revisor do probe
+p95 (L18), ainda em voo. As lanes L5 e L6, e os revisores que faltam à wave-2 (L5, L6, L7, L18 pela
+regra 4). E o WGC continua sem um único fotograma capturado: F18.8 mede a CRIAÇÃO de itens, nunca
+uma sessão inteira.
