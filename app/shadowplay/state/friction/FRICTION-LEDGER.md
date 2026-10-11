@@ -2062,3 +2062,24 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   refusal was correct, and a hardware suite failing once under load is not evidence that the gate
   is wrong. If it fails again in this commit I will report the failure rather than route around
   the instrument -- which is the whole of what today's bypass argument came down to.
+
+## 2026-10-11T12:31Z - flake rate measured: 0 of 8 in isolation, and that is NOT "it never flakes"
+
+  MEASURED 12:28:57Z .. 12:31:03Z, POP 8 consecutive isolated runs of nvenc.test.mjs, nothing else
+  running. POP_OK 8, POP_FAIL 0, FLAKE_RATE 0,0 %, total 125,2 s.
+  Per-run seconds: 16,0 15,1 15,9 15,6 15,3 15,5 15,3 16,5 -- spread 1,4 s, no drift, no outlier.
+
+  Against that, POP 1 batch run at 12:20:37Z where the same suite reported 4 passed 1 failed and the
+  gate refused the commit. So the honest shape is: zero flakes with nothing else competing, one
+  failure observed while 15 suites ran together and another lane had 5 git processes in this
+  checkout. The discriminating variable is LOAD, not the suite. I am not writing "the suite is
+  stable" -- POP 8 cannot speak about the batch case at all, because I never ran POP 8 in a batch.
+
+  What would actually settle it, and which I did not do: run the full 15-suite batch POP 8 times and
+  count how often nvenc.test.mjs fails inside it. That is roughly 8 x 160 s, which does not fit this
+  turn. Until then the rate I can quote has a scope attached to it, and the scope is the whole point:
+  a rate measured without the condition that produced the failure is a rate of a different thing.
+
+  Also worth keeping: I did not set SOTTO_SKIP_RUN_ALL on the refused commit, and the next ordinary
+  commit went in on the gate's own verdict at SUITES 15 passed. The instrument was allowed to refuse
+  me and then allowed me back, which is the difference between a gate and a rubber stamp.
