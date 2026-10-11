@@ -235,10 +235,19 @@ export class ReplayRing {
     //                        specification, not an enforcement.
     //   save-path.js      -- writes the bytes. It does not know what a keyframe is,
     //                        and it is not allowed to grow ffmpeg knowledge. One
-    //                        reason that holds is fan-out: MEASURED 5 call sites
-    //                        across 4 modules (WINDOW_UTC 2026-10-11T00:34:37Z, grep of
-    //                        .save( across every .js here) depend on save() being a
-    //                        name issuer and nothing more.
+    //                        reason that holds is fan-out: MEASURED 3 real call sites
+    //                        across 3 modules (WINDOW_UTC 2026-10-11T01:19:32Z, grep of
+    //                        .save( across every .js here, COMMENT LINES EXCLUDED)
+    //                        -- audio-track, captions, replay-ring -- depend on save()
+    //                        being a name issuer and nothing more.
+    //
+    //                        CORRECTION, and it is the same mistake twice. This line said
+    //                        "5 call sites across 4 modules" from a grep at 00:34:37Z. A
+    //                        raw grep of `.save(` returns 6 hits, but 3 of them are
+    //                        COMMENT LINES quoting this very discussion -- one of them
+    //                        three lines below. A count that includes the sentence
+    //                        announcing the count cannot measure it. Measured properly:
+    //                        6 total = 3 code + 3 comment, so 3 call sites, 3 modules.
     //
     // WHY BEFORE #assertClipCanStandInForItsClock, WHICH IS THE ACTUAL FIX.
     // Measured before this change: save() reserved the name and wrote no bytes,
