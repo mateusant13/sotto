@@ -5,14 +5,17 @@
 // statement that 9 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T01:30:26Z, counting
 // registrations from the source rather than from the RESULT line:
 //   tests registered   9   (all synchronous; 0 async)
-//   branches falsified  2   -- measured WINDOW_UTC 2026-10-11T01:37:42Z
+//   branches falsified  3   -- measured WINDOW_UTC 2026-10-11T01:48:55Z
 //       (a) the IDR guard, by replacing
 //           `if (slice[0].type !== FRAME_TYPES.IDR)` with `if (false)`:
 //           7 passed / 2 failed, exit 1.
 //       (b) the payload guard's lower bound, by dropping the `|| payloadBytes < 0` half of
-//           the condition at encoder.js:27: 8 passed / 1 failed, exit 1 -- exactly ONE test
-//           guards that branch, so it is covered but only singly.
-//   branches NOT falsified 7. Their assertions pass, and nothing here shows that removing
+//           the condition at encoder.js:27: 8 passed / 1 failed, exit 1.
+//       (c) the empty-slice guard at encoder.js:41, by returning
+//           `{frames: 0, bytes: 0, startType: IDR}` instead of throwing:
+//           8 passed / 1 failed, exit 1.
+//       (b) and (c) each turn exactly ONE test red, so both are covered but only singly.
+//   branches NOT falsified 6. Their assertions pass, and nothing here shows that removing
 //                                 the code they exercise would turn any of them red.
 // Sibling file: frame-accounting.test.mjs carries the same disclosure for its own count.
 //
