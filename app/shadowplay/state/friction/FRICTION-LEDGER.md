@@ -496,3 +496,34 @@ same measurement at the real N.
   a denominator. It is also not a reason to keep the gate off: a gate that is right 12 times
   out of 13 and says why the 13th time is worth more than a gate that is never wrong
   because it never runs.
+
+## 2026-10-11T08:11:09Z - the gate refusing a real commit, with a runner that actually fails
+
+Every previous hook test ran against a stub that exits 0. A stub always passes, so the one
+thing that matters -- does the gate STOP a commit -- had never been observed.
+
+  MEASURED, POPULACAO = 4 real git commits, WINDOW_UTC 2026-10-11T08:10:48-08:11:09Z, in
+  G:\Temp\ht6, run-all.mjs replaced by one that prints a real failure and exits 1:
+
+    1. before install-hooks    commit exit 0   commits 1
+       the hooks were not installed yet, so nothing could refuse. Worth measuring: the
+       gate is not a property of the repository, it is a property of the INSTALLATION.
+    2. after install-hooks     commit exit 1   commits 1   HEAD unmoved
+         pre-commit: running suites and parse gate
+           RUN ALL (failing stub)
+             encoder.test.mjs FAIL 2 passed, 1 failed :: no free sequence value after 10
+             SUITES 14 passed, 1 failed, 0 unreported
+             GATE 4 passed / 1 refused, exit 1
+             VERDICT suites_ok=false gate_ok=false
+         pre-commit: run-all exited 1 -- commit refused.
+       a.txt stayed staged, HEAD unmoved, the failing TEST NAME reached the terminal.
+    3. SOTTO_SKIP_RUN_ALL=1    commit exit 0   commits 2
+         "pre-commit: SOTTO_SKIP_RUN_ALL=1 set -- suites and gate NOT run for this commit"
+    4. variable removed        commit exit 1   commits 2   refused again
+
+  That is the whole contract in four commits: refuse, refuse-loudly-on-bypass, refuse
+  again. And the failure is NAMED, not just counted, so the next person sees which test
+  broke rather than only that something did.
+
+  rule: an instrument tested only on inputs it passes has not been tested. Three passes
+  in a row told me nothing about the one question the gate exists to answer.
