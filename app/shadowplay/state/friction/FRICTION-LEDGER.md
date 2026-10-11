@@ -1756,3 +1756,25 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   parse-gate.mjs.redarm.bak, verified 0 lines with false, node --check exit 0, backup removed.
   So these four keys are UNPROVEN in the RED direction: nothing yet shows the gate refuses
   when one of them is wrong. The green is real; the NO-arm for the new keys is not measured.
+
+## 2026-10-11T11:01Z - the four new keys have a measured NO now, and the restore lives inside each iteration
+
+  MEASURED 11:01:47Z .. 11:06:02Z, POPULATION 4 mutations, one gate run each:
+    RED_OK  clip-not-keyframed    ARMS_DISAGREE=false            exit=1 63.1s names_key=true RESTORED=true
+    RED_OK  stored-keyframe-arm   ARMS_DISAGREE=false            exit=1 65.2s names_key=true RESTORED=true
+    RED_OK  stored-keyframe-arm   NEGATIVE_ARM_REFUSED=false     exit=1 64.7s names_key=true RESTORED=true
+    RED_OK  stored-keyframe-arm   NEGATIVE_ARM_LEFT_NO_FILE=false exit=1 62.6s names_key=true RESTORED=true
+    MUTATIONS_RAN 4   MUTATIONS_REFUSED 4
+    gate on disk after: linhas_com_false 0, bytes 22673, node --check exit 0, orphan backup False
+
+  names_key=true is the part worth keeping: the gate does not merely go red on a wrong key, it
+  NAMES the key in its own reason. A red that cannot say which claim broke teaches the reader
+  nothing, and is the same defect the ledger already records once.
+
+  WHY THE DESIGN CHANGED, measured on my own failure. The first version restored in ONE
+  finally around the whole loop, so cancelling it -- which I did -- left the gate MUTATED ON
+  DISK at L211. Now every iteration copies a backup that outlives the iteration, restores from
+  the ON-DISK backup rather than an in-memory copy, PROVES the restore by comparing bytes, and
+  appends its verdict BEFORE the next one starts. A kill now costs at most the iteration in
+  flight. The rule: an experiment that mutates a product file must leave the restore readable
+  from the disk, not from the stack of the process you might have to kill.
