@@ -277,30 +277,56 @@ let pendingFocusReturn = null;
 let historyRootPath = null;
 /**
  * LINE IDENTITY (owner, 2026-10-08, verbatim: *"essa repeticao de linhas tem que
- * acabar ... nao tem que repetir linha e com append na proxima"*).
+ * acabar ... nao tem que repetir linha e com append na proxima"*) — NOW
+ * `(source, start)` (STEP 4, 2026-10-11).
  *
- * ONE live-box line per worker SEGMENT, and the segment's identity is its
+ * ONE live-box line per worker SEGMENT, and the segment's identity was its
  * `start`. The worker narrates one line as a run of partials that all carry the
  * SAME `start` with `end` growing, and closes it with ONE `final:true` event —
  * and that final event is a REVISION, not necessarily a superset (the owner's own
  * `_main/webview-run.log` carries a segment whose final text differs from the
  * last partial: `...and on the right` -> `problems and use this skill...`).
  *
- * So a commit whose `start` is ALREADY the identity of a committed line REPLACES
- * that line's text IN PLACE; only a commit with a NEW `start` appends a row. The
+ * So a commit whose identity is ALREADY the identity of a committed line REPLACES
+ * that line's text IN PLACE; only a commit with a NEW identity appends a row. The
  * map is what makes that decidable: without it, the second commit of one segment
  * looked like a second line, which is the duplication the owner is looking at.
+ *
+ * WHY `start` ALONE WAS NOT ENOUGH. The worker now stamps every caption event
+ * with a `source` (`proc:<pid>` / `device:<name>` / `file:<name>`), and the
+ * owner requires audio from different apps to be PROCESSED SEPARATELY. Two apps
+ * both have an audio second `start=5`, so a map keyed by `start` alone makes the
+ * second app's line REPLACE the first's — the exact collision this step removes.
+ * See `rowIdentity` for the key and why it cannot collide with a number.
  *
  * FAIL-SAFE DIRECTION: a commit with no usable identity (`start` absent — an
  * older worker, or a non-audio one) appends, exactly as before. Replacing the
  * wrong row would lose a line; appending at worst shows the old behaviour.
  *
- * Declared in this block on purpose — `addCaption` is reachable from the engine
+ * Declared in this block on purpose — `addCaption` is reachable from the engines
  * the init block below creates, and a `let` read above its declaration is a
  * temporal-dead-zone ReferenceError that takes the whole module down (see the
  * note at the top of this file).
  */
 let committedByStart = new Map();
+
+/**
+ * THE KEY OF A COMMITTED ROW: `(source, start)` (STEP 4).
+ *
+ * With a source the key is `source + "\u0000" + start`. The NUL cannot appear in
+ * a device name, a pid or a file name, and a STRING key can never equal the
+ * NUMBER `start` — so a sourced row and a sourceless row cannot collide either.
+ *
+ * With NO source the key is the NUMBER `start`, exactly as it always was, key for
+ * key: a run with no source behaves as before this change.
+ *
+ * `null` means "no usable identity" (no `start`): the caller appends, exactly as
+ * the fail-safe direction always did.
+ */
+function rowIdentity(source, start) {
+  if (start === null || start === undefined) return null;
+  return source === null || source === undefined ? start : String(source) + "\u0000" + start;
+}
 
 /**
  * HOW MANY LINES THIS DOCUMENT HAS CLOSED — a DIAGNOSTIC counter, kept on the row
@@ -329,15 +355,47 @@ let committedByStart = new Map();
  */
 let lineOrdinal = 0;
 /**
- * THE WORDS CURRENTLY PAINTED in the one forming line, so a repaint can be
- * INCREMENTAL. The live box is rewritten on every partial, and the per-word
- * contrast ramp (`mano`) and the forming fog (`cine`) both need one span per
- * word — but recreating those spans on every partial would restart every
+ * THE WORDS CURRENTLY PAINTED in the forming line of EACH SOURCE, so a repaint
+ * can be INCREMENTAL. The live box is rewritten on every partial, and the
+ * per-word contrast ramp (`mano`) and the forming fog (`cine`) both need one
+ * span per word — but recreating those spans on every partial would restart every
  * transition and throw away the very thing that makes the ramp gradual. So the
- * spans are REUSED by index and only the words that actually changed are
- * written; the ramp is repainted only when the TOTAL moves.
+ * spans are REUSED by index and only the words that actually changed are written;
+ * the ramp is repainted only when the TOTAL moves.
+ *
+ * KEYED BY SOURCE (STEP 4, 2026-10-11), because there is now ONE OPEN ROW PER
+ * SOURCE: two apps must be able to form two sentences at the same time without
+ * one's partial repainting the other's spans. The key is the source string, or
+ * `null` for a run with no source — the same key `provisionalRows` uses.
  */
-let paintedWords = { confirmed: [], provisional: [], total: 0 };
+const paintedWordsBySource = new Map();
+
+/**
+ * THE ONE OPEN (`--provisional`) ROW PER SOURCE, as the `<li>` itself.
+ *
+ * A Map rather than an attribute selector ON PURPOSE: a device name is
+ * `device:CABLE Output (VB-Audio Virtual Cable)` — it contains `:`, quotes and
+ * backslashes — so `querySelector('[data-source="…"]')` would need escaping that
+ * a caption must never depend on. The map is the lookup; `data-source` is
+ * written only so a probe can READ the identity off the row.
+ */
+const provisionalRows = new Map();
+
+/**
+ * ONE FORMULATION ENGINE PER SOURCE (STEP 4, 2026-10-11).
+ *
+ * The engine holds single-stream buffer state (`committed`/`provisional`, the
+ * LocalAgreement-2 history, the emitted watermark), so TWO SOURCES IN ONE ENGINE
+ * interleave into ONE garbled sentence. `engineFor(source)` builds and caches one
+ * engine per source key, and the panel never feeds a fragment to another source's
+ * engine. The key is the source string, or `null` for no source.
+ *
+ * Declared HERE, above the init block, on purpose: the init block calls
+ * `wireCaptions()`, and anything it can reach is declared above it — a
+ * `let`/`const` read above its declaration is a temporal-dead-zone ReferenceError
+ * that takes the whole module down (see the note at the top of this file).
+ */
+const engines = new Map();
 
 /**
  * `pad3` — the mockup's own width for the line ordinal.
@@ -566,45 +624,68 @@ let lastLevelPaint = 0;
 // Caption formulation. The TEXT decisions live in `caption-formulation.js`,
 // which is DOM-free precisely so an oracle can run the real functions outside
 // Electron; this block owns only the wiring and the rendering of what the
-// engine decides.
+// engines decide.
 // ---------------------------------------------------------------------------
 
-const engine = window.SottoFormulation.createEngine({
-  // `reason` and `meta` are the provenance the engine computes at the moment of
-  // the write — WHICH rule closed the line and WHERE in the audio it began.
-  // Both used to be dropped here (M7/M8).
-  onCommit: (text, reason, meta) => {
-    // THE PROVISIONAL ROW HAS TO GO WHEN THE LINE IT SHOWED IS WRITTEN, and the
-    // panel is the only place that can do it: the engine is DOM-free.
-    //
-    // MEASURED 2026-10-08 by `_main/_panel2-dom-probe.js`: feeding a worker-shaped
-    // stream (a `final:true` line, then the next line's growing partial) left ONE
-    // `<li>` holding both the committed text and the provisional tail. The flow
-    // was `renderProvisional` (creates the open row) → `commit` → `addCaption`
-    // (retires it, appends the committed row) → and then, because the ENGINE's
-    // tail is empty at that instant, no `onProvisional` followed — so the row
-    // `addCaption` had just retired was never replaced, `addCaption`'s own append
-    // was the only row left, and the next fragment rewrote that same row in place.
-    // The box therefore NEVER painted a closed line as a closed line: it always
-    // showed one open row whose confirmed span had grown. That is not what the
-    // owner reads (`panel.js` has always claimed "the box replaces, one row per
-    // closed line").
-    //
-    // Retiring HERE and letting the next `renderProvisional` create a fresh open
-    // row is the same rule `addCaption` already applied, moved to the moment the
-    // line actually became final. If the engine still holds a tail, `onProvisional`
-    // fires immediately after this (the engine's OWN order) and re-creates it.
-    retireProvisional();
-    addCaption(text, reason, meta);
-  },
-  onProvisional: (committed, provisional) => renderProvisional(committed, provisional),
-});
+/**
+ * The engine for one source — built on first use, cached forever.
+ *
+ * `source` is the worker's own key (`proc:<pid>` / `device:<name>` /
+ * `file:<name>`) or `null` when the worker stamped none. ONE ENGINE PER SOURCE
+ * is the whole point (STEP 4): the engine's buffer state is single-stream, so two
+ * apps sharing an engine produce one garbled sentence, and a partial for one app
+ * must never touch the other's open row. The map key IS the source, so `null`
+ * and the string `"null"` are different engines, as they must be.
+ */
+function engineFor(source) {
+  const key = source === null || source === undefined ? null : String(source);
+  const cached = engines.get(key);
+  if (cached) return cached;
+  const engine = window.SottoFormulation.createEngine({
+    source: key,
+    // `reason` and `meta` are the provenance the engine computes at the moment of
+    // the write — WHICH rule closed the line and WHERE in the audio it began.
+    // Both used to be dropped here (M7/M8).
+    onCommit: (text, reason, meta) => {
+      // THE PROVISIONAL ROW HAS TO GO WHEN THE LINE IT SHOWED IS WRITTEN, and the
+      // panel is the only place that can do it: the engine is DOM-free.
+      //
+      // MEASURED 2026-10-08 by `_main/_panel2-dom-probe.js`: feeding a worker-shaped
+      // stream (a `final:true` line, then the next line's growing partial) left ONE
+      // `<li>` holding both the committed text and the provisional tail. The flow
+      // was `renderProvisional` (creates the open row) → `commit` → `addCaption`
+      // (retires it, appends the committed row) → and then, because the ENGINE's
+      // tail is empty at that instant, no `onProvisional` followed — so the row
+      // `addCaption` had just retired was never replaced, `addCaption`'s own append
+      // was the only row left, and the next fragment rewrote that same row in place.
+      // The box therefore NEVER painted a closed line as a closed line: it always
+      // showed one open row whose confirmed span had grown. That is not what the
+      // owner reads (`panel.js` has always claimed "the box replaces, one row per
+      // closed line").
+      //
+      // Retiring HERE and letting the next `renderProvisional` create a fresh open
+      // row is the same rule `addCaption` already applied, moved to the moment the
+      // line actually became final. If the engine still holds a tail, `onProvisional`
+      // fires immediately after this (the engine's OWN order) and re-creates it.
+      //
+      // PER SOURCE: this retires only THIS engine's open row. Retiring another
+      // source's row here would blank a sentence the other app is still forming.
+      retireProvisional(key);
+      addCaption(text, reason, meta);
+    },
+    onProvisional: (committed, provisional) => renderProvisional(committed, provisional, key),
+  });
+  engines.set(key, engine);
+  return engine;
+}
 
 /**
- * Restarted on every caption, and RE-ARMED while the engine is still holding a
+ * Restarted on every caption, and RE-ARMED while ANY engine is still holding a
  * PROVISIONAL line: the deadline no longer writes anything to the transcript
  * (M6 — see `expireHold`), so a timer that fired on a live provisional line
- * must go back to waiting rather than let the line be abandoned.
+ * must go back to waiting rather than let the line be abandoned. With one engine
+ * per source (STEP 4) the question is asked of EVERY engine, because one app's
+ * stalled tail is still a reason for the deadline to stay armed.
  *
  * F6 — THE GUARD THAT COULD NOT BE TRUE. This read
  * `engine.state().provisionalRoute`, a field `state()` never returned (its
@@ -620,8 +701,15 @@ function armHoldTimer() {
   clearTimeout(holdTimer);
   holdTimer = setTimeout(() => {
     holdTimer = null;
-    engine.expireHold();
-    if (engine.state().provisional.length) armHoldTimer();
+    // EVERY engine, not just one: the deadline is a property of the stream, and
+    // each source's engine holds its OWN tail (STEP 4). The timer is re-armed
+    // while ANY engine still holds a provisional line.
+    let held = false;
+    for (const engine of engines.values()) {
+      engine.expireHold();
+      if (engine.state().provisional.length) held = true;
+    }
+    if (held) armHoldTimer();
   }, window.SottoFormulation.COMMIT_MAX_HOLD_MS);
 }
 
@@ -656,18 +744,36 @@ function armHoldTimer() {
  * confirmed span is written only when its words changed, the tail span is the
  * one that moves, and nothing here animates a property that forces a relayout
  * (see `_main/receipt-panel-per-theme-chrome.md` §cost).
+ *
+ * ── AND ONE OPEN ROW PER SOURCE (STEP 4, 2026-10-11) ─────────────────────────
+ * `source` is the worker's key or `null`. The row and its paint cache are found
+ * through `provisionalRows`/`paintedWordsBySource` — NEVER through an attribute
+ * selector, because a device name contains `:`, quotes and backslashes. A partial
+ * for source A therefore cannot find, repaint or retire source B's open row, which
+ * is the observable the per-source ENGINES exist for.
  */
-function renderProvisional(committed, provisional) {
+function renderProvisional(committed, provisional, source) {
   if (!dom.list) return;
+  const key = source === null || source === undefined ? null : String(source);
   const confWords = Array.isArray(committed) ? committed.map(t => t.w) : [];
   const provWords = Array.isArray(provisional) ? provisional.map(t => t.w) : [];
   const total = confWords.length + provWords.length;
 
-  // Find or create the line that holds the provisional hypothesis.
-  let line = dom.list.querySelector('.caption--provisional');
+  // Find or create the line that holds THIS source's provisional hypothesis. An
+  // entry whose node left the document (MAX_CAPTIONS trimmed it) is dropped,
+  // exactly as the old `querySelector` found nothing for it.
+  let line = provisionalRows.get(key) || null;
+  if (line && !line.isConnected) {
+    provisionalRows.delete(key);
+    line = null;
+  }
   if (!line) {
     line = document.createElement('li');
     line.className = 'caption caption--provisional';
+    // The source on the row, for probes — UNSET when there is no source, so the
+    // no-source DOM stays byte-identical to before this change.
+    if (key !== null && line.dataset) line.dataset.source = key;
+    provisionalRows.set(key, line);
     // The ordinal this line will be born with when it commits. STAMPED ON THE
     // ROW ONLY (`data-index` / `data-index-padded`) — the `<span>` that used to
     // paint it is gone, by the owner's own instruction (2026-10-08): *"to falando
@@ -703,12 +809,14 @@ function renderProvisional(committed, provisional) {
     body.append(confirmedSpan, provisionalSpan, mark);
     line.append(led, time, body);
     dom.list.append(line);
-    paintedWords = { confirmed: [], provisional: [], total: 0 };
+    paintedWordsBySource.set(key, { confirmed: [], provisional: [], total: 0 });
     followNewestLine();
   }
 
   // Update the two inner spans IN PLACE — reusing every span that already holds
-  // the right word (see `paintWords`).
+  // the right word (see `paintWords`). The cache is THIS source's, so the other
+  // app's row keeps its spans and its ramp.
+  const paintedWords = paintedWordsBySource.get(key) || { confirmed: [], provisional: [], total: 0 };
   const totalChanged = total !== paintedWords.total;
   paintWords(line.querySelector('.caption__confirmed'), confWords, 0, total, totalChanged);
   // AND THE TYPING REVEAL, on the newest word of the forming line — see
@@ -720,7 +828,7 @@ function renderProvisional(committed, provisional) {
     confWords.length, total, totalChanged, provWords.length - 1);
   const mark = line.querySelector('.caption__mark');
   if (mark) mark.textContent = provWords.length ? '▍' : '';
-  paintedWords = { confirmed: confWords, provisional: provWords, total };
+  paintedWordsBySource.set(key, { confirmed: confWords, provisional: provWords, total });
   // AND FOLLOW, because this is a GROWTH, not an append: the line gets taller
   // while the sentence is still being formed — the exact moment the owner is
   // watching. Following only on creation (above) left the newest words below the
@@ -736,12 +844,21 @@ function renderProvisional(committed, provisional) {
   }
 }
 
-/** Drop the provisional line: its words are now committed text. */
-function retireProvisional() {
+/**
+ * Drop ONE source's provisional line: its words are now committed text.
+ *
+ * `source` is the worker's key or `null` — the SAME key `renderProvisional` used,
+ * so a commit for app A retires app A's open row and leaves app B's sentence on
+ * screen (STEP 4). The lookup is the Map, never an attribute selector (a device
+ * name contains `:`, quotes and backslashes).
+ */
+function retireProvisional(source) {
   if (!dom.list) return;
-  const line = dom.list.querySelector('.caption--provisional');
-  if (line) dom.list.removeChild(line);
-  paintedWords = { confirmed: [], provisional: [], total: 0 };
+  const key = source === null || source === undefined ? null : String(source);
+  const line = provisionalRows.get(key) || null;
+  if (line && line.isConnected) dom.list.removeChild(line);
+  provisionalRows.delete(key);
+  paintedWordsBySource.delete(key);
   if (window.SottoSkin && SottoSkin.active) {
     SottoSkin.live({ committed: [], provisional: [] });
   }
@@ -759,7 +876,12 @@ function wireCaptions() {
     // Any fragment at all means the stream is alive, so the previous deadline
     // is void before the engine decides anything.
     armHoldTimer();
-    engine.ingest(String(text || '').trim(), meta || {});
+    // WHICH APP THIS IS (STEP 4). The worker stamps `source` on every caption
+    // event (`proc:<pid>` / `device:<name>` / `file:<name>`) and OMITS it when
+    // there is none. A non-empty string is the engine key; anything else is the
+    // no-source engine — the same fail-closed reading `addCaption` uses for the row.
+    const source = meta && typeof meta.source === 'string' && meta.source ? meta.source : null;
+    engineFor(source).ingest(String(text || '').trim(), meta || {});
   });
 }
 
@@ -775,21 +897,33 @@ function addCaption(text, reason, meta) {
   if (!text) return false;
   if (!dom.list) return false;
 
-  retireProvisional();
+  // WHICH LINE THIS IS — `(source, start)`, not `start` alone (STEP 4).
+  //
+  // `start` is the worker's own segment identity: every partial of one segment
+  // carries the same `start`. With TWO apps the same audio second exists in BOTH
+  // streams, so `start` alone collides and one app's line REPLACES the other's.
+  // The source is the other half of the identity (see `rowIdentity`).
+  const source = meta && typeof meta.source === 'string' && meta.source ? meta.source : null;
+
+  // Retire the open row of THIS source only — a commit for app A must not blank
+  // app B's sentence while it is still forming (STEP 4).
+  retireProvisional(source);
   if (dom.placeholder) dom.placeholder.hidden = true;
   dom.list.hidden = false;
 
-  // WHICH LINE THIS IS. `meta.start` is the worker's own segment identity: every
-  // partial of one segment carries the same `start` (see `committedByStart`).
   const start = meta && typeof meta.start === 'number' ? meta.start : null;
-  const existing = start === null ? null : committedByStart.get(start) || null;
-  if (existing && !existing.isConnected) committedByStart.delete(start);
+  const identity = rowIdentity(source, start);
+  const existing = identity === null ? null : committedByStart.get(identity) || null;
+  if (existing && !existing.isConnected) committedByStart.delete(identity);
   const line = existing && existing.isConnected ? existing : document.createElement('li');
 
   if (typeof line.dataset === 'object' && line.dataset) {    line.dataset.start = start === null ? '' : String(start);
     // Read by `_main/_panel2-repeat-probe.js` and by the DOM probes: the identity
     // is an attribute of the row, so what a probe asserts is what a human sees.
     line.dataset.revision = existing ? 'true' : 'false';
+    // The SOURCE half of the identity, for probes — UNSET when there is none, so
+    // the no-source DOM stays byte-identical to before this change.
+    if (source !== null) line.dataset.source = source;
   }
 
   if (existing) {
@@ -816,7 +950,7 @@ function addCaption(text, reason, meta) {
     body.textContent = text;
     line.append(time, body);
     dom.list.append(line);
-    if (start !== null) committedByStart.set(start, line);
+    if (identity !== null) committedByStart.set(identity, line);
   }
 
   // Mark the newest line, drop the highlight from the previous one. A REVISED row
@@ -828,9 +962,15 @@ function addCaption(text, reason, meta) {
   while (dom.list.childElementCount > MAX_CAPTIONS) {
     const first = dom.list.firstElementChild;
     // The trimmed row leaves the index with it, or the map would hand a later
-    // commit a node that is no longer in the box.
-    const key = first && first.dataset ? first.dataset.start : '';
-    if (key) committedByStart.delete(Number(key));
+    // commit a node that is no longer in the box. The key is the TRIMMED ROW'S
+    // OWN `(source, start)`, read back off the row — never the key of the line
+    // being appended, which may belong to a different source (STEP 4).
+    const trimmedSource = first && first.dataset && first.dataset.source ? first.dataset.source : null;
+    const trimmedStart = first && first.dataset && first.dataset.start !== '' && first.dataset.start !== undefined
+      ? Number(first.dataset.start)
+      : null;
+    const trimmedKey = rowIdentity(trimmedSource, trimmedStart);
+    if (trimmedKey !== null) committedByStart.delete(trimmedKey);
     dom.list.removeChild(first);
   }
 
@@ -2307,7 +2447,9 @@ function wireStatus() {
 
     // A status change is a natural sentence boundary: close the held tail so
     // the last words are not stranded when the worker pauses mid-thought.
-    engine.flush('status-change');
+    // EVERY source's engine (STEP 4), or one app's tail is stranded while the
+    // other's is closed.
+    for (const engine of engines.values()) engine.flush('status-change');
 
     const state = statusKind(kind);
     // ONE place records what the shell said, so the strip's single word is
@@ -2661,12 +2803,13 @@ function wireControls() {
   //
   //  • CLEAR — the capability IS unreachable, and this is the honest cost of the
   //    removal rather than a claim that nothing was lost. It was the ONLY caller of
-  //    `engine.reset()`; the body that went with it also did `retireProvisional()`,
-  //    dropped `holdTimer`, emptied `#caption-list`, reset `committedByStart`,
-  //    restored the placeholder and told the shell via `bridge.clearApplied(0)`.
-  //    Nothing else calls `engine.reset()` and there is no tray equivalent, so after
-  //    this edit the live box can only be emptied by the worker's own `final:true`
-  //    line boundary. Reported to the owner, not hidden: receipt §11.
+  //    an engine's `reset()`; the body that went with it also did
+  //    `retireProvisional()` (now per source), dropped `holdTimer`, emptied
+  //    `#caption-list`, reset `committedByStart`, restored the placeholder and told
+  //    the shell via `bridge.clearApplied(0)`. Nothing else calls any engine's
+  //    `reset()` and there is no tray equivalent, so after this edit the live box
+  //    can only be emptied by the worker's own `final:true` line boundary. Reported
+  //    to the owner, not hidden: receipt §11.
 }
 
 /** Tell main the page is painted and what it is showing. */

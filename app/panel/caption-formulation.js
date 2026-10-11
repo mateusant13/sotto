@@ -244,7 +244,23 @@ function describeReadiness(elapsedMs) {
 }
 
 /**
- * The formulation engine. One instance per panel.
+ * The formulation engine. ONE INSTANCE PER SOURCE (STEP 4, 2026-10-11) — one
+ * panel, many sources, and never one buffer shared by two apps.
+ *
+ * WHY PER SOURCE AND NOT PER FRAGMENT. `options.source` is the worker's own
+ * `source` key (`proc:<pid>` / `device:<name>` / `file:<name>`), and it is a
+ * property of the ENGINE, not of a fragment: the whole point of the split is
+ * that the buffer STATE — `committed`/`provisional`, the LocalAgreement-2
+ * history and the emitted watermark — is per app. Two apps interleaved into one
+ * engine produce one garbled sentence, because the agreement test compares one
+ * app's hypothesis against the other's. The panel therefore builds one engine
+ * per source and never feeds a fragment to another source's engine.
+ *
+ * `options.source` is OPTIONAL: a non-empty string is stamped on every commit
+ * meta as the LAST key; anything else (absent, null, empty, non-string) means NO
+ * SOURCE, and the commit meta keeps the EXACT literal shape and key ORDER it had
+ * before this change (`{route,start,routeSource}` / `…,producer:tag`), so a run
+ * with no source behaves byte for byte as it did.
  *
  * `ingest` is the only way text enters. The buffer is a list of TOKENS, each
  * carrying the audio position it came from:
@@ -262,6 +278,10 @@ function createEngine(options) {
   const onCommit = options.onCommit;
   const onProvisional = options.onProvisional;
   const now = options.now || (() => Date.now());
+  // THE ENGINE'S OWN SOURCE — `null` when there is none (see the doc above).
+  // Never trimmed, never defaulted, never read from a fragment: two different app
+  // taps must stay two different keys, and a run with no source must stay keyless.
+  const engineSource = typeof options.source === 'string' && options.source ? options.source : null;
 
   /** @type {{w:string,a:number|null}[]} agreed, immutable once agreed */
   let committed = [];
@@ -553,9 +573,19 @@ function createEngine(options) {
       // answer the store's guard depends on. (The OBJECT KEY is the worker's
       // field name; the local variable deliberately is not, so a grep for a
       // "producer" ASSIGNMENT finds only the places that really stamp one.)
-      onCommit(line, reason, tag === null
-        ? { route, start, routeSource }
-        : { route, start, routeSource, producer: tag });
+      //
+      // `source` (STEP 4) is the ENGINE's own key, and it is added LAST and only
+      // when the engine HAS one. With no source this is the SAME literal, same
+      // keys, same ORDER, as before the change — that is what keeps a no-source
+      // run byte-identical. It is never read from the fragment: one engine per
+      // source is what separates two apps.
+      onCommit(line, reason, engineSource === null
+        ? (tag === null
+          ? { route, start, routeSource }
+          : { route, start, routeSource, producer: tag })
+        : (tag === null
+          ? { route, start, routeSource, source: engineSource }
+          : { route, start, routeSource, producer: tag, source: engineSource }));
       // Remember what this line covers. `emittedWords` is NOT set here: it is
       // set by `ingest` from the fragment, because a continuation is stripped
       // and only the fragment knows the full line the worker is holding.
