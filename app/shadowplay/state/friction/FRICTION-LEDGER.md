@@ -1013,3 +1013,42 @@ The document answered, and it did not say what I assumed.
   rule: read what the document says before deciding a behaviour is wrong. I nearly logged
   a preference as a finding, and the sentence that refuted me was in the file the whole
   time -- quoted above, in the section about the very clip that failed.
+
+## 2026-10-11T09:22:41Z - the ring is cleared: my drain hypothesis was false, and only ONE capture can be short
+
+I wrote last entry: "if the extraction removes bytes from the ring, the second delivery cuts
+what the first left". Read it. It is false.
+
+  MEASURED BY READING, POPULACAO = every mutation of #segments in replay-ring.js:
+      L87   #segments = []          constructor only
+      L149  push into #segments     push()
+      L152-154  while (heldFrames > capacity) { heldFrames -= segments[0].frames; shift() }
+  That is the complete set. #cutFromLastKeyframe() concatenates and returns; it does not
+  mutate. instantReplay() L200-292 never touches #segments. So a delivery leaves the ring
+  exactly as it found it, and eviction only ever removes WHOLE segments from the oldest end,
+  never a partial one.
+
+  CONSEQUENCE, and it kills the theory I was about to build on. With two captures the ring
+  holds segment A then segment B, both pushed with keyframe:true (index.js:158). The backward
+  walk lands on B, the whole of B. There is no remainder for a second delivery to find. 28 is
+  NOT reachable from the ring's own arithmetic with segments of 200-240 frames -- there is no
+  subtraction that yields 28, because nothing is ever subtracted.
+
+  WHICH NARROWS IT TO ONE THING. The only way a 28-frame cut exists is a segment that was
+  PUSHED as 28 frames, which means capture() returned frames: 28 that time. index.js:158
+  pushes { frames, keyframe: true } with frames taken from the capture result, so the
+  suspect moves from the ring to the encoder: a capture that produced about 28 frames instead
+  of about 220.
+
+  AND THAT IS ALSO UNSEEN. keyframe-shape-probe.mjs measured CAPTURED_FRAMES at
+  215, 220, 215, 206, 214 across 5 runs (09:17:07Z). The spread is 14 frames. A 28 is not a
+  tail of that distribution, it is a different regime. So either the encoder can return a
+  near-empty capture and I have never caught it, or 28 came from somewhere I have not looked.
+
+  STATUS: one hypothesis refuted with evidence, the suspect space narrowed from "the ring"
+  to "the encoder produced a short capture", and the observation still missing. I have not
+  confirmed the encoder theory and am not writing it down as the cause.
+
+  rule: read the mutation sites before theorising about what a data structure hands back. I
+  had a tidy theory -- deliver, drain, deliver again, cut the remainder -- and it was wrong
+  in the first line of the code I should have opened.
