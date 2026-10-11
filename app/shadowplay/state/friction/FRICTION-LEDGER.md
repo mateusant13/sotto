@@ -370,4 +370,28 @@ o invoca. A fonte da verdade e revizivel.
   O custo e assumido em vez de escondido: o run completo demora minutos neste host, e um
   gancho lento e contornado. Se isso passar a ser o交换 errado, a correcao e uma CI de
   fundo, nao uma fuga silenciosa.
-## 2026-10-11T07:01:23Z - marker: this entry exists only so a clean commit can be attempted with the hook live and no bypass.
+## 2026-10-11T07:01:30Z - the hook's pass path, proven by a commit that had nothing to hide
+
+I had proven the refusal path and then admitted the pass path was unverified, because the
+commit that landed had used SOTTO_SKIP_RUN_ALL=1. A gate with only its NO proven is half a
+gate: it might refuse everything.
+
+  MEASURED, WINDOW_UTC 2026-10-11T07:01:30Z, no bypass set (SOTTO_SKIP_RUN_ALL empty),
+  a real one-file change staged, git commit, nothing else:
+    pre-commit: running suites and parse gate (skip with SOTTO_SKIP_RUN_ALL=1)
+    RUN ALL  WINDOW_UTC 2026-10-11T07:01:30Z
+    SUITES 15 passed, 0 failed, 0 unreported
+    GATE 4 passed / 0 refused, exit 0
+    VERDICT suites_ok=true gate_ok=true
+    commit exit 0   HEAD b20ccc8   main unchanged   dirty 0
+
+  Both paths now measured: refusal at 06:57 (exit 1, with the message), pass at 07:01
+  (exit 0, after the hook ran 15 suites and the gate on its own). The hook decides; it is
+  not a formality that waves everything through.
+
+  The entry this replaced was a marker line I added purely to create something commit-
+  table. That is the one thing a friction ledger must not contain -- a row whose only
+  purpose is to prove the ledger commits. Replaced with what it actually proved.
+
+  rule: a gate proven only in the direction that refuses you is not a gate, it is an
+  obstacle. Prove both directions or you have measured half an instrument.
