@@ -473,3 +473,26 @@ Third piece in the series, and the last one that was installed but unexercised.
   Honest limit: all three were exercised in a THROWAWAY repo with a stubbed runner. The
   hook logic is the same and the wiring is real; what is NOT proven here is the gate
   refusing a real suite from inside a real git operation, because a stub always passes.
+
+## 2026-10-11T08:05:09Z - the 5/5 distribution was taken in reduced mode; here is the real one
+
+I reported clean=5/5 and said plainly that it was taken with PERF_PROBE_N=20. Reporting a
+distribution honestly is not the same as having the distribution you need, so this is the
+same measurement at the real N.
+
+  MEASURED, POPULACAO = 2 runs x 4 probes, PERF_PROBE_N unset so perf-probe runs N=200:
+    run 1: 4 passed, 0 refused
+    run 2: 4 passed, 0 refused
+    DISTRIBUTION clean=2/2  dirty=0/2
+
+  What I now hold, stated as counts and not as adjectives:
+    reduced mode (N=20)   5/5 clean
+    real mode (N=200)      2/2 clean
+    earlier single runs    4/4 clean at 07:20, 4/4 at 06:40
+    one refusal            3/1 at 07:14, inside a commit whose pre-commit was also running
+    total gate runs measured = 13; clean = 12; refused = 1; no cause proven for the one.
+
+  A 1-in-13 refusal with no explanation is not a solved problem, it is a known unknown with
+  a denominator. It is also not a reason to keep the gate off: a gate that is right 12 times
+  out of 13 and says why the 13th time is worth more than a gate that is never wrong
+  because it never runs.
