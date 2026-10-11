@@ -168,7 +168,16 @@ def placed_of(lns):
                       r'window=(\d+)x(\d+)@\((-?\d+),(-?\d+)\)'
                       r'(?:\s+margin=(\d+))?(?:\s+docked=(\S+))?', ln)
         if m:
-            g = [int(x) if x is not None else None for x in m.groups()]
+            # ONLY THE NINE NUMERIC GROUPS ARE CAST. Group 9 is `docked`, a
+            # WORD ('bottom-strip'), and the first version of this cast every
+            # group: it raised `ValueError: invalid literal for int() with base
+            # 10: 'bottom-strip'` the first time the regex actually MATCHED
+            # (2026-10-11). It had never matched before, because the shell was
+            # emitting `work=WxH@X,Y)` without the opening paren -- so the bug
+            # was hidden behind a malformed log line, and the four checks that
+            # depended on this parse failed for a reason that was not theirs.
+            vals = m.groups()
+            g = [int(v) if v is not None else None for v in vals[:9]] + [vals[9]]
             return {'work_w': g[0], 'work_h': g[1], 'work_x': g[2],
                     'work_y': g[3], 'w': g[4], 'h': g[5], 'x': g[6],
                     'y': g[7], 'margin': g[8], 'docked': g[9], 'line': ln}
@@ -337,13 +346,21 @@ def arm_d(report):
     report['D']['file_geometry'] = None
     report['D']['file_pid'] = None
     if on_disk:
-        m = re.search(r'file_geometry=(\{.*?\}) file_pid=(\d+)', on_disk[0])
+        # THE VALUE IS USUALLY `null`, AND THE FIRST VERSION OF THIS REGEX
+        # REQUIRED A `{`: it matched NOTHING on `file_geometry=null
+        # file_pid=12220 ...`, so the pid that PROVES the race was never
+        # captured and the check below read `pid None` -- the instrument threw
+        # away the one piece of evidence that would have passed it. Measured
+        # 2026-10-11 (arm D pid 39440, file pid 12220). Capture the pid on
+        # EVERY shape; parse the geometry only when it really is an object.
+        m = re.search(r'file_geometry=(\{.*?\}|null|None) file_pid=(\d+)', on_disk[0])
         if m:
             report['D']['file_pid'] = int(m.group(2))
-            try:
-                report['D']['file_geometry'] = json.loads(m.group(1))
-            except ValueError:
-                pass
+            if m.group(1).startswith('{'):
+                try:
+                    report['D']['file_geometry'] = json.loads(m.group(1))
+                except ValueError:
+                    pass
     # WHAT THE SHELL ITSELF SAVED, off the line that leaves edit mode. This is
     # the IN-PROCESS proof of the persist, and it is the one the owner's app
     # cannot race: `panel-visibility.json` is rewritten every ~3 s by whichever

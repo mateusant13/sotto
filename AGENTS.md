@@ -22,7 +22,7 @@ Reference upstream code the model's own README points at: `DimQ1/nemotron-speech
 | ~~Silero VAD shipped tuned (thr 0.3 / silence 3360 ms / prefix 560 ms)~~ | **RESOLVED 2026-10-06**: `"use_vad": true`. The flag is LIVE, not inert — `get_option('use_vad')` reads back `true`, and a digital-silence chunk makes `process()` return **`None`** (10 of 12 silence chunks gated) where VAD-off returns a `(1,65,128)` block every time. `run_chunk` now handles that `None`; unhandled it exited **1** on the first pause longer than 3.36 s. On the bundled sample the transcript is **byte-identical** with the flag on and off (both before and after a sibling lane moved `lang_id`) — that clip has no 3.36 s stretch of silence. On audio with a real pause it gates 6 chunks and changes the decode | `worker/config.json`, `worker/sotto_worker.py` (oracle: `_main/vad-option-probe.py`) |
 | ~~config selected int4 while the worker README described int8~~ | **RESOLVED 2026-10-06**: config now selects `...-int8` (`left_context: 70`); measured cost vs int4 = +268 MB RSS | `worker/config.json` (oracle: `_main/model-spec-oracle.py`) |
 | ~~a run that opened a device and heard nothing still exited 0~~ | **RESOLVED 2026-10-06**: a tap that opens and delivers a full window below the peak floor is now `state="silent-device"`, verdict `silent-device`, **exit 3** | `worker/sotto_worker.py` (oracle: `_main/device-silence-oracle.py`) |
-| ~~the top-level `done` verdict could disagree with the exit code inside ONE run~~ | **RESOLVED 2026-10-06**: the verdict branch tested the device-SELECTION outcome (`outcome in ("all-flat","open-failed")`) FIRST, so a run that BOTH exhausted the ladder AND measured a silent device reported `done` verdict `all-candidate-taps-flat` while emitting `state="silent-device"` and returning **exit 3** — the word and the code disagreed in the same run (measured: `worker/runs/exit3-armB-worker.jsonl`). The order is now `ran_but_silent` FIRST — the MEASURED, device-attributable fact and the exact predicate the exit code is built from — so `done.verdict == "silent-device"` iff `exit == 3`. `all-candidate-taps-flat` survives for the no-data case (candidates flat without reaching `TAP_SILENT_BLOCKS`). No vocabulary was renamed | `worker/sotto_worker.py` (oracle: `_main/verdict-order-oracle.py`) |
+| ~~the top-level `done` verdict could disagree with the exit code inside ONE run~~ | **RESOLVED 2026-10-06**: the verdict branch tested the device-SELECTION outcome (`outcome in ("all-flat","open-failed")`) FIRST, so a run that BOTH exhausted the ladder AND measured a silent device reported `done` verdict `all-candidate-taps-flat` while emitting `state="silent-device"` and returning **exit 3** — the word and the code disagreed in the same run (measured: `worker/runs/exit3-armB-worker.jsonl`). **CORRIGIDO 2026-10-11 — A CORRECÇÃO ANTERIOR ESTAVA ELA PRÓPRIA ERRADA, e o erro era o CAMINHO:** o artefacto **EXISTE**, em `H:\sotto\_main\exit3-armB-worker.jsonl` — re-medido por mim nesta revisão: **3 958 B, 10 CRLF / 0 bare LF, sha256 `426EC5527F674D6AFFB44CE70A7965B378DE0CE3F2822485214118AFD00F5938`, mtime 2026-10-06 06:41:10Z**, `:9` = `state="silent-device"` (`api` MME, `peak` 0.000122, `peak_floor` 0.002, `blocks` 34) e `:10` = `state="done"` com `verdict "all-candidate-taps-flat"` — exactamente a discordância palavra/código que este bullet descreve. O texto "AUSENTE / DANGLING" que aqui esteve era um falso negativo de um `statSync` sobre `worker/runs/` (directório errado), não uma prova de desaparecimento. Regra que isto ensina: um ENOENT prova que o CAMINHO está errado, não que o artefacto não exista. The order is now `ran_but_silent` FIRST — the MEASURED, device-attributable fact and the exact predicate the exit code is built from — so `done.verdict == "silent-device"` iff `exit == 3`. `all-candidate-taps-flat` survives for the no-data case (candidates flat without reaching `TAP_SILENT_BLOCKS`). No vocabulary was renamed | `worker/sotto_worker.py` (oracle: `_main/verdict-order-oracle.py`) |
 
 ## The routing law on THIS box (measured 2026-10-06, do not re-litigate)
 
@@ -71,7 +71,7 @@ entirely on what the owner has routed into a virtual cable, and a name in
 | path | what |
 |---|---|
 | `worker/sotto_worker.py` | capture → chunk → encode → RNNT greedy decode → JSONL on stdout |
-| `worker/config.json` | model dir, lang_id, use_vad, providers, audio.block_ms, output.min_chars (all READ; inert keys deleted 2026-10-06 — `_main/delivery-rate-oracle.py`, `docs/audit/config-inert-fixed.md`) |
+| `worker/config.json` | ~~model dir, lang_id, use_vad, providers, audio.block_ms, output.min_chars (all READ; inert keys deleted 2026-10-06 — `_main/delivery-rate-oracle.py`, `docs/audit/config-inert-fixed.md`)~~ **CORRIGIDO 2026-10-11 — o censo medido é 5 chaves de topo, e 11 folhas.** `worker/config.json` re-medido = **5 882 B, 26 linhas, 0 CRLF / 25 bare LF, sha256 `6B788A9EE7BEFB3F814E55F63B4268C6B2AE8C5A6310E36C961AF25F957A0F44`, mtime 2026-10-07 18:19:25 -03:00** (instrumento: `node`, bytes + `JSON.parse`); `Object.keys()` = `_comment_use_denoise`, `audio`, `model`, `output`, `use_denoise`. As folhas não-comentário são 11: `audio.device`, `audio.preferred_devices`, `audio.block_ms`, `model.dir`, `model.lang_id`, `model.use_vad`, `model.providers`, `output.min_chars`, `output.partial`, `output.done_text_max_chars`, `use_denoise`. As seis definições nomeadas acima existem TODAS, mas nenhuma é uma chave de topo e a lista não é exaustiva — a contagem de 6 está errada.** |
 | `worker/models/nemotron-3.5-asr-streaming-0.6b-{int4,int8,fp16}/` | the three exports |
 | `app/webview/run.cmd` | **THE APP.** Double-click it, or run it: starts hidden, **starts the WORKER**, waits for Alt+C. `--no-worker` = shell only, `--show` = panel up now. Since 2026-10-07 the worker starts BY DEFAULT — see the F1 bullet under *Measured facts* |
 | `app/webview/sotto_webview.py` | the shell the app IS — WebView2 + pywebview |
@@ -100,13 +100,29 @@ entirely on what the owner has routed into a virtual cable, and a name in
   This bullet said the opposite for most of 2026-10-07 ("the second pass is ABSENT today"), on the
   strength of a `grep -n 'def rerun|reset_stream_state|_last_symbol' worker/sotto_worker.py` that
   returned ZERO matches. The grep is now non-empty and the negative claim is FALSE. Measured against the
-  live file (**242 082 B, sha256 `64E7EC6F6C35C33600E9D50C11AC7D8CE96FBE1FEF87C24CD628BDF03F314E61`,
+  live file ~~(**242 082 B, sha256 `64E7EC6F6C35C33600E9D50C11AC7D8CE96FBE1FEF87C24CD628BDF03F314E61`,
   re-verified 2026-10-08 — the numbers below were `:2654`/`:2748`/`:2771` in the 173 388 B revision
   cited before**), `grep -rn` returns:
   `def rerun` = `worker/sotto_worker.py:3637`, `reset_stream_state` = `:623`, `_last_symbol` =
   `:527` (`__init__`) / `:651` (the reset) / `:896` (the chunk seed) / `:2707`+`:2743` (the save/restore
   pair), and `def finalise` = `:3732`, `def drain` = `:3755` (`drain_captions` is separate, at
-  `:2645`), called from FIVE `drain()` sites in `asr_thread`. **That revision moved by one line and one
+  `:2645`), called from FIVE `drain()` sites in `asr_thread`.~~ **CORRIGIDO 2026-10-11:** the pin AND every anchor in the struck sentence are STALE. Re-measured
+  this session on the live file `worker/sotto_worker.py` = **238 427 B, 4540 lines, 4539 CRLF / 0 bare
+  LF, sha256 `DB12C89B8CE9A547930A3DA04A2F9F372315CFFB7D8C96C45593C121F33F964F`, mtime 2026-10-09
+  02:03:56 -03:00** (instrument: `node` reading the bytes; sha256 over those same bytes). `grep -n` on
+  that revision returns `def rerun` = `:3583`, `def finalise` = `:3678`, `def drain` = `:3701`,
+  `def drain_captions` = `:2603`, `reset_stream_state` = `:630`, and `_last_symbol` at `:242` / `:527` /
+  `:552` / `:637` / `:658` / `:696` / `:818` / `:898` / `:903` / `:3636` / `:3673`. The 242 082 B /
+  `64E7EC6F…` pin was never re-checked after 2026-10-08 — rule 2 of "Keeping THIS file true", violated
+  by this file.** **RE-MEDIDO 2026-10-11 (terceira revisão do mesmo pin): 238 427 B / `DB12C89B…` também já é
+  STALE.** Medido por mim nesta revisão, no ficheiro live: `worker/sotto_worker.py` = **244 046 B, 4 620
+  linhas, sha256 `503F095DF893F358E60645084CDD2C7C72F8D7F1CAA1B1945879AAB27A253E59`** (instrumento: `node`
+  sobre os bytes + `crypto.createHash("sha256")`), e `git status --porcelain -- worker/sotto_worker.py`
+  devolve VAZIO contra o tip `749f431` — ou seja este é o revision committed, não um working tree sujo.
+  Os anchors de linha citados acima foram medidos na revisão de 238 427 B e **NÃO** foram re-medidos aqui:
+  trate-os como HINT e re-corra o `grep` (é a regra 2 deste ficheiro). O pin de 244 046 B é o que o worker
+  tem hoje; `_main/exit3-armB-worker.jsonl` (acima) foi produzido por uma revisão anterior e continua a
+  ser prova válida da ORDEM do verdict, que é o que aquele bullet afirma. **That revision moved by one line and one
   byte while this bullet was being written** (from 173389 B / `def rerun` `:2655` to 173388 B / `:2654`),
   which is the point of rule 2 below: treat every line number here as a HINT and re-run the grep. So the
   live path is `drain` → `finalise` → `rerun`, and the pass' text is what `final:true` ships. **How the
@@ -128,11 +144,24 @@ entirely on what the owner has routed into a virtual cable, and a name in
   transcript accepts a line ONLY if `meta.producer` is literally `redux`:
   `app/panel/history-source.js:51` (`const CANONICAL_PRODUCER = 'redux'`) and `:61-63`
   (`isCanonicalLine(meta) { return producerOf(meta) === CANONICAL_PRODUCER; }`, fail-closed — an
-  absent or unknown producer is refused, never assumed). **Nothing in the repo writes that field:**
+  absent or unknown producer is refused, never assumed). ~~**Nothing in the repo writes that field:**
   `grep -rn producer worker/` → **ZERO matches**, and the live engine's meta carries
   `route`/`start`/`routeSource` only. Consequence, both measurable today: the "History · Redux" half
   of the panel is decorative, and the owner's archive has taken no new line since
-  `history/2026-10-06/19.md` (mtime **2026-10-06 19:58:36**, the newest file in `history/`).
+  `history/2026-10-06/19.md` (mtime **2026-10-06 19:58:36**, the newest file in `history/`).~~ **REFUTED 2026-10-11 — the worker DOES write `producer`, and the archive HAS taken new lines.**
+  Re-measured this session: `grep -rn producer worker/` (every file under `worker/`, excluding only the
+  git-ignored `worker/models/`) returns **31 line matches** — `worker/sotto_worker.py` (9),
+  `worker/_prefix_audioflag.py` (9), `worker/redux_live.py` (4), `worker/redux_batch.py` (3), plus two
+  compiled `worker/__pycache__/*.pyc` (3+3); **25** in source alone. In the live file the constant is
+  `REDUX_PRODUCER = "redux"` at `worker/sotto_worker.py:2092` and the field is stamped at **`:2540`** and
+  **`:2578`** inside `_run_runner` (`:2475`), the Redux batch arm the `--redux-when-hidden` flag
+  (`:2980`) turns on. `history/` holds **11 files**; the NEWEST is `history/2026-10-07/14.md` (789 B,
+  mtime **2026-10-07 14:20:55 -03:00**), not `history/2026-10-06/19.md` (52 157 B, mtime 2026-10-06
+  19:58:36) — so "the newest file in `history/`" was FALSE (instrument: `node` walking `H:\sotto\history\`
+  and `statSync` per file). **NOT re-measured, so UNMEASURED: whether a stamped line actually reaches the
+  `meta.producer` the canonical gate reads.** The lines in `history/2026-10-07/14.md` carry
+  `src=worker-stamped`, which is a DIFFERENT field, written client-side (`app/panel/history-store.js:51`,
+  `app/panel/panel.js:1208`, `app/webview/sotto_webview.py:169`) — do not read it as `producer`.**
   `node _main/live-vs-history-source-oracle.js` is **GREEN (13/13)** and is NOT counter-evidence:
   its "canonical path is OPEN" arm STAMPS `source.CANONICAL_PRODUCER` itself
   (`_main/live-vs-history-source-oracle.js:219`), while the "AS SHIPPED" arm builds the meta by hand
@@ -177,8 +206,14 @@ entirely on what the owner has routed into a virtual cable, and a name in
   it — NOT by running it. The machine check is one hot reload followed by `panel.url = file://…/panel.html`
   and a non-negative `panel.live.count` in `_main/panel-state.json`; until someone runs it, do not write
   that the reload works.
-- Model weights on disk: **int4 756 MB / int8 1020 MB / fp16 1230 MB**; RSS after load + one
-  inference: **int4 924 MB / int8 1192 MB**. The `.onnx.data` sidecars ARE the weights; a
+~~- Model weights on disk: **int4 756 MB / int8 1020 MB / fp16 1230 MB**; RSS after load + one
+  inference: **int4 924 MB / int8 1192 MB**.~~ **CORRIGIDO 2026-10-11 — só UM dos três exports existe hoje.** Medido esta sessão (instrumento:
+`node` a percorrer `H:\sotto\worker\models\`), há **exactamente uma directoria**,
+`nemotron-3.5-asr-streaming-0.6b-int8` = **1 070 642 977 B / 33 ficheiros**; `...-int4` e `...-fp16`
+estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nesta revisão e ficam
+**UNMEASURED** — não 756 MB / 1230 MB. O int8 medido (1 070 642 977 B = 1021 MiB) é compatível com o
+"int8 1020 MB" acima, que fica por isso não-refutado mas também NÃO re-verificado. Os valores de RSS
+(int4 924 MB / int8 1192 MB) não foram re-medidos: **UNMEASURED**.** The `.onnx.data` sidecars ARE the weights; a
   listing that shows only the `.onnx` headers understates them by ~150×.
 - ~~`CUDAExecutionProvider` is **requested but not loadable here** — ORT silently returns
   `['CPUExecutionProvider']`. The box runs on CPU.~~ **CORRECTED 2026-10-08 — THAT SENTENCE IS
@@ -188,8 +223,9 @@ entirely on what the owner has routed into a virtual cable, and a name in
   exactly ONE missing DLL** — `cublasLt64_13.dll`, WinError 126 — and **one directory fixes it**:
   `site-packages\nvidia\cu13\bin\x86_64` on the DLL search path. `torch\lib` is CUDA 12 and does
   NOT serve it. **The worker already does this** — `worker/sotto_worker.py:277`
-  (`_add_cuda_dll_dirs()`), called from `:3251` before the model load (both re-verified against the
-  242 082 B / sha256 `64E7EC6F…` revision) — so the live run IS GPU-backed. The old line was a
+  (`_add_cuda_dll_dirs()`), ~~called from `:3251` before the model load (both re-verified against the
+  242 082 B / sha256 `64E7EC6F…` revision)~~ **CORRIGIDO 2026-10-11:** `_add_cuda_dll_dirs` is still DEFINED at `:277` (re-measured, unchanged),
+  but its CALL SITE moved to `:3229` on the 238 427 B / sha256 `DB12C89B…` revision pinned above.** — so the live run IS GPU-backed. The old line was a
   guess from a clean-shell provider probe; the live worker proved it wrong.
 - **THE LIVE ENGINE IS HYBRID, NOT "ORT-GenAI" — do not size a change by that name.**
   `og.Model` + `StreamingProcessor` cover only the cache-aware mel window and the Silero VAD;
@@ -362,7 +398,12 @@ entirely on what the owner has routed into a virtual cable, and a name in
   `_main/receipt-20261007-panel-startup-flash.md`. Residual, disclosed there: the
   creation-dance map remains (alpha=0 ⇒ invisible; 5 of 20 launches, ~0 ms), and
   1 of 20 fixed-arm launches stalled before `CoreWebView2InitializationCompleted`
-  — upstream of the gate, unattributed.
+  — upstream of the gate, unattributed. **NAO RECONCILIADO (nota 2026-10-11):** este bullet fecha o flash em `live` 0/20 a 25 ms, mas o bullet
+  mais abaixo *"THE PANEL IS VISIBLE AT STARTUP, FROM ~50 ms TO ~7 s"* (medido 2026-10-06, o mesmo
+  `_main/panel-startup-flash-census.py`, com 88/130 amostras visíveis e 141 de 262 noutra passagem) mede o
+  CONTRÁRIO e nunca foi retractado; o próprio censo de 25 ms citado acima mostra 18/20 (e 19/20 sem a
+  cura). Dois números, o mesmo instrumento, o mesmo alvo — **não escolhi um vencedor aqui**; quem reabrir
+  isto tem de correr `_main/panel-startup-flash-census.py` nesta revisão.
 - **The house window census samples ONCE PER 60 s, so a window that lives less
   than that can pass it unseen — a missing `ALERTA-JANELA` is NOT proof that no
   window appeared.** Measured 2026-10-06: shell pid 23512 was WS_VISIBLE for the
@@ -502,9 +543,17 @@ entirely on what the owner has routed into a virtual cable, and a name in
   written without that distinction and promptly refused every MEASUREMENT run while the owner's app was
   up (`SINGLE_INSTANCE already_running=true` on a `--dump-dom` dump) — i.e. the guard bricked the whole
   instrument set. It is now skipped, with `SINGLE_INSTANCE_SKIPPED reason=<flag>`, for `--no-hotkey`,
-  `--dump-dom`, `--selftest`, `--memory` and `--probe-v2` (a measurement run registers no global
-  hotkey: that is why AGENTS makes `--no-hotkey` mandatory for one). Never make that lock
-  unconditional again.
+  `--dump-dom`, `--selftest`, `--memory` and `--probe-v2`. **CORRIGIDO 2026-10-11 (`25feb3e`): the
+  parenthetical below was a promise the code did not keep.** It read "a measurement run registers no
+  global hotkey" while those four flags skipped only the LOCK and still armed the chain, so a probe
+  started while the owner's app was up lost all four keys and raised a MODAL messagebox:
+  `HOTKEY_UNAVAILABLE alert=messagebox`, then no `STAGING_SEEN`, hung until killed
+  (`I:\cc-tmp\wedge-fresh.log`, 42 lines) -- while the same flags plus `--no-hotkey` reach
+  `RECEIVER_READY` in under 40 s. The launch now coerces `args.no_hotkey` for a measurement lock
+  excuse and logs `HOTKEY_DISABLED reason=measurement-flag(<excuse>)`; after the cure the same
+  `--dump-dom` launch reaches `RECEIVER_READY` (`I:\cc-tmp\hotfix-test.log`, 47 lines). A private
+  `--mutex-name` is NOT coerced -- that run skips no lock and may legitimately measure the hotkey.
+  Never make that lock unconditional again.
 - **THE LIVE BOX REPLACES, IT DOES NOT APPEND — and now it is measured, not asserted.** The engine
   emits a CUMULATIVE hypothesis (`start` fixed for the segment, `end` growing, `text` = the whole line,
   `final:false`), and `renderProvisional` (`panel.js:137-175`) rewrites ONE `<li>`'s `textContent` in
@@ -542,6 +591,13 @@ entirely on what the owner has routed into a virtual cable, and a name in
   e vira um transcritor LEVE ao contrario do nvidia."*
   **Estado real, verificado 2026-10-07 (23h): OS PESOS EXISTEM AGORA EM DISCO.** Baixados pela HF CLI
   e verificados por sha256 contra o que a API publica (5/5 `MATCH`), em `worker/models/`:
+  **CORRIGIDO 2026-10-11 — ESTE CENSO REGREDIU; a frase acima é de 2026-10-07 e não descreve o disco de
+  hoje.** Medido esta sessão (instrumento: `node` a percorrer `H:\sotto\worker\models\` e a somar
+  `statSync().size`), há **exactamente UMA directoria**: `nemotron-3.5-asr-streaming-0.6b-int8` =
+  **1 070 642 977 B / 33 ficheiros**. As três directorias Redux nomeadas abaixo
+  (`parakeet-redux-onnx-int4`, `parakeet-redux-ternary`, `parakeet-redux-reference`) estão **AUSENTES**.
+  Consequência medida: `worker/redux_batch.py` existe mas **não tem pesos para carregar**, portanto a LEI
+  DA STACK não tem hoje motor de fundo nenhum. Tudo o que se segue nesta secção é registo histórico.**
   - ~~**`parakeet-redux-onnx-int4/`**~~ — **ESTÁ DE NOVO EM DISCO (2026-10-08): 27 ficheiros,
     415,87 MB, re-baixado. O "APAGADO" abaixo ficou VALSO.** ~~APAGADO a pedido do dono (2026-10-07,
     "usa o de 179m. o outro deleta"); re-baixável em ~20 s com
@@ -621,7 +677,16 @@ entirely on what the owner has routed into a virtual cable, and a name in
   já se perguntou: `docs/tools/consultgpt.md`** (o `codex` também existe mas a autenticação dele está
   morta aqui).
 
-- **`_main\_audit-verify-all.cmd` MUST STAY CRLF, AND ITS EXIT CODE IS ITS VERDICT — measured 2026-10-08, do not re-litigate (this file said nothing about the battery until now, which is how a green word and a red run coexisted).** The subroutines are reached by `call :label` / `exit /b`, and **cmd.exe seeks a batch file by BYTE OFFSET**: with LF-only endings those stored offsets drift and the step list runs **TWICE** — measured (`_main\_audit-verify\_run-20261008-LF-only-double-run.log`): pass 1 reported `steps : 16 gate=10` GREEN, then cmd resumed and re-ran the tail, printing a SECOND summary `steps : 40 gate=28 control=10 expect-red=2` — 40 beacons for **29 distinct steps**, every control twice, **two int8 model loads**. The file is CRLF today (`len=18595`, 337 CRLF / 0 bare LF, sha256 `9DA38ECFCD33C53889458F17087FAF35012AE3BD4B3CCC914384E6B6B3D45BB`); the same bytes converted to LF ran once. **Any tool that rewrites it with `\n` silently re-breaks it — convert back (`-replace "\n", "\r\n"`) or the aggregation lies.** **AND CRLF IS NOT ENOUGH — A SECOND CAUSE, PROVEN 2026-10-08: A CONCURRENT EDIT OF THE FILE MID-RUN.** The byte-offset resume breaks on ANY length change in bytes cmd.exe has not yet read, LF or not. Reproducer, both arms, `_main\_cmd-offset-drift\subject.cmd` (pure CRLF, 919 B / 29 CRLF / 0 bare LF), with a `call :slow` outstanding while the controller rewrote it: **identical bytes → `SUBJECT-SUMMARY x1` / `[step] x3`; one `REM` inserted mid-run (919 → 964 B, sha256 `395A6E72…` → `C53C8A93…`) → cmd resumed at a stale offset, read `exit /b 0` as `'xit' não é reconhecido…`, and re-ran the tail: `SUBJECT-BEGIN` printed TWICE.** No LF involved. The strip lane measured the same on THIS file at 100 % CRLF (28 947 → 31 071 B mid-run); that edit IS the reproduction. So **a run whose `.cmd` sha256 changes mid-run is DIRTY: say so and repeat it, never present it as clean.** The size is a moving target: 18 595 B above, 31 071 B at that run, **32 203 B / 538 CRLF / 0 bare LF / sha256 `EBF715E9E4CF75B2FF5E62A529C2C375985246CBB7BFE8459EF2A9DD1BD0EB1C`** after the skip-guard cure. **`edit` preserves CRLF; the `write` tool emits LF-ONLY** (measured: a 29-line `.cmd` written by `write` came out 890 B / 0 CRLF / 29 bare LF) — never `write` this file. The battery AGGREGATES and its **exit code IS the verdict**: three step kinds — `:record` (the gate), `:control` (passes ONLY when the instrument's control actually went RED on its broken copy AND printed its control verdict), `:expectred` (rc must be exactly 1 with the violation text) — a MISSING instrument is a FAILURE, and any failure exits 1. Measured: clean run `steps : 29 gate=23 control=5 expect-red=1 missing=0 / BATTERY-VERDICT: GREEN / exit-code: 0` (`_main\_audit-verify\_battery-summary.txt`); negative proof `INJECTED-FAILING-STEP rc=3 … BATTERY-VERDICT: RED - 1 step(s) failed … NEGPROOF-EXITCODE=1` (`_run-20261008-negproof.log`). **Before this, a run with THREE red steps (`hotkey-delivery`, `verdict-gate`, `history-producer-gate`) exited 0** — a failure answering as success. So read the `BATTERY-VERDICT` / exit-code pair, never a step's own `rc`, never a lone last line, and never a `steps :` count without checking there is only ONE of them.
+- **`_main\_audit-verify-all.cmd` MUST STAY CRLF, AND ITS EXIT CODE IS ITS VERDICT — measured 2026-10-08, do not re-litigate (this file said nothing about the battery until now, which is how a green word and a red run coexisted).** The subroutines are reached by `call :label` / `exit /b`, and **cmd.exe seeks a batch file by BYTE OFFSET**: with LF-only endings those stored offsets drift and the step list runs **TWICE** — measured (`_main\_audit-verify\_run-20261008-LF-only-double-run.log`): pass 1 reported `steps : 16 gate=10` GREEN, then cmd resumed and re-ran the tail, printing a SECOND summary `steps : 40 gate=28 control=10 expect-red=2` — 40 beacons for **29 distinct steps**, every control twice, **two int8 model loads**. The file is CRLF today (`len=18595`, 337 CRLF / 0 bare LF, sha256 `9DA38ECFCD33C53889458F17087FAF35012AE3BD4B3CCC914384E6B6B3D45BB`); the same bytes converted to LF ran once. **Any tool that rewrites it with `\n` silently re-breaks it — convert back (`-replace "\n", "\r\n"`) or the aggregation lies.** **AND CRLF IS NOT ENOUGH — A SECOND CAUSE, PROVEN 2026-10-08: A CONCURRENT EDIT OF THE FILE MID-RUN.** The byte-offset resume breaks on ANY length change in bytes cmd.exe has not yet read, LF or not. Reproducer, both arms, `_main\_cmd-offset-drift\subject.cmd` (pure CRLF, 919 B / 29 CRLF / 0 bare LF), with a `call :slow` outstanding while the controller rewrote it: **identical bytes → `SUBJECT-SUMMARY x1` / `[step] x3`; one `REM` inserted mid-run (919 → 964 B, sha256 `395A6E72…` → `C53C8A93…`) → cmd resumed at a stale offset, read `exit /b 0` as `'xit' não é reconhecido…`, and re-ran the tail: `SUBJECT-BEGIN` printed TWICE.** No LF involved. The strip lane measured the same on THIS file at 100 % CRLF (28 947 → 31 071 B mid-run); that edit IS the reproduction. So **a run whose `.cmd` sha256 changes mid-run is DIRTY: say so and repeat it, never present it as clean.** The size is a moving target: 18 595 B above, 31 071 B at that run, **32 203 B / 538 CRLF / 0 bare LF / sha256 `EBF715E9E4CF75B2FF5E62A529C2C375985246CBB7BFE8459EF2A9DD1BD0EB1C`** after the skip-guard cure. **`edit` preserves CRLF; the `write` tool emits LF-ONLY** (measured: a 29-line `.cmd` written by `write` came out 890 B / 0 CRLF / 29 bare LF) — never `write` this file. The battery AGGREGATES and its **exit code IS the verdict**: three step kinds — `:record` (the gate), `:control` (passes ONLY when the instrument's control actually went RED on its broken copy AND printed its control verdict), `:expectred` (rc must be exactly 1 with the violation text) — a MISSING instrument is a FAILURE, and any failure exits 1. ~~Measured: clean run `steps : 29 gate=23 control=5 expect-red=1 missing=0 / BATTERY-VERDICT: GREEN / exit-code: 0` (`_main\_audit-verify\_battery-summary.txt`)~~ **CORRIGIDO 2026-10-11 — the battery is RED today and the "clean run" above is stale.** Re-measured
+this session, `H:\sotto\_main\_audit-verify\_battery-summary.txt` = **1 655 B, 8 lines, 7 CRLF / 0 bare
+LF, sha256 `F682794A07315F9342A4FBE07433D56C4FDD6BFBD6FDAE591B9763B4B7B38453`, mtime 2026-10-11
+09:17:07 -03:00**, and it says `steps=41 gate=31 control=9 skipped=0 expect-red=1 missing=0 failed=6` /
+`BATTERY-VERDICT: RED - 6 step(s) failed` / exit-code **6** (note the current summary writes `steps=41`,
+with no spaces around `=`). The six failing steps are `strip-surface-oracle`(rc=3),
+`strip-stats-log-budget`(rc=1), `strip-hot-reload`(rc=3), `strip-surface-runtime`(rc=3),
+`strip-geometry-restore`(rc=3), `strip-stats-wave`(rc=3). The WRAPPER half of this bullet is ALREADY
+CORRECT: `_main\_audit-verify-all.cmd` re-measured = **32 203 B, 538 CRLF / 0 bare LF, sha256
+`EBF715E9E4CF75B2FF5E62A529C2C375985246CBB7BFE8459EF2A9DD1BD0EB1C`**.**; negative proof `INJECTED-FAILING-STEP rc=3 … BATTERY-VERDICT: RED - 1 step(s) failed … NEGPROOF-EXITCODE=1` (`_run-20261008-negproof.log`). **Before this, a run with THREE red steps (`hotkey-delivery`, `verdict-gate`, `history-producer-gate`) exited 0** — a failure answering as success. So read the `BATTERY-VERDICT` / exit-code pair, never a step's own `rc`, never a lone last line, and never a `steps :` count without checking there is only ONE of them.
 
 ## Keeping THIS file true (it has been wrong twice in one day)
 
@@ -685,10 +750,17 @@ Measured: **28** native sources (`*.c/*.cpp/*.h/CMakeLists.txt/Makefile/build.cm
 `-ld3d11 -ldxgi -luuid -lole32 -loleaut32 -lruntimeobject -lwindowsapp -lpsapi -lgdi32 -luser32`;
 **`-lwasapi` appears nowhere** (it does not exist). Treat that file as the only evidence of the toolchain.
 
-### 4. `--audio` IS SILENTLY IGNORED without `--selftest`. Not documented anywhere above.
+### 4. `--audio` ~~IS SILENTLY IGNORED without `--selftest`. Not documented anywhere above.
 `worker/sotto_worker.py:2921` declares `--audio`, and `:3299` reads it as
 `(args.audio if args.selftest else None)` — so a bare `--audio X` is accepted by argparse and then
-**never used**. To transcribe a file, pass `--selftest --audio <path>` (or `SOTTO_AUDIO_FILE`).
+**never used**. To transcribe a file, pass `--selftest --audio <path>` (or `SOTTO_AUDIO_FILE`).~~ **REFUTED 2026-10-11 — a bare `--audio X` IS honoured today.** Re-measured on `worker/sotto_worker.py`
+(238 427 B, sha256 `DB12C89B…`, the pin corrected above): `--audio` is declared at **`:2922`** (the struck
+`:2921` was one line off), and the file reads `audio_file = os.environ.get("SOTTO_AUDIO_FILE") or
+args.audio` at **`:3070`**, `file_mode = bool(audio_file) or args.selftest` at **`:3071`**, emits
+`mode="file" if file_mode else "live"` at `:3078`, and takes the file branch `if args.selftest or
+audio_file:` at **`:3328`**. The old guard `(args.audio if args.selftest else None)` survives only as the
+file's own note about the bug that was fixed (`:3324`). So `--audio X` alone transcribes X;
+`--selftest --audio X` and `SOTTO_AUDIO_FILE` also still work.**
 
 ### 5. Five fake-worker scripts exist; only ONE is named above, generically. *(correction to a belief in circulation)*
 The `--arm-e-real` bullet names "a fake worker" (singular). The **population** `_main/*fake*.py` in this

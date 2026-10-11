@@ -119,7 +119,20 @@ its own contract. That belief is **REFUTED by measurement here**, and the refuta
 the belief was.
 
 `git rev-list --all -- app/webview/sotto_webview.py` returns **exactly 6 distinct revisions** of the
-shell in the whole object database, and they GROW monotonically:
+shell in the whole object database. **CORRIGIDO 2026-10-11 — the claim written here ("and they GROW
+monotonically") is REFUTED by two independent measurements.** (a) Ordered by COMMIT DATE the six
+revisions do not grow: `160,779 -> 271,216 -> 406,194 -> 283,757 -> 284,381 -> 320,214` bytes — the
+file FALLS 122,437 B between `55c422b` (10-08 09:14) and `3352f61` (10-08 10:08)
+(`app/shadowplay/state/friction/FRICTION-LEDGER.md:1821-1825`); the table below is sorted by SIZE,
+which is why it reads as growth, and the sentence that follows the table below ("The file never
+shrank"; pre-edit line 131, now line 143) is the same claim restricted to a subseries that omits
+`55c422b` and `336dfc8`. (b) The port that grew the
+live shell is not monotonic in CONTENT either: the live file's BYTE series grows at every landing,
+but the BLOCK series does not — of the 32 blocks extracted from the `55c422b` reference, **8 were
+SKIPPED because the work they carry was already live** (blocks 6, 19, 22, 23, 24, 25, 26, 27) and
+**2 were applied as surgical INSERTS, not wholesale replacements** (blocks 5 and 21)
+(`_main/receipt-20261011-strip-contract-port.md:57-74`). The table below is those six revisions in
+the order this receipt wrote them (by SIZE, not by date):
 
     406194  55c422b  10-08 09:14  On feat/build-verify-1: wip-boot-grace-before-strip-work
     320214  1d97536  10-10 12:46  feat(panel): land the 2026-10-09 transparent-panel body, strip controls and their gates

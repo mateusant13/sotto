@@ -67,8 +67,9 @@ body[data-skin][data-surface="panel"] .history,
 body[data-skin][data-surface="panel"] .captions,
 body[data-skin][data-surface="panel"] .chrome { display: none !important; }
 
-/* THE HEADER, REDUCED TO THE CONTROL CLUSTER. The design's own chrome already
-   carries a brand, so our wordmark would be the second one on screen. */
+/* THE HEADER, REDUCED TO THE CONTROL CLUSTER, AT THE FALLBACK CORNER. The design's own chrome already
+   carries a brand, so our wordmark would be the second one on screen. THIS
+   corner is the FALLBACK; the block below moves it to each design's own corner. */
 body[data-skin][data-surface="panel"] .panel__header {
   position: absolute;
   top: 8px;
@@ -92,6 +93,104 @@ body[data-skin][data-surface="panel"] .panel__controls {
   -webkit-backdrop-filter: blur(calc(var(--blur, 14px) / 2));
   backdrop-filter: blur(calc(var(--blur, 14px) / 2));
   box-shadow: var(--shadow, 0 18px 40px -28px rgba(0, 0, 0, 0.9));
+}
+
+/* ── THE CLUSTER SITS WHERE THE DESIGN PUTS IT ───────────────────────────────
+ *
+ * The corner above is the FALLBACK. Each of the twenty packages is named below,
+ * because the zip's own chrome source has THREE layouts and our cluster follows
+ * its design's, never ours:
+ *
+ *   chrome "bar" — 11 designs. `TopChrome.tsx:187-233`: the strip is
+ *     `absolute top-0 left-0 z-30 flex h-[62px] items-center gap-5 px-5 sm:px-8`
+ *     (:188-195; the shipped fragment also carries `right: 0px` and the design's
+ *     own `background: linear-gradient(180deg, color-mix(...), transparent)`), and
+ *     the control cluster is its LAST child, `ml-auto flex items-center gap-2.5`
+ *     (:207) — the RIGHT END of that 62px band. `px-5` is 20px at this width
+ *     (`sm:` is 640px and the panel is 380). Our pill is 40px tall — a 28px
+ *     `.icon-button` (`panel.css:391-395`) plus `5px 7px` padding and a 1px border —
+ *     so it centres in that 62px band at 11px, which is where the design's own
+ *     31px controls sit (`py-1.5` + a 13px icon).
+ *   chrome "float" — 5 designs. `TopChrome.tsx:238-299`: the cluster is one pill,
+ *     `absolute top-4 left-1/2 z-30 -translate-x-1/2 sm:top-6` (:260) — TOP CENTRE,
+ *     `top-4` = 16px here. The brand pill beside it (:241) is `hidden xl:block` and
+ *     the meter layer under it is `hidden ... sm:block`, so at 380px the design's
+ *     only visible chrome is that centred pill.
+ *   chrome "sidebarHead" — 4 designs. `TopChrome.tsx:303-339`: the head is
+ *     `absolute bottom-6 left-6 z-30 flex flex-col items-start gap-3` (:304) and the
+ *     cluster row is its SECOND child, `flex items-center gap-2` (:319). The row's
+ *     bottom edge is 24px (`bottom-6`) + 12px (`gap-3`) + the 0.6rem footer line
+ *     under it — measured in the shipped fragments (`glasshouse.chrome.html`: brand
+ *     pill `px-4 py-2.5`, cluster row `px-3 py-1.5`, footer `font-size: 0.6rem`) —
+ *     so 48px.
+ *
+ * WHERE `chrome:` COMES FROM: the `chrome:` field of each of the 20 entries in
+ * `_main/_design-lane/zips/cinematic-2/src/themes.ts` — bar 11 / float 5 /
+ * sidebarHead 4. The three lists below are those three sets, one design each.
+ *
+ * THE DESIGN'S OWN CLUSTER IS FROZEN AND DEAD — `.skin__chrome` is
+ * `pointer-events: none` (`skin-shim.css:76-82`) — and stays exactly where the
+ * design drew it. Ours lands in the SAME slot, because that slot IS the design's
+ * own button position; the live pill paints over the dead one. */
+
+/* bar — right end of the design's own 62px strip (TopChrome.tsx:188-195, :207) */
+body[data-skin][data-surface="panel"]:is(
+  [data-skin-theme="cine-rainline"], [data-skin-theme="cine-blue-plate"],
+  [data-skin-theme="cine-linen"], [data-skin-theme="cine-north-window"],
+  [data-skin-theme="cine-adobe"], [data-skin-theme="cine-film-club"],
+  [data-skin-theme="cine-reading-hour"], [data-skin-theme="cine-last-train"],
+  [data-skin-theme="cine-harbor"], [data-skin-theme="cine-paper-rain"],
+  [data-skin-theme="cine-quiet-marina"]
+) .panel__header {
+  top: 11px;
+  right: 20px;
+  left: auto;
+  bottom: auto;
+  transform: none;
+}
+
+/* float — the design's own centred pill, `top-4` = 16px (TopChrome.tsx:260) */
+body[data-skin][data-surface="panel"]:is(
+  [data-skin-theme="cine-cellar"], [data-skin-theme="cine-side-b"],
+  [data-skin-theme="cine-nightswim"], [data-skin-theme="cine-dusk-highway"],
+  [data-skin-theme="cine-blue-hour"]
+) .panel__header {
+  top: 16px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+}
+
+/* sidebarHead — the design's own cluster row, bottom-left (TopChrome.tsx:304, :319) */
+body[data-skin][data-surface="panel"]:is(
+  [data-skin-theme="cine-glasshouse"], [data-skin-theme="cine-snowline"],
+  [data-skin-theme="cine-fireside"], [data-skin-theme="cine-terrace"]
+) .panel__header {
+  bottom: 48px;
+  left: 24px;
+  top: auto;
+  right: auto;
+  transform: none;
+}
+
+/* ── THE SIX IDS THAT LIVE IN BOTH LAYERS ────────────────────────────────────
+ *
+ * `blue-hour`, `cellar`, `last-train`, `linen`, `rainline` and `reading-hour` are
+ * each BOTH a `themes/cinematic.css` theme (`:root[data-theme='cine-<design>']`) AND
+ * a skin (`SOTTO_SKINS.themes['cine-<design>']`). `skin-host.js:68-71` looks the id
+ * up in the SKIN registry — not at the manifest's `skin` field — and `:77-82` needs
+ * only one fragment, so for all six the SKIN is what mounts and what the owner sees.
+ * The cinematic.css block's only rules that reach anything we still paint are its
+ * `.panel` backgrounds, and `.captions` / `.history` / `.chrome` are
+ * `display: none !important` above. Both layers carry the SAME design: the six
+ * blocks map the design's own 15 vars onto our token contract, and the 20 skin
+ * entries' `vars` are byte-identical to their zip design's (0 of 20 differ). This
+ * guard keeps "with a skin mounted, the design is the SKIN" true even if the CSS
+ * theme ever grows a heavier `.panel` rule. */
+body[data-skin][data-surface="panel"] .panel {
+  background: none !important;
+  box-shadow: none !important;
 }
 
 /* THE STATUS LINE KEEPS ITS JOB: the worker's own cause, one line, and the target

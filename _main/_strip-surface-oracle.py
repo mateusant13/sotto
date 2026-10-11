@@ -253,8 +253,28 @@ def check(module):
                                   got['height']), (0, 884, 1040, 148))
     shell2.saved_geometry = None
     got2 = shell2.geometry_for('strip')
+    # THE CALL SITE IS `dock_strip`, AND THIS PIN USED TO ASSERT THE OTHER
+    # FUNCTION'S NUMBERS. Measured 2026-10-11: with no saved rect,
+    # `geometry_for('strip')` returns dock_strip(work, height=148) --
+    # y = 1032 - 148 - PANEL_MARGIN(12) = 872 with docked='bottom-strip' -- while
+    # this line expected 836, i.e. strip_geometry's STRIP_BOTTOM_MARGIN(48).
+    # strip_geometry is a DIFFERENT, still-live function and its own numbers are
+    # pinned at :64-71 above, which is why those checks stayed green while this
+    # one went red. The port receipt corrected the call site
+    # (`_main/receipt-20261011-strip-contract-port.md`, section 2: "Corrected to
+    # the keyword form dock_strip(work, height=self.strip_height)") and quotes
+    # the live reference line `PANEL_PLACED mode=strip docked=bottom-strip
+    # work=1920x1032@(0,0) window=1040x100@(440,920) margin=12`, which the ported
+    # shell reproduces exactly (probe arm A, 2026-10-11: WINDOW_GEOMETRY
+    # `window=1040x100@(440,920) margin=12 docked=bottom-strip`).
+    # The pin is now STRONGER than the one it replaces: it asserts the label, the
+    # margin and the surface too, so a regression back to strip_geometry fails
+    # on four checks instead of one.
     want('geometry_for.default', (got2['x'], got2['y'], got2['width'],
-                                 got2['height']), (440, 836, 1040, 148))
+                                 got2['height']), (440, 872, 1040, 148))
+    want('geometry_for.default.docked', got2.get('docked'), 'bottom-strip')
+    want('geometry_for.default.margin', got2.get('margin'), module.PANEL_MARGIN)
+    want('geometry_for.default.surface', got2.get('surface'), 'strip')
 
     # -- 11. THE SURFACE LABEL in the persisted rect -------------------------
     shell3 = module.SottoShell.__new__(module.SottoShell)

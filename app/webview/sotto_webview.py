@@ -4182,7 +4182,15 @@ class SottoShell:
                     done.set()
 
             form.BeginInvoke(Func[Type](run))
-            done.wait(10)
+            # A SILENT `return None` here is how a stalled UI thread became a
+            # VACUOUS result in the instruments: `exec_js` then sees None, the
+            # probe logs `PANEL_STATS_PROBE null`, and the check that read the
+            # value fails with no reason attached to it. Measured 2026-10-11:
+            # a worker publishing 43 stats pushes/s left the posted callable
+            # unrun for the whole 10 s and NOTHING in the log said so.
+            if not done.wait(10):
+                warn('UI_THREAD_STALL begin-invoke not run in 10 s fn='
+                     + str(getattr(fn, '__name__', fn)))
             if 'error' in box:
                 raise box['error']
             return box.get('value')
@@ -4260,6 +4268,7 @@ class SottoShell:
             done.set()
 
         if not done.wait(timeout):
+            warn(f'exec_js TIMEOUT after {timeout}s script={script[:90]!r}')
             return None
         if 'error' in box:
             warn(f'exec_js failed: {box["error"]}')
@@ -5793,10 +5802,14 @@ class SottoShell:
                 lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
                     Action[Task[String]](_complete))))
 
-        try:
-            self._ui(_run)
-        except Exception as exc:  # noqa: BLE001
-            warn(f'emit_async failed: {exc!r}')
+        # `_post`, NOT `_ui`: the docstring above promised "no wait", but `_ui`
+        # WAITS on its BeginInvoke for up to 10 s. At the measured 43 pushes/s the
+        # pump thread -- the SAME thread that carries the captions -- sat in that
+        # wait while the UI thread drained the queue. `_post` is the
+        # fire-and-forget twin and guards the callable against a ThreadException
+        # dialog. Measured 2026-10-11 (`_strip-stats-probe.json`, fed arm: the
+        # page probe returned null after a 20 s stall).
+        self._post(_run)
 
     def work_area(self):
         """The WORK area of the display this shell lays out in, in DIP.
@@ -6813,6 +6826,15 @@ class WorkerBridge:
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
         #: instead of being presented as a current measurement. Zero = never set.
+        # THE ASSIGNMENT WAS MISSING (the comment above outlived the line it
+        # described). Measured 2026-10-11: `panel_state_snapshot` died with
+        # `AttributeError: 'WorkerBridge' object has no attribute
+        # 'no_audio_evidence_at'` -- `PANEL_STATE_SNAPSHOT_FAILED reason=periodic`
+        # in every run where no no-audio evidence was ever published, i.e. the
+        # HEALTHY case stopped writing `_main/panel-state.json`. The readers at
+        # `panel_state()` and `_on_silence` test it for TRUTHINESS, so the value
+        # the comment names is 0.0.
+        self.no_audio_evidence_at = 0.0
         self.deaths = 0
         self.stderr_tail = []
         #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
@@ -6967,6 +6989,9 @@ class WorkerBridge:
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
         #: instead of being presented as a current measurement. Zero = never set.
+        # Reset WITH the evidence it ages: an age measured from the dead child
+        # would age the new child's silence from the old process's clock.
+        self.no_audio_evidence_at = 0.0
         # The new child's `blocks=` counter starts again at 0 (see
         # `_progress_blocks`): carrying the dead process's last value over would
         # make every heartbeat look like a repeat and blind the watchdog.
