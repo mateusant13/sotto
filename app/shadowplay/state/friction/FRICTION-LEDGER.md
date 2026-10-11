@@ -1919,3 +1919,35 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   reads the same four lines; working tree 0 dirty entries for that file. Live run exit 0 in 63.2 s,
   RESULT 9 passed 0 refused. An earlier reading of those pins as empty was my own quoting error
   inside a double-quoted PowerShell string, caught by re-reading with Select-String.
+
+## 2026-10-11T11:50Z - my rescue ref protects 1 of 23. The receipt's "only copy" was wrong and so was mine.
+
+  MEASURED 11:47:10Z .. 11:50:47Z, POP_UNREACHABLE_COMMITS 250 (git fsck --no-reflogs, commits only;
+  1503 unreachable objects total = 1055 trees, 250 commits, 198 blobs). Against 754 commits
+  reachable by refs, this repository is holding three times as much history in its reflog as in its
+  branches. Reflog is not a ref.
+
+  MY OWN WORK IS SAFE, and I checked rather than assumed: POP_COMMIT_TESTADOS 8, POP_SEM_REF 0.
+  Every commit I made today is on chore/measurement-instruments-20261011-051354.
+
+  THEN I TESTED THE CLAIM I HAD BEEN REPEATING. I have written three times that 55c422b is "the
+  only copy" of the strip implementation. MEASURED: POP_ORFAOS_COM_O_SHELL 250 of 250 -- every one
+  of the 250 orphans carries the shell file. Of those, POP_ORFAOS_COM_OS_4_MARCADORES 23, and
+  POP_ORFAOS_DISTINTOS_POR_CONTEUDO 23, so they are 23 DISTINCT implementations, not 23 commits of
+  the same one: 1f47e83 250a00c 360b077 400d238 0c18e46 8cdff41 b660d00 e9e5a1e 5e695fc d229e85
+  6f2b0b3 7facc20 5bed0f1 02b1a14 69b1509 25322de d0b297c e872104 2df3ce6 877300f f0785ed 80fa910
+  3fbe53d.
+
+  So "a port, not an invention -- read the reference" was priced on ONE of 23 candidates, and the
+  one I anchored happens to be the largest at 406,194 B while the orphans hold 389,251 B. Choosing a
+  reference implementation out of 23 distinct ones is a product decision with a different cost than
+  choosing one out of one. My rescue ref is not wrong -- 55c422b is still real and still unread --
+  but I have been describing 1 as if it were the whole population.
+
+  A FINDING SURVIVED A LANE THAT DIED. The commits lane said "Found a significant issue" about
+  reachability and was aborted before delivering. I did not get its report. I then measured
+  reachability myself, which is what the lane was for, and arrived at 250. The lane was pointing at
+  the right thing; what it could not do was hand over the number.
+
+  I did NOT create 23 refs. POP_REFS_MINHAS 1 of 23 protected, and deciding which of 23
+  implementations is the reference is the owner's, not mine. Reversing my one ref stays one command.
