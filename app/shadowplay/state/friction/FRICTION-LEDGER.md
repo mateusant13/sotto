@@ -208,3 +208,32 @@ class: reachable, and each needing an input the other two do not reach.
   and the honest limit: 22 specs is not an exhaustive enumeration of containers. It is the
   set I could build with the encoders on this host. A codec I cannot mux here may reach
   L235 or L242 by a route this scan never saw, and the header says so.
+## 2026-10-11T06:03:50Z - two carried claims, both false, both countable in one command
+
+I carried "six older mutation scripts still run without a parse gate" and "six modules
+have never been swept" for several passes. Neither number was ever counted.
+
+  POPULACAO = every .mjs/.py under the tree whose name matches mutat|sweep|falsif|probe:
+    4 files found -- compose-probe.mjs, cw-probe.mjs, perf-probe.mjs, and
+    stream-probe.test.mjs, which is already a suite. So the real population of probes
+    needing a parse gate is 3, not 6, and I had never enumerated it.
+
+  POPULACAO = every product .js in app/shadowplay: 14 modules.
+    imported by some suite: 14 / 14
+    NEVER SWEPT: 0 / 14
+  "Six modules have never been swept" was false on both the count and the claim. Every
+  module in the tree is imported by at least one suite. I carried a number I had never
+  derived, in a sentence that repeated it across at least three reports.
+
+  Measured on the 3 probes, and it is the shape the parse gate should take:
+    compose-probe.mjs  18 775 ms  exit 0  -- ran to completion, no parse error
+    cw-probe.mjs          110 ms  exit 0  -- no parse error
+    perf-probe.mjs         135 ms  exit 1  -- TypeError ERR_INVALID_ARG_TYPE on undefined path
+  perf-probe exits 1 for the wrong reason: a bad argument, not a broken parse. That is
+  exactly what a parse gate exists to catch, and exactly what reporting it as a failure
+  would have let through.
+
+  rule: a carried count is a debt, not a fact. If it never came out of a command, it is
+  a guess wearing the grammar of a measurement, and repeating it makes it more credible
+  rather than more true. Both numbers here were wrong in the same direction -- larger
+  than reality -- which is the direction a guilt-driven estimate always goes.
