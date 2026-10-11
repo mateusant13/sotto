@@ -1778,3 +1778,36 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   appends its verdict BEFORE the next one starts. A kill now costs at most the iteration in
   flight. The rule: an experiment that mutates a product file must leave the restore readable
   from the disk, not from the stack of the process you might have to kill.
+
+## 2026-10-11T11:16Z - another lane hit my exact trap and wrote it down, and a dangling commit is the only copy of a shell
+
+  MEASURED 11:16:22Z, POP_LINHAS 235 of 235 read of _main/receipt-20261011-audit-battery-repair.md
+  (last pass read 31; this one read the whole file, so "legitimate work from another lane" is no
+  longer a downgrade, it is read).
+
+  IT IS THE SAME TRAP. Their section 2.3 is titled "commits in this shared checkout" and says: "in
+  this checkout a staged file is not yours until it is committed, and the second `git log -- <path>`
+  is part of the verification, not an optional courtesy." They lost two probe files to exactly what
+  cost me a commit at 11:07Z: another lane committed the same checkout and swept their staged files
+  in. They measured it, wrote the rule, and kept the receipt as the description because no commit
+  message described the work. My commit 837b112 and their c32e565/0a945c9 are the same event class.
+
+  THEIR SECTION 3.1 IS THE THING THAT MATTERS. `git rev-list --all -- app/webview/sotto_webview.py`
+  measures 6 revisions of the shell, growing 160,779 -> 406,194 B, never shrinking. The revision
+  that implements the six missing strip gates is commit 55c422b, message
+  "wip-boot-grace-before-strip-work", and MEASURED 11:16:35Z: `cat-file -t` = commit, readable, the
+  shell inside it is 406,194 B, and the 4 contract markers I sampled are present (3, 6, 2, 2 hits).
+  POP_REFS_REACHING_IT = 0 branches, 0 tags. Reflog holds 238 entries.
+
+  So the only copy of that implementation is reachable from NO ref, and reflog is the only thing
+  holding it. `git gc` on an unreferenced object past its window and it is gone. I created branch
+  rescue/dangling-55c422b at that commit so the object is reachable and named. Reversible in one
+  command: git branch -D rescue/dangling-55c422b. It adds no commit, touches no file, moves no ref
+  that existed.
+
+  MY OWN INSTRUMENT WAS WRONG IN THE SAME PASS. I tested the 6 abbreviated names with
+  `cat-file -t` and every one returned "not a valid object name", which reads as "all six revisions
+  are gone". They are not: those names come from `rev-list`, which prints blobs by name, and they
+  are not valid object prefixes. POP_REVISOES_PRESENTES = 0 of 6 is an artefact of my method, not a
+  fact about the repository. The same mistake I made with the Select-String line count last pass:
+  a number from an instrument, promoted into a table without asking what the instrument counts.
