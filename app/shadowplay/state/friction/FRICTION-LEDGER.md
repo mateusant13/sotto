@@ -1102,3 +1102,35 @@ COUNT when it is a count of DISTINCT frames in the longest contiguous run.
   rule: a number without its UNIT is a number you will eventually misread. 28 was always a
   count of distinct frames and I read it as a count of frames, then spent two hypotheses
   and a whole turn on an encoder that was never involved.
+
+## 2026-10-11T09:31:55Z - two arms prove distinctness drives the number, and the still arm gives 1, NOT 28
+
+Last entry called the still-screen explanation "inferred from a measured equality rather
+than reproduced". Right. So I built the two arms, including the arm that would refute me.
+
+  WHAT I COULD NOT DO, stated first. nvenc.js:68 hardwires the input:
+      "-f", "gdigrab", "-framerate", String(fps), "-i", source
+  so I cannot hand the product a still screen through its own capture path without opening
+  a real window on this desktop. What decides the refusal is frame-accounting's
+  contentSufficientToCoverClock, and that takes a FILE. So the two arms probe the decision,
+  not the capture.
+
+  MEASURED, POPULACAO = 2 clips, both 60 frames at 30 fps, WINDOW_UTC 2026-10-11T09:31:55Z,
+  same assessDelivery call, same 30 fps and 2 seconds:
+      still.mp4  3 088 B    DELIVERED 60  DISTINCT 1   LONGEST_UNIQUE_RUN 1   SUFFICIENT false
+      busy.mp4   256 088 B  DELIVERED 60  DISTINCT 60  LONGEST_UNIQUE_RUN 60  SUFFICIENT true
+
+  THE ARM THAT WAS MEANT TO REFUTE ME DID NOT, and that is the result: distinctness is what
+  longestUniqueRun tracks, and a still clip is refused. Had the still arm produced a long
+  distinct run, my explanation would have been wrong and I would have said so.
+
+  BUT THE STILL ARM GIVES 1, AND NOT 28. I am not going to round that away. A completely
+  frozen picture collapses the run to 1; the recorded failure said 28, which is a screen
+  still for roughly a second and then moving again -- a terminal sitting idle between my
+  own commands, not a frozen frame. The mechanism is reproduced; the EXACT VALUE IS NOT.
+  28 is consistent with the mechanism and not yet explained by it.
+
+  rule: a reproduction that lands on a different number than the failure is a partial
+  reproduction, and calling it a reproduction is the same move as the invented citation.
+  This one confirms the mechanism and leaves the magnitude open, and both halves belong in
+  the report.
