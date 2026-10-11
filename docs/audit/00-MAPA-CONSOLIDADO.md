@@ -276,8 +276,8 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | H1 | o selftest da shell nao afirma qualidade do output (`oracles.md:393`) | **OPEN** — herdado da linha #25 |
 | H2 | queue_drops nunca era afirmado (`oracles.md:394`) | **APPLIED** — herdado da linha #26 (delivery-rate-oracle afirma queue_drops == 0) |
 | H3 | o ARM A do painel aceita UMA legenda como LIVE (`oracles.md:395`) | **OPEN** — herdado da linha #27 |
-| H4 | model-spec-oracle sem braco negativo (`oracles.md:396`) | **OPEN** — herdado da linha #56 |
-| H5 | _oss_oracle sem braco negativo (`oracles.md:397`) | **OPEN** — herdado da linha #57 |
+| H4 | model-spec-oracle sem braco negativo (`oracles.md:396`) | **APPLIED** — herdado da linha #56, fechada em 2026-10-11 (`0f6a8de`): `_main/model-spec-oracle.py` ganhou `@ --neg-arm`, que muta COPIAS do artefacto e do codigo (`chunk_samples=1234`, `blank_id=1`) e exige que as DUAS leituras fiquem MISMATCH com o controlo OK |
+| H5 | _oss_oracle sem braco negativo (`oracles.md:397`) | **APPLIED** — herdado da linha #57, fechada em 2026-10-11 (`0f6a8de`): `_main/_oss_oracle.py` tem `--neg-arm` com QUATRO mutantes (C1..C4), imprime as quatro veredictos e FALHA se a arvore viva nao estiver verde; as duas cores foram provadas com uma copia cega em `I:/cc-tmp/oss-blind/` (RED / `NEG-ARM FAIL`, rc=1) |
 | H6 | o selftest da shell regista focus_stolen=true e sai 0 (`oracles.md:398`) | **OPEN** — herdado da linha #28 (segunda entrada do mesmo achado que Finding B) |
 
 ### auditoria-completa-20261007.md (F1-F20)
@@ -307,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 63
-- **OPEN:** 76
+- **APPLIED:** 65
+- **OPEN:** 74
 - **IN-FLIGHT:** 0
 
-Conferencia: 63 + 76 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 65 + 74 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
@@ -340,6 +340,11 @@ instrumento vivo);
 faltava, o SINAL corrigido contra a medicao, e a regra de juncao nomeada como historica com a viva
 ao lado);
 #9 e a F2 herdada dela (o `flags` descartado -> APPLIED: o unico defeito vivo apanhado pelo sweep
+- **LEDGER DE FECHO (2026-10-11):** `_main/CLOSURE-LEDGER-20261011.md` enumera TODAS as linhas
+ainda abertas (74 na contagem deste portao), o que bloqueia cada uma, as duas fontes do
+`_moved/aireplay` (DEBT-LEDGER + os dois TO-BE-ANSWERED-BY-OWNER) e as 7 perguntas da lease-audit
+DECIDIDAS pelo Lead. E gerado do proprio mapa e cita os numeros do portao, nao os de um parser
+proprio.
 foi corrigido no PRODUTO — `DATA_DISCONTINUITY` contado nos dois loops, com o mutante que o prova).
 
 ---
