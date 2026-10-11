@@ -37,7 +37,9 @@ const path = require('node:path');
 const REPO = path.resolve(__dirname, '..');
 const FORMULATION = require(path.join(REPO, 'app', 'panel', 'caption-formulation.js'));
 
-const AFTER = process.argv[2] || path.join(__dirname, '_wav-after.jsonl');
+// The first NON-FLAG argument, so `--neg-arm` is not mistaken for the capture file.
+const AFTER = process.argv.slice(2).find((a) => !a.startsWith('--'))
+  || path.join(__dirname, '_wav-after.jsonl');
 const BEFORE = path.join(__dirname, '_wav-before.jsonl');
 
 function captions(file) {
@@ -52,12 +54,26 @@ function captions(file) {
   return out;
 }
 
-function replay(caps) {
+// The panel's OWN composition: `renderProvisional` (panel.js:758-759) maps each token
+// array to its words and paints `confirmed ++ provisional` as ONE line. The capture must
+// mirror that, because the module calls `onProvisional(committed, provisional)` with TWO
+// token arrays ({w,a,b}) and the words may sit in EITHER: after a re-read the whole line
+// is in `provisional` with `committed` empty — which is exactly what the after-stream
+// does. Until 2026-10-11 this stub captured ONE string argument (the pre-a3c288f
+// convention), so check 1 read `[[],[],[]]` and the instrument was RED as a non-check.
+const words = (v) => (Array.isArray(v) ? v.map((t) => (t && typeof t === 'object' ? t.w : t)) : []);
+
+function replay(caps, staleStub) {
   const provisional = [];
   const committed = [];
   const engine = FORMULATION.createEngine({
     onCommit: (text) => committed.push(text),
-    onProvisional: (text, isProvisional) => provisional.push({ text, isProvisional }),
+    onProvisional: staleStub
+      ? (text, isProvisional) => provisional.push({ text, isProvisional })
+      : (conf, prov) => provisional.push({
+        text: words(conf).concat(words(prov)).join(' '),
+        committed: words(conf), provisional: words(prov),
+      }),
   });
   for (const c of caps) engine.ingest(c.text, { start: c.start, end: c.end });
   engine.flush('end');
@@ -128,8 +144,24 @@ check('6. SENTENCE_GAP_S agrees across worker (py) and renderer (js)',
 check('7. SENTENCE_MAX_CHARS agrees across worker (py) and renderer (js)',
   [pyconst('SENTENCE_MAX_CHARS'), FORMULATION.SENTENCE_MAX_CHARS], [90, 90]);
 
+// ── NEGATIVE ARM: the same replay through the STALE stub, deliberately ───────
+// An instrument that cannot fail on the staleness it was repaired for is not a check.
+let negOk = true;
+if (process.argv.includes('--neg-arm')) {
+  const EXPECTED = ['O rádio', 'O rádio Segunda-feira', 'O rádio Segunda-feira Os moradores'];
+  const staleTexts = replay(after, true).provisional.map((p) => p.text);
+  const liveTexts = r.provisional.map((p) => p.text);
+  const staleRed = JSON.stringify(staleTexts) !== JSON.stringify(EXPECTED);
+  const liveGreen = JSON.stringify(liveTexts) === JSON.stringify(EXPECTED);
+  negOk = staleRed && liveGreen;
+  console.log(`  ${staleRed ? 'PASS' : 'FAIL'} M1 one-string stub (the pre-2026-10-11 convention) -> check 1 RED`
+    + `  got=${JSON.stringify(staleTexts).slice(0, 90)}`);
+  console.log(`  ${liveGreen ? 'PASS' : 'FAIL'} control: the mirrored stub stays GREEN  got=${JSON.stringify(liveTexts)}`);
+  console.log(`NEG-ARM VERDICT ${negOk ? 'PASS' : 'FAIL'} -- the staleness is detectable`);
+}
+
 const failed = results.filter((x) => !x).length;
 console.log(`caption-renderer-integration: ${results.length - failed} PASS / ${failed} FAIL`
   + `  impl=${path.relative(REPO, require.resolve(
       path.join(REPO, 'app', 'panel', 'caption-formulation.js')))}`);
-process.exit(failed === 0 ? 0 : 1);
+process.exit(failed === 0 && negOk ? 0 : 1);
