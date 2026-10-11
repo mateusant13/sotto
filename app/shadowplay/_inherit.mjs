@@ -52,35 +52,51 @@ function arm(label, buildAndRun) {
   const path = new SavePath({ writer });
   const { threw, forced } = withForcedFailure(() => buildAndRun(path, writer));
   const left = readdirSync(dir);
-  results.push({
-    label,
-    forced,
-    refused: threw !== null,
-    files: left.length,
-    inherited: threw !== null && left.length === 0,
-  });
-  console.log(`${label}: forced=${forced} refused=${threw !== null} files_left=${left.length} INHERITED=${threw !== null && left.length === 0}`);
+  // THE ARM-FIRED CONDITION IS PART OF THE VERDICT, not decoration beside it. My first
+  // census computed `refused && files_left===0`, which is exactly what a path that
+  // threw BEFORE reaching save() also satisfies. Two bugs in one instrument: a call
+  // that never armed, and a verdict that did not notice.
+  const armed = forced === 1;
+  const inherited = armed && threw !== null && left.length === 0;
+  const verdict = armed ? (inherited ? "INHERITED" : "REPAIR_FAILED")
+                        : "NOT_MEASURED_arm_never_fired";
+  results.push({ label, armed, inherited, verdict });
+  console.log(`${label}: forced=${forced} refused=${threw !== null} files_left=${left.length} ${verdict}`);
 }
 
-// The ring module's caller shape is already covered by the permanent arm in
-// save-path.test.mjs. These are the two callers that had never been driven.
-// Real signatures read from source: the audio track module persists inside render(),
-// the captions module inside sidecar().
-arm("audio-track", (path, writer) => {
-  const track = new AudioTrack({ rate: 48000, channels: 2, savePath: path });
-  track.attach({ frames: 60 }, Buffer.alloc(48000 * 2 * 2, 0x20));
-  track.render();
+// WHY THE FIRST VERSION OF THIS PROBE ARMED NOTHING, read from source:
+//  audio-track.js:72  if (!Number.isInteger(frames) || frames <= 0) throw RangeError
+//    I passed an OBJECT as `frames`, so the range guard threw at line 73 and the call
+//    never reached save() at line 82. forced=0, refused=true, files_left=0 - a green
+//    line made of three facts that meant the opposite of what the green said.
+//    attach() persists DIRECTLY: there is no render() step in between. My first version
+//    also called render(), which was never on this path.
+//  captions.js:59     if (this.#rows.length === 0) return null
+//    sidecar() persists directly too, and only once rows exist.
+arm("audio-track", (path) => {
+  // audio-track.js:23 refuses an empty sources array IN THE CONSTRUCTOR. That is the
+  // real reason the arm never fired in the two previous attempts: the constructor threw
+  // before attach() was ever called, so no ledger push happened anywhere.
+  const track = new AudioTrack({
+    rate: 48000, channels: 2, sources: [Buffer.alloc(2048, 0x20)], savePath: path,
+  });
+  // frames MUST be a positive integer (line 72); an object throws at line 73.
+  track.attach(60, Buffer.alloc(4096, 0x20));
 });
 
-arm("captions", (path, writer) => {
+arm("captions", (path) => {
   const caps = new CaptionTrack({ clip: { id: "c1" }, savePath: path });
   caps.add("hello", 0);
   caps.sidecar();
 });
 
 const inherited = results.filter((r) => r.inherited).length;
+const notMeasured = results.filter((r) => !r.armed).length;
 console.log(`--- INHERITANCE CENSUS ---`);
 console.log(`POPULATION_CALLERS_TESTED: ${results.length}  (ring module covered separately)`);
 console.log(`CALLERS_INHERITING_REPAIR: ${inherited} / ${results.length}`);
-console.log(`REQUIRED_INHERITED: ${results.length}`);
+console.log(`CALLERS_NOT_MEASURED: ${notMeasured} / ${results.length}`);
+console.log(`REQUIRED_MEASURED: ${results.length}   REQUIRED_INHERITED: ${results.length}`);
+// Exit 0 only when every caller was actually MEASURED and inherited. An unmeasured
+// caller is a failure of the instrument, not a pass.
 process.exit(inherited === results.length ? 0 : 1);
