@@ -145,7 +145,7 @@ arm('ARM 6 createEngine still returns ingest/flush/expireHold/visible/state/rese
 arm('ARM 6b reset() is idempotent and returns nothing', a.reset() === undefined && JSON.stringify(a.state()) === JSON.stringify({ committed: [], provisional: [], lastAudioEnd: null }), true);
 arm('ARM 6c the module surface is unchanged (no new top-level export)', Object.keys(F).sort(), [
   'COMMIT_MAX_HOLD_MS', 'READY_SECONDS_MEASURED', 'SENTENCE_GAP_S', 'SENTENCE_MAX_CHARS',
-  'agreedPrefixLength', 'createEngine', 'describeReadiness', 'formulate', 'words',
+  'agreedPrefixLength', 'createEngine', 'describeReadiness', 'formulate', 'healSeams', 'words',
 ]);
 
 const failed = arms.filter((x) => !x.ok);

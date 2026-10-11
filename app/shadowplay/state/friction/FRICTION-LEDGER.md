@@ -395,3 +395,5 @@ gate: it might refuse everything.
 
   rule: a gate proven only in the direction that refuses you is not a gate, it is an
   obstacle. Prove both directions or you have measured half an instrument.
+
+## 2026-10-11T07:08:26Z - install-hooks: versioned installer, checked in both directions

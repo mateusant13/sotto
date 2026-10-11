@@ -1,0 +1,98 @@
+#!/bin/sh
+# INSTALL or CHECK the versioned git hooks in this repo.
+#
+# WHY THIS EXISTS. Measured 2026-10-11T06:55:43Z: .git/hooks held 4 files, all Git LFS's,
+# and none of mine. A hook written straight into .git/hooks is invisible to git, is not
+# versioned, and is gone on the next clone. So the real scripts live in scripts/ and this
+# installer writes the shims that point at them. Measured 2026-10-11T07:04:27Z: in this
+# working tree the gate works, and a fresh clone would have NO gate at all -- because the
+# shim lives in .git/hooks, which git never commits. That gap is what this file closes.
+#
+# USAGE
+#   sh scripts/install-hooks          install every shim that is missing or stale
+#   sh scripts/install-hooks --check  report what is installed, change nothing, exit 1
+#                                    if any hook is missing or does not match its source
+#
+# NEVER OVERWRITES A FOREIGN HOOK. .git/hooks/pre-commit did not exist here, so it is
+# written. If a file is already there and is NOT one of our shims, this refuses and says
+# so rather than replacing someone else's work -- measured, the 4 Git LFS hooks in this
+# repo are left alone, and the pre-commit one is ours.
+#
+# NO `set -e`, deliberately: the same trap that killed scripts/pre-commit's error message
+# (a non-zero exit aborting the script before it could explain itself) applies here.
+# Every decision is explicit.
+
+REPO_ROOT=$(git rev-parse --show-toplevel) || {
+  printf 'install-hooks: not inside a git repository\n' >&2
+  exit 1
+}
+HOOKS_DIR="$REPO_ROOT/.git/hooks"
+CHECK_ONLY=0
+[ "$1" = "--check" ] && CHECK_ONLY=1
+
+# The shims: name -> the versioned script it execs.
+HOOKS="pre-commit:pre-commit"
+
+status=0
+installed=0
+refused=0
+
+for pair in $HOOKS; do
+  name=${pair%%:*}
+  target="$REPO_ROOT/scripts/${pair##*:}"
+  dest="$HOOKS_DIR/$name"
+
+  if [ ! -f "$target" ]; then
+    printf '  MISSING SOURCE  %s -- %s is not in the repo\n' "$name" "$target"
+    status=1
+    continue
+  fi
+
+  expected=$(printf '#!/bin/sh\n# Installed by scripts/install-hooks. Source of truth: scripts/%s\nexec sh "$(git rev-parse --show-toplevel)/scripts/%s" "$@"\n' "$name" "$name")
+
+  if [ -f "$dest" ]; then
+    current=$(cat "$dest")
+    if [ "$current" = "$expected" ]; then
+      printf '  ok               %s (matches its source)\n' "$name"
+      continue
+    fi
+    if printf '%s' "$current" | grep -q 'Installed by scripts/install-hooks'; then
+      # Ours, but stale. Safe to refresh.
+      if [ "$CHECK_ONLY" -eq 1 ]; then
+        printf '  STALE            %s -- installed shim differs from the current installer\n' "$name"
+        status=1
+      else
+        printf '%s' "$expected" > "$dest"
+        printf '  REFRESHED        %s\n' "$name"
+        installed=$((installed+1))
+      fi
+      continue
+    fi
+    # Someone else's hook. Never replace it.
+    printf '  REFUSED          %s -- a foreign hook is already there, left untouched\n' "$name"
+    refused=$((refused+1))
+    continue
+  fi
+
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    printf '  ABSENT           %s -- this clone has NO gate until you run install-hooks\n' "$name"
+    status=1
+    continue
+  fi
+
+  printf '%s' "$expected" > "$dest"
+  printf '  INSTALLED        %s -> scripts/%s\n' "$name" "$name"
+  installed=$((installed+1))
+done
+
+# Report what we deliberately left alone, so the count is not a surprise.
+others=$(ls -1 "$HOOKS_DIR" 2>/dev/null | grep -v '\.sample$' | wc -l)
+printf '  foreign hooks left untouched: %s\n' "$((others))"
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  [ "$status" -eq 0 ] && printf '  CHECK OK\n' || printf '  CHECK FAILED\n'
+  exit "$status"
+fi
+
+printf '  done: %s installed or refreshed, %s foreign left alone\n' "$installed" "$refused"
+exit 0
