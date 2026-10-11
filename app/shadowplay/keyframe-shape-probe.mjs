@@ -58,6 +58,16 @@ try {
 }
 console.log(`CAPTURED_FRAMES ${captured.frames}`);
 console.log(`RING_SEGMENTS ${segCount}`);
+// The number that decides the refusal. replay-ring.js:340 refuses when
+// contentSufficientToCoverClock is not true, and frame-accounting.js:367 defines that as
+// longestUniqueRun >= oneSecondOfClock. longestUniqueRun counts DISTINCT frames in the
+// LONGEST CONTIGUOUS RUN -- so a 220-frame clip of a still desktop can hold 28 and be
+// refused, while a 220-frame clip of a busy one holds 220. This line is what tells those
+// two apart, and it is the measurement the earlier note was missing.
+const vd = delivered && delivered.clip && delivered.clip.verdict;
+console.log(`LONGEST_UNIQUE_RUN ${vd && typeof vd.longestUniqueRun === "number" ? vd.longestUniqueRun : "n/a"}`);
+console.log(`EXPECTED_FRAMES ${vd && typeof vd.expectedFrames === "number" ? vd.expectedFrames : "n/a"}`);
+console.log(`CONTENT_SUFFICIENT ${vd ? String(vd.contentSufficientToCoverClock) : "n/a"}`);
 console.log(`DELIVERED ${delivered ? JSON.stringify(delivered).slice(0, 120) : "none"}`);
 console.log(`THREW ${threw ? threw.slice(0, 160) : "no"}`);
 try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }

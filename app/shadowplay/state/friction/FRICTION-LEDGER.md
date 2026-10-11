@@ -1052,3 +1052,53 @@ what the first left". Read it. It is false.
   rule: read the mutation sites before theorising about what a data structure hands back. I
   had a tidy theory -- deliver, drain, deliver again, cut the remainder -- and it was wrong
   in the first line of the code I should have opened.
+
+## 2026-10-11T09:27:19Z - 28 was a STILL SCREEN, not a short capture, and the guard was right
+
+Last entry I moved the suspect to the encoder: "the only way a 28-frame cut exists is a
+segment pushed as 28 frames, which means capture() returned frames: 28". That is wrong, and
+the number that kills it is not 28 at all -- it is that I had been reading 28 as a frame
+COUNT when it is a count of DISTINCT frames in the longest contiguous run.
+
+  The chain, now read. index.js:157-159:
+      const frames = await countFrames(out);   // REAL frame count, not seconds*fps
+      this.#ring.push(bytes, { frames, keyframe: true });
+  frames is measured off the file, not derived from seconds*fps, so a capture really can
+  come back short -- but that was never what 28 was.
+
+  MEASURED, POPULACAO = 4 captures, WINDOW_UTC 2026-10-11T09:27:19Z, with the probe now
+  printing the three numbers that decide the refusal:
+      run 1  frames 213  RING_SEGMENTS 1  LONGEST_UNIQUE_RUN 213  EXPECTED_FRAMES 240  sufficient true
+      run 2  frames 220  RING_SEGMENTS 1  LONGEST_UNIQUE_RUN 220  EXPECTED_FRAMES 240  sufficient true
+      run 3  frames 220  RING_SEGMENTS 1  LONGEST_UNIQUE_RUN 220  EXPECTED_FRAMES 240  sufficient true
+      run 4  frames 218  RING_SEGMENTS 1  LONGEST_UNIQUE_RUN 218  EXPECTED_FRAMES 240  sufficient true
+
+  longestUniqueRun EQUALS the frame count in all four: every frame differed from its
+  neighbour, because the screen was busy. Against that, the recorded failure said
+  "holds 28 contiguous distinct frames". 28 distinct does NOT mean 28 captured -- it means
+  the picture stopped changing for over a second. The clip held ~220 frames of which only
+  28 consecutive ones were new.
+
+  So the encoder theory is REFUTED: captures land at 213-220 against an expected 240, a
+  ~9 percent gdigrab shortfall that is present in EVERY run including the passing ones, and
+  nothing about the failing run's frame count needed to be different.
+
+  AND THE PRODUCT WAS CORRECT. frame-accounting.js states why this guard exists -- "a
+  transcriber does not care that some frame somewhere was new; it cares whether the picture
+  kept changing". A clip of a still desktop cannot stand in for its own clock, so
+  replay-ring.js:340 refused it, and the refusal is the guard doing its job on the content
+  it was handed.
+
+  WHICH RETRACTS BOTH OF MY OWN THEORIES IN ONE MEASUREMENT: the drain theory (refuted by
+  reading the mutation sites) and the short-capture theory (refuted by the equality above).
+  What remains is not a defect at all. It is a gate meeting a still screen.
+
+  MY OWN TOOLING FAILED TWICE IN THIS ENTRY. The first run of this measurement exited 1
+  with six MethodInvocationExceptions -- my formatter called $th.Substring(0, 20) on a
+  value of "?". The six captures ran; the data was destroyed by the reporting line. Second
+  attempt fixed the formatter and the data came back. Same lesson as the injection that
+  changed bytes but not the claim: the measuring apparatus is part of what can be wrong.
+
+  rule: a number without its UNIT is a number you will eventually misread. 28 was always a
+  count of distinct frames and I read it as a count of frames, then spent two hypotheses
+  and a whole turn on an encoder that was never involved.
