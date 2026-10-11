@@ -1458,3 +1458,28 @@ The owner corrected me for carrying a count from an older window, so: recounted 
   that the guard's only justification belongs to the captions path.
 
   rule: re-count in the window of the claim, and check that the field you are counting exists.
+
+## 2026-10-11T09:58:41Z - the whole status vocabulary, and what the mandate would have to ask to be measurable
+
+  MEASURED, WINDOW_UTC 2026-10-11T09:58:41Z, POPULATION = every row in
+  local_runtime_sessions, store mode=ro:
+      idle 3747 · aborted 1121 · error 681 · interrupted 357 · started 1 · TOTAL 5907
+      session_type branch 5903 root 4 · session_kind task 3612 conversation 2160 cron 135
+      archived 5897 no / 10 yes · runtime pi-agent 5907 · purpose_kind EMPTY on all 5907
+
+  Five status values, and none of them is running, queued or succeeded. The mandate's aside
+  "'succeeded' is not 'running'" is satisfied trivially here: there is no succeeded to
+  confuse it with. What I have printed as "0 running" is the started count.
+
+  LIVENESS BY RECENCY, the only thing the store can express, same window:
+      last 5 / 15 / 60 / 360 min   global 1, mine 0
+      MAX_UPDATED_AT_MS 2026-10-11T09:58:28Z -- which is this session
+  So the proxy works and it names exactly one live thing: me. There are 0 subagents running
+  under any reading this runtime offers, and now that is a measurement with a window rather
+  than an absence of measurement.
+
+  purpose_kind is EMPTY on all 5907 rows. Worth recording because a rule I hold is keyed on
+  purpose; in THIS store that column carries nothing, so such a rule would match nothing.
+
+  rule: before counting a thing, look up the field it lives in. I reported "running" for
+  several turns against a column that has five values and none of them is that.
