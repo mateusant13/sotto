@@ -122,3 +122,39 @@ were fixed in the oracle, not in the worker -- the worker was right and the test
    identity the panel needs; the panel does not consume it yet.
 4. CPU/RAM cost of a process-loopback client inside the worker, and whether the app-loopback client
    survives an app that restarts (the pid goes stale; `_plp_pid_state` is the only guard wired so far).
+
+## Appendix -- an independent instrument, same revision
+
+The body above is the instrument of the lane that wrote the fix. This appendix is a SECOND lane's
+instrument, run on the same frozen bytes, and it adds the one thing the body asserts from reading
+the code rather than from a measurement: that a run with NO target pid is unchanged.
+
+* Re-measured: `worker/sotto_worker.py` = **291 873 B, 5 631 lines, 5 631 CRLF / 0 bare LF, sha256
+  `EFDFB09851CC2BAD2AA344D8C40DBE26FB0EB4FABD93AC39D1C743D898C1DED3`**, mtime 2026-10-11T21:02:41.872Z.
+  The hash was re-read before and after every run below; no writer raced it.
+* **Inertness, measured against the PRE-CHANGE bytes in ONE process** (`I:\cc-tmp\step2\step2-check.py`,
+  phase A, 43 checks): the module is imported twice -- once from `I:\cc-tmp\step2\prefix-sotto_worker.py`
+  (**244 046 B**, sha256 `503F095DF893F358E60645084CDD2C7C72F8D7F1CAA1B1945879AAB27A253E59`) and once from
+  the live file -- with `sounddevice`/`wasapi_loopback` stubbed, and the two candidate lists compared.
+  **Four argument arms, byte-identical with no pid**: no arguments, `wanted=None`, a `wanted` that
+  matches no device, and a `wanted` that matches one. The `p` rung is absent from all four. With
+  `target_pid=4242` the `p` candidate appears, and with `wanted` naming a device the `c` rung still
+  sorts FIRST -- the explicit `--device` still wins.
+* **Phase B** (31 checks, same run): `ProcessLoopbackTap` carries every name of the
+  `WasapiLoopbackTap` read contract and no endpoint-only name; `_event()` emits the `source` key
+  only when `self.source is not None`, so a `--selftest` / file-tap event is byte-identical to
+  before. **74 checks total, all green on `EFDFB098...`.**
+* **The `import ctypes` fix is load-bearing, reproduced independently on a COPY** (the live file was
+  not touched): delete line 1644 from a copy and import it with the real `wasapi_loopback` already on
+  `sys.path` -> `NameError: name 'ctypes' is not defined`; the unmodified file in the same
+  process -> `_wl = wasapi_loopback`, `_PLP_DWORD = c_ulong`. The defect described above is real,
+  and that one line is what cures it.
+* **STEP 3 dedupe, worker side -- re-measured on these bytes:** NO dict or set in
+  `worker/sotto_worker.py` is keyed on `start` (`["start"]`, `setdefault("start"`, `pop("start"` -> ZERO
+  matches; the surviving `"start"` occurrences are JSONL emission at `:2877` and payload reads at
+  `:3502` / `:4614`), so no `(source, start)` change was needed there. The only
+  `start`-keyed map is the PANEL's `committedByStart` (`app/panel/panel.js:303`, `:785`,
+  `:819`, `:833`). And `app/panel/caption-formulation.js:557-558` REBUILDS meta as a
+  literal `{ route, start, routeSource }` / `{ route, start, routeSource, producer: tag }` object, so the
+  new `source` key is dropped before the panel or the history ever sees it -- a static finding, and
+  **UNMEASURED** whether the panel can consume `source` today.

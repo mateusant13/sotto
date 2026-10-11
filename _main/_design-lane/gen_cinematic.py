@@ -1262,7 +1262,7 @@ def main():
                                     photo_note.get(r['name'], '')))
     for line in log:
         print('  ' + line)
-    print('emitted %d theme(s) -> %s (%d B)' % (len(rows), CSS_OUT, len(css)))
+    print('emitted %d theme(s) -> %s (%d B)' % (len(rows), CSS_OUT, len(open(CSS_OUT, 'rb').read())))
     print('manifest -> %s' % JS_OUT)
     print('SELF-CHECK: every theme declares all %d tokens, swatch == --theme-swatch, '
           'ids unique, no remote url' % len(REQUIRED))
