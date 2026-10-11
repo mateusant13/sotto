@@ -47,8 +47,26 @@ const POPULATION = readdirSync(HERE)
 // Declared per probe because a probe's receipt is its own contract; an empty list means
 // "this probe declares no receipt", and that is reported as NO_CONTRACT rather than PASS,
 // because "exit 0 and I did not check" is not evidence and must never read as one.
+// MEASURED 2026-10-11T06:31:44Z by reading the console.log calls out of each probe.
+// Before this, both probes were NO_CONTRACT -- the gate refused them for being unproven,
+// which was correct and useless: a receipt nobody declares can never be checked.
+//
+// compose-probe's contract is the falsifying pair ZERO_BYTE_CLIPS / PRODUCT_LANDS_A_NONEMPTY_CLIP:
+// if the writer ever produces a zero-byte clip the second key flips to NO. That is the
+// whole point of that probe and the gate now watches it.
+// cw-probe's contract is BYTES_LANDED, plus AFTER_ABORT_bytes which is the refusal arm.
 const RECEIPTS = {
+  "compose-probe.mjs": [
+    "WINDOW_UTC:", "COMPOSED_OK", "CLIP_FILES_ON_DISK=",
+    "ZERO_BYTE_CLIPS=", "PRODUCT_LANDS_A_NONEMPTY_CLIP=", "DONE",
+  ],
+  "cw-probe.mjs": ["WINDOW_UTC:", "BYTES_LANDED=", "ZERO_BYTE_PAYLOAD=", "AFTER_ABORT_bytes=", "PROBE_DONE"],
   "perf-probe.mjs": ["N=", "PRESS_PATH_TOTAL_MS=", "PER_PRESS_US=", "SEQUENCE_MONOTONIC="],
+  // MEASURED 2026-10-11T06:33:44Z. This probe rejoined the population when I restored the
+  // eight deleted _*.mjs files from HEAD, and the gate found it STALE_API on its first
+  // sight of it -- same class as perf-probe was. A gate that reads its population off the
+  // disk earns that: the file came back from a restore and was checked immediately.
+  "_nonidr-probe.mjs": ["NAL_UNITS_PARSED:", "IDR_COUNT:", "STRIPPED_BYTES:", "PAYLOAD_RETAINED_PCT="],
 };
 
 const STALE_API = [

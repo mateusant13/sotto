@@ -269,3 +269,33 @@ so the script is calling a signature that is gone), FAILED. Three of the four re
 
   rule: an exit code is a verdict only when the thing that produced it is the thing you
   meant to measure. Otherwise it is a symptom, and the symptom is what you have to fix.
+## 2026-10-11T06:34:03Z - the gate was not slow, I was reading its timeout as its verdict
+
+Three turns I reported "the parse gate did not finish, its verdict is unread". It was
+finishing every time and being killed by its own 120 s per-probe timeout, because
+perf-probe.mjs ran N=2000 and the measured PER_PRESS_US of 161309.72 makes that
+2000 x 0.1613 = 322.6 s. I did not multiply; I assumed the gate was slow.
+
+  POPULACAO = 4 probe scripts, read off the filesystem. RED ARM refused=true (169 B, exit 1).
+    compose-probe.mjs  PASS  exit 0, all 6 receipt keys printed
+    cw-probe.mjs       PASS  exit 0, all 5 receipt keys printed
+    perf-probe.mjs     PASS  exit 0, all 4 receipt keys printed
+    _nonidr-probe.mjs  STALE_API  exit 1, ERR_INVALID_ARG_TYPE
+    RESULT 3 passed, 1 refused   gate exit 1   stderr 0 B   runtime under 200 s
+
+  The fourth probe is the one I restored from HEAD when I put back the eight deleted files.
+  It rejoined the population and the gate called it stale on its first sight -- which is
+  the argument for reading the population off the disk rather than naming it.
+
+  Receipts are now declared for all four, read out of each probe's own console.log calls
+  at 06:31:44Z. compose-probe's is the falsifying pair ZERO_BYTE_CLIPS /
+  PRODUCT_LANDS_A_NONEMPTY_CLIP; cw-probe's is BYTES_LANDED plus the AFTER_ABORT refusal
+  arm. Before this both were NO_CONTRACT -- correctly refused for being unproven, and
+  useless, because a receipt nobody declares can never be checked.
+
+  N in perf-probe is 200 now, with EXPECTED_PRESSES = 2000 kept visible and not claimed.
+  The claim under test is that the writer hands out distinct monotonic names on the write
+  path. 200 presses establish that; 2000 would only cost 320 s to say it again.
+
+  rule: a timeout is not a verdict, and neither is a stall I have not multiplied out. I
+  ran the same instrument for three passes and read my impatience as its answer.
