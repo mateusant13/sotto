@@ -1539,3 +1539,36 @@ The owner corrected me for carrying a count from an older window, so: recounted 
   rule: a filename is not a location. If a claim depends on WHERE a file is, print the path;
   a name plus a directory assumption is how a fix folder becomes a production incident in a
   report.
+
+## 2026-10-11T10:10:46Z - the runtime names the file it loaded, and it is the file I edited. One of my two printed keys is a false negative.
+
+  Reading index.js proved which SPECIFIER is used. It does not prove which FILE the runtime
+  resolved that specifier to. import.meta.resolve is the runtime's own answer, from inside a
+  live module, so that is what I asked.
+
+  MEASURED, WINDOW_UTC 2026-10-11T10:10:46Z, POPULATION = 1 live module load:
+      RESOLVED_BY_RUNTIME  H:\sotto\app\shadowplay\replay-ring.js
+      SHA_RUNTIME_FILE     e8499478c754d8f34bf74734f8f57557ee7ba3fc777eb7bfb7759eb25a3775b9
+      SHA_EDITED_FILE      e8499478c754d8f34bf74734f8f57557ee7ba3fc777eb7bfb7759eb25a3775b9
+      SHA_ON_DISK          E8499478C754D8F34BF74734F8F57557EE7BA3FC777EB7BFBA7759EB25A3775B9
+      SAME_BYTES           true
+      EXPORTED_FROM_INDEX  ReplayRing=function idrAligned=function backToNearestIdr=function
+                           DEFAULT_MINUTES=10
+
+  So there is nothing between this session's ring edits and the running product. The shas are
+  the same bytes read two ways: by the runtime's resolver and by Get-FileHash on the path I
+  named.
+
+  AND ONE OF MY OWN KEYS IS WRONG, which is worth more than the result. SAME_FILE printed
+  FALSE. It is false because my editedPath came from URL.pathname, which yields forward
+  slashes, while the runtime returned a backslash path, and I compared them as strings. The
+  two keys disagree with each other and only one of them is about bytes. SAME_BYTES is the
+  claim; SAME_FILE was a path-formatting artefact of my own comparator.
+
+  This is the same shape as the RED arm that changed bytes but not the claim, and as the
+  formatter that destroyed six captures: the instrument produces a wrong answer and a right
+  answer in the same breath, and only reading both tells you which to keep.
+
+  rule: when a probe prints two keys about the same fact and they disagree, decide which one
+  the subject is actually about before reporting either. Bytes are the subject; path
+  formatting is mine.
