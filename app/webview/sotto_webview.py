@@ -638,6 +638,35 @@ HOTKEY_DOUBLE_MS = 1500
 STRIP_WIDTH = 1040
 STRIP_HEIGHT = 150
 STRIP_HEIGHT_FALLBACK = 148
+STRIP_WIDTH_MAX = 1040
+STRIP_WIDTH_MIN = 480
+STRIP_WIDTH_FRACTION = 0.62
+#: The CSS custom property that IS the strip's height (`panel.css:52`).
+STRIP_HEIGHT_CSS_VAR = '--strip-height'
+STRIP_BOTTOM_MARGIN = 48
+#: THE LOG BUDGET OF THE STATS FEED. `on_worker_stats` fires once per worker
+#: `WORKER_STATS` line, and that line is a METER sample — the worker may publish
+#: it at tens of Hz. A log line per sample is an unbounded log, and an unbounded
+#: log is how a feature gets turned off to keep the file quiet (it happened: the
+#: worker's meter default was set to zero). So the push logs its FIRST sample and
+#: then at most one line per this many seconds, each carrying the count it stands
+#: for. The PANEL is still fed at the worker's own cadence — only the LOG is
+#: aggregated.
+STATS_LOG_INTERVAL_S = 30.0
+
+#: THE WAVE. `worker/sotto_worker.py:3591` emits `{"type":"meter","peak":…,
+#: "blocks":…}` once per meter window (10 Hz by default) and its `peak` is the
+#: peak OF THAT WINDOW, while the `WORKER_STATS` line on stderr carries the
+#: RUNNING MAXIMUM of the whole run. A wave drawn from a running maximum is a
+#: staircase that only rises and then flattens — that IS the defect the owner
+#: reported ("as ondas que crescem e diminuem nao ta funcionando"). So a fresh
+#: meter sample WINS over the stats line, and the two are never mixed.
+METER_FRESH_S = 2.0
+#: The meter path used to fall into the unknown-kind `else`, which logged
+#: `BRIDGE_UNKNOWN type='meter'` PER SAMPLE — measured 35 B × 10 Hz ≈ 20.5 KB/min
+#: with no end. The DATA is not throttled (that mistake was made once already, on
+#: the worker side): only this log line is, on the same budget as the push.
+METER_LOG_INTERVAL_S = 30.0
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
@@ -1049,6 +1078,42 @@ def foreground_unlock(hwnd) -> bool:
     return ok
 
 
+def strip_geometry(work, height=STRIP_HEIGHT_FALLBACK, dock='bottom-centre'):
+    """The bottom-centre caption band, CONTAINED in `work` (DIP).
+
+    Kept a pure function for the same reason `dock_right` is: the output is
+    inside the work area whatever the work area is, including degenerate
+    rectangles and a work area shorter than the band.
+    """
+    w = max(0, work['width'])
+    h = max(0, work['height'])
+    want_height = int(height) if isinstance(height, (int, float)) \
+        else STRIP_HEIGHT_FALLBACK
+
+    band_width = min(STRIP_WIDTH_MAX,
+                     max(STRIP_WIDTH_MIN, round(w * STRIP_WIDTH_FRACTION)))
+    band_width = min(band_width, w)
+    band_height = max(1, min(want_height, h))
+
+    x = work['x'] + (w - band_width) // 2
+    y = work['y'] + h - band_height - STRIP_BOTTOM_MARGIN
+
+    geometry = {
+        'workX': work['x'],
+        'workY': work['y'],
+        'workWidth': w,
+        'workHeight': h,
+        'x': max(work['x'], round(x)),
+        'y': max(work['y'], round(y)),
+        'width': max(1, round(band_width)),
+        'height': band_height,
+        'margin': STRIP_BOTTOM_MARGIN,
+        'docked': dock,
+    }
+    # Containment is an invariant, not a hope — the same rule `dock_right` keeps.
+    geometry['x'] = min(geometry['x'], work['x'] + w - geometry['width'])
+    geometry['y'] = min(geometry['y'], work['y'] + h - geometry['height'])
+    return geometry
 def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
                margin=PANEL_MARGIN):
     """Dock a wide short strip to the bottom centre of `work`.
@@ -2830,6 +2895,15 @@ class SottoShell:
         #: 'side' (right, after a double-press). Single Alt+C toggles the strip.
         self.panel_mode = 'strip'
         self.caption_log = []
+        #: The strip's height is the STYLESHEET's (`panel.css:52`
+        #: `--strip-height: 150px`), read at runtime by
+        #: `refresh_strip_height()`; `strip_height_css` is the last value read
+        #: from the page and `strip_height_extra` the runtime addition on top of
+        #: it. `strip_height` is the sum — what the window is actually sized to.
+        #: Changed at runtime with `set_strip_height()`.
+        self.strip_height_css = None
+        self.strip_height_extra = 0
+        self.strip_height = STRIP_HEIGHT_FALLBACK
         self.last_status = ''
         self.bridge_installed = None  # None until measured, True/False after
         self.renderer_ready = threading.Event()
@@ -2857,6 +2931,20 @@ class SottoShell:
         #: honest answer once the file exists.
         self.panel_visibility = None
         self.reload_count = 0        # how many panel re-navigations have run
+        #: Counters for the stats channel: a reply is the panel's POLL being
+        #: answered, a push is the worker's own counters being forwarded.
+        self.stats_replies = 0
+        self.stats_pushes = 0
+        #: Log aggregation for the per-sample push: the LAST count that was
+        #: logged and when. One line per `STATS_LOG_INTERVAL_S` at most, so a
+        #: tens-of-Hz meter cannot grow the log without bound.
+        self.stats_logged = 0
+        self.stats_logged_at = 0.0
+        #: THE WAVE's own push counter. `stats_pushes` counts the pushes driven by
+        #: the worker's stderr `WORKER_STATS` line; this counts the pushes driven
+        #: by its stdout `meter` events. Both travel in `SHELL_EXIT`, because the
+        #: push LOG prints once per interval and could never prove a 10 Hz feed.
+        self.meter_pushes = 0
         self.startup_done = False    # startup actions run once per process
         self.startup_visible = None  # None until the window is measured
         self._exit_code = 0
@@ -3820,6 +3908,8 @@ class SottoShell:
             # the digest the worker was spawned from -- the question a reader
             # cannot answer from the file alone.
             'code': self._reload_policy.state(),
+                'meterPushes': self.meter_pushes,
+                'statsPushes': self.stats_pushes,
             'worker': worker,
         }
 
@@ -4402,7 +4492,14 @@ class SottoShell:
             warn(f'PANEL_PLACE_FAILED mode={mode} reason=no-display')
             return False
         work = self.display['workArea']
-        geometry = dock_strip(work) if mode == 'strip' else dock_right(work)
+        # The height is the STYLESHEET's, never hard-coded: `--strip-height`
+        # is read here (once per real change) and the fallback is logged when
+        # the page cannot answer. Guarded on the renderer because `--show` can
+        # place the panel before the bridge has answered.
+        if self.renderer_ready.is_set():
+            self.refresh_strip_height('place-' + str(mode))
+        geometry = (dock_strip(work, height=self.strip_height)
+                    if mode == 'strip' else dock_right(work))
         self.geometry = geometry
         self.panel_mode = mode
         if self.hwnd:
@@ -4615,7 +4712,14 @@ class SottoShell:
                                       daemon=True)
             closer.start()
             closer.join(3)
-        log(f'SHELL_EXIT rc={code} reason={reason}')
+        # The stats totals travel with the exit line: the push is logged at most
+        # once per `STATS_LOG_INTERVAL_S`, so a short run's log would otherwise
+        # never show how many samples the feed actually carried. One line, at the
+        # end, and it is the number `_main/_strip-stats-log-probe.py` reads to
+        # prove the feed was DELIVERED while the log stayed small.
+        log(f'SHELL_EXIT rc={code} reason={reason} '
+            f'statsPushes={self.stats_pushes} statsReplies={self.stats_replies} '
+            f'meterPushes={self.meter_pushes}')
         sys.stdout.flush()
         if _LOG_FILE is not None:
             _LOG_FILE.flush()
@@ -4744,6 +4848,8 @@ class SottoShell:
             log=log,
             on_caption=self.on_worker_caption,
             on_status=self.on_worker_status,
+            on_stats=self.on_worker_stats,
+            on_meter=self.on_worker_meter,
         )
         log(f'WORKER_PATH {self.args.worker}')
         log(f'WORKER_COMMAND {self.args.python}')
@@ -4763,6 +4869,227 @@ class SottoShell:
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
 
+    def stats(self):
+        """The worker's OWN counters, whitelisted to what the panel reads.
+
+        THE SHAPE IS THE PANEL'S, NOT THIS FILE'S. `panel.js:1702-1710` reads
+        `peak` and `blocks`; `panel.js:1738-1740` (the "behind" chip) reads
+        `queue_drops` and `rate`, which this shell does not compute — and it must
+        NOT invent them, because a fabricated `rate` would light a chip about a
+        lag nobody measured. So the payload is exactly `{peak, blocks}`.
+
+        TWO SOURCES, ONE SHAPE, AND THE WAVE WINS WHILE IT IS FRESH:
+
+        * `{"type":"meter","peak":…,"blocks":…}` on STDOUT, once per meter window
+          (10 Hz by default) — `peak` is the peak OF THAT WINDOW, and this is what
+          a wave must be drawn from;
+        * the `WORKER_STATS` line on STDERR, once per its own interval — `peak`
+          there is the RUNNING MAXIMUM of the whole run, and a wave drawn from a
+          running maximum is a staircase that only rises and then flattens. That
+          IS the defect the owner reported.
+
+        So a meter sample younger than `METER_FRESH_S` supplies the payload and
+        the stats line is not consulted at all: the two are NEVER MIXED, because
+        a window peak next to a run-maximum `blocks` would be two different
+        pictures of one measurement. With no meter (the worker's `--meter-hz 0`,
+        or an older worker) the behaviour is exactly what it was.
+
+        `last_worker_stats` is `{'tag', 'fields', 'line'}` (`parse_worker_stats`)
+        and the numbers live in `fields` as the STRINGS the worker printed. A
+        field the worker did not print stays ABSENT: `panel.js:1641` refuses a
+        non-finite peak, so absent means "no measurement", never a zero.
+        """
+        meter = getattr(self.bridge, 'last_meter', None) \
+            if self.bridge is not None else None
+        if isinstance(meter, dict) and (
+                time.monotonic() - float(meter.get('at') or 0.0)) <= METER_FRESH_S:
+            payload = {}
+            for key in ('peak', 'blocks'):
+                value = meter.get(key)
+                if value is not None:
+                    payload[key] = float(value)
+            return payload
+        raw = getattr(self.bridge, 'last_worker_stats', None) \
+            if self.bridge is not None else None
+        fields = raw.get('fields') if isinstance(raw, dict) else None
+        payload = {}
+        if isinstance(fields, dict):
+            for key in ('peak', 'blocks'):
+                value = fields.get(key)
+                if value is None:
+                    continue
+                try:
+                    payload[key] = float(value)
+                except (TypeError, ValueError):
+                    continue
+        return payload
+    def reply_stats(self, stats_id, payload):
+        # LOGGED, not silent: the panel's own poll (`panel.js:1722`, every 1000 ms)
+        # is the only way to tell "the member exists" from "the member is ANSWERED".
+        # The first reply and then every 60th — one line a minute at the panel's
+        # cadence, so the log stays readable while the channel stays visible.
+        self.stats_replies += 1
+        if self.stats_replies == 1 or self.stats_replies % 60 == 0:
+            log(f'BRIDGE_STATS_REPLY id={stats_id} count={self.stats_replies} '
+                f'payload={json.dumps(payload, separators=(",", ":"))}')
+        self.exec_js(f'window.__sotto_stats({json.dumps(stats_id)}, '
+                     f'{json.dumps(json.dumps(payload))})')
+    def on_worker_stats(self, parsed):
+        """PUSH half of the stats channel: the worker just published counters.
+
+        Same payload as `stats()` — one shape for the pull and the push, so the
+        panel cannot receive two different pictures of one measurement.
+
+        TWO RULES, both learned the hard way:
+
+        * **NO LOG LINE PER SAMPLE.** The meter is a per-sample feed (the worker
+          may publish tens of Hz), and a line per sample is a log that grows
+          without bound — that flood is why the worker's meter default was once
+          turned OFF, i.e. a feature was disabled to keep a log quiet. This logs
+          the FIRST push and then at most ONE line per `STATS_LOG_INTERVAL_S`,
+          carrying the number of pushes it stands for. The bytes-per-minute
+          before/after are in `_main/receipt-strip-surface.md`.
+        * **NO WAITING.** The push is `emit_async` — the pump thread that calls
+          this is the same one that carries captions, and a blocking round trip
+          per meter sample would delay them.
+        """
+        payload = self.stats()
+        self.stats_pushes += 1
+        self._stats_log_maybe(payload)
+        self.emit_async('stats', payload)
+    def _stats_log_maybe(self, payload):
+        """At most one `BRIDGE_STATS_PUSH` line per interval, with a count."""
+        now = time.monotonic()
+        first = self.stats_logged == 0
+        due = (now - self.stats_logged_at) >= STATS_LOG_INTERVAL_S
+        if not (first or due):
+            return
+        window = 0.0 if first else now - self.stats_logged_at
+        log(f'BRIDGE_STATS_PUSH count={self.stats_pushes} '
+            f'in_window_s={round(window, 1)} '
+            f'rate_hz={round((self.stats_pushes - self.stats_logged) / window, 2) if window > 0 else "first"} '
+            f'payload={json.dumps(payload, separators=(",", ":"))}')
+        self.stats_logged = self.stats_pushes
+        self.stats_logged_at = now
+    def on_worker_meter(self, sample):
+        """PUSH half of the WAVE: the worker closed a meter window.
+
+        Called from the bridge's stdout pump — the SAME thread that carries the
+        captions — once per window (10 Hz by default). Two rules, both already
+        learned on the stats push next door:
+
+        * **NO WAITING**: `emit_async`, so a slow page cannot delay a caption.
+        * **NO LOG LINE PER SAMPLE**: the bridge logs `BRIDGE_METER` on its own
+          budget (first sample, then one per `METER_LOG_INTERVAL_S`); this half
+          logs NOTHING per sample, and its count travels in `SHELL_EXIT` as
+          `meterPushes=`. A line here would re-create exactly the 20.5 KB/min
+          flood that the meter's own branch removed.
+
+        The payload is `stats()`, not the raw sample: it is the SAME shape the
+        poll returns, so the push and the pull cannot disagree — and because a
+        fresh meter sample is what `stats()` reads first, the payload IS this
+        window's `{peak, blocks}`.
+        """
+        self.meter_pushes += 1
+        self.emit_async('stats', self.stats())
+    def emit_async(self, kind, payload):
+        """`emit` WITHOUT waiting for the round trip — for a per-sample feed.
+
+        `emit` blocks on a `Task[String]` completion, which is right for a caption
+        (the caller wants to know it landed) and WRONG for the stats channel: the
+        worker may publish a meter sample at tens of Hz, and every one of those
+        round trips would stall whoever called it. Measured on this host: the
+        pump thread delivers captions on the same thread that reads the worker's
+        stderr, so a blocking push per sample would delay the captions
+        themselves.
+
+        So this posts the script through `_ui` (a `BeginInvoke`, no wait) and
+        drops the resulting `Task`. Ordering between two `emit_async` calls is not
+        guaranteed, and does not need to be: each one carries a WHOLE payload, and
+        the panel's `pushLevel` is a pure function of the last one it saw.
+        """
+        from System import Action, Func, Object, String
+        from System.Threading.Tasks import Task
+
+        script = ('window.__sotto_emit(' + json.dumps(kind) + ','
+                  + json.dumps(json.dumps(payload)) + ')')
+
+        def _complete(task):
+            try:
+                if task.IsFaulted:
+                    warn(f'emit_async failed: {task.Exception!r}')
+            except Exception as exc:  # noqa: BLE001
+                warn(f'emit_async failed: {exc!r}')
+
+        def _run():
+            self.webview2.Invoke(Func[Object](
+                lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
+                    Action[Task[String]](_complete))))
+
+        try:
+            self._ui(_run)
+        except Exception as exc:  # noqa: BLE001
+            warn(f'emit_async failed: {exc!r}')
+
+    def strip_height_from_css(self):
+        """The strip's height, READ OUT OF THE STYLESHEET. `None` if unavailable.
+
+        The panel lane's rule, and it is the right one: the CSS is the SINGLE
+        source of truth for this number (`panel.css:52`, with `:1060` deriving the
+        content floor from it), so the shell must not carry a second copy. The
+        property is read off `document.documentElement` — `:root` is where it is
+        declared — and its `"150px"` is parsed to a number. Anything that is not a
+        positive finite pixel value answers `None` and the caller falls back, with
+        the fallback logged.
+        """
+        script = ("(() => {"
+                  "const v = getComputedStyle(document.documentElement)"
+                  f".getPropertyValue('{STRIP_HEIGHT_CSS_VAR}');"
+                  "return v === null || v === undefined ? null : String(v).trim();"
+                  "})()")
+        try:
+            raw = self.exec_js(script)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_HEIGHT_CSS_FAILED error={exc!r}')
+            return None
+        if not isinstance(raw, str) or not raw:
+            return None
+        text = raw.strip().lower()
+        if text.endswith('px'):
+            text = text[:-2].strip()
+        try:
+            value = float(text)
+        except ValueError:
+            log(f'STRIP_HEIGHT_CSS_UNPARSED raw={json.dumps(raw)}')
+            return None
+        if not (value > 0) or value != value or value > 2000:
+            log(f'STRIP_HEIGHT_CSS_UNUSABLE raw={json.dumps(raw)}')
+            return None
+        return value
+    def refresh_strip_height(self, reason='surface-strip'):
+        """Re-read the stylesheet's height and adopt it, once per real change.
+
+        `self.strip_height_extra` is the runtime ADDITION (0 today — nothing calls
+        `set_strip_height`, because the hover reveal is the panel lane's CSS). So
+        the window height is `css + extra`, and a theme edit moves the window on
+        the next strip application. Returns True when the number moved.
+        """
+        value = self.strip_height_from_css()
+        if value is None:
+            if self.strip_height_css is None:
+                log(f'STRIP_HEIGHT source=fallback '
+                    f'value={self.strip_height} reason={reason} '
+                    f'why=css-unavailable')
+            return False
+        value = int(round(value))
+        if value == self.strip_height_css:
+            return False
+        was = self.strip_height
+        self.strip_height_css = value
+        self.strip_height = value + self.strip_height_extra
+        log(f'STRIP_HEIGHT from={was} to={self.strip_height} source=css '
+            f'css_value={value} extra={self.strip_height_extra} reason={reason}')
+        return True
     def on_worker_status(self, text, kind, info):
         self.apply_panel_state(text, kind, info)
         # A status line is the boundary signal: an exit/`done`/`error` closes
@@ -5412,7 +5739,9 @@ class WorkerBridge:
 
     def __init__(self, command, worker_path, device=None,
                  capture_mode=DEFAULT_CAPTURE_MODE, log=log,
-                 on_caption=None, on_status=None, silence_ms=WORKER_SILENCE_MS,
+                 on_caption=None, on_status=None, on_stats=None,
+                 on_meter=None,
+                 silence_ms=WORKER_SILENCE_MS,
                  backoff_base=1000, backoff_max=30000):
         self.command = command or default_python()
         self.worker_path = worker_path
@@ -5421,6 +5750,12 @@ class WorkerBridge:
         self.log = log
         self.on_caption = on_caption or (lambda text, meta: None)
         self.on_status = on_status or (lambda text, kind, info: None)
+        #: The stats PUSH. Defaulted to a no-op like the other two, so a bridge
+        #: built without it (a probe, the electron-era arm) is byte-identical.
+        self.on_stats = on_stats or (lambda parsed: None)
+        #: THE WAVE. Defaulted to a no-op like the other three, so a bridge built
+        #: without it (a probe, the electron-era arm) behaves as before.
+        self.on_meter = on_meter or (lambda sample: None)
         self.silence_ms = silence_ms
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
@@ -5468,6 +5803,15 @@ class WorkerBridge:
         #: dropped after three, which is why those numbers were unreachable from
         #: outside the process. Kept whole for the panel-state text dump.
         self.last_worker_stats = None
+        #: THE WAVE. `{"type":"meter","peak":<window peak>,"blocks":<blocks in
+        #: the window>}`, published by the worker once per meter window (10 Hz by
+        #: default). `peak` here is the peak OF THAT WINDOW — the stats line above
+        #: carries the RUNNING MAXIMUM — so this is the value the panel's wave
+        #: must be drawn from, and `stats()` prefers it while it is fresh.
+        self.last_meter = None
+        self.meters = 0
+        self._meter_logged = 0
+        self._meter_logged_at = 0.0
         #: The last status that NAMED an endpoint (`device`, `capture-started`,
         #: `device-rotated`, `device-exhausted`, `silent-device`). The panel shows
         #: the device inside a human sentence; the raw fields are kept here so the
@@ -5712,6 +6056,19 @@ class WorkerBridge:
                             if child is not None:
                                 parsed['childPid'] = child.pid
                             self.last_worker_stats = parsed
+                            # The PUSH half of `getStats`/`onStats`: the panel's
+                            # level meter is fed from the same parsed line the
+                            # panel-state dump reads, so the two cannot disagree.
+                            # GUARDED, and that is load-bearing: this runs inside
+                            # the stderr reader's `try`, whose `except` logs
+                            # BRIDGE_PUMP_DIED and ENDS THE STREAM — a raise here
+                            # would take the worker's whole stderr channel (and
+                            # the watchdog's heartbeat) down with it.
+                            try:
+                                self.on_stats(parsed)
+                            except Exception as exc:  # noqa: BLE001
+                                self.log(f'BRIDGE_STATS_CALLBACK_FAILED '
+                                         f'error={exc!r}')
                             # The heartbeat is PROGRESS. Re-arming here is the
                             # whole cure: this stream used to `continue` before
                             # `_arm_silence`, so the one periodic signal the
@@ -5730,6 +6087,58 @@ class WorkerBridge:
             except Exception:
                 pass
 
+    def _meter(self, message, child=None):
+        """THE WAVE: one `{peak, blocks}` WINDOW from the worker's own meter.
+
+        The shape is the worker's (`sotto_worker.py:3591`,
+        `emit(type="meter", **level)` where `level` is `{"peak","blocks"}`), and
+        it is deliberately the SAME two fields the stats payload carries: the
+        panel has one consumer (`panel.js:1640` `pushLevel`) and must never be
+        handed two different pictures of one measurement.
+
+        WHY IT IS A BRANCH OF ITS OWN. Without it this line fell through to the
+        unknown-kind `else`, which logs `BRIDGE_UNKNOWN type='meter'` PER SAMPLE
+        — measured 35 B × 10 Hz ≈ **20.5 KB/min with no end**. The cure is NOT to
+        stop publishing the meter (that exact mistake was made once already, on
+        the worker side, where the meter default was set to zero to keep the log
+        quiet): the LOG is what gets a budget, and the data keeps flowing.
+
+        The `peak` here is the peak of THIS WINDOW; the `WORKER_STATS` line on
+        stderr carries the RUNNING MAXIMUM of the whole run. A wave drawn from a
+        running maximum is a staircase that only rises and then flattens — which
+        is the defect the owner reported — so `SottoShell.stats()` prefers this
+        sample while it is fresh.
+        """
+        self.meters += 1
+        sample = {'at': time.monotonic()}
+        for key in ('peak', 'blocks'):
+            value = message.get(key)
+            if value is None:
+                continue
+            try:
+                sample[key] = float(value)
+            except (TypeError, ValueError):
+                self.malformed += 1
+        if child is not None:
+            sample['childPid'] = child.pid
+        self.last_meter = sample
+        now = sample['at']
+        if self._meter_logged == 0 or (
+                (now - self._meter_logged_at) >= METER_LOG_INTERVAL_S):
+            self.log(f'BRIDGE_METER count={self.meters} '
+                     f'in_window_s='
+                     f'{round(0.0 if self._meter_logged == 0 else now - self._meter_logged_at, 1)} '
+                     f'sample=' + json.dumps(
+                         {k: v for k, v in sample.items() if k != 'at'},
+                         separators=(',', ':')))
+            self._meter_logged = self.meters
+            self._meter_logged_at = now
+        try:
+            self.on_meter(sample)
+        except Exception as exc:
+            # A panel-side failure must not take the pump thread down with it:
+            # that thread also carries the CAPTIONS.
+            self.log(f'BRIDGE_METER_CALLBACK_FAILED error={exc!r}')
     def _consume(self, line, child=None):
         try:
             message = json.loads(line)
@@ -5758,6 +6167,8 @@ class WorkerBridge:
                 self.log(f'BRIDGE_DEATH_LIFTED reason=caption captions={self.captions}')
                 self.pending_error = None
             self.on_caption(str(text), meta)
+        elif kind == 'meter':
+            self._meter(message, child)
         elif kind == 'status':
             self.statuses += 1
             state = str(message.get('state') or '')
