@@ -3,7 +3,7 @@
 // Phase 6 "Done when" (INTEGRATION-PLAN L129): all save paths go through the
 // one writer.
 import { ClipWriter } from "./clip-writer.js";
-import { mkdirSync, statSync } from "node:fs";
+import { mkdirSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 export const ROUTES = ["hotkey", "instant-replay", "highlights", "manual"];
@@ -190,6 +190,7 @@ export class SavePath {
   #writer;
   #written;
   #blocked;
+  #leaked;
   #prepare;
 
   constructor({ writer, env = process.env } = {}) {
@@ -206,6 +207,7 @@ export class SavePath {
     }
     this.#written = [];
     this.#blocked = [];
+    this.#leaked = [];
   }
 
   // The single write. Returns the name it used, or throws. No route bypasses this.
@@ -237,8 +239,42 @@ export class SavePath {
     // because that fallback is the bug this file was changed to remove.
     this.#prepare?.();
     const name = this.#writer.writeClip(data);
-    this.#written.push({ route, name, bytes: length });
+    // BOOKKEEPING FAILS AFTER THE BYTES LANDED -> UNDO THE WRITE.
+    //
+    // writeClip() returns with the clip on disk. Everything after that is bookkeeping,
+    // and bookkeeping can fail - an allocation, a frozen array, a patched field. If it
+    // does, the caller receives a refusal while a complete, playable clip sits in the
+    // clips directory under a name nobody was told about. That contradicts the
+    // contract replay-ring.js states: a refused clip is never visible on disk.
+    //
+    // The fix lives HERE, not at the call site, because this is where the window is:
+    // every caller of save() inherits the repair, and the caller cannot see or undo a
+    // partial save it never received the name of.
+    //
+    // Measured: 344ab2c wrapped the two GATE calls in the ring module and left this
+    // window open, and the reviewer found the gap before it was killed by a shutdown.
+    try {
+      this.#written.push({ route, name, bytes: length });
+    } catch (err) {
+      // Best effort, and silent on purpose: the bookkeeping failure is the error the
+      // caller must see. A cleanup failure here must not replace it with a different
+      // one, and must not convert a refusal into a success.
+      try {
+        unlinkSync(this.#writer.pathFor(name));
+      } catch {
+        // The clip stays. Reported rather than hidden: this is the one case where the
+        // contract cannot be honoured, so it is counted instead.
+        this.#leaked.push({ route, name });
+      }
+      throw err;
+    }
     return name;
+  }
+
+  // Clips that save() could not remove after a bookkeeping failure. Counted so the
+  // residue is visible rather than inferred from disk state.
+  leaked() {
+    return this.#leaked.map((l) => l.name);
   }
 
   // The path of a name this SavePath issued, for callers that must MEASURE the clip
