@@ -45,7 +45,7 @@
 
 import assert from "node:assert/strict";
 import { countFrames, countDistinctContent, assessDelivery, runTool } from "./frame-accounting.js";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -259,6 +259,41 @@ ta("a second fractional clip is also rounded, not returned raw", async () => {
     `rounding must change this value too: got ${r.coverage}, raw ${raw}`);
   assert.ok((String(r.coverage).split(".")[1] ?? "").length <= 6,
     `at most 6 decimals, got ${r.coverage}`);
+});
+
+// A SECOND REAL ROUTE to the empty-output refusal, measured WINDOW_UTC 2026-02:00:04Z.
+//
+// The watcher above builds a video container holding zero frames. The one I added earlier
+// used a file of whitespace and was UNFALSIFIABLE: ffprobe exits non-zero on it, so runTool
+// rejects before parseFrameCount is reached, and `red` stayed 1.
+//
+// This route is different in kind: a real, fully decodable AUDIO-ONLY file. ffprobe exits 0
+// on it and prints an empty CSV payload, because `-select_streams v:0` matches no stream.
+// So the empty token stream arrives at parseFrameCount for a reason that has nothing to do
+// with corruption: the media is valid, the file is valid, and there is simply no video to
+// count. Measured: ffprobe exit=0, output empty, and the module refuses.
+ta("a valid audio-only file has no video to count and is refused, not zeroed", async () => {
+  const AUD = join(dir, "audio.m4a");
+  await runTool("ffmpeg", [
+    "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+    "-c:a", "aac", AUD,
+  ]);
+  assert.equal(existsSync(AUD), true, "the audio file must exist");
+  assert.equal(statSync(AUD).size > 0, true, "the audio file must not be empty");
+
+  // CONTROL: ffprobe itself is happy with this file. If it exited non-zero, the module would
+  // refuse for the wrong reason again and this test would be unfalsifiable a second time.
+  const probe = await runTool("ffprobe", [
+    "-v", "error", "-select_streams", "v:0", "-count_frames",
+    "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", AUD,
+  ]);
+  assert.equal(probe.code, 0, "ffprobe must SUCCEED on this file, or this test proves nothing");
+  assert.equal(probe.stdout.trim(), "", "and must print an empty payload -- that is the input");
+
+  let reported = null;
+  try { reported = await countFrames(AUD); } catch { reported = "refused"; }
+  assert.notEqual(reported, 0,
+    "a file with no video stream is not a file with zero frames, and must not report 0");
 });
 
 // ------------------------------------------------- drain the async tests -- LAST, always.
