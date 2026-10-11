@@ -188,6 +188,16 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* Measured 2026-10-10 in the real document at the shipped 380x900 window: this
+     item's min-content floor is 395.13px against a 350.00px content box (wordmark
+     66.31 + chrome--tele 54.41 + controls 250.41 + 2x12 gap), so with the default
+     min-width:auto it forced the #panel grid track to 402.88px and carried
+     .panel__controls 37.88px past the window edge -- a real button, clipped by
+     .panel{overflow:hidden}. min-width:0 lets the track resolve to 350.00px and
+     puts the controls fully inside; the decorative chrome label (and, in themes
+     with no chrome block, the wordmark) then clip inside their own box instead of
+     dragging the panel wider. Themes whose header already fits are unchanged. */
+  min-width: 0;
 }
 
 .wordmark {
