@@ -370,3 +370,4 @@ o invoca. A fonte da verdade e revizivel.
   O custo e assumido em vez de escondido: o run completo demora minutos neste host, e um
   gancho lento e contornado. Se isso passar a ser o交换 errado, a correcao e uma CI de
   fundo, nao uma fuga silenciosa.
+## 2026-10-11T07:01:23Z - marker: this entry exists only so a clean commit can be attempted with the hook live and no bypass.
