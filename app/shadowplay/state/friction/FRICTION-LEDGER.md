@@ -2175,3 +2175,55 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   wrote a ledger entry about at 11:59Z when I divided 120000 by 66,88 and got 1794x. Twice in one
   evening, same error class, by me. A conversion has to be written with its unit on BOTH sides
   before it is divided, not after it comes out wrong.
+
+## 2026-10-11T13:12Z - the port costs 3,560 changed lines, not a fix. And my own diff counter was wrong twice before the third try.
+
+  MEASURED 13:11:42Z, git diff 1d97536 -> 55c422b on app/webview/sotto_webview.py:
+    POP_LINHAS_ADICIONADAS 2598   POP_LINHAS_REMOVIDAS 962   total 3560
+    git --numstat says 2598/962 -- my extraction agrees with git exactly
+    POP_MARCADORES_QUE_O_PORT_TRAZ = 12 de 12, each with its occurrence count on the added side:
+      WORKER_RELOAD_MAX_DEFER_MS x3 · PANEL_EDIT_MODE x6 · BRIDGE_STATS_PUSH x2 · _stats_log_maybe x2
+      on_worker_meter x2 · PANEL_GEOMETRY_RESTORED x1 · HOT_RELOAD_WORKER_FORCED x1
+      HOT_RELOAD_WORKER_BOUNDARY x2 · setPanelSurface x8 · run_hover_probe x2
+      STRIP_HEIGHT_CSS_VAR x2 · on_meter x4
+
+  SO THE OWNER'S DECISION IS NOT "FIX A BUG" -- it is "replace 320,214 B of landed shell with a
+  406,194 B WIP across 3,560 changed lines, touching a file four worktrees share", on the strength
+  of a defect I verified by reading and a size I have just retracted. The 12 of 12 is real and it
+  is also true that 12 of 12 says nothing about correctness; it says the WIP contains what the
+  contract names.
+
+  MY COUNTER WAS WRONG TWICE FIRST, and I nearly published the first answer. At 13:11:05Z a regex
+  requiring "+" glued to the marker returned 2 de 12, because ten markers are indented inside
+  functions. At 13:11:29Z a (?m)^\+\s* anchor returned 4 de 12, because those markers appear
+  MID-LINE after other text, not at line start. Both looked like findings: the first would have
+  said "the port brings almost nothing", which contradicts the contract I have been citing all
+  night. The fix was to stop pattern-matching the diff as a string and extract the added lines
+  into a list, then test each line -- which agrees with git --numstat to the line.
+
+  Third instrument failure of the night, and the third one that would have produced a confident
+  number pointing the wrong way. Twice today the fix was to ask what the instrument counts and
+  this time it was to stop using regex on a 3,500-line diff at all.
+
+## 2026-10-11T13:22Z - the second refusal was the SAME class as the first. Both are NVENC under load, and I nearly wrote it up as a product defect.
+
+  The commit at 13:18:04Z was refused with nvenc FAIL and, alongside it, compose-probe FAILED with
+  "deliver() -> THREW Error: instant replay refused: 0000.mp4 holds 18 contiguous duplicates". That
+  reads as a PRODUCT regression and it is the reason I stopped writing ledger entries and went to
+  reproduce it instead of retrying the commit.
+
+  MEASURED 13:19:44Z, POP 1 isolated: exit 0 in 20.4 s, PRODUCT_LANDS_A_NONEMPTY_CLIP=YES, one
+  non-zero clip on disk. MEASURED 13:20:19Z, POP 5 isolated: POP_OK 5, POP_FAIL 0.
+
+  So compose-probe does not fail on its own; it failed twice inside a batch, both times alongside
+  nvenc -- the only suite that drives the real GPU -- and its failure mode is a degenerate capture
+  (18 contiguous duplicate frames), which is exactly what a starved encoder under contention
+  produces. Same class as the nvenc flake I already measured at POP 8 isolated / 0 failures.
+
+  The rule this earns, and I nearly broke: a product-shaped failure message is not evidence of a
+  product defect. Both refusions tonight came from suites that touch the real GPU and neither
+  reproduced outside a batch. "Fails under load, green alone" is a different claim from "broken",
+  and the difference is POP runs under each condition -- which is what I did before writing.
+
+  I did not set SOTTO_SKIP_RUN_ALL on either refusal. A gate that refuses on a real observation and
+  then lets the next commit through on its own is the whole point of having it.
