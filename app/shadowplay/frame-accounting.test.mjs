@@ -14,12 +14,31 @@
 //
 // READ THE COUNT BEFORE YOU TRUST IT. "13 passed" is an aggregate of assertions, NOT a
 // statement that 13 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T01:23:16Z:
-//   tests registered   13   (2 synchronous t(), 11 async ta())
-//   branches falsified  1   -- the zero-frame refusal, by replacing
-//                                 `if (tokens.length === 0) throw` with `return 0`,
-//                                 which gave 12 passed / 1 failed, exit 1.
-//   branches NOT falsified 12. Their assertions pass, and nothing here shows that removing
-//                                 the code they exercise would turn any of them red.
+//   tests registered   18   (2 synchronous t(), 16 async ta())
+//   branches falsified  3   -- each measured, WINDOW_UTC 2026-10-11T02:04:49Z onward
+//       (a) the zero-frame refusal        red=2   15 passed / 2 failed, exit 1
+//       (b) the 6-decimal rounding        red=2   14 passed / 2 failed, exit 1
+//       (c) the assertPositive guard       red=2   16 passed / 2 failed, exit 1
+//   branches NOT falsified 15.
+//
+// AND ONE MEASURED BLIND SPOT — not a count of zero, a count of "cannot see it".
+// Measured WINDOW_UTC 2026-10-11T02:10:42Z: deleting `seenInRun.clear()` from
+// summarizeHashes (frame-accounting.js:280) left this suite at 18 passed / 0 failed,
+// exit 0 — red_tests = 0. Without the streak reset the run never breaks and
+// longestUniqueRun degenerates into `distinct`.
+//
+// Same shape as the byte-sum hole now closed in encoder.test.mjs: EVERY fixture in this
+// file decodes to frames that are ALL distinct, so no repeat ever occurs and the reset line
+// is never executed. The one longestUniqueRun assertion here is
+// `assert.equal(r.longestUniqueRun, 10)` on a testsrc clip, where distinct and
+// longest-unique are equal BY CONSTRUCTION — a fixed point.
+//
+// Closing it needs a real clip whose middle frame repeats AND which introduces further
+// distinct frames after the repeat, since that is the only input where the two numbers
+// differ. Attempted WINDOW_UTC 2026-10-11T02:10:58Z with an ffmpeg concat of five
+// solid-colour frames (A B C A D): it built to 1706 bytes but decoded to 3 frames, not 5,
+// so the fixture was not usable and NO claim is made about it. The blind spot is OPEN and is
+// recorded here rather than papered over by a test that would not have caught the mutation.
 //
 // AND ONE THAT WAS MEASURED AND CANNOT BE REACHED, which changes what the count means
 // (WINDOW_UTC 2026-10-11T01:42:01Z): ratio() guards against a zero denominator returning
