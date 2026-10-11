@@ -1,61 +1,592 @@
 #!/usr/bin/env python3
-"""GENERATOR for the five Sotto theme files — `app/panel/themes/theme-N.css`.
+"""GENERATOR for the Sotto theme files.
 
-The five mockups differ in COLOUR, TYPE and SURFACE, but they must obey ONE
-contract (the owner's, verbatim): every rule scoped to its own
-`:root[data-theme='theme-N']`, so five files coexist in one document and a switch
-is one attribute write. Writing the shared half — the scoped skin rules over the
-REAL class names in `app/panel/panel.html` — once is what makes that true by
-construction instead of by five authors agreeing.
+TWO SETS, TWO ZIPS, ONE DOCTRINE
+--------------------------------
+* `app/panel/themes/theme-1..5.css` <- `zips/directions/`. These ARE the owner's
+  five design DIRECTIONS -- Teleprompter, Broadcast, Manuscrito, Cartao de
+  Cinema, Instrumento -- and the numbering is the zip's own (`num: "01".."05"`
+  in `designs.ts`).
+* `app/panel/themes/panel-designs.css` + `.js` <- `zips/panel-designs/`. That
+  zip REUSES the same five names over a DIFFERENT implementation (its own
+  palette, its own components, five button-free panels with every control on the
+  stage). It shipped as nothing at all, so it is a SET of its own here, under
+  `pd-*` ids, and its five entries are APPENDED to the same manifest.
 
-Each generated rule is emitted as `:root[data-theme='theme-N'] <selector>` or
-`:root[data-theme='theme-N'] body <selector>`. Two attribute selectors plus the
-element beat `panel.css`'s own `.caption--provisional .caption__text`
-(specificity 0,1,0) and `body[data-surface='strip'] .caption__text` (0,2,0), so a
-theme never loses a fight it cannot see.
+A VALUE THIS FILE CANNOT FIND IS A BUILD FAILURE, NOT A DEFAULT. That is the
+whole point of the rewrite. `gen_cinematic.py` (this directory) established the
+rule for the cinematic zip; the gap audit
+(`I:/cc-tmp/theme-system-gap-audit.md`) then measured that THIS file instead
+carried the five directions as a hand-written Python list which parsed NO zip at
+all -- `designs.ts` appeared only in comments -- so the fidelity of
+`theme-1..5.css` to the zip the owner shipped was UNMEASURED and could drift
+with no build noticing. Now:
 
-Run: `py -3 _main/_design-lane/gen_themes.py`  (regenerates all five, byte-stable)
+    designs.ts   ids, numbers, names, models, accents, font classes
+    index.css    the @theme palette (13 colours) and the font stacks (7)
+    Caption.tsx  the live line: size, leading, weight, tracking, colours
+    Panel.tsx    the panel surface, the header, the history rows, the footer
+    Stage.tsx    the direction switcher and the control cluster
+    bits.tsx     the level meter
+
+are PARSED, and every value a theme emits is registered in LEDGER with the
+`file:line` it came from. `--trace` prints that ledger as a Markdown table;
+`--check` refuses to write a theme whose ledger is missing a required token. So
+"this theme is the zip's design" is a printed artefact of the generation, not a
+comment someone wrote once.
+
+WHAT IS *NOT* A ZIP VALUE, and where each of those lives
+--------------------------------------------------------
+* SELECTORS. The zip is a Vite mockup whose DOM is `<div class="sotto-panel">`,
+  `.sotto-caption` and a per-design `<p>` branch. Sotto's panel is its own
+  document (`app/panel/panel.html`) with `.caption__text`, `.captions__body`,
+  `.history__row`, `.chrome`, `.panel__controls`. A theme paints SOTTO's nodes
+  with the zip's VALUES; it cannot mount the zip's markup, and pretending
+  otherwise is exactly the "skin por cima" the owner refuses. `SKIN` is that
+  translation, written once and shared by the five.
+* THE LAYOUT of Sotto's own chrome rows (`CHROME[n]`): the widths, the gaps and
+  the order of our own controls. Each block names the zip line it mirrors and
+  the anchors are re-asserted at build time.
+* THE BUTTON POSITION -- the owner's ONE permitted deviation, verbatim: "cada
+  tema encontrado dentro dos .zip, fiquem com o design IGUAL, e so muda a posicao
+  dos botoes". In the zip every control sits OUTSIDE the panel, on the stage:
+  `Stage.tsx:146` is the bottom-left cluster (play, speed pills, scene pills)
+  and `Stage.tsx:92` is the direction strip. Sotto's panel is a 380x900 overlay
+  with no stage under it, so the cluster has to live INSIDE the panel; where is
+  each direction's own answer, and it is the only thing that may differ from the
+  zip.
+* THE SPACING SCALE, THE RADIUS SCALE AND THE STATE PALETTE. The zip declares
+  ONE spacing scale, ONE radius scale and ONE state palette for all five designs
+  (`index.css:3-25`), so all five themes sharing them is the zip's own structure
+  and not a flattening -- and it is STATED here rather than hidden. Where the
+  zip's own designs ARE alike, shipping them alike is correct; the file has to
+  say so instead of advertising a difference the CSS does not have.
+
+Run: `py -3 _main/_design-lane/gen_themes.py`            (regenerate, byte-stable)
+     `py -3 _main/_design-lane/gen_themes.py --trace`    (the provenance table)
+     `py -3 _main/_design-lane/gen_themes.py --check`    (writes nothing, gates)
 """
 
 import os
+import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir, 'app', 'panel', 'themes'))
+ROOT = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir))
+OUT = os.path.join(ROOT, 'app', 'panel', 'themes')
+ZIPS = os.path.join(HERE, 'zips')
 
 # --------------------------------------------------------------------------- #
-# The FIVE themes ARE the owner's five design DIRECTIONS, one per theme number,
-# so the names the panel shows ("Teleprompter", "Broadcast", …) are the names of
-# the directions and the number IS the order of `docs/design/gpt-directions.md`
-# and of `H:\aireplay\docs\design\sotto-app-design-directions\src\data\designs.ts`:
-#
-#   theme-1  tele  Teleprompter    accent #f2e9d8  Barlow Condensed
-#   theme-2  bcast Broadcast       accent #ff6a55  IBM Plex Mono
-#   theme-3  mano  Manuscrito      accent #a9c1d9  Newsreader
-#   theme-4  cine  Cinema Card     accent #e4b363  Fraunces
-#   theme-5  inst  Instrumento     accent #5fd3a7  Space Grotesk
-#
-# THE ACCENTS ARE THE DIRECTIONS' OWN, taken verbatim from `designs.ts`
-# (`accent:` of each entry). The slabs and the text tiers are the previous lane's
-# mockup measurements, still valid: the direction files fix the ACCENT, the type
-# and the treatment of the line, not the darkness of the slab. Where the two
-# disagreed the direction wins, because it is the owner's brief and the mockups
-# are one reading of it.
-#
-# THE FIVE FAMILIES ARE BUNDLED, not hoped for: `app/panel/fonts/` holds the
-# latin `.woff2` subsets (13 files, 217.6 KB — the count and the size are stated
-# in `themes/fonts.css`, which is the file that links them; an earlier comment
-# here said "17 files, ~400 KB" and was simply wrong) and `app/panel/themes/
-# generated next to this file by `build_fonts.py`. On this box none of the five
-# names exists in `C:\Windows\Fonts`, so a `font-family: "Barlow Condensed"`
-# without the bundle would have painted a system fallback and the theme would
-# have been a colour change pretending to be a design.
+# THE TWO ZIPS, FILE BY FILE. Every path is checked at read time, so a zip that
+# was moved or re-extracted is a build failure and not a silent fallback.
 # --------------------------------------------------------------------------- #
+DIR = os.path.join(ZIPS, 'directions')
+DIR_DESIGNS = os.path.join(DIR, 'src', 'data', 'designs.ts')
+DIR_CSS = os.path.join(DIR, 'src', 'index.css')
+DIR_CAPTION = os.path.join(DIR, 'src', 'components', 'Caption.tsx')
+DIR_PANEL = os.path.join(DIR, 'src', 'components', 'Panel.tsx')
+DIR_STAGE = os.path.join(DIR, 'src', 'components', 'Stage.tsx')
+DIR_BITS = os.path.join(DIR, 'src', 'components', 'bits.tsx')
 
-THEMES = [
-    dict(
-        n=1,
-        name='Teleprompter',
-        idea='THE DIRECTION `tele`: the caption as a continuous reading flow. '
+PD = os.path.join(ZIPS, 'panel-designs')
+PD_CSS = os.path.join(PD, 'src', 'index.css')
+PD_PANELS = os.path.join(PD, 'src', 'components', 'panels.tsx')
+PD_STAGE = os.path.join(PD, 'src', 'components', 'Stage.tsx')
+PD_SCRIPTS = os.path.join(PD, 'src', 'lib', 'scripts.ts')
+
+
+def where(path):
+    """The zip-relative path a ledger row prints."""
+    return os.path.relpath(path, ZIPS).replace(os.sep, '/')
+
+
+def slurp(path):
+    if not os.path.exists(path):
+        raise SystemExit('BUILD FAILURE: the zip source is missing: %s' % path)
+    with open(path, encoding='utf-8') as fh:
+        return fh.read().replace('\r\n', '\n').split('\n')
+
+
+def at(lines, path, needle, start=0):
+    """The 1-based line number of the first line containing `needle`.
+
+    A miss is a BUILD FAILURE. There is deliberately no "search the whole file
+    for something similar" fallback: an anchor that moved means the zip changed
+    and a human has to look, which is the opposite of a silent default.
+    """
+    for i in range(start, len(lines)):
+        if needle in lines[i]:
+            return i + 1
+    raise SystemExit('BUILD FAILURE: %r is not in %s' % (needle, where(path)))
+
+
+# --------------------------------------------------------------------------- #
+# THE LEDGER. Every value a theme emits is registered here with the zip line it
+# came from. `--trace` prints it; `--check` gates on it.
+# --------------------------------------------------------------------------- #
+LEDGER = []
+
+
+def note(n, token, value, src):
+    LEDGER.append((n, token, value, src))
+    return value
+
+
+class Theme(dict):
+    """A theme's tokens, plus the `file:line` each one came from."""
+
+    def __init__(self, n, **kw):
+        dict.__init__(self, n=n, src={}, **kw)
+
+    def put(self, key, value, src):
+        self[key] = value
+        self['src'][key] = src
+        note(self['n'], key, value, src)
+        return value
+
+
+# --------------------------------------------------------------------------- #
+# THE ZIP'S OWN @theme BLOCK -- the palette and the font stacks. One block, at
+# `index.css:3-25`, shared by all five designs.
+# --------------------------------------------------------------------------- #
+def parse_at_theme(path):
+    lines = slurp(path)
+    start = at(lines, path, '@theme')
+    out = {}
+    for i in range(start, len(lines)):
+        ln = lines[i]
+        if ln.strip().startswith('}'):
+            break
+        m = re.match(r'\s*--([A-Za-z0-9-]+):\s*(.+?);\s*$', ln)
+        if m:
+            out[m.group(1)] = (m.group(2).strip(), i + 1)
+    if not out:
+        raise SystemExit('BUILD FAILURE: %s declares no custom property' % where(path))
+    return out
+
+
+PALETTE_KEYS = ('ink', 'ink2', 'ink3', 'bone', 'fog', 'ember', 'lagoon',
+                'signal', 'paper', 'pencil', 'gold', 'led', 'amberlite')
+FONT_KEYS = ('display', 'body', 'tele', 'bcast', 'mano', 'cine', 'inst')
+
+
+def zip_palette():
+    raw = parse_at_theme(DIR_CSS)
+    pal, src = {}, {}
+    for key in PALETTE_KEYS:
+        if 'color-' + key not in raw:
+            raise SystemExit('BUILD FAILURE: --color-%s is not declared in %s'
+                             % (key, where(DIR_CSS)))
+        pal[key] = raw['color-' + key][0]
+        src[key] = '%s:%d' % (where(DIR_CSS), raw['color-' + key][1])
+    return pal, src
+
+
+def zip_fonts():
+    raw = parse_at_theme(DIR_CSS)
+    fonts, src = {}, {}
+    for key in FONT_KEYS:
+        if 'font-' + key not in raw:
+            raise SystemExit('BUILD FAILURE: --font-%s is not declared in %s'
+                             % (key, where(DIR_CSS)))
+        fonts[key] = raw['font-' + key][0]
+        src[key] = '%s:%d' % (where(DIR_CSS), raw['font-' + key][1])
+    return fonts, src
+
+
+# --------------------------------------------------------------------------- #
+# designs.ts -- the five directions' own identity.
+# --------------------------------------------------------------------------- #
+def parse_designs():
+    lines = slurp(DIR_DESIGNS)
+    start = at(lines, DIR_DESIGNS, 'export const DESIGNS')
+    out, cur = [], None
+    for i in range(start, len(lines)):
+        ln = lines[i]
+        m = re.match(r'\s*id:\s*"([a-z]+)"', ln)
+        if m:
+            cur = {'id': m.group(1), 'id_line': i + 1}
+            out.append(cur)
+        if cur is None:
+            continue
+        for key in ('num', 'name', 'model', 'spec', 'accent', 'fontClass'):
+            m = re.match(r'\s*%s:\s*"([^"]*)"' % key, ln)
+            if m:
+                cur[key] = m.group(1)
+                cur[key + '_line'] = i + 1
+    if len(out) != 5:
+        raise SystemExit('BUILD FAILURE: designs.ts declares %d designs, not 5' % len(out))
+    for d in out:
+        for key in ('num', 'name', 'accent', 'fontClass'):
+            if key not in d:
+                raise SystemExit('BUILD FAILURE: design %r has no %s in %s'
+                                 % (d['id'], key, where(DIR_DESIGNS)))
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# THE CLASS READER. The zip states its values inside Tailwind arbitrary-value
+# classes (`bg-[#0b0c0f]/55`, `text-[clamp(30px,4.6vw,54px)]`, `tracking-[0.4em]`
+# ...), so the reader's job is to turn one className expression into a class
+# string and then to take ONE utility out of it, loudly failing when absent.
+# --------------------------------------------------------------------------- #
+def class_block(anchor):
+    """`(path, needle, span)` -> (class string, 'file:line').
+
+    `span` is how many lines the expression occupies, stated per anchor rather
+    than guessed: the zip writes several of them as a two-line concatenation and
+    a wrong window would silently drop a utility (which is the failure mode this
+    whole rewrite exists to remove).
+    """
+    path, needle, span = anchor
+    lines = slurp(path)
+    i = at(lines, path, needle) - 1
+    text = '\n'.join(lines[i:i + span])
+    parts = re.findall(r'"([^"]*)"', text)
+    if not parts:
+        raise SystemExit('BUILD FAILURE: no quoted class at %s:%d'
+                         % (where(path), i + 1))
+    return ' '.join(parts), '%s:%d' % (where(path), i + 1)
+
+
+WEIGHT = {'thin': 100, 'light': 300, 'normal': 400, 'medium': 500,
+          'semibold': 600, 'bold': 700, 'extrabold': 800, 'black': 900}
+
+
+def _grab(cls, pattern, what, src):
+    m = re.search(pattern, cls)
+    if not m:
+        raise SystemExit('BUILD FAILURE: %s is not stated at %s (%r)' % (what, src, cls))
+    return m
+
+
+def u_size(cls, src):
+    return _grab(cls, r'(?<![\w-])text-\[(clamp\([^)]*\)|\d+(?:\.\d+)?px)\]',
+                 'a text-[...] size', src).group(1).replace(', ', ',')
+
+
+def u_weight(cls, src, default=None):
+    m = re.search(r'(?<![\w-])font-(thin|light|normal|medium|semibold|bold|extrabold|black)(?![\w-])', cls)
+    if not m:
+        if default is not None:
+            return default
+        raise SystemExit('BUILD FAILURE: no font weight at %s (%r)' % (src, cls))
+    return str(WEIGHT[m.group(1)])
+
+
+def u_leading(cls, src):
+    return _grab(cls, r'(?<![\w-])leading-\[([^\]]+)\]', 'a leading-[...]', src).group(1)
+
+
+def u_tracking(cls, src, default=None):
+    m = re.search(r'(?<![\w-])tracking-\[([^\]]+)\]', cls)
+    if m:
+        return m.group(1)
+    if default is not None:
+        return default
+    raise SystemExit('BUILD FAILURE: no tracking-[...] at %s (%r)' % (src, cls))
+
+
+def u_has(cls, util):
+    return bool(re.search(r'(?<![\w-])%s(?![\w-])' % util, cls))
+
+
+NAMED = {'white': '#FFFFFF', 'black': '#000000'}
+
+
+def rgba(hexv, a):
+    h = hexv.lstrip('#')
+    if len(h) == 3:
+        h = ''.join(c * 2 for c in h)
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return 'rgba(%d, %d, %d, %s)' % (r, g, b, ('%g' % a))
+
+
+def alpha_tok(tok):
+    if tok is None:
+        return 1.0
+    if tok.startswith('['):
+        return float(tok[1:-1])
+    return int(tok) / 100.0
+
+
+def _colour_names(pal):
+    return '|'.join(sorted(list(pal) + list(NAMED), key=len, reverse=True))
+
+
+def colours_in(cls, pal, src, required=True):
+    """EVERY named text colour in a class string, in source order.
+
+    The order is the design's own ternary order (`i === last ? "text-white" :
+    "text-paper/82"`), which is how the reader knows which one is the newest
+    word without a second anchor.
+    """
+    out = []
+    for m in re.finditer(r'(?<![\w-])text-(%s)(?:/(\d+))?(?![\w-])' % _colour_names(pal), cls):
+        name, op = m.group(1), m.group(2)
+        hexv = pal.get(name) or NAMED[name]
+        out.append((rgba(hexv, alpha_tok(op)) if op else hexv.upper(),
+                    'text-%s%s' % (name, '/' + op if op else '')))
+    if not out and required:
+        raise SystemExit('BUILD FAILURE: no named text colour at %s (%r)' % (src, cls))
+    return out
+
+
+def colour_in(cls, pal, src):
+    return colours_in(cls, pal, src)[0]
+
+
+def surface_in(cls, pal, src):
+    """`bg-[#0b0c0f]/55` or `bg-paper/[0.06]` -> (hex, alpha, label)."""
+    m = re.search(r'(?<![\w-])bg-\[(#[0-9a-fA-F]{3,8})\](?:/(\d+|\[[\d.]+\]))?', cls)
+    if m:
+        return (m.group(1).upper(), alpha_tok(m.group(2)),
+                'bg-[%s]%s' % (m.group(1), '/' + m.group(2) if m.group(2) else ''))
+    m = re.search(r'(?<![\w-])bg-(%s)(?:/(\d+|\[[\d.]+\]))?' % _colour_names(pal), cls)
+    if m:
+        hexv = pal.get(m.group(1)) or NAMED[m.group(1)]
+        return (hexv.upper(), alpha_tok(m.group(2)),
+                'bg-%s%s' % (m.group(1), '/' + m.group(2) if m.group(2) else ''))
+    raise SystemExit('BUILD FAILURE: no bg surface at %s (%r)' % (src, cls))
+
+
+def border_in(cls, pal, src):
+    """`border-white/10`, `border-gold/15` -> (hex, alpha, label)."""
+    m = re.search(r'(?<![\w-])border-(%s)(?:/(\d+|\[[\d.]+\]))?' % _colour_names(pal), cls)
+    if not m:
+        raise SystemExit('BUILD FAILURE: no border colour at %s (%r)' % (src, cls))
+    hexv = pal.get(m.group(1)) or NAMED[m.group(1)]
+    return (hexv.upper(), alpha_tok(m.group(2)),
+            'border-%s%s' % (m.group(1), '/' + m.group(2) if m.group(2) else ''))
+
+
+def shadow_in(cls, src):
+    m = re.search(r'shadow-\[(.*?)\](?=\s|$)', cls)
+    if not m:
+        raise SystemExit('BUILD FAILURE: no shadow-[...] at %s (%r)' % (src, cls))
+    return m.group(1).replace('_', ' ')
+
+
+SCALE = {0: 0, 0.5: 2, 1: 4, 1.5: 6, 2: 8, 2.5: 10, 3: 12, 3.5: 14,
+         4: 16, 5: 20, 6: 24, 7: 28, 8: 32, 9: 36, 10: 40, 14: 56}
+STEP = r'(0\.5|1\.5|2\.5|3\.5|\d+(?:\.\d+)?)'
+
+
+def pad_in(cls, src, axis):
+    """The design's own padding on one axis, in px (`px-4` -> 16)."""
+    for util in ('p' + axis, 'p'):
+        m = re.search(r'(?<![\w-])%s-%s(?![\w.])' % (util, STEP), cls)
+        if m and float(m.group(1)) in SCALE:
+            return SCALE[float(m.group(1))], '%s-%s' % (util, m.group(1))
+    raise SystemExit('BUILD FAILURE: no p%s-* at %s (%r)' % (axis, src, cls))
+
+
+def dim_in(cls, util, src):
+    """`w-[4px]`, `h-2` -> ('4px', 'w-[4px]')."""
+    m = re.search(r'(?<![\w-])%s-\[([^\]]+)\]' % util, cls)
+    if m:
+        return m.group(1), '%s-[%s]' % (util, m.group(1))
+    m = re.search(r'(?<![\w-])%s-%s(?![\w.])' % (util, STEP), cls)
+    if m and float(m.group(1)) in SCALE:
+        return '%dpx' % SCALE[float(m.group(1))], '%s-%s' % (util, m.group(1))
+    raise SystemExit('BUILD FAILURE: no %s-* at %s (%r)' % (util, src, cls))
+
+
+# --------------------------------------------------------------------------- #
+# WHERE EACH DESIGN STATES EACH THING. Every entry is an ANCHOR -- a literal
+# substring of the zip -- and `at()` turns it into a line number. A moved anchor
+# is a build failure, so this table is the contract between the zip and the five
+# CSS files.
+# --------------------------------------------------------------------------- #
+SPEC = {
+    'tele': dict(
+        caption_live=(DIR_CAPTION, 'glow-live text-left font-tele', 1),
+        caption_words=(DIR_CAPTION, '"w-tele " + (i === forming.length', 1),
+        surface=(DIR_PANEL, 'bg-[#0b0c0f]/55 border-white/10', 1),
+        header=(DIR_PANEL, 'font-tele text-[12px] font-semibold tracking-[0.42em]', 1),
+        history=(DIR_PANEL, '"line-in font-tele text-[16.5px]', 2),
+        footer=(DIR_PANEL, 'border-t border-white/8 px-4 py-2.5 font-tele', 1),
+        body=(DIR_PANEL, 'panel-scroll flex-1 overflow-y-auto px-4 py-3.5', 1),
+        muted=(DIR_PANEL, 'border-t border-white/8 px-4 py-2.5 font-tele', 1),
+        rail=None, wordmark='SOTTO',
+    ),
+    'bcast': dict(
+        caption_live=(DIR_CAPTION, 'text-left font-bcast text-[clamp(18px,2.3vw,28px)]', 1),
+        caption_words=(DIR_CAPTION, '"w-bcast " + (i === forming.length', 1),
+        surface=(DIR_PANEL, 'bg-[#090d10]/70 border-white/12', 1),
+        header=(DIR_PANEL, 'border-b border-white/10 px-3.5 py-2.5 font-bcast', 1),
+        history=(DIR_PANEL, 'grid grid-cols-[24px_38px_1fr] gap-2 font-bcast text-[10.5px]', 1),
+        history_newest=(DIR_PANEL, '<span className="text-white/60">', 1),
+        history_oldest=(DIR_PANEL, '<span className="text-white/25">', 1),
+        footer=(DIR_PANEL, 'border-t border-white/10 px-3.5 py-2.5 font-bcast', 1),
+        body=(DIR_PANEL, 'panel-scroll flex-1 overflow-y-auto px-4 py-3.5', 1),
+        muted=(DIR_PANEL, 'border-t border-white/10 px-3.5 py-2.5 font-bcast', 1),
+        rail=None, wordmark='REC',
+    ),
+    'mano': dict(
+        caption_live=(DIR_CAPTION, 'text-left font-mano text-[clamp(21px,2.7vw,33px)]', 1),
+        caption_words=(DIR_CAPTION, '"--ink-op": 0.45 + 0.55', 1),
+        surface=(DIR_PANEL, 'bg-paper/[0.06] border-white/14', 1),
+        header=(DIR_PANEL, 'font-mano text-[12.5px] italic text-bone/55', 1),
+        history=(DIR_PANEL, 'line-in mb-3 font-mano text-[14px]', 1),
+        footer=(DIR_PANEL, 'font-mano text-[11px] italic text-bone/40', 1),
+        body=(DIR_PANEL, 'panel-scroll flex-1 overflow-y-auto px-4 py-3.5', 1),
+        muted=(DIR_PANEL, 'font-mano text-[11px] text-bone/35', 1),
+        rail=None, wordmark='rascunho ao vivo',
+    ),
+    'cine': dict(
+        caption_live=(DIR_CAPTION, 'font-cine text-[clamp(24px,3vw,42px)]', 2),
+        caption_words=(DIR_CAPTION, '"w-cine"', 1),
+        surface=(DIR_PANEL, 'bg-[#0d0c09]/60 border-gold/15', 1),
+        header=(DIR_PANEL, 'font-cine text-[11px] font-medium tracking-[0.34em]', 1),
+        history=(DIR_PANEL, '"line-in mb-3.5 font-cine text-[15px]', 2),
+        footer=(DIR_PANEL, 'font-cine text-[12px] tracking-[0.5em] text-gold/40', 1),
+        body=(DIR_PANEL, 'panel-scroll flex-1 overflow-y-auto px-4 py-3.5', 1),
+        muted=(DIR_PANEL, 'font-cine text-[11px] italic text-bone/40', 1),
+        rail=(DIR_PANEL, 'border-l border-gold/50 pl-3', 1), wordmark='SOTTO',
+    ),
+    'inst': dict(
+        caption_live=(DIR_CAPTION, 'text-left font-inst text-[clamp(24px,3.1vw,42px)]', 1),
+        caption_words=(DIR_CAPTION, '"w-inst"', 1),
+        surface=(DIR_PANEL, 'bg-[#090f0d]/65 border-led/15', 1),
+        header=(DIR_PANEL, 'font-inst text-[11px] font-bold tracking-[0.3em]', 1),
+        history=(DIR_PANEL, '"font-inst text-[13.5px] font-medium leading-[1.45] ', 1),
+        footer=(DIR_PANEL, 'border-t border-white/10 px-4 py-2.5 font-inst', 1),
+        body=(DIR_PANEL, 'panel-scroll flex-1 overflow-y-auto px-4 py-3.5', 1),
+        muted=(DIR_PANEL, '<span className="ml-auto text-white/30">', 1),
+        rail=(DIR_CAPTION, 'w-[4px] shrink-0 rounded-full bg-led', 1), wordmark='ON',
+    ),
+}
+
+# THE DESIGN'S OWN LIVE-LINE MARK, read from the zip:
+#   tele  none           -- `glow-live`, no rule anywhere on the line
+#   bcast none           -- the caret is the signal colour; the line has no rule
+#   mano  none           -- its mark is an UNDERLINE, and the signature block
+#                           below emits it (`border-b border-bone/35`)
+#   cine  border-l       -- `border-l border-gold/50 pl-3` on the forming row
+#   inst  a 4 px LED rail -- `w-[4px] shrink-0 rounded-full bg-led`
+# A `None` rail means the theme declares `border-left-width: 0`, which is a
+# DECLARATION and not an omission: panel.css gives every provisional caption a
+# rail, so a theme that wants none has to say so.
+RAIL_W = {'tele': '0px', 'bcast': '0px', 'mano': '0px', 'cine': '1px', 'inst': '4px'}
+
+# THE SPACING SCALE, THE RADIUS SCALE AND THE STATE PALETTE -- the zip declares
+# ONE of each for all five designs, so all five themes share them. Stated, not
+# hidden: see the module docstring.
+TAILWIND = ('tailwindcss 4.1.17 default scale (the zip package.json)')
+SPACE = (4, 8, 12, 16, 20)
+RADIUS_SM = 4      # --radius-sm = rounded-sm = 0.25rem
+RADIUS_MD = 6      # --radius-md = rounded-md = 0.375rem
+RADIUS_LG = 8      # --radius-lg = rounded-lg = 0.5rem  <- the panel frame
+
+
+def shared_state(pal, psrc):
+    """The zip's own state palette, from its own named colours.
+
+    The zip has no `--ok`/`--error` token pair; it has COLOURS, and three of
+    them carry exactly those meanings in the mockups (`bg-led` on Instrumento's
+    ON lamp, `bg-signal` on Broadcast's REC, `text-amberlite` on the freshest
+    word). Naming them is this panel's job; inventing values is not.
+    """
+    return {
+        'ok': (pal['led'].upper(), psrc['led']),
+        'busy': (pal['amberlite'].upper(), psrc['amberlite']),
+        'error': (pal['signal'].upper(), psrc['signal']),
+        'idle': (pal['fog'].upper(), psrc['fog']),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# THE DESIGN'S OWN HALO. Teleprompter is the only direction that states one:
+# `@keyframes glowPulse` at `index.css:146-149` and `.glow-live` at `:150`
+# (2.6 s, the same period the signature block below uses). Read, not typed.
+# --------------------------------------------------------------------------- #
+def glow_shadow():
+    lines = slurp(DIR_CSS)
+    start = at(lines, DIR_CSS, '@keyframes glowPulse')
+    for j in range(start, len(lines)):
+        m = re.search(r'text-shadow:\s*([^;]+);', lines[j])
+        if m:
+            return m.group(1).strip(), '%s:%d' % (where(DIR_CSS), j + 1)
+    raise SystemExit('BUILD FAILURE: @keyframes glowPulse states no text-shadow')
+
+
+def glow_period():
+    lines = slurp(DIR_CSS)
+    i = at(lines, DIR_CSS, '.glow-live {')
+    m = re.search(r'animation:\s*glowPulse\s+([\d.]+s)', lines[i - 1])
+    if not m:
+        raise SystemExit('BUILD FAILURE: .glow-live does not run glowPulse')
+    return m.group(1), '%s:%d' % (where(DIR_CSS), i)
+
+
+def raw_block(anchor):
+    """Like class_block(), but the RAW source lines -- for a value the zip states
+    in a style object rather than a className (mano's ink ramp)."""
+    path, needle, span = anchor
+    lines = slurp(path)
+    i = at(lines, path, needle) - 1
+    return '\n'.join(lines[i:i + span]), '%s:%d' % (where(path), i + 1)
+
+
+# --------------------------------------------------------------------------- #
+# fill() -- the marker language the signature blocks are written in.
+#
+# The signature blocks used to carry typed hex (`#FFC46B`, `#DCE4ED`,
+# `rgba(242, 233, 216, .26)`), which is exactly how a theme drifts from the zip
+# it claims to be: nothing connected the literal to the palette. They now carry
+# MARKERS -- `@paper/26@`, `@amberlite@`, `@confirmed/80@` -- and this pass
+# resolves each one against the theme's own tokens, recording a ledger row with
+# the ORIGINAL zip line as its source. An unknown marker is a BUILD FAILURE, not
+# an empty string. `@S@`/`@B@` are untouched (uppercase) -- they belong to
+# scope().
+# --------------------------------------------------------------------------- #
+MARKER = re.compile(r'@([a-z0-9_]+)(?:/(\d+|\[[\d.]+\]))?@')
+
+
+def fill(text, t):
+    def sub(m):
+        name, alpha = m.group(1), m.group(2)
+        if name not in t:
+            raise SystemExit('BUILD FAILURE: theme %s has no token %r'
+                             % (t.get('name', t.get('n')), name))
+        src = t['src'].get(name, '?')
+        if alpha:
+            val = rgba(t[name], alpha_tok(alpha))
+            note(t['n'], 'sig:%s/%s' % (name, alpha), val, src)
+        else:
+            val = t[name]
+            note(t['n'], 'sig:%s' % name, val, src)
+        return val
+    return MARKER.sub(sub, text)
+
+
+# --------------------------------------------------------------------------- #
+# THE SIGNATURE BLOCKS, verbatim from the file this rewrite replaces. Their
+# prose is the owner's own record of what each direction asks for; only their
+# LITERALS changed, into markers. They are spliced in by the build that produced
+# this file, so nothing here was retyped.
+# --------------------------------------------------------------------------- #
+# THE SHARED FRAME: one line in the zip, used by all five designs.
+FRAME = (DIR_PANEL, 'overflow-hidden rounded-lg border shadow-[0_28px_90px', 1)
+
+# THE STAGE THE ZIP PUTS BEHIND EVERY PANEL -- and the reason the surface below is
+# a COMPOSITE. Stage.tsx:46 is bg-black, so the zip's panel is only ever seen
+# through its own alpha over black. A WebView2 window cannot blur the desktop
+# behind it (backdrop-blur-md, Panel.tsx:30, blurs the PAGE, and Sotto's panel has
+# no page behind it), so the theme paints the colour the zip actually shows and
+# stays effectively opaque. HUE IS THE ZIP'S; ONLY THE ALPHA IS SOTTO'S.
+STAGE = (DIR_STAGE, 'overflow-hidden bg-black', 1)
+SLAB_OPACITY = '0.96'
+
+
+def over_black(hexv, a):
+    """`hexv` at alpha `a`, composited over the zip stage's opaque black."""
+    h = hexv.lstrip('#')
+    return '#' + ''.join('%02X' % round(int(h[i:i + 2], 16) * a) for i in (0, 2, 4))
+
+IDEAS = {
+    'tele': 'THE DIRECTION `tele`: the caption as a continuous reading flow. '
              'Barlow Condensed, near-white, RIGIDLY LEFT-ALIGNED, accent #f2e9d8. '
              'The forming line is the biggest, brightest and boldest thing on the '
              'slab and the closed lines are a quiet grey column behind it, so the '
@@ -68,57 +599,39 @@ THEMES = [
              'deslocamento optico bastam para mante-la acesa" — a glow is how the '
              'live line SHINES without blinking. It is a static text-shadow, never '
              'a keyframe, because the brief forbids animating the caption text.',
-        slab='#0D1013', slab_strong='#12171C',
-        text_primary='#FFFFFF',
-        text_confirmed='#F2E9D8',
-        text_provisional='#8FA6C0',
-        text_secondary='#A9B7C6',
-        text_muted='#7E8B99',
-        line='rgba(242, 233, 216, 0.16)', line_strong='rgba(242, 233, 216, 0.34)',
-        accent='#F2E9D8', accent_soft='rgba(242, 233, 216, 0.12)',
-        ok='#6EF184', busy='#F2E9D8', error='#F87171', idle='#5B6472',
-        radius_sm='7px', radius_md='12px', radius_lg='18px',
-        space=(4, 8, 13, 20, 30),
-        font_sans='"Barlow Condensed", "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif',
-        font_mono='"Cascadia Mono", ui-monospace, Consolas, monospace',
-        size_caption='clamp(30px, 4.6vw, 54px)', size_closed='18px', size_time='10px', size_chrome='11.5px',
-        size_meta='10.5px', size_small='12.5px',
-        leading_caption='1.06', leading_closed='1.24',
-        weight_caption='700', weight_closed='400', weight_brand='700',
-        tracking_caption='0.006em', tracking_brand='0.42em',
-        # THE NAME IS LOWERCASE IN EVERY DIRECTION (owner, 2026-10-08: *"bota o nome
-        # 'sotto' em todos os temas"*, written lowercase by him). This direction's
-        # wordmark is where theme-1's name lives, and `uppercase` here would render
-        # the markup's `sotto` as `SOTTO` — the one property that silently overrules
-        # the owner's own spelling. `caption_upper` is a different decision and stays.
-        brand_upper='none', caption_upper='uppercase',
-        slab_opacity='0.97',
-        radius_dialog='16px',
-        shadow_slab=('0 30px 70px -28px rgba(0, 0, 0, 0.78), '
-                     '0 0 0 1px rgba(242, 233, 216, 0.04)'),
-        caption_color='var(--text-primary)',
-        closed_color='var(--text-secondary)',
-        prov_rail_w='0px',
-        prov_rail_style='none',
-        prov_pad='var(--space-3)',
-        # CHANGED 2026-10-07 (lane painel-cinco-direcoes). It was `2px`, which
-        # gave the NEWEST CLOSED line (`.caption--latest` -- panel.js puts it on
-        # the freshest settled row) a near-white rail. That contradicts this
-        # entry's own `idea` a few lines up ("no rail on the closed ones",
-        # "nothing is boxed"), and it is what made the five-design probe call
-        # theme-1 RED: a settled line wearing the live line's own mark reads as
-        # still live. "Only the now shines" is now carried by SIZE + HUE + the
-        # static halo alone.
-        closed_rail_w='0px',
-  time_live='#FFD24A',
-        # "a linha viva brilha" -- brilho, never a keyframe. Static on purpose:
-        # rule 4 of every theme file is "the caption text is never animated".
-        live_shadow='0 0 18px rgba(242, 233, 216, 0.30), 0 0 2px rgba(242, 233, 216, 0.55)',
-        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
-        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
-        # every animation rule inside is wrapped in prefers-reduced-motion so the
-        # MOTION kill-list still wins where it must.
-        sig='''/* -- SIGNATURE, direction "tele" ------------------------------------------
+    'bcast': 'THE DIRECTION `bcast`: a transmission happening right now. IBM Plex '
+             'Mono, timecodes and small state marks, accent #ff6a55. The forming '
+             'line carries a SOLID 2 px signal-red rail and the most recent word is '
+             'bright amber; a closed line has NO rail at all and falls to a neutral '
+             'grey, so "being said" and "was said" are told apart by SHAPE before '
+             'by hue — which is the direction\'s own recommendation ("instrumentation '
+             'extremely subtle, never a dashboard").',
+    'mano': 'THE DIRECTION `mano`: the caption is born in front of you. Newsreader '
+             '— a serif — at the caption, accent #a9c1d9, so provisional text never '
+             'reads as an error and history never reads as a broadcast. The forming '
+             'line is a DRAFT: it carries a thin SOLID guide rail and its tail still '
+             'in doubt is held back in ink grey while the words already confirmed '
+             'inside it stand brighter. A closed line is settled text — no rail, '
+             'plain weight — so what is provisional reads as unfinished, never as '
+             'unreliable.',
+    'cine': 'THE DIRECTION `cine`: minimal editorial presence, accent #e4b363. '
+             'Fraunces, wide leading, and the direction\'s own mark on the state: '
+             'the forming line is ITALIC and sits behind a warm gold rail, while the '
+             'closed line is upright and solid — "the finished phrase is solid, the '
+             'one in progress lives in the mist" (the direction\'s words). The gold '
+             'is warm and low-contrast on purpose: this is the theme that can almost '
+             'disappear over the film.',
+    'inst': 'THE DIRECTION `inst`: it is ON, it is not an open window. Space '
+             'Grotesk, accent #5fd3a7, and the direction\'s own dynamic element — '
+             'the FORMING line carries a continuous 4 px LED rail on its left, the '
+             'one thing that moves in this theme; closed lines are a settled column '
+             'of readings behind a small square mark with no rail at all. Nothing '
+             'else is decorated, which is the point: after a week the LED says '
+             'everything without being read.',
+}
+
+SIG = {
+    'tele': '''/* -- SIGNATURE, direction "tele" ------------------------------------------
    The live line BREATHES. That is the one thing this direction asks for that the
    shared caption contract forbids (the caption text is never animated), and it is
    honoured rather than fought: the glow is a TEXT-SHADOW keyframe on the one
@@ -138,76 +651,28 @@ THEMES = [
   }
 }
 @keyframes sotto-1-glow{
-  0%, 100%{ text-shadow: 0 0 16px rgba(242, 233, 216, .26), 0 2px 22px rgba(0, 0, 0, .6); }
-  50%{ text-shadow: 0 0 30px rgba(242, 233, 216, .50), 0 2px 22px rgba(0, 0, 0, .6); }
+  0%, 100%{ text-shadow: 0 0 16px @accent/26@, 0 2px 22px rgba(0, 0, 0, .6); }
+  50%{ text-shadow: 0 0 30px @accent/50@, 0 2px 22px rgba(0, 0, 0, .6); }
 }
 @keyframes sotto-1-rise{
   from{ opacity: 0; transform: translateY(6px); }
   to{ opacity: 1; transform: none; }
 }''',
-        cap_align='left',
-    ),
-    dict(
-        n=2,
-        name='Broadcast',
-        idea='THE DIRECTION `bcast`: a transmission happening right now. IBM Plex '
-             'Mono, timecodes and small state marks, accent #ff6a55. The forming '
-             'line carries a SOLID 2 px signal-red rail and the most recent word is '
-             'bright amber; a closed line has NO rail at all and falls to a neutral '
-             'grey, so "being said" and "was said" are told apart by SHAPE before '
-             'by hue — which is the direction\'s own recommendation ("instrumentation '
-             'extremely subtle, never a dashboard").',
-        slab='#0E1011', slab_strong='#131617',
-        text_primary='#FFFFFF',
-        text_confirmed='#FFFFFF',
-        text_provisional='#9A9384',
-        text_secondary='#BFC0C2',
-        text_muted='#8A8C8E',
-        line='rgba(255, 106, 85, 0.22)', line_strong='rgba(255, 106, 85, 0.44)',
-        accent='#FF6A55', accent_soft='rgba(255, 106, 85, 0.16)',
-        ok='#F0D090', busy='#B9985A', error='#FF8A7A', idle='#5F6265',
-        radius_sm='4px', radius_md='5px', radius_lg='8px',
-        space=(3, 6, 10, 15, 22),
-        font_sans='"IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace',
-        font_mono='"IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='clamp(18px, 2.3vw, 28px)', size_closed='15px', size_time='11px', size_chrome='10.5px',
-        size_meta='10px', size_small='11.5px',
-        leading_caption='1.38', leading_closed='1.35',
-        weight_caption='600', weight_closed='400', weight_brand='700',
-        tracking_caption='0.01em', tracking_brand='0.24em',
-        brand_upper='uppercase', caption_upper='none',
-        slab_opacity='0.99',
-        radius_dialog='6px',
-        shadow_slab=('0 26px 60px -26px rgba(0, 0, 0, 0.8), '
-                     '0 0 0 1px rgba(255, 106, 85, 0.07)'),
-        caption_color='var(--text-primary)',
-        closed_color='var(--text-secondary)',
-        caption_family='var(--font-mono)',
-        closed_family='var(--font-mono)',
-        time_family='var(--font-mono)',
-        caption_tabular='tabular-nums',
-        prov_rail_w='2px',
-        prov_rail_style='solid',
-        closed_rail_w='0px',
-  time_live='#FFD24A',
-        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
-        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
-        # every animation rule inside is wrapped in prefers-reduced-motion so the
-        # MOTION kill-list still wins where it must.
-        sig='''/* -- SIGNATURE, direction "bcast" ------------------------------------------
+    'bcast': '''/* -- SIGNATURE, direction "bcast" ------------------------------------------
    The live line is a TRANSMISSION: the caret is the signal colour and the
    freshest word is amber, so "being said" and "was said" are told apart by HUE
-   on top of the 2 px red rail this direction already carries. */
+   so "being said" and "was said" are told apart by HUE alone -- the zip gives
+   this direction NO rule on the live line, and the theme declares that. */
 @S@ .caption--provisional .caption__text{
-  font-size: clamp(18px, 2.3vw, 28px);
-  line-height: 1.4;
+  font-size: var(--size-caption);
+  line-height: var(--leading-caption);
 }
 @S@ .caption__mark{
   animation: sotto-caret 1.1s steps(1) infinite;
   color: var(--accent);
 }
 @S@ .caption--provisional .caption__provisional .caption__word:last-child{
-  color: #FFC46B;
+  color: @busy@;
 }
 @media (prefers-reduced-motion: no-preference){
   @S@ .caption--provisional .caption__provisional .caption__word{
@@ -219,41 +684,7 @@ THEMES = [
   from{ opacity: .35; transform: translateY(2px); }
   to{ opacity: 1; transform: none; }
 }''',
-    ),
-    dict(
-        n=3,
-        name='Manuscrito',
-        idea='THE DIRECTION `mano`: the caption is born in front of you. Newsreader '
-             '— a serif — at the caption, accent #a9c1d9, so provisional text never '
-             'reads as an error and history never reads as a broadcast. The forming '
-             'line is a DRAFT: it carries a thin SOLID guide rail and its tail still '
-             'in doubt is held back in ink grey while the words already confirmed '
-             'inside it stand brighter. A closed line is settled text — no rail, '
-             'plain weight — so what is provisional reads as unfinished, never as '
-             'unreliable.',
-        slab='#0F1216', slab_strong='#141922',
-        text_primary='#F4F7FA',
-        text_confirmed='#DCE4ED',
-        text_provisional='#97A3B0',
-        text_secondary='#AEB8C4',
-        text_muted='#7F8A97',
-        line='rgba(169, 193, 217, 0.16)', line_strong='rgba(169, 193, 217, 0.36)',
-        accent='#A9C1D9', accent_soft='rgba(169, 193, 217, 0.12)',
-        ok='#58E8B5', busy='#7FD6C2', error='#FF9B8A', idle='#5D6673',
-        radius_sm='6px', radius_md='10px', radius_lg='14px',
-        space=(5, 9, 14, 21, 30),
-        font_sans='"Newsreader", "Segoe UI Variable Text", "Segoe UI", Georgia, serif',
-        font_mono='"Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='23px', size_closed='17px', size_time='10px', size_chrome='11px',
-        size_meta='10px', size_small='12px',
-        leading_caption='1.62', leading_closed='1.45',
-        weight_caption='400', weight_closed='400', weight_brand='600',
-        tracking_caption='0.002em', tracking_brand='0.14em',
-        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
-        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
-        # every animated rule inside is wrapped in prefers-reduced-motion so the
-        # MOTION kill-list still wins where it must.
-        sig='''/* -- SIGNATURE, direction "mano" -------------------------------------------
+    'mano': '''/* -- SIGNATURE, direction "mano" -------------------------------------------
    The live line is a DRAFT ON PAPER: it sits on a thin baseline rule, it ends
    in a 2 px BAR caret instead of the typed glyph every other theme uses, and
    the words still in doubt are held back in ink while the ones already settled
@@ -262,8 +693,8 @@ THEMES = [
    to read as ink drying rather than a fade-out. */
 /* underline uses the word itself: no box, no background, ever. */
 @S@ .caption--provisional .caption__text{
-  color: #DCE4ED;
-  border-bottom: 1px solid rgba(169, 193, 217, 0.35);
+  color: @text_confirmed@;
+  border-bottom: 1px solid @text_confirmed/35@;
   padding-bottom: 4px;
 }
 @S@ .caption--provisional .caption__provisional .caption__word{
@@ -278,7 +709,7 @@ THEMES = [
   height: .88em;
   margin-left: 6px;
   vertical-align: -0.06em;
-  background: rgba(220, 228, 237, 0.8);
+  background: @text_confirmed/80@;
 }
 @media (prefers-reduced-motion: no-preference){
   @S@ .caption--provisional .caption__mark{
@@ -309,63 +740,7 @@ THEMES = [
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 120px);
   mask-image: linear-gradient(180deg, transparent 0, #000 120px);
 }''',
-        brand_upper='none', caption_upper='none',
-        slab_opacity='0.96',
-        radius_dialog='12px',
-        shadow_slab=('0 28px 64px -28px rgba(0, 0, 0, 0.76), '
-                     '0 0 0 1px rgba(169, 193, 217, 0.05)'),
-        caption_color='var(--text-primary)',
-        closed_color='var(--text-secondary)',
-        prov_rail_w='2px',
-        prov_rail_style='solid',
-        closed_rail_w='0px',
-  time_live='#FFD24A',
-    ),
-    dict(
-        n=4,
-        name='Cinema Card',
-        idea='THE DIRECTION `cine`: minimal editorial presence, accent #e4b363. '
-             'Fraunces, wide leading, and the direction\'s own mark on the state: '
-             'the forming line is ITALIC and sits behind a warm gold rail, while the '
-             'closed line is upright and solid — "the finished phrase is solid, the '
-             'one in progress lives in the mist" (the direction\'s words). The gold '
-             'is warm and low-contrast on purpose: this is the theme that can almost '
-             'disappear over the film.',
-        slab='#14110F', slab_strong='#1A1613',
-        text_primary='#F6F0E6',
-        text_confirmed='#E4DACB',
-        text_provisional='#B6A794',
-        text_secondary='#D2C6B4',
-        text_muted='#A4947F',
-        line='rgba(228, 179, 99, 0.20)', line_strong='rgba(228, 179, 99, 0.42)',
-        accent='#E4B363', accent_soft='rgba(228, 179, 99, 0.16)',
-        ok='#9BD9A0', busy='#E4B363', error='#FF9E86', idle='#776A5C',
-        radius_sm='8px', radius_md='13px', radius_lg='20px',
-        space=(5, 10, 15, 23, 33),
-        font_sans='"Fraunces", "Segoe UI Variable Display", "Segoe UI", Georgia, serif',
-        font_mono='"Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='clamp(24px, 3vw, 42px)', size_closed='clamp(13px, 1.3vw, 16px)', size_time='10px', size_chrome='11.5px',
-        size_meta='10.5px', size_small='12.5px',
-        leading_caption='1.52', leading_closed='1.42',
-        weight_caption='400', weight_closed='400', weight_brand='600',
-        tracking_caption='0.012em', tracking_brand='0.34em',
-        brand_upper='uppercase', caption_upper='none',
-        slab_opacity='0.97',
-        radius_dialog='16px',
-        shadow_slab=('0 32px 76px -30px rgba(0, 0, 0, 0.82), '
-                     '0 0 0 1px rgba(228, 179, 99, 0.06)'),
-        caption_color='var(--text-primary)',
-        closed_color='var(--text-secondary)',
-        prov_style='italic',
-        prov_rail_w='2px',
-        prov_rail_style='solid',
-        closed_rail_w='0px',
-        time_live='var(--accent)',
-        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
-        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
-        # every animation rule inside is wrapped in prefers-reduced-motion so the
-        # MOTION kill-list still wins where it must.
-        sig='''/* -- SIGNATURE, direction "cine" ------------------------------------------
+    'cine': '''/* -- SIGNATURE, direction "cine" ------------------------------------------
    Two things only, both the direction\'s own: the forming line holds back (opacity
    .5) so a sentence reads as SETTLING rather than finished, and every word comes
    out of focus (wordFog -- a chair moving in a dark room). */
@@ -390,52 +765,19 @@ THEMES = [
   padding-bottom: calc(50vh - 94px);
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 150px);
   mask-image: linear-gradient(180deg, transparent 0, #000 150px);
+}
+/* THE SETTLED LINE IS ITALIC; THE FORMING ONE IS NOT. The zip states
+   font-light on cine's forming line (Caption.tsx:110) and italic on the line
+   just above it (Caption.tsx:101), so --prov-style is "normal" for this
+   direction and the italic is declared HERE, on the settled tier. Named
+   deviation: Sotto merges the zip's two closed tiers -- the caption's last
+   line (italic, Caption.tsx:101) and the panel's transcript column (upright,
+   Panel.tsx:168) -- into ONE settled column, and the caption's own mark is the
+   one this theme keeps. */
+@B@ .caption:not(.caption--provisional) .caption__text{
+  font-style: italic;
 }''',
-    ),
-    dict(
-        n=5,
-        name='Instrumento',
-        idea='THE DIRECTION `inst`: it is ON, it is not an open window. Space '
-             'Grotesk, accent #5fd3a7, and the direction\'s own dynamic element — '
-             'the FORMING line carries a continuous 4 px LED rail on its left, the '
-             'one thing that moves in this theme; closed lines are a settled column '
-             'of readings behind a small square mark with no rail at all. Nothing '
-             'else is decorated, which is the point: after a week the LED says '
-             'everything without being read.',
-        slab='#0A0C0D', slab_strong='#0F1214',
-        text_primary='#FFFFFF',
-        text_confirmed='#F2F5F8',
-        text_provisional='#9BA3AC',
-        text_secondary='#9BA3AC',
-        text_muted='#7F8A97',  # 2026-10-08 audit: was #757C85 (4.45:1, the panel's only AA fail)
-        line='rgba(95, 211, 167, 0.16)', line_strong='rgba(95, 211, 167, 0.38)',
-        accent='#5FD3A7', accent_soft='rgba(95, 211, 167, 0.12)',
-        ok='#5FD3A7', busy='#C9D0D8', error='#FF8F8F', idle='#4E555C',
-        radius_sm='5px', radius_md='8px', radius_lg='12px',
-        space=(4, 8, 12, 19, 28),
-        font_sans='"Space Grotesk", "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif',
-        font_mono='"Cascadia Mono", Consolas, ui-monospace, monospace',
-        size_caption='clamp(24px, 3.1vw, 42px)', size_closed='17px', size_time='10px', size_chrome='11px',
-        size_meta='10px', size_small='12px',
-        leading_caption='1.30', leading_closed='1.30',
-        weight_caption='700', weight_closed='400', weight_brand='700',
-        tracking_caption='0.004em', tracking_brand='0.30em',
-        brand_upper='uppercase', caption_upper='none',
-        slab_opacity='0.99',
-        radius_dialog='10px',
-        shadow_slab=('0 30px 68px -30px rgba(0, 0, 0, 0.84), '
-                     '0 0 0 1px rgba(95, 211, 167, 0.05)'),
-        caption_color='var(--text-primary)',
-        closed_color='var(--text-secondary)',
-        prov_rail_w='4px',
-        prov_rail_style='solid',
-        closed_rail_w='0px',
-  time_live='#FFD24A',
-        # THE DIRECTION'S OWN LIVE-LINE TREATMENT. build() emits it after CHROME
-        # (scope(t.get('sig', ''), n)), so it outranks the shared caption rules;
-        # every animation rule inside is wrapped in prefers-reduced-motion so the
-        # MOTION kill-list still wins where it must.
-        sig='''/* -- SIGNATURE, direction "inst" ------------------------------------------
+    'inst': '''/* -- SIGNATURE, direction "inst" ------------------------------------------
    The LED rail already breathes (sotto-5-led-live, emitted in CHROME with the
    4 px border this direction uses as its mark). What is missing is the TEXT: the
    direction is a heavy monitor face at tight leading, and its words should SNAP
@@ -451,16 +793,240 @@ THEMES = [
   from{ opacity: .3; }
   to{ opacity: 1; }
 }''',
-    ),
-]
+}
 
-# The PRE-DIRECTION theme tables (the mockup-derived Teleprompter/Broadcast/
-# Manuscrito/Cinema/Instrumento values, accents included) are NOT kept here as a
-# second dead list: they were the same thirty-odd keys spelled a second time, so a
-# reader could not tell which list the files came from. The change is in this
-# file's own history — `git -C H:\\sotto log -p -- _main/_design-lane/gen_themes.py` —
-# and a second copy of the old numbers would only rot. What the files ARE is
-# below, in THEMES, and `build_fonts.py` in this same directory explains the fonts.
+
+
+def build_direction_theme(n, d, pal, psrc, fonts, fsrc, ideas):
+    """One direction -> one theme dict, every value carrying its zip line."""
+    spec = SPEC[d['id']]
+    t = Theme(n=n)
+    t['id'] = d['id']
+    t['name'] = d['name']
+    t.put('idea', ideas[d['id']],
+          '%s:%d (the direction the zip itself describes)' % (where(DIR_DESIGNS), d['name_line']))
+
+    # ---- the design's identity, from designs.ts ---------------------------
+    t.put('accent', d['accent'].upper(),
+          '%s:%d (accent)' % (where(DIR_DESIGNS), d['accent_line']))
+    fam = d['fontClass'].replace('font-', '')
+    if fam not in fonts:
+        raise SystemExit('BUILD FAILURE: designs.ts names fontClass %r at %s:%d but '
+                         '%s declares no --font-%s'
+                         % (d['fontClass'], where(DIR_DESIGNS), d['fontClass_line'],
+                            where(DIR_CSS), fam))
+    t.put('font_sans', fonts[fam],
+          '%s (designs.ts:%d names %s)' % (fsrc[fam], d['fontClass_line'], d['fontClass']))
+    t.put('font_mono', fonts['bcast'], fsrc['bcast'])
+    t.put('slab_strong', pal['ink2'].upper(), psrc['ink2'])
+
+    # ---- the live line, from Caption.tsx ---------------------------------
+    live, live_src = class_block(spec['caption_live'])
+    t.put('size_caption', u_size(live, live_src), live_src)
+    t.put('leading_caption', u_leading(live, live_src), live_src)
+    t.put('weight_caption', u_weight(live, live_src, '400'), live_src)
+    t.put('tracking_caption', u_tracking(live, live_src, '0'), live_src)
+    t.put('caption_upper', 'uppercase' if u_has(live, 'uppercase') else 'none', live_src)
+    t.put('cap_align', 'center' if u_has(live, 'text-center') else 'left', live_src)
+    line_colour = colour_in(live, pal, live_src)
+
+    # THE WORD TERNARY, in the design's own order: the FIRST colour is the word
+    # still being formed, the SECOND is a word already confirmed. Where the zip
+    # states one colour, the other state is the forming line's own colour --
+    # which is what the markup does by inheritance.
+    words, words_src = class_block(spec['caption_words'])
+    wc = colours_in(words, pal, words_src, required=False)
+    if len(wc) >= 2:
+        provisional, confirmed = wc[0], wc[1]
+    elif len(wc) == 1:
+        confirmed, provisional = line_colour, wc[0]
+    elif d['id'] == 'mano':
+        # The ramp is a STYLE value, not a class, so this one anchor is read RAW:
+        # class_block() would hand back only the quoted property name.
+        ramp_text, ramp_src = raw_block(spec['caption_words'])
+        ramp = re.search(r'0\.(\d+)', ramp_text)
+        if not ramp:
+            raise SystemExit('BUILD FAILURE: no ink ramp at %s (%r)'
+                             % (ramp_src, ramp_text))
+        provisional = (rgba(line_colour[0], int(ramp.group(1)) / 100.0),
+                       "the ramp's floor: %s -- the zip ramps every word from there "
+                       "to full ink as it settles" % ramp.group(0))
+        confirmed = line_colour
+    else:
+        confirmed = provisional = line_colour
+    t.put('text_confirmed', confirmed[0], '%s (%s)' % (words_src, confirmed[1]))
+    t.put('text_provisional', provisional[0], '%s (%s)' % (words_src, provisional[1]))
+
+    def lum(v):
+        if v.startswith('#') and len(v) == 7:
+            return int(v[1:3], 16) + int(v[3:5], 16) + int(v[5:7], 16)
+        m = re.match(r'rgba\((\d+), (\d+), (\d+), ([\d.]+)\)', v)
+        if m:
+            return (int(m.group(1)) + int(m.group(2)) + int(m.group(3))) * float(m.group(4))
+        raise SystemExit('BUILD FAILURE: cannot rank %r' % v)
+
+    bright = max((t['text_confirmed'], t['text_provisional']), key=lum)
+    t.put('text_primary', bright,
+          'derived: the brighter of %s and %s' % (confirmed[1], provisional[1]))
+
+    # ---- the panel surface and its chrome, from Panel.tsx ----------------
+    # TWO anchors, because the zip splits them: ONE shared frame
+    # (`Panel.tsx:30` -- the radius, the shadow, the blur) and ONE surface per
+    # design (`Panel.tsx:44-52` -- the tint and the hairline).
+    frame, frame_src = class_block(FRAME)
+    surf, surf_src = class_block(spec['surface'])
+    slab, slab_a, slab_lbl = surface_in(surf, pal, surf_src)
+    stage, stage_src = class_block(STAGE)
+    stage_c, stage_a, stage_lbl = surface_in(stage, pal, stage_src)
+    if stage_a != 1.0 or stage_c.upper() != '#000000':
+        raise SystemExit('BUILD FAILURE: the zip stage at %s is %r at %s, not opaque '
+                         'black -- the composite below would be wrong'
+                         % (stage_src, stage_lbl, stage_a))
+    t.put('slab', over_black(slab, slab_a),
+          '%s (%s) composited over the zip stage %s at %s'
+          % (surf_src, slab_lbl, stage_lbl, stage_src))
+    t.put('slab_opacity', SLAB_OPACITY,
+          'the zip shows this panel only over its own black stage with '
+          'backdrop-blur-md (%s); a WebView2 window cannot blur the desktop behind '
+          'it, so the surface is composited over that black and the panel stays '
+          'effectively opaque' % frame_src)
+    line, line_a, line_lbl = border_in(surf, pal, surf_src)
+    t.put('line', rgba(line, line_a), '%s (%s)' % (surf_src, line_lbl))
+    t.put('line_strong', rgba(line, round(min(line_a * 2.2, 1.0), 2)),
+          'derived: %s x2.2 (the zip states ONE hairline per design; Sotto needs '
+          'a strong tier for the scrollbar thumb)' % line_lbl)
+    t.put('accent_soft', rgba(t['accent'], line_a),
+          'derived: the accent at the surface border alpha (%s)' % line_lbl)
+    t.put('shadow_slab',
+          '%s, 0 0 0 1px %s' % (shadow_in(frame, frame_src), rgba(line, line_a)),
+          '%s (the frame shadow-[...]) + the surface hairline (%s)' % (frame_src, line_lbl))
+    t.put('radius_lg', '%dpx' % RADIUS_LG,
+          '%s (rounded-lg on the frame) + %s' % (frame_src, TAILWIND))
+    t.put('radius_sm', '%dpx' % RADIUS_SM, TAILWIND)
+    t.put('radius_md', '%dpx' % RADIUS_MD, TAILWIND)
+    t.put('radius_dialog', '%dpx' % RADIUS_LG, '%s (the frame radius)' % frame_src)
+
+    head, head_src = class_block(spec['header'])
+    t.put('tracking_brand', u_tracking(head, head_src, '0'), head_src)
+    t.put('weight_brand', u_weight(head, head_src, '400'), head_src)
+    t.put('size_chrome', u_size(head, head_src), head_src)
+    t.put('brand_upper', 'uppercase' if spec['wordmark'].isupper() else 'none',
+          "%s (the zip writes the wordmark %r; Sotto's own markup is lowercase)"
+          % (head_src, spec['wordmark']))
+
+    hist, hist_src = class_block(spec['history'])
+    t.put('size_closed', u_size(hist, hist_src), hist_src)
+    t.put('leading_closed', u_leading(hist, hist_src), hist_src)
+    t.put('weight_closed', u_weight(hist, hist_src, '400'), hist_src)
+    if 'history_newest' in spec:
+        nc, n_src = class_block(spec['history_newest'])
+        oc, o_src = class_block(spec['history_oldest'])
+        newest = colour_in(nc, pal, n_src)
+        oldest = colour_in(oc, pal, o_src)
+        oldest_src = o_src
+    else:
+        hc = colours_in(hist, pal, hist_src)
+        newest = hc[0]
+        oldest = hc[1] if len(hc) > 1 else hc[0]
+        oldest_src = hist_src
+    t.put('text_secondary', newest[0], '%s (%s)' % (hist_src, newest[1]))
+    muted, muted_src = class_block(spec['muted'])
+    mc = colour_in(muted, pal, muted_src)
+    t.put('text_muted', mc[0], '%s (%s)' % (muted_src, mc[1]))
+    # A SECOND past tier, because the zip states TWO and Sotto asks for both:
+    # --text-muted is the chrome/meta tier (a footer, a brand label) and
+    # --time-past is what .caption__time paints on a CLOSED row -- the oldest
+    # colour the design states for its own history.
+    t.put('time_past', oldest[0], '%s (%s)' % (oldest_src, oldest[1]))
+
+    foot, foot_src = class_block(spec['footer'])
+    t.put('size_meta', u_size(foot, foot_src), foot_src)
+    t.put('size_time', u_size(foot, foot_src),
+          '%s (the design meta tier, which is where its clock sits)' % foot_src)
+    t.put('size_small', u_size(foot, foot_src), foot_src)
+
+    body, body_src = class_block(spec['body'])
+    bx, bx_lbl = pad_in(body, body_src, 'x')
+    by, by_lbl = pad_in(body, body_src, 'y')
+    t.put('space', SPACE,
+          'the zip declares ONE spacing scale for all five designs (%s); its own '
+          'panel body pads %s -> %dpx / %s -> %dpx' % (TAILWIND, bx_lbl, bx, by_lbl, by))
+
+    # ---- the design's own rail on the live line --------------------------
+    rail = spec['rail']
+    if rail:
+        cls, src = class_block(rail)
+        if d['id'] == 'cine':
+            w, w_lbl = '1px', 'border-l (a 1 px rule)'
+        else:
+            w, w_lbl = dim_in(cls, 'w', src)
+        t.put('prov_rail_w', w, '%s (%s)' % (src, w_lbl))
+        t.put('prov_rail_style', 'solid', src)
+    else:
+        t.put('prov_rail_w', RAIL_W[d['id']],
+              '%s: the design states NO rule on the live line; declared 0 so '
+              "panel.css's own rail cannot leak in" % live_src)
+        t.put('prov_rail_style', 'solid', 'not stated (the width is 0)')
+    t.put('closed_rail_w', '0px', '%s: closed lines carry no rule in the zip' % hist_src)
+    t.put('prov_pad', '0px' if RAIL_W[d['id']] == '0px' else 'var(--space-3)',
+          'derived from the rail width')
+    t.put('prov_bg', 'transparent', 'not stated: the zip never backgrounds the line')
+    t.put('prov_style', 'normal',
+          '%s: the zip never italicises the forming line. The one italic it '
+          'states on caption text is Cinema Card on the SETTLED line '
+          '(Caption.tsx:101) and lives in that theme signature block' % live_src)
+    t.put('prov_extra', '', 'nothing extra')
+    t.put('cap_family', 'var(--font-sans)', "the design's own family (font_sans)")
+    t.put('closed_family', 'var(--font-sans)', "the design's own family (font_sans)")
+    t.put('time_family', 'var(--font-mono)', "the zip's mono (%s)" % fsrc['bcast'])
+    t.put('time_live', 'var(--accent)', "the zip's own accent on the live clock")
+
+    if d['id'] == 'tele':
+        t.put('live_shadow', glow_shadow()[0], glow_shadow()[1])
+        period = glow_period()
+        if period[0] not in SIG[d['id']]:
+            raise SystemExit('BUILD FAILURE: .glow-live runs glowPulse %s (%s) but '
+                             'the signature block uses another period'
+                             % (period[0], period[1]))
+    else:
+        t.put('live_shadow', 'none',
+              '%s: the zip states a halo on Teleprompter only' % live_src)
+
+    for key, pair in shared_state(pal, psrc).items():
+        t.put(key, pair[0], pair[1])
+
+    t['sig'] = SIG[d['id']]
+    return t
+
+
+REQUIRED = ('accent', 'font_sans', 'font_mono', 'slab', 'slab_strong', 'slab_opacity',
+            'line', 'line_strong', 'accent_soft', 'shadow_slab', 'text_primary',
+            'text_secondary', 'text_muted', 'text_confirmed', 'text_provisional',
+            'ok', 'busy', 'error', 'idle', 'radius_sm', 'radius_md', 'radius_lg',
+            'radius_dialog', 'space', 'size_caption', 'leading_caption',
+            'weight_caption', 'tracking_caption', 'tracking_brand', 'brand_upper',
+            'caption_upper', 'size_time', 'size_closed', 'size_chrome', 'size_meta',
+            'size_small', 'leading_closed', 'weight_closed', 'weight_brand', 'time_past',
+            'prov_rail_w', 'prov_rail_style', 'prov_pad', 'prov_bg', 'cap_align',
+            'time_live', 'live_shadow')
+
+
+def parsed_themes(ideas):
+    pal, psrc = zip_palette()
+    fonts, fsrc = zip_fonts()
+    designs = parse_designs()
+    return [build_direction_theme(i + 1, d, pal, psrc, fonts, fsrc, ideas)
+            for i, d in enumerate(designs)]
+
+
+# THE PRE-DIRECTION THEME TABLES ARE GONE, and this time for a better reason than
+# before. Until 2026-10-11 this file carried the five directions as a hand-written
+# list of ~50 keys per theme: `designs.ts` appeared only in COMMENTS, so nothing
+# connected `theme-1.css`'s `--accent: #F2E9D8` to `designs.ts:23`, and a zip that
+# changed would not have moved a byte of the CSS. The list is now PARSED (see the
+# head of this file), every value carries the `file:line` it came from, and `--trace`
+# prints the table. What the files ARE is `parsed_themes()` below, and `build_fonts.py`
+# in this same directory explains the fonts.
 # The shared skin rules. `{S}` is the position of the scope prefix; `{B}` marks a
 # rule that needs the `body` element for specificity (the caption text overrides).
 SKIN = """
@@ -581,7 +1147,8 @@ SKIN = """
    * face, the Broadcast one is a monitor, the Manuscrito and Instrumento lines are
    * upright — and ONE italic left in place is a fifth of the design leaking into
    * the other four. Declared here so every theme states its own answer; the Cinema
-   * Card theme puts `italic` back on the forming line only, by parameter.
+   * Card's italic belongs to its SETTLED line (Caption.tsx:101) and is declared
+   * in that theme's signature block instead of here.
    * MEASURED 2026-10-08: without this line the forming line computed `italic` in
    * themes 1, 2, 3 and 5. */
   font-style: normal;
@@ -606,7 +1173,9 @@ SKIN = """
   {prov_extra}
 }}
 {B} .caption__time{{
-  color: var(--text-muted);
+  /* --time-past, not --text-muted: the zip states the PAST tier as its own
+     oldest closed row, separately from the chrome/meta tier the footer carries. */
+  color: var(--time-past);
   font-family: {time_family};
   font-size: var(--size-time);
   font-variant-numeric: tabular-nums;
@@ -922,15 +1491,27 @@ HEAD = """/* Sotto — theme {n}: {name}.
  *    `prefers-reduced-motion: reduce` and the animation was disabled by the
  *    very query written to honour it.
  *
- * MEASURED FROM: `docs/design/incoming/design-{n}.png`
- *   slab    {slab}   (median of the quiet dark rows inside the panel region)
- *   accent  {accent}   (median of the bright chromatic pixels in that region)
- *   text    {text_primary} / {text_secondary} / {text_muted}  (the three measured tiers)
- * The caption ratios, computed against the slab, are in
- * `_main/receipt-panel-themes.md`.
+ * MEASURED FROM: the zip's own source, `sotto-app-design-directions.zip`,
+ * unpacked at `_main/_design-lane/zips/directions/`. EVERY value in this file is
+ * PARSED from it at generation time -- `src/data/designs.ts` for the identity,
+ * `src/index.css` for the palette and the families, `src/components/Caption.tsx`
+ * and `src/components/Panel.tsx` for the type, the surface and the hairline -- and
+ * the generator FAILS THE BUILD when a value it needs is not there. Run
+ * `py -3 _main/_design-lane/gen_themes.py --trace` for the table of every token
+ * against the `file:line` it came from. The revision before this one measured
+ * `docs/design/incoming/design-{n}.png` and said so here; those medians are GONE,
+ * because a screenshot cannot be re-derived when the design moves and the zip can.
+ *
+ * ONE DEVIATION, AND IT IS IN ALPHA ONLY. The zip renders its panel over its own
+ * black stage (`Stage.tsx:46`) with `backdrop-blur-md` (`Panel.tsx:30`), so the
+ * slab below is the surface colour COMPOSITED over that same black -- the colour
+ * the zip actually shows -- and the panel stays effectively opaque, because a
+ * WebView2 window cannot blur the desktop behind it and Sotto's captions have to
+ * be readable over whatever the owner has on screen. Hue is the zip's; only the
+ * alpha is Sotto's. The caption ratios are in `_main/receipt-panel-themes.md`.
  */
 
-:root[data-theme='theme-{n}']{{
+:root[data-theme='{sel}']{{
   /* ── SURFACE ──────────────────────────────────────────────────────────── */
   --bg-slab: {slab};
   --bg-slab-strong: {slab_strong};
@@ -943,6 +1524,7 @@ HEAD = """/* Sotto — theme {n}: {name}.
   --text-provisional: {text_provisional};
   --text-secondary: {text_secondary};
   --text-muted: {text_muted};
+  --time-past: {time_past};
 
   /* ── LINES AND ACCENT ─────────────────────────────────────────────────── */
   --line: {line};
@@ -999,7 +1581,7 @@ HEAD = """/* Sotto — theme {n}: {name}.
 
 /* The `panel.css` names are kept as ALIASES of the tokens above, so a reader who
  * knows the old file finds the old names and they cannot drift. */
-:root[data-theme='theme-{n}']{{
+:root[data-theme='{sel}']{{
   --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
@@ -1481,7 +2063,7 @@ CHROME[5] = """
 
 # The scope every rule is written under. `%s` is the theme number, so each file
 # can only ever style its own theme and five of them coexist in one document.
-ROOT = ":root[data-theme='theme-%s']"
+ROOT = ":root[data-theme='%s']"
 
 # --------------------------------------------------------------------------- #
 # `prefers-reduced-motion` FOR THE CHROME — ONE BLOCK, APPENDED TO ALL FIVE.
@@ -1745,11 +2327,16 @@ def scope(block, n):
 
 
 def build(t):
+    # "sel" is the data-theme value ("theme-1" for lane A, "pd-tele" for lane B)
+    # and "chrome" is WHICH of the five chrome families this theme wears. They are
+    # the same number in lane A; lane B keeps the family and changes the scope.
+    sel = t.get('sel') or ('theme-%d' % t['n'])
+    chrome = t.get('chrome', t['n'])
     skin = SKIN.format(
         S="@S@", B="@B@",
         slab_pct=int(round(float(t['slab_opacity']) * 100)),
-        brand_size="12px" if t['n'] in (2, 5) else "13px",
-        cap_pad_y="7px" if t['n'] != 3 else "9px",
+        brand_size=t.get('brand_size') or ("12px" if chrome in (2, 5) else "13px"),
+        cap_pad_y=t.get('cap_pad_y') or ("7px" if chrome != 3 else "9px"),
         cap_family=t.get('caption_family', 'var(--font-sans)'),
         closed_family=t.get('closed_family', 'var(--font-sans)'),
         time_family=t.get('time_family', 'var(--font-mono)'),
@@ -1772,9 +2359,10 @@ def build(t):
         err_text="color-mix(in srgb, var(--error) 72%, var(--text-primary))",
     )
     head = HEAD.format(
-        n=t['n'], name=t['name'], idea=t['idea'],
+        n=t['n'], sel=sel, name=t['name'], idea=t['idea'],
         slab=t['slab'], accent=t['accent'], text_primary=t['text_primary'],
         text_secondary=t['text_secondary'], text_muted=t['text_muted'],
+        time_past=t['time_past'],
         slab_strong=t['slab_strong'], slab_opacity=t['slab_opacity'],
         shadow_slab=t['shadow_slab'],
         text_confirmed=t['text_confirmed'], text_provisional=t['text_provisional'],
@@ -1795,29 +2383,797 @@ def build(t):
         font_caption=t.get('caption_family', 'var(--font-sans)'),
         font_closed=t.get('closed_family', 'var(--font-sans)'),
     )
-    return (head + scope(skin, t['n']) + "\n"
-            + scope(CHROME[t['n']], t['n']) + "\n"
-            + scope(t.get('sig', ''), t['n']) + "\n"
-            + scope(STRIP_GUARD, t['n']) + "\n"
-            + scope(MOTION, t['n']) + "\n")
+    return (head + scope(skin, sel) + "\n"
+            + scope(fill(CHROME[chrome], t), sel) + "\n"
+            + scope(fill(t.get('sig', ''), t), sel) + "\n"
+            + scope(STRIP_GUARD, sel) + "\n"
+            + scope(MOTION, sel) + "\n")
+
+# =========================================================================== #
+# LANE B -- "sotto-transcription-panel-designs.zip", the second zip.
+#
+# A DIFFERENT SET, not a second palette: its own @theme block, its own
+# components, its own five designs, and no shipped theme until now. It gets its
+# own two files and its own selector namespace (pd-*), so nothing here can
+# collide with theme-1..5 or cine-*. Every value is PARSED at generation time
+# from this zip, and a value the zip does not state is a BUILD FAILURE -- the
+# same contract lane A obeys.
+# =========================================================================== #
+
+PD_IDS = {1: 'pd-tele', 2: 'pd-bcast', 3: 'pd-mano', 4: 'pd-cine', 5: 'pd-instr'}
+PD_COLOUR_KEYS = ('ink', 'coal', 'paper', 'accent', 'amberx', 'moss')
+PD_LEADING = {'none': '1', 'tight': '1.25', 'snug': '1.375', 'normal': '1.5',
+              'relaxed': '1.625', 'loose': '2'}
+
+
+def pd_palette():
+    """The second zip's OWN @theme palette, index.css:11-16."""
+    lines = slurp(PD_CSS)
+    out, src = {}, {}
+    for i, l in enumerate(lines):
+        m = re.match(r'\s*--color-([a-z0-9-]+):\s*(#[0-9a-fA-F]{3,8});', l)
+        if m:
+            out[m.group(1)] = m.group(2).upper()
+            src[m.group(1)] = '%s:%d (--color-%s)' % (where(PD_CSS), i + 1, m.group(1))
+    for k in PD_COLOUR_KEYS:
+        if k not in out:
+            raise SystemExit('BUILD FAILURE: %s declares no --color-%s' % (where(PD_CSS), k))
+    return out, src
+
+
+def pd_fonts():
+    """--font-* from the same block, plus an index by the FIRST family name."""
+    lines = slurp(PD_CSS)
+    out, src, first = {}, {}, {}
+    for i, l in enumerate(lines):
+        m = re.match(r'\s*--font-([a-z0-9-]+):\s*(.+);', l)
+        if m:
+            key, val = m.group(1), m.group(2).strip()
+            out[key] = val
+            src[key] = '%s:%d (--font-%s)' % (where(PD_CSS), i + 1, key)
+            fm = re.match(r'"?([^",]+)"?', val)
+            if fm:
+                first[fm.group(1).strip()] = key
+    for k in ('mono', 'body'):
+        if k not in out:
+            raise SystemExit('BUILD FAILURE: %s declares no --font-%s' % (where(PD_CSS), k))
+    return out, src, first
+
+
+def pd_directions():
+    """The zip's OWN directions table (src/lib/scripts.ts), id -> identity."""
+    lines = slurp(PD_SCRIPTS)
+    start = at(lines, PD_SCRIPTS, 'export const DIRECTIONS')
+    out = {}
+    for i in range(start - 1, len(lines)):
+        m = re.match(r'\s*id:\s*(\d+),', lines[i])
+        if not m:
+            continue
+        n = int(m.group(1))
+        blk = '\n'.join(lines[i:i + 7])
+
+        def grab(field, blk=blk, n=n, i=i):
+            mm = re.search(r'%s:\s*"([^"]+)"' % field, blk)
+            if not mm:
+                raise SystemExit('BUILD FAILURE: no %s for direction %d at %s:%d'
+                                 % (field, n, where(PD_SCRIPTS), i + 1))
+            return mm.group(1)
+
+        out[n] = dict(key=grab('key'), name=grab('name'), font=grab('font'), line=i + 1)
+    if len(out) != 5:
+        raise SystemExit('BUILD FAILURE: %s states %d direction(s), not 5'
+                         % (where(PD_SCRIPTS), len(out)))
+    return out
+
+
+def pd_surface(cls, src):
+    """bg-[rgba(8,10,13,0.88)] -> (hex, alpha, label).
+
+    The second zip states its panel tints as an rgba() inside an arbitrary value
+    rather than as a hex with a slash opacity -- the one shape surface_in() does
+    not take.
+    """
+    m = re.search(r'bg-\[rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)\]', cls)
+    if not m:
+        raise SystemExit('BUILD FAILURE: no bg-[rgba(...)] surface at %s (%r)' % (src, cls))
+    hexv = '#%02X%02X%02X' % (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return (hexv, float(m.group(4)),
+            'bg-[rgba(%s,%s,%s,%s)]' % (m.group(1), m.group(2), m.group(3), m.group(4)))
+
+
+def pd_first_stop(raw, src):
+    """The first stop of a gradient the zip states in a style object."""
+    m = re.search(r'rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)', raw)
+    if not m:
+        raise SystemExit('BUILD FAILURE: no rgba() stop at %s (%r)' % (src, raw))
+    hexv = '#%02X%02X%02X' % (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return (hexv, float(m.group(4)),
+            'the first stop, rgba(%s,%s,%s,%s)' % (m.group(1), m.group(2), m.group(3), m.group(4)))
+
+
+def pd_text(cls, pal, src, required=True):
+    """text-[#f1ece2], text-[rgba(235,232,225,0.88)], text-white/85."""
+    m = re.search(r'text-\[#([0-9a-fA-F]{6})\]', cls)
+    if m:
+        return '#' + m.group(1).upper(), 'text-[#%s]' % m.group(1)
+    m = re.search(r'text-\[rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)\]', cls)
+    if m:
+        return ('rgba(%s, %s, %s, %s)' % (m.group(1), m.group(2), m.group(3), m.group(4)),
+                'text-[rgba(%s,%s,%s,%s)]' % (m.group(1), m.group(2), m.group(3), m.group(4)))
+    got = colours_in(cls, pal, src, required=required)
+    return got[0] if got else (None, None)
+
+
+def pd_bg(cls, pal, src):
+    """The colour of a marker the zip draws as a BACKGROUND (the dots, the bars)."""
+    m = re.search(r'bg-\[rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)\]', cls)
+    if m:
+        return ('rgba(%s, %s, %s, %s)' % (m.group(1), m.group(2), m.group(3), m.group(4)),
+                'bg-[rgba(%s,%s,%s,%s)]' % (m.group(1), m.group(2), m.group(3), m.group(4)))
+    m = re.search(r'bg-\[#([0-9a-fA-F]{6})\]', cls)
+    if m:
+        return '#' + m.group(1).upper(), 'bg-[#%s]' % m.group(1)
+    m = re.search(r'(?<![\w-])bg-(white|black)(?:/(\d+|\[[\d.]+\]))?(?![\w-])', cls)
+    if m:
+        return (rgba(NAMED[m.group(1)], alpha_tok(m.group(2))),
+                'bg-%s%s' % (m.group(1), '/' + m.group(2) if m.group(2) else ''))
+    m = re.search(r'(?<![\w-])bg-([a-z]+)(?![\w-])', cls)
+    if m and m.group(1) in pal:
+        return pal[m.group(1)].upper(), 'bg-%s' % m.group(1)
+    raise SystemExit('BUILD FAILURE: no background colour at %s (%r)' % (src, cls))
+
+
+def pd_classes(anchor):
+    """class_block, or the RAW source when the classes live in a template literal.
+
+    Three of this zip's markers (the dots and the eq bars) are inside
+    className={... ? "a" : "b"}, which class_block does not read; its failure is
+    loud, so the fallback is a decision and not a guess.
+    """
+    try:
+        return class_block(anchor)
+    except SystemExit:
+        raw, src = raw_block(anchor)
+        return raw, src + ' (template literal: read raw)'
+
+
+def pd_border(cls, src):
+    """border-white/10 -> (hex, alpha, label). NO border is a stated value here."""
+    m = re.search(r'(?<![\w-])border-(white|black)(?:/(\d+|\[[\d.]+\]))?(?![\w-])', cls)
+    if not m:
+        return ('#000000', 1.0, 'the zip states NO border on this panel')
+    return (NAMED[m.group(1)], alpha_tok(m.group(2)),
+            'border-%s%s' % (m.group(1), '/' + m.group(2) if m.group(2) else ''))
+
+
+def pd_alpha(colour, a):
+    """The same colour at a stated alpha, whatever shape it arrived in."""
+    m = re.match(r'rgba\((\d+), (\d+), (\d+), ([\d.]+)\)', colour)
+    if m:
+        return 'rgba(%s, %s, %s, %s)' % (m.group(1), m.group(2), m.group(3), '%g' % a)
+    if colour.startswith('#'):
+        return rgba(colour, a)
+    raise SystemExit('BUILD FAILURE: cannot set alpha on %r' % colour)
+
+
+def pd_weight(cls, src, default=None):
+    """Named weights AND the arbitrary one this zip uses (font-[450])."""
+    m = re.search(r'(?<![\w-])font-\[(\d+)\](?![\w-])', cls)
+    if m:
+        return m.group(1)
+    return u_weight(cls, src, default)
+
+
+def pd_leading(cls, src, default=None):
+    """leading-[1.6] and the named scale (leading-snug = 1.375)."""
+    m = re.search(r'(?<![\w-])leading-\[([^\]]+)\](?![\w-])', cls)
+    if m:
+        return m.group(1)
+    m = re.search(r'(?<![\w-])leading-(none|tight|snug|normal|relaxed|loose)(?![\w-])', cls)
+    if m:
+        return PD_LEADING[m.group(1)]
+    if default is not None:
+        return default
+    raise SystemExit('BUILD FAILURE: no leading-* at %s (%r)' % (src, cls))
+
+
+def pd_ramp(anchor):
+    """Math.max(0.6 - (n - 1 - i) * 0.08, 0.14) -> (newest, step, floor, label, src)."""
+    raw, src = raw_block(anchor)
+    m = re.search(r'Math\.max\(([\d.]+)\s*-\s*\(n\s*-\s*1\s*-\s*i\)\s*\*\s*([\d.]+),\s*([\d.]+)\)', raw)
+    if not m:
+        raise SystemExit('BUILD FAILURE: no opacity ramp at %s (%r)' % (src, raw))
+    return (float(m.group(1)), float(m.group(2)), float(m.group(3)),
+            'opacity Math.max(%s - (n - 1 - i) * %s, %s)' % (m.group(1), m.group(2), m.group(3)),
+            src)
+
+
+def pd_lum(v):
+    if v.startswith('#') and len(v) == 7:
+        return int(v[1:3], 16) + int(v[3:5], 16) + int(v[5:7], 16)
+    m = re.match(r'rgba\((\d+), (\d+), (\d+), ([\d.]+)\)', v)
+    if m:
+        return (int(m.group(1)) + int(m.group(2)) + int(m.group(3))) * float(m.group(4))
+    raise SystemExit('BUILD FAILURE: cannot rank %r' % v)
+
+
+# --------------------------------------------------------------------------- #
+# WHERE EACH OF THE FIVE STATES EACH THING. Every entry is a LITERAL substring of
+# the zip and at() turns it into a line number, so a moved anchor is a build
+# failure rather than a silently stale value.
+# --------------------------------------------------------------------------- #
+PD_SPEC = {
+    1: dict(
+        panel=(PD_PANELS, 'absolute inset-0 flex flex-col font-cond', 1),
+        frame_style=(PD_PANELS, 'linear-gradient(to right, rgba(5,7,10,0.82)', 1),
+        head=(PD_PANELS, 'flex items-center gap-2 px-7 pt-6', 1),
+        brand=(PD_PANELS, 'text-[11px] font-body font-semibold uppercase tracking-[0.34em] text-white/30', 1),
+        dot=(PD_PANELS, 'h-[5px] w-[5px] rounded-full', 3),
+        muted=(PD_PANELS, 'text-[11px] font-body font-semibold uppercase tracking-[0.34em] text-white/30', 1),
+        idle=(PD_PANELS, 'h-[5px] w-[5px] rounded-full', 3),
+        body=(PD_PANELS, 'mask-fade-top flex flex-1 flex-col justify-end gap-[14px]', 1),
+        closed=(PD_PANELS, 'line-in text-[25px] leading-[1.12] font-medium text-white', 1),
+        live=(PD_PANELS, 'tp-active ml-[7px] text-[32px] leading-[1.1] font-semibold text-white', 1),
+        ramp=(PD_PANELS, 'opacity: Math.max(0.6 - (n - 1 - i) * 0.08, 0.14)', 1),
+        meta=None, clock=None, time=None, live_text=None, live_style=None,
+        rail=None, closed_text=None,
+    ),
+    2: dict(
+        panel=(PD_PANELS, 'absolute inset-0 flex flex-col border border-white/10 bg-[rgba(8,10,13,0.88)] font-mono', 1),
+        frame_style=None,
+        head=(PD_PANELS, 'border-b border-white/10 px-4 pb-2.5 pt-3.5', 1),
+        brand=(PD_PANELS, 'text-[10px] font-semibold tracking-[0.18em] text-accent', 3),
+        dot=(PD_PANELS, 'h-[7px] w-[7px] rounded-full', 3),
+        muted=(PD_PANELS, 'tracking-[0.12em] text-white/45', 1),
+        idle=(PD_PANELS, 'h-[7px] w-[7px] rounded-full', 3),
+        body=(PD_PANELS, 'mask-fade-top flex flex-1 flex-col justify-end gap-[9px]', 1),
+        closed=(PD_PANELS, 'line-in text-[13.5px] leading-snug', 1),
+        closed_text=(PD_PANELS, 'text-white/55', 1),
+        live=(PD_PANELS, 'line-in border-l-2 border-accent bg-[rgba(232,87,79,0.08)] py-1.5 pl-3 pr-2', 1),
+        live_text=(PD_PANELS, 'text-[13.5px] leading-snug text-white', 1),
+        ramp=None,
+        time=(PD_PANELS, 'mr-2 text-white/25 tabular-nums', 1),
+        meta=(PD_PANELS, 'mt-1 text-[9.5px] text-white/25 tabular-nums', 1),
+        clock=(PD_PANELS, 'text-[12px] font-medium text-white/85 tabular-nums', 1),
+        live_style=None, rail=None,
+    ),
+    3: dict(
+        panel=(PD_PANELS, 'absolute inset-0 bg-[rgba(12,12,15,0.62)] backdrop-blur-[7px]', 1),
+        frame_style=None,
+        head=(PD_PANELS, 'absolute left-7 top-7 flex items-baseline gap-2', 1),
+        brand=(PD_PANELS, 'text-[10px] font-semibold uppercase tracking-[0.3em] text-white/28', 1),
+        dot=None,
+        muted=(PD_PANELS, 'text-[10px] font-semibold uppercase tracking-[0.3em] text-white/28', 1),
+        idle=(PD_PANELS, 'text-[10px] italic text-white/20', 1),
+        body=(PD_PANELS, 'mask-fade-top absolute inset-x-0 bottom-0 top-20 flex flex-col justify-end gap-[15px]', 1),
+        closed=(PD_PANELS, 'line-in font-body text-[18px] leading-[1.6] font-[450] text-[rgba(235,232,225,0.88)]', 1),
+        live=(PD_PANELS, 'font-body text-[18px] leading-[1.6] italic text-[rgba(235,232,225,0.52)]', 1),
+        ramp=None, time=None, live_text=None, live_style=None, rail=None, closed_text=None,
+        meta=(PD_PANELS, 'text-[10px] italic text-white/20', 1), clock=None,
+    ),
+    4: dict(
+        panel=(PD_PANELS, 'absolute inset-0 backdrop-blur-[3px]', 1),
+        frame_style=(PD_PANELS, 'linear-gradient(to top, rgba(4,5,8,0.72)', 1),
+        head=None, dot=None,
+        brand=(PD_PANELS, 'absolute bottom-7 right-9 font-cinema text-[13px] italic text-white/25', 1),
+        muted=(PD_PANELS, 'absolute bottom-7 right-9 font-cinema text-[13px] italic text-white/25', 1),
+        idle=(PD_PANELS, 'mr-2.5 text-white/25', 1),
+        body=(PD_PANELS, 'mask-fade-top absolute inset-x-0 bottom-0 top-0 flex flex-col justify-end gap-[26px]', 1),
+        closed=(PD_PANELS, 'line-in font-cinema text-[21px] leading-[1.55] font-medium text-[#f1ece2]', 1),
+        live=(PD_PANELS, 'border-l border-white/25 pl-4 font-cinema text-[21px] leading-[1.55] font-medium text-[#f1ece2]', 1),
+        ramp=(PD_PANELS, 'opacity: Math.max(0.92 - (n - 1 - i) * 0.13, 0.3)', 1),
+        live_style=(PD_PANELS, 'opacity: 0.5, filter: "blur(0.45px)"', 1),
+        meta=None, clock=None, time=None, live_text=None, rail=None, closed_text=None,
+    ),
+    5: dict(
+        panel=(PD_PANELS, 'absolute inset-0 flex flex-col overflow-hidden rounded-[10px] border border-white/[0.08] bg-[rgba(10,12,15,0.92)] font-instr', 1),
+        frame_style=None,
+        head=(PD_PANELS, 'flex items-center justify-between border-b border-white/[0.07] px-5 pb-3.5 pt-4', 1),
+        brand=(PD_PANELS, 'text-[11px] font-medium tracking-[0.24em] text-white/70', 1),
+        dot=(PD_PANELS, 'h-full w-[3px] rounded-sm bg-accent', 1),
+        muted=(PD_PANELS, 'text-[10px] tracking-[0.14em] text-white/30', 1),
+        idle=(PD_PANELS, 'w-[3px] rounded-sm bg-white/25', 1),
+        body=(PD_PANELS, 'mask-fade-top flex flex-1 flex-col justify-end gap-[13px]', 1),
+        closed=(PD_PANELS, 'line-in ml-[16px] text-[18px] leading-[1.3] font-medium text-white', 1),
+        live=(PD_PANELS, 'text-[23px] leading-[1.22] font-bold text-white', 1),
+        rail=(PD_PANELS, 'indicator-pulse w-[3px] shrink-0 self-stretch rounded-full bg-accent', 1),
+        ramp=(PD_PANELS, 'opacity: Math.max(0.5 - (n - 1 - i) * 0.06, 0.14)', 1),
+        meta=(PD_PANELS, 'text-[10px] tracking-[0.14em] text-white/30', 1),
+        clock=(PD_PANELS, 'text-[12px] text-white/40 tabular-nums', 1),
+        time=None, live_text=None, live_style=None, closed_text=None,
+    ),
+}
+
+
+PD_CSS_OUT = os.path.join(OUT, 'panel-designs.css')
+PD_JS_OUT = os.path.join(OUT, 'panel-designs.js')
+
+PD_IDEAS = {
+    1: 'The teleprompter: Barlow Condensed, one flat left-aligned column, the '
+       'closed rows stepping down a five-step opacity ramp and the live line '
+       'stepping OUT of that column by 7px at 32px. No rail, no border, no time.',
+    2: 'The broadcast monitor: IBM Plex Mono, a hairline-bordered chassis, a REC '
+       'lamp and a wall clock, and the live line as a bordered tinted block with '
+       'the accent rail. The only design here that prints a timecode per row.',
+    3: 'The manuscript: Instrument Sans on a notebook sheet, a hairline margin '
+       'rule at 27px, and the live line in italic UNDERLINED at 52 % -- the '
+       'correction visibly in progress. No indicator, no rail, no time.',
+    4: 'The cinema card: Fraunces, one wide column of large serif lines, the '
+       'closed rows on a 0.92 to 0.30 ramp, the live line a 50 % blurred left-'
+       'ruled quote, and the wordmark alone at the bottom right. No time.',
+    5: 'The instrument: Space Grotesk in a rounded 10px card, an eq meter in the '
+       'header, the live line at 23px bold behind a 3px accent rail, and the '
+       'closed rows indented 16px to clear it. A keycap footer. No time.',
+}
+
+PD_SIG = {
+    1: "@S@ .panel {\n"
+       "  background: linear-gradient(to right, rgba(5, 7, 10, 0.82) 0%, rgba(5, 7, 10, 0.42) 62%, rgba(5, 7, 10, 0.12) 100%);\n"
+       "  border-color: transparent;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "@S@ .panel__header { padding: 24px 28px 0; }\n"
+       "@S@ .wordmark { display: none; }\n"
+       "@S@ .chrome--tele .chrome__dot { width: 5px; height: 5px; border-radius: 999px; background: @idle@; }\n"
+       "@S@ body[data-state=\"live\"] .chrome--tele .chrome__dot { background: @accent@; }\n"
+       "@S@ .captions__body { padding: 96px 28px 56px; }\n"
+       "@S@ .captions__list { gap: 14px; }\n"
+       "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
+       "@B@ .caption--provisional .caption__text { margin-left: 7px; }\n"
+       "@S@ .caption__time, @S@ .caption__mark { display: none; }\n",
+    2: "@S@ .panel {\n  background: rgba(8, 10, 13, 0.88);\n"
+       "  border-color: @line@;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "@S@ .panel__header { padding: 14px 16px 10px; border-bottom: 1px solid @line@; }\n"
+       "@S@ .wordmark { display: none; }\n"
+       "@S@ .chrome--bcast .chrome__dot { width: 7px; height: 7px; border-radius: 999px; background: @idle@; }\n"
+       "@S@ body[data-state=\"live\"] .chrome--bcast .chrome__dot { background: @accent@; }\n"
+       "@S@ .chrome--bcast .chrome__tc { font-size: 12px; font-weight: 500; color: @text_primary@; font-variant-numeric: tabular-nums; }\n"
+       "@S@ .captions__body { padding: 80px 16px 12px; }\n"
+       "@S@ .captions__list { gap: 9px; }\n"
+       "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
+       "@B@ .caption--provisional { border-left: 2px solid @accent@; background: @prov_bg@; padding: 6px 8px 6px 12px; }\n"
+       "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n"
+       "@S@ .chrome--bcast[data-chrome=\"foot\"] { border-top: 1px solid @line@; padding: 10px 16px; }\n",
+    3: "@S@ .panel {\n  background: rgba(12, 12, 15, 0.62);\n"
+       "  border-color: transparent;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "@S@ .panel::before {\n  content: \"\";\n  position: absolute;\n"
+       "  left: 27px;\n  top: 32px;\n  bottom: 32px;\n  width: 1px;\n"
+       "  background: rgba(255, 255, 255, 0.07);\n}\n"
+       "@S@ .panel__header { padding: 28px 32px 0; }\n"
+       "@S@ .wordmark { display: none; }\n"
+       "@S@ .captions__body { padding: 80px 32px 32px 48px; }\n"
+       "@S@ .captions__list { gap: 15px; }\n"
+       "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
+       "@S@ .caption__time, @S@ .caption__mark { display: none; }\n",
+    4: "@S@ .panel {\n"
+       "  background: linear-gradient(to top, rgba(4, 5, 8, 0.72) 0%, rgba(4, 5, 8, 0.4) 55%, rgba(4, 5, 8, 0.14) 100%);\n"
+       "  border-color: transparent;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "@S@ .panel__header { padding: 32px 36px 0; }\n"
+       "@S@ .wordmark {\n  display: flex;\n  position: absolute;\n"
+       "  right: 36px;\n  bottom: 28px;\n  z-index: 4;\n}\n"
+       "@S@ .wordmark__mark { display: none; }\n"
+       "@S@ .wordmark__name { font-family: var(--font-sans); font-size: 13px; font-style: italic; font-weight: 400; letter-spacing: 0; color: @text_muted@; }\n"
+       "@S@ .wordmark__tag { display: none; }\n"
+       "@S@ .captions__body { padding: 128px 36px 80px; }\n"
+       "@S@ .captions__list { gap: 26px; }\n"
+       "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
+       "@B@ .caption__mark { margin-right: 10px; color: @text_muted@; }\n"
+       "@S@ .caption__time { display: none; }\n",
+    5: "@S@ .panel {\n  background: rgba(10, 12, 15, 0.92);\n"
+       "  border-color: @line@;\n  border-radius: 10px;\n  box-shadow: none;\n}\n"
+       "@S@ .panel__header { padding: 16px 20px 14px; border-bottom: 1px solid @line@; }\n"
+       "@S@ .wordmark { display: none; }\n"
+       "@S@ .chrome--inst .chrome__meter { display: flex; align-items: flex-end; gap: 3px; height: 18px; }\n"
+       "@S@ .chrome--inst .chrome__meter i { width: 3px; border-radius: 4px; background: @idle@; }\n"
+       "@S@ .chrome--inst .chrome__meter i:nth-child(1) { height: 5px; }\n"
+       "@S@ .chrome--inst .chrome__meter i:nth-child(2) { height: 8px; }\n"
+       "@S@ .chrome--inst .chrome__meter i:nth-child(3) { height: 4px; }\n"
+       "@S@ .chrome--inst .chrome__meter i:nth-child(n+4) { display: none; }\n"
+       "@S@ body[data-state=\"live\"] .chrome--inst .chrome__meter i { background: @accent@; }\n"
+       "@S@ .captions__body { padding: 64px 20px 24px; }\n"
+       "@S@ .captions__list { gap: 13px; }\n"
+       "@B@ .caption { padding: 0; border-left: 0; background: transparent; margin-left: 16px; }\n"
+       "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n"
+       "@S@ .chrome--inst[data-chrome=\"foot\"] { border-top: 1px solid @line@; padding: 12px 20px; }\n",
+}
+
+HEAD_PD = '''/* Sotto -- {name} ({sel}).
+ *
+ * GENERATED BY _main/_design-lane/gen_themes.py. Do not edit this file: edit the
+ * generator and regenerate. --trace prints every value below with the line of the
+ * zip it was read from.
+ *
+ * THE DESIGN IS sotto-transcription-panel-designs.zip ({key}), unpacked at
+ * _main/_design-lane/zips/panel-designs/: src/index.css (the @theme palette and
+ * the font stacks), src/components/panels.tsx (the five panel designs),
+ * src/components/Stage.tsx (the stage and the control cluster) and
+ * src/lib/scripts.ts (the zip's own directions table). This file is a PARSE of
+ * that source, not a recolour of another theme: the frame, the type tiers, the
+ * live-line treatment and the closed-row ramp below are the ones THIS design
+ * states, and a value the zip does not state fails the build.
+ *
+ * {idea}
+ *
+ * ONE DEVIATION, AND IT IS IN ALPHA ONLY. The zip renders its panel over its own
+ * opaque black stage (Stage.tsx:48) behind a 2-8px backdrop blur, and a WebView2
+ * window cannot blur the desktop behind it. So the panel tint is COMPOSITED over
+ * that black and --slab-opacity is {slab} for all five: the hue is the zip's, the
+ * alpha is Sotto's. The blur is dropped for the same reason.
+ *
+ * THE BUTTON CLUSTER IS THE ONE THING THIS FILE DOES NOT TAKE FROM THE ZIP, and
+ * it is the one thing the owner's rule allows to differ. These five designs have
+ * NO buttons in the panel at all: the zip puts its controls on the stage, at
+ * Stage.tsx:133 -- absolute bottom-4 left-4 flex flex-col items-start gap-2.5, a
+ * vertical column of chips at the stage's bottom-left (recorded as controls_pos in
+ * --trace). Sotto's own cluster (theme, clear, quit, font size, pause, hide) keeps
+ * SOTTO's placement in the panel header, exactly as the five themes of the first
+ * zip do, and this file only paints it.
+ *
+ * THE FIVE ARE NOT ONE SKIN. This zip has ONE accent (--color-accent: #E8574F)
+ * and the five designs differ in everything else; this one's accent token is
+ * {accent}, and its frame and its live line are its own. Three of the five share
+ * the accent swatch because the zip itself does.
+ */
+'''
+
+
+def build_panel_theme(i, pal, psrc, fonts, fsrc, first, dirs):
+    """One design, every token parsed from the second zip."""
+    spec = PD_SPEC[i]
+    d = dirs[i]
+    t = Theme(5 + i)
+    t['id'] = i
+    t['key'] = d['key']
+    t['name'] = d['name']
+    t['sel'] = PD_IDS[i]
+    t['chrome'] = i
+    t['label'] = d['name'] + ' \u00b7 painel'
+    dsrc = '%s:%d' % (where(PD_SCRIPTS), d['line'])
+    t.put('idea', PD_IDEAS[i], dsrc + ' (the direction this zip itself describes)')
+
+    # ---- identity, from the zip's own DIRECTIONS table ---------------------
+    fam = first.get(d['font'])
+    if fam is None:
+        raise SystemExit('BUILD FAILURE: %s:%d names font %r and %s declares no '
+                         'stack that starts with it'
+                         % (where(PD_SCRIPTS), d['line'], d['font'], where(PD_CSS)))
+    t.put('font_sans', fonts[fam],
+          '%s (scripts.ts:%d names %s)' % (fsrc[fam], d['line'], d['font']))
+    t.put('font_mono', fonts['mono'], fsrc['mono'])
+    t.put('slab_strong', pal['coal'], psrc['coal'])
+    t.put('space', SPACE,
+          'the shared Tailwind space scale (this zip writes px-[...] and gap-[...] directly)')
+
+    # ---- the frame ---------------------------------------------------------
+    panel, panel_src = pd_classes(spec['panel'])
+    if spec.get('frame_style'):
+        raw, rsrc = raw_block(spec['frame_style'])
+        slab, slab_a, slab_lbl = pd_first_stop(raw, rsrc)
+        panel_src = rsrc
+    else:
+        slab, slab_a, slab_lbl = pd_surface(panel, panel_src)
+    t.put('slab', over_black(slab, slab_a),
+          '%s (%s composited over the stage black)' % (panel_src, slab_lbl))
+    t.put('slab_opacity', SLAB_OPACITY,
+          'Sotto-side alpha: the zip blurs a live photo behind this panel (%s) and a '
+          'WebView2 window cannot blur the desktop' % where(PD_STAGE))
+    bc, ba, blbl = pd_border(panel, panel_src)
+    t.put('line', 'transparent' if ba >= 1.0 else rgba(bc, ba), '%s (%s)' % (panel_src, blbl))
+    t.put('line_strong', 'transparent' if ba >= 1.0 else rgba(bc, min(1.0, round(ba * 2.2, 2))),
+          '%s (%s x 2.2)' % (panel_src, blbl))
+    t.put('accent_soft', rgba(pal['accent'], ba if ba < 1.0 else 0.12),
+          '%s at the panel border alpha' % psrc['accent'])
+    rm = re.search(r'rounded-\[(\d+)px\]', panel)
+    t.put('radius_lg', (rm.group(1) + 'px') if rm else '0px',
+          panel_src if rm else '%s (the zip states NO radius on this panel)' % panel_src)
+    t.put('radius_md', '6px', '%s:134 (rounded-md, the stage control cluster)' % where(PD_STAGE))
+    t.put('radius_sm', '4px', '%s:291 (rounded-sm, the eq bars)' % where(PD_PANELS))
+    t.put('radius_dialog', '6px', '%s:134 (the zip rounds its controls, not its panel)' % where(PD_STAGE))
+    t.put('shadow_slab', 'none',
+          'the zip states NO shadow on this panel (no shadow-* anywhere in %s)' % where(PD_PANELS))
+
+    # ---- the accent: the colour THIS design's own marker uses --------------
+    if i == 3:
+        t.put('accent', pal['amberx'], '%s (scripts.ts:%d tags this direction "amberx")'
+              % (psrc['amberx'], d['line']))
+    elif i == 4:
+        t.put('accent', '#F1ECE2', '%s:235 (this design has no red; its live line is the ink)'
+              % where(PD_PANELS))
+    else:
+        t.put('accent', pal['accent'], psrc['accent'])
+
+    # ---- the type tiers ----------------------------------------------------
+    brand, brand_src = pd_classes(spec['brand'])
+    closed, closed_src = pd_classes(spec['closed'])
+    live, live_src = pd_classes(spec['live'])
+    closed_c, closed_csrc = (pd_classes(spec['closed_text']) if spec.get('closed_text')
+                             else (closed, closed_src))
+    live_c, live_csrc = (pd_classes(spec['live_text']) if spec.get('live_text')
+                         else (live, live_src))
+    meta, meta_src = (pd_classes(spec['meta']) if spec.get('meta') else (brand, brand_src))
+    clock, clock_src = (pd_classes(spec['clock']) if spec.get('clock') else (meta, meta_src))
+    muted, muted_src = (pd_classes(spec['muted']) if spec.get('muted') else (meta, meta_src))
+
+    t.put('size_caption', u_size(live_c, live_csrc), live_csrc)
+    t.put('leading_caption', pd_leading(live_c, live_csrc, '1.4'), live_csrc)
+    t.put('weight_caption', pd_weight(live_c, live_csrc, '400'), live_csrc)
+    t.put('tracking_caption', u_tracking(live_c, live_csrc, '0'), live_csrc)
+    t.put('caption_upper', 'uppercase' if u_has(live_c, 'uppercase') else 'none', live_csrc)
+    t.put('cap_align', 'center' if u_has(live_c, 'text-center') else 'left', live_csrc)
+    t.put('size_closed', u_size(closed, closed_src), closed_src)
+    t.put('leading_closed', pd_leading(closed, closed_src, '1.4'), closed_src)
+    t.put('weight_closed', pd_weight(closed, closed_src, '400'), closed_src)
+    t.put('size_chrome', u_size(brand, brand_src), brand_src)
+    t.put('tracking_brand', u_tracking(brand, brand_src, '0'), brand_src)
+    t.put('weight_brand', pd_weight(brand, brand_src, '400'), brand_src)
+    braw, braw_src = raw_block(spec['brand'])
+    caps = re.search(r'>\s*([A-Z][A-Z0-9 /\u00b7.\-]{2,})\s*<', braw)
+    if u_has(brand, 'uppercase'):
+        t.put('brand_upper', 'uppercase', '%s (uppercase)' % brand_src)
+    elif caps:
+        t.put('brand_upper', 'uppercase',
+              '%s (the zip writes its own mark in caps: %s)' % (braw_src, caps.group(1).strip()))
+    else:
+        t.put('brand_upper', 'none', brand_src)
+    t.put('size_meta', u_size(meta, meta_src), meta_src)
+    t.put('size_small', u_size(meta, meta_src), meta_src)
+    t.put('size_time', u_size(clock, clock_src), clock_src)
+
+    # ---- the four text tiers ----------------------------------------------
+    c_hex, c_lbl = pd_text(closed_c, pal, closed_csrc, required=False)
+    if c_hex is None:
+        raise SystemExit('BUILD FAILURE: no closed-row colour at %s' % closed_csrc)
+    if spec.get('ramp'):
+        newest, step, floor, ramp_lbl, ramp_src = pd_ramp(spec['ramp'])
+        t.put('text_secondary', pd_alpha(c_hex, newest),
+              '%s (%s) at %s' % (closed_csrc, c_lbl, ramp_lbl))
+        t.put('time_past', pd_alpha(c_hex, floor),
+              '%s (the ramp FLOOR: the oldest row this design will draw)' % ramp_src)
+    else:
+        t.put('text_secondary', c_hex, '%s (%s)' % (closed_csrc, c_lbl))
+        if spec.get('time'):
+            tc, tsrc = pd_classes(spec['time'])
+            th, tl = pd_text(tc, pal, tsrc)
+            t.put('time_past', th, '%s (%s)' % (tsrc, tl))
+        else:
+            t.put('time_past', c_hex,
+                  '%s (%s; this design states ONE colour for every closed row)'
+                  % (closed_csrc, c_lbl))
+
+    p_hex, p_lbl = pd_text(live_c, pal, live_csrc)
+    prov = p_hex
+    if spec.get('live_style'):
+        raw, rsrc = raw_block(spec['live_style'])
+        om = re.search(r'opacity:\s*([\d.]+)', raw)
+        if om:
+            prov = pd_alpha(p_hex, float(om.group(1)))
+            p_lbl = '%s at opacity %s (%s)' % (p_lbl, om.group(1), rsrc)
+    t.put('text_provisional', prov, '%s (%s)' % (live_csrc, p_lbl))
+    t.put('text_confirmed', t['text_secondary'],
+          '%s (the settled tier: this design draws its closed rows there)' % closed_csrc)
+    t.put('text_primary', max((t['text_confirmed'], t['text_provisional']), key=pd_lum),
+          'derived: the brighter of the settled tier and the live line')
+    m_hex, m_lbl = pd_text(muted, pal, muted_src)
+    t.put('text_muted', m_hex, '%s (%s: the chrome/meta tier)' % (muted_src, m_lbl))
+    idle_cls, idle_src = (pd_classes(spec['idle']) if spec.get('idle') else (muted, muted_src))
+    i_hex, i_lbl = pd_text(idle_cls, pal, idle_src, required=False)
+    if i_hex is None:
+        i_hex, i_lbl = pd_bg(idle_cls, pal, idle_src)
+    t.put('idle', i_hex, '%s (%s: the resting marker)' % (idle_src, i_lbl))
+    t.put('ok', pal['moss'], psrc['moss'])
+    t.put('busy', pal['amberx'], psrc['amberx'])
+    t.put('error', pal['accent'], psrc['accent'])
+
+    # ---- the live line: rail, pad, wash, decorations ----------------------
+    rail_w, rail_src = '0px', '%s (the zip states no rail on this live line)' % live_src
+    m = re.search(r'border-l-(\d+)(?![\w.])', live)
+    if m:
+        rail_w = m.group(1) + 'px'
+        rail_src = '%s (border-l-%s)' % (live_src, m.group(1))
+    if spec.get('rail'):
+        rc, rsrc = pd_classes(spec['rail'])
+        rw, rlbl = dim_in(rc, 'w', rsrc)
+        rail_w, rail_src = rw, '%s (%s)' % (rsrc, rlbl)
+    t.put('prov_rail_w', rail_w, rail_src)
+    t.put('prov_rail_style', 'solid', 'the zip draws its rails solid')
+    pad, pad_src = '0px', '%s (no left pad: the live line sits in a flex column)' % live_src
+    pm = re.search(r'(?<![\w-])pl-(%s)(?![\w.])' % STEP, live)
+    if pm and float(pm.group(1)) in SCALE and float(pm.group(1)).is_integer():
+        pad = 'var(--space-%d)' % int(float(pm.group(1)))
+        pad_src = '%s (pl-%s)' % (live_src, pm.group(1))
+    t.put('prov_pad', pad, pad_src)
+    bg, bg_src = 'transparent', '%s (no wash on this live line)' % live_src
+    bm = re.search(r'bg-\[rgba\([^)]*\)\]', live)
+    if bm:
+        bg, bg_src = bm.group(0)[4:-1], '%s (%s)' % (live_src, bm.group(0))
+    t.put('prov_bg', bg, bg_src)
+    extra = []
+    if u_has(live_c, 'italic'):
+        extra.append('font-style: italic')
+    if u_has(live_c, 'underline'):
+        extra.append('text-decoration: underline')
+        dm = re.search(r'(?<![\w-])decoration-([a-z]+)/(\d+)(?![\w-])', live_c)
+        if dm:
+            dcol = NAMED.get(dm.group(1)) or pal.get(dm.group(1))
+            if dcol is None:
+                raise SystemExit('BUILD FAILURE: unknown decoration colour %r at %s'
+                                 % (dm.group(1), live_csrc))
+            extra.append('text-decoration-color: %s' % rgba(dcol, alpha_tok(dm.group(2))))
+        dm = re.search(r'decoration-\[(\d+px)\]', live_c)
+        if dm:
+            extra.append('text-decoration-thickness: %s' % dm.group(1))
+        dm = re.search(r'underline-offset-\[(\d+px)\]', live_c)
+        if dm:
+            extra.append('text-underline-offset: %s' % dm.group(1))
+    if spec.get('live_style'):
+        raw, rsrc = raw_block(spec['live_style'])
+        fm = re.search(r'filter:\s*"blur\(([\d.]+px)\)"', raw)
+        if fm:
+            extra.append('filter: blur(%s)' % fm.group(1))
+            extra.append('opacity: %s' % re.search(r'opacity:\s*([\d.]+)', raw).group(1))
+    t.put('prov_extra', '; '.join(extra) + ';' if extra else '',
+          '%s (%s)' % (live_csrc, ', '.join(extra) or 'no decoration'))
+    t.put('prov_style', 'normal', 'the live line keeps the face the zip gives it')
+    t.put('closed_rail_w', '0px', '%s (the zip draws no rail on a closed row)' % closed_src)
+    t.put('time_live', 'var(--text-muted)', 'Sotto chrome: the live clock is this design\'s meta tier')
+    t.put('live_shadow', 'none', 'the zip states no glow on this live line')
+    t.put('time_family', 'var(--font-mono)' if spec.get('time') else 'var(--font-sans)',
+          '%s (the row timecode)' % (spec.get('time') and pd_classes(spec['time'])[1] or closed_src))
+    t['sig'] = PD_SIG[i]
+    t.put('controls_pos', 'absolute bottom-4 left-4 flex flex-col items-start gap-2.5',
+          '%s:133 (the zip puts its own controls here -- on the STAGE, not in the panel; '
+          'Sotto\'s chrome cluster keeps Sotto\'s placement, the one permitted deviation)'
+          % where(PD_STAGE))
+    return t
+
+
+def parsed_panel_designs():
+    pal, psrc = pd_palette()
+    fonts, fsrc, first = pd_fonts()
+    dirs = pd_directions()
+    return [build_panel_theme(i, pal, psrc, fonts, fsrc, first, dirs) for i in (1, 2, 3, 4, 5)]
+
+
+def build_panel_design(t):
+    """The same body, with THIS set's own provenance header in front of it."""
+    text = build(t)
+    i = text.index(ROOT % t['sel'])
+    rest = text[text.rindex('*/', 0, i) + 2:]
+    return HEAD_PD.format(name=t['name'], sel=t['sel'], key=t['key'], idea=t['idea'],
+                          slab=t['slab_opacity'], accent=t['accent']) + rest
+
+
+def write_panel_designs(themes):
+    rows = [t for t in themes if t.get('sel')]
+    if len(rows) != 5:
+        raise SystemExit('BUILD FAILURE: %d panel-design theme(s), not 5' % len(rows))
+    text = '\n'.join(build_panel_design(t) for t in rows)
+    with open(PD_CSS_OUT, 'w', encoding='utf-8', newline='\r\n') as fh:
+        fh.write(text)
+    print('wrote %-46s %6d bytes  %4d lines'
+          % (PD_CSS_OUT, len(text.encode('utf-8')), text.count('\n')))
+
+
+def write_panel_manifest(themes):
+    """panel-designs.js: the manifest FRAGMENT, same shape as the skins precedent."""
+    rows = [t for t in themes if t.get('sel')]
+    if len(rows) != 5:
+        raise SystemExit('BUILD FAILURE: %d panel-design entry(ies), not 5' % len(rows))
+    out = []
+    out.append('/* panel-designs.js -- the manifest FRAGMENT for the second zip.')
+    out.append(' *')
+    out.append(' * GENERATED BY _main/_design-lane/gen_themes.py. Do not edit this file:')
+    out.append(' * edit the generator and regenerate.')
+    out.append(' *')
+    out.append(' * WHY A FRAGMENT AND NOT A THEME: app/panel/themes/themes.js carries the five')
+    out.append(' * designs of sotto-app-design-directions.zip, and app/panel/themes/skins.js set')
+    out.append(' * the precedent -- a second file, loaded after the manifest, that pushes its own')
+    out.append(' * entries into SottoThemeManifest.themes. This is that file for')
+    out.append(' * sotto-transcription-panel-designs.zip, whose five designs REUSE the same five')
+    out.append(' * names as a different implementation (own palette, own components). They are a')
+    out.append(' * separate set, they have their own stylesheet, and they are loaded by')
+    out.append(' * app/panel/panel.html in two lines:')
+    out.append(' *   <link rel="stylesheet" href="themes/panel-designs.css" />   (in <head>)')
+    out.append(' *   <script src="themes/panel-designs.js"></script>              (after themes.js)')
+    out.append(' *')
+    out.append(' * The swatch of each entry IS that design\'s own accent token in the stylesheet:')
+    for t in rows:
+        out.append(' *   %-9s %s  <- %s' % (t['sel'], t['accent'], t['src']['accent']))
+    out.append(' */')
+    out.append('(function (root) {')
+    out.append("  'use strict';")
+    out.append('  var fragment = [')
+    for k, t in enumerate(rows):
+        out.append('    {')
+        out.append("      name: '%s'," % t['sel'])
+        out.append("      label: '%s'," % t['label'])
+        out.append("      file: 'themes/panel-designs.css',")
+        out.append("      swatch: '%s'," % t['accent'])
+        out.append("      group: 'panel-designs',")
+        out.append("      groupLabel: 'Pain\u00e9is (2.\u00ba zip)'")
+        out.append('    }' + (',' if k < len(rows) - 1 else ''))
+    out.append('  ];')
+    out.append('  root.SOTTO_THEME_MANIFEST_FRAGMENT = fragment;')
+    out.append('  var manifest = root.SottoThemeManifest;')
+    out.append('  if (!manifest || !manifest.themes || typeof manifest.themes.push !== "function") {')
+    out.append('    return;')
+    out.append('  }')
+    out.append('  for (var i = 0; i < fragment.length; i += 1) {')
+    out.append('    manifest.themes.push(fragment[i]);')
+    out.append('  }')
+    out.append("})(typeof window !== 'undefined' ? window : this);")
+    out.append('')
+    text = '\n'.join(out)
+    with open(PD_JS_OUT, 'w', encoding='utf-8', newline='\r\n') as fh:
+        fh.write(text)
+    print('wrote %-46s %6d bytes  %4d lines'
+          % (PD_JS_OUT, len(text.encode('utf-8')), text.count('\n')))
+
+
+def trace_table(themes):
+    """The provenance table: every emitted token and the zip line it came from."""
+    out = []
+    for t in themes:
+        # Resolve the signature markers HERE too, so the table below carries the
+        # rows they turn into: the markers are the one place a theme states a
+        # value the token layer does not, and an empty ledger line would hide it.
+        build(t)
+        out.append('### %s -- %s' % (t.get('sel') or ('theme-%d' % t['n']), t['name']))
+        out.append('')
+        out.append('| token | value | source |')
+        out.append('|---|---|---|')
+        for (n, token, value, src) in LEDGER:
+            if n != t['n'] or token.startswith('sig:'):
+                continue
+            val = value if isinstance(value, str) else ' / '.join(str(v) for v in value)
+            out.append('| `%s` | `%s` | `%s` |' % (token, val, src))
+        sigrows = [(k, v) for (n, k, v, s) in LEDGER if n == t['n'] and k.startswith('sig:')]
+        out.append('')
+        out.append('signature markers resolved: ' + (', '.join(
+            '`%s`=`%s`' % (k, v) for (k, v) in sigrows) or 'none'))
+        out.append('')
+    return '\n'.join(out)
+
 
 def main():
+    argv = list(sys.argv[1:])
+    if '--help' in argv or '-h' in argv:
+        print(__doc__)
+        return
+    themes = parsed_themes(IDEAS) + parsed_panel_designs()
+
+    have = {}
+    for (n, token, value, src) in LEDGER:
+        have.setdefault(n, set()).add(token)
+    missing = []
+    for t in themes:
+        for key in REQUIRED:
+            if key not in have.get(t['n'], ()):
+                missing.append('theme-%d:%s' % (t['n'], key))
+    if missing:
+        raise SystemExit('BUILD FAILURE: no provenance for %d token(s): %s'
+                         % (len(missing), ', '.join(missing)))
+
+    if '--trace' in argv:
+        print(trace_table(themes))
+    if '--trace' in argv or '--check' in argv:
+        print('checked %d theme(s), %d ledger row(s), 0 without provenance'
+              % (len(themes), len(LEDGER)))
+        return
+
     os.makedirs(OUT, exist_ok=True)
-    for t in THEMES:
+    for t in [x for x in themes if not x.get('sel')]:
         path = os.path.join(OUT, 'theme-%d.css' % t['n'])
         text = build(t)
         # CRLF, NOT LF, and that is measured rather than a preference. The five
-        # files on disk in `app/panel/themes/` are 100 % CRLF (theme-1: 633 CRLF /
-        # 0 bare LF, and the same N/N for all five), and `core.autocrlf=true`, so
+        # files in `app/panel/themes/` are 100 % CRLF and core.autocrlf=true, so
         # CRLF is this working tree's convention. Writing LF here would rewrite
-        # every line of every theme on the next generation run — a whole-file diff
-        # that buries the one line someone meant to change. Verified before the
-        # change: with `newline='\n'` the output was byte-identical to disk
-        # EXCEPT for exactly +1 byte per line.
+        # every line of every theme on the next generation run -- a whole-file
+        # diff that buries the one line someone meant to change.
         with open(path, 'w', encoding='utf-8', newline='\r\n') as fh:
             fh.write(text)
         print('wrote %-46s %6d bytes  %4d lines' % (path, len(text.encode('utf-8')),
                                                    text.count('\n')))
+    write_panel_designs(themes)
+    write_panel_manifest(themes)
 
 
 if __name__ == '__main__':

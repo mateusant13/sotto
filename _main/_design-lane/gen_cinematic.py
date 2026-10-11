@@ -30,13 +30,17 @@ WHAT IT DELIBERATELY DOES NOT DO: it does not touch `theme-1..5.css` (owned by
 `gen_themes.py`), it does not invent a colour, and it does not write a theme it could
 not read a palette for.
 
-THE TWO DECISIONS THAT ARE MINE AND NOT THE ZIP'S, both recorded here because a
+THE THREE DECISIONS THAT ARE MINE AND NOT THE ZIP'S, all recorded here because a
 reviewer should be able to challenge them:
-  1. `--size-caption` takes the MAX of the source's `clamp(floor, vw, max)`. The
-     source's own `vw` term is a stage unit: at our 380 px column `2.7vw` is 10 px,
-     so the literal resolution of the zip's own CSS would be its FLOOR (20 px) and the
-     caption would look nothing like the zip looks at full size. The max is the size
-     the design was drawn for.
+  1. `--size-caption` is the source's OWN `clamp(floor, vw, max)`, emitted VERBATIM —
+     the shape `themes/theme-1.css:90` already ships
+     (`--size-caption: clamp(30px, 4.6vw, 54px)`). An earlier revision of this file
+     BAKED THE MAX (its own comment read `DECISION 1 … the clamp's MAX, not its
+     floor`) and that OVERSIZED every caption: at our 380 px column the zip's own CSS
+     resolves `clamp(20px,2.7vw,31px)` to 20 px, not 31 px — a 55 % oversize on the one
+     line the owner actually reads. Emitting the clamp keeps BOTH ends: the floor in the
+     380 px panel column, the `vw` term on the 1040 px strip, where the same design
+     is 28 px wide.
   2. Lines older than the newest get `0.72` of the caption size and `--text-secondary`.
      The zips only ever show ONE live line, so they state no treatment for the ones
      our panel keeps; 0.72 is the smallest number that recedes without becoming
@@ -48,6 +52,7 @@ Run: `py -3 _main/_design-lane/gen_cinematic.py`
 from __future__ import annotations
 
 import io
+import math
 import os
 import re
 import subprocess
@@ -61,27 +66,40 @@ CSS_OUT = os.path.join(THEMES_DIR, 'cinematic.css')
 JS_OUT = os.path.join(THEMES_DIR, 'themes.js')
 BACKDROPS = os.path.join(THEMES_DIR, 'backdrops')
 SOURCE = os.path.join(HERE, 'zips', 'cinematic', 'src', 'themes.ts')
+# The OTHER two zips contribute data through their own modules, but one fact of
+# `cinematic-2` is only in that zip: each design's own PARTICLES. Read from the source,
+# never typed here.
+C2_SOURCE = os.path.join(HERE, 'zips', 'cinematic-2', 'src', 'themes.ts')
 
 # filename -> the URL it came from, so the licence note cannot drift from the files.
 PHOTO_SRC = {}
 
 PREFIX = 'cine-'
 
-# THE OWNER'S FILTER, verbatim: *"os designs, inclua aqueles que nao sao 'agressivos
-# demais'"*. Three of this zip's ten designs are out, each for a reason the source
-# itself carries, never for taste:
-#   motel-glow  — the zip's only caption GLOW (`0 0 26px rgba(229,143,164,0.14)`)
-#   paper-moon  — the only ALL-CAPS caption at 0.16em tracking, and the only light
-#                 panel, i.e. the two extremes at once
-#   last-reel   — the plan's own finding: its caption class is `warm-hour`'s at weight
-#                 500, a one-step grade of a design already shipped
+# ALL TEN DESIGNS SHIP (owner's rule for this lane, verbatim: *"eu quero que, cada tema
+# encontrado dentro dos .zip, fiquem com o design IGUAL, e so muda a posicao dos
+# botoes"*). An earlier revision shipped SEVEN and filtered three out on the strength of
+# an OLDER line of his (*"os designs, inclua aqueles que nao sao 'agressivos demais'"*)
+# plus the plan's finding that `last-reel`'s caption class is `warm-hour`'s at weight
+# 500. Both reasons are real; neither is a reason to DROP a design he asked to see. A
+# design that is a one-step grade of another is what the A/B/C picker exists for, and the
+# two extremes the filter feared are the two most distinctive themes of the ten:
+#   motel-glow  the zip's only caption GLOW (`0 0 26px rgba(229,143,164,0.14)` on the
+#               slab shadow) and its only rose neon palette
+#   paper-moon  the only ALL-CAPS caption at 0.16em tracking, and the only LIGHT panel
+#               (`rgba(240,241,238,0.94)`, dark type on it — `color-scheme: light`)
+#   last-reel   display italic at weight 500 — the same grade as warm-hour, at a lower
+#               max, over the zip's only analog-gold palette
 SHIP = [
     'midnight-rain',   # fade
     'warm-hour',       # fade, display italic — the zip's only italic caption
     'velvet-dusk',     # rise — the only rise, the largest per-word travel
     'study-light',     # type + mono — the zip's only monospace caption
-    'tideline',        # blur (per character)
-    'quiet-streets',   # fade, 0.09em tracking — its only type difference
+    'tideline',        # blur (per character) — IDENTICAL to north-fog, see GROUPS
+    'motel-glow',      # fade, display italic 500 — the zip's only caption GLOW
+    'paper-moon',      # type, mono, UPPERCASE 0.16em — the zip's only LIGHT panel
+    'quiet-streets',   # fade, 0.09em tracking
+    'last-reel',       # fade, display italic 500 — warm-hour's grade, lower max
     'north-fog',       # blur — byte-identical to tideline but for the palette
 ]
 
@@ -92,9 +110,21 @@ RENAME = {'tideline': 'tideline-body'}
 
 # The near-duplicate pairs, so the panel can offer them as alternatives to compare
 # (the owner: *"pros que sao bem parecidos, faça outra alternativa, a b c testing"*).
-# `groupLabel` is written only on the first member.
+# `groupLabel` is written only on the first member, and it may only claim what the CSS
+# in this file actually does — a label that advertises a difference the stylesheet does
+# not have is the exact defect this lane exists to remove.
+#
+# THIS PAIR IS PROVEN IDENTICAL, NOT MERELY SIMILAR. `zips/cinematic/src/themes.ts:161-163`
+# (tideline) and `:298-300` (north-fog) are CHARACTER-FOR-CHARACTER the same caption
+# class — `font-body font-light text-[clamp(20px,2.6vw,30px)] leading-[1.45]` — with the
+# same reveal (`blur`). The two designs ARE the same body in two palettes, so shipping
+# them alike is CORRECT and the label says so. Every other pair in this set differs
+# structurally; the lane's report carries the pairwise set-difference for all of them.
 GROUPS = {
-    'abc-rain-body': ('A/B: o mesmo corpo, duas paletas', ['tideline-body', 'north-fog']),
+    'abc-rain-body': ('A/B: o MESMO corpo — `themes.ts:161-163` e `:298-300` são '
+                      'idênticos caractere a caractere (mesma classe de caption, mesmo '
+                      'reveal `blur`); só a paleta muda',
+                      ['tideline-body', 'north-fog']),
 }
 
 # ── the token contract ────────────────────────────────────────────────────────────
@@ -157,6 +187,134 @@ REVEALS = {
     'blur': ('char', 'cine-blur', '380ms', 'cubic-bezier(0.22, 1, 0.36, 1)', '38ms'),
     'type': ('none', None, None, None, '45ms'),
 }
+
+
+# ── WHERE THE CONTROL CLUSTER SITS — the owner's ONE permitted deviation ──────────
+#
+# The owner's rule, verbatim: *"eu quero que, cada tema encontrado dentro dos .zip,
+# fiquem com o design IGUAL, e so muda a posicao dos botoes"*. So a theme may differ
+# from its design in exactly ONE place, and this table is that place. Every position
+# below is READ OUT OF THE DESIGN'S OWN CHROME; none of them is a taste of mine:
+#
+#   cinematic   `LiveCaption.tsx:74-79` centres the caption column at `bottom-[5.5vh]`
+#               and `:81-99` puts the transport row (`grid h-9 w-9 rounded-full border
+#               border-white/15 bg-black/25`) in the MIDDLE of that column, above the
+#               type. Position: centred, at the foot of the stage.
+#   cinematic-2 `TopChrome.tsx:180-232` (`chrome: 'bar'`) keeps every control at the
+#               RIGHT of a 62 px top bar; `:241-290` (`chrome: 'float'`) floats a
+#               CENTRED pill at `top-4 left-1/2` with the brand alone at the left.
+#   cinematic-1 states NO caption-side cluster at all: its controls live inside the
+#               right-hand history panel (`App.tsx:101-115`) and its only floating
+#               cluster is the design switcher at `DesignSwitcher.tsx:20`
+#               (`anim-chrome pointer-events-auto absolute left-7 top-[240px]
+#               w-[272px]`) — a vertical column down the LEFT edge, under the brand
+#               (`Chrome.tsx:69` is why the top-left is not taken: the brand owns it).
+#
+# NOT taken from any design: the cluster's INTERNAL ORDER. `panel.html:589-590` fixes
+# it and `panel.css` forbids a theme from reordering it — a theme may MOVE the row,
+# never shuffle it. And every panel rule is qualified by `body[data-surface='panel']`
+# because the strip hides `.panel__header` outright (`panel.css:1440-1445`): on the
+# `100 px strip the cluster is invisible whatever a theme does to it, so the strip's own
+# row is what moves there (`justify-content` on `.stripbar`).
+CLUSTERS = {
+    'column-center': (
+        ("the zip's own position — the caption column is centred at the foot of the",
+         "stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of",
+         "it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so",
+         "the row goes below it and the list reserves the band it occupies. THE ORDER",
+         "IS INVERTED against the zip, which draws its controls ABOVE the caption: a",
+         "foot anchor cannot put a row above a list that grows upward, and the",
+         "deviation is named here rather than hidden.",
+         "ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE",
+         "chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs",
+         "between them is the caption, the palette and the backdrop."),
+        ("@S@ body[data-surface='panel'] .panel__controls {",
+         "  position: absolute;",
+         "  left: 50%;",
+         "  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */",
+         "  bottom: 48px;",
+         "  transform: translateX(-50%);",
+         "  /* the caption rows are positioned: without this they paint over it */",
+         "  z-index: 4;",
+         "}",
+         "/* The band the row occupies, so the newest line is never painted through. */",
+         "@S@ body[data-surface='panel'] .captions__list { padding-bottom: 36px; }",
+         "/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the",
+         " * one that moves. */",
+         "@S@ body[data-surface='strip'] .stripbar { justify-content: center; }"),
+    ),
+    'bar-right': (
+        ("the zip's own position — `TopChrome.tsx:180-232`: every control at the RIGHT",
+         "of a 62 px top bar (`className=\"ml-auto flex items-center gap-2.5\"`), which",
+         "is exactly where `panel.css` already puts ours. So this theme does not MOVE",
+         "the cluster; it gives the header the BAR the zip draws around it — the",
+         "source's own 180° gradient and `backdropFilter: blur(10px)` — which is the",
+         "part of that design our header did not have."),
+        ("@S@ body[data-surface='panel'] .panel__header {",
+         "  background-image: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab) 88%, transparent), transparent);",
+         "  backdrop-filter: blur(10px);",
+         "  border-bottom: 1px solid var(--line);",
+         "}",
+         "@S@ body[data-surface='strip'] .stripbar { justify-content: flex-end; }"),
+    ),
+    'pill-center': (
+        ("the zip's own position — `TopChrome.tsx:260-290`: a CENTRED floating pill at",
+         "`absolute top-4 left-1/2 -translate-x-1/2`, `rounded-full`, `background:",
+         "var(--surface)`, `backdropFilter: blur(var(--blur))`, `border: 1px solid",
+         "var(--line)`, holding every control, with the brand alone at the left",
+         "(`:241`). The pill is drawn with this theme's own `--bg-slab-strong` (this",
+         "generator's name for the zip's `--surface`) and its own `--line`."),
+        ("@S@ body[data-surface='panel'] .panel__controls {",
+         "  position: absolute;",
+         "  left: 50%;",
+         "  top: 14px;   /* the slab's own 14 px padding: the header's row */",
+         "  transform: translateX(-50%);",
+         "  z-index: 4;",
+         "  padding: 0 8px;",
+         "  border: 1px solid var(--line);",
+         "  border-radius: 999px;",
+         "  background: var(--bg-slab-strong);",
+         "  backdrop-filter: blur(10px);",
+         "}",
+         "@S@ body[data-surface='strip'] .stripbar { justify-content: center; }"),
+    ),
+    'rail-left': (
+        ("the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the",
+         "brand alone at `absolute left-7 top-6`, and its only floating control cluster",
+         "is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome",
+         "pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column",
+         "down the LEFT edge. The cluster leaves the header and becomes that column, at",
+         "our 28 px control size.",
+         "DEVIATION, named: the source anchors the column 240 px below the top, i.e.",
+         "just under its own brand — and the brand here lives in the header the cluster",
+         "is leaving, so the column is centred vertically instead of typed at 240 px.",
+         "NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted",
+         "OVER the stage, and this column is 28 px wide."),
+        ("@S@ body[data-surface='panel'] .panel__controls {",
+         "  position: absolute;",
+         "  left: 14px;",
+         "  top: 50%;",
+         "  transform: translateY(-50%);",
+         "  flex-direction: column;",
+         "  z-index: 4;",
+         "}",
+         "@S@ body[data-surface='strip'] .stripbar { justify-content: flex-start; }"),
+    ),
+}
+
+
+def cluster_rules(S, kind):
+    """One `CLUSTERS` entry as CSS, scoped to a theme. The `@S@` placeholder is the
+    theme's scope, the same convention `cine_extra_c1.py`/`cine_extra_c2.py` use for
+    their own blocks, so this ONE table serves a design read by `theme_css()` and a
+    design contributed by an extra module."""
+    lead, rules = CLUSTERS[kind]
+    out = ['/* THE CONTROL CLUSTER — %s' % lead[0]]
+    for line in lead[1:]:
+        out.append(' * ' + line)
+    out.append(' */')
+    out.extend(r.replace('@S@', S) for r in rules)
+    return out
 
 
 # ── reading the design source ─────────────────────────────────────────────────────
@@ -225,6 +383,10 @@ def typography(caption_class, reveal):
     m = re.search(r'text-\[clamp\(([^)]+)\)\]', caption_class)
     if not m:
         raise SystemExit('no clamp in %r' % caption_class)
+    # THE CLAMP IS KEPT WHOLE AND VERBATIM, spaces and all: it is what the design
+    # states and it is what the panel emits (`--size-caption`, DECISION 1 in the
+    # header). Splitting it is only for the comment that records both of its ends.
+    t['size_clamp'] = 'clamp(%s)' % m.group(1)
     parts = [p.strip() for p in m.group(1).split(',')]
     if len(parts) != 3:
         raise SystemExit('clamp with %d parts in %r' % (len(parts), caption_class))
@@ -247,6 +409,21 @@ def raise_alpha(rgba, to):
     if not m:
         return rgba
     return 'rgba(%s, %s, %s, %s)' % (m.group(1), m.group(2), m.group(3), to)
+
+
+def panel_is_light(color):
+    """True when the design's OWN `--panel` is a light surface, i.e. the design draws
+    dark type on it. Exactly one of this zip's ten is: `paper-moon`,
+    `rgba(240,241,238,0.94)`. The test is the sRGB relative luminance of the stated
+    colour against 0.5, the midpoint of the scale — a threshold, not a colour, and it is
+    what decides `color-scheme` in the emitted block (a light slab under a
+    `color-scheme: dark` declaration paints dark scrollbars and dark form controls ON
+    it)."""
+    m = re.match(r'rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)', color)
+    if not m:
+        return False
+    r, g, b = (float(m.group(i)) / 255.0 for i in (1, 2, 3))
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.5
 
 
 def tokens_for(d):
@@ -281,8 +458,8 @@ def tokens_for(d):
         '--font-mono': FAMILIES['mono'],
         '--font-caption': 'var(--font-sans)',
         '--font-closed': 'var(--font-sans)',
-        # DECISION 1 (see the header): the clamp's MAX, not its floor.
-        '--size-caption': t['size_max'],
+        # DECISION 1 (see the header): the design's own clamp, emitted VERBATIM.
+        '--size-caption': t['size_clamp'],
         '--leading-caption': t['leading'],
         '--weight-caption': str(t['weight']),
         '--tracking-caption': t['tracking'],
@@ -293,6 +470,12 @@ def tokens_for(d):
         '--cine-accent-ink': v['--accent-ink'],
     }
     out.update(SHAPE)
+    # `SHAPE` carries the repo's `--caption-upper: none`, and it is the one SHAPE value
+    # a design can contradict: `paper-moon`'s caption class states `uppercase`, and the
+    # design wins. Without this the theme paints lower-case type in a class that says
+    # ALL CAPS at 0.16em — the single most distinctive thing that design does.
+    if 'uppercase' in d['caption_class']:
+        out['--caption-upper'] = 'uppercase'
     # the aliases `panel.css` reads
     out.update({
         '--bg': 'var(--bg-slab)', '--bg-raised': 'var(--bg-slab-strong)',
@@ -305,6 +488,18 @@ def tokens_for(d):
     out['__italic'] = t['italic']
     out['__reveal'] = d['reveal']
     out['__kind'] = reveal_kind
+    # THE DESIGN'S OWN TYPE VALUES, kept beside the tokens that carry them. They are
+    # what `.caption__text` emits as the FALLBACK of each `var()` the in-panel editor
+    # writes (see `theme_css`), so the painted value is the design's whether or not a
+    # dial ever wrote the token — and so the rule is not byte-identical across themes.
+    out['__family'] = t['family']
+    out['__weight'] = str(t['weight'])
+    out['__leading'] = t['leading']
+    out['__tracking'] = t['tracking']
+    out['__size_clamp'] = t['size_clamp']
+    out['__size_floor'] = t['size_floor']
+    out['__size_max'] = t['size_max']
+    out['__light'] = panel_is_light(v['--panel'])
     return out
 
 
@@ -411,8 +606,8 @@ def theme_css(d, toks, backdrop_note):
     a('  /* TYPE — read out of the design\'s own caption class string. */')
     for k in ('--font-sans', '--font-mono', '--font-caption', '--font-closed'):
         a('  %s: %s;' % (k, toks[k]))
-    a('  --size-caption: %s;   /* the source clamp\'s MAX: %s */'
-      % (toks['--size-caption'], d['caption_class'].split('clamp(')[1].split(')')[0]))
+    a('  --size-caption: %s;   /* THE DESIGN\'S OWN CLAMP, VERBATIM (floor %s, max %s) */'
+      % (toks['--size-caption'], toks['__size_floor'], toks['__size_max']))
     for k in ('--leading-caption', '--weight-caption', '--tracking-caption',
               '--caption-upper', '--tracking-brand', '--brand-upper',
               '--size-time', '--size-closed', '--size-chrome', '--size-meta',
@@ -436,7 +631,10 @@ def theme_css(d, toks, backdrop_note):
               '--radius', '--font', '--mono', '--accent-from', '--accent-to',
               '--accent-gradient'):
         a('  %s: %s;' % (k, toks[k]))
-    a('  color-scheme: dark;')
+    # `color-scheme` FOLLOWS THE DESIGN'S OWN SLAB. One of the ten states a LIGHT panel
+    # (`paper-moon`, `rgba(240,241,238,0.94)`) and a light slab under `dark` paints
+    # dark scrollbars and dark form controls on it. See `panel_is_light`.
+    a('  color-scheme: %s;' % ('light' if toks['__light'] else 'dark'))
     a('}')
     a('')
 
@@ -502,11 +700,22 @@ def theme_css(d, toks, backdrop_note):
     a('}')
     a('%s .caption__text {' % S)
     a('  color: var(--text-confirmed);')
-    a('  font-family: var(--font-caption);')
-    a('  font-size: var(--size-caption);')
-    a('  font-weight: var(--weight-caption);%s' % ('\n  font-style: italic;' if toks['__italic'] else ''))
-    a('  line-height: var(--leading-caption);')
-    a('  letter-spacing: var(--tracking-caption);')
+    # THE DESIGN'S OWN TYPE, AS THE FALLBACK OF THE TOKEN THE EDITOR WRITES.
+    # `theme-tune.js` writes `--font-caption` / `--size-caption` / `--leading-caption` /
+    # `--weight-caption` / `--tracking-caption` as INLINE custom properties on <html>
+    # (`setProperty`), so a LITERAL here would be beaten by the dial the moment the owner
+    # turns it, and a `var()` with no fallback would paint the panel's 15 px base if a
+    # dial ever CLEARED the token — `apply()` removes every token it can write before it
+    # writes. With the design's own value as the fallback the painted type is the
+    # design's either way, the editor still wins, and the rule is NOT byte-identical
+    # across these ten themes — which is the whole difference between ten designs and
+    # one skin over ten palettes.
+    a('  font-family: var(--font-caption, %s);' % toks['__family'])
+    a('  font-size: var(--size-caption, %s);' % toks['__size_clamp'])
+    a('  font-weight: var(--weight-caption, %s);%s'
+      % (toks['__weight'], '\n  font-style: italic;' if toks['__italic'] else ''))
+    a('  line-height: var(--leading-caption, %s);' % toks['__leading'])
+    a('  letter-spacing: var(--tracking-caption, %s);' % toks['__tracking'])
     a('  text-transform: var(--caption-upper);')
     a('  /* the zip\'s own shadow, verbatim: it is what holds the type off a photograph. */')
     a('  text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);')
@@ -536,6 +745,14 @@ def theme_css(d, toks, backdrop_note):
     a('  letter-spacing: 0.14em;')
     a('  text-transform: uppercase;')
     a('}')
+    a('')
+
+    # ── the control cluster (the owner's ONE permitted deviation) ────────────────
+    # Same position for all ten designs of this zip, because the zip has ONE chrome
+    # (`App.tsx`, `LiveCaption.tsx`) shared by all ten; what differs between them is the
+    # caption, the palette and the backdrop. See `CLUSTERS`.
+    for line in cluster_rules(S, 'column-center'):
+        a(line)
     a('')
 
     # ── the reveal ───────────────────────────────────────────────────────────────
@@ -683,6 +900,144 @@ def fetch_backdrop(d, log):
 
 
 # ── the extras (the other two zips contribute DATA, never CSS) ────────────────────
+#
+# `cine_extra_c1.py` / `cine_extra_c2.py` carry each extra theme's TOKENS and its own
+# structural CSS. TWO things they do not carry — because they are properties of the
+# zip's CHROME and of one design's own particles, not of the theme's palette — are
+# emitted HERE, so they are scoped, re-generatable and checked like every other block in
+# this file: the position of the control cluster (`CLUSTERS`) and, for `rainline`, the
+# zip's own rain.
+
+# c2's own `groupLabel` (`cine_extra_c2.py:517-518`) advertises `sheet` and `rail` as
+# the difference between the pair, and its shipped CSS does not branch on either — that
+# module uses `panel`/`panel_width`/`chrome` in its HEADER COMMENT ONLY
+# (`cine_extra_c2.py:287-288`). What the two themes DO differ by, after the generator's
+# own rules below, is the chrome and the particles, and that is what the label says. The
+# correction lives here so no other lane's data file is edited.
+LABEL_OVERRIDE = {
+    'rainline': 'A/B: mesmo `bare` ao centro — Manrope 300/1.42 vs Inter 300/1.46; '
+                'barra no topo à direita vs pílula centrada; 46 riscos de chuva vs '
+                'nenhuma partícula',
+}
+
+
+def _rnd(seed):
+    """The source's OWN pseudo-random, character for character —
+    `cinematic-2/src/components/Stage.tsx:9-13`:
+    `Math.sin(seed * 12.9898) * 43758.5453`, fractional part. Every particle position
+    and duration in that zip comes out of it, so the layer below is the SAME rain the
+    design draws, not a lookalike."""
+    x = math.sin(seed * 12.9898) * 43758.5453
+    return x - math.floor(x)
+
+
+def c2_facts(design_id):
+    """`(particle, particleColor)` for one design of the `cinematic-2` zip, read out of
+    ITS OWN `src/themes.ts` — the design's `particle:` and `particleColor:` fields.
+    `(None, None)` when the file or the design is not there: a missing PARTICLE is not a
+    build failure (a missing PALETTE is, see `read_source`)."""
+    if not os.path.exists(C2_SOURCE):
+        return None, None
+    with io.open(C2_SOURCE, encoding='utf-8') as fh:
+        src = fh.read()
+    m = re.search(r"id:\s*['\"]%s['\"]" % re.escape(design_id), src)
+    if not m:
+        return None, None
+    nxt = re.search(r"\n\s*id:\s*['\"]", src[m.end():])
+    block = src[m.end():m.end() + (nxt.start() if nxt else len(src))]
+    p = re.search(r"particle:\s*['\"]([^'\"]+)['\"]", block)
+    c = re.search(r"particleColor:\s*['\"]([^'\"]+)['\"]", block)
+    return (p.group(1) if p else None), (c.group(1) if c else None)
+
+
+def rain_rules(S, color, count):
+    """THE ZIP'S OWN RAIN, as CSS: `count` streaks, one background layer each, so the
+    whole field is ONE pseudo-element and ONE timeline.
+
+    CARRIED VERBATIM OUT OF THE SOURCE: the count (`Stage.tsx:27-29` — 46 for `rain`),
+    every streak's geometry (`Stage.tsx:30-46`: height `8 + r3*18`, left `r1*108 - 4`,
+    width `1.6px` when `r3 > 0.8` else `1px`, opacity `0.18 + r2*0.4`) and both ends of
+    `rainFall` (`src/index.css:72-76`). The colour is the design's own `particleColor`
+    (`themes.ts:99`), which is what `Stage.tsx:46` paints the streak with — the static
+    `color-mix(in srgb, #fff 60%, transparent)` at `index.css:81` is only the fallback
+    the inline style overrides.
+
+    NOT CARRIED, and this is the price of one pseudo-element: each streak's own
+    `animationDuration` (`0.9 + r3*1.3` s) and `animationDelay` (`-r2*3` s). One element
+    has one timeline, so all 46 share 1.55 s (the source's mean) and start together; the
+    source's own `-4%` horizontal drift is dropped with them, because it is 4 % of a
+    1 px-wide element — 0.04 px. Each streak's opacity IS carried, folded into its
+    gradient's alpha (a background layer has no opacity of its own)."""
+    m = re.match(r'rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)'
+                 r'\s*(?:,\s*([0-9.]+)\s*)?\)', color or '')
+    if not m:
+        return []
+    rgb = ', '.join(m.group(i) for i in (1, 2, 3))
+    base = float(m.group(4)) if m.group(4) else 1.0
+    layers, sizes, places = [], [], []
+    for i in range(count):
+        r1, r2, r3 = _rnd(i + 1), _rnd(i * 7.3 + 2), _rnd(i * 3.7 + 5)
+        layers.append('linear-gradient(to bottom, transparent, rgba(%s, %s))'
+                      % (rgb, round(base * (0.18 + r2 * 0.4), 3)))
+        sizes.append('%.2fpx %.1f%%' % (1.6 if r3 > 0.8 else 1.0, 8 + r3 * 18))
+        places.append('%.2f%% 0' % (r1 * 108 - 4))
+    return [
+        "/* THE PARTICLES — the design's own rain, %d streaks, and the one ambient layer"
+        ' * the `cinematic-2` module says this panel has no element for'
+        ' (`cine_extra_c2.py:316-317`);' % count,
+        ' * it is carried here because it is what the design\'s own A/B label names as the',
+        ' * difference between `rainline` and `blue-hour`. `isolation: isolate` makes the slab',
+        ' * the stacking context, so a `z-index: -1` layer cannot escape behind its own',
+        ' * wallpaper, and it paints after the background and before the type — the order',
+        ' * `Stage.tsx:69` gives the rain layer (`absolute inset-0 overflow-hidden`) inside the',
+        ' * stage. */',
+        '%s .panel { isolation: isolate; }' % S,
+        '%s .panel::after {' % S,
+        "  content: '';",
+        '  position: absolute;',
+        '  inset: 0;',
+        '  z-index: -1;',
+        '  pointer-events: none;',
+        '  background-repeat: no-repeat;',
+        '  background-image: %s;' % ', '.join(layers),
+        '  background-size: %s;' % ', '.join(sizes),
+        '  background-position: %s;' % ', '.join(places),
+        '  animation: cine-rainfall 1.55s linear infinite;',
+        '}',
+        '/* `rainFall` (src/index.css:72-76), retargeted at the layer field: one element',
+        ' * cannot carry 46 timelines, and `background-position-y` is the one property that',
+        ' * moves every layer at once. The two ends and the 10 % step are the source\'s. */',
+        '@keyframes cine-rainfall {',
+        '  from { background-position-y: -20%; opacity: 0; }',
+        '  10% { opacity: .5; }',
+        '  to { background-position-y: 110%; opacity: 0; }',
+        '}',
+    ]
+
+
+def extra_rules(t):
+    """The structural rules the GENERATOR adds on top of an extra theme's own block:
+    where its cluster sits, read out of its design's own chrome, plus its particles.
+    Emitted AFTER the extra's own CSS so that, on a tie, the generator's rule wins."""
+    S = ":root[data-theme='%s']" % (PREFIX + t['id'])
+    raw = t.get('__raw') or {}
+    out = []
+    if t['__source'] == 'cinematic-1':
+        # `DesignSwitcher.tsx:20` is that zip's only floating cluster — a vertical column
+        # at the LEFT edge (`absolute left-7 top-[240px] w-[272px]`) — and `Chrome.tsx:69`
+        # is why it is not the top-left: the brand owns that corner.
+        out.extend(cluster_rules(S, 'rail-left'))
+    elif t['__source'] == 'cinematic-2':
+        chrome = raw.get('chrome')
+        if chrome == 'bar':
+            out.extend(cluster_rules(S, 'bar-right'))
+        elif chrome == 'float':
+            out.extend(cluster_rules(S, 'pill-center'))
+        particle, color = c2_facts(t['id'])
+        if particle == 'rain':
+            out.extend(rain_rules(S, color, 46))
+    return out
+
 
 def load_extras():
     """`cine_extra_c1.py` / `cine_extra_c2.py` may each define `THEMES`, a list of
@@ -697,8 +1052,16 @@ def load_extras():
             continue
         sys.path.insert(0, HERE)
         mod = __import__(mod_name)
+        # `THEMES` holds ASSEMBLED dicts (`[_theme(d) for d in _RAW]` in both modules)
+        # and `_theme()` passes only the fields the contract needs, so the RAW dict is
+        # matched back by id: it is where `chrome` lives, and the cluster position is
+        # read from it.
+        raws = {r['id']: r for r in getattr(mod, '_RAW', [])}
         for t in mod.THEMES:
             t['__source'] = src
+            t['__raw'] = raws.get(t['id'], {})
+            if t['id'] in LABEL_OVERRIDE:
+                t['groupLabel'] = LABEL_OVERRIDE[t['id']]
             out.append(t)
     return out
 
@@ -757,6 +1120,10 @@ def main():
             strs.append('%s .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(%s); background-size: cover, cover; background-position: center, center; }' % (S, t['photo']))
         if t.get('css'):
             strs.append(t['css'].replace('@S@', S))
+        # THE GENERATOR'S OWN RULES LAST, so the cluster and the particles cannot be
+        # undone by an extra module's block and are the same code path as every other
+        # theme's. See `extra_rules`.
+        strs.extend(extra_rules(t))
         blocks.append('\n'.join(strs) + '\n')
         row = {'name': i, 'label': t['label'], 'file': 'themes/cinematic.css',
                'swatch': t['swatch']}
@@ -805,9 +1172,16 @@ def main():
         for k in REQUIRED:
             if ('\n  %s:' % k) not in ('\n' + body):
                 fails.append('%s: missing %s' % (r['name'], k))
-        m = re.search(r'\n  --accent: (.*?);', '\n' + body)
+        # THE SWATCH IS THE CHIP'S COLOUR, and it is NOT always the accent: the designs
+        # state BOTH, and `paper-moon` — a LIGHT slab — states a silver swatch
+        # (`#aab3c0`, what its own design rail draws) with a DARK accent (`#4c5666`),
+        # because silver on near-white is invisible. The check used to demand
+        # `--accent == swatch`, and it passed only while that design was filtered out of
+        # the build; asserting the CHIP token is both truer and stronger, and `--accent`
+        # is still covered by the REQUIRED loop above.
+        m = re.search(r'\n  --theme-swatch: (.*?);', '\n' + body)
         if not m or m.group(1).strip().lower() != r['swatch'].lower():
-            fails.append('%s: swatch %s != --accent %s'
+            fails.append('%s: swatch %s != --theme-swatch %s'
                          % (r['name'], r['swatch'], m.group(1).strip() if m else 'ABSENT'))
     names = [r['name'] for r in rows]
     for n in names:
@@ -890,7 +1264,7 @@ def main():
         print('  ' + line)
     print('emitted %d theme(s) -> %s (%d B)' % (len(rows), CSS_OUT, len(css)))
     print('manifest -> %s' % JS_OUT)
-    print('SELF-CHECK: every theme declares all %d tokens, swatch == --accent, '
+    print('SELF-CHECK: every theme declares all %d tokens, swatch == --theme-swatch, '
           'ids unique, no remote url' % len(REQUIRED))
     return 0
 

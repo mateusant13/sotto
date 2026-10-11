@@ -103,7 +103,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 31px;   /* the source clamp's MAX: 20px,2.7vw,31px */
+  --size-caption: clamp(20px,2.7vw,31px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 20px, max 31px) */
   --leading-caption: 1.45;
   --weight-caption: 300;
   --tracking-caption: 0;
@@ -194,11 +194,11 @@
 }
 :root[data-theme='cine-midnight-rain'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  font-family: var(--font-caption, "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
+  font-size: var(--size-caption, clamp(20px,2.7vw,31px));
+  font-weight: var(--weight-caption, 300);
+  line-height: var(--leading-caption, 1.45);
+  letter-spacing: var(--tracking-caption, 0);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -228,6 +228,32 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-midnight-rain'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-midnight-rain'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-midnight-rain'] body[data-surface='strip'] .stripbar { justify-content: center; }
 
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-midnight-rain'] .caption--provisional .caption__word[data-typing] {
@@ -288,7 +314,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 33px;   /* the source clamp's MAX: 21px,2.8vw,33px */
+  --size-caption: clamp(21px,2.8vw,33px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 21px, max 33px) */
   --leading-caption: 1.4;
   --weight-caption: 400;
   --tracking-caption: 0;
@@ -379,12 +405,12 @@
 }
 :root[data-theme='cine-warm-hour'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
+  font-family: var(--font-caption, "Fraunces", Georgia, "Times New Roman", serif);
+  font-size: var(--size-caption, clamp(21px,2.8vw,33px));
+  font-weight: var(--weight-caption, 400);
   font-style: italic;
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  line-height: var(--leading-caption, 1.4);
+  letter-spacing: var(--tracking-caption, 0);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -414,6 +440,32 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-warm-hour'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-warm-hour'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-warm-hour'] body[data-surface='strip'] .stripbar { justify-content: center; }
 
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-warm-hour'] .caption--provisional .caption__word[data-typing] {
@@ -474,7 +526,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 29px;   /* the source clamp's MAX: 19px,2.5vw,29px */
+  --size-caption: clamp(19px,2.5vw,29px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 19px, max 29px) */
   --leading-caption: 1.5;
   --weight-caption: 400;
   --tracking-caption: 0.035em;
@@ -565,11 +617,11 @@
 }
 :root[data-theme='cine-velvet-dusk'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  font-family: var(--font-caption, "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
+  font-size: var(--size-caption, clamp(19px,2.5vw,29px));
+  font-weight: var(--weight-caption, 400);
+  line-height: var(--leading-caption, 1.5);
+  letter-spacing: var(--tracking-caption, 0.035em);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -599,6 +651,32 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-velvet-dusk'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-velvet-dusk'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-velvet-dusk'] body[data-surface='strip'] .stripbar { justify-content: center; }
 
 /* THE REVEAL — `rise`. One word, or one character, at a time. */
 :root[data-theme='cine-velvet-dusk'] .caption--provisional .caption__word[data-typing] {
@@ -659,7 +737,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 24px;   /* the source clamp's MAX: 16px,2.1vw,24px */
+  --size-caption: clamp(16px,2.1vw,24px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 16px, max 24px) */
   --leading-caption: 1.6;
   --weight-caption: 400;
   --tracking-caption: 0;
@@ -750,11 +828,11 @@
 }
 :root[data-theme='cine-study-light'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  font-family: var(--font-caption, "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace);
+  font-size: var(--size-caption, clamp(16px,2.1vw,24px));
+  font-weight: var(--weight-caption, 400);
+  line-height: var(--leading-caption, 1.6);
+  letter-spacing: var(--tracking-caption, 0);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -784,6 +862,32 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-study-light'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-study-light'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-study-light'] body[data-surface='strip'] .stripbar { justify-content: center; }
 
 /* THE REVEAL — `type`. One word, or one character, at a time. */
 /* (`type` needs no rule of its own: it IS the character reveal `panel.css`
@@ -839,7 +943,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 30px;   /* the source clamp's MAX: 20px,2.6vw,30px */
+  --size-caption: clamp(20px,2.6vw,30px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 20px, max 30px) */
   --leading-caption: 1.45;
   --weight-caption: 300;
   --tracking-caption: 0;
@@ -930,11 +1034,11 @@
 }
 :root[data-theme='cine-tideline-body'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  font-family: var(--font-caption, "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
+  font-size: var(--size-caption, clamp(20px,2.6vw,30px));
+  font-weight: var(--weight-caption, 300);
+  line-height: var(--leading-caption, 1.45);
+  letter-spacing: var(--tracking-caption, 0);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -965,6 +1069,32 @@
   text-transform: uppercase;
 }
 
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-tideline-body'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-tideline-body'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-tideline-body'] body[data-surface='strip'] .stripbar { justify-content: center; }
+
 /* THE REVEAL — `blur`. One word, or one character, at a time. */
 :root[data-theme='cine-tideline-body'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);
@@ -975,6 +1105,422 @@
   animation: cine-blur 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: calc(var(--c-i) * var(--type-step));
 }
+
+/* ── Motel Glow — rose neon · vacancy, no hurry ─────────────────────────────────────────────────────────
+ * from `cinematic/src/themes.ts`, id `motel-glow`, reveal `fade` (bundled photo)
+ */
+:root[data-theme='cine-motel-glow']{
+  /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
+  --bg-slab: rgba(24,12,16,0.89);
+  --bg-slab-strong: rgba(240,150,175,0.07);
+  --slab-opacity: 0.97;
+  --shadow-slab: 0 2px 18px rgba(13,4,7,0.72), 0 0 26px rgba(229,143,164,0.14);
+  /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
+     newest word takes the accent, which is the zip's `--caption-accent` role. */
+  --text-primary: #f8e8ec;
+  --text-confirmed: #fdf1f4;
+  --text-provisional: #fdf1f4;
+  --text-secondary: #c09aa6;
+  --text-muted: #8a6773;
+  /* LINES AND ACCENT — `--line-strong` is the zip's ONE line colour at a
+     higher alpha: the panel has two weights of the same line, and a second
+     colour would be a colour the design never states. */
+  --line: rgba(240,150,175,0.17);
+  --line-strong: rgba(240, 150, 175, 0.34);
+  --accent: #e58fa4;
+  --accent-soft: rgba(229,143,164,0.12);
+  --theme-swatch: #e58fa4;
+  /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
+     (the tap is delivering / it is not), so they are the product's and are
+     the same two literals the five directions already use; `--busy` and
+     `--idle` follow this palette. */
+  --ok: #6EF184;
+  --busy: #e58fa4;
+  --error: #F87171;
+  --idle: #8a6773;
+  /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
+     Tailwind classes), so these are the repo's. */
+  --radius-sm: 7px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-dialog: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 13px;
+  --space-4: 20px;
+  --space-5: 30px;
+  /* TYPE — read out of the design's own caption class string. */
+  --font-sans: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-caption: var(--font-sans);
+  --font-closed: var(--font-sans);
+  --size-caption: clamp(22px,3vw,35px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 22px, max 35px) */
+  --leading-caption: 1.38;
+  --weight-caption: 500;
+  --tracking-caption: 0;
+  --caption-upper: none;
+  --tracking-brand: 0.42em;
+  --brand-upper: uppercase;
+  --size-time: 10px;
+  --size-closed: 18px;
+  --size-chrome: 11.5px;
+  --size-meta: 10.5px;
+  --size-small: 12.5px;
+  --leading-closed: 1.24;
+  --weight-closed: 400;
+  --weight-brand: 700;
+  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
+     reveal is the theme's own animation, declared below. */
+  --motion-in: 150ms;
+  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
+  --cine-scrim: rgba(15,6,9,0.7);
+  --cine-accent-ink: #230d13;
+}
+
+/* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
+ * names finds them, and so the two cannot drift. */
+:root[data-theme='cine-motel-glow']{
+  --bg: var(--bg-slab);
+  --bg-raised: var(--bg-slab-strong);
+  --text: var(--text-primary);
+  --text-dim: var(--text-secondary);
+  --text-faint: var(--text-muted);
+  --radius: var(--radius-lg);
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+  --accent-from: var(--accent);
+  --accent-to: var(--accent);
+  --accent-gradient: var(--accent);
+  color-scheme: dark;
+}
+
+/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
+ * is what the design puts between the photograph and the type, and it is the
+ * reason the caption stays readable over a bright frame. */
+:root[data-theme='cine-motel-glow'] .panel {
+  background-color: var(--bg-slab);
+  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
+                    url(backdrops/motel-glow.jpg);
+  background-size: cover, cover;
+  background-position: center, center;
+  border-color: var(--line);
+}
+
+/* THE LIVE CAPTION: the zip's `bare` treatment — NO box, no border, no pane,
+ * because the design's whole idea is type over the photograph. The stage keeps
+ * ONE thing the zip does not have: our panel holds older lines, so they recede
+ * (DECISION 2 in the header of the generator). */
+:root[data-theme='cine-motel-glow'] .captions__bar {
+  justify-content: center;
+  border: 0;
+  background: none;
+}
+:root[data-theme='cine-motel-glow'] .captions__hint {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+:root[data-theme='cine-motel-glow'] .captions__list {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+:root[data-theme='cine-motel-glow'] .caption {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 2px 0;
+  text-align: center;
+  justify-content: center;
+}
+:root[data-theme='cine-motel-glow'] .caption__time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+}
+:root[data-theme='cine-motel-glow'] .caption__text {
+  color: var(--text-confirmed);
+  font-family: var(--font-caption, "Fraunces", Georgia, "Times New Roman", serif);
+  font-size: var(--size-caption, clamp(22px,3vw,35px));
+  font-weight: var(--weight-caption, 500);
+  font-style: italic;
+  line-height: var(--leading-caption, 1.38);
+  letter-spacing: var(--tracking-caption, 0);
+  text-transform: var(--caption-upper);
+  /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
+  text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme='cine-motel-glow'] .caption--provisional .caption__text {
+  color: var(--text-provisional);
+}
+/* Older lines: the smallest number that recedes without becoming unreadable at
+ * 380 px. The zips never show an older line, so this value is mine. */
+:root[data-theme='cine-motel-glow'] .caption:not(.caption--latest) .caption__text {
+  color: var(--text-secondary);
+  font-size: calc(var(--size-caption) * 0.72);
+}
+:root[data-theme='cine-motel-glow'] .caption:not(.caption--latest) {
+  opacity: 0.72;
+}
+:root[data-theme='cine-motel-glow'] .captions__placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-caption);
+  font-style: italic;
+  opacity: 0.55;
+}
+:root[data-theme='cine-motel-glow'] .status {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--size-meta);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-motel-glow'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-motel-glow'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-motel-glow'] body[data-surface='strip'] .stripbar { justify-content: center; }
+
+/* THE REVEAL — `fade`. One word, or one character, at a time. */
+:root[data-theme='cine-motel-glow'] .caption--provisional .caption__word[data-typing] {
+  color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
+  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* The per-character reveal is switched OFF for this theme: two animations on
+ * one character's opacity multiply, and the design moves the WORD here. */
+:root[data-theme='cine-motel-glow'] .caption--provisional .caption__word[data-typing] .caption__ch {
+  animation: none;
+}
+
+/* ── Paper Moon — silver · monochrome, almost silent ─────────────────────────────────────────────────────────
+ * from `cinematic/src/themes.ts`, id `paper-moon`, reveal `type` (bundled photo)
+ */
+:root[data-theme='cine-paper-moon']{
+  /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
+  --bg-slab: rgba(240,241,238,0.94);
+  --bg-slab-strong: rgba(20,24,30,0.045);
+  --slab-opacity: 0.97;
+  --shadow-slab: 0 2px 14px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.45);
+  /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
+     newest word takes the accent, which is the zip's `--caption-accent` role. */
+  --text-primary: #191b1f;
+  --text-confirmed: #f4f6f4;
+  --text-provisional: #f4f6f4;
+  --text-secondary: #5f646c;
+  --text-muted: #969ba3;
+  /* LINES AND ACCENT — `--line-strong` is the zip's ONE line colour at a
+     higher alpha: the panel has two weights of the same line, and a second
+     colour would be a colour the design never states. */
+  --line: rgba(20,24,30,0.12);
+  --line-strong: rgba(20, 24, 30, 0.34);
+  --accent: #4c5666;
+  --accent-soft: rgba(30,40,55,0.07);
+  --theme-swatch: #aab3c0;
+  /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
+     (the tap is delivering / it is not), so they are the product's and are
+     the same two literals the five directions already use; `--busy` and
+     `--idle` follow this palette. */
+  --ok: #6EF184;
+  --busy: #4c5666;
+  --error: #F87171;
+  --idle: #969ba3;
+  /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
+     Tailwind classes), so these are the repo's. */
+  --radius-sm: 7px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-dialog: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 13px;
+  --space-4: 20px;
+  --space-5: 30px;
+  /* TYPE — read out of the design's own caption class string. */
+  --font-sans: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-caption: var(--font-sans);
+  --font-closed: var(--font-sans);
+  --size-caption: clamp(14px,1.8vw,20px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 14px, max 20px) */
+  --leading-caption: 1.7;
+  --weight-caption: 500;
+  --tracking-caption: 0.16em;
+  --caption-upper: uppercase;
+  --tracking-brand: 0.42em;
+  --brand-upper: uppercase;
+  --size-time: 10px;
+  --size-closed: 18px;
+  --size-chrome: 11.5px;
+  --size-meta: 10.5px;
+  --size-small: 12.5px;
+  --leading-closed: 1.24;
+  --weight-closed: 400;
+  --weight-brand: 700;
+  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
+     reveal is the theme's own animation, declared below. */
+  --motion-in: 150ms;
+  --type-step: 45ms;   /* the char-by-char reveal, unchanged from `panel.css` */
+  --cine-scrim: rgba(5,6,10,0.62);
+  --cine-accent-ink: #f2f3f0;
+}
+
+/* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
+ * names finds them, and so the two cannot drift. */
+:root[data-theme='cine-paper-moon']{
+  --bg: var(--bg-slab);
+  --bg-raised: var(--bg-slab-strong);
+  --text: var(--text-primary);
+  --text-dim: var(--text-secondary);
+  --text-faint: var(--text-muted);
+  --radius: var(--radius-lg);
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+  --accent-from: var(--accent);
+  --accent-to: var(--accent);
+  --accent-gradient: var(--accent);
+  color-scheme: light;
+}
+
+/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
+ * is what the design puts between the photograph and the type, and it is the
+ * reason the caption stays readable over a bright frame. */
+:root[data-theme='cine-paper-moon'] .panel {
+  background-color: var(--bg-slab);
+  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
+                    url(backdrops/paper-moon.jpg);
+  background-size: cover, cover;
+  background-position: center, center;
+  border-color: var(--line);
+}
+
+/* THE LIVE CAPTION: the zip's `bare` treatment — NO box, no border, no pane,
+ * because the design's whole idea is type over the photograph. The stage keeps
+ * ONE thing the zip does not have: our panel holds older lines, so they recede
+ * (DECISION 2 in the header of the generator). */
+:root[data-theme='cine-paper-moon'] .captions__bar {
+  justify-content: center;
+  border: 0;
+  background: none;
+}
+:root[data-theme='cine-paper-moon'] .captions__hint {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+:root[data-theme='cine-paper-moon'] .captions__list {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+:root[data-theme='cine-paper-moon'] .caption {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 2px 0;
+  text-align: center;
+  justify-content: center;
+}
+:root[data-theme='cine-paper-moon'] .caption__time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+}
+:root[data-theme='cine-paper-moon'] .caption__text {
+  color: var(--text-confirmed);
+  font-family: var(--font-caption, "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace);
+  font-size: var(--size-caption, clamp(14px,1.8vw,20px));
+  font-weight: var(--weight-caption, 500);
+  line-height: var(--leading-caption, 1.7);
+  letter-spacing: var(--tracking-caption, 0.16em);
+  text-transform: var(--caption-upper);
+  /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
+  text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme='cine-paper-moon'] .caption--provisional .caption__text {
+  color: var(--text-provisional);
+}
+/* Older lines: the smallest number that recedes without becoming unreadable at
+ * 380 px. The zips never show an older line, so this value is mine. */
+:root[data-theme='cine-paper-moon'] .caption:not(.caption--latest) .caption__text {
+  color: var(--text-secondary);
+  font-size: calc(var(--size-caption) * 0.72);
+}
+:root[data-theme='cine-paper-moon'] .caption:not(.caption--latest) {
+  opacity: 0.72;
+}
+:root[data-theme='cine-paper-moon'] .captions__placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-caption);
+  font-style: italic;
+  opacity: 0.55;
+}
+:root[data-theme='cine-paper-moon'] .status {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--size-meta);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-paper-moon'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-paper-moon'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-paper-moon'] body[data-surface='strip'] .stripbar { justify-content: center; }
+
+/* THE REVEAL — `type`. One word, or one character, at a time. */
+/* (`type` needs no rule of its own: it IS the character reveal `panel.css`
+ * already declares, driven by the `--type-step` above. The caret is shared. */
 
 /* ── Quiet Streets — lamplight · snow muffles everything ─────────────────────────────────────────────────────────
  * from `cinematic/src/themes.ts`, id `quiet-streets`, reveal `fade` (bundled photo)
@@ -1024,7 +1570,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 27px;   /* the source clamp's MAX: 18px,2.3vw,27px */
+  --size-caption: clamp(18px,2.3vw,27px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 18px, max 27px) */
   --leading-caption: 1.5;
   --weight-caption: 400;
   --tracking-caption: 0.09em;
@@ -1115,11 +1661,11 @@
 }
 :root[data-theme='cine-quiet-streets'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  font-family: var(--font-caption, "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
+  font-size: var(--size-caption, clamp(18px,2.3vw,27px));
+  font-weight: var(--weight-caption, 400);
+  line-height: var(--leading-caption, 1.5);
+  letter-spacing: var(--tracking-caption, 0.09em);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -1150,6 +1696,32 @@
   text-transform: uppercase;
 }
 
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-quiet-streets'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-quiet-streets'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-quiet-streets'] body[data-surface='strip'] .stripbar { justify-content: center; }
+
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-quiet-streets'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
@@ -1158,6 +1730,218 @@
 /* The per-character reveal is switched OFF for this theme: two animations on
  * one character's opacity multiply, and the design moves the WORD here. */
 :root[data-theme='cine-quiet-streets'] .caption--provisional .caption__word[data-typing] .caption__ch {
+  animation: none;
+}
+
+/* ── Last Reel — gold · analog sunset, end credits ─────────────────────────────────────────────────────────
+ * from `cinematic/src/themes.ts`, id `last-reel`, reveal `fade` (bundled photo)
+ */
+:root[data-theme='cine-last-reel']{
+  /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
+  --bg-slab: rgba(24,16,9,0.89);
+  --bg-slab-strong: rgba(230,190,120,0.07);
+  --slab-opacity: 0.97;
+  --shadow-slab: 0 2px 16px rgba(12,6,1,0.7), 0 1px 2px rgba(12,6,1,0.5);
+  /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
+     newest word takes the accent, which is the zip's `--caption-accent` role. */
+  --text-primary: #f6ebd6;
+  --text-confirmed: #fbf3df;
+  --text-provisional: #fbf3df;
+  --text-secondary: #c0a87f;
+  --text-muted: #8a7454;
+  /* LINES AND ACCENT — `--line-strong` is the zip's ONE line colour at a
+     higher alpha: the panel has two weights of the same line, and a second
+     colour would be a colour the design never states. */
+  --line: rgba(230,190,120,0.17);
+  --line-strong: rgba(230, 190, 120, 0.34);
+  --accent: #d9b36a;
+  --accent-soft: rgba(217,179,106,0.12);
+  --theme-swatch: #d9b36a;
+  /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
+     (the tap is delivering / it is not), so they are the product's and are
+     the same two literals the five directions already use; `--busy` and
+     `--idle` follow this palette. */
+  --ok: #6EF184;
+  --busy: #d9b36a;
+  --error: #F87171;
+  --idle: #8a7454;
+  /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
+     Tailwind classes), so these are the repo's. */
+  --radius-sm: 7px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-dialog: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 13px;
+  --space-4: 20px;
+  --space-5: 30px;
+  /* TYPE — read out of the design's own caption class string. */
+  --font-sans: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-caption: var(--font-sans);
+  --font-closed: var(--font-sans);
+  --size-caption: clamp(21px,2.8vw,32px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 21px, max 32px) */
+  --leading-caption: 1.4;
+  --weight-caption: 500;
+  --tracking-caption: 0;
+  --caption-upper: none;
+  --tracking-brand: 0.42em;
+  --brand-upper: uppercase;
+  --size-time: 10px;
+  --size-closed: 18px;
+  --size-chrome: 11.5px;
+  --size-meta: 10.5px;
+  --size-small: 12.5px;
+  --leading-closed: 1.24;
+  --weight-closed: 400;
+  --weight-brand: 700;
+  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
+     reveal is the theme's own animation, declared below. */
+  --motion-in: 150ms;
+  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
+  --cine-scrim: rgba(14,8,3,0.68);
+  --cine-accent-ink: #1e1408;
+}
+
+/* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
+ * names finds them, and so the two cannot drift. */
+:root[data-theme='cine-last-reel']{
+  --bg: var(--bg-slab);
+  --bg-raised: var(--bg-slab-strong);
+  --text: var(--text-primary);
+  --text-dim: var(--text-secondary);
+  --text-faint: var(--text-muted);
+  --radius: var(--radius-lg);
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+  --accent-from: var(--accent);
+  --accent-to: var(--accent);
+  --accent-gradient: var(--accent);
+  color-scheme: dark;
+}
+
+/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
+ * is what the design puts between the photograph and the type, and it is the
+ * reason the caption stays readable over a bright frame. */
+:root[data-theme='cine-last-reel'] .panel {
+  background-color: var(--bg-slab);
+  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
+                    url(backdrops/last-reel.jpg);
+  background-size: cover, cover;
+  background-position: center, center;
+  border-color: var(--line);
+}
+
+/* THE LIVE CAPTION: the zip's `bare` treatment — NO box, no border, no pane,
+ * because the design's whole idea is type over the photograph. The stage keeps
+ * ONE thing the zip does not have: our panel holds older lines, so they recede
+ * (DECISION 2 in the header of the generator). */
+:root[data-theme='cine-last-reel'] .captions__bar {
+  justify-content: center;
+  border: 0;
+  background: none;
+}
+:root[data-theme='cine-last-reel'] .captions__hint {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+:root[data-theme='cine-last-reel'] .captions__list {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+:root[data-theme='cine-last-reel'] .caption {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 2px 0;
+  text-align: center;
+  justify-content: center;
+}
+:root[data-theme='cine-last-reel'] .caption__time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  opacity: 0.7;
+}
+:root[data-theme='cine-last-reel'] .caption__text {
+  color: var(--text-confirmed);
+  font-family: var(--font-caption, "Fraunces", Georgia, "Times New Roman", serif);
+  font-size: var(--size-caption, clamp(21px,2.8vw,32px));
+  font-weight: var(--weight-caption, 500);
+  font-style: italic;
+  line-height: var(--leading-caption, 1.4);
+  letter-spacing: var(--tracking-caption, 0);
+  text-transform: var(--caption-upper);
+  /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
+  text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme='cine-last-reel'] .caption--provisional .caption__text {
+  color: var(--text-provisional);
+}
+/* Older lines: the smallest number that recedes without becoming unreadable at
+ * 380 px. The zips never show an older line, so this value is mine. */
+:root[data-theme='cine-last-reel'] .caption:not(.caption--latest) .caption__text {
+  color: var(--text-secondary);
+  font-size: calc(var(--size-caption) * 0.72);
+}
+:root[data-theme='cine-last-reel'] .caption:not(.caption--latest) {
+  opacity: 0.72;
+}
+:root[data-theme='cine-last-reel'] .captions__placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-caption);
+  font-style: italic;
+  opacity: 0.55;
+}
+:root[data-theme='cine-last-reel'] .status {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--size-meta);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-last-reel'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-last-reel'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-last-reel'] body[data-surface='strip'] .stripbar { justify-content: center; }
+
+/* THE REVEAL — `fade`. One word, or one character, at a time. */
+:root[data-theme='cine-last-reel'] .caption--provisional .caption__word[data-typing] {
+  color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
+  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* The per-character reveal is switched OFF for this theme: two animations on
+ * one character's opacity multiply, and the design moves the WORD here. */
+:root[data-theme='cine-last-reel'] .caption--provisional .caption__word[data-typing] .caption__ch {
   animation: none;
 }
 
@@ -1209,7 +1993,7 @@
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 30px;   /* the source clamp's MAX: 20px,2.6vw,30px */
+  --size-caption: clamp(20px,2.6vw,30px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 20px, max 30px) */
   --leading-caption: 1.45;
   --weight-caption: 300;
   --tracking-caption: 0;
@@ -1300,11 +2084,11 @@
 }
 :root[data-theme='cine-north-fog'] .caption__text {
   color: var(--text-confirmed);
-  font-family: var(--font-caption);
-  font-size: var(--size-caption);
-  font-weight: var(--weight-caption);
-  line-height: var(--leading-caption);
-  letter-spacing: var(--tracking-caption);
+  font-family: var(--font-caption, "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
+  font-size: var(--size-caption, clamp(20px,2.6vw,30px));
+  font-weight: var(--weight-caption, 300);
+  line-height: var(--leading-caption, 1.45);
+  letter-spacing: var(--tracking-caption, 0);
   text-transform: var(--caption-upper);
   /* the zip's own shadow, verbatim: it is what holds the type off a photograph. */
   text-shadow: 0 2px 26px rgba(0, 0, 0, 0.72), 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -1334,6 +2118,32 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
+
+/* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
+ * stage (`LiveCaption.tsx:74-79`) and the transport row sits in the middle of
+ * it, under the type (`:81-99`). Our newest line is at the HEEL of the list, so
+ * the row goes below it and the list reserves the band it occupies. THE ORDER
+ * IS INVERTED against the zip, which draws its controls ABOVE the caption: a
+ * foot anchor cannot put a row above a list that grows upward, and the
+ * deviation is named here rather than hidden.
+ * ONE POSITION FOR ALL TEN of this zip's designs, because the zip has ONE
+ * chrome — `App.tsx` and `LiveCaption.tsx` are shared by all ten; what differs
+ * between them is the caption, the palette and the backdrop.
+ */
+:root[data-theme='cine-north-fog'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
+  bottom: 48px;
+  transform: translateX(-50%);
+  /* the caption rows are positioned: without this they paint over it */
+  z-index: 4;
+}
+/* The band the row occupies, so the newest line is never painted through. */
+:root[data-theme='cine-north-fog'] body[data-surface='panel'] .captions__list { padding-bottom: 36px; }
+/* The strip has no header at all (`panel.css:1440-1445`), so ITS row is the
+ * one that moves. */
+:root[data-theme='cine-north-fog'] body[data-surface='strip'] .stripbar { justify-content: center; }
 
 /* THE REVEAL — `blur`. One word, or one character, at a time. */
 :root[data-theme='cine-north-fog'] .caption--provisional .caption__word[data-typing] {
@@ -1641,6 +2451,27 @@
   54%, 100% { opacity: 0; }
 }
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-cafe'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-cafe'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Rainglass — from the `cinematic-1` zip ── */
 :root[data-theme='cine-rainglass']{
@@ -1932,6 +2763,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-rainglass'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-rainglass'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Tideline — from the `cinematic-1` zip ── */
 :root[data-theme='cine-tideline']{
@@ -2218,6 +3070,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-tideline'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-tideline'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Field Notes — from the `cinematic-1` zip ── */
 :root[data-theme='cine-fieldnotes']{
@@ -2513,6 +3386,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-fieldnotes'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-fieldnotes'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Dustlight — from the `cinematic-1` zip ── */
 :root[data-theme='cine-dustlight']{
@@ -2810,6 +3704,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-dustlight'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-dustlight'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Analog — from the `cinematic-1` zip ── */
 :root[data-theme='cine-analog']{
@@ -3075,6 +3990,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-analog'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-analog'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Quiet Shelves — from the `cinematic-1` zip ── */
 :root[data-theme='cine-shelves']{
@@ -3371,6 +4307,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-shelves'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-shelves'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Rooftop Dusk — from the `cinematic-1` zip ── */
 :root[data-theme='cine-rooftop']{
@@ -3665,6 +4622,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-rooftop'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-rooftop'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Ember — from the `cinematic-1` zip ── */
 :root[data-theme='cine-ember']{
@@ -3947,6 +4925,27 @@
 /* The three word/caret keyframes this block uses are declared ONCE, in the
  * `cine-cafe` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — this zip has NO top bar: `Chrome.tsx:69` puts the
+ * brand alone at `absolute left-7 top-6`, and its only floating control cluster
+ * is the design switcher at `DesignSwitcher.tsx:20` (`anim-chrome
+ * pointer-events-auto absolute left-7 top-[240px] w-[272px]`): a vertical column
+ * down the LEFT edge. The cluster leaves the header and becomes that column, at
+ * our 28 px control size.
+ * DEVIATION, named: the source anchors the column 240 px below the top, i.e.
+ * just under its own brand — and the brand here lives in the header the cluster
+ * is leaving, so the column is centred vertically instead of typed at 240 px.
+ * NOTHING IS RESERVED FOR IT: the zip's own switcher is a 272 px box painted
+ * OVER the stage, and this column is 28 px wide.
+ */
+:root[data-theme='cine-ember'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  z-index: 4;
+}
+:root[data-theme='cine-ember'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
 
 /* ── Rainline — from the `cinematic-2` zip ── */
 :root[data-theme='cine-rainline']{
@@ -4267,6 +5266,47 @@
   50%      { transform: scale(1.35); opacity: 0.35; }
 }
 
+/* THE CONTROL CLUSTER — the zip's own position — `TopChrome.tsx:180-232`: every control at the RIGHT
+ * of a 62 px top bar (`className="ml-auto flex items-center gap-2.5"`), which
+ * is exactly where `panel.css` already puts ours. So this theme does not MOVE
+ * the cluster; it gives the header the BAR the zip draws around it — the
+ * source's own 180° gradient and `backdropFilter: blur(10px)` — which is the
+ * part of that design our header did not have.
+ */
+:root[data-theme='cine-rainline'] body[data-surface='panel'] .panel__header {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab) 88%, transparent), transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-theme='cine-rainline'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
+/* THE PARTICLES — the design's own rain, 46 streaks, and the one ambient layer * the `cinematic-2` module says this panel has no element for (`cine_extra_c2.py:316-317`);
+ * it is carried here because it is what the design's own A/B label names as the
+ * difference between `rainline` and `blue-hour`. `isolation: isolate` makes the slab
+ * the stacking context, so a `z-index: -1` layer cannot escape behind its own
+ * wallpaper, and it paints after the background and before the type — the order
+ * `Stage.tsx:69` gives the rain layer (`absolute inset-0 overflow-hidden`) inside the
+ * stage. */
+:root[data-theme='cine-rainline'] .panel { isolation: isolate; }
+:root[data-theme='cine-rainline'] .panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image: linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.112)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.29)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.118)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.268)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.194)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.261)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.131)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.1)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.21)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.106)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.23)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.285)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.274)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.217)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.287)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.099)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.202)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.153)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.174)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.208)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.231)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.137)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.202)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.203)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.191)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.285)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.255)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.107)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.134)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.19)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.206)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.197)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.142)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.194)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.16)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.14)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.214)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.291)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.318)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.231)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.223)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.312)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.154)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.286)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.149)), linear-gradient(to bottom, transparent, rgba(214, 236, 245, 0.268));
+  background-size: 1.00px 16.2%, 1.00px 10.0%, 1.60px 23.8%, 1.00px 9.9%, 1.60px 23.3%, 1.60px 23.9%, 1.00px 9.6%, 1.00px 11.4%, 1.00px 12.2%, 1.00px 14.5%, 1.00px 16.2%, 1.60px 25.7%, 1.00px 17.0%, 1.00px 8.1%, 1.00px 17.1%, 1.00px 15.2%, 1.60px 22.8%, 1.00px 9.5%, 1.00px 10.1%, 1.00px 13.0%, 1.00px 8.8%, 1.00px 13.1%, 1.00px 19.8%, 1.00px 12.4%, 1.00px 16.8%, 1.00px 20.7%, 1.00px 12.4%, 1.00px 18.3%, 1.00px 10.9%, 1.00px 15.3%, 1.00px 16.4%, 1.00px 9.7%, 1.00px 22.4%, 1.00px 19.4%, 1.00px 16.4%, 1.00px 16.9%, 1.00px 11.5%, 1.00px 21.4%, 1.60px 24.6%, 1.00px 10.6%, 1.00px 20.8%, 1.60px 23.7%, 1.60px 24.7%, 1.00px 8.2%, 1.00px 12.7%, 1.00px 12.1%;
+  background-position: 95.54% 0, 2.18% 0, 56.29% 0, 36.36% 0, 44.98% 0, 63.62% 0, 13.88% 0, 31.54% 0, 54.28% 0, 100.92% 0, 84.69% 0, 15.34% 0, 103.48% 0, 84.13% 0, 43.72% 0, 96.10% 0, 42.89% 0, 65.57% 0, 30.85% 0, 78.12% 0, 56.05% 0, 67.37% 0, 41.29% 0, 10.66% 0, 31.69% 0, 49.49% 0, -3.97% 0, 13.49% 0, 41.38% 0, 102.39% 0, 74.13% 0, 26.86% 0, 41.15% 0, 17.66% 0, 58.20% 0, 102.00% 0, 95.42% 0, 46.79% 0, 78.97% 0, 60.44% 0, 96.90% 0, 44.93% 0, 19.27% 0, 71.03% 0, 81.96% 0, 26.58% 0;
+  animation: cine-rainfall 1.55s linear infinite;
+}
+/* `rainFall` (src/index.css:72-76), retargeted at the layer field: one element
+ * cannot carry 46 timelines, and `background-position-y` is the one property that
+ * moves every layer at once. The two ends and the 10 % step are the source's. */
+@keyframes cine-rainfall {
+  from { background-position-y: -20%; opacity: 0; }
+  10% { opacity: .5; }
+  to { background-position-y: 110%; opacity: 0; }
+}
 
 /* ── Cellar Sessions — from the `cinematic-2` zip ── */
 :root[data-theme='cine-cellar']{
@@ -4563,6 +5603,26 @@
 /* The two keyframes this block uses (`cine-c2-word`, `cine-c2-caret`) are
  * declared ONCE, in the `cine-rainline` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — `TopChrome.tsx:260-290`: a CENTRED floating pill at
+ * `absolute top-4 left-1/2 -translate-x-1/2`, `rounded-full`, `background:
+ * var(--surface)`, `backdropFilter: blur(var(--blur))`, `border: 1px solid
+ * var(--line)`, holding every control, with the brand alone at the left
+ * (`:241`). The pill is drawn with this theme's own `--bg-slab-strong` (this
+ * generator's name for the zip's `--surface`) and its own `--line`.
+ */
+:root[data-theme='cine-cellar'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  top: 14px;   /* the slab's own 14 px padding: the header's row */
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-slab-strong);
+  backdrop-filter: blur(10px);
+}
+:root[data-theme='cine-cellar'] body[data-surface='strip'] .stripbar { justify-content: center; }
 
 /* ── Linen Hours — from the `cinematic-2` zip ── */
 :root[data-theme='cine-linen']{
@@ -4883,6 +5943,19 @@
 /* The two keyframes this block uses (`cine-c2-word`, `cine-c2-caret`) are
  * declared ONCE, in the `cine-rainline` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — `TopChrome.tsx:180-232`: every control at the RIGHT
+ * of a 62 px top bar (`className="ml-auto flex items-center gap-2.5"`), which
+ * is exactly where `panel.css` already puts ours. So this theme does not MOVE
+ * the cluster; it gives the header the BAR the zip draws around it — the
+ * source's own 180° gradient and `backdropFilter: blur(10px)` — which is the
+ * part of that design our header did not have.
+ */
+:root[data-theme='cine-linen'] body[data-surface='panel'] .panel__header {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab) 88%, transparent), transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-theme='cine-linen'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
 
 /* ── Reading Hour — from the `cinematic-2` zip ── */
 :root[data-theme='cine-reading-hour']{
@@ -5181,6 +6254,19 @@
 /* The two keyframes this block uses (`cine-c2-word`, `cine-c2-caret`) are
  * declared ONCE, in the `cine-rainline` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — `TopChrome.tsx:180-232`: every control at the RIGHT
+ * of a 62 px top bar (`className="ml-auto flex items-center gap-2.5"`), which
+ * is exactly where `panel.css` already puts ours. So this theme does not MOVE
+ * the cluster; it gives the header the BAR the zip draws around it — the
+ * source's own 180° gradient and `backdropFilter: blur(10px)` — which is the
+ * part of that design our header did not have.
+ */
+:root[data-theme='cine-reading-hour'] body[data-surface='panel'] .panel__header {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab) 88%, transparent), transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-theme='cine-reading-hour'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
 
 /* ── Last Train — from the `cinematic-2` zip ── */
 :root[data-theme='cine-last-train']{
@@ -5486,6 +6572,19 @@
 /* The two keyframes this block uses (`cine-c2-word`, `cine-c2-caret`) are
  * declared ONCE, in the `cine-rainline` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — `TopChrome.tsx:180-232`: every control at the RIGHT
+ * of a 62 px top bar (`className="ml-auto flex items-center gap-2.5"`), which
+ * is exactly where `panel.css` already puts ours. So this theme does not MOVE
+ * the cluster; it gives the header the BAR the zip draws around it — the
+ * source's own 180° gradient and `backdropFilter: blur(10px)` — which is the
+ * part of that design our header did not have.
+ */
+:root[data-theme='cine-last-train'] body[data-surface='panel'] .panel__header {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab) 88%, transparent), transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-theme='cine-last-train'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
 
 /* ── Blue Hour — from the `cinematic-2` zip ── */
 :root[data-theme='cine-blue-hour']{
@@ -5767,3 +6866,23 @@
 /* The two keyframes this block uses (`cine-c2-word`, `cine-c2-caret`) are
  * declared ONCE, in the `cine-rainline` block at the top of this set. */
 
+/* THE CONTROL CLUSTER — the zip's own position — `TopChrome.tsx:260-290`: a CENTRED floating pill at
+ * `absolute top-4 left-1/2 -translate-x-1/2`, `rounded-full`, `background:
+ * var(--surface)`, `backdropFilter: blur(var(--blur))`, `border: 1px solid
+ * var(--line)`, holding every control, with the brand alone at the left
+ * (`:241`). The pill is drawn with this theme's own `--bg-slab-strong` (this
+ * generator's name for the zip's `--surface`) and its own `--line`.
+ */
+:root[data-theme='cine-blue-hour'] body[data-surface='panel'] .panel__controls {
+  position: absolute;
+  left: 50%;
+  top: 14px;   /* the slab's own 14 px padding: the header's row */
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-slab-strong);
+  backdrop-filter: blur(10px);
+}
+:root[data-theme='cine-blue-hour'] body[data-surface='strip'] .stripbar { justify-content: center; }

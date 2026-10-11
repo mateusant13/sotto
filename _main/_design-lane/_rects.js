@@ -66,6 +66,13 @@
     var pre = document.createElement('pre');
     pre.id = 'rects-out';
     pre.textContent = JSON.stringify(out);
+    // HIDE IT FROM LAYOUT, keep it in the serialised DOM. A <pre> defaults to
+    // white-space:pre, so this one line of JSON has a min-content of ~51 874 px;
+    // appended to <body> UNHIDDEN it inflates body.scrollWidth and every
+    // min-content measurement taken afterwards (measured: body min-content
+    // 51874.08 with it visible). --dump-dom serialises display:none elements,
+    // so the dump still carries the JSON -- only the geometry stops lying.
+    pre.style.display = 'none';
     document.body.appendChild(pre);
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', function () { setTimeout(go, 300); }); }

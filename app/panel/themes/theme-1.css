@@ -32,76 +32,89 @@
  *    `prefers-reduced-motion: reduce` and the animation was disabled by the
  *    very query written to honour it.
  *
- * MEASURED FROM: `docs/design/incoming/design-1.png`
- *   slab    #0D1013   (median of the quiet dark rows inside the panel region)
- *   accent  #F2E9D8   (median of the bright chromatic pixels in that region)
- *   text    #FFFFFF / #A9B7C6 / #7E8B99  (the three measured tiers)
- * The caption ratios, computed against the slab, are in
- * `_main/receipt-panel-themes.md`.
+ * MEASURED FROM: the zip's own source, `sotto-app-design-directions.zip`,
+ * unpacked at `_main/_design-lane/zips/directions/`. EVERY value in this file is
+ * PARSED from it at generation time -- `src/data/designs.ts` for the identity,
+ * `src/index.css` for the palette and the families, `src/components/Caption.tsx`
+ * and `src/components/Panel.tsx` for the type, the surface and the hairline -- and
+ * the generator FAILS THE BUILD when a value it needs is not there. Run
+ * `py -3 _main/_design-lane/gen_themes.py --trace` for the table of every token
+ * against the `file:line` it came from. The revision before this one measured
+ * `docs/design/incoming/design-1.png` and said so here; those medians are GONE,
+ * because a screenshot cannot be re-derived when the design moves and the zip can.
+ *
+ * ONE DEVIATION, AND IT IS IN ALPHA ONLY. The zip renders its panel over its own
+ * black stage (`Stage.tsx:46`) with `backdrop-blur-md` (`Panel.tsx:30`), so the
+ * slab below is the surface colour COMPOSITED over that same black -- the colour
+ * the zip actually shows -- and the panel stays effectively opaque, because a
+ * WebView2 window cannot blur the desktop behind it and Sotto's captions have to
+ * be readable over whatever the owner has on screen. Hue is the zip's; only the
+ * alpha is Sotto's. The caption ratios are in `_main/receipt-panel-themes.md`.
  */
 
 :root[data-theme='theme-1']{
   /* ── SURFACE ──────────────────────────────────────────────────────────── */
-  --bg-slab: #0D1013;
-  --bg-slab-strong: #12171C;
-  --slab-opacity: 0.97;
-  --shadow-slab: 0 30px 70px -28px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(242, 233, 216, 0.04);
+  --bg-slab: #060708;
+  --bg-slab-strong: #1B1E24;
+  --slab-opacity: 0.96;
+  --shadow-slab: 0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
 
   /* ── TEXT ─────────────────────────────────────────────────────────────── */
   --text-primary: #FFFFFF;
-  --text-confirmed: #F2E9D8;
-  --text-provisional: #8FA6C0;
-  --text-secondary: #A9B7C6;
-  --text-muted: #7E8B99;
+  --text-confirmed: rgba(242, 233, 216, 0.82);
+  --text-provisional: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --time-past: rgba(255, 255, 255, 0.25);
 
   /* ── LINES AND ACCENT ─────────────────────────────────────────────────── */
-  --line: rgba(242, 233, 216, 0.16);
-  --line-strong: rgba(242, 233, 216, 0.34);
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.22);
   --accent: #F2E9D8;
-  --accent-soft: rgba(242, 233, 216, 0.12);
+  --accent-soft: rgba(242, 233, 216, 0.1);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #F2E9D8;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
-  --ok: #6EF184;
-  --busy: #F2E9D8;
-  --error: #F87171;
-  --idle: #5B6472;
+  --ok: #5FD3A7;
+  --busy: #FFC46B;
+  --error: #FF6A55;
+  --idle: #A49E90;
 
   /* ── SHAPE ────────────────────────────────────────────────────────────── */
-  --radius-sm: 7px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-dialog: 16px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-dialog: 8px;
 
   /* ── SPACE ────────────────────────────────────────────────────────────── */
   --space-1: 4px;
   --space-2: 8px;
-  --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
 
   /* ── TYPE ─────────────────────────────────────────────────────────────── */
-  --font-sans: "Barlow Condensed", "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", ui-monospace, Consolas, monospace;
+  --font-sans: "Barlow Condensed", ui-sans-serif, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: clamp(30px, 4.6vw, 54px);
+  --size-caption: clamp(30px,4.6vw,54px);
   --leading-caption: 1.06;
   --weight-caption: 700;
-  --tracking-caption: 0.006em;
+  --tracking-caption: 0;
   --tracking-brand: 0.42em;
-  --brand-upper: none;
+  --brand-upper: uppercase;
   --caption-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
-  --size-chrome: 11.5px;
-  --size-meta: 10.5px;
-  --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
-  --weight-brand: 700;
+  --size-closed: 16.5px;
+  --size-chrome: 12px;
+  --size-meta: 10px;
+  --size-small: 10px;
+  --leading-closed: 1.22;
+  --weight-closed: 600;
+  --weight-brand: 600;
 
   /* ── MOTION: colour only, and short ───────────────────────────────────── */
   --motion-in: 150ms;
@@ -126,7 +139,7 @@
 :root[data-theme='theme-1'] .panel {
   border-color: var(--line);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 97%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 97%, transparent) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
 }
 :root[data-theme='theme-1'] .panel::before {
@@ -231,21 +244,21 @@
   text-shadow: none;
 }
 :root[data-theme='theme-1'] body .caption--provisional .caption__text {
-  color: #F2E9D8;
-  text-shadow: 0 0 18px rgba(242, 233, 216, 0.30), 0 0 2px rgba(242, 233, 216, 0.55);
+  color: rgba(242, 233, 216, 0.82);
+  text-shadow: 0 0 16px rgba(242, 233, 216, 0.26), 0 2px 22px rgba(0, 0, 0, 0.6);
 }
 :root[data-theme='theme-1'] body .caption--provisional .caption__provisional {
   color: var(--text-provisional);
   font-style: normal;
 }
 :root[data-theme='theme-1'] body .caption__time {
-  color: var(--text-muted);
+  color: var(--time-past);
   font-family: var(--font-mono);
   font-size: var(--size-time);
   font-variant-numeric: tabular-nums;
 }
 :root[data-theme='theme-1'] body .caption--provisional .caption__time {
-  color: #FFD24A;
+  color: var(--accent);
 }
 :root[data-theme='theme-1'] body .caption--latest .caption__time {
   color: var(--text-muted);
@@ -264,9 +277,9 @@
 :root[data-theme='theme-1'] body .caption--provisional {
   border-left-color: var(--accent);
   border-left-width: 0px;
-  border-left-style: none;
+  border-left-style: solid;
   background: transparent;
-  padding-left: var(--space-3);
+  padding-left: 0px;
 }
 :root[data-theme='theme-1'] body .caption--latest {
   border-left-color: var(--line-strong);
@@ -275,7 +288,7 @@
 }
 :root[data-theme='theme-1'] .captions__placeholder-title {
   color: var(--text-primary);
-  font-weight: 700;
+  font-weight: 600;
 }
 :root[data-theme='theme-1'] .captions__placeholder-body {
   color: var(--text-muted);
@@ -656,10 +669,10 @@
 }
 @keyframes sotto-1-glow {
   0%, 100% {
-    text-shadow: 0 0 16px rgba(242, 233, 216, .26), 0 2px 22px rgba(0, 0, 0, .6);
+    text-shadow: 0 0 16px rgba(242, 233, 216, 0.26), 0 2px 22px rgba(0, 0, 0, .6);
   }
   50% {
-    text-shadow: 0 0 30px rgba(242, 233, 216, .50), 0 2px 22px rgba(0, 0, 0, .6);
+    text-shadow: 0 0 30px rgba(242, 233, 216, 0.5), 0 2px 22px rgba(0, 0, 0, .6);
   }
 }
 @keyframes sotto-1-rise {

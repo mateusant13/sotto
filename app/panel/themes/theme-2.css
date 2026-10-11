@@ -32,76 +32,89 @@
  *    `prefers-reduced-motion: reduce` and the animation was disabled by the
  *    very query written to honour it.
  *
- * MEASURED FROM: `docs/design/incoming/design-2.png`
- *   slab    #0E1011   (median of the quiet dark rows inside the panel region)
- *   accent  #FF6A55   (median of the bright chromatic pixels in that region)
- *   text    #FFFFFF / #BFC0C2 / #8A8C8E  (the three measured tiers)
- * The caption ratios, computed against the slab, are in
- * `_main/receipt-panel-themes.md`.
+ * MEASURED FROM: the zip's own source, `sotto-app-design-directions.zip`,
+ * unpacked at `_main/_design-lane/zips/directions/`. EVERY value in this file is
+ * PARSED from it at generation time -- `src/data/designs.ts` for the identity,
+ * `src/index.css` for the palette and the families, `src/components/Caption.tsx`
+ * and `src/components/Panel.tsx` for the type, the surface and the hairline -- and
+ * the generator FAILS THE BUILD when a value it needs is not there. Run
+ * `py -3 _main/_design-lane/gen_themes.py --trace` for the table of every token
+ * against the `file:line` it came from. The revision before this one measured
+ * `docs/design/incoming/design-2.png` and said so here; those medians are GONE,
+ * because a screenshot cannot be re-derived when the design moves and the zip can.
+ *
+ * ONE DEVIATION, AND IT IS IN ALPHA ONLY. The zip renders its panel over its own
+ * black stage (`Stage.tsx:46`) with `backdrop-blur-md` (`Panel.tsx:30`), so the
+ * slab below is the surface colour COMPOSITED over that same black -- the colour
+ * the zip actually shows -- and the panel stays effectively opaque, because a
+ * WebView2 window cannot blur the desktop behind it and Sotto's captions have to
+ * be readable over whatever the owner has on screen. Hue is the zip's; only the
+ * alpha is Sotto's. The caption ratios are in `_main/receipt-panel-themes.md`.
  */
 
 :root[data-theme='theme-2']{
   /* ── SURFACE ──────────────────────────────────────────────────────────── */
-  --bg-slab: #0E1011;
-  --bg-slab-strong: #131617;
-  --slab-opacity: 0.99;
-  --shadow-slab: 0 26px 60px -26px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 106, 85, 0.07);
+  --bg-slab: #06090B;
+  --bg-slab-strong: #1B1E24;
+  --slab-opacity: 0.96;
+  --shadow-slab: 0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255, 255, 255, 0.12);
 
   /* ── TEXT ─────────────────────────────────────────────────────────────── */
-  --text-primary: #FFFFFF;
-  --text-confirmed: #FFFFFF;
-  --text-provisional: #9A9384;
-  --text-secondary: #BFC0C2;
-  --text-muted: #8A8C8E;
+  --text-primary: rgba(255, 255, 255, 0.9);
+  --text-confirmed: rgba(255, 255, 255, 0.9);
+  --text-provisional: #FFC46B;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --time-past: rgba(255, 255, 255, 0.25);
 
   /* ── LINES AND ACCENT ─────────────────────────────────────────────────── */
-  --line: rgba(255, 106, 85, 0.22);
-  --line-strong: rgba(255, 106, 85, 0.44);
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.26);
   --accent: #FF6A55;
-  --accent-soft: rgba(255, 106, 85, 0.16);
+  --accent-soft: rgba(255, 106, 85, 0.12);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #FF6A55;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
-  --ok: #F0D090;
-  --busy: #B9985A;
-  --error: #FF8A7A;
-  --idle: #5F6265;
+  --ok: #5FD3A7;
+  --busy: #FFC46B;
+  --error: #FF6A55;
+  --idle: #A49E90;
 
   /* ── SHAPE ────────────────────────────────────────────────────────────── */
   --radius-sm: 4px;
-  --radius-md: 5px;
+  --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-dialog: 6px;
+  --radius-dialog: 8px;
 
   /* ── SPACE ────────────────────────────────────────────────────────────── */
-  --space-1: 3px;
-  --space-2: 6px;
-  --space-3: 10px;
-  --space-4: 15px;
-  --space-5: 22px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
 
   /* ── TYPE ─────────────────────────────────────────────────────────────── */
-  --font-sans: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
-  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
-  --font-caption: var(--font-mono);
-  --font-closed: var(--font-mono);
-  --size-caption: clamp(18px, 2.3vw, 28px);
-  --leading-caption: 1.38;
-  --weight-caption: 600;
-  --tracking-caption: 0.01em;
-  --tracking-brand: 0.24em;
+  --font-sans: "IBM Plex Mono", ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-caption: var(--font-sans);
+  --font-closed: var(--font-sans);
+  --size-caption: clamp(18px,2.3vw,28px);
+  --leading-caption: 1.4;
+  --weight-caption: 500;
+  --tracking-caption: 0;
+  --tracking-brand: 0.18em;
   --brand-upper: uppercase;
   --caption-upper: none;
-  --size-time: 11px;
-  --size-closed: 15px;
-  --size-chrome: 10.5px;
-  --size-meta: 10px;
-  --size-small: 11.5px;
-  --leading-closed: 1.35;
+  --size-time: 9px;
+  --size-closed: 10.5px;
+  --size-chrome: 9.5px;
+  --size-meta: 9px;
+  --size-small: 9px;
+  --leading-closed: 1.55;
   --weight-closed: 400;
-  --weight-brand: 700;
+  --weight-brand: 400;
 
   /* ── MOTION: colour only, and short ───────────────────────────────────── */
   --motion-in: 150ms;
@@ -126,7 +139,7 @@
 :root[data-theme='theme-2'] .panel {
   border-color: var(--line);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 99%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 99%, transparent) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
 }
 :root[data-theme='theme-2'] .panel::before {
@@ -214,7 +227,7 @@
 }
 :root[data-theme='theme-2'] body .caption__text {
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
@@ -231,7 +244,7 @@
   text-shadow: none;
 }
 :root[data-theme='theme-2'] body .caption--provisional .caption__text {
-  color: #FFFFFF;
+  color: rgba(255, 255, 255, 0.9);
   text-shadow: none;
 }
 :root[data-theme='theme-2'] body .caption--provisional .caption__provisional {
@@ -239,13 +252,13 @@
   font-style: normal;
 }
 :root[data-theme='theme-2'] body .caption__time {
-  color: var(--text-muted);
+  color: var(--time-past);
   font-family: var(--font-mono);
   font-size: var(--size-time);
   font-variant-numeric: tabular-nums;
 }
 :root[data-theme='theme-2'] body .caption--provisional .caption__time {
-  color: #FFD24A;
+  color: var(--accent);
 }
 :root[data-theme='theme-2'] body .caption--latest .caption__time {
   color: var(--text-muted);
@@ -263,10 +276,10 @@
 }
 :root[data-theme='theme-2'] body .caption--provisional {
   border-left-color: var(--accent);
-  border-left-width: 2px;
+  border-left-width: 0px;
   border-left-style: solid;
   background: transparent;
-  padding-left: var(--space-3);
+  padding-left: 0px;
 }
 :root[data-theme='theme-2'] body .caption--latest {
   border-left-color: var(--line-strong);
@@ -275,7 +288,7 @@
 }
 :root[data-theme='theme-2'] .captions__placeholder-title {
   color: var(--text-primary);
-  font-weight: 700;
+  font-weight: 400;
 }
 :root[data-theme='theme-2'] .captions__placeholder-body {
   color: var(--text-muted);
@@ -680,8 +693,8 @@
   color: var(--accent);
 }
 :root[data-theme='theme-2'] .caption--provisional .caption__text {
-  font-size: clamp(18px, 2.3vw, 28px);
-  line-height: 1.4;
+  font-size: var(--size-caption);
+  line-height: var(--leading-caption);
 }
 :root[data-theme='theme-2'] .caption__mark {
   animation: sotto-caret 1.1s steps(1) infinite;

@@ -32,76 +32,89 @@
  *    `prefers-reduced-motion: reduce` and the animation was disabled by the
  *    very query written to honour it.
  *
- * MEASURED FROM: `docs/design/incoming/design-3.png`
- *   slab    #0F1216   (median of the quiet dark rows inside the panel region)
- *   accent  #A9C1D9   (median of the bright chromatic pixels in that region)
- *   text    #F4F7FA / #AEB8C4 / #7F8A97  (the three measured tiers)
- * The caption ratios, computed against the slab, are in
- * `_main/receipt-panel-themes.md`.
+ * MEASURED FROM: the zip's own source, `sotto-app-design-directions.zip`,
+ * unpacked at `_main/_design-lane/zips/directions/`. EVERY value in this file is
+ * PARSED from it at generation time -- `src/data/designs.ts` for the identity,
+ * `src/index.css` for the palette and the families, `src/components/Caption.tsx`
+ * and `src/components/Panel.tsx` for the type, the surface and the hairline -- and
+ * the generator FAILS THE BUILD when a value it needs is not there. Run
+ * `py -3 _main/_design-lane/gen_themes.py --trace` for the table of every token
+ * against the `file:line` it came from. The revision before this one measured
+ * `docs/design/incoming/design-3.png` and said so here; those medians are GONE,
+ * because a screenshot cannot be re-derived when the design moves and the zip can.
+ *
+ * ONE DEVIATION, AND IT IS IN ALPHA ONLY. The zip renders its panel over its own
+ * black stage (`Stage.tsx:46`) with `backdrop-blur-md` (`Panel.tsx:30`), so the
+ * slab below is the surface colour COMPOSITED over that same black -- the colour
+ * the zip actually shows -- and the panel stays effectively opaque, because a
+ * WebView2 window cannot blur the desktop behind it and Sotto's captions have to
+ * be readable over whatever the owner has on screen. Hue is the zip's; only the
+ * alpha is Sotto's. The caption ratios are in `_main/receipt-panel-themes.md`.
  */
 
 :root[data-theme='theme-3']{
   /* ── SURFACE ──────────────────────────────────────────────────────────── */
-  --bg-slab: #0F1216;
-  --bg-slab-strong: #141922;
+  --bg-slab: #0F0E0D;
+  --bg-slab-strong: #1B1E24;
   --slab-opacity: 0.96;
-  --shadow-slab: 0 28px 64px -28px rgba(0, 0, 0, 0.76), 0 0 0 1px rgba(169, 193, 217, 0.05);
+  --shadow-slab: 0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255, 255, 255, 0.14);
 
   /* ── TEXT ─────────────────────────────────────────────────────────────── */
-  --text-primary: #F4F7FA;
-  --text-confirmed: #DCE4ED;
-  --text-provisional: #97A3B0;
-  --text-secondary: #AEB8C4;
-  --text-muted: #7F8A97;
+  --text-primary: #EAE5D9;
+  --text-confirmed: #EAE5D9;
+  --text-provisional: rgba(234, 229, 217, 0.45);
+  --text-secondary: rgba(234, 229, 217, 0.8);
+  --text-muted: rgba(234, 229, 217, 0.35);
+  --time-past: rgba(234, 229, 217, 0.8);
 
   /* ── LINES AND ACCENT ─────────────────────────────────────────────────── */
-  --line: rgba(169, 193, 217, 0.16);
-  --line-strong: rgba(169, 193, 217, 0.36);
+  --line: rgba(255, 255, 255, 0.14);
+  --line-strong: rgba(255, 255, 255, 0.31);
   --accent: #A9C1D9;
-  --accent-soft: rgba(169, 193, 217, 0.12);
+  --accent-soft: rgba(169, 193, 217, 0.14);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #A9C1D9;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
-  --ok: #58E8B5;
-  --busy: #7FD6C2;
-  --error: #FF9B8A;
-  --idle: #5D6673;
+  --ok: #5FD3A7;
+  --busy: #FFC46B;
+  --error: #FF6A55;
+  --idle: #A49E90;
 
   /* ── SHAPE ────────────────────────────────────────────────────────────── */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-dialog: 12px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-dialog: 8px;
 
   /* ── SPACE ────────────────────────────────────────────────────────────── */
-  --space-1: 5px;
-  --space-2: 9px;
-  --space-3: 14px;
-  --space-4: 21px;
-  --space-5: 30px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
 
   /* ── TYPE ─────────────────────────────────────────────────────────────── */
-  --font-sans: "Newsreader", "Segoe UI Variable Text", "Segoe UI", Georgia, serif;
-  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-sans: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-caption: var(--font-sans);
   --font-closed: var(--font-sans);
-  --size-caption: 23px;
-  --leading-caption: 1.62;
+  --size-caption: clamp(21px,2.7vw,33px);
+  --leading-caption: 1.55;
   --weight-caption: 400;
-  --tracking-caption: 0.002em;
-  --tracking-brand: 0.14em;
+  --tracking-caption: 0;
+  --tracking-brand: 0;
   --brand-upper: none;
   --caption-upper: none;
-  --size-time: 10px;
-  --size-closed: 17px;
-  --size-chrome: 11px;
-  --size-meta: 10px;
-  --size-small: 12px;
-  --leading-closed: 1.45;
+  --size-time: 11px;
+  --size-closed: 14px;
+  --size-chrome: 12.5px;
+  --size-meta: 11px;
+  --size-small: 11px;
+  --leading-closed: 1.8;
   --weight-closed: 400;
-  --weight-brand: 600;
+  --weight-brand: 400;
 
   /* ── MOTION: colour only, and short ───────────────────────────────────── */
   --motion-in: 150ms;
@@ -231,7 +244,7 @@
   text-shadow: none;
 }
 :root[data-theme='theme-3'] body .caption--provisional .caption__text {
-  color: #DCE4ED;
+  color: #EAE5D9;
   text-shadow: none;
 }
 :root[data-theme='theme-3'] body .caption--provisional .caption__provisional {
@@ -239,13 +252,13 @@
   font-style: normal;
 }
 :root[data-theme='theme-3'] body .caption__time {
-  color: var(--text-muted);
+  color: var(--time-past);
   font-family: var(--font-mono);
   font-size: var(--size-time);
   font-variant-numeric: tabular-nums;
 }
 :root[data-theme='theme-3'] body .caption--provisional .caption__time {
-  color: #FFD24A;
+  color: var(--accent);
 }
 :root[data-theme='theme-3'] body .caption--latest .caption__time {
   color: var(--text-muted);
@@ -263,10 +276,10 @@
 }
 :root[data-theme='theme-3'] body .caption--provisional {
   border-left-color: var(--accent);
-  border-left-width: 2px;
+  border-left-width: 0px;
   border-left-style: solid;
   background: transparent;
-  padding-left: var(--space-3);
+  padding-left: 0px;
 }
 :root[data-theme='theme-3'] body .caption--latest {
   border-left-color: var(--line-strong);
@@ -275,7 +288,7 @@
 }
 :root[data-theme='theme-3'] .captions__placeholder-title {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 400;
 }
 :root[data-theme='theme-3'] .captions__placeholder-body {
   color: var(--text-muted);
@@ -644,8 +657,8 @@
   transition: opacity 260ms ease;
 }
 :root[data-theme='theme-3'] .caption--provisional .caption__text {
-  color: #DCE4ED;
-  border-bottom: 1px solid rgba(169, 193, 217, 0.35);
+  color: #EAE5D9;
+  border-bottom: 1px solid rgba(234, 229, 217, 0.35);
   padding-bottom: 4px;
 }
 :root[data-theme='theme-3'] .caption--provisional .caption__provisional .caption__word {
@@ -660,7 +673,7 @@
   height: .88em;
   margin-left: 6px;
   vertical-align: -0.06em;
-  background: rgba(220, 228, 237, 0.8);
+  background: rgba(234, 229, 217, 0.8);
 }
 @media (prefers-reduced-motion: no-preference) {
   :root[data-theme='theme-3'] .caption--provisional .caption__mark {
