@@ -1715,3 +1715,44 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   Same shape as the exit-code rule: a pipe that closes early is a measurement that lies.
   Rule for this repo: when a refusal is the finding, keep the WHOLE output to a file and
   grep the file. Never filter the evidence of the thing you are investigating.
+
+## 2026-10-11T10:43Z - the first no-bypass commit: 15 suites + gate 9/0 green, exit 0, and the bypass was never set
+
+  MEASURED 10:43:58Z .. 10:46:01Z, 123.5 s, POPULATION = 1 commit. This is the first commit in
+  this session that did NOT set SOTTO_SKIP_RUN_ALL, so the gate number comes from the commit
+  path instead of from me typing it. Output whole in commit4.txt, not filtered.
+
+    pre-commit: running suites and parse gate (skip with SOTTO_SKIP_RUN_ALL=1)
+    SUITES 15 passed, 0 failed, 0 unreported
+    RESULT 9 passed, 0 refused
+    VERDICT suites_ok=true gate_ok=true
+    COMMIT_EXIT 0     HEAD bb4afe6 -> 9b69f4b     staged_depois=0    main inalterado
+
+  WHAT THIS DOES NOT CHANGE: it is ONE commit on ONE branch with a dirty tree of hundreds of
+  unrelated files, and 2 of the 9 probes still prove key presence only. A green gate on a
+  commit is not the same as a green gate on main, and this is not CI.
+
+## 2026-10-11T10:56Z - zero presence-only probes: the gate refused to pin an arm, so the probe emits the claim instead
+
+  MEASURED 10:49:43Z, POPULATION 9: 7 probes compared a truth, 2 compared presence only. The gate
+  recorded why, and the reason was correct: each of the two prints true AND false across its
+  two arms, so no single expected value describes it, and pinning one would make the gate pass
+  on half of what it sees.
+
+  THE REASONING WAS RIGHT ABOUT THE ARM-WISE KEYS AND WRONG ABOUT THE CLAIM. The claim is not
+  "the good arm printed false"; it is "the two arms disagree", which is single-valued. So the
+  probes now derive and emit that, once, at the end, and the arm lines stay free.
+
+  MEASURED 10:55:44Z .. 10:56:47Z, 63.2 s, gate exit 0:
+    RESULT 9 passed, 0 refused      POP_PROBES_COM_VERDADE 9      PROBES_SO_PRESENCA 0
+    clip-not-keyframed    1 truth-valued key     stored-keyframe-arm  3 truth-valued keys
+
+  Pinning ARMS_DISAGREE cannot pass on half the output: it is true only when the arms differ,
+  so a probe whose arms collapsed to the same value prints false and the gate refuses.
+
+  WHAT I DID NOT FINISH. The RED arm for these four keys. MEASURED: 4 gate runs do not fit the
+  time budget, so I cancelled it -- and cancelling left the gate MUTATED ON DISK (L211 read
+  "false" where it must read "true", confirmed by diff against the backup). Restored from
+  parse-gate.mjs.redarm.bak, verified 0 lines with false, node --check exit 0, backup removed.
+  So these four keys are UNPROVEN in the RED direction: nothing yet shows the gate refuses
+  when one of them is wrong. The green is real; the NO-arm for the new keys is not measured.

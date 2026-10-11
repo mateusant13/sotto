@@ -192,9 +192,25 @@ const VALUED = {
   //   keyframe-shape-probe  a busy desktop gives CONTENT_SUFFICIENT true and FIRST_IDR 0
   //   loaded-module-probe   the runtime's resolved file and the file by path hash alike
   //   still-screen-probe    the moving clip covers its clock
-  // clip-not-keyframed-probe and stored-keyframe-arm-probe are deliberately NOT asserted:
-  // each prints both true and false across its two arms, so no single expected value can
-  // describe them and pinning one would make the gate pass on half of what it sees.
+  // clip-not-keyframed-probe and stored-keyframe-arm-probe used to be ABSENT from VALUED,
+  // on grounds this file itself recorded: each prints true and false across its two arms, so
+  // "no single expected value can describe them and pinning one would make the gate pass on
+  // half of what it sees". MEASURED 2026-10-11T10:49:43Z, POPULATION 9: 7 probes compared a
+  // truth, 2 compared presence only.
+  //
+  // That reasoning is correct about the ARM-WISE keys and wrong about the claim. The claim is
+  // not "the good arm printed false" -- it is "the arms DISAGREE", which is single-valued.
+  // MEASURED 2026-10-11T10:51:30Z: both probes now emit one derived boolean each, built from
+  // the values they measured, and the arm-wise lines stay free to print whatever is true.
+  // Pinning ARMS_DISAGREE cannot pass on half the output: it is true only when the two arms
+  // differ, so a probe whose arms collapsed to the same value prints false and this gate
+  // refuses. That is the arm a gate that cannot say NO would not have.
+  "clip-not-keyframed-probe.mjs": { "ARMS_DISAGREE ": "true" },
+  "stored-keyframe-arm-probe.mjs": {
+    "ARMS_DISAGREE ": "true",
+    "NEGATIVE_ARM_REFUSED ": "true",
+    "NEGATIVE_ARM_LEFT_NO_FILE ": "true",
+  },
   "keyframe-shape-probe.mjs": { "CONTENT_SUFFICIENT ": "true", "FIRST_IDR_SEC ": "0" },
   "loaded-module-probe.mjs": { "SAME_BYTES ": "true" },
   "still-screen-probe.mjs": { "CONTENT_SUFFICIENT ": "true" },

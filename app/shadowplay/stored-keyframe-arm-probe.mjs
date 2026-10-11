@@ -34,6 +34,8 @@ if (!goodPath || !badPath) {
   process.exit(2);
 }
 
+const results = new Map();
+const filesLeft = new Map();
 async function arm(label, clipPath) {
   const dir = mkdtempSync(join(tmpdir(), "sp-278-"));
   const app = composeShadowplay({ dir });
@@ -50,6 +52,8 @@ async function arm(label, clipPath) {
   }
   const left = readdirSync(dir).filter((f) => f.endsWith(".mp4"));
   console.log(`ARM ${label}`);
+    results.set(label, outcome);
+    filesLeft.set(label, left.length);
   console.log(`  OUTCOME ${outcome}`);
   console.log(`  DETAIL ${message}`);
   console.log(`  FILES_LEFT_AFTER ${left.length}${left.length ? " " + left.join(",") : ""}`);
@@ -59,3 +63,10 @@ async function arm(label, clipPath) {
 await arm("POSITIVE_first_idr_at_0", goodPath);
 await arm("NEGATIVE_first_idr_at_1", badPath);
 console.log("DONE");
+  // THE CLAIM, AS ONE VALUE PER ARM. OUTCOME is free to be "delivered" in one arm and
+  // "REFUSED" in the other -- that freedom is the point of the probe -- so the gate
+  // cannot pin it. What it can pin: the ring refused the clip whose stored first IDR
+  // is late, and left no file behind while refusing. Both are single-valued.
+  console.log(`NEGATIVE_ARM_REFUSED ${results.get("NEGATIVE_first_idr_at_1") === "REFUSED"}`);
+  console.log(`NEGATIVE_ARM_LEFT_NO_FILE ${filesLeft.get("NEGATIVE_first_idr_at_1") === 0}`);
+  console.log(`ARMS_DISAGREE ${new Set(results.values()).size === 2}`);
