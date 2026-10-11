@@ -1240,3 +1240,46 @@ The guard I read for three turns without ever provoking. index.js:149 is:
   rule: a guard read three times and never provoked is three reads, not evidence. The cheap
   way to make a guard say NO is to feed the function the value it exists to reject -- but
   say afterwards whether you made the PRODUCT refuse or only the CONDITION.
+
+## 2026-10-11T09:43:24Z - the ring does not verify by CONTRACT, with a reason written, and it verifies anyway at delivery
+
+I have now called this claim three times and been wrong twice. Reading the contract before
+touching anything, as I said I would, closes it properly.
+
+  WHAT push() DECLARES, replay-ring.js:141-143, verbatim:
+      `keyframe` says the segment BEGINS on an IDR. The ring does not decide this by
+      arithmetic: backToNearestIdr already refused to guess (see its "fewer than one
+      GOP" branch), and an encoder is the only thing that knows where its IDRs are.
+
+  So the ring trusting its caller is not an omission I stumbled on. It is a stated design
+  decision with a stated reason: a sibling function already refused to guess, and the
+  encoder is the only party that knows its own IDR positions. I was describing a DELIBERATE
+  contract as a latent risk, which is the same move as describing a guard as unverified.
+
+  AND THERE IS A THIRD CHECK I HAD NOT FOUND. replay-ring.js:278 runs inside instantReplay,
+  before the delivery measurement:
+      this.#assertStoredClipStartsOnKeyframe(source);
+  and :305-306 implements it as:
+      #assertStoredClipStartsOnKeyframe(stored) {
+        new NvencEncoder().assertStartsOnKeyframe(stored);
+      }
+  So the STORED clip is verified by the real encoder at delivery time, after it exists on
+  disk. That is what closes the "second caller lies" worry: a caller that asserted a
+  keyframe it did not have would produce a stored clip whose first keyframe is wrong, and
+  :278 would refuse it there. The invariant is checked by measurement at push time by the
+  caller AND at delivery time by the ring, through the same encoder.
+
+  THREE CHECKS IN THE CHAIN, all read, all in this file or the one it calls:
+      index.js:148   caller measures the capture's first IDR and refuses if late
+      replay-ring L141  contract: the ring trusts the caller, on purpose, with a reason
+      replay-ring L278  the ring re-verifies the STORED clip with NvencEncoder
+  So "unverified assertion" was wrong, and my second-order "latent risk" was smaller than I
+  wrote it: even a lying second caller is caught at delivery.
+
+  WHAT I DID NOT DO, which is the honest end of this. I did not exercise :278 either. It is
+  read, not provoked, and I am not going to open a third probe to light it up tonight: the
+  claim that needs changing is now read from three places instead of two, and the remaining
+  work on it is a test, not a design question.
+
+  rule: before calling a contract a defect, read the contract. It may be a decision with a
+  reason in it, and the reason may be the answer I was about to argue against.
