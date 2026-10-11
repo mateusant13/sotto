@@ -1483,3 +1483,30 @@ The owner corrected me for carrying a count from an older window, so: recounted 
 
   rule: before counting a thing, look up the field it lives in. I reported "running" for
   several turns against a column that has five values and none of them is that.
+
+## 2026-10-11T10:01:29Z - assessDelivery has ONE product call site, and there is a duplicated module nobody has measured
+
+  MEASURED, POPULATION = every .js under app/shadowplay, comments excluded,
+  WINDOW_UTC 2026-10-11T10:01:29Z:
+      defined once  frame-accounting.js:322
+      called        replay-ring.js:330   verdict = await assessDelivery(source, fps, seconds)
+      called        replay-ring.CURRENT.js:275   the same line, in a COPY of the module
+      imported      replay-ring.js:9 and replay-ring.CURRENT.js:9
+
+  So the gate has exactly one product consumer, and the second call site is the duplicate.
+  Nothing in captions or highlights calls it, despite the reasoning inside frame-accounting
+  being a transcriber's. A gate written for one consumer reached exactly one consumer, and
+  it is not the consumer the comment argues for.
+
+  THE DUPLICATION IS ITS OWN FINDING. replay-ring.CURRENT.js duplicates replay-ring.js. I
+  have NOT measured which one the product loads and I have not touched either. It is
+  recorded because a duplicated module means an edit to one of them may not reach the
+  running product, and that is the same shape as the clipsDir/dir mistake from earlier
+  today: two things that look like the thing, and only one of which is it.
+
+  Written for the owner as state/DECISION-assessDelivery-scope.md, with three positions and
+  what each costs. Not decided here.
+
+  rule: count the call sites before deciding what a guard is protecting. One caller makes
+  "a transcriber's rule" a rule with a single non-transcriber user, which is a design fact
+  rather than a style question.
