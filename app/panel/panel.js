@@ -2538,10 +2538,14 @@ function statusKind(kind) {
 /**
  * The "behind" chip in the live bar — OPTIONAL, and silent when unsupported.
  *
- * It is subscribed ONLY when the hosting shell exposes `onStats` (neither shell
- * does today, so this returns immediately and the chip never appears); the day
- * the shell measures queue drops or a decode rate under real time, the panel
- * lights up by itself. Fail-closed in the same way as the rest of this file: a
+ * It is subscribed ONLY when the hosting shell exposes `onStats` — and the
+ * WebView2 shell DOES (`sotto_webview.py` `onStats` :2601, `getStats` :2641), so
+ * it subscribes; the chip then appears only if a payload carries the field it
+ * reads, which is a MEASUREMENT question, not a wiring one. (This comment said
+ * "neither shell does today, so this returns immediately" until 2026-10-11;
+ * re-measured and corrected — the stale form was a false claim about the shell.)
+ * The day the shell measures queue drops or a decode rate under real time, the
+ * panel lights up by itself. Fail-closed in the same way as the rest of this file: a
  * missing field is not a fact, so it cannot make the chip appear.
  */
 /**
@@ -2609,9 +2613,31 @@ function paintLevel() {
 }
 
 /**
- * The stats channel, if this shell has one. NOT wired to anything today: the
- * shell exposes neither `onStats` nor `getStats`, so this returns immediately and
- * the bars stay at the floor. The day it lands, the wave fills by itself.
+ * The stats channel, if this shell has one. The WebView2 shell HAS one: it
+ * exposes `onStats` (`sotto_webview.py:2601`) and `getStats` (`:2641`), so this
+ * subscribes and the bars DO follow `fields.peak`/`fields.blocks`.
+ *
+ * THIS COMMENT SAID THE OPPOSITE UNTIL 2026-10-11 ("the shell exposes neither
+ * `onStats` nor `getStats`, so this returns immediately and the bars stay at the
+ * floor") — measured FALSE, and it is why two readers believed the wave was
+ * already wired end to end. It then said the missing half was the PRODUCER, and
+ * that was TRUE when it was written: `worker/sotto_worker.py` did not emit the
+ * `{"type":"meter","peak":…,"blocks":…}` event the shell's `elif kind == 'meter':`
+ * branch (`:7475`) parses, so the only input this could receive was the 10 s
+ * `WORKER_STATS` running maximum — a staircase that only rises, which IS the
+ * owner-reported defect (`_main/receipt-20261011-meter-chain-gap.md`).
+ *
+ * THE PRODUCER EXISTS NOW — measured 2026-10-11 on `worker/sotto_worker.py` 304762 B
+ * sha256 `771ACA94…`: the meter is built ONCE on the live audio path
+ * (`AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)`, `:4663`), ticked
+ * with the SAME per-block peak the tap already had (`:4745`) and emitted as one event
+ * per window (`:4747`) behind `if meter.enabled:` (`:4744`); the rate is
+ * `--meter-hz` > `SOTTO_METER_HZ` > 10.0 and `--meter-hz 0` is inert. So the chain is
+ * complete IN CODE. **NOT MEASURED, and this is the half that matters: the wire has
+ * never been exercised.** No meter event has been seen crossing a real stdout pipe into
+ * the shell and on to this subscriber, because the owner's stop order forbids launching
+ * the app; the evidence is the bytes on both sides plus two in-process oracles
+ * (`_main/meter-chain-oracle.py`, `_main/audio-meter-oracle.py`), not a painted bar.
  *
  * A payload is trusted only for the fields it actually carries — `stats.peak`
  * absent means NO measurement, never a zero.

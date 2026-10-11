@@ -1338,6 +1338,24 @@ class AutoGain:
 METER_HZ = 10.0
 
 
+class MeterHzFlag(argparse.Action):
+    """The `--meter-hz` action, which RECORDS THAT THE OPERATOR SPOKE.
+
+    WHY AN ACTION AND NOT A SENTINEL DEFAULT. `--meter-hz` must keep the literal
+    `default=METER_HZ` in `add_argument` — `_main/audio-meter-oracle.py` reads the
+    default out of these bytes with a regex and would die without it — so the
+    parsed value cannot tell "the operator asked for 10" from "nobody asked".
+    This action can: it sets `meter_hz_given` beside the value, and that is what
+    makes the precedence EXACT (flag > SOTTO_METER_HZ > METER_HZ) instead of
+    value-based, so an explicit `--meter-hz 0` — the documented OFF — survives an
+    environment that asks for something else.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, self.dest + "_given", True)
+
+
 class AudioMeter:
     """Per-WINDOW audio level at ~`hz`, PURE: no clock, no I/O, no audio device.
 
@@ -1346,10 +1364,29 @@ class AudioMeter:
     without opening the device the owner's worker is holding.
     """
 
-    def __init__(self, hz=METER_HZ, now=0.0):
+    def __init__(self, hz=METER_HZ, now=0.0, block_s=0.0):
         self.interval = (1.0 / float(hz)) if hz and float(hz) > 0 else 0.0
         self.enabled = self.interval > 0.0
         self.next = now + self.interval
+        # -- HOW MANY BLOCKS ONE WINDOW HOLDS, when the tap period is known ---
+        # A pure TIME window BEATS against a block rate that equals it, and that
+        # beat is not academic: MEASURED by `_main/audio-meter-oracle.py` on
+        # a tap paced 99 ms against a 100 ms window -- the window swallows two
+        # blocks once the drift passes an interval and the wave loses points.
+        # MEASURED on the live loop fed from a file (SOTTO_FILE_TAP, 100 ms
+        # blocks, 10 Hz window): 80 blocks produced 48 events over 8 s = 6.0
+        # points/s, not 10. The window therefore closes on the FIRST of "enough
+        # blocks" and "enough time": the BLOCK COUNT pins the cadence to the tap
+        # (one event per block at the shipped 100 ms / 10 Hz), and the TIME bound
+        # is what still closes a window when blocks are sparse or absent.
+        #
+        # `block_s=0.0` means "the caller did not say", which is the
+        # PURE-TIME meter: `blocks_per_window` stays 0 and only the time
+        # bound closes windows. The live path passes the tap own period, so this
+        # is the default only for oracles and for a caller that has no tap.
+        self.block_s = float(block_s) if block_s and float(block_s) > 0 else 0.0
+        self.blocks_per_window = (max(1, int(round(self.interval / self.block_s)))
+                                  if self.block_s > 0 else 0)
         self.reset()
 
     def reset(self):
@@ -1359,23 +1396,45 @@ class AudioMeter:
     def tick(self, block_peak, now):
         """Feed ONE block's peak; return the payload when the window CLOSED.
 
-        Returns `{"peak": <window peak>, "blocks": <blocks in it>}` or None. The
-        window is closed by TIME, not by a block count: a tap that stalls gives a
-        LONGER window, and `blocks` is how a consumer sees that instead of
-        reading a smooth wave over a gap.
+        Returns `{"peak": <window peak>, "blocks": <blocks in it>}` or None. A
+        window closes on the FIRST of ENOUGH TIME and ENOUGH BLOCKS (see
+        `blocks_per_window`), so with a tap whose period is known it holds
+        exactly the blocks the consumer expects, and with no tap period at all
+        (an oracle) it is closed by time alone -- and then `blocks` is how a
+        consumer SEES a window that ran long instead of reading a smooth wave
+        over a gap.
         """
         if not self.enabled:
             return None
         self.blocks += 1
         if block_peak > self.peak:
             self.peak = block_peak
-        if now < self.next:
+        # ENOUGH TIME **or** ENOUGH BLOCKS. Two measured defects live in this
+        # one predicate, and each has its own arm in `_main/meter-chain-oracle.py`:
+        #   * the TIME arm is written `now < next` + return, never `now > next`
+        #     + emit. The two differ on the ONE tick that lands exactly ON the
+        #     boundary, and that tick is not rare: a tap paced at the window own
+        #     period produces one on every block. MEASURED before this changed:
+        #     100 blocks of 100 ms gave 99 events.
+        #   * the COUNT arm is what makes that true at ANY pace. Without it a
+        #     99 ms tap drifts 1 ms earlier per block against a 100 ms window,
+        #     two blocks land in one window, and the cadence collapses --
+        #     MEASURED on the live loop fed from a file: 80 blocks, 48 events,
+        #     6.0 points/s instead of 10.
+        if now < self.next and not (self.blocks_per_window
+                                    and self.blocks >= self.blocks_per_window):
             return None
         out = {"peak": round(self.peak, 4), "blocks": self.blocks}
         self.reset()
-        # From `now`, not `+= interval`: a late tick must NOT emit a burst of
-        # catch-up windows carrying the same audio twice.
-        self.next = now + self.interval
+        # ONE window per tick, advanced from the PREVIOUS BOUNDARY -- never from
+        # `now`, which is what re-phased it. The CLAMP is not optional:
+        # `next += interval` alone would replay the windows a stalled tap slept
+        # through, one per tick, carrying the same audio again -- the burst the
+        # line this replaces was written to prevent. A tick more than one interval
+        # late therefore jumps the boundary to `now + interval` instead.
+        self.next += self.interval
+        if self.next < now:
+            self.next = now + self.interval
         return out
 
 
@@ -3985,6 +4044,7 @@ def main():
         "--meter-hz",
         type=float,
         default=METER_HZ,
+        action=MeterHzFlag,
         help="audio-level events per second on stdout (0 = off)",
     )
     ap.add_argument(
@@ -4065,6 +4125,40 @@ def main():
         f"attempts anyway and says so. 0 explicitly disables the gate.",
     )
     args = ap.parse_args()
+
+    # -- the panel WAVE: resolve the meter rate BEFORE the audio path ---------
+    # Precedence: --meter-hz > SOTTO_METER_HZ > METER_HZ (10.0) -- the same
+    # shape as --lang-id > SOTTO_LANG_ID > config > auto below. The ENV rung is
+    # not decoration: the shell spawns this worker as
+    # `python [...extraArgs, script]`, so a flag handed over by the shell lands
+    # BEFORE the script path and is eaten by the INTERPRETER -- the measured
+    # reason SOTTO_AUDIO_DEVICE and SOTTO_LANG_ID travel by environment at all.
+    #
+    # `--meter-hz` KEEPS ITS LITERAL 10.0 DEFAULT in the add_argument above,
+    # where `_main/audio-meter-oracle.py` reads it out of these bytes; the
+    # env rung is entered HERE, so the flag still wins whenever one was given.
+    # It is also why this is NOT `args.meter_hz or ...`: an explicit
+    # `--meter-hz 0` means OFF and would otherwise be talked out of it by the
+    # environment. A NEGATIVE rate is neither ON nor OFF, so it is refused
+    # LOUDLY and read as OFF rather than clamped to a rate nobody asked for --
+    # this file own idiom for an out-of-range knob. 0 stays quiet: it is the
+    # documented OFF and the escape hatch the byte-identity arm pins.
+    if getattr(args, "meter_hz_given", False):
+        meter_hz, meter_hz_from = args.meter_hz, "flag"
+    elif os.environ.get("SOTTO_METER_HZ"):
+        try:
+            meter_hz, meter_hz_from = float(os.environ["SOTTO_METER_HZ"]), "env"
+        except (TypeError, ValueError):
+            err("SOTTO_METER_HZ=" + repr(os.environ["SOTTO_METER_HZ"])
+                + " is not a number; using the default " + str(METER_HZ))
+            meter_hz, meter_hz_from = METER_HZ, "default"
+    else:
+        meter_hz, meter_hz_from = METER_HZ, "default"
+    if meter_hz < 0:
+        err("meter rate " + repr(meter_hz) + " from " + meter_hz_from
+            + " is negative; the audio-level stream is OFF (0 disables it by design)")
+        meter_hz = 0.0
+    args.meter_hz = meter_hz
 
     limit_threads(args.threads)
 
@@ -4546,6 +4640,28 @@ def main():
     # owner. `retried` makes the re-entry happen at most once.
     best_carried = {"dev": None, "peak": 0.0, "retried": False}
 
+    # THE WAVE PRODUCER. Instantiated ONCE per run, at the SAME scope as
+    # `on_block` below -- the tap calls that closure, so the meter is fed from
+    # the tap own callback thread (PortAudio, or the file/process pump) and NO
+    # second read of the audio is taken: `on_block` already computes the
+    # per-block peak `p` and hands the SAME float to the meter.
+    #
+    # The clock is WALL time, not the audio clock, because that is what a window
+    # is: the tap own block period is `audio.block_ms` (100 ms shipped) and the
+    # meter counts the audio that ARRIVED, reporting how MANY blocks a window
+    # covered -- a stalled tap yields a LONGER window, and `blocks` is how a
+    # consumer sees the gap instead of reading a smooth wave over it.
+    #
+    # ONE instance spans device rotations: a rotation replaces the STREAM, not
+    # the run clock, and re-instantiating per candidate would hand each one a
+    # fresh window boundary, losing a window at every hop.
+    #
+    # `meter.enabled` is False when the resolved rate is 0, and that is the
+    # WHOLE of the `--meter-hz 0` contract: with it off, not one tick, not one
+    # line and not one branch below is taken. This is the only construction of
+    # the class in the file, which is what `_main/meter-chain-oracle.py` pins.
+    meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
+
     def stats_line(tag: str) -> str:
         n = max(1, counters["block_samples"])
         rms = (counters["sumsq"] / n) ** 0.5
@@ -4606,6 +4722,29 @@ def main():
             # and the count above already carries the magnitude.
             if counters["queue_drops"] <= 3:
                 err(f"audio queue full: dropping a block (drops={counters['queue_drops']})")
+        # THE WAVE, once per window -- and THE ONLY output this feature adds: one
+        # compact JSONL event on stdout, in the shape BOTH consumers already
+        # parse. `app/webview/sotto_webview.py` dispatches it at its
+        # `elif kind == 'meter':` branch, whose `_meter` reads
+        # `peak`/`blocks`; `app/panel/panel.js` reaches
+        # `pushLevel(fields.peak, fields.blocks)` from the stats payload the shell
+        # builds out of that same sample. Those two field names are the CONTRACT,
+        # measured in both files, and this emit is the producer that was missing.
+        #
+        # NO log line per block or per sample: the shell budgets its own
+        # `BRIDGE_METER` log at 30 s and the DATA is deliberately not throttled,
+        # and a per-block line here is exactly what would make the owner log grow
+        # with the audio -- the defect this lane was told not to recreate.
+        #
+        # The payload is the METER own (`peak` = the peak of THIS window,
+        # `blocks` = the blocks it covered) and never `counters["peak"]`: that
+        # one is the RUN maximum and only ever rises, which IS the staircase the
+        # owner reported as a broken wave. Sending it here would make the fix
+        # indistinguishable from the defect it removes.
+        if meter.enabled:
+            level = meter.tick(p, time.time())
+            if level is not None:
+                emit(type="meter", **level)
 
     # The tap is swappable underneath the ASR thread: rotation replaces the
     # stream, not the thread. `gen` is the invalidation token — a changed gen

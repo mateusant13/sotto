@@ -115,13 +115,20 @@ def stream(W, peaks, hz=10.0, dt=0.1, block_s=0.0):
     tally of `(peak, blocks)` for the blocks each window really covered, and the
     bytes that reached stdout.
     """
-    # The SHIPPED class takes only (hz, now): the block-count rule this call used
-    # to drive is NOT in `worker/sotto_worker.py` today (no `block_s` parameter,
-    # no `blocks_per_window`), so forwarding it is a TypeError that kills the
-    # whole oracle BEFORE it can say anything — neither YES nor NO. Drive the
-    # signature the shipped file actually has, and let the arms below report
-    # what that signature does (and does not) deliver.
-    m = W.AudioMeter(hz, now=0.0)
+    # THIS COMMENT WAS FALSIFIED ON 2026-10-11 AND THE FIX IS THE LINE BELOW IT. It used to
+    # say the shipped class takes only (hz, now) and has "no block_s parameter, no
+    # blocks_per_window" -- true when written, false the moment the meter lane restored the
+    # block-count rule. Re-measured on worker/sotto_worker.py 304762 B / 771ACA94...:
+    # `def __init__(self, hz=METER_HZ, now=0.0, block_s=0.0)` (:1367) with
+    # `self.blocks_per_window = max(1, round(interval / block_s)) ...` (:1388-1389), and the
+    # live call site is `AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)`
+    # (:4663). NOT forwarding it drove a PURE-TIME meter while the live loop drives a
+    # block-counting one, which is why arms 5/5b measured 99 and 98 events where the tap's own
+    # block rate gives 100 -- the oracle was measuring its own driver, not the product. The
+    # block period is now forwarded, and the pure-time shape is still exercised DELIBERATELY by
+    # arm 3 (which builds the meter without it) and by `--neg-cadence`, which removes the rule
+    # and requires the cadence arms to go RED.
+    m = W.AudioMeter(hz, now=0.0, block_s=block_s)
     out, tally, cur = [], [], []
     t = 0.0
     with Capture() as cap:
