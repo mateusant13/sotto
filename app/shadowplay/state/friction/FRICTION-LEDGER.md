@@ -2018,3 +2018,47 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   to port is 55c422b, not a choice among many, and the port carries two defects with a user-
   visible symptom. What remains the owner's is only WHETHER to port into a file four worktrees
   share, not WHICH implementation is correct -- that part is settled by measurement.
+
+## 2026-10-11T12:18Z - POP 1 became a measurement: the forced-reload defect is in the whole landed shell, not in a window I chose
+
+  Last turn I downgraded defect two from "also real" to POP 1, because it rested on one 26-line
+  block that I chose the window for, and the count that would make it a claim had failed to run.
+  MEASURED 12:17:54Z, over whole-file populations, not a window:
+    1d97536  linhas 6584   HOT_RELOAD_WORKER_FORCED = 0    _arm( = 8
+    55c422b  linhas 8220   HOT_RELOAD_WORKER_FORCED = 1    _arm( = 12
+    POP_def_fire_NO_ATERRADO = 1, at L5160: pending = None x3, _arm( x1, force/forced x0.
+
+  So the defect is a whole-shell property, not an artefact of my excerpt: the landed lineage has no
+  forced-reload event AT ALL in 6,584 lines, and the WIP has exactly one. The _arm without force at
+  L5160 is the only _fire in the file, so there is no second code path where the owner edit would
+  have been picked up. That is the check my POP 1 reading could not make, and it is the one that
+  decides it.
+
+  The 1-vs-0 is also the reason 55c422b's fix is identifiable at all: it is not a bigger file, it
+  is a file that gained a distinct event the landed one cannot produce.
+
+  Cost of the downgrade being real: two seam failures in one turn cost me this measurement, and I
+  had already written the finding into a commit message at POP 1. A quotation enters the history
+  as easily as a measurement does, and nothing in git marks which one it was. The ledger is where
+  that has to be corrected, so it is corrected here.
+
+## 2026-10-11T12:21Z - a suite that invokes the real GPU failed inside the commit and passed alone. Flake, and the gate was right to refuse.
+
+  MEASURED 12:20:37Z: COMMIT_EXIT 1. POP_SUITES_OK 14 of 15. The gate named the refusal with no
+  ambiguity -- VERDICT suites_ok=false gate_ok=true, then "run-all exited 1 -- commit refused".
+  Gate itself stayed green at RESULT 9 passed 0 refused: this was never about the probes.
+  The failing suite was nvenc.test.mjs, 4 passed 1 failed.
+
+  MEASURED 12:21:20Z, POP=1 isolated run: node app\shadowplay\nvenc.test.mjs -> exit 0 in 15.5 s,
+  RESULT 5 passed 0 failed. Its own header says "These tests invoke the REAL ffmpeg and the REAL
+  GPU". POP_SUITES_OK_IN_ISOLATION 5 of 5, POP_FAILED_IN_ISOLATION 0 of 5.
+
+  So the batch failure is contention, not a defect: it is the only suite in the population that
+  drives physical hardware, and at 12:18 another lane had 5 git processes in this checkout. I am
+  recording this as a flake with POP 1 in isolation -- one passing run does not prove a flake rate,
+  and I have been wrong today by generalising from small populations.
+
+  What I am NOT doing is setting SOTTO_SKIP_RUN_ALL=1 to get this commit in. The gate refused, the
+  refusal was correct, and a hardware suite failing once under load is not evidence that the gate
+  is wrong. If it fails again in this commit I will report the failure rather than route around
+  the instrument -- which is the whole of what today's bypass argument came down to.
