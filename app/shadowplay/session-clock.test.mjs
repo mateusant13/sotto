@@ -48,6 +48,3 @@ console.log(`RESULT ${passed} passed, ${failed} failed, WIDTH=${WIDTH}`);
 process.exit(failed === 0 ? 0 : 1);
 
 
-// TEMPORARY FAULT INJECTION -- not a test. Appended 2026-10-11T08:13Z to prove the
-// pre-commit hook refuses a commit when a REAL suite goes red. Removed in the same turn.
-t("INJECTED FAULT: this must make the suite red", () => { throw new Error("injected"); });
