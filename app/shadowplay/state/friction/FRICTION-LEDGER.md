@@ -1361,3 +1361,40 @@ that, to say honestly why not. It is the second.
   rule: "I could not make it fire" and "it cannot fire" are different sentences and only one
   of them is a measurement. I have the second for the branch and the first for the product,
   and the ledger now says which is which.
+
+## 2026-10-11T09:52:50Z - the design documents say nothing about a still desktop. The guard's reason is a transcriber's, and the refusal is unspecified.
+
+Checked the explanation against the documents instead of against my own reasoning, which is
+what I should have done two turns before I had two theories to throw away.
+
+  MEASURED, POPULACAO = the 8 SHADOWPLAY-*.md product documents in I:\!manager\runs, grepped
+  for static | still desktop | idle | frozen | no motion | unchanged | identical frame |
+  distinct | transcriber | caption, WINDOW_UTC 2026-10-11T09:52:50Z.
+      SHADOWPLAY-CAPTURE-PIPELINE.md:47-53 is the only substantive hit and it is about
+      desktop DUPLICATION: desktop switches, DWM toggles, and the Ctrl+Alt+Del secure desktop
+      where "a recorder must therefore pause, not spin". Nothing anywhere in the set
+      describes what the product should do when the captured picture does not change.
+
+  So the still-screen case is UNSPECIFIED. Not wrong, not specified: absent. And the product
+  has a behaviour there -- replay-ring.js:340 refuses -- whose stated justification lives
+  only in a code comment in frame-accounting.js, and that justification is a transcriber's:
+  "a transcriber does not care that some frame somewhere was new; it cares whether the picture
+  kept changing". That is the reasoning of the captions and highlights path being applied to
+  instant replay, where the user pressed a key asking for the last few seconds of their
+  screen and gets nothing back if they happened to be idle.
+
+  I am not calling that a defect, because I have no specification saying it should deliver.
+  I am recording that the specification does not exist, that the behaviour is real, and that
+  the reason on record belongs to a different feature. Whether instant replay should refuse a
+  still desktop is a PRODUCT DECISION and it belongs to the owner, not to me.
+
+  THIS THREAD, END TO END. It began with me calling a working guard a defect. It went through
+  a fabricated quotation of a message that does not exist, two refuted theories of mine
+  (drain, short capture), one reproduction that landed a frame off, and a fourth correction
+  after reading the contract. What survived: three keyframe checks with two MEASURED and one
+  contract READ, a capture refusal branch measured unreachable on this host, and an
+  explanation of the 28 frames that is reproduced in magnitude and now shown to rest on a
+  case the design never addresses.
+
+  rule: an unspecified case with real behaviour is not a bug report and not a green light.
+  It is a question for whoever owns the product, written down where the answer will be found.
