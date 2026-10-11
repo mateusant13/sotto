@@ -1811,3 +1811,34 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   are not valid object prefixes. POP_REVISOES_PRESENTES = 0 of 6 is an artefact of my method, not a
   fact about the repository. The same mistake I made with the Select-String line count last pass:
   a number from an instrument, promoted into a table without asking what the instrument counts.
+
+## 2026-10-11T11:25Z - three instrument failures in one hour, and the last one made me doubt a colleague who was right
+
+  MEASURED 11:22:59Z .. 11:25:41Z. I ran the rev-list myself instead of inheriting it. POP 6
+  revisions, and 55c422b IS the largest at 406,194 B with 4 of 4 sampled contract markers, against
+  0 of 4 in the largest landed revision 1d97536 at 320,214 B. The rescue ref is right.
+
+  REFUTED THEIR CLAIM, AND IT MATTERED. The receipt says the shell "grows monotonically". Ordered
+  by COMMIT DATE it does not: 160,779 -> 271,216 -> 406,194 -> 283,757 -> 284,381 -> 320,214. It
+  falls 122,437 B between 55c422b (10-08 09:14) and 3352f61 (10-08 10:08). Their table is sorted by
+  SIZE, which is why it reads as growth. The conclusion survives and is stronger: the WIP is not
+  merely the biggest, it is OLDER than the series that replaced it.
+
+  THREE OF MY OWN INSTRUMENTS FAILED THIS HOUR, each one producing a confident number.
+    1. Select-String counted lines IN THE FILE and I reported them as lines I had READ (204, 858).
+    2. cat-file -t on six rev-list blob names said "not a valid object name" and reads as six lost
+       revisions. They are blob names, not object prefixes. POP 0 of 6 was my method, not the repo.
+    3. I searched the contract for "397180" four ways and reported the number absent. It is present
+       ONCE, written "397 180" with a thin space. Then I invented [IO.File]::ReadAllString, a method
+       that does not exist, and nearly reported a False read from an empty file.
+
+  AND THE ONE THAT MATTERS MOST: I wrote that the contract is 16,346 B against the receipt's
+  16,490 B and called the 144-byte gap "unexplained, not mine to claim as their error".
+  MEASURED 11:25:41Z: the contract on disk is 16,490 B, DELTA = 0. The 16,346 came from reading it
+  through a path that is not the same file. THEY WERE RIGHT AND I DOUBTED THEM WITH A NUMBER OF MY
+  OWN MAKING. A measurement error pointed at a colleague is the most expensive kind of error here,
+  because it survives in the record and the colleague is not present to refute it.
+
+  THE RULE, in the form that would have caught all four: never report an absence, and never report
+  a delta against someone else's work, until the reading has been confirmed to come from the file
+  you mean -- path, bytes, and one time -- in the same call that reports the finding.
