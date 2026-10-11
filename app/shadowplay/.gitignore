@@ -25,3 +25,11 @@ before-*.txt
 *-probe.mjs
 ffmpeg-ver.txt
 ffprobe-ver.txt
+
+# Measured 2026-10-11T05:31:39Z. The seven survivors after the first ignore pass,
+# attributed by CONTENT not by date: five are verbatim test-runner output (they end in
+# RESULT lines my own suites print) and one is `v24.8.0`, the output of `node -v`.
+# All seven are mine. Underscore prefix is the temp marker; *-ver.txt is a version probe.
+_*.txt
+*-ver.txt
+rr.txt
