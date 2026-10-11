@@ -1842,3 +1842,44 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   THE RULE, in the form that would have caught all four: never report an absence, and never report
   a delta against someone else's work, until the reading has been confirmed to come from the file
   you mean -- path, bytes, and one time -- in the same call that reports the finding.
+
+## 2026-10-11T11:32Z - I finally opened the gate log after citing it for hours as "5 red of 10". It is 12 red of 27.
+
+  MEASURED 11:32:05Z .. 11:32:29Z, POP_GATE_LOG_BYTES 27236, POP_LINES 391, POP_EXECUCOES 27.
+  POP_EXIT_0 15   POP_EXIT_NAO_0 12   POP_COM_REFUSED 12   POP_0_REFUSED 15.
+  POP_INCOERENTES (exit!=0 sem refused>0, ou o inverso) = 0 of 27. The gate has never produced a
+  verdict its exit code contradicts, across every run it kept.
+
+  THE NUMBER I REPEATED WAS WRONG IN BOTH TERMS. I wrote "5 red of 10" in four consecutive reports
+  as the standing caveat on every green. The real population is 27 runs and 12 of them refused. I
+  did not make that up -- I read it once, early, when the log held 10 runs and 5 of them were red,
+  and then I carried the number forward for hours after the file grew under me. A stale
+  measurement repeated confidently is worse than no measurement, because nobody re-checks a number
+  that has already been believed once.
+
+  AND MY OWN RECOUNT WAS WRONG FIRST. My first pass split the log on "GATE_EXIT" and reported all
+  27 blocks as "exit != 0" -- the split leaves the marker on the wrong side of the boundary. I
+  caught it because 27 nonzero exits cannot coexist with 15 zeros elsewhere in the same output,
+  re-did it by pairing each RESULT with the GATE_EXIT that follows it, and got 15/12. POP_INCOERENTES
+  0 of 27 is the check that says the second count is the right one.
+
+  WHAT THE LOG SAYS PER PROBE, population = appearances in this log:
+    clip-not-keyframed-probe  PASS 17  NAO-PASS  7   <-- worst
+    stored-keyframe-arm-probe PASS 19  NAO-PASS  5
+    loaded-module-probe      PASS 20  NAO-PASS  4
+    still-screen-probe       PASS 21  NAO-PASS  3
+    keyframe-shape-probe     PASS 21  NAO-PASS  3
+    compose-probe            PASS 25  NAO-PASS  2
+    perf-probe               PASS 26  NAO-PASS  1
+    _nonidr-probe            PASS 25  NAO-PASS  1
+    cw-probe                 PASS 27  NAO-PASS  0
+    TOTAL                    PASS 201  NAO-PASS 26
+
+  So "9 passed 0 refused" tonight is the 15th and last of 27 runs, and the most recent. That is
+  worth saying plainly: I have been citing the caveat of a gate whose newest run is green, using a
+  number from an older run, without opening the file in between.
+
+  Three lanes are now dispatched against the parts I had not checked: the five commits for files
+  their messages do not describe, the 889-line foreign probe for arms that cannot fail, and
+  clip-not-keyframed for why it is the worst actor at 7 of 24. POP_FLETA_DISPATCHED 3, POP_RUNNING
+  measured at dispatch, not asserted.
