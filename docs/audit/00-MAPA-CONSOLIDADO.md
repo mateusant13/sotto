@@ -97,13 +97,14 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **OPEN** |
 | 54 | AGENTS/README listam 5 chaves do config; o ficheiro tem 13 (hoje 8) | `AGENTS.md:74`, `worker/README.md:184-185` | **[2026-10-11] APPLIED** — censo de folhas do `worker/config.json` vivo (`JSON.parse` + walk): **5 chaves de topo, 11 folhas nao-comentario** (as outras 6 sao `_comment*`). O `worker/README.md` passou a listar as 11, e retracta DUAS afirmacoes falsas: parava em oito nomes e nomeava `output.partial` entre as chaves APAGADAS — essa chave ESTA presente e e LIDA (`emit_partial` e `output.partial`, `sotto_worker.py:2851`/`:3013`). A linha do `AGENTS.md` ja tinha sido corrigida nesta revisao |
 | 55 | a sonda CUDA dos providers corria no int4 independentemente do dir configurado | `sotto_worker.py:883, :934` | **APPLIED** — sonda `model_dir or DEFAULT_MODEL` (`:942`) |
-| 56 | `model-spec-oracle` nao tem braco negativo (detector de drift, nao oraculo) | `_main/model-spec-oracle.py:41` | **OPEN** |
-| 57 | `_oss_oracle` nao tem braco negativo | `_main/_oss_oracle.py` | **OPEN** |
+| 56 | `model-spec-oracle` nao tem braco negativo (detector de drift, nao oraculo) | `_main/model-spec-oracle.py:41` | **[2026-10-11] APPLIED** — o oraculo foi reescrito com `evaluate()` (o caminho por omissao mantem o MESMO log, as mesmas linhas e o mesmo rc 0/1) e ganhou `--neg-arm`: dois mutantes numa COPIA do `genai_config.json` em `TMPDIR`, um por constante (`chunk_samples=1234`, `blank_id=1`), que TEM de dar MISMATCH. Medido: `py -3 _main/model-spec-oracle.py` → `VERDICT: OK`, rc=0; `--neg-arm` → os dois mutantes `MISMATCH (RED as required)`, controlo vivo `OK`, `VERDICT: NEG-ARM PASS`, rc=0 |
+| 57 | `_oss_oracle` nao tem braco negativo | `_main/_oss_oracle.py` | **[2026-10-11] APPLIED** — reescrito com `checks(root)`, o MESMO stdout/rc (GREEN/RED, 0/3) no caminho por omissao, e `--neg-arm` que constroi uma ARVORE mutante em `TMPDIR` (os quatro inputs copiados) com UM mutante por check, exigindo que o conjunto de falhas seja EXACTAMENTE o check visado. Medido: `py -3 _main/_oss_oracle.py` → GREEN 4/4 rc=0; `--neg-arm` → M1 `['C1']`, M2 `['C2']`, M3 `['C3']`, M4 `['C4']`, controlo vivo GREEN na mesma execucao, `NEG-ARM PASS`, rc=0, `TMPDIR` limpo. **O proprio oraculo estava a dizer a verdade quando a linha foi escrita:** com o padrao C2 antigo o live dava RED — ver a linha #63 |
 | 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
 | 59 | `_move_into_place` morto (sem caller) + painel vivo a `x=-10000` (build ≠ ficheiro auditado) | `sotto_webview.py:1083` (era) | **APPLIED** — o metodo morto desapareceu; resta so a nota de remocao (`:1269`). A metade `x=-10000` e observacao de processo vivo, fora do ficheiro auditado |
 | 60 | `_on_navigation_start` faz early-return em `self.visible` → "mostrado uma vez ⇒ nunca mais auto-escondido" | `sotto_webview.py:1549` | **OPEN** |
 | 61 | `run.cmd:6` promete "start hidden" enquanto o shell pisca | `run.cmd:6` | **OPEN** |
 | 62 | `subprocess.run(timeout=)` a volta do `electron.exe` multi-processo pode nao ser tecto [INFERENCE] | `_main/_run-hidden.py:24` | **OPEN** |
+| 63 | `docs/oss-approaches-20261006.md` embute uma COPIA do oraculo (um one-liner) e cola um PASS de 2026-10-06 que ja nao reproduz | `docs/oss-approaches-20261006.md:250,286-295` | **[2026-10-11] APPLIED** — o one-liner embutido devolve hoje `RED (doc is now stale - rewrite it)` rc=3, e so C2 falha: `type="caption"` tem **0** ocorrencias em `worker/sotto_worker.py` (o worker faz `self._captions.put({"type": "caption", "text": text, ...})`, `:3620`, e `:2928` o outro canal). A AFIRMACAO sobreviveu — `HypothesisBuffer`/`commited` continuam ausentes (0 cada) e `agreedPrefix|LocalAgreement` esta ausente de todo o `worker/` (0) — o que tinha envelhecido era a ORTOGRAFIA da chamada. O padrao C2 foi re-baselinado para a forma dict no ficheiro vivo e o documento ganhou a nota RE-MEASURED 2026-10-11 com os dois comandos |
 
 ---
 
@@ -306,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 53
-- **OPEN:** 85
+- **APPLIED:** 56
+- **OPEN:** 83
 - **IN-FLIGHT:** 0
 
-Conferencia: 53 + 85 + 0 = **138** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 56 + 83 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
@@ -331,7 +332,10 @@ O que mudou nesta revisao, em uma linha cada: #2 (IN-FLIGHT -> APPLIED, `blank-f
 documentos foram corrigidos nesta passagem — `docs/README.md`, `docs/roadmap.md`, `README.md`);
 #44, #47, #48 e #54 (deriva documental -> APPLIED: `docs/README.md` deixou de dizer que nao existe
 codigo, a figura fp16 ficou retractada, a citacao do STATE_MAP passou a `:114`, e o
-`worker/README.md` passou a listar as 11 folhas do config corrigindo duas afirmacoes falsas).
+`worker/README.md` passou a listar as 11 folhas do config corrigindo duas afirmacoes falsas);
+#56, #57 e #63 (dois instrumentos que nao sabiam dizer NAO -> APPLIED com braco negativo provado, e
+a nota que impede o snippet embutido no `docs/oss-approaches-20261006.md` de ser lido como o
+instrumento vivo).
 
 ---
 

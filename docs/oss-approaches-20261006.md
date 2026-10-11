@@ -294,6 +294,23 @@ ORACLE GREEN (doc still true)
 ORACLE_CMD_EXIT=0
 ```
 
+**RE-MEASURED 2026-10-11 — the command embedded above is a stale TWIN of the live instrument,
+and it now returns RED.** `_main/_oss_oracle.py` is no longer that one-liner: it is a read-able
+oracle with a `--neg-arm` (audit row #57), and the C2 pattern it shipped with had aged. Run the
+ORIGINAL snippet on the live tree and it reports **`RED (doc is now stale - rewrite it)`, rc=3**,
+with C2 the only failure — because `type="caption"` appears **0** times in
+`worker/sotto_worker.py`: the worker puts a caption DICT
+(`:3620 self._captions.put({"type": "caption", "text": text, ...})`, and `:2928` the other
+channel) instead of a one-line `emit(type="caption", text=text)` call.
+
+The CLAIM survived; the SPELLING did not. Re-measured: `HypothesisBuffer` and `commited` are
+still absent from the worker (0 matches each), and `agreedPrefix|LocalAgreement` is absent from
+the whole of `worker/` (0 matches) — so "the agreement buffer exists only in the renderer" (§
+above) still holds. C2's positive pattern was re-baselined to the dict form, and the negative
+arm's M2 (a COPY with `HypothesisBuffer` added) proves C2 can still say NO. Reproduce both
+colours: `py -3 _main/_oss_oracle.py` → GREEN 4/4, rc=0; `py -3 _main/_oss_oracle.py --neg-arm`
+→ each mutant flips EXACTLY its own check (M1→C1, M2→C2, M3→C3, M4→C4), rc=0.
+
 (Re-measured 2026-10-06 after A3 landed: C1 was rewritten in the same change from *"VAD shipped but
 disabled"* to *"VAD is ON and the gated chunk is handled"*. The command above was re-extracted from this
 file and executed to produce these four lines — not retyped.)
