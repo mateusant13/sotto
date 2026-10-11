@@ -708,3 +708,45 @@ Closing the entry that opened with "before this entry, every 4/4 meant only that
   rule: an injection that does not change the file is not a RED arm, it is a no-op that
   looks like one. Hash the artifact before and after the injection, every time, or you
   will credit a falsifying arm that never fired -- which is exactly what 9f91d89 did.
+
+## 2026-10-11T08:52:28Z - four RED arms, and the fifth attempt was the same lie as 9f91d89 wearing a new hat
+
+Closing the limit I stated one entry up: "the RED arm was executed on ONE of the four".
+It is now executed on all four, and the attempt that failed first is the useful part.
+
+  POPULACAO = 4 probe scripts, WINDOW_UTC 2026-10-11T08:49:37Z .. 08:52:28Z. Each arm
+  replaces the probe's real print line with one that prints the opposite truth, runs the
+  gate, and restores the file from a copy taken beforehand:
+
+    compose-probe.mjs  L79  RECEIPT_FALSE  PRODUCT_LANDS_A_NONEMPTY_CLIP=NO   exit=1
+    cw-probe.mjs       L42  RECEIPT_FALSE  BYTES_LANDED=NO                   exit=1
+    perf-probe.mjs     L76  RECEIPT_FALSE  SEQUENCE_MONOTONIC=false          exit=1
+    _nonidr-probe.mjs  L98  RECEIPT_FALSE  NEGATIVE_ARM_REACHABLE: true     exit=1
+    clean run          RESULT 4 passed, 0 refused                          exit=0
+    every restore verified by sha256 equal: compose 57614A45DB27, cw 73F46B3A9A27,
+    perf 6F0D52A81D1A, _nonidr AFDB25D98BCF
+
+  THE FAILED ATTEMPT. My first perf injection reported "ficheiro ALTERADO=True" and the
+  gate returned PASS. Both of those are true and together they were a lie:
+
+      perf-probe.mjs:13  // The receipt is SEQUENCE_MONOTONIC, which 200 presses ...
+      perf-probe.mjs:76  console.log("SEQUENCE_MONOTONIC=" + (Number(last.slice(0, 4)) === N));
+
+  Select-String matched the COMMENT at L13, not the print at L76. I replaced a comment with
+  console.log("SEQUENCE_MONOTONIC=false") -- so the probe printed false AND true. The gate
+  PASSed, and it was right to: the key still said true somewhere in the output.
+
+  This is 9f91d89's exact shape. "The file changed" is not "the claim changed". Hashing
+  the file caught the first no-op; hashing the file did NOT catch this one, because the
+  bytes DID change. What caught it was reading the original line back -- which I only did
+  because the injection printed the line it was replacing, and that line was a comment.
+
+  FINDING, NOT YET FIXED: parse-gate.mjs:142 tests truth keys with out.includes(key + want).
+  A probe that prints the same key twice, once with the wanted value and once without, PASSES.
+  The honest form is to require that the key's value is UNAMBIGUOUS -- every occurrence of
+  key + value, and at least one occurrence. Not done; recorded rather than claimed.
+
+  rule: an injection proves something only if it removes the claim, not the bytes. Print the
+  line you replaced and ask whether it was the line that carried the claim -- and if the
+  gate can be satisfied by one good copy among contradictory ones, the gate is weaker than
+  the arm that is supposed to be testing it.
