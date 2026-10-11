@@ -353,3 +353,20 @@ suite; folding them together would teach the reader to ignore the gate.
   frame-accounting.test.mjs reports 24, up from 21: the three arms I added for L232, L235
   and L242. That is the first time this suite has been counted by a command that anyone
   else could have run.
+## 2026-10-11T06:56:14Z - a hook tinha de ser versionada, nao posta em .git/hooks
+
+POPULACAO medida em .git/hooks: 4 ficheiros, os quatro do Git LFS, nenhum meu. Um hook
+que vive so em .git/hooks e invisivel ao git, nao versionado, e desaparece no proximo
+clone. Por isso o script vive em scripts/pre-commit e um shim de uma linha em .git/hooks
+o invoca. A fonte da verdade e revizivel.
+
+  medido: pre-commit nao existia antes de eu o instalar, tem 327 B, e os 4 hooks do LFS
+  continuam 4/4 intactos.
+
+  A fuga e ALTA E VISIVEL: SOTTO_SKIP_RUN_ALL=1 salta o run e DIZ-LO. Uma fuga que nao
+  imprime nada e a maneira de um gate deixar de ser gate. E o gancho RECUSA se o
+  run-all.mjs nao existir, em vez de passar em silencio por nao haver nada para correr.
+
+  O custo e assumido em vez de escondido: o run completo demora minutos neste host, e um
+  gancho lento e contornado. Se isso passar a ser o交换 errado, a correcao e uma CI de
+  fundo, nao uma fuga silenciosa.

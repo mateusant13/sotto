@@ -1,0 +1,55 @@
+#!/bin/sh
+# PRE-COMMIT: run every suite and the parse gate, or refuse the commit.
+#
+# WHY THIS FILE IS VERSIONED AND INSTALLED, NOT JUST PLACED IN .git/hooks.
+# POPULACAO measured 2026-10-11T06:55:43Z: four hooks already in .git/hooks, all four
+# Git LFS's, and none of them mine. A hook that lives only in .git/hooks is invisible to
+# git, unversioned, and gone the moment the repo is cloned. So the script lives here and
+# a one-line installer in .git/hooks calls it. The source of truth is reviewable.
+#
+# WHAT IT RUNS: app/shadowplay/run-all.mjs, which reads both populations off the disk --
+# every *.test.mjs plus parse-gate.mjs. Suites and gate are reported separately because a
+# gate refusing a probe is the gate working, and folding it into "tests failed" would
+# teach the next reader to ignore it.
+#
+# THE ESCAPE HATCH IS LOUD. SOTTO_SKIP_RUN_ALL=1 skips the run and prints that it did.
+# It is not silent, and it is not a default: a bypass that prints nothing is how a gate
+# stops being a gate.
+#
+# The cost is paid here rather than skipped. If that becomes the wrong trade, the fix is a
+# background CI, not a silent bypass.
+#
+# NO `set -e` ANYWHERE IN THIS FILE, deliberately. Measured 2026-10-11T06:56:53Z: with
+# `set -e` in force at the top, a non-zero exit from run-all.mjs aborted the script at
+# that line and every line after it -- including the `rc=$?` capture and the explanation.
+# The commit was refused with no message at all, which is worse than having no hook,
+# because the author cannot distinguish a red suite from a broken hook. This script
+# therefore makes every decision explicitly and never relies on errexit.
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+RUNNER="$REPO_ROOT/app/shadowplay/run-all.mjs"
+
+if [ ! -f "$RUNNER" ]; then
+  printf 'pre-commit: run-all.mjs is missing at %s -- refusing rather than passing silently\n' "$RUNNER" >&2
+  exit 1
+fi
+
+if [ -n "$SOTTO_SKIP_RUN_ALL" ]; then
+  printf 'pre-commit: SOTTO_SKIP_RUN_ALL=%s set -- suites and gate NOT run for this commit\n' "$SOTTO_SKIP_RUN_ALL" >&2
+  exit 0
+fi
+
+printf 'pre-commit: running suites and parse gate (skip with SOTTO_SKIP_RUN_ALL=1)\n'
+# NO `set -e` AROUND THIS. Measured 2026-10-11T06:56:53Z: with `set -e` in force, a
+# non-zero exit from run-all.mjs aborted the whole hook script at that line, so the
+# `rc=$?` capture and the explanatory message below never executed. The commit was
+# refused with NO explanation -- which is worse than no hook, because the author cannot
+# tell a red suite from a broken hook. Capturing the code and deciding afterwards is the
+# only way the message can be delivered.
+node "$RUNNER"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  exit 0
+fi
+printf 'pre-commit: run-all exited %s -- commit refused. Fix it, or set SOTTO_SKIP_RUN_ALL=1 and say so in the message.\n' "$rc" >&2
+exit "$rc"
