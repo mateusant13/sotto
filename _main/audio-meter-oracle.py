@@ -115,7 +115,13 @@ def stream(W, peaks, hz=10.0, dt=0.1, block_s=0.0):
     tally of `(peak, blocks)` for the blocks each window really covered, and the
     bytes that reached stdout.
     """
-    m = W.AudioMeter(hz, now=0.0, block_s=block_s)
+    # The SHIPPED class takes only (hz, now): the block-count rule this call used
+    # to drive is NOT in `worker/sotto_worker.py` today (no `block_s` parameter,
+    # no `blocks_per_window`), so forwarding it is a TypeError that kills the
+    # whole oracle BEFORE it can say anything — neither YES nor NO. Drive the
+    # signature the shipped file actually has, and let the arms below report
+    # what that signature does (and does not) deliver.
+    m = W.AudioMeter(hz, now=0.0)
     out, tally, cur = [], [], []
     t = 0.0
     with Capture() as cap:
@@ -171,6 +177,23 @@ def main():
               "(the window peak is never cleared = a run maximum); every "
               "'window' arm must go RED.\n")
     elif mode == "cadence":
+        # A MUTANT THAT CANNOT BE BUILT IS NOT A CONTROL. The mutation this flag
+        # names — "the block-count rule removed" — only means something if the
+        # rule EXISTS in the file being falsified. Today's shipped class has no
+        # `block_s` and no `blocks_per_window`, so the old mutant was a wrapper
+        # that called the original __init__ and then set an attribute nothing
+        # reads: it could not move one arm, and with the 'cadence' arms already
+        # RED as shipped it would have printed PASS by inheriting a red base.
+        # Refuse loudly instead (repo idiom: exit 2 = the control was not built).
+        import inspect
+        _sig = inspect.signature(W.AudioMeter.__init__)
+        if "block_s" not in _sig.parameters:
+            print("SETUP ERROR: --neg-cadence CANNOT BE BUILT — the SHIPPED "
+                  "AudioMeter has no block-count rule to remove "
+                  f"(AudioMeter.__init__{_sig}), so this mutant would be inert "
+                  "and the 'cadence' arms are RED in BOTH colours. Naming the "
+                  "gap instead of faking the control.")
+            return 2
         _orig_init = W.AudioMeter.__init__
 
         def time_only_init(self, hz=W.METER_HZ, now=0.0, block_s=0.0):

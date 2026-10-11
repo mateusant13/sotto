@@ -51,19 +51,35 @@ function clean(text) {
   return out;
 }
 
-/** Every selector of every rule, at every nesting depth. */
+/** Every selector of every rule, at every nesting depth.
+ *
+ * FIXED 2026-10-11 (dead-control sweep): an `@keyframes` STEP is not a
+ * selector. The walker collected every prelude that did not start with `@`, so
+ * inside `@keyframes x { 0% { … } 49% { … } }` the steps `0%`, `49%`, `50%`
+ * and `from`/`to` were pushed as selectors, found "unscoped", and turned EVERY
+ * animated theme file RED: measured, `node _main/_design-lane/assert-themes.js`
+ * returned `VERDICT FAIL — 5 file(s) violated the contract` with 13/13/8/10/29
+ * "unscoped selector(s): 0% | 49% | 50%" — a gate that could not say YES about
+ * its own subject, for a reason that was never a selector. The at-rule's block
+ * is tracked now and its steps are skipped.
+ */
 function selectors(text) {
   const found = [];
   let depth = 0;
   let prelude = '';
+  let keyframes = 0;   // the depth at which an @keyframes block opened (0 = outside)
   for (const ch of text) {
     if (ch === '{') {
       const sel = prelude.trim();
       if (sel && !sel.startsWith('@')) {
-        sel.split(',').forEach((one) => {
-          const t = one.trim().replace(/\s+/g, ' ');
-          if (t) found.push(t);
-        });
+        if (!keyframes) {
+          sel.split(',').forEach((one) => {
+            const t = one.trim().replace(/\s+/g, ' ');
+            if (t) found.push(t);
+          });
+        }
+      } else if (/^@[-\w]*keyframes/i.test(sel)) {
+        keyframes = depth + 1;
       }
       depth += 1;
       prelude = '';
@@ -71,6 +87,7 @@ function selectors(text) {
     }
     if (ch === '}') {
       depth -= 1;
+      if (keyframes && depth < keyframes) keyframes = 0;
       prelude = '';
       continue;
     }
