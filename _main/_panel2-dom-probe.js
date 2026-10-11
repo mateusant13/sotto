@@ -323,7 +323,7 @@ async function main() {
       squeeze(strip.document.querySelector('.caption__confirmed').textContent),
       squeeze(strip.document.querySelector('.caption__provisional').textContent),
       squeeze((strip.document.querySelector('.caption__mark') || {}).textContent || '')],
-    [1, 'O rato roeu a rolha da garrafa do rei da Russia.', 'a prova dos nove', '·'],
+    [1, 'O rato roeu a rolha da garrafa do rei da Russia.', 'a prova dos nove', '▍'],
     [0, '', '', '']);
   // A STATUS CHANGE is the panel's own sentence boundary (`engine.flush`), and it
   // is the path that turns the open row into a CLOSED one. The worker-closed text
@@ -376,7 +376,7 @@ async function main() {
     // live. (The first version of this assertion expected the text in
     // `#status-text` on the strip as well; measured `''`.)
     [strip.id('strip-word').textContent, squeeze(strip.id('strip-state').title)],
-    ['Live', 'Receiving captions']);
+    ['Live', 'Receiving captions — click to restart the pipeline (reloads the live engine)']);
   arm('the strip state carries the LIVE class, and the dot is a shape not a colour',
     [strip.id('strip-state').className.includes('is-live'),
       strip.display('#strip-dot') !== 'none'],
@@ -488,7 +488,7 @@ async function main() {
     return [p.id('strip-word').textContent, squeeze(p.id('strip-state').title)];
   })();
   arm('the paused state reports itself on the strip word, with its sentence on hover',
-    pausedState, ['Paused', 'Paused — the engines are unloaded until you resume']);
+    pausedState, ['Paused', 'Paused — the engines are unloaded until you resume — click to restart the pipeline (reloads the live engine)']);
 
   // ── THE HUD'S STATS ROWS ARE GONE WITH IT ──────────────────────────────────
   // The panel no longer prints RAM / rate / engine / peak anywhere: the HUD was
@@ -532,7 +532,7 @@ async function main() {
   liveButton.click();
   arm('the toggle flips aria-pressed on a click',
     [before, liveButton.getAttribute('aria-pressed')], ['true', 'false']);
-  arm('and the label follows the state', wiredT.id('strip-live-label').textContent, 'Live off');
+  arm('and the label follows the state', wiredT.id('strip-live-label').textContent, 'LIVE');
   arm('and the shell is told, with the NEW value', wiredT.audit.live, [false]);
   liveButton.click();
   arm('turning it back on carries true', wiredT.audit.live, [false, true]);

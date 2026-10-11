@@ -399,3 +399,5 @@ gate: it might refuse everything.
 ## 2026-10-11T07:08:26Z - install-hooks: versioned installer, checked in both directions
 
 ## 2026-10-11T07:14:32Z - chain instead of replace: LFS bodies preserved byte-identical
+
+## 2026-10-11T07:48:35Z - the instrument to measure instability was itself the unstable thing

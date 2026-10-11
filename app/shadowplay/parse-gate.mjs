@@ -156,7 +156,49 @@ function redArm() {
   }
 }
 
+// --repeat N runs the whole gate N times and reports the DISTRIBUTION, because a single
+// run is a sample of size one. MEASURED 2026-10-11T07:14Z vs 07:20Z: the same tree gave
+// 3 passed / 1 refused on one commit and 4 passed / 0 refused six minutes later, with no
+// change in between. One 4/4 in a report is therefore not evidence of stability, it is
+// one observation wearing the grammar of a guarantee.
+// MEASURED 2026-10-11T07:32:58Z: the first version of this block sat ABOVE the `const
+// WINDOW` declaration and every --repeat run died with ReferenceError: Cannot access
+// 'WINDOW' before initialization, after spending minutes running all the probes first.
+// The failure came last and the work before it was wasted, because the printout is the
+// thing that makes the distribution legible. Declared here, before anything uses it.
 const WINDOW = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
+const argvAll = process.argv.slice(2);
+const ri = argvAll.indexOf("--repeat");
+const REPEAT = ri >= 0 ? Math.max(1, Number(argvAll[ri + 1]) || 1) : 1;
+
+function verdictOnce() {
+  let refused = 0, passed = 0;
+  const detail = [];
+  const forceRefuse = process.env.GATE_FORCE_REFUSE === "1";
+  let first = true;
+  for (const s of POPULATION) {
+    if (!existsSync(join(HERE, s))) { detail.push(`${s}=MISSING`); refused++; continue; }
+    const c = classify(s);
+    if (forceRefuse && first) { first = false; detail.push(`${s}=FORCED`); refused++; continue; }
+    first = false;
+    detail.push(`${s}=${c.verdict}`);
+    if (c.verdict === "PASS") passed++; else { refused++; detail.push(`${s}:${c.why}`); }
+  }
+  return { passed, refused, detail, exit: refused === 0 ? 0 : 1 };
+}
+
+if (REPEAT > 1) {
+  const results = [];
+  for (let i = 0; i < REPEAT; i++) results.push(verdictOnce());
+  const clean = results.filter((r) => r.refused === 0).length;
+  console.log(`PARSE GATE REPEAT  WINDOW_UTC ${WINDOW}  runs=${REPEAT}  population=${POPULATION.length}`);
+  results.forEach((r, i) => console.log(`  run ${i + 1}: ${r.passed} passed, ${r.refused} refused${r.refused ? "  -> " + r.detail.filter((d) => d.includes(":")).join(" | ").slice(0, 150) : ""}`));
+  console.log(`  DISTRIBUTION clean=${clean}/${REPEAT}  dirty=${REPEAT - clean}/${REPEAT}`);
+  // A gate that is not stable is not a gate; report the instability as the failure.
+  process.exit(clean === REPEAT ? 0 : 1);
+}
+
 console.log(`PARSE GATE  WINDOW_UTC ${WINDOW}  POPULATION = ${POPULATION.length} probe scripts`);
 
 const arm = redArm();

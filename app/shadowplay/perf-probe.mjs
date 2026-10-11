@@ -13,7 +13,7 @@ const dir = mkdtempSync(join(tmpdir(), "sp-perf-"));
 // The receipt is SEQUENCE_MONOTONIC, which 200 presses establish just as well: the claim
 // under test is that the writer hands out distinct monotonic names on the write path,
 // not how many names a turn can afford to buy.
-const N = 200;
+const N = Number(process.env.PERF_PROBE_N) > 0 ? Number(process.env.PERF_PROBE_N) : 200;
 const EXPECTED_PRESSES = 2000;   // the original figure, kept visible and NOT claimed as measured
 // ClipWriter needs a dir. Constructed with only { exists } it holds no directory, so the
 // first writeClip throws "this ClipWriter has no directory" from clip-writer.js:116. The
