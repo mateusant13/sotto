@@ -422,3 +422,30 @@ original exists and wrong to call that a failure. Both cases now pass:
 And the second commit in that test repo was REFUSED by my own pre-commit, correctly:
 app/shadowplay/run-all.mjs does not exist there, and the hook refuses rather than passing
 quietly because there was nothing to run. That is the behaviour working, not failing.
+
+## 2026-10-11T08:01:57Z - the chained post-checkout ran for real, twice, in both directions
+
+It had been installed and CHECK OK for two turns without ever executing. Built a throwaway
+repo at G:\Temp\ht4 with a STUB run-all.mjs (prints RESULT 1 passed, exits 0) so the
+pre-commit had something real to call, made two commits, then checked out.
+
+  MEASURED, POPULACAO = 2 real checkouts, WINDOW_UTC 2026-10-11T08:01:57Z:
+    git checkout 29983e6   exit 0  HEAD moved, a.txt v2 -> v1
+      then, printed BY THE HOOK:
+        ok pre-commit (matches its source)
+        ok post-checkout (chained; installed fresh, no foreign body to preserve)
+        ok post-merge   (chained; installed fresh, no foreign body to preserve)
+        CHECK OK
+    git checkout -         exit 0  HEAD back, a.txt v1 -> v2
+      the same three lines printed again.
+
+  So the chain is not decorative: a checkout in this repo re-installs and re-reports every
+  hook. That is the whole point of chaining post-checkout -- the moment a clone lands with
+  no gate, the first thing that happens is the gate checks itself.
+
+  Two notes on how it got measured, both mine:
+  1. the first attempt used only one commit, so HEAD~1 did not exist and the checkout
+     was a no-op with atal: Needed a single revision. I read a green-looking line as a
+     pass until the file contents proved nothing moved.
+  2. git add -A in a scratch repo is fine and in this one it is not; I staged paths
+     explicitly here and that is why nothing of the owner's was swept in.
