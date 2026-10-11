@@ -1984,3 +1984,37 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   THE RULE THIS KEEPS EARNING: before a number becomes a decision someone else has to make, ask
   what the number counts. Twenty-three commits is not twenty-three implementations. Count the
   thing you are going to talk about.
+
+## 2026-10-11T12:08Z - "unique is not right" tested. The landed shell has both defects, and 55c422b is the fix.
+
+  Last turn I wrote that the boot-grace implementation being unique does not make it correct. That
+  was the right thing to doubt, so here is the test, MEASURED 12:07:45Z and 12:08:18Z on 1d97536,
+  the largest landed revision (320,214 B, 0 of 12 contract markers, POP_LINHAS_SHELL 6583).
+
+  DEFECT ONE, the boot grace, is real and unfixed on the landed lineage.
+    POP_BOOT_GRACE_NO_ATERRADO  0
+    POP_BOOT_GRACE_NO_55c422b   2
+    WORKER_SILENCE_MS = 30000 sits at 1d97536 L282, and def _fire at L5160.
+  The 55c422b comment states the mechanism with a measurement in it: a direct worker run takes
+  66.88 s from spawn to model-loaded, only warmup status lines print during that window, and no
+  WORKER_STATS tick exists until capture starts -- so the 30 s no-progress window fires MID-LOAD
+  and _kill_and_restart('silent') kills a healthy loader (rc=1, statuses=4, never model-loaded),
+  looping forever without a caption. That is a caption that never appears, and it is on the landed
+  lineage today.
+
+  DEFECT TWO, the owner's edit, is also real. At 1d97536 L5195-5200 the path is:
+        self._arm(left_ms)
+        return
+    and POP_FORCED_NO_TRECHO = 0 over the surrounding block: the re-arm never forces. So an owner
+    edit made while the worker is capturing does not reload until some later boundary. POP_LINES
+    only in 55c422b 292 -- this is most of what they buy.
+
+  AND I GOT THE ARITHMETIC WRONG ON THE FIRST PASS, which is why the rule about checking what a
+  number counts applies to arithmetic too. I divided 120000 by 66.88 and got 1794x. Those are
+  milliseconds over seconds. In the units the code uses it is 120000 ms / 66880 ms = 1.794x, and
+  the comment's "~1.8x" is right. The ratio is honest; my first division was meaningless.
+
+  The decision this feeds is unchanged in direction and now has evidence behind it: the reference
+  to port is 55c422b, not a choice among many, and the port carries two defects with a user-
+  visible symptom. What remains the owner's is only WHETHER to port into a file four worktrees
+  share, not WHICH implementation is correct -- that part is settled by measurement.
