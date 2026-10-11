@@ -21,24 +21,20 @@
 //       (c) the assertPositive guard       red=2   16 passed / 2 failed, exit 1
 //   branches NOT falsified 15.
 //
-// AND ONE MEASURED BLIND SPOT — not a count of zero, a count of "cannot see it".
-// Measured WINDOW_UTC 2026-10-11T02:10:42Z: deleting `seenInRun.clear()` from
-// summarizeHashes (frame-accounting.js:280) left this suite at 18 passed / 0 failed,
-// exit 0 — red_tests = 0. Without the streak reset the run never breaks and
-// longestUniqueRun degenerates into `distinct`.
+// AND ONE THAT WAS MEASURED INVISIBLE, NOW CLOSED. Measured WINDOW_UTC 2026-10-11T02:10:42Z:
+// deleting `seenInRun.clear()` (frame-accounting.js:280) left this suite at 18 passed /
+// 0 failed, exit 0 — red_tests = 0 — because every other fixture decodes to frames that are
+// all distinct, so the reset line never executes.
 //
-// Same shape as the byte-sum hole now closed in encoder.test.mjs: EVERY fixture in this
-// file decodes to frames that are ALL distinct, so no repeat ever occurs and the reset line
-// is never executed. The one longestUniqueRun assertion here is
-// `assert.equal(r.longestUniqueRun, 10)` on a testsrc clip, where distinct and
-// longest-unique are equal BY CONSTRUCTION — a fixed point.
+// CLOSED WINDOW_UTC 2026-10-11T02:13:30Z by a fixture built with the `select` filter that
+// repeats frame index 2, giving deliveredFrames=39, distinctFrames=11, longestUniqueRun=5.
+// Those two numbers differing is the whole point: they are equal by construction whenever a
+// clip has no repeat, which is why the mutation was invisible before. The same mutation now
+// gives 18 passed / 1 failed, exit 1.
 //
-// Closing it needs a real clip whose middle frame repeats AND which introduces further
-// distinct frames after the repeat, since that is the only input where the two numbers
-// differ. Attempted WINDOW_UTC 2026-10-11T02:10:58Z with an ffmpeg concat of five
-// solid-colour frames (A B C A D): it built to 1706 bytes but decoded to 3 frames, not 5,
-// so the fixture was not usable and NO claim is made about it. The blind spot is OPEN and is
-// recorded here rather than papered over by a test that would not have caught the mutation.
+// The first attempt at this fixture used an ffmpeg concat of five solid-colour frames
+// (02:10:58Z); it produced a 1706-byte file that decoded to 3 frames rather than 5, so it
+// was discarded rather than shipped as a test that would not have caught anything.
 //
 // AND ONE THAT WAS MEASURED AND CANNOT BE REACHED, which changes what the count means
 // (WINDOW_UTC 2026-10-11T01:42:01Z): ratio() guards against a zero denominator returning
@@ -334,6 +330,42 @@ ta("a non-positive or non-numeric duration is refused on the seconds argument to
   // above were caused by the argument under test and not by the clip.
   const ok = await assessDelivery(CLIP, 10, 1);
   assert.equal(ok.expectedFrames, 10, "the valid call must still work");
+});
+
+// THE FIXTURE FOR THE STREAK RESET. Measured WINDOW_UTC 2026-10-11T02:13:11Z.
+//
+// Deleting `seenInRun.clear()` (frame-accounting.js:280) previously left this suite at
+// 18 passed / 0 failed, red_tests = 0, because every other fixture decodes to frames that
+// are all distinct and the reset line never executes.
+//
+// This clip is built with the `select` filter repeating frame index 2, so the picture in the
+// middle occurs twice while different pictures follow it. That is the only shape in which
+// `distinct` and `longestUniqueRun` differ, and therefore the only shape in which a run
+// that never resets is distinguishable from a real one. Measured on this file:
+//   deliveredFrames = 39, distinctFrames = 11, longestUniqueRun = 5
+// With the reset deleted, longestUniqueRun degenerates to distinctFrames = 11.
+ta("a picture repeated mid-clip breaks the streak; the run does not span the repeat", async () => {
+  const REP = join(dir, "rep", "r.mp4");
+  mkdirSync(join(dir, "rep"), { recursive: true });
+  await runTool("ffmpeg", [
+    "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x48:rate=10",
+    "-vf", "select='eq(n\\,0)+eq(n\\,1)+eq(n\\,2)+eq(n\\,2)+eq(n\\,3)',setpts=N/TB",
+    "-r", "10", "-pix_fmt", "yuv420p", "-an", REP,
+  ]);
+  const r = await assessDelivery(REP, 10, 1);
+
+  // THE PRECONDITION. Without these two lines this test would pass for the wrong reason:
+  // if the fixture ever decoded to all-distinct frames, distinct === longest and a missing
+  // reset would be invisible again.
+  assert.ok(r.longestUniqueRun < r.distinctFrames,
+    `the fixture must repeat a picture, else it cannot see the reset: ` +
+    `longest=${r.longestUniqueRun} distinct=${r.distinctFrames}`);
+  assert.ok(r.longestUniqueRun > 0, "there must be a real streak to measure");
+
+  assert.equal(r.longestUniqueRun, 5,
+    `the streak must break at the repeat: got ${r.longestUniqueRun}`);
+  assert.equal(r.distinctFrames, 11,
+    `and the whole-file distinct count is a DIFFERENT question: got ${r.distinctFrames}`);
 });
 
 // ------------------------------------------------- drain the async tests -- LAST, always.
