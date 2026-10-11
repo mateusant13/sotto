@@ -1572,3 +1572,36 @@ The owner corrected me for carrying a count from an older window, so: recounted 
   rule: when a probe prints two keys about the same fact and they disagree, decide which one
   the subject is actually about before reporting either. Bytes are the subject; path
   formatting is mine.
+
+## 2026-10-11T10:13:46Z - POPULATION 1 became POPULATION 4, and the curve shows where the guard turns
+
+The weakest link in the still-screen explanation was that it rested on ONE clip I built. It
+is now four, spanning the threshold, and the shape is measured rather than asserted.
+
+  MEASURED, POPULACAO = 4 clips, each 2 s of black at 30 fps followed by a growing stretch
+  of movement, WINDOW_UTC 2026-10-11T10:13:46Z, all through the same assessDelivery call
+  with expectedFps 30 and expectedSeconds 2, so EXPECTED_FRAMES is 60 in all four:
+      movement 0.1000 s   DELIVERED  63  DISTINCT  4  LONGEST_UNIQUE_RUN  4   SUFFICIENT false
+      movement 0.4000 s   DELIVERED  72  DISTINCT 13  LONGEST_UNIQUE_RUN 13   SUFFICIENT false
+      movement 0.9333 s   DELIVERED  88  DISTINCT 29  LONGEST_UNIQUE_RUN 29   SUFFICIENT false
+      movement 1.5000 s   DELIVERED 105  DISTINCT 46  LONGEST_UNIQUE_RUN 46   SUFFICIENT true
+
+  The threshold is oneSecondOfClock = 30 frames. The refusal flips between the third and the
+  fourth clip, so the boundary is bracketed by two measurements: 29 refuses, 46 delivers.
+  And the observed failure was 28, which sits one frame below the refusing point measured at
+  0.9333 s. So the original refusal is not merely consistent with the mechanism -- it falls
+  exactly where a clip with under a second of movement would fall on this curve.
+
+  WHAT THIS STILL IS NOT. It is not the original recording. The curve shows that a clip with
+  about 0.9 s of movement in an 8 s capture refuses; it does not prove that the failing
+  capture had 0.9 s of movement, because that recording does not exist. The strength gained
+  is that the explanation now predicts a NUMBER at four points and the prediction matches
+  all four, rather than being one clip that happened to land near the recorded value.
+
+  MY LOOP WAS WRONG TWICE EN route. The first attempt built zero clips and I could not see
+  why; the second built one clip cleanly outside a loop. The failure was in my PowerShell
+  loop, not in ffmpeg, and running one command unredirected was what showed it. Third time
+  today an apparatus failed before a measurement did.
+
+  rule: one data point near a recorded value is a coincidence with extra steps. Four points
+  that predict it are an explanation.
