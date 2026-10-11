@@ -2285,3 +2285,55 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   FOURTH time this week a number of mine came from a population I did not construct from the disk:
   "5 of 10" understated, "23 implementacoes" that were 1, "66,88 is absurd", and now "66,88 is
   plausible". The first three at least moved toward truth. This one moved AWAY from it.
+
+## 2026-10-11T14:16Z - THE 120 s BOOT GRACE IS DEFENSIBLE, and I spent a night doubting a correct number
+
+  MEASURED 13:58:43Z..14:13:40Z. Chain, each step verified rather than inherited:
+
+  1. THE CONSTANT IS REAL CODE, not prose. In the stash 55c422b, app/webview/sotto_webview.py
+     (POP 8219 lines): L294 WORKER_BOOT_GRACE_MS = 120000, read at L7339 in
+     `if age_ms < WORKER_BOOT_GRACE_MS`, where age_ms = (time.monotonic() - spawned_at)*1000.0.
+     Declared AND read. At HEAD the same file has POP 0 occurrences of BOOT_GRACE and POP 0 of
+     staleness over POP 8 literal patterns -- the policy exists ONLY inside the stash.
+
+  2. load_s IS SECONDS. _main/_ep_bench.py L141-L143: t0 = time.perf_counter(); StreamAsr(...);
+     result["load_s"] = round(time.perf_counter() - t0, 3). perf_counter returns seconds.
+     The same file L164 is the reps loop -- TWENTY-ONE LINES AFTER the load is timed.
+     --reps help text at L37: "full passes over the file". reps counts AUDIO passes and
+     CANNOT influence load_s. My "reps causes the slow loads" hypothesis was refuted by the
+     file I had sent a lane to read. Counterexample that killed it: gpu-8t, reps 1, 6.025 s.
+
+  3. THE ARTEFACTS ARE ONE QUANTITY, not two. POP 14 bench JSONs in _main/_ep-logs, every one
+     naming model_dir nemotron-3.5-asr-streaming-0.6b-int8 and wav pt-br-sample.wav. My earlier
+     "ASR lineage vs shadow lineage" split was a split by FILE PATH and had nothing to do with
+     the quantity. 17 files, 14 measurements: three .txt files mirror the same numbers.
+
+  4. NO ARTEFACT RECORDS 66.88. Nearest are 67.247 and 76.659. The comment claims
+     "MEASURED 2026-10-08"; the nearest artefact ran 2026-10-07 15:45:50, one day earlier,
+     inside the slow block. UNRESOLVED whether 66.88 is a mis-copy of 67.247.
+
+  5. THE BIMODALITY IS TIME-BOUNDED, not configuration-bound. All 14 runs inside 54 minutes on
+     2026-10-07. Slow block 15:35:37..15:45:50 (POP 5: 17.118, 76.659, 20.637, 16.350, 67.247).
+     Everything outside loads in 3.939..11.723 s. Both CPU and CUDA providers appear in BOTH
+     groups. mtimes are trustworthy: commit 4e2127a touched POP 1369 files and POP 6 sampled
+     files outside _ep-logs carry distinct plausible mtimes; a checkout would rewrite to ONE
+     instant, and there are POP 14 distinct instants among the 14 bench files.
+
+  VERDICT: 120000 ms = 1.565x the worst measured load (76.659 s). The normal load is ~5 s, so
+  the grace is ~21x the median and 1.57x the tail. A boot grace that is generous in the normal
+  case and short in the worst is doing its job. The constant is sized against a ten-minute
+  degraded window on a busy machine, which is the correct reason for it to exist.
+
+  WHAT I GOT WRONG WHILE GETTING HERE, in order: called 66.88 absurd (population was 8 files
+  handed to me); called it corroborated at 0.87x (compared a webview boot to an ASR model load
+  I mislabelled as unrelated); split one quantity into two by file path; declared the bimodality
+  explained by reps without reading L37 or L143; reported a symmetric 2-vs-2 graph that was a
+  PowerShell member-access bug on an unquoted $base..$sha range; and doubted a correct constant
+  for most of a night because I never opened the file that documents it.
+
+  RULE ADDED: a number cited in a comment is read in the file that cites it, before it is swept
+  for in logs. A comment is a primary source. And: read the --help and the default of a field
+  before correlating with it -- reps defaults to 1, which produced half the correlation I
+  reported as a finding.
+
+  STILL OPEN: what occupied the machine during 15:35-15:46 on 2026-10-07. UNKNOWN, not invented.
