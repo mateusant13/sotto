@@ -7,7 +7,8 @@ os docs-fonte e a indexar TODOS os rotulos que eles declaram (`F`+digitos, `G`+d
 `Finding` + letra). As linhas #1-#62 mantem o estado que a revisao de 2026-10-06/07 verificou na
 arvore, excepto as que trazem a marca `[2026-10-11]`, re-medidas nesta revisao contra o working tree.
 **Modo:** READ-ONLY sobre `H:/sotto` (so este ficheiro foi escrito).
-**Working tree lido:** `H:/sotto` @ HEAD `3e90f92` + uncommitted.
+**Working tree lido:** `H:/sotto` @ HEAD `3e90f92` + uncommitted (lane T4); re-lido pela passagem do
+Lead apos o commit `4d7766c`, que fechou #45 e F2.
 **Pins desta revisao** (regra 2 do `AGENTS.md`: nomeie a revisao): `worker/sotto_worker.py` = **295 867 B**,
 sha256 `2C0AF4FB…`; `worker/wasapi_loopback.py` = **51 215 B**, sha256 `09C65E94…`. Os `file:line` das
 linhas #1-#62 foram medidos em 2026-10-06/07 e NAO foram re-medidos agora: trate-os como HINT e re-corra o `grep`.
@@ -85,7 +86,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:1987-2004` | **OPEN** |
 | 43 | `_spawn()` corre na thread de restart SEM `_lock` | `sotto_webview.py:2222` | **OPEN** |
 | 44 | `docs/README.md` diz que "nenhum codigo de aplicacao foi escrito" | `docs/README.md:8` | **OPEN** |
-| 45 | 3 documentos ainda descrevem a stack Tauri/Rust/SQLite abandonada como o produto | `docs/README.md:22-27`, `docs/roadmap.md:53-64`, `README.md:50-58,64` | **OPEN** |
+| 45 | 3 documentos ainda descrevem a stack Tauri/Rust/SQLite abandonada como o produto | `docs/README.md:22-27`, `docs/roadmap.md:53-64`, `README.md:50-58,64` | **[2026-10-11] APPLIED** — os TRES corrigidos nesta passagem, por leitura dos bytes (nada lancado): `docs/README.md` §*Honest status of the stack* passou a nomear a stack que EMBARCA (Python 3.11 + `onnxruntime` + pywebview 6.2.1/WebView2, `Alt+C`) e marca o `transcribe.cpp` como avaliado-e-nao-adoptado; `docs/roadmap.md` ganhou a faixa SUPERSEDED antes de M0 (Tauri/Rust/CPAL sao PLANO, e `docs/live-captions-20261006.md:208` prova que o Tauri esta morto); `README.md:48-52` deixou de chamar o Tauri *"still the destination"* e retracta DUAS afirmacoes ja refutadas (o carimbo `producer` existe — `REDUX_PRODUCER` em `worker/sotto_worker.py`; e `history/` tem ficheiro mais novo, `history/2026-10-07/14.md`) |
 | 46 | `AGENTS.md` contradiz-se sobre o painel no arranque ("0 de 41" vs "visivel 50 ms–7 s") | `AGENTS.md:169` vs `:215` | **OPEN** |
 | 47 | figura fp16 do `AGENTS.md` 1230 vs 1246.9 MiB medidos | `AGENTS.md:89` | **OPEN** |
 | 48 | `AGENTS.md` cita `worker-bridge.js:133` como "STATE_MAP" (declarado em `:114`) | `AGENTS.md:119` | **OPEN** |
@@ -213,7 +214,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
 | F1 | docs/README.md:8 diz que nenhum codigo de aplicacao foi escrito (`doc-vs-code.md:21`) | **OPEN** — herdado da linha #44 |
-| F2 | tres documentos descrevem a stack Tauri/Rust abandonada como o produto (`doc-vs-code.md:22`) | **OPEN** — herdado da linha #45 (o README.md da raiz foi reescrito, mas docs/roadmap.md:53 ainda a descreve) |
+| F2 | tres documentos descrevem a stack Tauri/Rust abandonada como o produto (`doc-vs-code.md:22`) | **APPLIED** — herdado da linha #45, fechada em 2026-10-11: o README.md da raiz ja estava corrigido e os outros dois (`docs/README.md`, `docs/roadmap.md:53`) foram corrigidos nesta passagem |
 | F3 | AGENTS.md contradiz-se sobre o painel no arranque (`doc-vs-code.md:23`) | **OPEN** — herdado da linha #46 |
 | F4 | a figura fp16 do AGENTS.md (1230 MB) nao bate com o disco (`doc-vs-code.md:24`) | **OPEN** — herdado da linha #47 |
 | F5 | AGENTS.md cita worker-bridge.js:133 como STATE_MAP (`doc-vs-code.md:25`) | **OPEN** — herdado da linha #48 |
@@ -305,25 +306,29 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 47
-- **OPEN:** 91
+- **APPLIED:** 49
+- **OPEN:** 89
 - **IN-FLIGHT:** 0
 
-Conferencia: 47 + 91 + 0 = **138** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 49 + 89 + 0 = **138** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
-e os dois verdictos estao no recibo `_main/receipt-20261011-audit-map-t4.md`.
+e os dois verdictos estao no recibo `_main/receipt-20261011-audit-map-t4.md`. A passagem do Lead
+(2026-10-11, depois de fechar #45 e F2 com os tres documentos corrigidos) voltou a correr o MESMO gate:
+`rc=0 GREEN`, `counts=applied:49/open:89/inflight:0`, `findings_distinct=138`, 43/43 docs nomeados.
 
 **MISSING:** nenhum rotulo de fonte ficou de fora — os 36 rotulos que os 43 docs declaram estao todos
 nesta lista. **INVENTED:** nenhum achado foi criado sem fonte, e nenhuma linha ficou sem estado do
 vocabulario fechado. **WRONG_STATE:** os estados das linhas antigas nao foram re-medidos nesta revisao
 (a ordem do dono de 2026-10-11 proibe abrir o Sotto); ficam como a revisao de 2026-10-06/07 os mediu, e
-as quatro linhas que esta revisao fechou trazem `[2026-10-11]` e a prova na propria linha.
+as SEIS linhas que estas duas passagens fecharam (#2, #22, #37, #53 na lane T4; #45 e F2 na passagem do
+Lead) trazem `[2026-10-11]` e a prova na propria linha.
 
 O que mudou nesta revisao, em uma linha cada: #2 (IN-FLIGHT -> APPLIED, `blank-frames-root-cause.md:6-9`),
 #22 (`use_vad` -> APPLIED, `auditoria-completa-20261007.md:597` + `sotto_worker.py:4195`), #37
-(`S_FALSE` -> APPLIED, `flat-endpoint.md:125-142`), #53 (o artefacto -> APPLIED, `AGENTS.md:169`).
+(`S_FALSE` -> APPLIED, `flat-endpoint.md:125-142`), #53 (o artefacto -> APPLIED, `AGENTS.md:169`); #45 e F2 (a stack Tauri/Rust/SQLite -> APPLIED: os tres
+documentos foram corrigidos nesta passagem — `docs/README.md`, `docs/roadmap.md`, `README.md`).
 
 ---
 

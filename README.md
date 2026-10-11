@@ -45,11 +45,14 @@ screen at startup (25 ms census: 0/20 launches mapped, vs 4/20 with the gate rev
 the worker's failure vocabulary reaches the panel as an error with its cause; resident memory int8
 1192 MB / int4 924 MB after load + one inference.
 
-**Planned, NOT implemented** — do not describe these as existing: the Tauri 2 / Rust / Svelte 5 shell
-(§*The plan*; still the destination); the batch "canonical transcript" pass — **nothing in the repo stamps
-`producer:'redux'`**, so the panel's History half is empty BY DESIGN and `history/` has taken no new file
-since 2026-10-06 19:58; diarization; a GPU route (`CUDAExecutionProvider` is requested and ORT returns
-CPU on this box). **Open defects with their measurements:** `docs/audit/auditoria-completa-20261007.md`.
+**Planned, NOT implemented** — do not describe these as existing: a Tauri 2 / Rust / Svelte 5 shell (that
+plan is SUPERSEDED: the shipped shell is Python + pywebview/WebView2 and the owner ruled there is no
+fallback); diarization. **Three claims this paragraph used to make were REFUTED by measurement:** it said
+"nothing in the repo stamps `producer:'redux'`" and that the History half is empty BY DESIGN — the worker
+DOES stamp it (`REDUX_PRODUCER` in `worker/sotto_worker.py`, emitted from `_run_runner`); it said `history/`
+had taken no new file since 2026-10-06 19:58 — the newest file measured is `history/2026-10-07/14.md`
+(mtime 2026-10-07 14:20:55); and it called the GPU route absent — measured 2026-10-08,
+`ort.get_available_providers()` lists CUDA and `get_device()` returns GPU, so the live run is GPU-backed. **Open defects with their measurements:** `docs/audit/auditoria-completa-20261007.md`.
 
 ---
 

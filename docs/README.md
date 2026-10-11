@@ -22,9 +22,17 @@ two constraints the architecture exists to satisfy.
 
 ## Honest status of the stack
 
+**What SHIPS (re-measured 2026-10-11):** the transcriber is a **Python 3.11** worker
+(`worker/sotto_worker.py`) that runs the models through **`onnxruntime`** and prints JSONL captions; the
+shell is **Python + pywebview 6.2.1 / WebView2** (`app/webview/sotto_webview.py`) serving `app/panel/*`
+unmodified; **`Alt+C`** is the only control. There is **no Rust, no Tauri and no `transcribe.cpp`** in
+the live path: `transcribe.cpp` was evaluated as a C++ runtime and **not adopted**, and the
+Tauri/Rust/CPAL plan is marked SUPERSEDED in `docs/roadmap.md`. (This paragraph used to present
+`transcribe.cpp` as "the C++ runtime that loads both without a resident Python" -- that was the PLAN,
+read as the product; corrected 2026-10-11.)
+
 `nvidia/nemotron-3.5-asr-streaming-0.6b` and `moondream/parakeet-redux` were both
-confirmed to exist against the Hugging Face API on 2026-10-05, along with
-`transcribe.cpp` as the C++ runtime that loads both without a resident Python.
+confirmed to exist against the Hugging Face API on 2026-10-05.
 Sizes, licences and terms are in the README, and the licence question is
 treated as a gate rather than a footnote: this repository is public from the
 first commit, so a licence nobody has read is a shipping blocker.

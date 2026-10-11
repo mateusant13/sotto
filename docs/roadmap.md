@@ -50,7 +50,14 @@ code path existing.
 
 ## Milestones
 
-**M0 — Foundation.** Tauri 2 + Rust + Svelte. Dark theme, empty overlay docked
+> **SUPERSEDED 2026-10-11 — the milestones below are the PLAN of 2026-10-06, NOT the shipped product.**
+> The shipped shell is **Python + pywebview 6.2.1 / WebView2**, not Tauri/Rust/Svelte, and capture is
+> **WASAPI loopback in Python** (`worker/wasapi_loopback.py`, plus a proven `VAD\Process_Loopback`
+> path), not CPAL. Tauri is DEAD on this host — measured, and the owner ruled WebView2 is the app with
+> no fallback (`docs/live-captions-20261006.md:208`). The EXITS below still ask the right questions;
+> read every stack name as history. Stack correction measured 2026-10-11.
+
+**M0 — Foundation.** ~~Tauri 2 + Rust + Svelte~~ *(shipped as Python + pywebview/WebView2)*. Dark theme, empty overlay docked
 right, `Alt+C` toggles it, no model, no audio. Proves the shell, the hotkey,
 the window behaviour, and the idle baseline. Exit: the app opens, toggles, and
 a sampled idle RSS number exists.
