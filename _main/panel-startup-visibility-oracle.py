@@ -383,7 +383,16 @@ def run_arm(arm: str, shell: str, extra: list, seconds: float) -> dict:
     for tag in ('mid1', 'mid2', 'mid3'):
         time.sleep(max(0.4, seconds / 4.0))
         house_census(arm, tag)
-    rc = proc.wait(timeout=400)
+    try:
+        rc = proc.wait(timeout=400)
+    except subprocess.TimeoutExpired:
+        # ROW #34 (windows-landmines.md): a bare `wait(timeout=)` leaves the CHILD and
+        # its whole TREE alive when the ceiling expires -- measured live by
+        # `_main/audit-rows-landmine-child-control.py` (arm r34). `/T` kills the tree, and the
+        # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+        raise
     out.close()
     sampler.stop.set()
     sampler.join(timeout=5)

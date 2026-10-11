@@ -29,6 +29,7 @@
 # =============================================================================
 from __future__ import annotations
 
+import re
 import argparse
 import ctypes
 import hashlib
@@ -49,6 +50,9 @@ RUN_HIDDEN = os.path.join(ROOT, '_main', 'run-live-hidden.py')
 RUN_ELECTRON = os.path.join(ROOT, '_main', '_run-hidden.py')
 ORACLES = ('device-silence-oracle.py', 'panel-exit3-oracle.py',
            'panel-startup-visibility-oracle.py')
+#: row #34's mutant subject: ONE of the three, because the defect is now derived with
+#: ANY (one unhandled site can orphan a child), not ALL.
+_EXIT3 = os.path.join(ROOT, '_main', 'panel-exit3-oracle.py')
 PS = r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008
@@ -66,6 +70,25 @@ def say(message):
 def sha256_file(path):
     with open(path, 'rb') as handle:
         return hashlib.sha256(handle.read()).hexdigest().upper()
+
+
+def _handler_block(path, wait_line):
+    """The EXACT text of a try/except handler in `path`, read from the file.
+
+    A mutant that hard-codes its own anchor goes stale the moment the file is edited
+    (measured today: two re-baselines were forced by exactly that). This extracts the
+    live block instead, normalised to \n so make_mutant can re-apply the file newline.
+    """
+    with open(path, 'r', encoding='utf-8') as handle:
+        text = handle.read()
+    normalised = text.replace('\r\n', '\n')
+    start = normalised.find('    try:\n' + wait_line)
+    if start < 0:
+        return None
+    end = normalised.find('\n        raise\n', start)
+    if end < 0:
+        return None
+    return normalised[start:end + len('\n        raise\n')]
 
 
 def line_of(text, anchor):
@@ -90,17 +113,11 @@ MUTANTS = {
     'm5-census-broken-flags': (CENSUS, [
         ('creationflags=0x08000000)',
          'creationflags=0x08000000 | 0x00000008)')]),
-    # #34 -- the oracle kills the TREE it started when its ceiling expires.
-    'm34-tree-kill-on-timeout': (os.path.join(ROOT, '_main',
-                                              'panel-exit3-oracle.py'), [
-        ('    rc = proc.wait(timeout=400)\n',
-         '    try:\n'
-         '        rc = proc.wait(timeout=400)\n'
-         '    except subprocess.TimeoutExpired:\n'
-         '        subprocess.run(["taskkill", "/F", "/T", "/PID",\n'
-         '                        str(proc.pid)], capture_output=True,\n'
-         '                       creationflags=0x08000000)\n'
-         '        raise\n')]),
+    # #34 -- THE MUTANT NOW GOES THE OTHER WAY (2026-10-11): the live oracles HAVE the
+    # handler, so this mutant REMOVES it from one of the three and reproduces the orphan.
+    'm34-orphan-handler-removed': (_EXIT3, [
+        (_handler_block(_EXIT3, '        rc = proc.wait(timeout=400)'),
+         '    rc = proc.wait(timeout=400)\n')]),
     # #62 -- the electron launcher gains a handler that kills the TREE. Two
     # literal replacements: the call is wrapped, and the handler is inserted
     # before the first use of p. Inside the parentheses the continuation lines
@@ -117,17 +134,13 @@ MUTANTS = {
          '                       capture_output=True, creationflags=FLAGS)\n'
          '        raise\n'
          '    sys.stdout.write(p.stdout)\n')]),
-    # #35 -- run-live-hidden.py loses the dead constant and gains the handler.
-    'm35-constant-removed-handler-added': (RUN_HIDDEN, [
-        ('DETACHED_PROCESS = 0x00000008\n', ''),
-        ('    rc = proc.wait(timeout=300)\n',
-         '    try:\n'
-         '        rc = proc.wait(timeout=300)\n'
-         '    except subprocess.TimeoutExpired:\n'
-         '        subprocess.run(["taskkill", "/F", "/T", "/PID",\n'
-         '                        str(proc.pid)], capture_output=True,\n'
-         '                       creationflags=0x08000000)\n'
-         '        rc = None\n')]),
+    # #35 -- AND THE SAME INVERSION (2026-10-11): the dead constant comes BACK and the
+    # handler goes away, which is the state row #35 was filed against.
+    'm35-handler-removed-constant-restored': (RUN_HIDDEN, [
+        ('CREATE_NO_WINDOW = 0x08000000\n',
+         'CREATE_NO_WINDOW = 0x08000000\nDETACHED_PROCESS = 0x00000008\n'),
+        (_handler_block(RUN_HIDDEN, '        rc = proc.wait(timeout=300)'),
+         '    rc = proc.wait(timeout=300)\n')]),
 }
 
 
@@ -353,6 +366,12 @@ def arm_r34(ctx):
         'all_wait_sites_unhandled': all(e['unhandled_wait']
                                          for e in per_file.values()
                                          if e['wait_timeout_sites']),
+        # ANY, not ALL (2026-10-11): ONE site without a handler can orphan a child, so
+        # ONE site is the defect. With ALL, a single fixed file would have made the arm
+        # unable to say NO any more -- and the mutant below reverts exactly one file.
+        'any_wait_site_unhandled': any(e['unhandled_wait']
+                                       for e in per_file.values()
+                                       if e['wait_timeout_sites']),
     }
 
 
@@ -365,8 +384,13 @@ def arm_r35(ctx):
         'timeout_expired_handlers': text.count('TimeoutExpired'),
         'wait_timeout_line': line_of(text, '.wait(timeout='),
         'creationflags_line': line_of(text, 'creationflags='),
+        # A DEFINITION, not a mention (fixed 2026-10-11): the live file now carries the
+        # word in a comment that explains the removal, and `count(...) == 1` read that
+        # comment as the constant -- a detector defeated by its own documentation.
+        'dead_constant_defined': bool(
+            re.search(r'^[ \t]*DETACHED_PROCESS[ \t]*=', text, re.M)),
         'dead_constant_and_unhandled': bool(
-            text.count('DETACHED_PROCESS') == 1
+            re.search(r'^[ \t]*DETACHED_PROCESS[ \t]*=', text, re.M)
             and text.count('TimeoutExpired') == 0),
     }
 
@@ -413,15 +437,17 @@ ROW_OF = {
 #: THE LIVE VALUES, in one place: derived r5 -> False on 2026-10-11, when the census
 #: flags were fixed in the probe (measured: 0x08000000 alone -> 14 pid rows, 0x08000008
 #: -> 0 rows with rc 0). Every other arm keeps the defect the sweep measured.
-LIVE_DEFECT = {'r5': False, 'r34': True, 'r35': True, 'r62': True}
+# r34 and r35 JOIN r5 on 2026-10-11: the three oracles were given the tree-kill handler and
+# run-live-hidden.py lost its dead DETACHED_PROCESS, so the only landmine left live is r62.
+LIVE_DEFECT = {'r5': False, 'r34': False, 'r35': False, 'r62': True}
 
 #: arm -> (the mutant that must flip it, its value under that mutant)
 MUTANT_OF = {'r5': ('m5-census-broken-flags', True),
-             'r34': ('m34-tree-kill-on-timeout', False),
-             'r35': ('m35-constant-removed-handler-added', False),
+             'r34': ('m34-orphan-handler-removed', True),
+             'r35': ('m35-handler-removed-constant-restored', True),
              'r62': ('m62-electron-tree-kill', False)}
-MUTANT_ORDER = ('m5-census-broken-flags', 'm34-tree-kill-on-timeout',
-                'm35-constant-removed-handler-added', 'm62-electron-tree-kill')
+MUTANT_ORDER = ('m5-census-broken-flags', 'm34-orphan-handler-removed',
+                'm35-handler-removed-constant-restored', 'm62-electron-tree-kill')
 
 MECHANISM = {}
 
@@ -463,7 +489,7 @@ def run_all(ctx):
     r34 = results.get('r34') or {}
     if 'ERROR' not in r34:
         r34['orphan_possible_and_all_unhandled'] = bool(
-            r34.get('orphan_possible') and r34.get('all_wait_sites_unhandled'))
+            r34.get('orphan_possible') and r34.get('any_wait_site_unhandled'))
     return results
 
 

@@ -517,3 +517,42 @@ probed in this mode" when `--neg-arm` skips the live block instead of printing a
 measured. **This is the third and fourth instance of the same defect class in one session** (a
 verdict sentence that cannot change when the facts do); it is worth treating as the house rule:
 a PASS line must be derived from the run it closes.
+
+
+---
+
+## ADDENDUM 4 — 2026-10-11 (Lead): rows #34 and #35 are FIXED in the files, not just measured
+
+This sweep filed them against OUR OWN instruments and launchers, and the sweep was right: the
+landmine instrument's live arms reproduced a real orphan ("the orphan survives the timeout").
+Fixed, all four sites, with the handler the instrument's own mutants had prescribed:
+
+- `_main/device-silence-oracle.py`, `_main/panel-exit3-oracle.py`,
+  `_main/panel-startup-visibility-oracle.py` (row #34): `try/except subprocess.TimeoutExpired` ->
+  `taskkill /F /T /PID <pid>` -> re-raise. `/T` kills the tree; the target is a PID, never a NAME,
+  so no kill filter can reach an unrelated process.
+- `_main/run-live-hidden.py` (row #35): the same handler on its `wait(timeout=300)`, and the dead
+  `DETACHED_PROCESS = 0x00000008` is REMOVED — nothing read it, and a detached child is exactly
+  the orphan no ceiling can reach.
+
+**Measured after the fix:** `py -3 _main/audit-rows-landmine-child-control.py` ->
+`VERDICT: PASS  live: 1 of 4 landmines still reproduced on this box (r62); the rest are FIXED; 4/4
+mutants flipped their own arm(s)`, rc=0. `py_compile` rc=0 on all four files.
+
+**Three things this closure had to repair in the measuring instrument itself, all recorded rather
+than hidden:**
+
+1. `arm_r34` derived the defect with `all(...)` over the three files. That quantifier stops being
+   able to say NO the moment ONE file is fixed, and it is the wrong claim anyway: ONE unhandled site
+   can orphan a child. `any_wait_site_unhandled` now carries the claim (`all` is kept and printed).
+2. The `m34`/`m35` mutants were INVERTED (they used to ADD the handler, i.e. simulate the cure);
+   they now REMOVE it and restore the dead constant, so both colours still exist.
+3. `arm_r35`'s detector was `text.count('DETACHED_PROCESS') == 1` — a count of MENTIONS. The
+   comment that documents the removal makes that count 1, so the arm would have read the
+   documentation as if it were the constant. It now requires a DEFINITION
+   (`^[ \t]*DETACHED_PROCESS[ \t]*=`). A detector defeated by its own explanatory comment is the
+   same defect class as a PASS line that cannot go stale.
+
+**What is left live in that instrument is r62 alone**, and it is blocked by the owner's order rather
+than by work: measuring it means launching electron.exe or the shell, the binary is declared DEAD,
+and the row's own text calls the claim an INFERENCE. Registered as BLOCKED-BY-OWNER-ORDER.

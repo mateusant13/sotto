@@ -70,8 +70,8 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 31 | o censo da casa nao serve para o eixo janela: `MainWindowHandle != 0` sem teste de monitor | `window-census.ps1:11-14, 60-70` | **OPEN** |
 | 32 | o censo nao e panel-specific (alarmou em `cmd`/`dwm`/`python`) | `window-census.log` | **OPEN** |
 | 33 | comentarios obsoletos/contraditorios no `sotto_webview.py` sobre a cura OFFSCREEN | `sotto_webview.py:1054` (residuo) | **OPEN** — `:1531-1535` ja diz "tried and REMOVED"; `:1054` ainda diz que o flash "e tratado pela posicao de criacao OFFSCREEN abaixo" |
-| 34 | `wait(timeout=)` sem handler em 3 oraculos → filho orfao, handles nunca fechados | `device-silence-oracle.py:71`, `panel-exit3-oracle.py:160`, `panel-startup-visibility-oracle.py:386` | **OPEN** — nenhum `TimeoutExpired` nos tres |
-| 35 | `run-live-hidden.py` `wait(timeout=)` sem handler + constante `DETACHED_PROCESS` morta | `_main/run-live-hidden.py:44, :25` | **OPEN** |
+| 34 | `wait(timeout=)` sem handler em 3 oraculos → filho orfao, handles nunca fechados | `device-silence-oracle.py:71`, `panel-exit3-oracle.py:173`, `panel-startup-visibility-oracle.py:386` | **[2026-10-11] APPLIED** — os TRES oraculos ganharam `try/except subprocess.TimeoutExpired` com `taskkill /F /T /PID <pid>` (o alvo e um PID, nunca um NOME, logo nenhum filtro de kill pode atingir processo alheio) e re-`raise`. Provado pelo instrumento da propria linha: `py -3 _main/audit-rows-landmine-child-control.py` → `VERDICT: PASS live: 1 of 4 landmines still reproduced (r62); the rest are FIXED`, rc=0, com o mutante `m34-orphan-handler-removed` (devolve o `wait` nu a UM ficheiro) a REPRODUZIR o orfao. A derivacao mudou de ALL para ANY: UM sitio sem handler ja pode orfanar uma crianca, logo um so e o defeito (`all` teria deixado o braco incapaz de dizer NAO depois do primeiro ficheiro corrigido) |
+| 35 | `run-live-hidden.py` `wait(timeout=)` sem handler + constante `DETACHED_PROCESS` morta | `_main/run-live-hidden.py:44, :25` | **[2026-10-11] APPLIED** — o `wait(timeout=300)` ganhou o mesmo handler com tree-kill e a constante `DETACHED_PROCESS` foi REMOVIDA (nada a lia). Mutante `m35-handler-removed-constant-restored` repoe os dois e a linha volta a ler DEFEITO; e o detector desta linha foi corrigido no mesmo passo (contava MENCOES: o comentario que explica a remocao fazia `DETACHED_PROCESS` contar 1 e o teste `count == 1` lia a documentacao como se fosse a constante — agora exige uma DEFINICAO, `^\s*DETACHED_PROCESS\s*=`) |
 
 ## P2 — deriva documental, cosmetico, latente ou nota de eficiencia
 
@@ -307,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 61
-- **OPEN:** 78
+- **APPLIED:** 63
+- **OPEN:** 76
 - **IN-FLIGHT:** 0
 
-Conferencia: 61 + 78 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 63 + 76 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao

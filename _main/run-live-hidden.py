@@ -22,7 +22,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.normpath(os.path.join(HERE, "..", "worker", "sotto_worker.py"))
 
 CREATE_NO_WINDOW = 0x08000000
-DETACHED_PROCESS = 0x00000008
+# ROW #35: `DETACHED_PROCESS = 0x00000008` was here and was DEAD -- nothing read it, and
+# a detached child is exactly the orphan no ceiling can reach. Removed with the handler below.
 
 
 def main() -> int:
@@ -41,7 +42,16 @@ def main() -> int:
         creationflags=CREATE_NO_WINDOW,
         cwd=os.path.dirname(WORKER),
     )
-    rc = proc.wait(timeout=300)
+    try:
+        rc = proc.wait(timeout=300)
+    except subprocess.TimeoutExpired:
+        # ROW #35 (windows-landmines.md): a bare `wait(timeout=)` leaves the CHILD and
+        # its whole TREE alive when the ceiling expires -- measured live by
+        # `_main/audit-rows-landmine-child-control.py` (arm r35). `/T` kills the tree, and the
+        # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+        raise
     out.close()
     errf.close()
 

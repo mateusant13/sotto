@@ -170,7 +170,16 @@ def run_shell(out_path: str, args: list[str], feed_stop=None, env=None) -> int:
         cwd=os.path.dirname(SHELL),
         env=env,
     )
-    rc = proc.wait(timeout=400)
+    try:
+        rc = proc.wait(timeout=400)
+    except subprocess.TimeoutExpired:
+        # ROW #34 (windows-landmines.md): a bare `wait(timeout=)` leaves the CHILD and
+        # its whole TREE alive when the ceiling expires -- measured live by
+        # `_main/audit-rows-landmine-child-control.py` (arm r34). `/T` kills the tree, and the
+        # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+        raise
     out.close()
     if feed_stop is not None:
         feed_stop.set()

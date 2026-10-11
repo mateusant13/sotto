@@ -68,7 +68,16 @@ def run_worker(out_path: str, args: list[str]) -> dict:
         stdout=out, stderr=errf, stdin=subprocess.DEVNULL,
         creationflags=CREATE_NO_WINDOW, cwd=os.path.dirname(WORKER),
     )
-    rc = proc.wait(timeout=400)
+    try:
+        rc = proc.wait(timeout=400)
+    except subprocess.TimeoutExpired:
+        # ROW #34 (windows-landmines.md): a bare `wait(timeout=)` leaves the CHILD and
+        # its whole TREE alive when the ceiling expires -- measured live by
+        # `_main/audit-rows-landmine-child-control.py` (arm r34). `/T` kills the tree, and the
+        # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+        raise
     out.close()
     errf.close()
     statuses, captions = [], []
