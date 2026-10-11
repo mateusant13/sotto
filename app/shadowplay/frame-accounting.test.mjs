@@ -21,12 +21,22 @@
 //   branches NOT falsified 12. Their assertions pass, and nothing here shows that removing
 //                                 the code they exercise would turn any of them red.
 //
-// AND ONE THAT WAS MEASURED AND IS UNGUARDED, which is the reason this file says what it
-// says (WINDOW_UTC 2026-10-11T01:37:57Z): ratio() exists to stop a zero denominator from
-// producing NaN, which would "poison a verdict with a falsy-looking value that is actually
-// neither true nor false" (frame-accounting.js:212-214). Replacing its `return 0` with
-// `return NaN` left this suite at 13 passed / 0 failed, exit 0. Nothing here reaches a zero
-// denominator. The guard is correct, and untested.
+// AND ONE THAT WAS MEASURED AND CANNOT BE REACHED, which changes what the count means
+// (WINDOW_UTC 2026-10-11T01:42:01Z): ratio() guards against a zero denominator returning
+// NaN (frame-accounting.js:211-218). Replacing its `return 0` with `return NaN` left this
+// suite at 13 passed / 0 failed, exit 0 — and the reason is NOT a missing test.
+//
+//   ratio() is not exported (frame-accounting.js exports runTool, countFrames,
+//   countDistinctContent, assessDelivery). Both of its call sites divide by a value the
+//   module REFUSES to be zero:
+//     coverage        = ratio(distinct, deliveredFrames)  <- countFrames THROWS on 0
+//     contiguousRatio = ratio(longestUniqueRun, expectedFrames) <- both inputs asserted > 0
+//   Driving assessDelivery at a real zero-frame container returns
+//     "ffprobe did not return a frame count; refusing to report 0..."
+//   so the call cannot return, and the zero-denominator branch is UNREACHABLE defence.
+//
+// It stays as belt-and-braces against a future caller. It is not coverage this suite can
+// acquire, and claiming it as a gap would be as wrong as claiming it as a passing test.
 //
 // So the honest claim is ONE OF THIRTEEN, not "this suite is verified". Two earlier mutation
 // attempts of mine failed silently -- one edited a line the zero-frame input never reaches,
