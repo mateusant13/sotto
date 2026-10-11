@@ -2227,3 +2227,32 @@ is now four, spanning the threshold, and the shape is measured rather than asser
 
   I did not set SOTTO_SKIP_RUN_ALL on either refusal. A gate that refuses on a real observation and
   then lets the next commit through on its own is the whole point of having it.
+
+## 2026-10-11T13:26Z - MY OWN RETRACTION WAS WRONG ON THE ARITHMETIC, because I did not sweep the population
+
+  MEASURED 13:25:45Z, POP_FICHEIROS_VARRIDOS 1650 (_main + worker, all logs/md/txt/stderr),
+  POP_VALORES_ENCONTRADOS 69 distinct load_s readings. POP_MAXIMUM 76.659 (gpu-1t.txt),
+  POP_MINIMUM 0.03. Descending: 76,659 · 67,247 · 20,637 · 17,118 · 16,35 · 12,75 · 12,22 ·
+  10,94 · 8,17 · 7,78 · 7,64 · ... · 3,1 · ... · 0,03.
+
+  So the comment's 66.88 is NOT 8,6x the largest value on record. It is 0,87x the maximum, and the
+  population contains 67,247 -- within half a second of it. My retraction said "8,6x" because I
+  measured POP 6 values out of the 8 files the verifier listed, and never swept the other 1642.
+
+  THIS DOES NOT REVIVE THE NUMBER. The retraction's stronger half stands untouched: over POP 760
+  commits "66.88" occurs in exactly one place, the comment at 55c422b L285, with zero logs, zero
+  measurement scripts, zero oracle outputs. Whether 66.88 or 7.78, no artefact in the repository
+  produced it. What I retract now is my own ARITHMETIC, not the sourcing: the figure is
+  UNSOURCED, and it is also PLAUSIBLE, which are two different findings and I conflated them.
+
+  POP 8 files chosen by someone else is not a census. Neither is POP 6 values extracted from
+  them. I have now been wrong in both directions in one night -- "5 of 10" understated, "23
+  implementations" overstated, "66.88 is absurd" overstated -- and the common shape is always the
+  same: a number measured on a population someone handed me rather than the one on disk.
+
+  The verifier lane also died before delivering, having already found: the restart-30s oracle is
+  byte-identical across all three revisions and loads SHELL from the WORKING TREE, so it cannot
+  discriminate 55c422b from the landed revision at all; state() and every staleness key are absent
+  from landed; and --probe-reload has 3 arms landed versus 6 in the WIP. Recorded here because it
+  died holding them and a finding that dies holding its evidence is the same shape as a commit
+  that dies holding its message.
