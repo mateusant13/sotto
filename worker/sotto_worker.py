@@ -232,6 +232,16 @@ TAP_PEAK_FLOOR = 0.002
 TAP_MIN_WINDOW_S = 2.0
 TAP_SILENT_BLOCKS = 20
 
+TAP_STALL_S = 8.0
+TAP_STALL_MAX_S = 60.0
+TAP_STALL_SAME_DEVICE_TRIES = 2
+# -- THE LIVENESS BOUND ON A SETTLED TAP (added 2026-10-11) --------------
+# A settled tap IS the run, and the capture loop used to continue for ever
+# without ever asking whether that tap still DELIVERS (watchdog below).
+# 8 s = 80 blocks at the shipped 100 ms block: a pumped but idle endpoint
+# still delivers SILENT blocks; a starved or dead one delivers none.
+
+
 # The BOUND on `StreamAsr.labels` (F17). The list is the run's symbol ids; a
 # multi-hour stream used to grow it without limit and then `detok()` the whole
 # thing into ONE JSONL line at exit. The arithmetic that chose the number:
@@ -4123,6 +4133,11 @@ def main():
             # not the run's high-water mark from a device already closed.
             device_peak["value"] = 0.0
             device_blocks["value"] = 0
+            # The settled-tap watchdog starts its clock with the candidate.
+            stall_blocks = 0
+            stall_since = time.time()
+            stall_backoff = TAP_STALL_S
+            stall_reopens = 0
             caps_before = counters["captions"]
             window_end = time.time() + tap_window
             settled = False
@@ -4160,6 +4175,71 @@ def main():
                     if settled:
                         # Proven alive: this tap is the run now, and the window
                         # no longer applies to it.
+                        if device_blocks["value"] != stall_blocks:
+                            # Still delivering: this tap IS the run.
+                            stall_blocks = device_blocks["value"]
+                            stall_since = now
+                            stall_backoff = TAP_STALL_S
+                        elif now - stall_since >= stall_backoff:
+                            # -- THE TAP STOPPED DELIVERING (added 2026-10-11) -----------------
+                            # A settled tap used to be PERMANENT: this loop then spun at 10 Hz for
+                            # ever and never once asked whether the tap was still delivering.
+                            # MEASURED on the owner box: device_blocks froze at 59 (5.6 s of audio,
+                            # 6 captions) and the worker sat there 34 minutes while the default
+                            # render endpoint carried peak 0.1444 -- the panel read "Audio tap
+                            # silent" and Alt+C showed nothing, for ever. The signal is BLOCK
+                            # ARRIVAL, not peak: a pumped-but-idle endpoint delivers SILENT blocks,
+                            # a starved or dead one delivers none.
+                            stalled_s = now - stall_since
+                            inner = getattr(tap, "stream", tap)
+                            err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "
+                                f"blocks={device_blocks['value']} captions={counters['captions']} "
+                                f"reopens={stall_reopens} "
+                                f"pump_exited={getattr(inner, 'pump_exited', None)} "
+                                f"pump_hr={getattr(inner, 'pump_exit_hr', None)} "
+                                f"pump_where={getattr(inner, 'pump_exit_where', '')!r} "
+                                f"silent_packets={getattr(inner, 'silent_packets', None)} "
+                                f"gap_packets={getattr(inner, 'position_gap_packets', None)}")
+                            # Re-open IN PLACE: the first stalls re-open the SAME endpoint (an
+                            # invalidated audio engine is cured by a fresh client); after that the
+                            # audio may simply have MOVED, so take the freshest enumeration first
+                            # endpoint that is not this one. An EXPLICIT device (rung c) is never
+                            # substituted silently, and the process NEVER exits on a stall -- an
+                            # idle desktop must not become a model-load restart loop.
+                            target = dev
+                            if stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES and not (
+                                    wanted and dev.get("rung") == "c"):
+                                for cand in device_candidates(audio_cfg, wanted):
+                                    if cand.get("endpoint_id") != dev.get("endpoint_id"):
+                                        target = cand
+                                        break
+                            emit(type="status", state="device-rotated", reason="tap-stalled",
+                                 to=target["name"], device=dev["name"],
+                                 stalled_s=round(stalled_s, 1), blocks=device_blocks["value"],
+                                 captions=counters["captions"])
+                            try:
+                                close_tap(tap)
+                                tap_holder["tap"] = None
+                                tap_holder["gen"] += 1
+                                tap = LoopbackTap(target, on_block, block_ms=block_ms)
+                                tap_holder["tap"] = tap
+                                tap_holder["gen"] += 1
+                                tap.stream.start()
+                                dev = target
+                                device_peak["value"] = 0.0
+                                device_blocks["value"] = 0
+                                stall_blocks = 0
+                                stall_reopens += 1
+                                emit(type="status", state="capture-started", device=dev["name"],
+                                     rate=tap.rate, block=tap.block, attempt=attempt_no + 1,
+                                     of=len(candidates), reopened=True)
+                            except Exception as exc:
+                                err(f"TAP_STALLED_REOPEN_FAILED device={target['name']!r} "
+                                    f"detail={type(exc).__name__}: {exc}")
+                            stall_since = time.time()
+                            stall_backoff = (TAP_STALL_S
+                                             if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
+                                             else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
                         time.sleep(0.1)
                         continue
                     if now >= window_end:

@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.wintypes as wt
+import hashlib
 import json
 import os
 import re
@@ -316,11 +317,43 @@ WORKER_RELOAD_DEBOUNCE_MS = 2000
 #: (`worker/runs/*.jsonl`, the `model-loaded` line), so 180 s is ~20x the stall
 #: it bounds and the model cannot cycle faster than the owner asked.
 WORKER_RELOAD_MIN_INTERVAL_MS = 180000
+# The capture guard has no exit of its own: is_capturing() goes false only when
+# the worker STOPS, and a worker with audio to transcribe keeps capturing. So a
+# held reload needs a CEILING -- after this long it applies even with no
+# boundary -- plus a cadence for re-checking the wait it is holding.
+WORKER_RELOAD_MAX_DEFER_MS = 25000
+WORKER_RELOAD_DEFER_RECHECK_MS = 10000
+# A held reload is a STATE, not an event: log it at most this often.
+WORKER_RELOAD_DEFER_LOG_MS = 30000
 #: Fixed field order, so two runs' bodies diff by VALUE and not by shape.
 STATUS_BODY_FIELDS = ('stage', 'detail', 'verdict', 'device', 'api', 'peak',
                       'peak_floor', 'blocks', 'window_s', 'captions', 'tokens',
                       'chunks', 'rotations', 'reason', 'rate')
 STATUS_BODY_MAX = 400
+
+def file_sha256(path):
+    """First 16 hex chars of a file's SHA-256, or None if it cannot be read.
+
+    A SHORT digest on purpose: it is a staleness token compared against another
+    token from this same function, never a security claim, and it is the width
+    the reference implementation used so log lines stay comparable.
+    """
+    try:
+        digest = hashlib.sha256()
+        with open(path, 'rb') as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b''):
+                digest.update(chunk)
+        return digest.hexdigest()[:16]
+    except OSError:
+        return None
+
+
+# The shell's own bytes, hashed ONCE at import: the answer to "is the code I am
+# running the code on disk" cannot be re-read later without the answer changing
+# under the reader. reloadable is False because a shell cannot re-read itself in
+# place -- the panel can, the worker can, the shell needs a restart.
+SHELL_PATH = os.path.abspath(__file__)
+SHELL_SHA256_AT_IMPORT = file_sha256(SHELL_PATH)
 
 
 def worker_status_kind(state, message):
@@ -3783,6 +3816,10 @@ class SottoShell:
             # worker polls. A reader comparing them can see the channel drift or
             # refuse it; a reader that trusts only the file cannot.
             'panelVisibility': self.panel_visibility_snapshot(),
+            # Is the RUNNING code the code on disk? Both files, as data, with
+            # the digest the worker was spawned from -- the question a reader
+            # cannot answer from the file alone.
+            'code': self._reload_policy.state(),
             'worker': worker,
         }
 
@@ -4713,17 +4750,42 @@ class SottoShell:
         started = self.bridge.start(reason)
         log(f'WORKER_AUTOSTART={"started" if started else "declined"} '
             f'reason={reason}')
+        if started:
+            self.code_state_log(f'worker-started-{reason}')
         return started
 
     def on_worker_caption(self, text, meta):
         self.emit('caption', {'text': text, 'meta': meta})
         log(f'BRIDGE_CAPTION_SENT delivered=true text={json.dumps(text)}')
+        # A CLOSED line is the boundary a held reload waits for: the worker has
+        # just committed a sentence, so restarting here does not cut the caption
+        # the owner is reading. final is the worker's own word for a closed line.
+        if isinstance(meta, dict) and meta.get('final') is True:
+            self._reload_policy.boundary(closed=True, why='closed-line')
 
     def on_worker_status(self, text, kind, info):
         self.apply_panel_state(text, kind, info)
         # A status line is the boundary signal: an exit/`done`/`error` closes
         # the capture guard, so a reload held mid-stream can land here.
-        self._reload_policy.boundary()
+        self._reload_policy.boundary(why='status')
+
+    def code_state_log(self, reason):
+        """One line: is the running code the code on disk? Both files, one word."""
+        try:
+            state = self._reload_policy.state()
+        except Exception as exc:
+            # A staleness read must never be the reason the shell stops.
+            warn(f'CODE_STATE_UNAVAILABLE reason={reason} error={exc!r}')
+            return
+        worker = state.get('worker') or {}
+        shell = state.get('shell') or {}
+        log(f'CODE_STATE reason={reason} '
+            f'worker_disk={worker.get("disk")} '
+            f'worker_loaded={worker.get("loaded")} '
+            f'worker_stale={worker.get("stale")} '
+            f'shell_disk={shell.get("disk")} '
+            f'shell_loaded={shell.get("loaded")} '
+            f'shell_stale={shell.get("stale")}')
 
     # -- hot reload --------------------------------------------------------
     # `hot_reload.py` watches and debounces; WHAT a reload means is decided
@@ -5078,129 +5140,261 @@ class SottoShell:
 class WorkerReloadPolicy:
     """Decide whether a settled worker-file change MAY restart the worker.
 
-    The watcher (`hot_reload.py`) decides WHEN a burst has settled; this decides
-    whether that settled burst is allowed to cost a worker restart — and, if it
-    is not, that it is QUEUED rather than dropped. Three rules, in order:
+    The watcher (hot_reload.py) decides WHEN a burst of edits has settled; this
+    object decides whether that settled burst is allowed to cost a worker
+    restart -- and, when it is not, that it is QUEUED rather than dropped.
+    Three rules, applied in this order:
 
-      1. DEBOUNCE — a trailing window (`WORKER_RELOAD_DEBOUNCE_MS`) coalesces a
-         cross-lane save burst into ONE request.
-      2. GUARD    — a worker that is mid-stream (capture open, the state the
-         owner watches) is NEVER restarted under his feet. The reload is held
-         and lands at the next boundary: a natural respawn re-reads the file,
-         and that satisfied request is logged as APPLIED_AT_BOUNDARY rather than
-         costing a second restart.
-      3. FLOOR    — the owner's 3 minutes (`WORKER_RELOAD_MIN_INTERVAL_MS`): the
-         model cannot leave load more often than once per 180 s.
+      1. DEBOUNCE -- a trailing window (WORKER_RELOAD_DEBOUNCE_MS) coalesces a
+         burst of saves from several lanes into ONE request.
+      2. GUARD -- a worker that is mid-stream is never restarted under the
+         owner's feet. is_capturing() is the state the owner is watching, so a
+         reload requested while it is true is HELD. It lands at the next
+         boundary: either a natural respawn already re-read the file, or the
+         reload is applied here.
+      3. FLOOR -- the model may not be reloaded more often than
+         WORKER_RELOAD_MIN_INTERVAL_MS, because every reload costs a warm-up.
 
-    It is a class, not three methods on the shell, for one reason: the guard is
-    the thing that was missing, so it must be drivable from a probe against real
-    files without booting WebView2 (see `--probe-reload`). `get_bridge` is the
-    single seam — it returns the live `WorkerBridge` (or `None`), and the probe
-    returns a stand-in exposing the SAME two fields the policy reads.
+    WHY A HELD RELOAD NEEDS A CEILING. The guard's exit cannot be
+    is_capturing() becoming false on its own: that happens when the worker
+    stops, and a worker with audio to transcribe keeps capturing. A guard whose
+    only exit is that state is therefore an UNBOUNDED deferral -- a request
+    DEFERRED at every check and APPLIED at none, which is indistinguishable
+    from a dropped one. Two things close it:
+
+      * boundary(closed=True) -- the worker committed a line, so the live
+        caption is at a sentence end rather than mid-word. This is the one
+        signal that passes the capture guard while capture stays open. It is
+        raised by on_worker_caption on a final:true caption.
+      * WORKER_RELOAD_MAX_DEFER_MS -- the fallback for a stretch that closes no
+        line at all. After this long the reload is FORCED even with no boundary,
+        because a stale running worker is worse than one warm-up.
+
+    The FLOOR applies AFTER both: it bounds the RATE of reloads, which is the
+    owner's rule, and it is never a reason to wait for one. So the decision
+    order is boundary -> ceiling -> floor, and every outcome is one log line
+    carrying the numbers that produced it (waited_ms, max_defer_ms, left_ms)
+    plus the two digests that say whether the running code is stale at all.
+
+    state() answers the other half of the question -- not "may I restart" but
+    "is the running worker the file on disk" -- as data, for the panel-state
+    snapshot and for the log.
     """
 
     def __init__(self, log_fn, get_bridge, restart,
                  debounce_ms=WORKER_RELOAD_DEBOUNCE_MS,
-                 min_interval_ms=WORKER_RELOAD_MIN_INTERVAL_MS):
+                 min_interval_ms=WORKER_RELOAD_MIN_INTERVAL_MS,
+                 max_defer_ms=WORKER_RELOAD_MAX_DEFER_MS,
+                 defer_recheck_ms=WORKER_RELOAD_DEFER_RECHECK_MS):
         self.log = log_fn
         self.get_bridge = get_bridge
         self.restart = restart
         self.debounce_ms = debounce_ms
         self.min_interval_ms = min_interval_ms
-        self.pending = None          # files of the newest unapplied request
+        self.max_defer_ms = max_defer_ms
+        self.defer_recheck_ms = defer_recheck_ms
+        self.pending = None
         self.pending_since = 0.0
+        # Set by a CLOSED-LINE boundary: the one signal that passes the capture
+        # guard. Cleared with pending, so it can never outlive its request.
+        self._boundary_hit = False
+        # Throttle for the held-state line: a held reload is a STATE, not an
+        # event, and one line per re-check would be thousands of lines.
+        self._defer_logged_at = 0.0
         self._timer = None
-        self._last_applied_at = 0.0  # monotonic time of the last reload we ran
+        self._last_applied_at = 0.0
         self._stopped = False
 
-    # -- requests ----------------------------------------------------------
     def request(self, files):
-        """A settled burst: queue it and arm/reset the trailing debounce."""
+        """Queue a settled burst. True if it is now the pending one."""
         if self._stopped:
             return False
         self.pending = list(files)
         self.pending_since = time.monotonic()
+        self._boundary_hit = False
+        self._defer_logged_at = 0.0
         self._arm(self.debounce_ms)
-        self.log(f'HOT_RELOAD_WORKER_QUEUED files={json.dumps(self.pending)} '
+        self.log(f'HOT_RELOAD_WORKER_QUEUED files={len(self.pending)} '
                  f'debounce_ms={self.debounce_ms} '
-                 f'min_interval_ms={self.min_interval_ms}')
+                 f'min_interval_ms={self.min_interval_ms} '
+                 f'max_defer_ms={self.max_defer_ms}')
         return True
 
-    def boundary(self):
-        """A worker status arrived: if a request is held, try to land it.
+    def boundary(self, closed=False, why='status'):
+        """A moment where a restart is least disruptive. closed = a closed line.
 
-        Called from `on_worker_status` on every status line — including the
-        exit line — so the deferred reload is not waiting on a timer that may
-        never fire while the worker is down.
+        A closed=True boundary passes the capture guard on purpose: the worker
+        has just committed a line, so the caption the owner is reading is not
+        cut mid-word. Every other caller only re-arms the wait, which is what
+        keeps a held reload re-checking its own guard.
         """
         if self._stopped or self.pending is None:
             return
-        br = self.get_bridge()
-        if br is not None and br.is_capturing():
-            return                    # still mid-stream: keep holding it
+        bridge = self.get_bridge()
+        if bridge is not None and bridge.is_capturing() and not closed:
+            return
+        if closed:
+            self._boundary_hit = True
+            waited_ms = int((time.monotonic() - self.pending_since) * 1000)
+            self.log(f'HOT_RELOAD_WORKER_BOUNDARY reason={why} '
+                     f'files={len(self.pending)} waited_ms={waited_ms}')
         self._arm(self.debounce_ms)
 
     def stop(self):
         self._stopped = True
-        if self._timer is not None:
-            self._timer.cancel()
+        self.pending = None
+        self._boundary_hit = False
+        timer = self._timer
+        if timer is not None:
+            timer.cancel()
             self._timer = None
 
-    # -- internals ---------------------------------------------------------
+    def state(self):
+        """Is the RUNNING code the code on disk? Two files, two answers.
+
+        loaded for the worker is the digest taken when the child was spawned, so
+        it answers "what is running"; disk answers "what is on disk now". They
+        differ exactly when a restart is owed. The shell can only report itself:
+        it cannot re-read its own code in place, so reloadable is False and the
+        reader is told to restart rather than offered a reload that would not
+        happen.
+        """
+        bridge = self.get_bridge()
+        worker = {'path': None, 'disk': None, 'loaded': None, 'stale': False}
+        if bridge is not None:
+            path = getattr(bridge, 'worker_path', None)
+            disk = file_sha256(path) if path else None
+            loaded = getattr(bridge, 'loaded_sha256', None)
+            worker = {
+                'path': path,
+                'disk': disk,
+                'loaded': loaded,
+                'stale': bool(disk and loaded and disk != loaded),
+            }
+        shell_disk = file_sha256(SHELL_PATH)
+        pending_ms = None
+        if self.pending is not None:
+            pending_ms = int((time.monotonic() - self.pending_since) * 1000)
+        return {
+            'worker': worker,
+            'shell': {
+                'path': SHELL_PATH,
+                'disk': shell_disk,
+                'loaded': SHELL_SHA256_AT_IMPORT,
+                'stale': bool(shell_disk and SHELL_SHA256_AT_IMPORT
+                              and shell_disk != SHELL_SHA256_AT_IMPORT),
+                'reloadable': False,
+                'restart_hint': 'a shell change needs a shell restart',
+            },
+            'pending': list(self.pending) if self.pending is not None else None,
+            'pending_ms': pending_ms,
+            'max_defer_ms': self.max_defer_ms,
+        }
+
     def _arm(self, delay_ms):
         if self._stopped:
             return
-        if self._timer is not None:
-            self._timer.cancel()
-        timer = threading.Timer(max(0, delay_ms) / 1000.0, self._fire)
-        timer.daemon = True
-        self._timer = timer
-        timer.start()
+        timer = self._timer
+        if timer is not None:
+            timer.cancel()
+        self._timer = threading.Timer(max(0.0, delay_ms / 1000.0), self._fire)
+        self._timer.daemon = True
+        self._timer.start()
 
     def _fire(self):
+        """The one place the three rules are weighed, in order."""
         if self._stopped or self.pending is None:
             return
         files = self.pending
-        br = self.get_bridge()
-        if br is None:
-            # No worker at all: a file change must NOT spawn a 2 GB process
-            # nobody asked for (main.js:624 states the same law).
+        bridge = self.get_bridge()
+        if bridge is None:
+            # No worker to restart: the request is satisfied by not existing.
             self.pending = None
-            self.log(f'HOT_RELOAD_WORKER_SKIPPED files={json.dumps(files)} '
+            self._boundary_hit = False
+            self.log(f'HOT_RELOAD_WORKER_SKIPPED files={len(files)} '
                      'reason=no-worker-running')
             return
-        if br.is_capturing():
-            self.log(f'HOT_RELOAD_WORKER_DEFERRED files={json.dumps(files)} '
-                     'reason=capturing -- applies at the next boundary')
-            return                    # pending stays; boundary() re-arms
-
-        # A natural respawn already re-read the file. If it happened AFTER this
-        # request was queued, the request is satisfied — do not restart again
-        # (that double restart is itself churn).
-        spawned_at = float(getattr(br, 'spawned_at', 0.0) or 0.0)
-        if br.child is None or spawned_at >= self.pending_since:
-            self.pending = None
-            self.log(f'HOT_RELOAD_WORKER_APPLIED_AT_BOUNDARY '
-                     f'files={json.dumps(files)} reason=respawn-reread-file')
+        waited_ms = int((time.monotonic() - self.pending_since) * 1000)
+        capturing = bool(bridge.is_capturing())
+        # RULE 2 and its ceiling. boundary was raised by a closed line; forced
+        # is the ceiling for a stretch that closes none. The digests are logged
+        # on both paths because the useful question is never "did it restart"
+        # but "was the running code stale when it did".
+        boundary = self._boundary_hit
+        forced = capturing and not boundary and waited_ms >= self.max_defer_ms
+        if capturing and not boundary and not forced:
+            now = time.monotonic()
+            if now - self._defer_logged_at >= WORKER_RELOAD_DEFER_LOG_MS / 1000.0:
+                self._defer_logged_at = now
+                disk, loaded = self._digests(bridge)
+                self.log(
+                    f'HOT_RELOAD_WORKER_DEFERRED files={len(files)} '
+                    f'reason=capturing waited_ms={waited_ms} '
+                    f'max_defer_ms={self.max_defer_ms} '
+                    f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                    f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                    'applies_at=next-closed-line-or-ceiling')
+            self._arm(self.defer_recheck_ms)
             return
-
+        if forced:
+            disk, loaded = self._digests(bridge)
+            self.log(
+                f'HOT_RELOAD_WORKER_FORCED files={len(files)} '
+                f'reason=no-boundary-in-{self.max_defer_ms}ms '
+                f'waited_ms={waited_ms} '
+                f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                'cost=one-model-warm-up')
+        elif boundary and capturing:
+            self.log(f'HOT_RELOAD_WORKER_BOUNDARY_APPLIED files={len(files)} '
+                     f'reason=closed-line waited_ms={waited_ms}')
+        # A respawn that happened AFTER this request was queued already re-read
+        # the file, so it satisfied the request: restarting again would pay a
+        # second warm-up for the same bytes. STRICTLY after -- spawned_at is a
+        # coarse monotonic stamp, and a respawn in the same tick as the queue
+        # would otherwise be credited with re-reading a file it never saw.
+        spawned_at = float(getattr(bridge, 'spawned_at', 0.0) or 0.0)
+        if bridge.child is None or spawned_at > self.pending_since:
+            disk, loaded = self._digests(bridge)
+            self.pending = None
+            self._boundary_hit = False
+            self.log(
+                f'HOT_RELOAD_WORKER_APPLIED_AT_BOUNDARY files={len(files)} '
+                'reason=respawn-reread-file '
+                f'pid={getattr(bridge.child, "pid", None)} '
+                f'sha256_at_spawn={loaded}')
+            return
+        # RULE 3, the floor -- a RATE bound, applied after the guard and the
+        # ceiling have both decided that this reload may happen at all.
         if self._last_applied_at <= 0.0:
-            # The floor counts from the INITIAL model load, not from the first
-            # hot-reload request: the model has already paid one load.
             self._last_applied_at = spawned_at or time.monotonic()
         left_ms = self.min_interval_ms - int(
             (time.monotonic() - self._last_applied_at) * 1000)
         if left_ms > 0:
-            self.log(f'HOT_RELOAD_WORKER_COOLDOWN files={json.dumps(files)} '
-                     f'left_ms={left_ms} min_interval_ms={self.min_interval_ms}')
+            disk, loaded = self._digests(bridge)
+            self.log(
+                f'HOT_RELOAD_WORKER_COOLDOWN files={len(files)} '
+                f'left_ms={left_ms} min_interval_ms={self.min_interval_ms} '
+                f'waited_ms={waited_ms} '
+                f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                'applies_when=floor-elapses')
             self._arm(left_ms)
             return
-
         self.pending = None
+        self._boundary_hit = False
         self._last_applied_at = time.monotonic()
-        self.log(f'HOT_RELOAD_WORKER_RESTART files={json.dumps(files)} '
-                 f'after_idle_ms={self.min_interval_ms}')
+        self.log(f'HOT_RELOAD_WORKER_RESTART files={len(files)} '
+                 f'after_idle_ms={waited_ms} waited_ms={waited_ms}')
         self.restart(files)
+
+    @staticmethod
+    def _digests(bridge):
+        """The two digests a decision line carries, read in one place."""
+        path = getattr(bridge, 'worker_path', None)
+        disk = file_sha256(path) if path else None
+        loaded = getattr(bridge, 'loaded_sha256', None)
+        return disk, loaded
 
 
 class WorkerBridge:
@@ -5247,6 +5441,9 @@ class WorkerBridge:
         self.capturing = False
         #: Monotonic time of the last spawn, so a queued reload can tell whether
         #: a natural respawn already re-read the file (WorkerReloadPolicy).
+        # The digest of the file this child was started from: the answer to
+        # "is the running worker the code on disk" cannot be re-derived later.
+        self.loaded_sha256 = None
         self.spawned_at = 0.0
         # The last failure this worker reported, and the death the panel is
         # currently obliged to keep showing. `pending_error` is set by a
@@ -5448,6 +5645,10 @@ class WorkerBridge:
                  f'SOTTO_CAPTURE_MODE={self.capture_mode} '
                  'SOTTO_AUDIO_DEVICE=' +
                  (self.device if self.device is not None else '(unset)'))
+
+        # Recorded AFTER a successful spawn: state() compares this against the
+        # file on disk, so it must describe the bytes the child actually loaded.
+        self.loaded_sha256 = file_sha256(self.worker_path)
 
         for stream, name in ((self.child.stdout, 'stdout'),
                              (self.child.stderr, 'stderr')):

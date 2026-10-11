@@ -694,6 +694,12 @@ class WasapiLoopbackTap:
 
         self.np = np
         self.on_block = on_block
+        # WHY THE PUMP LEFT (added 2026-10-11): both breaks in _pump
+        # used to be SILENT, so a pump that died on a non-zero HRESULT left
+        # on_block uncalled for ever with nothing anywhere saying so.
+        self.pump_exited = False
+        self.pump_exit_hr = 0
+        self.pump_exit_where = ""
         # Held ONLY around the `on_block` call in `_pump`, so `stop()` can prove
         # the guarantee below: set `_stop`, join the pump, then acquire this lock
         # -- whoever gets it afterwards cannot be inside a callback, and the
@@ -955,7 +961,12 @@ class WasapiLoopbackTap:
         prev_pos = None
         while not self._stop.is_set():
             n = wintypes.DWORD(0)
-            if next_size(cap, ctypes.byref(n)) != 0:
+            hr = next_size(cap, ctypes.byref(n))
+            if hr != 0:
+                # RECORDED, NOT SWALLOWED (added 2026-10-11).
+                self.pump_exited = True
+                self.pump_exit_hr = int(hr)
+                self.pump_exit_where = "GetNextPacketSize"
                 break
             if n.value == 0:
                 time.sleep(period)
@@ -964,7 +975,12 @@ class WasapiLoopbackTap:
             frames = wintypes.DWORD(0)
             flags = wintypes.DWORD(0)
             pos = ctypes.c_int64(0)
-            if get_buffer(cap, ctypes.byref(data), ctypes.byref(frames), ctypes.byref(flags), ctypes.byref(pos), None) != 0:
+            hr = get_buffer(cap, ctypes.byref(data), ctypes.byref(frames), ctypes.byref(flags), ctypes.byref(pos), None)
+            if hr != 0:
+                # RECORDED, NOT SWALLOWED (added 2026-10-11).
+                self.pump_exited = True
+                self.pump_exit_hr = int(hr)
+                self.pump_exit_where = "GetBuffer"
                 break
             if frames.value:
                 # `pos` is the device position of this packet's first frame,
