@@ -2418,3 +2418,52 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   STILL OPEN: whether the mid-load loop fires in a fresh run today. No fresh run exists -- the only
   receipt is from 2026-10-06 and documents the already-fixed loop. The fix is in a stash, anchored
   at refs/keep/live-stash-55c422b, NOT committed.
+
+## 2026-10-11T15:01Z - THE KILL LOOP IS OBSERVED, NOT INFERRED. POP 29 during model-loading.
+
+  MEASURED 14:58:45Z .. 15:01:48Z. Population = every log and text file under _main, then the
+  single log carrying the signature, _main/webview-run.log, 82931 lines, 8455781 bytes.
+
+  SIGNATURE AT HEAD'S OWN WINDOW. POP 123 occurrences of BRIDGE_SILENT ms=30000 -- the exact
+  value WORKER_SILENCE_MS carries today. POP 97 of those 123 are independently confirmed
+  followed by BRIDGE_RESTART reason=silent. POP 120 distinct pids, first 27072, last 20288.
+  BRIDGE_RESTART total in the log POP 420; lines carrying spawns= POP 266.
+
+  CLASSIFIED, all POP 123, by the marker in the 12 preceding lines:
+    during model-loading      POP  29   <-- THE MID-LOAD LOOP, OBSERVED
+    after BRIDGE_EXIT         POP  21
+    after capture-started     POP   3
+    no recognised marker      POP  70   <-- NOT classified. I have no marker for them and
+                                                will not invent a category for them.
+  Class sums to POP 123. POP 122 of 123 have no BRIDGE_SILENT in their own preceding window,
+  so they are separate events, not clustered duplicates of one.
+
+  THE CHAIN, IN CODE. worker/sotto_worker.py emit() L374-L377 writes and flushes immediately.
+  L3254 emits status state=model-loading immediately BEFORE StreamAsr is constructed at L3257,
+  which is the roughly 67-second load. The shell's _pump re-arms the timer on that line at
+  L5520 -- ONCE. Then nothing arrives for the remaining 37 seconds. At 30 s _on_silence fires,
+  no_audio does not apply because it requires a published verdict that cannot exist mid-load,
+  and _kill_and_restart('silent') runs. HEAD has zero BOOT_GRACE, zero staleness, zero
+  occurrences of spawned_at, age_ms, boot or warm inside _on_silence.
+
+  CAPTURE_STARTED DOES NOT PROTECT AT HEAD. In the log, STATUS_APPLIED capture-started appears
+  on the line immediately before a kill. What the stash describes as "until capture-started the
+  watchdog re-arms instead of killing" is what the stash ADDS. At HEAD the condition does not
+  exist, and it fired anyway with capture-started already applied.
+
+  TWO OF MY OWN INSTRUMENTS LIED TODAY, BOTH SILENTLY.
+    1. HEAD_ANTES and HEAD_AGORA read the same instant after a commit, so the label claimed no
+       movement. Confirmed by git log, not by a field.
+    2. A task reported "Command aborted" while HEAD had already moved: the commit landed.
+    3. The first classification put ALL 123 into one bucket because a PowerShell type error
+       emptied the context segment per iteration. "Every one is the same" looked like a
+       finding. A default that collects 100% of cases is a bug, not a distribution -- and the
+       class-sum-versus-population line is what caught it.
+
+  RULES ADDED. A default that collects POP n of POP n deserves investigation before it is
+  reported. Print the class sum against the population. Two independent classifications that
+  agree are worth more than one done carefully: the POP 97 came from a different instrument
+  than the POP 29 and they corroborate each other.
+
+  THE FIX IS POP 2 LINES, on a spawned_at the HEAD already records at POP 3 sites (L5250, L5410,
+  L6192). It lives at refs/keep/live-stash-55c422b, anchored, NOT committed, NOT on main.
