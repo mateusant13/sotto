@@ -109,6 +109,15 @@ const STALE_API = [
   /ReferenceError/, /TypeError \[ERR_/, /Cannot read propert/,
 ];
 
+// A receipt key whose value is NO is not a receipt. MEASURED 2026-10-11T08:27:12Z:
+// compose-probe prints PRODUCT_LANDS_A_NONEMPTY_CLIP=NO, CLIP_FILES_ON_DISK=0 and exits 0,
+// and this gate reported PASS because it only asked whether the key PRINTED. Every "4/4
+// clean" in the ledger until now was evidence that keys appeared, not that the product
+// did what they claim. Keys whose value can be YES/NO are COMPARED below.
+const VALUED = {
+  "compose-probe.mjs": { "PRODUCT_LANDS_A_NONEMPTY_CLIP=": "YES" },
+};
+
 function classify(script) {
   const r = spawnSync(process.execPath, [join(HERE, script), ...(ARGV_FOR[script] || [])], {
     cwd: HERE, encoding: "utf8", timeout: 120000,
@@ -125,8 +134,17 @@ function classify(script) {
       // failure this whole file exists to prevent.
       return { verdict: "NO_CONTRACT", why: "exit 0 but this probe declares no receipt keys, so there is nothing to check -- unproven, not proven", printed: [] };
     }
-    if (printed.length === keys.length) return { verdict: "PASS", why: `exit 0 and all ${keys.length} receipt keys printed`, printed };
-    return { verdict: "SILENT", why: `exit 0 but ${printed.length}/${keys.length} receipt keys printed -- it measured nothing recognisable`, printed };
+    if (printed.length < keys.length) {
+      return { verdict: "SILENT", why: `exit 0 but ${printed.length}/${keys.length} receipt keys printed -- it measured nothing recognisable`, printed };
+    }
+    // Every key printed. NOW compare the ones that carry a truth value.
+    const valued = VALUED[script] || {};
+    const wrong = Object.entries(valued).filter(([k, want]) => !out.includes(k + want));
+    if (wrong.length > 0) {
+      const got = wrong.map(([k]) => (out.match(new RegExp(k.replace(/[=]/g, "\\=") + "\\S*")) || ["?"])[0]);
+      return { verdict: "RECEIPT_FALSE", why: `all keys printed but ${got.join(", ")} -- the probe reported a failure and still exited 0`, printed };
+    }
+    return { verdict: "PASS", why: `exit 0, all ${keys.length} receipt keys printed${Object.keys(valued).length ? ", and " + Object.keys(valued).length + " truth-valued key(s) compared" : ""}`, printed };
   }
   if (STALE_API.some((re) => re.test(out))) {
     return { verdict: "STALE_API", why: `exit ${r.status} on a signature that no longer exists: ${errorLine.slice(0, 110)}`, printed };
