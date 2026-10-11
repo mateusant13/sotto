@@ -1883,3 +1883,39 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   their messages do not describe, the 889-line foreign probe for arms that cannot fail, and
   clip-not-keyframed for why it is the worst actor at 7 of 24. POP_FLETA_DISPATCHED 3, POP_RUNNING
   measured at dispatch, not asserted.
+
+## 2026-10-11T11:38Z - three lanes, zero deliveries, and the "worst actor" was measuring my own test scaffolding
+
+  MEASURED 11:38:25Z, POP_LANES_DESPACHADAS 3. POP_ENTREGARAM 0 de 3, POP_ABORTADAS 3 de 3, all
+  with [aborted] runtime-shutdown. Not one produced a report. Each got far enough to state a
+  finding and each died holding it: the commits lane said "Found a significant issue" about
+  reachability; the probe lane said "No tautologies or constant-true assertions found" and caught
+  its own 788-vs-889 count error; the clip lane said "7 failures confirmed by grep" and "20/20
+  identical on fixed inputs". POP_FINDINGS_STRANDED 3 of 3. A lane that measures and dies
+  delivers nothing, which is the same shape as the dangling commit: real work, no reader.
+
+  POP_ENTRADAS_SUJAS 204, POP_MEUS 0 after the ledger commit, POP_FICHEIROS_ESCRITOS_EM_20MIN 2,
+  both mine. So the read-only seat held under three aborts -- verified, not assumed. That is the
+  one thing this fleet bought: it wrote nothing while it died.
+
+  THEN I READ THE LOG MYSELF AND MY OWN HEADLINE WAS WRONG. I reported clip-not-keyframed as the
+  worst actor at 7 non-passes of 24 and sent a lane to explain it. Measured 11:38:35Z over
+  POP_APARICOES 26, the 7 non-passes decompose exactly:
+      4 = RECEIPT_FALSE "ARMS_DISAGREE true (wanted false)"  <-- MY RED ARM, my own mutations
+      3 = FAILED "exit 2"  (NEED_TWO_FILES: the probe invoked before ARGV_FOR had a builder)
+      19 = PASS
+  4 + 3 + 19 = 26, coherent. So the probe has NO unexplained instability: the 4 that look like
+  defects are my test scaffolding recorded as production history, and the 3 that look like product
+  defects are the gate running the probe before it learned to pass it arguments. The sentence I
+  sent a lane to investigate was built from my own mutations plus my own earlier omission.
+
+  The lesson is not "be careful". It is that the gate log records runs and does not record WHY a
+  run happened. A log that cannot distinguish a deliberate mutation from a product regression
+  cannot be used to rank suspects -- it ranks my own noise. Every deliberate RED arm should either
+  write its own file or tag the run, and I did neither.
+
+  THE GATE ITSELF IS INTACT, measured 11:39:12Z three ways so the answer does not rest on one:
+  file L208/L210/L211/L212 read ARMS_DISAGREE true and both NEGATIVE_ARM_ true; `git show HEAD:`
+  reads the same four lines; working tree 0 dirty entries for that file. Live run exit 0 in 63.2 s,
+  RESULT 9 passed 0 refused. An earlier reading of those pins as empty was my own quoting error
+  inside a double-quoted PowerShell string, caught by re-reading with Select-String.
