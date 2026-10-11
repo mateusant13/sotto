@@ -237,3 +237,35 @@ have never been swept" for several passes. Neither number was ever counted.
   a guess wearing the grammar of a measurement, and repeating it makes it more credible
   rather than more true. Both numbers here were wrong in the same direction -- larger
   than reality -- which is the direction a guilt-driven estimate always goes.
+## 2026-10-11T06:11:21Z - a gate que distingue "falhou" de "obsoleto", e o que ela encontrou
+
+perf-probe.mjs exited 1. I reported that as failing. It was not failing the code under
+it -- it was talking to an API that no longer exists. The stack said ERR_INVALID_ARG_TYPE
+at join(dir, undefined), which is hk.press(...).clip on a function that is now async
+and returns { action, clip }.
+
+parse-gate.mjs separates four outcomes instead of reading an exit code: PASS, SILENT
+(exit 0, no receipt printed -- measured nothing), STALE_API (a TypeError/ReferenceError,
+so the script is calling a signature that is gone), FAILED. Three of the four refuse.
+
+  POPULACAO = every *-probe.mjs in the tree, READ OFF THE FILESYSTEM, not hand-listed.
+  Measured: with 3 probes it says 3; I dropped a fourth in and it said 4 and reported it;
+  I removed it and it went back to 3. A hand-written list would have passed throughout
+  and missed the new file, which is the whole failure mode.
+
+  RED ARM, run on every invocation: a deliberately stale script is written to temp, run,
+  and MUST be refused. If it is ever accepted the gate prints GATE_BROKEN and exits 2.
+  Measured: 169 B, exit 1, refused=true.
+
+  NO_CONTRACT is a refusal, not a pass. I first shipped compose-probe and cw-probe as
+  PASS with "no receipt contract declared" -- which makes the gate agree with any script
+  that prints nothing. Changed in the same pass it was caught in.
+
+  What the gate then found in one file, three deep: press() became async; ClipWriter
+  needs { dir }; the ring has to be seeded with a real IDR-aligned clip before
+  instantReplay will cut. Each one surfaced as exit 1 with a different stack, and the
+  third is a refusal the product makes correctly -- "no segment begins on an IDR" -- that
+  the probe was triggering by measuring nothing first.
+
+  rule: an exit code is a verdict only when the thing that produced it is the thing you
+  meant to measure. Otherwise it is a symptom, and the symptom is what you have to fix.
