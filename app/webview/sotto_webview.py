@@ -5795,6 +5795,8 @@ class WorkerBridge:
         self.no_audio = False
         #: What the child said, verbatim, for the log and for the UI state.
         self.no_audio_evidence = None
+        #: When that evidence was MEASURED (monotonic), so a replay can be aged
+        #: instead of being presented as a current measurement. Zero = never set.
         self.deaths = 0
         self.stderr_tail = []
         #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
@@ -5863,6 +5865,9 @@ class WorkerBridge:
             'lastExit': self.last_exit,
             'noAudio': bool(self.no_audio),
             'noAudioEvidence': self.no_audio_evidence,
+            'noAudioEvidenceAgeS': (
+                round(time.monotonic() - self.no_audio_evidence_at, 1)
+                if self.no_audio_evidence_at else None),
             'pendingError': self.pending_error,
             'lastError': self.last_error,
             # `*Current` is the honest half of keeping a dead child's number
@@ -5944,6 +5949,8 @@ class WorkerBridge:
         # respawn would blind the watchdog for the new one.
         self.no_audio = False
         self.no_audio_evidence = None
+        #: When that evidence was MEASURED (monotonic), so a replay can be aged
+        #: instead of being presented as a current measurement. Zero = never set.
         # The new child's `blocks=` counter starts again at 0 (see
         # `_progress_blocks`): carrying the dead process's last value over would
         # make every heartbeat look like a repeat and blind the watchdog.
@@ -6197,6 +6204,7 @@ class WorkerBridge:
             if evidence is not None:
                 self.no_audio = True
                 self.no_audio_evidence = evidence
+                self.no_audio_evidence_at = time.monotonic()
             # The guard's input, kept where the state is READ, not inferred
             # later: `capture-started` opens the guard, and a terminal state or
             # the child's exit closes it. See `WorkerReloadPolicy`.
@@ -6369,10 +6377,12 @@ class WorkerBridge:
             # Nothing is killed. The state is NAMED so the panel says what is
             # true, and the timer is re-armed so the watchdog keeps watching --
             # it must still catch a child that wedges AFTER saying this.
+            age_s = (round(time.monotonic() - self.no_audio_evidence_at, 1)
+                     if self.no_audio_evidence_at else None)
             self.log(f'BRIDGE_SILENT_BENIGN ms={self.silence_ms} '
                      f'pid={self.child.pid} state={NO_AUDIO_STATE} '
                      f'because={json.dumps(self.no_audio_evidence)}'
-                     f' restarts={self.restarts}')
+                     f' evidence_age_s={age_s} restarts={self.restarts}')
             if self.pending_error is None:
                 # Only when no death is on screen: a real exit outranks a benign
                 # quiet, and painting a status over it is the swallow this file
@@ -6380,10 +6390,19 @@ class WorkerBridge:
                 self._bridge_status(
                     'Audio tap silent - nothing to transcribe', 'busy',
                     {'title': 'No audio to transcribe',
-                     'body': 'The worker measured every tap it opened below the '
-                             'peak floor: this endpoint is carrying digital '
-                             'silence, which is what a quiet desktop looks like. '
-                             'The worker keeps listening; it is not restarted.'},
+                     'body': ('The worker\'s device ladder found nothing it '
+                              'could transcribe in the window it tapped, '
+                              'candidate after candidate, and said so itself ('
+                              + str(self.no_audio_evidence or 'no evidence')
+                              + (', measured %ss ago' % age_s if age_s is not None
+                                 else '')
+                              + '). reason=flat means "nothing transcribable in '
+                              'this window", NOT "below the peak floor": the '
+                              'peak can be loud (music, a call on another '
+                              'endpoint) and the model still finds no speech. '
+                              'The worker keeps listening; it is not restarted.'),
+                     'evidence': self.no_audio_evidence,
+                     'evidenceAgeS': age_s},
                     NO_AUDIO_STATE)
             else:
                 self.log(f'BRIDGE_SILENT_BENIGN_HELD state={NO_AUDIO_STATE} '

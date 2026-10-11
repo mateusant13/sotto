@@ -361,9 +361,14 @@ def note_vacuous(what, why):
 def survey(module):
     """Where each surface the arms read lives in the shell ACTUALLY loaded.
 
-    Read from the live module, so a shell that gains (or loses) a rule moves the
-    evidence with it; nothing here is assumed from a docstring or a line number
-    written down earlier.
+    EVERY row is measured against the live module at run time: the first group
+    locates the object (file:line + the file sha256), the second group MEASURES
+    whether the member or the log line exists and reports it as
+    present_in_loaded_shell. Nothing here is assumed from a docstring or a line
+    number written down earlier -- the rows that used to ASSERT absence (they
+    said "the live shell has no stats() reading" while stats() was right there)
+    are now evidence, and the why text is carried only when the thing is really
+    absent.
     """
     SURFACES.clear()
     for key, label, obj in (
@@ -382,37 +387,71 @@ def survey(module):
             ('on_worker_status', 'SottoShell.on_worker_status (the status boundary)',
              module.SottoShell.on_worker_status)):
         SURFACES[key] = dict(where(obj, label), surface=key)
-    for key, label, why in (
+    def _attr(owner, attr):
+        return getattr(getattr(module, owner, None), attr, None)
+
+    def _srcline(text):
+        """file:line (+ sha256) of the FIRST module line carrying `text`, or None."""
+        try:
+            src_lines, start = inspect.getsourcelines(module)
+        except OSError:
+            return None
+        for offset, line in enumerate(src_lines):
+            if text in line:
+                return {'file': os.path.basename(SHELL), 'line': start + offset,
+                        'name': text, 'sha256': sha256(SHELL)}
+        return None
+
+    for key, label, find, why in (
             ('state', 'WorkerReloadPolicy.state()',
+             lambda: _attr('WorkerReloadPolicy', 'state'),
              'the staleness QUERY (stale/disk/loaded + pending_ms) is not a '
              'method of the live policy; arms A and B read it'),
             ('max_defer_ms', 'WorkerReloadPolicy.max_defer_ms',
+             lambda: _attr('WorkerReloadPolicy', 'max_defer_ms'),
              'the CEILING on a held reload is not a policy parameter; arm D '
              'needs it and arm A asserts it'),
             ('defer_recheck_ms', 'WorkerReloadPolicy.defer_recheck_ms',
+             lambda: _attr('WorkerReloadPolicy', 'defer_recheck_ms'),
              'the guard has no recheck timer: _fire returns WITHOUT re-arming '
              'while the child is capturing, so a held reload waits for a '
              'boundary that may never come'),
             ('boundary_closed',
              'boundary(closed=True) / HOT_RELOAD_WORKER_BOUNDARY',
+             lambda: _srcline('HOT_RELOAD_WORKER_BOUNDARY'),
              'the live boundary() takes no argument and the shell emits no '
              'HOT_RELOAD_WORKER_BOUNDARY line; arm C needs the closed-line '
              'boundary, and on_worker_caption does not call it'),
             ('forced', 'HOT_RELOAD_WORKER_FORCED',
+             lambda: _srcline('HOT_RELOAD_WORKER_FORCED'),
              'no forced-apply line exists; arm D needs it'),
             ('meters', 'WorkerBridge.meters',
-             'the live bridge counts no meter frames; a {"type":"meter"} line '
-             'reaches the unknown-kind branch and is logged as BRIDGE_UNKNOWN'),
+             lambda: _attr('WorkerBridge', 'meters'),
+             'the live bridge counts no meter frames; a meter line reaches the '
+             'unknown-kind branch and is logged as BRIDGE_UNKNOWN'),
             ('meter_pushes', 'SottoShell.meter_pushes',
+             lambda: _srcline('meter_pushes'),
              'the live shell has no meter push path'),
             ('stats', 'SottoShell.stats()',
+             lambda: _attr('SottoShell', 'stats'),
              'the live shell has no stats() reading'),
             ('on_worker_meter', 'SottoShell.on_worker_meter',
+             lambda: _attr('SottoShell', 'on_worker_meter'),
              'the live shell has no meter handler'),
             ('on_worker_stats', 'SottoShell.on_worker_stats',
+             lambda: _attr('SottoShell', 'on_worker_stats'),
              'the live shell has no stats handler')):
-        SURFACES[key] = {'surface': key, 'name': label, 'why': why,
-                         'searched': 'the loaded shell module, at run time'}
+        found = find()
+        if found:
+            row = dict(found if isinstance(found, dict) else where(found, label))
+            row.update({'surface': key, 'present_in_loaded_shell': True,
+                        'why': ('PRESENT in the loaded shell at this run: this row '
+                                'is a MEASUREMENT, not an assertion of absence')})
+        else:
+            row = {'surface': key, 'name': label,
+                   'searched': 'the loaded shell module, at run time',
+                   'present_in_loaded_shell': False, 'why': why}
+        SURFACES[key] = row
     return SURFACES
 
 
