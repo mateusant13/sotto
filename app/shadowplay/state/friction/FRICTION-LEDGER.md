@@ -1210,3 +1210,33 @@ and I am retracting the strength of the claim rather than restating it.
 
   rule: "X does not verify" is not the same claim as "nothing verifies". I proved the first
   and reported the second, and the second was the one that mattered to the reader.
+
+## 2026-10-11T09:40:41Z - the ClipNotKeyframed guard has been made to say NO, on a measured 1.0 s against a 0.0333 s tolerance
+
+The guard I read for three turns without ever provoking. index.js:149 is:
+    if (firstIdr === null || Math.abs(firstIdr) > KEYFRAME_TOLERANCE_SEC) {
+      throw new ClipNotKeyframed(source, ...);
+    }
+
+  MEASURED, POPULACAO = 2 clips, both real h264 from h264_nvenc, WINDOW_UTC 2026-10-11T09:40:41Z,
+  same firstKeyframeSec call, same literal guard condition re-evaluated in the probe:
+      TOLERANCE_SEC 0.03333333333333333   CAPTURE_FPS 30
+      good.mp4  584 110 B  FIRST_IDR_SEC 0     GUARD_WOULD_REFUSE false
+      bad.mp4   449 229 B  FIRST_IDR_SEC 1     GUARD_WOULD_REFUSE true
+
+  1.0 s is THIRTY TIMES the tolerance, so this is not a marginal boundary: the refusal branch
+  is reached by a wide margin, and the accept branch is reached at exactly 0. The guard can
+  say NO. That is what three turns of reading had not established.
+
+  THE LIMITS, stated rather than buried. I exercised the guard's DECISION, evaluated from the
+  same two values the guard reads -- not the product's capture() throwing. I did not make
+  capture() throw, because I could not: the encoder always begins a fresh h264 stream with an
+  IDR at pts 0, so the bad arm is unreachable through the product's own capture path without
+  hand-crafting the encoded file. The probe re-evaluates index.js:149 literally, so if that
+  line changed the printout would disagree with the guard rather than agree with it by
+  accident. What is proven is that the condition discriminates; what is not proven is that
+  the product has ever hit it.
+
+  rule: a guard read three times and never provoked is three reads, not evidence. The cheap
+  way to make a guard say NO is to feed the function the value it exists to reject -- but
+  say afterwards whether you made the PRODUCT refuse or only the CONDITION.
