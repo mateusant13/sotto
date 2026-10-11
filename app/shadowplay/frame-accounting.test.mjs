@@ -21,6 +21,13 @@
 //   branches NOT falsified 12. Their assertions pass, and nothing here shows that removing
 //                                 the code they exercise would turn any of them red.
 //
+// AND ONE THAT WAS MEASURED AND IS UNGUARDED, which is the reason this file says what it
+// says (WINDOW_UTC 2026-10-11T01:37:57Z): ratio() exists to stop a zero denominator from
+// producing NaN, which would "poison a verdict with a falsy-looking value that is actually
+// neither true nor false" (frame-accounting.js:212-214). Replacing its `return 0` with
+// `return NaN` left this suite at 13 passed / 0 failed, exit 0. Nothing here reaches a zero
+// denominator. The guard is correct, and untested.
+//
 // So the honest claim is ONE OF THIRTEEN, not "this suite is verified". Two earlier mutation
 // attempts of mine failed silently -- one edited a line the zero-frame input never reaches,
 // one never applied at all -- and both left the suite green. A green here is evidence that
