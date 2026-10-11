@@ -326,3 +326,30 @@ SILENT 2/6 and it was RIGHT: I had written a receipt for output that does not ex
   CONSTRUCTION. That is why five prior attempts failed to build it, and it is a result.
 
   POPULACAO = 4 probes. Result: gate exit 0, all four PASS, RED ARM refused=true.
+## 2026-10-11T06:47:53Z - fifteen passes with no way to run anything
+
+There was no package.json, no Makefile, no hook and no runner. Measured 0 of 5 present.
+Every suite number for fifteen passes came from a PowerShell loop I typed by hand each
+turn, which is exactly why the suite was never re-verified after an edit and why the parse
+gate only ran when I remembered to ask for it. I reported a number produced by a command
+that existed for the length of one message.
+
+run-all.mjs discovers both populations off the disk -- every *.test.mjs, plus the gate --
+so neither can be omitted by my forgetting. It reports suites and the gate SEPARATELY,
+because a gate refusing a probe is the gate working and is not the same event as a red
+suite; folding them together would teach the reader to ignore the gate.
+
+  MEASURED, POPULACAO = 15 suites, one process, WINDOW_UTC 2026-10-11T06:46:26Z:
+    SUITES 15 passed, 0 failed, 0 unreported      GATE 4 passed / 0 refused, exit 0
+    VERDICT suites_ok=true gate_ok=true            run-all exit 0
+
+  THE ARM THAT MUST GO RED, run before the real run:
+    run-all.mjs --red-arm  ->  GATE 3 passed / 1 refused, exit 1
+    SELF-CHECK: noticed=true, runner exit 0
+  GATE_FORCE_REFUSE manufactures a refusal in the gate so what is under test is the
+  RUNNER's ability to notice one. If it is ever accepted the runner prints RUNNER_BROKEN
+  and exits 2. This is checked every run, not once.
+
+  frame-accounting.test.mjs reports 24, up from 21: the three arms I added for L232, L235
+  and L242. That is the first time this suite has been counted by a command that anyone
+  else could have run.

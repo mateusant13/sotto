@@ -168,9 +168,22 @@ if (!arm.refused) {
 
 let refused = 0, passed = 0;
 const rows = [];
+// GATE_FORCE_REFUSE exists for run-all.mjs --red-arm. It makes the gate refuse its first
+// probe without touching the classification logic, so what is under test there is the
+// RUNNER's ability to notice a refusal, not the gate's ability to produce one.
+const forceRefuse = process.env.GATE_FORCE_REFUSE === "1";
+let first = true;
 for (const s of POPULATION) {
   if (!existsSync(join(HERE, s))) { rows.push([s, "MISSING", "not on disk"]); refused++; continue; }
   const c = classify(s);
+  if (forceRefuse && first) {
+    first = false;
+    rows.push([s, "FORCED", "GATE_FORCE_REFUSE=1 -- this refusal is manufactured by run-all.mjs"]);
+    refused++;
+    console.log(`  ${s.padEnd(20)} ${"FORCED".padEnd(10)} manufactured refusal, run-all.mjs --red-arm`);
+    continue;
+  }
+  first = false;
   rows.push([s, c.verdict, c.why]);
   if (c.verdict === "PASS") passed++; else refused++;
   console.log(`  ${s.padEnd(20)} ${c.verdict.padEnd(10)} ${c.why}`);
