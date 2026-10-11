@@ -150,3 +150,30 @@ ARMA2 summed a phantom failure, and nvenc appeared to declare 4 instead of 5.
   reported success and wrote nothing -- 5 727 B before and after, and 7 358 B before and
   after. The second failed with a path error I did not read, because I trusted the
   pipeline instead of re-measuring. Measure the artefact, not the command's mood.
+## 2026-10-11T05:52:55Z - a divergencia -47 era a minha ancora
+
+I reported a -47 gap between registrations counted in the source and the passed count
+the suites declare, and I blamed four suites. All four were fine.
+
+My extractor anchored on ^\s*(ta|t|test|it)\s*\( at the start of a line. Four suites
+register with 	( or ok( NOT at column zero. Corrected to count INVOCATIONS whose
+first argument is a string literal, regardless of indentation:
+
+  POPULACAO = 15 suites
+  source = 167   declared = 167   delta = 0
+  suites with delta != 0 = 0 / 15
+
+  rule: when a counter disagrees with a number another party declares, the counter is the
+  prime suspect until proven otherwise. I had the arithmetic -47 and I went looking for a
+  defect in the suites instead of a defect in the pattern. Four suites were accused of
+  being wrong by a regex I had not tested against them.
+
+  the test that would have caught it in one command: run the extractor against one file
+  whose true count I already knew. I knew frame-accounting was 21 and my first anchored
+  extractor reported 21 for it -- which is why I believed it, and why I never checked a
+  file where it returned 0. Zero is the one number an extractor should never be trusted
+  without a second opinion.
+
+  third entry in this family, same hour: stderr counted as payload, Groups[2] read as
+  passed, and now an anchor read as an identity. Three different instruments, one shape:
+  the number looked fine and nobody asked what produced it.
