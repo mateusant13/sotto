@@ -2278,7 +2278,7 @@ is now four, spanning the threshold, and the shape is measured rather than asser
 
   What survives, unchanged and now sharper: 66,88 is UNSOURCED -- POP 760 commits, one occurrence,
   a comment at 55c422b L285, no log, no script, no oracle output. Being the maximum of a 115-value
-  population and 5,5x the runner-up is the SHAPE of a number pasted into a comment, not the shape
+  population and 5,2x (66,88/12,75 = 5,246) the runner-up is the SHAPE of a number pasted into a comment, not the shape
   of a measurement. It being 0,87x of an unrelated ASR bench load is the shape of a coincidence
   between two things that share a field name.
 
