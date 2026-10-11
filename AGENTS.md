@@ -4,6 +4,29 @@ Real-time transcription of ANY audio on this PC, shown as captions on a global *
 Owner's acceptance, verbatim: *"e eu quero que o alt c mostre as transcricoes em tempo real,
 de qualquer audio do meu pc. e legendas."*
 
+## ORDEM DO DONO EM VIGOR (2026-10-11, 17:2x -03:00) — NÃO ABRIR O SOTTO
+
+*"para de abrir o sotto, ta travando meu pc quando ele abre."* (verbatim, o dono)
+
+Nenhuma lane, subagente ou instrumento lança `app/webview/sotto_webview.py`, `run.cmd`, o worker,
+ou qualquer probe que abra o shell/WebView2 enquanto esta ordem durar — **isto inclui
+`_main\_audit-verify-all.cmd`**, que lança o shell dezenas de vezes. Medições que precisam do shell
+estão SUSPENSAS; verificação estática (bytes, parse, estrutura) continua permitida. Abrir o app para
+"medir" agora é desobediência, não rigor.
+
+Limpeza feita quando a ordem chegou (evidência `I:\cc-tmp\wv-cleanup.txt`): o censo de flash
+(`_main/panel-startup-flash-census.py --arms live,nogate --n 20`) foi morto no meio do braço `live`;
+um shell de medição travado desde 16:36:47 (`--dump-dom`, pid 560, log `I:\cc-tmp\clean-dump.log`) e
+os seus 6 `msedgewebview2` foram mortos. O app do dono (pid 12220) e o worker dele (pid 37196) NÃO
+estavam a correr. Consequência para o registo: o T2 (flash no arranque) fica **UNMEASURED nesta
+revisão por ordem do dono** — o censo morreu antes de qualquer `ARM-SUMMARY`.
+
+RISCO ABERTO que esta ordem impede de medir: a correcção de `emit_async` (`_ui` → `_post`, commit
+`6908177`) tira o back-pressure do pump de legendas, mas passa a enfileirar um callable por push
+(~43/s) **sem limite** no thread da UI; com um worker a correr isso PODE saturar a fila do WinForms e
+travar a janela. NÃO VERIFICADO — e nenhum lançamento é permitido para o verificar. Quem reabrir isto:
+primeiro coalescer (um post pendente por canal), depois medir com UM lançamento autorizado.
+
 ## MUST READ before touching `worker/`
 
 **`docs/model-specs/README.md`** — the model's OWN documentation, consolidated with the
