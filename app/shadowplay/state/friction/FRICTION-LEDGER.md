@@ -2155,3 +2155,23 @@ is now four, spanning the threshold, and the shape is measured rather than asser
 
   The remaining untested link, stated plainly: nothing here shows a capture actually lasts long
   enough to starve an edit. That needs a run, not a body.
+
+## 2026-10-11T13:05Z - the 8 load_s figures confirmed by me, and my own ratio was wrong in units for the sixth time tonight
+
+  MEASURED 13:05:10Z, POP 8 ficheiros citados pela lane: POP_CONFIRMADOS_POR_ME 8 de 8, todos
+  contem load_s. Then MEASURED 13:05:22Z, POP 6 valores actually extracted (two files put the
+  number on the following line and my regex did not reach it, so I report 6, not 8):
+    3,1 _wavarm · 4,48 worker/README · 4,8 _gainless · 4,85 redux-cuda · 5,28 _livewithwav · 7,78 redux-cpu
+  POP_MAX 7,78  POP_MIN 3,1. The 66.88 in the comment is 8,6x the largest value on record. The
+  retraction therefore now rests on BOTH halves: single origin over POP 760 commits, AND POP 6
+  measured values that all point the other way.
+
+  The arithmetic that decides it, in the units the code uses: WORKER_SILENCE_MS = 30000 is 30 s,
+  and the longest observed load is 7,78 s, so the silence window is 3,85x the longest load. A 30 s
+  window cannot fire while the fastest load this box has ever recorded is still running.
+
+  AND I PRINTED THAT RATIO WRONG FIRST: 1000 x 7,78 / 30000 gave "0,3 %", which is milliseconds over
+  milliseconds on one side and seconds over seconds on the other -- the identical units mistake I
+  wrote a ledger entry about at 11:59Z when I divided 120000 by 66,88 and got 1794x. Twice in one
+  evening, same error class, by me. A conversion has to be written with its unit on BOTH sides
+  before it is divided, not after it comes out wrong.
