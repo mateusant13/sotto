@@ -271,6 +271,65 @@ try {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
+
+  // THE ARM THAT KILLS M1.
+  //
+  // MEASURED 2026-10-11T00:01:46Z, POP=3 mutants across POP=13 suites: removing the
+  // O_EXCL reservation is caught by 2 suites, removing ring eviction by 1, and
+  // replacing the delivery gate's sufficiency test with a constant `true` is caught by
+  // ZERO -- 127 assertions stayed green with the gate disabled. The repository has real
+  // coverage; this is its one hole, and it is exactly the decision every sufficiency
+  // number was measured against.
+  //
+  // The input: a valid H.264 clip that spans the clock's duration in TIMESTAMP but
+  // carries a single distinct picture. Nothing about it is malformed. A size check
+  // passes it, a decode check passes it, and only a content-sufficiency decision can
+  // refuse it -- which is the decision with no test.
+  //
+  // MUTATION PROOF (not just assertion): with this arm present, the M1 mutant
+  // (contentSufficientToCoverClock forced to true) must go RED.
+  await t("a clip with one distinct picture cannot cover its own clock", async () => {
+    const stillDir = mkdtempSync(join(tmpdir(), "shadowplay-still-"));
+    const still = join(stillDir, "still.mp4");
+    try {
+      // Same encoder the seed uses, different PICTURE. Not skipped if ffmpeg is
+      // missing: this arm's entire claim is that content sufficiency is enforced, and
+      // a skip would turn that claim into a silent pass.
+      execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "color=c=blue:size=320x240:rate=30:duration=2",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", still]);
+
+      const STILL = readFileSync(still);
+      assert.ok(STILL.length > 1000, "the still must be a real container, not a stub");
+
+      const dirS = mkdtempSync(join(tmpdir(), "shadowplay-still-box-"));
+      try {
+        const appS = composeShadowplay({ dir: dirS });
+        appS.ring.push(STILL, { frames: 60, keyframe: true });
+
+        // It must NOT come back as a save. Either it throws, or it returns an action
+        // whose clip is not a written clip. What it must never do is report success.
+        let saved = false;
+        let why = "";
+        try {
+          const a = await appS.hotkeys.press("f9", 1000);
+          saved = !!a && a.action === "instant-replay" &&
+            readdirSync(dirS).includes("0000.mp4");
+          if (!saved) why = `action=${a && a.action}`;
+        } catch (e) {
+          saved = false;
+          why = e && e.message ? e.message.split("\n")[0] : "threw";
+        }
+
+        assert.equal(saved, false,
+          `a one-picture clip cannot cover 2s of clock and must not be saved (${why})`);
+      } finally {
+        rmSync(dirS, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(stillDir, { recursive: true, force: true });
+    }
+  });
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
