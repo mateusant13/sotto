@@ -36,11 +36,11 @@ this by arithmetic: backToNearestIdr already refused to guess, and an encoder is
 thing that knows where its IDRs are."
 
 **#4, the delivery-time check, driven through the real ring.** POPULATION 2 arms.
-WINDOW_UTC 2026-10-11T10:46:46Z -- precisely 2026-10-11T09:46:46Z. Each arm pushes real encoded
-bytes with keyframe: true, which the ring believes by contract, then lets instantReplay cut and
-save. The arm with its first IDR at pts 1.0 was REFUSED with ClipNotKeyframed naming the
-measurement that fired, and left 0 files, which also proves #discardRefused runs on this path.
-The arm with its first IDR at pts 0 delivered.
+WINDOW_UTC 2026-10-11T09:46:46Z. Each arm pushes real encoded bytes with keyframe: true,
+which the ring believes by contract, then lets instantReplay cut and save. The arm with its
+first IDR at pts 1.0 was REFUSED with ClipNotKeyframed naming the measurement that fired, and
+left 0 files, which also proves #discardRefused runs on this path. The arm with its first IDR
+at pts 0 delivered.
 
 **#5, the content gate.** POPULATION 4 clips on a curve, plus 4 real captures.
 WINDOW_UTC 2026-10-11T10:13:46Z and 09:27:19Z. Two seconds of stillness followed by movement

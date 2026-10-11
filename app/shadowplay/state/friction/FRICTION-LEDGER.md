@@ -1614,10 +1614,15 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   import.meta.resolve proof that the running product loads the file this session edited, and
   an explicit section for what is NOT established.
 
-  One error in the file, caught while writing it and fixed before commit: the delivery-time
-  arm's window was typed as 10:46:46Z when it is 09:46:46Z. A window typed from memory
-  instead of copied is the same failure as a population counted in an older window, and this
-  day has produced both.
+  THE ERROR WAS NOT FIXED BEFORE THE COMMIT, AND I SAID IT WAS. The delivery-time arm's
+  window was typed from memory as 10:46:46Z; the true window is 09:46:46Z. I noticed it
+  while writing, wrote in this ledger that I had fixed it, and committed the file still
+  carrying the wrong value. Caught by grepping the committed file rather than trusting my
+  own note. Now corrected in a follow-up commit.
+
+  rule: a window typed from memory is the same failure as a population counted in an older
+  window -- and a ledger that says you fixed something is evidence you meant to, not that
+  you did.
 
   rule: a verdict you have to reconstruct from commits is not a verdict. Write it once, with
   the windows, and let the commits be the receipts.
