@@ -1605,3 +1605,19 @@ is now four, spanning the threshold, and the shape is measured rather than asser
 
   rule: one data point near a recorded value is a coincidence with extra steps. Four points
   that predict it are an explanation.
+
+## 2026-10-11T10:16:40Z - the ring chain written as ONE verdict, because nine commits is not a result
+
+  Wrote state/VERDICT-keyframe-chain.md, consolidating the keyframe investigation into a
+  single file: the five links in order, each marked MEASURED or READ, with its population
+  and its window on every line, the four theories I got wrong and how each was refuted, the
+  import.meta.resolve proof that the running product loads the file this session edited, and
+  an explicit section for what is NOT established.
+
+  One error in the file, caught while writing it and fixed before commit: the delivery-time
+  arm's window was typed as 10:46:46Z when it is 09:46:46Z. A window typed from memory
+  instead of copied is the same failure as a population counted in an older window, and this
+  day has produced both.
+
+  rule: a verdict you have to reconstruct from commits is not a verdict. Write it once, with
+  the windows, and let the commits be the receipts.
