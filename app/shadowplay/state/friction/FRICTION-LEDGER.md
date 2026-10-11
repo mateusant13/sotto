@@ -824,9 +824,15 @@ Closing the one item I had filed as "code I read but did not exercise".
   like. The fix I made last entry to the message made this branch legible for free.
 
   My first attempt at this experiment exited 1 with NO OUTPUT: PowerShell parse error from
-  nested escaped quotes in a "" inside a double-quoted string. Re-ran without the
+  nested escaped quotes inside a "$(...)" in a double-quoted string. Re-ran without the
   nesting. Worth recording because the symptom -- an empty result -- looks like the
   experiment produced nothing to measure, when it never started.
+
+  AND THEN I DID IT AGAIN, in the very next command, writing this entry: the ledger text
+  above is inside an expandable here-string, so the "$(...)" I was describing was EVALUATED
+  as a subexpression, errored, and left a bare "" where the example should be. Caught by
+  reading the tail back before trusting the commit. A here-string that explains an
+  interpolation bug will interpolate the example it quotes unless you escape it.
 
   rule: before proving a defensive branch reachable, check whether the configuration that
   reaches it is one you could actually ship. Half of "defence in depth" is unreachable by
