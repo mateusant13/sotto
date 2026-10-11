@@ -1398,3 +1398,38 @@ what I should have done two turns before I had two theories to throw away.
 
   rule: an unspecified case with real behaviour is not a bug report and not a green light.
   It is a question for whoever owns the product, written down where the answer will be found.
+
+## 2026-10-11T09:53:41Z - POPULATION was 9, not 8, and the "nothing in any of them" claim was never enumerated until now
+
+The owner caught this: the previous report stated a population and a window for the grep but
+carried the DOCUMENT COUNT from an older window. Re-measured, and the claim was wrong in the
+number and unbacked in its absence.
+
+  MEASURED, WINDOW_UTC 2026-10-11T09:53:32Z .. 09:53:41Z, root I:\!manager\runs:
+      POPULATION_PROD    9 documents, 142 277 B   (*-REVIEW.md excluded)
+      POPULATION_REVIEWS 8 documents, 301 984 B
+  The 9 product documents are AUDIO, BROADCAST-OBS, CAPTURE-PIPELINE, HIGHLIGHTS-AI,
+  INSTANT-REPLAY, INTEGRATION-PLAN, OVERLAY-HOTKEYS, SCREENSHOTS-RECORDINGS and
+  SHADOWPLAY-QUOTATION-ADJUDICATION-2026-10-10.md. I said 8. The ninth is an adjudication
+  file I never counted.
+
+  THE COUNT WAS STALE, NOT WRONG AT THE TIME. An earlier window measured 8 documents at
+  91 966 B. Today the same directory holds 9 at 142 277 B. Both numbers are true of their own
+  windows; I reported the older one against a newer measurement. 50 311 B of difference is
+  documents edited since, and one document added.
+
+  AND THE ABSENCE CLAIM WAS NOT ENUMERATED. I wrote "nothing, in any of the 8, says what the
+  product should do when the captured picture does not change". I had read the substantive
+  hits in one file and generalised. Counted per file today, same WINDOW:
+      AUDIO 1 · BROADCAST-OBS 1 · CAPTURE-PIPELINE 1 · HIGHLIGHTS-AI 1 · INSTANT-REPLAY 4
+      INTEGRATION-PLAN 1 · OVERLAY-HOTKEYS 3 · SCREENSHOTS-RECORDINGS 2
+      QUOTATION-ADJUDICATION 0        TOTAL 14
+  Read one by one at 09:53:41Z. All 14 are incidental word usage -- "unchanged" meaning
+  unaffected, "distinct" meaning separate, "frozen" describing a corrupt first second, "idle"
+  naming a state in a screenshot state machine. NOT ONE of them addresses the picture failing
+  to change. So the conclusion survives, and it survives on enumeration rather than on a
+  sample I liked.
+
+  rule: a population you counted in an earlier window is not a population you measured now,
+  even when the directory is the same. Count it in the window of the claim, or say which
+  window the count belongs to.
