@@ -527,3 +527,28 @@ thing that matters -- does the gate STOP a commit -- had never been observed.
 
   rule: an instrument tested only on inputs it passes has not been tested. Three passes
   in a row told me nothing about the one question the gate exists to answer.
+
+## 2026-10-11T08:19:49Z - the gate refuses a red REAL suite. Finally, and only because I read the file first
+
+The previous attempt appended the injected t() after process.exit, so it never ran, the
+suite stayed 9/0, and the commit sailed through. I committed that too (9f91d89), which is
+worth recording: an injection that proves nothing is still a change, and it went in.
+
+This time I read the file first. session-clock.test.mjs runs its tests SYNCHRONOUSLY --
+line 7 is 	ry { fn(); passed++ } -- there is no drain loop at all, and line 48 is
+process.exit. Inserting above the RESULT line at L47 was the right place; appending was
+never going to work, and neither would "the drain loop" have.
+
+  MEASURED, POPULACAO = 1 real suite + 1 real commit, WINDOW_UTC 2026-10-11T08:19:41-49Z:
+    session-clock.test.mjs  1981 -> 2379 B, injected test above the RESULT line
+    RESULT 9 passed, 1 failed, WIDTH=4  exit 1        <- the suite really went red
+    git commit -> exit 1, HEAD unmoved at 95efaa9, the injected file stayed staged
+    suite restored from HEAD: 1981 B, INJECTED absent, RESULT 9 passed, 0 failed, exit 0
+
+  So the gate has now refused, from inside a real git operation, over the real 15-file
+  suite rather than a synthetic runner. That was the last thing this gate had not been
+  observed doing.
+
+  rule: before you inject a fault, read where the thing under test actually executes. I
+  assumed a drain loop existed because three other suites have one, and the assumption
+  cost two turns and a bad commit.
