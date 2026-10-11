@@ -11,6 +11,20 @@
 // report 0 frames, because 0 is a real value (an empty file decodes to 0 frames) and a
 // refusal and a zero are different answers. That stance is a throw, and a throw with no test
 // is a comment. These tests pin it.
+//
+// READ THE COUNT BEFORE YOU TRUST IT. "13 passed" is an aggregate of assertions, NOT a
+// statement that 13 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T01:23:16Z:
+//   tests registered   13   (2 synchronous t(), 11 async ta())
+//   branches falsified  1   -- the zero-frame refusal, by replacing
+//                                 `if (tokens.length === 0) throw` with `return 0`,
+//                                 which gave 12 passed / 1 failed, exit 1.
+//   branches NOT falsified 12. Their assertions pass, and nothing here shows that removing
+//                                 the code they exercise would turn any of them red.
+//
+// So the honest claim is ONE OF THIRTEEN, not "this suite is verified". Two earlier mutation
+// attempts of mine failed silently -- one edited a line the zero-frame input never reaches,
+// one never applied at all -- and both left the suite green. A green here is evidence that
+// the assertions hold, never evidence that they are load-bearing.
 
 import assert from "node:assert/strict";
 import { countFrames, countDistinctContent, assessDelivery, runTool } from "./frame-accounting.js";
