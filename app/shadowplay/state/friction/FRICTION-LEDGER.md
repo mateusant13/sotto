@@ -792,3 +792,43 @@ Closing the finding from the last entry. It was recorded, not claimed fixed. Now
   rule: "some occurrence matches" is not a claim, it is a coincidence. An instrument that
   accepts one good copy among contradictory ones is weaker than the arm meant to test it,
   and a receipt that misdescribes why it failed is worse than silence.
+
+## 2026-10-11T09:02:15Z - the never-printed branch is reachable only for a key that is not in RECEIPTS, and I stopped guessing which
+
+Closing the one item I had filed as "code I read but did not exercise".
+
+  MEASURED FIRST, before building the injection, because the branch may not be reachable:
+  every VALUED key is also declared in RECEIPTS.
+      PRODUCT_LANDS_A_NONEMPTY_CLIP=   in RECEIPTS  True
+      BYTES_LANDED=                    in RECEIPTS  True
+      SEQUENCE_MONOTONIC=              in RECEIPTS  True
+      NEGATIVE_ARM_REACHABLE:          in RECEIPTS  True
+
+  So with today's tables seen.length === 0 CANNOT fire: if a VALUED key is missing from
+  the output, the earlier RECEIPTS check at parse-gate.mjs:137 has already returned SILENT
+  first. It is defensive code, not dead code -- reachable the moment anyone declares a
+  VALUED key without also declaring it as a receipt. That is a real configuration, not a
+  thought experiment, and it is exactly what I injected.
+
+  RED ARM, POPULACAO = 1 probe, WINDOW_UTC 2026-10-11T09:01:50Z. Added to cw-probe's
+  VALUED block one key no probe can print:
+      "A_CHAVE_NUNCA_IMPRESSA=": "YES"
+      -> cw-probe.mjs RECEIPT_FALSE
+         all keys printed but A_CHAVE_NUNCA_IMPRESSA= (wanted YES)
+      RESULT 3 passed, 1 refused    gate exit=1
+      parse-gate.mjs restored from a copy taken beforehand, sha256 D8D55794726E equal.
+  Clean run 09:02:15Z: RESULT 4 passed, 0 refused, exit 0.
+
+  The receipt text is right here too: the distinct value list is EMPTY, so it prints the
+  bare key with no value after it, which is exactly what "printed nothing" should look
+  like. The fix I made last entry to the message made this branch legible for free.
+
+  My first attempt at this experiment exited 1 with NO OUTPUT: PowerShell parse error from
+  nested escaped quotes in a "" inside a double-quoted string. Re-ran without the
+  nesting. Worth recording because the symptom -- an empty result -- looks like the
+  experiment produced nothing to measure, when it never started.
+
+  rule: before proving a defensive branch reachable, check whether the configuration that
+  reaches it is one you could actually ship. Half of "defence in depth" is unreachable by
+  construction, and an unreachable guard is indistinguishable from a working one until you
+  try to fire it.
