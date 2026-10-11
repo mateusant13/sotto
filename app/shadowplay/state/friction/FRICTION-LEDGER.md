@@ -1688,3 +1688,30 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   behaviour it exists for and the reason it was worth admitting my probes to it.
 
   rule: a regex that cannot match whitespace cannot measure a column-aligned receipt.
+
+## 2026-10-11T10:32Z - committing WITHOUT the bypass, so a 9/9 can come from a commit and not only from my hand
+
+  Every commit today set SOTTO_SKIP_RUN_ALL=1, so the gate was consulted only when I chose to
+  run it. MEASURED 10:26:03Z it is green over POPULATION 9, and 5 of the 10 runs in
+  gate-log.txt are red -- an instrument that sat beside me all day and was never asked.
+
+  This entry exists to be made by a commit that does NOT set the bypass, so that the pre-commit
+  hook runs the gate on the way in and the number comes from the commit rather than from my
+  typing. If the hook refuses, that refusal is the real state and this entry says so.
+
+## 2026-10-11T10:38Z - "the gate refused my commit" was false: the gate passed, git refused an empty index
+
+  MEASURED 10:31:45Z-10:33:41Z: COMMIT_EXIT 1, HEAD bb4afe6 unmoved, 115.0 s. I wrote this down as
+  "the hook refused the commit" and moved on. That reading was wrong and I never checked it.
+
+  REFUTED at 10:37:13Z-10:38:49Z, same command, full 242-line output kept this time:
+  `SUITES 15 passed, 0 failed` / `GATE 9 passed / 0 refused` / `VERDICT suites_ok=true gate_ok=true`,
+  then git itself says "Changes not staged for commit". I had written the ledger with Add-Content
+  and never ran `git add`. The gate never refused anything; git refused to commit nothing.
+
+  THE FRICTION IS THE TRUNCATION, not the gate. My first command filtered its output through
+  `Select-String ... | Select-Object -First 14`, which cut the lines that named the cause. A
+  green instrument plus a truncated view produced a confident false statement about the gate.
+  Same shape as the exit-code rule: a pipe that closes early is a measurement that lies.
+  Rule for this repo: when a refusal is the finding, keep the WHOLE output to a file and
+  grep the file. Never filter the evidence of the thing you are investigating.
