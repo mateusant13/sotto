@@ -79,6 +79,14 @@ def neg_arm():
             ('M4 model chunk_samples=1', {'C4'}, dict(genai=lambda t: json.dumps(
                 {**json.loads(t), 'model': {**json.loads(t)['model'], 'chunk_samples': 1}}))),
         ]
+        # THE CONTROL IS A MEASUREMENT, NOT A LABEL (repaired 2026-10-11 after the audit-row
+        # sweep proved the first version of this arm printed "the live tree is GREEN" from
+        # `all(results)` -- the MUTANT comparisons -- and never probed the live tree at all.
+        # That is the same failure mode as live-vs-history-source-oracle.js: a gate that supplies
+        # the thing it then finds. `checks(REPO)` is now called for real, its four verdicts are
+        # printed, and the arm FAILS if the live tree is not green.
+        live = checks(REPO)
+        live_green = all(live.values())
         results = []
         for name, expected, kwargs in arms:
             sub = base / name.split()[0]
@@ -89,9 +97,13 @@ def neg_arm():
             results.append(ok)
             print(('PASS ' if ok else 'FAIL ') + f'NEG {name}: failing set {sorted(got) or "[]"}'
                   + f' (expected {sorted(expected)})')
-        print(('PASS ' if all(results) else 'FAIL ') + 'NEG control: the live tree is GREEN in this same process')
-        print('NEG-ARM', 'PASS' if all(results) else 'FAIL')
-        return 0 if all(results) else 1
+        print(('PASS ' if live_green else 'FAIL ')
+              + 'NEG control: the LIVE tree probed in this same process -> '
+              + ('GREEN' if live_green else 'RED')
+              + f'  {dict(sorted(live.items()))}')
+        ok = all(results) and live_green
+        print('NEG-ARM', 'PASS' if ok else 'FAIL')
+        return 0 if ok else 1
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
