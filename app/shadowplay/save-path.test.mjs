@@ -387,5 +387,63 @@ t("real content does not disturb the name format or its chronological order", ()
   assert.deepEqual(readdirSync(clipsOf(env)).sort(), [...names].sort());
 });
 
-console.log(`RESULT ${passed} passed, ${failed} failed`);
+// THE ARM FOR A SAVE THAT FAILS AFTER THE BYTES LAND.
+  //
+  // writeClip() returns with the clip already on disk. Everything after that in save()
+  // is bookkeeping, and bookkeeping can fail - an allocation, a patched field, a frozen
+  // ledger. When it does, the caller receives a refusal and a complete, playable clip
+  // sits in the clips directory under a name nobody was told about, which contradicts
+  // the contract replay-ring.js states: a refused clip is never visible on disk.
+  //
+  // The arm forces that exact condition rather than describing it. Array.prototype.push
+  // is armed to throw on the first push of a LEDGER-SHAPED element - an object carrying
+  // both `route` and `name` - so the throw lands on save()'s bookkeeping line and on
+  // nothing else. Without that shape discriminator the throw would land on an unrelated
+  // array and this arm would be measuring noise.
+  //
+  // MUTATION PROOF: _f48window.mjs ran the same forcing against f48a030~1 and found
+  // FILES_AFTER 1 [0000.mp4], BYTES_AFTER 2048. Against f48a030 it finds 0 and 0. This
+  // arm is that experiment, kept permanent so the window cannot be closed by someone who
+  // does not measure it.
+  t("a bookkeeping failure after the write removes the clip and keeps the error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "savepath-postwrite-"));
+    const writer = new ClipWriter({ exists: (n) => readdirSync(dir).includes(n), dir });
+    const path = new SavePath({ writer });
+
+    const realPush = Array.prototype.push;
+    let forced = 0;
+    Array.prototype.push = function (...args) {
+      const head = args[0];
+      if (forced === 0 && this.length === 0 && head && typeof head === "object" &&
+          head !== null && "route" in head && "name" in head) {
+        forced++;
+        throw new Error("FORCED bookkeeping failure");
+      }
+      return realPush.apply(this, args);
+    };
+
+    let threw = null;
+    try {
+      path.save("instant-replay", clipOf(2048));
+    } catch (e) {
+      threw = e && e.message ? e.message : "threw";
+    } finally {
+      Array.prototype.push = realPush;
+    }
+
+    assert.equal(forced, 1, "the arm did not actually arm; it proved nothing");
+    assert.ok(threw !== null, "a forced bookkeeping failure must surface as a refusal");
+    // The error the caller sees is the bookkeeping failure, NOT a cleanup failure.
+    // A cleanup that replaced the cause would report a tidier, wrong reason.
+    assert.match(threw, /FORCED bookkeeping failure/,
+      `the original cause must survive the cleanup; got: ${threw}`);
+
+    const left = readdirSync(dir);
+    assert.deepEqual(left, [],
+      `a failed save must leave no clip behind; found ${JSON.stringify(left)}`);
+    assert.deepEqual(path.leaked(), [],
+      "the cleanup succeeded, so the leak ledger must be empty");
+  });
+
+  console.log(`RESULT ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
