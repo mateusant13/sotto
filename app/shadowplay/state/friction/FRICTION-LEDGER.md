@@ -97,3 +97,29 @@ one that would have caught it. It did not, because I wrote this entry after the
 report, not before.
 
   gate: any byte total in a report must come from a command in that same window.
+
+## 2026-10-11T05:39:36Z — "no test" and "cannot happen" are different defects
+
+The sweep listed L301 among the GREEN guards and I carried it for fourteen passes as
+"the guard at line 301 still has no constructed input" — phrased as a missing test.
+
+It is not a missing test. Measured, POPULATION = 5 fixture classes driven through
+`countDistinctContent` itself with the module's own arguments: a real clip exits 0 with
+3 hashes; audio-only and zero-frame containers make ffmpeg exit non-zero ("Output file
+does not contain any stream"); zero-byte and whitespace files are refused at open.
+**0 of 5** give exit 0 with zero hashes, `runTool` rejects non-zero exits, and
+`summarizeFrames` therefore never returns `total === 0`. Deleting L301 leaves the suite
+at **21 passed / 0 failed, exit 0** — byte-identical to the control.
+
+  rule: when a guard has no constructed input, the first question is whether an input
+  CANNOT exist, not whether I failed to build one. Fourteen passes of "untested" were a
+  tooling fact wearing a discipline's clothes.
+
+  second rule, from the same work: my first probe reported `hash_lines = 3` on a fixture
+  that produced none, because ffmpeg's stderr was counted as payload. I read the wrong
+  stream before I read the right one. A counter fed the wrong field is worse than no
+  counter, and it was the field I was measuring.
+
+  third rule, about this entry itself: `Add-Content` with a here-string reported success
+  and wrote nothing — the ledger was 5 727 B before and after. I only noticed because I
+  re-measured instead of trusting the exit code. Measure the artefact, not the command.
