@@ -13,7 +13,13 @@ console.log(`clips_dir=${dir}`);
 
 let app = null;
 try {
-  app = composeShadowplay({ clipsDir: dir });
+  // THE OPTION IS `dir`, NOT `clipsDir`. Measured 2026-10-11T08:32:12Z: I passed
+  // { clipsDir: dir }, which composeShadowplay destructures as { dir = null }, so the
+  // unknown key was silently dropped and the app fell back to ensureClipsDir(env). The
+  // probe then counted a temp directory nothing was ever written to, and reported
+  // CLIP_FILES_ON_DISK=0 / PRODUCT_LANDS_A_NONEMPTY_CLIP=NO while capture() had in fact
+  // written 2 112 890 bytes somewhere else -- and exited 0.
+  app = composeShadowplay({ dir });
   console.log(`COMPOSED_OK type=${app?.constructor?.name}`);
   console.log(`APP_KEYS=${Object.keys(app ?? {}).sort().join(",")}`);
 } catch (e) {
@@ -54,7 +60,15 @@ for (const f of files.slice(0, 6)) {
 }
 const zero = files.filter((f) => statSync(join(dir, f)).size === 0).length;
 console.log(`ZERO_BYTE_CLIPS=${zero}`);
-console.log(`PRODUCT_LANDS_A_NONEMPTY_CLIP=${files.length > zero ? "YES" : "NO"}`);
+// A probe that CANNOT FAIL is the defect class this whole exercise exists to catch, and
+// I wrote one: it printed PRODUCT_LANDS_A_NONEMPTY_CLIP=NO and exited 0, so the gate saw a
+// green run and the failure travelled as a receipt nobody compared. The exit code now
+// carries the verdict the keys claim. Measured 2026-10-11T08:31:46Z on the wrong option
+// name this returned 0 with NO; it returns 1.
+const landed = files.length > zero;
+console.log(`PRODUCT_LANDS_A_NONEMPTY_CLIP=${landed ? "YES" : "NO"}`);
+console.log(`VERDICT_DIR=${dir}`);
 
 rmSync(dir, { recursive: true, force: true });
 console.log("DONE");
+process.exit(landed ? 0 : 1);

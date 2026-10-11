@@ -589,3 +589,37 @@ probe four times with its full output. What came back is worse than a flaky prob
   gate should read PRODUCT_LANDS_A_NONEMPTY_CLIP=YES explicitly and compose-probe should
   exit 1 when it is NO -- and until that lands, no gate result in this ledger should be
   read as a claim about the product.
+
+## 2026-10-11T08:33:11Z - the option was dir. The probe asked for clipsDir and counted an empty directory for a day.
+
+Closing the previous entry's open question: why was CLIP_FILES_ON_DISK 0?
+
+  composeShadowplay destructures { dir = null, ... } -- index.js:180-195. My probe passed
+  { clipsDir: dir }. An unknown key is silently dropped, the app fell back to
+  ensureClipsDir(env), and the probe counted a temp directory nothing had ever been
+  written to. MEASURED, POPULACAO = 1 composition, WINDOW_UTC 2026-10-11T08:31:46Z:
+      capture() -> {"out":"G:\Temp\shadowplay-e3YN34\cap-32336-1.mp4",
+                    "bytes":2112890,"frames":225,"firstIdr":0,"codec":"h264_nvenc"}
+      CLIP_FILES_ON_DISK=0        <- counting a directory the product never wrote to
+      PRODUCT_LANDS_A_NONEMPTY_CLIP=NO
+
+  The product was writing 2 112 890 bytes of real h264 all along. The probe was reading
+  the wrong directory and reporting the absence as a property of the product.
+
+  Fixed both defects:
+    - the option name: composeShadowplay({ dir })
+    - the probe can now fail: process.exit(landed ? 0 : 1)
+  Re-measured, 08:32:45Z: exit 0, capture() wrote 1 958 964 bytes,
+  CLIP_FILES_ON_DISK=1, PRODUCT_LANDS_A_NONEMPTY_CLIP=YES, VERDICT_DIR printed.
+
+  And the gate, which now COMPARES that key instead of only finding it:
+    _nonidr PASS 6 keys · compose PASS 6 keys, 1 truth-valued key COMPARED
+    cw PASS 5 keys · perf PASS 4 keys      RESULT 4 passed, 0 refused, exit 0
+
+  So the first honest 4/4 of this gate: every key present AND the one key that can be NO
+  verified as YES. Before this entry, every 4/4 in this ledger meant only that keys printed.
+
+  rule: a measurement pointed at the wrong place is worse than no measurement, because it
+  reports a property of something other than the thing under test -- and it reported NO,
+  which I filed under flakiness for six turns. Check WHERE you are looking before asking
+  WHY you see nothing.
