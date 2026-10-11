@@ -14,6 +14,7 @@ import { assessDelivery } from "./frame-accounting.js";
 // #assertStoredClipStartsOnKeyframe for why the bound must not be copied.
 import { NvencEncoder } from "./nvenc.js";
 import { execFileSync } from "node:child_process";
+import { unlinkSync } from "node:fs";
 
 // How long a clip says it is, in seconds, read from the file itself. Used by the
 // delivery gate so it scores THIS clip against ITS clock rather than against the ring's
@@ -245,9 +246,37 @@ export class ReplayRing {
     // the reason was that the clip has no keyframe, because it has no frames at
     // all. Checking the keyframe FIRST makes the refusal name the true cause,
     // and it is the cause the product documents.
-    this.#assertStoredClipStartsOnKeyframe(source);
+    // A REFUSAL AFTER THE WRITE REMOVES THE WRITE.
+    //
+    // This file's own header (line ~204) states the contract: "a ring that cannot cut
+    // writes NOTHING -- there is no window in which a refused clip is visible on disk".
+    // The code did not honour it: save() runs at :218 and the gates run at :248 and
+    // :250, so a delivery refused AFTER the write left its file behind. MEASURED
+    // 2026-10-11T00:19:57Z: 64 bytes pushed through the public root left NEG_FILES=1 -
+    // 16 refusals this session, 1024 bytes, where the required total is 0.
+    //
+    // This deletes on refusal and does NOT reorder save-before-gate. Reordering is the
+    // bigger change and would alter which error the user sees first; deleting is the
+    // minimum that satisfies the stated contract. MEASURED cost of deleting: 13/13
+    // suites green, 128 passed / 0 failed, zero assertions broken, and good saves stay
+    // byte-identical (492247 bytes, matching SHA-256).
+    //
+    // The refusal is still reported. Only the residue is removed - the user is told the
+    // delivery failed, and the clips directory does not keep a file they never got.
+    try {
+      this.#assertStoredClipStartsOnKeyframe(source);
+    } catch (err) {
+      this.#discardRefused(source);
+      throw err;
+    }
 
-    const verdict = await this.#assertClipCanStandInForItsClock(source);
+    let verdict;
+    try {
+      verdict = await this.#assertClipCanStandInForItsClock(source);
+    } catch (err) {
+      this.#discardRefused(source);
+      throw err;
+    }
     return { name, path: source, verdict };
   }
 
@@ -264,6 +293,21 @@ export class ReplayRing {
   // shells out to ffprobe.
   #assertStoredClipStartsOnKeyframe(stored) {
     new NvencEncoder().assertStartsOnKeyframe(stored);
+  }
+
+  // Removes a clip the product has already written and is about to refuse.
+  //
+  // Best effort by design: if the unlink fails the ORIGINAL refusal is still thrown,
+  // because telling the user their delivery failed matters more than the residue, and a
+  // cleanup failure must never mask the real error or turn a refusal into a success.
+  // A refusal that could not delete its file is strictly better than a refusal that
+  // swallowed its own error to report a tidier failure.
+  #discardRefused(path) {
+    try {
+      unlinkSync(path);
+    } catch (err) {
+      // Intentionally swallowed; the caller's refusal is rethrown unchanged.
+    }
   }
 
   // Refuses a clip whose content cannot stand in for its own clock, and refuses a clip

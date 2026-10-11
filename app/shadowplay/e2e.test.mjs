@@ -330,6 +330,44 @@ try {
       rmSync(stillDir, { recursive: true, force: true });
     }
   });
+
+  // THE ARM FOR A REFUSAL THAT HAPPENS *AFTER* THE WRITE.
+  //
+  // The arm above at line ~121 already asserts "a press with no lawful cut refuses and
+  // leaves NOTHING on disk" - and it passes, because with an empty ring save() is never
+  // called. That arm covers refusal BEFORE the write. This one covers refusal AFTER:
+  // replay-ring.js:218 calls path.save(), and only then, at :248 and :250, run the two
+  // gates. MEASURED WINDOW 2026-10-11T00:19:57Z: pushing 64 bytes through the public
+  // root leaves NEG_FILES=1 - a 64-byte file in the clips directory for a delivery the
+  // product refused, 16 refusals this session, 1024 bytes total where the required
+  // total is 0.
+  //
+  // This encodes the product's own stated contract, replay-ring.js:204-205: "a refused
+  // clip is never visible on disk". The code currently does not honour it.
+  await t("a delivery refused after the write leaves no file behind", async () => {
+    const dirR = mkdtempSync(join(tmpdir(), "shadowplay-leftover-"));
+    try {
+      const appR = composeShadowplay({ dir: dirR });
+      // 64 bytes: save() writes it, then the keyframe gate refuses the unreadable file.
+      appR.ring.push(Buffer.alloc(64, 0x00), { frames: 1, keyframe: true });
+
+      let threw = null;
+      try {
+        await appR.hotkeys.press("f9", 1000);
+      } catch (e) {
+        threw = e && e.message ? e.message.split("\n")[0] : "threw";
+      }
+      assert.ok(threw !== null,
+        "64 zero bytes must be refused; if it saved, the gate is not running at all");
+
+      // THE CONTRACT. The refusal is reported to the user; the residue is not.
+      const left = readdirSync(dirR);
+      assert.deepEqual(left, [],
+        `a refused delivery must leave the clips directory empty; found ${JSON.stringify(left)}`);
+    } finally {
+      rmSync(dirR, { recursive: true, force: true });
+    }
+  });
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
