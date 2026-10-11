@@ -179,9 +179,24 @@ entirely on what the owner has routed into a virtual cable, and a name in
   `VERDICT: PASS` rc=0; `--neg-arm` com dois mutantes numa cópia — **RED** (chave `source`
   removida — CHK-4/CHK-5; `import ctypes` removido — reproduz o NameError exacto). Receipt
   `_main/receipt-20261011-per-app-tap-step2.md`; pin do worker **291 873 B / `EFDFB098…`**.
-  **NÃO MEDIDO:** se um tap de processo abre DENTRO do worker num pid real; se duas apps ficam
-  separadas ponta a ponta (STEP 5, dois workers num shell, NÃO existe); e o painel ainda casa a
-  linha só por `start` (STEP 4), portanto duas fontes com o mesmo segundo de ãudio colidem.
+  **STEP 4 E STEP 5 FECHADOS EM CÓDIGO 2026-10-11 (commits `b121cce`, `e136d1c`, pushed).** O painel já
+  NÃO casa a linha só por `start`: `rowIdentity(source, start)` (`panel.js:326`) é nulo sem `start`, o
+  NÚMERO `start` sem fonte, e `String(source)+"\u0000"+start` com fonte; há UM motor de formulação por
+  fonte (`engines`/`engineFor(source)`), UMA linha provisória por fonte (`provisionalRows`) e
+  `data-source` só existe quando há fonte. `caption-formulation.js` estampa `source` como ÚLTIMA chave e
+  o literal sem fonte mantém as MESMAS três chaves de antes. E o app já pode PEDIR uma app:
+  `--app-target PID|IMAGE` / `SOTTO_APP_TARGET` (flag > env > nenhum) — `resolve_app_target` resolve o
+  nome de imagem sobre a tabela de processos VIVA e fica só com as RAIZES da árvore (o tap usa
+  INCLUDE_TARGET_PROCESS_TREE), o pid viaja no AMBIENTE (`SOTTO_TARGET_PID`, nunca no argv), e um alvo
+  IRRESOLVÍVEL RECUSA (painel pintado como erro, `WORKER_AUTOSTART=declined
+  reason=app-target-unresolved`, sem bridge). Pins: `panel.js` 137 352 B / `A0BE0694…`,
+  `caption-formulation.js` 40 333 B / `6EB5FB8A…`, `sotto_webview.py` 439 498 B / `E5B4ADE7…`;
+  instrumentos `_main/panel-row-identity-oracle.js` (7 braços + 4 mutantes selectivos),
+  `_main/app-target-oracle.py` (9 braços, M1/M2 RED) e `_main/redux-live-contract-oracle.js` (reparado:
+  âncoras mortas + `--neg-arm` INERTE; ARM D nova — mesma `start`, 3 fontes → 3 linhas, RED sob a chave
+  antiga). **NÃO MEDIDO:** nada disto prova o que o WebView2 real pinta; nenhum `source` real
+  (`proc:<pid>`) chegou ao painel ponta-a-ponta (a ordem do dono proíbe lançar); e DUAS apps AO MESMO
+  TEMPO continuam impossíveis por construção (um bridge, um worker, um valor de `--app-target`).
 Os anchors de linha citados acima foram medidos na revisão de 238 427 B e **NÃO** foram re-medidos aqui:
   trate-os como HINT e re-corra o `grep` (é a regra 2 deste ficheiro). O pin vigente é 291 873 B / `EFDFB098…`, quarta revisão; o antigo 244 046 B era o commit `749f431`, e já não é o que o worker tem; `_main/exit3-armB-worker.jsonl` (acima) foi produzido por uma revisão anterior e continua a
   ser prova válida da ORDEM do verdict, que é o que aquele bullet afirma. **That revision moved by one line and one
@@ -615,7 +630,24 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   excuse and logs `HOTKEY_DISABLED reason=measurement-flag(<excuse>)`; after the cure the same
   `--dump-dom` launch reaches `RECEIVER_READY` (`I:\cc-tmp\hotfix-test.log`, 47 lines). A private
   `--mutex-name` is NOT coerced -- that run skips no lock and may legitimately measure the hotkey.
-  Never make that lock unconditional again.
+  **O LOCK PREDEFINIDO NUNCA É PARTILHADO COM UMA MEDIÇÃO — ver a correcção no fim deste bullet.**
+  **CORRIGIDO 2026-10-11 (endurecimento do lock, pedido do dono após "o sotto abria mais de uma vez,
+  aparecia no tray, o quit revivia um, e cada vez travava o pc"): nenhum launch fica sem lock.**
+  Antes, as cinco flags acima DISPENSAVAM o lock por completo (`SINGLE_INSTANCE_SKIPPED` e nada tomado),
+  e era isso que permitia a vários launches empilharem painéis, ícones de tray e cargas de modelo do
+  worker. Agora o launch de medição toma um lock **DERIVADO** — `measurement_lock_name(args)` =
+  `Local\SottoShell.m.<flags presentes>` (ex.: `Local\SottoShell.m.no_hotkey`) — portanto (a) o APP
+  continua single-instance sob `Local\SottoShell`, e (b) dois launches de medição **com as mesmas
+  flags** já não coexistem. Probes com flags diferentes ficam com nomes diferentes e correm lado a
+  lado. O que "never make that lock unconditional again" quer dizer, e continua verdade, é: o lock
+  **PREDEFINIDO** não pode ser partilhado com uma medição (refusar probes com o app em cima é o que
+  brickou os instrumentos) — o derivado resolve isso sem dispensar nada. O **hotkey** é a única coisa
+  que uma medição dispensa. Linhas novas: `SINGLE_INSTANCE_SKIPPED reason=<flag> default=Local\SottoShell
+  took=<derivado>` e `SINGLE_INSTANCE_MEASURE_BUSY name=<derivado> reason=<flag>`. Provado:
+  `_main/_lock-hardening-unit.py` (6/6) e um teste e2e em que o shell real, com as mesmas flags de um
+  holder do lock derivado, sai rc=0 com `SINGLE_INSTANCE_MEASURE_BUSY` ANTES de criar
+  janela/tray/worker; e o caminho do APP (sem flags de medição) continua a recusar a segunda instância
+  com o `WARN ... already running`.
 - **THE LIVE BOX REPLACES, IT DOES NOT APPEND — and now it is measured, not asserted.** The engine
   emits a CUMULATIVE hypothesis (`start` fixed for the segment, `end` growing, `text` = the whole line,
   `final:false`), and `renderProvisional` (`panel.js:137-175`) rewrites ONE `<li>`'s `textContent` in
