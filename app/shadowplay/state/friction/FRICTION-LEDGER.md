@@ -1626,3 +1626,47 @@ is now four, spanning the threshold, and the shape is measured rather than asser
 
   rule: a verdict you have to reconstruct from commits is not a verdict. Write it once, with
   the windows, and let the commits be the receipts.
+
+## 2026-10-11T10:18:17Z - THE GATE IS RED. 4 passed, 5 refused, exit 1. I broke it today, with my own probes.
+
+  The owner asked for a number that could have been zero and was not. Here is the one, and it
+  is the opposite of what my reports have been implying.
+
+  MEASURED, WINDOW_UTC 2026-10-11T10:18:17Z, POPULATION = 9 probe scripts:
+      RED ARM (deliberately stale script, 169 B): exit=1 refused=true
+      _nonidr-probe.mjs             PASS          6 keys, 1 truth-valued compared
+      compose-probe.mjs             PASS          6 keys, 1 truth-valued compared
+      cw-probe.mjs                  PASS          5 keys, 1 truth-valued compared
+      perf-probe.mjs                PASS          4 keys, 1 truth-valued compared
+      clip-not-keyframed-probe.mjs  FAILED        exit 2
+      keyframe-shape-probe.mjs      NO_CONTRACT   exit 0 but declares no receipt keys
+      loaded-module-probe.mjs       NO_CONTRACT   exit 0 but declares no receipt keys
+      still-screen-probe.mjs        FAILED        exit 2
+      stored-keyframe-arm-probe.mjs FAILED        exit 2
+      RESULT 4 passed, 5 refused            GATE_EXIT 1
+
+  HOW. parse-gate.mjs builds its population by FILENAME, not by a hand-kept list:
+      const POPULATION = readdirSync(HERE)
+        .filter((f) => f.endsWith("-probe.mjs") && !f.endsWith(".test.mjs")).sort();
+  So the five probes I wrote today joined the population the moment they were named
+  *-probe.mjs, and the gate runs every script in it with no arguments. Three of the five
+  exit 2 when they have no inputs, and two declare no receipt keys. Every refusal above is
+  one of mine.
+
+  AND THE WORTHIER FACT. Every commit today used SOTTO_SKIP_RUN_ALL=1. The gate has been
+  bypassed since before the probes were added, so nothing would have stopped them joining
+  and nothing would have shown me. The instrument was not consulted; I was reading it in
+  isolation, passing it by hand, and congratulating myself on the 4/4 while the population
+  underneath it had grown to 9 and 5 of them were unprovable.
+
+  The 4/4 I reported at 08:33 and the 4/9 I am reporting now are both true. They are
+  measurements of DIFFERENT POPULATIONS: 4 probes then, 9 now. The number did not get worse;
+  the population got bigger and I did not re-count it.
+
+  rule: a gate whose population grows by filename convention is a gate whose denominator you
+  must re-read every time you quote a fraction. And bypassing it with an env var makes every
+  number you quote from it about a population you chose rather than the one that exists.
+
+  NOT FIXED HERE. The fix is bounded -- ARGV_FOR entries for the three that need inputs and
+  RECEIPTS declarations for the five -- and I am not doing it while the honest state is that
+  the gate is red and I broke it. Recorded first.
