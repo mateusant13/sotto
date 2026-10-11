@@ -79,3 +79,21 @@ by mtime, after reporting them as "decisão do dono" for weeks. Count with the f
 does not collapse directories, and attribute before you ask permission.
 **Generalisable:** deferring a decision to someone else is easier than owning one. Name
 the owner before you file it.
+
+## 2026-10-11T05:32:33Z — mtime is a date, not an author
+
+I read seven untracked files' timestamps, concluded they were not mine, handed the
+decision to the owner, and wrote "I do not know" into the confidence line. Reading
+the contents settled it in one call: all seven are mine.
+
+  rule: attribute a file by its content before you route it to a human. A timestamp
+  tells you WHEN, and I used it to answer WHO. The cost was a week of "decisao do
+  dono" on files that were mine the whole time.
+
+Also this pass: I reported the seven as 7 720 B. Measured: 6 720 B. I summed instead
+of counting, by hand, on a number I had just measured. The ledger's first rule --
+if a report says it records friction, the mtime must move in that window -- is the
+one that would have caught it. It did not, because I wrote this entry after the
+report, not before.
+
+  gate: any byte total in a report must come from a command in that same window.
