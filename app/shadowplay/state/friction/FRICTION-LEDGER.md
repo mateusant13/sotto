@@ -449,3 +449,27 @@ pre-commit had something real to call, made two commits, then checked out.
      pass until the file contents proved nothing moved.
   2. git add -A in a scratch repo is fine and in this one it is not; I staged paths
      explicitly here and that is why nothing of the owner's was swept in.
+
+## 2026-10-11T08:04:36Z - post-merge executed for real; all three hooks now have run
+
+Third piece in the series, and the last one that was installed but unexercised.
+
+  MEASURED, POPULACAO = 1 real merge, WINDOW_UTC 2026-10-11T08:04:36Z, in G:\Temp\ht5:
+    base commit on master, side branch with b.txt, c.txt on master
+    git merge side  -> exit 0
+      Merge made by the 'ort' strategy.  b.txt | 1 +  create mode 100644 b.txt
+      then, printed BY THE HOOK:
+        ok pre-commit (matches its source)
+        ok post-checkout (chained; installed fresh, no foreign body to preserve)
+        ok post-merge   (chained; installed fresh, no foreign body to preserve)
+        CHECK OK
+    files after: a.txt, b.txt, c.txt  -- the merge actually landed.
+
+  So all three hooks have now executed at least once, each from git rather than from a
+  script I typed: pre-commit on two commits, post-checkout on two checkouts, post-merge on
+  one merge. Nothing in this series has been reported as working on the strength of the
+  file merely existing, which is the mistake I made four times in this hour.
+
+  Honest limit: all three were exercised in a THROWAWAY repo with a stubbed runner. The
+  hook logic is the same and the wiring is real; what is NOT proven here is the gate
+  refusing a real suite from inside a real git operation, because a stub always passes.
