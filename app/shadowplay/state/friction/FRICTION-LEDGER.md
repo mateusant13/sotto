@@ -2337,3 +2337,36 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   reported as a finding.
 
   STILL OPEN: what occupied the machine during 15:35-15:46 on 2026-10-07. UNKNOWN, not invented.
+
+## 2026-10-11T14:28Z - load_s IS SECONDS, proved three ways, and one of my three proofs was invalid
+
+  MEASURED 14:28:56Z, POP 4 artefacts cross-read, three internal tests.
+
+  TEST A -- a coluna que tem unidade no nome fecha com a outra:
+    bench-cpu-8t: 26 chunks x chunk_ms_median 2617,31 ms = 68,05 s  vs  wall_s_best 68,101 s.
+    Agreement 0,05%. chunk_ms is ms, wall_s is s, same clock family, so the family is consistent.
+
+  TEST B -- a aritmetica do proprio codigo (independente da minha memoria):
+    stash 55c422b L292: "120 s is ~1.8x the measured load".  120000/67000 = 1,791x.
+    If load_s were MILLISECONDS the same sentence would have to read 120000/67 = 1791x.
+    The unit is written into the sentence that uses it.
+
+  TEST C -- INVALID, DISCARDED, and this is the part worth keeping:
+    I had load/wall = 0,987 on cpu-8t and was about to count it as corroboration.
+    gpu-1t carries load_s 76,659 against wall_s 29,566 -- the load EXCEEDS the wall.
+    That is only possible if the two columns time DIFFERENT intervals: wall_s_best times the
+    inference pass alone, load_s times the model construction alone. So 0,987 is coincidence
+    and proves nothing. The refuting row was in the same table, on the second line, and I
+    ordered the table evidence-good-first.
+
+  RULE: when two measurements agree, first confirm they share an interval. A column that
+  exceeds another is the proof they do not. A coincidence between different intervals is
+  the most attractive kind of wrong number, because it looks like agreement.
+
+  CONSEQUENCE: the verdict committed at d2d6449 stands, and now rests on arithmetic any
+  reader can redo rather than on my recollection of what perf_counter returns.
+
+  ALSO THIS TURN: anchored the LIVE stash as well as the dead one. refs/keep/live-stash-55c422b
+  and refs/keep/dropped-stash-3fbe53d. A ref does not replace stash@{0}; it anchors it, so a
+  stash pop, drop or a cleared reflog cannot destroy the work. Both reversible with
+  git update-ref -d. Neither touches the working tree.
