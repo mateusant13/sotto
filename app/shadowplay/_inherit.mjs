@@ -85,7 +85,11 @@ arm("audio-track", (path) => {
 });
 
 arm("captions", (path) => {
-  const caps = new CaptionTrack({ clip: { id: "c1" }, savePath: path });
+  // captions.js:15 requires `clip` to be a STRING. I passed an object, so the
+  // constructor threw at line 16 and add() was never reached - forced=0. Same class of
+  // probe bug as the audio track's empty `sources`: a wrong argument type tripping a
+  // guard before the code under test is even entered.
+  const caps = new CaptionTrack({ clip: "c1", savePath: path });
   caps.add("hello", 0);
   caps.sidecar();
 });
