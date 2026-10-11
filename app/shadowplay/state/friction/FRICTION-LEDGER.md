@@ -299,3 +299,30 @@ perf-probe.mjs ran N=2000 and the measured PER_PRESS_US of 161309.72 makes that
 
   rule: a timeout is not a verdict, and neither is a stall I have not multiplied out. I
   ran the same instrument for three passes and read my impatience as its answer.
+## 2026-10-11T06:39:38Z - the gate's last refusal was mine, twice
+
+Non-IDR probe: STALE_API. I took that as a stale API call and said so. It was not. The
+probe reads process.argv[2] and the gate was invoking it with NO ARGUMENTS AT ALL, so
+ERR_INVALID_ARG_TYPE was my own invocation failing, wearing the shape of an old signature.
+
+  rule: an ERR_INVALID_ARG_TYPE on argv is the harness's error until proven otherwise. My
+  STALE_API pattern caught TypeError because that is what a stale call looks like -- and
+  also what calling a program that needs an input looks like. The pattern cannot tell them
+  apart, so the gate must pass what the program needs, not just classify what came back.
+
+Then the second refusal was also mine. I declared the receipt from memory with IDR_COUNT=
+and PAYLOAD_RETAINED_PCT= using equals signs; the probe prints colons. The gate said
+SILENT 2/6 and it was RIGHT: I had written a receipt for output that does not exist.
+  rule: copy the receipt out of the probe's own output, not out of your recollection of
+  what it probably prints. Two of my four receipts this pass were wrong in exactly that way.
+
+  What the probe actually answers, given a real 14526 B annex-B stream built by ffmpeg:
+    NAL_UNITS_PARSED 65, FIRST_PICTURE_NAL_TYPE 5, IDR_COUNT 2, NALS_KEPT 63,
+    STRIPPED_BYTES 7946 of 14526, IDR_BYTES_REMOVED 6580, PAYLOAD_RETAINED_PCT 54.7,
+    DECODABLE_FRAMES_NO_IDR 0, DECODABLE_FRAMES_WITH_IDR_CONTROL 60,
+    NON_IDR_FIRST_STREAM_IS_UNDECODABLE true, NEGATIVE_ARM_REACHABLE false.
+  A stream whose first picture is not an IDR does not decode: 0 frames without the IDR
+  against 60 with it as control. So the negative arm for the IDR gate is unreachable BY
+  CONSTRUCTION. That is why five prior attempts failed to build it, and it is a result.
+
+  POPULACAO = 4 probes. Result: gate exit 0, all four PASS, RED ARM refused=true.

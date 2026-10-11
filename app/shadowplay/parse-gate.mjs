@@ -47,6 +47,30 @@ const POPULATION = readdirSync(HERE)
 // Declared per probe because a probe's receipt is its own contract; an empty list means
 // "this probe declares no receipt", and that is reported as NO_CONTRACT rather than PASS,
 // because "exit 0 and I did not check" is not evidence and must never read as one.
+// ARGV. A probe is a program, not a script: some take an input file and cannot run
+// without one. Calling those with no arguments reports ERR_INVALID_ARG_TYPE, which my
+// STALE_API pattern happily matched -- so a correct probe read as obsolete.
+//
+// MEASURED 2026-10-11T06:37:46Z: _nonidr-probe.mjs reads process.argv[2] and dies on
+// undefined. That is not a stale API call. It is an invocation the gate failed to make.
+// Population of annex-B streams on this host: 0, so the gate BUILDS the input with
+// ffmpeg rather than looking for one.
+const ARGV_FOR = {
+  "_nonidr-probe.mjs": [buildAnnexB()],
+};
+
+function buildAnnexB() {
+  const d = mkdtempSync(join(tmpdir(), "annexb-"));
+  const p = join(d, "in.h264");
+  try {
+    spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "testsrc=s=320x240:rate=30:duration=2", "-c:v", "libx264",
+      "-pix_fmt", "yuv420p", "-g", "30", "-bsf:v", "h264_mp4toannexb", "-f", "h264", p],
+      { encoding: "utf8", timeout: 60000 });
+    return existsSync(p) ? p : null;
+  } catch { return null; } finally { /* the probe owns the dir; nothing to clean here */ }
+}
+
 // MEASURED 2026-10-11T06:31:44Z by reading the console.log calls out of each probe.
 // Before this, both probes were NO_CONTRACT -- the gate refused them for being unproven,
 // which was correct and useless: a receipt nobody declares can never be checked.
@@ -64,9 +88,20 @@ const RECEIPTS = {
   "perf-probe.mjs": ["N=", "PRESS_PATH_TOTAL_MS=", "PER_PRESS_US=", "SEQUENCE_MONOTONIC="],
   // MEASURED 2026-10-11T06:33:44Z. This probe rejoined the population when I restored the
   // eight deleted _*.mjs files from HEAD, and the gate found it STALE_API on its first
-  // sight of it -- same class as perf-probe was. A gate that reads its population off the
-  // disk earns that: the file came back from a restore and was checked immediately.
-  "_nonidr-probe.mjs": ["NAL_UNITS_PARSED:", "IDR_COUNT:", "STRIPPED_BYTES:", "PAYLOAD_RETAINED_PCT="],
+  // sight of it. That verdict was WRONG and the reason is the useful part: the probe
+  // reads process.argv[2] and the gate was calling it with no arguments at all.
+  //   Measured 06:39:24Z with a real 14526 B annex-B stream built by ffmpeg:
+  //     NAL_UNITS_PARSED 65, IDR_COUNT 2, STRIPPED_BYTES 7946 of 14526,
+  //     PAYLOAD_RETAINED_PCT 54.7, DECODABLE_FRAMES_NO_IDR 0,
+  //     DECODABLE_FRAMES_WITH_IDR_CONTROL 60,
+  //     NON_IDR_FIRST_STREAM_IS_UNDECODABLE true, NEGATIVE_ARM_REACHABLE false.
+  //   The last key is the answer: a stream whose first picture is not an IDR is not
+  //   decodable, so the negative arm for the IDR gate is unreachable BY CONSTRUCTION.
+  //   That is a finding, not a defect, and it is why this probe earns a receipt.
+  "_nonidr-probe.mjs": [
+    "NAL_UNITS_PARSED:", "IDR_COUNT:", "STRIPPED_BYTES:", "PAYLOAD_RETAINED_PCT:",
+    "DECODABLE_FRAMES_WITH_IDR_CONTROL:", "NEGATIVE_ARM_REACHABLE:",
+  ],
 };
 
 const STALE_API = [
@@ -75,7 +110,7 @@ const STALE_API = [
 ];
 
 function classify(script) {
-  const r = spawnSync(process.execPath, [join(HERE, script)], {
+  const r = spawnSync(process.execPath, [join(HERE, script), ...(ARGV_FOR[script] || [])], {
     cwd: HERE, encoding: "utf8", timeout: 120000,
   });
   const out = (r.stdout || "") + (r.stderr || "");
