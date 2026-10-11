@@ -296,6 +296,27 @@ ta("a valid audio-only file has no video to count and is refused, not zeroed", a
     "a file with no video stream is not a file with zero frames, and must not report 0");
 });
 
+// A SECOND WATCHER for the assertPositive guard on the caller-supplied fps/seconds.
+// Measured WINDOW_UTC 2026-10-11T02:04:33Z: dropping the `|| value <= 0` half of that
+// condition turned exactly ONE test red, so this guard was watched by a single assertion.
+//
+// The route is different: the first watcher goes through assessDelivery's fps argument.
+// This one uses the SECONDS argument, and values the first never tries — negative, and
+// the string that is not a number at all. A guard on one argument is not evidence that the
+// other argument is checked by the same code, and the mutation cannot tell the difference.
+ta("a non-positive or non-numeric duration is refused on the seconds argument too", async () => {
+  // fps is VALID here on purpose: the refusal must come from the seconds guard, not from the
+  // fps guard. If this test passes because fps was also bad, it is not watching anything.
+  for (const bad of [0, -1, -0.5, Infinity, -Infinity, NaN, "10", null, undefined, {}]) {
+    await assert.rejects(() => assessDelivery(CLIP, 10, bad), RangeError,
+      `expectedSeconds=${String(bad)} must be refused, with a valid expectedFps of 10`);
+  }
+  // CONTROL: the same call with a valid duration must still succeed, proving the refusals
+  // above were caused by the argument under test and not by the clip.
+  const ok = await assessDelivery(CLIP, 10, 1);
+  assert.equal(ok.expectedFrames, 10, "the valid call must still work");
+});
+
 // ------------------------------------------------- drain the async tests -- LAST, always.
 // This loop MUST stay below every ta() call. It was above one registration once, and the
 // result was a suite that reported 12/0 green while silently never running its own test:
