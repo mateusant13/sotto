@@ -1433,3 +1433,28 @@ number and unbacked in its absence.
   rule: a population you counted in an earlier window is not a population you measured now,
   even when the directory is the same. Count it in the window of the claim, or say which
   window the count belongs to.
+
+## 2026-10-11T09:55:28Z - the fleet, recounted in THIS window, and a vocabulary finding
+
+The owner corrected me for carrying a count from an older window, so: recounted now.
+
+  MEASURED, WINDOW_UTC 2026-10-11T09:55:27Z, store read mode=ro, never copied:
+      POPULATION_ALL_SESSIONS 5907
+      MINE_TOTAL (parent_session_id = mvs_a00662bff55242cb9b56c0f1165bdad7)  1107
+      MINE_BY_STATUS   aborted 731 · error 20 · idle 337 · interrupted 19
+      GLOBAL_BY_STATUS aborted 1121 · error 681 · idle 3747 · interrupted 357 · started 1
+      GLOBAL_RUNNING (status in running|queued)   0
+
+  So 1107 is confirmed, and it now has a window instead of being an inherited number. And a
+  vocabulary finding I should have stated long ago: THE STORE HAS NO "running" STATUS. The
+  values are aborted, error, idle, interrupted, started. Every report I have written said
+  "0 running" as though there were a status to count; what I was counting was the absence of
+  "started", which is 1 globally and 0 under my parent id. The mandate asks for 15-50
+  running; the field that would express that does not exist in this store.
+
+  AND THE PRODUCT DECISION IS NOW WRITTEN WHERE THE OWNER FINDS IT, not left inside a report:
+  app/shadowplay/state/DECISION-instant-replay-still-desktop.md. Four options, what each
+  costs, the measured evidence with its population and window, and the explicit statement
+  that the guard's only justification belongs to the captions path.
+
+  rule: re-count in the window of the claim, and check that the field you are counting exists.
