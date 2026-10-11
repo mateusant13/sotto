@@ -1605,6 +1605,39 @@ def take_single_instance_lock(name=DEFAULT_MUTEX_NAME) -> bool:
     return not exists
 
 
+#: The flags that make a launch a MEASUREMENT of the panel/shell rather than the
+#: app, and therefore give it a DERIVED lock name instead of `Local\SottoShell`.
+#: Read from `args` by attribute; `--exit-after` is a FLOAT (0.0 = off) and the
+#: rest are booleans/ints, so truthiness is correct for all of them. The label is
+#: built from EVERY flag present, so two probes with different shapes keep
+#: different locks (they may run together) while two IDENTICAL ones collide (they
+#: may not stack model loads).
+_MEASUREMENT_LOCK_FLAGS = (
+    ('dump_dom', 'dump-dom'),
+    ('selftest', 'selftest'),
+    ('memory', 'memory'),
+    ('no_hotkey', 'no-hotkey'),
+    ('probe_v2', 'probe-v2'),
+    ('exit_after', 'exit-after'),
+)
+
+
+def measurement_lock_name(args) -> str:
+    """The lock a MEASUREMENT launch takes: same exclusivity, its own name.
+
+    Never the APP's name: a probe refused because the owner's app is up is the
+    failure that once bricked the whole instrument set (measured 2026-10-07).
+    Never the EMPTY lock either: taking none let several probe launches stack
+    panels, tray icons and worker model loads, which is the owner's report
+    ("Sotto opened more than once and froze the PC"). So the lock is TAKEN by
+    every launch; only the NAME differs from the app's.
+    """
+    parts = [name for attr, name in _MEASUREMENT_LOCK_FLAGS
+             if getattr(args, attr, False)]
+    label = '.'.join(parts) if parts else 'probe'
+    return DEFAULT_MUTEX_NAME + '.m.' + label.replace('-', '_')
+
+
 # ===========================================================================
 # THE TRAY — the app's face and its Quit, where the owner asked for them
 #
@@ -5390,6 +5423,40 @@ class SottoShell:
             return False
         if self.bridge is not None:
             return False
+        # ── THE PER-APP TAP, OPT-IN -- AND AN UNRESOLVED TARGET REFUSES ──────
+        # `--app-target` / `SOTTO_APP_TARGET` asks the worker for ONE app's
+        # process tree. It is resolved HERE, once, immediately before the bridge
+        # that carries it is built; nothing above this line changed.
+        # AN UNRESOLVED NAME MUST NOT FALL BACK TO THE ENDPOINT MIX: that would
+        # transcribe EVERY app while the owner believes he is reading one, which
+        # is the exact failure a silent default would hide. So it declines in the
+        # SAME shape every other refusal uses (`WORKER_AUTOSTART=declined
+        # reason=...`) and paints the panel through the SAME error path the
+        # missing-worker case uses (`apply_panel_state(text, 'error', info)`,
+        # the call `_worker_off_message`'s site makes), then returns False
+        # WITHOUT constructing a bridge -- so no child process is created.
+        target_pid = None
+        target_value, target_source = app_target_request(self.args)
+        if target_value is not None:
+            log(f'APP_TARGET value={json.dumps(target_value)} '
+                f'source={target_source}')
+            target_pid, candidates = resolve_app_target(target_value)
+            if target_pid is None:
+                log(f'APP_TARGET_UNRESOLVED value={json.dumps(target_value)} '
+                    f'reason=no-process')
+                self.apply_panel_state(
+                    f'App target not found - {target_value}', 'error',
+                    {'title': 'App target not found',
+                     'body': f'No running process matches {target_value!r}, so '
+                             'the per-app tap has nothing to aim at. No worker '
+                             'was started: the endpoint mix would transcribe '
+                             'every app instead of the one you named.'})
+                log('WORKER_AUTOSTART=declined reason=app-target-unresolved '
+                    'by=start_worker')
+                return False
+            log(f'APP_TARGET_RESOLVED value={json.dumps(target_value)} '
+                f'chose={target_pid} candidates='
+                + ','.join(str(pid) for pid in candidates))
         self.bridge = WorkerBridge(
             command=self.args.python,
             worker_path=self.args.worker,
@@ -5400,6 +5467,7 @@ class SottoShell:
             on_status=self.on_worker_status,
             on_stats=self.on_worker_stats,
             on_meter=self.on_worker_meter,
+            target_pid=target_pid,
         )
         log(f'WORKER_PATH {self.args.worker}')
         log(f'WORKER_COMMAND {self.args.python}')
@@ -6919,11 +6987,21 @@ class WorkerBridge:
                  on_caption=None, on_status=None, on_stats=None,
                  on_meter=None,
                  silence_ms=WORKER_SILENCE_MS,
-                 backoff_base=1000, backoff_max=30000):
+                 backoff_base=1000, backoff_max=30000,
+                 target_pid=None):
         self.command = command or default_python()
         self.worker_path = worker_path
         self.device = device if isinstance(device, str) and device.strip() else None
         self.capture_mode = capture_mode
+        #: THE PER-APP TAP, opt-in: the pid of the ONE app whose process tree the
+        #: worker must tap, or None for the endpoint mix (the behaviour every run
+        #: had before this parameter existed). It travels to the child in the
+        #: ENVIRONMENT -- `_child_env` is the whole contract, and it is where
+        #: the "absent means byte-identical env" promise is kept. The worker owns
+        #: the refusal for a pid that is not alive (sotto_worker.py,
+        #: `_plp_pid_state`); this shell only resolves NAMES (see
+        #: `resolve_app_target`).
+        self.target_pid = target_pid
         self.log = log
         self.on_caption = on_caption or (lambda text, meta: None)
         self.on_status = on_status or (lambda text, kind, info: None)
@@ -7103,6 +7181,29 @@ class WorkerBridge:
             self._spawn()
             return True
 
+    def _child_env(self):
+        """The child's WHOLE environment contract, in one place.
+
+        Factored out of `_spawn` so it is assertable WITHOUT spawning
+        anything (`_main/app-target-oracle.py` builds bridges in-process and
+        compares the dicts -- the same reason `_worker_autostart_reason` was
+        factored out of `_on_loaded`). The device and the capture mode already
+        travelled this way; the per-app target joins them HERE, and ONLY when it
+        was asked for: a bridge built without `target_pid` produces the
+        byte-identical environment it produced before the parameter existed.
+        """
+        env = dict(os.environ)
+        env['SOTTO_CAPTURE_MODE'] = self.capture_mode
+        if self.device is not None:
+            env['SOTTO_AUDIO_DEVICE'] = self.device
+        #: OPT-IN: `SOTTO_TARGET_PID` appears ONLY when a target was resolved.
+        #: The worker reads it as the per-app tap (sotto_worker.py,
+        #: `--target-pid` / `SOTTO_TARGET_PID`); absent, its candidate ladder
+        #: is the endpoint mix, unchanged.
+        if self.target_pid is not None:
+            env['SOTTO_TARGET_PID'] = str(self.target_pid)
+        return env
+
     def _spawn(self):
         # The missing-file check is not an optimisation: spawning a nonexistent
         # path fails asynchronously and reports a message that names the shell,
@@ -7146,10 +7247,10 @@ class WorkerBridge:
         self._progress_blocks = None
         self.spawned_at = time.monotonic()
 
-        env = dict(os.environ)
-        env['SOTTO_CAPTURE_MODE'] = self.capture_mode
-        if self.device is not None:
-            env['SOTTO_AUDIO_DEVICE'] = self.device
+        # The WHOLE env contract lives in `_child_env`, so it can be asserted
+        # without spawning anything (see its docstring). Nothing else in this
+        # method was touched when the per-app target was added.
+        env = self._child_env()
 
         creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
             if os.name == 'nt' else 0
@@ -7826,6 +7927,94 @@ def memory_report():
 
 
 # ===========================================================================
+# the per-app target
+# ===========================================================================
+#
+# The WORKER has been able to tap ONE process tree since 2026-10-11
+# (`--target-pid` / `SOTTO_TARGET_PID`, `ProcessLoopbackTap`), and every
+# caption it emits carries the additive `source` field (`proc:<pid>`). What
+# was missing is the APP side: `grep -n target_pid app/webview/sotto_webview.py`
+# returned ZERO matches, so the capability existed and was unreachable -- the
+# same defect class as a factored rule nothing calls. These two functions are
+# the reachable path, and the flag that drives them is opt-in: with no
+# `--app-target` and no `SOTTO_APP_TARGET`, nothing below runs.
+
+
+def resolve_app_target(value):
+    """`--app-target` -> the pid to tap, plus every pid the rule considered.
+
+    Returns `(pid, candidates)`:
+
+      * `value` is all digits and > 0 -> `(that pid, [that pid])`. The pid
+        is ACCEPTED as given: whether it is still alive is the WORKER's refusal
+        to make (sotto_worker.py, `_plp_pid_state` -> `state="error"
+        stage="target-pid"`), not this shell's -- this function never opens
+        the process, so a stale pid cannot make the shell wrong about it.
+      * anything else is an IMAGE NAME, matched case-insensitively against
+        `szExeFile` over the LIVE process table.
+      * TREE-ROOT RULE: of the matches, only those whose PARENT is not itself a
+        match survive. That is what makes `--app-target chrome.exe` mean the
+        BROWSER process: the tap is opened with INCLUDE_TARGET_PROCESS_TREE, so
+        the renderers' audio arrives with it, while aiming at a renderer pid
+        alone would tap one renderer's share and miss the rest.
+        `candidates` is the sorted root list, and the LOWEST pid is chosen
+        when several roots remain.
+      * no match -> `(None, [])`. The caller must REFUSE loudly (see
+        `SottoShell.start_worker`): falling back to the endpoint mix would
+        transcribe EVERY app while the owner believes he is reading one.
+
+    The table is read with ctypes (`CreateToolhelp32Snapshot` /
+    `Process32FirstW` / `Process32NextW`) through `_process_table`, the walk
+    this module already had for the memory report. NO WMI, NO subprocess, NO
+    psutil: one kernel handle, closed before this returns.
+    """
+    raw = str(value if value is not None else '').strip()
+    if raw == '':
+        return None, []
+    if raw.isdigit():
+        pid = int(raw)
+        if pid > 0:
+            return pid, [pid]
+        return None, []
+    wanted = raw.casefold()
+    matches = [(pid, parent) for pid, parent, exe in _process_table()
+               if str(exe).casefold() == wanted]
+    if not matches:
+        return None, []
+    matched_pids = {pid for pid, _parent in matches}
+    roots = sorted(pid for pid, parent in matches if parent not in matched_pids)
+    if not roots:
+        # A cycle cannot exist in a real process tree, but an empty root list
+        # must never become "tap the whole endpoint": fall back to the LOWEST
+        # match, which is still one app.
+        roots = sorted(matched_pids)
+    return roots[0], roots
+
+
+def app_target_request(args, env=None):
+    """The requested per-app tap and WHERE it came from: flag > env > none.
+
+    Returns `(value, source)`, one of:
+
+      `('1234', 'flag')`        --app-target 1234
+      `('chrome.exe', 'env')`    SOTTO_APP_TARGET=chrome.exe, no flag
+      `(None, None)`             neither: the worker taps the endpoint mix,
+                                   exactly as it does today.
+
+    `env` is a parameter, not a read of `os.environ`, so the precedence is
+    assertable in-process (`_main/app-target-oracle.py`, arm f).
+    """
+    raw = getattr(args, 'app_target', None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip(), 'flag'
+    env = os.environ if env is None else env
+    raw = str(env.get('SOTTO_APP_TARGET') or '').strip()
+    if raw:
+        return raw, 'env'
+    return None, None
+
+
+# ===========================================================================
 # CLI
 # ===========================================================================
 
@@ -7866,6 +8055,27 @@ def parse_args(argv):
                              'resolves the tap itself by default')
     parser.add_argument('--capture', default=None,
                         help=f'capture mode (default: {DEFAULT_CAPTURE_MODE})')
+    #: THE PER-APP TAP, OPT-IN. The worker has been able to tap ONE process
+    #: tree since 2026-10-11 (`--target-pid` / `SOTTO_TARGET_PID`) but nothing
+    #: in this shell ever passed it, so the capability was unreachable from the
+    #: app. The pid travels in the ENVIRONMENT (`WorkerBridge._child_env`),
+    #: never in argv: `_spawn` builds `[command, worker_path]`, and the
+    #: device and the capture mode already travel that way.
+    #: NOT in the measurement-flag suppression set of `_worker_autostart_reason`:
+    #: this flag names a TARGET, not a measurement, so `--dump-dom --app-target X`
+    #: still suppresses the worker through `--dump-dom` (the flag is parsed
+    #: and logged, and no worker is spawned) -- which is what that set is for.
+    parser.add_argument('--app-target', default=None, metavar='PID|IMAGE',
+                        help='tap ONE app instead of the endpoint mix: a pid or '
+                             'an image name (e.g. chrome.exe). A NAME is resolved '
+                             "to the app's TREE ROOT -- the per-app tap follows "
+                             'the whole process tree, so a renderer pid alone is '
+                             'the wrong thing to aim at. An unresolvable target '
+                             'starts NO worker (the endpoint mix would transcribe '
+                             'every app instead of the one you named). '
+                             'SOTTO_APP_TARGET also sets it; the flag wins. '
+                             'WITHOUT it the worker taps the endpoint mix, '
+                             'exactly as today')
     #: F1 (docs/audit/auditoria-completa-20261007.md): the worker starts BY
     #: DEFAULT. Until 2026-10-07 `start_worker` was reachable only under
     #: `if self.args.with_worker:`, and `run.cmd` -- the entry the owner
@@ -8325,27 +8535,32 @@ def main(argv=None):
     if args.autostart_status:
         return autostart_status()
 
-    # ── ONE SHELL AT A TIME — BUT ONLY WHEN A HOTKEY IS AT STAKE ─────────────
-    # The mutex protects the GLOBAL HOTKEY, which is the only genuinely exclusive
-    # resource here (a second shell cannot register it: `RegisterHotKey` → 1409,
-    # and the owner's Alt+C then answers the first, possibly stale, instance).
-    # A MEASUREMENT run registers no hotkey — that is exactly why AGENTS.md makes
-    # `--no-hotkey` mandatory for one — so it must NEVER be refused by this lock.
-    # It was, for one revision: `_main/_audit-verify-all`-style probes and the
-    # `--dump-dom` dump below were both refused with
-    # `SINGLE_INSTANCE already_running=true` while the owner's app was up, i.e.
-    # the guard bricked every instrument in the repo (measured 2026-10-07). The
-    # union of the flags is deliberate: a probe that forgot `--no-hotkey` still
-    # runs, and the log says which flag excused it.
+    # ── ONE SHELL AT A TIME — THE LOCK IS NEVER SKIPPED ──────────────────────
+    # The DEFAULT mutex (`Local\SottoShell`) belongs to the owner's APP and is
+    # what makes it single-instance: a second app is refused HERE, before any
+    # window, tray icon or worker exists. It also protects the GLOBAL HOTKEY,
+    # the one genuinely exclusive resource (a second shell cannot register it:
+    # `RegisterHotKey` → 1409, and the owner's Alt+C then answers the first,
+    # possibly stale, instance).
+    #
+    # A MEASUREMENT run must not be refused by the APP's lock — refusing probes
+    # while the owner's app is up is exactly what bricked every instrument in
+    # the repo once (measured 2026-10-07: `SINGLE_INSTANCE already_running=true`
+    # on a `--dump-dom` dump). So a measurement launch takes a DERIVED lock of
+    # its own instead of taking NOTHING: the app stays single-instance, and two
+    # IDENTICAL probe launches (same flags) can no longer stack panels, tray
+    # icons and worker model loads — the owner's report (several Sotto icons,
+    # the PC freezing). Different probes carry different flags and so different
+    # lock names; they still run side by side. The HOTKEY is the only thing a
+    # measurement run skips.
+    lock_name = args.mutex_name
     lock_excuse = None
     # A PRIVATE mutex name is not the one the owner's app holds, so there is
     # nothing to collide with and taking it is safe even in a measurement run —
     # which is what makes "the Quit releases the lock" a measurement instead of
-    # an argument from OS behaviour. With the DEFAULT name the excuse stands:
-    # refusing a probe because the owner's app is up is what bricked the whole
-    # instrument set once already.
+    # an argument from OS behaviour. It is taken as-is, and it is NOT excused.
     if args.mutex_name != DEFAULT_MUTEX_NAME:
-        lock_excuse = None
+        pass
     elif args.no_hotkey:
         lock_excuse = '--no-hotkey'
     elif args.dump_dom:
@@ -8357,9 +8572,17 @@ def main(argv=None):
     elif args.probe_v2 > 0:
         lock_excuse = '--probe-v2'
     if lock_excuse:
+        lock_name = measurement_lock_name(args)
+        if not take_single_instance_lock(lock_name):
+            log(f'SINGLE_INSTANCE_MEASURE_BUSY name={lock_name} '
+                f'reason={lock_excuse} — an identical measurement launch is '
+                'already running; not stacking another one')
+            return 0
         log(f'SINGLE_INSTANCE_SKIPPED reason={lock_excuse} '
-            '(a measurement run registers no global hotkey)')
-    elif not take_single_instance_lock(args.mutex_name):
+            f'default={DEFAULT_MUTEX_NAME} took={lock_name} '
+            '(the DEFAULT lock is left to the app; a private measurement lock '
+            'is TAKEN and the hotkey is skipped)')
+    elif not take_single_instance_lock(lock_name):
         warn('Sotto is already running in this session: this launch will not show '
              'anything. Press Alt+C for the running panel, or close it with the '
              'panel\'s Quit button before starting another one.')
