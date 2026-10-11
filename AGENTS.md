@@ -169,6 +169,25 @@ provenance thinner than the decision that produced it. The JS half was LATENT (o
 tuple now equals the four declared tokens. Gate: `_main/canonical-producer-oracle.py` checks the store's
 list AND the shell's list (re-baselined 2026-10-11 — those two arms used to PIN the defect, and went RED
 the moment it was fixed).
+### 10. Theme CSS is GENERATED, and the scope prefix belongs to every comma MEMBER.
+*Measured 2026-10-11 (lane theme-scope + Lead verification). The bug had shipped in BOTH `theme-{1..5}.css`
+and `panel-designs.css` for as long as both have existed.*
+`_main/_design-lane/gen_themes.py`'s `scope()` -> `emit()` prefixed the theme scope **per prelude LINE**, not per comma **member** — so a group written as two lines of three members came out with only two of six scoped and **four
+leaked into every theme**. Fixed in the generator (`emit` now splits each line with `_split_top`), and the
+generator's `build()` gained `CONSUMED_NOT_OWNED` + `resolve_consumed()`: a consumed-but-undeclared token
+now **fails the build** unless the table owns it. Measured after the fix: unscoped members 4 -> 0 in each
+`theme-N.css`, undeclared tokens 2 -> 0 (both were in **theme-3**: `--font-serif`, `--w-op`), and
+`panel-designs.css` 22 -> 0 (shipped by the Lead, `7E740ABF…` -> `FD231DC5…`, 128 716 B, 3 688 CRLF / 0 bare LF).
+**The leak was VISIBLE:** the unscoped `.caption__mark{display:none}` beat `panel.css:2278`'s
+`display: inline` at equal specificity because `panel-designs.css` is the LAST stylesheet the panel loads,
+so the forming line's tail marker was hidden in themes 1/2/4/5. **Never hand-edit these files** — regenerate;
+and the generator was proven current first: a scratch run reproduced all 7 shipped outputs byte-for-byte, and
+re-running it changed 0 outputs. **Gate for the whole directory:** `node _main/scope-leak-oracle.js` (8
+stylesheets, every selector member rooted at a theme scope; `--neg-arm` = 4 mutants RED + control GREEN),
+because the two older gates cover `theme-{1..5}.css` ONLY — which is exactly how the leaking file stayed
+unguarded. Accept BOTH scope forms: `:root[data-theme='theme-3']` and `:root[data-theme^='cine-']` (a
+prefix match is a scope; my own first scanner called that one a leak).
+
 ---
 
 ## MUST READ before touching `worker/`

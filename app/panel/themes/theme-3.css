@@ -573,8 +573,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='theme-3'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='theme-3'] .chrome,  .chrome * {
+:root[data-theme='theme-3'] .panel__header,
+:root[data-theme='theme-3'] .panel__header *,
+:root[data-theme='theme-3'] .status,
+:root[data-theme='theme-3'] .status *,
+:root[data-theme='theme-3'] .chrome,
+:root[data-theme='theme-3'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -699,4 +703,17 @@
     animation: none !important;
     transition: none !important;
   }
+}
+/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
+   Declared here so every `var()` in this file RESOLVES. A `var()` with no
+   declaration anywhere and no fallback is invalid at computed-value time,
+   and the property then silently falls back to `inherit`. Each value below
+   is the one this file was ALREADY rendering with, so nothing on screen
+   moves:
+   --font-serif: the mano chrome's brand face, which inherited --font-sans
+   --w-op:       the value panel.js paintWords stamps over, and the consumers' own fallback
+   ------------------------------------------------------------------------ */
+:root[data-theme='theme-3']{
+  --font-serif: var(--font-sans);
+  --w-op: 1;
 }

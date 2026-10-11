@@ -573,8 +573,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='theme-5'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='theme-5'] .chrome,  .chrome * {
+:root[data-theme='theme-5'] .panel__header,
+:root[data-theme='theme-5'] .panel__header *,
+:root[data-theme='theme-5'] .status,
+:root[data-theme='theme-5'] .status *,
+:root[data-theme='theme-5'] .chrome,
+:root[data-theme='theme-5'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;

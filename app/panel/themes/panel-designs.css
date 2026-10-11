@@ -558,8 +558,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='pd-tele'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='pd-tele'] .chrome,  .chrome * {
+:root[data-theme='pd-tele'] .panel__header,
+:root[data-theme='pd-tele'] .panel__header *,
+:root[data-theme='pd-tele'] .status,
+:root[data-theme='pd-tele'] .status *,
+:root[data-theme='pd-tele'] .chrome,
+:root[data-theme='pd-tele'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -675,7 +679,8 @@
 :root[data-theme='pd-tele'] body .caption--provisional .caption__text {
   margin-left: 7px;
 }
-:root[data-theme='pd-tele'] .caption__time,  .caption__mark {
+:root[data-theme='pd-tele'] .caption__time,
+:root[data-theme='pd-tele'] .caption__mark {
   display: none;
 }
 :root[data-theme='pd-tele'] body[data-surface="strip"] .chrome[data-chrome="head"],
@@ -1254,8 +1259,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='pd-bcast'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='pd-bcast'] .chrome,  .chrome * {
+:root[data-theme='pd-bcast'] .panel__header,
+:root[data-theme='pd-bcast'] .panel__header *,
+:root[data-theme='pd-bcast'] .status,
+:root[data-theme='pd-bcast'] .status *,
+:root[data-theme='pd-bcast'] .chrome,
+:root[data-theme='pd-bcast'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2007,8 +2016,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='pd-mano'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='pd-mano'] .chrome,  .chrome * {
+:root[data-theme='pd-mano'] .panel__header,
+:root[data-theme='pd-mano'] .panel__header *,
+:root[data-theme='pd-mano'] .status,
+:root[data-theme='pd-mano'] .status *,
+:root[data-theme='pd-mano'] .chrome,
+:root[data-theme='pd-mano'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2122,7 +2135,8 @@
   border-left: 0;
   background: transparent;
 }
-:root[data-theme='pd-mano'] .caption__time,  .caption__mark {
+:root[data-theme='pd-mano'] .caption__time,
+:root[data-theme='pd-mano'] .caption__mark {
   display: none;
 }
 :root[data-theme='pd-mano'] body[data-surface="strip"] .chrome[data-chrome="head"],
@@ -2139,6 +2153,19 @@
     animation: none !important;
     transition: none !important;
   }
+}
+/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
+   Declared here so every `var()` in this file RESOLVES. A `var()` with no
+   declaration anywhere and no fallback is invalid at computed-value time,
+   and the property then silently falls back to `inherit`. Each value below
+   is the one this file was ALREADY rendering with, so nothing on screen
+   moves:
+   --font-serif: the mano chrome's brand face, which inherited --font-sans
+   --w-op:       the value panel.js paintWords stamps over, and the consumers' own fallback
+   ------------------------------------------------------------------------ */
+:root[data-theme='pd-mano']{
+  --font-serif: var(--font-sans);
+  --w-op: 1;
 }
 
 /* Sotto -- Cartão de Cinema (pd-cine).
@@ -2703,8 +2730,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='pd-cine'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='pd-cine'] .chrome,  .chrome * {
+:root[data-theme='pd-cine'] .panel__header,
+:root[data-theme='pd-cine'] .panel__header *,
+:root[data-theme='pd-cine'] .status,
+:root[data-theme='pd-cine'] .status *,
+:root[data-theme='pd-cine'] .chrome,
+:root[data-theme='pd-cine'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -3407,8 +3438,12 @@
   color: var(--text-primary);
   font-weight: var(--weight-brand);
 }
-:root[data-theme='pd-instr'] .panel__header,  .panel__header *,  .status,  .status *,
-:root[data-theme='pd-instr'] .chrome,  .chrome * {
+:root[data-theme='pd-instr'] .panel__header,
+:root[data-theme='pd-instr'] .panel__header *,
+:root[data-theme='pd-instr'] .status,
+:root[data-theme='pd-instr'] .status *,
+:root[data-theme='pd-instr'] .chrome,
+:root[data-theme='pd-instr'] .chrome * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;

@@ -2307,14 +2307,26 @@ def scope(block, n):
             scope = ("%s body" % ROOT % n) if mark == 'B' else (ROOT % n)
             parts = []
             for one in lines:
-                one = one.strip()
-                if not one:
-                    continue
-                one = one[3:] if one.startswith('@S@') else one
-                one = one[3:] if one.startswith('@B@') else one
-                one = one.strip()
-                if one:
-                    parts.append('%s %s' % (scope, one))
+                # ONE SOURCE LINE CAN HOLD SEVERAL SELECTORS, and the scope has
+                # to land on EVERY one of them. It used to be prefixed to the
+                # LINE, so a group written `@S@ .a, @S@ .b, ...` on one line came
+                # out with only `.a` scoped and `.b`, `.c` ... LEAKING into every
+                # OTHER theme's document, where the last stylesheet loaded won --
+                # measured 2026-10-11: 4 unscoped selectors in EACH of the five
+                # generated files, all of them from the one group at the end of
+                # SKIN. Splitting at depth 0 keeps `:is(a, b)` and `[x="a,b"]` in
+                # one piece, and `_merge` has already fixed ONE mark per rule, so
+                # every member of a list still gets the SAME scope -- the
+                # invariant its docstring states.
+                for member in _split_top(one, ','):
+                    member = member.strip()
+                    if not member:
+                        continue
+                    member = member[3:] if member.startswith('@S@') else member
+                    member = member[3:] if member.startswith('@B@') else member
+                    member = member.strip()
+                    if member:
+                        parts.append('%s %s' % (scope, member))
             if not parts:
                 continue
             out.append('%s%s {' % (indent, (',\n' + indent).join(parts)))
@@ -2325,6 +2337,78 @@ def scope(block, n):
     emit(nodes)
     return '\n'.join(out)
 
+
+# --------------------------------------------------------------------------- #
+# TOKENS A THEME CONSUMES AND DOES NOT OWN.
+#
+# `_main/_design-lane/assert-themes.js` requires every token a file CONSUMES with
+# `var(--x)` to be DECLARED in that same file, and that rule is the right one: a
+# `var()` with no declaration anywhere and no fallback is INVALID AT
+# COMPUTED-VALUE TIME, so the property silently falls back to `inherit` and the
+# file's own intent is gone without one line of output saying so. Measured
+# 2026-10-11: two tokens broke it, and both belong to the `mano` direction.
+#
+#   --font-serif  the `mano` chrome's brand face. It was declared NOWHERE -- not
+#                 in this repo, not by any script -- so the declaration
+#                 `font-family: var(--font-serif)` never resolved and
+#                 `.chrome__brand` INHERITED its parent instead:
+#                 `.chrome--mano[data-chrome="head"]`, which this same theme sets
+#                 to `var(--font-sans)` (theme-3: "Newsreader", Georgia, serif).
+#                 Pointing the token at `--font-sans` is that same stack, STATED
+#                 instead of inherited.
+#   --w-op        STAMPED AT RUNTIME by `app/panel/panel.js` (`paintWords`), one
+#                 value per word span. Both of its consumers already read
+#                 `var(--w-op, 1)`, so 1 IS the value they paint with before the
+#                 stamp lands; declaring it here moves no pixel, and the inline
+#                 stamp still wins on every span that gets one.
+#
+# `resolve_consumed()` FAILS THE BUILD on any consumed token that is not in this
+# table, so the next one is a decision somebody makes, never another silent
+# `inherit`.
+# --------------------------------------------------------------------------- #
+CONSUMED_NOT_OWNED = {
+    '--font-serif': ('var(--font-sans)',
+                     "the mano chrome's brand face, which inherited --font-sans"),
+    '--w-op': ('1',
+               "the value panel.js paintWords stamps over, and the consumers' own fallback"),
+}
+
+
+def resolve_consumed(text, sel):
+    """Declare, inside the file, EVERY token the file consumes.
+
+    This is the gate's own third rule (`assert-themes.js`), run at generation
+    time so a theme can never be written with a token it does not declare.
+    Comments are stripped first, exactly as the gate's tokenizer does, so a token
+    named in prose is not mistaken for a declaration.
+    """
+    probe = _strip_comments(text)
+    used = set(re.findall(r'var\(\s*(--[a-z0-9-]+)', probe, re.I))
+    declared = set(re.findall(r'(--[a-z0-9-]+)\s*:', probe, re.I))
+    missing = sorted(used - declared)
+    unknown = [m for m in missing if m not in CONSUMED_NOT_OWNED]
+    if unknown:
+        raise SystemExit(
+            'BUILD FAILURE: %s consumes %s and declares it nowhere. A `var()`'
+            ' with no declaration and no fallback is INVALID AT COMPUTED-VALUE'
+            ' TIME: the property silently inherits and the file loses its own'
+            ' intent. Decide the value and add it to CONSUMED_NOT_OWNED in this'
+            ' script.' % (sel, ', '.join(unknown)))
+    if not missing:
+        return text
+    note = '\n'.join('   %-13s %s' % (tok + ':', CONSUMED_NOT_OWNED[tok][1])
+                     for tok in missing)
+    rows = '\n'.join('  %s: %s;' % (tok, CONSUMED_NOT_OWNED[tok][0]) for tok in missing)
+    return text + (
+        '/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------\n'
+        '   Declared here so every `var()` in this file RESOLVES. A `var()` with no\n'
+        '   declaration anywhere and no fallback is invalid at computed-value time,\n'
+        '   and the property then silently falls back to `inherit`. Each value below\n'
+        '   is the one this file was ALREADY rendering with, so nothing on screen\n'
+        '   moves:\n'
+        '%s\n'
+        '   ------------------------------------------------------------------------ */\n'
+        ":root[data-theme='%s']{\n%s\n}\n" % (note, sel, rows))
 
 def build(t):
     # "sel" is the data-theme value ("theme-1" for lane A, "pd-tele" for lane B)
@@ -2383,11 +2467,12 @@ def build(t):
         font_caption=t.get('caption_family', 'var(--font-sans)'),
         font_closed=t.get('closed_family', 'var(--font-sans)'),
     )
-    return (head + scope(skin, sel) + "\n"
+    text = (head + scope(skin, sel) + "\n"
             + scope(fill(CHROME[chrome], t), sel) + "\n"
             + scope(fill(t.get('sig', ''), t), sel) + "\n"
             + scope(STRIP_GUARD, sel) + "\n"
             + scope(MOTION, sel) + "\n")
+    return resolve_consumed(text, sel)
 
 # =========================================================================== #
 # LANE B -- "sotto-transcription-panel-designs.zip", the second zip.
