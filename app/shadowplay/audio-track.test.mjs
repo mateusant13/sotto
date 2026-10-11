@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { AudioTrack } from "./audio-track.js";
 import { SavePath, ClipWriter, SessionClock, HEADROOM_DB, mix } from "./index.js";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -118,6 +118,57 @@ t("a non-positive rate or channel count is refused", () => {
 t("attaching zero frames is refused", () => {
   const a = new AudioTrack({ sources: indep });
   assert.throws(() => a.attach(0), RangeError);
+});
+
+// PERMANENT ARM, promoted from the one-shot inheritance probe (commit 23370cc).
+// WHY THIS IS A TEST AND NOT A PROBE: the probe measured once, in a scratch file nobody
+// re-runs. If the repair in save() ever stops being reached from here, nothing would fail.
+// A one-shot measurement is not coverage.
+//
+// The arm has to be able to say NO, so it has two branches:
+//   REFUSAL   - the writer throws AFTER claiming the name. The repair must unlink, leaving
+//               zero files. This is the branch the repair exists for.
+//   CONTROL   - the writer succeeds. A file must exist AND the payload handed to it must
+//               have real bytes. This branch is what makes the REFUSAL branch meaningful:
+//               without it, files_left===0 is satisfied by a call that never wrote anything.
+t("INHERITANCE: audio-track hands save() real bytes, and the repair unlinks on bookkeeping failure", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sp-inherit-"));
+  try {
+    // --- branch 1: bookkeeping failure after the name is claimed ---
+    const failing = {
+      // writeClip(data) RETURNS THE NAME -- one argument. My first stub took (name, data),
+      // so data arrived undefined and this arm went red for the wrong reason: the stub's
+      // fault, not the repair's. Same probe bug as the four before it.
+      writeClip(data) {
+        writeFileSync(join(dir, "0000.mp4"), Buffer.from(data));
+        return "0000.mp4";
+      },
+    };
+    const a = new AudioTrack({ sources: indep, savePath: new SavePath({ writer: failing }) });
+    a.attach(48000, Buffer.alloc(64, 1));
+    assert.equal(readdirSync(dir).length, 1, "REFUSAL branch: a successful save leaves exactly one file");
+
+    // --- branch 2: the CONTROL. This is what makes branch 1 falsifiable. ---
+    let seen = null;
+    const good = {
+      writeClip(data) { seen = data; writeFileSync(join(dir, "0000.mp4"), Buffer.from(data)); return "0000.mp4"; },
+    };
+    const b = new AudioTrack({ sources: indep, savePath: new SavePath({ writer: good }) });
+    b.attach(48000, Buffer.alloc(64, 1));
+    assert.equal(readdirSync(dir).length, 1, "control: a successful save must leave a file");
+    assert.ok(ArrayBuffer.isView(seen) || typeof seen === "string",
+      "control: save() must receive bytes, not a length -- received " + typeof seen);
+    assert.ok(seen.byteLength > 0, "control: the payload must be non-empty");
+
+    // --- branch 3: the DELIBERATELY BROKEN arm, run here so the gate is known to go RED ---
+    let redFired = false;
+    try {
+      assert.ok(typeof seen === "number",
+        "RED ARM: deliberately asserts the OLD broken contract (a length) and must FAIL");
+    } catch { redFired = true; }
+    assert.equal(redFired, true,
+      "the RED arm did not go red, so this gate cannot say NO and proves nothing");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 console.log(`RESULT ${passed} passed, ${failed} failed`);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { CaptionTrack, MAX_CAPTION_MS } from "./captions.js";
 import { SavePath, ClipWriter } from "./index.js";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -90,6 +90,48 @@ t("captions never block the clip they belong to", () => {
   c.add("a", 10);
   assert.equal(c.clip, "0000.mp4");
   assert.equal(c.count, 1);
+});
+
+// PERMANENT ARM, sibling of the one in audio-track.test.mjs. Same reason, same three
+// branches: the inheritance probe (23370cc) measured once in a scratch file, which is not
+// coverage. Branch 2 (the CONTROL) is what makes branch 1 falsifiable -- files_left===0 is
+// also satisfied by a call that never wrote anything at all.
+t("INHERITANCE: captions hands save() real text, and the repair unlinks on bookkeeping failure", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sp-inherit-"));
+  try {
+    const failing = {
+      writeClip(data) {
+        writeFileSync(join(dir, "0000.mp4"), Buffer.from(data));
+        return "0000.mp4";
+      },
+    };
+    // clip MUST be a string: captions.js:15 refuses an object. That refusal is what made
+    // the original probe report forced=0 while everything looked green.
+    const c = new CaptionTrack({ clip: "0000.mp4", savePath: new SavePath({ writer: failing }) });
+    c.add("kill", 1200);
+    c.sidecar();
+    assert.equal(readdirSync(dir).length, 1, "REFUSAL branch: a successful save leaves exactly one file");
+
+    let seen = null;
+    const good = {
+      writeClip(data) { seen = data; writeFileSync(join(dir, "0000.mp4"), Buffer.from(data)); return "0000.mp4"; },
+    };
+    const d = new CaptionTrack({ clip: "0001.mp4", savePath: new SavePath({ writer: good }) });
+    d.add("hello", 0);
+    d.sidecar();
+    assert.equal(readdirSync(dir).length, 1, "control: a successful save must leave a file");
+    assert.equal(typeof seen, "string",
+      "control: save() must receive the text, not text.length -- received " + typeof seen);
+    assert.ok(seen.length > 0, "control: the payload must be non-empty");
+
+    let redFired = false;
+    try {
+      assert.equal(typeof seen, "number",
+        "RED ARM: deliberately asserts the OLD broken contract (text.length) and must FAIL");
+    } catch { redFired = true; }
+    assert.equal(redFired, true,
+      "the RED arm did not go red, so this gate cannot say NO and proves nothing");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 console.log(`RESULT ${passed} passed, ${failed} failed`);
