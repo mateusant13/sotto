@@ -13,13 +13,80 @@
 // is a comment. These tests pin it.
 //
 // READ THE COUNT BEFORE YOU TRUST IT. "13 passed" is an aggregate of assertions, NOT a
-// statement that 13 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T01:23:16Z:
-//   tests registered   18   (2 synchronous t(), 16 async ta())
-//   branches falsified  3   -- each measured, WINDOW_UTC 2026-10-11T02:04:49Z onward
+// statement that 13 behaviours are guarded. Recounted WINDOW_UTC 2026-10-11T02:48:10Z,
+// counting `^t(` and `^ta(` from the SOURCE, not from the RESULT line:
+//   tests registered   20   (2 synchronous t(), 18 async ta())
+//   tests RUNNING      20   RESULT 20 passed / 0 failed
+// These two used to disagree: this header said 18 while the file held 19, because a test
+// was added here after the header was written and the number was never recomputed --
+// the identical defect an independent review just found in the sibling encoder.test.mjs.
+// Count from the source. Recount at every change.
+//   branches falsified  3, measured by me. WINDOW_UTC 2026-10-11T02:04:49Z onward:
 //       (a) the zero-frame refusal        red=2   15 passed / 2 failed, exit 1
 //       (b) the 6-decimal rounding        red=2   14 passed / 2 failed, exit 1
 //       (c) the assertPositive guard       red=2   16 passed / 2 failed, exit 1
-//   branches NOT falsified 15.
+//   An independent review (FRAME-ACCOUNTING-INDEPENDENT-REVIEW.txt, WINDOW
+//   2026-10-11T02:41-02:47Z) reports 7 red arms against this suite, every arm run twice.
+//   That is ITS count, not mine -- I have not reproduced it, so the falsified total is
+//   3 measured + 7 claimed by a second party, NOT 7. Do not merge them.
+//   WHOLE-MODULE SWEEP, WINDOW_UTC 2026-10-11T03:04:22Z + 03:05:23Z, N=2 per arm,
+//   lines-differ=1 on every arm, INVALID=0. This supersedes the counts above.
+//       10 guards identified of 10 total in frame-accounting.js.  10 swept.  10 valid results.
+//         RED   5 :  L186  L198  L205  L278  L283
+//         GREEN 5 :  L215  L232  L235  L242  L301
+//   So HALF this module's guards can be deleted and the suite still reports 19/19.
+//   The three earlier named arms (a)(b)(c) and the reviewer's 7 are NOT reconciled with
+//   this list: they were counted by a different method on a different set of lines.
+//   Do not merge the two totals. The sweep is the one with a verified extractor.
+//   branches falsified   5   (not the 3 written above -- that figure is superseded)
+//   branches NOT falsified  4 -- this figure was 5 until WINDOW_UTC 2026-10-11T04:41:41Z,
+//   when one test was added that covers L232. The other four are NOT four test gaps.
+//
+//   CLASSIFICATION, corrected at WINDOW_UTC 2026-10-11T04:55:39Z. Measured, not argued:
+//
+//       L215  INFALSIFIABLE BY DELETION. Not an untested guard -- a REDUNDANT one.
+//             Proof, two runs of assessDelivery(clip, 0.1, 0.1) against a 2516-byte clip:
+//                 guard ALIVE                        guard DELETED (lines-differ=1, parses)
+//                 expectedFrames   = 0                 expectedFrames   = 0
+//                 contiguousRatio  = 0                 contiguousRatio  = 0
+//                 coverage         = 1                 coverage         = 1
+//                 contentSufficient= true              contentSufficient= true
+//             Identical. Cause: 10/0 = Infinity, and the NEXT line already maps a
+//             non-finite r to 0 -- `Number.isFinite(r) ? Number(r.toFixed(RATIO_DECIMALS)) : 0`.
+//             Line 215 and line 217 do the same job by different routes.
+//             CONSEQUENCE: a test asserting contiguousRatio === 0 passes either way. Writing
+//             that test would be theatre -- green with and without the code it claims to
+//             protect. THE FIX IS NOT A TEST. Either delete the redundant guard or make the
+//             two routes distinguishable. That is a behaviour change: OWNER DECISION.
+//
+//       L232  COVERED. The empty-ffprobe-output test (this file) kills it: 19 passed,
+//             1 failed, EXIT=1. Recipe recorded inline at the test.
+//
+//       L235  multi-token refusal        UNWATCHED. Deleting it leaves the suite at 20/0.
+//       L242  non-numeric token refusal  UNWATCHED. Deleting it leaves the suite at 20/0.
+//       L301  empty hash stream refusal  UNWATCHED. Deleting it leaves the suite at 20/0.
+//             For these three the question is still OPEN and the two answers demand
+//             opposite fixes: UNREACHABLE means delete the code, REACHABLE-but-untested means
+//             add a test. Not measured. Do not report that distinction as made.
+//             Known: -select_streams v:0 emits exactly one line for a two-stream container,
+//             so L235 is not reachable by that route (POPULATION of that check: 1 container).
+//
+//   SO: 3 test gaps, 1 design redundancy, 0 unmeasured guards left unclassified.
+//
+//   CORRECTION TO MY OWN LAST REPORT: I wrote that this figure would become 18 once I added
+//   the two missing arms. That is wrong arithmetic. A GREEN arm adds nothing to the falsified
+//   count -- 19 - 3 = 16 either way. What the arms changed is not the number but its
+//   epistemics. WINDOW_UTC 2026-10-11T02:53:35Z, N=2 per arm, control 19/0:
+//       ARM-G  `if (tokens.length > 1)` -> `if (false)`      19 passed / 0 failed, EXIT=0
+//       ARM-H  `if (!/^\d+$/.test(token))` -> `if (false)`   19 passed / 0 failed, EXIT=0
+//   So 2 of these 16 are now MEASURED-UNWATCHED: the guard is reachable, nothing asserts it,
+//   and deleting it changes no observable output. The other 14 remain unknown-unwatched, which
+//   is a weaker claim: absence of evidence, not evidence of absence. Do not merge the two.
+//
+//   There is a trap in writing this header at all, and I fell into it twice. Two arms that
+//   stay green look identical in this file to two arms nobody ran. The count cannot tell them
+//   apart; only the prose above can. That is the same reason the encoder.test.mjs header said
+//   9 when the file held 14.
 //
 // AND ONE THAT WAS MEASURED INVISIBLE, NOW CLOSED. Measured WINDOW_UTC 2026-10-11T02:10:42Z:
 // deleting `seenInRun.clear()` (frame-accounting.js:280) left this suite at 18 passed /
@@ -49,6 +116,19 @@
 //   Driving assessDelivery at a real zero-frame container returns
 //     "ffprobe did not return a frame count; refusing to report 0..."
 //   so the call cannot return, and the zero-denominator branch is UNREACHABLE defence.
+//
+// CORRECTED BY REVIEW, and the correction matters. An independent reviewer sharpened this
+// and is right to: UNREACHABLE is the wrong word, and it flatters the suite. The branch is
+// REACHABLE in principle -- a future caller can divide by zero -- but it is NOT FALSIFIABLE
+// by deletion. Removing the guard at line 215 changes no observable output, because
+// 10 / 0 evaluates to Infinity and line 217's `Number.isFinite(r) ? . : 0` already maps
+// that to 0 on its own. So a "delete the whole guard" mutation arm would stay GREEN here.
+// Reachable and falsifiable are different properties, and only the second one is evidence.
+//   the SAME inconsistency, unresolved, and it is a behaviour question, not a test question:
+//   at assessDelivery(clip, 0.1, 0.1) the module returns `contiguousRatio: 0` AND
+//   `contentSufficientToCoverClock: true` in the same object. The guard yields 0 silently
+//   while the boolean says the clock is covered. Owner call: should assessDelivery refuse
+//   when Math.round(expectedFps * expectedSeconds) is 0?
 //
 // It stays as belt-and-braces against a future caller. It is not coverage this suite can
 // acquire, and claiming it as a gap would be as wrong as claiming it as a passing test.
@@ -368,7 +448,31 @@ ta("a picture repeated mid-clip breaks the streak; the run does not span the rep
     `and the whole-file distinct count is a DIFFERENT question: got ${r.distinctFrames}`);
 });
 
-// ------------------------------------------------- drain the async tests -- LAST, always.
+// ------------------------------------------------- L232: empty ffprobe output.
+  // WINDOW_UTC 2026-10-11T04:40:34Z: an audio-only container makes ffprobe print NOTHING for
+  // -select_streams v:0. countFrames then throws the empty-output refusal rather than
+  // returning 0. Measured, not inferred -- this is the input, not a guess at one.
+  // L232 was one of five guards a whole-module mutation sweep found GREEN. This test is
+  // what turns that GREEN into a RED that the mutation cannot survive.
+  ta("countFrames refuses an empty ffprobe result instead of reporting 0", async () => {
+    const noVideo = join(dir, "no-video.mkv");
+    await runTool("ffmpeg", [
+      "-y", "-v", "error",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=0.3",
+      "-c:a", "pcm_s16le", noVideo,
+    ]);
+    assert.ok(existsSync(noVideo), "the fixture must exist or this proves nothing");
+    let msg = null, returned = null;
+    try { returned = await countFrames(noVideo); }
+    catch (e) { msg = String(e.message); }
+    assert.equal(returned, null,
+      `the module must REFUSE, not return a number: got ${returned}`);
+    assert.ok(msg !== null, "countFrames must throw on an empty ffprobe result");
+    assert.match(msg, /empty ffprobe output/,
+      `the refusal must name its own cause: got ${msg}`);
+  });
+
+  // ------------------------------------------------- drain the async tests -- LAST, always.
 // This loop MUST stay below every ta() call. It was above one registration once, and the
 // result was a suite that reported 12/0 green while silently never running its own test:
 // a green that no observation can make false, the exact failure mode this whole exercise

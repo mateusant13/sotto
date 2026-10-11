@@ -2,25 +2,49 @@
 // exported from the barrel (index.js) and nothing in the repository exercised it.
 //
 // READ THE COUNT BEFORE YOU TRUST IT. "9 passed" is an aggregate of assertions, NOT a
-// statement that 9 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T01:30:26Z, counting
-// registrations from the source rather than from the RESULT line:
-//   tests registered   9   (all synchronous; 0 async)
-//   branches falsified  4   -- measured WINDOW_UTC 2026-10-11T01:52:32Z
+// statement that 14 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T02:46:35Z,
+// counting registrations from the source rather than from the RESULT line:
+//   tests registered  14   (all synchronous; 0 async)
+//   tests RUNNING       14   RESULT 14 passed / 0 failed
+// These two used to disagree: this header said 9 while the file held 14, because tests were
+// added here after the header was written and the number was never recomputed. An independent
+// review (ENCODER-INDEPENDENT-REVIEW.txt) caught it. Recount at every change.
+//
+//   branches falsified  4, by the mutations below. RE-MEASURED N=2 each, WINDOW_UTC
+//   2026-10-11T02:58:46Z, control 14 passed / 0 failed. Every arm below now reads
+//   12 passed / 2 failed, exit 1 -- NOT the 7/2 and 8/1 figures recorded at 01:52:32Z,
+//   because tests were added to this file after those were written. Third stale-header
+//   defect in this codebase; count from the source at every change.
 //       (a) the IDR guard, by replacing
 //           `if (slice[0].type !== FRAME_TYPES.IDR)` with `if (false)`:
-//           7 passed / 2 failed, exit 1.
+//           12 passed / 2 failed, exit 1.   N=2, both runs identical.
 //       (b) the payload guard's lower bound, by dropping the `|| payloadBytes < 0` half of
-//           the condition at encoder.js:27: 8 passed / 1 failed, exit 1.
+//           the condition at encoder.js:27: 12 passed / 2 failed, exit 1.  N=2, identical.
 //       (c) the empty-slice guard at encoder.js:41, by returning
 //           `{frames: 0, bytes: 0, startType: IDR}` instead of throwing:
-//           8 passed / 1 failed, exit 1.
+//           12 passed / 2 failed, exit 1.   N=2, both runs identical.
 //       (d) the constructor guard's lower bound, by dropping the `|| gopSize < 1` half of
-//           the condition at encoder.js:14: 8 passed / 1 failed, exit 1.
-//       (b), (c) and (d) each turn exactly ONE test red, so each is covered but only
-//       singly: deleting that test leaves its guard with nothing watching it.
-//   branches NOT falsified 5. Their assertions pass, and nothing here shows that removing
-//                                 the code they exercise would turn any of them red.
-// Sibling file: frame-accounting.test.mjs carries the same disclosure for its own count.
+//           the condition at encoder.js:14: 12 passed / 2 failed, exit 1.  N=2, identical.
+//
+//   ON (b) AND (d), AND ON THE WORD "WEAK". A review called these two weak mutants because
+//   they drop HALF a boolean condition rather than the whole guard, so they show the lower
+//   bound is asserted rather than that the guard is load-bearing. I tested that claim instead
+//   of arguing with it, by removing each guard ENTIRELY (same 02:58:46Z window, N=2):
+//       b WHOLE guard removed  ->  12 passed / 2 failed, exit 1
+//       d WHOLE guard removed  ->  12 passed / 2 failed, exit 1
+//   Observationally IDENTICAL to removing half. So the reviewer's methodological point
+//   stands -- the half-mutant isolates the lower bound only -- but this suite cannot tell
+//   the two apart: nothing extra turns red when the whole guard goes. Recording that here
+//   because "weak mutant" invites the reader to assume a coverage hole that is not there.
+//
+//   branches NOT falsified  10   (14 registered minus the 4 above)
+//   assertions that pass with nothing showing that removing the code they exercise would
+//   turn them red.
+//
+//   N PER ARM = 1. Every mutation above was run once. No variance is known for any red
+//   count here, and none of these five mutants has been re-run.
+//
+//   Sibling file: frame-accounting.test.mjs carries the same disclosure for its own count.
 //
 // WHAT THIS SUITE IS FOR: encoder.js encodes the product's cross-cutting invariant -- a
 // saved clip is REMUXED from already-encoded bytes, must START on an IDR, and is never
