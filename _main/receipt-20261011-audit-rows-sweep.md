@@ -446,3 +446,41 @@ contain the hash of the bytes that would contain it.
 - It does not claim the two rewritten oracles are sound beyond the arms driven here: `#56`'s arm was
   driven and blinded; `#57`'s arm was driven and its control line was PROVEN to be a label.
 - It does not claim "no window appeared" anywhere: no window-producing code was run at all.
+
+
+---
+
+## ADDENDUM 2 — 2026-10-11 (Lead): the ONE live defect of this sweep is FIXED
+
+**#9B is closed in PRODUCT code, not only measured.** `worker/wasapi_loopback.py` now declares
+`AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY = 0x00000001` beside `..._SILENT`, carries a
+`discontinuity_packets` counter and increments it in the packet loop; the SECOND loop that copies
+that pump (`worker/sotto_worker.py`, the process-loopback tap) got the same three things, and the
+`TAP_STALLED` ledger line now ends with `disco_packets=`. The packet's samples are still USED --
+a one-off discontinuity is exactly what a glitch sounds like, and silencing it would delete audio
+the owner asked for -- so this changes the LEDGER, not the audio.
+
+Both colours, on THIS instrument, whose harness had to be repaired for it first:
+
+- The harness built the tap with `__new__` (no `__init__`) and seeded only the two counters it
+  knew, so the new increment was an `AttributeError` INSIDE the pump thread -- which killed the
+  thread and turned ALL FOUR arms into crashed-pump readings, not measurements. It now seeds
+  `tap.discontinuity_packets`, reports it in the counters dict, and `arm_r9b`'s `same_counters`
+  includes it: without that, the comparison could not see the very fix it exists to measure.
+- The m9b mutant is INVERTED: it used to SIMULATE the fix; it now REMOVES the counter and
+  reproduces the pre-2026-10-11 state. `EXPECT['r9b']` flipped from
+  `{'live': True, 'mutant': False}` to `{'live': False, 'mutant': True}`.
+- Measured, three consecutive runs, identical: `VERDICT: PASS  live: 0 of 4 defect claims present
+  -- every one refuted on the live bytes; 4/4 mutants flipped exactly their own arm`, rc=0.
+  The closing sentence is now COMPUTED from the readings: the old one asserted "1 of 4 ... (the
+  discontinuity bit)" as a fixed string and went stale the moment the bit began to be examined.
+  `--neg-arm` skips the live block, so its verdict now says "live NOT probed in this mode ...
+  no live set is claimed" instead of printing a set it never measured.
+
+**Row #9 is therefore APPLIED and `F2` (inherited from it) with it:** all three of its claims are
+false on the live bytes -- SILENT IS examined, the loss HAS a counter, and DATA_DISCONTINUITY is
+examined now, with a mutant proving the counter is load-bearing.
+
+**NOT MEASURED, unchanged:** nothing was launched; the counter was driven by a SCRIPTED vtable, so
+no real device has yet set the bit on this box. The fix is measured against the instrument's
+scripted discontinuity, not against a live glitch.

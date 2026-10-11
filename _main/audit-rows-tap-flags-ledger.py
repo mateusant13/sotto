@@ -82,10 +82,18 @@ MUTANTS = {
     'm9a-silent-test-removed': (
         'if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:',
         'if not data:'),
-    # #9b -- the discontinuity bit joins the test, so the packet becomes visible.
-    'm9b-discontinuity-bit-tested': (
-        'if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:',
-        'if flags.value & (AUDCLNT_BUFFERFLAGS_SILENT | 0x00000001) or not data:'),
+    # #9b -- THE COUNTER IS REMOVED, i.e. the pre-2026-10-11 state: the flag is read
+    # and thrown away, so a discontinuity run is byte- and peak-identical to a clean
+    # one and the defect is present again. (Until 2026-10-11 this mutant went the
+    # other way -- it SIMULATED the fix -- because the fix did not exist yet.)
+    'm9b-discontinuity-counter-removed': (
+        '                if flags.value & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY:\n'
+        '                    # Counted, not swallowed -- and NOT treated as a restart: the\n'
+        '                    # position comparison above already counts the gap the flag\n'
+        '                    # often accompanies. See `discontinuity_packets` above.\n'
+        '                    self.discontinuity_packets += 1\n'
+        '                if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:',
+        '                if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:'),
     # #9c -- the device-position comparison (the loss counter) is removed.
     'm9c-position-gap-counter-removed': (
         '                if prev_pos is not None and pos.value != prev_pos + frames.value:\n'
@@ -213,6 +221,11 @@ def drive(mod, packets, block, frames_per_block_ms=100):
     tap._capture = object()
     tap.silent_packets = 0
     tap.position_gap_packets = 0
+    # SEEDED 2026-10-11: the shipped _pump now counts the discontinuity bit too,
+    # and this harness builds the tap with __new__ (no __init__), so an unseeded
+    # attribute is an AttributeError INSIDE the pump thread -- which kills the
+    # thread and turns every arm into a crashed-pump reading, not a measurement.
+    tap.discontinuity_packets = 0
     delivered = []
     tap.on_block = lambda arr: delivered.append([float(x) for x in arr])
 
@@ -234,6 +247,7 @@ def drive(mod, packets, block, frames_per_block_ms=100):
         'max_peak': round(max(peaks), 6) if peaks else None,
         'silent_packets': tap.silent_packets,
         'position_gap_packets': tap.position_gap_packets,
+        'discontinuity_packets': tap.discontinuity_packets,
         'packets_served': script.served,
         'releases': script.releases,
         'concatenate_calls': proxy.calls,
@@ -268,7 +282,11 @@ def arm_r9b(mod):
     same_audio = control['peak_per_block'] == disco['peak_per_block']
     same_counters = (control['silent_packets'] == disco['silent_packets']
                      and control['position_gap_packets']
-                     == disco['position_gap_packets'])
+                     == disco['position_gap_packets']
+                     # THE COUNTER THIS CLAIM IS ABOUT (added 2026-10-11). Without it
+                     # this comparison could not see the very fix it exists to measure.
+                     and control['discontinuity_packets']
+                     == disco['discontinuity_packets'])
     return {
         'control': control,
         'discontinuity': disco,
@@ -302,14 +320,17 @@ def arm_r39(mod):
 ARMS = ('r9a', 'r9b', 'r9c', 'r39')
 MEASURE = {'r9a': arm_r9a, 'r9b': arm_r9b, 'r9c': arm_r9c, 'r39': arm_r39}
 MUTANT_OF = {'r9a': 'm9a-silent-test-removed',
-             'r9b': 'm9b-discontinuity-bit-tested',
+             'r9b': 'm9b-discontinuity-counter-removed',
              'r9c': 'm9c-position-gap-counter-removed',
              'r39': 'm39-always-concatenate'}
 DEFECT_KEY = {'r9a': 'silent_flag_ignored', 'r9b': 'discontinuity_invisible',
               'r9c': 'loss_uncounted', 'r39': 'copies_even_with_one_pending'}
 EXPECT = {
     'r9a': {'live': False, 'mutant': True},
-    'r9b': {'live': True, 'mutant': False},
+    # r9b FLIPPED 2026-10-11, the day the counter landed in the shipped tap: the live
+    # tree now REFUTES the claim and the mutant (counter removed) REPRODUCES it, so
+    # the instrument keeps its power in the new state instead of pinning the old one.
+    'r9b': {'live': False, 'mutant': True},
     'r9c': {'live': False, 'mutant': True},
     'r39': {'live': False, 'mutant': True},
 }
@@ -392,9 +413,17 @@ def main(argv=None):
             + sha256_file(path)[:16])
 
     verdicts = []
+    live_present = []
+    live_measured = False
     if not parsed.neg_arm:
         live = load_module(tap_path, 'audit_tap_live')
         results = run_all(live)
+        # The live present-set is RECORDED, not hard-coded: the closing VERDICT used to
+        # assert "1 of 4 ... (the discontinuity bit)" as a fixed sentence, and that
+        # sentence went stale the day the bit started being examined (2026-10-11).
+        live_measured = True
+        live_present = [name for name in ARMS
+                        if results[name].get(DEFECT_KEY[name]) is True]
         expected = {name: EXPECT[name]['live'] for name in ARMS}
         ok = report('LIVE tap -- every arm must read what the ARM declares',
                     results, expected)
@@ -415,8 +444,20 @@ def main(argv=None):
         say('VERDICT: FAIL  (' + str(len(verdicts) - len(failed)) + '/'
             + str(len(verdicts)) + ' labels matched; wrong: ' + str(failed) + ')')
         return 1
-    say('VERDICT: PASS  live: 1 of 4 defect claims present (the discontinuity '
-        'bit), 3 refuted; 4/4 mutants flipped exactly their own arm')
+    if not live_measured:
+        # A verdict may not claim a reading this mode never took: with --neg-arm the
+        # live block above is skipped, so it says so instead of printing a set.
+        live_text = ('live NOT probed in this mode (--neg-arm: mutants only), so no live '
+                     'set is claimed')
+    elif live_present:
+        live_text = (str(len(live_present)) + ' of ' + str(len(ARMS))
+                     + ' defect claims present (' + ', '.join(live_present) + ')')
+    else:
+        live_text = ('0 of ' + str(len(ARMS)) + ' defect claims present -- every one '
+                     'refuted on the live bytes')
+    say('VERDICT: PASS  live: ' + live_text
+        + '; ' + str(len(ARMS)) + '/' + str(len(ARMS))
+        + ' mutants flipped exactly their own arm')
     return 0
 
 

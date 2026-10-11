@@ -3548,8 +3548,16 @@ class SottoShell:
         # LOAD; clearing the flag makes the stage->panel navigation never
         # complete, so `_on_loaded` never fires and the shell HANGS (measured
         # `_main/_flash-live-0.log`: stops at `STAGING_LOADED`, rc=-999, never
-        # reaches PANEL_VISIBILITY_ON_SCREEN). Transparency must stay on. The
-        # startup flash is handled by the OFFSCREEN creation position below.
+        # reaches PANEL_VISIBILITY_ON_SCREEN). Transparency must stay on.
+        # The startup flash is NOT handled by an off-screen creation position:
+        # there is NO off-screen creation left in this file (measured 2026-10-11:
+        # six OFFSCREEN mentions in prose, zero executable; the constant was
+        # REMOVED 2026-10-06, see :1010). It is handled by `_gate_form_show`
+        # (installed from `_on_before_show`), which REFUSES pywebview's own
+        # full-opacity `Show()` until somebody asked for the panel; the cure and
+        # its measurements are in `_main/receipt-20261007-panel-startup-flash.md`.
+        # This sentence pointed at the off-screen position until 2026-10-11, and
+        # it sent readers looking for code that is not there.
         self.window.events.before_show += self._on_before_show
         self.window.events.loaded += self._on_loaded
         self.window.events.closing += self._on_closing

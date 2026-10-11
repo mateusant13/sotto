@@ -66,6 +66,7 @@ COM_ALREADY = "already"    # RPC_E_CHANGED_MODE: nothing was taken to give back
 AUDCLNT_SHAREMODE_SHARED = 0
 AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000
 AUDCLNT_BUFFERFLAGS_SILENT = 0x00000002  # GetBuffer: this packet is SILENCE
+AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY = 0x00000001  # GetBuffer: this packet LOST FRAMES
 
 WAVE_FORMAT_PCM = 0x0001
 WAVE_FORMAT_IEEE_FLOAT = 0x0003
@@ -736,6 +737,16 @@ class WasapiLoopbackTap:
         # diagnostic: it consumes the position out-parameter of GetBuffer, which
         # used to be an uninitialised 5th vtable slot (F16).
         self.position_gap_packets = 0
+        # Packets GetBuffer marked AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY (0x1):
+        # the endpoint lost frames INSIDE the packet. COUNTED since 2026-10-11
+        # (audit row #9B, found by the audit-row sweep): until then the flag was
+        # read and thrown away, so a run with it set was byte- and peak-identical
+        # to a clean one, counters included -- invisible to every instrument and
+        # to the operator. The packet's samples are still USED: a one-off
+        # discontinuity is exactly what a glitch sounds like, and silencing it
+        # here would delete audio the owner asked for. This changes the LEDGER,
+        # not the audio.
+        self.discontinuity_packets = 0
 
     # -- name surface the worker's reporting uses ----------------------------
     @property
@@ -993,6 +1004,11 @@ class WasapiLoopbackTap:
                 if prev_pos is not None and pos.value != prev_pos + frames.value:
                     self.position_gap_packets += 1
                 prev_pos = pos.value
+                if flags.value & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY:
+                    # Counted, not swallowed -- and NOT treated as a restart: the
+                    # position comparison above already counts the gap the flag
+                    # often accompanies. See `discontinuity_packets` above.
+                    self.discontinuity_packets += 1
                 if flags.value & AUDCLNT_BUFFERFLAGS_SILENT or not data:
                     # AUDCLNT_BUFFERFLAGS_SILENT says the endpoint is not rendering
                     # and the packet's BYTES ARE NOT VALID SAMPLES. The flags were

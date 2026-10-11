@@ -1764,7 +1764,8 @@ _PLP_NEEDS = (
     "IID_IAudioClient", "IID_IAudioCaptureClient",
     "_com_init", "_com_uninit", "_vtbl", "_release", "_fmt", "_guid",
     "COM_REF_TAKEN", "AUDCLNT_SHAREMODE_SHARED", "AUDCLNT_STREAMFLAGS_LOOPBACK",
-    "AUDCLNT_BUFFERFLAGS_SILENT", "WAVE_FORMAT_IEEE_FLOAT", "WAVE_FORMAT_PCM",
+    "AUDCLNT_BUFFERFLAGS_SILENT", "AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY",
+    "WAVE_FORMAT_IEEE_FLOAT", "WAVE_FORMAT_PCM",
     "WAVE_FORMAT_EXTENSIBLE", "HNS_100MS",
 )
 
@@ -2270,6 +2271,10 @@ class ProcessLoopbackTap:
         self.pump_exit_where = ""
         self.silent_packets = 0
         self.position_gap_packets = 0
+        # Packets GetBuffer marked AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY (0x1):
+        # counted since 2026-10-11 (audit row #9B) so a glitch in the ring is a
+        # NUMBER here instead of nothing at all. The samples are still used.
+        self.discontinuity_packets = 0
         # What the open actually did, for the ledger and for a diagnosis.
         self.init_arms = []
         self.init_winner = None
@@ -2455,6 +2460,10 @@ class ProcessLoopbackTap:
                 if prev_pos is not None and pos.value != prev_pos + frames.value:
                     self.position_gap_packets += 1
                 prev_pos = pos.value
+                if flags.value & wl.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY:
+                    # Counted, not swallowed (audit row #9B): the same bit the
+                    # endpoint tap now counts, on this loop too.
+                    self.discontinuity_packets += 1
                 if flags.value & wl.AUDCLNT_BUFFERFLAGS_SILENT or not data:
                     # The packet's BYTES ARE NOT VALID SAMPLES when the endpoint is
                     # not rendering, so it is ACCUMULATED AS ZEROS rather than
@@ -5411,7 +5420,8 @@ def main():
                                 f"pump_hr={getattr(inner, 'pump_exit_hr', None)} "
                                 f"pump_where={getattr(inner, 'pump_exit_where', '')!r} "
                                 f"silent_packets={getattr(inner, 'silent_packets', None)} "
-                                f"gap_packets={getattr(inner, 'position_gap_packets', None)}")
+                                f"gap_packets={getattr(inner, 'position_gap_packets', None)} "
+                                f"disco_packets={getattr(inner, 'discontinuity_packets', None)}")
                             # Re-open IN PLACE: the first stalls re-open the SAME endpoint (an
                             # invalidated audio engine is cured by a fresh client); after that the
                             # audio may simply have MOVED, so take the freshest enumeration first

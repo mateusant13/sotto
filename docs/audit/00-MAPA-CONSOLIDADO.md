@@ -45,7 +45,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 
 | # | achado | onde | estado |
 |---|---|---|---|
-| 9 | `flags` lido e descartado → `DATA_DISCONTINUITY`/`SILENT` nunca examinados, a perda nao tem contador | `worker/wasapi_loopback.py:475/477` | **OPEN** |
+| 9 | `flags` lido e descartado → `DATA_DISCONTINUITY`/`SILENT` nunca examinados, a perda nao tem contador | `worker/wasapi_loopback.py:475/477` | **[2026-10-11] APPLIED** — as TRES afirmacoes cairam. `SILENT` E examinado (`silent_packets`) e a perda TEM contador (`position_gap_packets`): medidos pelo sweep de linhas (refutados). E `DATA_DISCONTINUITY` passou a ser EXAMINADO nesta sessao: `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY = 0x00000001` + `discontinuity_packets` no tap de endpoint E no loop do PLP (`sotto_worker.py`), com `disco_packets=` na linha `TAP_STALLED`. Provas: `py -3 _main/audit-rows-tap-flags-ledger.py` → `VERDICT: PASS  live: 0 of 4 defect claims present`, rc=0, e o mutante `m9b-discontinuity-counter-removed` REPRODUZ o defeito (o mutante antigo simulava a cura, porque ela nao existia). As amostras continuam a ser USADAS: muda o LEDGER, nao o audio. NAO MEDIDO: nenhum dispositivo real pos o bit — o instrumento usa um vtable scriptado |
 | 10 | `exec_js` injeta cada script DUAS vezes | `sotto_webview.py:1409-1421` | **APPLIED** — resta uma so `self._ui(_run)` (`sotto_webview.py:1434`) |
 | 11 | o falsificador "sem audio" reescreve um erro REAL do worker para `CAPTURE_NOT_STARTED`/`busy` | `sotto_webview.py:1888-1891, :196` | **OPEN** |
 | 12 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte | `sotto_webview.py:2052-2068` | **OPEN** |
@@ -189,7 +189,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
 | F1 | pump a 25 ms contra um anel de 22 ms -> ~18 % dos quadros perdidos em silencio (`audio-path.md:268`) | **APPLIED** — herdado da linha #1 (period = min(0.005, ...) = 5 ms) |
-| F2 | o overflow e invisivel porque flags e lido e descartado (`audio-path.md:274`) | **OPEN** — herdado da linha #9 |
+| F2 | o overflow e invisivel porque flags e lido e descartado (`audio-path.md:274`) | **APPLIED** — herdado da linha #9, fechada em 2026-10-11: o `flags` deixou de ser descartado (SILENT contado, `DATA_DISCONTINUITY` contado agora, posicao comparada) e a perda de posicao tem o seu proprio contador |
 | F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |
 | F4 | CoInitializeEx rejeita S_FALSE e um segundo open na mesma thread rebenta (`audio-path.md:284`) | **APPLIED** — herdado da linha #37 (medido pos-fix em flat-endpoint.md:125-142) |
 | F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **OPEN** — herdado da linha #38 |
@@ -307,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 59
-- **OPEN:** 80
+- **APPLIED:** 61
+- **OPEN:** 78
 - **IN-FLIGHT:** 0
 
-Conferencia: 59 + 80 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 61 + 78 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
@@ -338,7 +338,9 @@ a nota que impede o snippet embutido no `docs/oss-approaches-20261006.md` de ser
 instrumento vivo);
 #49, #50 e #51 (deriva documental nos tres docs da OSS/live-captions/full-audit) — a nota que
 faltava, o SINAL corrigido contra a medicao, e a regra de juncao nomeada como historica com a viva
-ao lado.
+ao lado);
+#9 e a F2 herdada dela (o `flags` descartado -> APPLIED: o unico defeito vivo apanhado pelo sweep
+foi corrigido no PRODUTO — `DATA_DISCONTINUITY` contado nos dois loops, com o mutante que o prova).
 
 ---
 
