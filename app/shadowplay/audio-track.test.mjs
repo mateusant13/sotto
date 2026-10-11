@@ -131,7 +131,7 @@ t("attaching zero frames is refused", () => {
 //   CONTROL   - the writer succeeds. A file must exist AND the payload handed to it must
 //               have real bytes. This branch is what makes the REFUSAL branch meaningful:
 //               without it, files_left===0 is satisfied by a call that never wrote anything.
-t("INHERITANCE: audio-track hands save() real bytes, and the repair unlinks on bookkeeping failure", () => {
+t("INHERITANCE: audio-track hands save() real bytes, not a length", () => {
   const dir = mkdtempSync(join(tmpdir(), "sp-inherit-"));
   try {
     // --- branch 1: bookkeeping failure after the name is claimed ---
@@ -158,7 +158,8 @@ t("INHERITANCE: audio-track hands save() real bytes, and the repair unlinks on b
     assert.equal(readdirSync(dir).length, 1, "control: a successful save must leave a file");
     assert.ok(ArrayBuffer.isView(seen) || typeof seen === "string",
       "control: save() must receive bytes, not a length -- received " + typeof seen);
-    assert.ok(seen.byteLength > 0, "control: the payload must be non-empty");
+    const size = typeof seen === "string" ? Buffer.byteLength(seen, "utf8") : seen.byteLength;
+    assert.ok(size > 0, "control: the payload must be non-empty");
 
     // --- branch 3: the DELIBERATELY BROKEN arm, run here so the gate is known to go RED ---
     let redFired = false;

@@ -96,7 +96,7 @@ t("captions never block the clip they belong to", () => {
 // branches: the inheritance probe (23370cc) measured once in a scratch file, which is not
 // coverage. Branch 2 (the CONTROL) is what makes branch 1 falsifiable -- files_left===0 is
 // also satisfied by a call that never wrote anything at all.
-t("INHERITANCE: captions hands save() real text, and the repair unlinks on bookkeeping failure", () => {
+t("INHERITANCE: captions hands save() real text, not a length", () => {
   const dir = mkdtempSync(join(tmpdir(), "sp-inherit-"));
   try {
     const failing = {
