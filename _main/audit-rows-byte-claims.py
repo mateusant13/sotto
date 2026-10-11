@@ -97,14 +97,21 @@ def build_mutants(work):
     MUTANTS['config_13_keys'] = os.path.join(work, 'config-13-keys.json')
     write(MUTANTS['config_13_keys'], json.dumps(inflated, indent=2) + '\n')
     shell = read(SHELL)
-    if shell.count(STALE_OFFSCREEN) != 1:
-        say('SETUP ERROR: the r33 anchor appears '
-            + str(shell.count(STALE_OFFSCREEN)) + ' time(s)')
+    # RE-ANCHORED 2026-10-11: the live shell no longer CONTAINS the stale sentence (row #33
+    # was closed in the product code), so the mutant now RESTORES it instead of deleting it,
+    # and the anchor is the corrected comment line it gets appended after. A gate that needs
+    # the defect present to build its own control is a gate that pins the defect.
+    RESTORE_AFTER = '        # it sent readers looking for code that is not there.'
+    if shell.count(RESTORE_AFTER) != 1:
+        say('SETUP ERROR: the r33 restore anchor appears '
+            + str(shell.count(RESTORE_AFTER)) + ' time(s)')
         raise SystemExit(2)
-    MUTANTS['shell_no_stale_comment'] = os.path.join(
-        work, 'sotto_webview_no_stale_comment.py')
-    write(MUTANTS['shell_no_stale_comment'],
-          shell.replace(STALE_OFFSCREEN, 'the flash is not discussed here.'))
+    _nl = '\r\n' if '\r\n' in shell else '\n'
+    MUTANTS['shell_stale_comment_restored'] = os.path.join(
+        work, 'sotto_webview_stale_comment_restored.py')
+    write(MUTANTS['shell_stale_comment_restored'],
+          shell.replace(RESTORE_AFTER,
+                        RESTORE_AFTER + _nl + '        # The ' + STALE_OFFSCREEN, 1))
     agents = read(AGENTS)
     MUTANTS['agents_old_citation'] = os.path.join(
         work, 'AGENTS-with-old-citation.md')
@@ -228,7 +235,10 @@ ROW_OF = {
     'r46': 'audit #46: AGENTS.md contradiz-se sobre o painel no arranque '
            '("0 de 41" vs "visivel 50 ms-7 s")',
 }
-EXPECT_LIVE = {'r54': True, 'r33': True, 'r48': False, 'r46': True}
+# r33 flipped to False on 2026-10-11: the stale sentence was deleted from the live shell
+# (`sotto_webview.py:3552`), which is what this arm exists to notice. The mutant now restores
+# it, so the pair still shows both colours.
+EXPECT_LIVE = {'r54': True, 'r33': False, 'r48': False, 'r46': True}
 
 
 def main(argv=None):
@@ -284,34 +294,42 @@ def main(argv=None):
         return matched
 
     verdicts = []
+    live_present = []
+    live_measured = False
     if not parsed.neg_arm:
         results = measure(context(CONFIG, SHELL, AGENTS))
+        live_measured = True
+        # RECORDED, not asserted: the closing line used to claim "three rows" as a fixed
+        # string; it now names the rows that are still defective on the live bytes.
+        live_present = [name for name in ARMS
+                        if results[name].get(DEFECT_KEY[name]) is True]
         ok = report('LIVE -- what the bytes say today', results, EXPECT_LIVE)
         verdicts.append(('live', ok))
 
     results = measure(context(MUTANTS['config_13_keys'], SHELL, AGENTS))
     ok = report('MUTANT config with 13 top-level keys -- the r54 reading must '
                 'FLIP', results,
-                {'r54': False, 'r33': True, 'r48': False, 'r46': True})
+                # r33 carries the LIVE value in every block that does not mutate the shell.
+                {'r54': False, 'r33': False, 'r48': False, 'r46': True})
     verdicts.append(('m-config-13', ok))
 
-    results = measure(context(CONFIG, MUTANTS['shell_no_stale_comment'], AGENTS))
-    ok = report('MUTANT shell with the stale sentence deleted -- the r33 '
-                'reading must FLIP', results,
-                {'r54': True, 'r33': False, 'r48': False, 'r46': True})
+    results = measure(context(CONFIG, MUTANTS['shell_stale_comment_restored'], AGENTS))
+    ok = report('MUTANT shell with the stale sentence RESTORED -- the r33 '
+                'reading must FLIP to the DEFECT', results,
+                {'r54': True, 'r33': True, 'r48': False, 'r46': True})
     verdicts.append(('m-no-stale-comment', ok))
 
     results = measure(context(CONFIG, SHELL, MUTANTS['agents_old_citation']))
     ok = report('MUTANT AGENTS.md with the old citation restored -- the r48 '
                 'reading must FLIP to the DEFECT', results,
-                {'r54': True, 'r33': True, 'r48': True, 'r46': True})
+                {'r54': True, 'r33': False, 'r48': True, 'r46': True})
     verdicts.append(('m-old-citation', ok))
 
     results = measure(context(CONFIG, SHELL,
                               MUTANTS['agents_one_claim_removed']))
     ok = report('MUTANT AGENTS.md with one flash claim removed -- the r46 '
                 'reading must FLIP', results,
-                {'r54': True, 'r33': True, 'r48': False, 'r46': False})
+                {'r54': True, 'r33': False, 'r48': False, 'r46': False})
     verdicts.append(('m-one-claim-removed', ok))
 
     say('')
@@ -320,8 +338,17 @@ def main(argv=None):
         say('VERDICT: FAIL  (' + str(len(verdicts) - len(failed)) + '/'
             + str(len(verdicts)) + ' labels matched; wrong: ' + str(failed) + ')')
         return 1
-    say('VERDICT: PASS  three rows read on the live bytes; 3/3 mutants flipped '
-        'the reading they are aimed at')
+    if not live_measured:
+        live_text = 'live NOT probed in this mode'
+    elif live_present:
+        live_text = (str(len(live_present)) + ' of ' + str(len(ARMS))
+                     + ' rows still defective on the live bytes ('
+                     + ', '.join(live_present) + ')')
+    else:
+        live_text = ('0 of ' + str(len(ARMS)) + ' rows defective on the live bytes -- every'
+                     ' one refuted by the bytes today')
+    say('VERDICT: PASS  live: ' + live_text + '; ' + str(len(verdicts) - 1) + '/'
+        + str(len(verdicts) - 1) + ' mutants flipped the reading they are aimed at')
     return 0
 
 

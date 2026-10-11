@@ -84,10 +84,12 @@ def read(path):
 # mutants: a LIST of literal replacements, each anchored exactly once
 # ---------------------------------------------------------------------------
 MUTANTS = {
-    # #5 -- the census stops detaching the console host it queries.
-    'm5-census-flags-fixed': (CENSUS, [
-        ('creationflags=0x08000000 | 0x00000008)',
-         'creationflags=0x08000000)')]),
+    # #5 -- THE MUTANT NOW GOES THE OTHER WAY (2026-10-11): the live census was FIXED
+    # (DETACHED_PROCESS dropped, measured 0 rows -> 14 rows), so this mutant puts the flag
+    # BACK and reproduces the blindness instead of simulating the cure.
+    'm5-census-broken-flags': (CENSUS, [
+        ('creationflags=0x08000000)',
+         'creationflags=0x08000000 | 0x00000008)')]),
     # #34 -- the oracle kills the TREE it started when its ceiling expires.
     'm34-tree-kill-on-timeout': (os.path.join(ROOT, '_main',
                                               'panel-exit3-oracle.py'), [
@@ -287,7 +289,7 @@ def mechanism():
     """Measured ONCE per process; every arm and every colour reads these."""
     live_flags, live_expression = flag_expression(read(CENSUS))
     directory = tempfile.mkdtemp(prefix='sotto-audit-landmine-probe-')
-    mutant_path, _notes = make_mutant('m5-census-flags-fixed', directory)
+    mutant_path, _notes = make_mutant('m5-census-broken-flags', directory)
     mutant_flags, mutant_expression = flag_expression(read(mutant_path))
     return {
         'census_flags_expression': live_expression,
@@ -408,12 +410,17 @@ ROW_OF = {
     'r62': 'audit #62 (windows-landmines.md F4): subprocess.run(timeout=) around '
            'the multi-process electron.exe may not be a ceiling [INFERENCE]',
 }
+#: THE LIVE VALUES, in one place: derived r5 -> False on 2026-10-11, when the census
+#: flags were fixed in the probe (measured: 0x08000000 alone -> 14 pid rows, 0x08000008
+#: -> 0 rows with rc 0). Every other arm keeps the defect the sweep measured.
+LIVE_DEFECT = {'r5': False, 'r34': True, 'r35': True, 'r62': True}
+
 #: arm -> (the mutant that must flip it, its value under that mutant)
-MUTANT_OF = {'r5': ('m5-census-flags-fixed', False),
+MUTANT_OF = {'r5': ('m5-census-broken-flags', True),
              'r34': ('m34-tree-kill-on-timeout', False),
              'r35': ('m35-constant-removed-handler-added', False),
              'r62': ('m62-electron-tree-kill', False)}
-MUTANT_ORDER = ('m5-census-flags-fixed', 'm34-tree-kill-on-timeout',
+MUTANT_ORDER = ('m5-census-broken-flags', 'm34-tree-kill-on-timeout',
                 'm35-constant-removed-handler-added', 'm62-electron-tree-kill')
 
 MECHANISM = {}
@@ -535,9 +542,16 @@ def main(argv=None):
             + ')')
 
     verdicts = []
+    live_present = []
+    live_measured = False
     if not parsed.neg_arm:
         results = run_all(context_for(None, directory))
-        expected = {name: True for name in ARMS}
+        live_measured = True
+        # RECORDED, not asserted: the closing line used to say "4/4 landmines
+        # reproduced" as a FIXED string and went stale the day r5 was fixed (2026-10-11).
+        live_present = [name for name in ARMS
+                        if results[name].get(DEFECT_KEY[name]) is True]
+        expected = {name: LIVE_DEFECT[name] for name in ARMS}
         ok = report('LIVE -- every arm must read what the ARM declares',
                     results, expected)
         verdicts.append(('live', ok))
@@ -545,7 +559,7 @@ def main(argv=None):
     for key in MUTANT_ORDER:
         results = run_all(context_for(key, directory))
         expected = {name: (MUTANT_OF[name][1] if MUTANT_OF[name][0] == key
-                           else True) for name in ARMS}
+                           else LIVE_DEFECT[name]) for name in ARMS}
         ok = report('MUTANT ' + key + ' -- its own arm(s) must FLIP',
                     results, expected)
         verdicts.append((key, ok))
@@ -556,9 +570,17 @@ def main(argv=None):
         say('VERDICT: FAIL  (' + str(len(verdicts) - len(failed)) + '/'
             + str(len(verdicts)) + ' labels matched; wrong: ' + str(failed) + ')')
         return 1
-    say('VERDICT: PASS  live: 4/4 landmines reproduced on this box (the census '
-        'channel is 0 B with rc 0 under the file own flags; the orphan survives '
-        'the timeout); 4/4 mutants flipped their own arm(s)')
+    if not live_measured:
+        live_text = ('live NOT probed in this mode (--neg-arm), so no live set is '
+                     'claimed')
+    elif live_present:
+        live_text = (str(len(live_present)) + ' of ' + str(len(ARMS))
+                     + ' landmines still reproduced on this box ('
+                     + ', '.join(live_present) + '); the rest are FIXED')
+    else:
+        live_text = 'all ' + str(len(ARMS)) + ' landmines FIXED on this box'
+    say('VERDICT: PASS  live: ' + live_text + '; ' + str(len(MUTANT_ORDER)) + '/'
+        + str(len(MUTANT_ORDER)) + ' mutants flipped their own arm(s)')
     return 0
 
 

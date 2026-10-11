@@ -484,3 +484,36 @@ examined now, with a mutant proving the counter is load-bearing.
 **NOT MEASURED, unchanged:** nothing was launched; the counter was driven by a SCRIPTED vtable, so
 no real device has yet set the bit on this box. The fix is measured against the instrument's
 scripted discontinuity, not against a live glitch.
+
+
+---
+
+## ADDENDUM 3 — 2026-10-11 (Lead): the two instruments that pinned the two fixes were re-baselined
+
+Fixing rows #33 and #5 made THIS sweep's own instruments exit 2 (dead anchor) and then exit 1
+(labels holding the pre-fix live values). Both were re-baselined the same way the tap instrument
+was: the live expectation follows the fix, and the MUTANT is INVERTED so it reproduces the defect
+instead of simulating the cure. A gate that needs the defect present to build its own control is a
+gate that pins the defect.
+
+- `_main/audit-rows-byte-claims.py` -- row #33. The setup required the stale sentence to exist
+  (to delete it in a copy); the live shell no longer has it, so the mutant now RESTORES it, anchored
+  on the corrected comment line. `EXPECT_LIVE['r33'] True -> False`, the restore mutant expects
+  the defect, and the three blocks that do not mutate the shell now carry the LIVE value for r33.
+  `VERDICT: PASS  live: 2 of 4 rows still defective on the live bytes (r54, r46); 4/4 mutants
+  flipped the reading they are aimed at`, rc=0.
+- `_main/audit-rows-landmine-child-control.py` -- row #5. `m5-census-flags-fixed` becomes
+  `m5-census-broken-flags` and puts `| 0x00000008` BACK; `LIVE_DEFECT` is now one named table
+  (r5 False, r34/r35/r62 True) used by BOTH the live block and the else-branch of every mutant
+  block, which is what the old hard-coded `True` in that else-branch got wrong the moment one arm
+  flipped. `VERDICT: PASS  live: 3 of 4 landmines still reproduced on this box (r34, r35, r62); the
+  rest are FIXED; 4/4 mutants flipped their own arm(s)`, rc=0.
+
+**Both closing sentences are now COMPUTED from the readings**, not asserted as fixed strings: the
+landmine one said "4/4 landmines reproduced ... the census channel is 0 B with rc 0" -- true when it
+was written, FALSE the moment the census was fixed -- and the byte-claims one said "three rows read
+on the live bytes". Each now names the arms that are still defective, and each says "live NOT
+probed in this mode" when `--neg-arm` skips the live block instead of printing a set it never
+measured. **This is the third and fourth instance of the same defect class in one session** (a
+verdict sentence that cannot change when the facts do); it is worth treating as the house rule:
+a PASS line must be derived from the run it closes.
