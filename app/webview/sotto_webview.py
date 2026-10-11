@@ -2563,6 +2563,14 @@ BOOTSTRAP_JS = r"""
     toggle: function () { post('toggle', null); },
     quit: function () { post('quit', null); },
 
+    // THE REPAIR CONTROL (panel.js:2045). reviveSupported() (:2007) gates the
+    // status click on typeof bridge.revive === 'function', so this entry is
+    // what turns the panel's only recovery path from a dead click into a
+    // request the shell answers (SottoShell.revive_worker).
+    revive: function (reason) {
+      post('revive', { reason: String(reason == null ? 'panel' : reason) });
+    },
+
     setPointerInteractive: function (active) {
       post('pointer', { active: Boolean(active) });
     },
@@ -3161,6 +3169,10 @@ class SottoHost:
             'hide': lambda p: self._shell.hide_panel('page'),
             'toggle': lambda p: self._shell.toggle_panel('page'),
             'quit': lambda p: self._shell.quit('page'),
+            # The panel's repair control (panel.js:2045). Without this entry
+            # the page's post('revive', ...) landed in BRIDGE_UNKNOWN_KIND and
+            # the click died there.
+            'revive': self._revive,
             'info': self._info,
             'panel-surface': self._panel_surface,
             # The pull half of the stats channel: without this entry the
@@ -3182,6 +3194,19 @@ class SottoHost:
 
     def _status_observed(self, payload):
         self._shell.note_status_observed((payload or {}).get('text', ''))
+
+    def _revive(self, payload):
+        """The panel's repair control: kill the worker, respawn it.
+
+        panel.js:2013 revivePipeline posts bridge.revive('panel-status')
+        (:2045) and the SHELL does the killing and respawning (panel.js:1968).
+        That shell half did not exist -- grep -n revive over app/webview/
+        returned ZERO -- so reviveSupported() (:2007) was false on every launch
+        and the panel's ONLY recovery from a stalled pipeline answered "This
+        shell cannot restart the pipeline (no bridge.revive())". The decision
+        lives in SottoShell.revive_worker; this is the transport.
+        """
+        self._shell.revive_worker((payload or {}).get('reason') or 'page')
 
     def _page_error(self, payload):
         """A THROW INSIDE THE PANEL, on the record.
@@ -3356,6 +3381,11 @@ class SottoShell:
         self.renderer_ready = threading.Event()
         self.exiting = threading.Event()
         self.bridge = None            # WorkerBridge
+        #: The panel's repair control, in flight (revive_worker). A second
+        #: click is refused while this is set: the ~0.5 s the dying child takes
+        #: is exactly the window a double click lands in.
+        self._revive_lock = threading.Lock()
+        self._revive_thread = None
         # A file change in `worker/` does NOT restart the worker directly: it
         # is queued and the policy decides (debounce, mid-stream guard, 180 s
         # floor). See WorkerReloadPolicy and docs/audit/load-churn.md.
@@ -5332,7 +5362,7 @@ class SottoShell:
     #: `_worker_autostart_reason`, which NAMES why; this tuple is what makes the
     #: name binding. `hot-reload` is here because a file change must restart the
     #: worker it already had (the reload policy decides WHEN, not whether).
-    START_REASONS = ('default', 'with-worker', 'hot-reload')
+    START_REASONS = ('default', 'with-worker', 'hot-reload', 'revive')
 
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
@@ -5371,6 +5401,77 @@ class SottoShell:
         if started:
             self.code_state_log(f'worker-started-{reason}')
         return started
+
+    #: The exact sentence the panel is painted with while a revive runs.
+    #: ARM S of _main/revive-pipeline-oracle.py compares it literally.
+    REVIVE_PAINT = 'Restarting the pipeline…'
+
+    def revive_worker(self, caller='panel-status'):
+        """The panel's repair control, answered.
+
+        app/panel/panel.js wires the footer status as a repair control: one
+        click asks the shell to kill the worker and respawn it (revivePipeline
+        at :2013 -> bridge.revive('panel-status') at :2045). The shell half was
+        never written, so on every launch the control reported itself
+        unsupported and the owner's only recovery from a stalled pipeline was a
+        dead click. A worker that has FROZEN mid-stream -- the measured Alt+C
+        failure of 2026-10-11, where the tap's blocks stopped arriving while the
+        process stayed alive -- is exactly what this control is for.
+
+        The ORDER is the contract, and ARM S of _main/revive-pipeline-oracle.py
+        measures every step of it:
+          1. the reload timers stop FIRST -- a reload boundary landing in the
+             middle of this would fight the restart;
+          2. the old child stops with reason='revive';
+          3. the two latches about THAT child are dropped: pending_error is the
+             sticky death the panel keeps painting until a caption proves
+             recovery, and no_audio is a verdict about the child just killed --
+             carried over it would paint the fresh worker as deaf before it had
+             opened a device;
+          4. start_worker('revive') respawns.
+
+        Returns True if the request was accepted, False if one is already in
+        flight. The refusal is logged, never silent.
+        """
+        with self._revive_lock:
+            if self._revive_thread is not None:
+                log(f'REVIVE_REFUSED reason=already-in-flight caller={caller}')
+                return False
+            self._revive_thread = threading.Thread(
+                target=self._do_revive, args=(caller,),
+                name='sotto-revive', daemon=True)
+        # THE IMMEDIATE PAINT, BEFORE THE THREAD. A repair control that looks
+        # dead for the half second the child takes to die trains the owner to
+        # click it again -- and the second click is the one that gets refused.
+        self.apply_panel_state(self.REVIVE_PAINT, 'busy')
+        self._revive_thread.start()
+        return True
+
+    def _do_revive(self, caller):
+        """The worker half of the repair control. See revive_worker."""
+        try:
+            bridge = self.bridge
+            pid = getattr(getattr(bridge, 'child', None), 'pid', None)
+            log(f'REVIVE_REQUESTED caller={caller} '
+                f'had_bridge={str(bridge is not None).lower()} pid={pid}')
+            self._reload_policy.stop()
+            if bridge is not None:
+                bridge.stop('revive')
+                bridge.pending_error = None
+                bridge.no_audio = False
+                bridge.no_audio_evidence = None
+                bridge.no_audio_evidence_at = 0.0
+                self.bridge = None
+                log('REVIVE_CLEARED pending_error=None no_audio=False')
+            started = self.start_worker('revive')
+            new_pid = getattr(getattr(self.bridge, 'child', None), 'pid', None)
+            log(f'REVIVE_DONE caller={caller} started={str(started).lower()} '
+                f'pid={new_pid}')
+        except Exception as exc:  # a repair control must not kill the shell
+            log(f'REVIVE_FAILED caller={caller} error={exc!r}')
+        finally:
+            with self._revive_lock:
+                self._revive_thread = None
 
     def on_worker_caption(self, text, meta):
         self.emit('caption', {'text': text, 'meta': meta})
