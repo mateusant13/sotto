@@ -22,7 +22,14 @@ IDR-PROOF-*.txt
 
 # the rest of my scratch, named by shape rather than by pass
 before-*.txt
-*-probe.mjs
+# CORRECTED 2026-10-11T06:20:45Z. This rule was hiding perf-probe.mjs, cw-probe.mjs and
+# compose-probe.mjs -- SOURCE files, not output. It matched them for a full day while I
+# read their exit codes as measurements, and a commit staged nothing because of it.
+# parse-gate.mjs reads the directory for *-probe.mjs, so those three must be trackable.
+# What is genuinely output goes below.
+probe-out-*.txt
+probe-out-*.json
+*-probe-out.mjs
 ffmpeg-ver.txt
 ffprobe-ver.txt
 
