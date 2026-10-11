@@ -177,3 +177,34 @@ first argument is a string literal, regardless of indentation:
   third entry in this family, same hour: stderr counted as payload, Groups[2] read as
   passed, and now an anchor read as an identity. Three different instruments, one shape:
   the number looked fine and nobody asked what produced it.
+## 2026-10-11T06:00:37Z - three guards, three different inputs, and I nearly guessed the classes
+
+L232, L235 and L242 were carried as "no reachability analysis, and I refused to assume they
+resemble L301 or L215". That refusal was right, and the three turned out to be a FOURTH
+class: reachable, and each needing an input the other two do not reach.
+
+  POPULACAO = 22 fixture specs, 9 container/codec shapes, 05:59:01Z-05:59:33Z
+    L232  empty output   4/14   audio-only m4a, audio-only mkv, flac, zero-frame mp4
+    L235  >1 field       1/14 in the first scan, then 5/8 in the second -- ONLY MPEG-TS
+    L242  non-numeric    0/14, then 1/1 once the codec fourcc was rewritten to N/A
+    numeric              9/14
+
+  Proved by deletion, N=1 per arm, 06:00:37Z, against a 24/0 control:
+    L232 mutant -> 22 passed / 2 failed, exit 1
+    L235 mutant -> 23 passed / 1 failed, exit 1
+    L242 mutant -> 23 passed / 1 failed, exit 1
+
+  rules, in order of how much they cost:
+  1. Container, not stream count. A 3-video-stream mkv prints ONE field under v:0 and
+     THREE under v. Only MPEG-TS prints two under v:0. I would have guessed "multiple
+     streams" and been wrong, because the intuitive fixture is the one that cannot work.
+  2. To reach a non-numeric token, make the stream LISTABLE but not DECODABLE: rewrite
+     avc1 -> zzzz in the sample entry. The container stays valid, so ffprobe exits 0 and
+     prints N/A. No valid encode produces N/A; only a corrupted-but-listed stream does.
+  3. A guard that "cannot be reached" and a guard reached by an input nobody has built yet
+     look identical until someone enumerates container shapes. L301 and L235 are both
+     about ffprobe refusing to emit what the guard wants. Same shape, opposite verdicts.
+
+  and the honest limit: 22 specs is not an exhaustive enumeration of containers. It is the
+  set I could build with the encoders on this host. A codec I cannot mux here may reach
+  L235 or L242 by a route this scan never saw, and the header says so.

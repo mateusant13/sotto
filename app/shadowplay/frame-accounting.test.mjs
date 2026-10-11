@@ -162,7 +162,7 @@
 
 import assert from "node:assert/strict";
 import { countFrames, countDistinctContent, assessDelivery, runTool } from "./frame-accounting.js";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -561,6 +561,117 @@ ta("a picture repeated mid-clip breaks the streak; the run does not span the rep
         `${label}: if ffmpeg now exits 0 here with no hashes, L301 becomes reachable and ` +
         `the header claim about it is WRONG`);
     }
+  });
+
+  // --------------------------------------- L232 / L235 / L242: three guards, three inputs.
+  //
+  // MEASURED WINDOW_UTC 2026-10-11T05:59:01Z .. 05:59:33Z, POPULACAO = 22 fixture specs
+  // across 9 container/codec shapes, each driven through countFrames with the module's own
+  // ffprobe argv. All three guards were reached, and each needed a DIFFERENT input class.
+  // The classes are not interchangeable, which is the whole reason to name them:
+  //
+  //   L232  tokens.length === 0   -> 4/14 in the shape scan: audio-only m4a, audio-only mkv,
+  //         audio flac, and a zero-frame mp4. ffprobe exits 0 and prints nothing, because
+  //         -select_streams v:0 matches no stream. That is the empty-output refusal.
+  //
+  //   L235  tokens.length > 1    -> reached ONLY by MPEG-TS. 5/5 .ts specs printed two
+  //         lines: ["2,","2,"], ["2","2"], ["3,","3,"], ["10,","10,"]. A transport
+  //         stream carries PMT sections that ffprobe reports as extra entries under
+  //         -show_entries stream=..., so the selector emits more than one field.
+  //         Every non-TS container printed exactly ONE line. A 3-video-stream mkv printed
+  //         ONE line under v:0 and THREE under v -- so it is the container, not the
+  //         stream count, that produces the extra line.
+  //
+  //   L242  non-numeric token    -> reached by rewriting the codec fourcc. Take a valid
+  //         mp4, replace every "avc1" (2 occurrences measured) with "zzzz": the container
+  //         and moov stay valid so ffprobe still LISTS the stream, but no decoder can
+  //         open it, so nb_read_frames prints N/A instead of a count. Measured:
+  //         original -> ["3"]; rewritten -> ["N/A"], and the module refuses with
+  //         `non-numeric token "N/A"`.
+  //
+  // Without the PRECONDITION in each arm the test would be unfalsifiable for the wrong
+  // reason: runTool rejects any non-zero ffprobe exit before parseFrameCount is reached,
+  // so a fixture that merely fails to decode proves nothing about these three guards.
+
+  ta("L232: an audio-only container makes ffprobe exit 0 and print nothing", async () => {
+    const AUD = join(dir, "l232-audio.m4a");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "sine=frequency=440:duration=0.3", "-c:a", "aac", AUD]);
+    // PRECONDITION: exit 0 with an EMPTY payload. If ffprobe exited non-zero, the module
+    // would refuse for the wrong reason and this arm would prove nothing.
+    const probe = await runTool("ffprobe", ["-v", "error", "-select_streams", "v:0",
+      "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", AUD]);
+    assert.equal(probe.code, 0, "ffprobe must SUCCEED: a non-zero exit is rejected by runTool");
+    assert.equal(probe.stdout.trim(), "",
+      "and must print nothing at all -- an empty payload is the only input L232 accepts");
+    let msg = null;
+    try { await countFrames(AUD); } catch (e) { msg = String(e.message); }
+    assert.match(msg ?? "", /empty ffprobe output/,
+      `L232 must name its own cause, got ${msg}`);
+  });
+
+  ta("L235: an MPEG-TS container makes the selector emit two fields, not one", async () => {
+    const TS = join(dir, "l235.ts");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "testsrc=s=64x48:r=10:d=0.2", "-c:v", "mpeg2video", "-an", TS]);
+    const probe = await runTool("ffprobe", ["-v", "error", "-select_streams", "v:0",
+      "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", TS]);
+    assert.equal(probe.code, 0, "PRECONDITION: ffprobe must succeed on the TS");
+    const tokens = probe.stdout.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    // The input L235 exists for. If a future ffprobe stops emitting the second field,
+    // this arm goes red and the guard's reachability claim below becomes false.
+    assert.ok(tokens.length > 1,
+      `PRECONDITION: a TS must yield >1 field under v:0, got ${tokens.length}: ${JSON.stringify(tokens)}`);
+    let msg = null;
+    try { await countFrames(TS); } catch (e) { msg = String(e.message); }
+    assert.match(msg ?? "", /expected one field, got \d+/,
+      `L235 must refuse and count the fields it saw, got ${msg}`);
+    // CONTROL: the same probe against a non-TS container yields exactly one field, so the
+    // multi-field output is a property of the transport stream and not of this ffprobe.
+    const MP4 = join(dir, "l235-control.mp4");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "testsrc=s=64x48:r=10:d=0.2", "-pix_fmt", "yuv420p", "-an", MP4]);
+    const ctl = await runTool("ffprobe", ["-v", "error", "-select_streams", "v:0",
+      "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", MP4]);
+    const ctlTokens = ctl.stdout.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    assert.equal(ctlTokens.length, 1,
+      `CONTROL: a plain mp4 must yield exactly one field, got ${ctlTokens.length}`);
+  });
+
+  ta("L242: a stream ffprobe can list but cannot decode reports N/A and is refused", async () => {
+    const SRC = join(dir, "l242-src.mp4");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "testsrc=s=64x48:r=10:d=0.3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", SRC]);
+    // Rewrite the sample-entry fourcc so the container stays valid but no decoder opens it.
+    const bytes = Buffer.from(readFileSync(SRC));
+    let rewritten = 0;
+    for (let i = 0; i < bytes.length - 4; i++) {
+      if (bytes[i] === 0x61 && bytes[i+1] === 0x76 && bytes[i+2] === 0x63 && bytes[i+3] === 0x31) {
+        bytes.write("zzzz", i); rewritten++;
+      }
+    }
+    assert.ok(rewritten > 0,
+      `the fixture must actually contain avc1 to rewrite, found ${rewritten} -- ` +
+      "if a future ffmpeg stops writing it, this arm is testing nothing");
+    const BROKEN = join(dir, "l242-broken.mp4");
+    writeFileSync(BROKEN, bytes);
+
+    const probe = await runTool("ffprobe", ["-v", "error", "-select_streams", "v:0",
+      "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", BROKEN]);
+    assert.equal(probe.code, 0,
+      "PRECONDITION: ffprobe must exit 0 -- it can still LIST an undecodable stream");
+    const tokens = probe.stdout.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    assert.equal(tokens.length, 1, `exactly one field expected, got ${JSON.stringify(tokens)}`);
+    assert.equal(tokens[0], "N/A",
+      `PRECONDITION: an undecodable stream must print N/A, got ${JSON.stringify(tokens[0])}`);
+    let msg = null;
+    try { await countFrames(BROKEN); } catch (e) { msg = String(e.message); }
+    assert.match(msg ?? "", /non-numeric token "N\/A"/,
+      `L242 must refuse the token by name, got ${msg}`);
+    // CONTROL: the untouched original still counts, so the refusal is caused by the
+    // rewrite and not by this suite having found a general mp4 problem.
+    const good = await countFrames(SRC);
+    assert.ok(good > 0, `CONTROL: the original must still count, got ${good}`);
   });
 
   // ------------------------------------------------- drain the async tests -- LAST, always.
