@@ -1,0 +1,27 @@
+# WINDOW_UTC 2026-10-11T05:25:43Z (rebuilt). Diagnosis, same window:
+#   _fix[0-9]-* matched _fix4-EVIDENCE.txt but NOT _fix10-EVIDENCE.txt, because
+#   [0-9] matches exactly ONE character and pass numbers reach two digits. git
+#   check-ignore -v named the matching rule for every probe.
+# Four probe patterns were appended to the previous file during that diagnosis and are
+# NOT carried over here. 1 006 B -> this file.
+
+# backups of files already committed
+*.bak-*
+*.CURRENT.*
+
+# per-pass working directories
+_fix[0-9]*/
+_baseline/
+control/
+
+# per-pass evidence files -- [0-9]* allows two-digit pass numbers
+_fix[0-9]*
+SUITE-*.txt
+IDR-PROOF-*.txt
+*.baseline-run.txt
+
+# the rest of my scratch, named by shape rather than by pass
+before-*.txt
+*-probe.mjs
+ffmpeg-ver.txt
+ffprobe-ver.txt
