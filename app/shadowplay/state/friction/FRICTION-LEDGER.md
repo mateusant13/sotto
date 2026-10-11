@@ -1134,3 +1134,36 @@ than reproduced". Right. So I built the two arms, including the arm that would r
   reproduction, and calling it a reproduction is the same move as the invented citation.
   This one confirms the mechanism and leaves the magnitude open, and both halves belong in
   the report.
+
+## 2026-10-11T09:34:41Z - LONGEST_UNIQUE_RUN 29 on 28 moving frames. The magnitude is reproduced, off by exactly one.
+
+Last entry left the magnitude open: the still arm gave 1, not 28, so I had the mechanism and
+not the number. Built the intermediate arm I said I would.
+
+  MEASURED, POPULACAO = 1 clip built to a known shape, WINDOW_UTC 2026-10-11T09:34:41Z:
+      2 s of black at 30 fps = 60 identical frames, concatenated with
+      0.9333 s of testsrc at 30 fps = 28 changing frames
+      -> DELIVERED_FRAMES 88  DISTINCT_FRAMES 29  LONGEST_UNIQUE_RUN 29
+         EXPECTED_FRAMES 60  CONTENT_SUFFICIENT false
+
+  29, not 28, and the extra one is not slop: the first frame of the run counts as distinct
+  because nothing precedes it to be identical to. So a run of N changing frames preceded by
+  stillness reports N+1. The recorded failure said 28, which is 27 changing frames -- about
+  0.9 seconds of movement.
+
+  WHICH IS THE WHOLE EXPLANATION, and it took a clip with a KNOWN shape to see it: the
+  failing capture was an 8-second desktop recording in which the picture changed for roughly
+  0.9 seconds and stood still for the rest. Not a frozen frame -- an idle desktop with one
+  brief change. longestUniqueRun 28 fell under the 30-frame one-second clock,
+  contentSufficientToCoverClock went false, and replay-ring.js:340 refused. The guard was
+  right, the product was right, and nothing was broken.
+
+  WHAT THIS IS AND IS NOT. The magnitude is now reproduced to within one frame, on a clip
+  whose shape I chose. That is evidence for the explanation, not a capture of the original
+  event -- that recording does not exist anywhere, and 27 frames of movement on this host is
+  a number I inferred from a formula, not one I read off the failure. I am recording it as
+  reproduced-magnitude and not as reproduced-event.
+
+  rule: when a partial reproduction misses by a small amount, find out WHY it misses before
+  you accept the miss. 29 against 28 looked like noise and was actually the first frame of a
+  run counting as distinct. The discrepancy was the explanation.
