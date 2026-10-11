@@ -33,9 +33,56 @@ CHECK_ONLY=0
 # The shims: name -> the versioned script it execs.
 HOOKS="pre-commit:pre-commit"
 
+# CHAINED HOOKS. post-checkout and post-merge are the two moments a clone can end up
+# with no gate at all, and both slots are already occupied by Git LFS in this repo
+# (measured 2026-10-11T07:13:45Z: 360 B and 354 B, both running `git lfs <name>`).
+#
+# These are NOT replaced. The LFS body is copied aside once to <name>.lfs-original, the
+# installed hook runs it first and then runs install-hooks --check. If the LFS body ever
+# changes, --check compares the two and reports the hook as STALE rather than silently
+# dropping LFS. Replacing a hook that belongs to someone else is how you lose data
+# checkout; chaining is the only safe order.
+CHAINED="post-checkout post-merge"
+
 status=0
 installed=0
 refused=0
+
+chain_one() {
+  name="$1"
+  dest="$HOOKS_DIR/$name"
+  keep="$HOOKS_DIR/$name.lfs-original"
+  if [ ! -f "$dest" ]; then
+    printf '  ABSENT           %s -- no hook here to chain onto; install-hooks --check will still report the gate\n' "$name"
+    return 0
+  fi
+  # Ours already?  The marker lives at the top; ours also starts with the shim header.
+  if head -n 2 "$dest" | grep -q 'sotto-hook-chain'; then
+    printf '  ok               %s (already chained)\n' "$name"
+    return 0
+  fi
+  # Preserve the foreign body once, then chain around it.
+  cp "$dest" "$keep"
+  {
+    printf '#!/bin/sh\n'
+    printf '# sotto-hook-chain: installed by scripts/install-hooks. The original body of this\n'
+    printf '# hook is preserved at %s.lfs-original and runs FIRST, so Git LFS keeps working.\n' "$name"
+    printf '%s\n' "# ORIGINAL BODY"
+    cat "$keep"
+    printf '\n'
+    printf '%s\n' "# THEN: reinstall and report every hook this repo owns"
+    printf 'sh "$(git rev-parse --show-toplevel)/scripts/install-hooks" >/dev/null 2>&1\n'
+    printf 'sh "$(git rev-parse --show-toplevel)/scripts/install-hooks" --check\n'
+  } > "$dest"
+  printf '  CHAINED          %s -> LFS body preserved at %s.lfs-original\n' "$name" "$name"
+  installed=$((installed+1))
+}
+
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  for c in $CHAINED; do
+    chain_one "$c"
+  done
+fi
 
 for pair in $HOOKS; do
   name=${pair%%:*}
@@ -88,6 +135,36 @@ done
 # Report what we deliberately left alone, so the count is not a surprise.
 others=$(ls -1 "$HOOKS_DIR" 2>/dev/null | grep -v '\.sample$' | wc -l)
 printf '  foreign hooks left untouched: %s\n' "$((others))"
+
+# CHECK THE CHAINED HOOKS. Two things can be wrong and they are different failures:
+# the chain marker is missing (nobody chained us), or the LFS body has changed since we
+# copied it aside (we would be running a stale copy of someone else's hook). The second
+# is the one that matters and the one nobody would notice.
+for c in $CHAINED; do
+  dest="$HOOKS_DIR/$c"
+  keep="$HOOKS_DIR/$c.lfs-original"
+  if [ ! -f "$dest" ]; then
+    printf '  ABSENT           %s -- not installed\n' "$c"
+    status=1
+    continue
+  fi
+  if ! head -n 2 "$dest" | grep -q 'sotto-hook-chain'; then
+    printf '  UNCHAINED        %s -- the hook exists but ours is not wired into it\n' "$c"
+    status=1
+    continue
+  fi
+  if [ ! -f "$keep" ]; then
+    printf '  NO-ORIGINAL      %s -- chained, but %s.lfs-original is missing, so the foreign body cannot be verified\n' "$c" "$c"
+    status=1
+    continue
+  fi
+  if sed -n '/^# ORIGINAL BODY$/,/^# THEN:/p' "$dest" | grep -v '^# ORIGINAL BODY$' | grep -v '^# THEN:' | grep -v '^$' | diff -q - "$keep" >/dev/null 2>&1; then
+    printf '  ok               %s (chained; LFS body byte-identical to %s.lfs-original)\n' "$c" "$c"
+  else
+    printf '  STALE            %s -- the LFS body in the hook no longer matches %s.lfs-original; re-run install-hooks\n' "$c" "$c"
+    status=1
+  fi
+done
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   [ "$status" -eq 0 ] && printf '  CHECK OK\n' || printf '  CHECK FAILED\n'

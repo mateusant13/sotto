@@ -397,3 +397,5 @@ gate: it might refuse everything.
   obstacle. Prove both directions or you have measured half an instrument.
 
 ## 2026-10-11T07:08:26Z - install-hooks: versioned installer, checked in both directions
+
+## 2026-10-11T07:14:32Z - chain instead of replace: LFS bodies preserved byte-identical
