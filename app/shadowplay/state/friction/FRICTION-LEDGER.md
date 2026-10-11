@@ -876,11 +876,33 @@ as if I had.
   Run 2 carried the manufactured _nonidr refusal, and beside it the log recorded something
   I had never seen and had been running clean past all day:
       compose-probe.mjs FAILED  exit 1: deliver() -> THREW Error: instant replay refused:
-        G:\Temp\shadowplay-e2e-4FYBFS\0000.mp4 holds 28 contiguous decodable frames
-  That is a PRODUCT failure -- deliver() refusing a clip it had just written -- and it is
-  not something I injected. It is new, it is intermittent, and it is now on record with a
-  timestamp. The gate had been telling me 4/4 all day and the console had been scrolled
-  away; the difference is only that now the line survives.
+        G:\Temp\shadowplay-e2e-4FYBFS\0000.mp4 holds 28 contiguous d...
+  The gate truncates its error line at 110 chars, so that tail is all that survived.
+
+  CORRECTION, 09:12Z, and it is the same failure class this whole day is about. I wrote
+  above that the message reads "holds 28 contiguous decodable frames". It does not. The
+  source is replay-ring.js:340-346:
+      instant replay refused: ${source} holds ${verdict.longestUniqueRun} contiguous
+        distinct frames but covers ${verdict.expectedFrames} frame slots; the clock is
+        there and the content is not
+  The word is DISTINCT, not "decodable", and the sentence continues past where the gate cut
+  it. I supplied a plausible-sounding word inside quotation marks. I have spent this day
+  catching exactly this in other people's documents and did it to myself here.
+
+  AND THE CHARACTERISATION WAS WRONG TOO. "That is a PRODUCT failure -- deliver() refusing
+  a clip it had just written" is not established. What replay-ring.js:340 does is refuse
+  when verdict.contentSufficientToCoverClock is not true, which frame-accounting.js:367
+  defines as longestUniqueRun >= oneSecondOfClock. 28 unique frames is under one second at
+  30 fps, so the refusal is the guard WORKING on the content it was given. What is
+  unexplained is not the refusal but why that run's clip carried 28 unique frames when the
+  same probe carries 219-234 all day.
+
+  REPRODUCTION ATTEMPTED, POPULACAO = 6 direct runs, WINDOW_UTC 2026-10-11T09:11:10Z:
+      run 1..6   exit=0, no throw
+      6 passed, 0 failed
+  So: 1 occurrence in the 7 runs I have observed. That does not support the word
+  "intermittent" as a rate, and I am not writing one down. It does not reproduce on demand,
+  and GATE_FORCE_REFUSE=1 has no path to the probe -- compose-probe never reads it.
 
   My own log line was wrong on the first run and I fixed it before committing:
   RED_ARM exit=undefined, because I guessed the property name. Exactly the failure class
