@@ -2256,3 +2256,32 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   from landed; and --probe-reload has 3 arms landed versus 6 in the WIP. Recorded here because it
   died holding them and a finding that dies holding its evidence is the same shape as a commit
   that dies holding its message.
+
+## 2026-10-11T13:34Z - BOTH MY NUMBERS WERE WRONG, and the reason is a file-type filter I wrote myself
+
+  MEASURED 13:32:24Z..13:34:18Z. load_s is TWO different quantities in this repository that share
+  one field name. Splitting by lineage:
+    POP_TOTAL  405 values.  POP_ASR 290 (onnxruntime ASR model load -- nemotron-3.5-asr-streaming,
+    .wav, CUDAExecutionProvider, under _ep-logs).  POP_SHADOW 115 values over 59 files.
+    SHADOW lineage, descending: 66,88 - 12,75 - 8,17 - 6,62 - 2,75 - 2,688 - 2,49 - 2,31 - 2,02 ...
+
+  SO 66,88 IS THE MAXIMUM OF ITS OWN LINEAGE. Not 8,6x the largest (turn-1 retraction, which
+  measured POP 6 values out of 8 files handed to me) and not 0,87x the largest (turn-2 correction,
+  which measured 76,659 -- a load time for an ASR model in a JSON bench file, a different subsystem
+  entirely). Both of my numbers compared a webview boot time against a speech-model load time
+  because both fields are spelled load_s.
+
+  AND THE POPULATION ITSELF WAS INCOMPLETE: my sweep passed -Include *.log,*.md,*.txt,*.stderr,
+  which EXCLUDES .json -- the exact format holding 76,659 and 67,247. That filter is why I counted
+  69 values; the real total is 405. I reported "POP 1650 ficheiros varridos, POP 69 valores" as if
+  the file count were the population. It was a filtered subset, and I did not say so.
+
+  What survives, unchanged and now sharper: 66,88 is UNSOURCED -- POP 760 commits, one occurrence,
+  a comment at 55c422b L285, no log, no script, no oracle output. Being the maximum of a 115-value
+  population and 5,5x the runner-up is the SHAPE of a number pasted into a comment, not the shape
+  of a measurement. It being 0,87x of an unrelated ASR bench load is the shape of a coincidence
+  between two things that share a field name.
+
+  FOURTH time this week a number of mine came from a population I did not construct from the disk:
+  "5 of 10" understated, "23 implementacoes" that were 1, "66,88 is absurd", and now "66,88 is
+  plausible". The first three at least moved toward truth. This one moved AWAY from it.
