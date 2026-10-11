@@ -114,8 +114,24 @@ const STALE_API = [
 // and this gate reported PASS because it only asked whether the key PRINTED. Every "4/4
 // clean" in the ledger until now was evidence that keys appeared, not that the product
 // did what they claim. Keys whose value can be YES/NO are COMPARED below.
+// MEASURED 2026-10-11T08:43:58Z / 08:44:25Z, POPULACAO = the exact output of each
+// probe run twice today (cw and perf at 08:43:58Z, _nonidr at 08:44:25Z against the
+// same ffmpeg-built 14526 B annex-B stream). These are the keys whose value carries a
+// TRUTH, so their value is asserted, not merely their presence:
+//   cw-probe      BYTES_LANDED=YES             -- the whole point of the probe: if the
+//                  ClipWriter stops landing bytes, this flips to NO and the gate refuses.
+//   perf-probe    SEQUENCE_MONOTONIC=true      -- session-clock names must sort
+//                  chronologically; a clock that reissued a value would print false.
+//   _nonidr-probe NEGATIVE_ARM_REACHABLE: false -- a stream whose first picture is not
+//                  an IDR is undecodable BY CONSTRUCTION, so the negative arm cannot be
+//                  reached. Stable across two runs 2h05m apart; if the stripper ever
+//                  made it reachable, this flips to true and the gate refuses.
+// compose-probe was already here: PRODUCT_LANDS_A_NONEMPTY_CLIP=YES.
 const VALUED = {
   "compose-probe.mjs": { "PRODUCT_LANDS_A_NONEMPTY_CLIP=": "YES" },
+  "cw-probe.mjs": { "BYTES_LANDED=": "YES" },
+  "perf-probe.mjs": { "SEQUENCE_MONOTONIC=": "true" },
+  "_nonidr-probe.mjs": { "NEGATIVE_ARM_REACHABLE: ": "false" },
 };
 
 function classify(script) {

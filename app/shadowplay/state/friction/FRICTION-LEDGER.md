@@ -663,3 +663,48 @@ Closing the previous entry's second open question: why did deliver() and capture
 
   rule: an exception thrown by a call I shaped is information about my call, not about the
   product. Before filing any throw as a defect, read the signature the method declares.
+
+## 2026-10-11T08:45:28Z - three more probes now carry a truth, and I proved the arm goes RED first
+
+Closing the entry that opened with "before this entry, every 4/4 meant only that keys printed".
+
+  VALUED gained the three keys whose values are booleans, not counts. Measured by RUNNING
+  each probe, POPULACAO = 3 probes, WINDOW_UTC 2026-10-11T08:43:58Z (cw, perf) and
+  08:44:25Z (_nonidr, against the same ffmpeg-built 14526 B annex-B stream):
+      cw-probe       BYTES_LANDED=YES
+      perf-probe     SEQUENCE_MONOTONIC=true
+      _nonidr-probe  NEGATIVE_ARM_REACHABLE: false
+
+  I read these values out of real runs rather than out of the file, on the strength of the
+  two mistakes earlier today, both of which were a shape I assumed instead of one I read.
+
+  THEN I PROVED THE ARM BEFORE CREDITING ANY PASS, which is the part that is new. First
+  attempt failed: I substituted the literal BYTES_LANDED=YES -> NO and the replacement did
+  not match, because cw-probe.mjs:42 interpolates:
+      console.log(BYTES_LANDED=);
+  So the first injection was a NO-OP, not a RED -- which is the same shape as the 9f91d89
+  injection that proved nothing and got committed anyway. Caught it because I printed the
+  file hash before and after and compared.
+
+  Second attempt replaced the whole line at L42 with console.log("BYTES_LANDED=NO"):
+      cw-probe.mjs  RECEIPT_FALSE  all keys printed but BYTES_LANDED=NO
+                    -- the probe reported a failure and still exited 0
+      RESULT 3 passed, 1 refused     gate exit=1
+  restored cw-probe.mjs from a copy taken beforehand:
+      sha256 73F46B3A9A27 before, 73F46B3A9A27 after -- EQUAL
+
+  Clean run, POPULACAO = 4 probes, 08:44:53Z and again after the restore:
+      RED ARM exit=1 refused=true
+      _nonidr  PASS  6 keys, 1 truth-valued key compared
+      compose  PASS  6 keys, 1 truth-valued key compared
+      cw       PASS  5 keys, 1 truth-valued key compared
+      perf     PASS  4 keys, 1 truth-valued key compared
+      RESULT 4 passed, 0 refused   exit 0
+
+  KNOWN LIMIT, stated rather than hidden: the RED arm was executed on ONE of the four
+  probes (cw). All four share the identical comparison at parse-gate.mjs:142, so the
+  code path is the same, but only one is measured. Three of four are reasoned, not shown.
+
+  rule: an injection that does not change the file is not a RED arm, it is a no-op that
+  looks like one. Hash the artifact before and after the injection, every time, or you
+  will credit a falsifying arm that never fired -- which is exactly what 9f91d89 did.
