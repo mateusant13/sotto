@@ -1167,3 +1167,46 @@ not the number. Built the intermediate arm I said I would.
   rule: when a partial reproduction misses by a small amount, find out WHY it misses before
   you accept the miss. 29 against 28 looked like noise and was actually the first frame of a
   run counting as distinct. The discrepancy was the explanation.
+
+## 2026-10-11T09:37:28Z - I over-claimed. The keyframe assertion is backed by a real measurement, and there is exactly one caller
+
+Last report I named this "a real and demonstrated defect" and said the ring "accepts
+keyframe:true from the caller" as an unverified flag. Reading the call site says otherwise,
+and I am retracting the strength of the claim rather than restating it.
+
+  MEASURED, POPULACAO = every ring.push call site in the product, comments EXCLUDED:
+      index.js:158   this.#ring.push(bytes, { frames, keyframe: true });
+  One. Not several. Every other .push( in the tree is a different object -- captions, encoder,
+  hotkeys logs, nvenc logs, save-path's own written/blocked lists.
+
+  AND THE ONE CALLER MEASURES BEFORE IT ASSERTS. index.js:145-158:
+      147  encoded = this.#encoder.captureAndEncode(out, {...});
+      148  const firstIdr = this.#encoder.firstKeyframeSec(out);
+      149  if (firstIdr === null || Math.abs(firstIdr) > KEYFRAME_TOLERANCE_SEC) {
+      150    throw new ClipNotKeyframed(source, ...);
+      156  const bytes = readFileSync(out);
+      157  const frames = await countFrames(out);
+      158  this.#ring.push(bytes, { frames, keyframe: true });
+
+  firstKeyframeSec (nvenc.js:86-99) is not a lookup in a table:
+      execFileSync("ffprobe", ["-v","error","-select_streams","v:0",
+        "-skip_frame","nokey","-show_entries","frame=pts_time","-of","csv=p=0", file])
+      -> parseKeyframes(raw.split("\n")) -> pts.length === 0 ? null : pts[0]
+  ffprobe is asked for the NON-key frames and the first surviving pts_time IS the first
+  keyframe, read from the encoded file. An unreadable file, a non-video, or a stream with no
+  keyframe all return null, and null is refused at :149. KEYFRAME_TOLERANCE_SEC is
+  1/CAPTURE_FPS (nvenc.js:31), one frame at 30 fps.
+
+  So the sequence is: encode, MEASURE the first IDR in the real file, refuse if it is absent
+  or more than one frame late, and only then tell the ring keyframe:true. The flag is
+  asserted downstream of a measurement with a refusal arm on both sides of it. That is not
+  an unverified assertion, and I named it one.
+
+  WHAT SURVIVES, stated narrowly and no wider. replay-ring itself does not re-read the bytes.
+  Its flag is whatever it is handed. With one caller that measures first, the system is
+  correct today; a SECOND caller added later could assert without measuring and nothing in
+  the ring would contradict it. That is a latent risk in the shape of the API, not a defect
+  in the running product, and it does not deserve the sentence I gave it last turn.
+
+  rule: "X does not verify" is not the same claim as "nothing verifies". I proved the first
+  and reported the second, and the second was the one that mattered to the reader.
