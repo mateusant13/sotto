@@ -172,5 +172,48 @@ t("remux past the end is refused at several distances, not only index 99", () =>
   assert.equal(e.encoded, 4, "a refused remux must not add frames");
 });
 
+// A DIFFERENT-SIZED FIXTURE, because every other fixture in this file encodes every frame
+// at the same 10 bytes. Measured WINDOW_UTC 2026-10-11T02:07:38Z: replacing the real sum
+// `slice.reduce((a, f) => a + f.bytes, 0)` with `slice.length * slice[0].bytes` -- which is
+// WRONG whenever frame sizes differ -- left this suite at 12 passed / 0 failed, exit 0.
+//
+// The reason is a fixed point hiding in the fixture: with uniform 10-byte frames, length*10
+// IS the sum, so a test that only ever uses uniform frames cannot tell a sum from a
+// multiplication by its first term. This is the same shape as the rounding case in
+// frame-accounting.test.mjs, where every assertion compared coverage to exactly 1.
+t("remux sums UNEQUAL frame sizes, not length times the first frame", () => {
+  const e = new Encoder({ gopSize: GOP });
+  // Deliberately unequal, and not in arithmetic progression: a multiplication by the first
+  // term, a mean, and a sum are all distinguishable from these numbers.
+  const sizes = [7, 100, 3, 250, 11];
+  sizes.forEach((n, i) => e.encodeFrame(i, n));
+  const total = sizes.reduce((a, b) => a + b, 0); // 371
+
+  const all = e.remux(0);
+  assert.equal(all.frames, 5);
+  assert.equal(all.bytes, total, `the sum is ${total}, not length*first (${5 * 7})`);
+
+  // And on a partial slice, where length*first is wrong in a different way again.
+  // Cuts must land on GOP boundaries (gopSize=4 -> IDR at 0 and 4), so the partial slice
+  // starts at index 4, not at an arbitrary frame.
+  const tail = e.remux(4);
+  assert.equal(tail.frames, 1);
+  assert.equal(tail.bytes, sizes[4], "a one-frame slice must report that frame's own size");
+});
+
+t("a zero-byte frame does not skew the sum", () => {
+  const e = new Encoder({ gopSize: 4 });
+  e.encodeFrame(0, 0);
+  e.encodeFrame(1, 42);
+  e.encodeFrame(2, 0);
+  e.encodeFrame(3, 8);
+  e.encodeFrame(4, 0);
+  e.encodeFrame(5, 5);
+  assert.equal(e.remux(0).bytes, 55, "zeros contribute nothing but must not reset the sum");
+  // Index 4 is an IDR boundary (4 % 4 === 0), so this slice is lawful.
+  assert.equal(e.remux(4).bytes, 5,
+    "a slice whose FIRST frame is zero must still sum the frames after it");
+});
+
 console.log(`RESULT ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
