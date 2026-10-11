@@ -1,6 +1,17 @@
 // FIRST TEST FILE for encoder.js. Before this file, encoder.js had ZERO coverage -- it is
 // exported from the barrel (index.js) and nothing in the repository exercised it.
 //
+// READ THE COUNT BEFORE YOU TRUST IT. "9 passed" is an aggregate of assertions, NOT a
+// statement that 9 behaviours are guarded. Measured WINDOW_UTC 2026-10-11T01:30:26Z, counting
+// registrations from the source rather than from the RESULT line:
+//   tests registered   9   (all synchronous; 0 async)
+//   branches falsified  1   -- the IDR guard, by replacing
+//                                 `if (slice[0].type !== FRAME_TYPES.IDR)` with `if (false)`,
+//                                 which gave 7 passed / 2 failed, exit 1.
+//   branches NOT falsified 8. Their assertions pass, and nothing here shows that removing
+//                                 the code they exercise would turn any of them red.
+// Sibling file: frame-accounting.test.mjs carries the same disclosure for its own count.
+//
 // WHAT THIS SUITE IS FOR: encoder.js encodes the product's cross-cutting invariant -- a
 // saved clip is REMUXED from already-encoded bytes, must START on an IDR, and is never
 // re-encoded. remux() is the only place that invariant is enforced, and it is enforced by
