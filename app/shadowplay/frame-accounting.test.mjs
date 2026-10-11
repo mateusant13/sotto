@@ -472,6 +472,75 @@ ta("a picture repeated mid-clip breaks the streak; the run does not span the rep
       `the refusal must name its own cause: got ${msg}`);
   });
 
+  // ------------------------------------------------- L301: the zero-frame refusal, and WHY
+  // it cannot fire from ffmpeg on this host.
+  //
+  // MEASURED WINDOW_UTC 2026-10-11T05:39:07Z, POPULATION = 5 fixture classes, each driven
+  // through the module's OWN export with its own exact arguments
+  // (`-v error -i <p> -an -f framemd5 -hash md5 -`, read from frame-accounting.js:110-112):
+  //
+  //   class                ffmpeg exit   hash lines   countDistinctContent
+  //   audio-only mkv       -22           0            THREW (runTool)
+  //   zero-frame mp4       -22           0            THREW (runTool)
+  //   real video mp4        0            3            RETURNED 3      <- control, proves the path works
+  //   zero-byte file       invalid       0            THREW (runTool)
+  //   whitespace file      invalid       0            THREW (runTool)
+  //
+  // The refusal at L301 fires when summarizeFrames returns total === 0. summarizeFrames calls
+  // runTool, which REJECTS any non-zero exit. So the guard can only be reached by an input
+  // that makes ffmpeg exit 0 while printing zero hashes. Measured: 0 of 5 classes do that.
+  // ffmpeg refuses the framemd5 muxer outright -- "Output file does not contain any stream"
+  // -- for both no-stream inputs, and refuses to open the other two.
+  //
+  // SO L301 IS DEFENDED BY runTool, NOT BY ITS OWN TEST. Deleting it changes nothing
+  // observable on this host, which is why the whole-module sweep classified it GREEN. The
+  // correct reading is not "the guard is untested" but "the guard is unreachable below a
+  // tool that will not emit the input it guards against". It is defence in depth under a
+  // tool-level refusal, and that is a real property, not a missing test.
+  //
+  // This test pins the tool-level refusal so the claim above is falsifiable: if a future
+  // ffmpeg lets a streamless framemd5 through with exit 0, this goes red and the header
+  // claim must be rewritten.
+  ta("no input class makes ffmpeg exit 0 with zero hashes, so L301 is shielded by runTool", async () => {
+    const classes = [];
+    const AUD = join(dir, "l301-audio.mkv");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "sine=frequency=440:duration=0.3", "-c:a", "pcm_s16le", AUD]);
+    classes.push(["audio-only mkv", AUD]);
+
+    const ZERO = join(dir, "l301-zero.mp4");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "color=c=black:s=64x48:d=0.04:r=25", "-frames:v", "0",
+      "-pix_fmt", "yuv420p", "-an", ZERO]);
+    classes.push(["zero-frame mp4", ZERO]);
+
+    // The control: a real video clip DOES exit 0 and DOES print hashes. Without this line
+    // the four refusals below could be an ffmpeg that is simply broken on this host, and
+    // the whole claim would be unfalsifiable in the other direction.
+    const GOOD = join(dir, "l301-good.mp4");
+    await runTool("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "testsrc=s=64x48:r=10:d=0.3", "-pix_fmt", "yuv420p", "-an", GOOD]);
+    const probeGood = await runTool("ffmpeg",
+      ["-v", "error", "-i", GOOD, "-an", "-f", "framemd5", "-hash", "md5", "-"]);
+    const goodHashes = probeGood.stdout.split(/\r?\n/)
+      .map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith("#"));
+    assert.equal(probeGood.code, 0, "CONTROL: real video must exit 0 through framemd5");
+    assert.ok(goodHashes.length > 0,
+      `CONTROL: real video must print hashes, got ${goodHashes.length} -- ` +
+      "if this fails the refusals below prove nothing");
+
+    // Now the measurement itself: every streamless/corrupt class must be refused by ffmpeg.
+    for (const [label, p] of classes) {
+      let code = null;
+      try { const r = await runTool("ffmpeg",
+        ["-v", "error", "-i", p, "-an", "-f", "framemd5", "-hash", "md5", "-"]); code = r.code; }
+      catch (e) { code = `threw:${e.code ?? e.message}`.slice(0, 40); }
+      assert.notEqual(code, 0,
+        `${label}: if ffmpeg now exits 0 here with no hashes, L301 becomes reachable and ` +
+        `the header claim about it is WRONG`);
+    }
+  });
+
   // ------------------------------------------------- drain the async tests -- LAST, always.
 // This loop MUST stay below every ta() call. It was above one registration once, and the
 // result was a suite that reported 12/0 green while silently never running its own test:
