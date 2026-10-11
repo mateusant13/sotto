@@ -53,8 +53,28 @@ chain_one() {
   dest="$HOOKS_DIR/$name"
   keep="$HOOKS_DIR/$name.lfs-original"
   if [ ! -f "$dest" ]; then
-    printf '  ABSENT           %s -- no hook here to chain onto; install-hooks --check will still report the gate\n' "$name"
-    return 0
+    # MEASURED 2026-10-11T07:59:06Z on a fresh `git init` with no Git LFS installed:
+    # install-hooks reported ABSENT for BOTH chained hooks and created neither. That is
+    # the exact machine this file exists for -- a new clone with no LFS -- and it was the
+    # one case left with no gate at all. So when there is nothing to chain onto, the hook
+    # is written fresh: the marker, then install-hooks --check. The LFS branch below is
+    # still the one that runs when a foreign hook IS present.
+    if [ "$CHECK_ONLY" -eq 1 ]; then
+      printf '  ABSENT           %s -- this clone has NO gate until you run install-hooks\n' "$name"
+      status=1
+      continue
+    fi
+    {
+      printf '#!/bin/sh\n'
+      printf '# sotto-hook-chain: installed by scripts/install-hooks. No foreign hook was here\n'
+      printf '# to preserve, so this one is ours alone.\n'
+      printf '%s\n' "# THEN: reinstall and report every hook this repo owns"
+      printf 'sh "$(git rev-parse --show-toplevel)/scripts/install-hooks" >/dev/null 2>&1\n'
+      printf 'sh "$(git rev-parse --show-toplevel)/scripts/install-hooks" --check\n'
+    } > "$dest"
+    printf '  INSTALLED        %s (no foreign hook to chain onto)\n' "$name"
+    installed=$((installed+1))
+    continue
   fi
   # Ours already?  The marker lives at the top; ours also starts with the shim header.
   if head -n 2 "$dest" | grep -q 'sotto-hook-chain'; then
@@ -154,8 +174,18 @@ for c in $CHAINED; do
     continue
   fi
   if [ ! -f "$keep" ]; then
-    printf '  NO-ORIGINAL      %s -- chained, but %s.lfs-original is missing, so the foreign body cannot be verified\n' "$c" "$c"
-    status=1
+    # NO --ORIGINAL IS CORRECT HERE, and the distinction matters. Measured 2026-10-11T07:59:34Z
+    # on a fresh `git init` with no Git LFS: our own freshly-installed hook reported
+    # NO-ORIGINAL and CHECK FAILED, because there was no foreign body to preserve. The
+    # check was right that no original exists and wrong to call it a failure: a hook we
+    # wrote ourselves has no original to be stale against. Only a hook that WRAPS a
+    # foreign body needs one.
+    if grep -q 'No foreign hook was here' "$dest"; then
+      printf '  ok               %s (chained; installed fresh, no foreign body to preserve)\n' "$c"
+    else
+      printf '  NO-ORIGINAL      %s -- chained, but %s.lfs-original is missing, so the foreign body cannot be verified\n' "$c" "$c"
+      status=1
+    fi
     continue
   fi
   if sed -n '/^# ORIGINAL BODY$/,/^# THEN:/p' "$dest" | grep -v '^# ORIGINAL BODY$' | grep -v '^# THEN:' | grep -v '^$' | diff -q - "$keep" >/dev/null 2>&1; then

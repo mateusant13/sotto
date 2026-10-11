@@ -401,3 +401,24 @@ gate: it might refuse everything.
 ## 2026-10-11T07:14:32Z - chain instead of replace: LFS bodies preserved byte-identical
 
 ## 2026-10-11T07:48:35Z - the instrument to measure instability was itself the unstable thing
+
+## 2026-10-11T07:59:57Z - the machine this installer exists for had no gate at all
+
+I built install-hooks to make a fresh clone safe, and then never ran it on a machine
+without Git LFS. Measured 2026-10-11T07:59:06Z on a bare git init: post-checkout and
+post-merge both reported ABSENT and NEITHER WAS CREATED. The only host I tested was the
+one that already had four foreign hooks, where the chaining branch worked perfectly. The
+case the installer was written for is the one case it silently skipped.
+
+  rule: test the tool on the machine it exists FOR, not on the machine you are standing
+  on. My repo has LFS. Every clone someone else makes might not.
+
+Then --check called the freshly-installed hook NO-ORIGINAL and CHECK FAILED, because a
+hook we wrote ourselves has no original to be stale against. It was right that no
+original exists and wrong to call that a failure. Both cases now pass:
+    fresh repo, no LFS   ok post-checkout (chained; installed fresh, no foreign body)
+    this repo, LFS       ok post-checkout (chained; LFS body byte-identical)
+
+And the second commit in that test repo was REFUSED by my own pre-commit, correctly:
+app/shadowplay/run-all.mjs does not exist there, and the hook refuses rather than passing
+quietly because there was nothing to run. That is the behaviour working, not failing.
