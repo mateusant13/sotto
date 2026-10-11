@@ -146,6 +146,29 @@ the byte counts that bullet quotes — `encoder-model.onnx` 343841943, `decoder_
 **The CRLF property the battery bullet relies on still HOLDS (0 bare LF in both trees) — only the size and
 the hash aged.** Every `file:line` in the bullets above is a hint from an older revision; re-grep before
 citing one (rule 1 and rule 2).
+
+### 9. `app/panel/history-store.js` is NOT on the shipped page — the LIVE `src=` gate is the shell's tuple.
+*(correction to the Layout row `app/panel/`, which lists it among "the modules the document loads")*
+Measured 2026-10-11 (instrument: `node` over the bytes; the `panel.html` `<script src>` population
+counted one by one): `app/panel/panel.html` loads **eleven** scripts — `caption-formulation.js`,
+`history-source.js`, `history-gallery.js`, `surface.js`, `themes/themes.js`, `themes/panel-designs.js`,
+`skins/skins.js`, `theme-switcher.js`, `theme-tune.js`, `skin-host.js`, `panel.js` — and
+**`history-store.js` is not one of them** — and the string `history-store` does not appear anywhere in
+`panel.html` at all (**0** matches, re-measured 2026-10-11 while writing this rule; a first draft of this
+sentence said "a comment at `:963`" and that was FALSE). So the
+Layout row's module list is FALSE, and `history-store.js` is read by ORACLES ONLY
+(`_main/historico-vs-redux-probe.js`, `history-route-oracle.js`, `live-vs-history-source-oracle.js`,
+`history-producer-gate.js`, `_main/canonical-producer-oracle.py`). The writer the owner's transcript
+actually passes through is `app/webview/sotto_webview.py` `history_append` (`:4630`) ->
+`_history_provenance` (`:4610`) with its OWN tuple `HISTORY_ROUTE_SOURCES` (`:169`) — the Python twin of
+the JS `ROUTE_SOURCES`. **BOTH were missing `'worker-stamped-producer'` until 2026-10-11** — the token
+`caption-formulation.js routeSourceFor` returns (`:501`) for a line that DECLARES a producer while no
+worker `final` vote decided the route — so such a line was written with NO `src=` marker at all:
+provenance thinner than the decision that produced it. The JS half was LATENT (oracle-only, and
+`panel.js:1331` stops a non-`final` route before any store); the SHELL half was LIVE. Fixed in both; each
+tuple now equals the four declared tokens. Gate: `_main/canonical-producer-oracle.py` checks the store's
+list AND the shell's list (re-baselined 2026-10-11 — those two arms used to PIN the defect, and went RED
+the moment it was fixed).
 ---
 
 ## MUST READ before touching `worker/`

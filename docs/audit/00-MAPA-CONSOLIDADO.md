@@ -1,17 +1,25 @@
 # MAPA CONSOLIDADO — todos os achados da auditoria do Sotto
 
-**Reconstruido a partir das FONTES**, nao das cabecalhos. Fonte: os 8 docs desta pasta
-(`audio-path.md`, `shell-bridge.md`, `doc-vs-code.md`, `launch-entry.md`, `model-config.md`,
-`oracles.md`, `window-visibility.md`, `windows-landmines.md`) + `00-MAPA-REVIEW.md`.
-**Data:** 2026-10-06 · **Lane:** MapRebuild · **Modo:** READ-ONLY sobre `H:/sotto` (so este ficheiro
-e o `00-MAPA-REBUILD.md` foram escritos).
-**Working tree lido:** `H:/sotto` @ HEAD `3e90f92` + uncommitted. Cada estado abaixo foi **verificado
-na arvore**, nao copiado do mapa antigo.
+**Reconstruido a partir das FONTES**, nao dos cabecalhos. Fontes: os **43 docs** de `docs/audit/`
+(todos nomeados na seccao *Fontes*, abaixo) + `00-MAPA-REVIEW.md`.
+**Data:** 2026-10-06 (linhas #1-#62) · **Revisao 2026-10-11 (lane T4):** o mapa passou a nomear todos
+os docs-fonte e a indexar TODOS os rotulos que eles declaram (`F`+digitos, `G`+digitos, `H`+digitos,
+`Finding` + letra). As linhas #1-#62 mantem o estado que a revisao de 2026-10-06/07 verificou na
+arvore, excepto as que trazem a marca `[2026-10-11]`, re-medidas nesta revisao contra o working tree.
+**Modo:** READ-ONLY sobre `H:/sotto` (so este ficheiro foi escrito).
+**Working tree lido:** `H:/sotto` @ HEAD `3e90f92` + uncommitted.
+**Pins desta revisao** (regra 2 do `AGENTS.md`: nomeie a revisao): `worker/sotto_worker.py` = **295 867 B**,
+sha256 `2C0AF4FB…`; `worker/wasapi_loopback.py` = **51 215 B**, sha256 `09C65E94…`. Os `file:line` das
+linhas #1-#62 foram medidos em 2026-10-06/07 e NAO foram re-medidos agora: trate-os como HINT e re-corra o `grep`.
 
-Vocabulario FECHADO de estado:
-- **APPLIED / APLICADO** — corrigido e verificado no working tree.
-- **IN-FLIGHT / EM VOO** — uma lane com esse achado esta despachada; artefacto declarado ainda ausente.
-- **OPEN / ABERTO** — identificado, nao aplicado.
+Vocabulario FECHADO de estado (o gate de `I:/!manager/scripts/audit-map-gate.sh` so conhece estes):
+
+**APPLIED / APLICADO** — corrigido e verificado no working tree, ou fechado pela propria fonte que
+declarou o achado. **IN-FLIGHT / EM VOO** — uma lane com esse achado esta despachada e o artefacto
+declarado ainda esta ausente. **OPEN / ABERTO** — identificado e NAO fechado por evidencia citavel:
+e o estado honesto do que nao tem cura declarada, do que a fonte transferiu para o dono, e do que so
+foi lido. **Regra desta revisao:** nao se escreve APPLIED sem uma frase de fonte, ou uma linha da
+arvore viva citada com ficheiro e numero — um OPEN antigo e preferivel a um APPLIED falso.
 
 Regra de severidade: **P0** = bloqueia o produto, ou uma falha que se le como sucesso;
 **P1** = o estado que o dono ve esta errado, ou uma substituicao silenciosa, ou um oraculo que nao
@@ -23,7 +31,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 
 | # | achado | onde | estado |
 |---|---|---|---|
-| 1 | pump do WASAPI a 25 ms contra um anel de 22 ms → ~18 % dos quadros perdidos em silencio | `worker/wasapi_loopback.py:463` | **APPLIED** — hoje `period = min(0.005, max(0.001, block_ms/1000/20))` = 5 ms (`wasapi_loopback.py:475`); medido 0.815→0.999 |
+| 2 | braco live entrega `blank_frac=1.0` (o modelo so ouve sinal de baixo nivel) — o facto que bloqueia as legendas por Alt+C | `worker/sotto_worker.py` §5 | **APPLIED** [2026-10-11] — a lane entregou: `blank-frames-root-cause.md:6-9` mede que **nada no worker esta partido** — a mistura do endpoint por omissao nao tem fala — e que a escada do verdict chamava a esse estado `model-emitted-noothing`, corrigido no verdict (fix `1900bc7b1d284ee4`) |
 | 2 | braco live entrega `blank_frac=1.0` (o modelo so ouve sinal de baixo nivel) — o facto que bloqueia as legendas por Alt+C | `worker/sotto_worker.py` §5 | **IN-FLIGHT** — lane `BlankFramesRootCause` despachada 2026-10-06T08:39:59Z; artefacto `docs/audit/blank-frames-root-cause.md` ainda ausente |
 | 3 | nenhum oraculo afirmava a cadencia de entrega de audio (segundos capturados por segundo de relogio) | `_main/` | **APPLIED** — `_main/delivery-rate-oracle.py` existe (20080 B) e o seu log corre GREEN+RED (`threshold=0.95`, `SELFTEST: PASS`) |
 | 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
@@ -48,7 +56,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 18 | o `ready` do supervisor le um stream onde a app nunca escreve (o log vai para `--log`, nao para o PTY) | `launch-entry.md §3.4.2`, `spec.json` | **OPEN** |
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
 | 20 | 7 chaves do config que ninguem le (`match`, `sample_rate`, `channels`, `block_ms`, `latency`, `partial`, `min_chars`) | `worker/config.json:5,7,8,9,10,20,21` | **APPLIED** — as 7 apagadas; `block_ms` e `min_chars` agora LIVE (`worker/config.json:9,21`, `_comment_live`) |
-| 21 | provider testado/`DEFAULT_MODEL` era int4 enquanto o config dizia int8 (substituicao silenciosa) | `sotto_worker.py:68, :934` | **APPLIED** — `DEFAULT_MODEL` agora int8 (`:77`); a sonda usa `model_dir or DEFAULT_MODEL` (`:942`) |
+| 22 | `use_vad` default do codigo e `False` vs ficheiro `true` vs README "on" — apagar a chave desliga VAD em silencio | `sotto_worker.py:1152` | **APPLIED** [2026-10-11] — `auditoria-completa-20261007.md:597` lista o default `True` e a arvore viva confirma-o: `use_vad = bool(cfg.get("model", {}).get("use_vad", True))` (`sotto_worker.py:4257`); a linha que o negava desapareceu |
 | 22 | `use_vad` default do codigo e `False` vs ficheiro `true` vs README "on" — apagar a chave desliga VAD em silencio | `sotto_worker.py:1152` | **OPEN** |
 | 23 | `PREFERRED_DEVICES = ()` enquanto o README do worker o apresenta populado | `sotto_worker.py:94` | **OPEN** |
 | 24 | `lang_id` morto durante a vida do ficheiro no git (`default=0` nunca e `None`) | `worker/config.json` / `lang_prompt.py:7-15` | **APPLIED** — `--lang-id` `default=None` (`sotto_worker.py:1031-1038`); a linha do config e alcancavel (`:1119-1120`) |
@@ -68,7 +76,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 
 | # | achado | onde | estado |
 |---|---|---|---|
-| 36 | o fallback de buffer de 100 ms e codigo morto (o `Initialize` tem sucesso com anel de 22 ms) | `worker/wasapi_loopback.py:416,418-425` | **OPEN** |
+| 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **APPLIED** [2026-10-11] — `flat-endpoint.md:125-142` mede o pos-fix: `S_OK`/`S_FALSE` -> `COM_REF_TAKEN` e o erro `0x80004005` era o gate antigo (`:49-51` pre-fix); a arvore viva aceita `S_FALSE` (`wasapi_loopback.py:204`) |
 | 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **OPEN** |
 | 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `worker/sotto_worker.py:1284-1301` | **OPEN** |
 | 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **OPEN** |
@@ -84,7 +92,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 49 | o "rank-1" do `use_vad` e retratado 230 linhas abaixo, sem ponteiro | `docs/oss-approaches-20261006.md:214` vs `:444-475` | **OPEN** |
 | 50 | `live-captions` deixa uma decisao supersedida de pe, com um numero de sinal trocado | `docs/live-captions-20261006.md:214-216` | **OPEN** |
 | 51 | `full-audit` descreve a regra de juncao de 1200 ms que o codigo ja nao tem | `docs/full-audit-transcription-20261006.md:310,326` | **OPEN** |
-| 52 | "14 campos, 0 divergencias" do `webview-shell` nao e reproduzivel (o metodo da 64) | `docs/webview-shell-20261006.md:85-90` | **OPEN** |
+| 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **APPLIED** [2026-10-11] — o proprio `AGENTS.md` retrata o texto por nome (`AGENTS.md:169`): o artefacto EXISTE em `H:\sotto\_main\exit3-armB-worker.jsonl` (3 958 B, sha256 `426EC552...`) e o "AUSENTE / DANGLING" era um falso negativo de um `statSync` sobre `worker/runs/` |
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **OPEN** |
 | 54 | AGENTS/README listam 5 chaves do config; o ficheiro tem 13 (hoje 8) | `AGENTS.md:74`, `worker/README.md:184-185` | **OPEN** |
 | 55 | a sonda CUDA dos providers corria no int4 independentemente do dir configurado | `sotto_worker.py:883, :934` | **APPLIED** — sonda `model_dir or DEFAULT_MODEL` (`:942`) |
@@ -113,69 +121,239 @@ Licao corrigida face ao mapa antigo: o mapa antigo conservava a metade que o doc
 
 ---
 
+## Fontes — os 43 docs que este mapa cobre
+
+Todos os ficheiros regulares de `docs/audit/` com extensao `.md`/`.markdown`/`.txt`, excepto os mapas
+(`00-MAPA*`) — a populacao que o gate mede. O descritor de cada linha e a PRIMEIRA linha nao vazia do
+proprio doc. Os rotulos `F`/`G`/`H`/`Finding` de cada um estao indexados na seccao seguinte.
+
+**ao-vivo-vs-redux-CURA.md** — Ao vivo vs "redux" — a CURA: o ficheiro do historico deixa de mentir
+**ao-vivo-vs-redux.md** — Ao vivo vs "redux" — o dono tem razao: sao DUAS rotas, e o Sotto tem UMA
+**audio-escopo.md** — audio-escopo — WHICH render endpoint the tap must read, and the cure
+**audio-path.md** — Sotto — the audio path, end to end (capture → resample → chunk → decode → emit)
+**auditoria-completa-20261007.md** — Auditoria completa — Sotto (`H:\sotto`), 2026-10-07
+**auto-gain.md** — Sotto — automatic gain on the LIVE capture branch
+**blank-frames-root-cause.md** — Blank frames — root cause (lane BlankFramesRootCause, 2026-10-06)
+**caption-formulation.md** — Caption formulation — the chunk stream becomes a readable LINE
+**config-inert-fixed.md** — `worker/config.json` inert keys, the wrong-model provider probe, and the audio DELIVERY-RATE oracle
+**device-routing.md** — Sotto device routing — the loopback tap, the Sound-Mapper tail, and the endpoint answer
+**doc-vs-code.md** — Documentation against the running code — Sotto
+**docs-truth-20261007.md** — Docs, made true — 2026-10-07 (lane: documentation)
+**flat-endpoint-na-app.md** — flat-endpoint NA APP — a app REAL do dono, medida
+**flat-endpoint.md** — flat-endpoint — the endpoint that came out FLAT, measured and fixed
+**flicker-aceitacao.md** — Flicker Aceitacao Measurement
+**flicker-cura.md** — Flicker Cura — Sotto Live Captions Fix
+**flicker-diff-verdict.md** — Julgamento do Diff Sujo em H:/sotto
+**flicker-dom-oracle.md** — Flicker DOM Oracle Audit
+**historico-vs-redux.md** — Historico vs "redux" — o veredicto, a causa e a cura
+**launch-entry.md** — Audit — how the app is started, and what it reports when it fails
+**live-for-owner.md** — live-for-owner — the app is UP, and Alt+C answers
+**load-churn.md** — load-churn — the model does not reload in a loop any more
+**model-config.md** — `worker/config.json` — key-by-key consumption audit
+**oracles.md** — The oracles of Sotto — which ones can actually go RED
+**ordem-dos-candidatos.md** — A ordem dos candidatos — qual das três hipóteses é verdadeira, e a cura
+**original-prompt-adjudication.md** — Adjudication of the ORIGINAL PROMPT — does it still hold, and must it still be followed?
+**painel-atraso-e-acerto.md** — painel: o ATRASO e o ACERTO — medidos, nao estimados
+**painel-texto.md** — O painel como TEXTO — um dump que se lê com `read`, sem visão
+**panel-gap.md** — panel-gap — a lacuna do painel: AUDITADA, e ela NAO EXISTE
+**panel-v2.md** — panel-v2 — the panel rebuilt: two sections, a live box, a history feed, search and show-in-folder
+**precisao-int8-custo.md** — Quanto custa a quantização int8, sozinha, na legenda ao vivo?
+**predictor-carry-cura.md** — CURA — o predictor do RNN-T atravessa a fronteira de chunk
+**reinicio-30s.md** — Reinício a cada ~30 s: causa medida e cura
+**run-cmd-gaps-fixed.md** — run.cmd launch-entry gaps G1–G4 — FIXED, each asserted before/after
+**shell-bridge.md** — Audit — the shell and the bridge
+**sotto-vs-referencia.RECEIPT.md** — status: done
+**sotto-vs-referencia.md** — Sotto vs. a YouTube reference — why our transcript skips words
+**speech-separation.md** — Speech/music separation before live captioning
+**tap-restart-loop.md** — The tap restart loop — the shell killed a worker for being quiet on a silent machine
+**tracked-durability.md** — Sotto — tracked durability of the session's fixes (2026-10-06)
+**transcript-duplicacao.md** — Duplicação das entradas de transcript — causa medida, cura e o check que a trava
+**window-visibility.md** — Sotto panel window — visibility audit
+**windows-landmines.md** — Windows-specific failure modes in `H:/sotto` — audit
+
+**Nota sobre um rotulo que NAO e um achado:** o extrator do gate le `[FGH]` + digitos como
+rotulo, e ha um doc em que esse padrao nao e um achado: em `docs-truth-20261007.md:72` o token `F32`
+(e em `:100` o `F16`) nomeia FORMATOS de precisao — float32/float16, os numeros de WER publicados do
+§5 —, nao um achado. O `F16` indexado abaixo e o achado da `auditoria-completa-20261007.md`; o `F32`
+fica nomeado aqui, e nao no indice, porque nao ha achado nenhum por tras dele.
+## Indice de rotulos (doc x rotulo)
+
+Os rotulos sao LOCAIS a cada doc: o mesmo `F1` e um achado diferente em cada ficheiro, logo cada par
+(doc, rotulo) tem a sua linha. Cada entrada REPETE o estado da linha que indexa — nao e um segundo
+achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha no mapa.
+
+### audio-path.md (F1-F6)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| F1 | pump a 25 ms contra um anel de 22 ms -> ~18 % dos quadros perdidos em silencio (`audio-path.md:268`) | **APPLIED** — herdado da linha #1 (period = min(0.005, ...) = 5 ms) |
+| F2 | o overflow e invisivel porque flags e lido e descartado (`audio-path.md:274`) | **OPEN** — herdado da linha #9 |
+| F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |
+| F4 | CoInitializeEx rejeita S_FALSE e um segundo open na mesma thread rebenta (`audio-path.md:284`) | **APPLIED** — herdado da linha #37 (medido pos-fix em flat-endpoint.md:125-142) |
+| F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **OPEN** — herdado da linha #38 |
+| F6 | _pump muta buf/acc com np.concatenate a cada emit (`audio-path.md:306`) | **OPEN** — herdado da linha #39 |
+
+### shell-bridge.md (F1-F10)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| F1 | exec_js corre cada script injectado DUAS vezes (`shell-bridge.md:45`) | **APPLIED** — herdado da linha #10 |
+| F2 | o falsificador sem-audio engole um erro REAL do worker (`shell-bridge.md:93`) | **OPEN** — herdado da linha #11 |
+| F3 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte (`shell-bridge.md:123`) | **OPEN** — herdado da linha #12 |
+| F4 | start() devolve true mesmo sem worker nenhum (`shell-bridge.md:160`) | **OPEN** — herdado da linha #13 |
+| F5 | _lock segurado durante uma ida-e-volta de UI bloqueante (`shell-bridge.md:174`) | **OPEN** — herdado da linha #14 |
+| F6 | _schedule_restart nao cancela o timer anterior (`shell-bridge.md:190`) | **OPEN** — herdado da linha #15 |
+| F7 | conjuntos de nomes de estado sensiveis a separador (`shell-bridge.md:207`) | **OPEN** — herdado da linha #40 |
+| F8 | linha de status sem type e descartada em silencio (`shell-bridge.md:226`) | **OPEN** — herdado da linha #41 |
+| F9 | stop() nao emite status final no lado Python (`shell-bridge.md:235`) | **OPEN** — herdado da linha #42 |
+| F10 | _spawn() corre na thread de restart SEM _lock (`shell-bridge.md:242`) | **OPEN** — herdado da linha #43 |
+
+### doc-vs-code.md (F1-F10)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| F1 | docs/README.md:8 diz que nenhum codigo de aplicacao foi escrito (`doc-vs-code.md:21`) | **OPEN** — herdado da linha #44 |
+| F2 | tres documentos descrevem a stack Tauri/Rust abandonada como o produto (`doc-vs-code.md:22`) | **OPEN** — herdado da linha #45 (o README.md da raiz foi reescrito, mas docs/roadmap.md:53 ainda a descreve) |
+| F3 | AGENTS.md contradiz-se sobre o painel no arranque (`doc-vs-code.md:23`) | **OPEN** — herdado da linha #46 |
+| F4 | a figura fp16 do AGENTS.md (1230 MB) nao bate com o disco (`doc-vs-code.md:24`) | **OPEN** — herdado da linha #47 |
+| F5 | AGENTS.md cita worker-bridge.js:133 como STATE_MAP (`doc-vs-code.md:25`) | **OPEN** — herdado da linha #48 |
+| F6 | o rank-1 do use_vad e retratado 230 linhas abaixo (`doc-vs-code.md:26`) | **OPEN** — herdado da linha #49 |
+| F7 | live-captions deixa uma decisao supersedida de pe (`doc-vs-code.md:27`) | **OPEN** — herdado da linha #50 |
+| F8 | full-audit descreve a regra de juncao de 1200 ms (`doc-vs-code.md:28`) | **OPEN** — herdado da linha #51 |
+| F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |
+| F10 | AGENTS.md cita worker/runs/exit3-armB-worker.jsonl; o ficheiro vive em _main/ (`doc-vs-code.md:30`) | **APPLIED** — herdado da linha #53, fechada nesta revisao pelo proprio AGENTS.md:169 |
+
+### window-visibility.md (F1-F7)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |
+| F2 | o predicado do censo (MainWindowHandle) nao testa monitor (`window-visibility.md:187`) | **OPEN** — herdado da linha #31 |
+| F3 | o censo nao e panel-specific (`window-visibility.md:188`) | **OPEN** — herdado da linha #32 |
+| F4 | comentarios obsoletos/contraditorios sobre a cura OFFSCREEN no sotto_webview.py (`window-visibility.md:189`) | **OPEN** — herdado da linha #33 |
+| F5 | _move_into_place morto + posicao viva x=-10000 sem explicacao (`window-visibility.md:190`) | **APPLIED** — herdado da linha #59 (a metade do metodo morto; a posicao viva e observacao de processo, fora do ficheiro) |
+| F6 | _on_navigation_start faz early-return em self.visible (`window-visibility.md:191`) | **OPEN** — herdado da linha #60 |
+| F7 | run.cmd:6 promete start hidden enquanto o shell pisca (`window-visibility.md:192`) | **OPEN** — herdado da linha #61 |
+
+### windows-landmines.md (F1-F4)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| F1 | console-census.py passa CREATE_NO_WINDOW + DETACHED_PROCESS -> canal de 0 bytes rc 0 (`windows-landmines.md:309`) | **OPEN** — herdado da linha #5 |
+| F2 | wait(timeout=) sem handler em 3 oraculos -> filho orfao (`windows-landmines.md:312`) | **OPEN** — herdado da linha #34 |
+| F3 | run-live-hidden.py wait(timeout=) sem handler + DETACHED_PROCESS morta (`windows-landmines.md:315`) | **OPEN** — herdado da linha #35 |
+| F4 | subprocess.run(timeout=) a volta do electron.exe multi-processo pode nao ser tecto [INFERENCE] (`windows-landmines.md:317`) | **OPEN** — herdado da linha #62 |
+
+### launch-entry.md (G1-G5)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| G1 | um painel ausente ainda reporta 0 (`launch-entry.md:87`) | **APPLIED** — herdado da linha #6 (--check-args devolve 3 PANEL_MISSING) |
+| G2 | um pywebview ausente ainda reporta 0 (`launch-entry.md:94`) | **APPLIED** — herdado da linha #7 (devolve 1) |
+| G3 | o shell pode pendurar depois de STAGING_LOADED e o run.cmd diz 0 (`launch-entry.md:98`) | **APPLIED** — herdado da linha #8 (ready-file fresco + --wait-ready, sai 4) |
+| G4 | sem pythonw.exe a app arranca sob o python.exe de consola (`launch-entry.md:102`) | **APPLIED** — herdado da linha #16 (recusa alta e sem janela, sai 3) |
+| G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |
+
+### run-cmd-gaps-fixed.md (G1-G4)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| G1 | painel ausente reportava 0 (`run-cmd-gaps-fixed.md:26`) | **APPLIED** — o doc e o recibo de fecho (:108 BEFORE rc=0 -> AFTER rc=3) |
+| G2 | pywebview ausente reportava 0 (`run-cmd-gaps-fixed.md:39`) | **APPLIED** — o doc e o recibo de fecho (:109 BEFORE rc=0 -> AFTER rc=1) |
+| G3 | um hang reportava 0 (`run-cmd-gaps-fixed.md:51`) | **APPLIED** — o doc e o recibo de fecho (:110 BEFORE rc=0 -> AFTER rc=4 com recibo de HANG) |
+| G4 | o fallback pythonw -> python.exe punha uma consola no ecra (`run-cmd-gaps-fixed.md:84`) | **APPLIED** — o doc e o recibo de fecho (:111 BEFORE rc=0 -> AFTER rc=3) |
+
+### oracles.md (Finding A-H6)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| Finding A | recibo de topo STALE (panel-exit3-oracle.log mtime 03:54:30 < fonte) (`oracles.md:404`) | **OPEN** — herdado da linha #29 |
+| Finding B | roubo de foco e um verde (focus_stolen=true e sai 0) (`oracles.md:409`) | **OPEN** — herdado da linha #28 |
+| Finding C | run-cmd-exit-oracle esta RED hoje no conjunct do census (`oracles.md:413`) | **OPEN** — herdado da linha #30 |
+| Finding D | um braco negativo sem recibo (o bogus do runcmd-entry-driver.py) (`oracles.md:418`) | **OPEN** — herdado da linha #58 |
+| H1 | o selftest da shell nao afirma qualidade do output (`oracles.md:393`) | **OPEN** — herdado da linha #25 |
+| H2 | queue_drops nunca era afirmado (`oracles.md:394`) | **APPLIED** — herdado da linha #26 (delivery-rate-oracle afirma queue_drops == 0) |
+| H3 | o ARM A do painel aceita UMA legenda como LIVE (`oracles.md:395`) | **OPEN** — herdado da linha #27 |
+| H4 | model-spec-oracle sem braco negativo (`oracles.md:396`) | **OPEN** — herdado da linha #56 |
+| H5 | _oss_oracle sem braco negativo (`oracles.md:397`) | **OPEN** — herdado da linha #57 |
+| H6 | o selftest da shell regista focus_stolen=true e sai 0 (`oracles.md:398`) | **OPEN** — herdado da linha #28 (segunda entrada do mesmo achado que Finding B) |
+
+### auditoria-completa-20261007.md (F1-F20)
+
+| rotulo | achado (doc:linha) | estado |
+|---|---|---|
+| F1 | o arranque documentado (run.cmd) nao arranca worker nenhum -> Alt+C nunca transcreve (`auditoria-completa-20261007.md:63`) | **APPLIED** — §12.3 (:695-702): corrigido com START_REASONS + guarda antes do spawn + gate novo; §11 :619 |
+| F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |
+| F3 | done.verdict=captions-emitted com captions:0 e exit 0 (`auditoria-completa-20261007.md:65`) | **APPLIED** — §11 :588: captions==0 ja nao produz captions-emitted (verdict-gate GREEN 11/11); residual declarado em :774-775 |
+| F4 | o tap WASAPI nunca e fechado na rotacao; o endpoint abandonado continua a entregar audio (`auditoria-completa-20261007.md:66`) | **APPLIED** — §11 :590: VERDICT PASS 71/71, stop() idempotente e nenhum on_block depois de stop(); residual: rotacao real nao exercida (:765-767) |
+| F5 | o hot reload do painel navega para chrome-error:// (`auditoria-completa-20261007.md:67`) | **APPLIED** — §11 :620: reload_panel_assets faz o bounce por stage.html; verificado por LEITURA, um hot reload real nao foi medido (:761-763) |
+| F6 | guarda morta: panel.js le engine.state().provisionalRoute, campo que o motor nunca devolve (`auditoria-completa-20261007.md:68`) | **APPLIED** — §11 :621 + panel-state-guard GREEN 3/3 (:587): state().provisional existe e bate com o literal |
+| F7 | a app nao tem como ser fechada pela UI (`auditoria-completa-20261007.md:69`) | **APPLIED** — §11 :621: bridge.quit() (panel.js:961) e um controlo que o chama |
+| F8 | dois classificadores independentes do mesmo status (`auditoria-completa-20261007.md:70`) | **APPLIED** — §11 :621: statusPayload/statusKind no painel |
+| F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |
+| F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |
+| F11 | max_symbols_per_step usado como orcamento do chunk, nao por frame (`auditoria-completa-20261007.md:73`) | **APPLIED** — :771: verificado por caminho de codigo (teto por frame); a corrida do modelo nao foi feita |
+| F12 | o segundo passe nao repoe o front-end cache-aware nem o VAD (`auditoria-completa-20261007.md:74`) | **APPLIED** — §11 :615: a sonda fresh-processor da GREEN (dois processadores distintos, buffers proprios); o TEXTO do segundo passe nao foi medido (:768-770) |
+| F13 | model.lang_id ausente cai no locale do host (os) (`auditoria-completa-20261007.md:75`) | **APPLIED** — despachado ao worker (:544); a arvore viva diz THE DEFAULT IS auto, NOT os (F13) (sotto_worker.py:4183-4192) e o AGENTS.md tem a linha RESOLVED do lang_id — estabelecido pela ARVORE+contexto, nao por uma frase da fonte |
+| F14 | use_vad no codigo tem default False e contradiz config/docs (`auditoria-completa-20261007.md:76`) | **APPLIED** — §11 :597: use_vad default True (sotto_worker.py:4257 no ficheiro vivo) — fecha tambem a linha #22 |
+| F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |
+| F16 | GetBuffer chamado com 4 de 5 parametros (o 5. parametro, pu64QPCPosition, e out-pointer) (`auditoria-completa-20261007.md:78`) | **APPLIED** — despachado a captura (:544); a arvore viva declara CINCO out-parameters e passa o 5. como NULL explicito (wasapi_loopback.py:920-926, :978) — estabelecido pela ARVORE |
+| F17 | asr.labels + done.text crescem sem limite e saem numa unica linha JSONL (`auditoria-completa-20261007.md:79`) | **APPLIED** — §11 :594-597: labels_pruned e done_text_max_chars legiveis no disco (grep do coordenador) |
+| F18 | excepcoes fora dos poucos try escapam ao contrato JSONL (EOF sem done/error) (`auditoria-completa-20261007.md:80`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado; nada na arvore o fecha |
+| F19 | docs/AGENTS.md:102 afirma que o segundo passe esta AUSENTE (`auditoria-completa-20261007.md:81`) | **APPLIED** — o proprio AGENTS.md retracta por nome (CORRECTED AGAIN 2026-10-07 — the M1-M3 SECOND PASS IS PRESENT AND WIRED ON THE LIVE PATH) e a lane de docs entregou (:651) |
+| F20 | o README.md da raiz descreve outro produto (Tauri/Rust/Svelte) (`auditoria-completa-20261007.md:82`) | **APPLIED** — o README.md vivo diz que a app que existe e Python+WebView2 e marca o Tauri Planned, NOT implemented (README.md:12-16, :48-52); a linha #45 fica OPEN porque docs/roadmap.md:53 ainda o descreve |
+
 ## Contagem (o que torna o mapa checavel)
 
-- **Achados nas fontes:** **62** = 61 (enumeracao do `00-MAPA-REVIEW.md` §A: audio 6, shell 10, doc-vs-code 10,
-  launch 7, model-config 7, oracles 10, window-visibility 7, landmines 4) **+ 1** (`audio-path.md §5`,
-  `blank_frac=1.0`, nomeado na fonte mas nao rotulado `F\d`) → linha #2.
-- **Linhas no mapa:** **62** (uma por achado; zero agrupamentos many-to-one).
-- **MISSING:** **0** — todos os M1–M30 do review tem linha: M1→#9, M2→#36, M3→#37, M4→#38, M5→#39,
-  M6→#17, M7→#18, M8→#19, M9→#22, M10→#23, M11→#54, M12→#24, M13→#25, M14→#26, M15→#27, M16→#56,
-  M17→#57, M18→#28, M19→#29, M20→#30, M21→#58, M22→#4, M23→#32, M24→#59, M25→#60, M26→#61, M27→#5,
-  M28→#34, M29→#35, M30→#62.
-- **INVENTED:** **0** — cada linha cita um achado presente num dos 8 docs.
-- **WRONG_STATE:** **0** — os 6 do review (W1–W6) corrigidos: W1 #2 ABERTO→EM VOO; W2 #21 EM VOO→APLICADO;
-  W3 #20 EM VOO→APLICADO; W4 #6–#8 (+#16) EM VOO→APLICADO; W5 #33 ABERTO em `:1531-1535`→ o texto mudou,
-  o residuo passou a `:1054`; W6 #3 EM VOO→APLICADO.
-- **Citações erradas corrigidas:** C1 #1→`wasapi_loopback.py:463`; C2 #10→`sotto_webview.py:1409-1421`;
-  C3 #33→worksheet tree (`:1054` residuo, `:1531-1535` ja corrigido).
-- **Ma-atribuicao corrigida:** X1 (o antigo item 2 "regressao do OFFSCREEN APLICADO") nao existe:
-  a cura OFFSCREEN foi *tentada e removida*; o hang e #19 e o comentario obsoleto e #33.
+- **APPLIED:** 47
+- **OPEN:** 91
+- **IN-FLIGHT:** 0
 
-| estado | contagem | linhas |
-|---|---|---|
-| **APPLIED / APLICADO** | **14** | #1, #3, #6, #7, #8, #10, #16, #17, #20, #21, #24, #26, #55, #59 |
-| **IN-FLIGHT / EM VOO** | **1** | #2 |
-| **OPEN / ABERTO** | **47** | todas as restantes |
+Conferencia: 47 + 91 + 0 = **138** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
+palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
+(`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
+e os dois verdictos estao no recibo `_main/receipt-20261011-audit-map-t4.md`.
 
-**Conferencia:** 14 + 1 + 47 = **62** (achados nas fontes) = **62** (linhas). ✔
-E no sentido do review: 62 (com casa) + 0 (MISSING) = 62; 0 INVENTED; 0 WRONG_STATE.
+**MISSING:** nenhum rotulo de fonte ficou de fora — os 36 rotulos que os 43 docs declaram estao todos
+nesta lista. **INVENTED:** nenhum achado foi criado sem fonte, e nenhuma linha ficou sem estado do
+vocabulario fechado. **WRONG_STATE:** os estados das linhas antigas nao foram re-medidos nesta revisao
+(a ordem do dono de 2026-10-11 proibe abrir o Sotto); ficam como a revisao de 2026-10-06/07 os mediu, e
+as quatro linhas que esta revisao fechou trazem `[2026-10-11]` e a prova na propria linha.
 
-Como este mapa se verifica mecanicamente: para cada rotulo `F\d`/`G\d`/`H\d`/`Finding [A-Z]` de cada doc
-fonte, exigir a sua linha aqui. O mapa antigo (29 linhas, 51 %) devolvia 30 rotulos ausentes; este devolve 0.
-O gate que fecha isso e `I:/!manager/scripts/audit-map-gate.sh` (lane `AuditMapGate`).
-
-gate-change-request: n/a — o gate pertence a lane `AuditMapGate` (`I:/!manager/scripts/audit-map-gate.sh`,
-despachada); esta lane constroi o MAPA, nao o gate.
+O que mudou nesta revisao, em uma linha cada: #2 (IN-FLIGHT -> APPLIED, `blank-frames-root-cause.md:6-9`),
+#22 (`use_vad` -> APPLIED, `auditoria-completa-20261007.md:597` + `sotto_worker.py:4195`), #37
+(`S_FALSE` -> APPLIED, `flat-endpoint.md:125-142`), #53 (o artefacto -> APPLIED, `AGENTS.md:169`).
 
 ---
 
 ## SELF-AUDIT
 
-- **protocolos em falta** — Deveria ter extraido mecanicamente todos os rotulos `F\d|G\d|H\d|Finding [A-Z]`
-  dos 8 docs como PASSO 0 e construido a lista de achados a partir desse `grep`, antes da prosa. Fi-lo
-  depois de ler. Protocolo que devia ter seguido: a contagem como um `comm -23`, nao como aritmetica a mao.
-- **verificacao adicional** — Re-verifiquei no working tree os 5 pontos que o ticket nomeia como correcoes
-  a honrar (delivery-rate-oracle, DEFAULT_MODEL/model_dir, config keys, G4, `:1531-1535`) com `read`/`grep`/
-  `stat`. O que nao corri: o `comm` mecanico rotulos-vs-mapa (o gate nao existe). Custo: 1 comando.
-- **checkboxes novas** — "Para cada rotulo `F\d|G\d|H\d|Finding [A-Z]` de um doc fonte, exigir a sua linha
-  no mapa; o `file:line` tem de ser identico ao do doc." Comando:
-  `comm -23 <(grep -ohE '\b(F|G|H)[0-9]+' docs/audit/*.md|sort -u) <(grep -oE '^\| [0-9]+' 00-MAPA-CONSOLIDADO.md|...)`.
-  RED: o mapa antigo (30 ausentes). GREEN: este.
-- **review por outro subagente** — sim-com-escopo: re-derivar SO o mapa `rotulo → linha` a partir de um
-  `grep -oh` dos 8 docs. Nao para os estados (mecanicos) nem para o self-audit.
-- **gate-doubt**:
-  - **verde-de-verdade:** o unico verde e aritmetico (`14+1+47=62`) e nao vacuoso (o mapa antigo falhava a
-    mesma conta). O `SELFTEST: PASS` do `delivery-rate-oracle.log` citado para o estado #3 **nao o re-corri**
-    — leio o log em disco; e verde do instrumento, declarado como tal, nao meu.
-  - **falta-no-gate:** nao existe gate que compare um documento "consolidado" com as suas fontes; o
-    `self-audit-lint` so valida a forma do bloco SELF-AUDIT. Cenario que atravessa: alguem larga as linhas
-    de `oracles.md` e nada fica RED.
-  - **gate-melhor:** `I:/!manager/scripts/audit-map-gate.sh` (lane `AuditMapGate`): exigir cada rotulo das
-    fontes no mapa; RED = mapa antigo (30 ausentes), GREEN = este mapa. Fecho enquanto ausente:
-    `n/a — o gate pertence a lane AuditMapGate`.
-- **confianca** — alta na cobertura e nos 14 APLICADOS (cada um e um `read`/`grep`/`stat` colado do working
-  tree); media na fronteira 62/61 (o +1 e `audio-path §5`, um facto nomeado nao rotulado `F\d`, declarado).
-- **nao verificado** — (1) nenhum oraculo re-corrido (abriria janela); (2) `AGENTS.md` untracked/editado nao
-  re-sondado (itens #46/#47/#48/#53 podem ter deslizado); (3) `delivery-rate-oracle.py` lido so por `stat` +
-  log, nao linha a linha; (4) o `comm` mecanico nao corrido (gate ausente).
+**protocolos em falta (2026-10-06)** — o mapa antigo devia ter extraido mecanicamente todos os rotulos
+dos docs como PASSO 0. Nesta revisao isso foi feito: a seccao *Indice de rotulos* e o produto de uma
+extracao mecanica sobre os 43 docs, e a contagem do gate e o `comm` que faltava.
+
+**verificacao adicional** — re-medidos por leitura, no working tree, os pontos que fecham as linhas
+marcadas `[2026-10-11]` (#2, #22, #37, #53) e os 76 rotulos indexados. O que NAO foi corrido: nenhum
+oraculo, nenhum lancamento do shell/worker — a ordem do dono de 2026-10-11 proibe abrir o Sotto.
+
+**checkboxes novas** — "para cada rotulo de um doc fonte, exigir a sua linha no mapa, com o mesmo
+`file:line`". O gate que fecha isso existe e e o que este mapa passa:
+`I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`.
+
+**review por outro subagente** — sim-com-escopo: re-derivar so o mapa `rotulo -> linha` a partir de um
+`grep` dos 43 docs. Nao para os estados.
+
+**gate-doubt** — **verde-de-verdade:** o verde e aritmetico (47 + 91 + 0 = 138) e nao e vacuoso (o
+mesmo gate recusava este mapa antes desta revisao, com 3 causas). **falta-no-gate:** o gate nao compara
+o CONTEUDO de uma linha com a fonte — um estado errado com o rotulo presente passa; a defesa e a
+citacao `doc:linha` em cada linha nova e o recibo. **gate-melhor:** nada a pedir — o gate existe e passa.
+
+**confianca** — alta na cobertura (43/43 docs nomeados, 36/36 rotulos indexados) e nas linhas APPLIED
+de 2026-10-06/07; media nos quatro estados fechados nesta revisao (dois por frase de fonte, dois por
+linha da arvore viva — declarados como tal na linha e no recibo).
+
+**nao verificado** — (1) nenhum oraculo re-corrido e nada lancado (ordem do dono); (2) as linhas
+APPLIED antigas nao foram re-medidas, so herdadas; (3) as curas que a fonte so "verificou por leitura"
+(F5, F11, F16) nao foram corridas; (4) `AGENTS.md` e `README.md` vivos foram lidos, nao re-sondados
+byte a byte nesta revisao.

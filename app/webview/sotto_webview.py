@@ -165,8 +165,16 @@ HISTORY_ROUTES = ('final', 'provisional-draft')
 #: SILENTLY: a line that reached the transcript ONLY because the renderer's
 #: `routeFor` else-half manufactured `final` when the worker stamped no route at
 #: all (P1 `4fb5b25380cbc8269977e22e`). Outside this list nothing is written.
-#: The Node twin is `ROUTE_SOURCES` in `app/panel/history-store.js`.
-HISTORY_ROUTE_SOURCES = ('worker-stamped', 'panel-deadline', 'fallback')
+#: The Node twin is `ROUTE_SOURCES` in `app/panel/history-store.js` -- and that
+#: twin is NOT on the shipped page: `panel.html` loads eleven scripts and none of
+#: them is `history-store.js` (measured 2026-10-11), so THIS tuple is the one the
+#: owner's transcript actually passes through and the Node one is read only by
+#: oracles. BOTH were missing `'worker-stamped-producer'` until 2026-10-11 -- the
+#: token `caption-formulation.js routeSourceFor` returns for a line that DECLARES
+#: a producer while no worker `final` vote decided the route -- so such a line was
+#: written with NO `src=` marker at all: provenance thinner than the decision that
+#: produced it. The list must equal the declared set, in both twins.
+HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback')
 #: `explorer` for "show in folder" must never open a console window.
 CREATE_NO_WINDOW = 0x08000000
 

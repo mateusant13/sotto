@@ -3045,6 +3045,18 @@ REDUX_MAX_AUDIO_DEFAULT_S = 120.0
 #: and never writes it. Contract: `python redux_batch.py --wav PATH --json` ->
 #: JSONL on stdout, `{"type":"caption","text":…,"start":<s>,"end":<s>,"producer":"redux"}`.
 REDUX_RUNNER_DEFAULT = os.path.join(HERE, "redux_batch.py")
+#: The checkpoint that runner LOADS when it is invoked with no `--model-dir`,
+#: RELATIVE to the runner's own directory — `redux_batch.py` resolves it exactly
+#: this way (`HERE = Path(__file__).resolve().parent`, then
+#: `DEFAULT_MODEL_DIR = HERE / "models" / "parakeet-redux-ternary"`). `_run_runner`
+#: passes no `--model-dir`, so this is the directory every batch pass will open.
+#: Keep it in step with `redux_batch.py`: the gate below must refuse to arm on a
+#: checkpoint the runner cannot LOAD.
+REDUX_CHECKPOINT_RELPATH = os.path.join("models", "parakeet-redux-ternary")
+#: The manifests `redux_batch.load_runtime` demands, in ITS order: the first one
+#: missing is the `SystemExit` that kills the pass. The DIRECTORY existing is not
+#: the test — a directory without these loads nothing.
+REDUX_CHECKPOINT_FILES = ("config.json", "model.safetensors", "ternary.json")
 #: The shell's visibility channel — written by `app/webview/sotto_webview.py`
 #: (`PanelVisibilityWriter`), read here and nowhere else.
 REDUX_VISIBILITY_DEFAULT = os.path.join(
@@ -3157,6 +3169,24 @@ class PanelVisibilityReader:
         return True, why, age
 
 
+def redux_checkpoint_dir(runner):
+    """The checkpoint the batch runner opens when it is given no `--model-dir`.
+
+    Resolved the way `redux_batch.py` resolves its own default — relative to the
+    runner's directory (`HERE = Path(__file__).resolve().parent`) — because
+    `_run_runner` passes the runner no `--model-dir` and the runner therefore
+    loads exactly this path, whatever directory the worker was started from.
+    """
+    return os.path.join(os.path.dirname(os.path.realpath(runner)),
+                        REDUX_CHECKPOINT_RELPATH)
+
+
+def redux_checkpoint_missing(model_dir):
+    """The manifests NOT on disk under `model_dir`; `[]` when it can load."""
+    return [name for name in REDUX_CHECKPOINT_FILES
+            if not os.path.isfile(os.path.join(model_dir, name))]
+
+
 class ReduxHiddenSwitch:
     """Streaming while the panel is OPEN, batch while it is CLOSED.
 
@@ -3171,10 +3201,16 @@ class ReduxHiddenSwitch:
     THREE GATES, ALL OF WHICH MUST BE OPEN BEFORE THE FIRST CHUNK IS CUT:
       1. THE FLAG (`--redux-when-hidden`, DEFAULT OFF). With it off this object
          is never constructed and the worker is byte-identical to today.
-      2. THE RUNNER MUST EXIST ON DISK. A flag that switches to an engine which
-         is not there would trade the ONLY transcriber in this tree for nothing —
-         verbatim the failure the HARD RULE in AGENTS.md was written after. A
-         missing runner is REFUSED LOUDLY and the worker stays streaming.
+      2. THE RUNNER FILE *AND* THE CHECKPOINT IT WILL LOAD must exist on disk. A
+         flag that switches to an engine which is not there would trade the ONLY
+         transcriber in this tree for nothing — verbatim the failure the HARD
+         RULE in AGENTS.md was written after. THE FILE ALONE IS NOT THE ENGINE
+         (the gate until 2026-10-11, and a trap): `_run_runner` passes no
+         `--model-dir`, so the runner loads its own
+         `models/parakeet-redux-ternary`, and a runner on disk with that
+         checkpoint absent dies in `redux_batch.load_runtime`'s SystemExit on
+         EVERY pass while the switch has already cut streaming. Either absence is
+         REFUSED LOUDLY, with the missing path, and the worker stays streaming.
       3. THE FILE MUST BE FRESH *AND* SAY HIDDEN for longer than
          `hidden_after_s` (see `PanelVisibilityReader`: a stale or unreadable
          file reads as VISIBLE, so gate 3 fails closed towards streaming).
@@ -3197,7 +3233,7 @@ class ReduxHiddenSwitch:
                  max_audio_s=REDUX_MAX_AUDIO_DEFAULT_S,
                  runner_timeout_s=REDUX_RUNNER_TIMEOUT_DEFAULT_S,
                  wav_dir=None, armed_by="--redux-when-hidden",
-                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT):
+                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None):
         self.enabled = bool(enabled)
         self.reader = reader
         self.runner = runner
@@ -3210,8 +3246,23 @@ class ReduxHiddenSwitch:
         self.runner_timeout_s = float(runner_timeout_s)
         self.wav_dir = wav_dir
         # ── gate 2, decided ONCE, at construction, and stated in the log ─────
+        # TWO facts, not one: the runner FILE and the checkpoint it will LOAD.
+        # `_run_runner` invokes the runner with no `--model-dir`, so the runner
+        # resolves its own `models/parakeet-redux-ternary` — and with that
+        # directory absent (measured on this box 2026-10-11: `worker/models/`
+        # holds only the nemotron export) every batch dies in
+        # `redux_batch.load_runtime`'s SystemExit. Armed on the file alone, the
+        # switch would cut the streaming decode in the asr thread (`if mode ==
+        # "batch": ... continue`) and leave the owner with NO transcriber at all,
+        # silently. So the checkpoint is part of the gate, and the refusal names
+        # the path that is missing.
         self.runner_available = os.path.exists(self.runner)
-        self.armed = bool(self.enabled and self.runner_available)
+        self.model_dir = os.path.abspath(
+            model_dir if model_dir else redux_checkpoint_dir(self.runner))
+        self.model_missing = redux_checkpoint_missing(self.model_dir)
+        self.model_available = not self.model_missing
+        self.armed = bool(
+            self.enabled and self.runner_available and self.model_available)
         self.mode = "stream"
         self.visible = True
         self.why = "boot"
@@ -3243,7 +3294,7 @@ class ReduxHiddenSwitch:
                 f"max_audio_s={self.max_audio_s} min_free_mb={self.min_free_mb} "
                 f"runner={self.runner} "
                 f"visibility={self.reader.path}")
-        else:
+        elif not self.runner_available:
             # LOUD, and it is the HARD RULE speaking: without a runner on disk
             # the switch would silence the only transcriber there is, so it is
             # refused and the streaming path is left exactly as it is.
@@ -3252,6 +3303,17 @@ class ReduxHiddenSwitch:
                 f"runner={self.runner} — the batch engine is not on disk, so the "
                 f"streaming capture is NOT cut while the panel is hidden "
                 f"(today it is the only transcriber)")
+        else:
+            # The runner IS on disk and the checkpoint it will LOAD is not: the
+            # distinct reason (and the path) is the whole point of this branch —
+            # a bare `armed=false` would leave the next reader hunting for why.
+            self.log(
+                f"REDUX_SWITCH_REFUSED armed=false reason=checkpoint-missing "
+                f"runner={self.runner} model_dir={self.model_dir} "
+                f"missing={','.join(self.model_missing)} — the batch engine cannot "
+                f"LOAD this checkpoint (`redux_batch.load_runtime` exits on the "
+                f"first missing manifest), so the streaming capture is NOT cut "
+                f"while the panel is hidden (today it is the only transcriber)")
 
     # -- the mode decision --------------------------------------------------
     def tick(self, now=None):

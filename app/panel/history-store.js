@@ -47,8 +47,17 @@ const ROUTES = ['final', 'provisional-draft'];
  * else-half manufactured it when the worker stamped no route at all (P1
  * `4fb5b25380cbc8269977e22e`; see `_main/silent-fallback-probe.js`). Outside
  * this list nothing is written: an uninterpretable marker is worse than none.
+ *
+ * `'worker-stamped-producer'` is the SAME route decided by a DIFFERENT fact:
+ * `caption-formulation.js routeSourceFor` returns it for a line that DECLARES
+ * a producer while no worker `final` vote decided the route. It was declared
+ * there (`:501`) and missing here until 2026-10-11, so such a line would have
+ * been written with no `src=` marker at all — the provenance thinner than the
+ * decision that produced it. (`panel.js recordHistory`'s `route !== 'final'`
+ * guard is what kept it latent: a producer-stamped line with no worker vote is
+ * usually not a `final` route.)
  */
-const ROUTE_SOURCES = ['worker-stamped', 'panel-deadline', 'fallback'];
+const ROUTE_SOURCES = ['worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback'];
 
 function pad2(n) {
   return String(n).padStart(2, '0');

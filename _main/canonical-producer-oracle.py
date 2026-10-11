@@ -300,6 +300,19 @@ def main() -> int:
                                            "if k not in ('type', 'text', 'producer')}")
     shell_mutant = tmpdir / "sotto_webview.mutant.py"
 
+    # A SECOND shell cut, deliberate: the src= allow-list. Without it the check
+    # above would read the live bytes in BOTH colours -- green because the fix is
+    # there, and green in the RED arm because this projection mutant never touches
+    # the tuple. A check that cannot go RED is not a check (the rule this file
+    # exists to enforce), so the red arm reads a copy with the token dropped, i.e.
+    # the pre-2026-10-11 shell, and MUST fail.
+    shell_src_drop = "'worker-stamped-producer', "
+    assert shell_text.count(shell_src_drop) == 1, "shell src= token not unique"
+    shell_src_mutant_text = shell_text.replace(shell_src_drop, "")
+    shell_src_mutant = tmpdir / "sotto_webview.src-mutant.py"
+    shell_src_mutant.write_text(shell_src_mutant_text, encoding="utf-8", newline="")
+    src_subject_text = shell_src_mutant_text if args.red_arm else shell_text
+
     subject_gate = gate_mutant if args.red_arm else HISTORY_SOURCE
     subject_worker = worker_mutant if args.red_arm else WORKER
     subject_shell_text = shell_mutant_text if args.red_arm else shell_text
@@ -310,7 +323,8 @@ def main() -> int:
           flush=True)
     for tag, live, cut in (("gate", gate_text, gate_mutant_text),
                            ("worker", worker_text, worker_mutant_text),
-                           ("shell", shell_text, shell_mutant_text)):
+                           ("shell", shell_text, shell_mutant_text),
+                           ("shell-src", shell_text, shell_src_mutant_text)):
         check("NEG", "M-" + tag + " mutant differs from the live bytes",
               cut != live, "delta_bytes=" + str(len(cut) - len(live)))
 
@@ -335,7 +349,9 @@ def main() -> int:
                            r"^REDUX_WHEN_HIDDEN_DEFAULT = False", WORKER)
     a_worker_optin = anchor("worker flag opt-in", worker_text,
                             r"redux_optin = bool\(args\.redux_when_hidden\)", WORKER)
-    a_worker_avail = anchor("worker arms on the RUNNER FILE only", worker_text,
+    # Label corrected 2026-10-11: the regex is the runner-FILE availability fact (kept
+    # verbatim when gate 2 became two facts); the old label stated the DEFECT as a fact.
+    a_worker_avail = anchor("worker's runner-FILE availability fact (gate 2, half one)", worker_text,
                             r"self\.runner_available = os\.path\.exists\(self\.runner\)",
                             WORKER)
     a_worker_cut = anchor("worker SKIPS streaming while mode==batch", worker_text,
@@ -460,11 +476,18 @@ def main() -> int:
     armed_switch = worker_mod.ReduxHiddenSwitch(
         enabled=True, reader=object(), runner=str(REDUX_RUNNER), log_fn=lambda m: None,
         armed_by="oracle")
-    check("B", "the switch ARMS on the RUNNER FILE even when no checkpoint exists",
-          armed_switch.armed is True,
+    # RE-BASELINED 2026-10-11: this arm used to PIN THE DEFECT ("the switch ARMS on
+    # the RUNNER FILE even when no checkpoint exists" -- true then, and it went RED the
+    # moment the defect was fixed, which is what a defect-pinning check must do). It is
+    # now a REQUIREMENT, and it can still say NO: under --red-arm the subject is the
+    # worker mutant with gate 2 reverted, where this goes RED again.
+    check("B", "the switch REFUSES to arm when the checkpoint it will LOAD is absent",
+          armed_switch.armed is False and not armed_switch.model_available,
           "runner_available=" + str(armed_switch.runner_available)
-          + " armed=" + str(armed_switch.armed)
-          + " -- gate 2 checks the .py, not the weights")
+          + " model_available=" + str(armed_switch.model_available)
+          + " missing=" + ",".join(armed_switch.model_missing)
+          + " -- gate 2 is TWO facts since 2026-10-11: the .py alone armed the switch and"
+            " every batch then died in redux_batch.load_runtime (the HARD RULE failure shape)")
 
     # =====================================================================
     # ARM C -- the REAL chain: worker event -> REAL shell hop -> REAL engine -> REAL gate
@@ -548,12 +571,22 @@ def main() -> int:
             "the live pass is accepted as canonical; reported, not fixed here")
 
     store_text = HISTORY_STORE.read_text(encoding="utf-8")
-    check("C", "FINDING (latent): the store's src= allow-list omits 'worker-stamped-producer'",
-          "'worker-stamped-producer'" not in store_text,
-          "history-store.js ROUTE_SOURCES does not list the value caption-formulation.js:"
-          + str(a_engine_route) + " returns for a producer-stamped line with NO final flag, so "
-            "such a line would be written with NO src= marker; LATENT today because "
-            "panel.js:1330 stops a non-final route before the store is reached")
+    # RE-BASELINED 2026-10-11, same reason as arm B above: this check pinned the LATENT
+    # defect (the token absent). It is now a REQUIREMENT over BOTH twins, and the LIVE
+    # twin is the shell one -- `panel.html` loads eleven scripts and `history-store.js`
+    # is not among them, so the Node file below is read by oracles only.
+    check("C", "the store's src= allow-list carries every token routeSourceFor declares",
+          "'worker-stamped-producer'" in store_text,
+          "history-store.js ROUTE_SOURCES must list the value caption-formulation.js:"
+          + str(a_engine_route) + " returns for a producer-stamped line with NO final flag "
+            "(fixed 2026-10-11; this file is oracle-only, see the shell check below)")
+    m_shell_src = re.search(r"^HISTORY_ROUTE_SOURCES = \(([^)]*)\)", src_subject_text, re.M)
+    shell_src_tokens = tuple(t.strip().strip("'\"") for t in m_shell_src.group(1).split(",")) if m_shell_src else ()
+    check("C", "the SHELL's LIVE src= allow-list carries every token routeSourceFor declares",
+          set(shell_src_tokens) == {"worker-stamped", "worker-stamped-producer", "panel-deadline", "fallback"},
+          "HISTORY_ROUTE_SOURCES=" + repr(shell_src_tokens) + " -- sotto_webview.py is the writer the"
+            " shipped panel uses (`history_append` -> `_history_provenance`), so this tuple, not the"
+            " Node one, decides whether the owner's transcript carries a src= marker")
 
     # =====================================================================
     # NEG ARMS -- the mutants, in memory / %TEMP%, never in the repo
@@ -561,9 +594,9 @@ def main() -> int:
     if not args.red_arm:
         print("\n-- NEG ARMS: each hop cut in a COPY of the REAL bytes (must go RED) "
               + "-" * 3, flush=True)
-        check("NEG", "the three mutant copies live OUTSIDE the repo",
+        check("NEG", "every mutant copy lives OUTSIDE the repo",
               all(str(p).startswith(str(tmpdir)) for p in
-                  (gate_mutant, worker_mutant, shell_mutant))
+                  (gate_mutant, worker_mutant, shell_mutant, shell_src_mutant))
               and not str(gate_mutant).startswith(str(ROOT)),
               str(tmpdir))
 
@@ -651,11 +684,13 @@ def main() -> int:
     print("  * THE ONE REMAINING GAP: the Redux checkpoint is not on disk, so the batch arm "
           "cannot produce the line.", flush=True)
     print("    (Second, deliberate layer: the flag is OFF, and the switch's own gate "
-          "sotto_worker.py:" + str(a_worker_avail) + " checks", flush=True)
-    print("     the RUNNER FILE, not the weights -- armed with --redux-when-hidden it cuts "
-          "streaming while the panel is hidden", flush=True)
-    print("     (sotto_worker.py:" + str(a_worker_cut) + ") and then fails every batch, "
-          "which is the HARD RULE's failure shape.)", flush=True)
+          "sotto_worker.py:" + str(a_worker_avail) + " is now TWO", flush=True)
+    print("     facts -- the runner FILE *and* the checkpoint it will LOAD -- so with the "
+          "checkpoint absent it REFUSES", flush=True)
+    print("     to arm and streaming is NOT cut; until 2026-10-11 the .py alone armed it, "
+          "cut streaming while the panel", flush=True)
+    print("     was hidden (sotto_worker.py:" + str(a_worker_cut) + ") and every batch then "
+          "died at load, which is the HARD RULE's failure shape.)", flush=True)
     print("NOT MEASURED (and why): no live end-to-end run is permitted by the owner's stop "
           "order, so no real", flush=True)
     print("  worker-stamped caption was OBSERVED on stdout; the batch commit was forced by "
