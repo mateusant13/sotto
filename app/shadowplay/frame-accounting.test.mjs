@@ -45,7 +45,7 @@
 
 import assert from "node:assert/strict";
 import { countFrames, countDistinctContent, assessDelivery, runTool } from "./frame-accounting.js";
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -115,6 +115,36 @@ ta("a clip that delivers what was asked reports full coverage", async () => {
   assert.equal(r.longestUniqueRun, 10);
   assert.equal(r.contentSufficientToCoverClock, true,
     "10 unique frames at 10fps covers one second of clock");
+});
+
+// THE ROUNDING IS REACHABLE AND WAS UNPINNED. Every other assertion in this file compares
+// r.coverage to exactly 1, and 1 is a fixed point of rounding: toFixed(6) changes nothing
+// about it. Replacing the rounded return with the raw quotient
+// (frame-accounting.js:217) left this suite at 13 passed / 0 failed, exit 0 -- NOT because
+// the branch is unreachable (unlike the ratio() zero-denominator guard above, which is),
+// but because no input in this file produced a fractional ratio.
+//
+// A clip whose frames repeat does. Measured WINDOW_UTC 2026-10-11T01:46:46Z on a real file
+// with every third frame dropped: distinct=11, delivered=39, coverage=0.282051 -- exactly
+// six decimals, which is the rounding made observable.
+ta("a fractional ratio is rounded to six decimals, not returned raw", async () => {
+  const D = join(dir, "frac");
+  const FRAC = join(D, "clip.mp4");
+  mkdirSync(D, { recursive: true }); // ffmpeg will NOT create the directory itself
+  await runTool("ffmpeg", [
+    "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x48:rate=10",
+    "-vf", "select='not(mod(n\\,3))',setpts=N/TB", "-r", "10",
+    "-pix_fmt", "yuv420p", "-an", FRAC,
+  ]);
+  const r = await assessDelivery(FRAC, 10, 1);
+  assert.ok(r.coverage > 0 && r.coverage < 1,
+    `this clip must produce a fractional ratio to be worth asserting, got ${r.coverage}`);
+  const raw = r.distinctFrames / r.deliveredFrames;
+  assert.notEqual(r.coverage, raw,
+    `rounding must change the value: got ${r.coverage}, raw quotient ${raw}`);
+  const decimals = String(r.coverage).split(".")[1] ?? "";
+  assert.ok(decimals.length <= 6,
+    `rounded to at most 6 decimals, got ${decimals.length} (${r.coverage})`);
 });
 
 ta("assessDelivery refuses a non-positive fps or duration rather than dividing by them", async () => {
