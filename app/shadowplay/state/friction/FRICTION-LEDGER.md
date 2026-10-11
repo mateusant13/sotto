@@ -2127,3 +2127,31 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   55c422b HEAD` returns RC=1 -- it is not an ancestor of anything I built. It sits on my own rescue
   branch. Until --probe-reload and _main/restart-30s-oracle.py run green it is a defensible
   candidate, which is what I should have said three turns ago.
+
+## 2026-10-11T12:53Z - the link between "deferred" and "starved forever" has a body, and I had never read it
+
+  The verifier lane closed every check except this one: is_capturing() at 1d97536 L5290, which
+  decides whether the owner's edit is deferred for a while or never applied at all. MEASURED
+  12:53:16Z, POP 1 (one function body, one revision, read directly):
+
+      def is_capturing(self):
+          """True while an audio stream is open on the worker.
+          Read by WorkerReloadPolicy WITHOUT the lock: it is a single boolean
+          read, and taking the lock here would deadlock _spawn ..."""
+          return bool(self.capturing) and self.child is not None
+
+  So the deferral is bounded by TWO conditions, and the docstring names why it is unlocked. Both
+  are per-stream state: the audio capture flag, and a live child. The starvation I reported is
+  therefore not unbounded by construction -- it ends when the stream closes or the child dies,
+  either of which makes _fire's capturing branch unreachable and lets the pending edit land. That
+  is a different shape from what I told the owner, and it is the honest one: the edit waits for the
+  end of the current capture, and there is no ceiling forcing it during a capture that never ends.
+
+  WHAT FAILED IN THE SAME CALL, and I am recording it rather than quietly dropping it: the follow-up
+  that was to confirm the lane's 8 load_s figures and search _main for a stdout capture holding
+  load_s did not return. The task failed. POP_CONFIRMED_BY_ME 0 of 8 -- those numbers remain the
+  lane's, not mine, and the retraction does not depend on them: it rests on the POP 760 single-origin
+  finding, which is the stronger half.
+
+  The remaining untested link, stated plainly: nothing here shows a capture actually lasts long
+  enough to starve an edit. That needs a run, not a body.
