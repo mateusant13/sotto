@@ -1283,3 +1283,43 @@ touching anything, as I said I would, closes it properly.
 
   rule: before calling a contract a defect, read the contract. It may be a decision with a
   reason in it, and the reason may be the answer I was about to argue against.
+
+## 2026-10-11T09:46:46Z - the delivery-time check at :278 is now driven through the product's own ring, on both arms
+
+The last thing left on the keyframe chain, and the one I said was a test rather than a design
+question. It is now exercised, not read.
+
+  MEASURED, POPULACAO = 2 arms through ReplayRing.instantReplay(), WINDOW_UTC
+  2026-10-11T09:46:46Z. Each arm pushes real encoded bytes with keyframe: true -- which the
+  ring BELIEVES, by the contract at :141 -- and then lets the ring cut and save exactly as a
+  real delivery would. Nothing was injected and no private field was read.
+      good.mp4  584 110 B  first IDR at pts 0
+      bad.mp4   449 229 B  first IDR at pts 1.0, built with -copyts so the timestamp survives
+
+    ARM POSITIVE_first_idr_at_0
+      OUTCOME delivered
+      DETAIL {"name":"0000.mp4","path":"...","verdict":{"path":"...}}
+      FILES_LEFT_AFTER 1   0000.mp4
+    ARM NEGATIVE_first_idr_at_1
+      OUTCOME REFUSED
+      DETAIL ClipNotKeyframed: stored clip ...\0000.mp4 does not begin on a keyframe:
+             first IDR at pts 1.000000s exceeds to[lerance]
+      FILES_LEFT_AFTER 0
+
+  So :278 is real. The ring believed keyframe: true about a clip whose first IDR is a second
+  in, the cut was made, the file was written -- and :278 caught it on the stored file and
+  refused. FILES_LEFT_AFTER 0 also confirms #discardRefused runs on this path, so a refused
+  delivery leaves no 0-byte clip behind, which is the contract instantReplay's own header
+  claims at :262-263.
+
+  The claim that would have been refuted: if the negative arm had DELIVERED, :278 would be
+  decoration and the three-check chain would be one check wearing three hats. It delivered
+  false, so the chain stands on a measurement rather than on three readings.
+
+  The whole keyframe invariant now has: two checks MEASURED (:148's condition on two clips,
+  :278 through the real ring) and one contract READ (:141). That is a stronger state than I
+  had any reason to claim six turns ago, when I called it a demonstrated defect.
+
+  rule: a check that fires only on the path nobody walks is not a check until something walks
+  it. Pushing a segment the ring is told to believe, and watching the delivery refuse it, is
+  the shortest distance between "the guard exists" and "the guard works".
