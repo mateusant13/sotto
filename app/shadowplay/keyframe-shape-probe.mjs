@@ -57,6 +57,10 @@ try {
   threw = err.message;
 }
 console.log(`CAPTURED_FRAMES ${captured.frames}`);
+// The value index.js:149 compares against KEYFRAME_TOLERANCE_SEC. Printing it on every run
+// is how I can state, as a measurement rather than an assumption, whether capture()'s own
+// ClipNotKeyframed branch is reachable through the product's capture path.
+console.log(`FIRST_IDR_SEC ${captured.firstIdr === null ? "null" : captured.firstIdr}`);
 console.log(`RING_SEGMENTS ${segCount}`);
 // The number that decides the refusal. replay-ring.js:340 refuses when
 // contentSufficientToCoverClock is not true, and frame-accounting.js:367 defines that as

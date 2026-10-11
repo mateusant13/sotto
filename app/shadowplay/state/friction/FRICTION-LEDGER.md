@@ -1323,3 +1323,41 @@ question. It is now exercised, not read.
   rule: a check that fires only on the path nobody walks is not a check until something walks
   it. Pushing a segment the ring is told to believe, and watching the delivery refuse it, is
   the shortest distance between "the guard exists" and "the guard works".
+
+## 2026-10-11T09:49:43Z - capture()'s own refusal is measured UNREACHABLE, and gdigrab's title= needs a real window
+
+The last item on this thread. I set out to make capture() hit ClipNotKeyframed and, failing
+that, to say honestly why not. It is the second.
+
+  FIRST, THE ROUTE I HOPED FOR. gdigrab takes a window title as a source, which would have
+  let me point the product at a still window. Measured, WINDOW_UTC 2026-10-11T09:49:43Z:
+      ffmpeg -f gdigrab -framerate 30 -i title=DefinitelyNotAWindow_694214321 -t 1 ...
+      [in#0] Can't find window 'DefinitelyNotAWindow_694214321', aborting.
+      [in#0] Error opening input: I/O error      exit non-zero, no file created
+  So title= is a real gdigrab source, but it needs a window that EXISTS. Producing one means
+  opening a window on the owner's desktop and leaving it there for the capture to see. That
+  is a visible change to his screen, it is not mine to make for a test, and I am not going to
+  buy one measurement by rearranging his desktop. Declared instead of forced.
+
+  SECOND, THE INVIANT MEASURED. The guard at index.js:149 refuses when firstIdr is null or
+  beyond KEYFRAME_TOLERANCE_SEC, which nvenc.js:31 sets to 1/CAPTURE_FPS = 0.0333 s. So the
+  branch is reachable only if a capture ever produces a first keyframe later than 33 ms.
+  Printed FIRST_IDR_SEC on 4 real captures:
+      run 1  firstIdr 0  frames 212  segs 1  sufficient true
+      run 2  firstIdr 0  frames 216  segs 1  sufficient true
+      run 3  firstIdr 0  frames 219  segs 1  sufficient true
+      run 4  firstIdr 0  frames 226  segs 1  sufficient true
+  4 of 4 at exactly 0, against a tolerance of 0.0333. An h264 encoder starts a fresh stream
+  with an IDR at pts 0, so this is expected -- but it is now a MEASUREMENT, and I have said
+  so, instead of "unreachable" being something I asserted.
+
+  SO THE HONEST END STATE. capture()'s own refusal branch is measured unreachable through the
+  product's capture path on this host, and reachable in principle only if the encoder ever
+  started mid-GOP or a capture began without an IDR. The OTHER two checks in the chain are
+  measured firing (:148's condition on two clips, :278 through the real ring). A branch that
+  no run reaches is not a defect and not dead code; it is insurance, and the thing to record
+  is WHERE its coverage comes from, which now is the other two checks rather than itself.
+
+  rule: "I could not make it fire" and "it cannot fire" are different sentences and only one
+  of them is a measurement. I have the second for the branch and the first for the product,
+  and the ledger now says which is which.
