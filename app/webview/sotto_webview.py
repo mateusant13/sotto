@@ -1114,6 +1114,47 @@ def strip_geometry(work, height=STRIP_HEIGHT_FALLBACK, dock='bottom-centre'):
     geometry['x'] = min(geometry['x'], work['x'] + w - geometry['width'])
     geometry['y'] = min(geometry['y'], work['y'] + h - geometry['height'])
     return geometry
+def clamp_geometry(rect, work):
+    """Fit a SAVED rect into the CURRENT work area; say whether it moved.
+
+    This is the honest answer to "the resolution changed" — which was NOT
+    measured for this lane and must not be invented. A saved rect is kept when
+    it still fits, and is moved/resized into the work area when it does not; the
+    caller logs the difference so a moved window is never a silent surprise.
+    """
+    w = max(0, work['width'])
+    h = max(0, work['height'])
+    want_width = max(1, min(int(rect.get('width') or 1), max(1, w)))
+    want_height = max(1, min(int(rect.get('height') or 1), max(1, h)))
+    x = max(work['x'], min(int(rect.get('x') or work['x']),
+                          work['x'] + w - want_width))
+    y = max(work['y'], min(int(rect.get('y') or work['y']),
+                          work['y'] + h - want_height))
+    clamped = {
+        'workX': work['x'], 'workY': work['y'],
+        'workWidth': w, 'workHeight': h,
+        'x': x, 'y': y, 'width': want_width, 'height': want_height,
+        'margin': 0, 'docked': str(rect.get('docked') or 'saved'),
+    }
+    moved = (x != int(rect.get('x') or x) or y != int(rect.get('y') or y)
+             or want_width != int(rect.get('width') or want_width)
+             or want_height != int(rect.get('height') or want_height))
+    return clamped, moved
+#: The surfaces the ONE document can wear. The names are `app/panel/surface.js`'s
+#: (`SURFACES`), and this shell refuses anything else instead of guessing.
+SURFACE_NAMES = ('strip', 'panel')
+def normalise_surface_name(name):
+    """`'strip'`/`'panel'` from what a caller actually sent, else None.
+
+    Mirrors `surface.js:39-46` on purpose, including its tolerance for the
+    CSS-ish spellings a shell might copy out of the stylesheet
+    (`surface--strip`, `surface-strip`). A name this file does not know is
+    REFUSED — never silently treated as the panel, because a caller that sent
+    `'strip '` and got a 900 px window would read as a layout bug.
+    """
+    value = str(name if name is not None else '').strip().lower()
+    value = re.sub(r'^surface-+', '', value)
+    return value if value in SURFACE_NAMES else None
 def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
                margin=PANEL_MARGIN):
     """Dock a wide short strip to the bottom centre of `work`.
@@ -1592,6 +1633,273 @@ WM_RBUTTONUP = 0x0205
 WM_LBUTTONUP = 0x0202
 WM_DESTROY = 0x0002
 
+# ===========================================================================
+
+WH_MOUSE_LL = 14
+HC_ACTION = 0
+WM_LBUTTONDOWN, WM_RBUTTONDOWN = 0x0201, 0x0204
+WM_MBUTTONDOWN, WM_XBUTTONDOWN = 0x0207, 0x020B
+WM_MOUSEMOVE = 0x0200
+WM_QUIT = 0x0012
+WM_PROBE_CLICK = WM_APP + 9
+#: EDIT MODE's drag sample: the hook proc POSTS this to its own thread instead of
+#: moving the window inside the hook. The hook proc must return immediately — it
+#: runs on the hook thread and a slow one stalls the pointer SYSTEM-WIDE — so the
+#: `SetWindowPos` happens in the message loop, which is also where the rate is
+#: bounded (`EDIT_DRAG_MIN_INTERVAL_MS`).
+WM_EDIT_DRAG = WM_APP + 10
+
+#: A few pixels of slack on the rect test: a click on the panel's own edge is
+#: still a click on the panel, and the owner cannot aim to the pixel.
+CLICK_OUTSIDE_SLACK = 2
+
+#: The drag's ceiling: at most one `SetWindowPos` per this many ms (20 Hz). The
+#: receipt's design says it plainly — moving the NATIVE window per frame is the
+#: short path to flicker (`docs/release-and-overlay-plan.md:75-78`), so the drag
+#: is a low-frequency move, not a smooth one.
+EDIT_DRAG_MIN_INTERVAL_MS = 50
+
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [('pt', POINT), ('mouseData', wt.DWORD), ('flags', wt.DWORD),
+                ('time', wt.DWORD), ('dwExtraInfo', ctypes.c_size_t)]
+
+
+user32.SetWindowsHookExW.restype = wt.HHOOK
+user32.SetWindowsHookExW.argtypes = [ctypes.c_int, ctypes.c_void_p,
+                                     wt.HINSTANCE, wt.DWORD]
+user32.UnhookWindowsHookEx.restype = wt.BOOL
+user32.UnhookWindowsHookEx.argtypes = [wt.HHOOK]
+user32.CallNextHookEx.restype = ctypes.c_ssize_t
+user32.CallNextHookEx.argtypes = [wt.HHOOK, ctypes.c_int, ctypes.c_size_t,
+                                  ctypes.c_ssize_t]
+user32.GetWindowRect.argtypes = [wt.HWND, ctypes.c_void_p]
+user32.GetForegroundWindow.restype = wt.HWND
+user32.PostThreadMessageW.restype = wt.BOOL
+user32.PostThreadMessageW.argtypes = [wt.DWORD, ctypes.c_uint, ctypes.c_size_t,
+                                      ctypes.c_ssize_t]
+user32.GetCurrentThreadId = None  # NOT in user32; see kernel32 below
+kernel32.GetCurrentThreadId.restype = wt.DWORD
+kernel32.GetCurrentThreadId.argtypes = []
+user32.WindowFromPoint.restype = wt.HWND
+user32.WindowFromPoint.argtypes = [POINT]
+
+class OutsideClickWatcher(threading.Thread):
+    """Watches for a mouse-down OUTSIDE the panel while the panel is visible."""
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-outside-click', daemon=True)
+        self.shell = shell
+        self.hook = None
+        self.armed = False
+        self.thread_id = None
+        self._ready = threading.Event()
+        self._proc = None
+        self.decisions = []
+        # ── EDIT MODE, on THIS thread ────────────────────────────────────────
+        # The drag is carried by the thread that already exists and already owns
+        # a `WH_MOUSE_LL` hook and a message loop, so the edit mode adds NO
+        # thread to the process. `edit_mode` is written by the UI thread (the
+        # tray command) and read here; a plain bool is enough for that.
+        self.edit_mode = False
+        self._dragging = False
+        self._last_drag_post = 0.0
+        self.drag_samples = 0
+
+    def start(self, timeout=5.0) -> bool:
+        super().start()
+        self._ready.wait(timeout)
+        return self.hook is not None
+
+    def stop(self, reason='stop'):
+        if self.hook:
+            try:
+                user32.UnhookWindowsHookEx(self.hook)
+            except Exception:  # noqa: BLE001
+                pass
+            self.hook = None
+        if self.thread_id:
+            try:
+                user32.PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0)
+            except Exception:  # noqa: BLE001
+                pass
+        if self.is_alive() and self is not threading.current_thread():
+            self.join(2)
+        log(f'OUTSIDE_CLICK_STOP reason={reason}')
+
+    # -- the hook ----------------------------------------------------------
+    def run(self):
+        """`run`, NOT `_run`: this class IS a Thread, and `Thread.start()` calls
+        `self.run()`. Named `_run` it silently did NOTHING — the thread exited at
+        once, `_ready` was never set, and the shell sat for the full 5 s timeout
+        before reporting `OUTSIDE_CLICK_UNAVAILABLE`. Measured 2026-10-08. (The
+        tray class can use `_run` because it is not a Thread; it passes `_run` as
+        a `target`.)"""
+        try:
+            self.thread_id = int(kernel32.GetCurrentThreadId())
+            self._proc = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int,
+                                            ctypes.c_size_t,
+                                            ctypes.c_ssize_t)(self._on_mouse)
+            self.hook = user32.SetWindowsHookExW(
+                WH_MOUSE_LL, ctypes.cast(self._proc, ctypes.c_void_p), None, 0)
+            if not self.hook:
+                warn(f'OUTSIDE_CLICK_HOOK_FAILED SetWindowsHookExW '
+                     f'winerror={ctypes.get_last_error()}')
+            log(f'OUTSIDE_CLICK_HOOK installed={str(bool(self.hook)).lower()} '
+                f'hook={self.hook} thread={self.thread_id} type=WH_MOUSE_LL '
+                f'consumes_click=false')
+            self._ready.set()
+            msg = MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == WM_PROBE_CLICK:
+                    # The MEASUREMENT path: the same decision function the hook
+                    # calls, on the same thread, reached through this thread's
+                    # real message loop. What is NOT exercised is the OS
+                    # delivering a physical click.
+                    x, y = _unpack_point(msg.wParam)
+                    self._consider(x, y, WM_LBUTTONDOWN, source='probe')
+                elif msg.message == WM_EDIT_DRAG:
+                    # The drag sample the hook proc posted. The window move
+                    # happens HERE, off the hook procedure, so the hook never
+                    # blocks the pointer.
+                    x, y = _unpack_point(msg.wParam)
+                    self.shell.edit_drag_to(x, y, persist=bool(msg.lParam))
+                else:
+                    user32.TranslateMessage(ctypes.byref(msg))
+                    user32.DispatchMessageW(ctypes.byref(msg))
+        except Exception as exc:  # noqa: BLE001 -- a watcher must not kill the app
+            warn(f'OUTSIDE_CLICK_HOOK_FAILED {type(exc).__name__}: {exc}')
+            self._ready.set()
+        finally:
+            log('OUTSIDE_CLICK_LOOP_EXIT')
+
+    def _on_mouse(self, code, wparam, lparam):
+        # FAST, and it always reaches CallNextHookEx: a low-level mouse hook that
+        # raises or blocks stalls the pointer for the WHOLE machine.
+        try:
+            if code == HC_ACTION:
+                message = int(wparam)
+                if self.edit_mode:
+                    # THE DRAG. Nothing here moves a window: the sample is POSTED
+                    # to this thread's own message loop (see WM_EDIT_DRAG), and
+                    # the post is rate-limited. The hook proc therefore costs a
+                    # comparison and a `PostThreadMessageW`.
+                    self._on_mouse_edit(message, lparam)
+                elif message in (WM_LBUTTONDOWN, WM_RBUTTONDOWN,
+                                 WM_MBUTTONDOWN, WM_XBUTTONDOWN):
+                    info = ctypes.cast(lparam,
+                                       ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    self._consider(int(info.pt.x), int(info.pt.y), message,
+                                   source='hook')
+        except Exception:  # noqa: BLE001
+            pass
+        return user32.CallNextHookEx(None, code, wparam, lparam)
+
+    def _on_mouse_edit(self, message, lparam):
+        """EDIT MODE's half of the hook: track the drag, move nothing."""
+        if message == WM_LBUTTONDOWN:
+            info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            x, y = int(info.pt.x), int(info.pt.y)
+            hwnd = self.shell.hwnd
+            if hwnd and _point_in_window(hwnd, x, y):
+                rect = RECT()
+                user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                self.shell.edit_grab = (x - rect.left, y - rect.top)
+                self._dragging = True
+                self._last_drag_post = 0.0
+                log(f'PANEL_EDIT_DRAG start point=({x},{y}) '
+                    f'grab={self.shell.edit_grab}')
+            else:
+                # A press OUTSIDE the band does not drag it, and it must not
+                # close it either — the owner is positioning the window, so an
+                # outside click is not "put the panel away" while edit mode is on.
+                self._record(x, y, 'hook', 'edit-mode-outside', closed=False)
+            return
+        if message == WM_MOUSEMOVE:
+            if not self._dragging:
+                return
+            now = time.monotonic() * 1000.0
+            if now - self._last_drag_post < EDIT_DRAG_MIN_INTERVAL_MS:
+                return
+            self._last_drag_post = now
+            info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            self.drag_samples += 1
+            user32.PostThreadMessageW(self.thread_id, WM_EDIT_DRAG,
+                                      _pack_point(int(info.pt.x), int(info.pt.y)),
+                                      0)
+            return
+        if message == WM_LBUTTONUP:
+            if not self._dragging:
+                return
+            self._dragging = False
+            info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+            # `lParam=1` is the "and persist it" half: the drop is the moment the
+            # rect becomes the one to restore.
+            user32.PostThreadMessageW(self.thread_id, WM_EDIT_DRAG,
+                                      _pack_point(int(info.pt.x), int(info.pt.y)),
+                                      1)
+
+    # -- the decision ------------------------------------------------------
+    def _consider(self, x, y, message, source='hook'):
+        """Returns True when this click closed the panel."""
+        shell = self.shell
+        reason = None
+        hwnd = shell.hwnd
+        if shell.exiting.is_set():
+            reason = 'exiting'
+        elif self.edit_mode:
+            # The owner is POSITIONING the band. An outside click while edit mode
+            # is on must not put the window away — the first missed grab would end
+            # the edit he just asked for, and the tray item is the way out.
+            reason = 'edit-mode'
+        elif not self.armed:
+            reason = 'not-armed'          # the startup navigations
+        elif not hwnd or not window_visible(hwnd):
+            reason = 'panel-not-visible'  # MEASURED, never the cache
+        elif _point_in_window(hwnd, x, y):
+            reason = 'inside'
+        elif _window_is_ours(user32.WindowFromPoint(POINT(x, y))):
+            reason = 'our-own-window'     # the tray menu, a dialog
+        if reason is not None:
+            self._record(x, y, source, reason, closed=False)
+            return False
+        self._record(x, y, source, 'outside', closed=True)
+        shell.hide_panel('click-outside')
+        return True
+
+    def _record(self, x, y, source, reason, closed):
+        entry = {'x': x, 'y': y, 'source': source, 'decision': reason,
+                 'closed': closed}
+        self.decisions.append(entry)
+        del self.decisions[:-20]
+        log(f'OUTSIDE_CLICK source={source} point=({x},{y}) '
+            f'decision={reason} closed={str(closed).lower()} '
+            f'armed={str(self.armed).lower()} '
+            f'visible={str(bool(self.shell.hwnd and window_visible(self.shell.hwnd))).lower()}')
+
+def _unpack_point(packed):
+    """One integer carries both coordinates: x in the low 16 bits, y above."""
+    value = int(packed)
+    x = value & 0xFFFF
+    y = (value >> 16) & 0xFFFF
+    if x >= 0x8000:
+        x -= 0x10000
+    if y >= 0x8000:
+        y -= 0x10000
+    return x, y
+
+
+def _pack_point(x, y):
+    return (int(x) & 0xFFFF) | ((int(y) & 0xFFFF) << 16)
+
+
+def _point_in_window(hwnd, x, y) -> bool:
+    rect = RECT()
+    if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return False
+    return (rect.left - CLICK_OUTSIDE_SLACK <= x <= rect.right + CLICK_OUTSIDE_SLACK
+            and rect.top - CLICK_OUTSIDE_SLACK <= y <= rect.bottom + CLICK_OUTSIDE_SLACK)
+
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x01, 0x02, 0x04
 MF_STRING, MF_SEPARATOR = 0x0000, 0x0800
@@ -1601,6 +1909,11 @@ HWND_MESSAGE = -3
 TRAY_ID = 0xB0F1              # any uid; this one is ours
 ID_TRAY_OPEN = 1              # "Open panel"
 ID_TRAY_QUIT = 2              # "Quit Sotto" — the one the owner named
+#: "Edit caption position" — the edit mode's ONLY entrance (owner's lane brief:
+#: now that the tray exists it is the obvious home, and it is impossible to
+#: trigger by accident while reading a caption). A 4th id, so the two shipped
+#: items keep their numbers and the tray probe's `[2]='Quit Sotto'` lookup works.
+ID_TRAY_EDIT = 3
 TRAY_WINDOW_CLASS = 'SottoTrayWindow'
 TRAY_TIP = 'Sotto — Alt+C shows the captions'
 
@@ -1853,10 +2166,18 @@ class TrayIcon:
             user32.PostMessageW(wt.HWND(self.hwnd), WM_COMMAND, command, 0)
 
     def _build_menu(self):
-        """Built, LOGGED, and then drawn — so the log proves the Quit item
-        exists (its id and its text) without anyone having to click."""
+        """Built, LOGGED, and then drawn — so the log proves every item exists
+        (its id and its text) without anyone having to click.
+
+        THREE items now, and the two shipped ids keep their numbers: `[1]` Open
+        panel (the FULL panel — Alt+C is what opens the strip), `[3]` Edit
+        caption position, `[2]` Quit Sotto. `_main/tray-quit-probe.py` finds the
+        Quit by its TEXT (`[2]='Quit Sotto'`), so a new item cannot break it.
+        """
         menu = user32.CreatePopupMenu()
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Open panel')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_EDIT,
+                           'Edit caption position')
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, 'Quit Sotto')
         self.menu = int(menu)
@@ -2055,10 +2376,20 @@ BOOTSTRAP_JS = r"""
   'use strict';
   if (window.sotto) return;   // a second injection must not replace a live bridge
 
-  var subs = { caption: [], status: [], geometry: [] };
+  var subs = { caption: [], status: [], geometry: [], stats: [] };
   var queue = [];
   var infoSeq = 0;
   var infoPending = {};
+  // THE STATS ROUND-TRIP (ported 2026-10-11 from the 55c422b reference, its
+  // lines 2336-2349 + 2227-2233). Measured gap in the live shell: Python
+  // `reply_stats` already calls `window.__sotto_stats(id, json)` (this file,
+  // `reply_stats`) and `emit_async('stats', ...)` already pushes -- but the
+  // page defined NO `__sotto_stats`, NO `getStats` and NO `onStats`, and
+  // `subs` had no `stats` topic, so every push went into `subs[kind] || []`
+  // and every poll had nothing to resolve. The meter therefore stayed at the
+  // floor with the whole channel apparently present on the Python side.
+  var statsSeq = 0;
+  var statsPending = {};
 
   function emit(kind, payload) {
     var list = subs[kind] || [];
@@ -2146,16 +2477,34 @@ BOOTSTRAP_JS = r"""
     return { text: value, meta: (meta && typeof meta === 'object') ? meta : {} };
   }
 
+  // A COUNT OF WHAT ARRIVED, per kind (reference 2227-2233). The panel's
+  // level meter is fed BOTH by a poll and by this push, so a reader that only
+  // saw `data-level=live` could not tell a working push from a poll doing all
+  // the work. `_main/_strip-stats-probe.py` reads this counter and requires
+  // the PUSH to have landed more than once.
   window.__sotto_emit = function (kind, json) {
     var payload = null;
     try { payload = JSON.parse(json); } catch (err) { payload = null; }
+    window.__sotto_emit.counts[kind] = (window.__sotto_emit.counts[kind] || 0) + 1;
     emit(kind, payload);
   };
+  window.__sotto_emit.counts = {};
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];
     if (!resolve) return;
     delete infoPending[id];
+    try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
+  };
+
+  // Same id round-trip as `__sotto_info`, for `getStats`. Without this the
+  // shell's own `window.__sotto_stats(...)` call is a silent no-op and the
+  // Promise from `getStats()` never resolves -- which is exactly what the
+  // owner's log showed: 595 BRIDGE_STATS_REPLY lines and a dead meter.
+  window.__sotto_stats = function (id, json) {
+    var resolve = statsPending[id];
+    if (!resolve) return;
+    delete statsPending[id];
     try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
   };
 
@@ -2208,6 +2557,7 @@ BOOTSTRAP_JS = r"""
     onCaption: function (cb) { return subscribe('caption', cb); },
     onStatus: function (cb) { return subscribe('status', cb); },
     onGeometry: function (cb) { return subscribe('geometry', cb); },
+    onStats: function (cb) { return subscribe('stats', cb); },
 
     hide: function () { post('hide', null); },
     toggle: function () { post('toggle', null); },
@@ -2235,6 +2585,36 @@ BOOTSTRAP_JS = r"""
       });
     },
 
+    // THE PANEL'S OWN PULL, once a second (`panel.js:2478`). The numbers are
+    // the worker's own counters, whitelisted by `stats()`; a field the worker
+    // did not print stays ABSENT rather than arriving as a zero this shell
+    // invented.
+    getStats: function () {
+      return new Promise(function (resolve) {
+        var id = 's' + (++statsSeq);
+        statsPending[id] = resolve;
+        post('stats', { id: id });
+      });
+    },
+
+    // ── THE SURFACE CONTRACT (the shell resizes; the page only wears it) ─────
+    // `app/panel/panel.js:1239-1243` calls THIS member and nothing else:
+    //
+    //     bridge.setPanelSurface('panel', reason)
+    //
+    // Its absence is not cosmetic. Without it `openFullPanel` falls through to
+    // `panel.js:1245-1247` — "switch the layout here ... The strip is NOT short
+    // until the window is" — so the strip's own "Open panel" button left the
+    // window strip-sized. The shell answers by setting the document surface
+    // (`window.SottoSurfaces.set`, the API `surface.js` defines) AND moving the
+    // HWND to that surface's geometry, in the same breath.
+    setPanelSurface: function (surface, reason) {
+      post('panel-surface', {
+        surface: String(surface == null ? '' : surface),
+        reason: String(reason == null ? '' : reason)
+      });
+      return true;
+    },
     captionApplied: function (text) {
       post('caption-applied', { text: String(text == null ? '' : text) });
     },
@@ -2603,12 +2983,17 @@ class PanelVisibilityWriter:
     """
 
     def __init__(self, path, observe, log=lambda _m: None,
-                 interval_s=PANEL_VISIBILITY_INTERVAL_S):
+                 interval_s=PANEL_VISIBILITY_INTERVAL_S, extra=None):
         self.path = path
         #: `observe()` -> bool, read LIVE from the window at call time.
         self.observe = observe
         self.log = log
         self.interval_s = max(0.5, float(interval_s))
+        #: `extra()` -> dict merged into every payload. It carries the `geometry`
+        #: key the EDIT mode persists (see `SottoShell.geometry_snapshot`). Kept
+        #: a callback rather than a dict so the file always names the rect the
+        #: window has AT THE WRITE, not the one it had when this object was built.
+        self.extra = extra
         self.visible = None
         self.since_ms = None
         self.reason = 'boot'
@@ -2685,6 +3070,21 @@ class PanelVisibilityWriter:
                 '(now_ms - since_ms) and is computed by the READER'),
             'staleAfterSeconds': round(max(self.interval_s * 3.0, 5.0), 2),
         }
+        # THE `geometry` KEY — additive, and it is why the edit mode does NOT get
+        # a second file. `schema` stays `sotto.panel-visibility/1`: no field was
+        # renamed or removed, and the worker's `PanelVisibilityReader` reads
+        # `visible`/`writtenAtEpoch`/`staleAfterSeconds` and ignores every other
+        # key (read, not assumed), so an extra key cannot change what the worker
+        # does. A SECOND file could: the shell would write one and the worker's
+        # poll would read the other, and nothing would say which was authoritative.
+        if self.extra is not None:
+            try:
+                extra = self.extra()
+            except Exception as exc:  # noqa: BLE001 -- the file must still land
+                extra = None
+                self.log(f'PANEL_VISIBILITY_EXTRA_FAILED error={exc!r}')
+            if isinstance(extra, dict):
+                payload['geometry'] = extra
         try:
             panel_state.write_atomic(self.path, payload)
         except Exception as exc:
@@ -2762,6 +3162,11 @@ class SottoHost:
             'toggle': lambda p: self._shell.toggle_panel('page'),
             'quit': lambda p: self._shell.quit('page'),
             'info': self._info,
+            'panel-surface': self._panel_surface,
+            # The pull half of the stats channel: without this entry the
+            # page's `post('stats', ...)` lands in BRIDGE_UNKNOWN_KIND and the
+            # Promise never resolves.
+            'stats': self._stats,
         }.get(kind)
         if handler is None:
             log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')
@@ -2829,6 +3234,25 @@ class SottoHost:
     def _info(self, payload):
         info_id = (payload or {}).get('id', '')
         self._shell.reply_info(info_id, self._shell.info())
+    def _panel_surface(self, payload):
+        """`bridge.setPanelSurface(surface, reason)` — the member this shell owed.
+
+        `panel.js:1239-1243` is the ONLY caller, and it calls it for exactly one
+        thing: opening the FULL panel from the strip. The shell must switch the
+        document surface AND resize the window, which is why this is a shell
+        member and not a page-side attribute write.
+        """
+        payload = payload or {}
+        self._shell.set_panel_surface(payload.get('surface'),
+                                      payload.get('reason') or 'page')
+
+    def _stats(self, payload):
+        '''The panel's own `getStats()` pull, answered on the same id
+        round-trip as `info` -- so the panel gets a resolved Promise rather
+        than a synchronous guess, and the log can tell a PULL from a PUSH.
+        '''
+        stats_id = (payload or {}).get('id', '')
+        self._shell.reply_stats(stats_id, self._shell.stats())
 
     # -- history (the "redux" store) ---------------------------------------
     def _history_reply(self, payload, result):
@@ -2904,6 +3328,29 @@ class SottoShell:
         self.strip_height_css = None
         self.strip_height_extra = 0
         self.strip_height = STRIP_HEIGHT_FALLBACK
+        # ── THE TWO SURFACES (owner, 2026-10-08) ─────────────────────────────
+        #: The surface the owner's control opens. `'strip'` — the SHORT caption
+        #: band at the bottom, horizontally centred — because
+        #: `app/panel/surface.js:6-8` records the decision that Alt+C must NOT
+        #: open the whole 380x900 panel. `--show` is the exception: it is the
+        #: developer's "panel up now" and stays the FULL panel, byte for byte.
+        self.surface = 'strip'
+        #: The surface the WINDOW currently wears. The window is CREATED at the
+        #: docked-panel geometry (`create_window`), so this starts as `'panel'`
+        #: and the first Alt+C is what moves it to the strip — while it is still
+        #: hidden, which is the only moment a `SetWindowPos` cannot flicker.
+        self.surface_applied = 'panel'
+        #: The rect an EDIT session saved, read back from the `geometry` key of
+        #: `_main/panel-visibility.json` at startup and re-written on every edit.
+        #: `None` means "never edited" — the computed default stands.
+        self.saved_geometry = None
+        #: True while the owner is positioning the caption band (tray menu
+        #: `Edit caption position`). See `set_edit_mode`.
+        self.edit_mode = False
+        self.edit_moves = 0
+        #: The cursor's offset from the window origin, captured when the drag
+        #: started, so the band follows the pointer instead of jumping to it.
+        self.edit_grab = None
         self.last_status = ''
         self.bridge_installed = None  # None until measured, True/False after
         self.renderer_ready = threading.Event()
@@ -2919,6 +3366,7 @@ class SottoShell:
         )
         self.hotkey = None
         self.tray = None
+        self.click_watcher = None
         self.hot_reload = None       # hot_reload.HotReload
         #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
         #: until the panel's first load, which is when the DOM can be read.
@@ -2960,6 +3408,7 @@ class SottoShell:
         import webview  # imported late: it loads the WinForms assemblies
 
         geometry = self.compute_geometry()
+        self.restore_saved_geometry()
         # Open on the staging page, not the panel. pywebview loads the URL from
         # its own CoreWebView2InitializationCompleted handler, which is
         # subscribed BEFORE the host's, so a preload registered from the host's
@@ -3535,6 +3984,10 @@ class SottoShell:
         if not self.startup_done:
             self.startup_done = True
             self.send_geometry()
+            if self.surface_applied == 'strip':
+                if self.refresh_strip_height('hot-reload'):
+                    self._apply_window_geometry(self.geometry_for('strip'),
+                                                reason='strip-height-hot-reload')
             # The panel AS TEXT. Armed here — once the panel document (not the
             # staging page) has loaded — so the DOM read has something to read.
             # See panel_state.py and docs/audit/painel-texto.md.
@@ -3544,8 +3997,13 @@ class SottoShell:
             # the file. The order is the point: see `self.panel_visibility`.
             self.start_panel_visibility()
             if self.args.show:
-                self.show_panel('startup')
+                self.show_panel('startup', surface='panel')
             self._measure_on_screen_visibility('startup')
+            if self.args.probe_edit_mode:
+                log('PANEL_EDIT_PROBE_ARMED s=2.0')
+                timer = threading.Timer(2.0, self.run_edit_mode_probe)
+                timer.daemon = True
+                timer.start()
             # -- F1: the worker starts by DEFAULT --------------------------
             # `docs/audit/auditoria-completa-20261007.md` F1: the documented
             # launch started no worker at all, so Alt+C showed a panel that
@@ -3611,6 +4069,14 @@ class SottoShell:
             if off_message:
                 text, info = off_message
                 self.apply_panel_state(text, 'error', info)
+            if self.args.probe_stats:
+                # Long enough for the panel's own 1000 ms poll to have run
+                # several times against a worker that published WORKER_STATS.
+                wait = self.args.probe_stats_wait
+                log(f'PANEL_STATS_PROBE_ARMED s={wait}')
+                timer = threading.Timer(wait, self.run_stats_probe)
+                timer.daemon = True
+                timer.start()
             if self.args.probe_v2 > 0:
                 timer = threading.Timer(self.args.probe_v2,
                                         self.run_panel_v2_probe)
@@ -3634,6 +4100,13 @@ class SottoShell:
                     self.run_dump_dom()
             elif self.args.selftest:
                 self.run_selftest()
+            if self.args.probe_outside_click:
+                # A short beat so the panel document has settled before the
+                # three decisions are driven.
+                log('OUTSIDE_CLICK_PROBE_ARMED s=2.0')
+                timer = threading.Timer(2.0, self.run_outside_click_probe)
+                timer.daemon = True
+                timer.start()
             if self.args.memory and not self.args.memory_wait:
                 self.run_memory()
             if self.args.exit_after:
@@ -3955,6 +4428,7 @@ class SottoShell:
             observe=self.observe_panel_visible,
             log=log,
             interval_s=PANEL_VISIBILITY_INTERVAL_S,
+            extra=self.geometry_snapshot,
         )
         return self.panel_visibility.start()
 
@@ -4332,9 +4806,12 @@ class SottoShell:
         # would otherwise catch it up to `interval_s` later.
         self.publish_panel_visibility('reassert-hidden')
 
-    def show_panel(self, reason):
+    def show_panel(self, reason, surface=None):
         if self.hwnd is None:
             return False
+        want = surface or self.surface
+        if want != self.surface_applied:
+            self.set_panel_surface(want, reason)
         set_topmost(self.hwnd)
         # ── THE P0 ORDER: children FIRST, then the map ──────────────────────
         # The owner, verbatim: he pressed Alt+C, saw a solid-colour strip for
@@ -4358,6 +4835,12 @@ class SottoShell:
         # navigation-time `form.Show()`.
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        # ARMED HERE, and only here: the watcher can close the panel from now on,
+        # which is what keeps the two startup navigations from closing anything
+        # (the panel is hidden then, so the visible-guard already refuses, and
+        # this makes it explicit rather than incidental).
+        if self.click_watcher is not None and self.visible:
+            self.click_watcher.armed = True
         log(f'PANEL_SHOWN reason={reason} '
             f'visible={str(self.visible).lower()} '
             'show=SW_SHOWNOACTIVATE focus_stolen=false')
@@ -4396,7 +4879,8 @@ class SottoShell:
             log(f'PANEL_VISIBILITY_CACHE_STALE cached={str(self.visible).lower()} '
                 f'live={str(live).lower()} decided_by=window')
         self.visible = live
-        return (self.hide_panel(reason) if live else self.show_panel(reason))
+        return (self.hide_panel(reason) if live else self.show_panel(
+            reason, surface='strip' if reason == 'hotkey' else None))
 
     # -- Alt+C: strip toggle, double-press side panel, mouse unlock ---------
     def hotkey_pressed(self):
@@ -4538,7 +5022,7 @@ class SottoShell:
         if self.hwnd is None:
             return False
         # Geometry only — `place_panel` no longer maps the window (P0).
-        self.place_panel('strip')
+        self.set_panel_surface('strip', reason)
         # Children FIRST, so the first frame the owner sees is already the
         # panel: `foreground_unlock` maps the FORM NOW, and the first frame of
         # a mapped form is the FORM's own background. Measured 2026-10-09 by
@@ -4571,7 +5055,7 @@ class SottoShell:
         if self.hwnd is None:
             return False
         # Geometry only — `place_panel` no longer maps the window (P0).
-        self.place_panel('side')
+        self.set_panel_surface('side', reason)
         # Children FIRST — same P0 reason as `show_panel` and `show_strip`: a
         # raw user32 show of the FORM leaves `Chrome_WidgetWin_0` hidden and the
         # panel a flat colour for one frame. Measured 2026-10-09.
@@ -4667,8 +5151,20 @@ class SottoShell:
             log('TRAY_QUIT requested=true')
             self.request_exit(0, reason='tray-quit')
         elif command == ID_TRAY_OPEN:
-            log('TRAY_OPEN requested=true')
-            self.toggle_panel('tray')
+            # THE FULL PANEL, because that is what the item says. Alt+C is what
+            # opens the SHORT strip (`surface.js:6-8`); the tray is the owner's
+            # deliberate way to the whole column, and the strip's own "Open
+            # panel" button takes the same road through
+            # `bridge.setPanelSurface('panel')`.
+            log('TRAY_OPEN requested=true surface=panel')
+            live = window_visible(self.hwnd) if self.hwnd else False
+            if live and self.surface == 'panel':
+                self.hide_panel('tray')
+            else:
+                self.show_panel('tray', surface='panel')
+        elif command == ID_TRAY_EDIT:
+            log('TRAY_EDIT requested=true')
+            self.set_edit_mode(not self.edit_mode, 'tray')
 
     def request_exit(self, code=0, reason='requested'):
         if self.exiting.is_set():
@@ -4811,7 +5307,14 @@ class SottoShell:
                            ('selftest', '--selftest'),
                            ('memory', '--memory'),
                            ('no_hotkey', '--no-hotkey'),
-                           ('exit_after', '--exit-after')):
+                           ('exit_after', '--exit-after'),
+                           # A stats probe must not pay a ~2 GB model load:
+                           # without this entry a bare --probe-stats run falls
+                           # through to reason=default and STARTS the worker.
+                           ('probe_stats', '--probe-stats'),
+                           ('probe_outside_click',
+                            '--probe-outside-click'),
+                           ('probe_edit_mode', '--probe-edit-mode')):
             if getattr(args, flag, False):
                 return f'measurement-flag({name})'
         return 'default'
@@ -4869,6 +5372,270 @@ class SottoShell:
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
 
+    def start_click_watcher(self) -> bool:
+        """Arm the outside-click watcher (see `OutsideClickWatcher`)."""
+        self.click_watcher = OutsideClickWatcher(self)
+        ok = self.click_watcher.start()
+        if not ok:
+            warn('OUTSIDE_CLICK_UNAVAILABLE the low-level mouse watcher did not '
+                 'install; the panel still opens and closes with Alt+C')
+        return ok
+
+    def run_outside_click_probe(self):
+        """MEASUREMENT for the outside-click cure — the three cases, in order.
+
+        The panel is made VISIBLE BUT NOT SEEN with `form.Opacity = 0`, which is
+        the mechanism pywebview's OWN startup dance uses to map a window
+        invisibly (`winforms.py:777-781`) — so `IsWindowVisible(hwnd)` is TRUE
+        (the guard the decision actually reads) while nothing reaches the owner's
+        screen. `--show` is NOT used.
+
+        The three decisions are driven through the watcher thread's REAL message
+        loop (`PostThreadMessageW`), so what is exercised is the decision
+        function, the guards, the thread and `hide_panel` — everything except the
+        OS delivering a physical click to the hook.
+        """
+        form = self._form()
+        if form is None or self.click_watcher is None:
+            log('OUTSIDE_CLICK_PROBE unavailable form_or_watcher=false')
+            return
+        try:
+            form.Opacity = 0.0
+        except Exception as exc:  # noqa: BLE001
+            log(f'OUTSIDE_CLICK_PROBE opacity_failed={type(exc).__name__}: {exc}')
+            return
+        log('OUTSIDE_CLICK_PROBE begin opacity=0 visible_but_not_seen=true')
+        rect = RECT()
+        # (1) BEFORE ARMING — the two startup navigations.
+        self.click_watcher._consider(0, 0, WM_LBUTTONDOWN, source='probe-startup')
+        # (2) SHOWN, then a click OUTSIDE the rect.
+        self.show_panel('probe-outside-click')
+        user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+        log(f'OUTSIDE_CLICK_PROBE shown visible={str(window_visible(self.hwnd)).lower()} '
+            f'armed={str(self.click_watcher.armed).lower()} '
+            f'rect=({rect.left},{rect.top},{rect.right},{rect.bottom})')
+        outside_x, outside_y = rect.left - 20, rect.top + 10
+        user32.PostThreadMessageW(self.click_watcher.thread_id, WM_PROBE_CLICK,
+                                  _pack_point(outside_x, outside_y), 0)
+        time.sleep(1.0)
+        log(f'OUTSIDE_CLICK_PROBE after_outside_click '
+            f'visible={str(window_visible(self.hwnd)).lower()}')
+        # (3) SHOWN again, then a click INSIDE the rect.
+        self.show_panel('probe-inside-click')
+        user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+        inside_x = (rect.left + rect.right) // 2
+        inside_y = (rect.top + rect.bottom) // 2
+        user32.PostThreadMessageW(self.click_watcher.thread_id, WM_PROBE_CLICK,
+                                  _pack_point(inside_x, inside_y), 0)
+        time.sleep(1.0)
+        log(f'OUTSIDE_CLICK_PROBE after_inside_click '
+            f'visible={str(window_visible(self.hwnd)).lower()}')
+        self.request_exit(0, reason='probe-outside-click')
+    def set_edit_mode(self, enabled, reason='tray'):
+        """Turn the caption band's position editor on or off.
+
+        ENTERED FROM THE TRAY ONLY. The owner's brief: `Edit caption position` is
+        "the obvious home now that the tray exists, and it is impossible to
+        trigger by accident while reading a caption" — no always-visible chrome
+        on the panel, no hotkey.
+
+        WHY THE EX-STYLES CHANGE. A panel that is click-through
+        (`WS_EX_TRANSPARENT`) and never activates (`WS_EX_NOACTIVATE`) cannot be
+        grabbed or receive a drag: those two bits are exactly what makes Alt+C
+        usable over a film, so they are lifted for the duration of the edit and
+        put back on the way out. `make_click_through(hwnd, False)` is the existing
+        helper, and the NOACTIVATE bit is cleared with the same `set_ex_style` the
+        pointer-interactive path uses.
+        """
+        enabled = bool(enabled)
+        if enabled == self.edit_mode:
+            return False
+        hwnd = self.hwnd
+        if hwnd is None:
+            warn(f'PANEL_EDIT_MODE_REFUSED on={enabled} reason={reason} '
+                 'no_window=true')
+            return False
+        self.edit_mode = enabled
+        if enabled:
+            # The band has to be ON SCREEN to be positioned — and the strip is
+            # what the owner is positioning, so the show path applies it (and
+            # does the resize while the window is still hidden).
+            if not window_visible(hwnd):
+                self.show_panel(f'edit-{reason}')
+            try:
+                make_click_through(hwnd, False)
+                set_ex_style(hwnd, remove=WS_EX_NOACTIVATE)
+            except Exception as exc:  # noqa: BLE001 -- report, never kill the app
+                warn(f'PANEL_EDIT_MODE_STYLE_FAILED error={exc!r}')
+            if self.click_watcher is not None:
+                # The watcher's own thread reads this; it also STOPS closing the
+                # panel on an outside click while the owner is positioning it.
+                self.click_watcher.edit_mode = True
+            else:
+                # The drag is CARRIED by the watcher thread (it already owns the
+                # mouse hook and a message loop), so a run without it can enter
+                # edit mode and move nothing. Say so instead of leaving the owner
+                # with a band that will not follow the pointer.
+                warn('PANEL_EDIT_MODE_NO_DRAG the outside-click watcher is not '
+                     'running (--no-click-outside), so the band cannot be '
+                     'dragged; the tray item still toggles the mode')
+            self.edit_moves = 0
+            rect = RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            log(f'PANEL_EDIT_MODE on=true reason={reason} surface={self.surface} '
+                f'click_through=false noactivate=false '
+                f'rect=({rect.left},{rect.top},{rect.right},{rect.bottom}) '
+                'hint=drag_the_band')
+        else:
+            try:
+                make_click_through(hwnd, True)
+                set_ex_style(hwnd, add=WS_EX_NOACTIVATE)
+            except Exception as exc:  # noqa: BLE001
+                warn(f'PANEL_EDIT_MODE_STYLE_FAILED error={exc!r}')
+            if self.click_watcher is not None:
+                self.click_watcher.edit_mode = False
+            # The rect the window ended on is the one to restore next launch.
+            self.saved_geometry = self.geometry_snapshot()
+            self.publish_panel_visibility('edit-off')
+            log(f'PANEL_EDIT_MODE on=false reason={reason} '
+                f'moves={self.edit_moves} '
+                f'geometry={self.saved_geometry} click_through=true '
+                'noactivate=true')
+        return True
+    def edit_drag_to(self, x, y, persist=False):
+        """One drag sample, applied at a LOW frequency (see the watcher).
+
+        Called from the outside-click watcher's MESSAGE LOOP, never from inside
+        its hook procedure: a slow hook stalls the pointer system-wide. The move
+        itself is a bare `SetWindowPos` with `SWP_NOSIZE` — no client-area work
+        (a MOVE does not change the client area) and no `exec_js` — so the loop
+        stays responsive. The heavier half (the client-area re-fit) is POSTED,
+        and the file write happens only when the drag ENDS.
+        """
+        if not self.edit_mode:
+            return False
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            return False
+        grab = self.edit_grab or (0, 0)
+        work = self.work_area()
+        nx = max(work['x'], min(int(x) - int(grab[0]),
+                               work['x'] + work['width'] - width))
+        ny = max(work['y'], min(int(y) - int(grab[1]),
+                               work['y'] + work['height'] - height))
+        moved = (nx != int(geometry.get('x') or 0)
+                 or ny != int(geometry.get('y') or 0))
+        if moved:
+            geometry['x'] = nx
+            geometry['y'] = ny
+            geometry['docked'] = 'edited'
+            self.geometry = geometry
+            scale = (self.display or {}).get('scaleFactor') or 1.0
+            user32.SetWindowPos(self.hwnd, HWND_TOPMOST,
+                                int(nx * scale), int(ny * scale), 0, 0,
+                                SWP_NOSIZE | SWP_NOACTIVATE)
+            self.edit_moves += 1
+        if persist:
+            self.saved_geometry = self.geometry_snapshot()
+            # Fire-and-forget: the client area is re-pinned once the drag ends,
+            # never from inside the hook thread's message loop.
+            self._post(lambda: self._fit_client_area(self._form()))
+            self.publish_panel_visibility('edit-move')
+            log(f'PANEL_EDIT_GEOMETRY_SAVED surface={self.surface_applied} '
+                f'window={width}x{height}@({nx},{ny}) moves={self.edit_moves} '
+                f'work={work["width"]}x{work["height"]}@({work["x"]},{work["y"]})')
+        return moved
+    def run_edit_mode_probe(self):
+        """MEASUREMENT for the EDIT MODE — the whole path, window never seen.
+
+        The panel is made VISIBLE BUT NOT SEEN with `form.Opacity = 0`, the very
+        mechanism pywebview's own startup dance uses to map a window invisibly
+        (`winforms.py:777-781`): `IsWindowVisible(hwnd)` is TRUE — the guard every
+        decision here reads — while nothing reaches the owner's screen. `--show`
+        is NOT used, and NO physical mouse is moved: the drag sample is posted
+        through the watcher thread's REAL message loop (`PostThreadMessageW`),
+        which is the exact path the hook procedure posts to, so what is exercised
+        is the hook's own route minus the OS delivering a physical move.
+
+        IT CANNOT HANG, and that is a rule earned here: a probe whose exception
+        escapes a `threading.Timer` callback dies with a traceback on a stderr
+        that `pythonw` does not have, leaving a HIDDEN SHELL ALIVE forever (the
+        probe that launched it then kills it and reports an empty arm). So the
+        steps are wrapped: any raise is written INTO THE LOG, and the exit is in a
+        `finally`.
+        """
+        try:
+            self._edit_mode_probe_steps()
+        except Exception:  # noqa: BLE001
+            import traceback
+            log('PANEL_EDIT_PROBE FAILED '
+                + traceback.format_exc().replace('\n', ' | '))
+        finally:
+            self.request_exit(0, reason='probe-edit-mode')
+    def _edit_mode_probe_steps(self):
+        form = self._form()
+        if form is None:
+            log('PANEL_EDIT_PROBE unavailable form=false')
+            return
+        try:
+            form.Opacity = 0.0
+        except Exception as exc:  # noqa: BLE001
+            log(f'PANEL_EDIT_PROBE opacity_failed={type(exc).__name__}: {exc}')
+            return
+        log('PANEL_EDIT_PROBE begin opacity=0 visible_but_not_seen=true')
+        # (1) ENTER through the tray's OWN command id — the real entrance, and
+        #     the same handler the menu's `WM_COMMAND` reaches.
+        self.tray_command(ID_TRAY_EDIT)
+        rect = RECT()
+        user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+        log(f'PANEL_EDIT_PROBE after_enter visible={str(window_visible(self.hwnd)).lower()} '
+            f'edit_mode={str(self.edit_mode).lower()} '
+            f'rect=({rect.left},{rect.top},{rect.right},{rect.bottom})')
+        # (1b) AN OUTSIDE CLICK WHILE EDITING MUST NOT PUT THE BAND AWAY. Driven
+        #      through the watcher's own decision function, which is the same one
+        #      the hook calls — the first missed grab must not end the edit.
+        if self.click_watcher is not None:
+            closed = self.click_watcher._consider(5, 5, WM_LBUTTONDOWN,
+                                                 source='probe-edit-outside')
+            log('PANEL_EDIT_PROBE outside_click_while_editing closed='
+                f'{str(bool(closed)).lower()} '
+                f'visible={str(window_visible(self.hwnd)).lower()} '
+                f'decision={(self.click_watcher.decisions[-1] or {}).get("decision")}')
+        # (2) ONE DRAG SAMPLE. `edit_grab` is None because no physical
+        #     button-down happened, so `edit_drag_to` moves the band's ORIGIN to
+        #     the point — the decisions under test are the move, the clamp and the
+        #     persist, not the grab offset (which only the hook sets).
+        target_x, target_y = 700, 400
+        if self.click_watcher is not None and self.click_watcher.thread_id:
+            log(f'PANEL_EDIT_PROBE drag from=({rect.left},{rect.top}) '
+                f'to=({target_x},{target_y})')
+            user32.PostThreadMessageW(self.click_watcher.thread_id, WM_EDIT_DRAG,
+                                      _pack_point(target_x, target_y), 1)
+            time.sleep(1.0)
+        else:
+            log('PANEL_EDIT_PROBE drag_skipped watcher=false')
+        # (2b) THE KEY, READ BACK OFF DISK FROM INSIDE THIS PROCESS. The file is
+        #      shared with a possibly-running older shell that rewrites it every
+        #      `interval_s`, so an OUTSIDE reader can lose the race; read here, a
+        #      millisecond after the write, it cannot be raced away.
+        try:
+            with open(PANEL_VISIBILITY_PATH, encoding='utf-8') as fh:
+                on_disk = json.load(fh)
+            log('PANEL_EDIT_PROBE file_geometry='
+                + json.dumps(on_disk.get('geometry'))
+                + ' file_pid=' + str(on_disk.get('pid'))
+                + ' file_schema=' + json.dumps(on_disk.get('schema'))
+                + ' file_visible=' + json.dumps(on_disk.get('visible')))
+        except Exception as exc:  # noqa: BLE001
+            log(f'PANEL_EDIT_PROBE file_read_failed error={exc!r}')
+        # (3) LEAVE through the same id, which is what persists and puts the two
+        #     ex-styles back.
+        self.tray_command(ID_TRAY_EDIT)
+        log('PANEL_EDIT_PROBE after_leave edit_mode='
+            f'{str(self.edit_mode).lower()} saved={json.dumps(self.saved_geometry)}')
+        self.request_exit(0, reason='probe-edit-mode')
     def stats(self):
         """The worker's OWN counters, whitelisted to what the panel reads.
 
@@ -5031,6 +5798,46 @@ class SottoShell:
         except Exception as exc:  # noqa: BLE001
             warn(f'emit_async failed: {exc!r}')
 
+    def work_area(self):
+        """The WORK area of the display this shell lays out in, in DIP.
+
+        `primary_display()` is the one source: `MonitorFromPoint(POINT(0,0),
+        MONITOR_DEFAULTTOPRIMARY)` — the PRIMARY monitor, the same one the docked
+        panel has always used. On this box there is exactly ONE monitor
+        (`_main/_strip-work-area-probe.ps1`: `monitors=1`, `work=[0,0 1920x1032]`,
+        DPI 96), so "which monitor does the strip open on" cannot be measured
+        here and is NOT guessed at: it opens on the primary, like the panel, and
+        the multi-monitor case is disclosed as unmeasured in
+        `_main/receipt-strip-surface.md`.
+        """
+        display = self.display or primary_display()
+        self.display = display
+        return display['workArea']
+    def geometry_for(self, surface):
+        """The rect `surface` wants, in the CURRENT work area.
+
+        A saved (edited) rect wins over the computed default, and is clamped into
+        the work area — the honest answer to a resolution change, which this lane
+        did NOT measure. The clamp says so in the log when it MOVES anything, so
+        a window the owner placed is never silently relocated.
+        """
+        work = self.work_area()
+        saved = self.saved_geometry
+        if isinstance(saved, dict) and saved.get('surface') == surface:
+            geometry, moved = clamp_geometry(saved, work)
+            if moved:
+                log('PANEL_GEOMETRY_CLAMPED '
+                    f'surface={surface} '
+                    f'was={saved.get("width")}x{saved.get("height")}'
+                    f'@({saved.get("x")},{saved.get("y")}) '
+                    f'now={geometry["width"]}x{geometry["height"]}'
+                    f'@({geometry["x"]},{geometry["y"]}) '
+                    f'work={geometry["workWidth"]}x{geometry["workHeight"]}'
+                    f'@({geometry["workX"]},{geometry["workY"]})')
+            return geometry
+        if surface == 'strip':
+            return dock_strip(work, height=self.strip_height)
+        return dock_right(work)
     def strip_height_from_css(self):
         """The strip's height, READ OUT OF THE STYLESHEET. `None` if unavailable.
 
@@ -5066,6 +5873,187 @@ class SottoShell:
             log(f'STRIP_HEIGHT_CSS_UNUSABLE raw={json.dumps(raw)}')
             return None
         return value
+    def set_strip_height(self, height, reason='runtime'):
+        """Change the strip's height AT RUNTIME and re-derive the window.
+
+        The height is the STYLESHEET's (`panel.css:52`), so this does not replace
+        it: it records an ADDITION on top of it (`strip_height_extra`), which is
+        how a future reveal can grow the band without a second copy of the base
+        number. Nothing calls it today. Returns True when the number moved.
+        """
+        try:
+            value = int(height)
+        except (TypeError, ValueError):
+            warn(f'STRIP_HEIGHT_REFUSED value={height!r} reason={reason}')
+            return False
+        value = max(48, min(value, 2000))
+        base = self.strip_height_css if self.strip_height_css is not None \
+            else STRIP_HEIGHT_FALLBACK
+        if value == self.strip_height:
+            return False
+        log(f'STRIP_HEIGHT from={self.strip_height} to={value} source=override '
+            f'base={base} extra={value - base} reason={reason}')
+        self.strip_height_extra = value - base
+        self.strip_height = value
+        if self.surface == 'strip':
+            self.set_panel_surface('strip', f'height-{reason}')
+        return True
+    def set_panel_surface(self, surface, reason='page'):
+        """`bridge.setPanelSurface(surface, reason)` — layout AND window, together.
+
+        THE MEMBER THIS SHELL OWED THE PANEL. Before it existed, `grep -n
+        'surface|SottoSurfaces|strip' app/webview/sotto_webview.py` matched 37
+        lines and NOT ONE was an implementation of this call, so
+        `panel.js:1241`'s test failed and `openFullPanel` fell through to
+        `panel.js:1245-1247` — switch the layout, leave the window strip-sized.
+
+        The two halves are ONE action on purpose. Setting the attribute alone
+        gives a 380x900 column wearing strip CSS; resizing alone gives a strip
+        window wearing panel CSS. Order: the DOCUMENT first (`exec_js` waits for
+        the script), then the HWND, so the window never shows one surface's
+        stylesheet at the other surface's size.
+        """
+        name = normalise_surface_name(surface)
+        if name is None:
+            warn(f'PANEL_SURFACE_REFUSED surface={json.dumps(str(surface))} '
+                 f'reason={reason}')
+            return False
+        self.surface = name
+        if name == 'strip':
+            # THE STYLESHEET DECIDES THE HEIGHT (`panel.css:52`), and this is the
+            # moment it matters: the page is loaded by the time a surface is
+            # applied, so the read answers with the real number instead of a copy
+            # kept in this file.
+            self.refresh_strip_height(f'surface-{reason}')
+        script = ('(function () { if (window.SottoSurfaces) { '
+                  'window.SottoSurfaces.set(' + json.dumps(name) + '); '
+                  'return window.SottoSurfaces.current(); } return null; })()')
+        applied = self.exec_js(script)
+        geometry = self.geometry_for(name)
+        self._apply_window_geometry(geometry, reason=f'surface-{name}')
+        self.surface_applied = name
+        log(f'PANEL_SURFACE surface={name} reason={reason} '
+            f'document_surface={json.dumps(applied)} '
+            f'window={geometry["width"]}x{geometry["height"]}'
+            f'@({geometry["x"]},{geometry["y"]}) '
+            f'docked={geometry["docked"]} '
+            f'edit_mode={str(self.edit_mode).lower()}')
+        self.publish_panel_visibility(f'surface-{name}')
+        return True
+    def _apply_window_geometry(self, geometry, reason='surface'):
+        """Move/resize the NATIVE window, then pin the client area to it.
+
+        ONE call per surface change and one per edit-mode drag sample — never per
+        frame. `docs/release-and-overlay-plan.md:75-78` is the warning this obeys:
+        moving the native window every frame is the short path to flicker.
+        """
+        self.geometry = geometry
+        hwnd = self.hwnd
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        if hwnd:
+            ctypes.set_last_error(0)
+            ok = user32.SetWindowPos(
+                hwnd, HWND_TOPMOST,
+                int(geometry['x'] * scale), int(geometry['y'] * scale),
+                int(geometry['width'] * scale), int(geometry['height'] * scale),
+                SWP_NOACTIVATE)
+            # The ERROR CODE, not just the boolean: measured on this host,
+            # `ok=false` with the size applied and the position NOT — which is
+            # only diagnosable from the code (`1400` = ERROR_INVALID_WINDOW_HANDLE
+            # is what a mis-marshalled `HWND_TOPMOST` produces).
+            log(f'WINDOW_GEOMETRY reason={reason} ok={str(bool(ok)).lower()} '
+                f'last_error={ctypes.get_last_error()} '
+                f'work={geometry.get("workWidth")}x{geometry.get("workHeight")}'
+                f'@({geometry.get("workX")},{geometry.get("workY")}) '
+                f'window={geometry["width"]}x{geometry["height"]}'
+                f'@({geometry["x"]},{geometry["y"]}) '
+                f'margin={geometry.get("margin")} '
+                f'docked={geometry["docked"]} '
+                f'visible={str(window_visible(hwnd)).lower()}')
+        # The CLIENT area is forced after every resize, for the reason
+        # `_fit_client_area` documents: pywebview sizes the WebView2 child to the
+        # client area computed under the OLD border, so a resize without this
+        # leaves the document laid out at the previous size.
+        try:
+            self._ui(lambda: self._fit_client_area(self._form()))
+        except Exception as exc:  # noqa: BLE001 -- report, never kill the panel
+            warn(f'WINDOW_GEOMETRY_CLIENT_FAILED reason={reason} error={exc!r}')
+        self.send_geometry()
+    def geometry_snapshot(self):
+        """The rect to PERSIST, in the shape the `geometry` key carries.
+
+        The surface is the one the WINDOW wears (`surface_applied`), never the
+        one the owner's next Alt+C will ask for: at startup the window is at the
+        docked-panel rect while `self.surface` already says `'strip'`, and
+        labelling that rect `strip` would teach the restore path to open the
+        strip at the panel's size.
+        """
+        geometry = self.geometry
+        if not isinstance(geometry, dict):
+            return None
+        return {
+            'surface': self.surface_applied,
+            'x': int(geometry.get('x') or 0),
+            'y': int(geometry.get('y') or 0),
+            'width': int(geometry.get('width') or 0),
+            'height': int(geometry.get('height') or 0),
+            'docked': str(geometry.get('docked') or ''),
+            'workWidth': int(geometry.get('workWidth') or 0),
+            'workHeight': int(geometry.get('workHeight') or 0),
+        }
+    def restore_saved_geometry(self):
+        """Read the `geometry` key the last edit wrote, and CLAMP it.
+
+        ONE FILE, NOT TWO. `_main/panel-visibility.json` already exists and is
+        written by `PanelVisibilityWriter`; a second file would let the shell and
+        the worker's poll disagree about which one is authoritative. The key is
+        additive: `schema` stays `sotto.panel-visibility/1` because no field was
+        renamed or removed, and the worker's reader (`PanelVisibilityReader`)
+        reads `visible`/`writtenAtEpoch`/`staleAfterSeconds` and ignores the rest
+        — verified by reading it, not assumed.
+
+        The clamp happens HERE, once, so the log carries the move exactly once
+        instead of on every show.
+        """
+        try:
+            with open(PANEL_VISIBILITY_PATH, encoding='utf-8') as fh:
+                payload = json.load(fh)
+        except FileNotFoundError:
+            return None
+        except Exception as exc:  # noqa: BLE001 -- a bad file is not a crash
+            warn(f'PANEL_GEOMETRY_RESTORE_FAILED path={PANEL_VISIBILITY_PATH} '
+                 f'error={exc!r}')
+            return None
+        rect = payload.get('geometry') if isinstance(payload, dict) else None
+        if not isinstance(rect, dict):
+            return None
+        name = normalise_surface_name(rect.get('surface'))
+        if name is None:
+            warn('PANEL_GEOMETRY_RESTORE_REFUSED '
+                 f'surface={json.dumps(str(rect.get("surface")))}')
+            return None
+        geometry, moved = clamp_geometry(rect, self.work_area())
+        self.saved_geometry = {
+            'surface': name, 'x': geometry['x'], 'y': geometry['y'],
+            'width': geometry['width'], 'height': geometry['height'],
+            'docked': geometry['docked'],
+        }
+        log('PANEL_GEOMETRY_RESTORED '
+            f'surface={name} '
+            f'rect={geometry["width"]}x{geometry["height"]}'
+            f'@({geometry["x"]},{geometry["y"]}) '
+            f'writtenAt={payload.get("writtenAt")} '
+            f'clamped={str(moved).lower()}')
+        if moved:
+            log('PANEL_GEOMETRY_CLAMPED '
+                f'surface={name} '
+                f'was={rect.get("width")}x{rect.get("height")}'
+                f'@({rect.get("x")},{rect.get("y")}) '
+                f'now={geometry["width"]}x{geometry["height"]}'
+                f'@({geometry["x"]},{geometry["y"]}) '
+                f'work={geometry["workWidth"]}x{geometry["workHeight"]}'
+                f'@({geometry["workX"]},{geometry["workY"]})')
+        return self.saved_geometry
     def refresh_strip_height(self, reason='surface-strip'):
         """Re-read the stylesheet's height and adopt it, once per real change.
 
@@ -5374,6 +6362,34 @@ class SottoShell:
         log(f'PANEL_V2_GATE={"GREEN" if out["ok"] else "RED"}')
         self.request_exit(0 if out['ok'] else 3, reason='panel-v2-probe')
         return out
+
+    def run_stats_probe(self):
+        '''MEASUREMENT for the STATS CHANNEL -- read out of the panel's OWN DOM.
+
+        Ported 2026-10-11 from the 55c422b reference (its lines 5349-5376).
+        `getStats`/`onStats` are the two members the shell owed the panel; a
+        text presence check would pass on a member that is never ANSWERED, so
+        this reads the CONSEQUENCE: the meter bars' inline `--meter-h` and
+        `body.dataset.level`, after the panel's own 1000 ms poll has run
+        against a worker that published WORKER_STATS. No window: `exec_js`
+        needs no mapped surface, and `--show` is not passed.
+        '''
+        # NOTE: no comment syntax that swallows the rest of a line inside this
+        # script -- it is ONE line of JS once concatenated.
+        script = (
+            '(() => ({'
+            ' level: document.body.dataset.level || null,'
+            ' bars: Array.from(document.querySelectorAll(' + chr(39) + '.chrome__meter i' + chr(39) + '))'
+            '.map((b) => b.style.getPropertyValue(' + chr(39) + '--meter-h' + chr(39) + ')),'
+            ' have: document.querySelectorAll(' + chr(39) + '.chrome__meter i' + chr(39) + ').length,'
+            ' emits: (window.__sotto_emit && window.__sotto_emit.counts) || null'
+            '}))()')
+        try:
+            value = self.exec_js(script)
+        except Exception as exc:  # noqa: BLE001
+            value = {'probe_failed': repr(exc)}
+        log('PANEL_STATS_PROBE ' + json.dumps(value, separators=(',', ':')))
+        self.request_exit(0, reason='probe-stats')
 
     def run_memory(self):
         report = memory_report()
@@ -6709,6 +7725,12 @@ def parse_args(argv):
                         help='after SECONDS, run the panel-v2 acceptance probe: '
                              '(two sections, live caption, history on disk, '
                              'search) and exit 0 GREEN / 3 RED')
+    #: MEASUREMENT: the stats channel, read out of the panel's OWN DOM.
+    #: Suppressed: a probe, not a user flag.
+    parser.add_argument('--probe-stats', action='store_true',
+                        help=argparse.SUPPRESS)
+    parser.add_argument('--probe-stats-wait', type=float, default=8.0,
+                        help=argparse.SUPPRESS)
     parser.add_argument('--opaque', action='store_true',
                         help='force an opaque window, to A/B transparency')
     parser.add_argument('--selftest', action='store_true',
@@ -6717,6 +7739,16 @@ def parse_args(argv):
                         help='print the host RSS in MB')
     parser.add_argument('--memory-wait', type=float, default=0.0,
                         help='seconds to let the page settle before measuring')
+    #: Alt+C closes when the owner clicks outside. ON by default (the owner asked
+    #: for it); this turns it off for an arm that must not install a mouse hook.
+    parser.add_argument('--no-click-outside', action='store_true',
+                        help='do not close the panel when clicking outside it')
+    #: MEASUREMENT: the three outside-click cases with the panel visible but not
+    #: seen (`form.Opacity = 0`), then exit. Never `--show`.
+    parser.add_argument('--probe-outside-click', action='store_true',
+                        help=argparse.SUPPRESS)
+    parser.add_argument('--probe-edit-mode', action='store_true',
+                        help=argparse.SUPPRESS)
     parser.add_argument('--exit-after', type=float, default=0.0,
                         help='quit on a wall clock, so an acceptance run ends '
                              'by itself')
@@ -7160,6 +8192,22 @@ def main(argv=None):
              'panel\'s Quit button before starting another one.')
         return 0
 
+    # A MEASUREMENT LAUNCH MUST NOT FIGHT THE OWNER'S APP FOR Alt+C. The line
+    # above PROMISES exactly that ("a measurement run registers no global
+    # hotkey") and, until 2026-10-11, only promised it: --dump-dom, --selftest,
+    # --memory and --probe-v2 skipped the LOCK and still armed the chain, so a
+    # probe started while the owner's app was up lost all four keys and put a
+    # MODAL messagebox on the owner's screen. Measured, same box, same revision:
+    # the shell logged HOTKEY_UNAVAILABLE alert=messagebox tried=[...] and then
+    # never reached STAGING_SEEN -- it hung until it was killed
+    # (I:\cc-tmp\wedge-fresh.log, 4,510 B, 42 lines, last line PRELOAD_INSTALLED;
+    # its healthy twin I:\cc-tmp\try1.log, SAME flags plus --no-hotkey, reaches
+    # RECEIVER_READY and SHELL_EXIT in under 40 s). A private --mutex-name is NOT
+    # coerced: that run skips no lock and may legitimately measure the hotkey.
+    hotkey_off = '--no-hotkey' if args.no_hotkey else None
+    if lock_excuse and not args.no_hotkey:
+        hotkey_off = f'measurement-flag({lock_excuse})'
+        args.no_hotkey = True
     shell = SottoShell(args)
     shell.create_window()
 
@@ -7169,7 +8217,7 @@ def main(argv=None):
     # one control the app has, and answers the owner's keypress with its own
     # panel (measured: two PANEL_SHOWN reason=hotkey lines during a probe run).
     if args.no_hotkey:
-        log('HOTKEY_DISABLED reason=--no-hotkey')
+        log(f'HOTKEY_DISABLED reason={hotkey_off or "--no-hotkey"}')
     else:
         # The chain lives in `arm_hotkey`: the requested key, then
         # `HOTKEY_FALLBACKS`, then — if every one is owned by another program —
@@ -7191,6 +8239,12 @@ def main(argv=None):
         log('TRAY_DISABLED reason=--no-tray')
     else:
         shell.start_tray()
+    # The outside-click watcher, last for the same reason as the rest: a hook that
+    # fails to install must not cost the app its start.
+    if args.no_click_outside:
+        log('OUTSIDE_CLICK_DISABLED reason=--no-click-outside')
+    else:
+        shell.start_click_watcher()
 
     if args.memory and args.memory_wait:
         threading.Timer(args.memory_wait, shell.run_memory).start()

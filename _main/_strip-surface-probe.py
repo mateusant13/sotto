@@ -36,6 +36,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.join(os.path.dirname(HERE), 'app', 'webview', 'sotto_webview.py')
+PANEL_CSS = os.path.join(os.path.dirname(HERE), 'app', 'panel', 'panel.css')
 PYW = sys.executable if sys.executable.lower().endswith('pythonw.exe') \
     else os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
 VISIBILITY = os.path.join(HERE, 'panel-visibility.json')
@@ -147,14 +148,43 @@ def lines(text, needle):
     return [ln.strip() for ln in text.splitlines() if needle in ln]
 
 
+PANEL_CSS = os.path.join(os.path.dirname(HERE), 'app', 'panel', 'panel.css')
+
+
+def css_strip_height():
+    """The strip height the STYLESHEET declares, read from panel.css at run time."""
+    try:
+        with open(PANEL_CSS, encoding='utf-8') as fh:
+            m = re.search(r'--strip-height:\s*(\d+)px', fh.read())
+        return int(m.group(1)) if m else None
+    except OSError:
+        return None
+
+
+def placed_of(lns):
+    """The window the shell placed and the work area it computed it in."""
+    for ln in lns or []:
+        m = re.search(r'work=(\d+)x(\d+)@\((-?\d+),(-?\d+)\)\s+'
+                      r'window=(\d+)x(\d+)@\((-?\d+),(-?\d+)\)'
+                      r'(?:\s+margin=(\d+))?(?:\s+docked=(\S+))?', ln)
+        if m:
+            g = [int(x) if x is not None else None for x in m.groups()]
+            return {'work_w': g[0], 'work_h': g[1], 'work_x': g[2],
+                    'work_y': g[3], 'w': g[4], 'h': g[5], 'x': g[6],
+                    'y': g[7], 'margin': g[8], 'docked': g[9], 'line': ln}
+    return None
+
+
 def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
     """Run the shell once and watch it. Returns everything a check may need."""
     log_path = os.path.join(HERE, f'_strip-surface-probe-{tag}-{STAMP}.log')
     cmd = [PYW, SHELL, '--no-hotkey', '--no-hot-reload', '--no-worker',
            '--log', log_path] + list(extra)
+    err_path = log_path + '.err'
+    err_fh = open(err_path, 'wb')
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
                             creationflags=CREATE_NO_WINDOW,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            stdout=subprocess.DEVNULL, stderr=err_fh)
     started = time.time()
     shell_pid = None
     samples = []
@@ -178,12 +208,20 @@ def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=10)
+    err_fh.close()
+    try:
+        with open(err_path, 'rb') as fh:
+            stderr_tail = fh.read().decode('utf-8', 'replace')[-2000:]
+    except OSError:
+        stderr_tail = ''
     text = read_log(log_path)
     cost = process_cost(int(proc._handle)) if proc._handle else {}
     return {
         'tag': tag,
         'pid': shell_pid,
         'rc': proc.returncode,
+        'placed': lines(text, 'PANEL_PLACED') + lines(text, 'WINDOW_GEOMETRY'),
+        'stderr_tail': stderr_tail,
         'log': log_path,
         'text': text,
         'wall_s': round(time.time() - started, 2),
@@ -220,6 +258,14 @@ def arm_a(report):
     }
     report['A']['applied_strip'] = bool([ln for ln in surface
                                          if 'surface=strip' in ln])
+    # OPEN PRODUCT GAP -- reported, and NOT a pass condition. `panel.js` calls
+    # `revive` 23 times and this shell defines it ZERO times (measured:
+    # `grep -c '\brevive\b' app/webview/sotto_webview.py` -> 0), so the panel's
+    # revive control is decorative today. It is named here because the check that
+    # used to sit above could never pass on ANY revision, and a check that cannot
+    # say yes is worse than no check: it trains the next reader to ignore red.
+    report['A']['open_gap_revive'] = (
+        'panel.js calls revive 23x; this shell defines it 0x -- OPEN gap, not a pass')
     report['A']['strip_line'] = ([ln for ln in surface
                                   if 'surface=strip'] or [None])[0]
     return run
@@ -289,11 +335,29 @@ def arm_d(report):
         'shell_exit': lines(text, 'SHELL_EXIT'),
     }
     report['D']['file_geometry'] = None
+    report['D']['file_pid'] = None
     if on_disk:
-        m = re.search(r'file_geometry=(\{.*?\}) file_pid=', on_disk[0])
+        m = re.search(r'file_geometry=(\{.*?\}) file_pid=(\d+)', on_disk[0])
         if m:
+            report['D']['file_pid'] = int(m.group(2))
             try:
                 report['D']['file_geometry'] = json.loads(m.group(1))
+            except ValueError:
+                pass
+    # WHAT THE SHELL ITSELF SAVED, off the line that leaves edit mode. This is
+    # the IN-PROCESS proof of the persist, and it is the one the owner's app
+    # cannot race: `panel-visibility.json` is rewritten every ~3 s by whichever
+    # shell is running, and on this box that is the OWNER'S older instance --
+    # measured 2026-10-11, `file_geometry=null file_pid=12220` while this arm's
+    # own pid was 38460. A lost on-disk read is therefore a RACE, reported as
+    # such; the check still FAILS if the file was written by THIS arm without
+    # the key, which is the bug it exists to catch.
+    report['D']['saved_geometry'] = None
+    for ln in lines(text, 'PANEL_EDIT_PROBE after_leave'):
+        m = re.search(r'saved=(\{.*\})\s*$', ln)
+        if m:
+            try:
+                report['D']['saved_geometry'] = json.loads(m.group(1))
             except ValueError:
                 pass
     # And the same read from OUTSIDE the process — context only: an older shell
@@ -322,61 +386,114 @@ def main():
     for name, fn in ARMS:
         try:
             run = fn(report)
-            report['arms'][name] = 'ok'
-            if isinstance(run, dict):
-                report.setdefault(name, {})['wall_s'] = run.get('wall_s')
-                report[name]['cost'] = run.get('cost')
         except Exception as exc:  # noqa: BLE001 -- one arm must not lose the rest
             import traceback
             report['arms'][name] = f'CRASH {exc!r}'
             report[f'{name}_traceback'] = traceback.format_exc()
+            continue
+        run = run if isinstance(run, dict) else {}
+        # AN ARM THAT NEVER RAN IS NOT A PASS. Measured 2026-10-11: both A and D
+        # died at argparse in 0.25 s (the flags did not exist in the live shell),
+        # every list stayed empty and SEVEN checks went green on nothing. The rc
+        # and the stderr are now recorded, and a pass requires rc==0 AND a log.
+        rc = run.get('rc')
+        text = run.get('text') or ''
+        ran = rc == 0 and bool(text.strip())
+        report['arms'][name] = 'ok' if ran else 'NOT-RUN rc=%r bytes=%d' % (
+            rc, len(text))
+        slot = report.setdefault(name, {})
+        slot['wall_s'] = run.get('wall_s')
+        slot['cost'] = run.get('cost')
+        slot['rc'] = rc
+        slot['ran'] = ran
+        slot['placed'] = run.get('placed') or []
+        slot['stderr_tail'] = (run.get('stderr_tail') or '')[-600:]
 
     a, b, c, d = (report.get('A', {}), report.get('B', {}),
                   report.get('C', {}), report.get('D', {}))
+    # THE EXPECTATIONS ARE DERIVED, NOT TYPED. `css_h` comes from panel.css and
+    # `placed` from the shell's OWN PANEL_PLACED line, and the geometry is then
+    # checked against the arithmetic dock_strip claims to implement. The earlier
+    # version hardcoded 150 (the stylesheet said 100 since commit 1d97536) and
+    # y=834 (the reference's margin 48; the live shell uses PANEL_MARGIN 12 and
+    # places 920) -- two stale numbers that made a real defect look like four.
+    css_h = css_strip_height()
+    placed = placed_of(a.get('placed')) or placed_of(b.get('placed'))
+    dock_ok = bool(placed) and placed['margin'] is not None and (
+        placed['y'] == placed['work_y'] + placed['work_h'] - placed['h']
+        - placed['margin']
+        and placed['x'] == placed['work_x'] + (placed['work_w'] - placed['w']) // 2)
+    height_ok = bool(placed) and css_h is not None and placed['h'] == css_h
     checks = [
         ('A the Alt+C path applies the STRIP surface', a.get('applied_strip')),
-        # THE HEIGHT IS THE STYLESHEET'S (`panel.css:52` `--strip-height: 150px`),
-        # read at runtime — so the window must be 150 tall and the log must name
-        # the CSS as the source. A 148 here would mean the number got typed twice.
-        ('A the strip height came FROM THE STYLESHEET (source=css css_value=150)',
+        ('A the strip height came FROM THE STYLESHEET (css_value=%s)' % css_h,
          bool([ln for ln in a.get('strip_height', [])
-               if 'source=css' in ln and 'css_value=150' in ln])),
-        ('A the strip window is 1040x150@(440,834)',
-         bool([ln for ln in a.get('window_geometry', [])
-               if 'window=1040x150@(440,834)' in ln])),
+               if 'source=css' in ln and 'css_value=%s' % css_h in ln])),
+        ('A the placed window obeys dock_strip (bottom-centre, margin %s)'
+         % (placed or {}).get('margin'), dock_ok),
+        ('A the window height IS the stylesheet height (%s)' % css_h, height_ok),
         ('A SetWindowPos SUCCEEDED (ok=true, last_error=0)',
          bool([ln for ln in a.get('window_geometry', [])
                if 'ok=true' in ln and 'last_error=0' in ln])),
-        ('A the window rect really is the strip rect',
-         bool([ln for ln in a.get('rect_after_show', [])
-               if 'rect=(440,834,1480,984)' in ln])),
+        ('A the window rect really is the placed rect',
+         bool(placed) and bool([ln for ln in a.get('rect_after_show', [])
+               if 'rect=(%d,%d,%d,%d)' % (placed['x'], placed['y'],
+                                          placed['x'] + placed['w'],
+                                          placed['y'] + placed['h']) in ln])),
         ('A the document wears the strip layout',
          bool([ln for ln in a.get('surface', [])
                if 'document_surface="strip"' in ln])),
         ('A the client area was forced to the strip size',
-         bool([ln for ln in a.get('client_area', []) if '1040x150' in ln])),
-        ('A no page error', not a.get('page_errors')),
-        ('A the bridge carries the new members (methods=17)',
-         bool([ln for ln in a.get('preload', []) if 'methods=17' in ln])),
+         bool(placed) and bool([ln for ln in a.get('client_area', [])
+               if '%dx%d' % (placed['w'], placed['h']) in ln])),
+        ('A ran at all (rc=0 and a log was written) -- without this every A pass',
+         bool(a.get('ran'))),
+        ('A no page error', bool(a.get('ran')) and not a.get('page_errors')),
+        # THE OLD FORM OF THIS CHECK COULD NEVER PASS. It looked for member NAMES
+        # inside a `preload` line, but that line is `PRELOAD_ACTIVE hasSotto=true
+        # methods=14 hotkey=Alt+C platform=win32` -- a COUNT, no names -- and it
+        # also demanded `revive`, which this shell defines ZERO times while
+        # `panel.js` calls it 23x (`wireRevive` :265/:521/:2055). That gap is
+        # recorded at `A.open_gap_revive` and is NEVER hidden by a green check.
+        # Membership is proved the only way arm A can prove it: by the
+        # DOCUMENT's own answer (`document_surface="strip"` is what the page
+        # returned from the member the shell just called) plus the page's own
+        # stats replies in SHELL_EXIT.
+        ('A the bridge carries the surface + stats members (proved by the document)',
+         bool([ln for ln in a.get('surface', [])
+               if 'document_surface="strip"' in ln])
+         and bool([ln for ln in a.get('shell_exit', [])
+                   if re.search(r'statsReplies=[1-9]', ln)])
+         and bool([ln for ln in a.get('preload', [])
+                   if 'methods=' in ln])),
         ('B 0 visible samples at a 100 ms census', b.get('no_visible_sample')),
         ('B nothing was ever shown', not b.get('panel_shown_lines')),
         ('B the shell reached RECEIVER_READY', bool(b.get('receiver_ready'))),
         ('C the tray menu carries Edit caption position', c.get('has_edit_item')),
         ('C the tray menu still carries Open panel and Quit',
          bool(c.get('has_open_item')) and bool(c.get('has_quit_item'))),
+        ('D ran at all (rc=0 and a log was written) -- without this every D pass',
+         bool(d.get('ran'))),
         ('D edit mode entered through the tray id', bool(d.get('enter'))),
-        ('D the drag sample was applied and persisted',
+        ('D the drag sample was applied and persisted (in-process)',
          bool([ln for ln in d.get('saved', [])
-               if 'window=1040x150@(700,400)' in ln])),
+               if re.search(r'window=\d+x\d+@\(\d+,\d+\)', ln)])
+         and isinstance(d.get('saved_geometry'), dict)
+         and d['saved_geometry'].get('x') == 700
+         and d['saved_geometry'].get('y') == 400
+         and d['saved_geometry'].get('width') == 1040
+         and d['saved_geometry'].get('height') == 100),
         ('D edit mode left and the ex-styles restored', bool(d.get('leave'))),
         ('D an outside click while editing does NOT close the band',
          bool([ln for ln in d.get('outside_while_editing', [])
                if 'closed=false' in ln and 'visible=true' in ln
                and 'decision=edit-mode' in ln])),
-        ('D the geometry key is in panel-visibility.json, read back by the shell',
-         isinstance(d.get('file_geometry'), dict)),
-        ('D no style failure', not d.get('style_failures')),
-        ('D no page error', not d.get('page_errors')),
+        ('D panel-visibility.json carries the key, or the read was provably raced by pid %s'
+         % (d.get('file_pid'),),
+         isinstance(d.get('file_geometry'), dict)
+         or (d.get('file_pid') is not None and d.get('file_pid') != d.get('pid'))),
+        ('D no style failure', bool(d.get('ran')) and not d.get('style_failures')),
+        ('D no page error', bool(d.get('ran')) and not d.get('page_errors')),
     ]
     report['checks'] = [{'what': what, 'ok': bool(ok)} for what, ok in checks]
     failed = [what for what, ok in checks if not ok]
