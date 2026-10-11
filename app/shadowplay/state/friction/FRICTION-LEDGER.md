@@ -750,3 +750,45 @@ It is now executed on all four, and the attempt that failed first is the useful 
   line you replaced and ask whether it was the line that carried the claim -- and if the
   gate can be satisfied by one good copy among contradictory ones, the gate is weaker than
   the arm that is supposed to be testing it.
+
+## 2026-10-11T08:57:35Z - the gate now refuses a probe that contradicts itself, and says why honestly
+
+Closing the finding from the last entry. It was recorded, not claimed fixed. Now it is.
+
+  THE DEFECT. parse-gate.mjs:142 tested truth keys with out.includes(k + want). That asks
+  "does the wanted value appear SOMEWHERE", not "is every value the wanted one".
+
+  THE COUNTEREXAMPLE WAS ALREADY MEASURED, by me, one entry up, 08:49:37Z: perf-probe
+  printed SEQUENCE_MONOTONIC=false AND SEQUENCE_MONOTONIC=true and the old gate returned
+  PASS. I filed that as "the gate was right to pass" -- it was not right to pass, the probe
+  was self-contradictory -- and I filed it under my own injection error rather than under
+  the gate's tolerance. Both were true and only one was the instrument's fault.
+
+  THE FIX. Collect every value the key was printed with; the key must be printed at least
+  once AND every occurrence must equal the wanted value.
+
+  THE RED ARM, POPULACAO = 1 probe, WINDOW_UTC 2026-10-11T08:56:01Z and 08:57:09Z.
+  This time the injection APPENDS a line rather than replacing one, so the probe carries
+  both values in one run:
+      BYTES_LANDED=YES
+      BYTES_LANDED=NO     <- injected, the real print at L42 untouched
+      BYTES_LANDED=YES
+      -> cw-probe.mjs RECEIPT_FALSE, RESULT 3 passed, 1 refused, gate exit=1
+      cw-probe.mjs restored from a copy taken beforehand, sha256 73F46B3A9A27 equal.
+  Under the old check this exact output was a PASS. It is measured, not argued.
+
+  SECOND DEFECT, FOUND BY THE FIRST. The RECEIPT_FALSE message printed only the FIRST
+  occurrence, so it said "all keys printed but BYTES_LANDED=YES" -- which reads as "the
+  value was wrong" when the value was YES and the problem was the NO beside it. The
+  verdict was right; the reason it gave was wrong about its own reason. It now prints the
+  distinct values and what it wanted:
+      cw-probe.mjs RECEIPT_FALSE all keys printed but BYTES_LANDED=YES | NO (wanted YES)
+  measured 08:57:09Z, same injection.
+
+  Clean run after both restores, POPULACAO = 4 probes, 08:57:35Z:
+      RED ARM exit=1 refused=true · _nonidr/compose/cw/perf PASS, 1 truth-valued key each
+      RESULT 4 passed, 0 refused   exit 0
+
+  rule: "some occurrence matches" is not a claim, it is a coincidence. An instrument that
+  accepts one good copy among contradictory ones is weaker than the arm meant to test it,
+  and a receipt that misdescribes why it failed is worse than silence.

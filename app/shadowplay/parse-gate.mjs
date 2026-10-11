@@ -155,9 +155,34 @@ function classify(script) {
     }
     // Every key printed. NOW compare the ones that carry a truth value.
     const valued = VALUED[script] || {};
-    const wrong = Object.entries(valued).filter(([k, want]) => !out.includes(k + want));
+    // HARDENED 2026-10-11T08:56Z. This used to be `!out.includes(k + want)`, which asks
+    // "does the wanted value appear SOMEWHERE", not "is every value the wanted one".
+    // MEASURED 2026-10-11T08:49:37Z, POPULACAO = 1 probe, the real counterexample: I
+    // injected console.log("SEQUENCE_MONOTONIC=false") into perf-probe.mjs at the COMMENT
+    // line 13 instead of the print at line 76, so the probe printed false AND true. The
+    // old check found `SEQUENCE_MONOTONIC=true` somewhere and returned PASS. The probe
+    // was self-contradictory and the gate called it clean.
+    //
+    // Now: collect EVERY value this key was printed with, and require that the key was
+    // printed at least once and that every single occurrence equals the wanted value. A
+    // probe that contradicts itself once can no longer pass.
+    const wrong = Object.entries(valued).filter(([k, want]) => {
+      const re = new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\S*)", "g");
+      const seen = [...out.matchAll(re)].map((m) => m[1]);
+      if (seen.length === 0) return true;               // never printed -> not a receipt
+      return seen.some((v) => v !== want);              // any contradicting copy -> RED
+    });
     if (wrong.length > 0) {
-      const got = wrong.map(([k]) => (out.match(new RegExp(k.replace(/[=]/g, "\\=") + "\\S*")) || ["?"])[0]);
+      // Show the DISTINCT values the key actually carried, not the first match.
+      // MEASURED 2026-10-11T08:56:01Z: the probe printed YES, NO and YES again, and this
+      // receipt used to print only the first occurrence -- "BYTES_LANDED=YES" -- which
+      // reads as "the value was wrong" when the value was fine and the problem was the
+      // extra NO beside it. A receipt that misdescribes its own reason is worse than none.
+      const got = wrong.map(([k, want]) => {
+        const re = new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\S*)", "g");
+        const distinct = [...new Set([...out.matchAll(re)].map((m) => m[1]))];
+        return `${k}${distinct.join(" | ")} (wanted ${want})`;
+      });
       return { verdict: "RECEIPT_FALSE", why: `all keys printed but ${got.join(", ")} -- the probe reported a failure and still exited 0`, printed };
     }
     return { verdict: "PASS", why: `exit 0, all ${keys.length} receipt keys printed${Object.keys(valued).length ? ", and " + Object.keys(valued).length + " truth-valued key(s) compared" : ""}`, printed };
