@@ -234,8 +234,10 @@ export class ReplayRing {
     //                        KEPT (requirement: both may keep it), but it is a
     //                        specification, not an enforcement.
     //   save-path.js      -- writes the bytes. It does not know what a keyframe is,
-    //                        and it is not allowed to grow ffmpeg knowledge: MEASURED
-    //                        call sites across 4 modules (WINDOW_UTC 2026-10-11T00:34:37Z, grep of .save( across every .js in this directory) depend on save() being a
+    //                        and it is not allowed to grow ffmpeg knowledge. One
+    //                        reason that holds is fan-out: MEASURED 5 call sites
+    //                        across 4 modules (WINDOW_UTC 2026-10-11T00:34:37Z, grep of
+    //                        .save( across every .js here) depend on save() being a
     //                        name issuer and nothing more.
     //
     // WHY BEFORE #assertClipCanStandInForItsClock, WHICH IS THE ACTUAL FIX.
