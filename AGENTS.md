@@ -24,8 +24,25 @@ revisão por ordem do dono** — o censo morreu antes de qualquer `ARM-SUMMARY`.
 RISCO ABERTO que esta ordem impede de medir: a correcção de `emit_async` (`_ui` → `_post`, commit
 `6908177`) tira o back-pressure do pump de legendas, mas passa a enfileirar um callable por push
 (~43/s) **sem limite** no thread da UI; com um worker a correr isso PODE saturar a fila do WinForms e
-travar a janela. NÃO VERIFICADO — e nenhum lançamento é permitido para o verificar. Quem reabrir isto:
-primeiro coalescer (um post pendente por canal), depois medir com UM lançamento autorizado.
+travar a janela.
+
+**FECHADO EM CÓDIGO 2026-10-11 — a primeira metade da instrução acima está feita; a segunda não.**
+`emit_async` agora mantém **um post pendente por canal**: um push que chega com outro em fila
+SUBSTITUI o payload pendente em vez de enfileirar um segundo callable, e o callable faz o pop em RUN
+time, portanto N pushes colapsam no UM script que leva o payload MAIS NOVO. A licença é o contrato do
+próprio método (cada payload é um estado INTEIRO e o painel é função pura do último que viu — os dois
+produtores enviam `self.stats()`, uma só forma). E `_post` passou a **devolver True quando o
+callable foi enfileirado e False quando foi DESCARTADO** (form ainda não existe), com `emit_async` a
+**libertar o slot** nesse caso — sem isso o primeiro push antes do form existir deixaria o latch preso
+para sempre e o canal de stats ficaria mudo, pior do que a fila que isto corrige. Instrumento
+(`_main/emit-queue-bound-oracle.py`, em processo, não lança nada): 100 pushes sem drain → **1**
+callable; 1000 pushes concorrentes → **1**; o script leva o payload mais novo; 2 canais → 2 slots;
+post DESCARTADO → 3 de 3 pushes passam; `--neg-arm` (guarda removida numa cópia) → **RED** em #1 e #5,
+logo o oráculo sabe dizer NÃO. `VERDICT: PASS`, rc=0. Receipt:
+`_main/receipt-20261011-emit-queue-bound.md` (`app/webview/sotto_webview.py` = 427 185 B, sha256
+`F2AB162913CC9DFC…`). **NÃO MEDIDO: se isto impede um freeze a sério** — nenhum lançamento é
+permitido; e a profundidade da fila nunca foi instrumentada, portanto a causa do freeze continua
+NÃO ATRIBUÍDA: isto remove um mecanismo candidato, não prova que era o dele.
 
 ## MUST READ before touching `worker/`
 

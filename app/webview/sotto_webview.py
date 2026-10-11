@@ -3423,6 +3423,13 @@ class SottoShell:
         #: by its stdout `meter` events. Both travel in `SHELL_EXIT`, because the
         #: push LOG prints once per interval and could never prove a 10 Hz feed.
         self.meter_pushes = 0
+        #: THE BOUND ON THE UI QUEUE. `emit_async` pushes a whole state per
+        #: sample; without a pending latch the WinForms queue grew WITH THE FEED
+        #: (43 pushes/s measured) and a page that could not drain it stalled the
+        #: UI thread. One pending post per channel is that bound; the payload kept
+        #: is the LATEST, which is all the panel reads (see `emit_async`).
+        self._emit_lock = threading.Lock()
+        self._emit_pending = {}
         self.startup_done = False    # startup actions run once per process
         self.startup_visible = None  # None until the window is measured
         self._exit_code = 0
@@ -4248,7 +4255,7 @@ class SottoShell:
 
         form = self.form or self._form()
         if form is None:
-            return
+            return False
 
         def guarded():
             try:
@@ -4258,6 +4265,7 @@ class SottoShell:
                      f'{type(exc).__name__}: {exc}')
 
         form.BeginInvoke(Func[Type](guarded))
+        return True
 
     # -- JS execution ------------------------------------------------------
     def exec_js(self, script, timeout=10.0):
@@ -5884,12 +5892,30 @@ class SottoShell:
         drops the resulting `Task`. Ordering between two `emit_async` calls is not
         guaranteed, and does not need to be: each one carries a WHOLE payload, and
         the panel's `pushLevel` is a pure function of the last one it saw.
+
+        AND THAT SENTENCE IS THE LICENCE FOR THE BOUND BELOW: a push that arrives
+        while another is still queued REPLACES the queued payload instead of
+        queueing a second callable. Measured 2026-10-11: the worker publishes 43
+        stats pushes/s, the pump thread posts one callable per push, and a page
+        that cannot drain that fast let the WinForms queue grow WITH THE FEED --
+        the unbounded-queue risk the owner's freeze report put on the table. With
+        the latch the queue holds at most ONE stats callable, and what it carries
+        is always the newest state. The behaviour a caller can rely on is
+        unchanged: the last payload pushed is the one that reaches the page.
         """
+        try:
+            lock, pending = self._emit_lock, self._emit_pending
+        except AttributeError:  # a probe-built shell that never ran __init__
+            lock = self._emit_lock = threading.Lock()
+            pending = self._emit_pending = {}
+        with lock:
+            already = kind in pending
+            pending[kind] = payload
+        if already:
+            return
+
         from System import Action, Func, Object, String
         from System.Threading.Tasks import Task
-
-        script = ('window.__sotto_emit(' + json.dumps(kind) + ','
-                  + json.dumps(json.dumps(payload)) + ')')
 
         def _complete(task):
             try:
@@ -5899,6 +5925,14 @@ class SottoShell:
                 warn(f'emit_async failed: {exc!r}')
 
         def _run():
+            # POP AT RUN TIME, not at call time: this is what collapses N pushes
+            # into the ONE script carrying the newest payload.
+            with lock:
+                latest = pending.pop(kind, None)
+            if latest is None:
+                return
+            script = ('window.__sotto_emit(' + json.dumps(kind) + ','
+                      + json.dumps(json.dumps(latest)) + ')')
             self.webview2.Invoke(Func[Object](
                 lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
                     Action[Task[String]](_complete))))
@@ -5910,7 +5944,20 @@ class SottoShell:
         # fire-and-forget twin and guards the callable against a ThreadException
         # dialog. Measured 2026-10-11 (`_strip-stats-probe.json`, fed arm: the
         # page probe returned null after a 20 s stall).
-        self._post(_run)
+        try:
+            queued = self._post(_run)
+        except BaseException:
+            with lock:
+                pending.pop(kind, None)
+            raise
+        if queued is False:
+            # `_post` DROPS the callable when the form does not exist yet (it
+            # returns False for exactly that case). Releasing the slot is what
+            # keeps the latch from sticking forever: a stats channel that never
+            # pushes again would be a worse failure than the queue this bound
+            # exists to fix.
+            with lock:
+                pending.pop(kind, None)
 
     def work_area(self):
         """The WORK area of the display this shell lays out in, in DIP.
