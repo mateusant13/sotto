@@ -218,7 +218,9 @@ retracted, so the renderer never has to un-draw a line. Sotto currently has no e
    no boundary. The original *"why first"* below is **falsified as written** — it is not "one boolean"
    (the boolean alone exits 1 on any pause > 3.36 s; it needs the `None` guard now in `run_chunk`), and
    it does not make the rest implementable, because a gated chunk is not a turn boundary. Numbers and
-   receipts: §A3, §9, `_main/vad-arm-*.json`, `_main/vad-option-probe.py`.
+   receipts: §A3, §9, **§10 — which RETRACTS this item as stated**, `_main/vad-arm-*.json`,
+   `_main/vad-option-probe.py`. (The §10 pointer was missing until 2026-10-11: a reader of this
+   ranked list had to reach line 461 to learn that rank-1 is withdrawn.)
    *Original "why first", kept as the falsified prediction:* it is **one boolean**, the ONNX model is **already on disk** with tuned parameters, and every
    other item on this list needs a turn boundary that Sotto currently has no principled way to detect. It is
    the cheapest way to make the rest implementable, and its own risk is measurable with the `blank_frac`

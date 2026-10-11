@@ -218,6 +218,15 @@ owner asked for is already HTML/CSS in `panel.html`/`panel.css`, which renders i
 under WebView2 — so the swap stays CHEAP and can land later without touching the UI.
 Revisit when the panel's own cost, not the model's, is the binding constraint.
 
+**SUPERSEDED 2026-10-07 — and the SIGN of the paragraph above is wrong against the measurement
+(nota 2026-10-11).** The swap LANDED and the decision above was reversed: the app is
+`app/webview/run.cmd` (pywebview 6.2.1 + WebView2), Electron is `app/_legacy-electron/` and DEAD,
+and the owner ruled "no fallback". The prediction here was a **saving** of ~214 MB; what the port
+measured on the SHELL tree is a **cost** — **416 MB vs Electron's 312 MB = +33%** (measured
+2026-10-06, recorded in `AGENTS.md`). The "~2.4 GB process / engine 9% / model 89%" split was
+never re-measured after the port, so the arithmetic that made the swap look cheap is not evidence
+for anything now. What the paragraph got right is its last line: the UI did not have to be touched.
+
 
 ## 2026-10-06 05:09Z — TAP ROTATION LANDED, AND A REGRESSION MY OWN JOIN INTRODUCED IS FIXED
 

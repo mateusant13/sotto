@@ -90,9 +90,9 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 46 | `AGENTS.md` contradiz-se sobre o painel no arranque ("0 de 41" vs "visivel 50 ms–7 s") | `AGENTS.md:169` vs `:215` | **OPEN** |
 | 47 | figura fp16 do `AGENTS.md` 1230 vs 1246.9 MiB medidos | `AGENTS.md:89` | **[2026-10-11] APPLIED** — a figura deixou de ser AFIRMADA: a linha dos pesos esta riscada e acompanhada do bloco CORRIGIDO 2026-10-11 que diz que so o int8 existe em disco (1 070 642 977 B / 33 ficheiros) e que os numeros int4/fp16 ficam UNMEASURED, nao re-mediveis. Nao houve reconciliacao do numero: houve retractacao, que e o estado honesto quando o export ja nao esta em disco |
 | 48 | `AGENTS.md` cita `worker-bridge.js:133` como "STATE_MAP" (declarado em `:114`) | `AGENTS.md:119` | **[2026-10-11] APPLIED** — corrigido para `:114` (onde a tabela e DECLARADA; `:223` e a consulta), com a retractacao do `:133` na propria frase, re-medida por `grep` no ficheiro vivo |
-| 49 | o "rank-1" do `use_vad` e retratado 230 linhas abaixo, sem ponteiro | `docs/oss-approaches-20261006.md:214` vs `:444-475` | **OPEN** |
-| 50 | `live-captions` deixa uma decisao supersedida de pe, com um numero de sinal trocado | `docs/live-captions-20261006.md:214-216` | **OPEN** |
-| 51 | `full-audit` descreve a regra de juncao de 1200 ms que o codigo ja nao tem | `docs/full-audit-transcription-20261006.md:310,326` | **OPEN** |
+| 49 | o "rank-1" do `use_vad` e retratado 230 linhas abaixo, sem ponteiro | `docs/oss-approaches-20261006.md:214` vs `:444-475` | **[2026-10-11] APPLIED** — a linha do rank-1 passou a nomear **§10** (`:461`, "RETRACTION — rank-1 ... is WITHDRAWN as stated") nos seus ponteiros, com a nota de que o ponteiro faltava |
+| 50 | `live-captions` deixa uma decisao supersedida de pe, com um numero de sinal trocado | `docs/live-captions-20261006.md:214-216` | **[2026-10-11] APPLIED** — a decisao "keep Electron for now" ganhou um bloco **SUPERSEDED 2026-10-07**: o swap LANDED (`app/webview/run.cmd`, pywebview+WebView2, Electron em `app/_legacy-electron/` e MORTO, ordem do dono "no fallback"), e o SINAL foi corrigido contra a medicao — a previsao era uma POUPANCA de ~214 MB e o medido na arvore da shell e um CUSTO (**416 MB vs 312 MB = +33%**, 2026-10-06). O split "~2.4 GB / engine 9% / model 89%" nunca foi re-medido depois do port |
+| 51 | `full-audit` descreve a regra de juncao de 1200 ms que o codigo ja nao tem | `docs/full-audit-transcription-20261006.md:310,326` | **[2026-10-11] APPLIED** — as duas linhas ficaram marcadas como a regra DA ALTURA (nao a embarcada) e uma NOTE nomeia a viva: `SENTENCE_GAP_S = 8` (segundos) no worker E em `app/panel/caption-formulation.js:18`, `SENTENCE_MAX_CHARS = 90` em `:21`, formulacao fora do `panel.js`; paridade gateada em `node _main/caption-renderer-integration.js` checks 6-7 (re-medido por mim: 7 PASS / 0 FAIL, rc=0) |
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **APPLIED** [2026-10-11] — o proprio `AGENTS.md` retrata o texto por nome (`AGENTS.md:169`): o artefacto EXISTE em `H:\sotto\_main\exit3-armB-worker.jsonl` (3 958 B, sha256 `426EC552...`) e o "AUSENTE / DANGLING" era um falso negativo de um `statSync` sobre `worker/runs/` |
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **OPEN** |
 | 54 | AGENTS/README listam 5 chaves do config; o ficheiro tem 13 (hoje 8) | `AGENTS.md:74`, `worker/README.md:184-185` | **[2026-10-11] APPLIED** — censo de folhas do `worker/config.json` vivo (`JSON.parse` + walk): **5 chaves de topo, 11 folhas nao-comentario** (as outras 6 sao `_comment*`). O `worker/README.md` passou a listar as 11, e retracta DUAS afirmacoes falsas: parava em oito nomes e nomeava `output.partial` entre as chaves APAGADAS — essa chave ESTA presente e e LIDA (`emit_partial` e `output.partial`, `sotto_worker.py:2851`/`:3013`). A linha do `AGENTS.md` ja tinha sido corrigida nesta revisao |
@@ -307,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 56
-- **OPEN:** 83
+- **APPLIED:** 59
+- **OPEN:** 80
 - **IN-FLIGHT:** 0
 
-Conferencia: 56 + 83 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 59 + 80 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
@@ -335,7 +335,10 @@ codigo, a figura fp16 ficou retractada, a citacao do STATE_MAP passou a `:114`, 
 `worker/README.md` passou a listar as 11 folhas do config corrigindo duas afirmacoes falsas);
 #56, #57 e #63 (dois instrumentos que nao sabiam dizer NAO -> APPLIED com braco negativo provado, e
 a nota que impede o snippet embutido no `docs/oss-approaches-20261006.md` de ser lido como o
-instrumento vivo).
+instrumento vivo);
+#49, #50 e #51 (deriva documental nos tres docs da OSS/live-captions/full-audit) — a nota que
+faltava, o SINAL corrigido contra a medicao, e a regra de juncao nomeada como historica com a viva
+ao lado.
 
 ---
 

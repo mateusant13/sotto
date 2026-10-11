@@ -313,6 +313,15 @@ broke the line. The joiner is working. It is joining fragments that were already
 single broken words — `"s s"` is two fragments each of which is the model
 repeating its last token, which is precisely the §VERDICT signature.
 
+**NOTE 2026-10-11 — the rule quoted above is the rule AT THE TIME, not the shipped one.** The
+1200 ms join threshold and its `panel.js` location are gone. The live constants are
+`SENTENCE_GAP_S = 8` (seconds, not 1200 ms) in the worker and in
+`app/panel/caption-formulation.js:18`, with `SENTENCE_MAX_CHARS = 90` at `:21`, and the
+formulation moved out of `panel.js` into that module. The parity of the two languages is gated in
+one run: `node _main/caption-renderer-integration.js` checks 6-7 compare the worker's and the
+renderer's constants — re-measured 2026-10-11, 7 PASS / 0 FAIL, rc=0. Nothing else in this audit
+is retracted by that.
+
 ## Stage summary
 
 | stage | verdict | the number that pins it |
@@ -323,7 +332,7 @@ repeating its last token, which is precisely the §VERDICT signature.
 | (c) file arm | **ALSO GARBAGE** | `tokens=37`, `"go sl cous ands droom for night' an somece of on moni…"` on clean 16 kHz speech |
 | (c) weights | **INNOCENT** | same weights, fixed walk, full history ⇒ fluent English |
 | **decode loop** | **OWNER** | `[blank, last]` ⇒ 301 tokens of `cou cou cou`; `[blank, *prefix]` ⇒ 87 tokens of fluent English |
-| display join | consequence | `panel.js:57` 1200 ms rule; joined `"cre s partici"` correctly from fragments that were already broken |
+| display join | consequence | `panel.js:57` 1200 ms rule (AT THE TIME — today `SENTENCE_GAP_S = 8` s in `caption-formulation.js`, see the NOTE above); joined `"cre s partici"` correctly from fragments that were already broken |
 
 ## What is NOT established here
 
