@@ -2370,3 +2370,51 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   and refs/keep/dropped-stash-3fbe53d. A ref does not replace stash@{0}; it anchors it, so a
   stash pop, drop or a cleared reflog cannot destroy the work. Both reversible with
   git update-ref -d. Neither touches the working tree.
+
+## 2026-10-11T14:44Z - THERE ARE TWO WATCHDOG LOOPS. One is fixed at HEAD. The other HEAD never knew about.
+
+  MEASURED 14:40:35Z .. 14:44:33Z.
+
+  A. THE 66.88 IS UNSOURCED, exhaustively. POP 5 revisions searched INCLUDING both protection
+     refs I had just created -- which changes the population and invalidates the previous answer.
+       HEAD POP 16 | refs/keep/live-stash-55c422b POP 1 | refs/keep/dropped-stash-3fbe53d POP 0
+       main POP 3 | base 1fb8bf0 POP 0  => POP 20 LINES FROM POP 1 ORIGIN.
+     Three of the HEAD hits are MUTANT files (_no-audio-lift-mutant.py, _restart-30s-prefix-mutant.py,
+     _tap-restart-prefix-mutant.py, all at L285); one is my own ledger. POP 0 bench artefacts carry
+     any 66.8x value, in HEAD or in the stash. Not a transcription of 67.247 -- that differs by 0,367 s
+     and nothing produced it. Plausible family value, no record of its own.
+
+  B. THE PARAGRAPH, read in full for the first time (stash L284-L294), documents a kill loop:
+     the 30 s no-progress window fires mid-load and _kill_and_restart('silent') terminates a
+     healthy loader (rc=1, statuses=4, never model-loaded), looping forever without a caption.
+
+  C. THE CODE, HEAD app/webview/sotto_webview.py POP 6583 lines, _on_silence L5744-L5789 read whole:
+     POP 0 BOOT_GRACE, POP 0 staleness. The ONLY exemption is `if self.no_audio` at L5747.
+     The kill at L5789 is unconditional. Inside the function, POP 0 occurrences of spawned_at,
+     age_ms, boot, model-loading, warm, model_loaded. The stash adds exactly the guard HEAD lacks.
+
+  D. THE EXEMPTION STRUCTURALLY CANNOT COVER MID-LOAD. no_audio requires a published worker
+     verdict; no verdict exists yet during a 67 s load. This is the whole finding.
+
+  E. TWO LOOPS, NOT ONE -- and I had this wrong as "POP 2 documented, POP 1 fixed". Measured
+     exhaustively, POP 6 patterns over POP 6583 lines: 'loop' 20, 'looping' 0, 'converge' 3,
+     'respawn' 18, '_kill_and_restart' 2, 'BRIDGE_SILENT' 5. Defect markings: L225 (only one,
+     "MEASURED DEFECT this replaces", lane SottoTapRestartLoop), L230, L5755 -- all the SAME loop.
+     CORRECTION: HEAD documents POP 1 loop and it IS fixed, by the no_audio exemption. The mid-load
+     loop is documented only in the stash. HEAD never knew it existed.
+
+  F. THE RECEIPT, which I named and did not open: _main/_live_owner3.log, POP 2421 lines, 252286 B,
+     mtime 2026-10-06T09:59:16Z. POP 20 BRIDGE_SILENT, POP 81 spawn records, POP 60 BRIDGE_EXIT,
+     verbatim "sotto: BRIDGE_SILENT ms=15000 pid=13752", and "spawns=10 ... rss_mb=2417.6" matching
+     the comment's ~2,4 GB. THE WINDOW WAS 15000 ms. HEAD now runs WORKER_SILENCE_MS = 30000 (L282).
+     So the fix was not only the exemption: the window doubled too. A 67 s load still exceeds 30 s,
+     so the mid-load loop still fires, with 2,2x margin instead of 4,5x.
+
+  RULES ADDED: read a whole function before judging its behaviour -- an excerpt shows the exemption
+  and hides what the exemption does not cover. An exemption requiring a published state cannot
+  cover the window before that state exists. Count the population before writing N: "POP 2 loops"
+  was my impression, the search returned POP 1.
+
+  STILL OPEN: whether the mid-load loop fires in a fresh run today. No fresh run exists -- the only
+  receipt is from 2026-10-06 and documents the already-fixed loop. The fix is in a stash, anchored
+  at refs/keep/live-stash-55c422b, NOT committed.
