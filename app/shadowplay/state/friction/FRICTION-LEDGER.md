@@ -965,3 +965,51 @@ contentSufficientToCoverClock false, and replay-ring.js:340 refuses.
   rule: a precondition measured in the passing case can make a failure arithmetic. Five
   one-segment runs turn "what could produce 28" into "the failing run had two segments" --
   which is a narrower, testable claim than the one I started with.
+
+## 2026-10-11T09:19:41Z - the ring never looks for an IDR; the caller asserts one and the caller is always right
+
+I went to the design document instead of weighing the behaviour against my own intuition.
+The document answered, and it did not say what I assumed.
+
+  WHAT THE DOCUMENT SAYS. SHADOWPLAY-INSTANT-REPLAY.md:166-168, verbatim:
+      The correctness trap that makes remux non-trivial: you cannot start an MP4 at an
+      arbitrary byte offset. The clip must start at an IDR/keyframe. So the encoder is
+      configured with a short GOP (~ 1 s at 60 fps) precisely so the clip boundary is
+      within one second of the user's press.
+  So a SHORT clip cut at the nearest keyframe is the DESIGNED behaviour, not an accident.
+  My earlier note that the two rules were "in tension" was me grading the product against
+  my own preference for longer clips. The document says the opposite.
+
+  WHAT THE CODE DOES, measured not inferred:
+      index.js:107-111   CAPTURE_DEFAULTS { seconds: 8, fps: CAPTURE_FPS, gop: 60 }
+      index.js:158       this.#ring.push(bytes, { frames, keyframe: true });
+      replay-ring.js:149 this.#segments.push({ bytes: payload, frames, keyframe: ... })
+
+  THREE THINGS FALL OUT OF THOSE FOUR LINES.
+
+  1. ONE PUSH PER CAPTURE. capture() pushes the whole 8-second buffer as a single segment.
+     With gop 60 at 30 fps that buffer contains roughly four IDRs, and the ring is told
+     about NONE of them. Measured: RING_SEGMENTS was 1 on every run.
+
+  2. THEREFORE THE DESIGNS "within one second" IS NOT IMPLEMENTED ON THIS PATH. With one
+     segment, #cutFromLastKeyframe() returns the entire buffer -- which is why every
+     delivered clip is 206-234 frames, not the ~1 second the document specifies. The cut
+     is not landing near the press; it is landing at the head of the whole buffer.
+
+  3. `keyframe: true` IS AN ASSERTION BY THE CALLER, NOT A MEASUREMENT. The ring stores the
+     flag it is handed and never inspects the bytes for NAL type 5. Nothing in replay-ring
+     can contradict the caller. The document is explicit that the boundary is located
+     "by NAL type 5 within the ring range" -- that scan does not exist on this path.
+     This is the same rule as the rest of this day applied to my own code: presence is not
+     correctness, and a flag somebody set is not a fact about the bytes.
+
+  WHAT THIS DOES AND DOES NOT EXPLAIN ABOUT THE 28 FRAMES. With one push per capture, two
+  segments arise only when capture() runs twice without an intervening cut clearing them --
+  which is exactly what compose-probe does, since it calls capture() then deliver() then
+  captureAndDeliver(). So 2+ segments is reachable in the probe after all. It does NOT
+  yet explain why a second segment ever appeared as a 28-frame remainder, and I am not
+  claiming it does. That stays open, still 0 reproductions.
+
+  rule: read what the document says before deciding a behaviour is wrong. I nearly logged
+  a preference as a finding, and the sentence that refuted me was in the file the whole
+  time -- quoted above, in the section about the very clip that failed.
