@@ -39,9 +39,24 @@ Whether a saved replay should show a still picture for its whole length is a pro
 question about what a user expects from "instant replay". I have measurements on the
 mechanism and no specification on the intent.
 
-## Side observation, not part of the decision
+## CORRECTION, WINDOW_UTC 2026-10-11T10:06:13Z: the duplicate-module alarm was unfounded
 
-replay-ring.CURRENT.js duplicates replay-ring.js, including its import and its call site. I
-have not measured which one the product loads and I am not touching either. It is recorded
-here so it is not lost, because a duplicated module means an edit to one of them may not
-reach the running product.
+This file originally carried a side observation saying replay-ring.CURRENT.js duplicated
+replay-ring.js, and that an edit to one might not reach the running product. That was
+wrong in the part that mattered, and the correction is here rather than only in a report.
+
+I had found the second call site with a recursive Select-String and printed the file NAME
+without its directory. A file inside _fix9/ printed identically to a sibling in the product
+directory, and I read the name as a location.
+
+Measured, POPULATION = every .js under app/shadowplay, WINDOW_UTC 2026-10-11T10:06:13Z:
+    replay-ring.js                19 458 B  sha E8499478C754D8F3  mtime 2026-10-11T01:20:32Z
+    _fix9/replay-ring.CURRENT.js  16 145 B  sha F8FBF11319942417  mtime 2026-10-10T19:34:43Z
+    *.CURRENT.js in the whole tree: 1 -- the one in _fix9, which holds 6 files
+    index.js:58  export { ReplayRing, ... } from "./replay-ring.js";
+    index.js:76  import { ReplayRing, ... } from "./replay-ring.js";
+    index.js does not mention _fix anywhere
+
+So the product loads replay-ring.js, the file this session edited. The _fix9 copy is a stale
+snapshot roughly a day old and 3 313 B smaller, sitting in a fix folder that is not on the
+product path. Nothing I did today to the ring failed to reach the product.

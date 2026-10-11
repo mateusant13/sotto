@@ -1510,3 +1510,32 @@ The owner corrected me for carrying a count from an older window, so: recounted 
   rule: count the call sites before deciding what a guard is protecting. One caller makes
   "a transcriber's rule" a rule with a single non-transcriber user, which is a design fact
   rather than a style question.
+
+## 2026-10-11T10:06:13Z - retracted: there is no duplicated module in the product path. I printed a name and read it as a location.
+
+  I reported last entry that replay-ring.CURRENT.js duplicated replay-ring.js and that an
+  edit to the wrong copy might not reach the running product. The second half was unfounded
+  and I put it in a commit message and a decision file.
+
+  HOW IT HAPPENED, exactly. The measurement ran Select-String over a RECURSIVE *.js search
+  and printed $_.Filename -- the NAME, never the directory. A file inside _fix9/ printed
+  exactly like a sibling in the product directory. I read a name as a location. POPULATION
+  was never wrong; the column I displayed was.
+
+  MEASURED, WINDOW_UTC 2026-10-11T10:06:13Z, POPULATION = every .js under app/shadowplay:
+      replay-ring.js                19 458 B  sha E8499478C754D8F3  mtime 2026-10-11T01:20:32Z
+      _fix9/replay-ring.CURRENT.js  16 145 B  sha F8FBF11319942417  mtime 2026-10-10T19:34:43Z
+      *.CURRENT.js in the tree: 1, inside _fix9, a folder of 6 files
+      index.js:58 and :76 both import from "./replay-ring.js"; index.js never mentions _fix
+
+  So the product loads replay-ring.js, the file I edited today. The _fix9 copy is a stale
+  snapshot, a day older and 3 313 B smaller, not on the product path. Nothing I changed in
+  the ring today failed to reach the product. The alarm is withdrawn.
+
+  THE STALE COPY IS STILL A REAL THING, smaller than the alarm. A snapshot in a fix folder
+  can be edited by someone who thinks it is live. It is recorded, not acted on, and nothing
+  was deleted -- arquivar, nunca apagar.
+
+  rule: a filename is not a location. If a claim depends on WHERE a file is, print the path;
+  a name plus a directory assumption is how a fix folder becomes a production incident in a
+  report.
