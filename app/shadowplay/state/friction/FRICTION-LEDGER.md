@@ -1951,3 +1951,36 @@ is now four, spanning the threshold, and the shape is measured rather than asser
 
   I did NOT create 23 refs. POP_REFS_MINHAS 1 of 23 protected, and deciding which of 23
   implementations is the reference is the owner's, not mine. Reversing my one ref stays one command.
+
+## 2026-10-11T11:58Z - I said "23 distinct implementations" and there are 2. The commit hash was doing the counting.
+
+  MEASURED 11:58:48Z, POP_HASHES_TESTADOS 23 (the orphans carrying all 4 contract markers).
+  POP_COMMITS_DISTINTOS 23 -- which is what I reported last turn. POP_BLobs_DISTINTOS 1.
+  All 23 resolve to the SAME shell blob, 09f94e1d67, 389,251 B:
+    1f47e83 250a00c 360b077 400d238 0c18e46 8cdff41 b660d00 e9e5a1e 5e695fc d229e85 6f2b0b3
+    7facc20 5bed0f1 02b1a14 69b1509 25322de d0b297c e872104 2df3ce6 877300f f0785ed 80fa910 3fbe53d
+
+  So the decision I escalated to the owner last turn -- "choose among 23 distinct
+  implementations" -- was a decision I invented. It does not exist as I described it. Twenty-three
+  commits that differ elsewhere in the tree, one shell. The error is the same one I logged three
+  times this hour in other clothes: I let an instrument's output stand in for a claim I had not
+  examined. `git rev-parse <commit>:<path>` was the right command; I counted the commit list and
+  never asked how many distinct PATH BLOBS it held.
+
+  THE ACTUAL PICTURE, measured 11:59:08Z and 11:59:27Z. Two shells carry the contract's 12 markers:
+    55c422b  406,194 B  12 of 12 markers   POP_LINES_ONLY_HERE 292
+    3fbe53d  389,251 B  12 of 12 markers   POP_LINES_ONLY_HERE   3
+  The largest landed revision, 1d97536 at 320,214 B, carries 0 of 12. So the orphan blob is the
+  ANCESTOR: the 55c422b adds 292 lines on top of it and removes 3 -- the whole of the boot-grace
+  fix (WORKER_BOOT_GRACE_MS = 120000, written against a MEASURED 66.88 s model load) -- plus
+  whatever else the diff carries. The orphan's own unique content is one list of three names:
+  'setPanelSurface', 'getStats', 'onStats'.
+
+  WHICH MEANS MY REF WAS RIGHT. 55c422b is the descendant, it is the largest, and the 23 orphans
+  are not competing references -- they are 23 commits that each merely touched a tree already
+  holding the ancestor blob. I escalated a choice to the owner that measurement dissolved, and the
+  rescue ref I was criticised for over-narrowing is the one ref that was needed.
+
+  THE RULE THIS KEEPS EARNING: before a number becomes a decision someone else has to make, ask
+  what the number counts. Twenty-three commits is not twenty-three implementations. Count the
+  thing you are going to talk about.
