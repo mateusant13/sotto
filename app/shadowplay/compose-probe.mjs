@@ -43,7 +43,17 @@ for (const key of proto) {
     // CORRECTED: these methods are async. My first probe called them
     // synchronously, so capture() returned a Promise which I rendered as {},
     // and the ring was empty because the work had not resolved yet.
-    const r = await fn.call(app, key === "deliver" ? ["f9"] : []);
+    // MEASURED 2026-10-11T08:38:23Z against index.js:143-174:
+    //   deliver(key = "f9", nowMs = 0)             -> a KEY IS A STRING
+    //   captureAndDeliver(opts = {})               -> opts IS AN OBJECT
+    //   capture({ source, seconds, fps, gop } = {}) -> opts IS AN OBJECT
+    // I was passing ["f9"] and []. An array is not a non-empty string, so deliver()
+    // threw `hotkey must be a non-empty string` -- and the "no free sequence value
+    // after 10 attempts" I filed as a product defect was captureAndDeliver reaching a
+    // writer that its own malformed call had already poisoned. Both exceptions were
+    // mine. Passing the shapes the signatures declare.
+    const arg = key === "deliver" ? "f9" : {};
+    const r = await fn.call(app, arg);
     outcome = `returned ${typeof r === "object" ? JSON.stringify(r)?.slice(0, 200) : String(r)}`;
   } catch (e) {
     outcome = `THREW ${e.constructor.name}: ${String(e.message).slice(0, 200)}`;

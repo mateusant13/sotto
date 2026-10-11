@@ -623,3 +623,43 @@ Closing the previous entry's open question: why was CLIP_FILES_ON_DISK 0?
   reports a property of something other than the thing under test -- and it reported NO,
   which I filed under flakiness for six turns. Check WHERE you are looking before asking
   WHY you see nothing.
+
+## 2026-10-11T08:39:15Z - both exceptions were mine: an array where the signature wants a string
+
+Closing the previous entry's second open question: why did deliver() and captureAndDeliver() throw?
+
+  MEASURED, POPULACAO = 10 prototype methods on 1 composition, WINDOW_UTC 2026-10-11T08:39:15Z:
+      deliver(key = "f9", nowMs = 0)          index.js:167  -> the KEY IS A STRING
+      captureAndDeliver(opts = {})            index.js:170  -> opts IS AN OBJECT
+      capture({source,seconds,fps,gop} = {})   index.js:143  -> opts IS AN OBJECT
+
+  My probe loop called every method as fn.call(app, key === "deliver" ? ["f9"] : []).
+  An array is not a non-empty string, so deliver() threw on a CORRECT argument, and
+  captureAndDeliver() passed [] into capture()'s destructuring -- which does not throw,
+  it silently yields every default. It then reached a writer whose retry loop I had
+  already reported as "10 attempts exhausted", which was this same malformed call.
+
+  Neither exception was a product defect. Both were the probe calling with the wrong shape.
+  Same failure class as the clipsDir/dir mistake one entry up: I measured the product
+  through an interface I had not read.
+
+  After the fix, POPULACAO = 4 methods that do work, same window:
+      capture()            -> cap-39068-1.mp4  2 078 873 B  234 frames  firstIdr 0  h264_nvenc
+      deliver()            -> {action:"instant-replay", clip:0000.mp4, verdict:{...}}
+      captureAndDeliver()  -> cap-39068-2.mp4  2 184 364 B  232 frames  + {action:"debounced"}
+      captures()           -> 2
+      CLIP_FILES_ON_DISK=1  0000.mp4  2 078 873 B  ZERO_BYTE_CLIPS=0  exit=0
+
+  Two things I had filed as defects are actually the design working, and I should have read
+  them before reporting:
+    - capture() writes to the ENCODER'S staging dir (shadowplay-VjI9eL), not to clipsDir.
+      Only deliver() lands bytes in clipsDir, as 0000.mp4. The staging bytes and the
+      delivered bytes are EQUAL -- 2 078 873 both sides -- which is the INTEGRATION-PLAN
+      invariant stated exactly: a saved clip is remuxed from already-encoded bytes, never
+      re-encoded. I had assumed capture() wrote to clipsDir because that is where I
+      pointed the counter.
+    - the second deliver() returned {"action":"debounced"}. That is the debounce window
+      doing its job on two F9 presses, not a failure to deliver.
+
+  rule: an exception thrown by a call I shaped is information about my call, not about the
+  product. Before filing any throw as a defect, read the signature the method declares.
