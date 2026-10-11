@@ -28,3 +28,33 @@ GATE_RUN 2026-10-11T09:07:30.118Z
   RESULT 4 passed, 0 refused
   GATE_EXIT 0
 
+GATE_RUN 2026-10-11T10:18:04.552Z
+  POPULATION 9 probe scripts
+  RED_ARM refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  clip-not-keyframed-probe.mjs FAILED     exit 2: 
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  keyframe-shape-probe.mjs NO_CONTRACT exit 0 but this probe declares no receipt keys, so there is nothing to check -- unproven, not proven
+  loaded-module-probe.mjs NO_CONTRACT exit 0 but this probe declares no receipt keys, so there is nothing to check -- unproven, not proven
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  still-screen-probe.mjs FAILED     exit 2: 
+  stored-keyframe-arm-probe.mjs FAILED     exit 2: 
+  RESULT 4 passed, 5 refused
+  GATE_EXIT 1
+
+GATE_RUN 2026-10-11T10:19:17.995Z
+  POPULATION 9 probe scripts
+  RED_ARM refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  clip-not-keyframed-probe.mjs FAILED     exit 2: 
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  keyframe-shape-probe.mjs NO_CONTRACT exit 0 but this probe declares no receipt keys, so there is nothing to check -- unproven, not proven
+  loaded-module-probe.mjs NO_CONTRACT exit 0 but this probe declares no receipt keys, so there is nothing to check -- unproven, not proven
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  still-screen-probe.mjs FAILED     exit 2: 
+  stored-keyframe-arm-probe.mjs FAILED     exit 2: 
+  RESULT 4 passed, 5 refused
+  GATE_EXIT 1
+
