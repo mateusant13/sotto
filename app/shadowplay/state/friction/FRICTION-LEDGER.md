@@ -552,3 +552,40 @@ never going to work, and neither would "the drain loop" have.
   rule: before you inject a fault, read where the thing under test actually executes. I
   assumed a drain loop existed because three other suites have one, and the assumption
   cost two turns and a bad commit.
+
+## 2026-10-11T08:27:12Z - the gate checks that receipt keys PRINT, not what they SAY
+
+Chasing the one unexplained refusal from 07:14, I ran each probe alone and then compose-
+probe four times with its full output. What came back is worse than a flaky probe.
+
+  MEASURED, POPULACAO = 4 runs of compose-probe.mjs, WINDOW_UTC 2026-10-11T08:27:12Z:
+    COMPOSED_OK type=Shadowplay
+    CLIP_FILES_ON_DISK=0
+    ZERO_BYTE_CLIPS=0
+    PRODUCT_LANDS_A_NONEMPTY_CLIP=NO
+    DONE                                    exit 0, every run
+
+  The probe assembles the product, presses nothing, writes NO clip, and exits 0. Its own
+  falsifying key says NO -- the product did not land a non-empty clip -- and the gate
+  reports PASS, because classify() asks out.includes(key) and NO contains every key the
+  receipt declares.
+
+  So the 07:14 refusal was never a flaky probe. The refusal was RIGHT and I read it as
+  noise: at 07:14 something was genuinely failing, I never identified what, and I filed
+  it under contention because that was the hypothesis that let me keep going. The gate
+  has since reported 4/4 clean while this probe has been reporting PRODUCT_LANDS_A_=NO.
+
+  Two defects, and the second is the one I would have missed:
+    1. compose-probe exits 0 having measured that nothing was written. It should exit
+       non-zero when its own falsifying key is NO. A probe that cannot fail is the exact
+       class this whole exercise exists to catch, and I wrote one.
+    2. the gate checks key PRESENCE, not key VALUE. Every gate pass since 06:40 has been
+       evidence that keys printed, not that the product did what they claim.
+
+  rule: a receipt with a value of NO is not a receipt, it is a failure wearing a receipt's
+  clothes. Any key whose value can be NO/YES must be compared, not merely found.
+
+  Not fixed in this entry: both fixes are written and neither is committed here. The
+  gate should read PRODUCT_LANDS_A_NONEMPTY_CLIP=YES explicitly and compose-probe should
+  exit 1 when it is NO -- and until that lands, no gate result in this ledger should be
+  read as a claim about the product.
