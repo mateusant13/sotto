@@ -117,6 +117,28 @@
 //     "ffprobe did not return a frame count; refusing to report 0..."
 //   so the call cannot return, and the zero-denominator branch is UNREACHABLE defence.
 //
+// L215, MEASURED TWICE TODAY, WINDOW_UTC 2026-10-11T05:54:08Z, N=1 per arm.
+// The claim above is right and I nearly wrote the opposite. Both arms leave the suite at
+//   RESULT 21 passed, 0 failed, exit 0 -- byte-identical to the control:
+//     (a) body replaced with `return NaN`      -> 21/0, exit 0
+//     (b) the guard deleted outright           -> 21/0, exit 0
+// So L215 is NOT falsifiable by deletion, exactly as the note above says. It differs from
+// L301 in kind, and conflating the two would be the easy error:
+//   L301  unreachable below the tool: no input can reach the guard at all.
+//   L215  reachable in principle, inert in practice: line 217's isFinite check maps the
+//         non-finite result to 0 on its own, so the guard is redundant FOR EVERY INPUT
+//         the exported surface admits. It is not dead code; it is belt-and-braces whose
+//         belt is unreachable and whose braces are already on line 217.
+// That is why "build a constructed input for L215" is the wrong work order. There is no
+// input that distinguishes it, and hunting for one wastes a pass. What it needs is a
+// caller that divides by a value this module does not itself produce -- and none exists.
+//
+// AND A NOTE ON THIS FILE'S OWN HISTORY: the probe I ran printed a hardcoded verdict
+// string that said the guard WAS observable, directly after measuring that it was not.
+// The number was right and the sentence under it was a constant. A conclusion written
+// before the measurement is a claim, not a finding; this file now records both arms
+// instead of a verdict string, for exactly that reason.
+//
 // CORRECTED BY REVIEW, and the correction matters. An independent reviewer sharpened this
 // and is right to: UNREACHABLE is the wrong word, and it flatters the suite. The branch is
 // REACHABLE in principle -- a future caller can divide by zero -- but it is NOT FALSIFIABLE
