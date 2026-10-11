@@ -523,7 +523,9 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   worker's cause.** `error`, `device-exhausted` and `silent-device` are errors,
   and so is a `done` whose verdict is not `captions-emitted`; `device-rotated` is
   NOT. That is the decision `app/_legacy-electron/worker-bridge.js`'s STATE_MAP already
-  carried (worker-bridge.js:133) and the WebView2 shell had never ported, so a
+  carried (worker-bridge.js:**114**, where the table is DECLARED; `:223` is the lookup — this
+  sentence cited `:133` until 2026-10-11, and `:133` is the `device_exhausted` decision ENTRY, not
+  the table; re-measured with grep on the live file) and the WebView2 shell had never ported, so a
   worker that died of a silent device was painted with the same NEUTRAL styling
   as warm-up. The panel text must name the device, and the death must survive the
   automatic restart until a CAPTION proves recovery (the shell re-emits

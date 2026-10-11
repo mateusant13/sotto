@@ -248,15 +248,24 @@ the model was never asked. Policy, measurements and cost: `docs/audit/speech-sep
 
 ## Config
 
-`config.json` — `audio.device` (substring or null), `audio.preferred_devices`, `audio.block_ms`,
-`model.dir`, `model.lang_id`, `model.use_vad`, `model.providers`, `output.min_chars`.
+`config.json` — **5 top-level keys and 11 non-comment leaves** (leaf census 2026-10-11: `JSON.parse`
++ walk over the live file, 5 882 B, sha256 `6B788A9EE7BEFB3F…`; the other six leaves are `_comment*`
+keys): `audio.device` (substring or null), `audio.preferred_devices`, `audio.block_ms`, `model.dir`,
+`model.lang_id`, `model.use_vad`, `model.providers`, `output.min_chars`, `output.partial`,
+`output.done_text_max_chars`, `use_denoise`.
 
-Every key above is READ by `worker/sotto_worker.py`. Five keys that nothing read were **deleted**
-on 2026-10-06 (`audio.match`, `audio.sample_rate`, `audio.channels`, `audio.latency`,
-`output.partial`) and two that nothing read were **wired** and are now live: `audio.block_ms`
+Every key above is READ by `worker/sotto_worker.py`. Four keys that nothing read were **deleted**
+on 2026-10-06 (`audio.match`, `audio.sample_rate`, `audio.channels`, `audio.latency`) and two that
+nothing read were **wired** and are now live: `audio.block_ms`
 (passed to `LoopbackTap`, sets the tap's block and the WASAPI pump's poll period) and
 `output.min_chars` (the minimum trimmed-caption length both emitters print; below 1 is refused
 back to 1). Nothing is silently ignored: see `docs/audit/config-inert-fixed.md`.
+
+**CORRIGIDO 2026-10-11:** this section used to stop at EIGHT key names and to name
+`output.partial` among the five keys **deleted** on 2026-10-06. Both were wrong against the live file:
+the leaf census above finds ELEVEN non-comment leaves, and `output.partial` is one of them — it is
+PRESENT and READ (`emit_partial` is `output.partial`: `True` ships the running line as it grows,
+`sotto_worker.py:2851` / `:3013`). The other four named as deleted are absent, as stated.
 
 `model.lang_id` is the **language prompt**, resolved by `worker/lang_prompt.py` from the
 model's OWN `models/*/languages.json` (never a copy of it). Accepted values:

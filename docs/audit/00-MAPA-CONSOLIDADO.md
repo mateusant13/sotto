@@ -85,17 +85,17 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 41 | linha de status sem `type` e descartada em silencio | `sotto_webview.py:2046-2051` | **OPEN** |
 | 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:1987-2004` | **OPEN** |
 | 43 | `_spawn()` corre na thread de restart SEM `_lock` | `sotto_webview.py:2222` | **OPEN** |
-| 44 | `docs/README.md` diz que "nenhum codigo de aplicacao foi escrito" | `docs/README.md:8` | **OPEN** |
+| 44 | `docs/README.md` diz que "nenhum codigo de aplicacao foi escrito" | `docs/README.md:8` | **[2026-10-11] APPLIED** — a seccao *What exists today* deixou de dizer "Planning only. No application code has been written." e passou a nomear o que EXISTE e corre (worker + shell pywebview/WebView2 + painel, Alt+C), com a nota de que a frase era verdadeira quando foi escrita e ficou stale |
 | 45 | 3 documentos ainda descrevem a stack Tauri/Rust/SQLite abandonada como o produto | `docs/README.md:22-27`, `docs/roadmap.md:53-64`, `README.md:50-58,64` | **[2026-10-11] APPLIED** — os TRES corrigidos nesta passagem, por leitura dos bytes (nada lancado): `docs/README.md` §*Honest status of the stack* passou a nomear a stack que EMBARCA (Python 3.11 + `onnxruntime` + pywebview 6.2.1/WebView2, `Alt+C`) e marca o `transcribe.cpp` como avaliado-e-nao-adoptado; `docs/roadmap.md` ganhou a faixa SUPERSEDED antes de M0 (Tauri/Rust/CPAL sao PLANO, e `docs/live-captions-20261006.md:208` prova que o Tauri esta morto); `README.md:48-52` deixou de chamar o Tauri *"still the destination"* e retracta DUAS afirmacoes ja refutadas (o carimbo `producer` existe — `REDUX_PRODUCER` em `worker/sotto_worker.py`; e `history/` tem ficheiro mais novo, `history/2026-10-07/14.md`) |
 | 46 | `AGENTS.md` contradiz-se sobre o painel no arranque ("0 de 41" vs "visivel 50 ms–7 s") | `AGENTS.md:169` vs `:215` | **OPEN** |
-| 47 | figura fp16 do `AGENTS.md` 1230 vs 1246.9 MiB medidos | `AGENTS.md:89` | **OPEN** |
-| 48 | `AGENTS.md` cita `worker-bridge.js:133` como "STATE_MAP" (declarado em `:114`) | `AGENTS.md:119` | **OPEN** |
+| 47 | figura fp16 do `AGENTS.md` 1230 vs 1246.9 MiB medidos | `AGENTS.md:89` | **[2026-10-11] APPLIED** — a figura deixou de ser AFIRMADA: a linha dos pesos esta riscada e acompanhada do bloco CORRIGIDO 2026-10-11 que diz que so o int8 existe em disco (1 070 642 977 B / 33 ficheiros) e que os numeros int4/fp16 ficam UNMEASURED, nao re-mediveis. Nao houve reconciliacao do numero: houve retractacao, que e o estado honesto quando o export ja nao esta em disco |
+| 48 | `AGENTS.md` cita `worker-bridge.js:133` como "STATE_MAP" (declarado em `:114`) | `AGENTS.md:119` | **[2026-10-11] APPLIED** — corrigido para `:114` (onde a tabela e DECLARADA; `:223` e a consulta), com a retractacao do `:133` na propria frase, re-medida por `grep` no ficheiro vivo |
 | 49 | o "rank-1" do `use_vad` e retratado 230 linhas abaixo, sem ponteiro | `docs/oss-approaches-20261006.md:214` vs `:444-475` | **OPEN** |
 | 50 | `live-captions` deixa uma decisao supersedida de pe, com um numero de sinal trocado | `docs/live-captions-20261006.md:214-216` | **OPEN** |
 | 51 | `full-audit` descreve a regra de juncao de 1200 ms que o codigo ja nao tem | `docs/full-audit-transcription-20261006.md:310,326` | **OPEN** |
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **APPLIED** [2026-10-11] — o proprio `AGENTS.md` retrata o texto por nome (`AGENTS.md:169`): o artefacto EXISTE em `H:\sotto\_main\exit3-armB-worker.jsonl` (3 958 B, sha256 `426EC552...`) e o "AUSENTE / DANGLING" era um falso negativo de um `statSync` sobre `worker/runs/` |
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **OPEN** |
-| 54 | AGENTS/README listam 5 chaves do config; o ficheiro tem 13 (hoje 8) | `AGENTS.md:74`, `worker/README.md:184-185` | **OPEN** |
+| 54 | AGENTS/README listam 5 chaves do config; o ficheiro tem 13 (hoje 8) | `AGENTS.md:74`, `worker/README.md:184-185` | **[2026-10-11] APPLIED** — censo de folhas do `worker/config.json` vivo (`JSON.parse` + walk): **5 chaves de topo, 11 folhas nao-comentario** (as outras 6 sao `_comment*`). O `worker/README.md` passou a listar as 11, e retracta DUAS afirmacoes falsas: parava em oito nomes e nomeava `output.partial` entre as chaves APAGADAS — essa chave ESTA presente e e LIDA (`emit_partial` e `output.partial`, `sotto_worker.py:2851`/`:3013`). A linha do `AGENTS.md` ja tinha sido corrigida nesta revisao |
 | 55 | a sonda CUDA dos providers corria no int4 independentemente do dir configurado | `sotto_worker.py:883, :934` | **APPLIED** — sonda `model_dir or DEFAULT_MODEL` (`:942`) |
 | 56 | `model-spec-oracle` nao tem braco negativo (detector de drift, nao oraculo) | `_main/model-spec-oracle.py:41` | **OPEN** |
 | 57 | `_oss_oracle` nao tem braco negativo | `_main/_oss_oracle.py` | **OPEN** |
@@ -306,11 +306,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 49
-- **OPEN:** 89
+- **APPLIED:** 53
+- **OPEN:** 85
 - **IN-FLIGHT:** 0
 
-Conferencia: 49 + 89 + 0 = **138** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 53 + 85 + 0 = **138** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
@@ -328,7 +328,10 @@ Lead) trazem `[2026-10-11]` e a prova na propria linha.
 O que mudou nesta revisao, em uma linha cada: #2 (IN-FLIGHT -> APPLIED, `blank-frames-root-cause.md:6-9`),
 #22 (`use_vad` -> APPLIED, `auditoria-completa-20261007.md:597` + `sotto_worker.py:4195`), #37
 (`S_FALSE` -> APPLIED, `flat-endpoint.md:125-142`), #53 (o artefacto -> APPLIED, `AGENTS.md:169`); #45 e F2 (a stack Tauri/Rust/SQLite -> APPLIED: os tres
-documentos foram corrigidos nesta passagem — `docs/README.md`, `docs/roadmap.md`, `README.md`).
+documentos foram corrigidos nesta passagem — `docs/README.md`, `docs/roadmap.md`, `README.md`);
+#44, #47, #48 e #54 (deriva documental -> APPLIED: `docs/README.md` deixou de dizer que nao existe
+codigo, a figura fp16 ficou retractada, a citacao do STATE_MAP passou a `:114`, e o
+`worker/README.md` passou a listar as 11 folhas do config corrigindo duas afirmacoes falsas).
 
 ---
 

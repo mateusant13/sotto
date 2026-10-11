@@ -5,7 +5,14 @@ edge of the screen. Press <kbd>Alt</kbd>+<kbd>C</kbd>.
 
 ## What exists today
 
-Planning only. No application code has been written. What is here:
+**A working application, not a plan** (re-measured 2026-10-11): the transcriber
+(`worker/sotto_worker.py`), the shell (`app/webview/sotto_webview.py`, pywebview 6.2.1 + WebView2) and the
+panel (`app/panel/*`) all exist and run, and `Alt+C` toggles the overlay. (`docs/roadmap.md`'s milestone
+plan is marked SUPERSEDED there.) This paragraph said *"Planning only. No application code has been
+written."* until 2026-10-11: it was TRUE when this file was written and was left stale for days.
+Corrected rather than deleted, so the record of what this directory was for survives.
+
+What is in THIS directory:
 
 - `brand/logo.svg` — the mark, and the two accent colours the UI uses.
 - `docs/roadmap.md` — milestones M0..M6, the idle contract, the risk register,
