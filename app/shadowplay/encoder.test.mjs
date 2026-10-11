@@ -136,5 +136,41 @@ t("RED ARM: the IDR guard is load-bearing, not decorative", () => {
     "every other test here would still pass while the product's core invariant is unenforced");
 });
 
+// ---------------------------------------------------------------- SECOND WATCHERS
+// Measured WINDOW_UTC 2026-10-11T01:55:22Z: three of the four falsified branches were each
+// turned red by exactly ONE test, so deleting that test would leave its guard unwatched and
+// no count in this file would show it. These are independent entry paths for those same
+// three guards -- different inputs, different construction routes, separate test bodies --
+// so that removing any single test still leaves the guard covered.
+
+t("gopSize is refused at the constructor even when built from a computed value", () => {
+  // A different route to the same guard: the value is computed, not literal, and the
+  // rejection happens before any instance exists.
+  const negative = 0 - 1;
+  assert.throws(() => new Encoder({ gopSize: negative }), RangeError);
+  const fractional = Math.floor(3.7);
+  assert.equal(fractional, 3, "Math.floor is what makes this an integer; guard must still accept it");
+  assert.doesNotThrow(() => new Encoder({ gopSize: fractional }));
+});
+
+t("a negative payload is refused on any frame, not only frame zero", () => {
+  const e = new Encoder({ gopSize: GOP });
+  e.encodeFrame(0, 10);
+  e.encodeFrame(1, 10);
+  // Deliberately NOT index 0: the existing watcher uses index 0.
+  assert.throws(() => e.encodeFrame(2, -1), RangeError);
+  assert.throws(() => e.encodeFrame(3, -4096), RangeError);
+  assert.equal(e.encoded, 2, "a refused frame must not be counted as encoded");
+});
+
+t("remux past the end is refused at several distances, not only index 99", () => {
+  const e = filled(4); // frames 0..3
+  for (const from of [4, 5, 100, 1e9]) {
+    assert.throws(() => e.remux(from), RangeError,
+      `remux(${from}) is past the last frame and must be refused`);
+  }
+  assert.equal(e.encoded, 4, "a refused remux must not add frames");
+});
+
 console.log(`RESULT ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
