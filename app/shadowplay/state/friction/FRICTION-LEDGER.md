@@ -1670,3 +1670,21 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   NOT FIXED HERE. The fix is bounded -- ARGV_FOR entries for the three that need inputs and
   RECEIPTS declarations for the five -- and I am not doing it while the honest state is that
   the gate is red and I broke it. Recorded first.
+
+## 2026-10-11T10:25Z - green over 9, and it took THREE runs because the failure was mine twice
+
+  10:23:11Z RESULT 9 passed, 0 refused, exit 0, after admitting the five probes: two got
+  buildGoodBad(), one got buildBusy(), all five got RECEIPTS, and three also got VALUED keys.
+  Probes proving only presence dropped from 5 of 9 to 2 of 9.
+
+  10:23:58Z RED AGAIN, on my key: loaded-module-probe RECEIPT_FALSE, "SAME_BYTES  (wanted
+  true)". My first fix trimmed the captured value, which was not enough, because the pattern
+  captured with (\S*) and \S cannot match a space -- so a value that BEGINS with padding was
+  captured as the empty string and trimming nothing. The pattern now captures to end of line
+  with ([^\r\n]*) and then trims.
+
+  Two wrong causes in a row, both mine: missing contracts, then a capture pattern that could
+  not see a padded value. The gate refused correctly in the middle both times, which is the
+  behaviour it exists for and the reason it was worth admitting my probes to it.
+
+  rule: a regex that cannot match whitespace cannot measure a column-aligned receipt.

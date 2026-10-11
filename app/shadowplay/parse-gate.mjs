@@ -55,8 +55,40 @@ const POPULATION = readdirSync(HERE)
 // undefined. That is not a stale API call. It is an invocation the gate failed to make.
 // Population of annex-B streams on this host: 0, so the gate BUILDS the input with
 // ffmpeg rather than looking for one.
+// 2026-10-11T10:23Z. Three probes added today take clip files as arguments and exited 2
+// under the gate, which runs every script in its population with no arguments at all. These
+// builders give them inputs the same way buildAnnexB() does for _nonidr-probe.
+// good.mp4's first keyframe is at pts 0; bad.mp4's is at pts 1.0 because it is cut with
+// -copyts, so the keyframe keeps its original timestamp instead of renormalising to zero.
+let _gb = null;
+function buildGoodBad() {
+  if (_gb) return _gb;
+  const d = mkdtempSync(join(tmpdir(), "gate-gb-"));
+  const good = join(d, "good.mp4"), bad = join(d, "bad.mp4");
+  const ff = (a) => { try { spawnSync("ffmpeg", ["-v", "error", "-y", ...a], { timeout: 60000 }); } catch { /* the probe reports what it could not read */ } };
+  ff(["-f", "lavfi", "-i", "testsrc=s=640x360:r=30:d=4", "-c:v", "h264_nvenc", "-preset", "p1", "-g", "30", good]);
+  ff(["-ss", "1.5", "-i", good, "-c", "copy", "-copyts", "-avoid_negative_ts", "disabled", bad]);
+  _gb = existsSync(good) && existsSync(bad) ? [good, bad] : [];
+  return _gb;
+}
+let _busy = null;
+function buildBusy() {
+  if (_busy) return _busy;
+  const d = mkdtempSync(join(tmpdir(), "gate-busy-"));
+  const out = join(d, "busy.mp4");
+  try {
+    spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
+      "-i", "testsrc=s=640x360:r=30:d=2", "-c:v", "h264_nvenc", "-preset", "p1", "-g", "60", out], { timeout: 60000 });
+  } catch { /* same */ }
+  _busy = existsSync(out) ? [out] : [];
+  return _busy;
+}
+
 const ARGV_FOR = {
   "_nonidr-probe.mjs": [buildAnnexB()],
+  "clip-not-keyframed-probe.mjs": buildGoodBad(),
+  "stored-keyframe-arm-probe.mjs": buildGoodBad(),
+  "still-screen-probe.mjs": buildBusy(),
 };
 
 function buildAnnexB() {
@@ -102,6 +134,27 @@ const RECEIPTS = {
     "NAL_UNITS_PARSED:", "IDR_COUNT:", "STRIPPED_BYTES:", "PAYLOAD_RETAINED_PCT:",
     "DECODABLE_FRAMES_WITH_IDR_CONTROL:", "NEGATIVE_ARM_REACHABLE:",
   ],
+  // The five probes added on 2026-10-11 joined the population by filename convention
+  // (POPULATION is a readdirSync filter on "-probe.mjs", not a hand-kept list) while every
+  // commit was bypassing the gate with SOTTO_SKIP_RUN_ALL=1. MEASURED 10:18:17Z, POPULATION
+  // 9 probes: RESULT 4 passed, 5 refused, GATE_EXIT 1 -- three of the five exiting 2 because
+  // the gate passed no arguments, and two declaring no receipts at all. Declared here.
+  "keyframe-shape-probe.mjs": [
+    "CAPTURED_FRAMES ", "FIRST_IDR_SEC ", "RING_SEGMENTS ", "LONGEST_UNIQUE_RUN ",
+    "EXPECTED_FRAMES ", "CONTENT_SUFFICIENT ", "THREW ", "DONE",
+  ],
+  "loaded-module-probe.mjs": [
+    "RESOLVED_BY_RUNTIME ", "SHA_RUNTIME_FILE ", "SHA_EDITED_FILE ", "SAME_BYTES ",
+    "EXPORTED_FROM_INDEX ", "DONE",
+  ],
+  "still-screen-probe.mjs": [
+    "FILE ", "DELIVERED_FRAMES ", "DISTINCT_FRAMES ", "LONGEST_UNIQUE_RUN ",
+    "EXPECTED_FRAMES ", "CONTENT_SUFFICIENT ", "DONE",
+  ],
+  "clip-not-keyframed-probe.mjs": [
+    "TOLERANCE_SEC ", "FIRST_IDR_SEC ", "GUARD_WOULD_REFUSE ", "DONE",
+  ],
+  "stored-keyframe-arm-probe.mjs": ["ARM ", "OUTCOME ", "FILES_LEFT_AFTER ", "DONE"],
 };
 
 const STALE_API = [
@@ -132,6 +185,19 @@ const VALUED = {
   "cw-probe.mjs": { "BYTES_LANDED=": "YES" },
   "perf-probe.mjs": { "SEQUENCE_MONOTONIC=": "true" },
   "_nonidr-probe.mjs": { "NEGATIVE_ARM_REACHABLE: ": "false" },
+  // Added 2026-10-11T10:23Z for the five probes admitted that day. Three of them have a
+  // deterministic boolean once the gate supplies their inputs, and those are asserted here
+  // rather than merely counted as printed. MEASURED on the clean run at 10:23:11Z, over
+  // POPULATION 9.
+  //   keyframe-shape-probe  a busy desktop gives CONTENT_SUFFICIENT true and FIRST_IDR 0
+  //   loaded-module-probe   the runtime's resolved file and the file by path hash alike
+  //   still-screen-probe    the moving clip covers its clock
+  // clip-not-keyframed-probe and stored-keyframe-arm-probe are deliberately NOT asserted:
+  // each prints both true and false across its two arms, so no single expected value can
+  // describe them and pinning one would make the gate pass on half of what it sees.
+  "keyframe-shape-probe.mjs": { "CONTENT_SUFFICIENT ": "true", "FIRST_IDR_SEC ": "0" },
+  "loaded-module-probe.mjs": { "SAME_BYTES ": "true" },
+  "still-screen-probe.mjs": { "CONTENT_SUFFICIENT ": "true" },
 };
 
 function classify(script) {
@@ -167,8 +233,8 @@ function classify(script) {
     // printed at least once and that every single occurrence equals the wanted value. A
     // probe that contradicts itself once can no longer pass.
     const wrong = Object.entries(valued).filter(([k, want]) => {
-      const re = new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\S*)", "g");
-      const seen = [...out.matchAll(re)].map((m) => m[1]);
+      const re = new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^\\r\\n]*)", "g");
+      const seen = [...out.matchAll(re)].map((m) => m[1].trim());
       if (seen.length === 0) return true;               // never printed -> not a receipt
       return seen.some((v) => v !== want);              // any contradicting copy -> RED
     });
