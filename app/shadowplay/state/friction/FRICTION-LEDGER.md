@@ -911,3 +911,57 @@ as if I had.
   rule: an instrument that cannot say WHY it said NO last time will re-diagnose the same
   refusal from scratch forever. And a refuted hypothesis is worth more than an open one:
   "contention" was comforting and it was wrong.
+
+## 2026-10-11T09:17:07Z - the ring holds ONE segment every time, which makes 28 a logical consequence rather than a mystery
+
+Reading the cut before theorising about it. replay-ring.js:182-188:
+
+    #cutFromLastKeyframe() {
+      for (let i = this.#segments.length - 1; i >= 0; i--) {
+        if (!this.#segments[i].keyframe) continue;
+        return Buffer.concat(this.#segments.slice(i).map((s) => s.bytes));
+      }
+      return null;
+    }
+
+It walks BACKWARDS and cuts from the LAST keyframe to the end. So the clip length is the
+frames deposited AFTER the last keyframe. With one segment that segment is itself the
+keyframe and the cut is the whole capture -- the 206-234 frame case. To land on 28, the
+ring must have held AT LEAST TWO segments with the last of them a keyframe sitting ~28
+frames from the end. At 30 fps that is under oneSecondOfClock, frame-accounting.js:367 sets
+contentSufficientToCoverClock false, and replay-ring.js:340 refuses.
+
+  MEASURED, POPULACAO = 5 captures, WINDOW_UTC 2026-10-11T09:17:07Z, new probe
+  keyframe-shape-probe.mjs (3335 B), which composes for real, captures, and reads the ring
+  through the public getter:
+      run 1  frames 215  RING_SEGMENTS 1  threw=no
+      run 2  frames 220  RING_SEGMENTS 1  threw=no
+      run 3  frames 215  RING_SEGMENTS 1  threw=no
+      run 4  frames 206  RING_SEGMENTS 1  threw=no
+      run 5  frames 214  RING_SEGMENTS 1  threw=no
+      5 passed, 0 failed
+
+  So the precondition is measured in the passing case and its absence is measured: every
+  successful run is a single-segment ring, and with one segment 28 is not reachable. The
+  failing run therefore held 2+ segments. That is arithmetic on the code I read, not a
+  guess about NVENC.
+
+  WHAT THE PROBE DELIBERATELY DID NOT DO. segments() returns a COUNT and the segment list
+  is a private field. I did not reach past it to enumerate which segments are keyframes,
+  because a probe that reads the internals it is measuring is no longer evidence about the
+  product. The probe therefore cannot confirm the second keyframe; it can only show that
+  the ordinary case is one segment.
+
+  STATUS: mechanism sharpened and partly measured, NOT confirmed. 0 of 5 reproductions,
+  1 occurrence in 8 runs I have run today. I am not writing a failure rate.
+
+  THE DESIGN QUESTION THIS RAISES, which I am not acting on without evidence: if the ring
+  holds a keyframe 28 frames from the end, "cut from the last keyframe" and "must cover a
+  second" are in tension, and the product resolves it by refusing. Walking back to the
+  EARLIEST keyframe that still covers a second would deliver instead. That is a behaviour
+  change to a delivery rule I have not verified against the design documents, and three
+  errors today came from changing a rule before reading what it says.
+
+  rule: a precondition measured in the passing case can make a failure arithmetic. Five
+  one-segment runs turn "what could produce 28" into "the failing run had two segments" --
+  which is a narrower, testable claim than the one I started with.
