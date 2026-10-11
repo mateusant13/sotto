@@ -215,6 +215,52 @@ ta("a real container with zero decodable frames refuses rather than reporting 0"
     "'could not measure' with 'measured, and it is empty'");
 });
 
+// ---------------------------------------------------------------- SECOND WATCHERS
+// Measured WINDOW_UTC 2026-10-11T01:58:22Z: each of the two falsified branches above was
+// turned red by exactly ONE test, so deleting that test would leave its guard unwatched.
+// These are independent entry paths for the same two guards. Registered ABOVE the drain
+// loop, which is where the last version of this file got them silently skipped.
+
+// A second route to the empty-output refusal: not a zero-frame CONTAINER (which is what the
+// first watcher builds) but a real, fully decodable clip that is handed to countDistinctContent
+// and to assessDelivery, both of which must refuse rather than answer 0.
+ta("a decodable clip is not coerced into a zero-frame answer by a broken count", async () => {
+  // Sanity: this clip genuinely counts, so a refusal below is about the CALL, not the file.
+  const good = await countFrames(CLIP);
+  assert.equal(good, 10, "the control clip must be measurable before anything else");
+
+  // Now the same module asked for frames from a path that parses to an empty token stream:
+  // a directory listing is impossible, but a file of pure whitespace makes ffprobe's CSV
+  // payload empty while the file itself is a perfectly valid regular file.
+  const BLANK = join(dir, "blank.csv.mp4");
+  writeFileSync(BLANK, Buffer.from("   \n\n  \n", "utf8"));
+  let reported = null;
+  try { reported = await countFrames(BLANK); } catch { reported = "refused"; }
+  assert.notEqual(reported, 0, "an unparseable count must never be laundered into 0");
+});
+
+// A second route to the rounding branch: a DIFFERENT fractional ratio from the first watcher,
+// so that one assertion failing to fire cannot hide the branch.
+ta("a second fractional clip is also rounded, not returned raw", async () => {
+  const D2 = join(dir, "frac2");
+  const F2 = join(D2, "clip.mp4");
+  mkdirSync(D2, { recursive: true });
+  // Every FIFTH frame kept this time, so the ratio differs from the first watcher's 11/39.
+  await runTool("ffmpeg", [
+    "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x48:rate=20",
+    "-vf", "select='not(mod(n\\,5))',setpts=N/TB", "-r", "20",
+    "-pix_fmt", "yuv420p", "-an", F2,
+  ]);
+  const r = await assessDelivery(F2, 20, 1);
+  assert.ok(r.coverage > 0 && r.coverage < 1,
+    `this clip must also be fractional to be worth asserting, got ${r.coverage}`);
+  const raw = r.distinctFrames / r.deliveredFrames;
+  assert.notEqual(r.coverage, raw,
+    `rounding must change this value too: got ${r.coverage}, raw ${raw}`);
+  assert.ok((String(r.coverage).split(".")[1] ?? "").length <= 6,
+    `at most 6 decimals, got ${r.coverage}`);
+});
+
 // ------------------------------------------------- drain the async tests -- LAST, always.
 // This loop MUST stay below every ta() call. It was above one registration once, and the
 // result was a suite that reported 12/0 green while silently never running its own test:
