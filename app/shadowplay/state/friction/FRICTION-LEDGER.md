@@ -2083,3 +2083,47 @@ is now four, spanning the threshold, and the shape is measured rather than asser
   Also worth keeping: I did not set SOTTO_SKIP_RUN_ALL on the refused commit, and the next ordinary
   commit went in on the gate's own verdict at SUITES 15 passed. The instrument was allowed to refuse
   me and then allowed me back, which is the difference between a gate and a rubber stamp.
+
+## 2026-10-11T12:47Z - RETRACTED to the owner: 66.88 s was never a measurement. It came out of a code comment I did not open.
+
+  A verifier lane audited the port claim and delivered CLAIM_OVERSTATED. It is the first lane in
+  this session to deliver anything, and it refuted the number I have been repeating to the owner.
+
+  THE RETRACTION. MEASURED by the lane over POP 760 commits (`git rev-list --all`, exit 0):
+  "66.88" occurs in exactly ONE place in the repository's entire reachable history -- the comment
+  at 55c422b:app/webview/sotto_webview.py L285. Every other hit is three _main mutant copies of that
+  same comment plus my own FRICTION-LEDGER.md citing it. ZERO logs, zero measurement scripts, zero
+  oracle outputs. It is not a measurement that was made and lost; the artefact was never committed.
+  And every load_s the repo actually records points the other way: 3.1, 4.48, 4.8, 4.85, 5.228,
+  5.28, 7.644, 7.78 -- maximum 7.78 s. At load_s ~5 s a 30000 ms window cannot fire mid-load, so
+  the justification for WORKER_BOOT_GRACE_MS = 120000 does not hold on its own terms. 120 s would
+  be ~24x the real cost.
+
+  I took a number out of a code comment and wrote it to the owner as a measurement I had confirmed.
+  I read the comment as evidence about the code and reported it as evidence about the machine. That
+  is the same defect I have been refuting in other people's documents all night -- a correct symbol
+  beside a citation I never opened -- and I did it in my own report.
+
+  WHAT SURVIVES, AND IT IS STRONGER WITHOUT THE NUMBER. The boot-grace DEFECT is real and is proved
+  by an artefact I never cited: _main/webview-run.log L4661-4685 records BRIDGE_SPAWNED, then
+  BRIDGE_STATUS_HELD state="model-loading" behind="exit", BRIDGE_SILENT ms=15000, BRIDGE_RESTART
+  reason=silent, BRIDGE_EXIT rc=1 spawns=4 statuses=38 -- killed mid-model-loading, repeating at
+  restart=7,9,11,13,15, with 165 reason=silent events in that file. The mechanism was never in
+  doubt; only my number for it was.
+
+  DEFECT 2 IS REAL AND IS MY SOUNDEST CLAIM. POP def _fire in 1d97536 = 1, counted. At L5172-5175
+  the branch `if br.is_capturing(): ... return` returns WITHOUT arming, and the cooldown re-arm at
+  L5196 sits below that return, unreachable while capturing; boundary() at L5139-5140 also bails.
+  55c422b names it itself at L6582-6584. This is the claim I was least sure of and it is the one
+  that survived hardest.
+
+  A DEFECT I DID NOT REPORT. 55c422b L6606-6615 documents that time.monotonic() has a coarse tick on
+  this box, so the `>=` at 1d97536 L5181 misreads same-tick equality as "a respawn re-read the file"
+  and silently DROPS the held reload. 55c422b L6617 changes it to `>`. An edit the owner made, held
+  and never applied, discarded without an error -- arguably worse than the deferral I did report.
+
+  AND "THE CORRECT REFERENCE" IS MY JUDGEMENT, NOT A FINDING. 12-of-12 markers says it CONTAINS the
+  contract; larger says it is BIGGER; neither is a correctness test. `merge-base --is-ancestor
+  55c422b HEAD` returns RC=1 -- it is not an ancestor of anything I built. It sits on my own rescue
+  branch. Until --probe-reload and _main/restart-30s-oracle.py run green it is a defensible
+  candidate, which is what I should have said three turns ago.
