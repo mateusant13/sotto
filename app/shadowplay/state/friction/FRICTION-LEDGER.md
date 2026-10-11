@@ -838,3 +838,54 @@ Closing the one item I had filed as "code I read but did not exercise".
   reaches it is one you could actually ship. Half of "defence in depth" is unreachable by
   construction, and an unreachable guard is indistinguishable from a working one until you
   try to fire it.
+
+## 2026-10-11T09:07:30Z - the 07:14 refusal is unrecoverable, its only hypothesis is REFUTED, and the log I added to prevent a repeat found a live defect on its first run
+
+Closing the escalation. I could not recover the cause, and I am not going to write one down
+as if I had.
+
+  WHAT IS NOW KNOWN, POPULACAO = 13 gate executions on 2026-10-11, WINDOW 06:42Z..07:22Z.
+    .git/hooks/pre-commit is a 150 B shim -> scripts/pre-commit -> run-all.mjs ->
+    parse-gate.mjs with spawnSync timeout 300000. So every commit DOES run the gate.
+    The 07:14Z refusal sits between c32e565 (07:08:26Z) and e387e8b (07:22:24Z).
+
+  THE HYPOTHESIS I HAD, REFUTED BY MEASUREMENT. I had written "it happened inside a
+  commit whose pre-commit also runs the gate; hypothesis of host contention, not
+  measured." Two gates in parallel, WINDOW_UTC 2026-10-11T09:05:04Z:
+      porta A exit=0 in 27.5 s      porta B exit=0 in 27.6 s
+      both RESULT 4 passed, 0 refused
+  They ran concurrently, took the same time as one, and both passed. 27.5 s against a
+  300 s timeout is 9 percent of the budget, so contention is not a mechanism that could
+  have produced a refusal. The hypothesis is false, not merely unproven.
+
+  THE CAUSE ITSELF IS GONE. The last surviving log of that window, g-now.txt, is the
+  07:20:24Z run -- AFTER the refusal. Nothing retained the 07:14 output: the verdict went
+  to a terminal that had scrolled away, and the commit it would have blocked never
+  happened, so there was no second copy anywhere. Same shape as the two unrecoverable
+  CRITICAL findings from the document pass: untracked bytes and no backup.
+
+  SO I FIXED THE CLASS INSTEAD OF THE INCIDENT. Every gate run now appends its full
+  verdict to state/gate/gate-log.txt: timestamp, population, red arm, every probe with
+  its verdict and reason, RESULT and GATE_EXIT. Evidence recording is wrapped in try/catch
+  so it can never change the verdict.
+
+  AND IT PAID FOR ITSELF ON THE FIRST RUN. Three runs, 09:06:41Z / 09:07:05Z / 09:07:30Z:
+      run 1  RESULT 4 passed, 0 refused          GATE_EXIT 0
+      run 2  RESULT 2 passed, 2 refused          GATE_EXIT 1
+      run 3  RESULT 4 passed, 0 refused          GATE_EXIT 0
+  Run 2 carried the manufactured _nonidr refusal, and beside it the log recorded something
+  I had never seen and had been running clean past all day:
+      compose-probe.mjs FAILED  exit 1: deliver() -> THREW Error: instant replay refused:
+        G:\Temp\shadowplay-e2e-4FYBFS\0000.mp4 holds 28 contiguous decodable frames
+  That is a PRODUCT failure -- deliver() refusing a clip it had just written -- and it is
+  not something I injected. It is new, it is intermittent, and it is now on record with a
+  timestamp. The gate had been telling me 4/4 all day and the console had been scrolled
+  away; the difference is only that now the line survives.
+
+  My own log line was wrong on the first run and I fixed it before committing:
+  RED_ARM exit=undefined, because I guessed the property name. Exactly the failure class
+  this whole day is about -- a field I had not read. Now it prints only arm.refused.
+
+  rule: an instrument that cannot say WHY it said NO last time will re-diagnose the same
+  refusal from scratch forever. And a refuted hypothesis is worth more than an open one:
+  "contention" was comforting and it was wrong.

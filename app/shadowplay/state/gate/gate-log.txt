@@ -1,0 +1,30 @@
+GATE_RUN 2026-10-11T09:06:41.484Z
+  POPULATION 4 probe scripts
+  RED_ARM exit=undefined refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  RESULT 4 passed, 0 refused
+  GATE_EXIT 0
+
+GATE_RUN 2026-10-11T09:07:05.616Z
+  POPULATION 4 probe scripts
+  RED_ARM exit=undefined refused=true
+  _nonidr-probe.mjs    FORCED     GATE_FORCE_REFUSE=1 -- this refusal is manufactured by run-all.mjs
+  compose-probe.mjs    FAILED     exit 1: deliver() -> THREW Error: instant replay refused: G:\Temp\shadowplay-e2e-4FYBFS\0000.mp4 holds 28 contiguous d
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  RESULT 2 passed, 2 refused
+  GATE_EXIT 1
+
+GATE_RUN 2026-10-11T09:07:30.118Z
+  POPULATION 4 probe scripts
+  RED_ARM exit=undefined refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  RESULT 4 passed, 0 refused
+  GATE_EXIT 0
+

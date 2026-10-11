@@ -291,4 +291,25 @@ for (const s of POPULATION) {
 }
 console.log(`  RESULT ${passed} passed, ${refused} refused`);
 // The gate's own exit code is its verdict: any refused script fails the gate.
+
+// DURABLE RECORD, added 2026-10-11T09:06Z. The refusal of 07:14 is unrecoverable because
+// nothing here kept the output: the verdict went to a terminal that had scrolled away, and
+// the commit that triggered it never happened, so there was no second record either. A
+// gate that cannot say WHY it said NO last time is a gate that will be re-diagnosed from
+// scratch every time one refuses. Every run now appends its whole verdict, dated.
+import { mkdirSync as _gateMk, appendFileSync as _gateAppend } from "node:fs";
+try {
+  const _logDir = join(HERE, "state", "gate");
+  _gateMk(_logDir, { recursive: true });
+  _gateAppend(join(_logDir, "gate-log.txt"), [
+    `GATE_RUN ${new Date().toISOString()}`,
+    `  POPULATION ${POPULATION.length} probe scripts`,
+    `  RED_ARM refused=${arm.refused}`,
+    ...rows.map(([s, v, why]) => `  ${s.padEnd(20)} ${v.padEnd(10)} ${why}`),
+    `  RESULT ${passed} passed, ${refused} refused`,
+    `  GATE_EXIT ${refused === 0 ? 0 : 1}`,
+    "",
+  ].join("\n") + "\n");
+} catch { /* recording evidence must never change the verdict */ }
+
 process.exit(refused === 0 ? 0 : 1);
