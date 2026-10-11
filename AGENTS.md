@@ -159,9 +159,31 @@ entirely on what the owner has routed into a virtual cable, and a name in
   linhas, sha256 `503F095DF893F358E60645084CDD2C7C72F8D7F1CAA1B1945879AAB27A253E59`** (instrumento: `node`
   sobre os bytes + `crypto.createHash("sha256")`), e `git status --porcelain -- worker/sotto_worker.py`
   devolve VAZIO contra o tip `749f431` — ou seja este é o revision committed, não um working tree sujo.
-  Os anchors de linha citados acima foram medidos na revisão de 238 427 B e **NÃO** foram re-medidos aqui:
-  trate-os como HINT e re-corra o `grep` (é a regra 2 deste ficheiro). O pin de 244 046 B é o que o worker
-  tem hoje; `_main/exit3-armB-worker.jsonl` (acima) foi produzido por uma revisão anterior e continua a
+    **POR-APP, STEP 2/3 FECHADO EM CÓDIGO 2026-10-11 — a separação por app existe agora no worker.**
+  A rung `p` oferece UM processo (`--target-pid` / `SOTTO_TARGET_PID`), só atrás de `if target_pid:` e DEPOIS da rung C (um `--device` explícito continua a ganhar); sem pid a lista de candidatos é a de antes.
+  `ProcessLoopbackTap` (VAD\Process_Loopback, PROPVARIANT directo vt=VT_BLOB/cbSize=12,
+  INCLUDE_TARGET_PROCESS_TREE=0, formato DECLARADO float32/48000/2ch porque GetMixFormat é
+  E_NOTIMPL) copia o contrato de leitura do WasapiLoopbackTap, portanto a escada, o ledger, o
+  `close_tap()` e o verdict de silêncio não precisam de ramo. Cada evento de legenda leva agora
+  `source` = `proc:<pid>` / `device:<name>` / `file:<name>`, calculado da LINHA DE CANDIDATO que a
+  escada abriu e OMITIDO (não nulo) quando não há fonte — logo `--selftest` e o braço de ficheiro emitem os
+  mesmos bytes de antes. Se a escada passar do processo do app com um pid pedido, o run diz uma vez,
+  em stderr e no evento: `state="device-rotated" reason="per-app-tap-lost"` — nunca cai em
+  silêncio para a mistura do endpoint.
+  **DEFEITO APANHADO E CORRIGIDO AQUI:** o código entregue pela lane não importava — `import ctypes` neste
+  ficheiro é LOCAL a `_pmc()`, portanto o bloco PLP de nível de módulo lia um nome por ligar e
+  `import sotto_worker` morria com `NameError: name 'ctypes' is not defined` (o
+  `py_compile` passa, e a ordem do dono proíbe o lançamento que o teria apanhado: o app arrancava,
+  gerava o worker e não mostrava nada). Corrigido com um `import ctypes` de nível de módulo.
+  Instrumento `_main/per-app-source-plumbing-oracle.py` (em processo, não lança nada): 24 checks,
+  `VERDICT: PASS` rc=0; `--neg-arm` com dois mutantes numa cópia — **RED** (chave `source`
+  removida — CHK-4/CHK-5; `import ctypes` removido — reproduz o NameError exacto). Receipt
+  `_main/receipt-20261011-per-app-tap-step2.md`; pin do worker **291 873 B / `EFDFB098…`**.
+  **NÃO MEDIDO:** se um tap de processo abre DENTRO do worker num pid real; se duas apps ficam
+  separadas ponta a ponta (STEP 5, dois workers num shell, NÃO existe); e o painel ainda casa a
+  linha só por `start` (STEP 4), portanto duas fontes com o mesmo segundo de ãudio colidem.
+Os anchors de linha citados acima foram medidos na revisão de 238 427 B e **NÃO** foram re-medidos aqui:
+  trate-os como HINT e re-corra o `grep` (é a regra 2 deste ficheiro). O pin vigente é 291 873 B / `EFDFB098…`, quarta revisão; o antigo 244 046 B era o commit `749f431`, e já não é o que o worker tem; `_main/exit3-armB-worker.jsonl` (acima) foi produzido por uma revisão anterior e continua a
   ser prova válida da ORDEM do verdict, que é o que aquele bullet afirma. **That revision moved by one line and one
   byte while this bullet was being written** (from 173389 B / `def rerun` `:2655` to 173388 B / `:2654`),
   which is the point of rule 2 below: treat every line number here as a HINT and re-run the grep. So the
