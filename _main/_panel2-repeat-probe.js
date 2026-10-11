@@ -37,9 +37,9 @@
  *      the row that was rewritten, and the revision's text is the row's CURRENT
  *      text — the stale wording is nowhere in the box.
  *   E  BOTH COLOURS, in this one command: the same fixture against a COPY of
- *      `panel.js` with the identity rule disabled (`--revert`, the two lines that
- *      make the lookup return nothing) must go RED on A/B/C and print the
- *      duplicated rows.
+ *      `panel.js` with the identity rule disabled (`--revert`: the ONE lookup line
+ *      that decides whether this commit belongs to a row already on screen is made
+ *      to return nothing) must go RED on A/B/C and print the duplicated rows.
  *
  *   node _main/_panel2-repeat-probe.js
  *   node _main/_panel2-repeat-probe.js --revert      (the negative control)
@@ -224,7 +224,10 @@ function main() {
     // belongs to a row already on screen" always misses, so every commit appends.
     // This is the pre-fix behaviour, reproduced exactly rather than described.
     const src = fs.readFileSync(PANEL_JS, 'utf8');
-    const anchor = '  const existing = start === null ? null : committedByStart.get(start) || null;';
+    // REPOINTED 2026-10-11 (STEP 4): the identity lookup is now keyed by
+    // `rowIdentity(source, start)` (panel.js:326), not by `start` alone, so the
+    // anchor is today's line at panel.js:916.
+    const anchor = '  const existing = identity === null ? null : committedByStart.get(identity) || null;';
     if (!src.includes(anchor)) {
       console.log('SETUP ERROR: the identity lookup anchor is not in panel.js — the control cannot be built.');
       return 2;
