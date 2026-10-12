@@ -73,6 +73,8 @@ const node = [
   ['_main/redux-live-contract-oracle.js', 'redux-live-contract 8/8'],
   ['_main/panel-row-identity-oracle.js', 'panel-row-identity'],
   ['_main/historico-vs-redux-probe.js', 'historico-vs-redux GREEN'],
+  ['_main/history-producer-gate.js', 'history-producer-gate (row F2, was un-gated)'],
+  ['_main/history-producer-gate.js --control-stamp-nvidia', 'history-producer-gate control'],
 ];
 
 const run = (cmd, args, label) => {

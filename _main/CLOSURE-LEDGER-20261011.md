@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 125 / open 11 / in-flight 0** as this file is written, read from the gate itself.
+**applied 126 / open 10 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 11 rows whose state cell reads OPEN
+## 1. The live product — 10 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -41,12 +41,6 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |  |
-
-### transcript/provenance (1)
-
-| id | finding (from the map) | where | state as filed |
-|---|---|---|---|
-| F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |  |
 
 ### worker/audio/ASR (2)
 

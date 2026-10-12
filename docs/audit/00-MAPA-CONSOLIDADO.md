@@ -282,7 +282,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
 | F1 | o arranque documentado (run.cmd) nao arranca worker nenhum -> Alt+C nunca transcreve (`auditoria-completa-20261007.md:63`) | **APPLIED** — §12.3 (:695-702): corrigido com START_REASONS + guarda antes do spawn + gate novo; §11 :619 |
-| F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |
+| F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | `_main/history-producer-gate.js` (GREEN `producer-wired-through` + `--control-stamp-nvidia` RED), `worker/sotto_worker.py:3137` (`REDUX_PRODUCER`), `:3635`/`:3673` (estampagem), `:3270`/`:4128` (flag OFF por omissao), `app/panel/caption-formulation.js` (forma live) | **[2026-10-11] APPLIED (REFUTADO) — o veredicto citado nesta linha esta STALE, e o instrumento que o produz diz o CONTRARIO** — a linha cita `PRODUCER-VERDICT: no-producer-in-tree (:663)`; **corrido agora**, `node _main/history-producer-gate.js` devolve **`RESULT: GREEN — PRODUCER-VERDICT: producer-wired-through`** (rc=0). O portao nao so diz que ha um produtor na arvore: nomeia as **tres** invariantes que mediu — **ARM P1** (caminho batch) 1 de 1 aceite e **1 linha em disco**; **ARM P2** (forma LIVE, sem produtor) **0 de 1** — o predicado RECUSA-a, que e o que a linha afirma e e verdade; **ARM P3** (fragmentos da MESMA linha a declarar produtores diferentes) recusada no motor. E o instrumento sabe dizer NAO: `--control-stamp-nvidia` devolve `verdict real = RED`, `CONTROL PASS` (apanha um tag de produtor encaminhado que nao e o canonico). **O que sobra da afirmacao, dito com precisao:** "nenhuma meta do motor **live** traz producer" e **VERDADE** — e de proposito: a forma streaming nunca declara produtor e a formulacao do painel tem de fechar sem ele (`caption-formulation.js`, citado em `:127-128` do portao). "O HISTORY **nao pode ser alimentado**" e **FALSO como absoluto**: o caminho canonico esta aberto para o batch e uma linha dele chega ao transcript (P1). O que e verdade e o que o portao escreve por palavras proprias: *"the history is not, and cannot become, the history of the live engine"* — a assimetria e a decisao, nao um fio em falta. Ancoras do codigo re-medidas nesta revisao: `REDUX_PRODUCER = "redux"` em `worker/sotto_worker.py:3137`, estampado em `:3635` e `:3673`, atras da flag `--redux-when-hidden` com **DEFAULT OFF** (`:3270`, ajuda em `:4128`, opt-in calculado em `:5219`) — logo o caminho enviado continua a ser o live, e por isso o HISTORY fica vazio **por decisao**, nao por falta de escrita. **O INSTRUMENTO DESTA LINHA PASSOU A SER GATED**: `_main/history-producer-gate.js` e o seu braco de controlo entraram na bateria (`instruments-battery.mjs`), porque um gate que ninguem corre e uma afirmacao com prazo de validade. **NAO MEDIDO:** nenhum run live (o portao reproduz as DUAS formas em processo) e a flag do batch continua OFF — o que a fonte diz sobre o motor live nao foi re-medido num run real | |
 | F3 | done.verdict=captions-emitted com captions:0 e exit 0 (`auditoria-completa-20261007.md:65`) | **APPLIED** — §11 :588: captions==0 ja nao produz captions-emitted (verdict-gate GREEN 11/11); residual declarado em :774-775 |
 | F4 | o tap WASAPI nunca e fechado na rotacao; o endpoint abandonado continua a entregar audio (`auditoria-completa-20261007.md:66`) | **APPLIED** — §11 :590: VERDICT PASS 71/71, stop() idempotente e nenhum on_block depois de stop(); residual: rotacao real nao exercida (:765-767) |
 | F5 | o hot reload do painel navega para chrome-error:// (`auditoria-completa-20261007.md:67`) | **APPLIED** — §11 :620: reload_panel_assets faz o bounce por stage.html; verificado por LEITURA, um hot reload real nao foi medido (:761-763) |
@@ -304,8 +304,8 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 125
-- **OPEN:** 11
+- **APPLIED:** 126
+- **OPEN:** 10
 - **IN-FLIGHT:** 0
 
 **NOTA 2026-10-11 (TERCEIRA auditoria — a CADEIA DE PROVA, nao as afirmacoes):** as duas rondas
@@ -328,7 +328,7 @@ eram erro MEU, nao do mapa**. `--neg-arm` corre sobre dois mapas sinteticos (um 
 inexistente, outro a citar instrumento com risco de lancamento) e exige os dois sinalizados; medido
 `absent=1` e `risky=1`, `NEG-ARM PASS`.
 
-Conferencia: 125 + 11 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 126 + 10 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 **NOTA 2026-10-11 (SEGUNDA reconciliacao — o mesmo defeito noutra forma):** o mapa tem DUAS especies de
