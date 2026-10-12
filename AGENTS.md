@@ -648,8 +648,7 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   `sotto: ARGS_REJECTED rc=<n> by=run.cmd-preflight` to `_main/webview-run.log`
   (before the fix that file gained NO bytes at all) and `exit /b <child rc>`;
   nothing is spawned. `--check-args` is `help=argparse.SUPPRESS`, so `run.cmd
-  --help` output is byte-identical before/after (measured: 2272 B, rc 0, BOTH
-  sides). The two branches SottoRunCmdEntry measured working stay working:
+  --help` output is byte-identical before/after **the SIZE here was stale and is corrected per rules 1 and 2 of this file: 2272 B was the 2026-10-06 revision; re-measured 2026-10-12 the output is 4872 B, 78 lines, 78 CRLF / 0 bare LF, rc 0, sha256 3EB553400B3A5AAF9EDA65D5AE894DA0C7B4F35D99250F1BBADEF9197D6B1744** -- the TEXT grew because flags were added, which is why the number must carry its date. The claim is the COMPARISON (the pre-flight does not change the output), and `_main/run-cmd-exit-oracle.py` measures both sides). The two branches SottoRunCmdEntry measured working stay working:
   pythonw for a normal hidden launch (arm rc 0, and the wrapper returns in
   ~250 ms while the app lives 8 s — it still detaches), python.exe for the
   `--help`/`--dump-dom`/`--selftest`/`--memory` flags. NOT covered by the
