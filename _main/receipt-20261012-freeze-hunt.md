@@ -322,3 +322,40 @@ or "AGENTS.md" was written; no process was launched or killed by this lane; no c
 window was created ("pythonw.exe" throughout; PowerShell only from ".ps1" files); no
 "AGENTS.md" or context file was grepped; "H:/" paths only; the kill filter rule was
 moot (nothing killed).
+
+## 8. O outro hunter REFUTOU a minha atribuicao -- registado, nao escondido
+
+O hunter H1 (measurement-only, nada lancado) mediu o contrario do meu titulo:
+
+| medicao | H1 | o que eu tinha |
+|---|---|---|
+| cadencia da rotacao | **1,33/min** (uma a cada ~45 s), 3 formas: 90 s -> 2; 180 s -> 4; 33,4 min -> 44 em 2 004 s | 34 rotacoes a 4,4-22 s (H2, run 39388) |
+| atribuicao directa | 150 s, **149 pausas medidas**, **ZERO** coincidiram com device-rotated (tap-stalled) | -- |
+| tecto da pausa da maquina | **57,098 ms** (gc on) / 48,065 ms (gc off), controlo O(1) no mesmo processo | 238,8 ms (a rampa antiga) |
+| o que bate com "a cada alguns segundos" | **o hook WH_MOUSE_LL**: 403 eventos em 34,1 min = 11,82/min = um a cada 5,1 s | -- |
+
+Conclusao do H1, na integra: "THE TAP ROTATION IS NOT THE FREEZE." As minhas
+janelas ao vivo (P9/P10) diziam o mesmo sem eu ter percebido: pior 209,1 ms e
+152,6 ms, nada acima de 250 ms. O H1 descartou as leituras de 100-743 ms de
+tres corridas antigas porque essas corridas alocavam centenas de MB -- um gen2
+GC custa 20-120 ms, exactamente a dimensao do que se esta a medir.
+
+A pista que fica aberta, com o numero: o hook de clique da shell
+(`app/webview/sotto_webview.py:1996-2016` -> _consider -> _record -> log()
+`:599-610`) faz um print(flush=True) MAIS escrita de log DENTRO do proc do
+hook, 11,82 vezes por minuto. E o unico evento do Sotto cuja cadencia bate
+com a queixa do dono. NAO MEDIDO: a duracao de UMA invocacao do hook -- essa
+e a medicao que transforma a cadencia em duracao, e so ela confirma ou mata
+esta hipotese. Se der um bloqueio multi-ms, a cura e tirar a escrita de
+dentro do proc do hook (fila + thread escritora) -- decisao do Lead.
+
+Achado paralelo do H1: o estado `no-audio` do painel e um latch velho
+(evidencia a ~3 006 s) enquanto o worker transcreve com peak=0.64 -- defeito
+real da UI, recibo separado.
+
+E o restart loop do worker tem uma causa que me pertence: 8 BRIDGE_EXIT, 6
+BRIDGE_RESTART, 6 HOT_RELOAD_WORKER_RESTART desde as 14:0x, com
+`files=["sotto_worker.py"]` -- fui EU que editei o worker as 13:50 e as 14:17,
+e foi a lane S8 que criou model_vram_pool.py + vram_residency.py as 13:51.
+Cada reinicio custa ~1 GB de carregamento de modelo. A licao fica escrita:
+editar o worker enquanto o dono esta no PC cobra-lhe um load por edicao.
