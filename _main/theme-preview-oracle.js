@@ -890,7 +890,7 @@ check('ARM14.4 panel.css hides #strip-theme-chevron on the strip surface',
 
 /* The dropdown itself: the list is refused on the strip, by the surface. */
 check('ARM14.5 panel.css refuses .theme-dropdown on the strip surface with !important',
-  /body\[data-surface="strip"\]\.theme-dropdown\s*\{[^}]*display:\s*none\s*!important/.test(cssBytes),
+  /body\[data-surface="strip"\]\s*\.theme-dropdown\s*\{[^}]*display:\s*none\s*!important/.test(cssBytes),
   'rule absent');
 check('ARM14.6 panel.css still STYLES .theme-dropdown for the panel surface',
   /\.theme-dropdown\s*\{[^}]*position:\s*absolute/.test(cssBytes)
@@ -917,18 +917,23 @@ check('ARM14.13 the deferred themesheets are NOT linked eagerly',
   !/href="themes\/cinematic\.css"/.test(htmlBytes), 'cinematic.css is linked eagerly');
 
 /* ══════════════════════════════════════════════════════════════════════════
- * ARM 11 (--neg-arm): the liveness gate can go RED.
+ * ARM 15 (--neg-arm): the gate can go RED. Six mutants of the SHIPPED file,
+ * each in its own copy, each expected to fail the arm that owns the property it
+ * breaks. M1/M2/M3 are the liveness ones (deferral, persistence, coalescing).
+ * M4/M5/M6 are the re-anchor ones: the strip chevron restored, the strip-bar
+ * guard removed, the panel trigger deleted. If any of the six stays green the
+ * gate is decorative — including the three that existed before this lane.
  *
- * Three mutants of the SHIPPED file, each in a copy, each expected to fail the
- * arm that owns the property it breaks. If any of them stays green the gate
- * is decorative.
+ * Every mutant goes to I:/cc-tmp (G: fills and kills lanes on this box), each in
+ * a directory of its own so `require` re-executes it rather than handing back the
+ * cached module that already holds the FIRST mount's dropdown and listeners.
  * ══════════════════════════════════════════════════════════════════════════ */
 if (process.argv.indexOf('--neg-arm') >= 0) {
   const src = fs.readFileSync(path.join(PANEL, 'theme-switcher.js'), 'utf8');
   const tuneSrc = fs.readFileSync(path.join(PANEL, 'theme-tune.js'), 'utf8');
 
   async function withSource(label, switcherSrc, tuneSrc2, arm) {
-    const dir = path.join(require('os').tmpdir(), 's6-neg-' + label);
+    const dir = path.join(TMP_BASE, 's6-neg-' + label);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'theme-switcher.js'), switcherSrc);
     fs.writeFileSync(path.join(dir, 'theme-tune.js'), tuneSrc2);
@@ -950,12 +955,27 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
   }
 
   /* M1: the deferral removed from the tuning layer — the preview must now cost
-   * an apply per hover. */
-  await withSource('no-defer', src, tuneSrc.replace('if (previewOpen()) {', 'if (false) {'), async function (sw, tn) {
+   * an apply per hover.
+   *
+   * NOTE ON THE DOUBLE `openDropdown()` (this one and the one inside `withSource`)
+   * — it is NOT a redundancy, and removing it makes the arm go GREEN. `openDropdown`
+   * focuses the first option, which queues `flushPreview` on the rAF queue; the arm's
+   * `resetCounters()` then CLEARS that queue, so a mutant whose applies are counted
+   * from the rAF callback would measure nothing. The second open re-arms the frame
+   * the reset just dropped. Leave both calls in place. */
+  await withSource('no-defer', src,
+      tuneSrc.replace('if (previewOpen()) {', 'if (false) {'), async function (sw, tn) {
     resetCounters();
     openDropdown();
-    hover('theme-3');
+    /* HOVER A THEME THE DOCUMENT IS NOT ALREADY ON. theme-tune.js:978 pays the owed
+     * work only when `appliedTheme !== target`, so re-hovering the CURRENT theme is
+     * a no-op that fires no apply at all -- and this mutant must COST an apply for
+     * the gate to be able to say NO. Picking a differing theme does not change what
+     * the mutant breaks; it removes an accident of what the document sat on. */
+    var on = doc.documentElement.getAttribute('data-theme');
+    hover(on === 'theme-3' ? 'theme-1' : 'theme-3');
     await tick(1);
+    console.error('DBG m1 applyCalls=' + tn.applyCalls() + ' on=' + doc.documentElement.getAttribute('data-theme') + ' attr=' + JSON.stringify(attributeWrites) + ' store=' + JSON.stringify(store));
     return tn.applyCalls() === 0;   // mutant: applies ran, so this is false
   });
 
@@ -975,6 +995,56 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
     openDropdown();
     hover('theme-1'); hover('theme-2'); hover('theme-3');
     return attributeWrites.length === 1;  // mutant: 3 writes, so this is false
+  });
+
+  /* ── THE RE-ANCHOR MUTANTS (the Lead's required deliverable) ───────────────────
+   * These three break the re-anchor in three different ways, so the arms above
+   * cannot all be answering one property. Each is a one-string copy of the
+   * SHIPPED file: the mutation is a splice into the source text, never an edit to
+   * the real module, and the temp copy goes to I:/cc-tmp. */
+
+  /* M4: the strip chevron is built again — the pre-2026-10-12 behaviour. ARM 11.5
+   * is the arm that must catch it: the strip bar gains a chevron that the module
+   * wired, and the strip is no longer bare. */
+  await withSource('strip-chev-restored', src.replace(
+    "  var host = doc.querySelector('.panel__controls');",
+    "  var host = doc.querySelector('.panel__controls');\r\n" +
+    "  if (doc.querySelector('.stripbar')) {\r\n" +
+    "    var shost = doc.getElementById('strip-theme-button') ? doc.getElementById('strip-theme-button').parentNode : doc.querySelector('.stripbar');\r\n" +
+    "    var sb = doc.createElement('button'); sb.id = 'strip-theme-chevron'; sb.className = 'strip-button'; sb.setAttribute('aria-controls', 'theme-dropdown'); sb.dataset.themeChevron = 'true'; sb.setAttribute('aria-label', 'Escolher tema'); sb.setAttribute('aria-haspopup', 'listbox');\r\n" +
+    "    if (shost) shost.insertBefore(sb, doc.getElementById('strip-theme-button') ? doc.getElementById('strip-theme-button').nextSibling : null);\r\n" +
+    "    doc.querySelector('.stripbar') && doc.querySelector('.stripbar').appendChild(sb);\r\n" +
+    "  }"
+  ), tuneSrc, async function (sw) {
+    openDropdown();
+    return doc.getElementById('strip-theme-chevron') === null;  // mutant: it built one
+  });
+
+  /* M5: the strip-bar guard removed from registerChevron — a chevron the strip
+   * bar SHIPS is wired again. ARM 12.3 is the arm that must catch it: that
+   * chevron carries a click listener and can open the list. */
+  await withSource('strip-guard-removed', src.replace(
+    'if (!isPanelChevron(btn)) return null;',
+    ''
+  ), tuneSrc, async function (sw) {
+    doc = makeDocument({ surface: 'strip', stripChevron: true });
+    root.document = doc;
+    sw.mount();
+    var sc = doc.getElementById('strip-theme-chevron');
+    return !(sc.listeners && sc.listeners.click);  // mutant: it wired a click
+  });
+
+  /* M6: the panel trigger is not created at all. ARM 11.7 is the arm that must
+   * catch it: no #theme-chevron exists, so clicking the RIGHT panel opens
+   * nothing — the trigger is unreachable exactly where the owner put every
+   * button. */
+  await withSource('panel-chev-removed', src.replace(
+    'var host = doc.querySelector(\'.panel__controls\');',
+    'var host = null;'
+  ), tuneSrc, async function (sw) {
+    openDropdown();
+    var dd = doc.getElementById('theme-dropdown');
+    return !!dd && dd.hidden === false;  // mutant: it never opened
   });
 }
 
