@@ -187,7 +187,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 |---|---|---|
 | F1 | pump a 25 ms contra um anel de 22 ms -> ~18 % dos quadros perdidos em silencio (`audio-path.md:268`) | **APPLIED** — herdado da linha #1 (period = min(0.005, ...) = 5 ms) |
 | F2 | o overflow e invisivel porque flags e lido e descartado (`audio-path.md:274`) | **APPLIED** — herdado da linha #9, fechada em 2026-10-11: o `flags` deixou de ser descartado (SILENT contado, `DATA_DISCONTINUITY` contado agora, posicao comparada) e a perda de posicao tem o seu proprio contador |
-| F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |
+| F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | `worker/wasapi_loopback.py:895-907` (par `Initialize`), `:969` (periodo), `:952-968` (medicao de duty), `_main/wasapi-buffer-fallback-oracle.py` | **[2026-10-11] APPLIED — a afirmacao "codigo morto" e FALSA, e a premissa esta STALE** — tres coisas, cada uma num sitio diferente: (1) **AS ANCORAS ENVELHECERAM**: o achado cita `wasapi_loopback.py:416` e o retry em `:418-425`; no ficheiro live o par `Initialize` esta em **`:895-907`** (regra 2 do AGENTS.md). (2) **"CODIGO MORTO" E FALSO**: o retry esta guardado pela **falha da PRIMEIRA** chamada — `init(..., 0, 0, ...)` e depois `if hr != 0: init(..., HNS_100MS, 0, ...)` — logo corre sempre que um dispositivo ou driver recusar duracao zero; isso e uma condicao real de dispositivo, nao uma impossibilidade. O que e verdade e mais estreito, e e o que o instrumento afirma: **o retry e CONDICIONAL e leva `HNS_100MS`**. (3) **A PREMISSA ESTA STALE — ja nao existe um poll de 25 ms**: o periodo e hoje `min(0.005, max(0.001, block_ms/1000.0/20.0))` = **5,0 ms** com o bloco de **100 ms** que o `worker/config.json` entrega (medido: `block_ms = 100.0`), ou seja **~4x mais rapido do que o anel de 22 ms** que o proprio modulo registou (1056 frames a 48 kHz) — e o modulo carrega a sua propria medicao de duty (**0,815 -> 0,999**, mesmo processo, mesmo dispositivo, mesmo bloco) em `:955-968`, com a formula ANTIGA (`block_ms/1000/4`) **ausente** do ficheiro. A exigencia que o achado nomeia foi satisfeita pela via mais barata e ja medida — **mudando o POLL, nao pedindo um buffer maior**. Instrumento `_main/wasapi-buffer-fallback-oracle.py`: prova a condicionalidade fatiando a regiao **ENTRE** as duas chamadas (a primeira versao testava "o guarda esta na regiao", o que e verdade mesmo com o retry desguardado — **foi o `--neg-arm` que o apanhou**, ao reportar `guarded=true` com o mutante aplicado), avalia a formula contra o `block_ms` real do config e exige que o poll seja mais rapido que o anel registado; `--neg-arm` com DOIS mutantes fieis — guarda trocado por `if True:` **dentro da regiao** (`guarded=false`, flipa) e a **frase antiga** reposta (`period = block_ms/1000.0/4.0` -> 25,0 ms >= 22 ms, flipa); o primeiro mutante tambem teve de ser corrigido, porque mutar o divisor dentro de `min(0.005, ...)` nao move nada — **o limite de 5 ms ganha**. **NAO MEDIDO:** nenhum dispositivo foi aberto (abrir um dispositivo e abrir um dispositivo, e o dono esta a usar a maquina) — o anel e citado da medicao de 2026-10-06 do proprio modulo, nao re-medido | |
 | F4 | CoInitializeEx rejeita S_FALSE e um segundo open na mesma thread rebenta (`audio-path.md:284`) | **APPLIED** — herdado da linha #37 (medido pos-fix em flat-endpoint.md:125-142) |
 | F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **APPLIED** — herdado da linha #38, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #38 |
 | F6 | _pump muta buf/acc com np.concatenate a cada emit (`audio-path.md:306`) | **APPLIED** — herdado da linha #39, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #39 |
@@ -304,8 +304,8 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 124
-- **OPEN:** 12
+- **APPLIED:** 125
+- **OPEN:** 11
 - **IN-FLIGHT:** 0
 
 **NOTA 2026-10-11 (TERCEIRA auditoria — a CADEIA DE PROVA, nao as afirmacoes):** as duas rondas
@@ -328,7 +328,7 @@ eram erro MEU, nao do mapa**. `--neg-arm` corre sobre dois mapas sinteticos (um 
 inexistente, outro a citar instrumento com risco de lancamento) e exige os dois sinalizados; medido
 `absent=1` e `risky=1`, `NEG-ARM PASS`.
 
-Conferencia: 124 + 12 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 125 + 11 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 **NOTA 2026-10-11 (SEGUNDA reconciliacao — o mesmo defeito noutra forma):** o mapa tem DUAS especies de

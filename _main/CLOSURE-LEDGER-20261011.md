@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 124 / open 12 / in-flight 0** as this file is written, read from the gate itself.
+**applied 125 / open 11 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 12 rows whose state cell reads OPEN
+## 1. The live product — 11 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -48,12 +48,11 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |  |
 
-### worker/audio/ASR (3)
+### worker/audio/ASR (2)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 62 | `subprocess.run(timeout=)` a volta do `electron.exe` multi-processo pode nao ser tecto [INFERENCE] | `_main/_run-hidden.py:24` | **OPEN** |
-| F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |  |
 | F4 | subprocess.run(timeout=) a volta do electron.exe multi-processo pode nao ser tecto [INFERENCE] (`windows-landmines.md:317`) | **OPEN** — herdado da linha #62 |  |
 
 ## 2. What BLOCKS the open rows, by class

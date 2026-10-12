@@ -59,6 +59,8 @@ const py = [
   ['_main/run-cmd-verdict-attribution-oracle.py --neg-arm', 'verdict-attribution neg'],
   ['_main/runcmd-arm-coverage-oracle.py', 'runcmd-arm-coverage (rows #58/#D)'],
   ['_main/runcmd-arm-coverage-oracle.py --neg-arm', 'runcmd-arm-coverage neg'],
+  ['_main/wasapi-buffer-fallback-oracle.py', 'wasapi-buffer-fallback (row F3)'],
+  ['_main/wasapi-buffer-fallback-oracle.py --neg-arm', 'wasapi-buffer-fallback neg'],
 ];
 
 const node = [
