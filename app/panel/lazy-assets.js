@@ -183,6 +183,13 @@
    *   skin-host.js   -> reads it at parse time and mounts
    *   skin-layout.css-> hides the stock panel while the skin is up */
   function loadSkinPair() {
+    /* ASK BEFORE INJECT, for all three. The shell's gate answers an un-asked
+     * deferred URL with an EMPTY body, so an inject without an ask gives a
+     * script that parses to nothing: window.SOTTO_SKINS stays undefined and
+     * skin-host.js mounts nothing while cinematic.css DOES arrive, i.e. a cine
+     * theme half-applied. Measured: the first revision of this file asked only
+     * for the theme stylesheet and shipped exactly that half. */
+    ask('skins/skins.js');
     var step = inject('script', { src: 'skins/skins.js',
                                    'data-sotto-lazy': 'skin' });
     log('inject', 'skins/skins.js' + (step ? '' : ' FAILED'));
@@ -190,11 +197,13 @@
     /* 812 KB of array literals executes synchronously on load, so by the time the
      * next line runs window.SOTTO_SKINS exists. */
     step.addEventListener('load', function () {
+      ask('skin-host.js');
       var host = inject('script', { src: 'skin-host.js',
                                      'data-sotto-lazy': 'skin' });
       log('inject', 'skin-host.js' + (host ? '' : ' FAILED'));
       if (!host) return;
       host.addEventListener('load', function () {
+        ask('skin-layout.css');
         inject('link', { rel: 'stylesheet', href: 'skin-layout.css',
                          'data-sotto-lazy': 'skin' });
         log('inject', 'skin-layout.css');
