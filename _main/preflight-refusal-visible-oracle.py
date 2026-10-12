@@ -43,6 +43,16 @@ RUNCMD = os.path.join(APPDIR, "run.cmd")
 CONTROL = os.path.join(APPDIR, "_oracle-prefix-run.cmd")
 LOG = os.path.join(ROOT, "_main", "webview-run.log")
 NEEDLE = "unrecognized arguments"
+#: The wrapper's OWN receipt line. MEASURED 2026-10-12: measuring this gate by the
+#: log's SIZE is a race the wrapper cannot win -- the app writes to the SAME file
+#: while it runs, so a concurrent appender made arm 3 report "a valid pre-flight
+#: wrote to the log (+624 B)" for a run whose wrapper had written NOTHING. Since the
+#: Windows autostart task was registered the app is up essentially always, so that
+#: race is the normal case. The claim under test is "the WRAPPER left a receipt", so
+#: the receipt is what gets read. This is STRICTER, not looser: the size could grow
+#: from the app's own traffic while the wrapper stayed mute, and the size form would
+#: have answered PASS.
+MARKER = "PREFLIGHT_REFUSED"
 PREFIX_COMMIT = "3e85202"  # the wrapper as it shipped BEFORE the G5 cure; not HEAD, by design
 
 
@@ -62,6 +72,19 @@ def log_size():
         return -1
 
 
+def log_delta(before):
+    """The bytes appended since `before`, or None when nothing was appended."""
+    try:
+        size = os.path.getsize(LOG)
+    except OSError:
+        return None
+    if size <= before:
+        return None
+    with open(LOG, encoding="utf-8", errors="replace") as handle:
+        handle.seek(before)
+        return handle.read()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parsed = parser.parse_args(argv)
@@ -72,7 +95,9 @@ def main(argv=None):
     before = log_size()
     rc1, out1 = run_wrapper(RUNCMD, ["--bogus-flag"])
     after = log_size()
-    say("  arm 1  --bogus-flag : rc=%d, caller text=%d B, log %+d B" % (rc1, len(out1), after - before))
+    delta1 = log_delta(before) or ""
+    say("  arm 1  --bogus-flag : rc=%d, caller text=%d B, log %+d B, receipt=%s"
+        % (rc1, len(out1), after - before, str(MARKER in delta1).lower()))
     say("         caller sees: " + " | ".join(line for line in out1.splitlines() if line.strip())[:190])
     if rc1 != 2:
         wrong.append("arm 1: a rejected flag no longer returns 2 (got %d)" % rc1)
@@ -80,8 +105,11 @@ def main(argv=None):
         wrong.append("arm 1: the caller does NOT see which argument argparse rejected")
     if "--bogus-flag" not in out1:
         wrong.append("arm 1: the refused FLAG is not named in the caller output")
-    if after <= before:
-        wrong.append("arm 1: the log took no bytes -- a hidden run would leave no reason at all")
+    if MARKER not in delta1:
+        wrong.append("arm 1: the log took no RECEIPT from this wrapper -- a hidden run"
+                     " would leave no reason at all (any bytes may be the app's own)")
+    if NEEDLE not in delta1:
+        wrong.append("arm 1: the receipt does not carry WHICH flag argparse rejected")
 
     rc2, out2 = run_wrapper(RUNCMD, ["--help"])
     say("  arm 2  --help       : rc=%d, caller text=%d B" % (rc2, len(out2)))
@@ -91,11 +119,14 @@ def main(argv=None):
     before3 = log_size()
     rc3, out3 = run_wrapper(RUNCMD, ["--check-args"])
     after3 = log_size()
-    say("  arm 3  --check-args : rc=%d, caller text=%d B, log %+d B" % (rc3, len(out3), after3 - before3))
+    delta3 = log_delta(before3) or ""
+    say("  arm 3  --check-args : rc=%d, caller text=%d B, log %+d B, receipt=%s"
+        % (rc3, len(out3), after3 - before3, str(MARKER in delta3).lower()))
     if rc3 != 0:
         wrong.append("arm 3: a VALID list is refused (rc=%d) -- the cure would cost a good launch" % rc3)
-    if after3 != before3:
-        wrong.append("arm 3: a valid pre-flight wrote to the log (%+d B)" % (after3 - before3))
+    if MARKER in delta3:
+        wrong.append("arm 3: a VALID pre-flight wrote a refusal receipt -- the cure"
+                     " would cost a good launch")
 
     control_written = False
     try:
@@ -126,13 +157,14 @@ def main(argv=None):
             # the RECEIPT: the pre-fix wrapper own log line never names the flag.
             say("  arm 4  CONTROL (pre-fix wrapper from git HEAD): rc=%d, caller text=%d B (SAME as arm 1"
                 " -- the harness gives it a pipe), log delta=%+d B, delta names the flag=%s"
-                % (rc4, len(out4), after4 - before4, str(NEEDLE in delta).lower()))
+                % (rc4, len(out4), after4 - before4,
+                     str(MARKER in delta or NEEDLE in delta).lower()))
             if rc4 != 2:
                 wrong.append("arm 4: the pre-fix wrapper returned %d, expected 2" % rc4)
             # "2>" alone is too crude: the pre-fix wrapper already contains ">nul 2>&1". The cure has
             # markers of its own -- the REFUSAL variable and the redirect onto it.
             carries_cure = ("REFUSAL=" in show.stdout) or ('2>"%REFUSAL%' in show.stdout)
-            if carries_cure or NEEDLE in delta:
+            if carries_cure or MARKER in delta or NEEDLE in delta:
                 wrong.append("arm 4: the control revision " + PREFIX_COMMIT + " already carries the cure --"
                              " it is not a control (did the pin drift?)")
     finally:

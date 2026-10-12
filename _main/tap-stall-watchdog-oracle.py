@@ -167,10 +167,11 @@ PARAMS = ("settled, device_blocks, now, err, emit, close_tap, LoopbackTap, tap_h
           "on_block, device_candidates, audio_cfg, wanted, candidates, attempt_no, counters, "
           "device_peak, time, TAP_STALL_S, TAP_STALL_SAME_DEVICE_TRIES, TAP_STALL_MAX_S, "
           "seed_tap, seed_dev, seed_stall_blocks, seed_stall_since, seed_stall_backoff, "
-          "seed_stall_reopens")
+          "seed_stall_reopens, tap_stall_reason, tap_source, target_pid, TAP_IDLE_MAX_S, "
+          "TAP_REOPEN_MAX, TAP_REOPEN_MIN_S")
 INIT = ("    tap = seed_tap\n    dev = seed_dev\n    stall_blocks = seed_stall_blocks\n"
         "    stall_since = seed_stall_since\n    stall_backoff = seed_stall_backoff\n"
-        "    stall_reopens = seed_stall_reopens\n")
+        "    stall_reopens = seed_stall_reopens\n    idle_logged = False\n")
 RET = ("    return {\"stall_blocks\": stall_blocks, \"stall_since\": stall_since, "
        "\"stall_backoff\": stall_backoff, \"stall_reopens\": stall_reopens, "
        "\"tap\": tap, \"dev\": dev}\n")
@@ -187,6 +188,30 @@ def const(name, default):
 TAP_STALL_S = const("TAP_STALL_S", 8.0)
 TAP_STALL_MAX_S = const("TAP_STALL_MAX_S", 60.0)
 TRIES = int(const("TAP_STALL_SAME_DEVICE_TRIES", 2))
+TAP_IDLE_MAX_S = const("TAP_IDLE_MAX_S", 300.0)
+TAP_REOPEN_MAX = const("TAP_REOPEN_MAX", 20.0)
+TAP_REOPEN_MIN_S = const("TAP_REOPEN_MIN_S", 5.0)
+
+
+def policy_from_source(text):
+    """The policy is TAKEN FROM THE LIVE WORKER FILE, never re-implemented here:
+    a second copy of it would only prove the second copy."""
+    try:
+        start = text.index("def tap_stall_reason(")
+    except ValueError:
+        MISSING.append("tap_stall_reason() not found in the worker")
+        return None
+    out = []
+    for line in text[start:].splitlines():
+        if out and line.strip() and not line.startswith((" ", "\t")):
+            break
+        out.append(line)
+    ns = {"TAP_IDLE_MAX_S": TAP_IDLE_MAX_S, "TAP_REOPEN_MAX": TAP_REOPEN_MAX}
+    exec(compile("\n".join(out), "<policy>", "exec"), ns)
+    return ns["tap_stall_reason"]
+
+
+STALL_POLICY = policy_from_source(src)
 
 
 def run_block(text, args, tag):
@@ -198,14 +223,17 @@ def run_block(text, args, tag):
 
 
 class FakeStream:
+    def __init__(self, dead=False):
+        self.pump_exited = bool(dead)
+
     def start(self):
         return None
 
 
 class FakeTap:
-    def __init__(self, target):
+    def __init__(self, target, dead=False):
         self.rate, self.block = 48000, 4800
-        self.stream = FakeStream()
+        self.stream = FakeStream(dead)
         self.target = target
 
 
@@ -227,7 +255,10 @@ def inputs(blocks_value, stall_blocks, stall_since, stall_backoff, stall_reopens
         device_candidates=lambda cfg, w: list(devs), audio_cfg={}, wanted=None,
         candidates=list(devs), attempt_no=0, counters={"captions": 6},
         device_peak={"value": 0.9}, time=time, TAP_STALL_S=TAP_STALL_S,
-        TAP_STALL_SAME_DEVICE_TRIES=TRIES, TAP_STALL_MAX_S=TAP_STALL_MAX_S)
+        TAP_STALL_SAME_DEVICE_TRIES=TRIES, TAP_STALL_MAX_S=TAP_STALL_MAX_S,
+        tap_stall_reason=STALL_POLICY, tap_source=lambda d: "device:" + str(d.get("name")),
+        target_pid=None, TAP_IDLE_MAX_S=TAP_IDLE_MAX_S, TAP_REOPEN_MAX=TAP_REOPEN_MAX,
+        TAP_REOPEN_MIN_S=TAP_REOPEN_MIN_S)
     return args, emitted, errs, closed
 
 
@@ -242,17 +273,40 @@ if block:
     arm("ARM 3 no false positive while blocks keep arriving", not emitted and not closed,
         summarise(emitted, closed, errs))
 
+    # THE CONTRACT CHANGED 2026-10-12 (concurrent freeze fix): a frozen device_blocks
+    # with a LIVE pump is an IDLE ENDPOINT, and it WAITS. These two arms used to PIN the
+    # old behaviour ("re-open in place"); they now pin the new one.
     a, emitted, errs, closed = inputs(59, 59, time.time() - 20, TAP_STALL_S)
     run_block(block, a, "arm4")
-    st = [(e.get("state"), e.get("reason")) for e in emitted]
-    ok = (("device-rotated", "tap-stalled") in st and ("capture-started", None) in st
-          and len(closed) == 1)
-    arm("ARM 4 blocks frozen -> re-open in place, no exit", ok, summarise(emitted, closed, errs))
+    ok = (not emitted and not closed)
+    arm("ARM 4 blocks frozen 20 s, pump ALIVE -> WAIT (an idle endpoint, not a dead tap)", ok,
+        summarise(emitted, closed, errs))
 
     a, emitted, errs, closed = inputs(59, 59, time.time() - 20, TAP_STALL_S, stall_reopens=TRIES)
     run_block(block, a, "arm4b")
-    moved = any(e.get("state") == "capture-started" and e.get("device") != "CABLE Input (WASAPI)" for e in emitted)
-    arm("ARM 4b retries spent -> a DIFFERENT endpoint from the fresh enumeration", moved and len(closed) == 1,
+    arm("ARM 4b retries spent, pump still alive -> STILL waits", not emitted and not closed,
+        summarise(emitted, closed, errs))
+
+    a, emitted, errs, closed = inputs(59, 59, time.time() - 20, TAP_STALL_S)
+    a["seed_tap"] = FakeTap(a["seed_dev"], dead=True)
+    a["tap_holder"]["tap"] = a["seed_tap"]
+    run_block(block, a, "arm4c")
+    st = [(e.get("state"), e.get("reason")) for e in emitted]
+    ok = (("device-rotated", "pump-dead") in st and ("capture-started", None) in st
+          and len(closed) == 1)
+    arm("ARM 4c pump DEAD -> re-open at once, reason=pump-dead", ok, summarise(emitted, closed, errs))
+
+    a, emitted, errs, closed = inputs(59, 59, time.time() - 400, TAP_STALL_S)
+    run_block(block, a, "arm4d")
+    st = [(e.get("state"), e.get("reason")) for e in emitted]
+    ok = (("device-rotated", "idle-rearm") in st and ("capture-started", None) in st
+          and len(closed) == 1)
+    arm("ARM 4d idle past the 300 s bound -> ONE re-scan, reason=idle-rearm", ok,
+        summarise(emitted, closed, errs))
+
+    a, emitted, errs, closed = inputs(59, 59, time.time() - 400, TAP_STALL_S, stall_reopens=20)
+    run_block(block, a, "arm4e")
+    arm("ARM 4e idle past the bound but TAP_REOPEN_MAX spent -> waits", not emitted and not closed,
         summarise(emitted, closed, errs))
 
     bl = block.splitlines()

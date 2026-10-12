@@ -50,6 +50,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import datetime
 
 import hot_reload
 import panel_state
@@ -87,6 +88,137 @@ PANEL_HEIGHT = 900
 PANEL_MARGIN = 12
 PANEL_MAX_WORK_FRACTION = 0.34
 MAX_CAPTIONS = 200
+
+# --- the deferred-asset gate -----------------------------------------------
+# Owner's order, 2026-10-12, verbatim: "o sotto nao deve carregar tudo de uma vez,
+# apenas o essential". These five resources are NOT on the critical path of the
+# first caption, so the shell answers each with an EMPTY body until the page asks
+# for the real bytes over the bridge (`lazy-asset`). The loader that asks is
+# app/panel/lazy-assets.js, appended to BOOTSTRAP_JS below, which reads the SAME
+# three theme sources theme-switcher.js reads (localStorage, then the document's
+# own data-theme, then the manifest fallback) — because the WebView2 user-data-dir
+# is persistent, a theme picked in an earlier session can be the theme of this one.
+#
+# WHY EACH IS SAFE TO DEFER (scopes measured on disk, not assumed):
+#   themes/cinematic.css    312 230 B  every rule scoped :root[data-theme^='cine-']
+#   themes/panel-designs.css 128 716 B  every rule scoped :root[data-theme='pd-*']
+#   skins/skins.js           812 978 B  window.SOTTO_SKINS, read ONCE at parse time
+#                                       by skin-host.js -> the pair is deferred
+#                                       together, in this order, never reversed.
+#   skin-host.js              22 712 B  every panel.js call site is guarded by
+#                                       window.SottoSkin && .active.
+#   skin-layout.css           11 210 B  rules gated on body[data-skin].
+# Deferred total: 1 287 846 B of the 1 821 083 B asset payload (70.7 %).
+LAZY_ASSETS = (
+    'themes/cinematic.css',
+    'themes/panel-designs.css',
+    'skins/skins.js',
+    'skin-host.js',
+    'skin-layout.css',
+)
+LAZY_LOADER_JS = os.path.join(PANEL_DIR, 'lazy-assets.js')
+
+
+def _lazy_asset_path(rel):
+    return os.path.join(PANEL_DIR, rel.replace('/', os.sep))
+
+
+def _lazy_asset_url(rel):
+    return file_url(_lazy_asset_path(rel))
+
+
+class LazyAssetGate(object):
+    """Serve an EMPTY body for a deferred URL until the page asks for the real one.
+
+    The gate is a SET, not a flag: each URL is allowed independently, because a
+    `cine-*` theme needs `themes/cinematic.css` and the skin pair but NOT
+    `themes/panel-designs.css`, and a `pd-*` theme needs only the last of the
+    three. The page's `lazy-asset` message is the only writer; the resource
+    handler is the only reader, and it never lets an un-asked request through to
+    the disk.
+    """
+
+    def __init__(self, core, enabled=True):
+        from Microsoft.Web.WebView2.Core import (
+            CoreWebView2WebResourceContext,
+            CoreWebView2WebResourceRequestedEventArgs,
+        )
+        self._core = core
+        self._enabled = bool(enabled)
+        self._allowed = set()
+        self._urls = set(_lazy_asset_url(r) for r in LAZY_ASSETS)
+        self._ctx = CoreWebView2WebResourceContext.All
+        self._args_type = CoreWebView2WebResourceRequestedEventArgs
+        self.registered = 0
+        if self._enabled:
+            self._register()
+
+    def _register(self):
+        for rel in LAZY_ASSETS:
+            try:
+                self._core.AddWebResourceRequestedFilter(
+                    _lazy_asset_url(rel), self._ctx)
+                self.registered += 1
+            except Exception as exc:
+                log(f'PANEL_LAZY_FILTER_FAILED url={rel} error={exc!r}')
+
+    def on_resource_requested(self, sender, args):
+        """The WebResourceRequested handler. Runs on the UI thread."""
+        if not self._enabled:
+            return
+        try:
+            uri = args.Request.Uri
+        except Exception:
+            return
+        if uri not in self._urls:
+            return
+        if uri in self._allowed:
+            return  # the page has asked: let it reach the disk
+        from System.IO import MemoryStream
+        try:
+            stream = MemoryStream()
+            headers = 'Content-Type: ' + _lazy_mime(uri) + '\r\n' \
+                      'Content-Length: 0\r\n'
+            response = self._core.CreateWebResourceResponse(
+                stream, 200, 'OK', headers)
+            args.Response = response
+            log(f'PANEL_LAZY_EMPTY url={uri}')
+        except Exception as exc:
+            log(f'PANEL_LAZY_EMPTY_FAILED url={uri} error={exc!r}')
+
+    def allow(self, url):
+        """Mark one deferred URL as wanted by the page. Idempotent."""
+        if not self._enabled:
+            return False
+        if not isinstance(url, str):
+            return False
+        # Accept both the bare relative path and the full file:// URL.
+        rel = url.replace('\\', '/')
+        if rel.startswith('file:///'):
+            rel = rel[len('file:///'):].replace('/', os.sep)
+            if os.path.isabs(rel):
+                rel = os.path.relpath(rel, PANEL_DIR)
+        rel = rel.replace(os.sep, '/')
+        if rel not in LAZY_ASSETS:
+            return False
+        full = _lazy_asset_url(rel)
+        if full in self._allowed:
+            return False
+        self._allowed.add(full)
+        log(f'PANEL_LAZY_ALLOW url={rel}')
+        return True
+
+    def close(self):
+        self._allowed.clear()
+
+
+def _lazy_mime(uri):
+    if uri.endswith('.css'):
+        return 'text/css'
+    if uri.endswith('.js'):
+        return 'text/javascript'
+    return 'application/octet-stream'
+
 
 # --- the panel AS TEXT: one JSON dump a reader opens with `read` ------------
 # Owner's order, 2026-10-06, verbatim: "faz uma versao do sotto ou painel que tu
@@ -289,6 +421,27 @@ WORKER_STATS_INTERVAL_S = 10.0
 #: `_main/restart-30s-oracle.py` asserts the relation mechanically against
 #: `worker/sotto_worker.py`, because the two numbers live in two files.
 WORKER_SILENCE_MS = 30000
+#: THE FIRST WINDOW IS A DIFFERENT WINDOW (S7). `WORKER_SILENCE_MS` is the
+#: no-progress window of a worker that has FINISHED warming up, and it is armed
+#: from the moment of the spawn - so on a cold boot it expires in the middle of
+#: the model load, kills a healthy worker, and the automatic restart pays the
+#: whole load again. MEASURED on the owner's own 2026-10-12 logon
+#: (`_main/webview-run.log`): `BRIDGE_SILENT ms=30000 pid=34980` fired between
+#: `STATUS_APPLIED text="model-loading"` and `model-loaded`, and the worker it
+#: killed was still alive - its own `model-loaded` line arrived after the kill.
+#: Silence before `model-loaded` is now `BRIDGE_SILENT_LOADING`: it is the
+#: DEFINITION of loading, not a jam, and the watchdog re-arms instead of
+#: killing. The ceiling is still enforced, so a load that never finishes is
+#: still restarted (see `_on_silence`).
+#:
+#: 180 s is the OWNER'S OWN bound, not a number this lane invented: "faz o
+#: model sair de load apos 3 minutos" (verbatim, docs/audit/load-churn.md, where
+#: the same 180 s became the reload floor). It is ~40x a measured warm load
+#: (3.41 s / 4.42 s / 4.66 s / 5.16 s - `worker/runs/verdict-order-{blue,green,
+#: red}.jsonl` and `worker/runs/selftest_gpu.log`, the `model-loaded` line) and
+#: ~6x the worst cold load this box has shown (>30 s, the lower bound the
+#: defect itself measured). A load that has not finished in 180 s is wedged.
+WORKER_LOAD_SILENCE_MS = 180000
 
 
 def parse_worker_stats(line):
@@ -465,13 +618,39 @@ def _open_log(path):
         _LOG_FILE = open(path, 'a', encoding='utf-8', buffering=1)
 
 
+def _stamp() -> str:
+    """The hour a `sotto: ` line now carries: `2026-10-12 12:26:03.123`.
+
+    THE DEFECT THIS CLOSES. Every `sotto:` line was untimed, so the log could say
+    what happened and never when. The cold-boot model load this front was opened
+    for was invisible in the one artefact that records it: `model-loading` and the
+    `BRIDGE_SILENT ms=30000` that followed it carried no distance, so "how long
+    does the load take" had no answer in the log at all, and the stutter the
+    owner reports at startup could not be attributed to a phase.
+
+    LEADING, not trailing, for two reasons. A log line reads time-first, which
+    is what makes the file comparable with every other clock on this box
+    (`Get-Process .StartTime`, the Task Scheduler history, the Event Log): the
+    measurement this front needs is the distance between a shell line and a
+    worker line taken tens of seconds apart. And the `sotto: ` tag keeps its
+    exact position and spelling - every consumer of these lines in this repo
+    reads them by substring or by `split('sotto: ', 1)[-1]` (measured across
+    `_main/`, `app/`, `worker/`: 7 such consumers, 0 regex anchors on the tag),
+    so the tag keeps matching while the hour is added in front of it.
+    """
+    now = datetime.now()
+    return now.strftime('%Y-%m-%d %H:%M:%S.') + f'{now.microsecond // 1000:03d}'
+
+
 def log(message: str) -> None:
     """One `sotto: ` prefixed line on stdout, mirrored to --log when asked.
 
     The Electron arm logs the same way (main.js:56), so the two run logs read
     alike and a claim in the receipt can be checked without watching the screen.
+    The stamp is prepended by `_stamp` rather than here, so `warn()` and every
+    other caller inherits it without a second code path.
     """
-    line = f'sotto: {message}'
+    line = f'{_stamp()} sotto: {message}'
     with _LOG_LOCK:
         print(line, flush=True)
         if _LOG_FILE is not None:
@@ -2790,6 +2969,24 @@ BOOTSTRAP_JS = r"""
 })();
 """
 
+
+def _bootstrap_js():
+    """BOOTSTRAP_JS + the deferred-asset loader, read from disk at import time.
+
+    The loader is a SEPARATE FILE (app/panel/lazy-assets.js) so the panel's own
+    directory stays the single source of truth for it and it can be linted and
+    measured without editing this shell. It is appended, never inlined: the
+    loader must run in the SAME world as the preload, before any page script.
+    """
+    try:
+        with open(LAZY_LOADER_JS, 'r', encoding='utf-8') as fh:
+            loader = fh.read()
+    except OSError as exc:
+        log(f'PANEL_LAZY_LOADER_READ_FAILED error={exc!r}')
+        return BOOTSTRAP_JS
+    return BOOTSTRAP_JS + "\n" + loader
+
+
 #: The `--dump-dom` probe. This is main.js:273-290 VERBATIM, so the two arms
 #: print the same keys in the same order and the lines diff directly.
 DUMP_DOM_PROBE = r"""
@@ -3268,6 +3465,9 @@ class SottoHost:
             # page's `post('stats', ...)` lands in BRIDGE_UNKNOWN_KIND and the
             # Promise never resolves.
             'stats': self._stats,
+            # The deferred-asset loader's only channel: it asks for the real
+            # bytes of one deferred URL, and the shell lets that one through.
+            'lazy-asset': self._lazy_asset,
         }.get(kind)
         if handler is None:
             log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')
@@ -3367,6 +3567,24 @@ class SottoHost:
         '''
         stats_id = (payload or {}).get('id', '')
         self._shell.reply_stats(stats_id, self._shell.stats())
+
+    def _lazy_asset(self, payload):
+        """The deferred-asset loader's ask: let ONE URL reach the disk.
+
+        lazy-assets.js calls this the moment it decides a theme needs a resource
+        the shell is holding back. The gate is a SET, so a second ask for the same
+        URL is a no-op and an ask for a URL outside LAZY_ASSETS is refused (the
+        page cannot widen its own allowance). The reply is synchronous and carries
+        no data: the page's own <script>/<link> element is what waits for the
+        bytes, so there is nothing to return.
+        """
+        url = (payload or {}).get('url')
+        gate = getattr(self, '_lazy_gate', None)
+        if gate is None:
+            log(f'PANEL_LAZY_ASK_REFUSED reason=no-gate url={url!r}')
+            return
+        if not gate.allow(url):
+            log(f'PANEL_LAZY_ASK_REFUSED reason=not-deferred url={url!r}')
 
     # -- history (the "redux" store) ---------------------------------------
     def _history_reply(self, payload, result):
@@ -3987,6 +4205,7 @@ class SottoShell:
             return
         self.core = sender.CoreWebView2
         self._install_bootstrap('initialization-completed')
+        self._arm_lazy_gate()
 
     def _install_bootstrap(self, where):
         """Register the preload on the CoreWebView2, on the UI thread.
@@ -4007,9 +4226,51 @@ class SottoShell:
 
         def _add():
             self.core.AddScriptToExecuteOnDocumentCreatedAsync(
-                BOOTSTRAP_JS).ContinueWith(Action[Task[String]](_done))
+                _bootstrap_js()).ContinueWith(Action[Task[String]](_done))
 
         self._ui(_add)
+
+    def _arm_lazy_gate(self):
+        """Register the deferred-asset gate, on the UI thread.
+
+        The gate is what makes `defer` possible AT ALL on a `file://` document.
+        panel.html is served byte-for-byte by Chromium's file loader (see
+        `file_url`), there is no HTTP server to hold an asset back, and the panel's
+        CSP (`script-src 'self'` with `'unsafe-inline'` granted to style ONLY)
+        forbids the blob:/data: script injection a loader could otherwise use. So
+        the shell intercepts the five deferred subresource requests itself and
+        answers each with an EMPTY body until the page's own loader has asked for
+        the real bytes over the bridge.
+
+        `--no-lazy` is the CONTROL ARM: with it the gate registers nothing and
+        every deferred URL reaches the disk, which is exactly today's behaviour.
+        The measurement harness runs both arms; if the before/after bytes do not
+        move, the gate is vacuous and the harness must say so.
+
+        The handler is subscribed to the CoreWebView2's `WebResourceRequested`,
+        so it runs on the UI thread and MUST NOT call `_ui` (that would deadlock:
+        the delegate it posts can only run after this handler returns). It touches
+        only an in-memory set and a MemoryStream, so it is safe there.
+        """
+        if getattr(self, '_lazy_gate', None) is not None:
+            return
+        if self.core is None:
+            log('PANEL_LAZY_GATE_SKIPPED reason=no-core')
+            return
+        if self.args.no_lazy:
+            log('PANEL_LAZY_GATE_DISABLED reason=--no-lazy')
+            self._lazy_gate = LazyAssetGate(self.core, enabled=False)
+            return
+        gate = LazyAssetGate(self.core, enabled=True)
+        self._lazy_gate = gate
+        if gate.registered != len(LAZY_ASSETS):
+            log(f'PANEL_LAZY_GATE_PARTIAL registered={gate.registered} want={len(LAZY_ASSETS)}')
+        try:
+            self.core.WebResourceRequested += gate.on_resource_requested
+            log(f'PANEL_LAZY_GATE_ARMED registered={gate.registered} urls={len(LAZY_ASSETS)}')
+        except Exception as exc:
+            log(f'PANEL_LAZY_GATE_ARM_FAILED error={exc!r}')
+            self._lazy_gate = None
 
     def _current_document(self):
         """WHAT document the WebView2 is actually showing, or None if unknown.
@@ -7086,6 +7347,7 @@ class WorkerBridge:
                  on_caption=None, on_status=None, on_stats=None,
                  on_meter=None,
                  silence_ms=WORKER_SILENCE_MS,
+                 load_silence_ms=WORKER_LOAD_SILENCE_MS,
                  backoff_base=1000, backoff_max=30000,
                  target_pid=None):
         self.command = command or default_python()
@@ -7111,11 +7373,24 @@ class WorkerBridge:
         #: without it (a probe, the electron-era arm) behaves as before.
         self.on_meter = on_meter or (lambda sample: None)
         self.silence_ms = silence_ms
+        #: THE LOAD WINDOW, and the answer to "may I kill a silent child yet?".
+        #: While `loaded` is False the watchdog owes the child this much quiet,
+        #: measured from the spawn (see `WORKER_LOAD_SILENCE_MS`).
+        self.load_silence_ms = load_silence_ms
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
 
         self.child = None
         self.state = 'idle'
+        #: True once THIS child has published `model-loaded`. THE GATE the silence
+        #: watchdog reads: before it, a silent worker is a LOADING worker, and
+        #: killing it is the S7 defect (see `WORKER_LOAD_SILENCE_MS`). Per child,
+        #: so a restart's warm-up is judged on its own evidence.
+        self.loaded = False
+        #: The shell's own measurement of the load - spawn to `model-loaded`, in
+        #: ms - logged as `BRIDGE_LOAD_MS` so a boot's load phase is readable
+        #: from the log alone. Zero until the child publishes the state.
+        self.load_ms = 0.0
         self.restarts = 0
         self.spawns = 0
         self.captions = 0
@@ -7381,6 +7656,11 @@ class WorkerBridge:
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
         #: instead of being presented as a current measurement. Zero = never set.
+        # The new child has not loaded anything yet: the load window is armed from
+        # the spawn, and a `loaded`/`load_ms` left over from the dead child would
+        # tell the watchdog the load it is watching has already happened.
+        self.loaded = False
+        self.load_ms = 0.0
         # Reset WITH the evidence it ages: an age measured from the dead child
         # would age the new child's silence from the old process's clock.
         self.no_audio_evidence_at = 0.0
@@ -7529,10 +7809,14 @@ class WorkerBridge:
                             # worker publishes never reached the watchdog.
                             self._note_progress(parsed)
                     continue
-                self._arm_silence()
                 text = line.strip()
                 if text:
                     self._consume(text, child)
+                # AFTER the consume, not before (S7): the window is a function of
+                # the phase the line just PUBLISHED. `model-loaded` turns the
+                # watchdog back to `WORKER_SILENCE_MS`, and re-arming first would
+                # leave the child on the remainder of its load ceiling.
+                self._arm_silence()
         except Exception as exc:
             self.log(f'BRIDGE_PUMP_DIED stream={name} error={exc!r}')
         finally:
@@ -7638,6 +7922,20 @@ class WorkerBridge:
             state = str(message.get('state') or '')
             if state:
                 self.state = state
+            if state == 'model-loaded':
+                # THE LOAD IS OVER, and this shell now says how long it took.
+                # `load_s` is the WORKER's own measurement of the same span
+                # (`worker/sotto_worker.py`, `StreamAsr.load_s`); `BRIDGE_LOAD_MS`
+                # is the shell's, from the spawn, so one boot log carries both
+                # and the two can be compared instead of assumed equal. This is
+                # also the line that turns the watchdog's window back to
+                # `WORKER_SILENCE_MS` (`_silence_window`).
+                self.loaded = True
+                self.load_ms = (time.monotonic() - self.spawned_at) * 1000.0
+                if self.child is not None:
+                    self.log(f'BRIDGE_LOAD_MS ms={round(self.load_ms)} '
+                             f'pid={self.child.pid} '
+                             f'worker_load_s={message.get("load_s")}')
             if message.get('device'):
                 # Remember WHICH endpoint this child is on. `device` names the
                 # first candidate (with the full `candidates` list); a rotation
@@ -7735,10 +8033,30 @@ class WorkerBridge:
             return
         if self._silence_timer is not None:
             self._silence_timer.cancel()
-        timer = threading.Timer(self.silence_ms / 1000.0, self._on_silence)
+        timer = threading.Timer(self._silence_window(), self._on_silence)
         timer.daemon = True
         self._silence_timer = timer
         timer.start()
+
+    def _silence_window(self) -> float:
+        """The no-output window for the child's CURRENT phase, in seconds.
+
+        TWO WINDOWS, because a silent worker and a LOADING worker are different
+        facts. Before `model-loaded` the worker is obliged to be quiet - the load
+        reads a gigabyte of weights and copies them to the VRAM and says nothing
+        while it does - so the window it gets is the load ceiling, measured from
+        the spawn and shrinking as the load runs. After `model-loaded` the worker
+        is obliged to be WORKING, and a worker that goes mute has stopped
+        transcribing, so it gets `WORKER_SILENCE_MS`.
+
+        A single longer window for both phases would either kill the cold boot or
+        let a jammed worker keep its caption channel for five minutes; the phase
+        is the only thing that tells the two apart.
+        """
+        if self.loaded or not self.spawned_at:
+            return self.silence_ms / 1000.0
+        elapsed_ms = (time.monotonic() - self.spawned_at) * 1000.0
+        return max(1.0, (self.load_silence_ms - elapsed_ms) / 1000.0)
 
     def _note_progress(self, stats):
         """The worker's own heartbeat counts as PROGRESS; re-arm the watchdog.
@@ -7866,6 +8184,42 @@ class WorkerBridge:
                          f'behind={json.dumps(self.pending_error["state"])}')
             self._arm_silence()
             return
+        # -- THE LOAD WINDOW (S7) ---------------------------------------------
+        # Silence while `model-loaded` has not arrived is the load, not a jam.
+        # The cold boot is exactly this case and it is not rare: the Windows
+        # autostart task puts the app's load on the worst minute of the day, with
+        # a cold file cache, a Defender pass over the same gigabyte and
+        # Chromium's own GPU process starting next door - so the load that takes
+        # 3.4 s warm outlives the 30 s window cold. Killing it there is what
+        # cost the owner ~1 minute of transcription on EVERY boot and made the
+        # app load the model twice in the first minute.
+        #
+        # Nothing is killed and nothing is painted: the panel is already showing
+        # `model-loading`, which is the truth. The watchdog RE-ARMS, so a child
+        # that loads in 45 s is never touched - and the ceiling above is still
+        # enforced, because a worker that hangs inside its load is the one jam
+        # this watchdog exists for.
+        if not self.loaded:
+            elapsed_ms = ((time.monotonic() - self.spawned_at) * 1000.0
+                          if self.spawned_at else 0.0)
+            if elapsed_ms < self.load_silence_ms:
+                self.log(f'BRIDGE_SILENT_LOADING ms={round(elapsed_ms)} '
+                         f'pid={self.child.pid} '
+                         f'window_ms={self.load_silence_ms} '
+                         'because=model-not-loaded')
+                self._arm_silence()
+                return
+            self.log(f'BRIDGE_SILENT_LOAD_TIMEOUT ms={round(elapsed_ms)} '
+                     f'pid={self.child.pid} window_ms={self.load_silence_ms} '
+                     'because=model-never-loaded')
+            self._status('Worker is still loading the model', 'error',
+                         {'title': 'Model load timeout',
+                          'body': f'The worker did not report `model-loaded` '
+                                  f'within the load window of '
+                                  f'{round(self.load_silence_ms / 1000)} s.'})
+            self._kill_and_restart('load-timeout')
+            return
+        # -- END THE LOAD WINDOW (S7) -----------------------------------------
         # ANOMALOUS. The tap was open (or had declared itself) and then went
         # mute WITHOUT the worker ever saying what the audio was: that is the
         # jam this watchdog exists for, and it still restarts.
@@ -8318,6 +8672,13 @@ def parse_args(argv):
                         help='quit on a wall clock, so an acceptance run ends '
                              'by itself')
     parser.add_argument('--no-hot-reload', action='store_true',                        help='do not watch panel assets / worker sources')
+    #: The deferred-asset gate's CONTROL ARM. With it the shell registers no
+    #: WebResourceRequested filter and every deferred URL reaches the disk, which
+    #: is byte-for-byte today's behaviour. The measurement harness runs the gate
+    #: arm and this arm and diffs the two; if they do not differ, the gate is
+    #: VACUOUS and the harness must report that instead of a saving.
+    parser.add_argument('--no-lazy', action='store_true',
+                        help='serve every panel asset normally (no deferral)')
     parser.add_argument('--probe-reload', action='store_true',
                         help='prove the worker hot-reload guard: touch the '
                              'worker file while a capture is open and print '

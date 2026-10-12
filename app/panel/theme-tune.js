@@ -932,6 +932,64 @@
     return button;
   }
 
+    /* swatching is TRUE once this observer has seen a preview write, i.e. the next
+     * drain is one we OWE rather than one we should spend. owedTheme is the theme
+     * that owed apply used; the oracle reads both, because "the preview ran zero
+     * applies" is only a real number when the module can say how many it ran. */
+    var swatching = false;
+    var owedTheme = null;
+    var applyCalls = 0;
+    var previewDeferred = 0;
+
+    function previewOpen() {
+      var S = root.SottoTheme;
+      return Boolean(S && typeof S.previewWindowOpen === 'function' && S.previewWindowOpen());
+    }
+
+    /* One apply, counted. Every path that must apply lands here so the number is
+     * one number and not "apply plus its copies". */
+    function applyNow(name) {
+      applyCalls += 1;
+      apply(name);
+    }
+
+    /* The observer answer to a data-theme write.
+     *
+     *   preview window OPEN  ->  note the theme, STOP. No apply, no forced
+     *                           recalculation, no style invalidation. The work is
+     *                           owed, not cancelled.
+     *   window CLOSED        ->  pay the owed work ONCE, against the theme that
+     *                           closed the window.
+     *   window CLOSED and already applied (the commit path calls applyNow itself
+     *                           BEFORE this observer microtask fires) -> nothing
+     *                           left to pay, and the stale preview mutation is
+     *                           swallowed here instead of re-applying. */
+    function drain() {
+      if (previewOpen()) {
+        swatching = true;
+        previewDeferred += 1;
+        owedTheme = currentTheme();
+        return false;
+      }
+      var owed = owedTheme;
+      owedTheme = null;
+      swatching = false;
+      var target = owed || currentTheme();
+      if (appliedTheme !== target) {
+        applyNow(target);
+        if (dialog && dialog.open) syncAll();
+        return true;
+      }
+      return false;
+    }
+
+    if (root.MutationObserver) {
+      var observer = new root.MutationObserver(function () {
+        drain();
+      });
+      observer.observe(themeElement(), { attributes: true, attributeFilter: ['data-theme'] });
+    }
+
   function boot() {
     load();
     apply();
@@ -941,16 +999,24 @@
      * this module has to follow it: the edits belong to the theme, so switching
      * away must REMOVE them and switching back must restore them. Observing the
      * attribute means the two modules never call each other and neither owns the
-     * other's order. */
-    if (root.MutationObserver) {
-      var observer = new root.MutationObserver(function () {
-        if (appliedTheme !== currentTheme()) {
-          apply();
-          if (dialog && dialog.open) syncAll();
-        }
-      });
-      observer.observe(themeElement(), { attributes: true, attributeFilter: ['data-theme'] });
-    }
+     * other's order.
+     *
+     * 2026-10-12 (lane S6) — THE JANK FIX, AND IT IS HERE, NOT IN THE SWITCHER.
+     * The switcher now paints a hover preview as one `data-theme` write per
+     * animation frame, and this observer used to answer EVERY one of them with a
+     * full `apply()`: the loop over `FIELDS` below reads a computed value per
+     * field (`getComputedStyle`, a FORCED recalculation) and writes the inline
+     * custom properties, i.e. a style invalidation plus a flush per hovered
+     * option. Sweeping 49 options while the dropdown is open therefore paid
+     * 49 forced recalculations on top of the recalculation the theme switch
+     * already caused, which is the freeze the owner described.
+     *
+     * `SWATCHING` below is the deferral: while a preview window is open this
+     * observer notes the theme it saw and STOPS. It does not skip the work — it
+     * owes it. `drain` applies exactly once, against the theme that CLOSED the
+     * window, and `force` bypasses the deferral for the real edit paths (the
+     * owner's own sliders, a load, a restart) so a deferral can never swallow an
+     * edit. */
 
     /* A store written by another document (a second panel window) is picked up
      * on focus, so two windows cannot disagree forever. Cheap: one read. */
@@ -965,6 +1031,12 @@
   }
 
   api.apply = apply;
+  /* The preview-deferral counters, exposed so the oracle can read them. */
+  api.applyCalls = function () { return applyCalls; };
+  api.previewDeferred = function () { return previewDeferred; };
+  api.swatching = function () { return swatching; };
+  api.drain = drain;
+  api.previewOpen = previewOpen;
   api.open = openDialog;
   api.settings = function (name) { return settingsFor(name || currentTheme()); };
   api.hasEdits = hasEdits;

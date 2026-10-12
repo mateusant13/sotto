@@ -58,6 +58,17 @@ const FONT_SCALE_MAX = 2.0;
 const FONT_SCALE_STEP = 0.1;
 const FONT_SCALE_DEFAULT = 1;
 const FONT_SCALE_KEY = 'sotto:caption-scale';
+/**
+ * THE STRIP'S TWO HEIGHTS (owner, 2026-10-12). The shell reads `--strip-height`
+ * out of the stylesheet and docks the window to it, so the strip's size is ONE
+ * number the page can raise and lower at runtime — the only runtime resize this
+ * document has. `STRIP_HEIGHT` is the button row and nothing else (the owner:
+ * *"ele deve ser menor ainda, mais estreito, do tamanho dos botoes"*);
+ * `FLOAT_HEIGHT` is the same window while the caption is loose on the screen.
+ * Both are STRINGS with the unit, because they are written to a custom property.
+ */
+const STRIP_HEIGHT = '40px';
+const FLOAT_HEIGHT = '220px';
 const dom = {
   panel: document.getElementById('panel'),
   // live caption box
@@ -104,6 +115,9 @@ const dom = {
   stripOpenButton: document.getElementById('strip-open-button'),
   stripHideButton: document.getElementById('strip-hide-button'),
   stripTransparencyButton: document.getElementById('strip-transparency-button'),
+  // LINHAR — float the caption on the screen (owner, 2026-10-12). Bound in
+  // `wireStripControls`; `null` on an older harness, and the handler null-checks.
+  stripFloatButton: document.getElementById('strip-float-button'),
   // the transcript font dial (owner, 2026-10-09). FOUR buttons, ONE number:
   // two on the panel (`#font-*-button`) and two on the strip
   // (`#strip-font-*-button`) all move the same `--caption-scale`, so the two
@@ -829,11 +843,23 @@ function renderProvisional(committed, provisional, source) {
   const mark = line.querySelector('.caption__mark');
   if (mark) mark.textContent = provWords.length ? '▍' : '';
   paintedWordsBySource.set(key, { confirmed: confWords, provisional: provWords, total });
+  // The forming line, whole. The floated caption shows the same sentence the panel
+  // is forming — provisional words included, because that is what the owner is
+  // watching. `meta` is null here: a provisional has no producer yet, and the
+  // overlay keeps the last credits it was given rather than erasing them.
+  if (window.SottoCaptionFloat) {
+    window.SottoCaptionFloat.push((confWords.join(' ') + ' ' + provWords.join(' ')).trim(), null);
+  }
   // AND FOLLOW, because this is a GROWTH, not an append: the line gets taller
   // while the sentence is still being formed — the exact moment the owner is
   // watching. Following only on creation (above) left the newest words below the
   // fold for the whole interesting part of the line (measured 2026-10-07).
   followNewestLine();
+  // ── AND THE FLOATED CAPTION, IF IT IS ON (owner, 2026-10-12) ──────────────
+  // The same text, the same instant: `caption-float.js` keeps the overlay's three
+  // nodes in sync with the state this file already holds, so the strip and the
+  // floated caption can never disagree about what was said.
+  if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);
   // ── AND THE FROZEN SKIN, IF THIS THEME HAS ONE (owner, 2026-10-08) ────────
   // The same two word arrays, painted into the MOCKUP'S OWN caption plate instead
   // of ours (`skin-host.js`). `panel.js` stays the single source of the text: the
@@ -932,7 +958,23 @@ function addCaption(text, reason, meta) {
     // corrected words are never shown next to the ones they correct. It also
     // keeps its ORDINAL: a revision is the same line said better, not a new one.
     const body = existing.querySelector('.caption__text');
-    if (body) body.textContent = text;
+    // S4's per-letter swap, applied EXACTLY as `_main/receipt-20261012-S4.md`
+    // specifies it. The module keeps its own memory per element, so the animation
+    // fires on a producer swap and on a real text change; the `else` branch keeps
+    // the panel correct if the module has not loaded (it is deferred), and a line
+    // with no producer stays plain text.
+    if (window.SottoLetterSwap) {
+      window.SottoLetterSwap.apply(body, null, text, {
+        prevText: existing ? existing.getAttribute('data-text') : null,
+        prevProducer: existing ? existing.getAttribute('data-producer') : null,
+        producer: meta && meta.producer ? String(meta.producer) : null
+      });
+    } else if (body) {
+      body.textContent = text;
+    }
+    if (existing && existing.getAttribute && existing.getAttribute('data-text') !== null) {
+      existing.setAttribute('data-text', text);
+    }
   } else {
     line.className = 'caption';
     // THE ORDINAL: a monotonic counter, so trimming `MAX_CAPTIONS` cannot
@@ -1758,6 +1800,10 @@ function applySurface() {
   if (body) body.title = surface === 'strip' ? body.textContent.trim() : '';
   applyPauseAvailability();
   applyLiveEnabled(liveEnabled, { silent: true });
+  // The floated caption is the strip surface's own state: it survives a switch to
+  // the panel (the panel already shows the caption) and is restored on the way
+  // back, so the button never lies about what is on screen.
+  paintFloatState();
   return surface;
 }
 
@@ -1784,6 +1830,13 @@ function wireStripControls() {
   if (dom.stripHideButton) {
     dom.stripHideButton.addEventListener('click', () => {
       if (bridge && typeof bridge.hide === 'function') bridge.hide();
+    });
+  }
+  // LINHAR: float the caption on the screen. One button, one attribute, one window
+  // height — see `applyFloat` for the whole contract.
+  if (dom.stripFloatButton) {
+    dom.stripFloatButton.addEventListener('click', () => {
+      applyFloat(document.body.getAttribute('data-float') !== 'on');
     });
   }
   // ONE handler per pause control, bound from a class so the strip's button and
@@ -2029,6 +2082,74 @@ function openFullPanel(reason) {
   // that has not ported it yet). The strip is NOT short until the window is.
   setSurface('panel');
 }
+/**
+ * LINHAR — float the caption on the screen (owner, 2026-10-12, verbatim:
+ * *"e ele tem um botao de linhar a legenda, que liga ela NA TELA, igual um overlay,
+ * EXATAMENTE IGUAL os .zip fazem"*).
+ *
+ * ONE BUTTON, ONE ATTRIBUTE, ONE WINDOW HEIGHT. `#strip-float-button` flips
+ * `body[data-float]`; `caption-float.js` owns the overlay's content; the shell owns
+ * the window, and the only runtime resize it has is a re-read of `--strip-height`
+ * on `setPanelSurface('strip')` — so the height is raised and lowered THROUGH
+ * that call, never by the page touching the window.
+ *
+ * THE STRIP SURFACE IS THE ONLY ONE THAT FLOATS. The panel already shows the
+ * caption, so floating it there would hide the panel to show the same words; and
+ * the overlay's own CSS is scoped to `body[data-surface="strip"]`, so the
+ * attribute alone can never paint it over the panel.
+ *
+ * FAILURE MODES, all silent by design: a shell without `setPanelSurface` (a
+ * browser, the audit harness) still gets the attribute and the layout, just not
+ * the resize; a missing button leaves the state readable and nothing throws.
+ */
+function setStripHeight(value) {
+  document.documentElement.style.setProperty('--strip-height', value);
+}
+
+/** Paint the floated state onto the button, so the button never lies. */
+function paintFloatState() {
+  if (!dom.stripFloatButton) return;
+  const on = document.body.getAttribute('data-float') === 'on';
+  dom.stripFloatButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+  dom.stripFloatButton.setAttribute('data-strip-float-state', on ? 'on' : 'off');
+  dom.stripFloatButton.setAttribute('aria-label', on
+    ? 'Deslinhar a legenda: voltar a barra de botoes'
+    : 'Linhar a legenda');
+  dom.stripFloatButton.title = on
+    ? 'A legenda esta solta no ecra. Voltar a barra de botoes.'
+    : 'Linhar a legenda: solta no ecra, sem painel, como no zip';
+  const label = dom.stripFloatButton.querySelector('.strip-button__label');
+  if (label) label.textContent = on ? 'Deslinhar' : 'Linhar';
+}
+
+/**
+ * Apply the floated state: the attribute, the button, and the window height.
+ * Idempotent — a second call with the same state changes nothing.
+ */
+function applyFloat(on) {
+  const want = on ? 'on' : 'off';
+  if (document.body.getAttribute('data-float') === want) {
+    paintFloatState();
+    return;
+  }
+  document.body.setAttribute('data-float', want);
+  setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);
+  paintFloatState();
+  // The shell re-reads `--strip-height` on every `setPanelSurface('strip')`, which
+  // is the only runtime resize this document has. A shell without the call still
+  // gets the attribute and the layout (a browser, the harness).
+  if (bridge && typeof bridge.setPanelSurface === 'function') {
+    bridge.setPanelSurface('strip', on ? 'strip-float-on' : 'strip-float-off');
+  } else {
+    setSurface('strip');
+  }
+}
+
+/** The button's own toggle. */
+function toggleFloat() {
+  applyFloat(document.body.getAttribute('data-float') !== 'on');
+}
+
 
 // ---------------------------------------------------------------------------
 // THE PAUSE FLOW — two steps, and the second step says the honest thing
@@ -2592,6 +2713,12 @@ function paintLevel() {
     SottoSkin.level(LEVEL.have ? LEVEL.level : 0);
   }
   const bars = document.querySelectorAll('.chrome__meter i');
+  // The floated caption's own meter, fed the SAME smoothed level the five bars use.
+  // One number, every surface: the owner's meter is the meter.
+  if (window.SottoCaptionFloat) {
+    window.SottoCaptionFloat.setMeter(LEVEL.have ? LEVEL.level : 0);
+    window.SottoCaptionFloat.setListening(LEVEL.have);
+  }
   if (!bars.length) return;
   const want = LEVEL.have ? 'live' : 'none';
   if (document.body.dataset.level !== want) document.body.dataset.level = want;

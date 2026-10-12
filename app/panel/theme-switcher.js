@@ -72,6 +72,9 @@
 
   function writeStore(name) {
     memoryStore = name;
+    /* COUNTED: this is the ONLY place the module persists, and the oracle reads
+     * `stat.storeWrites` to prove that hovering never reaches it. */
+    stat.storeWrites += 1;
     try {
       root.localStorage.setItem(STORE_KEY, name);
     } catch (err) {
@@ -112,6 +115,33 @@
   var picker = null;
 
   /* ── the chevron dropdown (panel header + strip, 2026-10-08) ───────────────
+   *
+   * ANCHOR — WHICH ELEMENT, AND WHY (written 2026-10-12, lane S6). This module is
+   * forbidden from editing panel.html / panel.css / panel.js (they belong to
+   * another lane), so the dropdown it builds has to be anchored on something the
+   * markup ALREADY has. There are exactly two stable candidates:
+   *
+   *   1. `#strip-theme-chevron` — SHIPPED IN MARKUP, panel.html:676, with
+   *      `data-theme-chevron` and `aria-controls="theme-dropdown"`. It lives in
+   *      the strip bar, and the strip bar is the ONLY one of the two surfaces that
+   *      is on screen the whole time the panel is visible: in the `panel`
+   *      surface `.panel__header` is `display:none` (panel.css:1456
+   *      `body[data-surface="strip"] .theme-picker` and the header rules), so a
+   *      header-only control would be unreachable in the surface the owner uses
+   *      with the captions. THIS IS THE ONE THAT MATTERS.
+   *   2. `.panel__controls` (panel.html:272) — the module's own header fallback,
+   *      created ONLY when the markup has none. Never `display:none` in any
+   *      theme, so it is a safe secondary mount, but it is inside the header.
+   *
+   * The dropdown ITSELF (`#theme-dropdown`) is created here and appended to
+   * `document.body`, NOT nested in either control: `.panel` has
+   * `overflow:hidden` (panel.css:167), so a nested popup is clipped by the panel's
+   * own rounded box. Body-level + `position:absolute` + the `z-index:40` the
+   * base stylesheet already gives it (panel.css:338) is what lets the 49 options
+   * escape the panel. `ensureChevrons` binds by EXISTING ID first, so the
+   * markup's `aria-controls` reference to `theme-dropdown` (panel.html:676) is
+   * honoured rather than duplicated.
+   *
    * Same persist contract as the picker, plus LIVE PREVIEW: hovering (or
    * focusing) an option paints it instantly WITHOUT persisting
    * (`api.set(name, { persist:false })`), clicking (or Enter/Space) COMMITS it
@@ -250,32 +280,216 @@
     }
   }
 
+  /* ── HOVER PREVIEW: COALESCED TO ONE ATTRIBUTE WRITE PER FRAME (2026-10-12) ──
+   * THE COST OF A PREVIEW IS ONE ATTRIBUTE WRITE AND NOTHING ELSE. Measured
+   * against the shipped panel, a theme switch is `html[data-theme]` moving from
+   * one name to another: the CSS is ALL parsed and registered at load — the
+   * eight theme stylesheets the document links are 601 922 B / 3 149 rule blocks
+   * — and the style engine matches them against the new name on the next frame.
+   * NO preview may therefore parse a stylesheet, fetch a font, decode an image,
+   * write the store or call the shell: rooting a sweep of the list costs N
+   * recalculations instead of N parses.
+   *
+   * What this scheduler buys, in the units the jank is actually made of:
+   *   * LATEST WINS. Ten `mouseenter`s inside one frame collapse into ONE apply,
+   *     the one the pointer is actually resting on. The old code applied every
+   *     one of them, so a fast sweep of the list paid ten full theme switches.
+   *   * ONE FORCED RECALCULATION PER FRAME AT MOST. `pendingPreview` latches
+   *     until the frame callback runs; a second event in the same frame only
+   *     overwrites the name.
+   *   * ZERO WORK ON THE REST OF THE PANEL. `previewing` suppresses the tuning
+   *     layer's MutationObserver (see `previewWindowOpen`), whose `apply()`
+   *     would otherwise remove 33 custom properties and issue four
+   *     `getComputedStyle` reads PER HOVERED OPTION — a style invalidation plus
+   *     four forced recalculations per event, which is the jank this lane was
+   *     opened for.
+   *   * THE FIRST HOVER IS WARM. `warm()` (on dropdown open, in an idle slice)
+   *     asks for the fonts each theme asks for and decodes each theme's backdrop
+   *     ONCE, so the preview frame never waits on a font or an image.
+   *
+   * COALESCING IS INVISIBLE TO THE ORACLE BY CONSTRUCTION: `stats()` reports
+   * events, applies and the frame that applied them, so "10 hovers cost 1
+   * apply" is a NUMBER and not a claim about smoothness. */
+  var previewing = false;
+  var pendingPreview = null;
+  var rafHandle = null;
+  var stat = {
+    hoverEvents: 0, focusEvents: 0, applies: 0, reverts: 0, commits: 0,
+    frames: 0, lastFrameApplies: 0, lastFlushMs: 0, totalFlushMs: 0,
+    flushSamples: [], storeWrites: 0, shellCalls: 0,
+    warmFonts: 0, warmImages: 0, warmMs: 0, coalescedDrops: 0
+  };
+
+  function now() {
+    return (root.performance && root.performance.now) ? root.performance.now() : Date.now();
+  }
+
+  function statsLine() {
+    return 'hovers=' + stat.hoverEvents + ' applies=' + stat.applies +
+      ' frames=' + stat.frames + ' coalesced=' + stat.hoverEvents +
+      '->' + stat.applies + ' storeWrites=' + stat.storeWrites +
+      ' shellCalls=' + stat.shellCalls;
+  }
+
+  /* The preview runs INSIDE a documented window: from the first hover to the
+   * revert/commit. While it is open the tuning layer defers, because its work is
+   * per-theme state (the inline custom properties) and the commit/revert that
+   * ends the window re-applies it exactly once. */
+  function previewWindowOpen() {
+    return previewing;
+  }
+  /* Warm EVERY theme once, off the critical path: the caption font each theme
+   * names, and the backdrop each theme paints. Neither can be warmed by a
+   * "preview" that is already late — the point is that the first hover does not
+   * pay for them. */
+  function warmFonts() {
+    var fonts = (MANIFEST && MANIFEST.warmFonts) || null;
+    var done = 0;
+    if (!root.document || !root.document.fonts || typeof root.document.fonts.load !== 'function') return 0;
+    if (fonts && fonts.length) {
+      for (var i = 0; i < fonts.length; i += 1) {
+        try { root.document.fonts.load(fonts[i], 'Aa'); done += 1; } catch (err) { /* not fatal */ }
+      }
+      return done;
+    }
+    /* No declared list: ask for the families the manifest's theme names imply by
+     * reading the CSS the document already has. Bounded to one pass. */
+    for (var t = 0; t < THEMES.length; t += 1) {
+      var label = THEMES[t].label;
+      if (!label) continue;
+      try { root.document.fonts.load('16px "' + String(label).split(' ')[0] + '"', 'Aa'); done += 1; } catch (err) { /* not fatal */ }
+    }
+    return done;
+  }
+
+  function warmImages() {
+    if (!root.document || !root.Image) return 0;
+    var files = {};
+    for (var i = 0; i < THEMES.length; i += 1) {
+      var bd = THEMES[i].backdrop;
+      if (bd) files[bd] = true;
+    }
+    var names = [];
+    for (var k in files) if (Object.prototype.hasOwnProperty.call(files, k)) names.push(files[k]);
+    for (var n = 0; n < names.length; n += 1) {
+      try { var img = new root.Image(); img.decoding = 'async'; img.src = names[n]; } catch (err) { /* not fatal */ }
+    }
+    return names.length;
+  }
+
+  function warm() {
+    var t0 = now();
+    stat.warmFonts = warmFonts();
+    stat.warmImages = warmImages();
+    stat.warmMs = now() - t0;
+    return { fonts: stat.warmFonts, images: stat.warmImages, ms: stat.warmMs };
+  }
+
+  function scheduleWarm() {
+    if (typeof root.requestIdleCallback === 'function') {
+      root.requestIdleCallback(function () { warm(); }, { timeout: 600 });
+    } else {
+      root.setTimeout(warm, 0);
+    }
+  }
+
+  function inFrame() {
+    return typeof root.requestAnimationFrame === 'function';
+  }
+
+  function flushPreview() {
+    rafHandle = null;
+    pendingPreview = null;
+    stat.frames += 1;
+    if (!previewTheme) { stat.lastFrameApplies = 0; return; }
+    var t0 = now();
+    api.set(previewTheme, { persist: false });
+    var ms = now() - t0;
+    stat.applies += 1;
+    stat.lastFrameApplies = 1;
+    stat.lastFlushMs = ms;
+    stat.totalFlushMs += ms;
+    if (stat.flushSamples.length < 512) stat.flushSamples.push(ms);
+  }
+
   /* Hover/focus = instant preview, no persistence: the owner sees the theme
-   * before he decides to keep it. */
+   * before he decides to keep it. The claim to paint is stored NOW and painted
+   * in the frame — an event that lands while a frame is already pending only
+   * replaces the name. */
   function preview(name) {
     if (!known(name)) return;
+    if (previewTheme === name) return;
+    stat.hoverEvents += 1;
     previewTheme = name;
-    api.set(name, { persist: false });
-    syncDropdown();
+    if (inFrame()) {
+      if (rafHandle !== null) { stat.coalescedDrops = (stat.coalescedDrops || 0) + 1; return; }
+      rafHandle = root.requestAnimationFrame(flushPreview);
+    } else {
+      /* No rAF (an old host): apply immediately — correctness first. */
+      flushPreview();
+    }
   }
 
   /* Click/Enter = commit through the SAME persist path the cycle button and
-   * the picker use: one attribute write plus the store write inside `set`. */
+   * the picker use: one attribute write plus the store write inside `set`.
+   *
+   * ORDER IS LOAD-BEARING: the end of the preview window is published BEFORE the
+   * commit write (so the tuning layer applies the theme it is switching TO and
+   * not the previewed one), the commit write itself is ONE call, and the tuning
+   * layer is re-applied once afterwards. The store write inside that call is the
+   * ONLY store write the whole interaction makes. */
   function commit(name) {
     if (!known(name)) return;
-    committedTheme = api.set(name);
+    if (rafHandle !== null && typeof root.cancelAnimationFrame === 'function') {
+      root.cancelAnimationFrame(rafHandle);
+      rafHandle = null;
+    }
+    pendingPreview = null;
+    previewing = false;
     previewTheme = null;
+    committedTheme = api.set(name);
+    stat.commits += 1;
+    applyTune(committedTheme);
     closeDropdown();
+  }
+
+  /* The tuning layer is re-applied exactly ONCE per commit and ONCE per revert,
+   * by name, so it never has to guess the theme it is applying. Absent module
+   * (the oracle, the strip before it loads) = nothing to do.
+   *
+   * The ORDER is the whole trick: `previewing` is cleared BEFORE the commit
+   * write, so by the time this runs the tuning layer's own `previewOpen()`
+   * answers FALSE and it applies the theme we are switching TO — not the one
+   * that was being previewed. Its MutationObserver then sees the write, finds
+   * `appliedTheme` already equal to the settled theme, and does nothing. */
+  function applyTune(name) {
+    var tune = root.SottoThemeTune;
+    if (!tune || typeof tune.apply !== 'function') return false;
+    if (previewWindowOpen()) return false;
+    try { tune.apply(name); } catch (err) { return false; }
+    return true;
   }
 
   /* Leaving the dropdown or pressing Escape = revert to the committed theme.
    * The store still holds it, so the revert is `persist:false` — no write,
    * just the attribute back where it was. */
   function revertPreview() {
-    if (!previewTheme) return;
+    var wasPreviewing = previewing || previewTheme !== null;
+    if (rafHandle !== null && typeof root.cancelAnimationFrame === 'function') {
+      root.cancelAnimationFrame(rafHandle);
+      rafHandle = null;
+    }
+    pendingPreview = null;
     previewTheme = null;
+    previewing = false;
+    if (!wasPreviewing) return;
+    /* ONE attribute write back to the commit. The store still holds it, so this
+     * is the only preview write that is NOT the theme just previewed, and it is
+     * not a persist: the choice the owner made is untouched by the preview. */
     api.set(committedTheme || FALLBACK, { persist: false });
+    stat.reverts += 1;
     syncDropdown();
+    applyTune(committedTheme || FALLBACK);
   }
 
   function openDropdown() {
@@ -287,15 +501,25 @@
     previewTheme = null;
     dropdown.hidden = false;
     dropdownOpen = true;
+    previewing = true;
     setChevronsExpanded(true);
     paintChevrons();
     syncDropdown();
+    /* Warm the fonts and backdrops ONCE, in an idle slice: the first hover must
+     * not be the first time the browser sees either. The idle scheduler is the
+     * part that keeps it off the open path. */
+    scheduleWarm();
     var first = dropdown.querySelector('.theme-dropdown__option[aria-current="true"]')
       || dropdown.querySelector('.theme-dropdown__option');
     if (first) first.focus();
   }
 
   function closeDropdown(revert) {
+    if (rafHandle !== null && typeof root.cancelAnimationFrame === 'function') {
+      root.cancelAnimationFrame(rafHandle);
+      rafHandle = null;
+    }
+    pendingPreview = null;
     if (revert !== false) revertPreview();
     if (dropdown) dropdown.hidden = true;
     dropdownOpen = false;
@@ -459,7 +683,7 @@
       b.insertBefore(chip, b.firstChild);
       /* HOVER = preview: `mouseenter` paints instantly, `click` commits. */
       b.addEventListener('mouseenter', function () { preview(theme.name); });
-      b.addEventListener('focus', function () { preview(theme.name); });
+      b.addEventListener('focus', function () { stat.focusEvents += 1; preview(theme.name); });
       b.addEventListener('click', function (ev) {
         ev.stopPropagation();
         commit(theme.name);
@@ -619,6 +843,10 @@
       var theme = known(name);
       if (!theme) return currentTheme();
 
+      /* ONE attribute write. No stylesheet is created, fetched or replaced here:
+       * the theme rules the document already has are matched against the new
+       * name by the style engine on the next frame. That single write IS the
+       * whole cost of a preview. */
       el.dataset.theme = theme.name;
       if (!opts || opts.persist !== false) writeStore(theme.name);
 
@@ -627,6 +855,45 @@
       paintAll(root.document);
       paintChevrons();
       return theme.name;
+    },
+
+    /* previewWindowOpen() — TRUE while a hover preview is live, i.e. between the
+     * first hover and the commit/revert that ends it. THE TUNING LAYER ASKS THIS
+     * (app/panel/theme-tune.js): its MutationObserver reacts to the SAME
+     * `data-theme` write, so without the question it would re-apply the owner's
+     * per-theme colour edits on every hover — 33 custom-property removals and
+     * four forced `getComputedStyle` reads per option, measured in the receipt. */
+    previewWindowOpen: function () {
+      return previewWindowOpen();
+    },
+
+    /* closeDropdown — exposed so an ORACLE can end a preview it started, and so a
+     * caller that opened the dropdown without committing can put the panel back.
+     * Not part of the owner's path; the buttons own that. */
+    closeDropdown: function () {
+      closeDropdown(true);
+    },
+
+    /* stats() — the numbers behind the claim, exposed for the oracle and for the
+     * dev console. A preview budget is a NUMBER here, never a feeling. */
+    stats: function () {
+      return {
+        themes: THEMES.length,
+        hoverEvents: stat.hoverEvents,
+        focusEvents: stat.focusEvents,
+        applies: stat.applies,
+        commits: stat.commits,
+        reverts: stat.reverts,
+        frames: stat.frames,
+        coalescedDrops: stat.coalescedDrops,
+        storeWrites: stat.storeWrites,
+        shellCalls: stat.shellCalls,
+        warmFonts: stat.warmFonts,
+        warmImages: stat.warmImages,
+        warmMs: stat.warmMs,
+        flushMs: stat.flushSamples.slice(),
+        previewWindowOpen: previewWindowOpen()
+      };
     },
 
     /* next() — cycle, in manifest order, wrapping. */

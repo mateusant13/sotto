@@ -146,14 +146,18 @@ set "PREFLIGHT_RC=%ERRORLEVEL%"
 if not "%PREFLIGHT_RC%"=="0" (
   echo run.cmd: the shell REFUSED this launch ^(rc=%PREFLIGHT_RC%^). Nothing was started.
   REM The interpreter OWN words: WHICH flag, not only the class of refusal.
-  if exist "%REFUSAL%" (
-    type "%REFUSAL%"
-    >>"%HERE%..\..\_main\webview-run.log" type "%REFUSAL%"
-  )
+  if exist "%REFUSAL%" type "%REFUSAL%"
   echo run.cmd: rc=2 is a bad flag, rc=3 a missing panel, rc=1 a missing pywebview. "run.cmd --help" lists the flags.
   REM The receipt, in the same file a normal launch writes to: without it a
-  REM rejected list would leave the log with NO bytes at all (measured).
-  >>"%HERE%..\..\_main\webview-run.log" echo sotto: PREFLIGHT_REFUSED rc=%PREFLIGHT_RC% by=run.cmd-preflight
+  REM rejected list would leave the log with NO bytes at all (measured 2026-10-06).
+  REM MEASURED AGAIN 2026-10-12, WITH THE APP RUNNING: cmd.exe own `>>` append
+  REM onto that file is REFUSED with error 32 ("the file is already being used
+  REM by another process") -- so BOTH receipts in this wrapper were silent
+  REM exactly when the app is up, and the Windows autostart task registered
+  REM 2026-10-12 keeps it up by default. Same probe, same instant: cmd 0 bytes,
+  REM python +17 bytes. So the receipt goes through python, which CAN open the
+  REM file (pythonw, windowless). The helper is _main\run-cmd-log-append.py.
+  "%PYW%" "%HERE%run-cmd-log-append.py" "%HERE%..\..\_main\webview-run.log" --append-file "%REFUSAL%" --line "sotto: PREFLIGHT_REFUSED rc=%PREFLIGHT_RC% by=run.cmd-preflight"
   exit /b %PREFLIGHT_RC%
 )
 if exist "%REFUSAL%" del /q "%REFUSAL%" >nul 2>&1
@@ -203,7 +207,7 @@ del /q "%READY_FILE%" >nul 2>&1
 if not "%READY_RC%"=="0" (
   echo run.cmd: the app did not report READY in time ^(rc=%READY_RC%^) -- a HANG, not a start.
   echo run.cmd: it was started and did not come up; see _main\webview-run.log.
-  >>"%HERE%..\..\_main\webview-run.log" echo sotto: HANG rc=4 by=run.cmd-readiness
+  "%PYW%" "%HERE%run-cmd-log-append.py" "%HERE%..\..\_main\webview-run.log" --line "sotto: HANG rc=4 by=run.cmd-readiness"
   exit /b 4
 )
 exit /b 0

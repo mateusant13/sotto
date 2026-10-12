@@ -453,6 +453,11 @@ def pump_arm(name, mod, flags, expect_peak, frames=480, packets=3, block_ms=10):
     tap.rate = tap.native_rate = rate
     tap.channels = channels
     tap.block = int(rate * block_ms / 1000)
+    # `_cb_lock` is set by the tap's own __init__ (worker/wasapi_loopback.py:708,
+    # added 2026-10-11 with the stop barrier); a stub built through __new__ has
+    # to carry it too or _pump dies on the first block. Re-grep the name before
+    # repeating this: the worker moves.
+    tap._cb_lock = threading.Lock()
     tap._stop = threading.Event()
     tap._thread = None
     tap._client = None

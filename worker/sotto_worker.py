@@ -235,6 +235,46 @@ TAP_SILENT_BLOCKS = 20
 TAP_STALL_S = 8.0
 TAP_STALL_MAX_S = 60.0
 TAP_STALL_SAME_DEVICE_TRIES = 2
+# -- AN IDLE ENDPOINT IS NOT A STALL (added 2026-10-12, owner freeze) ----
+# MEASURED live on the owner box (pid 39388, instrument
+# _main/rotation-burst-monitor.py, a 200 s window): the default render
+# endpoint (VoiceMeeter Input) delivers NO packets at all while nothing is
+# rendering, so block arrival stops the instant the desktop is idle. The
+# 2026-10-11 stall cure read that as a dead tap and re-opened the endpoint
+# every 8..60 s -- 32 re-opens in ONE run (reopens=32, stalled_s=60.0,
+# blocks=0, pump_exited=False) -- while the tap own pump thread was still
+# alive and the run was healthy. EVERY re-open is close_tap() plus a fresh
+# LoopbackTap() plus stream.start() on the DEFAULT RENDER ENDPOINT, the
+# audio engine the owner other apps share; that churn is a hard hitch and
+# the owner read it as a strong freeze every few seconds. So: a re-open is
+# earned by a broken CLIENT, never by an endpoint that merely renders
+# nothing.
+TAP_IDLE_MAX_S = 300.0   # a live pump plus zero packets for this long: re-arm ONCE
+TAP_REOPEN_MAX = 20      # never open more than this many clients in one run
+TAP_REOPEN_MIN_S = 5.0   # and never faster than this, whatever the state says
+def tap_stall_reason(pump_exited, idle_s, reopens):
+    """THE POLICY on a settled tap that stopped delivering blocks.
+
+    Added 2026-10-12, from the owner-reported freeze. Returns ONE of
+    "pump-dead" (re-open now: the client is broken), "idle-rearm" (one
+    re-armed attempt after a very long idle) or "endpoint-idle" (wait:
+    nothing is broken, the endpoint simply renders nothing).
+
+    MEASURED on the owner box: an idle default render endpoint (VoiceMeeter
+    Input) delivers NO packets at all, and the previous policy read that as a
+    dead tap, so the worker re-opened the shared audio endpoint every 8..60 s
+    (32 re-opens in ONE run) with the pump thread still alive. The pump is the
+    honest witness: a client the engine invalidates makes it break out with an
+    HRESULT, so pump_exited is the ONLY affirmative dead-client signal.
+    Pure on purpose: _main/tap-stall-policy-oracle.py tests this table.
+    """
+    if pump_exited:
+        return "pump-dead"
+    if idle_s >= TAP_IDLE_MAX_S and reopens < TAP_REOPEN_MAX:
+        return "idle-rearm"
+    return "endpoint-idle"
+
+
 # -- THE LIVENESS BOUND ON A SETTLED TAP (added 2026-10-11) --------------
 # A settled tap IS the run, and the capture loop used to continue for ever
 # without ever asking whether that tap still DELIVERS (watchdog below).
@@ -3150,6 +3190,65 @@ REDUX_MIN_AUDIO_S = 1.0
 #: the audio stays buffered and the next tick retries.
 REDUX_MIN_FREE_MB_DEFAULT = 4600.0
 
+# ── THE LIVE OVERLAY (lane S3) — a second pass POR CIMA of every live line ──
+# OWNER 2026-10-12, verbatim: *"nemotron a transcrever ao vivo e o parakeet
+# redux POR CIMA de tudo o que e falado ao vivo, porque tem maior qualidade."*
+# and *"o historico nao e pra ser NUNCA o historico do live nvidia. e pra ser do
+# parakeet redux"* (app/panel/panel.js).
+#
+# DEFAULT OFF, for the same measured reason the batch arm is: the overlay pays a
+# second ASR decode on top of the live one (measured ~1.0-1.4 s per 5 s window,
+# ~615 MB peak RSS, ~128% of one core at threads=2), so a switch that lands
+# before the pass is proven means a slower, fatter live run exactly while the
+# owner is not looking. With the flag off this file is byte-identical to the run
+# before this lane existed: not one read, not one branch, not one extra byte.
+#
+# WHAT IT DOES: every line the live engine CLOSES is HELD, and exactly ONE line
+# per segment is published — the Redux text when the pass answered, the live text
+# byte for byte when it did not. The panel already replaces a row in place when a
+# second event carries the same (source, start) identity, so the Redux text lands
+# in the SAME row the live partials were growing, and the history line is the
+# Redux version. The contract lives in worker/redux_live.py.
+REDUX_LIVE_DEFAULT = False
+#: The overlay's checkpoints, RELATIVE to this file. BOTH are named because
+#: `load_backend` is given both and picks by engine; the gate below refuses when
+#: the engine it would open is not on disk.
+REDUX_LIVE_TERNARY_RELPATH = os.path.join("models", "parakeet-redux-ternary")
+REDUX_LIVE_ONNX_RELPATH = os.path.join("models", "parakeet-redux-onnx-int4")
+REDUX_LIVE_CHECKPOINT_FILES = ("config.json", "model.safetensors", "ternary.json")
+#: ONNX is the measured default: 615 MB peak, 8.33x RTF on a 15 s clip, versus
+#: the ternary's 3856 MB and 2.2x the latency for byte-identical text (the packed
+#: int8 CPU kernel is absent from the published kestrel wheel).
+REDUX_LIVE_ENGINE_DEFAULT = "onnx"
+#: Seconds of rolling PCM the overlay retains. A line whose own start has been
+#: trimmed is refused (and shipped as the live text), so this must exceed the
+#: longest line the live engine can hold open.
+REDUX_LIVE_KEEP_S = 90.0
+#: The overlay's own deadline. A decode that outran it is released as the live
+#: text: a late Redux line is worse than the live one the owner can read now.
+REDUX_LIVE_DEADLINE_S = 4.0
+#: Bound on held segments. The count includes the one being decoded.
+REDUX_LIVE_MAX_QUEUE = 6
+#: Below this much audio a segment is not worth a decode.
+REDUX_LIVE_MIN_AUDIO_S = 1.0
+#: Threads the ONNX session gets. Measured: 2 is the sweet spot on this box.
+REDUX_LIVE_THREADS = 2
+
+
+def redux_live_dirs():
+    """(onnx_dir, ternary_dir) the overlay would open, resolved against this file."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    return (os.path.join(here, REDUX_LIVE_ONNX_RELPATH),
+            os.path.join(here, REDUX_LIVE_TERNARY_RELPATH))
+
+
+def redux_live_missing(onnx_dir, ternary_dir):
+    """The manifests NOT on disk under each dir; ([], []) when both can load."""
+    return ([name for name in REDUX_LIVE_CHECKPOINT_FILES
+             if not os.path.isfile(os.path.join(onnx_dir, name))],
+            [name for name in REDUX_LIVE_CHECKPOINT_FILES
+             if not os.path.isfile(os.path.join(ternary_dir, name))])
+
 
 def _free_memory_mb():
     """Free physical memory in MB, or None when it cannot be measured.
@@ -3969,7 +4068,8 @@ def decide_verdict(counters, outcome, ran_but_silent) -> str:
     counters = {key: _as_int((counters or {}).get(key, 0))
                 for key in ('captions', 'chunks', 'blocks', 'nonzero_blocks',
                             'resampled_samples', 'music_gated_chunks',
-                            'vad_gated_chunks', 'redux_captions')}
+                            'vad_gated_chunks', 'redux_captions',
+                            'redux_live_captions')}
     # ── TWO ENGINES, ONE QUESTION ("did this run emit captions?") ────────────
     # The batch engine's lines are REAL captions and they arrive on exactly the
     # path where NO streaming chunk was ever decoded: the app comes up HIDDEN, so
@@ -3979,7 +4079,8 @@ def decide_verdict(counters, outcome, ran_but_silent) -> str:
     # transcribed the owner's audio, and the panel paints a non-healthy `done`
     # verdict as an ERROR. With the flag OFF `redux_captions` is always 0, so
     # `emitted == captions` and every branch below is byte-identical to today.
-    emitted = counters.get("captions", 0) + counters.get("redux_captions", 0)
+    emitted = (counters.get("captions", 0) + counters.get("redux_captions", 0)
+               + counters.get("redux_live_captions", 0))
     if ran_but_silent:
         verdict = "silent-device"
     elif outcome in ("all-flat", "open-failed"):
@@ -4630,6 +4731,11 @@ def main():
         # not answer "did the light path work?" — the question this lane exists
         # to be able to ask. Always 0 with the flag off.
         "redux_captions": 0,
+        # The LIVE overlay's own lines, counted separately for the same reason:
+        # the overlay is a second engine on the streaming path, and one number
+        # that mixes the two could not answer "did the overlay work?" — the
+        # question this lane exists to be able to ask. Always 0 with the flag off.
+        "redux_live_captions": 0,
     }
 
     # ── lane SottoAsrTap: per-site DRAIN counters + seg_pcm retention stats ──
@@ -4962,6 +5068,32 @@ def main():
             for closed in former.take_closed():
                 out += finalise(closed)
             return out
+
+        def publish_captions(events):
+            """Publish caption events, routing CLOSED lines through the overlay.
+
+            THE OVERLAY IS THE ONLY WRITER OF A CLOSED LINE. When it is armed it
+            HOLDS every `final` event and publishes exactly one line per segment
+            -- the Redux text when the pass answered, the live text byte for byte
+            when it did not -- so the panel never sees two events for one segment
+            and the history line is the Redux version. When it is not armed this
+            is a plain loop and the run is byte-identical to one without the flag.
+
+            The partials are NOT touched: they are the growing line the owner
+            reads, and the overlay only ever speaks once the line CLOSES.
+            """
+            for event in events:
+                if (overlay is not None and isinstance(event, dict)
+                        and event.get("type") == "caption"
+                        and event.get("final") is True
+                        and overlay.hold_live_final(event)):
+                    continue          # the overlay owns this line now
+                counters["captions"] += 1
+                emit(model=asr.name, **event)
+            if overlay is not None:
+                for event in overlay.drain():
+                    counters["redux_live_captions"] += 1
+                    emit(**event)
         # ── the raw-chunk trace (instrument for the LINE boundary rule) ──────
         # `SOTTO_CHUNK_TRACE=<path>` writes one JSON row per 560 ms chunk: the
         # text the model decoded, whether the AUDIO was speech, and the chunk's
@@ -5028,9 +5160,7 @@ def main():
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
                 drain_sites["gen-change"] += 1
-                for event in drain():
-                    counters["captions"] += 1
-                    emit(model=asr.name, **event)
+                publish_captions(drain())
                 seg_pcm.clear()
             if native:
                 # WASAPI refused 16 kHz; convert here instead.
@@ -5039,6 +5169,18 @@ def main():
             # reached the ASR side at 16 kHz", and a zero here means the
             # conversion ate the audio even though the callback delivered it.
             counters["resampled_samples"] += int(block.size)
+            # ── THE LIVE OVERLAY's AUDIO IN ────────────────────────────────────
+            # The overlay needs the SAME 16 kHz PCM the ASR thread sees, and this is
+            # the one place that has already been resampled and counted. Inert when
+            # the flag is off (`overlay is None`); when it is on, a block that
+            # arrives while the overlay is stopping is ignored rather than queued
+            # against a backend that is already gone.
+            if overlay is not None:
+                try:
+                    overlay.accept(block)
+                except Exception as exc:
+                    err(f"overlay accept failed ({type(exc).__name__}: {exc}); "
+                        f"this segment will ship as the live text")
             # ── THE STACK LAW: which engine transcribes THIS block ───────────
             # Inert when the flag is off (`switch is None`): not one read, not one
             # line, not one branch taken. When it is on, the ONLY thing that stops
@@ -5063,9 +5205,7 @@ def main():
                             counters["captions"] += 1
                             emit(model=asr.name, **event)
                         drain_sites["redux-batch-enter"] += 1
-                        for event in drain():
-                            counters["captions"] += 1
-                            emit(model=asr.name, **event)
+                        publish_captions(drain())
                         buf = np.zeros(0, dtype=np.float32)
                         seg_pcm.clear()
                     else:
@@ -5127,8 +5267,7 @@ def main():
                     for event in line_events(former.flush()):
                         emit(model=asr.name, **event)
                     drain_sites["chunk-exc"] += 1
-                    for event in drain():
-                        emit(model=asr.name, **event)
+                    publish_captions(drain())
                     emit(type="status", state="error", stage="chunk", detail=f"{type(exc).__name__}: {exc}")
                     stop.set()
                     return
@@ -5150,9 +5289,7 @@ def main():
                 )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
-                for event in drain():
-                    counters["captions"] += 1
-                    emit(model=asr.name, **event)
+                publish_captions(drain())
                 keep_from = (
                     idx + 1
                     if former.open_start is None
@@ -5164,9 +5301,7 @@ def main():
                     for event in line_events(former.flush()):
                         counters["captions"] += 1
                         emit(model=asr.name, **event)
-                    for event in drain():
-                        counters["captions"] += 1
-                        emit(model=asr.name, **event)
+                    publish_captions(drain())
                     stop.set()
                     return
         # The stream stopped: the last words must not be stranded in a buffer
@@ -5175,9 +5310,7 @@ def main():
         for event in line_events(former.flush()):
             counters["captions"] += 1
             emit(model=asr.name, **event)
-        for event in drain():
-            counters["captions"] += 1
-            emit(model=asr.name, **event)
+        publish_captions(drain())
         # ── THE TAIL OF A HIDDEN SESSION IS NOT DROPPED ──────────────────────
         # A run that ends while the panel is hidden holds audio no batch pass has
         # covered yet (up to `--redux-batch-interval` seconds of it). It is
@@ -5186,6 +5319,15 @@ def main():
         # missing from the light path just because he closed the panel.
         if switch is not None:
             switch.flush_pending("stream-end")
+        # ── THE LIVE OVERLAY's own tail ──────────────────────────────────────
+        # A stream that ends while a line is still held must not strand it: the
+        # held line is released as the live text, the only thing the panel can
+        # still render. `stop()` is idempotent, so the `finally` below is safe.
+        if overlay is not None:
+            overlay.stop()
+            for event in overlay.drain():
+                counters["redux_live_captions"] += 1
+                emit(**event)
 
     # ── run the candidates until one of them is measurably alive ────────────
     # The loop is bounded twice over: at most one pass per candidate, and at
@@ -5207,6 +5349,13 @@ def main():
     # runs the code it ran before this lane existed — no file read, no extra
     # process, not one extra stdout or stderr byte.
     switch = None
+    # THE LIVE OVERLAY's slot. `overlay is None` when `--redux-live` is absent,
+    # and that `None` is what makes "byte-identical to today" a CHECKABLE claim:
+    # every site in the asr thread is `if overlay is not None`, so with the flag
+    # off the thread runs the code it ran before this lane existed. Assigned here
+    # (not at its construction site, which is below) so the closure always has the
+    # variable however the construction branch falls.
+    overlay = None
     # THE FLAG, OR THE ENVIRONMENT OPT-IN. The flag is the interface and the
     # opt-in is the DEPLOYMENT channel, and both exist for a measured reason: the
     # shell spawns this worker itself (`WorkerBridge._spawn`) and forwards
@@ -5239,6 +5388,51 @@ def main():
                 args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
         )
         switch.boot_line()
+        # ── THE LIVE OVERLAY (lane S3), constructed ONLY when the flag is on ─────
+        # The opt-in is the flag OR the env var, mirroring the batch arm. With
+        # neither, `overlay` stays the `None` assigned above and the asr thread
+        # runs the code it ran before this lane existed.
+        #
+        # THE GATE. The batch arm refuses when its runner is missing; this one
+        # refuses when the ENGINE is missing, and says which one it would have
+        # opened. A missing checkpoint is not a reason to transcribe nothing — it
+        # is a reason to say so loudly and keep streaming, because the owner's
+        # live captions are the thing that must not stop.
+        redux_live_optin = bool(args.redux_live) or (
+            str(os.environ.get("SOTTO_REDUX_LIVE") or "").strip() == "1")
+        if redux_live_optin:
+            import redux_live as _redux_live
+            _engine = str(args.redux_live_engine or REDUX_LIVE_ENGINE_DEFAULT).strip().lower()
+            _onnx_dir, _ternary_dir = redux_live_dirs()
+            _dir = _onnx_dir if _engine == "onnx" else _ternary_dir
+            _missing = redux_live_missing(_onnx_dir, _ternary_dir)[0 if _engine == "onnx" else 1]
+            if _missing:
+                err(f"REDUX_LIVE_REFUSED engine={_engine} dir={_dir} "
+                    f"missing={','.join(_missing)} -- the live engine keeps "
+                    f"streaming untouched; the overlay is OFF for this run")
+            else:
+                try:
+                    _backend = _redux_live.load_backend(
+                        _engine, _onnx_dir, _ternary_dir,
+                        args.redux_live_threads or REDUX_LIVE_THREADS, "cpu")
+                    overlay = _redux_live.ReduxLiveOverlay(
+                        _backend,
+                        producer_model=os.path.basename(_dir),
+                        log=err,
+                        keep_s=args.redux_live_keep or REDUX_LIVE_KEEP_S,
+                        silence_s=args.redux_live_min_audio or REDUX_LIVE_MIN_AUDIO_S,
+                        deadline_s=args.redux_live_deadline or REDUX_LIVE_DEADLINE_S,
+                        max_queue=REDUX_LIVE_MAX_QUEUE,
+                    )
+                    overlay.start()
+                    err(f"REDUX_LIVE_ARMED engine={_engine} dir={_dir} "
+                        f"backend={_backend.name} keep_s={overlay.keep_s} "
+                        f"deadline_s={overlay.deadline_s} max_queue={overlay.max_queue}")
+                except Exception as exc:
+                    overlay = None
+                    err(f"REDUX_LIVE_REFUSED engine={_engine} dir={_dir} "
+                        f"reason={type(exc).__name__}: {exc} -- the live engine "
+                        f"keeps streaming untouched")
     worker = threading.Thread(target=asr_thread, name="asr", daemon=True)
     worker.start()
     next_stats = time.time() + args.stats_interval if args.stats_interval > 0 else float("inf")
@@ -5408,6 +5602,7 @@ def main():
             stall_since = time.time()
             stall_backoff = TAP_STALL_S
             stall_reopens = 0
+            idle_logged = False
             caps_before = counters["captions"]
             window_end = time.time() + tap_window
             settled = False
@@ -5462,7 +5657,34 @@ def main():
                             # a starved or dead one delivers none.
                             stalled_s = now - stall_since
                             inner = getattr(tap, "stream", tap)
+                            # -- IS IT ACTUALLY BROKEN? (added 2026-10-12) ----------------------
+                            # The cure above treats EVERY stop in block arrival as a stalled tap.
+                            # MEASURED on this box, that is wrong for an idle default endpoint:
+                            # VoiceMeeter delivers NO packets while nothing renders, so block arrival
+                            # stops the instant the desktop is idle, and the worker then re-opened that
+                            # endpoint every 8..60 s (32 times in ONE run) with the pump thread still
+                            # ALIVE -- a hard hitch on the audio engine the owner other apps share,
+                            # which the owner read as a strong freeze every few seconds. The pump is
+                            # the honest witness: a client the engine invalidates makes it BREAK OUT
+                            # with an HRESULT, so pump_exited is the ONLY affirmative dead-client
+                            # signal. A live pump plus an endpoint that renders nothing WAITS.
+                            client_dead = bool(getattr(inner, "pump_exited", False))
+                            stall_reason = tap_stall_reason(client_dead, stalled_s, stall_reopens)
+                            idle_s = stalled_s
+                            if stall_reason == "endpoint-idle":
+                                # NOTHING IS BROKEN -- wait instead of churning the engine. The
+                                # backoff keeps its course, so this is ASKED AGAIN, not spun: a client
+                                # that does break is still cured. The bridge own 30 s silence check
+                                # already tells the owner "Audio tap silent - nothing to transcribe".
+                                if idle_s >= TAP_IDLE_MAX_S + TAP_STALL_MAX_S and not idle_logged:
+                                    err(f"TAP_IDLE device={dev['name']!r} idle_s={idle_s:.0f} "
+                                        f"blocks={device_blocks['value']} reopens={stall_reopens} "
+                                        f"pump_alive=True reason=waiting-not-reopening")
+                                    idle_logged = True
+                                time.sleep(0.1)
+                                continue
                             err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "
+                                f"reason={stall_reason} "
                                 f"blocks={device_blocks['value']} captions={counters['captions']} "
                                 f"reopens={stall_reopens} "
                                 f"pump_exited={getattr(inner, 'pump_exited', None)} "
@@ -5484,7 +5706,7 @@ def main():
                                     if cand.get("endpoint_id") != dev.get("endpoint_id"):
                                         target = cand
                                         break
-                            emit(type="status", state="device-rotated", reason="tap-stalled",
+                            emit(type="status", state="device-rotated", reason=stall_reason,
                                  to=target["name"], device=dev["name"],
                                  stalled_s=round(stalled_s, 1), blocks=device_blocks["value"],
                                  captions=counters["captions"])
@@ -5509,9 +5731,12 @@ def main():
                                 err(f"TAP_STALLED_REOPEN_FAILED device={target['name']!r} "
                                     f"detail={type(exc).__name__}: {exc}")
                             stall_since = time.time()
-                            stall_backoff = (TAP_STALL_S
-                                             if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
-                                             else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
+                            # No re-open may ever come faster than TAP_REOPEN_MIN_S, whatever
+                            # the state says: the ladder and this cure share that floor.
+                            stall_backoff = max(TAP_REOPEN_MIN_S,
+                                TAP_STALL_S
+                                if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
+                                else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
                         time.sleep(0.1)
                         continue
                     if now >= window_end:
@@ -5615,6 +5840,20 @@ def main():
                 }
             )
             rotations += 1
+            # -- THE LADDER'S OWN BACKOFF (added 2026-10-12) -------------------------
+            # A `flat` rotation used to be IMMEDIATE: close one tap, open the next, serve
+            # out its window, rotate again. With nothing routed into any candidate -- the
+            # measured normal on this box, where every loopback reads digital silence --
+            # the whole ladder is burned at one endpoint per tap_window and the run dies
+            # device-exhausted, which the shell then restarts on its own 2 s/8 s/16 s/30 s
+            # backoff (app/webview/sotto_webview.py:8147). MEASURED in the owner's own
+            # log, this revision: 2 188 `reason=flat` rotations, 60 `device-exhausted`,
+            # 450 BRIDGE_RESTART. Each rotation is an IAudioClient::Initialize on a new
+            # endpoint, so the ladder is the OTHER half of the owner's freeze. One second,
+            # doubling to 8 s per rotation, so a machine with nothing to capture stops
+            # paying for it every few seconds. `stop.wait` (never time.sleep) so `stop`
+            # and --max-seconds still answer at once.
+            stop.wait(float(min(8.0, 2.0 ** (rotations - 1))))
     except KeyboardInterrupt:
         pass
     finally:
@@ -5633,6 +5872,13 @@ def main():
                 if payload.get("type") == "caption":
                     counters["redux_captions"] += 1
                 emit(**payload)
+        # The overlay's own tail, again, for the path that never reached the asr
+        # thread's end (a device that died, a tap that was refused). Idempotent.
+        if overlay is not None:
+            overlay.stop()
+            for event in overlay.drain():
+                counters["redux_live_captions"] += 1
+                emit(**event)
 
     if outcome in ("all-flat", "open-failed"):
         emit(

@@ -55,7 +55,11 @@
      100px, and `--strip-chrome` below is still the derivation input — the grid
      floor is `--strip-height` minus `--strip-chrome`, so both move together.
      If a future lane re-measures the chrome, edit `--strip-chrome`, NOT the grid. */
-  --strip-height: 100px;
+  /* WAS 100px. The strip is now the size of its own buttons (owner, 2026-10-12):
+     the number lives ONCE, at the bottom of this file, next to the strip rules it
+     belongs to, so the shell's re-read of --strip-height cannot disagree with
+     them. This declaration is removed, not lowered in place: two declarations of
+     the same custom property in one :root is how a later edit silently wins. */
   --strip-chrome: 78px;
 
   --font: -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
@@ -2520,3 +2524,228 @@ body[data-surface="strip"] .status .chrome {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* ===========================================================================
+   THE STRIP, REBUILT + THE FLOATED CAPTION
+   owner, 2026-10-12, verbatim:
+     *"o painel de baixo, ta errato. ele nao deve mostrar legenda de jeito nenhum.
+       ele deve ser menor ainda, mais estreito, do tamanho dos botoes. os botoes
+       tem que ser mais claros. e ele tem um botao de linhar a legenda, que liga
+       ela NA TELA, igual um overlay, EXATAMENTE IGUAL os .zip fazem."*
+
+   Three things change here, and each is the owner's own word:
+     1. NO CAPTION on the strip. `.captions` is display:none on this surface.
+     2. SMALLER AND NARROWER. `--strip-height` drops 100 -> 40 and the slab stops
+        filling the window: the body stops painting its dark base on this surface
+        and `.panel` shrinks to `max-content`, so what is on screen is the button
+        row and nothing else. The window stays the shell's 1040x40 at the bottom;
+        the extra width is transparent and click-through.
+     3. LINHAR. `#caption-float` is a SIBLING of `.panel`, not a child — the owner's
+        rule is that nothing goes on top of the current panel or in the panel's
+        div. It is the zip's `CaptionStage.tsx` translated: bottom-anchored,
+        centred, pointer-events-none, and with NO BACKGROUND EVER.
+   =========================================================================== */
+
+:root {
+  /* THE STRIP'S HEIGHT, AS ONE NUMBER — the shell reads this and docks the window
+     to it, so the strip's size is one number and not a derivation that can drift.
+     40px is the button row and its own padding: one row of 22px buttons, 4px of
+     slab padding top and bottom, and nothing else. `panel.js` raises this to the
+     floated height while the caption is loose and puts it back on the way down;
+     the shell re-reads the variable on every `setPanelSurface('strip')`, which is
+     the only runtime resize this document has. */
+  --strip-height: 40px;
+  /* The floated caption's own height. Same mechanism, separate number: the caption
+     is not a button row, so it does not share the 40px. */
+  --float-height: 220px;
+}
+
+/* ── 1. THE STRIP IS THE BUTTON ROW AND NOTHING ELSE ──────────────────────── */
+
+body[data-surface="strip"] {
+  /* The dark base was the RENDER PROTECTION (a broken paint must never be white),
+     and on this surface it is now what makes the strip look 1040px wide. The slab
+     below is one simple rule that is guaranteed to paint, so the base steps back
+     and the strip becomes the size of its buttons. */
+  background: transparent;
+}
+
+body[data-surface="strip"] .panel {
+  /* One row, no gaps, no padding of its own — the padding moves to the stripbar
+     so the slab hugs the buttons evenly. */
+  grid-template-rows: none;
+  gap: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(11, 15, 20, 0.82);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.42);
+  /* Centred in the window, and only as wide as the row. `right: auto` + the
+     transform is what centres an over-constrained absolute box. */
+  left: 50%;
+  right: auto;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  transform: translateX(-50%);
+  overflow: visible;
+}
+
+/* NO CAPTION ON THE STRIP — the owner's rule, absolute. The strip shows no
+   caption at all: the block is display:none, which also removes it from the tab
+   order and the accessibility tree. The live caption lives in `#caption-float`,
+   outside `.panel`, and only while `data-float="on"`. */
+body[data-surface="strip"] .captions {
+  display: none;
+}
+
+/* The strip keeps the status readout (it is a readout, not a caption) and the
+   wordmark the owner asked for on every theme. Both are compressed to the new
+   height: the row is 22px of buttons and nothing may push it taller. */
+body[data-surface="strip"] .status {
+  padding-top: 0;
+  min-height: 0;
+}
+
+/* ── 2. LIGHTER, CLEARER BUTTONS ─────────────────────────────────────────── */
+
+/* Same geometry (the strip is sized to them), a lighter fill, a stronger border
+   and full-strength text: the owner asked for *"botoes mais claros"*. The hover
+   state is the same three properties, so the change is visible without a delay. */
+body[data-surface="strip"] .strip-button {
+  min-height: 22px;
+  padding: 3px 9px;
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+body[data-surface="strip"] .strip-button:hover,
+body[data-surface="strip"] .strip-button:focus-visible {
+  border-color: rgba(148, 163, 184, 0.5);
+  background: rgba(148, 163, 184, 0.28);
+  color: #ffffff;
+}
+
+/* The two ACTIONS at the end of the row keep a voice of their own: Pause is the
+   one that costs a model load to resume, and Linhar is the one this lane added.
+   Both are filled rather than outlined, so they read as the row's verbs. */
+body[data-surface="strip"] .strip-button--pause,
+body[data-surface="strip"] .strip-button--float {
+  border-color: rgba(125, 211, 252, 0.4);
+  background: rgba(125, 211, 252, 0.16);
+  color: #dff1ff;
+}
+
+body[data-surface="strip"] .strip-button--pause:hover,
+body[data-surface="strip"] .strip-button--float:hover,
+body[data-surface="strip"] .strip-button--float[aria-pressed="true"] {
+  border-color: rgba(125, 211, 252, 0.72);
+  background: rgba(125, 211, 252, 0.32);
+  color: #ffffff;
+}
+
+/* Transparency on the strip used to mean "hide the chrome, keep the captions".
+   There are no captions on the strip any more, so hiding the chrome would leave
+   an empty 1040px bar: the slab itself is what hides. The floated caption is a
+   sibling and is unaffected, which is the point — transparency is how the owner
+   keeps ONLY the caption on screen. */
+body[data-surface="strip"][data-transparency="on"] .panel {
+  display: none;
+}
+
+/* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ──────────── */
+
+/* Bottom-anchored, full width, centred inside `max-w-5xl`, click-through, and
+   with NO BACKGROUND EVER — the lead receipt's own note on the zip's caption
+   tailwind classes. It is a sibling of `.panel`: nothing is added to the panel's
+   div and nothing is drawn on top of the current panel. */
+.caption-float {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: none;
+  pointer-events: none;
+}
+
+/* Scoped to the strip surface ON PURPOSE: the panel already shows the caption,
+   so the attribute alone must never paint the overlay over the panel. */
+body[data-surface="strip"][data-float="on"] .caption-float {
+  display: block;
+}
+
+.caption-float__stage {
+  width: 100%;
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 0 24px 30px;
+  text-align: center;
+}
+
+/* The previous line, faint and one size down: the zip paints it at 40% and it is
+   what makes the live line read as LIVE. */
+.caption-float__prev {
+  margin: 0 0 6px;
+  color: rgba(232, 238, 246, 0.36);
+  font-size: calc(15px * var(--caption-scale));
+  line-height: 1.35;
+  letter-spacing: 0.002em;
+}
+
+/* The live line. The owner's font dial moves it, exactly as it moves the
+   panel's captions — one number, every surface. The shadow is what keeps it
+   legible over any video, and it is a shadow, not a background. */
+.caption-float__line {
+  margin: 0;
+  color: #f5f8fc;
+  font-size: calc(26px * var(--caption-scale));
+  line-height: 1.32;
+  font-weight: 500;
+  letter-spacing: 0.004em;
+  text-shadow:
+    0 2px 18px rgba(0, 0, 0, 0.88),
+    0 1px 2px rgba(0, 0, 0, 0.72);
+}
+
+/* The listening meter: the zip's own three bars, collapsed to one fill the
+   panel's `--accent-gradient` already defines, so it matches every theme without
+   a second palette. `panel.js` writes the level; CSS owns the shape. */
+.caption-float__meter {
+  height: 3px;
+  width: 132px;
+  margin: 14px auto 0;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.caption-float__meter.is-on {
+  opacity: 1;
+}
+
+.caption-float__meter-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--accent-gradient);
+}
+
+/* Speaker credits, in the panel's own mono voice. */
+.caption-float__credits {
+  margin: 10px 0 0;
+  color: rgba(232, 238, 246, 0.52);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
