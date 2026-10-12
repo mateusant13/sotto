@@ -41,6 +41,8 @@ const py = [
   ['_main/offscreen-cure-comment-oracle.py', 'offscreen-comments (row #33)'],
   ['_main/offscreen-cure-comment-oracle.py --neg-arm', 'offscreen-comments neg'],
   ['_main/panel-exit3-oracle.py --unit --neg-arm', 'panel-exit3 unit+neg (rows #27/#64)'],
+  ['_main/selftest-focus-oracle.py', 'selftest-focus (rows #28/H6/B)'],
+  ['_main/selftest-focus-oracle.py --neg-arm', 'selftest-focus neg'],
 ];
 
 const node = [

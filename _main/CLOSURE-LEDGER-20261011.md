@@ -7,19 +7,18 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 109 / open 27 / in-flight 0** as this file is written, read from the gate itself.
+**applied 112 / open 24 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 27 rows whose state cell reads OPEN
+## 1. The live product — 24 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
 
-### docs/instruments (6)
+### docs/instruments (5)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 30 | `run-cmd-exit-oracle` esta RED hoje no conjunct do census | `_main/run-cmd-exit-oracle-after.json` | **OPEN** — `verdict: FAIL`, "arms=PASS census=FAIL" |
-| Finding B | roubo de foco e um verde (focus_stolen=true e sai 0) (`oracles.md:409`) | **OPEN** — herdado da linha #28 |  |
 | Finding C | run-cmd-exit-oracle esta RED hoje no conjunct do census (`oracles.md:413`) | **OPEN** — herdado da linha #30 |  |
 | Finding D | um braco negativo sem recibo (o bogus do runcmd-entry-driver.py) (`oracles.md:418`) | **OPEN** — herdado da linha #58 |  |
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
@@ -45,17 +44,15 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 | F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |  |
 
-### shell/window (7)
+### shell/window (5)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 5 | `console-census.py` passa `CREATE_NO_WINDOW\ | DETACHED_PROCESS` → canal de 0 bytes rc 0, logo `python_pids()` fica cego | `_main/_probe/console-census.py:106` (path GIT-IGNORED) |
 | 25 | shell `--selftest` nao afirma qualidade do output ("verde com word-salad") | `sotto_worker.py:986-999` | **OPEN** |
-| 28 | shell selftest regista `focus_stolen=true` e mesmo assim sai 0 | `_main/webview-selftest.log:32` | **OPEN** |
 | F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |  |
 | F1 | console-census.py passa CREATE_NO_WINDOW + DETACHED_PROCESS -> canal de 0 bytes rc 0 (`windows-landmines.md:309`) | **OPEN** — herdado da linha #5, **que tambem esta OPEN e agora traz a medicao** (defeito reproduzido 0 bytes rc 0 com filho PowerShell; cura 23 bytes; 8 ficheiros tracked na classe, listados; o oraculo `_main/child-channel-oracle.py` gateia as duas cores). Continua aberto de proposito: varrer as 8 probes de outras lanes seria clobber |  |
 | H1 | o selftest da shell nao afirma qualidade do output (`oracles.md:393`) | **OPEN** — herdado da linha #25 |  |
-| H6 | o selftest da shell regista focus_stolen=true e sai 0 (`oracles.md:398`) | **OPEN** — herdado da linha #28 (segunda entrada do mesmo achado que Finding B) |  |
 
 ### transcript/provenance (1)
 

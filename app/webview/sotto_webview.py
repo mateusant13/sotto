@@ -1051,6 +1051,54 @@ def foreground_window() -> int:
     return int(user32.GetForegroundWindow() or 0)
 
 
+#: WHO owns a window. `--selftest` needs this to tell "the panel took the
+#: foreground" from "the owner switched apps while the test was running": only
+#: the FIRST is a defect of this program, and a verdict that cannot tell them
+#: apart is flaky on a live desktop (audit rows #28 / #H6 / Finding B, closed
+#: by `_main/selftest-focus-oracle.py`).
+user32.GetWindowThreadProcessId.restype = ctypes.c_uint
+user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(ctypes.c_uint)]
+
+
+def window_pid(hwnd: int) -> int:
+    """The pid that owns `hwnd`, or 0 for no window."""
+    if not hwnd:
+        return 0
+    owner = ctypes.c_uint(0)
+    user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(owner))
+    return int(owner.value)
+
+
+def selftest_broken(reading: dict) -> tuple[bool, str]:
+    """The self-test VERDICT, factored out of the method so it can be driven
+    with synthetic readings and no hotkey. Pure on purpose: no globals, no
+    ctypes -- the oracle proves it by exec-ing this exact source in a bare
+    namespace, so a dependency creeping in here fails the gate instead of
+    passing through a module import.
+
+    `focus_stolen_by_own_window` is the clause the old verdict was missing: it
+    measured `focus_stolen` (before != after) and logged it, then computed
+    `broken` WITHOUT it -- so a run in which the panel took the foreground was
+    reported GREEN. The word "stolen" is now attributed: a FOREIGN window that
+    became foreground is somebody else using the PC, not this program cheating,
+    and failing on that would be a false alarm on every busy desktop.
+    """
+    if not reading.get('registered'):
+        return True, 'the hotkey never registered'
+    if not reading.get('pressed'):
+        return True, 'the simulated press was not delivered'
+    if reading.get('presses') != 2:
+        return True, 'expected two presses, saw %r' % (reading.get('presses'),)
+    if reading.get('visible') != reading.get('want_visible'):
+        return True, ('the window should read visible=%r after both presses, got %r'
+                      % (reading.get('want_visible'), reading.get('visible')))
+    if reading.get('focus_stolen_by_own_window'):  # FOCUS-CLAUSE
+        return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
+                      'SW_SHOWNOACTIVATE is the contract and this is it being broken'
+                      % (reading.get('focus_before'), reading.get('focus_after')))
+    return False, ''
+
+
 #: `SetWindowPos` insert-after for "move me, keep my Z order". `HWND_TOPMOST`
 #: re-asserts topmost (the strip must stay above the game); `HWND_TOP` (0) is
 #: for geometry moves that must NOT change the Z slot.
@@ -6700,8 +6748,12 @@ class SottoShell:
                 f'visible={str(self.visible).lower()} '
                 f'presses={self.hotkey.pressed}')
             after = foreground_window()
+            after_pid = window_pid(after)
+            focus_stolen = before != after
+            stolen_by_us = bool(focus_stolen and after and after_pid == os.getpid())
             log(f'SELFTEST focus_before={before} focus_after={after} '
-                f'focus_stolen={str(before != after).lower()}')
+                f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
+                f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
             # WHAT THE SECOND PRESS MEANS depends on `HOTKEY_DOUBLE_MS`, so the
             # expectation has to be DERIVED from it rather than typed. The two
             # simulated presses land ~800 ms apart, so with a window of 400 ms
@@ -6713,9 +6765,19 @@ class SottoShell:
             presses_are_double = 0.8 < (HOTKEY_DOUBLE_MS / 1000.0)
             # `want_visible` is what the window SHOULD read after both presses.
             want_visible = presses_are_double
-            broken = (not self.hotkey.registered or not pressed
-                      or self.hotkey.pressed != 2
-                      or self.visible != want_visible)
+            reading = {
+                'registered': bool(self.hotkey.registered), 'pressed': bool(pressed),
+                'presses': self.hotkey.pressed, 'visible': bool(self.visible),
+                'want_visible': bool(want_visible),
+                'focus_stolen_by_own_window': stolen_by_us,
+                'focus_before': before, 'focus_after': after,
+            }
+            broken, why = selftest_broken(reading)
+            if broken:
+                log(f'SELFTEST broken={why}')
+            else:
+                log('SELFTEST broken=false focus_attributed='
+                    f'{str(stolen_by_us).lower()}')
             log('SELFTEST expectation=%s(%.0fms %s %.0fms) '
                 'want_visible=%s got_visible=%s presses=%d registered=%s '
                 'delivered=%s'
