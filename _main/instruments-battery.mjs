@@ -69,6 +69,7 @@ const py = [
   ['_main/webview-shell-field-count-oracle.py', 'webview-shell-field-count (row F9)'],
   ['_main/webview-shell-field-count-oracle.py --neg-arm', 'webview-shell-field-count neg'],
   ['_main/timeout-tree-ceiling-oracle.py', 'timeout-tree-ceiling (row #62)'],
+  ['_main/panel-flash-numbers-reconciliation-oracle.py', 'panel-flash-numbers (rows #4/F1)'],
 ];
 
 const node = [

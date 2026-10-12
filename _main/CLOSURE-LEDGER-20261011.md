@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 131 / open 5 / in-flight 0** as this file is written, read from the gate itself.
+**applied 133 / open 3 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 5 rows whose state cell reads OPEN
+## 1. The live product — 3 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -20,13 +20,11 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
 
-### panel/rendering (4)
+### panel/rendering (2)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
-| 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `docs/audit/launch-entry.md` §4 (o doc vive em `docs/audit/`, nao em `_main/` como a linha dizia), `_main/_live-app.log` (o artefacto), `_main/staging-hang-artefact-oracle.py` | **OPEN** — **o artefacto foi re-medido e EXCLUI tres causas; a terceira causa continua por nomear, e nomea-la exige relancar (proibido).** Medido nesta revisao sobre `_main/_live-app.log` (o |
-| F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |  |
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 
 ## 2. What BLOCKS the open rows, by class
