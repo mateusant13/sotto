@@ -43,6 +43,7 @@ RUNCMD = os.path.join(APPDIR, "run.cmd")
 CONTROL = os.path.join(APPDIR, "_oracle-prefix-run.cmd")
 LOG = os.path.join(ROOT, "_main", "webview-run.log")
 NEEDLE = "unrecognized arguments"
+PREFIX_COMMIT = "3e85202"  # the wrapper as it shipped BEFORE the G5 cure; not HEAD, by design
 
 
 def run_wrapper(path, args, env=None):
@@ -98,7 +99,11 @@ def main(argv=None):
 
     control_written = False
     try:
-        show = subprocess.run(["git", "show", "HEAD:app/webview/run.cmd"], cwd=ROOT,
+        # THE CONTROL MUST NAME A COMMIT, NOT HEAD. The first version read HEAD -- and the moment the
+        # cure was committed, HEAD BECAME the fixed wrapper, so the control silently stopped being a
+        # control and the arm passed for the wrong reason (found by the battery, one round after the
+        # commit that caused it). 3e85202 is the revision immediately before the cure.
+        show = subprocess.run(["git", "show", PREFIX_COMMIT + ":app/webview/run.cmd"], cwd=ROOT,
                               capture_output=True, text=True)
         if show.returncode != 0 or "check-args" not in show.stdout:
             say("  arm 4  CONTROL      : could not read the pre-fix wrapper from git HEAD")
@@ -124,9 +129,12 @@ def main(argv=None):
                 % (rc4, len(out4), after4 - before4, str(NEEDLE in delta).lower()))
             if rc4 != 2:
                 wrong.append("arm 4: the pre-fix wrapper returned %d, expected 2" % rc4)
-            if NEEDLE in delta:
-                wrong.append("arm 4: the PRE-FIX wrapper already wrote the reason to the log -- arm 1 is"
-                             " not measuring the cure")
+            # "2>" alone is too crude: the pre-fix wrapper already contains ">nul 2>&1". The cure has
+            # markers of its own -- the REFUSAL variable and the redirect onto it.
+            carries_cure = ("REFUSAL=" in show.stdout) or ('2>"%REFUSAL%' in show.stdout)
+            if carries_cure or NEEDLE in delta:
+                wrong.append("arm 4: the control revision " + PREFIX_COMMIT + " already carries the cure --"
+                             " it is not a control (did the pin drift?)")
     finally:
         if control_written:
             os.remove(CONTROL)

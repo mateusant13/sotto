@@ -219,7 +219,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | F6 | o rank-1 do use_vad e retratado 230 linhas abaixo (`doc-vs-code.md:26`) | **APPLIED** — herdado da linha #49, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #49 |
 | F7 | live-captions deixa uma decisao supersedida de pe (`doc-vs-code.md:27`) | **APPLIED** — herdado da linha #50, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #50 |
 | F8 | full-audit descreve a regra de juncao de 1200 ms (`doc-vs-code.md:28`) | **APPLIED** — herdado da linha #51, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #51 |
-| F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |
+| F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | `_main/electron-dump-fresh.log` + `_main/webview-dump.stdout.txt` (os dois `DOMDUMP` congelados), `docs/webview-shell-20261006.md:85,90`, `docs/audit/doc-vs-code.md:297`, `_main/webview-shell-field-count-oracle.py` | **APPLIED — REFUTADA: o "14" E reproduzivel, e a diferenca era GRANULARIDADE, nao um erro.** A auditoria reproduziu a afirmacao substantiva mas mediu **64** campos pelo metodo que a fonte nomeia e concluiu que o "14" "nao cai do metodo" e fica por explicar. **Cai, e este oraculo mostra a aritmetica a partir dos DOIS logs que a propria fonte cita** (`_main/electron-dump-fresh.log`, `_main/webview-dump.stdout.txt`, uma linha `DOMDUMP` JSON cada, ambos ainda em disco): **4 campos de pagina** (`body`, `sheets`, `viewport`, `zoom`) **+ 10 elementos**, cada um com **6 propriedades de apresentacao** (`color`, `display`, `opacity`, `position`, `rect`, `visibility`). Logo: **COARSE = 4 + 10 = 14** — exactamente o numero que a fonte cita (`docs/webview-shell-20261006.md:85` e a linha da ferramenta em `:90`) — e **FINE = 4 + 10x6 = 64** — exactamente o numero que a auditoria mediu (`docs/audit/doc-vs-code.md:297`). **Os dois numeros estao certos e saem do MESMO metodo; diferem em contar um ELEMENTO como um campo ou como as suas seis propriedades.** E a afirmacao substantiva mantem-se: **14 pares comparados, 0 divergencias**, nas duas granularidades, com as mesmas chaves de elemento nos dois shells. O "14" nunca foi um misterio: era uma **granularidade por declarar**, e era isso que o tornava irreproduzivel para quem contasse do outro lado. A `AGENTS.md:476-477` repete o numero (a frase atravessa a quebra de linha). Instrumento `_main/webview-shell-field-count-oracle.py`: re-deriva os DOIS numeros dos logs (nao os lembra) e exige que os QUATRO sitios de citacao continuem a carregar o seu numero, para que uma edicao a qualquer deles va a RED; `--neg-arm` muda a `opacity` de UM elemento numa copia -> **1 mismatch** com as contagens intactas, ou seja o mutante e selectivo e o braco de comparacao mede mesmo algo. **LIMITE DECLARADO:** nada disto volta a correr as DUAS shells — a comparadora, o Electron, esta MORTA por decisao do dono, e o `app/panel/` mudou de nome depois — portanto a prova e sobre os dois `DOMDUMP` CONGELADOS de 2026-10-06; o que se fecha e o numero e a sua granularidade, nao uma comparacao nova | |
 | F10 | AGENTS.md cita worker/runs/exit3-armB-worker.jsonl; o ficheiro vive em _main/ (`doc-vs-code.md:30`) | **APPLIED** — herdado da linha #53, fechada nesta revisao pelo proprio AGENTS.md:169 |
 
 ### window-visibility.md (F1-F7)
@@ -304,8 +304,8 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 128
-- **OPEN:** 8
+- **APPLIED:** 129
+- **OPEN:** 7
 - **IN-FLIGHT:** 0
 
 **NOTA 2026-10-11 (TERCEIRA auditoria — a CADEIA DE PROVA, nao as afirmacoes):** as duas rondas
@@ -328,7 +328,7 @@ eram erro MEU, nao do mapa**. `--neg-arm` corre sobre dois mapas sinteticos (um 
 inexistente, outro a citar instrumento com risco de lancamento) e exige os dois sinalizados; medido
 `absent=1` e `risky=1`, `NEG-ARM PASS`.
 
-Conferencia: 128 + 8 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 129 + 7 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 **NOTA 2026-10-11 (SEGUNDA reconciliacao — o mesmo defeito noutra forma):** o mapa tem DUAS especies de
