@@ -131,16 +131,32 @@ REM STARTS NOTHING. pythonw keeps it windowless. The flag table it validates
 REM against is the shell's own argparse, so there is no second copy in batch to
 REM drift from the shell; --check-args is hidden from `--help` for that reason.
 set "PREFLIGHT_RC=0"
-"%PYW%" "%SHELL%" --check-args %*
+REM G5: give the pre-flight interpreter a HANDLE. pythonw writes nowhere on its
+REM own (stdout and stderr are None), and MEASURED 2026-10-12: the SAME
+REM `--check-args --bogus-flag` run delivers 757 B of argparse usage/error when a
+REM file handle is provided and 0 B when it is not. So the message was never
+REM "discarded by pythonw" -- nobody had given it somewhere to go. %TEMP% is used
+REM instead of _main\ so that a wrapper copied elsewhere cannot fail HERE: with an
+REM unwritable target cmd would not run the child at all and a GOOD list would be
+REM refused, which is worse than a lost message.
+set "REFUSAL=%TEMP%\sotto-preflight-refusal.txt"
+if exist "%REFUSAL%" del /q "%REFUSAL%" >nul 2>&1
+"%PYW%" "%SHELL%" --check-args %* 2>"%REFUSAL%"
 set "PREFLIGHT_RC=%ERRORLEVEL%"
 if not "%PREFLIGHT_RC%"=="0" (
   echo run.cmd: the shell REFUSED this launch ^(rc=%PREFLIGHT_RC%^). Nothing was started.
+  REM The interpreter OWN words: WHICH flag, not only the class of refusal.
+  if exist "%REFUSAL%" (
+    type "%REFUSAL%"
+    >>"%HERE%..\..\_main\webview-run.log" type "%REFUSAL%"
+  )
   echo run.cmd: rc=2 is a bad flag, rc=3 a missing panel, rc=1 a missing pywebview. "run.cmd --help" lists the flags.
   REM The receipt, in the same file a normal launch writes to: without it a
   REM rejected list would leave the log with NO bytes at all (measured).
   >>"%HERE%..\..\_main\webview-run.log" echo sotto: PREFLIGHT_REFUSED rc=%PREFLIGHT_RC% by=run.cmd-preflight
   exit /b %PREFLIGHT_RC%
 )
+if exist "%REFUSAL%" del /q "%REFUSAL%" >nul 2>&1
 REM Asked for the pre-flight itself, the pre-flight IS the action: return its
 REM status and start nothing. Until 2026-10-06 `run.cmd --check-args` passed the
 REM pre-flight and then `start`ed the app, which returned 0 having opened

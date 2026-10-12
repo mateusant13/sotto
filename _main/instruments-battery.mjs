@@ -65,6 +65,7 @@ const py = [
   ['_main/ready-stream-blindness-oracle.py --neg-arm', 'ready-stream-blindness neg'],
   ['_main/staging-hang-artefact-oracle.py', 'staging-hang-artefact (row #19)'],
   ['_main/staging-hang-artefact-oracle.py --neg-arm', 'staging-hang-artefact neg'],
+  ['_main/preflight-refusal-visible-oracle.py', 'preflight-refusal-visible (row G5)'],
 ];
 
 const node = [
