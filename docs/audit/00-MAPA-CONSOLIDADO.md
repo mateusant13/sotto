@@ -49,7 +49,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 11 | o falsificador "sem audio" reescreve um erro REAL do worker para `CAPTURE_NOT_STARTED`/`busy` | `sotto_webview.py:7169` | **[2026-10-11] APPLIED** — o falsificador so dispara enquanto NENHUMA legenda chegou (`and self.captions == 0`): depois de uma, esse texto e uma regressao REAL e mantem o kind e o texto do worker. Instrumento `_main/audit-rows-bridge-decisions.py`, arm r11 com DOIS casos (sem legenda / com legenda) → `live: 0 of 8 defects present`, e o mutante `m11-guard-removed` repoe o defeito |
 | 12 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte | `sotto_webview.py:7469` | **[2026-10-11] APPLIED** — `if not text:` em vez de `is None`: `''` conta como MALFORMADA e nao limpa o banner de morte. Arm r12 + mutante `m12-empty-caption-accepted` |
 | 13 | `start()` devolve `true` mesmo sem worker nenhum | `sotto_webview.py:7198, :7321` | **[2026-10-11] APPLIED** — `_spawn()` devolve o filho no sucesso e `None` nas duas falhas, e `start()` devolve `self._spawn() is not None`: reporta o SPAWN, nao o pedido. (A proposta do sweep, `return self._spawn() is not None` sem tocar no `_spawn`, seria sempre False — o `_spawn` nunca devolvia nada.) Arm r13 + mutante `m13-start-reports-request` |
-| 14 | `_lock` segurado durante uma ida-e-volta de UI bloqueante (ate 4 `ExecuteScriptAsync`, 10 s cada) | `sotto_webview.py:1901` | **OPEN** |
+| 14 | `_lock` segurado durante uma ida-e-volta de UI bloqueante (ate 4 `ExecuteScriptAsync`, 10 s cada) | `sotto_webview.py:7123-7160, :7235, :7381, :7884` | **[2026-10-11] APPLIED** — o caminho era REAL e nao estava no `with` que o scan estatico ve: `start()`/`stop()`/`_restart()` chamam `self._status(...)`, o callback e do SHELL, e o callback do shell fala com a pagina (`exec_js`, ate 4 idas-e-voltas de 10 s). A cura nao move a emissao para fora do sitio em que ela tem ordem: `with self._locked()` e o mesmo lock com as emissoes FEITAS DENTRO dele EM FILA, despejadas no instante em que ele e libertado — a ordem fica (era o lock que a serializava) e o lock cai em vez da mensagem. Instrumento `_main/audit-rows-bridge-decisions.py`, arm r14, mede o callback a correr com o lock na mao: `callbacks_with_lock_held: 0`, `lock_held_during_callback: false`, e `start_status_delivered: true` (a mensagem NAO se perde — diferir uma emissao que depois desaparecia seria pior que o lock). Mutante `m14-emitted-inside-lock` repoe a emissao dentro do lock e o braco flipa. `VERDICT: PASS  live: 0 of 10 defects present ... 10/10 mutants flipped`, rc=0 |
 | 15 | `_schedule_restart` sobrescreve o timer sem cancelar o anterior | `sotto_webview.py:7814` | **[2026-10-11] APPLIED** — o timer anterior e CANCELADO antes de o novo ser armado; antes o handle era sobrescrito, o primeiro ficava armado e `_cancel_timers()` ja nao o alcancava, logo dois restarts podiam disparar por uma morte. Arm r15 + mutante `m15-timer-overwritten` |
 | 16 | se `pythonw.exe` faltar, a app arranca sob o `python.exe` de consola | `run.cmd:48-49` (era) | **APPLIED** — recusa alta e sem janela, sai 3 (`run.cmd:64-76`) |
 | 17 | `run.cmd --check-args` era flag aceite: arrancava a app e devolvia 0 sem abrir nada | `sotto_webview.py:2449-2463` | **APPLIED** — `CHECK_ARGS_ONLY` sai no pre-flight e nao arranca nada (`run.cmd:125`) |
@@ -303,11 +303,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 75
-- **OPEN:** 60
+- **APPLIED:** 76
+- **OPEN:** 59
 - **IN-FLIGHT:** 0
 
-Conferencia: 75 + 60 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 76 + 59 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 quatro linhas velhas foram REMOVIDAS e o `findings_distinct` do proprio gate caiu de 139 para 135 na

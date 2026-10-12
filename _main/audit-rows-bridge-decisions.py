@@ -106,6 +106,15 @@ MUTANTS = {
     'm13-start-reports-request': (
         "            return self._spawn() is not None\n",
         "            return True\n"),
+    # #14 -- INVERTED: the live bridge DEFERS the emission until the lock is released;
+    # the mutant emits it inside, so the callback runs with the lock held.
+    'm14-emitted-inside-lock': (
+        "        if self._lock_depth:\n"
+        "            # INSIDE THE LOCK (row #14): queue it; `_LockScope.__exit__` flushes it\n"
+        "            # after the release, so the shell's callback never runs with the lock held.\n"
+        "            self._pending_status.append((value, kind, info or {}))\n"
+        "            return value\n",
+        "        pass  # m14: emitted INSIDE the lock -- the defect\n"),
     # #15 -- INVERTED: the live shell cancels the armed timer; the mutant overwrites it.
     'm15-timer-overwritten': (
         "        # CANCEL BEFORE OVERWRITING (row #15, 2026-10-11): overwriting the handle\n"
@@ -153,7 +162,7 @@ MUTANTS = {
     # #43 -- the restart thread takes the lock before it spawns.
     # #43 -- INVERTED: the live restart path holds the lock; the mutant drops it.
     'm43-restart-without-lock': (
-        "        with self._lock:\n"
+        "        with self._locked():\n"
         "            if self.stopped or self.child is not None:\n"
         "                return\n"
         "            self.state = 'restarting'\n"
@@ -286,6 +295,43 @@ def arm_r13(mod):
     }
     result['returns_true_with_no_worker'] = (bool(started)
                                              and rec.bridge.child is None)
+    rec.close()
+    return result
+
+
+#: Row #14's harness: the shell's REAL status callback does `exec_js` (up to four
+#: round-trips of 10 s each). This arm asks the bridge itself whether the lock is held
+#: while that callback runs -- the callback is replaced by a probe, in process.
+def arm_r14(mod):
+    """#14: is the bridge's lock held while the shell's status callback runs?"""
+    rec = Recorder(mod, WORKER)
+    seen = []
+    rec.bridge.on_status = lambda text, kind, info: seen.append(
+        (rec.bridge._lock.locked(), kind, str(text)[:40]))
+    started = rec.bridge.start('audit-row14')
+    from_start = list(seen)
+    seen.clear()
+    rec.bridge.stop('audit-row14')
+    from_stop = list(seen)
+    # NO CONSUME CASE HERE ON PURPOSE: `_consume` runs OUTSIDE the lock, so it was never
+    # the row's claim, and feeding it a made-up status shape only produced noise (measured
+    # 2026-10-11: the first draft of this arm did exactly that and read `kind=error` from an
+    # empty text). The locked paths are `start()` and `stop()`.
+    emitted = from_start + from_stop
+    result = {
+        'start_returned': started,
+        'statuses_from_start': len(from_start),
+        'statuses_from_stop': len(from_stop),
+        'statuses_total': len(emitted),
+        'callbacks_with_lock_held': len([row for row in emitted if row[0]]),
+        'kinds': [row[1] for row in emitted],
+    }
+    # BOTH halves: the lock must NOT be held, and the message must still ARRIVE --
+    # deferring an emission that is then lost would be a worse defect than the lock.
+    # `stop()` legitimately emits NOTHING while a worker exists (row #42's status is for the
+    # no-child case), so the requirement is the START emission, which is the deferred one.
+    result['start_status_delivered'] = len(from_start) >= 1
+    result['lock_held_during_callback'] = result['callbacks_with_lock_held'] > 0
     rec.close()
     return result
 
@@ -433,12 +479,13 @@ def arm_r43(mod):
     return result
 
 
-ARMS = ('r11', 'r12', 'r13', 'r15', 'r38', 'r40', 'r41', 'r42', 'r43')
-MEASURE = {'r11': arm_r11, 'r12': arm_r12, 'r13': arm_r13, 'r15': arm_r15,
+ARMS = ('r11', 'r12', 'r13', 'r14', 'r15', 'r38', 'r40', 'r41', 'r42', 'r43')
+MEASURE = {'r11': arm_r11, 'r12': arm_r12, 'r13': arm_r13, 'r14': arm_r14,
+           'r15': arm_r15,
            'r38': arm_r38, 'r40': arm_r40, 'r41': arm_r41, 'r42': arm_r42,
            'r43': arm_r43}
 MUTANT_OF = {'r11': 'm11-guard-removed', 'r12': 'm12-empty-caption-accepted',
-             'r13': 'm13-start-reports-request',
+             'r13': 'm13-start-reports-request', 'r14': 'm14-emitted-inside-lock',
              'r15': 'm15-timer-overwritten',
              'r38': 'm38-stats-tag-dropped', 'r40': 'm40-case-normalisation-removed',
              'r41': 'm41-unknown-type-silent',
@@ -452,6 +499,7 @@ EXPECT = {
     'r11': {'live': False, 'mutant': True},
     'r12': {'live': False, 'mutant': True},
     'r13': {'live': False, 'mutant': True},
+    'r14': {'live': False, 'mutant': True},
     'r15': {'live': False, 'mutant': True},
     'r38': {'live': False, 'mutant': True},
     'r41': {'live': False, 'mutant': True},
@@ -464,7 +512,7 @@ EXPECT = {
 #: the falsifier may still fire while NO caption has ever arrived, by design.
 DEFECT_KEY = {'r11': 'rewrites_after_caption', 'r12': 'death_lifted',
               'r40': 'mis_cased_type_dropped',
-              'r13': 'returns_true_with_no_worker',
+              'r13': 'returns_true_with_no_worker', 'r14': 'lock_held_during_callback',
               'r15': 'overwrites_without_cancel',
               'r38': 'tick_indistinguishable_from_total',
               'r41': 'in_silence', 'r42': 'no_final_status',
@@ -480,6 +528,9 @@ ROW_OF = {
            'timer without cancelling the previous one',
     'r38': 'audit #38 (audio-path.md F5): a mid-run tick can be read as the '
            'run total (tag=tick vs tag=final)',
+    'r14': 'audit #14: the bridge held `_lock` across the shell status callback, and '
+           'that callback talks to the page (exec_js, up to 4 x 10 s) -- Alt+C waited '
+           'on the panel',
     'r40': 'audit #40: the SHELL compares `type` RAW where the JS twin normalises it '
            '(worker-bridge.js:691), so one mis-cased line is a caption to one arm and a '
            'drop to the other',

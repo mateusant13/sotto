@@ -628,3 +628,49 @@ out to need no jsdom at all, because the question is narrower than that:
 
 Map: applied 73 -> 74, open 66 -> 65, gate GREEN. **NOT MEASURED: nothing was launched**; the arm
 imports the shell in process, so this is the parser's behaviour, not a painted panel.
+
+---
+
+## ADDENDUM 7 -- 2026-10-11 (Lead): rows #14 and #39 closed; the lock no longer spans the page
+
+**#39 (refuted by measurement, _main/audit-rows-tap-flags-ledger.py).** The row says _pump copies
+the accumulator with np.concatenate on every emit. The instrument, arm r39, measures BOTH cases in
+one run: with ONE pending array, 4 emits and concatenate_calls: 0 / concatenate_elements: 0; with
+SEVERAL pending arrays, 4 emits and concatenate_calls: 4 / concatenate_elements: 1100
+(copies_per_emit_multi: 1.0). The copy happens when it is needed and never on every emit
+(copies_even_with_one_pending: false). OPEN -> APPLIED on the strength of that reading. This closure
+rode into commit 0636bb2, whose message names only #29 and Finding A -- recorded here so the ledger
+and the history agree.
+
+**#14 -- the lock really was held across a UI round-trip, and the static scan did not see it.** The
+first measurement was structural and it came back NEGATIVE: a script that extracts every
+"with self._lock:" block and looks for UI primitives inside found 3 blocks, 0 with a UI call in them.
+That is exactly the clean result that would have closed the row as refuted -- and it would have been
+WRONG, because the UI is not called from the locked block: it is called FROM THE CALLBACK the locked
+block invokes. start()/stop()/_restart() hold the lock and call self._status(...), that callback
+belongs to the SHELL, and the shell callback talks to the page (exec_js -> ExecuteScriptAsync, up to
+four round-trips of 10 s each). So the row claim was TRUE and the honest instrument had to be
+behavioural:
+
+* The cure does not move the emission elsewhere in the order. "with self._locked()" is the same lock
+  with the emissions made inside it QUEUED and flushed the instant it is released: the ORDER
+  survives (the lock is what serialised them) and the LOCK is what is dropped, never the message.
+  Only the on_status call is deferred -- value formatting and the BRIDGE_STATUS_FALSIFIED log stay
+  where they were.
+* Arm r14 (_main/audit-rows-bridge-decisions.py, now 10 arms) replaces the callback with a probe that
+  records bridge._lock.locked() at call time, and drives start() and stop():
+  callbacks_with_lock_held: 0, lock_held_during_callback: false, statuses_from_start: 1,
+  start_status_delivered: true. The second half matters as much as the first: deferring an emission
+  that then goes missing would be a worse defect than the lock.
+* Its own first draft lied and the instrument said so: the arm also fed _consume a made-up status
+  shape (which read kind=error from an empty text) and required stop() to emit where it legitimately
+  emits nothing while a worker exists (row #42 status is the no-child case). Both readings were
+  removed or redefined rather than left to look like findings.
+* Both colours: VERDICT: PASS live: 0 of 10 defects present on the live shell -- every one refuted by
+  the bytes; 10/10 mutants flipped exactly their own arm, rc=0, and --neg-arm says live was not
+  probed. Mutant m14-emitted-inside-lock restores the inside-the-lock emission and flips its own arm
+  only.
+
+Map: applied 75 -> 76, open 60 -> 59, gate GREEN. Battery: 24 in-process instruments, 0 failures.
+**NOT MEASURED: no launch.** The arm drives the real bridge with a probe callback; what the real
+WebView2 does with a busy page is inferred from the exec_js timeout, not observed.

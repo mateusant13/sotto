@@ -7117,6 +7117,41 @@ class WorkerBridge:
         self._silence_timer = None
         self._restart_timer = None
         self._lock = threading.Lock()
+        # ROW #14 (2026-10-11): while this lock is held, a status emitted from here
+        # reaches the SHELL's callback, and that callback talks to the page (`exec_js`,
+        # up to four round-trips of 10 s each). Holding the lock across that meant
+        # Alt+C's start/stop waited on a page that may be busy -- the owner's freeze.
+        # Emissions made INSIDE the lock are queued here and flushed the moment it is
+        # released: their ORDER is kept (the lock is what serialised them) and the
+        # LOCK is dropped instead of the message.
+        self._lock_depth = 0
+        self._pending_status = []
+
+    class _LockScope:
+        """`with self._locked():` -- the lock, with its status emissions deferred."""
+
+        def __init__(self, bridge):
+            self._bridge = bridge
+
+        def __enter__(self):
+            self._bridge._lock.acquire()
+            self._bridge._lock_depth += 1
+            return self
+
+        def __exit__(self, *_exc):
+            bridge = self._bridge
+            bridge._lock_depth -= 1
+            flush = bridge._lock_depth == 0
+            bridge._lock.release()
+            if flush:
+                pending, bridge._pending_status = bridge._pending_status, []
+                for args in pending:
+                    bridge._status(*args)
+            return False
+
+    def _locked(self):
+        """The plain `self._lock` releases FIRST and emits after (row #14)."""
+        return WorkerBridge._LockScope(self)
 
     # -- state -------------------------------------------------------------
     def is_capturing(self):
@@ -7183,6 +7218,11 @@ class WorkerBridge:
             self.log(f'BRIDGE_STATUS_FALSIFIED text={json.dumps(value)}')
             value = CAPTURE_NOT_STARTED
             kind = 'busy'
+        if self._lock_depth:
+            # INSIDE THE LOCK (row #14): queue it; `_LockScope.__exit__` flushes it
+            # after the release, so the shell's callback never runs with the lock held.
+            self._pending_status.append((value, kind, info or {}))
+            return value
         self.on_status(value, kind, info or {})
         return value
 
@@ -7192,7 +7232,7 @@ class WorkerBridge:
 
     # -- lifecycle ---------------------------------------------------------
     def start(self, reason='start'):
-        with self._lock:
+        with self._locked():
             if self.stopped or self.child:
                 return False
             self.log(
@@ -7338,7 +7378,7 @@ class WorkerBridge:
         return self.child
 
     def stop(self, reason='stop'):
-        with self._lock:
+        with self._locked():
             if self.stopped:
                 return False
             self.stopped = True
@@ -7841,7 +7881,7 @@ class WorkerBridge:
         # hold it -- and resurrect a worker the owner had just stopped. `_spawn()`
         # itself takes no lock (measured: `start()` holds it across `_spawn()`), so
         # taking it here cannot deadlock.
-        with self._lock:
+        with self._locked():
             if self.stopped or self.child is not None:
                 return
             self.state = 'restarting'
