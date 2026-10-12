@@ -37,6 +37,9 @@ const py = [
   ['_main/panel-window-census.py --neg-arm', 'panel-census 7 mutants'],
   ['_main/inherited-row-reconciler.py', 'inherited-rows reconciled'],
   ['_main/inherited-row-reconciler.py --neg-arm', 'inherited-rows neg'],
+  ['_main/child-channel-oracle.py', 'child-channel (row #5)'],
+  ['_main/offscreen-cure-comment-oracle.py', 'offscreen-comments (row #33)'],
+  ['_main/offscreen-cure-comment-oracle.py --neg-arm', 'offscreen-comments neg'],
 ];
 
 const node = [
