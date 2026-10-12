@@ -118,22 +118,22 @@ MUTANTS = {
     'm34-orphan-handler-removed': (_EXIT3, [
         (_handler_block(_EXIT3, '        rc = proc.wait(timeout=400)'),
          '    rc = proc.wait(timeout=400)\n')]),
-    # #62 -- the electron launcher gains a handler that kills the TREE. Two
-    # literal replacements: the call is wrapped, and the handler is inserted
-    # before the first use of p. Inside the parentheses the continuation lines
-    # keep their indentation, so the mutant stays valid Python.
-    'm62-electron-tree-kill': (RUN_ELECTRON, [
-        ('    p = subprocess.run(\n'
-         '        cmd,\n',
-         '    try:\n'
-         '        p = subprocess.run(\n'
-         '        cmd,\n'),
-        ('    sys.stdout.write(p.stdout)\n',
-         '    except subprocess.TimeoutExpired:\n'
-         '        subprocess.run(["taskkill", "/F", "/T", "/PID", str(0)],\n'
-         '                       capture_output=True, creationflags=FLAGS)\n'
-         '        raise\n'
-         '    sys.stdout.write(p.stdout)\n')]),
+    # #62 -- THE MUTANT NOW GOES THE OTHER WAY (2026-10-12): the live launcher HAS the tree kill
+    # (Popen keeps the pid, taskkill /F /T on timeout, status 124), so this mutant REMOVES it and
+    # reproduces the orphan -- the same inversion m5/m34/m35 already carry. Three literal
+    # replacements, each anchored exactly once: the two handlers stop catching TimeoutExpired (so
+    # the arm's own predicate, text.count('TimeoutExpired') == 0, becomes TRUE again) and the
+    # docstring mention goes too. The file stays valid Python: CalledProcessError is a real class,
+    # it is simply never raised, which is exactly the pre-cure behaviour.
+    # The two handlers need LONGER anchors: the 4-space form is a SUBSTRING of the 8-space one
+    # (measured -- the first attempt was refused with "appears 2 time(s), wanted exactly 1").
+    'm62-timeout-unhandled': (RUN_ELECTRON, [
+        ('    except subprocess.TimeoutExpired:\n        subprocess.run(',
+         '    except subprocess.CalledProcessError:\n        subprocess.run('),
+        ('        except subprocess.TimeoutExpired:\n            proc.kill()',
+         '        except subprocess.CalledProcessError:\n            proc.kill()'),
+        ('and TimeoutExpired carries the command',
+         'and the timeout exception carries the command')]),
     # #35 -- AND THE SAME INVERSION (2026-10-11): the dead constant comes BACK and the
     # handler goes away, which is the state row #35 was filed against.
     'm35-handler-removed-constant-restored': (RUN_HIDDEN, [
@@ -438,16 +438,19 @@ ROW_OF = {
 #: flags were fixed in the probe (measured: 0x08000000 alone -> 14 pid rows, 0x08000008
 #: -> 0 rows with rc 0). Every other arm keeps the defect the sweep measured.
 # r34 and r35 JOIN r5 on 2026-10-11: the three oracles were given the tree-kill handler and
-# run-live-hidden.py lost its dead DETACHED_PROCESS, so the only landmine left live is r62.
-LIVE_DEFECT = {'r5': False, 'r34': False, 'r35': False, 'r62': True}
+# run-live-hidden.py lost its dead DETACHED_PROCESS.
+# r62 JOINS THEM on 2026-10-12: _run-hidden.py now keeps the pid and kills the TREE on timeout
+# (taskkill /F /T, status 124), so NO landmine of this family is left live -- the arm's own
+# predicate mechanism_confirmed_unhandled went False because the file carries TimeoutExpired.
+LIVE_DEFECT = {'r5': False, 'r34': False, 'r35': False, 'r62': False}
 
 #: arm -> (the mutant that must flip it, its value under that mutant)
 MUTANT_OF = {'r5': ('m5-census-broken-flags', True),
              'r34': ('m34-orphan-handler-removed', True),
              'r35': ('m35-handler-removed-constant-restored', True),
-             'r62': ('m62-electron-tree-kill', False)}
+             'r62': ('m62-timeout-unhandled', True)}
 MUTANT_ORDER = ('m5-census-broken-flags', 'm34-orphan-handler-removed',
-                'm35-handler-removed-constant-restored', 'm62-electron-tree-kill')
+                'm35-handler-removed-constant-restored', 'm62-timeout-unhandled')
 
 MECHANISM = {}
 

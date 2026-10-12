@@ -15,18 +15,46 @@ FLAGS = 0x08000000  # CREATE_NO_WINDOW
 
 
 def run(script: str, timeout: int = 120) -> int:
+    """Run the probe under a timeout that is a REAL ceiling for a process TREE.
+
+    AUDIT ROW #62: `subprocess.run(timeout=)` around the multi-process electron.exe is not a ceiling.
+    MEASURED 2026-10-12 by _main/timeout-tree-ceiling-oracle.py: on Windows the timeout kills the DIRECT
+    child only, and the grandchildren an Electron run leaves behind (its own gpu/renderer/utility
+    processes, and any child a probe spawned) stay ALIVE -- a staged tree left 1 survivor behind with
+    `subprocess.run(timeout=)` and 0 with the tree kill below. `run()` also could not reap them: it hid
+    the pid, and TimeoutExpired carries the command, not the process.
+
+    So the child is a Popen (whose pid we keep) and a timeout ends with `taskkill /F /T` on that pid --
+    the tree, by pid, never by image name. Return 124 (the conventional timeout status) so a caller can
+    tell a timeout from a probe that finished and failed.
+    """
     cmd = [str(ELECTRON), script]
-    p = subprocess.run(
+    proc = subprocess.Popen(
         cmd,
         cwd=str(ROOT / "app"),
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=timeout,
         creationflags=FLAGS,
     )
-    sys.stdout.write(p.stdout)
-    sys.stderr.write(p.stderr)
-    return p.returncode
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+            creationflags=FLAGS,
+        )
+        try:
+            out, err = proc.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, err = proc.communicate()
+        rc = 124
+    sys.stdout.write(out or "")
+    sys.stderr.write(err or "")
+    return rc
 
 
 if __name__ == "__main__":

@@ -68,6 +68,7 @@ const py = [
   ['_main/preflight-refusal-visible-oracle.py', 'preflight-refusal-visible (row G5)'],
   ['_main/webview-shell-field-count-oracle.py', 'webview-shell-field-count (row F9)'],
   ['_main/webview-shell-field-count-oracle.py --neg-arm', 'webview-shell-field-count neg'],
+  ['_main/timeout-tree-ceiling-oracle.py', 'timeout-tree-ceiling (row #62)'],
 ];
 
 const node = [
