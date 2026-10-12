@@ -603,10 +603,22 @@
            REMOVED 2026-10-12 from this row, both for the owner bare-minimum order
            (*"o painel de baixo, deve conter apenas o bare minimum"*) and, in the
            transparency case, because it IS the reported bug: the theme-list chevron
-           (hidden by CSS on this surface, see panel.css — `theme-switcher.js`
-           re-creates the node when the id is absent) and the transparency button
-           (deleted outright, together with both of its hide-rules). EVERY button
-           still exists on the RIGHT panel, which is where all of them live now. -->
+           and the transparency button (deleted outright, together with both of its
+           hide-rules). EVERY button still exists on the RIGHT panel, which is where
+           all of them live now.
+
+           ── THE CHEVRON LEFT THE STRIP TOO, AND IT DOES NOT COME BACK ──────────
+           The note that was here said the chevron is "hidden by CSS on this surface
+           because theme-switcher.js re-creates the node when the id is absent".
+           That is no longer what holds it. On the 2026-10-12 re-anchor
+           `theme-switcher.js` `ensureChevrons` stopped BUILDING
+           `#strip-theme-chevron` — the block that did was deleted — and
+           `registerChevron` REFUSES one the strip bar ships, so it never gets a
+           click listener. `panel.css` still carries a `display: none` as the
+           second layer, and refuses the dropdown itself on this surface. Gate:
+           `_main/theme-preview-oracle.js` ARM 11/12. What stays in this row is the
+           ONE theme control the owner keeps: `#strip-theme-button`, which cycles
+           next/previous on click. -->
       <section class="stripbar" id="strip-controls" aria-label="Caption controls">
         <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
              todos os temas"*, and the strip is one of the two surfaces). The strip
@@ -679,13 +691,20 @@
         <!-- ── REMOVED 2026-10-12: the theme-list CHEVRON on the strip ──────────
              Owner order: *"o painel de baixo, deve conter apenas o bare minimum"*.
              The theme button itself CYCLES on click and stays; the chevron was a
-             second door into the same five designs. DELETED FROM MARKUP, AND ALSO
-             HIDDEN BY CSS ON THIS SURFACE (`body[data-surface="strip"]
-             #strip-theme-chevron { display: none }` in panel.css) — necessary
-             because `theme-switcher.js ensureChevron` RE-CREATES the node when the
-             id is absent, so a markup-only removal would put it straight back.
-             The header chevron (the right panel, where every button lives) and the
-             picker are untouched. -->
+             second door into the same designs. DELETED FROM MARKUP, and the module
+             does not re-create it either — on the 2026-10-12 re-anchor
+             `theme-switcher.js` `ensureChevrons` dropped the block that built
+             `#strip-theme-chevron`, and `registerChevron` refuses one the strip bar
+             ships, so there is no node left for CSS to hide.
+
+             THAT IS THE RE-ANCHOR: the dropdown moved to the RIGHT panel. Its one
+             trigger is `#theme-chevron`, built inside `.panel__controls` — the
+             cluster where every button already lives — and the list it opens,
+             `#theme-dropdown` (a body-level popup, because `.panel` is `overflow:
+             hidden`), is refused on this surface by `panel.css` with
+             `body[data-surface="strip"] .theme-dropdown { display: none
+             !important }`, so a dropdown left open cannot follow the shell here.
+             The picker and the tune dialog stay panel-only, as before. -->
 
         <!-- ── REMOVED 2026-10-12: TRANSPARENCY on the strip ─────────────────────
              THIS BUTTON IS THE REPORTED BUG, so it is gone, not merely relabelled.

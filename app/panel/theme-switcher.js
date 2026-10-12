@@ -114,33 +114,45 @@
    */
   var picker = null;
 
-  /* ── the chevron dropdown (panel header + strip, 2026-10-08) ───────────────
+  /* ── the chevron dropdown (RIGHT PANEL, re-anchored 2026-10-12) ────────────
    *
-   * ANCHOR — WHICH ELEMENT, AND WHY (written 2026-10-12, lane S6). This module is
-   * forbidden from editing panel.html / panel.css / panel.js (they belong to
-   * another lane), so the dropdown it builds has to be anchored on something the
-   * markup ALREADY has. There are exactly two stable candidates:
+   * ANCHOR — WHICH ELEMENT, AND WHY. The trigger lives in the RIGHT panel's own
+   * control cluster, `.panel__controls` (panel.css:281), as `#theme-chevron`: the
+   * cluster that already carries the font dial, Pause and Hide, and the place
+   * the owner sent every control — *"o terceiro panel, e o da direita. onde deve
+   * ter todos os botoes."* It is the ONLY element in the document that opens the
+   * list, and the panel surface is the only surface that offers it.
    *
-   *   1. `#strip-theme-chevron` — SHIPPED IN MARKUP, panel.html:676, with
-   *      `data-theme-chevron` and `aria-controls="theme-dropdown"`. It lives in
-   *      the strip bar, and the strip bar is the ONLY one of the two surfaces that
-   *      is on screen the whole time the panel is visible: in the `panel`
-   *      surface `.panel__header` is `display:none` (panel.css:1456
-   *      `body[data-surface="strip"] .theme-picker` and the header rules), so a
-   *      header-only control would be unreachable in the surface the owner uses
-   *      with the captions. THIS IS THE ONE THAT MATTERS.
-   *   2. `.panel__controls` (panel.html:272) — the module's own header fallback,
-   *      created ONLY when the markup has none. Never `display:none` in any
-   *      theme, so it is a safe secondary mount, but it is inside the header.
+   * WHY IT LEFT THE STRIP (2026-10-12). The first cut anchored on
+   * `#strip-theme-chevron`, which was then the only theme control reachable
+   * while the strip was the surface in play. The panel lane then shipped the
+   * owner's layout (commit `fae207a`): *"o painel de baixo, deve conter apenas o
+   * bare minimum"*. The strip keeps ONE theme control — `#strip-theme-button,
+   * which cycles next/previous on click and which `panel.html` ships, not this
+   * module — and the list moved with the rest of the buttons. Two things hold
+   * that in place, because a markup line on its own cannot:
+   *   1. THIS MODULE no longer builds a strip chevron. The block that used to
+   *      sit at the foot of `ensureChevrons` was deleted in the re-anchor, and
+   *      `registerChevron` REFUSES a chevron the strip bar ships. The gate that
+   *      pins both halves is `_main/theme-preview-oracle.js` ARM 11/12.
+   *   2. `panel.css` hides the trigger AND the list on the strip surface —
+   *      `body[data-surface="strip"] #strip-theme-chevron { display: none }` and
+   *      `body[data-surface="strip"] .theme-dropdown { display: none
+   *      !important }` — so a strip-bar chevron is inert and invisible, and a
+   *      dropdown left open does not follow the shell onto the short surface.
+   * A chevron the markup ships INSIDE `.panel__controls` is used as-is when the
+   * module would otherwise create its own.
    *
    * The dropdown ITSELF (`#theme-dropdown`) is created here and appended to
-   * `document.body`, NOT nested in either control: `.panel` has
-   * `overflow:hidden` (panel.css:167), so a nested popup is clipped by the panel's
-   * own rounded box. Body-level + `position:absolute` + the `z-index:40` the
-   * base stylesheet already gives it (panel.css:338) is what lets the 49 options
-   * escape the panel. `ensureChevrons` binds by EXISTING ID first, so the
-   * markup's `aria-controls` reference to `theme-dropdown` (panel.html:676) is
-   * honoured rather than duplicated.
+   * `document.body`, NOT nested in either control: `.panel` has `overflow:
+   * hidden` (panel.css:181), so a nested popup is clipped by the panel's own
+   * rounded box. Body-level + `position:absolute` + the `z-index:40` the base
+   * stylesheet already gives it (panel.css:352) is what lets the list escape the
+   * panel. That list's own chrome — `.theme-chevron`, `.theme-dropdown*` — is
+   * written in `panel.css`, which `panel.html` links EAGERLY (panel.html:49) and
+   * which is NOT one of the assets `lazy-assets.js` gates behind the shell's
+   * ask, so the trigger paints and the list opens whether or not the running
+   * theme's own stylesheet has arrived yet.
    *
    * Same persist contract as the picker, plus LIVE PREVIEW: hovering (or
    * focusing) an option paints it instantly WITHOUT persisting
@@ -148,9 +160,8 @@
    * through the same `api.set(name)` persist path the cycle button uses, and
    * leaving the dropdown or pressing Escape REVERTS to the committed theme
    * (`api.set(committed, { persist:false })` — the store still holds it, so no
-   * write is needed). There is ONE dropdown and it is shared by EVERY chevron
-   * (the header's and the strip's `#strip-theme-chevron`): the persist logic is
-   * not forked, and the two mount points can never disagree.
+   * write is needed). There is ONE dropdown, and with the strip bare the panel
+   * chevron is its only door.
    */
   var chevrons = [];
   var activeChevron = null;
@@ -281,14 +292,31 @@
   }
 
   /* ── HOVER PREVIEW: COALESCED TO ONE ATTRIBUTE WRITE PER FRAME (2026-10-12) ──
-   * THE COST OF A PREVIEW IS ONE ATTRIBUTE WRITE AND NOTHING ELSE. Measured
-   * against the shipped panel, a theme switch is `html[data-theme]` moving from
-   * one name to another: the CSS is ALL parsed and registered at load — the
-   * eight theme stylesheets the document links are 601 922 B / 3 149 rule blocks
-   * — and the style engine matches them against the new name on the next frame.
-   * NO preview may therefore parse a stylesheet, fetch a font, decode an image,
-   * write the store or call the shell: rooting a sweep of the list costs N
+   * THE COST OF A PREVIEW IS ONE ATTRIBUTE WRITE AND NOTHING ELSE. A theme
+   * switch is `html[data-theme]` moving from one name to another, and the style
+   * engine matching the rules it already has against the new name on the next
+   * frame. NO preview may therefore create a stylesheet, fetch a font, decode an
+   * image, write the store or call the shell: rooting a sweep of the list costs N
    * recalculations instead of N parses.
+   *
+   * NUMBER, WITH ITS DATE AND ITS REVISION (this file's own rule 2). The sentence
+   * that used to stand here — "the eight theme stylesheets the document links
+   * are 601 922 B / 3 149 rule blocks, so the CSS is ALL parsed at load" — is
+   * STALE twice over and was corrected 2026-10-12. (1) The count: measured
+   * 2026-10-12 over the EIGHT `<link>`s the document actually carries
+   * (panel.html:48-66) — themes/fonts.css 27 971, panel.css 109 361,
+   * themes/theme-{1..5}.css 26 952 / 27 169 / 27 302 / 26 235 / 27 437 and
+   * themes/zipc-panels.css 35 875 — the eager load is 308 302 B over 1 179 rule
+   * blocks, not 601 922 B / 3 149. (2) The premise: themes/cinematic.css
+   * (312 230 B) and themes/panel-designs.css (128 716 B) are NOT linked any
+   * more. Since S7's `lazy-assets.js` they are gated behind the shell's ask
+   * and arrive only for a `cine-*` / `pd-*` theme, so "all parsed at load" now
+   * holds for the five `theme-N` directions and the ten `zipc` panel designs and
+   * NOT for the rest of the manifest. What survives the correction is the claim
+   * that matters: the preview itself never parses anything. A theme stylesheet
+   * that has not arrived is ASKED for, off this path, by `lazy-assets.js`'s
+   * MutationObserver on `data-theme` (`settle()` → `loadFor()`), so a preview can
+   * at worst warm the same bytes a commit would have fetched anyway.
    *
    * What this scheduler buys, in the units the jank is actually made of:
    *   * LATEST WINS. Ten `mouseenter`s inside one frame collapse into ONE apply,
@@ -561,8 +589,40 @@
     return false;
   }
 
+  /* ── BARE MINIMUM ON THE STRIP ──────────────────────────────────────────────
+   * The strip surface is the owner's short bar (panel.html:590: transcript
+   * drawer, header and footer are all `display:none` there), so it must never
+   * grow a second door into the theme list. The test is ANCESTRY, not the
+   * `data-surface` attribute: the attribute says which surface is ON SCREEN
+   * right now, and a popup the panel opened can outlive a switch. The strip
+   * bar is `.stripbar` (panel.html:610), and everything the strip carries lives
+   * inside it — including a `#strip-theme-chevron` a future markup line might
+   * ship there. */
+  function inStripBar(el) {
+    var n = el;
+    while (n) {
+      if (n.className && String(n.className).split(/\s+/).indexOf('stripbar') >= 0) return true;
+      n = n.parentNode;
+    }
+    return false;
+  }
+
+  /* The one question `registerChevron` asks. A chevron in the RIGHT panel's
+   * control cluster (`.panel__controls`, which is inside `.panel__header`) is
+   * eligible; a chevron in the strip bar is NOT, so it never becomes a trigger
+   * and never gets a click or keydown listener. */
+  function isPanelChevron(el) {
+    if (!el) return false;
+    return !inStripBar(el);
+  }
+
   function registerChevron(btn) {
     if (!btn || chevrons.indexOf(btn) >= 0) return btn;
+    /* REFUSED, NOT HIDDEN: a strip-bar chevron keeps whatever it already is and
+     * gets nothing from this module. It cannot open the dropdown, so the strip
+     * stays bare even if a markup line ships one; `panel.css` keeps it
+     * invisible. */
+    if (!isPanelChevron(btn)) return null;
     chevrons.push(btn);
     if (!btn.dataset.wired) {
       btn.dataset.wired = 'true';
@@ -597,12 +657,14 @@
   }
 
   function ensureChevrons(doc) {
-    /* Every chevron the host page ships (the strip's is markup; the harness may
-     * ship both). */
+    /* Every chevron the host page ships, in the RIGHT panel's cluster. A
+     * `#strip-theme-chevron` the strip bar might ship is FOUND here and then
+     * refused by `registerChevron`, so no listener is attached to it. */
     var found = doc.querySelectorAll('#theme-chevron, #strip-theme-chevron, [data-theme-chevron]');
     for (var i = 0; i < found.length; i += 1) registerChevron(found[i]);
 
-    /* The header's: created only when the host page has none. */
+    /* The panel's: created only when the host page has none. THIS IS THE ONLY
+     * TRIGGER THE MODULE BUILDS. */
     if (!doc.getElementById('theme-chevron')) {
       var host = doc.querySelector('.panel__controls');
       if (host) {
@@ -615,15 +677,16 @@
       }
     }
 
-    /* The strip's: attached to the right of the strip theme button. */
-    if (!doc.getElementById('strip-theme-chevron')) {
-      var stripTheme = doc.getElementById('strip-theme-button');
-      if (stripTheme && stripTheme.parentNode) {
-        var sbtn = makeChevron(doc, 'strip-theme-chevron', 'strip-button strip-button--chevron');
-        stripTheme.parentNode.insertBefore(sbtn, stripTheme.nextSibling);
-        registerChevron(sbtn);
-      }
-    }
+    /* ── THE STRIP HAS NO CHEVRON, AND THAT IS THE RE-ANCHOR ──────────────────
+     * A block that built `#strip-theme-chevron` next to `#strip-theme-button`
+     * and registered it used to sit exactly here. It was DELETED on 2026-10-12
+     * (lane S6-R) when the dropdown moved to the right panel: the owner's order
+     * is *"o painel de baixo, deve conter apenas o bare minimum"*, and the strip
+     * already has its one theme control, `#strip-theme-button`, which CYCLES.
+     * Nothing here re-creates the node — the earlier revision did, which is why
+     * `panel.css` had to hide a node this module kept putting back. A lane that
+     * restores a strip chevron goes RED on `_main/theme-preview-oracle.js`
+     * ARM 11.7 and neg-arm M4. */
 
     paintChevrons();
     return chevrons;
@@ -865,6 +928,15 @@
      * four forced `getComputedStyle` reads per option, measured in the receipt. */
     previewWindowOpen: function () {
       return previewWindowOpen();
+    },
+
+    /* triggers() — the elements this module WIRED as dropdown doors, in wire
+     * order. Exposed so a gate can assert WHERE the control lives instead of
+     * re-implementing the registration rules: the list must contain the RIGHT
+     * panel's chevron and NOTHING in the strip bar. Not part of the owner's
+     * path. */
+    triggers: function () {
+      return chevrons.slice();
     },
 
     /* closeDropdown — exposed so an ORACLE can end a preview it started, and so a

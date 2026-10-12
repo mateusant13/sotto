@@ -864,11 +864,6 @@ function renderProvisional(committed, provisional, source) {
   // watching. Following only on creation (above) left the newest words below the
   // fold for the whole interesting part of the line (measured 2026-10-07).
   followNewestLine();
-  // ── AND THE FLOATED CAPTION, IF IT IS ON (owner, 2026-10-12) ──────────────
-  // The same text, the same instant: `caption-float.js` keeps the overlay's three
-  // nodes in sync with the state this file already holds, so the strip and the
-  // floated caption can never disagree about what was said.
-  if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);
   // ── AND THE FROZEN SKIN, IF THIS THEME HAS ONE (owner, 2026-10-08) ────────
   // The same two word arrays, painted into the MOCKUP'S OWN caption plate instead
   // of ours (`skin-host.js`). `panel.js` stays the single source of the text: the
@@ -1029,6 +1024,17 @@ function addCaption(text, reason, meta) {
   updateLiveHint();
   recordHistory(text, reason, meta);
   bridge.captionApplied(text);
+  // ── AND THE FLOATED CAPTION, IF IT IS ON (owner, 2026-10-12) ──────────────
+  // The SAME closed line the panel just painted, with the meta THIS function was
+  // given — which is what carries the producer credits into the overlay
+  // (`caption-float.js` writes `#caption-float-credits` only when a meta arrives).
+  // It belongs here, in the COMMIT path, and not in `renderProvisional`: there the
+  // text is the two word arrays joined and `meta` is null. A copy of this line did
+  // stand in `renderProvisional` and referenced a `text` binding that does not exist
+  // in that scope — a ReferenceError on EVERY forming line, measured by
+  // `_main/_s2-bar-dom-oracle.js` on 2026-10-12. `caption-float.js` ignores a repeat
+  // of the sentence already on screen, so the two push sites cannot fight.
+  if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);
   setStatus('Receiving captions', 'live');
   // The frozen skin's own history list gets the same closed line (see `skin-host.js`).
   if (window.SottoSkin && SottoSkin.active) {

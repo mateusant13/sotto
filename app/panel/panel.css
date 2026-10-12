@@ -1821,14 +1821,31 @@ body[data-surface="strip"] #strip-hide-button { order: 4; }
 body[data-surface="strip"] #strip-font-smaller-button { order: 5; }
 body[data-surface="strip"] #strip-font-larger-button { order: 6; }
 body[data-surface="strip"] #strip-pause-button { order: 7; }
+/* THE DEFAULT ORDER IS NOT "LAST". Linhar was added to this list's prose but not
+   to the list itself, so it fell back to `order: 0` — TIED with the brand and ahead
+   of every button that declares 1..7, which renders it SECOND, right after the
+   wordmark. Measured 2026-10-12. It belongs with Pause, the two end-of-row actions
+   the paint below describes. */
+body[data-surface="strip"] #strip-float-button { order: 8; }
 body[data-surface="strip"] #strip-state { order: 99; }
 
-/* The theme-list chevron is NOT on the bare-minimum strip. It is deleted from the
-   markup, and THIS rule is what actually keeps it off: `theme-switcher.js`
-   `ensureChevron` builds a `#strip-theme-chevron` button and inserts it after the
-   theme button when the id is absent, so a markup-only removal puts it straight
-   back on the bar. `display: none` on the strip surface is therefore the load-
-   bearing part, and it is scoped so the RIGHT panel keeps its own chevron. */
+/* ── THE STRIP HAS NO THEME-LIST CHEVRON. TWO LAYERS, NOT ONE. ───────────────
+   Owner, 2026-10-12, verbatim: *"o painel de baixo, deve conter apenas o bare
+   minimum"*. The theme-list chevron is gone from the strip.
+
+   LAYER 1 (2026-10-12, the re-anchor) is the JAVASCRIPT: `theme-switcher.js`
+   `ensureChevrons` NO LONGER BUILDS `#strip-theme-chevron` — the block that did
+   sat at its foot and was deleted — and `registerChevron` REFUSES a chevron the
+   strip bar ships. So the strip cannot regain a theme-list door by a markup line
+   alone, and the node this rule used to have to hide every boot is simply not
+   created any more. That revision needed a CSS hide because the module kept
+   putting the node back; the revision that does not put it back does not.
+
+   LAYER 2 is THIS RULE, and it STAYS. A `#strip-theme-chevron` the strip bar ever
+   ships again is then invisible here, and a chevron the module would have wired
+   is refused before it is wired — so the idle node cannot even open the list.
+   It is scoped to the strip surface precisely so the RIGHT panel keeps its own
+   `#theme-chevron` in `.panel__controls`, which is the ONE trigger. */
 body[data-surface="strip"] #strip-theme-chevron {
   display: none;
 }
@@ -2395,25 +2412,28 @@ body[data-state="error"] .chrome__off {
   background: var(--theme-swatch, var(--accent-from));
 }
 
-/* ── THE THEME DROPDOWN ON THE STRIP SURFACE ────────────────────────────────
- * The strip window is only ~100 px tall, so the header's vertical five-row list
- * would be clipped. The strip is ~1040 px WIDE, so the SAME list is laid out as
- * a row that fits the short window. Only the LAYOUT changes here; the module,
- * the live preview and the persist path are the one the header uses. */
+/* ── THE THEME DROPDOWN IS PANEL-ONLY ───────────────────────────────────────
+ * This file used to LAY OUT the dropdown for the strip window here — the strip
+ * is ~100 px tall and ~1040 px wide, so the header's vertical list was restyled
+ * as a wide row that fits. That whole block was deleted on the 2026-10-12
+ * re-anchor: the trigger lives on the RIGHT panel now (`#theme-chevron` in
+ * `.panel__controls`) and the strip carries only its cycling `#strip-theme-button`.
+ *
+ * WHY THIS IS A HIDE AND NOT JUST A DELETED LAYOUT. The dropdown is a BODY-level
+ * popup (`.panel` is `overflow:hidden`, so the list cannot be nested), and the
+ * owner can switch surfaces with the dropdown still OPEN — Alt+C away from a
+ * preview leaves `hidden=false` on `#theme-dropdown` while `data-surface` moves
+ * to `strip`, and a theme list would then paint across the short bar. So the list
+ * is refused on the strip outright, by the surface attribute rather than by
+ * anything the module has to remember to do.
+ *
+ * `!important` because `.theme-dropdown` is shown by clearing `[hidden]`, and an
+ * `!important` here is what makes "no theme list on the strip" unconditional
+ * rather than a matter of who writes last. No `#theme-chevron` exists on this
+ * surface either (see the rule above), so this cannot strand a control that the
+ * owner can see but not use. */
 body[data-surface="strip"] .theme-dropdown {
-  top: auto;
-  bottom: 6px;
-  left: 8px;
-  right: 8px;
-  min-width: 0;
-}
-body[data-surface="strip"] .theme-dropdown__list {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-body[data-surface="strip"] .theme-dropdown__option {
-  flex: 1 1 auto;
-  justify-content: center;
+  display: none !important;
 }
 
 /* The footer chrome is a PANEL-surface thing: the strip keeps its dot and one
@@ -2658,13 +2678,14 @@ body[data-surface="strip"] .captions {
   display: none;
 }
 
-/* The strip keeps the status readout (it is a readout, not a caption) and the
-   wordmark the owner asked for on every theme. Both are compressed to the new
-   height: the row is 22px of buttons and nothing may push it taller. */
-body[data-surface="strip"] .status {
-  padding-top: 0;
-  min-height: 0;
-}
+/* NOTHING ELSE RENDERS ON THIS SURFACE, so nothing else is styled here. The
+   readout the owner keeps is `#strip-state`, INSIDE the bar (`order: 99`); the
+   `.status` footer is `display: none` on this surface by the rule above. This
+   block used to claim the strip "keeps the status readout" and style it — a rule
+   about a box that is never rendered, and a comment that was FALSE. Measured
+   2026-10-12: no theme or skin sets `display` on `.status` (0 of 15 stylesheets),
+   so the hide is not overridable from a theme. The row is 22px of buttons and
+   nothing may push it taller. */
 
 /* ── 2. LIGHTER, CLEARER BUTTONS ─────────────────────────────────────────── */
 
