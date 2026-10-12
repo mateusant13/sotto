@@ -63,7 +63,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 26 | `queue_drops` nunca era afirmado | `sotto_worker.py:1317` | **APPLIED** — `delivery-rate-oracle.py` afirma `queue_drops == 0` (arm `fixture-drops` RED no log) |
 | 27 | panel ARM A aceita UMA legenda como LIVE | `_main/panel-exit3-oracle.py:999` | **OPEN** |
 | 28 | shell selftest regista `focus_stolen=true` e mesmo assim sai 0 | `_main/webview-selftest.log:32` | **OPEN** |
-| 29 | `panel-exit3-oracle.log` STALE (mtime 03:54 < fonte 04:40) — o PASS foi ganho por uma versao de 3 bracos | `_main/panel-exit3-oracle.log` | **OPEN** — mtime 1791269670 < fonte 1791272436 |
+| 29 | `panel-exit3-oracle.log` STALE (mtime 03:54 < fonte 04:40) — o PASS foi ganho por uma versao de 3 bracos | `_main/panel-exit3-oracle.log` | **[2026-10-11] APPLIED (declarado, nao refrescado)** — a estalidade deixou de ser uma leitura humana: `_main/stale-receipt-oracle.py` compara o relogio de cada artefacto com o das suas fontes e imprime `STALE`/`CURRENT` por par, com `--neg-arm` a re-carimbar copias para provar que sabe dizer as duas cores (`NEG-ARM PASS`). Medido: `row #29 log STALE age_s=494394.9` (≈5,7 dias) contra `panel-exit3-oracle.py` + `sotto_webview.py`. **Nao refrescado de proposito:** re-correr o oraculo LANCA o shell, o que a ordem do dono proibe — o log fica declarado velho em vez de ser lido como corrente |
 | 30 | `run-cmd-exit-oracle` esta RED hoje no conjunct do census | `_main/run-cmd-exit-oracle-after.json` | **OPEN** — `verdict: FAIL`, "arms=PASS census=FAIL" |
 | 31 | o censo da casa nao serve para o eixo janela: `MainWindowHandle != 0` sem teste de monitor | `window-census.ps1:11-14, 60-70` | **OPEN** |
 | 32 | o censo nao e panel-specific (alarmou em `cmd`/`dwm`/`python`) | `window-census.log` | **OPEN** |
@@ -77,7 +77,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 |---|---|---|---|
 | 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **APPLIED** [2026-10-11] — `flat-endpoint.md:125-142` mede o pos-fix: `S_OK`/`S_FALSE` -> `COM_REF_TAKEN` e o erro `0x80004005` era o gate antigo (`:49-51` pre-fix); a arvore viva aceita `S_FALSE` (`wasapi_loopback.py:204`) |
 | 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `app/webview/sotto_webview.py:5888` | **[2026-10-11] APPLIED** — o payload passa a levar o tag do PROPRIO worker (`fields["tag"]`, `tick` vs `final`), com `stats` como fallback, e `meter` no ramo do medidor: um tick e o total deixam de chegar ao painel com a mesma cara. Arm r38, que agora mede os DOIS ramos, + mutante `m38-stats-tag-dropped` |
-| 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **OPEN** |
+| 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **[2026-10-11] APPLIED (refutado por medicao)** — o instrumento da propria linha, `_main/audit-rows-tap-flags-ledger.py`, mede os DOIS casos de uma so vez: com UM array pendente sao 4 emits e **`concatenate_calls: 0`** / `concatenate_elements: 0`; com VARIOS pendentes sao 4 emits e `concatenate_calls: 4` / `concatenate_elements: 1100`, ou seja `copies_per_emit_multi: 1.0` — a copia acontece quando e precisa, nunca "a cada emit". Leitura `copies_even_with_one_pending: false`. O mutante `m39-always-concatenate` (que forca a copia com um array so) existe para o braco saber dizer NAO, e o VERDICT do instrumento e PASS rc=0 |
 | 40 | conjuntos de nomes de estado sensiveis a separador onde o braco JS normaliza | `sotto_webview.py:7493` | **[2026-10-11] APPLIED** — medido primeiro o que o gemeo JS faz: `worker-bridge.js:691` le `String(message.type || '').toLowerCase()` antes de ramificar e NAO existe nenhuma substituicao de separador naquele ficheiro (`replace(/[-_]` → ausente), logo a regra e SO a caixa. A shell comparava `message.get('type')` cru: a MESMA linha era legenda para um braco e `malformed` para o outro. Agora aplica a mesma regra (`str(message.get('type') or '').lower()`) e nada mais — uma segunda regra, inventada, seria vocabulario novo. Arm r40 do instrumento (`Caption` e `STATUS` recebidos; a legenda TEM de entrar) + mutante `m40-case-normalisation-removed` a comparar cru outra vez |
 | 41 | linha de status sem `type` e descartada em silencio | `sotto_webview.py:7595` | **[2026-10-11] APPLIED (ja estava refutado nas bytes vivas)** — a shell CONTA (`malformed`) e LOGA (`BRIDGE_UNKNOWN`) a linha sem `type`; e o mutante `m41-unknown-type-silent` que reproduz o silencio que a linha descreve, logo o par mantem as duas cores |
 | 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:7358` | **[2026-10-11] APPLIED** — um stop sem worker emite status (`Nothing to stop - no worker is running`, kind `busy`) antes de devolver False, simetrico com `start()`. Arm r42 + mutante `m42-stop-silent` |
@@ -265,7 +265,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
-| Finding A | recibo de topo STALE (panel-exit3-oracle.log mtime 03:54:30 < fonte) (`oracles.md:404`) | **OPEN** — herdado da linha #29 |
+| Finding A | recibo de topo STALE (panel-exit3-oracle.log mtime 03:54:30 < fonte) (`oracles.md:404`) | **APPLIED** — herdado da linha #29, fechada em 2026-10-11: **e o MESMO artefacto** (o instrumento lista-o UMA vez e di-lo), medido `STALE age_s=494394.9`; a classe passou a ter gate (`_main/stale-receipt-oracle.py`, com `--neg-arm`), e ele apanhou de imediato um SEGUNDO caso que ninguem tinha listado — o recibo do medidor, 224 s mais velho que o worker que descreve, corrigido com uma nota datada que diz qual e a revisao corrente |
 | Finding B | roubo de foco e um verde (focus_stolen=true e sai 0) (`oracles.md:409`) | **OPEN** — herdado da linha #28 |
 | Finding C | run-cmd-exit-oracle esta RED hoje no conjunct do census (`oracles.md:413`) | **OPEN** — herdado da linha #30 |
 | Finding D | um braco negativo sem recibo (o bogus do runcmd-entry-driver.py) (`oracles.md:418`) | **OPEN** — herdado da linha #58 |
@@ -303,11 +303,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 72
-- **OPEN:** 63
+- **APPLIED:** 75
+- **OPEN:** 60
 - **IN-FLIGHT:** 0
 
-Conferencia: 72 + 63 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 75 + 60 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 quatro linhas velhas foram REMOVIDAS e o `findings_distinct` do proprio gate caiu de 139 para 135 na

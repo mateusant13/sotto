@@ -431,3 +431,25 @@ Every one of those was run from `H:\sotto` through Node `spawnSync('py', ['-3', 
 **NOT MEASURED, unchanged by this addendum:** nothing was launched; no real worker run, no real
 wire, no painted bar. The `--meter-hz 0` byte-identity remains structural + behavioural, exactly
 as this receipt states.
+
+
+---
+
+## NOTA TARDIA — 2026-10-11 (Lead): a revisao do worker andou DEPOIS deste recibo
+
+O recibo acima fixa `worker/sotto_worker.py` em **304 762 B / sha256 `771ACA94…`** — a revisao que
+a lane entregou e que este recibo mede. Desde entao o MESMO ficheiro mudou outra vez, e por trabalho
+que tambem e medido:
+
+* `c515cd7` (auditoria, linha #9B) — o tap passou a CONTAR `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY`
+  nos DOIS loops de pacotes (`wasapi_loopback.py` e o loop PLP dentro de `sotto_worker.py`), com
+  `disco_packets=` na linha `TAP_STALLED`. O ramo do medidor deste recibo nao mudou: `AudioMeter`,
+  a construcao em `:4663`, o `on_block`/emit continuam a ser o que aqui esta medido, apenas
+  deslocados pelas linhas novas.
+* O gate desta classe existe agora e corre sem lançar nada:
+  `py -3 _main/stale-receipt-oracle.py` compara o relogio de cada artefacto com o das suas fontes e
+  DECLARA o STALE em vez de o deixar ser lido como corrente. A primeira corrida dele marcou ESTE
+  recibo como `STALE age_s=224.4` — 224 s mais velho que o worker que descreve — e esta nota e a
+  correcao: a parte acima continua verdadeira para a revisao que mediu, e a revisao corrente e
+  maior. **Nao re-medido aqui:** os numeros do medidor (55 checks, cadencia, `--meter-hz 0`) contra
+  a revisao NOVA do worker; o que se afirma e a procedencia, nao uma re-medicao.
