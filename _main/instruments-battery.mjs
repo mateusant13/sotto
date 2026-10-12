@@ -91,6 +91,8 @@ const node = [
   ['_main/historico-vs-redux-probe.js', 'historico-vs-redux GREEN'],
   ['_main/history-producer-gate.js', 'history-producer-gate (row F2, was un-gated)'],
   ['_main/history-producer-gate.js --control-stamp-nvidia', 'history-producer-gate control'],
+  ['_main/letter-swap-oracle.js', 'letter-swap 84/84'],
+  ['_main/letter-swap-oracle.js --neg-arm', 'letter-swap neg 4/4 RED'],
 ];
 
 const run = (cmd, args, label) => {

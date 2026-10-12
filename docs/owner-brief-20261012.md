@@ -133,3 +133,59 @@ STATUS_APPLIED text="Receiving captions"      worker pid=28452   shell.visible=f
 worker e voltou sozinho). O Lead não pede que pares — o ficheiro é teu — mas agrupa as gravações
 e testa em cópia quando puderes, para não deixar o dono sem transcrição. **Não há permissão para
 matar o worker do dono** (regra do AGENTS.md: só o Lead relança a app).
+
+## ENTREGUE PELO LEAD — 2026-10-12 12:1x -03:00 — arranque com o Windows (pedido do dono)
+
+**"faz o sotto sempre iniciar com windows"** — tarefa agendada **`Sotto`** registada:
+`state=Ready`, trigger `MSFT_TaskLogonTrigger`, accao `H:\sotto\app\webview\run.cmd`,
+working dir `H:\sotto\app\webview`, principal `Interactive / Limited`, `Hidden=true`,
+`MultipleInstancesPolicy=IgnoreNew`. Ficheiros no repo: `_main/windows-autostart/`
+(`sotto-task.xml` + `install.cmd` + `README.md`).
+
+**Porque a tarefa e nao um `Start-Process` meu — MEDIDO:** um launch feito de dentro da sessao do
+Lead morre com ela. O registo da shell mostrou a app a transcrever e depois:
+
+```
+sotto: SHELL_CLOSING
+sotto: BRIDGE_STOP reason=closing pid=29900
+sotto: HOT_RELOAD_STOPPED reason=closing watchers=0 droppedUnsettledEvents=0
+sotto: BRIDGE_EXIT pid=29900 rc=1073807364 spawns=1 captions=26 statuses=30 malformed=0
+```
+
+Pela tarefa: `shell pid=33248 ppid=14640` (Task Scheduler) + `worker pid=35872 ppid=33248`,
+`namedState=capture-started`, `live.count` a subir, `error` vazio.
+
+## DEFEITO MEDIDO PARA O S7 (dono: "inicia corretamente o modelo") — escopo do S7, NAO tocar
+
+O primeiro worker do arranque frio morreu e so o auto-restart salvou a app:
+
+```
+sotto: STATUS_APPLIED text="model-loading"
+sotto: BRIDGE_SILENT ms=30000 pid=34980
+sotto: STATUS_APPLIED text="model-loaded"
+sotto: PLACEHOLDER_APPLIED title="Worker silent"
+sotto: BRIDGE_RESTART reason=silent in_ms=1000 restart=1
+sotto: BRIDGE_EXIT pid=34980 rc=1 spawns=1 captions=0 statuses=6 malformed=0
+```
+
+Ou seja: **a janela de silencio do bridge (30 000 ms) e mais curta do que o carregamento do modelo**,
+por isso o arranque frio declara "Worker silent" e reinicia o worker — e com o arranque automatico
+do Windows agora registado, **isso acontece em TODOS os boots**. O segundo worker (pid 35872)
+subiu com o cache quente, ouviu audio de imediato eLegendou (`BRIDGE_DEATH_LIFTED reason=caption
+captions=1`), por isso a app recuperou sozinha — mas ~1 minuto de transcricao perde-se.
+
+**O disco NAO e o gargalo — MEDIDO:** ler os pesos a seQuencia com buffer de 4 MB leu
+`encoder.onnx.data` 967 176 192 B em **402 ms** e `decoder.onnx.data` 59 785 216 B em **28 ms**
+(≈ 2,3 GB/s, total 1 026 961 408 B). O custo esta na criacao da sessao CUDA + copia para a VRAM,
+nao no I/O.
+
+**Pede-se ao S7:** (1) o `BRIDGE_SILENT` nao deve correr antes de `model-loaded` (ou a primeira
+janela tem de cobrir o carregamento); (2) as linhas do registo da shell nao trazem timestamp —
+sem isso o tempo de carregamento nao e mediavel, e o diagnostico do stutter no arranque fica cego.
+Gate: o proprio S7 corre `py -3 _main/panel-exit3-oracle.py --unit --neg-arm` (ja existe) e
+acrescenta um braco que prove a nova janela.
+
+## FRENTE NOVA S8 — reutilizar o modelo que ja esta na VRAM (pedido do dono 12:0x)
+
+Verbos do dono: *"ah, e se o mesmo modelo ja existe carregado na vram, reutiliza ele. se nao vai
+usar duplicados, do mesmo modelo, q eu tenho de outros projetos."*
