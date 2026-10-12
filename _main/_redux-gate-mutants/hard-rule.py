@@ -232,6 +232,16 @@ TAP_PEAK_FLOOR = 0.002
 TAP_MIN_WINDOW_S = 2.0
 TAP_SILENT_BLOCKS = 20
 
+TAP_STALL_S = 8.0
+TAP_STALL_MAX_S = 60.0
+TAP_STALL_SAME_DEVICE_TRIES = 2
+# -- THE LIVENESS BOUND ON A SETTLED TAP (added 2026-10-11) --------------
+# A settled tap IS the run, and the capture loop used to continue for ever
+# without ever asking whether that tap still DELIVERS (watchdog below).
+# 8 s = 80 blocks at the shipped 100 ms block: a pumped but idle endpoint
+# still delivers SILENT blocks; a starved or dead one delivers none.
+
+
 # The BOUND on `StreamAsr.labels` (F17). The list is the run's symbol ids; a
 # multi-hour stream used to grow it without limit and then `detok()` the whole
 # thing into ONE JSONL line at exit. The arithmetic that chose the number:
@@ -939,7 +949,7 @@ class StreamAsr:
 
 
 # ── device selection ──────────────────────────────────────────────────────────
-def device_candidates(cfg_audio=None, wanted=None):
+def device_candidates(cfg_audio=None, wanted=None, target_pid=None):
     """Ordered, de-duplicated list of concrete input devices to try.
 
     Order is the whole contract here. `wanted` (an explicit `--device`, or the
@@ -1020,6 +1030,20 @@ def device_candidates(cfg_audio=None, wanted=None):
             if low and low in d["name"].lower():
                 if offer(d, "c", "explicit override"):
                     break
+
+    # RUNG P -- ONE PROCESS TREE (lane SottoPerAppTap, STEP 2). Offered ONLY when
+    # the owner named a pid (`--target-pid` / `SOTTO_TARGET_PID`), and offered AFTER
+    # rung C so an explicit `--device` STILL ALWAYS WINS. With no pid this rung does
+    # not exist at all and the returned list is byte-identical to the pre-change
+    # list -- measured, not asserted (`_main/receipt-20261011-per-app-tap-step2.md`).
+    #
+    # It sits ABOVE rung A on purpose: the owner asked for ONE app's audio and an
+    # endpoint loopback would hand back the whole mix, which is the exact thing the
+    # request is about. Its rung is `p`, NOT a letter, so the rotation loop's rung-c
+    # pinning rule ("an explicit device is never substituted silently") is untouched.
+    if target_pid:
+        offer(process_loopback_candidate(target_pid, _plp_proc_desc(target_pid)), "p",
+              "explicit target pid: one app's tree, not the endpoint mix")
 
     # RUNG A -- WASAPI loopback of EVERY ACTIVE RENDER ENDPOINT, the one
     # rendering RIGHT NOW first.
@@ -1311,34 +1335,25 @@ class AutoGain:
 # every other consumer. `blocks` travels with the level so a consumer can see a
 # window that was longer or shorter than one block period (a stalled tap, a
 # dropped block).
-#
-# ── THE SHIPPED DEFAULT IS ON AT 10 Hz — REVERSED 2026-10-08, ON THE OWNER'S ──
-# ── OWN REPORT: "a animação de áudio sendo capturado não tá funcionando" ─────
-# This was briefly `0.0`, to stop the shell logging an unknown `type` once per
-# sample. **That was the wrong cure: it silenced a LOG by switching off the
-# DATA**, and the panel's wave is the thing that starves. A feature must not be
-# disabled to keep a log quiet — the limit belongs on the LOG side, where the
-# flood is actually produced (the consumer that logs an unknown key per sample).
-#
-# MEASURED, so the rate is a number and not a taste: the tap's own block period
-# is `audio.block_ms: 100` = 10 Hz, and `AudioMeter.blocks_per_window` is
-# `round(interval / block_s)` = 1, so the meter publishes **exactly one point per
-# block: 81 blocks -> 81 events -> 10.0 points/s** on the live loop
-# (`_main/receipt-audio-meter.md` §3). 10 Hz IS the tap's native rate; a faster
-# window would have to invent points between blocks, a slower one would throw
-# away blocks the tap already measured.
-#
-# THE FLOOD IS STILL REAL AND IS STILL THE SHELL'S TO FIX, named so it cannot be
-# forgotten: `_consume`'s `else` branch (`app/webview/sotto_webview.py:6274-6275`
-# at revision 347517 B, mtime 11:44:04) still does `self.malformed += 1` and
-# `self.log(f'BRIDGE_UNKNOWN type={kind!r}')` per event with no rate limit, while
-# the SAME file has already rate-limited the sibling push
-# (`_stats_log_maybe`, `:4847-4860`, one line per `STATS_LOG_INTERVAL_S = 30.0`
-# with a count). The pattern to copy is in that file, not in this one.
-# `--meter-hz 0` / `SOTTO_METER_HZ=0` remains the escape hatch, and with it off
-# not one byte is added to stdout.
 METER_HZ = 10.0
-METER_HZ_DEFAULT = 10.0
+
+
+class MeterHzFlag(argparse.Action):
+    """The `--meter-hz` action, which RECORDS THAT THE OPERATOR SPOKE.
+
+    WHY AN ACTION AND NOT A SENTINEL DEFAULT. `--meter-hz` must keep the literal
+    `default=METER_HZ` in `add_argument` — `_main/audio-meter-oracle.py` reads the
+    default out of these bytes with a regex and would die without it — so the
+    parsed value cannot tell "the operator asked for 10" from "nobody asked".
+    This action can: it sets `meter_hz_given` beside the value, and that is what
+    makes the precedence EXACT (flag > SOTTO_METER_HZ > METER_HZ) instead of
+    value-based, so an explicit `--meter-hz 0` — the documented OFF — survives an
+    environment that asks for something else.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        setattr(namespace, self.dest + "_given", True)
 
 
 class AudioMeter:
@@ -1353,19 +1368,25 @@ class AudioMeter:
         self.interval = (1.0 / float(hz)) if hz and float(hz) > 0 else 0.0
         self.enabled = self.interval > 0.0
         self.next = now + self.interval
-        # ── HOW MANY BLOCKS ONE WINDOW HOLDS, when the tap's period is known ──
-        # A pure time window BEATS against a block rate that equals it, and the
-        # beat is not academic: MEASURED on the live loop fed from a file
-        # (`SOTTO_FILE_TAP`, 100 ms blocks, 10 Hz window) — **80 blocks produced
-        # 48 events over 8 s of audio, i.e. 6.0 points/s, not 10**. Jitter in the
-        # tap's pacing pushes a block just before the boundary, the window then
-        # swallows two blocks, and the wave loses 40 % of its points.
-        # The window therefore closes on the FIRST of "enough blocks" and
-        # "enough time": the block count pins the cadence to the tap, and the
-        # time bound is still what closes a window when blocks are sparse.
-        self.blocks_per_window = 0
-        if block_s and float(block_s) > 0:
-            self.blocks_per_window = max(1, int(round(self.interval / float(block_s))))
+        # -- HOW MANY BLOCKS ONE WINDOW HOLDS, when the tap period is known ---
+        # A pure TIME window BEATS against a block rate that equals it, and that
+        # beat is not academic: MEASURED by `_main/audio-meter-oracle.py` on
+        # a tap paced 99 ms against a 100 ms window -- the window swallows two
+        # blocks once the drift passes an interval and the wave loses points.
+        # MEASURED on the live loop fed from a file (SOTTO_FILE_TAP, 100 ms
+        # blocks, 10 Hz window): 80 blocks produced 48 events over 8 s = 6.0
+        # points/s, not 10. The window therefore closes on the FIRST of "enough
+        # blocks" and "enough time": the BLOCK COUNT pins the cadence to the tap
+        # (one event per block at the shipped 100 ms / 10 Hz), and the TIME bound
+        # is what still closes a window when blocks are sparse or absent.
+        #
+        # `block_s=0.0` means "the caller did not say", which is the
+        # PURE-TIME meter: `blocks_per_window` stays 0 and only the time
+        # bound closes windows. The live path passes the tap own period, so this
+        # is the default only for oracles and for a caller that has no tap.
+        self.block_s = float(block_s) if block_s and float(block_s) > 0 else 0.0
+        self.blocks_per_window = (max(1, int(round(self.interval / self.block_s)))
+                                  if self.block_s > 0 else 0)
         self.reset()
 
     def reset(self):
@@ -1375,25 +1396,45 @@ class AudioMeter:
     def tick(self, block_peak, now):
         """Feed ONE block's peak; return the payload when the window CLOSED.
 
-        Returns `{"peak": <window peak>, "blocks": <blocks in it>}` or None. The
-        window is closed by TIME, not by a block count: a tap that stalls gives a
-        LONGER window, and `blocks` is how a consumer sees that instead of
-        reading a smooth wave over a gap.
+        Returns `{"peak": <window peak>, "blocks": <blocks in it>}` or None. A
+        window closes on the FIRST of ENOUGH TIME and ENOUGH BLOCKS (see
+        `blocks_per_window`), so with a tap whose period is known it holds
+        exactly the blocks the consumer expects, and with no tap period at all
+        (an oracle) it is closed by time alone -- and then `blocks` is how a
+        consumer SEES a window that ran long instead of reading a smooth wave
+        over a gap.
         """
         if not self.enabled:
             return None
         self.blocks += 1
         if block_peak > self.peak:
             self.peak = block_peak
-        # ENOUGH TIME **or** ENOUGH BLOCKS — see `blocks_per_window`.
+        # ENOUGH TIME **or** ENOUGH BLOCKS. Two measured defects live in this
+        # one predicate, and each has its own arm in `_main/meter-chain-oracle.py`:
+        #   * the TIME arm is written `now < next` + return, never `now > next`
+        #     + emit. The two differ on the ONE tick that lands exactly ON the
+        #     boundary, and that tick is not rare: a tap paced at the window own
+        #     period produces one on every block. MEASURED before this changed:
+        #     100 blocks of 100 ms gave 99 events.
+        #   * the COUNT arm is what makes that true at ANY pace. Without it a
+        #     99 ms tap drifts 1 ms earlier per block against a 100 ms window,
+        #     two blocks land in one window, and the cadence collapses --
+        #     MEASURED on the live loop fed from a file: 80 blocks, 48 events,
+        #     6.0 points/s instead of 10.
         if now < self.next and not (self.blocks_per_window
                                     and self.blocks >= self.blocks_per_window):
             return None
         out = {"peak": round(self.peak, 4), "blocks": self.blocks}
         self.reset()
-        # From `now`, not `+= interval`: a late tick must NOT emit a burst of
-        # catch-up windows carrying the same audio twice.
-        self.next = now + self.interval
+        # ONE window per tick, advanced from the PREVIOUS BOUNDARY -- never from
+        # `now`, which is what re-phased it. The CLAMP is not optional:
+        # `next += interval` alone would replay the windows a stalled tap slept
+        # through, one per tick, carrying the same audio again -- the burst the
+        # line this replaces was written to prevent. A tick more than one interval
+        # late therefore jumps the boundary to `now + interval` instead.
+        self.next += self.interval
+        if self.next < now:
+            self.next = now + self.interval
         return out
 
 
@@ -1586,6 +1627,929 @@ class _PortAudioTap:
         return False
 
 
+# ── lane SottoPerAppTap: PROCESS LOOPBACK — ONE app's audio, not the system's ──
+# OWNER, verbatim: "audios de diferentes apps tem que ser separados e processados
+# separadamente." The endpoint loopback above cannot do that: it mixes every
+# renderer on an endpoint into ONE stream.
+#
+# THE GATE THAT AUTHORISED THIS BUILD (measured on this box 2026-10-11, copied
+# into the repo as '_main/receipt-20261011-per-app-tap-gate.md'; original
+# 'I:\cc-tmp\per-app-tap-gate-VERDICT.md', 19 700 B, sha256 222412A545ECF188…):
+# INCLUDE-mode process loopback on a SEPARATE renderer's pid read peak 0.399993
+# while an independent capture of the same endpoint read the same tone at
+# 0.399834, and the SAME activation on a live, NON-rendering pid read EXACTLY
+# 0.0 in the same window. Every constant below is one of that gate's measured
+# facts, not a reading of the documentation:
+#
+#   * the device id is the virtual string VAD\Process_Loopback — NOT an
+#     endpoint id, and not a name IMMDeviceEnumerator can ever return;
+#   * the activation parameter is a PROPVARIANT with vt=VT_BLOB whose blob IS
+#     the AUDIOCLIENT_ACTIVATION_PARAMS struct itself (cbSize = 12). The
+#     widely copied "wrapped" layout — a DWORD cbSize prefixing the struct —
+#     fails with 0x80070057 E_INVALIDARG; measured, on both layouts;
+#   * PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE is MANDATORY for
+#     Chrome: the TREE mode is what makes the browser's renderer process — which
+#     is not the process the owner names — audible at all;
+#   * GetMixFormat on an application-loopback client answers 0x80004001
+#     E_NOTIMPL, so the format must be DECLARED: float32 48000 2ch, flags
+#     0x88020000 (LOOPBACK|AUTOCONVERTPCM|SRC_DEFAULT_QUALITY), hns 0.
+#
+# THE COM PLUMBING IS A PORT of 'I:\cc-tmp\plp-target.py' (94 768 B), the
+# prototype measured GREEN twice on this box — not a re-derivation. Its
+# PRIMITIVES (_com_init, _vtbl, _release, _fmt, GUID, WAVEFORMATEX) are reused
+# from 'worker/wasapi_loopback.py', so this repo keeps ONE implementation of the
+# COM technique; what is added here is only what process loopback needs and the
+# endpoint tap does not — the activation params, the blob PROPVARIANT, the
+# completion handler, and ActivateAudioInterfaceAsync itself.
+#
+# INERT BY DEFAULT: nothing below runs unless --target-pid / SOTTO_TARGET_PID
+# names a pid. With no pid, device_candidates() returns exactly the list it
+# returned before this section existed (measured, see the receipt).
+try:  # the module that already owns this repo's COM primitives
+    import wasapi_loopback as _wl
+except Exception:  # pragma: no cover - _plp_require() refuses loudly instead
+    try:
+        if HERE not in sys.path:
+            sys.path.insert(0, HERE)
+        import wasapi_loopback as _wl
+    except Exception:
+        _wl = None
+
+PLP_DEVICE_ID = "VAD\\Process_Loopback"
+PLP_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
+PLP_MODE_INCLUDE_TARGET_PROCESS_TREE = 0
+PLP_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+PLP_VT_BLOB = 65
+PLP_ACTIVATE_DLL = "Mmdevapi.dll"
+PLP_ACTIVATE_TIMEOUT_S = 10.0
+# The DECLARED format. GetMixFormat is E_NOTIMPL on this device, so there is no
+# endpoint format to read: these three numbers ARE the format the client is
+# initialised with, and AUTOCONVERTPCM makes the audio engine convert into it.
+PLP_DECLARED_RATE = 48000
+PLP_DECLARED_CHANNELS = 2
+PLP_DECLARED_BITS = 32
+PLP_AUTOCONVERTPCM = 0x80000000        # AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+PLP_SRC_DEFAULT_QUALITY = 0x08000000   # AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+
+# Win32 scalar aliases for the structures below, spelled with ctypes' own types
+# rather than ctypes.wintypes (which this file imports lazily inside _pmc()) so
+# they exist at import time here: on Windows DWORD and ULONG are 4-byte unsigned
+# and BOOL is a 4-byte signed int, which is what wintypes declares too.
+# THE IMPORT BELOW IS MODULE-LEVEL AND NOT OPTIONAL: the only other `import
+# ctypes` in this file is LOCAL to _pmc(), so every name in this block that
+# reads `ctypes` at import time was a NameError -- measured, `import
+# sotto_worker` died at this line with "name 'ctypes' is not defined", which
+# py_compile cannot see and which would have killed every launch of the app.
+import ctypes
+_PLP_DWORD = ctypes.c_ulong
+_PLP_WORD = ctypes.c_ushort
+_PLP_ULONG = ctypes.c_ulong
+_PLP_BOOL = ctypes.c_long
+_PLP_LPCWSTR = ctypes.c_wchar_p
+
+PLP_E_UNEXPECTED = 0x8000FFFF
+PLP_E_NOINTERFACE = 0x80004002
+PLP_E_FAIL = 0x80004005
+PLP_E_INVALIDARG = 0x80070057
+PLP_E_NOTIMPL = 0x80004001
+
+
+class PLP_AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS(ctypes.Structure):
+    _fields_ = [
+        ("TargetProcessId", _PLP_DWORD),
+        ("ProcessLoopbackMode", ctypes.c_int),
+    ]
+
+
+class PLP_ACTIVATION_UNION(ctypes.Union):
+    _fields_ = [("ProcessLoopbackParams", PLP_AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS)]
+
+
+class PLP_AUDIOCLIENT_ACTIVATION_PARAMS(ctypes.Structure):
+    """What the blob PROPVARIANT points at. sizeof() == 12 on x64: a 4-byte
+    activation type, 4 bytes of union padding, then the 8-byte params."""
+    _fields_ = [("ActivationType", ctypes.c_int), ("u", PLP_ACTIVATION_UNION)]
+
+
+class PLP_BLOB(ctypes.Structure):
+    _fields_ = [("cbSize", _PLP_ULONG), ("pBlobData", ctypes.POINTER(ctypes.c_ubyte))]
+
+
+class PLP_PROPVARIANT(ctypes.Structure):
+    # VARTYPE + three reserved WORDs (8 bytes), then the union, which x64 aligns
+    # on 8 for its ULONGLONG members -- so the blob lands at offset 8 and the
+    # whole thing is 24 bytes. Same reading 'worker/wasapi_loopback.py'
+    # documents for the LPWSTR case at PROPVARIANT_UNION_OFFSET.
+    _fields_ = [
+        ("vt", _PLP_WORD),
+        ("wReserved1", _PLP_WORD),
+        ("wReserved2", _PLP_WORD),
+        ("wReserved3", _PLP_WORD),
+        ("blob", PLP_BLOB),
+    ]
+
+
+class ProcessLoopbackError(RuntimeError):
+    """Every way the process-loopback path can refuse, in ONE type.
+
+    Deliberately not a subclass of WasapiError: that class lives in
+    wasapi_loopback, which may not be importable at all, and the per-candidate
+    handler's detail= line is more useful when it says WHICH path refused —
+    the app's tree, or the endpoint.
+    """
+
+
+_PLP_NEEDS = (
+    "HRESULT", "GUID", "WAVEFORMATEX", "WasapiError",
+    "IID_IAudioClient", "IID_IAudioCaptureClient",
+    "_com_init", "_com_uninit", "_vtbl", "_release", "_fmt", "_guid",
+    "COM_REF_TAKEN", "AUDCLNT_SHAREMODE_SHARED", "AUDCLNT_STREAMFLAGS_LOOPBACK",
+    "AUDCLNT_BUFFERFLAGS_SILENT", "AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY",
+    "WAVE_FORMAT_IEEE_FLOAT", "WAVE_FORMAT_PCM",
+    "WAVE_FORMAT_EXTENSIBLE", "HNS_100MS",
+)
+
+
+def _plp_require():
+    """The COM primitives, or a LOUD refusal naming exactly what is missing.
+
+    This is a check that can say NO: 'worker/wasapi_loopback.py' is the single
+    source of this repo's COM technique, and if it is absent or has been renamed
+    out from under this section, the tap must refuse instead of half-working.
+    """
+    if _wl is None:
+        raise ProcessLoopbackError(
+            "process loopback unavailable: worker/wasapi_loopback.py is not "
+            "importable, and the COM primitives this tap reuses live there")
+    missing = [n for n in _PLP_NEEDS if not hasattr(_wl, n)]
+    if missing:
+        raise ProcessLoopbackError(
+            "process loopback unavailable: worker/wasapi_loopback.py is missing "
+            + ", ".join(missing) + " (the COM primitives this tap reuses)")
+    return _wl
+
+
+def _plp_guid_str(raw):
+    """16 raw GUID bytes as the brace form, for a QueryInterface log. Pure."""
+    b = bytes(raw)
+    if len(b) != 16:
+        return "?"
+    return "{%08X-%04X-%04X-%s-%s}" % (
+        int.from_bytes(b[0:4], "little"), int.from_bytes(b[4:6], "little"),
+        int.from_bytes(b[6:8], "little"), b[8:10].hex().upper(), b[10:16].hex().upper(),
+    )
+
+
+_PLP_IID_HANDLER = None
+_PLP_IID_UNKNOWN = None
+_PLP_ACCEPT_IIDS = None
+
+
+def _plp_accepted_iids():
+    """The IIDs the completion handler answers, as RAW 16-byte values.
+
+    The handler is QI'd by the audio stack, and the prototype MEASURED which IID
+    it asks for: {94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}
+    (IActivateAudioInterfaceCompletionHandler) and IUnknown. Refusing that QI is
+    what makes ActivateAudioInterfaceAsync answer E_ILLEGAL_METHOD_CALL instead
+    of activating — so the comparison is by bytes, not by a ctypes comparison
+    that could disagree about padding.
+    """
+    global _PLP_IID_HANDLER, _PLP_IID_UNKNOWN, _PLP_ACCEPT_IIDS
+    if _PLP_ACCEPT_IIDS is None:
+        wl = _plp_require()
+        _PLP_IID_HANDLER = wl._guid("{94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}")
+        _PLP_IID_UNKNOWN = wl._guid("{00000000-0000-0000-C000-000000000046}")
+        _PLP_ACCEPT_IIDS = (bytes(_PLP_IID_UNKNOWN), bytes(_PLP_IID_HANDLER))
+    return _PLP_ACCEPT_IIDS
+
+
+_PLP_ACTIVATE = None
+
+
+def _plp_activate_export():
+    """ActivateAudioInterfaceAsync, resolved out of Mmdevapi.dll BY HAND.
+
+    ctypes.WinDLL("Mmdevapi.dll").GetProcAddress raises AttributeError --
+    GetProcAddress lives in kernel32, not in the target DLL -- so the module is
+    loaded and the export looked up through kernel32 explicitly. That is the
+    prototype's note, and this is the step that fails confusingly if done the
+    obvious way.
+    """
+    global _PLP_ACTIVATE
+    if _PLP_ACTIVATE is None:
+        wl = _plp_require()
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.LoadLibraryW.argtypes = [_PLP_LPCWSTR]
+        k32.LoadLibraryW.restype = ctypes.c_void_p
+        k32.GetModuleHandleW.argtypes = [_PLP_LPCWSTR]
+        k32.GetModuleHandleW.restype = ctypes.c_void_p
+        k32.GetProcAddress.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        k32.GetProcAddress.restype = ctypes.c_void_p
+        base = k32.LoadLibraryW(PLP_ACTIVATE_DLL) or k32.GetModuleHandleW(PLP_ACTIVATE_DLL)
+        proc = (k32.GetProcAddress(ctypes.c_void_p(base), b"ActivateAudioInterfaceAsync")
+                if base else None)
+        if not base or not proc:
+            raise ProcessLoopbackError(
+                "ActivateAudioInterfaceAsync is not in %s (module=%s export=%s): this "
+                "host cannot open a process loopback at all"
+                % (PLP_ACTIVATE_DLL, bool(base), bool(proc)))
+        _PLP_ACTIVATE = ctypes.WINFUNCTYPE(
+            wl.HRESULT, _PLP_LPCWSTR, ctypes.POINTER(wl.GUID),
+            ctypes.POINTER(PLP_PROPVARIANT), ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_void_p))(proc)
+    return _PLP_ACTIVATE
+
+
+_PLP_HANDLERS = {}
+
+
+class _PlpCompletionHandler:
+    """IActivateAudioInterfaceCompletionHandler, hand-rolled.
+
+    THE CLASSIC SILENT FAILURE THIS EXISTS TO AVOID: the WINFUNCTYPE thunks must
+    outlive the object. If the vtable array (or the thunks it points at) is
+    collected, the vtable slot becomes a dangling function pointer and activation
+    either never completes or takes the process down. Every handler is therefore
+    registered in _PLP_HANDLERS for the life of the process, and the thunks are
+    kept on the INSTANCE too -- ctypes.cast(thunk, c_void_p) copies the address
+    and does NOT retain the thunk.
+
+    The callback runs on an MTA thread owned by the audio stack, NOT on the
+    thread that called ActivateAudioInterfaceAsync, so the result is published on
+    the object and the caller polls done (a time.sleep loop releases the GIL, so
+    the callback can always get in).
+    """
+
+    def __init__(self, name="plp-handler"):
+        wl = _plp_require()
+        self.name = name
+        self.done = False
+        self.hr_get_activate_result = None
+        self.hr_activate = PLP_E_UNEXPECTED
+        self.punk = None
+        self.client_via = None
+        self.error = None
+        self.refs = 1
+        self.qi_log = []
+        self._build(wl)
+
+    def _build(self, wl):
+        HRESULT = wl.HRESULT
+        QI_T = ctypes.WINFUNCTYPE(HRESULT, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+        AR_T = ctypes.WINFUNCTYPE(_PLP_ULONG, ctypes.c_void_p)
+        RL_T = ctypes.WINFUNCTYPE(_PLP_ULONG, ctypes.c_void_p)
+        AC_T = ctypes.WINFUNCTYPE(HRESULT, ctypes.c_void_p, ctypes.c_void_p)
+
+        def qi(this, riid, ppv):
+            try:
+                raw = ctypes.string_at(riid, 16) if riid else b""
+                self.qi_log.append(_plp_guid_str(raw))
+                if ppv:
+                    ctypes.cast(ppv, ctypes.POINTER(ctypes.c_void_p))[0] = None
+                if raw in _plp_accepted_iids():
+                    self.refs += 1
+                    if ppv:
+                        ctypes.cast(ppv, ctypes.POINTER(ctypes.c_void_p))[0] = this
+                    return 0
+                return PLP_E_NOINTERFACE
+            except Exception as exc:  # never let an exception cross the ABI
+                self.error = "QueryInterface: %r" % (exc,)
+                return PLP_E_UNEXPECTED
+
+        def addref(this):
+            self.refs += 1
+            return self.refs
+
+        def release(this):
+            self.refs -= 1
+            return self.refs if self.refs > 0 else 0
+
+        def activate_completed(this, operation):
+            try:
+                hr_result = HRESULT(PLP_E_UNEXPECTED)
+                punk = ctypes.c_void_p(None)
+                get_result = wl._vtbl(operation, 3, HRESULT, ctypes.POINTER(HRESULT),
+                                      ctypes.POINTER(ctypes.c_void_p))
+                call_hr = int(get_result(operation, ctypes.byref(hr_result),
+                                         ctypes.byref(punk)))
+                self.hr_get_activate_result = call_hr & 0xFFFFFFFF
+                self.hr_activate = int(hr_result.value) & 0xFFFFFFFF
+                if self.hr_activate == 0 and punk:
+                    # Take OUR OWN reference on the activated object: the
+                    # operation is released by the caller as soon as this
+                    # callback returns, and the interface it handed us must
+                    # outlive it. IAudioClient first (this is the interface the
+                    # vtable calls below are made through); IUnknown is the
+                    # prototype's measured fallback.
+                    for label, iid in (("IAudioClient", wl.IID_IAudioClient),
+                                       ("IUnknown", _PLP_IID_UNKNOWN)):
+                        held = ctypes.c_void_p()
+                        hr_qi = int(wl._vtbl(punk, 0, HRESULT, ctypes.POINTER(wl.GUID),
+                                             ctypes.POINTER(ctypes.c_void_p))(
+                            punk, ctypes.byref(iid), ctypes.byref(held)))
+                        if hr_qi == 0 and held:
+                            self.punk = held
+                            self.client_via = label
+                            break
+                    wl._release(punk)
+                self.done = True
+            except Exception as exc:
+                self.error = "ActivateCompleted: %r" % (exc,)
+            finally:
+                self.done = True
+            return 0
+
+        # Keep the FOUR callback objects themselves alive, not just their
+        # addresses (see the class docstring).
+        self._callbacks = (QI_T(qi), AR_T(addref), RL_T(release), AC_T(activate_completed))
+        self._vt = (ctypes.c_void_p * 4)(
+            ctypes.cast(self._callbacks[0], ctypes.c_void_p),
+            ctypes.cast(self._callbacks[1], ctypes.c_void_p),
+            ctypes.cast(self._callbacks[2], ctypes.c_void_p),
+            ctypes.cast(self._callbacks[3], ctypes.c_void_p),
+        )
+        self._obj = (ctypes.c_void_p * 1)(ctypes.cast(self._vt, ctypes.c_void_p).value)
+        self.ptr = ctypes.cast(self._obj, ctypes.c_void_p)
+        _PLP_HANDLERS[id(self)] = self
+
+    def wait(self, timeout_s):
+        deadline = time.time() + timeout_s
+        while not self.done and time.time() < deadline:
+            time.sleep(0.02)
+        return self.done
+
+
+def _plp_activate(pid, mode=PLP_MODE_INCLUDE_TARGET_PROCESS_TREE,
+                  timeout_s=PLP_ACTIVATE_TIMEOUT_S):
+    """An IAudioClient for pid's render tree. Raises on EVERY failure.
+
+    Returns the client interface; the caller owns that reference and must
+    _release it (which ProcessLoopbackTap.close() does).
+    """
+    wl = _plp_require()
+    activate_fn = _plp_activate_export()
+
+    params = PLP_AUDIOCLIENT_ACTIVATION_PARAMS()
+    params.ActivationType = PLP_ACTIVATION_TYPE_PROCESS_LOOPBACK
+    params.u.ProcessLoopbackParams.TargetProcessId = int(pid) & 0xFFFFFFFF
+    params.u.ProcessLoopbackParams.ProcessLoopbackMode = int(mode)
+
+    pv = PLP_PROPVARIANT()
+    pv.vt = PLP_VT_BLOB
+    # THE MEASURED LAYOUT: cbSize is the size of the PARAMS STRUCT ITSELF and
+    # pBlobData points straight at it (12 bytes here). The "wrapped" variant that
+    # prefixes a DWORD cbSize fails Initialize with 0x80070057 on this build.
+    pv.blob.cbSize = ctypes.sizeof(PLP_AUDIOCLIENT_ACTIVATION_PARAMS)
+    pv.blob.pBlobData = ctypes.cast(ctypes.byref(params),
+                                    ctypes.POINTER(ctypes.c_ubyte))
+
+    handler = _PlpCompletionHandler()
+    op = ctypes.c_void_p(None)
+    try:
+        hr = int(activate_fn(PLP_DEVICE_ID, ctypes.byref(wl.IID_IAudioClient),
+                             ctypes.byref(pv), handler.ptr, ctypes.byref(op)))
+        if hr != 0:
+            raise ProcessLoopbackError(
+                "ActivateAudioInterfaceAsync(%s) failed: %s" % (PLP_DEVICE_ID, wl._fmt(hr)))
+        if not handler.wait(timeout_s):
+            raise ProcessLoopbackError(
+                "ActivateCompleted never fired within %.1fs (the audio stack's MTA "
+                "thread did not call back; the handler answered QueryInterface for "
+                "%s)" % (timeout_s, ", ".join(handler.qi_log) or "nothing"))
+        if handler.error:
+            raise ProcessLoopbackError("completion handler: %s" % handler.error)
+        if handler.hr_activate != 0:
+            raise ProcessLoopbackError(
+                "activation result for pid %d: %s" % (pid, wl._fmt(handler.hr_activate)))
+        if not handler.punk:
+            raise ProcessLoopbackError(
+                "activation returned S_OK for pid %d with a NULL client "
+                "(GetActivateResult=%s)" % (pid, handler.hr_get_activate_result))
+        client, handler.punk = handler.punk, None   # ownership moves to the caller
+        return client
+    finally:
+        if op:
+            wl._release(op)
+        if handler.punk:
+            wl._release(handler.punk)
+
+
+def _plp_make_wfx(rate, channels, bits, float_fmt):
+    """A WAVEFORMATEX for a format we DECLARE ourselves (the AUTOCONVERTPCM arms)."""
+    wl = _plp_require()
+    w = wl.WAVEFORMATEX()
+    w.wFormatTag = wl.WAVE_FORMAT_IEEE_FLOAT if float_fmt else wl.WAVE_FORMAT_PCM
+    w.nChannels = channels
+    w.nSamplesPerSec = rate
+    w.wBitsPerSample = bits
+    w.nBlockAlign = channels * bits // 8
+    w.nAvgBytesPerSec = rate * w.nBlockAlign
+    w.cbSize = 0
+    return w
+
+
+def _plp_wfx_kind(fmt_ptr):
+    """What a WAVEFORMATEX* ACTUALLY says.
+
+    The tap must never claim a format the client did not accept, so rate,
+    channels and block_align are read back from the WINNING arm's struct instead
+    of being assumed from the arm's label.
+    """
+    wl = _plp_require()
+    wf = fmt_ptr.contents
+    tag = int(wf.wFormatTag)
+    if tag == wl.WAVE_FORMAT_EXTENSIBLE:
+        # Only reachable if GetMixFormat ever succeeds on this device; it is
+        # E_NOTIMPL on the measured path, and this tap declares plain
+        # WAVEFORMATEX formats, so it refuses rather than guessing a subformat.
+        raise ProcessLoopbackError(
+            "the winning Initialize arm reported WAVE_FORMAT_EXTENSIBLE; this tap "
+            "declares plain WAVEFORMATEX and will not guess the subformat")
+    if tag not in (wl.WAVE_FORMAT_IEEE_FLOAT, wl.WAVE_FORMAT_PCM):
+        raise ProcessLoopbackError(
+            "the winning Initialize arm reported wFormatTag 0x%04X, which this "
+            "pump cannot decode (it decodes float32 and int16)" % tag)
+    return {
+        "tag": tag,
+        "channels": int(wf.nChannels),
+        "rate": int(wf.nSamplesPerSec),
+        "bits": int(wf.wBitsPerSample),
+        "block_align": int(wf.nBlockAlign),
+        "float_fmt": tag == wl.WAVE_FORMAT_IEEE_FLOAT,
+        "label": "float32" if tag == wl.WAVE_FORMAT_IEEE_FLOAT else "int16",
+    }
+
+
+def _plp_open_capture(client):
+    """Initialize + GetService(IAudioCaptureClient) + Start, or an explicit NO.
+
+    The format question is NOT a detail on this virtual device: GetMixFormat on an
+    application-loopback client returns E_NOTIMPL, so the ladder tries it (and
+    RECORDS the HRESULT) and then declares the format the gate measured working.
+    EVERY arm's HRESULT is kept, because which arm wins is a fact about this
+    build, not something to assume.
+    """
+    wl = _plp_require()
+    out = {"ok": False, "error": None, "arms": [], "winner": None, "format": None,
+           "buffer_frames": None, "capture": None, "hr_get_mix_format": None,
+           "hr_start": None}
+
+    init = wl._vtbl(client, 3, wl.HRESULT, _PLP_DWORD, _PLP_DWORD, ctypes.c_int64,
+                    ctypes.c_int64, ctypes.POINTER(wl.WAVEFORMATEX), ctypes.c_void_p)
+    get_mix = wl._vtbl(client, 8, wl.HRESULT,
+                       ctypes.POINTER(ctypes.POINTER(wl.WAVEFORMATEX)))
+
+    mix = ctypes.POINTER(wl.WAVEFORMATEX)()
+    hr_mix = int(get_mix(client, ctypes.byref(mix)))
+    out["hr_get_mix_format"] = hr_mix & 0xFFFFFFFF
+    err("PLP_GET_MIX_FORMAT hr=%s%s" % (wl._fmt(hr_mix),
+        "  (E_NOTIMPL is the MEASURED answer on this device)" if hr_mix != 0 else ""))
+
+    declared = [
+        ("declared float32 %d %dch" % (PLP_DECLARED_RATE, PLP_DECLARED_CHANNELS),
+         _plp_make_wfx(PLP_DECLARED_RATE, PLP_DECLARED_CHANNELS, PLP_DECLARED_BITS, True)),
+        ("declared int16 44100 2ch", _plp_make_wfx(44100, 2, 16, False)),
+    ]
+    autocvt = (wl.AUDCLNT_STREAMFLAGS_LOOPBACK | PLP_AUTOCONVERTPCM | PLP_SRC_DEFAULT_QUALITY)
+    arms = []
+    if hr_mix == 0 and mix:
+        arms.append(("GetMixFormat + LOOPBACK", mix, wl.AUDCLNT_STREAMFLAGS_LOOPBACK))
+        arms.append(("GetMixFormat + LOOPBACK|AUTOCONVERTPCM", mix, autocvt))
+    for label, wfx in declared:
+        arms.append((label + " + LOOPBACK|AUTOCONVERTPCM",
+                     ctypes.cast(ctypes.byref(wfx), ctypes.POINTER(wl.WAVEFORMATEX)),
+                     autocvt))
+
+    winner = None
+    for label, fmt_ptr, flags in arms:
+        for hns in (0, wl.HNS_100MS):
+            hr = int(init(client, wl.AUDCLNT_SHAREMODE_SHARED, flags, hns, 0, fmt_ptr, None))
+            out["arms"].append({"label": label, "hns": hns, "hr": hr & 0xFFFFFFFF})
+            err("PLP_INITIALIZE %-46s hns=%-9d -> %s" % (label, hns, wl._fmt(hr)))
+            if hr == 0:
+                winner = (label, fmt_ptr, flags, hns)
+                break
+        if winner:
+            break
+
+    if not winner:
+        out["error"] = ("every Initialize arm failed (GetMixFormat=%s; arms=%s)"
+                        % (wl._fmt(hr_mix),
+                           ", ".join("%s/hns=%d:%s" % (a["label"], a["hns"],
+                                                       wl._fmt(a["hr"]))
+                                     for a in out["arms"])))
+        return out
+    out["winner"] = winner[0]
+    out["format"] = _plp_wfx_kind(winner[1])
+    out["format"]["flags"] = winner[2]
+    out["format"]["hns"] = winner[3]
+    err("PLP_INITIALIZE_WINNER %s -> %d Hz, %d ch, %s, block_align=%d"
+        % (winner[0], out["format"]["rate"], out["format"]["channels"],
+           out["format"]["label"], out["format"]["block_align"]))
+
+    buf = _PLP_DWORD(0)
+    hr_buf = int(wl._vtbl(client, 4, wl.HRESULT, ctypes.POINTER(_PLP_DWORD))(
+        client, ctypes.byref(buf)))
+    out["buffer_frames"] = int(buf.value)
+    err("PLP_GET_BUFFER_SIZE hr=%s frames=%d" % (wl._fmt(hr_buf), buf.value))
+
+    cap = ctypes.c_void_p()
+    hr_cap = int(wl._vtbl(client, 14, wl.HRESULT, ctypes.POINTER(wl.GUID),
+                          ctypes.POINTER(ctypes.c_void_p))(
+        client, ctypes.byref(wl.IID_IAudioCaptureClient), ctypes.byref(cap)))
+    err("PLP_GET_SERVICE_CAPTURE hr=%s" % (wl._fmt(hr_cap),))
+    if hr_cap != 0 or not cap:
+        out["error"] = "GetService(IAudioCaptureClient): %s" % wl._fmt(hr_cap)
+        return out
+    out["capture"] = cap
+
+    hr_start = int(wl._vtbl(client, 10, wl.HRESULT)(client))
+    out["hr_start"] = hr_start & 0xFFFFFFFF
+    err("PLP_START hr=%s" % (wl._fmt(hr_start),))
+    if hr_start != 0:
+        out["error"] = "IAudioClient::Start: %s" % wl._fmt(hr_start)
+        return out
+
+    out["ok"] = True
+    return out
+
+
+def _plp_pid_state(pid):
+    """'alive' | 'denied' | 'absent' — OpenProcess ONLY.
+
+    Never os.kill(pid, 0): on Windows that TERMINATES the process, it is not a
+    liveness probe (the prototype's note, kept because the trap is real).
+
+    'denied' is NOT 'absent': ERROR_ACCESS_DENIED means the process is there and
+    protected (an elevated app), and refusing it would abandon the owner's target
+    for a reason that has nothing to do with the target. Only
+    ERROR_INVALID_PARAMETER is the documented "no such process".
+    """
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.argtypes = [_PLP_DWORD, _PLP_BOOL, _PLP_DWORD]
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+    if h:
+        k32.CloseHandle(h)
+        return "alive"
+    return "absent" if ctypes.get_last_error() == 87 else "denied"
+
+
+def _plp_proc_desc(pid):
+    """A short human name for pid, or "" — never raises, never guesses."""
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.argtypes = [_PLP_DWORD, _PLP_BOOL, _PLP_DWORD]
+        k32.OpenProcess.restype = ctypes.c_void_p
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        k32.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, _PLP_DWORD,
+                                                   _PLP_LPCWSTR,
+                                                   ctypes.POINTER(_PLP_DWORD)]
+        k32.QueryFullProcessImageNameW.restype = _PLP_BOOL
+        h = k32.OpenProcess(0x1000, False, int(pid))
+        if not h:
+            return ""
+        try:
+            size = _PLP_DWORD(32768)
+            buf = ctypes.create_unicode_buffer(int(size.value))
+            if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return os.path.basename(buf.value)
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return ""
+    return ""
+
+
+class ProcessLoopbackTap:
+    """ONE process tree's render audio, with the SAME read contract as WasapiLoopbackTap.
+
+    The contract is copied field for field from 'worker/wasapi_loopback.py''s
+    WasapiLoopbackTap, because the worker's ladder, its ledger, close_tap() and
+    the silent-device verdict are all built on it and none of them may need a
+    branch for this class:
+
+      * stream IS self; start() opens the client AND starts the pump (the OPEN
+        lives here, not in __init__, so the run loop's per-candidate handler
+        covers a failed open);
+      * stop() is idempotent and, when it returns, on_block is NEVER called
+        again; close() = stop + release of every COM reference, also idempotent;
+      * blocks are float32 MONO at self.rate, self.block frames each, so the
+        worker's resample step and its native flag work unchanged;
+      * silent_packets, position_gap_packets, pump_exited, pump_exit_hr and
+        pump_exit_where mean exactly what they mean there — including the
+        block-ARRIVAL watchdog contract: a pump that dies on a non-zero HRESULT
+        records WHERE, so a stalled tap can never look like a quiet one.
+
+    It differs from the endpoint tap in exactly one structural way: the format is
+    DECLARED rather than read from the endpoint, because GetMixFormat is E_NOTIMPL
+    on an application-loopback client (measured by the gate).
+    """
+
+    def __init__(self, on_block, pid, pid_desc="", block_ms=100,
+                 mode=PLP_MODE_INCLUDE_TARGET_PROCESS_TREE):
+        import numpy as np
+
+        self._wl = _plp_require()
+        self.np = np
+        self.on_block = on_block
+        self.pid = int(pid)
+        self.pid_desc = pid_desc or ""
+        self.mode = int(mode)
+        self.pid_state = None
+        self._stop = threading.Event()
+        self._thread = None
+        self._cb_lock = threading.Lock()
+        self._com = None
+        self._client = None
+        self._capture = None
+        # The three "why the pump left" fields the endpoint tap carries.
+        self.pump_exited = False
+        self.pump_exit_hr = 0
+        self.pump_exit_where = ""
+        self.silent_packets = 0
+        self.position_gap_packets = 0
+        # Packets GetBuffer marked AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY (0x1):
+        # counted since 2026-10-11 (audit row #9B) so a glitch in the ring is a
+        # NUMBER here instead of nothing at all. The samples are still used.
+        self.discontinuity_packets = 0
+        # What the open actually did, for the ledger and for a diagnosis.
+        self.init_arms = []
+        self.init_winner = None
+        self.hr_get_mix_format = None
+        self.hr_start = None
+        self.buffer_frames = None
+        self.block_ms = block_ms
+        # Provisional until _open() reads the WINNING arm's format back; the
+        # declared format is what the first arm asks for.
+        self.rate = PLP_DECLARED_RATE
+        self.native_rate = self.rate
+        self.channels = PLP_DECLARED_CHANNELS
+        self.format_tag = self._wl.WAVE_FORMAT_IEEE_FLOAT
+        self.block_align = self.channels * PLP_DECLARED_BITS // 8
+        self.block = int(self.rate * block_ms / 1000)
+
+    @property
+    def name(self):
+        if self.pid_desc:
+            return "WASAPI process loopback: pid %d (%s)" % (self.pid, self.pid_desc)
+        return "WASAPI process loopback: pid %d" % (self.pid,)
+
+    @property
+    def stream(self):
+        return self
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+    def start(self):
+        self._start()
+        return self
+
+    def _start(self):
+        # COM for the tap's LIFETIME, on the thread that opens it -- the same
+        # arrangement (and the same owed-reference bookkeeping) the endpoint tap
+        # uses, because both are opened by the run loop on this thread.
+        self._com = self._wl._com_init()
+        try:
+            self._open()
+        except BaseException:
+            self._release_com()
+            raise
+        return self
+
+    def _open(self):
+        wl = self._wl
+        # A pid that does not exist can only ever produce digital silence, so it
+        # is refused HERE, loudly, instead of after a six-second zero window that
+        # the ladder would read as a silent device. 'denied' is NOT refused: a
+        # protected process is alive, and the activation is left to decide.
+        state = _plp_pid_state(self.pid)
+        self.pid_state = state
+        if state == "absent":
+            raise ProcessLoopbackError(
+                "target pid %d does not exist (OpenProcess: ERROR_INVALID_PARAMETER); "
+                "refusing to open a tap that can only read silence" % self.pid)
+        err("PLP_TARGET pid=%d state=%s desc=%r mode=%d"
+            % (self.pid, state, self.pid_desc, self.mode))
+
+        self._client = _plp_activate(self.pid, self.mode)
+        res = _plp_open_capture(self._client)
+        self.init_arms = res["arms"]
+        self.init_winner = res["winner"]
+        self.hr_get_mix_format = res["hr_get_mix_format"]
+        self.buffer_frames = res["buffer_frames"]
+        if not res["ok"]:
+            raise ProcessLoopbackError(res["error"])
+        self._capture = res["capture"]
+        # The format the client ACCEPTED, not the one the arm was labelled with.
+        kind = res["format"]
+        self.rate = int(kind["rate"])
+        self.native_rate = self.rate
+        self.channels = int(kind["channels"])
+        self.format_tag = int(kind["tag"])
+        self.block_align = int(kind["block_align"])
+        self.block = int(self.rate * self.block_ms / 1000)
+        self.hr_start = res["hr_start"]
+        err("PLP_OPEN_OK pid=%d rate=%d channels=%d block=%d winner=%r"
+            % (self.pid, self.rate, self.channels, self.block, self.init_winner))
+
+        self._thread = threading.Thread(target=self._pump, name="plp-capture", daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            if not self._thread.is_alive():
+                self._thread = None
+        if self._client is not None:
+            try:
+                self._wl._vtbl(self._client, 11, self._wl.HRESULT)(self._client)  # Stop
+            except Exception:
+                pass
+        # Barrier: whoever holds _cb_lock is inside on_block; taking it here means
+        # the callback that was in flight has returned. The pump, already past its
+        # _stop test, cannot start another one.
+        with self._cb_lock:
+            pass
+        return self
+
+    def _release_com(self):
+        if self._com == self._wl.COM_REF_TAKEN:
+            self._com = None
+            self._wl._com_uninit()
+        else:
+            self._com = None
+
+    def close(self):
+        self.stop()
+        for attr in ("_capture", "_client"):
+            ptr = getattr(self, attr, None)
+            if ptr:
+                self._wl._release(ptr)
+                setattr(self, attr, None)
+        self._release_com()
+        return self
+
+    def _pump(self):
+        np = self.np
+        wl = self._wl
+        cap = self._capture
+        block_align = self.block_align
+        channels = self.channels
+        float_fmt = self.format_tag == wl.WAVE_FORMAT_IEEE_FLOAT
+        next_size = wl._vtbl(cap, 5, wl.HRESULT, ctypes.POINTER(_PLP_DWORD))
+        # FIVE out-parameters, the same reading the endpoint pump documents:
+        # IAudioCaptureClient::GetBuffer is (this, BYTE **ppData,
+        # UINT32 *pNumFramesToRead, DWORD *pdwFlags, UINT64 *pu64DevicePosition,
+        # UINT64 *pu64QPCPosition) and the 5th is optional in the IDL, so it is
+        # passed as an explicit NULL. The device position IS used:
+        # position_gap_packets counts packets whose position does not continue the
+        # previous one, i.e. frames the ring dropped or delivered out of order.
+        get_buffer = wl._vtbl(
+            cap, 3, wl.HRESULT,
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),
+            ctypes.POINTER(_PLP_DWORD),
+            ctypes.POINTER(_PLP_DWORD),
+            ctypes.POINTER(ctypes.c_int64),
+            ctypes.POINTER(ctypes.c_uint64),
+        )
+        release = wl._vtbl(cap, 4, wl.HRESULT, _PLP_DWORD)
+        # POLL FASTER THAN THE RING, or frames are dropped where no counter of
+        # ours can see them. The period is OUR poll interval derived from our own
+        # block size (block_ms/20 = 5 ms at the shipped 100 ms setting), never
+        # from anything the device reports -- the endpoint tap's measured lesson,
+        # applied unchanged here.
+        period = min(0.005, max(0.001, self.block_ms / 1000.0 / 20.0))
+        buf = []
+        acc = 0
+        prev_pos = None
+        while not self._stop.is_set():
+            n = _PLP_DWORD(0)
+            hr = next_size(cap, ctypes.byref(n))
+            if hr != 0:
+                # RECORDED, NOT SWALLOWED: a pump that dies here must be visible
+                # to the block-ARRIVAL watchdog instead of looking like silence.
+                self.pump_exited = True
+                self.pump_exit_hr = int(hr)
+                self.pump_exit_where = "GetNextPacketSize"
+                break
+            if n.value == 0:
+                time.sleep(period)
+                continue
+            data = ctypes.POINTER(ctypes.c_ubyte)()
+            frames = _PLP_DWORD(0)
+            flags = _PLP_DWORD(0)
+            pos = ctypes.c_int64(0)
+            hr = get_buffer(cap, ctypes.byref(data), ctypes.byref(frames),
+                            ctypes.byref(flags), ctypes.byref(pos), None)
+            if hr != 0:
+                self.pump_exited = True
+                self.pump_exit_hr = int(hr)
+                self.pump_exit_where = "GetBuffer"
+                break
+            if frames.value:
+                if prev_pos is not None and pos.value != prev_pos + frames.value:
+                    self.position_gap_packets += 1
+                prev_pos = pos.value
+                if flags.value & wl.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY:
+                    # Counted, not swallowed (audit row #9B): the same bit the
+                    # endpoint tap now counts, on this loop too.
+                    self.discontinuity_packets += 1
+                if flags.value & wl.AUDCLNT_BUFFERFLAGS_SILENT or not data:
+                    # The packet's BYTES ARE NOT VALID SAMPLES when the endpoint is
+                    # not rendering, so it is ACCUMULATED AS ZEROS rather than
+                    # decoded: that keeps the run's block cadence and reports the
+                    # silence as silence (peak 0, no nonzero block) instead of
+                    # letting undefined bytes read as "this tap hears something".
+                    arr = np.zeros(frames.value, dtype=np.float32)
+                    self.silent_packets += 1
+                else:
+                    raw = ctypes.string_at(data, frames.value * block_align)
+                    if float_fmt:
+                        arr = np.frombuffer(raw, dtype=np.float32)
+                    else:
+                        arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+                    if channels > 1:
+                        arr = arr.reshape(-1, channels).mean(axis=1)
+                buf.append(np.asarray(arr, dtype=np.float32))
+                acc += arr.size
+            release(cap, frames.value)
+            # Emit EXACTLY block-size frames so downstream chunking is regular.
+            while acc >= self.block:
+                joined = np.concatenate(buf) if len(buf) > 1 else buf[0]
+                head = joined[: self.block]
+                rest = joined[self.block :]
+                buf = [rest] if rest.size else []
+                acc = rest.size
+                # Held for the duration of the deliver only: stop() takes this
+                # same lock AFTER joining the pump, which is what makes "no
+                # on_block after stop() returns" a property of the object rather
+                # than a hope about thread scheduling -- and the _stop test is
+                # repeated INSIDE the lock, because a thread already past the
+                # loop-head test can otherwise take the lock after stop() returned
+                # and deliver one more block.
+                with self._cb_lock:
+                    if self._stop.is_set():
+                        return
+                    self.on_block(np.ascontiguousarray(head, dtype=np.float32))
+
+
+def process_loopback_candidate(pid, desc=""):
+    """A device-dict-shaped candidate for ONE process tree's audio (STEP 2).
+
+    Shaped like a device_candidates row so the ladder, the tap ledger and the
+    rotation loop need no branch: process_loopback is the key LoopbackTap reads
+    to return a ProcessLoopbackTap. There is no device index, no host API and no
+    endpoint id -- the target is a PID, and the device id the activation takes is
+    the virtual string VAD\\Process_Loopback.
+    """
+    label = "pid %d" % int(pid)
+    if desc:
+        label += " (%s)" % desc
+    return {
+        "name": "process loopback: %s" % label,
+        "index": None,
+        "max_input_channels": PLP_DECLARED_CHANNELS,
+        "default_samplerate": PLP_DECLARED_RATE,
+        "hostapi": None,
+        "hostapi_name": "WASAPI process loopback",
+        "process_loopback": True,
+        "target_pid": int(pid),
+        "target_desc": desc or "",
+        "rung": "p",
+        "rung_why": "explicit target pid: one process tree's audio, not the endpoint mix",
+    }
+
+
+def tap_source(dev):
+    """The STABLE identity of the audio behind a candidate row (STEP 3).
+
+    ONE string per source, so an event can say where it came from and a consumer
+    can tell two taps apart without inferring it from arrival order:
+
+        proc:<pid>     a process-loopback tap -- one app's tree
+        device:<name>  a PortAudio / WASAPI-endpoint tap -- the whole endpoint
+        file:<name>    the SOTTO_FILE_TAP arm (no device at all)
+
+    It is computed from the CANDIDATE ROW -- i.e. from what the ladder actually
+    opened -- and not from anything the tap object later reports.
+    """
+    if dev.get("process_loopback"):
+        return "proc:%s" % dev.get("target_pid")
+    if dev.get("file_tap"):
+        return "file:%s" % os.path.basename(str(dev["file_tap"]))
+    return "device:%s" % dev.get("name")
+
+
 def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
     """Factory for the ladder's rung (a) and the PortAudio rungs.
 
@@ -1600,6 +2564,16 @@ def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
     does the 48k -> 16k step (an exact 3:1 ratio, so it is block averaging, not
     interpolation).
     """
+    if device.get("process_loopback"):
+        # lane SottoPerAppTap (STEP 2): ONE process tree's audio, not the mix.
+        # The pid travels with the candidate; opening "the default" here would
+        # silently substitute the very mix this rung exists to avoid.
+        return ProcessLoopbackTap(
+            on_block,
+            int(device["target_pid"]),
+            pid_desc=device.get("target_desc") or "",
+            block_ms=block_ms,
+        )
     if device.get("file_tap"):
         # Lane SottoAsrTap: the LIVE loop fed from a file, no device opened.
         return FileTap(device["file_tap"], on_block, block_ms=block_ms)
@@ -1907,11 +2881,14 @@ class LineFormer:
     """
 
     def __init__(self, min_chars=1, emit_partial=True, gap_s=SENTENCE_GAP_S,
-                 max_chars=SENTENCE_MAX_CHARS):
+                 max_chars=SENTENCE_MAX_CHARS, source=None):
         self.min_chars = 1 if int(min_chars) < 1 else int(min_chars)
         self.emit_partial = bool(emit_partial)
         self.gap_s = float(gap_s)
         self.max_chars = int(max_chars)
+        # STEP 3: the identity of the tap this former's events come from.
+        # NOT reset by `reset()` -- it belongs to the STREAM, not the line.
+        self.source = source or None
         self.reset()
 
     def reset(self):
@@ -1941,6 +2918,14 @@ class LineFormer:
         """
         return self._start
 
+    def set_source(self, source):
+        """Point this former at a NEW source (the ladder changed taps).
+
+        Called from the same gen-change branch that resets the stream, so no
+        event formed from the new tap's audio can carry the old tap's identity.
+        """
+        self.source = source or None
+
     def line(self):
         return join_fragments(self._words)
 
@@ -1968,6 +2953,12 @@ class LineFormer:
             # `line_events()` can normalise both channels through one shape.
             "final": bool(final),
             "closed": bool(closed),
+            # STEP 3 -- WHERE THIS AUDIO CAME FROM. Present ONLY when the former
+            # was given a source (every live tap has one; `--selftest` and the
+            # file arm have none, so their events stay byte-identical to before
+            # this key existed). `source` is ADDED, never renamed or removed:
+            # `route`/`start`/`routeSource` keep their exact meanings.
+            **({"source": self.source} if self.source is not None else {}),
         }
 
     def _close(self):
@@ -2122,6 +3113,18 @@ REDUX_MAX_AUDIO_DEFAULT_S = 120.0
 #: and never writes it. Contract: `python redux_batch.py --wav PATH --json` ->
 #: JSONL on stdout, `{"type":"caption","text":…,"start":<s>,"end":<s>,"producer":"redux"}`.
 REDUX_RUNNER_DEFAULT = os.path.join(HERE, "redux_batch.py")
+#: The checkpoint that runner LOADS when it is invoked with no `--model-dir`,
+#: RELATIVE to the runner's own directory — `redux_batch.py` resolves it exactly
+#: this way (`HERE = Path(__file__).resolve().parent`, then
+#: `DEFAULT_MODEL_DIR = HERE / "models" / "parakeet-redux-ternary"`). `_run_runner`
+#: passes no `--model-dir`, so this is the directory every batch pass will open.
+#: Keep it in step with `redux_batch.py`: the gate below must refuse to arm on a
+#: checkpoint the runner cannot LOAD.
+REDUX_CHECKPOINT_RELPATH = os.path.join("models", "parakeet-redux-ternary")
+#: The manifests `redux_batch.load_runtime` demands, in ITS order: the first one
+#: missing is the `SystemExit` that kills the pass. The DIRECTORY existing is not
+#: the test — a directory without these loads nothing.
+REDUX_CHECKPOINT_FILES = ("config.json", "model.safetensors", "ternary.json")
 #: The shell's visibility channel — written by `app/webview/sotto_webview.py`
 #: (`PanelVisibilityWriter`), read here and nowhere else.
 REDUX_VISIBILITY_DEFAULT = os.path.join(
@@ -2234,6 +3237,24 @@ class PanelVisibilityReader:
         return True, why, age
 
 
+def redux_checkpoint_dir(runner):
+    """The checkpoint the batch runner opens when it is given no `--model-dir`.
+
+    Resolved the way `redux_batch.py` resolves its own default — relative to the
+    runner's directory (`HERE = Path(__file__).resolve().parent`) — because
+    `_run_runner` passes the runner no `--model-dir` and the runner therefore
+    loads exactly this path, whatever directory the worker was started from.
+    """
+    return os.path.join(os.path.dirname(os.path.realpath(runner)),
+                        REDUX_CHECKPOINT_RELPATH)
+
+
+def redux_checkpoint_missing(model_dir):
+    """The manifests NOT on disk under `model_dir`; `[]` when it can load."""
+    return [name for name in REDUX_CHECKPOINT_FILES
+            if not os.path.isfile(os.path.join(model_dir, name))]
+
+
 class ReduxHiddenSwitch:
     """Streaming while the panel is OPEN, batch while it is CLOSED.
 
@@ -2248,10 +3269,16 @@ class ReduxHiddenSwitch:
     THREE GATES, ALL OF WHICH MUST BE OPEN BEFORE THE FIRST CHUNK IS CUT:
       1. THE FLAG (`--redux-when-hidden`, DEFAULT OFF). With it off this object
          is never constructed and the worker is byte-identical to today.
-      2. THE RUNNER MUST EXIST ON DISK. A flag that switches to an engine which
-         is not there would trade the ONLY transcriber in this tree for nothing —
-         verbatim the failure the HARD RULE in AGENTS.md was written after. A
-         missing runner is REFUSED LOUDLY and the worker stays streaming.
+      2. THE RUNNER FILE *AND* THE CHECKPOINT IT WILL LOAD must exist on disk. A
+         flag that switches to an engine which is not there would trade the ONLY
+         transcriber in this tree for nothing — verbatim the failure the HARD
+         RULE in AGENTS.md was written after. THE FILE ALONE IS NOT THE ENGINE
+         (the gate until 2026-10-11, and a trap): `_run_runner` passes no
+         `--model-dir`, so the runner loads its own
+         `models/parakeet-redux-ternary`, and a runner on disk with that
+         checkpoint absent dies in `redux_batch.load_runtime`'s SystemExit on
+         EVERY pass while the switch has already cut streaming. Either absence is
+         REFUSED LOUDLY, with the missing path, and the worker stays streaming.
       3. THE FILE MUST BE FRESH *AND* SAY HIDDEN for longer than
          `hidden_after_s` (see `PanelVisibilityReader`: a stale or unreadable
          file reads as VISIBLE, so gate 3 fails closed towards streaming).
@@ -2274,7 +3301,7 @@ class ReduxHiddenSwitch:
                  max_audio_s=REDUX_MAX_AUDIO_DEFAULT_S,
                  runner_timeout_s=REDUX_RUNNER_TIMEOUT_DEFAULT_S,
                  wav_dir=None, armed_by="--redux-when-hidden",
-                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT):
+                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None):
         self.enabled = bool(enabled)
         self.reader = reader
         self.runner = runner
@@ -2287,8 +3314,23 @@ class ReduxHiddenSwitch:
         self.runner_timeout_s = float(runner_timeout_s)
         self.wav_dir = wav_dir
         # ── gate 2, decided ONCE, at construction, and stated in the log ─────
+        # TWO facts, not one: the runner FILE and the checkpoint it will LOAD.
+        # `_run_runner` invokes the runner with no `--model-dir`, so the runner
+        # resolves its own `models/parakeet-redux-ternary` — and with that
+        # directory absent (measured on this box 2026-10-11: `worker/models/`
+        # holds only the nemotron export) every batch dies in
+        # `redux_batch.load_runtime`'s SystemExit. Armed on the file alone, the
+        # switch would cut the streaming decode in the asr thread (`if mode ==
+        # "batch": ... continue`) and leave the owner with NO transcriber at all,
+        # silently. So the checkpoint is part of the gate, and the refusal names
+        # the path that is missing.
         self.runner_available = os.path.exists(self.runner)
-        self.armed = True
+        self.model_dir = os.path.abspath(
+            model_dir if model_dir else redux_checkpoint_dir(self.runner))
+        self.model_missing = redux_checkpoint_missing(self.model_dir)
+        self.model_available = not self.model_missing
+        self.armed = bool(
+            self.enabled)
         self.mode = "stream"
         self.visible = True
         self.why = "boot"
@@ -2320,7 +3362,7 @@ class ReduxHiddenSwitch:
                 f"max_audio_s={self.max_audio_s} min_free_mb={self.min_free_mb} "
                 f"runner={self.runner} "
                 f"visibility={self.reader.path}")
-        else:
+        elif not self.runner_available:
             # LOUD, and it is the HARD RULE speaking: without a runner on disk
             # the switch would silence the only transcriber there is, so it is
             # refused and the streaming path is left exactly as it is.
@@ -2329,6 +3371,17 @@ class ReduxHiddenSwitch:
                 f"runner={self.runner} — the batch engine is not on disk, so the "
                 f"streaming capture is NOT cut while the panel is hidden "
                 f"(today it is the only transcriber)")
+        else:
+            # The runner IS on disk and the checkpoint it will LOAD is not: the
+            # distinct reason (and the path) is the whole point of this branch —
+            # a bare `armed=false` would leave the next reader hunting for why.
+            self.log(
+                f"REDUX_SWITCH_REFUSED armed=false reason=checkpoint-missing "
+                f"runner={self.runner} model_dir={self.model_dir} "
+                f"missing={','.join(self.model_missing)} — the batch engine cannot "
+                f"LOAD this checkpoint (`redux_batch.load_runtime` exits on the "
+                f"first missing manifest), so the streaming capture is NOT cut "
+                f"while the panel is hidden (today it is the only transcriber)")
 
     # -- the mode decision --------------------------------------------------
     def tick(self, now=None):
@@ -2671,6 +3724,44 @@ class ReduxHiddenSwitch:
 
 
 # ── selftest ──────────────────────────────────────────────────────────────────
+#: The floor, DERIVED FROM TWO MEASURED RUNS OF THE SAME FILE -- both quoted from
+#: this file's own header (worker/assets/sample1.flac, 13.44 s of read speech): the
+#: greedy-walk defect returned **37 tokens = 2.75 tokens/s with rc=0**, which the
+#: header itself calls "a green exit code on word salad"; the corrected walk returns
+#: **94 tokens = 6.99 tokens/s**. The floor sits at 4.0: above the defective run,
+#: below the good one, with room for a slower speaker.
+#:
+#: WHAT THIS IS NOT, said plainly because a floor is easy to oversell: it is not a
+#: quality verdict. It cannot tell "Going along slushy Country roads" from
+#: fluent-sounding nonsense, and it is not meant to. It catches the ONE degradation
+#: this repo actually measured -- a walk that stops after a couple of symbols per
+#: chunk, which is a COUNTING failure -- in the only way a self-test can: by
+#: counting what came out against the audio that went in.
+SELFTEST_MIN_TOKENS_PER_S = 4.0
+
+
+def selftest_quality(reading: dict) -> tuple[bool, str]:
+    """(is this transcript worth a GREEN exit code?, why not). PURE: no I/O, no state.
+
+    Audit rows #25 / #H1: the self-test asked only whether the text was EMPTY, so a
+    word-salad run was indistinguishable from a good one -- measured, with rc=0.
+    """
+    if reading.get("empty"):
+        return False, "the transcript is EMPTY -- nothing was recognised, and this run used to exit 0 on that"
+    audio_s = float(reading.get("audio_s") or 0.0)
+    tokens = int(reading.get("tokens") or 0)
+    if audio_s <= 0:
+        return True, ""  # no duration to divide by: not this function to call
+    rate = tokens / audio_s
+    if rate < SELFTEST_MIN_TOKENS_PER_S:
+        detail = ("%d token(s) over %.2f s = %.2f tokens/s, below the MEASURED floor %.2f"
+                  % (tokens, audio_s, rate, SELFTEST_MIN_TOKENS_PER_S))
+        return False, detail + (" (the greedy-walk defect returned 37 tokens = 2.75/s with rc=0"
+                               " on the very file this self-test uses; the corrected walk"
+                               " returns 94 = 6.99/s)")
+    return True, ""
+
+
 def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_chars=0):
     """Prove the model works with NO audio device involved.
 
@@ -2771,7 +3862,18 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
     print(f"peak_rss_mb  : {peak_rss_mb():.1f}", file=sys.stderr)
     print(f"providers    : {asr.providers}", file=sys.stderr)
     print(f"RECOGNISED   : {full!r}", file=sys.stderr)
+    quality_ok, quality_why = selftest_quality(
+        {"tokens": len(asr.labels), "audio_s": asr.audio_s, "empty": full.strip() == ""})
+    verdict_word = "ok" if quality_ok else "REFUSED"
+    print("quality      : " + verdict_word + " (" + str(len(asr.labels)) + " token(s) over "
+          + format(asr.audio_s, ".2f") + " s, floor " + str(SELFTEST_MIN_TOKENS_PER_S) + ")",
+          file=sys.stderr)
     print("--- end selftest ---", file=sys.stderr)
+    if not quality_ok:
+        # The contract is JSONL on stdout: the refusal must be an EVENT, not only a
+        # line on stderr, or the shell paints a healthy finish for a dead transcript.
+        emit(type="status", state="error", stage="selftest", detail=quality_why)
+        return 3
     return 0
 
 
@@ -2960,8 +4062,17 @@ def main():
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
     ap.add_argument("--config", default=os.path.join(HERE, "config.json"))
     ap.add_argument("--selftest", action="store_true", help="transcribe a file, no audio device needed")
-    ap.add_argument("--audio", default=None, help="audio for --selftest (default: bundled sample1.flac)")
+    ap.add_argument(
+        "--audio",
+        default=None,
+        help="audio file to transcribe; honoured on its own, without --selftest "
+        "(implies file mode, no audio device). With bare --selftest and no "
+        "--audio, the bundled sample1.flac is used",
+    )
     ap.add_argument("--device", default=None, help="substring of the input device name")
+    ap.add_argument("--target-pid", default=None, type=str,
+                    help="capture ONE process tree's audio (WASAPI process loopback) "
+                         "instead of the endpoint mix; SOTTO_TARGET_PID also sets it")
     ap.add_argument("--model", default=None)
     ap.add_argument(
         "--lang-id",
@@ -2981,18 +4092,18 @@ def main():
         default=10.0,
         help="seconds between WORKER_STATS stage counters on stderr (0 = off)",
     )
-    # ── the panel's WAVE (lane SottoWordSplit, task 2) — DEFAULT ON at 10 Hz ──
+    # ── the panel's WAVE (lane SottoWordSplit, task 2) — default ON at 10 Hz ──
     # `SOTTO_METER_HZ` overrides it, like every other capture knob that has to
     # travel by environment because the shell's argv puts extra flags before the
-    # script path. The shipped default is `METER_HZ_DEFAULT` = 10, and the reason
-    # is spelled out beside `METER_HZ`: the panel's wave is fed by this event, and
-    # switching the DATA off to quiet a LOG was the wrong cure (the limit belongs
-    # on the log side — see the note beside `METER_HZ` for the exact site).
+    # script path. 0 turns the event off completely: with it off, not one read,
+    # not one line, not one branch of `on_block`'s meter block is taken, so a run
+    # with `--meter-hz 0` is byte-identical to the run before this existed.
     ap.add_argument(
         "--meter-hz",
         type=float,
-        default=METER_HZ_DEFAULT,
-        help="audio-level events per second on stdout (default 10; 0 = off)",
+        default=METER_HZ,
+        action=MeterHzFlag,
+        help="audio-level events per second on stdout (0 = off)",
     )
     ap.add_argument(
         "--tap-window",
@@ -3073,6 +4184,40 @@ def main():
     )
     args = ap.parse_args()
 
+    # -- the panel WAVE: resolve the meter rate BEFORE the audio path ---------
+    # Precedence: --meter-hz > SOTTO_METER_HZ > METER_HZ (10.0) -- the same
+    # shape as --lang-id > SOTTO_LANG_ID > config > auto below. The ENV rung is
+    # not decoration: the shell spawns this worker as
+    # `python [...extraArgs, script]`, so a flag handed over by the shell lands
+    # BEFORE the script path and is eaten by the INTERPRETER -- the measured
+    # reason SOTTO_AUDIO_DEVICE and SOTTO_LANG_ID travel by environment at all.
+    #
+    # `--meter-hz` KEEPS ITS LITERAL 10.0 DEFAULT in the add_argument above,
+    # where `_main/audio-meter-oracle.py` reads it out of these bytes; the
+    # env rung is entered HERE, so the flag still wins whenever one was given.
+    # It is also why this is NOT `args.meter_hz or ...`: an explicit
+    # `--meter-hz 0` means OFF and would otherwise be talked out of it by the
+    # environment. A NEGATIVE rate is neither ON nor OFF, so it is refused
+    # LOUDLY and read as OFF rather than clamped to a rate nobody asked for --
+    # this file own idiom for an out-of-range knob. 0 stays quiet: it is the
+    # documented OFF and the escape hatch the byte-identity arm pins.
+    if getattr(args, "meter_hz_given", False):
+        meter_hz, meter_hz_from = args.meter_hz, "flag"
+    elif os.environ.get("SOTTO_METER_HZ"):
+        try:
+            meter_hz, meter_hz_from = float(os.environ["SOTTO_METER_HZ"]), "env"
+        except (TypeError, ValueError):
+            err("SOTTO_METER_HZ=" + repr(os.environ["SOTTO_METER_HZ"])
+                + " is not a number; using the default " + str(METER_HZ))
+            meter_hz, meter_hz_from = METER_HZ, "default"
+    else:
+        meter_hz, meter_hz_from = METER_HZ, "default"
+    if meter_hz < 0:
+        err("meter rate " + repr(meter_hz) + " from " + meter_hz_from
+            + " is negative; the audio-level stream is OFF (0 disables it by design)")
+        meter_hz = 0.0
+    args.meter_hz = meter_hz
+
     limit_threads(args.threads)
 
     # stdout is a pipe: force UTF-8 or a non-ASCII caption raises UnicodeEncodeError.
@@ -3091,13 +4236,28 @@ def main():
     # guess about. A boot line carrying the pid and argv is not ambiguous, and the
     # per-stage timings below say exactly where the remaining seconds went.
     t_boot = time.time()
+    # ── lane audiofix: the FILE SOURCE, resolved ONCE, before anything branches ──
+    # WHY this is computed here and not inline: `--audio` was read ONLY under
+    # `args.selftest`, so `--audio FILE` without `--selftest` was DISCARDED and
+    # the run fell through to the LIVE capture branch — capturing the room
+    # instead of the file, silently, with a plausible-looking JSONL to prove it.
+    # Every consumer of "is this a file run?" must now read THIS one value, or a
+    # `--audio`-only run would fix its source and still report `mode="live"` and
+    # still arm the live-only gate.
+    #
+    # Order is unchanged from before: an explicit `SOTTO_AUDIO_FILE` still wins
+    # over `--audio`, and `--selftest` with NO `--audio` still yields None here
+    # and falls back to the bundled sample below — so the pre-existing
+    # `--selftest --audio X` and bare `--selftest` runs are bit-identical.
+    audio_file = os.environ.get("SOTTO_AUDIO_FILE") or args.audio
+    file_mode = bool(audio_file) or args.selftest
     emit(
         type="status",
         state="boot",
         stage="start",
         pid=os.getpid(),
         argv=sys.argv[1:],
-        mode="file" if (os.environ.get("SOTTO_AUDIO_FILE") or args.selftest) else "live",
+        mode="file" if file_mode else "live",
     )
 
     cfg = {}
@@ -3313,7 +4473,7 @@ def main():
     # negative/positive control harness this lane's proof runs use, and
     # `SOTTO_GATE=0` is the live CONTROL arm (same device, gate off).
     _gate_env = os.environ.get("SOTTO_GATE")
-    _file_mode = bool(os.environ.get("SOTTO_AUDIO_FILE") or args.selftest)
+    _file_mode = file_mode
     if _gate_env is None:
         gate_enabled = not _file_mode
     else:
@@ -3339,7 +4499,14 @@ def main():
     # reason — see worker-bridge.js `#spawn` — so file mode travels the same way.
     # This is what makes the end-to-end caption path provable with REAL model text
     # and no audio device: the same worker, the same JSONL, the same renderer.
-    audio_file = os.environ.get("SOTTO_AUDIO_FILE") or (args.audio if args.selftest else None)
+    #
+    # lane audiofix: `audio_file` / `file_mode` are resolved ONCE, up at the boot
+    # emit (the `SOTTO_AUDIO_FILE or args.audio` line). They are NOT recomputed
+    # here, because this is the branch that used to swallow `--audio`: the guard
+    # read `args.audio if args.selftest else None`, so `--audio FILE` on its own
+    # produced `None` here, this branch was skipped, and the run fell through to
+    # LIVE capture — the room, not the file, with no error. `--audio` is now an
+    # input to this branch on its own, exactly as `SOTTO_AUDIO_FILE` always was.
     if args.selftest or audio_file:
         audio = audio_file or os.path.join(HERE, "assets", "sample1.flac")
         if not os.path.exists(audio):
@@ -3354,6 +4521,36 @@ def main():
     # PREFERRED_DEVICES. Every one of them is TRIED, not trusted — the rotation
     # loop below is what decides, and it decides on measured signal.
     wanted = args.device or os.environ.get("SOTTO_AUDIO_DEVICE") or None
+    # ── lane SottoPerAppTap: WHICH APP (STEP 2) — OFF unless explicitly asked ─
+    # The pid is the owner's decision, so the FLAG wins over the environment, and
+    # a MALFORMED value is REFUSED (exit 2) -- never clamped, never silently
+    # dropped: a run that quietly fell back to the endpoint mix would transcribe
+    # every app on the box while the owner believed he had separated one.
+    # A well-formed pid that does not EXIST is refused here for the same reason
+    # (the open would refuse it anyway, but only after the ladder had already
+    # fallen through to the mix). 'denied' -- a protected, ELEVATED app -- is
+    # ALLOWED through: that process IS there, and refusing it would abandon the
+    # owner's target for a reason that has nothing to do with the target.
+    target_pid = None
+    _target_raw = args.target_pid if args.target_pid is not None else os.environ.get("SOTTO_TARGET_PID")
+    if _target_raw is not None and str(_target_raw).strip() != "":
+        try:
+            target_pid = int(str(_target_raw).strip())
+        except (TypeError, ValueError):
+            emit(type="status", state="error", stage="target-pid",
+                 detail=f"--target-pid/SOTTO_TARGET_PID={_target_raw!r} is not a pid")
+            return 2
+        if target_pid <= 0:
+            emit(type="status", state="error", stage="target-pid",
+                 detail=f"--target-pid/SOTTO_TARGET_PID={_target_raw!r} is not a positive pid")
+            return 2
+        _target_state = _plp_pid_state(target_pid)
+        if _target_state == "absent":
+            emit(type="status", state="error", stage="target-pid",
+                 detail=f"pid {target_pid} does not exist (OpenProcess: ERROR_INVALID_PARAMETER)")
+            return 2
+        err(f"per-app tap requested: pid {target_pid} "
+            f"({_plp_proc_desc(target_pid) or 'image name unreadable'}) state={_target_state}")
     audio_cfg = cfg.get("audio") or {}
     # ── `audio.block_ms` — a LIVE knob as of 2026-10-06 ──────────────────────
     # It used to be inert: `LoopbackTap`/`WasapiLoopbackTap` take block_ms as a
@@ -3383,7 +4580,7 @@ def main():
             return 2
         candidates = [file_tap_candidate(file_tap_path)]
     else:
-        candidates = device_candidates(audio_cfg, wanted)
+        candidates = device_candidates(audio_cfg, wanted, target_pid=target_pid)
     if not candidates:
         emit(type="status", state="error", stage="device", detail="no input device available")
         return 2
@@ -3501,6 +4698,28 @@ def main():
     # owner. `retried` makes the re-entry happen at most once.
     best_carried = {"dev": None, "peak": 0.0, "retried": False}
 
+    # THE WAVE PRODUCER. Instantiated ONCE per run, at the SAME scope as
+    # `on_block` below -- the tap calls that closure, so the meter is fed from
+    # the tap own callback thread (PortAudio, or the file/process pump) and NO
+    # second read of the audio is taken: `on_block` already computes the
+    # per-block peak `p` and hands the SAME float to the meter.
+    #
+    # The clock is WALL time, not the audio clock, because that is what a window
+    # is: the tap own block period is `audio.block_ms` (100 ms shipped) and the
+    # meter counts the audio that ARRIVED, reporting how MANY blocks a window
+    # covered -- a stalled tap yields a LONGER window, and `blocks` is how a
+    # consumer sees the gap instead of reading a smooth wave over it.
+    #
+    # ONE instance spans device rotations: a rotation replaces the STREAM, not
+    # the run clock, and re-instantiating per candidate would hand each one a
+    # fresh window boundary, losing a window at every hop.
+    #
+    # `meter.enabled` is False when the resolved rate is 0, and that is the
+    # WHOLE of the `--meter-hz 0` contract: with it off, not one tick, not one
+    # line and not one branch below is taken. This is the only construction of
+    # the class in the file, which is what `_main/meter-chain-oracle.py` pins.
+    meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
+
     def stats_line(tag: str) -> str:
         n = max(1, counters["block_samples"])
         rms = (counters["sumsq"] / n) ** 0.5
@@ -3541,37 +4760,6 @@ def main():
             )
         return line
 
-    # ── the panel's WAVE: the level of the window, published at ~10 Hz ────────
-    # DEFAULT ON (`METER_HZ_DEFAULT` = 10): the panel's wave is fed by this
-    # event, and the owner reported the animation dead. The flood it used to
-    # cause is a LOG-side problem (the shell logs an unknown `type` once per
-    # sample) and is fixed at the log side — switching the datum off was the
-    # wrong cure. `--meter-hz 0` / `SOTTO_METER_HZ=0` still turns it fully off.
-    # Built HERE, before the tap exists, because `on_block` is the tap's callback.
-    meter = None
-    meter_hz = args.meter_hz
-    _meter_env = os.environ.get("SOTTO_METER_HZ")
-    if _meter_env not in (None, ""):
-        try:
-            meter_hz = float(_meter_env)
-        except (TypeError, ValueError):
-            err(f"SOTTO_METER_HZ={_meter_env!r} is not a number; using {args.meter_hz}")
-            meter_hz = args.meter_hz
-    if meter_hz > 0:
-        meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
-    # ANNOUNCED ON STDERR, not as a stdout `status`: stdout is the channel that
-    # also carries the captions, and a new lifecycle token there would be painted
-    # by the panel as a state this build does not name. The meter's own events are
-    # the announcement on stdout; this line is for the log.
-    err(
-        "meter        : "
-        + (f"{meter_hz:.1f} Hz per-window peak on stdout (interval {meter.interval:.3f}s, "
-           f"blocks/window={meter.blocks_per_window or 'time-only'}, "
-           f"source={'env' if _meter_env not in (None, '') else 'cli'})"
-           if meter is not None else
-           "off (stdout carries no meter event; --meter-hz 0 or SOTTO_METER_HZ=0)")
-    )
-
     def on_block(block):
         counters["blocks"] += 1
         counters["block_samples"] += int(block.size)
@@ -3581,14 +4769,6 @@ def main():
             counters["peak"] = p
         if p > device_peak["value"]:
             device_peak["value"] = p
-        # THE WAVE. `p` is the peak of THIS block and is already computed above;
-        # the meter only refuses to let it accumulate past its own window. The
-        # payload is `peak`/`blocks` — the two fields the panel's shipped
-        # `wireStatsSource` reads — and nothing else.
-        if meter is not None:
-            level = meter.tick(p, time.time())
-            if level is not None:
-                emit(type="meter", **level)
         if p > 1e-4:
             counters["nonzero_blocks"] += 1
         counters["sumsq"] += float((block.astype("float64") ** 2).sum())
@@ -3600,6 +4780,29 @@ def main():
             # and the count above already carries the magnitude.
             if counters["queue_drops"] <= 3:
                 err(f"audio queue full: dropping a block (drops={counters['queue_drops']})")
+        # THE WAVE, once per window -- and THE ONLY output this feature adds: one
+        # compact JSONL event on stdout, in the shape BOTH consumers already
+        # parse. `app/webview/sotto_webview.py` dispatches it at its
+        # `elif kind == 'meter':` branch, whose `_meter` reads
+        # `peak`/`blocks`; `app/panel/panel.js` reaches
+        # `pushLevel(fields.peak, fields.blocks)` from the stats payload the shell
+        # builds out of that same sample. Those two field names are the CONTRACT,
+        # measured in both files, and this emit is the producer that was missing.
+        #
+        # NO log line per block or per sample: the shell budgets its own
+        # `BRIDGE_METER` log at 30 s and the DATA is deliberately not throttled,
+        # and a per-block line here is exactly what would make the owner log grow
+        # with the audio -- the defect this lane was told not to recreate.
+        #
+        # The payload is the METER own (`peak` = the peak of THIS window,
+        # `blocks` = the blocks it covered) and never `counters["peak"]`: that
+        # one is the RUN maximum and only ever rises, which IS the staircase the
+        # owner reported as a broken wave. Sending it here would make the fix
+        # indistinguishable from the defect it removes.
+        if meter.enabled:
+            level = meter.tick(p, time.time())
+            if level is not None:
+                emit(type="meter", **level)
 
     # The tap is swappable underneath the ASR thread: rotation replaces the
     # stream, not the thread. `gen` is the invalidation token — a changed gen
@@ -3787,6 +4990,10 @@ def main():
                 gen = tap_holder["gen"]
                 buf = np.zeros(0, dtype=np.float32)
                 live = tap_holder["tap"]
+                # STEP 3: the events of THIS tap carry ITS identity. Set here,
+                # in the branch that resets the stream for a new device, so the
+                # source can never lag the audio it describes.
+                former.set_source(getattr(live, "source", None))
                 native = live is not None and live.rate != TARGET_SR
                 rate = live.rate if live is not None else TARGET_SR
                 agc.reset()  # a new device starts from unity gain
@@ -4081,7 +5288,22 @@ def main():
             )
 
     try:
+        separation_lost = False
         for attempt_no, dev in enumerate(candidates):
+            if target_pid and not dev.get("process_loopback") and not separation_lost:
+                # LOUD, ONCE, and it names what was lost: the ladder has moved
+                # past the app's own tree, so THIS RUN IS TRANSCRIBING THE
+                # ENDPOINT MIX. The owner asked for one app ("separados"), and a
+                # silent fall-back to the mix is the defect this lane exists to
+                # avoid -- so it is reported in the event stream AND on stderr,
+                # and the run carries on with the endpoint rather than dying on
+                # an idle/closed app.
+                separation_lost = True
+                err(f"PER-APP SEPARATION LOST: falling through to {dev['name']!r} "
+                    f"(the whole endpoint) after pid {target_pid}")
+                emit(type="status", state="device-rotated", reason="per-app-tap-lost",
+                     device=f"process loopback: pid {target_pid}", to=dev["name"],
+                     target_pid=target_pid)
             device = dev
             # ── ONE PLACE THAT OPENS A CANDIDATE, AND IT RETRIES `DEVICE_IN_USE` ──
             # Two measured defects live here, both seen on the owner's box with a
@@ -4113,6 +5335,10 @@ def main():
                     break
                 try:
                     tap = LoopbackTap(dev, on_block, block_ms=block_ms)
+                    # STEP 3: the tap carries the identity of the CANDIDATE it
+                    # was opened from, so every event it feeds can name its
+                    # source (`proc:<pid>` / `device:<name>` / `file:<name>`).
+                    tap.source = tap_source(dev)
                     tap_holder["tap"] = tap
                     tap_holder["gen"] += 1
                     tap.stream.start()
@@ -4177,6 +5403,11 @@ def main():
             # not the run's high-water mark from a device already closed.
             device_peak["value"] = 0.0
             device_blocks["value"] = 0
+            # The settled-tap watchdog starts its clock with the candidate.
+            stall_blocks = 0
+            stall_since = time.time()
+            stall_backoff = TAP_STALL_S
+            stall_reopens = 0
             caps_before = counters["captions"]
             window_end = time.time() + tap_window
             settled = False
@@ -4214,6 +5445,73 @@ def main():
                     if settled:
                         # Proven alive: this tap is the run now, and the window
                         # no longer applies to it.
+                        if device_blocks["value"] != stall_blocks:
+                            # Still delivering: this tap IS the run.
+                            stall_blocks = device_blocks["value"]
+                            stall_since = now
+                            stall_backoff = TAP_STALL_S
+                        elif now - stall_since >= stall_backoff:
+                            # -- THE TAP STOPPED DELIVERING (added 2026-10-11) -----------------
+                            # A settled tap used to be PERMANENT: this loop then spun at 10 Hz for
+                            # ever and never once asked whether the tap was still delivering.
+                            # MEASURED on the owner box: device_blocks froze at 59 (5.6 s of audio,
+                            # 6 captions) and the worker sat there 34 minutes while the default
+                            # render endpoint carried peak 0.1444 -- the panel read "Audio tap
+                            # silent" and Alt+C showed nothing, for ever. The signal is BLOCK
+                            # ARRIVAL, not peak: a pumped-but-idle endpoint delivers SILENT blocks,
+                            # a starved or dead one delivers none.
+                            stalled_s = now - stall_since
+                            inner = getattr(tap, "stream", tap)
+                            err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "
+                                f"blocks={device_blocks['value']} captions={counters['captions']} "
+                                f"reopens={stall_reopens} "
+                                f"pump_exited={getattr(inner, 'pump_exited', None)} "
+                                f"pump_hr={getattr(inner, 'pump_exit_hr', None)} "
+                                f"pump_where={getattr(inner, 'pump_exit_where', '')!r} "
+                                f"silent_packets={getattr(inner, 'silent_packets', None)} "
+                                f"gap_packets={getattr(inner, 'position_gap_packets', None)} "
+                                f"disco_packets={getattr(inner, 'discontinuity_packets', None)}")
+                            # Re-open IN PLACE: the first stalls re-open the SAME endpoint (an
+                            # invalidated audio engine is cured by a fresh client); after that the
+                            # audio may simply have MOVED, so take the freshest enumeration first
+                            # endpoint that is not this one. An EXPLICIT device (rung c) is never
+                            # substituted silently, and the process NEVER exits on a stall -- an
+                            # idle desktop must not become a model-load restart loop.
+                            target = dev
+                            if stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES and not (
+                                    wanted and dev.get("rung") == "c"):
+                                for cand in device_candidates(audio_cfg, wanted, target_pid=target_pid):
+                                    if cand.get("endpoint_id") != dev.get("endpoint_id"):
+                                        target = cand
+                                        break
+                            emit(type="status", state="device-rotated", reason="tap-stalled",
+                                 to=target["name"], device=dev["name"],
+                                 stalled_s=round(stalled_s, 1), blocks=device_blocks["value"],
+                                 captions=counters["captions"])
+                            try:
+                                close_tap(tap)
+                                tap_holder["tap"] = None
+                                tap_holder["gen"] += 1
+                                tap = LoopbackTap(target, on_block, block_ms=block_ms)
+                                tap.source = tap_source(target)
+                                tap_holder["tap"] = tap
+                                tap_holder["gen"] += 1
+                                tap.stream.start()
+                                dev = target
+                                device_peak["value"] = 0.0
+                                device_blocks["value"] = 0
+                                stall_blocks = 0
+                                stall_reopens += 1
+                                emit(type="status", state="capture-started", device=dev["name"],
+                                     rate=tap.rate, block=tap.block, attempt=attempt_no + 1,
+                                     of=len(candidates), reopened=True)
+                            except Exception as exc:
+                                err(f"TAP_STALLED_REOPEN_FAILED device={target['name']!r} "
+                                    f"detail={type(exc).__name__}: {exc}")
+                            stall_since = time.time()
+                            stall_backoff = (TAP_STALL_S
+                                             if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
+                                             else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
                         time.sleep(0.1)
                         continue
                     if now >= window_end:
@@ -4586,8 +5884,45 @@ def main():
     return 3 if ran_but_silent else 0
 
 
-if __name__ == "__main__":
+def contract_guard(main_fn, emit_fn=emit, err_fn=err) -> int:
+    """Run the worker so that no CATCHABLE exit escapes the JSONL contract. PURE wiring: the
+    emitters are injected, so this is drivable without a device, a model or a process.
+
+    AUDIT ROW F18: the entry block caught ONLY KeyboardInterrupt -- and answered 0 -- so any other
+    exception left the contract OPEN: the shell saw EOF with no `done` and no `error`, the same
+    shape as a healthy finish. Every other `try` in this file is LOCAL to a phase; nothing owned
+    the top.
+
+    WHAT THIS CANNOT DO, said here because the row is about a gap and a guard that oversells itself
+    is the same defect: the shell stops this process with terminate()/kill() (TerminateProcess,
+    measured at app/webview/sotto_webview.py:7453, :7457, :7914), and NO Python-level guard can
+    catch that. That path still ends in EOF without a terminal event, and no code change can fix it.
+    What is fixed is everything the interpreter can catch.
+    """
     try:
-        sys.exit(main())
+        return int(main_fn())
+    except SystemExit as stop:
+        # argparse refusals and deliberate exits carry MEANING in their code (2 = usage, 3 =
+        # silent device). --check-args and run.cmd pre-flight read these numbers, so the guard
+        # must not flatten 2 into 4.
+        raise stop
     except KeyboardInterrupt:
-        sys.exit(0)
+        # Was `sys.exit(0)` with NO event: an interrupted run reported the same thing to the shell
+        # as a finished one. 130 is the conventional SIGINT code and it is distinct from 4.
+        emit_fn(type="status", state="error", stage="interrupted",
+                detail="interrupted (Ctrl+C): the run did NOT finish")
+        err_fn("sotto: INTERRUPTED -- the run did not finish (no done event was emitted)")
+        return 130
+    except BaseException as exc:
+        import traceback as _tb
+        detail = "%s: %s" % (type(exc).__name__, exc)
+        emit_fn(type="status", state="error", stage="unhandled", detail=detail)
+        err_fn("sotto: UNHANDLED " + detail)
+        err_fn(_tb.format_exc())
+        return 4
+
+
+if __name__ == "__main__":
+    # AUDIT ROW F18: this block used to catch ONLY KeyboardInterrupt and answer 0, so any other
+    # exception left the contract open. See contract_guard for what it can and cannot catch.
+    sys.exit(contract_guard(main))
