@@ -2,7 +2,15 @@
 REM ===========================================================================
 REM  Sotto -- THE APP.  Double-click this file, or run it from a terminal.
 REM
-REM    run.cmd                  start hidden, TRANSCRIBE, wait for Alt+C
+REM    run.cmd                  TRANSCRIBE, wait for Alt+C; the panel stays
+REM                              HIDDEN unless you ask for it -- it is not
+REM                              mapped at full opacity while nobody asked (the
+REM                              navigation Show gate; 25 ms census `live` 0/20 vs
+REM                              `nogate` 4/20). That is not a promise about pixels:
+REM                              the alpha=0 creation-dance map remains, and the
+REM                              SAME census read 18/20 in an earlier pass -- the
+REM                              two numbers are UNRECONCILED in AGENTS.md. See
+REM                              _main/receipt-20261007-panel-startup-flash.md.
 REM    run.cmd --show           start with the panel already up
 REM    run.cmd --no-worker      shell only: start NO transcription worker
 REM    run.cmd --with-worker    accepted alias -- the worker is the default

@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 76 / open 59 / in-flight 0** as this file is written, read from the gate itself.
+**applied 79 / open 56 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 59 rows whose state cell reads OPEN
+## 1. The live product — 56 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -28,14 +28,13 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
 | F18 | excepcoes fora dos poucos try escapam ao contrato JSONL (EOF sem done/error) (`auditoria-completa-20261007.md:80`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado; nada na arvore o fecha |  |
 
-### other (5)
+### other (4)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 18 | o `ready` do supervisor le um stream onde a app nunca escreve (o log vai para `--log`, nao para o PTY) | `launch-entry.md §3.4.2`, `spec.json` | **OPEN** |
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
 | 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
-| 60 | `_on_navigation_start` faz early-return em `self.visible` → "mostrado uma vez ⇒ nunca mais auto-escondido" | `sotto_webview.py:1549` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
 ### panel/rendering (12)
@@ -55,7 +54,7 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 | F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |  |
 
-### shell/window (22)
+### shell/window (21)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
@@ -64,7 +63,6 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | 28 | shell selftest regista `focus_stolen=true` e mesmo assim sai 0 | `_main/webview-selftest.log:32` | **OPEN** |
 | 31 | o censo da casa nao serve para o eixo janela: `MainWindowHandle != 0` sem teste de monitor | `window-census.ps1:11-14, 60-70` | **OPEN** |
 | 33 | comentarios obsoletos/contraditorios no `sotto_webview.py` sobre a cura OFFSCREEN | `sotto_webview.py:1054` (residuo) | **OPEN** — `:1531-1535` ja diz "tried and REMOVED"; `:1054` ainda diz que o flash "e tratado pela posicao de criacao OFFSCREEN abaixo" |
-| 61 | `run.cmd:6` promete "start hidden" enquanto o shell pisca | `run.cmd:6` | **OPEN** |
 | F5 | _lock segurado durante uma ida-e-volta de UI bloqueante (`shell-bridge.md:174`) | **OPEN** — herdado da linha #14 |  |
 | F6 | _schedule_restart nao cancela o timer anterior (`shell-bridge.md:190`) | **OPEN** — herdado da linha #15 |  |
 | F7 | conjuntos de nomes de estado sensiveis a separador (`shell-bridge.md:207`) | **OPEN** — herdado da linha #40 |  |
@@ -88,11 +86,10 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |  |
 
-### worker/audio/ASR (10)
+### worker/audio/ASR (9)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
-| 23 | `PREFERRED_DEVICES = ()` enquanto o README do worker o apresenta populado | `sotto_worker.py:94` | **OPEN** |
 | 62 | `subprocess.run(timeout=)` a volta do `electron.exe` multi-processo pode nao ser tecto [INFERENCE] | `_main/_run-hidden.py:24` | **OPEN** |
 | F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |  |
 | F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **OPEN** — herdado da linha #38 |  |
