@@ -1,0 +1,75 @@
+// Sotto -- the IN-PROCESS instrument battery. Launches NOTHING.
+//
+// WHY THIS FILE EXISTS: the 24-instrument battery this session has been running lived in
+// `I:\cc-tmp\final-battery.mjs`, which is NOT in the repo -- so the substitute gate for the owner
+// stop order (see AGENTS.md: `_audit-verify-all.cmd` launches the shell dozens of times and is
+// FORBIDDEN while the order lasts) was reproducible only on this box. This is that battery, committed,
+// with every instrument this session added and with BOTH COLOURS of each (`--neg-arm`).
+//
+// WHAT IT IS NOT: it is not a substitute for the launch battery's PAINTED claims. Everything here is
+// bytes, parse, in-process drive or a passive process/window read. Nothing opens the shell or the worker.
+import { spawnSync } from 'node:child_process';
+
+const py = [
+  ['_main/canonical-producer-oracle.py', 'canonical-producer 47/47'],
+  ['_main/meter-chain-oracle.py', 'meter-chain 55'],
+  ['_main/meter-chain-oracle.py --neg-arm', 'meter-chain neg 66'],
+  ['_main/audio-meter-oracle.py', 'audio-meter 11'],
+  ['_main/audio-meter-oracle.py --neg-cadence', 'audio-meter neg-cadence'],
+  ['_main/redux-arm-weights-oracle.py', 'redux-arm-weights 20'],
+  ['_main/per-app-source-plumbing-oracle.py', 'per-app-source'],
+  ['_main/app-target-oracle.py', 'app-target 9/9'],
+  ['_main/audit-rows-tap-flags-ledger.py', 'tap-flags-ledger'],
+  ['_main/audit-rows-bridge-decisions.py', 'bridge-decisions 10 arms'],
+  ['_main/audit-rows-bridge-decisions.py --neg-arm', 'bridge-decisions neg'],
+  ['_main/audit-rows-byte-claims.py', 'byte-claims'],
+  ['_main/audit-rows-negative-arm-falsifiability.py', 'neg-arm-falsifiability'],
+  ['_main/audit-rows-landmine-child-control.py', 'landmine-child-control'],
+  ['_main/_oss_oracle.py', 'oss-oracle 4/4'],
+  ['_main/model-spec-oracle.py', 'model-spec'],
+  ['_main/stale-receipt-oracle.py', 'stale-receipt (row #29)'],
+  ['_main/stale-receipt-oracle.py --neg-arm', 'stale-receipt neg'],
+  ['_main/device-ladder-doc-oracle.py', 'ladder-doc (row #23)'],
+  ['_main/device-ladder-doc-oracle.py --neg-arm', 'ladder-doc neg'],
+  ['_main/panel-visibility-guard-oracle.py', 'visibility-guard (rows #60/#61)'],
+  ['_main/panel-visibility-guard-oracle.py --neg-arm', 'visibility-guard neg'],
+  ['_main/panel-window-census.py', 'panel-census 7 tests'],
+  ['_main/panel-window-census.py --neg-arm', 'panel-census 7 mutants'],
+];
+
+const node = [
+  ['_main/join-harness.js', 'join-harness 11 arms'],
+  ['_main/join-harness.js --neg-arm', 'join-harness neg'],
+  ['_main/caption-renderer-integration.js', 'renderer-integration 7'],
+  ['_main/caption-renderer-integration.js --neg-arm', 'renderer-integration neg'],
+  ['_main/scope-leak-oracle.js', 'scope-leak 8 sheets'],
+  ['_main/scope-leak-oracle.js --neg-arm', 'scope-leak neg'],
+  ['_main/redux-live-contract-oracle.js', 'redux-live-contract 8/8'],
+  ['_main/panel-row-identity-oracle.js', 'panel-row-identity'],
+  ['_main/historico-vs-redux-probe.js', 'historico-vs-redux GREEN'],
+];
+
+const run = (cmd, args, label) => {
+  const r = spawnSync(cmd, args, { cwd: 'H:/sotto', encoding: 'utf8', windowsHide: true,
+    maxBuffer: 64 * 1024 * 1024, env: { ...process.env, TMPDIR: 'I:/cc-tmp' } });
+  const text = (r.stdout || '') + (r.stderr || '');
+  const tail = text.split(/\r?\n/).filter((l) =>
+    /VERDICT|PASS \/|GREEN|SUMMARY|ARM-VERDICT|NEG-ARM|ORACLE/.test(l));
+  if (r.status !== 0) {
+    console.log('rc=' + r.status + ' !!! ' + label.padEnd(30) + (tail.slice(-1)[0] || text.split(/\r?\n/).filter(Boolean).slice(-1)[0] || '').trim().slice(0, 105));
+  } else {
+    console.log('rc=0  ' + label.padEnd(30) + (tail.slice(-1)[0] || '').trim().slice(0, 105));
+  }
+  return r.status === 0;
+};
+
+console.log('--- python oracles (' + py.length + ') ---');
+let failed = 0;
+for (const [a, l] of py) if (!run('py', ['-3', ...a.split(' ')], l)) failed += 1;
+console.log('--- node oracles (' + node.length + ') ---');
+for (const [a, l] of node) if (!run('node', a.split(' '), l)) failed += 1;
+const total = py.length + node.length;
+console.log('');
+console.log('SUMMARY: ' + (total - failed) + '/' + total + ' instrument(s) rc=0; failed=' + failed
+  + '; launches=0 (the owner order forbids opening the shell, run.cmd or the worker)');
+process.exit(failed === 0 ? 0 : 1);

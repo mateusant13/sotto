@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 79 / open 56 / in-flight 0** as this file is written, read from the gate itself.
+**applied 81 / open 54 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 56 rows whose state cell reads OPEN
+## 1. The live product — 54 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -37,13 +37,12 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
-### panel/rendering (12)
+### panel/rendering (11)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
 | 27 | panel ARM A aceita UMA legenda como LIVE | `_main/panel-exit3-oracle.py:999` | **OPEN** |
-| 32 | o censo nao e panel-specific (alarmou em `cmd`/`dwm`/`python`) | `window-census.log` | **OPEN** |
 | 46 | `AGENTS.md` contradiz-se sobre o painel no arranque ("0 de 41" vs "visivel 50 ms–7 s") | `AGENTS.md:169` vs `:215` | **OPEN** |
 | F3 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte (`shell-bridge.md:123`) | **OPEN** — herdado da linha #12 |  |
 | F3 | AGENTS.md contradiz-se sobre o painel no arranque (`doc-vs-code.md:23`) | **OPEN** — herdado da linha #46 |  |
@@ -54,14 +53,13 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 | F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |  |
 
-### shell/window (21)
+### shell/window (20)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 5 | `console-census.py` passa `CREATE_NO_WINDOW\ | DETACHED_PROCESS` → canal de 0 bytes rc 0, logo `python_pids()` fica cego | `_main/_probe/console-census.py:106` |
 | 25 | shell `--selftest` nao afirma qualidade do output ("verde com word-salad") | `sotto_worker.py:986-999` | **OPEN** |
 | 28 | shell selftest regista `focus_stolen=true` e mesmo assim sai 0 | `_main/webview-selftest.log:32` | **OPEN** |
-| 31 | o censo da casa nao serve para o eixo janela: `MainWindowHandle != 0` sem teste de monitor | `window-census.ps1:11-14, 60-70` | **OPEN** |
 | 33 | comentarios obsoletos/contraditorios no `sotto_webview.py` sobre a cura OFFSCREEN | `sotto_webview.py:1054` (residuo) | **OPEN** — `:1531-1535` ja diz "tried and REMOVED"; `:1054` ainda diz que o flash "e tratado pela posicao de criacao OFFSCREEN abaixo" |
 | F5 | _lock segurado durante uma ida-e-volta de UI bloqueante (`shell-bridge.md:174`) | **OPEN** — herdado da linha #14 |  |
 | F6 | _schedule_restart nao cancela o timer anterior (`shell-bridge.md:190`) | **OPEN** — herdado da linha #15 |  |
