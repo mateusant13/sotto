@@ -226,7 +226,7 @@ def check(module):
 
     shell.bridge = FakeBridge()
     stats = shell.stats()
-    want('stats.payload', stats, {'peak': 0.443448, 'blocks': 812.0})
+    want('stats.payload', stats, {'tag': 'stats', 'peak': 0.443448, 'blocks': 812.0})
     if 'nonzero_blocks' in stats or 'queue_drops' in stats:
         failures.append('stats() leaks fields the panel does not read')
 
@@ -234,13 +234,19 @@ def check(module):
         last_worker_stats = None
 
     shell.bridge = EmptyBridge()
-    want('stats.empty', shell.stats(), {})
+    # REBASELINED 2026-10-12: the shell stamps a `tag` on the payload ON PURPOSE --
+    # sotto_webview.py:5941 `payload['tag'] = (fields.get('tag') if isinstance(fields, dict) else None)
+    # or 'stats'`, with its own comment at :5938-5940 recording that copying only peak/blocks THREW THE
+    # TAG AWAY. This oracle predated that addition, so its real arm compared against the old shape and
+    # the whole step went RED (rc=3) in the product battery. The tag is 'meter' on the window-peak path
+    # and 'stats' elsewhere, which is exactly what the two meter arms below assert.
+    want('stats.empty', shell.stats(), {'tag': 'stats'})
 
     class PartialBridge:
         last_worker_stats = {'tag': 'tick', 'fields': {'blocks': '3'}, 'line': ''}
 
     shell.bridge = PartialBridge()
-    want('stats.partial', shell.stats(), {'blocks': 3.0})
+    want('stats.partial', shell.stats(), {'tag': 'stats', 'blocks': 3.0})
 
     # -- 10. THE RESTORE path reads ONE file and CLAMPS ----------------------
     shell2 = module.SottoShell.__new__(module.SottoShell)
@@ -432,7 +438,7 @@ def check(module):
     want('stats.log.500-samples-1-line', len(push_lines), 1)
     want('stats.log.feed-not-throttled', len(emitted), 500)
     want('stats.log.payload-shape', emitted[0][1] if emitted else None,
-         {'peak': 0.5, 'blocks': 3.0})
+         {'tag': 'stats', 'peak': 0.5, 'blocks': 3.0})
 
     # -- 19. THE RELOAD CONTRACT (the owner's order: never old code again) ----
     # Driven, not grepped: a stand-in bridge that stays CAPTURING, so the guard,
@@ -573,12 +579,12 @@ def check(module):
     wave_shell.bridge = bridge
     facts['meter.stats_payload'] = wave_shell.stats()
     want('meter.stats-prefers-the-window-peak', wave_shell.stats(),
-         {'peak': 0.1 + (499 % 7) / 100.0, 'blocks': 12.0})
+         {'tag': 'meter', 'peak': 0.1 + (499 % 7) / 100.0, 'blocks': 12.0})
     bridge.last_meter = {'at': time.monotonic() - (module.METER_FRESH_S + 1.0),
                          'peak': 0.99, 'blocks': 99.0}
     facts['meter.stats_fallback'] = wave_shell.stats()
     want('meter.stats-falls-back-to-the-running-maximum-when-stale',
-         wave_shell.stats(), {'peak': 0.443448, 'blocks': 812.0})
+         wave_shell.stats(), {'tag': 'stats', 'peak': 0.443448, 'blocks': 812.0})
 
     return failures, facts
 

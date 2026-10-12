@@ -236,9 +236,9 @@ if exist _main\_audit-hotkey-delivery.py (
   call :skipped hotkey-delivery !ERRORLEVEL! "%OUT%\hotkey-delivery.log" "VERDICT: GREEN" "VERDICT: SKIPPED" "CANNOT claim"
 ) else ( call :skipped hotkey-delivery MISSING "%OUT%\hotkey-delivery.log" "VERDICT: GREEN" "VERDICT: SKIPPED" "CANNOT claim" )
 REM The autostart check READS the registry (a read needs no elevation) and fails
-REM if the Run value points somewhere other than THIS checkout -- which is what a
+REM if the Run value points somewhere other than THIS checkout -- which is what a moved tree looks like from the login side. The step runs _main\autostart-status-check.py (2026-10-12) because the shell OWN exit code IS the status (0=on+matching, 1=off, 2=unreadable, 3=elsewhere): recording that rc as a plain gate painted a healthy OFF machine RED. The wrapper reads the registry itself, cross-checks the shell own answer, exits 0 for the two VALID states and 3 for another checkout. The REM line below keeps its original wording.
 REM moved tree looks like from the login side.
-python app\webview\sotto_webview.py --autostart-status > "%OUT%\autostart-status.log" 2>&1
+python _main\autostart-status-check.py > "%OUT%\autostart-status.log" 2>&1
 call :record autostart-status !ERRORLEVEL!
 
 echo === CONTROLS: every one of these succeeds ONLY by going RED on a broken copy ===

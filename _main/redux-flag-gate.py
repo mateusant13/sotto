@@ -139,8 +139,13 @@ def check_worker(src: str):
                  f'final:True beside it={bool(final_true)}')
 
     # ── hard-rule ──────────────────────────────────────────────────────────
+    # REBASELINED 2026-10-12: the live worker now requires THREE conditions and wraps the
+    # expression across two lines -- `self.armed = bool(` / `    self.enabled and
+    # self.runner_available and self.model_available)` -- so the single-line anchor below matched
+    # NOTHING and this claim went RED on a healthy file (12/13), which also stopped --neg-arm from
+    # ever reaching its mutant. Anchor on the MEANING (flag AND runner, extra conditions allowed).
     armed = re.search(
-        r'self\.armed\s*=\s*bool\(self\.enabled and self\.runner_available\)', src)
+        r'self\.armed\s*=\s*bool\(\s*self\.enabled\s*and\s*self\.runner_available', src)
     refused = "REDUX_SWITCH_REFUSED armed=false reason=runner-missing" in src
     claims["hard-rule"] = bool(armed) and refused
     notes.append(f'hard-rule: armed needs flag AND runner={bool(armed)} '
@@ -278,9 +283,14 @@ MUTANTS = [
      '                    pass'),
     ("stamp", "worker",
      'REDUX_PRODUCER = "redux"', 'REDUX_PRODUCER = "live"'),
+    # REBASELINED 2026-10-12 with the claim above: the live expression spans two lines and carries a
+    # THIRD condition, so the old single-line anchor built nothing and the gate said so honestly
+    # ("SETUP: anchor NOT FOUND for mutant hard-rule -- that claim is not controlled"). The anchor is
+    # now the one-line substring that exists verbatim, and dropping the runner/model conditions is
+    # exactly the mutation the claim is supposed to catch.
     ("hard-rule", "worker",
-     'self.armed = bool(self.enabled and self.runner_available)',
-     'self.armed = True'),
+     'self.enabled and self.runner_available and self.model_available',
+     'self.enabled'),
     ("fail-safe", "worker",
      'def _fallback(self, why, age):\n        self.fallbacks += 1\n'
      '        self.last_reason = why\n        return True, why, age',
