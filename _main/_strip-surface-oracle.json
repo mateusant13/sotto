@@ -90,7 +90,7 @@
             }
           ]
         ],
-        "dispatch.source_tail": "          'info': self._info,\n            'stats': self._stats,\n            'panel-surface': self._panel_surface,\n        }.get(kind)\n        if handler is None:\n            log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')\n            return\n        try:\n            handler(payload)\n        except Exception as exc:  # a page callback must not kill the host\n            log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')\n",
+        "dispatch.source_tail": "..)` lands in BRIDGE_UNKNOWN_KIND and the\n            # Promise never resolves.\n            'stats': self._stats,\n        }.get(kind)\n        if handler is None:\n            log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')\n            return\n        try:\n            handler(payload)\n        except Exception as exc:  # a page callback must not kill the host\n            log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')\n",
         "host._panel_surface": true,
         "host._stats": true,
         "shell.set_panel_surface": true,
@@ -122,11 +122,15 @@
         ],
         "writer.path": "H:\\sotto\\_main\\panel-visibility.json",
         "stats.payload": {
+          "tag": "stats",
           "peak": 0.443448,
           "blocks": 812.0
         },
-        "stats.empty": {},
+        "stats.empty": {
+          "tag": "stats"
+        },
         "stats.partial": {
+          "tag": "stats",
           "blocks": 3.0
         },
         "geometry_for.clamped": [
@@ -137,10 +141,13 @@
         ],
         "geometry_for.default": [
           440,
-          836,
+          872,
           1040,
           148
         ],
+        "geometry_for.default.docked": "bottom-strip",
+        "geometry_for.default.margin": 12,
+        "geometry_for.default.surface": "strip",
         "geometry_snapshot.surface": "panel",
         "show_call": true,
         "SetWindowPos.argtypes": [
@@ -202,6 +209,7 @@
         "stats.log.500-samples-1-line": 1,
         "stats.log.feed-not-throttled": 500,
         "stats.log.payload-shape": {
+          "tag": "stats",
           "peak": 0.5,
           "blocks": 3.0
         },
@@ -209,28 +217,28 @@
           "deferred_while_capturing": {
             "restarts": 0,
             "deferred": [
-              "HOT_RELOAD_WORKER_DEFERRED files=[\"worker/sotto_worker.py\"] reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=true sha256_disk=ea014d8f2cacd72e sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
+              "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=adff42133c3aeeb0 sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
             ],
             "pending": true
           },
           "closed_line": {
             "restarts": 1,
             "lines": [
-              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=[\"worker/sotto_worker.py\"] waited_ms=781",
-              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=[\"worker/sotto_worker.py\"] reason=closed-line waited_ms=781"
+              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=780",
+              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=780"
             ]
           },
           "ceiling": {
             "restarts": 1,
             "forced": [
-              "HOT_RELOAD_WORKER_FORCED files=[\"worker/sotto_worker.py\"] reason=no-boundary-in-250ms waited_ms=250 code_is_stale=true sha256_disk=ea014d8f2cacd72e sha256_at_spawn=deadbeefdeadbeef cost=one-model-warm-up"
+              "HOT_RELOAD_WORKER_FORCED files=1 reason=no-boundary-in-250ms waited_ms=250 code_is_stale=True sha256_disk=adff42133c3aeeb0 sha256_at_spawn=deadbeefdeadbeef cost=one-model-warm-up"
             ],
             "pending": false
           },
           "floor": {
             "restarts": 0,
             "cooldown": [
-              "HOT_RELOAD_WORKER_COOLDOWN files=[\"worker/sotto_worker.py\"] left_ms=59812 min_interval_ms=60000 waited_ms=188 code_is_stale=true sha256_disk=ea014d8f2cacd72e sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
+              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59813 min_interval_ms=60000 waited_ms=187 code_is_stale=True sha256_disk=adff42133c3aeeb0 sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
             ],
             "pending": true
           }
@@ -262,18 +270,22 @@
           "peak"
         ],
         "meter.stats_payload": {
+          "tag": "meter",
           "peak": 0.12000000000000001,
           "blocks": 12.0
         },
         "meter.stats-prefers-the-window-peak": {
+          "tag": "meter",
           "peak": 0.12000000000000001,
           "blocks": 12.0
         },
         "meter.stats_fallback": {
+          "tag": "stats",
           "peak": 0.443448,
           "blocks": 812.0
         },
         "meter.stats-falls-back-to-the-running-maximum-when-stale": {
+          "tag": "stats",
           "peak": 0.443448,
           "blocks": 812.0
         }

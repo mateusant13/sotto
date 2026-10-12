@@ -93,6 +93,22 @@ function checks(dir) {
   }
   add("S19 the module resolves its nodes lazily (deferred-safe)", /getElementById\(.caption-float.\)/.test(float), "present");
 
+/* THE ROW'S ORDER. A strip child with no `order` of its own falls back to 0, which
+   TIES it with the brand and puts it ahead of every button declaring 1..7. Measured
+   2026-10-12: Linhar rendered SECOND, right after the wordmark, while the paint below
+   describes it as one of "the two ACTIONS at the end of the row". */
+const orderMap = {};
+const orderRe = /body\[data-surface="strip"\]\s+(#[A-Za-z0-9_-]+|\.stripbar__brand)\s*\{\s*order:\s*(\d+)\s*;\s*\}/g;
+let om;
+while ((om = orderRe.exec(css)) !== null) orderMap[om[1]] = parseInt(om[2], 10);
+add("S20 the Linhar button declares its own order (the default 0 renders it second)",
+  orderMap["#strip-float-button"] !== undefined,
+  "order=" + orderMap["#strip-float-button"] + " of " + Object.keys(orderMap).length + " ordered children");
+add("S20b the float button renders AFTER Pause and BEFORE the state word",
+  orderMap["#strip-float-button"] > orderMap["#strip-pause-button"] &&
+  orderMap["#strip-float-button"] < orderMap["#strip-state"],
+  "pause=" + orderMap["#strip-pause-button"] + " float=" + orderMap["#strip-float-button"] + " state=" + orderMap["#strip-state"]);
+
   /* ---- 3. panel.js WIRING ---------------------------------------------- */
   add("W1 dom.stripFloatButton is looked up", /stripFloatButton\s*:\s*document\.getElementById\(.strip-float-button.\)/.test(js), "present");
   add("W2 the button is bound in wireStripControls", /stripFloatButton\.addEventListener\(.click./.test(js), "present");
@@ -166,6 +182,7 @@ const muts = [
   { tag: "M2 the Linhar button is deleted", file: "panel.html", from: "<button\r\n          type=\"button\"\r\n          class=\"strip-button strip-button--float\"\r\n          id=\"strip-float-button\"\r\n          data-strip-float\r\n          data-strip-float-state=\"off\"\r\n          title=\"Linhar a legenda: solta no ecra, sem painel\"\r\n          aria-label=\"Linhar a legenda\"\r\n          aria-pressed=\"false\"\r\n        >\r\n          <svg viewBox=\"0 0 16 16\" aria-hidden=\"true\">\r\n            <path\r\n              d=\"M2.4 3.2h11.2a.8.8 0 0 1 .8.8v8a.8.8 0 0 1-.8.8H2.4a.8.8 0 0 1-.8-.8V4a.8.8 0 0 1 .8-.8z\"\r\n              fill=\"none\"\r\n              stroke=\"currentColor\"\r\n              stroke-width=\"1.3\"\r\n            />\r\n            <path d=\"M5 6.4h6M5 9h4\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" />\r\n          </svg>\r\n          <span class=\"strip-button__label\">Linhar</span>\r\n        </button>", to: "" },
   { tag: "M3 the overlay push in addCaption is deleted", file: "panel.js", from: "if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);", to: "" },
   { tag: "M4 the runtime height change is deleted", file: "panel.js", from: "setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);", to: "" },
+  { tag: 'M6 the float button loses its order (falls back to 0)', file: 'panel.css', from: 'body[data-surface="strip"] #strip-float-button { order: 8; }', to: '' },
   { tag: "M5 the overlay gains a background", file: "panel.css", from: ".caption-float__stage {", to: ".caption-float__stage {" + String.fromCharCode(10) + "  background: #0b0f14;" },
 ];
 
