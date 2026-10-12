@@ -187,7 +187,11 @@ and `docs/int8-route-20261006.md` (which ran that cell). The FP16 export
 - `device_candidates()` builds the ordered tap list: an explicit `--device`, then
   the shell's `SOTTO_AUDIO_DEVICE` (only set when the owner asked for one), then
   `config.json`'s `audio.device`, then `audio.preferred_devices`, then
-  `PREFERRED_DEVICES`, then remaining non-microphone inputs. One entry per
+  `PREFERRED_DEVICES` — and the built-in tuple is **EMPTY** today
+  (`PREFERRED_DEVICES = ()` in `sotto_worker.py`), so that rung contributes
+  NOTHING until a lane populates it: the names this host actually opens come from
+  `config.json` and from the rungs below — then remaining non-microphone inputs.
+  One entry per
   PHYSICAL endpoint: Windows lists one cable under several host-API indices with
   different truncated names, and rotating across those would re-open the same
   dead device.

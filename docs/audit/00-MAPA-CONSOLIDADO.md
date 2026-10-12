@@ -57,7 +57,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
 | 20 | 7 chaves do config que ninguem le (`match`, `sample_rate`, `channels`, `block_ms`, `latency`, `partial`, `min_chars`) | `worker/config.json:5,7,8,9,10,20,21` | **APPLIED** — as 7 apagadas; `block_ms` e `min_chars` agora LIVE (`worker/config.json:9,21`, `_comment_live`) |
 | 22 | `use_vad` default do codigo e `False` vs ficheiro `true` vs README "on" — apagar a chave desliga VAD em silencio | `sotto_worker.py:1152` | **APPLIED** [2026-10-11] — `auditoria-completa-20261007.md:597` lista o default `True` e a arvore viva confirma-o: `use_vad = bool(cfg.get("model", {}).get("use_vad", True))` (`sotto_worker.py:4257`); a linha que o negava desapareceu |
-| 23 | `PREFERRED_DEVICES = ()` enquanto o README do worker o apresenta populado | `sotto_worker.py:94` | **OPEN** |
+| 23 | `PREFERRED_DEVICES = ()` enquanto o README do worker o apresenta populado | `worker/sotto_worker.py:103` | **[2026-10-11] APPLIED — a frase como estava e REFUTADA, e a residuo REAL ficou fechado** — medido: (a) o README **nunca lista uma entrada**; o que ele nomeia e um DEGRAU da ordem de `device_candidates()`, e essa ordem casa com o codigo **5 degraus por 5** (`wanted, device, preferred_devices, builtin, tail`); (b) mas o README nomeava o degrau sem dizer que ele esta INERTE, e um leitor razoavel conclui que ele contribui candidatos. O README passou a dizer que o tuple embutido esta **EMPTY** hoje (`PREFERRED_DEVICES = ()`) e que os nomes que este host abre vêm do `config.json` e dos degraus abaixo. Gate novo, `_main/device-ladder-doc-oracle.py` (sem lançar nada): compara a ORDEM documentada com a do codigo e a frase de vazio com o tuple medido — nas duas direccoes, e o proprio oraculo disse **NAO** nas bytes vivas antes da correccao (`VERDICT: DRIFTED ... tuple entries=0; readme_says_empty=False`, rc=1) e `IN SYNC` rc=0 depois; `--neg-arm` com 2 mutantes: degraus trocados quebram a ORDEM, frase apagada quebra o VAZIO, controlo GREEN, `NEG-ARM PASS` |
 | 24 | `lang_id` morto durante a vida do ficheiro no git (`default=0` nunca e `None`) | `worker/config.json` / `lang_prompt.py:7-15` | **APPLIED** — `--lang-id` `default=None` (`sotto_worker.py:1031-1038`); a linha do config e alcancavel (`:1119-1120`) |
 | 25 | shell `--selftest` nao afirma qualidade do output ("verde com word-salad") | `sotto_worker.py:986-999` | **OPEN** |
 | 26 | `queue_drops` nunca era afirmado | `sotto_worker.py:1317` | **APPLIED** — `delivery-rate-oracle.py` afirma `queue_drops == 0` (arm `fixture-drops` RED no log) |
@@ -303,11 +303,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 76
-- **OPEN:** 59
+- **APPLIED:** 77
+- **OPEN:** 58
 - **IN-FLIGHT:** 0
 
-Conferencia: 76 + 59 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 77 + 58 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 quatro linhas velhas foram REMOVIDAS e o `findings_distinct` do proprio gate caiu de 139 para 135 na
