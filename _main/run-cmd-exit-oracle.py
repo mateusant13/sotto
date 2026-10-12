@@ -883,6 +883,30 @@ def build_reverted_copy(neg_src: str, notes: list) -> str:
 
 
 # --------------------------------------------------------------------------
+def verdict_from(arms_ok, gaps_ok, census_ok):
+    """(exit_ok, why) for the WRAPPER's exit contract. PURE: no I/O, no state.
+
+    AUDIT ROWS #30 / #C: this oracle prints THREE verdicts because they are three different claims,
+    and then used to AND them into one exit code -- so a VISIBLE window measured by the census (an
+    APP-side fact, which AGENTS.md says must never be read as "the wrapper failed") turned this
+    wrapper test RED. The receipt run-cmd-exit-oracle-after.json records exactly that:
+    verdict FAIL, reason "a VISIBLE window was measured (app-side...)".
+
+    The exit code now carries what this oracle exists to test: the wrapper's own exit contract
+    (arms + gaps). The census stays a REPORTED result with its own word, its own line and its own
+    key in the receipt -- and when it is RED the reason says so in capitals, because dropping it
+    silently would be the opposite defect: a number that stops being reported.
+    """
+    contract_ok = bool(arms_ok) and bool(gaps_ok)
+    why = ("the wrapper's exit contract is GREEN" if contract_ok else
+           "arms=" + ("PASS" if arms_ok else "FAIL") +
+           " gaps=" + ("PASS" if gaps_ok else "FAIL") +
+           " -> the arms/gaps failed (see the [NO] lines above)")
+    if not census_ok:
+        why += (" | NOTE, NOT carried by this exit code: this run ALSO measured a VISIBLE window"
+                " (app-side, rows #4/#46) -- see CENSUS-VERDICT above")
+    return contract_ok, why
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description='Assert run.cmd\'s exit contract on both colours.')
@@ -1045,15 +1069,12 @@ def main() -> int:
     for g in gaps:
         print(f'GAP-RCS {g["gap"]:<22} after={g["after"]["rc"]} '
               f'before={g["before"]["rc"]}')
-    verdict_ok = arms_ok and census_ok and gaps_ok
-    why = ('all conjuncts green' if verdict_ok else
-           'arms=' + ('PASS' if arms_ok else 'FAIL') +
-           ' gaps=' + ('PASS' if gaps_ok else 'FAIL') +
-           ' census=' + ('PASS' if census_ok else 'FAIL') +
-           ' -> ' + ('a VISIBLE window was measured (app-side, see CENSUS '
-                     'ALERTA-JANELA above)' if not census_ok else
-                     'the arms/gaps failed (see the [NO] lines above)'))
+    verdict_ok, why = verdict_from(arms_ok, gaps_ok, census_ok)
     print(f'VERDICT {"PASS" if verdict_ok else "FAIL"}  {why}')
+    print('VERDICT-CARRIES the wrapper exit contract (arms+gaps). The census is reported above'
+          ' and is NOT part of this exit code: a visible window is an APP-side fact (rows'
+          ' #4/#46), and reading it as "the wrapper failed" is the confusion this oracle was'
+          ' indicted for.')
 
     receipt_path = a.json or os.path.join(
         HERE, f'run-cmd-exit-oracle-{label}.json')
@@ -1069,6 +1090,7 @@ def main() -> int:
                    'gap_verdict': 'PASS' if gaps_ok else 'FAIL',
                    'census_verdict': 'PASS' if census_ok else 'FAIL',
                    'verdict': 'PASS' if verdict_ok else 'FAIL',
+                   'verdict_carries': 'arms+gaps (the wrapper exit contract)',
                    'reason': why}, f, indent=2)
     print(f'RECEIPT {receipt_path}')
     return 0 if verdict_ok else 1

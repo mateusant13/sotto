@@ -55,6 +55,8 @@ const py = [
   ['_main/worker-eof-contract-oracle.py --neg-arm', 'worker-eof-contract neg'],
   ['_main/channel-class-site-oracle.py', 'channel-class-site (rows #5/F1)'],
   ['_main/channel-class-site-oracle.py --neg-arm', 'channel-class-site neg'],
+  ['_main/run-cmd-verdict-attribution-oracle.py', 'verdict-attribution (rows #30/#C)'],
+  ['_main/run-cmd-verdict-attribution-oracle.py --neg-arm', 'verdict-attribution neg'],
 ];
 
 const node = [
