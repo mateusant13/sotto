@@ -124,6 +124,11 @@ MUTANTS = {
     'm38-stats-tag-dropped': (
         "        payload['tag'] = (fields.get('tag') if isinstance(fields, dict) else None) or 'stats'\n",
         "        pass  # m38: the worker's own tag is NOT carried -- the defect\n"),
+    # #40 -- INVERTED into the mutant it now has to be: the live shell lowercases the
+    # type like the JS twin; the mutant compares it RAW again.
+    'm40-case-normalisation-removed': (
+        "        kind = str(message.get('type') or '').lower()\n",
+        "        kind = message.get('type')\n"),
     # #41 -- the unknown-type line is swallowed instead of counted and logged.
     'm41-unknown-type-silent': (
         "        else:\n"
@@ -336,6 +341,32 @@ def arm_r38(mod):
     return result
 
 
+#: The JS twin, read ONCE (this file has no `read()` helper). `worker-bridge.js` is the
+#: Electron-era bridge the row #40 comparison is against: it lowercases `message.type`
+#: before branching, and the SHELL did not.
+JS_TWIN = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'app', '_legacy-electron', 'worker-bridge.js'),
+               encoding='utf-8').read()
+
+
+def arm_r40(mod):
+    """#40: a MIS-CASED type is a caption to the JS twin and was a drop here."""
+    rec = Recorder(mod, WORKER)
+    before_captions, before_malformed = rec.bridge.captions, rec.bridge.malformed
+    rec.bridge._consume(json.dumps({'type': 'Caption', 'text': 'mis-cased'}))
+    rec.bridge._consume(json.dumps({'type': 'STATUS', 'state': 'capture-started'}))
+    result = {
+        'captions_added': rec.bridge.captions - before_captions,
+        'malformed_added': rec.bridge.malformed - before_malformed,
+        'caption_text': repr(rec.captions[-1][0] if rec.captions else None),
+        'js_twin_rule_present': 'toLowerCase()' in JS_TWIN,
+        'js_twin_separator_rule_present': 'replace(/[-_]' in JS_TWIN,
+    }
+    result['mis_cased_type_dropped'] = result['captions_added'] == 0
+    rec.close()
+    return result
+
+
 def arm_r41(mod):
     """#41: a status line with no type key."""
     rec = Recorder(mod, WORKER)
@@ -402,13 +433,15 @@ def arm_r43(mod):
     return result
 
 
-ARMS = ('r11', 'r12', 'r13', 'r15', 'r38', 'r41', 'r42', 'r43')
+ARMS = ('r11', 'r12', 'r13', 'r15', 'r38', 'r40', 'r41', 'r42', 'r43')
 MEASURE = {'r11': arm_r11, 'r12': arm_r12, 'r13': arm_r13, 'r15': arm_r15,
-           'r38': arm_r38, 'r41': arm_r41, 'r42': arm_r42, 'r43': arm_r43}
+           'r38': arm_r38, 'r40': arm_r40, 'r41': arm_r41, 'r42': arm_r42,
+           'r43': arm_r43}
 MUTANT_OF = {'r11': 'm11-guard-removed', 'r12': 'm12-empty-caption-accepted',
              'r13': 'm13-start-reports-request',
              'r15': 'm15-timer-overwritten',
-             'r38': 'm38-stats-tag-dropped', 'r41': 'm41-unknown-type-silent',
+             'r38': 'm38-stats-tag-dropped', 'r40': 'm40-case-normalisation-removed',
+             'r41': 'm41-unknown-type-silent',
              'r42': 'm42-stop-silent', 'r43': 'm43-restart-without-lock'}
 #: What each arm must READ on the LIVE bytes, and on its OWN mutant. SEVEN of the eight
 #: flipped on 2026-10-11, the day the rows were paid: the live shell now carries every fix
@@ -422,6 +455,7 @@ EXPECT = {
     'r15': {'live': False, 'mutant': True},
     'r38': {'live': False, 'mutant': True},
     'r41': {'live': False, 'mutant': True},
+    'r40': {'live': False, 'mutant': True},
     'r42': {'live': False, 'mutant': True},
     'r43': {'live': False, 'mutant': True},
 }
@@ -429,6 +463,7 @@ EXPECT = {
 #: r11 reads the SECOND case (after a caption), which is the claim the row makes now:
 #: the falsifier may still fire while NO caption has ever arrived, by design.
 DEFECT_KEY = {'r11': 'rewrites_after_caption', 'r12': 'death_lifted',
+              'r40': 'mis_cased_type_dropped',
               'r13': 'returns_true_with_no_worker',
               'r15': 'overwrites_without_cancel',
               'r38': 'tick_indistinguishable_from_total',
@@ -445,6 +480,9 @@ ROW_OF = {
            'timer without cancelling the previous one',
     'r38': 'audit #38 (audio-path.md F5): a mid-run tick can be read as the '
            'run total (tag=tick vs tag=final)',
+    'r40': 'audit #40: the SHELL compares `type` RAW where the JS twin normalises it '
+           '(worker-bridge.js:691), so one mis-cased line is a caption to one arm and a '
+           'drop to the other',
     'r41': 'audit #41 (shell-bridge.md F8): a status line without a type key '
            'is dropped in silence',
     'r42': 'audit #42 (shell-bridge.md F9): stop() emits no final status on '

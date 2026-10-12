@@ -7490,7 +7490,13 @@ class WorkerBridge:
             self.malformed += 1
             return
 
-        kind = message.get('type')
+        # CASE-NORMALISED, like the JS twin (row #40, 2026-10-11): worker-bridge.js:691
+        # reads `String(message.type || '').toLowerCase()` before it branches, and the
+        # shell compared the raw string -- so the SAME line was a caption to the panel
+        # language and a malformed drop here. This is the whole rule the JS arm applies
+        # (measured: no separator replacement anywhere in that file), so it is the whole
+        # rule applied here; anything else would be a second, invented vocabulary.
+        kind = str(message.get('type') or '').lower()
         if kind == 'caption':
             text = message.get('text')
             if not text:

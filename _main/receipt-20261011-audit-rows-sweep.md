@@ -597,3 +597,34 @@ mode" instead of printing a set it never measured.
 **NOT MEASURED, unchanged:** nothing was launched. The arms drive the shell IN PROCESS (they import
 it from a file), so these closes are behavioural but not painted: no WebView2 window has shown any of
 them, and the owner's stop order is why.
+
+
+---
+
+## ADDENDUM 6 — 2026-10-11 (Lead): row #40 closed -- the shell now speaks the JS twin's rule
+
+The row's gap was named here as "NOT MEASURED: it needs the panel's own classifier executed under
+jsdom and compared to the Python sets; no instrument was built in this sweep". The instrument turned
+out to need no jsdom at all, because the question is narrower than that:
+
+- **What the JS twin actually does is measured from its bytes, not assumed:**
+  `app/_legacy-electron/worker-bridge.js:691` reads `String(message.type || '').toLowerCase()`
+  and branches on that; and there is **no separator replacement anywhere in the file**
+  (`replace(/[-_]` is absent). So the JS rule is CASE, and only case. The row's "separator-sensitive"
+  wording describes the same defect class, but the twin does not normalise separators — inventing
+  that rule on the Python side would have created a second vocabulary.
+- **What the shell did:** `kind = message.get('type')` compared RAW, so the SAME line was a
+  caption to the JS arm and a `malformed` drop here. Now:
+  `kind = str(message.get('type') or '').lower()`.
+- **Measured, both colours:** `_main/audit-rows-bridge-decisions.py` gained **arm r40** (it feeds
+  `{"type": "Caption"}` and `{"type": "STATUS"}` and REQUIRES the caption to land, while checking
+  that the twin still carries its `toLowerCase()` and still has no separator rule). The instrument
+  now has NINE arms:
+  `VERDICT: PASS  live: 0 of 9 defects present on the live shell -- every one refuted by the bytes;
+  9/9 mutants flipped exactly their own arm`, rc=0, and `--neg-arm` says live was not probed.
+  The mutant `m40-case-normalisation-removed` compares raw again and flips its own arm.
+- The closing PASS line COMPUTED "0 of 9" the first time it ran with nine arms — which is the whole
+  point of making it computed one round earlier: the stale sentence it replaced said "8/8".
+
+Map: applied 73 -> 74, open 66 -> 65, gate GREEN. **NOT MEASURED: nothing was launched**; the arm
+imports the shell in process, so this is the parser's behaviour, not a painted panel.

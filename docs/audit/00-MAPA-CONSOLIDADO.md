@@ -81,7 +81,7 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **OPEN** |
 | 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `app/webview/sotto_webview.py:5888` | **[2026-10-11] APPLIED** — o payload passa a levar o tag do PROPRIO worker (`fields["tag"]`, `tick` vs `final`), com `stats` como fallback, e `meter` no ramo do medidor: um tick e o total deixam de chegar ao painel com a mesma cara. Arm r38, que agora mede os DOIS ramos, + mutante `m38-stats-tag-dropped` |
 | 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **OPEN** |
-| 40 | conjuntos de nomes de estado sensiveis a separador onde o braco JS normaliza | `sotto_webview.py:112-126` | **OPEN** |
+| 40 | conjuntos de nomes de estado sensiveis a separador onde o braco JS normaliza | `sotto_webview.py:7493` | **[2026-10-11] APPLIED** — medido primeiro o que o gemeo JS faz: `worker-bridge.js:691` le `String(message.type || '').toLowerCase()` antes de ramificar e NAO existe nenhuma substituicao de separador naquele ficheiro (`replace(/[-_]` → ausente), logo a regra e SO a caixa. A shell comparava `message.get('type')` cru: a MESMA linha era legenda para um braco e `malformed` para o outro. Agora aplica a mesma regra (`str(message.get('type') or '').lower()`) e nada mais — uma segunda regra, inventada, seria vocabulario novo. Arm r40 do instrumento (`Caption` e `STATUS` recebidos; a legenda TEM de entrar) + mutante `m40-case-normalisation-removed` a comparar cru outra vez |
 | 41 | linha de status sem `type` e descartada em silencio | `sotto_webview.py:7595` | **[2026-10-11] APPLIED (ja estava refutado nas bytes vivas)** — a shell CONTA (`malformed`) e LOGA (`BRIDGE_UNKNOWN`) a linha sem `type`; e o mutante `m41-unknown-type-silent` que reproduz o silencio que a linha descreve, logo o par mantem as duas cores |
 | 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:7358` | **[2026-10-11] APPLIED** — um stop sem worker emite status (`Nothing to stop - no worker is running`, kind `busy`) antes de devolver False, simetrico com `start()`. Arm r42 + mutante `m42-stop-silent` |
 | 43 | `_spawn()` corre na thread de restart SEM `_lock` | `sotto_webview.py:7819` | **[2026-10-11] APPLIED** — `_restart()` toma `self._lock` e re-verifica `stopped`/`child` DENTRO dele (`_spawn()` nao toma o lock — medido: `start()` segura-o durante o `_spawn()`), logo o restart nao pode ressuscitar um worker que o dono acabou de parar. Arm r43 (sonda `_lock.locked()` nos DOIS caminhos) + mutante `m43-restart-without-lock` |
@@ -307,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 73
-- **OPEN:** 66
+- **APPLIED:** 74
+- **OPEN:** 65
 - **IN-FLIGHT:** 0
 
-Conferencia: 73 + 66 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 74 + 65 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
