@@ -359,3 +359,80 @@ BRIDGE_RESTART, 6 HOT_RELOAD_WORKER_RESTART desde as 14:0x, com
 e foi a lane S8 que criou model_vram_pool.py + vram_residency.py as 13:51.
 Cada reinicio custa ~1 GB de carregamento de modelo. A licao fica escrita:
 editar o worker enquanto o dono esta no PC cobra-lhe um load por edicao.
+## 9. A CAUSA ENCONTRADA, MEDIDA E ARRUMADA -- o hook de clique
+
+O H1 deixou a pista com um numero: o hook `WH_MOUSE_LL` dispara 11,82 vezes
+por minuto (403 eventos em 34,1 min = um a cada 5,1 s) e cada disparo corre um
+`print(flush=True)` MAIS uma escrita de log `flush()` DENTRO do proc do hook
+(`sotto_webview.py:2044` `_on_mouse` -> `:2111` `_consider` -> `:2138`
+`_record` -> `:645` `log`). Faltava a DURACAO. Novo instrumento, em processo,
+sem lançar nada: `_main/hook-cost-oracle.py` (4 000 cliques sinteticos pelo
+caminho real, num objecto real `OutsideClickWatcher` com um shell stub).
+
+| braco | media | p99 | maximo |
+|---|---|---|---|
+| A sem `--log` (so stdout) | 0.0034 ms | 0.0063 ms | 0.2202 ms |
+| **B com `--log` (ANTES da cura)** | **3.3107 ms** | **38.2943 ms** | **768.0536 ms** |
+| **B com `--log` (DEPOIS da cura)** | **0.0040 ms** | **0.0195 ms** | **0.2401 ms** |
+| N sem a escrita de log (controlo) | 0.0003 ms | 0.0007 ms | 0.0099 ms |
+
+A escrita+flush DENTRO do caminho do hook custava 768 ms no pior caso e 38 ms
+no p99, com o mouse da dona a esperar por ela -- WH_MOUSE_LL corre dentro do
+caminho de input do Windows. Sem `--log`, o mesmo caminho custa 0.006 ms no
+p99. A cadencia do dono (11,82/min) encontrou a sua duracao.
+
+### A CURA -- `app/webview/sonto_webview.py`, so o subsistema de log
+
+O espelho `--log` passou a ter UM thread escritor seu:
+```python
+def log(message: str) -> None:
+    line = f'{_stamp()} sotto: {message}'
+    with _LOG_LOCK:
+        print(line, flush=True)
+        if _LOG_FILE is not None:
+            _LOG_QUEUE.put(line)        # <- o chamador nunca espera pelo disco
+```
+`_open_log` cria a fila e arranca o daemon `sotto-log`; `_log_writer` e o unico
+que escreve o ficheiro, com a fila E o ficheiro amarrados NO INICIO do thread
+(um escritor que lesse os globais a cada iteracao podia morrer e o espelho
+inteiro desaparecia sem sintoma); `_log_drain()` da ao escritor as linhas ja
+enfileiradas antes do `os._exit` do caminho de saida.
+
+### Provas
+
+- `py -3` hook-cost-oracle.py: **VERDICT PASS rc=0** (0.0195 ms p99, 0.2401 ms
+  maximo, com o pior caso do stdout sozinho a 0.2202 ms) -- os dois numeros
+  ANTES/DEPOIS acima sao do MESMO instrumento, na MESMA shell, um depois do outro.
+- Regressao do espelho: 200 linhas escritas por `log()` + `_log_drain()` ->
+  **200 de 200 no ficheiro, ordem preservada, hora em todas**.
+- `panel-exit3-oracle.py --unit --neg-arm` PASS, `s7-silence-window-oracle.py
+  --unit --neg-arm` PASS, `s7-boot-cost.py` PASS,
+  `preflight-refusal-visible-oracle.py` PASS.
+- py_compile OK, import OK, 9 263 linhas / 62 insercoes / 6 remocoes.
+
+### Dois vermelhos que NAO sao desta cura (ficam registados, com a causa)
+
+1. `panel-hidden-at-startup-oracle.py` rc=1: `AttributeError: 'SottoShell'
+   object has no attribute 'panel_show_refused'` em `:4165`. O atributo e posto
+   em `:3701`, dentro do `__init__` real, que o stub do oraculo nunca corre. O
+   meu diff toca so o subsistema de log (`git diff` = 62/6, todos os hunks na
+   regiao de log) -- e o AGENTS.md ja registava este par de medias como NAO
+   RECONCILIADO desde 2026-10-11. Ordem para quem o corrige: o stub tem de
+   correr o `__init__` real ou o oraculo tem de por o atributo.
+2. `run-cmd-exit-oracle.py` rc=1, braco `help`: 5 flags que a shell declara
+   nao aparecem no `--help` (`--mutex-name`, `--probe-edit-mode`,
+   `--probe-outside-click`, `--probe-stats`, `--probe-stats-wait`).
+   O contrato de saida do wrapper esta correcto (bogus=2, help=0, start=0) e o
+   censo ve 0 janelas visiveis em 309 amostras.
+
+### O que fica MEDIDO e o que NAO
+
+**Medido:** a duracao de UMA invocacao do hook, antes e depois, com o mesmo
+instrumento; o espelho continua a escrever tudo por ordem; os quatro portoes
+da shell verdes nas duas cores.
+
+**NAO medido:** se a travada do dono ACABA -- isso precisa de um boot real com
+a shell nova no caminho do dono (o Lead lanca `run.cmd`; o primeiro carimbo
+com hora no registo sera o dele, e eu nao lanco a app no meio da sessao dele
+para medir). E a maquina continua com o volume C: SUJO (`fsutil dirty query C:`)
+com corrupcao NTFS (id=55), que e trabalho do dono (CHKDSK /F), nao do codigo.

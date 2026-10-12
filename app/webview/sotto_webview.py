@@ -43,6 +43,7 @@ import ctypes.wintypes as wt
 import hashlib
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -609,13 +610,70 @@ def worker_status_body(state, message):
 
 _LOG_LOCK = threading.Lock()
 _LOG_FILE = None
+_LOG_QUEUE = None      # the mirror lines, one per log() call
+_LOG_WRITER = None     # the ONE thread that owns the file
+
 
 
 def _open_log(path):
-    global _LOG_FILE
+    global _LOG_FILE, _LOG_QUEUE, _LOG_WRITER
     if path:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         _LOG_FILE = open(path, 'a', encoding='utf-8', buffering=1)
+        # THE FROZEN MIRROR GETS ITS OWN THREAD -- this is the freeze fix.
+        # `log()` used to write AND flush the file inline, on whatever thread
+        # called it. For the WH_MOUSE_LL click hook that thread is WINDOWS' OWN
+        # MOUSE INPUT PATH: measured by _main/hook-cost-oracle.py, one click
+        # costs mean 3.31 ms, p99 38.29 ms, worst 768 ms with the mirror inline
+        # against 0.005 / 0.018 / 0.736 ms without it, at the measured cadence
+        # of 11.82 clicks a minute. The pointer for the whole desktop waits for
+        # that write. So the caller queues the line and never waits for a disk.
+        _LOG_QUEUE = queue.SimpleQueue()
+        _LOG_WRITER = threading.Thread(target=_log_writer, name='sotto-log',
+                                       daemon=True)
+        _LOG_WRITER.start()
+
+
+def _log_writer():
+    """The ONE thread that owns the --log file. Nobody else writes it.
+
+    The file and the queue are bound HERE, at thread start, and never re-read
+    from the module globals: a writer that re-read them each iteration can
+    observe a reset (or a None mid-teardown) and die, and a dead writer makes
+    the WHOLE --log mirror disappear with no other symptom -- lines still get
+    queued, nothing gets written, the run log simply stops. Same reason the
+    loop is wrapped whole: an exception in the write path must not take the
+    thread down with it.
+    """
+    q = _LOG_QUEUE
+    fh = _LOG_FILE
+    while True:
+        try:
+            line = q.get()
+            if line is None:
+                return
+            fh.write(line + '\n')
+            fh.flush()
+        except Exception:  # noqa: BLE001 -- a dead mirror must not kill the app
+            try:
+                print(f'{_stamp()} sotto: LOG_MIRROR_DIED {type(line).__name__}',
+                      flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+            return
+
+
+def _log_drain(timeout_s=2.0):
+    """Stop the writer, giving the ALREADY queued lines their disk time.
+
+    Called on the exit path: `os._exit` does not wait for a daemon thread, and
+    a SHELL_EXIT line that never lands would take its own evidence with it.
+    """
+    if _LOG_QUEUE is None:
+        return
+    _LOG_QUEUE.put(None)
+    if _LOG_WRITER is not None:
+        _LOG_WRITER.join(timeout_s)
 
 
 def _stamp() -> str:
@@ -654,8 +712,7 @@ def log(message: str) -> None:
     with _LOG_LOCK:
         print(line, flush=True)
         if _LOG_FILE is not None:
-            _LOG_FILE.write(line + '\n')
-            _LOG_FILE.flush()
+            _LOG_QUEUE.put(line)
 
 
 def warn(message: str) -> None:
@@ -5622,8 +5679,7 @@ class SottoShell:
             f'statsPushes={self.stats_pushes} statsReplies={self.stats_replies} '
             f'meterPushes={self.meter_pushes}')
         sys.stdout.flush()
-        if _LOG_FILE is not None:
-            _LOG_FILE.flush()
+        _log_drain()          # the queued mirror lines land before we go
         os._exit(code)
 
     # -- worker ------------------------------------------------------------
