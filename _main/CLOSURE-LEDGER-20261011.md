@@ -7,27 +7,25 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 122 / open 14 / in-flight 0** as this file is written, read from the gate itself.
+**applied 124 / open 12 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 14 rows whose state cell reads OPEN
+## 1. The live product — 12 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
 
-### docs/instruments (2)
+### docs/instruments (1)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
-| Finding D | um braco negativo sem recibo (o bogus do runcmd-entry-driver.py) (`oracles.md:418`) | **OPEN** — herdado da linha #58 |  |
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
 
-### other (4)
+### other (3)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 18 | o `ready` do supervisor le um stream onde a app nunca escreve (o log vai para `--log`, nao para o PTY) | `launch-entry.md §3.4.2`, `spec.json` | **OPEN** |
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
-| 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
 ### panel/rendering (3)

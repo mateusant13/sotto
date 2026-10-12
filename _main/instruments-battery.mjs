@@ -57,6 +57,8 @@ const py = [
   ['_main/channel-class-site-oracle.py --neg-arm', 'channel-class-site neg'],
   ['_main/run-cmd-verdict-attribution-oracle.py', 'verdict-attribution (rows #30/#C)'],
   ['_main/run-cmd-verdict-attribution-oracle.py --neg-arm', 'verdict-attribution neg'],
+  ['_main/runcmd-arm-coverage-oracle.py', 'runcmd-arm-coverage (rows #58/#D)'],
+  ['_main/runcmd-arm-coverage-oracle.py --neg-arm', 'runcmd-arm-coverage neg'],
 ];
 
 const node = [

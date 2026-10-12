@@ -470,6 +470,22 @@ def arm_bogus(oracle, seconds: float = 8.0) -> dict:
             'leftover': procs}
 
 
+#: EVERY arm this driver knows, and for one that did not run, WHY. Audit rows #58 / #D: the
+#: `bogus` arm had no receipt and nothing in the report could tell a reader whether it was
+#: forgotten, skipped or passed -- a receipt that lists only what ran cannot answer that. The
+#: report now carries `_coverage` computed from this table, so an arm that was NOT run is
+#: DECLARED with its reason instead of being silently absent (the same rule the instruments
+#: follow for absence: name the instrument, its cadence and its count).
+KNOWN_ARMS = {
+    'help': 'argv acceptance: run.cmd --help (starts nothing; the wrapper prints and exits)',
+    'owner': 'the documented double-click path, worker ON',
+    'clean': 'run.cmd with no worker',
+    'control': 'the python/direct arm the wrapper is compared against',
+    'caption': 'a real caption through the bridge',
+    'bogus': 'NEGATIVE ARM: launches run.cmd with an argument the shell rejects. NOT RUN under the owner stop order (AGENTS.md, 2026-10-11): it starts the wrapper, and that order forbids launching run.cmd at all. The pre-flight means nothing is spawned, but the launch itself is the letter of the order; it can be run only once the order is lifted.',
+}
+
+
 def main() -> int:
     global SAMPLE_S
     ap = argparse.ArgumentParser()
@@ -549,6 +565,16 @@ def main() -> int:
         log(f'DIFF shell_exit: run.cmd={c.get("shell_exit")!r} '
             f'python={k.get("shell_exit")!r}')
 
+    # Declare the arms that did NOT run, with their reason. `ran` is derived from what actually
+    # ran in THIS invocation, so the two lists can never drift from the receipt.
+    results['_coverage'] = {
+        'known_arms': sorted(KNOWN_ARMS),
+        'ran': sorted(k for k in results if not k.startswith('_')),
+        'not_run': {name: KNOWN_ARMS[name] for name in sorted(KNOWN_ARMS)
+                    if name not in results},
+    }
+    log('RUNCMD-ENTRY coverage ran=%s not_run=%s'
+        % (results['_coverage']['ran'], sorted(results['_coverage']['not_run'])))
     with open(REPORT_JSON, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, default=str)
     log(f'RUNCMD-ENTRY report written {REPORT_TXT} and {REPORT_JSON}')
