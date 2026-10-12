@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 118 / open 18 / in-flight 0** as this file is written, read from the gate itself.
+**applied 120 / open 16 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 18 rows whose state cell reads OPEN
+## 1. The live product — 16 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -40,13 +40,11 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |  |
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 
-### shell/window (3)
+### shell/window (1)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
-| 5 | `console-census.py` passa `CREATE_NO_WINDOW\ | DETACHED_PROCESS` → canal de 0 bytes rc 0, logo `python_pids()` fica cego | `_main/_probe/console-census.py:106` (path GIT-IGNORED) |
 | F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |  |
-| F1 | console-census.py passa CREATE_NO_WINDOW + DETACHED_PROCESS -> canal de 0 bytes rc 0 (`windows-landmines.md:309`) | **OPEN** — herdado da linha #5, **que tambem esta OPEN e agora traz a medicao** (defeito reproduzido 0 bytes rc 0 com filho PowerShell; cura 23 bytes; 8 ficheiros tracked na classe, listados; o oraculo `_main/child-channel-oracle.py` gateia as duas cores). Continua aberto de proposito: varrer as 8 probes de outras lanes seria clobber |  |
 
 ### transcript/provenance (1)
 

@@ -53,6 +53,8 @@ const py = [
   ['_main/panel-flash-contradiction-oracle.py --neg-arm', 'flash-contradiction neg'],
   ['_main/worker-eof-contract-oracle.py', 'worker-eof-contract (row F18)'],
   ['_main/worker-eof-contract-oracle.py --neg-arm', 'worker-eof-contract neg'],
+  ['_main/channel-class-site-oracle.py', 'channel-class-site (rows #5/F1)'],
+  ['_main/channel-class-site-oracle.py --neg-arm', 'channel-class-site neg'],
 ];
 
 const node = [

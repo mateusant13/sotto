@@ -50,7 +50,12 @@ def main() -> int:
         cwd=CWD,
         stdout=handle,
         stderr=subprocess.STDOUT,
-        creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS,
+        # CREATE_NO_WINDOW only. DETACHED_PROCESS was here and emptied the LOG this
+        # probe READS back at :64-65: measured 2026-10-11, both flags -> 0 bytes / rc 0
+        # (pipe AND file forms), CREATE_NO_WINDOW alone -> 23 bytes. The child still gets
+        # no visible console, which is all this flag pair was for.
+        # Instrument for the whole class: _main/channel-class-site-oracle.py.
+        creationflags=CREATE_NO_WINDOW,
     )
 
     first_status = None
