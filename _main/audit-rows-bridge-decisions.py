@@ -90,36 +90,40 @@ def line_of(text, anchor):
 # mutants: one literal replacement each, CRLF preserved (the shell is CRLF)
 # ---------------------------------------------------------------------------
 MUTANTS = {
-    # #11 -- the falsifier branch is disabled, so a real error keeps its kind.
-    'm11-falsifier-off': (
-        'elif FALSE_AUDIO_ABSENT_RE.search(value):',
-        'elif False and FALSE_AUDIO_ABSENT_RE.search(value):'),
-    # #12 -- an empty/whitespace caption stops being proof of life.
-    'm12-empty-caption-refused': (
+    # #11 -- THE MUTANT NOW GOES THE OTHER WAY (2026-10-11): the live falsifier only fires
+    # while NO caption has arrived, so the mutant DROPS that guard and lets it rewrite a
+    # REAL error again.
+    'm11-guard-removed': (
+        '        elif FALSE_AUDIO_ABSENT_RE.search(value) and self.captions == 0:',
+        '        elif FALSE_AUDIO_ABSENT_RE.search(value):'),
+    # #12 -- INVERTED: the live shell refuses '' and the mutant accepts it again.
+    'm12-empty-caption-accepted': (
         "            text = message.get('text')\n"
-        "            if text is None:\n",
+        "            if not text:\n",
         "            text = message.get('text')\n"
-        "            if text is None or not str(text).strip():\n"),
-    # #13 -- start() reports what actually happened to the child.
-    'm13-start-reports-child': (
-        "            self._spawn()\n"
-        "            return True\n",
-        "            self._spawn()\n"
-        "            return self.child is not None\n"),
-    # #15 -- the previous restart timer is cancelled before a new one is armed.
-    'm15-restart-timer-cancelled': (
-        "        timer = threading.Timer(delay / 1000.0, self._restart)\n",
+        "            if text is None:\n"),
+    # #13 -- INVERTED: the live start() reports the spawn; the mutant reports the REQUEST.
+    'm13-start-reports-request': (
+        "            return self._spawn() is not None\n",
+        "            return True\n"),
+    # #15 -- INVERTED: the live shell cancels the armed timer; the mutant overwrites it.
+    'm15-timer-overwritten': (
+        "        # CANCEL BEFORE OVERWRITING (row #15, 2026-10-11): overwriting the handle\n"
+        "        # left the previous timer ARMED and unreachable, so two restarts could\n"
+        "        # fire for one death -- and `_cancel_timers()` could no longer reach the\n"
+        "        # first one at all.\n"
         "        if self._restart_timer is not None:\n"
-        "            self._restart_timer.cancel()\n"
-        "        timer = threading.Timer(delay / 1000.0, self._restart)\n"),
-    # #38 -- the payload the panel receives carries the tag it was read from.
-    'm38-payload-carries-tag': (
-        "        fields = raw.get('fields') if isinstance(raw, dict) else None\n"
-        "        payload = {}\n",
-        "        fields = raw.get('fields') if isinstance(raw, dict) else None\n"
-        "        payload = {}\n"
-        "        if isinstance(raw, dict):\n"
-        "            payload['tag'] = raw.get('tag')\n"),
+        "            try:\n"
+        "                self._restart_timer.cancel()\n"
+        "            except Exception:  # noqa: BLE001\n"
+        "                pass\n"
+        "        self._restart_timer = timer\n",
+        "        self._restart_timer = timer\n"),
+    # #38 -- INVERTED: the live payload SAYS which source it came from; the mutant drops
+    # the tag from the STATS branch, which is the one a tick and a total share.
+    'm38-stats-tag-dropped': (
+        "        payload['tag'] = (fields.get('tag') if isinstance(fields, dict) else None) or 'stats'\n",
+        "        pass  # m38: the worker's own tag is NOT carried -- the defect\n"),
     # #41 -- the unknown-type line is swallowed instead of counted and logged.
     'm41-unknown-type-silent': (
         "        else:\n"
@@ -128,17 +132,31 @@ MUTANTS = {
         "        else:\n"
         "            pass\n"),
     # #42 -- stop() says on the status channel that it stopped.
-    'm42-stop-emits-status': (
-        "        self.log(f'BRIDGE_STOP reason={reason} pid=none')\n",
-        "        self._status(f'Worker stopped ({reason})', 'busy', {})\n"
-        "        self.log(f'BRIDGE_STOP reason={reason} pid=none')\n"),
+    # #42 -- INVERTED: the live stop TELLS the panel when there was nothing to stop.
+    'm42-stop-silent': (
+        "        self.log(f'BRIDGE_STOP reason={reason} pid=none')\n"
+        "        self._bridge_status(\n"
+        "            'Nothing to stop - no worker is running',\n"
+        "            'busy',\n"
+        "            {'title': 'No worker running',\n"
+        "             'body': 'The stop request arrived when no transcription worker was '\n"
+        "                     'running.'},\n"
+        "            'idle')\n"
+        "        return False\n",
+        "        self.log(f'BRIDGE_STOP reason={reason} pid=none')\n"
+        "        return False\n"),
     # #43 -- the restart thread takes the lock before it spawns.
-    'm43-restart-takes-lock': (
-        "        self.state = 'restarting'\n"
-        "        self._spawn()\n",
-        "        self.state = 'restarting'\n"
+    # #43 -- INVERTED: the live restart path holds the lock; the mutant drops it.
+    'm43-restart-without-lock': (
         "        with self._lock:\n"
-        "            self._spawn()\n"),
+        "            if self.stopped or self.child is not None:\n"
+        "                return\n"
+        "            self.state = 'restarting'\n"
+        "            self._spawn()\n",
+        "        if self.stopped or self.child is not None:\n"
+        "            return\n"
+        "        self.state = 'restarting'\n"
+        "        self._spawn()\n"),
 }
 
 
@@ -205,9 +223,20 @@ def arm_r11(mod):
                        'detail': 'no audio at I:/cc-tmp/audit-row11.wav'})
     rec.bridge._consume(line)
     text, kind = rec.statuses[-1][0], rec.statuses[-1][1]
+    # THE SECOND CASE (2026-10-11, row #11): once ONE caption has arrived, the SAME real
+    # error must keep its own kind and text. The guard exists so the falsifier cannot hide a
+    # genuine regression behind "capture not started" after the panel has seen audio.
+    rec.bridge.captions = 1
+    rec.bridge._consume(line)
+    text_after, kind_after = rec.statuses[-1][0], rec.statuses[-1][1]
+    rec.bridge.captions = 0
     rec.close()
     return {
         'worker_said': 'state=error stage=selftest detail="no audio at ..."',
+        'kind_after_a_caption': kind_after,
+        'text_after_a_caption': text_after[:70],
+        'rewrites_after_caption': (kind_after == 'busy'
+                                   and text_after == mod.CAPTURE_NOT_STARTED),
         'kind_emitted': kind,
         'text_emitted': text[:70],
         'rewritten': kind == 'busy' and text == mod.CAPTURE_NOT_STARTED,
@@ -289,7 +318,13 @@ def arm_r38(mod):
     rec.bridge._pump(iter([final]), 'stderr', child)
     final_payload = mod.SottoShell.stats(types.SimpleNamespace(bridge=rec.bridge,
                                                                last_meter=None))
+    # The OTHER source (2026-10-11, row #38): a fresh meter tick must say so too.
+    rec.bridge.last_meter = {'at': time.monotonic(), 'peak': 0.5, 'blocks': 7}
+    meter_payload = mod.SottoShell.stats(types.SimpleNamespace(
+        bridge=rec.bridge, last_meter=rec.bridge.last_meter))
+    rec.bridge.last_meter = None
     result = {
+        'meter_payload_tag': meter_payload.get('tag'),
         'stored_tag': (rec.bridge.last_worker_stats or {}).get('tag'),
         'tick_payload': tick_payload,
         'final_payload': final_payload,
@@ -370,26 +405,30 @@ def arm_r43(mod):
 ARMS = ('r11', 'r12', 'r13', 'r15', 'r38', 'r41', 'r42', 'r43')
 MEASURE = {'r11': arm_r11, 'r12': arm_r12, 'r13': arm_r13, 'r15': arm_r15,
            'r38': arm_r38, 'r41': arm_r41, 'r42': arm_r42, 'r43': arm_r43}
-MUTANT_OF = {'r11': 'm11-falsifier-off', 'r12': 'm12-empty-caption-refused',
-             'r13': 'm13-start-reports-child',
-             'r15': 'm15-restart-timer-cancelled',
-             'r38': 'm38-payload-carries-tag', 'r41': 'm41-unknown-type-silent',
-             'r42': 'm42-stop-emits-status', 'r43': 'm43-restart-takes-lock'}
-#: What each arm must READ on the LIVE bytes, and on its OWN mutant. The two
-#: differ for r41, and that difference IS the finding: the live shell COUNTS and
-#: LOGS the typeless line, and the mutant is what the row describes (silence).
+MUTANT_OF = {'r11': 'm11-guard-removed', 'r12': 'm12-empty-caption-accepted',
+             'r13': 'm13-start-reports-request',
+             'r15': 'm15-timer-overwritten',
+             'r38': 'm38-stats-tag-dropped', 'r41': 'm41-unknown-type-silent',
+             'r42': 'm42-stop-silent', 'r43': 'm43-restart-without-lock'}
+#: What each arm must READ on the LIVE bytes, and on its OWN mutant. SEVEN of the eight
+#: flipped on 2026-10-11, the day the rows were paid: the live shell now carries every fix
+#: this instrument exists to measure, and each mutant reproduces the defect it names. r41
+#: is the one that was already refuted on the live bytes (the shell COUNTS and LOGS the
+#: typeless line, and the mutant is what the row describes: silence).
 EXPECT = {
-    'r11': {'live': True, 'mutant': False},
-    'r12': {'live': True, 'mutant': False},
-    'r13': {'live': True, 'mutant': False},
-    'r15': {'live': True, 'mutant': False},
-    'r38': {'live': True, 'mutant': False},
+    'r11': {'live': False, 'mutant': True},
+    'r12': {'live': False, 'mutant': True},
+    'r13': {'live': False, 'mutant': True},
+    'r15': {'live': False, 'mutant': True},
+    'r38': {'live': False, 'mutant': True},
     'r41': {'live': False, 'mutant': True},
-    'r42': {'live': True, 'mutant': False},
-    'r43': {'live': True, 'mutant': False},
+    'r42': {'live': False, 'mutant': True},
+    'r43': {'live': False, 'mutant': True},
 }
 #: The key each arm READS to decide "the defect is present today".
-DEFECT_KEY = {'r11': 'rewritten', 'r12': 'death_lifted',
+#: r11 reads the SECOND case (after a caption), which is the claim the row makes now:
+#: the falsifier may still fire while NO caption has ever arrived, by design.
+DEFECT_KEY = {'r11': 'rewrites_after_caption', 'r12': 'death_lifted',
               'r13': 'returns_true_with_no_worker',
               'r15': 'overwrites_without_cancel',
               'r38': 'tick_indistinguishable_from_total',
@@ -488,9 +527,17 @@ def main(argv=None):
             + sha256_file(path)[:16])
 
     verdicts = []
+    live_present = []
+    live_measured = False
     if not parsed.neg_arm:
         live = load_shell(shell_path, 'audit_bridge_live')
         results = run_all(live)
+        live_measured = True
+        # RECORDED, not asserted: the closing line used to say "7 defects present, 1
+        # refuted" as a FIXED string, and that sentence went stale the day the seven
+        # rows were paid (2026-10-11). A PASS line must derive from the run it closes.
+        live_present = [name for name in ARMS
+                        if results[name].get(DEFECT_KEY[name]) is True]
         expected = {name: EXPECT[name]['live'] for name in ARMS}
         ok = report('LIVE shell -- every arm must read what the ARM declares',
                     results, expected)
@@ -512,8 +559,17 @@ def main(argv=None):
             + str(len(verdicts)) + ' labels matched; wrong: ' + str(failed)
             + ')')
         return 1
-    say('VERDICT: PASS  live=8/8 arms read what they declare (7 defects '
-        'present, 1 refuted), 8/8 mutants flipped exactly their own arm')
+    if not live_measured:
+        live_text = 'live NOT probed in this mode (--neg-arm), so no live set is claimed'
+    elif live_present:
+        live_text = (str(len(live_present)) + ' of ' + str(len(ARMS))
+                     + ' defects still present on the live shell ('
+                     + ', '.join(live_present) + ')')
+    else:
+        live_text = ('0 of ' + str(len(ARMS)) + ' defects present on the live shell -- every'
+                     ' one refuted by the bytes')
+    say('VERDICT: PASS  live: ' + live_text + '; ' + str(len(ARMS)) + '/' + str(len(ARMS))
+        + ' mutants flipped exactly their own arm')
     return 0
 
 

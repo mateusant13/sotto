@@ -556,3 +556,44 @@ than hidden:**
 **What is left live in that instrument is r62 alone**, and it is blocked by the owner's order rather
 than by work: measuring it means launching electron.exe or the shell, the binary is declared DEAD,
 and the row's own text calls the claim an INFERENCE. Registered as BLOCKED-BY-OWNER-ORDER.
+
+
+---
+
+## ADDENDUM 5 — 2026-10-11 (Lead): items 1-7 of section 6 are PAID, seven rows closed
+
+The seven product diffs this sweep proposed were applied in `app/webview/sotto_webview.py`, each
+verified by `_main/audit-rows-bridge-decisions.py`, whose live block now reads
+`0 of 8 defects present on the live shell -- every one refuted by the bytes; 8/8 mutants flipped
+exactly their own arm`, rc=0. Rows #11, #12, #13, #15, #38, #41, #42, #43 are APPLIED; the map went
+from applied 65 / open 74 to **73 / 66**, gate GREEN.
+
+**Three of the sweep's own proposals needed correcting before they could be applied, and each
+correction is a measurement, not a preference:**
+
+1. **Item 3 (row #13): `return self._spawn() is not None` would ALWAYS be False.** `_spawn()`
+   falls out with `None` on every path — it never returned the child. Applied instead:
+   `_spawn()` returns `self.child` on the success path (its two failure paths still return
+   `None`), and `start()` reads that. A fix written as proposed would have turned every start into
+   a reported failure.
+2. **Item 5 (row #38): the tag the row is about is the WORKER'S OWN.** The payload already had the
+   worker's `tag=tick|final` available in `fields` and dropped it; naming the source
+   (`'stats'`) would not have told a tick from a total. Applied: the payload carries
+   `fields['tag']`, with `'stats'` as the fallback for a line that declares none, and `'meter'`
+   on the meter branch — and arm r38 now measures BOTH branches.
+3. **Item 1 (row #11): the fix narrows the falsifier, it does not delete it.** The guard is
+   `and self.captions == 0`, so the ARM had to grow a second case (the same real error AFTER a
+   caption) or it could not tell the fix from the old behaviour. `DEFECT_KEY['r11']` moved to
+   `rewrites_after_caption`; the first case is still measured and printed, because firing while no
+   caption has ever arrived is correct.
+
+**The measuring instrument was re-baselined, not loosened:** all seven mutants were INVERTED (they
+used to simulate the cure; they now remove it), `EXPECT` flipped to `{'live': False, 'mutant': True}`
+for the seven, and the closing PASS line is now COMPUTED from the live readings — the fixed string
+said "7 defects present, 1 refuted" and would have gone stale the moment the rows were paid. That is
+the fifth instance of this defect class in this session; `--neg-arm` says "live NOT probed in this
+mode" instead of printing a set it never measured.
+
+**NOT MEASURED, unchanged:** nothing was launched. The arms drive the shell IN PROCESS (they import
+it from a file), so these closes are behavioural but not painted: no WebView2 window has shown any of
+them, and the owner's stop order is why.

@@ -47,11 +47,11 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 |---|---|---|---|
 | 9 | `flags` lido e descartado → `DATA_DISCONTINUITY`/`SILENT` nunca examinados, a perda nao tem contador | `worker/wasapi_loopback.py:475/477` | **[2026-10-11] APPLIED** — as TRES afirmacoes cairam. `SILENT` E examinado (`silent_packets`) e a perda TEM contador (`position_gap_packets`): medidos pelo sweep de linhas (refutados). E `DATA_DISCONTINUITY` passou a ser EXAMINADO nesta sessao: `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY = 0x00000001` + `discontinuity_packets` no tap de endpoint E no loop do PLP (`sotto_worker.py`), com `disco_packets=` na linha `TAP_STALLED`. Provas: `py -3 _main/audit-rows-tap-flags-ledger.py` → `VERDICT: PASS  live: 0 of 4 defect claims present`, rc=0, e o mutante `m9b-discontinuity-counter-removed` REPRODUZ o defeito (o mutante antigo simulava a cura, porque ela nao existia). As amostras continuam a ser USADAS: muda o LEDGER, nao o audio. NAO MEDIDO: nenhum dispositivo real pos o bit — o instrumento usa um vtable scriptado |
 | 10 | `exec_js` injeta cada script DUAS vezes | `sotto_webview.py:1409-1421` | **APPLIED** — resta uma so `self._ui(_run)` (`sotto_webview.py:1434`) |
-| 11 | o falsificador "sem audio" reescreve um erro REAL do worker para `CAPTURE_NOT_STARTED`/`busy` | `sotto_webview.py:1888-1891, :196` | **OPEN** |
-| 12 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte | `sotto_webview.py:2052-2068` | **OPEN** |
-| 13 | `start()` devolve `true` mesmo sem worker nenhum | `sotto_webview.py:1901-1917` | **OPEN** |
+| 11 | o falsificador "sem audio" reescreve um erro REAL do worker para `CAPTURE_NOT_STARTED`/`busy` | `sotto_webview.py:7169` | **[2026-10-11] APPLIED** — o falsificador so dispara enquanto NENHUMA legenda chegou (`and self.captions == 0`): depois de uma, esse texto e uma regressao REAL e mantem o kind e o texto do worker. Instrumento `_main/audit-rows-bridge-decisions.py`, arm r11 com DOIS casos (sem legenda / com legenda) → `live: 0 of 8 defects present`, e o mutante `m11-guard-removed` repoe o defeito |
+| 12 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte | `sotto_webview.py:7469` | **[2026-10-11] APPLIED** — `if not text:` em vez de `is None`: `''` conta como MALFORMADA e nao limpa o banner de morte. Arm r12 + mutante `m12-empty-caption-accepted` |
+| 13 | `start()` devolve `true` mesmo sem worker nenhum | `sotto_webview.py:7198, :7321` | **[2026-10-11] APPLIED** — `_spawn()` devolve o filho no sucesso e `None` nas duas falhas, e `start()` devolve `self._spawn() is not None`: reporta o SPAWN, nao o pedido. (A proposta do sweep, `return self._spawn() is not None` sem tocar no `_spawn`, seria sempre False — o `_spawn` nunca devolvia nada.) Arm r13 + mutante `m13-start-reports-request` |
 | 14 | `_lock` segurado durante uma ida-e-volta de UI bloqueante (ate 4 `ExecuteScriptAsync`, 10 s cada) | `sotto_webview.py:1901` | **OPEN** |
-| 15 | `_schedule_restart` sobrescreve o timer sem cancelar o anterior | `sotto_webview.py:2210-2220` | **OPEN** |
+| 15 | `_schedule_restart` sobrescreve o timer sem cancelar o anterior | `sotto_webview.py:7814` | **[2026-10-11] APPLIED** — o timer anterior e CANCELADO antes de o novo ser armado; antes o handle era sobrescrito, o primeiro ficava armado e `_cancel_timers()` ja nao o alcancava, logo dois restarts podiam disparar por uma morte. Arm r15 + mutante `m15-timer-overwritten` |
 | 16 | se `pythonw.exe` faltar, a app arranca sob o `python.exe` de consola | `run.cmd:48-49` (era) | **APPLIED** — recusa alta e sem janela, sai 3 (`run.cmd:64-76`) |
 | 17 | `run.cmd --check-args` era flag aceite: arrancava a app e devolvia 0 sem abrir nada | `sotto_webview.py:2449-2463` | **APPLIED** — `CHECK_ARGS_ONLY` sai no pre-flight e nao arranca nada (`run.cmd:125`) |
 | 18 | o `ready` do supervisor le um stream onde a app nunca escreve (o log vai para `--log`, nao para o PTY) | `launch-entry.md §3.4.2`, `spec.json` | **OPEN** |
@@ -79,12 +79,12 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 |---|---|---|---|
 | 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **APPLIED** [2026-10-11] — `flat-endpoint.md:125-142` mede o pos-fix: `S_OK`/`S_FALSE` -> `COM_REF_TAKEN` e o erro `0x80004005` era o gate antigo (`:49-51` pre-fix); a arvore viva aceita `S_FALSE` (`wasapi_loopback.py:204`) |
 | 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **OPEN** |
-| 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `worker/sotto_worker.py:1284-1301` | **OPEN** |
+| 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `app/webview/sotto_webview.py:5888` | **[2026-10-11] APPLIED** — o payload passa a levar o tag do PROPRIO worker (`fields["tag"]`, `tick` vs `final`), com `stats` como fallback, e `meter` no ramo do medidor: um tick e o total deixam de chegar ao painel com a mesma cara. Arm r38, que agora mede os DOIS ramos, + mutante `m38-stats-tag-dropped` |
 | 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **OPEN** |
 | 40 | conjuntos de nomes de estado sensiveis a separador onde o braco JS normaliza | `sotto_webview.py:112-126` | **OPEN** |
-| 41 | linha de status sem `type` e descartada em silencio | `sotto_webview.py:2046-2051` | **OPEN** |
-| 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:1987-2004` | **OPEN** |
-| 43 | `_spawn()` corre na thread de restart SEM `_lock` | `sotto_webview.py:2222` | **OPEN** |
+| 41 | linha de status sem `type` e descartada em silencio | `sotto_webview.py:7595` | **[2026-10-11] APPLIED (ja estava refutado nas bytes vivas)** — a shell CONTA (`malformed`) e LOGA (`BRIDGE_UNKNOWN`) a linha sem `type`; e o mutante `m41-unknown-type-silent` que reproduz o silencio que a linha descreve, logo o par mantem as duas cores |
+| 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:7358` | **[2026-10-11] APPLIED** — um stop sem worker emite status (`Nothing to stop - no worker is running`, kind `busy`) antes de devolver False, simetrico com `start()`. Arm r42 + mutante `m42-stop-silent` |
+| 43 | `_spawn()` corre na thread de restart SEM `_lock` | `sotto_webview.py:7819` | **[2026-10-11] APPLIED** — `_restart()` toma `self._lock` e re-verifica `stopped`/`child` DENTRO dele (`_spawn()` nao toma o lock — medido: `start()` segura-o durante o `_spawn()`), logo o restart nao pode ressuscitar um worker que o dono acabou de parar. Arm r43 (sonda `_lock.locked()` nos DOIS caminhos) + mutante `m43-restart-without-lock` |
 | 44 | `docs/README.md` diz que "nenhum codigo de aplicacao foi escrito" | `docs/README.md:8` | **[2026-10-11] APPLIED** — a seccao *What exists today* deixou de dizer "Planning only. No application code has been written." e passou a nomear o que EXISTE e corre (worker + shell pywebview/WebView2 + painel, Alt+C), com a nota de que a frase era verdadeira quando foi escrita e ficou stale |
 | 45 | 3 documentos ainda descrevem a stack Tauri/Rust/SQLite abandonada como o produto | `docs/README.md:22-27`, `docs/roadmap.md:53-64`, `README.md:50-58,64` | **[2026-10-11] APPLIED** — os TRES corrigidos nesta passagem, por leitura dos bytes (nada lancado): `docs/README.md` §*Honest status of the stack* passou a nomear a stack que EMBARCA (Python 3.11 + `onnxruntime` + pywebview 6.2.1/WebView2, `Alt+C`) e marca o `transcribe.cpp` como avaliado-e-nao-adoptado; `docs/roadmap.md` ganhou a faixa SUPERSEDED antes de M0 (Tauri/Rust/CPAL sao PLANO, e `docs/live-captions-20261006.md:208` prova que o Tauri esta morto); `README.md:48-52` deixou de chamar o Tauri *"still the destination"* e retracta DUAS afirmacoes ja refutadas (o carimbo `producer` existe — `REDUX_PRODUCER` em `worker/sotto_worker.py`; e `history/` tem ficheiro mais novo, `history/2026-10-07/14.md`) |
 | 46 | `AGENTS.md` contradiz-se sobre o painel no arranque ("0 de 41" vs "visivel 50 ms–7 s") | `AGENTS.md:169` vs `:215` | **OPEN** |
@@ -307,11 +307,11 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 65
-- **OPEN:** 74
+- **APPLIED:** 73
+- **OPEN:** 66
 - **IN-FLIGHT:** 0
 
-Conferencia: 65 + 74 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
+Conferencia: 73 + 66 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
 indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao

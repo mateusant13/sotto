@@ -5873,6 +5873,10 @@ class SottoShell:
         if isinstance(meter, dict) and (
                 time.monotonic() - float(meter.get('at') or 0.0)) <= METER_FRESH_S:
             payload = {}
+            # WHICH SOURCE (row #38, 2026-10-11): a fresh meter tick and the 10 s
+            # WORKER_STATS running maximum are different measurements with the same
+            # two keys, and the panel could not tell them apart.
+            payload['tag'] = 'meter'
             for key in ('peak', 'blocks'):
                 value = meter.get(key)
                 if value is not None:
@@ -5882,6 +5886,11 @@ class SottoShell:
             if self.bridge is not None else None
         fields = raw.get('fields') if isinstance(raw, dict) else None
         payload = {}
+        # THE WORKER'S OWN TAG (row #38, 2026-10-11): its WORKER_STATS line carries
+        # `tag=tick|final`, and copying only peak/blocks threw that away -- so a
+        # mid-run tick and the run total arrived at the panel wearing the same face.
+        # 'stats' is the fallback for a line that declares no tag at all.
+        payload['tag'] = (fields.get('tag') if isinstance(fields, dict) else None) or 'stats'
         if isinstance(fields, dict):
             for key in ('peak', 'blocks'):
                 value = fields.get(key)
@@ -7166,7 +7175,11 @@ class WorkerBridge:
         if value == '':
             value = 'Worker status unavailable'
             kind = 'error'
-        elif FALSE_AUDIO_ABSENT_RE.search(value):
+        elif FALSE_AUDIO_ABSENT_RE.search(value) and self.captions == 0:
+            # ONLY while NO caption has ever arrived (row #11, 2026-10-11). After one,
+            # this text is a REAL regression: rewriting it into "capture not
+            # started" showed the owner the shell's own guess and hid the worker's
+            # error, on the one channel that displays the worker's cause.
             self.log(f'BRIDGE_STATUS_FALSIFIED text={json.dumps(value)}')
             value = CAPTURE_NOT_STARTED
             kind = 'busy'
@@ -7194,8 +7207,8 @@ class WorkerBridge:
                  'body': 'The transcription worker is being launched. No audio '
                          'is being read yet.'},
                 'starting')
-            self._spawn()
-            return True
+            # The spawn's OWN result (row #13): `return True` reported the REQUEST.
+            return self._spawn() is not None
 
     def _child_env(self):
         """The child's WHOLE environment contract, in one place.
@@ -7319,6 +7332,10 @@ class WorkerBridge:
                          daemon=True).start()
 
         self._arm_silence()
+        # REPORTED (row #13, 2026-10-11): `_spawn` used to fall out with None on
+        # EVERY path, so no caller could tell a spawned worker from a refused one.
+        # The two failure paths above still return None; `start()` reads this.
+        return self.child
 
     def stop(self, reason='stop'):
         with self._lock:
@@ -7339,7 +7356,17 @@ class WorkerBridge:
                 except Exception:
                     pass
             return True
+        # SAYS SO (row #42, 2026-10-11): returning False silently left whatever the
+        # panel was showing standing -- symmetric with `start()`, which always tells
+        # the panel what it asked for.
         self.log(f'BRIDGE_STOP reason={reason} pid=none')
+        self._bridge_status(
+            'Nothing to stop - no worker is running',
+            'busy',
+            {'title': 'No worker running',
+             'body': 'The stop request arrived when no transcription worker was '
+                     'running.'},
+            'idle')
         return False
 
     # -- stdout ------------------------------------------------------------
@@ -7466,7 +7493,11 @@ class WorkerBridge:
         kind = message.get('type')
         if kind == 'caption':
             text = message.get('text')
-            if text is None:
+            if not text:
+                # '' IS NOT A CAPTION (row #12, 2026-10-11): the test was
+                # `is None`, so an empty string counted as a caption -- and a
+                # caption is the ONLY thing that lifts the death hold, so a worker
+                # emitting nothing proved itself alive.
                 self.malformed += 1
                 return
             meta = {k: v for k, v in message.items()
@@ -7786,14 +7817,29 @@ class WorkerBridge:
                  f'restart={self.restarts}')
         timer = threading.Timer(delay / 1000.0, self._restart)
         timer.daemon = True
+        # CANCEL BEFORE OVERWRITING (row #15, 2026-10-11): overwriting the handle
+        # left the previous timer ARMED and unreachable, so two restarts could
+        # fire for one death -- and `_cancel_timers()` could no longer reach the
+        # first one at all.
+        if self._restart_timer is not None:
+            try:
+                self._restart_timer.cancel()
+            except Exception:  # noqa: BLE001
+                pass
         self._restart_timer = timer
         timer.start()
 
     def _restart(self):
-        if self.stopped or self.child is not None:
-            return
-        self.state = 'restarting'
-        self._spawn()
+        # THE LOCK (row #43, 2026-10-11): this path set the state and spawned with no
+        # lock, so it could interleave with `start()`/`stop()` -- the two callers that
+        # hold it -- and resurrect a worker the owner had just stopped. `_spawn()`
+        # itself takes no lock (measured: `start()` holds it across `_spawn()`), so
+        # taking it here cannot deadlock.
+        with self._lock:
+            if self.stopped or self.child is not None:
+                return
+            self.state = 'restarting'
+            self._spawn()
 
 
 def default_python() -> str:
