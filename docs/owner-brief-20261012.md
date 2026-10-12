@@ -40,3 +40,21 @@ Regras duras para todos: (1) não lançar a app/shell/worker — pedir ao Lead; 
 (5) nenhum gate verde sem braço de controlo que saiba dizer NÃO; (6) cada entrega termina com um recibo em
 `_main/receipt-20261012-<frente>.md` com os números medidos e o que NÃO ficou medido; (7) não tocar em
 ficheiros fora do escopo — se precisar de uma linha noutro ficheiro, escreva o pedido no recibo.
+## CONTEXTO MEDIDO PELO LEAD (2026-10-12 04:35, a app ESTÁ ABERTA — ler antes de trabalhar)
+
+* **A app está aberta e é INSTÂNCIA ÚNICA**: shell `pythonw.exe sotto_webview.py` pid **8588**, worker
+  `python.exe` pid **22172**. Ninguém além do Lead lança, mata ou reinicia. Se precisares de um arranque para
+  medir, escreve no teu recibo o comando exato e o que ele prova — o Lead executa e devolve os números.
+* **O "painel de baixo" é a STRIP**, medida no log da shell:
+  `PANEL_GEOMETRY_RESTORED surface=strip rect=1040x100@(440,920) writtenAt=2026-10-12T04:32:12-03:00 clamped=false`.
+  O dono quer: sem texto de legenda nenhum, mais estreito, da ALTURA DOS BOTÕES, botões mais claros.
+* **Ordem real do arranque** (de `_main/webview-run.log`, sessão a começar na linha 91910; o log NÃO tem
+  timestamp por linha): `SINGLE_INSTANCE already_running=false` -> `HOT_RELOAD_WATCH panel` + `worker` (2
+  watchers, debounce 250 ms) -> `PRELOAD_INSTALLED` -> `STAGING_SEEN` -> `STAGING_LOADED` -> `RECEIVER_READY`
+  -> `BRIDGE_STATS_REPLY payload={"tag":"stats"}` -> `PRELOAD_ACTIVE hasSotto=true methods=14 hotkey=Alt+C`.
+* **Footprint agora**: worker **2463 MB** working set e **96.78 s** de CPU; shell **113 MB** e 6.70 s. O
+  AGENTS.md cita int8 RSS ~1192 MB: o medido já não bate, e isso é uma medição a fazer, não uma conclusão.
+* **Sem janelas visíveis**: `mainWindowHandle=0` para os dois pids (nenhuma consola órfã na tela do dono).
+* **Payload de stats vazio = `{"tag":"stats"}`** (não `{}`): não escrevas guardas que assumam `{}`.
+* A shell expõe **14 métodos** ao painel. Precisar de um método novo no shell = fora do teu escopo nesta
+  ronda: entrega a assinatura exata no recibo.

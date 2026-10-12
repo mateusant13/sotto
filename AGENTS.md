@@ -4,7 +4,17 @@ Real-time transcription of ANY audio on this PC, shown as captions on a global *
 Owner's acceptance, verbatim: *"e eu quero que o alt c mostre as transcricoes em tempo real,
 de qualquer audio do meu pc. e legendas."*
 
-## ORDEM DO DONO EM VIGOR (2026-10-11, 17:2x -03:00) — NÃO ABRIR O SOTTO
+## ORDEM DO DONO — **LEVANTADA** 2026-10-12 04:2x -03:00 (o registo de 2026-10-11 fica abaixo, como história)
+
+> **LEVANTADA.** O dono escreveu, verbatim: *"faz o sotto abrir, agora ele ta fechado."* Lançar a app
+> voltou a ser permitido a partir de 2026-10-12 04:2x -03:00. O Sotto está **ABERTO** agora (medido:
+> `pythonw.exe ... sotto_webview.py` pid **8588** + worker `python.exe` pid **22172**, nenhum com janela
+> visível, `mainWindowHandle=0`). **A regra que FICA:** só o LEAD lança, relança ou mata a app/worker
+> (instância única, `SINGLE_INSTANCE name=Local\SottoShell`, e o dono está a usá-la); subagentes pedem no
+> recibo o comando exato e o Lead executa. O texto abaixo **não é mais uma proibição** — é o registo do que
+> a ordem de 2026-10-11 custou, e continua a valer como aviso sobre o que ficou UNMEASURED por causa dela.
+
+## (história) ORDEM DO DONO EM VIGOR entre 2026-10-11 17:2x e 2026-10-12 04:2x — NÃO ABRIR O SOTTO
 
 *"para de abrir o sotto, ta travando meu pc quando ele abre."* (verbatim, o dono)
 
