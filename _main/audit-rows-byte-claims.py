@@ -92,7 +92,21 @@ MUTANTS = {}
 def build_mutants(work):
     config = json.loads(read(CONFIG))
     inflated = dict(config)
-    for index in range(8):
+    # PAD TO THE NUMBER THE DOCUMENT CLAIMS, NOT BY A FIXED COUNT OF EXTRAS.
+    # This builder used to add exactly 8 extras, which produced 13 keys only
+    # while the live config held 5. It now holds 6 (redux_live arrived with the
+    # S3 lane), so 5+8=13 had become 14 and the r54 reading no longer flipped:
+    # the mutant stopped being a control and reported nothing. Padding to the
+    # claimed number keeps the mutant meaning -- a config with exactly 13
+    # top-level keys, which is what the doc sentence says the file has.
+    claimed = 13
+    missing = claimed - len(inflated)
+    if missing < 0:
+        say('SETUP ERROR: the live config already carries %d top-level keys, '
+            'more than the %d the row claims; the r54 row must be re-measured '
+            'before this mutant means anything' % (len(inflated), claimed))
+        raise SystemExit(2)
+    for index in range(missing):
         inflated['extra_key_%d' % index] = index
     MUTANTS['config_13_keys'] = os.path.join(work, 'config-13-keys.json')
     write(MUTANTS['config_13_keys'], json.dumps(inflated, indent=2) + '\n')
