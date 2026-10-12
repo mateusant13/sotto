@@ -4818,9 +4818,23 @@ class SottoShell:
             dom = self.exec_js(PANEL_STATE_PROBE, timeout=5.0)
         bridge = self.bridge
         worker = bridge.snapshot() if bridge is not None else None
-        panel_status = ((dom or {}).get('status') or {}).get('text')
+        # THE STATUS OBJECT, not just its text. `panel.js:2896-2903` blanks
+        # `#status-text` for every state that is not an error (the owner ruled
+        # 2026-10-08, verbatim: "tira o 'receiving captions'. deixa so um icone
+        # dinamico"), so on the live path the text is '' and the ONLY signal that
+        # captions are arriving is the `status--live` class on `#status` --
+        # which the probe already reports as `kind` and which this line used to
+        # throw away. Reading the text alone made the literal
+        # 'Receiving captions' test below DEAD on the live path, so the
+        # precedence fell through to the worker's no-audio latch and the panel
+        # named itself `no-audio` while captions were demonstrably flowing
+        # (measured live 2026-10-12: namedState="no-audio" in the same write as
+        # panel.live.count=201 and panel.status={"kind":"live","text":""}).
+        panel_status_obj = (dom or {}).get('status') or {}
+        panel_status = panel_status_obj.get('text')
+        panel_kind = panel_status_obj.get('kind')
         return {
-            'namedState': self._named_panel_state(worker, panel_status),
+            'namedState': self._named_panel_state(worker, panel_status, panel_kind),
             'panel': dom,
             'shell': {
                 'visible': self.visible,
@@ -4849,7 +4863,7 @@ class SottoShell:
         }
 
     @staticmethod
-    def _named_panel_state(worker, panel_status):
+    def _named_panel_state(worker, panel_status, panel_kind=None):
         """One name for "what is the panel showing", by a STATED precedence.
 
         The panel's OWN footer wins while it is live — `panel.js` writes
@@ -4859,7 +4873,16 @@ class SottoShell:
         an empty string: a panel with no bridge is not the same panel as one
         holding a quiet worker.
         """
-        if panel_status == 'Receiving captions':
+        # TWO LIVE SIGNALS, because the sentence is no longer one of
+        # them. `panel.js:2896-2903` writes
+        # `setStatus('Receiving captions', 'live')` and then BLANKS
+        # `#status-text`, because the healthy state is an ICON and not a
+        # phrase (owner, 2026-10-08). So the literal comparison below is kept
+        # for a panel that still paints the phrase, and `kind == 'live'` is
+        # the one that actually fires: it is the `status--live` class
+        # `panel.js:2907` puts on `#status` the instant a caption commits,
+        # and it is what `PANEL_STATE_PROBE` already reports.
+        if panel_status == 'Receiving captions' or panel_kind == 'live':
             return 'receiving'
         if worker is None:
             return 'no-worker'

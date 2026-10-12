@@ -2209,6 +2209,13 @@ def _plp_open_capture(client):
     err("PLP_START hr=%s" % (wl._fmt(hr_start),))
     if hr_start != 0:
         out["error"] = "IAudioClient::Start: %s" % wl._fmt(hr_start)
+        # WE OWN `cap` -- GetService handed us a reference -- and the caller
+        # RAISES on ok=False without ever looking at out["capture"], so
+        # ProcessLoopbackTap._open never installs it and close() can never
+        # release it. One IAudioCaptureClient leaked per FAILED open, which is
+        # the path the ladder walks on a host with no audio routed.
+        wl._release(cap)
+        out["capture"] = None
         return out
 
     out["ok"] = True
