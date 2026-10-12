@@ -139,7 +139,7 @@ the byte counts that bullet quotes — `encoder-model.onnx` 343841943, `decoder_
 | claim in this file | measured 2026-10-07 |
 |---|---|
 | worker `173388 B`; shell `4326 lines` | worker **236802 B / 4511 lines**, shell **276894 B / 5679 lines** (`H:\sotto-wt\ArbV8`; product root 246517 B / 397180 B) |
-| `_audit-verify-all.cmd` "len=18595, 337 CRLF / 0 bare LF, sha256 `9DA38ECF…`" | **26692 B / 456 CRLF / 0 bare LF, sha `038B5167…`** (worktree); **32203 B / 538 CRLF / 0 bare LF, sha `EBF715E9…`** (`H:\sotto`) |
+| `_audit-verify-all.cmd` "len=18595, 337 CRLF / 0 bare LF, sha256 `9DA38ECF…`" | **26692 B / 456 CRLF / 0 bare LF, sha `038B5167…`** (worktree); **32203 B / 538 CRLF / 0 bare LF, sha `EBF715E9…`** (`H:\sotto`); **RE-MEASURED 2026-10-12: 32637 B / 538 CRLF / 0 bare LF, sha `035CD13288966F5265CB0126F2544CE9D56099E1EA90466911D506E3BD9CA6AB`** — the Lead added one `REM` line and changed one command line in the battery that day (the autostart step), so size and hash moved while the CRLF property HELD; this correction was itself caught by `_main/agents-md-pins-oracle.py`, the gate that now re-measures both pins on every run |
 | `app/panel/` module list | also holds `history-gallery.js`, `package.json`, `_fonts/`, `fonts/` |
 | `worker/models/…{int4,int8,fp16}/` "the three exports" | **9 dirs** in `H:\sotto`, incl. `fp32`, both parakeet dirs, and two `qwen*` dirs |
 

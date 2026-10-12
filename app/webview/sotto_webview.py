@@ -5889,11 +5889,23 @@ class SottoShell:
     def stats(self):
         """The worker's OWN counters, whitelisted to what the panel reads.
 
-        THE SHAPE IS THE PANEL'S, NOT THIS FILE'S. `panel.js:1702-1710` reads
-        `peak` and `blocks`; `panel.js:1738-1740` (the "behind" chip) reads
-        `queue_drops` and `rate`, which this shell does not compute — and it must
-        NOT invent them, because a fabricated `rate` would light a chip about a
-        lag nobody measured. So the payload is exactly `{peak, blocks}`.
+        THE SHAPE IS THE PANEL'S, NOT THIS FILE'S. The level consumer takes
+        `pushLevel(peak, blocks)` (`panel.js:2564`, `LEVEL.blocks` set at `:2584`);
+        the "behind" chip reads `queue_drops` and `rate` (`panel.js:2688-2689`,
+        painted at `:2700`, declared at `:2539`) — and those two this shell does
+        NOT compute, and must NOT invent, because a fabricated `rate` would light
+        a chip about a lag nobody measured.
+
+        THE PAYLOAD IS `{peak, blocks}` PLUS the `tag` stamped on purpose at `:5941`
+        (the worker's tick) and `:5927` (the meter path): copying only peak/blocks
+        THREW THE TAG AWAY, which is the defect row F4/F1 was opened for. So the
+        payload of an idle shell is `{tag: 'stats'}` and never `{}`.
+
+        RE-MEASURED 2026-10-12 (AGENTS.md rule 2): this comment cited `panel.js:1702-1710`
+        and `:1738-1740`, and BOTH are stale — `:1738-1740` is `wireSurfaces()`, not the
+        chip. Gate: `_main/_strip-surface-oracle.py` pins the payload shape and
+        `_main/rtf-cpu-attribution-oracle.py` arm 4 reads this claim. Re-run the grep
+        before citing a line here.
 
         TWO SOURCES, ONE SHAPE, AND THE WAVE WINS WHILE IT IS FRESH:
 

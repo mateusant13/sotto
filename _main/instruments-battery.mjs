@@ -75,6 +75,8 @@ const py = [
   ['_main/unfinished-items-coverage-oracle.py', 'unfinished-items coverage (every named source)'],
   ['_main/unfinished-items-coverage-oracle.py --neg-arm', 'unfinished-items coverage control'],
   ['_main/verify-all-launch-audit.py', 'verify-all starts nothing (precondition for running it)'],
+  ['_main/agents-md-pins-oracle.py', 'AGENTS.md pins re-measured live (the --help size and the battery pin)'],
+  ['_main/agents-md-pins-oracle.py --neg-arm', 'agents-md-pins neg (the mutated doc copy must go RED)'],
 ];
 
 const node = [
@@ -113,5 +115,6 @@ for (const [a, l] of node) if (!run('node', a.split(' '), l)) failed += 1;
 const total = py.length + node.length;
 console.log('');
 console.log('SUMMARY: ' + (total - failed) + '/' + total + ' instrument(s) rc=0; failed=' + failed
-  + '; launches=0 (the owner order forbids opening the shell, run.cmd or the worker)');
+  + '; launches=0 (no shell, app or worker is opened -- the ONE run.cmd invocation in this list is'
+  + ' its --help pre-flight, which argparse answers and exits; measured 2026-10-12: 0 processes left)');
 process.exit(failed === 0 ? 0 : 1);
