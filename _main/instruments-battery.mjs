@@ -61,6 +61,8 @@ const py = [
   ['_main/runcmd-arm-coverage-oracle.py --neg-arm', 'runcmd-arm-coverage neg'],
   ['_main/wasapi-buffer-fallback-oracle.py', 'wasapi-buffer-fallback (row F3)'],
   ['_main/wasapi-buffer-fallback-oracle.py --neg-arm', 'wasapi-buffer-fallback neg'],
+  ['_main/ready-stream-blindness-oracle.py', 'ready-stream-blindness (row #18)'],
+  ['_main/ready-stream-blindness-oracle.py --neg-arm', 'ready-stream-blindness neg'],
 ];
 
 const node = [
