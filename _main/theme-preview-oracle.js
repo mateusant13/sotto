@@ -967,15 +967,15 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
       tuneSrc.replace('if (previewOpen()) {', 'if (false) {'), async function (sw, tn) {
     resetCounters();
     openDropdown();
-    /* HOVER A THEME THE DOCUMENT IS NOT ALREADY ON. theme-tune.js:978 pays the owed
-     * work only when `appliedTheme !== target`, so re-hovering the CURRENT theme is
-     * a no-op that fires no apply at all -- and this mutant must COST an apply for
-     * the gate to be able to say NO. Picking a differing theme does not change what
-     * the mutant breaks; it removes an accident of what the document sat on. */
-    var on = doc.documentElement.getAttribute('data-theme');
+    /* HOVER A THEME THE DOCUMENT IS NOT ALREADY ON, and NOT the one it loaded with.
+     * theme-tune.js:978 pays the owed work only when `appliedTheme !== target`, so
+     * hovering a theme already applied is a no-op that fires no apply at all -- and
+     * this mutant must COST an apply for the gate to be able to say NO. Reading it
+     * through the tune layer's own currentTheme() rather than a DOM attribute keeps
+     * the picker honest whichever surface the document wore on entry. */
+    var on = tn.currentTheme();
     hover(on === 'theme-3' ? 'theme-1' : 'theme-3');
     await tick(1);
-    console.error('DBG m1 applyCalls=' + tn.applyCalls() + ' on=' + doc.documentElement.getAttribute('data-theme') + ' attr=' + JSON.stringify(attributeWrites) + ' store=' + JSON.stringify(store));
     return tn.applyCalls() === 0;   // mutant: applies ran, so this is false
   });
 
