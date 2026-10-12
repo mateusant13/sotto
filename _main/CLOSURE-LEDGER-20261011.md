@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 112 / open 24 / in-flight 0** as this file is written, read from the gate itself.
+**applied 113 / open 23 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 24 rows whose state cell reads OPEN
+## 1. The live product — 23 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -33,7 +33,7 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
-### panel/rendering (6)
+### panel/rendering (5)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
@@ -42,7 +42,6 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F3 | AGENTS.md contradiz-se sobre o painel no arranque (`doc-vs-code.md:23`) | **OPEN** — herdado da linha #46 |  |
 | F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |  |
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
-| F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |  |
 
 ### shell/window (5)
 

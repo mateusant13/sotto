@@ -295,7 +295,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | F12 | o segundo passe nao repoe o front-end cache-aware nem o VAD (`auditoria-completa-20261007.md:74`) | **APPLIED** — §11 :615: a sonda fresh-processor da GREEN (dois processadores distintos, buffers proprios); o TEXTO do segundo passe nao foi medido (:768-770) |
 | F13 | model.lang_id ausente cai no locale do host (os) (`auditoria-completa-20261007.md:75`) | **APPLIED** — despachado ao worker (:544); a arvore viva diz THE DEFAULT IS auto, NOT os (F13) (sotto_worker.py:4183-4192) e o AGENTS.md tem a linha RESOLVED do lang_id — estabelecido pela ARVORE+contexto, nao por uma frase da fonte |
 | F14 | use_vad no codigo tem default False e contradiz config/docs (`auditoria-completa-20261007.md:76`) | **APPLIED** — §11 :597: use_vad default True (sotto_worker.py:4257 no ficheiro vivo) — fecha tambem a linha #22 |
-| F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |
+| F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **[2026-10-11] APPLIED — cada metade acaba num sitio diferente, e a CONSEQUENCIA e que estava errada** — (1) **A ORDENACAO**: por CORRIDA a lista e mesmo um instantaneo (medido: **1** construcao no caminho principal, `candidates = device_candidates(...)` em `sotto_worker.py:4534`, e a rotacao indexa essa lista congelada — 2 sitios `candidates[attempt_no + 1]`), **mas a consequencia que o achado sugere — um dispositivo que aparece depois nunca e visto — e FALSA, duas vezes**: (a) a MEIO da corrida, quando um tap ENCRAVA e as reaberturas do mesmo dispositivo se esgotam, o worker **volta a enumerar a tabela viva e leva o primeiro endpoint MAIS FRESCO** que nao seja o actual (`:5434`, com o comentario a dizer porque: "the audio may simply have MOVED, so take the freshest enumeration"); (b) a CADA corrida nova a lista e reconstruida, e a shell reinicia o worker no exit nao-zero que uma escada plana produz. (2) **O NOME**: `prefer_rendering_now` tem **0 ficheiros na arvore do PRODUTO** (`worker/`, `app/`, `scripts/`) — existe em **9** documentos/oraculos como **PROPOSTA** (`ordem-dos-candidatos.md:152` diz "nova `prefer_rendering_now(...)`"), portanto a metade do nome e verdadeira e o que faltava era ler "o nome nao existe" como "o comportamento nao existe". (3) **A SUBSTANCIA esta implementada e medida**: o rung A le o PICO VIVO de cada endpoint de render activo e ordena por ele, e o instrumento que ja existia faz a medicao no ambiente real — `py -3 _main/_ordem-cura-oracle.py` -> **VERDICT GREEN**, `cure present in module: False` (confirma o nome ausente) e **o endpoint que esta a renderizar agora e exactamente o que a tentativa 1 abriria**. Instrumento novo `_main/device-ladder-rescan-oracle.py` (sem dispositivo e sem lancar nada: tabela falsa de `sounddevice` injectada em `sys.modules`, rung A desligado de proposito — que e tambem o caminho documentado "sem endpoint de render"): braco 1 dedupe (dois indices do MESMO endpoint -> 1 candidato; microfone excluido), braco 2 **frescura** (a tabela ganha um dispositivo -> aparece: o construtor e instantaneo ao vivo, nao cache), braco 3 as tres verdades de bytes, braco 4 o nome no produto a 0. **Duas correccoes ao MEU oraculo, as duas ditas por ele:** o braco 4 incluia `_main/` e por isso nunca podia dar 0 (contava o proprio ficheiro) — passou a medir so o produto e a REPORTAR os documentos em separado; e as funcoes de pontuacao precisavam das constantes de modulo, que agora sao extraidas em vez de substituidas por stubs meus (um stub faria de cada braco um teste ao stub) |
 | F16 | GetBuffer chamado com 4 de 5 parametros (o 5. parametro, pu64QPCPosition, e out-pointer) (`auditoria-completa-20261007.md:78`) | **APPLIED** — despachado a captura (:544); a arvore viva declara CINCO out-parameters e passa o 5. como NULL explicito (wasapi_loopback.py:920-926, :978) — estabelecido pela ARVORE |
 | F17 | asr.labels + done.text crescem sem limite e saem numa unica linha JSONL (`auditoria-completa-20261007.md:79`) | **APPLIED** — §11 :594-597: labels_pruned e done_text_max_chars legiveis no disco (grep do coordenador) |
 | F18 | excepcoes fora dos poucos try escapam ao contrato JSONL (EOF sem done/error) (`auditoria-completa-20261007.md:80`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado; nada na arvore o fecha |
@@ -304,8 +304,8 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 112
-- **OPEN:** 24
+- **APPLIED:** 113
+- **OPEN:** 23
 - **IN-FLIGHT:** 0
 
 **NOTA 2026-10-11 (TERCEIRA auditoria — a CADEIA DE PROVA, nao as afirmacoes):** as duas rondas
@@ -328,7 +328,7 @@ eram erro MEU, nao do mapa**. `--neg-arm` corre sobre dois mapas sinteticos (um 
 inexistente, outro a citar instrumento com risco de lancamento) e exige os dois sinalizados; medido
 `absent=1` e `risky=1`, `NEG-ARM PASS`.
 
-Conferencia: 112 + 24 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 113 + 23 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 **NOTA 2026-10-11 (SEGUNDA reconciliacao — o mesmo defeito noutra forma):** o mapa tem DUAS especies de
