@@ -51,6 +51,8 @@ const py = [
   ['_main/selftest-quality-oracle.py --neg-arm', 'selftest-quality neg'],
   ['_main/panel-flash-contradiction-oracle.py', 'flash-contradiction (rows #46/F3)'],
   ['_main/panel-flash-contradiction-oracle.py --neg-arm', 'flash-contradiction neg'],
+  ['_main/worker-eof-contract-oracle.py', 'worker-eof-contract (row F18)'],
+  ['_main/worker-eof-contract-oracle.py --neg-arm', 'worker-eof-contract neg'],
 ];
 
 const node = [

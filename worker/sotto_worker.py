@@ -5884,8 +5884,45 @@ def main():
     return 3 if ran_but_silent else 0
 
 
-if __name__ == "__main__":
+def contract_guard(main_fn, emit_fn=emit, err_fn=err) -> int:
+    """Run the worker so that no CATCHABLE exit escapes the JSONL contract. PURE wiring: the
+    emitters are injected, so this is drivable without a device, a model or a process.
+
+    AUDIT ROW F18: the entry block caught ONLY KeyboardInterrupt -- and answered 0 -- so any other
+    exception left the contract OPEN: the shell saw EOF with no `done` and no `error`, the same
+    shape as a healthy finish. Every other `try` in this file is LOCAL to a phase; nothing owned
+    the top.
+
+    WHAT THIS CANNOT DO, said here because the row is about a gap and a guard that oversells itself
+    is the same defect: the shell stops this process with terminate()/kill() (TerminateProcess,
+    measured at app/webview/sotto_webview.py:7453, :7457, :7914), and NO Python-level guard can
+    catch that. That path still ends in EOF without a terminal event, and no code change can fix it.
+    What is fixed is everything the interpreter can catch.
+    """
     try:
-        sys.exit(main())
+        return int(main_fn())
+    except SystemExit as stop:
+        # argparse refusals and deliberate exits carry MEANING in their code (2 = usage, 3 =
+        # silent device). --check-args and run.cmd pre-flight read these numbers, so the guard
+        # must not flatten 2 into 4.
+        raise stop
     except KeyboardInterrupt:
-        sys.exit(0)
+        # Was `sys.exit(0)` with NO event: an interrupted run reported the same thing to the shell
+        # as a finished one. 130 is the conventional SIGINT code and it is distinct from 4.
+        emit_fn(type="status", state="error", stage="interrupted",
+                detail="interrupted (Ctrl+C): the run did NOT finish")
+        err_fn("sotto: INTERRUPTED -- the run did not finish (no done event was emitted)")
+        return 130
+    except BaseException as exc:
+        import traceback as _tb
+        detail = "%s: %s" % (type(exc).__name__, exc)
+        emit_fn(type="status", state="error", stage="unhandled", detail=detail)
+        err_fn("sotto: UNHANDLED " + detail)
+        err_fn(_tb.format_exc())
+        return 4
+
+
+if __name__ == "__main__":
+    # AUDIT ROW F18: this block used to catch ONLY KeyboardInterrupt and answer 0, so any other
+    # exception left the contract open. See contract_guard for what it can and cannot catch.
+    sys.exit(contract_guard(main))

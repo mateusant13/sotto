@@ -7,14 +7,14 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 117 / open 19 / in-flight 0** as this file is written, read from the gate itself.
+**applied 118 / open 18 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 19 rows whose state cell reads OPEN
+## 1. The live product — 18 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
 
-### docs/instruments (5)
+### docs/instruments (4)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
@@ -22,7 +22,6 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | Finding C | run-cmd-exit-oracle esta RED hoje no conjunct do census (`oracles.md:413`) | **OPEN** — herdado da linha #30 |  |
 | Finding D | um braco negativo sem recibo (o bogus do runcmd-entry-driver.py) (`oracles.md:418`) | **OPEN** — herdado da linha #58 |  |
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
-| F18 | excepcoes fora dos poucos try escapam ao contrato JSONL (EOF sem done/error) (`auditoria-completa-20261007.md:80`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado; nada na arvore o fecha |  |
 
 ### other (4)
 
