@@ -74,6 +74,7 @@ const py = [
   ['_main/rtf-cpu-attribution-oracle.py', 'rtf-cpu-attribution (row F10)'],
   ['_main/unfinished-items-coverage-oracle.py', 'unfinished-items coverage (every named source)'],
   ['_main/unfinished-items-coverage-oracle.py --neg-arm', 'unfinished-items coverage control'],
+  ['_main/verify-all-launch-audit.py', 'verify-all starts nothing (precondition for running it)'],
 ];
 
 const node = [
