@@ -25,6 +25,8 @@
   var meter = null;
   var meterFill = null;
   var credits = null;
+  var led = null;
+  var col = null;
   var current = null;
   var previous = null;
   var listening = false;
@@ -38,6 +40,8 @@
     meter = document.getElementById('caption-float-meter');
     meterFill = document.getElementById('caption-float-meter-fill');
     credits = document.getElementById('caption-float-credits');
+    led = document.querySelector('.caption-float__led');
+    col = document.querySelector('.caption-float__col');
     return !!(line && prev && meter && meterFill && credits);
   }
 
@@ -54,6 +58,13 @@
       current = value;
     }
     line.textContent = value;
+    // THE ZIP EMPTY STATE (Caption.tsx, the inst design): while the engine is
+    // listening and no line has closed, the line node wears is-empty and reads
+    // OUVINDO... — 13px, tracking 0.3em, white at 30%. The class is the whole
+    // switch, so the live line and the empty state can never both paint.
+    var empty = !value && listening;
+    line.classList.toggle('is-empty', empty);
+    if (empty) line.textContent = 'OUVINDO\u2026';
     prev.textContent = previous || '';
     // The credits are only rewritten when a meta ARRIVES. A provisional push carries
     // no producer, and erasing the line on every partial would make the overlay
@@ -82,6 +93,11 @@
     if (!nodes() || !meter) return;
     listening = !!on;
     meter.classList.toggle('is-on', listening);
+    // The bar breathes only while the engine is LISTENING. The zip drives the same
+    // class from the forming-or-empty condition; here the listening flag is the
+    // same fact, and a stopped engine leaves the bar at rest rather than pulsing
+    // over a dead window.
+    if (led) led.classList.toggle('is-on', listening);
   }
 
   function state() {

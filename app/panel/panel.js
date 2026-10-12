@@ -114,7 +114,11 @@ const dom = {
   stripWord: document.getElementById('strip-word'),
   stripOpenButton: document.getElementById('strip-open-button'),
   stripHideButton: document.getElementById('strip-hide-button'),
-  stripTransparencyButton: document.getElementById('strip-transparency-button'),
+  // REMOVED 2026-10-12: `stripTransparencyButton`. The transparency button is GONE from
+  // panel.html (it was the reported bug — see the comment there and in panel.css), so
+  // the key is gone with it, on the file's own rule that a `null` entry would
+  // reintroduce a throw at wire time. `applyTransparency` is kept (below), now
+  // unreachable from the UI and harmless if a stale caller still invokes it.
   // LINHAR — float the caption on the screen (owner, 2026-10-12). Bound in
   // `wireStripControls`; `null` on an older harness, and the handler null-checks.
   stripFloatButton: document.getElementById('strip-float-button'),
@@ -243,11 +247,16 @@ let liveEnabled = true;
 let paused = false;
 /**
  * TRANSPARENCY (strip only): true while the owner has asked the strip to drop
- * its chrome and keep only the captions. The button flips it, `body[data-
- * transparency]` paints it, and `bridge.setTransparency(on)` tells the shell
- * (the documented `sotto:transparency` message with `{ on }`). Declared HERE,
- * above the init block, for the temporal-dead-zone rule the 2026-10-07 bug
- * bought: `wireStripControls()` reads it at load.
+ * its chrome and keep only the captions. Declared HERE, above the init block,
+ * for the temporal-dead-zone rule the 2026-10-07 bug bought:
+ * `wireStripControls()` reads it at load.
+ *
+ * KEPT, NOT DELETED — but it has NO button any more (owner order 2026-10-12, and
+ * the button WAS the bug: the two hide-rules that used to be in panel.css turned
+ * the window into the shell's opaque #0B0F14 with nothing clickable). The rules
+ * are deleted, so a stale call here only sets an attribute nothing paints and
+ * posts a message the shell may or may not apply. Nothing vanishes, which is the
+ * whole point: the function is inert, not armed.
  */
 let transparencyOn = false;
 /**
@@ -1817,13 +1826,6 @@ function wireStripControls() {
   if (dom.stripOpenButton) {
     dom.stripOpenButton.addEventListener('click', () => openFullPanel('strip-open'));
   }
-  // TRANSPARENCY: hide the strip chrome and keep only the captions. The local
-  // state is the truth; the shell message is best-effort (see applyTransparency).
-  if (dom.stripTransparencyButton) {
-    dom.stripTransparencyButton.addEventListener('click', () => {
-      applyTransparency(!transparencyOn);
-    });
-  }
   // HIDE: the strip's own dismiss. It calls the SAME `bridge.hide()` the panel's
   // `#hide-button` calls — there is no second mechanism. The shell re-shows the
   // strip on Alt+C. A shell without the method is left alone rather than throwing.
@@ -1946,9 +1948,12 @@ function reportFontScaleState() {
 }
 
 /**
- * TRANSPARENCY (strip only). The button hides every strip control and leaves the
- * captions alone; the SHELL owns the rest (click-through / bringing the chrome
- * back), because only the shell owns the window.
+ * TRANSPARENCY (strip only). NO BUTTON CALLS IT ANY MORE — the button was deleted
+ * from panel.html on 2026-10-12 because it was the reported bug (the two CSS
+ * hide-rules made the window an unclickable solid colour). It is kept as the
+ * panel's half of the shell contract so a shell that still answers
+ * `sotto:transparency` keeps a working counterpart, and so a stale caller cannot
+ * crash; the `dom.stripTransparencyButton` guards below are all it can reach.
  *
  * THE MESSAGE. The bridge method `bridge.setTransparency(on)` posts the
  * documented `sotto:transparency` message with `{ on: bool }` — the SAME
@@ -2932,8 +2937,18 @@ function setStatus(text, state) {
 }
 
 function wireControls() {
-  // Click-through is on for the transparent margin; turn it off while the
-  // pointer is over the slab so these buttons are actually clickable.
+  // Click-through is ON by default: the shell creates this window with
+  // WS_EX_TRANSPARENT (sotto_webview.py:3991, the port of Electron setIgnoreMouseEvents
+  // with forward=true) because the slab floats OVER another application and must not
+  // swallow clicks meant for it. Turn it off while the pointer is over the slab so
+  // these buttons are actually clickable, and put it back on the way out.
+  //
+  // CORRECTED 2026-10-12: this comment used to say it was on for the transparent
+  // margin, naming the transparent band around a centred max-content pill. That band
+  // is GONE -- the bar now FILLS the window (panel.css rule 1, THE WINDOW IS THE BAR),
+  // which is the fix for the owner report of a solid colour with the bottom panel in
+  // the middle of it. The click-through was never about a margin: it is about the
+  // window floating over another application, and that reason survives unchanged.
   // Guarded: a harness or an older markup without #panel/#hide-button must not
   // throw here — that throw aborts the whole init block with a blank panel.
   const setInteractive = (active) => bridge.setPointerInteractive(active);

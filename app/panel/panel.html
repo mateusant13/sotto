@@ -594,12 +594,19 @@
            nothing; CSS owns the whole difference.
 
            THE FIXED ORDER (base `order` rules, so no theme can reorder it):
-           brand · Live · theme cycle · theme list (chevron) · transparency ·
-           open panel · hide · smaller · larger · Pause · status. The brand is
-           leftmost and the status readout is last because it is a READOUT, not a
-           control. The two font buttons are the owner's 2026-10-09 dial and they
-           sit immediately before Pause, the same place their twins occupy in
-           `.panel__controls`. -->
+           brand · Live · theme cycle · open panel · hide · smaller · larger ·
+           Pause · status. The brand is leftmost and the status readout is last
+           because it is a READOUT, not a control. The two font buttons are the
+           owner 2026-10-09 dial and they sit immediately before Pause, the same
+           place their twins occupy in `.panel__controls`.
+
+           REMOVED 2026-10-12 from this row, both for the owner bare-minimum order
+           (*"o painel de baixo, deve conter apenas o bare minimum"*) and, in the
+           transparency case, because it IS the reported bug: the theme-list chevron
+           (hidden by CSS on this surface, see panel.css — `theme-switcher.js`
+           re-creates the node when the id is absent) and the transparency button
+           (deleted outright, together with both of its hide-rules). EVERY button
+           still exists on the RIGHT panel, which is where all of them live now. -->
       <section class="stripbar" id="strip-controls" aria-label="Caption controls">
         <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
              todos os temas"*, and the strip is one of the two surfaces). The strip
@@ -669,65 +676,34 @@
           <span class="strip-button__label theme-button__label"></span>
         </button>
 
-        <!-- ── THE THEME LIST (chevron), attached to the theme button's right ──
-             The theme button CYCLES on click; this chevron OPENS the list. Both
-             are wired by `theme-switcher.js`, which owns the one dropdown and the
-             one persist path, so the strip and the header can never drift. -->
-        <button
-          type="button"
-          class="strip-button strip-button--chevron"
-          id="strip-theme-chevron"
-          data-theme-chevron
-          aria-haspopup="listbox"
-          aria-expanded="false"
-          aria-controls="theme-dropdown"
-          title="Theme list — hover to preview, click to keep"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path
-              d="M4 6.5L8 10.5L12 6.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
+        <!-- ── REMOVED 2026-10-12: the theme-list CHEVRON on the strip ──────────
+             Owner order: *"o painel de baixo, deve conter apenas o bare minimum"*.
+             The theme button itself CYCLES on click and stays; the chevron was a
+             second door into the same five designs. DELETED FROM MARKUP, AND ALSO
+             HIDDEN BY CSS ON THIS SURFACE (`body[data-surface="strip"]
+             #strip-theme-chevron { display: none }` in panel.css) — necessary
+             because `theme-switcher.js ensureChevron` RE-CREATES the node when the
+             id is absent, so a markup-only removal would put it straight back.
+             The header chevron (the right panel, where every button lives) and the
+             picker are untouched. -->
 
-        <!-- ── TRANSPARENCY: hide the strip chrome, keep only the captions ─────
-             Posts the documented shell message `sotto:transparency` with
-             `{on:true|false}` through the bridge method (`panel.js`
-             `applyTransparency`). It also flips `body[data-transparency]`, which
-             is what hides every strip control. The shell side may not exist yet:
-             absent bridge method = the local state still stands. -->
-        <button
-          type="button"
-          class="strip-button strip-button--transparency"
-          id="strip-transparency-button"
-          aria-pressed="false"
-          title="Transparency: hide the strip chrome and keep only the captions"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <rect
-              x="2.4"
-              y="2.4"
-              width="11.2"
-              height="11.2"
-              rx="2"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.3"
-            />
-            <path
-              d="M8 2.4h3.6a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H8z"
-              fill="currentColor"
-              opacity="0.5"
-            />
-            <path d="M8 2.4v11.2" stroke="currentColor" stroke-width="1.1" />
-          </svg>
-          <span class="strip-button__label">Transparency</span>
-        </button>
+        <!-- ── REMOVED 2026-10-12: TRANSPARENCY on the strip ─────────────────────
+             THIS BUTTON IS THE REPORTED BUG, so it is gone, not merely relabelled.
+             Measured on the owner shell (`_main/webview-run.log`, pid 33248): two
+             in-window clicks — points (1008,955) and (1005,951), both inside the
+             strip 1040x100@(440,920) rect — immediately before
+             `TRANSPARENCY_ON click_through=true captions=kept` (line 114746). What
+             that combination did:
+               • `panel.css` had `body[data-surface="strip"][data-transparency="on"]
+                 .panel { display: none }` — the ONLY node still painting vanished; and
+               • the shell flipped WS_EX_TRANSPARENT, so nothing could be clicked back.
+             The whole 1040x100 window became the shell opaque #0B0F14 form colour
+             (*"cliquei num botao e ele sumiu e agora ta so a cor solida de volta,
+             inteira"*). Both hide-rules are deleted from panel.css, so even a stale
+             call to `panel.js applyTransparency` can no longer hide the slab.
+             No replacement button was added anywhere: the click-through CONCEPT is
+             not the product ask — the third overlay (the floated caption) is how the
+             owner gets the caption loose on screen, with no chrome and no backplate. -->
 
         <button
           type="button"
@@ -976,13 +952,20 @@
          `caption-float.js` owns it; `panel.js` only flips `data-float` and the window height.
          The strip surface shows it; the panel surface does not (the panel already has captions). -->
     <div id="caption-float" class="caption-float" data-float="off" aria-hidden="true">
+      <!-- THE ZIP'S "inst" DESIGN: a 4px breathing bar the text leans on, inside one
+           flex row. `caption-float.js` owns the CONTENT; the shape is panel.css. The
+           bar is the overlay's only BODY — there is no background, plate or box on
+           this overlay, ever. -->
       <div class="caption-float__stage">
-        <p class="caption-float__prev" id="caption-float-prev" aria-hidden="true"></p>
-        <p class="caption-float__line" id="caption-float-line"></p>
-        <div class="caption-float__meter" id="caption-float-meter" aria-hidden="true">
-          <span class="caption-float__meter-fill" id="caption-float-meter-fill"></span>
+        <span class="caption-float__led" aria-hidden="true"></span>
+        <div class="caption-float__col">
+          <p class="caption-float__prev" id="caption-float-prev" aria-hidden="true"></p>
+          <p class="caption-float__line" id="caption-float-line"></p>
+          <div class="caption-float__meter" id="caption-float-meter" aria-hidden="true">
+            <span class="caption-float__meter-fill" id="caption-float-meter-fill"></span>
+          </div>
+          <p class="caption-float__credits" id="caption-float-credits" aria-hidden="true"></p>
         </div>
-        <p class="caption-float__credits" id="caption-float-credits" aria-hidden="true"></p>
       </div>
     </div>
 

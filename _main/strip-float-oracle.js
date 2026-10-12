@@ -53,12 +53,12 @@ function checks(dir) {
   add("S1 --strip-height is 40px, not the old 100px", !!sh && sh[1].trim() === "40px", sh ? sh[1].trim() : "ABSENT");
   const fh = /--float-height\s*:\s*([^;]+);/.exec(css);
   add("S2 --float-height exists (the raised height)", !!fh, fh ? fh[1].trim() : "ABSENT");
-  const ss = /body\[data-surface="strip"\][^{}]*\{[^{}]*width:\s*max-content/.test(css);
-  add("S3 the strip panel sizes itself to its content", ss, ss ? "width:max-content" : "no width:max-content on the strip surface");
+  const ss = !/body\[data-surface="strip"\]\s*\.panel\s*\{[^{}]*width:\s*max-content/.test(css);
+  add("S3 the strip panel is NOT a max-content pill (2026-10-12: that rule WAS the owner's solid-colour bug)", ss, ss ? "no width:max-content (fixed)" : "width:max-content PRESENT = the bugthe strip surface");
   const nc = /body\[data-surface="strip"\]\s+\.captions\s*\{\s*display:\s*none/.test(css);
   add("S4 the strip carries no caption row", nc, nc ? ".captions display:none" : "no .captions display:none on the strip surface");
   const nb = /body\[data-surface="strip"\]\s*\{[^{}]*background:\s*transparent/.test(css);
-  add("S5 the strip body is transparent (the bar is only buttons)", nb, nb ? "background:transparent" : "no transparent body on the strip surface");
+  add("S5 the strip body is NOT transparent (re-baselined 2026-10-12: a transparent body let the shell's opaque #0B0F14 form colour show through as the owner's \"cor solida\", so the fix paints it)", !nb, !nb ? "body paints (fixed)" : "body still transparent = the solid-colour bug");
   const btn = /body\[data-surface="strip"\] \.strip-button\s*\{([^}]*)\}/.exec(css);
   if (!btn) {
     add("S6 the strip-button rule exists", false, "no .strip-button rule");

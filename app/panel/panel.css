@@ -51,10 +51,20 @@
      LANE lane/strip-controls (2026-10-09): the owner asked for a SMALLER strip
      (~2/3 of the original). The ORIGINAL measurement this number came from was
      150px, with the strip's chrome measured at 78px (control row + status + the
-     slab's padding and gaps, at 380x900 with the strip surface on). It is now
-     100px, and `--strip-chrome` below is still the derivation input — the grid
-     floor is `--strip-height` minus `--strip-chrome`, so both move together.
-     If a future lane re-measures the chrome, edit `--strip-chrome`, NOT the grid. */
+     slab's padding and gaps, at 380x900 with the strip surface on).
+
+     CORRECTED 2026-10-12: the paragraph that stood here said "It is now 100px,
+     and --strip-chrome below is still the derivation input — the grid floor is
+     --strip-height minus --strip-chrome". BOTH HALVES ARE NOW FALSE. The live
+     number is 40px, declared at the BOTTOM of this file next to the strip rules
+     it belongs to (the declaration that used to sit here was REMOVED, not
+     lowered — two declarations of one custom property in one :root is how a
+     later edit silently wins). And there is no grid floor left to derive: the
+     strip is ONE row (the control bar), so --strip-height minus --strip-chrome
+     describes a four-row strip that no longer exists. --strip-chrome is kept
+     ONLY as the historical 78px measurement; nothing reads it today. If a
+     future lane re-measures the strip chrome, it must first re-introduce a
+     derivation that consumes it. */
   /* WAS 100px. The strip is now the size of its own buttons (owner, 2026-10-12):
      the number lives ONCE, at the bottom of this file, next to the strip rules it
      belongs to, so the shell's re-read of --strip-height cannot disagree with
@@ -1468,28 +1478,16 @@ body[data-surface="strip"] .stripbar {
 
 /* ---------------------------------------------- the strip surface (the short one) */
 
-/* Four rows of its own: the live box takes what is left, the control row and the
-   status word are `auto`. The LIVE row keeps a floor so the product is never the
-   row that disappears — the same rule the panel's grid carries — but a much
-   smaller one, because the whole window is ~100 px (`--strip-height`).
-
-   `overflow: hidden` because the strip is sized to its content by the SHELL: if
-   the shell hands this document a taller window than the strip needs, the slab
-   must not stretch and leave a dead band, and if it hands a shorter one the live
-   box is the row that gives way. */
-body[data-surface="strip"] .panel {
-  /* DERIVED FROM THE ONE NUMBER (`:root --strip-height`), not typed twice:
-     100px - 78px = 22px floor for the live row, and the 78px is the strip's own
-     chrome (control row + status + the slab's padding and gaps), MEASURED on
-     this surface at the original 150px. Change `--strip-height` and the shell's
-     window and this floor move together. THE DERIVATION IS THE POINT — the lane
-     that shrank the strip to 100px kept `calc(var(--strip-height) - var(--strip-chrome))`
-     rather than typing a second absolute floor, so the contract survives the resize. */
-  grid-template-rows: minmax(calc(var(--strip-height) - var(--strip-chrome)), 1fr) auto auto;
-  gap: 8px;
-  padding: 10px 11px;
-  border-radius: 12px;
-}
+/* THE FOUR-ROW STRIP LAYOUT USED TO BE HERE and is deleted. It declared
+   grid-template-rows: minmax(calc(var(--strip-height) - var(--strip-chrome)), 1fr) auto auto,
+   plus gap: 8px, padding: 10px 11px and border-radius: 12px -- on the SAME selector
+   (body[data-surface="strip"] .panel) that the window-is-the-bar rule now owns, later in
+   this file and at equal specificity. Every one of those four declarations was therefore
+   already dead when it was read: the browser kept the later rule and dropped these. It is
+   removed rather than left looking live, which is the trap this file keeps being caught by.
+   The derivation it described (--strip-height minus the strip chrome) was correct for the
+   four-row strip and still lives in :root; the live rule is the one below, search for
+   THE WINDOW IS THE BAR. */
 
 /* The status block is the one thing the strip keeps from the footer: its dot,
    and a word painted by `panel.js`. The bar above it is what makes the strip
@@ -1802,27 +1800,38 @@ body[data-surface="strip"] .strip-button--chevron {
 /* ── THE STRIP'S FIXED ORDER (BASE, NOT THEME) ───────────────────────────────
  * The arrangement is the strip's, never a direction's. Flex `order` keeps DOM
  * order (tab order, screen readers) meaningful while the paint order is fixed:
- * brand · Live · theme · theme-list · transparency · open · hide · font- ·
- * font+ · Pause · status. The selectors carry `body[data-surface="strip"]` + an
- * id (a=1) so no theme's `:root[data-theme] .class` rule (a=0) can reorder or
- * move a control.
+ * brand · Live · theme · open · hide · font- · font+ · Pause · status. The
+ * selectors carry `body[data-surface="strip"]` + an id (a=1) so no theme's
+ * `:root[data-theme] .class` rule (a=0) can reorder or move a control.
  *
- * The font dial is the owner's 2026-10-09 ask (*"aumentar ou diminuir a fonte das
+ * The font dial is the owner 2026-10-09 ask (*"aumentar ou diminuir a fonte das
  * transcricoes, tanto no overlay abaixo... tanto no painel da direita"*) and it
  * sits immediately before Pause here too, mirroring `.panel__controls`, so the
- * same two controls mean the same thing on both surfaces. */
+ * same two controls mean the same thing on both surfaces.
+ *
+ * REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o bare
+ * minimum"*): the theme-list chevron and the transparency button. Both entries are
+ * gone from this list AND from the markup (panel.html), and the chevron is hidden by
+ * CSS further down because `theme-switcher.js ensureChevron` re-creates it. */
 body[data-surface="strip"] .stripbar__brand { order: 0; }
 body[data-surface="strip"] #strip-live-button { order: 1; }
 body[data-surface="strip"] #strip-theme-button { order: 2; }
-body[data-surface="strip"] #strip-theme-chevron { order: 3; }
-body[data-surface="strip"] #strip-transparency-button { order: 4; }
-body[data-surface="strip"] #strip-open-button { order: 5; }
-body[data-surface="strip"] #strip-hide-button { order: 6; }
-body[data-surface="strip"] #strip-font-smaller-button { order: 7; }
-body[data-surface="strip"] #strip-font-larger-button { order: 8; }
-body[data-surface="strip"] #strip-hide-button { order: 6; }
-body[data-surface="strip"] #strip-pause-button { order: 9; }
+body[data-surface="strip"] #strip-open-button { order: 3; }
+body[data-surface="strip"] #strip-hide-button { order: 4; }
+body[data-surface="strip"] #strip-font-smaller-button { order: 5; }
+body[data-surface="strip"] #strip-font-larger-button { order: 6; }
+body[data-surface="strip"] #strip-pause-button { order: 7; }
 body[data-surface="strip"] #strip-state { order: 99; }
+
+/* The theme-list chevron is NOT on the bare-minimum strip. It is deleted from the
+   markup, and THIS rule is what actually keeps it off: `theme-switcher.js`
+   `ensureChevron` builds a `#strip-theme-chevron` button and inserts it after the
+   theme button when the id is absent, so a markup-only removal puts it straight
+   back on the bar. `display: none` on the strip surface is therefore the load-
+   bearing part, and it is scoped so the RIGHT panel keeps its own chevron. */
+body[data-surface="strip"] #strip-theme-chevron {
+  display: none;
+}
 
 /* The wordmark, leftmost. It is the strip's brand, not a control: no hover, no
  * pointer, and `flex: none` so it never eats the row. */
@@ -1871,15 +1880,24 @@ body[data-surface="strip"] #strip-live-button svg {
   color: #e5484d;
 }
 
-/* ── TRANSPARENCY: CHROME OFF, CAPTIONS ON ─────────────────────────────────
- * `panel.js applyTransparency` flips `body[data-transparency]`. When it is on,
- * every strip control row and the caption box's own label row are hidden, so
- * only the captions remain. The shell owns bringing the chrome back (it is the
- * thing that can resize/click-through); this is the panel's half. */
-body[data-surface="strip"][data-transparency="on"] .stripbar,
-body[data-surface="strip"][data-transparency="on"] .captions__bar {
-  display: none;
-}
+/* ── TRANSPARENCY: REMOVED, MEASURED (2026-10-12) ────────────────────────
+ * The two rules that were here (`body[data-surface="strip"][data-transparency="on"]
+ * .stripbar/.captions__bar { display: none }` and the same pair for `.panel` further
+ * down) ARE DELETED, and with them the `#strip-transparency-button` itself.
+ *
+ * THEY WERE THE BUG. Measured in `_main/webview-run.log` on the owner's shell:
+ * two in-window clicks (points (1008,955) and (1005,951), both inside the strip's
+ * rect 1040x100@(440,920)) immediately before `TRANSPARENCY_ON click_through=true
+ * captions=kept` (line 114746). After that line the window was:
+ *   • display:none on the slab, i.e. NOTHING painted by the document, and
+ *   • WS_EX_TRANSPARENT, so the owner could not click anything back.
+ * The only recovery was the hotkey, and he did not know that: *"cliquei num botao e
+ * ele sumiu"* / *"agora ta so a cor solida de volta, inteira"*.
+ *
+ * Why the CHEVRON also goes: the strip is now the bare-minimum bar (owner's order
+ * 2026-10-12: *"o painel de baixo, deve conter apenas o bare minimum"*), so the theme
+ * chevron is hidden on this surface. THE BUTTON ITSELF IS NOT DELETED — it is the
+ * header's own control on the right panel, where every button lives now. */
 
 /* A control whose backing shell call does not exist yet: visibly inert, and it
    SAYS so in its title instead of pretending (`panel.js applyPauseAvailability`
@@ -2534,11 +2552,20 @@ body[data-surface="strip"] .status .chrome {
 
    Three things change here, and each is the owner's own word:
      1. NO CAPTION on the strip. `.captions` is display:none on this surface.
-     2. SMALLER AND NARROWER. `--strip-height` drops 100 -> 40 and the slab stops
-        filling the window: the body stops painting its dark base on this surface
-        and `.panel` shrinks to `max-content`, so what is on screen is the button
-        row and nothing else. The window stays the shell's 1040x40 at the bottom;
-        the extra width is transparent and click-through.
+     2. SMALLER AND NARROWER. `--strip-height` drops 100 -> 40, so the BAR is the
+        height of its own buttons.
+
+        CORRECTED 2026-10-12 (the owner reported the bug this caused): the two
+        sentences that stood here said the body "stops painting its dark base on
+        this surface" and that `.panel` "shrinks to max-content ... the extra
+        width is transparent and click-through". MEASURED, THAT IS THE BUG. The
+        shell hands this document a 1040x100 window (its saved rect beats the CSS
+        variable) and paints every unpainted pixel with its OPAQUE #0B0F14 form
+        colour, so a transparent body plus a centred max-content pill IS the
+        owner's "uma cor solida, uma div inteira. no meio dela, tinha o painel de
+        baixo". The width is the SHELL's to change; a document that wants a narrow
+        strip cannot get one by refusing to paint. The bar now FILLS the window
+        (rule 1 below) and the narrowness request is recorded as cross-lane.
      3. LINHAR. `#caption-float` is a SIBLING of `.panel`, not a child — the owner's
         rule is that nothing goes on top of the current panel or in the panel's
         div. It is the zip's `CaptionStage.tsx` translated: bottom-anchored,
@@ -2559,34 +2586,68 @@ body[data-surface="strip"] .status .chrome {
   --float-height: 220px;
 }
 
-/* ── 1. THE STRIP IS THE BUTTON ROW AND NOTHING ELSE ──────────────────────── */
-
-body[data-surface="strip"] {
-  /* The dark base was the RENDER PROTECTION (a broken paint must never be white),
-     and on this surface it is now what makes the strip look 1040px wide. The slab
-     below is one simple rule that is guaranteed to paint, so the base steps back
-     and the strip becomes the size of its buttons. */
-  background: transparent;
-}
+/* ── 1. THE STRIP IS THE WINDOW, AND THE WINDOW IS A PANEL ──────────────
+ * MEASURED ROOT CAUSE of the owner's 2026-10-12 report (*"ta uma cor solida, uma
+ * div inteira. no meio dela, tinha o painel de baixo. cliquei num botao e ele sumiu
+ * e agora ta so a cor solida de volta, inteira"*). Three facts, all measured on
+ * the shell the owner is running (log `_main/webview-run.log`, pid 33248):
+ *
+ *   1. THE WINDOW IS 1040x100, NOT 1040x40. Line 114720:
+ *      `STRIP_HEIGHT from=148 to=40 source=css css_value=40` — the shell READ the
+ *      40px below — and the lines right after it still dock `window=1040x100@(440,920)`
+ *      and `panel client area forced to 1040x100`. The saved rect in
+ *      `_main/panel-visibility.json` (`geometry.surface=strip, 1040x100`) is what the
+ *      shell's `geometry_for` returns, so the CSS height never reaches the HWND.
+ *      Cross-lane; named in the receipt.
+ *   2. THE UNPAINTED WINDOW IS NOT SEE-THROUGH. The shell paints the form itself
+ *      with an OPAQUE `#0B0F14` (`sotto_webview.py:3926-3931`, "the colour of the thing
+ *      the owner sees when the WebView2 does not paint"), and the strip's margins are
+ *      never made click-through — except by the transparency toggle, which is the
+ *      other half of the report.
+ *   3. THE BUTTON HE MADE IT DISAPPEAR IS THE TRANSPARENCY ONE.
+ *      `#strip-transparency-button` → `panel.js applyTransparency(true)` → the
+ *      `body[data-surface="strip"][data-transparency="on"] .panel { display: none }`
+ *      rule that was in this block → the only node that STILL painted vanished, so
+ *      the window became 100% the shell's solid colour and stayed that way: the
+ *      shell also flips WS_EX_TRANSPARENT, so he could not click the button back.
+ *      Log: two in-window clicks at (1008,955)/(1005,951) then
+ *      `TRANSPARENCY_ON click_through=true captions=kept` (line 114746).
+ *
+ * The contract this file was BUILT on is restored here — `panel.html:101-106`: "the
+ * slab fills the window and is the only element that takes pointer events. There is
+ * NO transparent margin inside this window". Shrinking the slab to a centred
+ * max-content pill did not make the strip narrower; it made the window a solid
+ * colour with a pill floating in the middle of it. */
 
 body[data-surface="strip"] .panel {
-  /* One row, no gaps, no padding of its own — the padding moves to the stripbar
-     so the slab hugs the buttons evenly. */
-  grid-template-rows: none;
+  /* THE WINDOW IS THE BAR. The geometry comes from the base `.panel` rule
+     (absolute, inset 0); the overrides below only change what is INSIDE it: ONE
+     row — the control bar — so a shell handing out 40px and one still handing out
+     100px both render instead of one of them breaking. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 0;
-  padding: 4px 6px;
-  border: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(11, 15, 20, 0.82);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.42);
-  /* Centred in the window, and only as wide as the row. `right: auto` + the
-     transform is what centres an over-constrained absolute box. */
-  left: 50%;
-  right: auto;
-  width: max-content;
-  max-width: calc(100% - 24px);
-  transform: translateX(-50%);
-  overflow: visible;
+  background:
+    linear-gradient(180deg, rgba(17, 24, 35, 0.97) 0%, rgba(11, 15, 20, 0.98) 100%);
+  /* An outer shadow is invisible by construction: the window ends where the bar
+     ends, so it would be clipped to nothing (the base rule says the same). */
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* The dark base is restored: the `background: transparent` that used to sit here is
+   deleted, so the render protection at `:95-128` applies again. With the bar filling
+   the window the base is never seen while the bar paints, and it is the failure-mode
+   colour when it does not — the exact opposite of the bug above. */
+
+/* The panel's own status row is the right panel's. The strip's readout is its own
+   `#strip-state` word INSIDE the control row (`panel.js paintStripState`), so the row
+   is the only grid item on this surface and the bar stays the height of its buttons
+   whatever height the shell hands out. */
+body[data-surface="strip"] .status {
+  display: none;
 }
 
 /* NO CAPTION ON THE STRIP — the owner's rule, absolute. The strip shows no
@@ -2645,14 +2706,18 @@ body[data-surface="strip"] .strip-button--float[aria-pressed="true"] {
   color: #ffffff;
 }
 
-/* Transparency on the strip used to mean "hide the chrome, keep the captions".
-   There are no captions on the strip any more, so hiding the chrome would leave
-   an empty 1040px bar: the slab itself is what hides. The floated caption is a
-   sibling and is unaffected, which is the point — transparency is how the owner
-   keeps ONLY the caption on screen. */
-body[data-surface="strip"][data-transparency="on"] .panel {
-  display: none;
+/* The strip's own control row is hidden until the strip surface claims it — and
+   it is the ONLY thing the strip ever shows. The rules below are scoped to the
+   strip surface on purpose: the document loads this one stylesheet for every
+   surface, so a strip-only rule must never fire on the panel. No /!important/
+   anywhere, because the chevron, the font dial and the transparency button are
+   not shown on this surface at all (see the order block above: they are REMOVED,
+   not hidden — the markup is gone in panel.html). */
+body[data-surface="strip"] .stripbar {
+  display: flex;
 }
+
+/* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ──────────── */
 
 /* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ──────────── */
 
@@ -2660,6 +2725,34 @@ body[data-surface="strip"][data-transparency="on"] .panel {
    with NO BACKGROUND EVER — the lead receipt's own note on the zip's caption
    tailwind classes. It is a sibling of `.panel`: nothing is added to the panel's
    div and nothing is drawn on top of the current panel. */
+/* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ────────────
+
+/* Bottom-anchored, full width, centred inside `max-w-5xl`, click-through, and
+   with NO BACKGROUND EVER — the lead receipt's own note on the zip's caption
+   tailwind classes. It is a sibling of `.panel`: nothing is added to the panel's
+   div and nothing is drawn on top of the current panel.
+
+   THE ZIP'S "inst" DESIGN, VERBATIM (I:/cc-tmp/zip1/src/components/Caption.tsx):
+     <div className="flex max-w-[720px] items-stretch gap-4">
+       <span className="w-[4px] shrink-0 rounded-full bg-led led-breathe" />
+       <div className="min-h-[2.4em]">
+         {empty ? <p className="font-inst text-[13px] font-medium tracking-[0.3em]
+                        text-white/30">OUVINDO…</p>
+                : <p className="text-left font-inst
+                        text-[clamp(24px,3.1vw,42px)] font-bold leading-[1.14]
+                        text-white>{words}</p>}
+       </div>
+     </div>
+   and its own CSS (I:/cc-tmp/zip1/src/index.css):
+     @keyframes ledBreathe { 0%,100% { transform: scaleY(0.45); opacity: 0.65 }
+                             50% { transform: scaleY(1); opacity: 1 } }
+     .led-breathe { transform-origin: bottom; animation: ledBreathe 1.5s ease-in-out infinite; }
+
+   So: ONE 4px rounded bar on the left that BREATHES, the text leaning on it, and
+   nothing else. No plate, no box, no backdrop, no border — the owner's words:
+   *"ela mostra na minha tela, sem fundo, sem nada, extremamente clean, e apenas
+   algo pra estilizar ela ou dar corpo. tipo uma barra a esquerda dela, onde ela
+   se apoia"*. The bar IS the body. */
 .caption-float {
   position: fixed;
   left: 0;
@@ -2675,13 +2768,85 @@ body[data-surface="strip"][data-transparency="on"] .panel {
 body[data-surface="strip"][data-float="on"] .caption-float {
   display: block;
 }
+/* WHILE THE CAPTION IS FLOATED THE BAR STEPS ASIDE — to the TOP of the window, and
+   takes only its own height. The two overlays share one window, so they are STACKED,
+   never overlapped: the bare-minimum control bar at the top, the caption below it,
+   bottom-anchored, exactly where a caption belongs.
 
+   WHY NOT HIDE THE BAR: the caption is pointer-events:none and the overlay has no
+   control of its own, so a hidden bar would leave the owner with a window he cannot
+   click and no way back — the same dead end the deleted transparency button built
+   (owner: *"cliquei num botao e ele sumiu"*). The bar is the exit; the bar stays.
+
+   WHY NOT CLICK-THROUGH: bridge.setTransparency(true) would float the caption over
+   the game (the true zip behaviour) but the shell flips WS_EX_TRANSPARENT with no
+   page-side recovery — measured in the log: TRANSPARENCY_ON click_through=true, and
+   the owner could not click anything back. The window stays interactive.
+
+   THE 34px is the bar height on this surface: 26px of strip-button (panel.css
+   .stripbar .strip-button min-height:26px) + 8px of .panel padding (4px top, 4px
+   bottom). It is a layout constant, not a theme value. */
+body[data-surface="strip"][data-float="on"] .panel {
+  inset: 0 0 auto 0;
+  height: auto;
+}
+
+body[data-surface="strip"][data-float="on"] .caption-float {
+  top: 34px;
+}
+
+/* The stage is the zip's `flex max-w-[720px] items-stretch gap-4`: the bar and the
+   text column, stretched to the same height, 16px apart, centred in the window.
+   `max-height: 100%` is what makes the overlay fit ANY window height — the shell
+   hands out 100px today and 220px when it honours `--float-height`, and the
+   caption must be correct in both. */
 .caption-float__stage {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
   width: 100%;
-  max-width: 1024px;
+  max-width: 720px;
+  max-height: 100%;
   margin: 0 auto;
-  padding: 0 24px 30px;
-  text-align: center;
+  padding: 0 24px 12px;
+  text-align: left;
+}
+
+/* THE BAR THE TEXT LEANS ON. 4px, rounded, the panel's own accent gradient (so
+   it matches every theme without a second palette), and breathing — the zip's
+   `led-breathe` keyframe, 1.5s, scaleY 0.45 -> 1 -> 0.45, opacity 0.65 -> 1.
+   `transform-origin: bottom` is the zip's own: the bar grows UP from the bottom
+   of the line, which is what makes it read as a level rather than a pulse. */
+.caption-float__led {
+  flex: none;
+  width: 4px;
+  align-self: stretch;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  transform-origin: bottom;
+  animation: caption-led-breathe 1.5s ease-in-out infinite;
+}
+
+@keyframes caption-led-breathe {
+  0%, 100% { transform: scaleY(0.45); opacity: 0.65; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+/* THE RESTING BAR. `caption-float.js setListening(false)` drops `is-on`, and the
+   zip's own inactive state is the same idea (`opacity-30` on the span when nothing
+   is forming): the bar stays — it is the overlay's only body — but it stops
+   breathing and dims, so a dead engine reads as dead rather than as a pulse over
+   a silent window. */
+.caption-float__led:not(.is-on) {
+  animation: none;
+  opacity: 0.3;
+}
+
+/* The text column: the zip's `min-h-[2.4em]` div. */
+.caption-float__col {
+  min-height: 2.4em;
+  min-width: 0;
 }
 
 /* The previous line, faint and one size down: the zip paints it at 40% and it is
@@ -2700,13 +2865,23 @@ body[data-surface="strip"][data-float="on"] .caption-float {
 .caption-float__line {
   margin: 0;
   color: #f5f8fc;
-  font-size: calc(26px * var(--caption-scale));
-  line-height: 1.32;
-  font-weight: 500;
+  font-size: calc(clamp(24px, 3.1vw, 42px) * var(--caption-scale));
+  line-height: 1.14;
+  font-weight: 700;
   letter-spacing: 0.004em;
   text-shadow:
     0 2px 18px rgba(0, 0, 0, 0.88),
     0 1px 2px rgba(0, 0, 0, 0.72);
+}
+
+/* The zip's empty state: *"OUVINDO…"* — 13px, tracking 0.3em, white at 30%.
+   Shown while the engine is listening and no line has closed yet. */
+.caption-float__line.is-empty {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: calc(13px * var(--caption-scale));
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
 }
 
 /* The listening meter: the zip's own three bars, collapsed to one fill the
@@ -2715,7 +2890,7 @@ body[data-surface="strip"][data-float="on"] .caption-float {
 .caption-float__meter {
   height: 3px;
   width: 132px;
-  margin: 14px auto 0;
+  margin: 14px 0 0;
   border-radius: 99px;
   background: rgba(255, 255, 255, 0.16);
   overflow: hidden;
@@ -2747,5 +2922,21 @@ body[data-surface="strip"][data-float="on"] .caption-float {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* HEIGHT ADAPTATION. The shell hands the strip 100px today (measured: the saved
+   rect in `_main/panel-visibility.json` wins over `--strip-height: 40px`) and
+   220px when it honours `--float-height`. The caption must be correct in both, so
+   the chrome that is not the caption steps aside when the window is short: the
+   previous line, the meter and the credits. The bar and the live line never go. */
+@media (max-height: 139px) {
+  .caption-float__prev,
+  .caption-float__meter,
+  .caption-float__credits {
+    display: none;
+  }
+  .caption-float__stage {
+    padding-bottom: 4px;
+  }
 }
 
