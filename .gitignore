@@ -122,3 +122,6 @@ _main/move-robocopy.log
 _main/gitignore-ORIGINAL.txt
 _main/_probe-sqlite-cron.py
 _main/_probe-crons.py
+# diarization / source-separation model assets: local only, like worker/models/
+# (S5 measured MossFormer2_SS_16K 670 353 271 B installed 2026-10-12; weights are not repo content)
+_main/diar-models/
