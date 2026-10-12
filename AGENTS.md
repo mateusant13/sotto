@@ -703,6 +703,14 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   no longer exists; seed the tracked set from the app's log line. (b) "0 visible
   in N samples" is not absence: the same oracle printed 0 of 213 and 141 of 262 in
   two passes of the SAME subject.
+  **NAO RECONCILIADO — nao leia este bullet sozinho.** O MESMO instrumento
+  (`_main/panel-startup-flash-census.py`) sustenta a nota de 2026-10-11 no bullet do gate, mais acima,
+  que mede `live` **0/20** launches com a janela mapeada a 25 ms — e o proprio censo de 25 ms citado la
+  mostra **18/20** (19/20 sem a cura). Dois numeros, o mesmo instrumento, o mesmo alvo, **nenhum
+  vencedor escolhido aqui**; a ordem do dono proibe re-medir, portanto quem reabrir isto corre
+  `_main/panel-startup-flash-census.py` nesta revisao antes de acreditar num dos dois. A contradicao
+  esta declarada nas DUAS pontas de proposito: um leitor pode chegar por qualquer uma delas.
+  Portao: `_main/panel-flash-contradiction-oracle.py` (exige ponteiro nas duas pontas).
 
 - **Alt+C IS THE APP'S ONLY CONTROL, so it now has a fallback chain, a single-instance lock and a
   loud failure — all three measured 2026-10-07, do not simplify them away.** `Alt+C` registers on its

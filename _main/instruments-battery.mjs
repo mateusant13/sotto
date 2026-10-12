@@ -49,6 +49,8 @@ const py = [
   ['_main/device-ladder-rescan-oracle.py --neg-arm', 'ladder-rescan neg'],
   ['_main/selftest-quality-oracle.py', 'selftest-quality (rows #25/H1)'],
   ['_main/selftest-quality-oracle.py --neg-arm', 'selftest-quality neg'],
+  ['_main/panel-flash-contradiction-oracle.py', 'flash-contradiction (rows #46/F3)'],
+  ['_main/panel-flash-contradiction-oracle.py --neg-arm', 'flash-contradiction neg'],
 ];
 
 const node = [
