@@ -23,9 +23,24 @@ MEASURED FROM THE ARTEFACT (_main/_live-app.log, the run the document quotes):
     reader who opens the file today may think it points at a missing directory.
 
 WHAT REMAINS, and it is a hypothesis list, not a finding: the UI thread stalling inside the navigation
-handlers; the invisible creation dance racing the navigation; and the service killing the child (the same
-launch recorded 127 against the wrapper). Each has a one-line falsifier that needs a relaunch. The
-artefact cannot separate them, and this oracle says so rather than picking one.
+handlers; and the invisible creation dance racing the navigation. Each has a one-line falsifier that needs
+a relaunch. The artefact cannot separate them, and this oracle says so rather than picking one.
+
+THE THIRD HYPOTHESIS IS RECLASSIFIED HERE, and that is this revision contribution. It read "the service
+killed the child (the same launch recorded 127 against the wrapper)". Measured against the artefact and the
+live shell:
+  * the shell has exactly ONE hard exit, os._exit(code), and it is ALWAYS preceded by the log line
+    SHELL_EXIT rc={code} reason={reason} -- so "the shell exited with 127" would have left that line.
+  * the artefact carries ZERO SHELL_EXIT lines, while PROVING the child ran (15 lines written).
+  * a process killed from outside yields neither 127 nor a SHELL_EXIT: bash reports the child code when the
+    child EXITS, and 127 when a command is NOT FOUND.
+  So the 127 is the SUPERVISOR report of a process it terminated; it is not an app exit code, and the
+  hypothesis as written is not an app-side cause. That narrows the list to (i) and (ii) above.
+
+AND THE 127 EVIDENCE ITSELF IS A QUOTE THAT CANNOT BE RE-MEASURED: the document quotes
+C:/Users/Administrador/.omp/run/daemons/26e631d39281aff7/daemons/sotto-app/{spec,meta}.json "verbatim from
+disk", and that directory is ABSENT today (measured 2026-10-12). This oracle asserts the QUOTE is still in
+the document and says out loud that its source is gone -- a snapshot, not a live reading.
 
 --neg-arm rewrites a COPY of the artefact with transparent=false and requires the cause-1 arm to flip.
 """
@@ -71,6 +86,7 @@ def checks(path, mtime_limit=None):
     out["old_path"] = "app\\electron\\panel.html" in joined or "app\\electron\panel.html" in joined
     out["no_second_stage"] = joined.count("STAGING_LOADED") == 1
     out["no_preload_active"] = "PRELOAD_ACTIVE" not in joined
+    out["no_shell_exit"] = "SHELL_EXIT" not in joined
     return m, out
 
 
@@ -115,26 +131,44 @@ def main(argv=None):
     say("  artefact: %d bytes, %d lines, crlf=%d bare_lf=%d ends_with_LF=%s"
         % (m["bytes"], len(m["lines"]), m["crlf"], m["bare_lf"], str(m["ends_lf"]).lower()))
     say("  last line: %s" % m["lines"][-1][:96])
+    shell_path = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
+    shell = open(shell_path, encoding="utf-8", errors="replace").read()
+    contract = ("SHELL_EXIT rc={code} reason={reason}" in shell) and ("os._exit(code)" in shell)
+    doc_path = os.path.join(ROOT, "docs", "audit", "launch-entry.md")
+    doc = open(doc_path, encoding="utf-8", errors="replace").read()
+    quoted = '"exitCode":127' in doc.replace(" ", "")
+    harness = "C:/Users/Administrador/.omp/run/daemons/26e631d39281aff7/daemons/sotto-app"
+    say("  shell exit contract (SHELL_EXIT then os._exit): %s" % str(contract).lower())
+    say("  the doc still carries the 127 quote: %s; its source dir exists: %s"
+        % (str(quoted).lower(), str(os.path.isdir(harness)).lower()))
     for key, label in (("last_is_staging", "the last line IS the staging navigation"),
                        ("core_yes", "core=yes (the bridge was up)"),
                        ("no_second_stage", "exactly ONE STAGING_LOADED (no reload loop)"),
                        ("no_preload_active", "no PRELOAD_ACTIVE (the panel never loaded)"),
                        ("transparent_true", "CAUSE 1 EXCLUDED: transparent=true"),
                        ("on_screen", "CAUSE 2 EXCLUDED: on-screen geometry, no -32000"),
-                       ("old_path", "the path predates the app/panel rename")):
+                       ("old_path", "the path predates the app/panel rename"),
+                       ("no_shell_exit", "CAUSE 3 RECLASSIFIED: no SHELL_EXIT, so the shell never exited itself")):
         say("  %-52s %s" % (label, str(out[key]).lower()))
     wrong = []
     for key in ("last_is_staging", "core_yes", "transparent_true", "on_screen", "old_path",
-                "no_second_stage", "no_preload_active"):
+                "no_second_stage", "no_preload_active", "no_shell_exit"):
         if not out[key]:
             wrong.append("the exclusion " + key + " no longer holds on the artefact")
+    if not contract:
+        wrong.append("the SHELL_EXIT/os._exit contract is gone from the shell -- the deduction above is void")
+    if not quoted:
+        wrong.append("the document no longer carries the 127 quote the reclassification rests on")
     if not m["ends_lf"]:
         wrong.append("the artefact no longer ends with LF -- it would look like a killed writer")
     say("")
     say("VERDICT: " + ("PASS" if not wrong else "FAIL")
         + " -- the two known causes are excluded BY THE ARTEFACT (not by the code comments), a third"
-        " exclusion is added (the path predates the rename), and naming the real cause still needs a"
-        " relaunch, which the owner stop order forbids")
+        " exclusion is added (the path predates the rename), and the service-kill hypothesis is"
+        " RECLASSIFIED as supervisor-side: ZERO SHELL_EXIT lines prove the shell never took its own exit"
+        " path, and a killed child yields neither 127 nor that line. The remaining causes are (i) the UI"
+        " thread stalled in the navigation handlers and (ii) the invisible creation dance racing the"
+        " navigation; naming either still needs a relaunch, which the owner stop order forbids")
     for item in wrong:
         say("  wrong: " + item)
     return 0 if not wrong else 1
