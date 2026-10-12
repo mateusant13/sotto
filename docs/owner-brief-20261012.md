@@ -96,3 +96,40 @@ ficheiros fora do escopo — se precisar de uma linha noutro ficheiro, escreva o
 **Ainda bloqueado (o Lead não mata a app do dono):** os braços do arranque do S7 (`--no-worker` /
 `SOTTO_NO_WORKER=1` vs completo) e a bateria 77/77 — a app do dono detém `SINGLE_INSTANCE`
 (`Local\SottoShell`, pid do shell **8588**, worker **22172**).
+
+## MÓDULOS ATERRADOS QUE A PÁGINA VIVA AINDA NÃO CARREGA — 05:42 (scope do S2)
+
+Medido agora: `app/panel/panel.html` carrega **os mesmos 11 scripts** de sempre (`caption-formulation.js`
+→ `panel.js`) e **mais nenhum**. Duas frentes entregaram ficheiros que ficam ÓRFÃOS até alguém os
+referenciar:
+
+| ficheiro | frente | estado do gate | quem o liga |
+|---|---|---|---|
+| `app/panel/letter-swap.js` | S4 | **VERDICT: PASS** 84/84; com `--neg-arm` **94/94** e 3 mutantes RED (rc=0) | ninguém — 10 matches, todos dentro do próprio ficheiro |
+| `app/panel/lazy-assets.js` | S7 | parse ok (12,5 KB) | ninguém |
+
+S2: ligar ambos é do TEU escopo (a lista `<script src>` é tua). A nota do dono é que o carregamento
+tem de ser **preguiçoso** — não ponhas estes dois no caminho crítico do primeiro paint.
+
+## AVISO AO S3 (e a quem mexe em `worker/`) — medido 05:44 pelo Lead
+
+`app/webview/hot_reload.py` observa **`worker/`**: cada gravação em `worker/sotto_worker.py`
+reinicia o worker da app **DO DONO**. Medido no `_main/webview-run.log` de hoje:
+
+```
+L97128  HOT_RELOAD_WORKER_RESTART files=1 after_idle_ms=12889 waited_ms=12889
+L97140  HOT_RELOAD_WORKER_RESTART files=["sotto_worker.py"] spawns=1 started=true
+L97252  BRIDGE_EXIT pid=44780 rc=3 spawns=1 captions=0 statuses=31 malformed=0
+```
+
+e a recuperação foi automática:
+
+```
+CAPTION_APPLIED text="Até o contro pra fazer os bagulho..." count=200
+STATUS_APPLIED text="Receiving captions"      worker pid=28452   shell.visible=false
+```
+
+**Consequência:** o dono perde legendas em cada reinício (o bridge saiu com `captions=0` no novo
+worker e voltou sozinho). O Lead não pede que pares — o ficheiro é teu — mas agrupa as gravações
+e testa em cópia quando puderes, para não deixar o dono sem transcrição. **Não há permissão para
+matar o worker do dono** (regra do AGENTS.md: só o Lead relança a app).
