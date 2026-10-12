@@ -289,7 +289,7 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | F6 | guarda morta: panel.js le engine.state().provisionalRoute, campo que o motor nunca devolve (`auditoria-completa-20261007.md:68`) | **APPLIED** — §11 :621 + panel-state-guard GREEN 3/3 (:587): state().provisional existe e bate com o literal |
 | F7 | a app nao tem como ser fechada pela UI (`auditoria-completa-20261007.md:69`) | **APPLIED** — §11 :621: bridge.quit() (panel.js:961) e um controlo que o chama |
 | F8 | dois classificadores independentes do mesmo status (`auditoria-completa-20261007.md:70`) | **APPLIED** — §11 :621: statusPayload/statusKind no painel |
-| F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |
+| F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | `app/panel/panel.js:2812-2815`, `app/webview/sotto_webview.py:3343` + `:4835-4867`, `app/panel/panel.html:417-418` (a condicao do campo), `_main/webview-run.log` (o run real), `_main/panel-search-keyboard-oracle.py` | **APPLIED — a metade do TECLADO esta REFUTADA nesta revisao; a metade do BACKEND continua verdadeira e e por desenho.** O audit estava certo sobre o mecanismo que nomeou — `_on_before_show` punha `WS_EX_NOACTIVATE` e `show_panel` mostra com `SW_SHOWNOACTIVATE` (certo para APARECER: o Alt+C nao deve roubar foco), mas uma janela `WS_EX_NOACTIVATE` tambem nao vem para a frente com um clique, portanto o painel nunca podia ganhar foco e o `<input type="search" id="search-input">` nunca podia receber um caracter. **E A CORRECCAO JA ESTA NO CODIGO**: `panel.js:2812-2815` liga `mouseenter`/`mouseleave` a `bridge.setPointerInteractive(active)`; a shell recebe o payload no IPC (`:3343`) e `set_pointer_interactive` (`:4835-4867`) **LIMPA `WS_EX_NOACTIVATE` e o click-through enquanto activo** e **repoe os dois** ao sair (`remove=WS_EX_NOACTIVATE` / `add=WS_EX_NOACTIVATE`), com o `SW_SHOWNOACTIVATE` do `show_panel` **intacto** — aparecer continua a nao roubar nada; o unico momento em que o painel pode ser activado e aquele em que o ponteiro esta sobre ele. **MEDIDO NUM RUN REAL** (`_main/webview-run.log`, o recibo das execucoes do dono): **312** `POINTER_INTERACTIVE active=true` (com `click_through=false noactivate=false`) contra **309** `active=false` (com os dois a true), e **0 violacoes** da invariante `active=X <=> click_through=~X <=> noactivate=~X` sobre **621** linhas — ou seja a janela RECEBE direitos de activacao, centenas de vezes, na app enviada. **O log e VIVO e os numeros DERIVAM** (671/337/334 numa leitura minutos antes): o oraculo re-deriva e imprime os actuais, nao os lembra — foi um numero fixo meu que a primeira versao do veredicto trazia, corrigido. **O QUE CONTINUA VERDADEIRO (a metade que sobra da linha):** o campo esta **DESABILITADO enquanto nao houver writer** (`panel.html:417-418`, "the search input is disabled while no writer exists") — condicao de **conteudo**, nao de teclado: um historico vazio nao e pesquisavel nem com foco. E a decisao do dono registada na fonte (`:481`, `:762`) mantem-se: alimentar um writer ou remover a caixa e escolha dele. **NAO MEDIDO:** que uma TECLA chegue ao campo — nada aqui escreveu nele, e exige o lancamento que a ordem do dono proibe; o residual e um **teste de teclado**, nao uma falha de fiacao. Instrumento `_main/panel-search-keyboard-oracle.py` (nao lanca nada): mede a cadeia nos ficheiros live, a invariante sobre **todas** as linhas do log (nao as conta: le-as), a condicao propria do campo, e tem **controlo** — uma linha de uma COPIA do log tornada contraditoria e apanhada (1 violacao), senao o braco 2 seria so uma contagem | |
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |
 | F11 | max_symbols_per_step usado como orcamento do chunk, nao por frame (`auditoria-completa-20261007.md:73`) | **APPLIED** — :771: verificado por caminho de codigo (teto por frame); a corrida do modelo nao foi feita |
 | F12 | o segundo passe nao repoe o front-end cache-aware nem o VAD (`auditoria-completa-20261007.md:74`) | **APPLIED** — §11 :615: a sonda fresh-processor da GREEN (dois processadores distintos, buffers proprios); o TEXTO do segundo passe nao foi medido (:768-770) |
@@ -304,8 +304,8 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 133
-- **OPEN:** 3
+- **APPLIED:** 134
+- **OPEN:** 2
 - **IN-FLIGHT:** 0
 
 **NOTA 2026-10-11 (TERCEIRA auditoria — a CADEIA DE PROVA, nao as afirmacoes):** as duas rondas
@@ -328,7 +328,7 @@ eram erro MEU, nao do mapa**. `--neg-arm` corre sobre dois mapas sinteticos (um 
 inexistente, outro a citar instrumento com risco de lancamento) e exige os dois sinalizados; medido
 `absent=1` e `risky=1`, `NEG-ARM PASS`.
 
-Conferencia: 133 + 3 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 134 + 2 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
 **NOTA 2026-10-11 (SEGUNDA reconciliacao — o mesmo defeito noutra forma):** o mapa tem DUAS especies de

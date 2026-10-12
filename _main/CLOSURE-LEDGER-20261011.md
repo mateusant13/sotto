@@ -7,9 +7,9 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 133 / open 3 / in-flight 0** as this file is written, read from the gate itself.
+**applied 134 / open 2 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 3 rows whose state cell reads OPEN
+## 1. The live product — 2 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -20,12 +20,11 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
 
-### panel/rendering (2)
+### panel/rendering (1)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `docs/audit/launch-entry.md` §4 (o doc vive em `docs/audit/`, nao em `_main/` como a linha dizia), `_main/_live-app.log` (o artefacto), `_main/staging-hang-artefact-oracle.py` | **OPEN** — **o artefacto foi re-medido e EXCLUI tres causas; a terceira causa continua por nomear, e nomea-la exige relancar (proibido).** Medido nesta revisao sobre `_main/_live-app.log` (o |
-| F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 
 ## 2. What BLOCKS the open rows, by class
 
