@@ -340,11 +340,12 @@ instrumento vivo);
 faltava, o SINAL corrigido contra a medicao, e a regra de juncao nomeada como historica com a viva
 ao lado);
 #9 e a F2 herdada dela (o `flags` descartado -> APPLIED: o unico defeito vivo apanhado pelo sweep
-- **LEDGER DE FECHO (2026-10-11):** `_main/CLOSURE-LEDGER-20261011.md` enumera TODAS as linhas
-ainda abertas (74 na contagem deste portao), o que bloqueia cada uma, as duas fontes do
-`_moved/aireplay` (DEBT-LEDGER + os dois TO-BE-ANSWERED-BY-OWNER) e as 7 perguntas da lease-audit
-DECIDIDAS pelo Lead. E gerado do proprio mapa e cita os numeros do portao, nao os de um parser
-proprio.
+LEDGER DE FECHO (2026-10-11): `_main/CLOSURE-LEDGER-20261011.md` enumera TODAS as linhas ainda
+abertas (74 na contagem deste portao), o que bloqueia cada uma, as duas fontes do `_moved/aireplay`
+(DEBT-LEDGER + os dois TO-BE-ANSWERED-BY-OWNER) e as 7 perguntas da lease-audit DECIDIDAS pelo
+Lead. E gerado do proprio mapa e cita os numeros do portao, nao os de um parser proprio. (Sem
+marcador de lista de proposito: este portao le um bullet `- ` como LINHA de achado, e foi assim
+que esta nota o pos em RED, com 140 achados em vez de 139, na primeira tentativa.)
 foi corrigido no PRODUTO — `DATA_DISCONTINUITY` contado nos dois loops, com o mutante que o prova).
 
 ---
