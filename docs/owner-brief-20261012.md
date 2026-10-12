@@ -189,3 +189,38 @@ acrescenta um braco que prove a nova janela.
 
 Verbos do dono: *"ah, e se o mesmo modelo ja existe carregado na vram, reutiliza ele. se nao vai
 usar duplicados, do mesmo modelo, q eu tenho de outros projetos."*
+
+## LEAD CORRIGIU 2026-10-12 13:0x — os recibos da `run.cmd` nunca chegavam ao log (e mais uma tarefa para o S7)
+
+**Defeito medido pelo Lead (nao e de nenhuma lane):** `cmd.exe` nao consegue fazer append a
+`_main/webview-run.log` enquanto a app corre — erro 32, "o arquivo ja esta sendo usado por outro
+processo" — e com o arranque automatico do Windows registado a app corre essencialmente SEMPRE:
+
+```
+cmd /c "echo X >> _main/webview-run.log"   -> erro 32, log +0 B
+py  open("...","a").write("X\n")          -> log +17 B
+```
+
+Os dois recibos do wrapper (a RECUSA de flag, linha G5, e o HANG, linha G3) nunca aterravam.
+Corrigido em cODIGO pelo Lead: novo `app/webview/run-cmd-log-append.py`, chamado com `%PYW%` nos dois
+sitios da `run.cmd`. O helper fica AO LADO do wrapper porque os bracos de gap do
+`run-cmd-exit-oracle.py` copiam uma arvore que leva `app/webview/*.py` e deixam `_main/` vazio —
+um helper em `_main/` desaparece nessas copias (medido: o braco G3 perdeu o recibo).
+
+Gates com a app do dono a correr: `preflight-refusal-visible-oracle` **PASS**
+(arm1 rc=2, log +821 B; arm3 `--check-args` rc=0, log +0 B; arm4 CONTROL pre-fix cego, +0 B) e
+`run-cmd-exit-oracle` **GAP-VERDICT PASS 4/4** + **CENSUS-VERDICT PASS**. Recibo:
+`_main/receipt-20261012-owner-3-asks.md`.
+
+### Tarefa nova para o S7 (dona do shell, nao e minha)
+
+`run-cmd-exit-oracle.py` falha no braco **`help`**: o shell declara **32** flags e o `--help`
+lista **27**. Faltam `--mutex-name` (:8554), `--probe-stats` (:8508), `--probe-stats-wait` (:8510),
+`--probe-outside-click` (:8526) e `--probe-edit-mode` (:8528) — medidas hoje na revisao
+460 312 B. Decisao tua: ou dao texto de `help=` a essas cinco (aparecem no `--help`), ou o gate
+passa a comparar contra a lista REAL de flags escondidas — de qualquer forma o numero 32 tem de
+continuar a ser o que o parser declara, nao o que o help imprime. **NAO alteres o output do
+`--help` sem rever o pin do AGENTS.md:** a frase `re-measured 2026-10-12 the output is 4956 B, 79
+lines, 79 CRLF / 0 bare LF, rc 0, sha256 91F73971...` e verificada por
+`_main/agents-md-pins-oracle.py`; se o texto mudar, o pin muda COM a ancora intacta
+(a frase `re-measured 2026-10-12 the output is` e o que o oraculo procura).
