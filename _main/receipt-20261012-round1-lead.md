@@ -95,8 +95,17 @@ para a frente S2 e para o S4).
 
 ## 6. Estado do chão no fim da ronda
 
-- `git status --porcelain` = 246 entradas (antes: 256; os 5 `_audio-*` foram repostos e não
-  são trabalho de frente).
-- App do dono: **aberta, a transcrever, sem janela visível** (shell 8588 pythonw, worker 22172).
-- Frentes fechadas: **S5** (1 de 7). Em voo: S6 (oráculo vermelho), S1 (oráculo truncado),
-  S4 (parse ok). Sem artefactos ainda: S2, S3, S7.
+- `git status --porcelain` = 239 entradas (era 256 no início da ronda; menos os 4 caminhos comitados,
+  os 12 mutantes e o brief; o resto é trabalho de frente/other-lane, **não comitado por mim**).
+- Commits desta ronda, todos no remoto, `HEAD == origin/feat/build-verify-1`:
+  `1f43b3b` (recibo ronda 1 + S5 + MossFormer2 + `diar-models` git-ignorado) →
+  `79bd753` (12 mutantes re-baselados, verificados pelo gate) → `7eae6f7` (brief actualizado).
+- **Nota de método honesta:** na `7eae6f7` o `git commit` devolveu **exit=1** com
+  `no changes added to commit`. Não ignorei o código: verifiquei o **efeito** —
+  `git show --stat 7eae6f7` = **um ficheiro**, `docs/owner-brief-20261012.md`, +40/−2, com
+  a minha mensagem; e a causa visível é uma etapa *secundária* do hook (um commit em separado
+  dentro de `worker/` — os caminhos impressos são `history-verify/`, `ortprof_*`, `runs/`,
+  `*.zip`, `sotto/`) que não tinha nada staged. **A bateria do pré-commit passou**
+  (15 suites, 9 probes, `VERDICT suites_ok=true gate_ok=true`).
+- Um **stash de 2026-10-08 09:14:22** (`wip-boot-grace-before-strip-work`) existe e **não é desta
+  sessão** — não é meu, não mexo nele.
