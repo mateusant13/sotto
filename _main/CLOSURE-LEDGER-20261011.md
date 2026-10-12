@@ -7,19 +7,18 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 65 / open 74 / in-flight 0** as this file is written, read from the gate itself.
+**applied 72 / open 63 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 75 rows whose state cell reads OPEN
+## 1. The live product — 63 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
 
-### docs/instruments (10)
+### docs/instruments (9)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 30 | `run-cmd-exit-oracle` esta RED hoje no conjunct do census | `_main/run-cmd-exit-oracle-after.json` | **OPEN** — `verdict: FAIL`, "arms=PASS census=FAIL" |
-| 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **OPEN** |
 | F1 | docs/README.md:8 diz que nenhum codigo de aplicacao foi escrito (`doc-vs-code.md:21`) | **OPEN** — herdado da linha #44 |  |
 | F4 | a figura fp16 do AGENTS.md (1230 MB) nao bate com o disco (`doc-vs-code.md:24`) | **OPEN** — herdado da linha #47 |  |
 | F8 | full-audit descreve a regra de juncao de 1200 ms (`doc-vs-code.md:28`) | **OPEN** — herdado da linha #51 |  |
@@ -29,30 +28,23 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
 | F18 | excepcoes fora dos poucos try escapam ao contrato JSONL (EOF sem done/error) (`auditoria-completa-20261007.md:80`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado; nada na arvore o fecha |  |
 
-### other (13)
+### other (7)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 14 | `_lock` segurado durante uma ida-e-volta de UI bloqueante (ate 4 `ExecuteScriptAsync`, 10 s cada) | `sotto_webview.py:1901` | **OPEN** |
-| 15 | `_schedule_restart` sobrescreve o timer sem cancelar o anterior | `sotto_webview.py:2210-2220` | **OPEN** |
 | 18 | o `ready` do supervisor le um stream onde a app nunca escreve (o log vai para `--log`, nao para o PTY) | `launch-entry.md §3.4.2`, `spec.json` | **OPEN** |
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
-| 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `worker/sotto_worker.py:1284-1301` | **OPEN** |
 | 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **OPEN** |
-| 40 | conjuntos de nomes de estado sensiveis a separador onde o braco JS normaliza | `sotto_webview.py:112-126` | **OPEN** |
-| 41 | linha de status sem `type` e descartada em silencio | `sotto_webview.py:2046-2051` | **OPEN** |
-| 42 | `stop()` nao emite status final no lado Python | `sotto_webview.py:1987-2004` | **OPEN** |
-| 43 | `_spawn()` corre na thread de restart SEM `_lock` | `sotto_webview.py:2222` | **OPEN** |
 | 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
 | 60 | `_on_navigation_start` faz early-return em `self.visible` → "mostrado uma vez ⇒ nunca mais auto-escondido" | `sotto_webview.py:1549` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
-### panel/rendering (15)
+### panel/rendering (14)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
-| 12 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte | `sotto_webview.py:2052-2068` | **OPEN** |
 | 27 | panel ARM A aceita UMA legenda como LIVE | `_main/panel-exit3-oracle.py:999` | **OPEN** |
 | 29 | `panel-exit3-oracle.log` STALE (mtime 03:54 < fonte 04:40) — o PASS foi ganho por uma versao de 3 bracos | `_main/panel-exit3-oracle.log` | **OPEN** — mtime 1791269670 < fonte 1791272436 |
 | 32 | o censo nao e panel-specific (alarmou em `cmd`/`dwm`/`python`) | `window-census.log` | **OPEN** |
@@ -100,15 +92,11 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |  |
 
-### worker/audio/ASR (14)
+### worker/audio/ASR (10)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
-| 11 | o falsificador "sem audio" reescreve um erro REAL do worker para `CAPTURE_NOT_STARTED`/`busy` | `sotto_webview.py:1888-1891, :196` | **OPEN** |
-| 13 | `start()` devolve `true` mesmo sem worker nenhum | `sotto_webview.py:1901-1917` | **OPEN** |
-| 22 | `use_vad` default do codigo e `False` vs ficheiro `true` vs README "on" — apagar a chave desliga VAD em silencio | `sotto_worker.py:1152` | **OPEN** |
 | 23 | `PREFERRED_DEVICES = ()` enquanto o README do worker o apresenta populado | `sotto_worker.py:94` | **OPEN** |
-| 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **OPEN** |
 | 62 | `subprocess.run(timeout=)` a volta do `electron.exe` multi-processo pode nao ser tecto [INFERENCE] | `_main/_run-hidden.py:24` | **OPEN** |
 | F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |  |
 | F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **OPEN** — herdado da linha #38 |  |

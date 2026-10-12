@@ -33,7 +33,6 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | # | achado | onde | estado |
 |---|---|---|---|
 | 2 | braco live entrega `blank_frac=1.0` (o modelo so ouve sinal de baixo nivel) — o facto que bloqueia as legendas por Alt+C | `worker/sotto_worker.py` §5 | **APPLIED** [2026-10-11] — a lane entregou: `blank-frames-root-cause.md:6-9` mede que **nada no worker esta partido** — a mistura do endpoint por omissao nao tem fala — e que a escada do verdict chamava a esse estado `model-emitted-noothing`, corrigido no verdict (fix `1900bc7b1d284ee4`) |
-| 2 | braco live entrega `blank_frac=1.0` (o modelo so ouve sinal de baixo nivel) — o facto que bloqueia as legendas por Alt+C | `worker/sotto_worker.py` §5 | **IN-FLIGHT** — lane `BlankFramesRootCause` despachada 2026-10-06T08:39:59Z; artefacto `docs/audit/blank-frames-root-cause.md` ainda ausente |
 | 3 | nenhum oraculo afirmava a cadencia de entrega de audio (segundos capturados por segundo de relogio) | `_main/` | **APPLIED** — `_main/delivery-rate-oracle.py` existe (20080 B) e o seu log corre GREEN+RED (`threshold=0.95`, `SELFTEST: PASS`) |
 | 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
 | 5 | `console-census.py` passa `CREATE_NO_WINDOW\|DETACHED_PROCESS` → canal de 0 bytes rc 0, logo `python_pids()` fica cego | `_main/_probe/console-census.py:106` | **OPEN** — ainda `creationflags=0x08000000 \| 0x00000008` |
@@ -58,7 +57,6 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
 | 20 | 7 chaves do config que ninguem le (`match`, `sample_rate`, `channels`, `block_ms`, `latency`, `partial`, `min_chars`) | `worker/config.json:5,7,8,9,10,20,21` | **APPLIED** — as 7 apagadas; `block_ms` e `min_chars` agora LIVE (`worker/config.json:9,21`, `_comment_live`) |
 | 22 | `use_vad` default do codigo e `False` vs ficheiro `true` vs README "on" — apagar a chave desliga VAD em silencio | `sotto_worker.py:1152` | **APPLIED** [2026-10-11] — `auditoria-completa-20261007.md:597` lista o default `True` e a arvore viva confirma-o: `use_vad = bool(cfg.get("model", {}).get("use_vad", True))` (`sotto_worker.py:4257`); a linha que o negava desapareceu |
-| 22 | `use_vad` default do codigo e `False` vs ficheiro `true` vs README "on" — apagar a chave desliga VAD em silencio | `sotto_worker.py:1152` | **OPEN** |
 | 23 | `PREFERRED_DEVICES = ()` enquanto o README do worker o apresenta populado | `sotto_worker.py:94` | **OPEN** |
 | 24 | `lang_id` morto durante a vida do ficheiro no git (`default=0` nunca e `None`) | `worker/config.json` / `lang_prompt.py:7-15` | **APPLIED** — `--lang-id` `default=None` (`sotto_worker.py:1031-1038`); a linha do config e alcancavel (`:1119-1120`) |
 | 25 | shell `--selftest` nao afirma qualidade do output ("verde com word-salad") | `sotto_worker.py:986-999` | **OPEN** |
@@ -78,7 +76,6 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | # | achado | onde | estado |
 |---|---|---|---|
 | 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **APPLIED** [2026-10-11] — `flat-endpoint.md:125-142` mede o pos-fix: `S_OK`/`S_FALSE` -> `COM_REF_TAKEN` e o erro `0x80004005` era o gate antigo (`:49-51` pre-fix); a arvore viva aceita `S_FALSE` (`wasapi_loopback.py:204`) |
-| 37 | `CoInitializeEx` rejeita `S_FALSE` → um segundo tap na mesma thread limpa rebenta | `worker/wasapi_loopback.py:187-189` | **OPEN** |
 | 38 | um `tick` de meio de corrida pode ser lido como total da corrida (`tag=tick` vs `tag=final`) | `app/webview/sotto_webview.py:5888` | **[2026-10-11] APPLIED** — o payload passa a levar o tag do PROPRIO worker (`fields["tag"]`, `tick` vs `final`), com `stats` como fallback, e `meter` no ramo do medidor: um tick e o total deixam de chegar ao painel com a mesma cara. Arm r38, que agora mede os DOIS ramos, + mutante `m38-stats-tag-dropped` |
 | 39 | `_pump` copia o acumulador com `np.concatenate` a cada emit | `worker/wasapi_loopback.py:492-496` | **OPEN** |
 | 40 | conjuntos de nomes de estado sensiveis a separador onde o braco JS normaliza | `sotto_webview.py:7493` | **[2026-10-11] APPLIED** — medido primeiro o que o gemeo JS faz: `worker-bridge.js:691` le `String(message.type || '').toLowerCase()` antes de ramificar e NAO existe nenhuma substituicao de separador naquele ficheiro (`replace(/[-_]` → ausente), logo a regra e SO a caixa. A shell comparava `message.get('type')` cru: a MESMA linha era legenda para um braco e `malformed` para o outro. Agora aplica a mesma regra (`str(message.get('type') or '').lower()`) e nada mais — uma segunda regra, inventada, seria vocabulario novo. Arm r40 do instrumento (`Caption` e `STATUS` recebidos; a legenda TEM de entrar) + mutante `m40-case-normalisation-removed` a comparar cru outra vez |
@@ -94,7 +91,6 @@ consegue ficar RED num defeito real; **P2** = deriva documental, cosmetico, late
 | 50 | `live-captions` deixa uma decisao supersedida de pe, com um numero de sinal trocado | `docs/live-captions-20261006.md:214-216` | **[2026-10-11] APPLIED** — a decisao "keep Electron for now" ganhou um bloco **SUPERSEDED 2026-10-07**: o swap LANDED (`app/webview/run.cmd`, pywebview+WebView2, Electron em `app/_legacy-electron/` e MORTO, ordem do dono "no fallback"), e o SINAL foi corrigido contra a medicao — a previsao era uma POUPANCA de ~214 MB e o medido na arvore da shell e um CUSTO (**416 MB vs 312 MB = +33%**, 2026-10-06). O split "~2.4 GB / engine 9% / model 89%" nunca foi re-medido depois do port |
 | 51 | `full-audit` descreve a regra de juncao de 1200 ms que o codigo ja nao tem | `docs/full-audit-transcription-20261006.md:310,326` | **[2026-10-11] APPLIED** — as duas linhas ficaram marcadas como a regra DA ALTURA (nao a embarcada) e uma NOTE nomeia a viva: `SENTENCE_GAP_S = 8` (segundos) no worker E em `app/panel/caption-formulation.js:18`, `SENTENCE_MAX_CHARS = 90` em `:21`, formulacao fora do `panel.js`; paridade gateada em `node _main/caption-renderer-integration.js` checks 6-7 (re-medido por mim: 7 PASS / 0 FAIL, rc=0) |
 | 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **APPLIED** [2026-10-11] — o proprio `AGENTS.md` retrata o texto por nome (`AGENTS.md:169`): o artefacto EXISTE em `H:\sotto\_main\exit3-armB-worker.jsonl` (3 958 B, sha256 `426EC552...`) e o "AUSENTE / DANGLING" era um falso negativo de um `statSync` sobre `worker/runs/` |
-| 53 | `AGENTS.md` cita um artefacto no caminho errado | `AGENTS.md:25` | **OPEN** |
 | 54 | AGENTS/README listam 5 chaves do config; o ficheiro tem 13 (hoje 8) | `AGENTS.md:74`, `worker/README.md:184-185` | **[2026-10-11] APPLIED** — censo de folhas do `worker/config.json` vivo (`JSON.parse` + walk): **5 chaves de topo, 11 folhas nao-comentario** (as outras 6 sao `_comment*`). O `worker/README.md` passou a listar as 11, e retracta DUAS afirmacoes falsas: parava em oito nomes e nomeava `output.partial` entre as chaves APAGADAS — essa chave ESTA presente e e LIDA (`emit_partial` e `output.partial`, `sotto_worker.py:2851`/`:3013`). A linha do `AGENTS.md` ja tinha sido corrigida nesta revisao |
 | 55 | a sonda CUDA dos providers corria no int4 independentemente do dir configurado | `sotto_worker.py:883, :934` | **APPLIED** — sonda `model_dir or DEFAULT_MODEL` (`:942`) |
 | 56 | `model-spec-oracle` nao tem braco negativo (detector de drift, nao oraculo) | `_main/model-spec-oracle.py:41` | **[2026-10-11] APPLIED** — o oraculo foi reescrito com `evaluate()` (o caminho por omissao mantem o MESMO log, as mesmas linhas e o mesmo rc 0/1) e ganhou `--neg-arm`: dois mutantes numa COPIA do `genai_config.json` em `TMPDIR`, um por constante (`chunk_samples=1234`, `blank_id=1`), que TEM de dar MISMATCH. Medido: `py -3 _main/model-spec-oracle.py` → `VERDICT: OK`, rc=0; `--neg-arm` → os dois mutantes `MISMATCH (RED as required)`, controlo vivo `OK`, `VERDICT: NEG-ARM PASS`, rc=0 |
@@ -307,12 +303,17 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 74
-- **OPEN:** 65
+- **APPLIED:** 72
+- **OPEN:** 63
 - **IN-FLIGHT:** 0
 
-Conferencia: 74 + 65 + 0 = **139** = linhas de achado no mapa (62 achados das tabelas + 76 entradas do
-indice de rotulos). Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
+Conferencia: 72 + 63 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
+uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
+quatro linhas velhas foram REMOVIDAS e o `findings_distinct` do proprio gate caiu de 139 para 135 na
+mesma corrida: um achado contado duas vezes nao e um achado a mais, era o mapa a contar LINHAS. Os
+estados das quatro linhas APPLIED nao mudaram — o que mudou e que agora existe so uma linha por
+achado. Um achado indexado duas vezes nao e um achado novo: cada entrada do indice repete,
 palavra por palavra, o estado da linha que indexa. Esta e a aritmetica que o gate verifica
 (`APPLIED + OPEN + IN-FLIGHT == findings_total`); a revisao T4 correu o gate antes e depois da edicao
 e os dois verdictos estao no recibo `_main/receipt-20261011-audit-map-t4.md`. A passagem do Lead
