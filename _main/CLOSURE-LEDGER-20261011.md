@@ -7,21 +7,18 @@ state the source itself states. It is GENERATED from the map strictly more than 
 hand — the map rows below are copied verbatim from
 `docs/audit/00-MAPA-CONSOLIDADO.md`, whose own gate (
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
-**applied 81 / open 54 / in-flight 0** as this file is written, read from the gate itself.
+**applied 104 / open 31 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 54 rows whose state cell reads OPEN
+## 1. The live product — 31 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
 
-### docs/instruments (9)
+### docs/instruments (6)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 30 | `run-cmd-exit-oracle` esta RED hoje no conjunct do census | `_main/run-cmd-exit-oracle-after.json` | **OPEN** — `verdict: FAIL`, "arms=PASS census=FAIL" |
-| F1 | docs/README.md:8 diz que nenhum codigo de aplicacao foi escrito (`doc-vs-code.md:21`) | **OPEN** — herdado da linha #44 |  |
-| F4 | a figura fp16 do AGENTS.md (1230 MB) nao bate com o disco (`doc-vs-code.md:24`) | **OPEN** — herdado da linha #47 |  |
-| F8 | full-audit descreve a regra de juncao de 1200 ms (`doc-vs-code.md:28`) | **OPEN** — herdado da linha #51 |  |
 | Finding B | roubo de foco e um verde (focus_stolen=true e sai 0) (`oracles.md:409`) | **OPEN** — herdado da linha #28 |  |
 | Finding C | run-cmd-exit-oracle esta RED hoje no conjunct do census (`oracles.md:413`) | **OPEN** — herdado da linha #30 |  |
 | Finding D | um braco negativo sem recibo (o bogus do runcmd-entry-driver.py) (`oracles.md:418`) | **OPEN** — herdado da linha #58 |  |
@@ -37,23 +34,20 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | 58 | o braco `bogus` do `runcmd-entry-driver.py` nao tem recibo | `_main/runcmd-entry-report.json` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
-### panel/rendering (11)
+### panel/rendering (8)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
 | 27 | panel ARM A aceita UMA legenda como LIVE | `_main/panel-exit3-oracle.py:999` | **OPEN** |
 | 46 | `AGENTS.md` contradiz-se sobre o painel no arranque ("0 de 41" vs "visivel 50 ms–7 s") | `AGENTS.md:169` vs `:215` | **OPEN** |
-| F3 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte (`shell-bridge.md:123`) | **OPEN** — herdado da linha #12 |  |
 | F3 | AGENTS.md contradiz-se sobre o painel no arranque (`doc-vs-code.md:23`) | **OPEN** — herdado da linha #46 |  |
-| F7 | live-captions deixa uma decisao supersedida de pe (`doc-vs-code.md:27`) | **OPEN** — herdado da linha #50 |  |
 | F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |  |
-| F3 | o censo nao e panel-specific (`window-visibility.md:188`) | **OPEN** — herdado da linha #32 |  |
 | H3 | o ARM A do painel aceita UMA legenda como LIVE (`oracles.md:395`) | **OPEN** — herdado da linha #27 |  |
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 | F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |  |
 
-### shell/window (20)
+### shell/window (9)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
@@ -61,20 +55,9 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | 25 | shell `--selftest` nao afirma qualidade do output ("verde com word-salad") | `sotto_worker.py:986-999` | **OPEN** |
 | 28 | shell selftest regista `focus_stolen=true` e mesmo assim sai 0 | `_main/webview-selftest.log:32` | **OPEN** |
 | 33 | comentarios obsoletos/contraditorios no `sotto_webview.py` sobre a cura OFFSCREEN | `sotto_webview.py:1054` (residuo) | **OPEN** — `:1531-1535` ja diz "tried and REMOVED"; `:1054` ainda diz que o flash "e tratado pela posicao de criacao OFFSCREEN abaixo" |
-| F5 | _lock segurado durante uma ida-e-volta de UI bloqueante (`shell-bridge.md:174`) | **OPEN** — herdado da linha #14 |  |
-| F6 | _schedule_restart nao cancela o timer anterior (`shell-bridge.md:190`) | **OPEN** — herdado da linha #15 |  |
-| F7 | conjuntos de nomes de estado sensiveis a separador (`shell-bridge.md:207`) | **OPEN** — herdado da linha #40 |  |
-| F8 | linha de status sem type e descartada em silencio (`shell-bridge.md:226`) | **OPEN** — herdado da linha #41 |  |
-| F9 | stop() nao emite status final no lado Python (`shell-bridge.md:235`) | **OPEN** — herdado da linha #42 |  |
-| F10 | _spawn() corre na thread de restart SEM _lock (`shell-bridge.md:242`) | **OPEN** — herdado da linha #43 |  |
 | F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |  |
-| F2 | o predicado do censo (MainWindowHandle) nao testa monitor (`window-visibility.md:187`) | **OPEN** — herdado da linha #31 |  |
 | F4 | comentarios obsoletos/contraditorios sobre a cura OFFSCREEN no sotto_webview.py (`window-visibility.md:189`) | **OPEN** — herdado da linha #33 |  |
-| F6 | _on_navigation_start faz early-return em self.visible (`window-visibility.md:191`) | **OPEN** — herdado da linha #60 |  |
-| F7 | run.cmd:6 promete start hidden enquanto o shell pisca (`window-visibility.md:192`) | **OPEN** — herdado da linha #61 |  |
 | F1 | console-census.py passa CREATE_NO_WINDOW + DETACHED_PROCESS -> canal de 0 bytes rc 0 (`windows-landmines.md:309`) | **OPEN** — herdado da linha #5 |  |
-| F2 | wait(timeout=) sem handler em 3 oraculos -> filho orfao (`windows-landmines.md:312`) | **OPEN** — herdado da linha #34 |  |
-| F3 | run-live-hidden.py wait(timeout=) sem handler + DETACHED_PROCESS morta (`windows-landmines.md:315`) | **OPEN** — herdado da linha #35 |  |
 | H1 | o selftest da shell nao afirma qualidade do output (`oracles.md:393`) | **OPEN** — herdado da linha #25 |  |
 | H6 | o selftest da shell regista focus_stolen=true e sai 0 (`oracles.md:398`) | **OPEN** — herdado da linha #28 (segunda entrada do mesmo achado que Finding B) |  |
 
@@ -84,18 +67,12 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F2 | o HISTORY nao pode ser alimentado: nenhuma meta do motor live traz producer (`auditoria-completa-20261007.md:64`) | **OPEN** — o gate da fonte diz PRODUCER-VERDICT: no-producer-in-tree (:663) e o transcript foi fechado ao motor live por ordem do dono (:752); nota 2026-10-11: a arvore viva passou a carimbar producer (sotto_worker.py:3069/3567/3605) mas se a linha chega ao meta.producer que o gate canonico le continua NAO MEDIDO |  |
 
-### worker/audio/ASR (9)
+### worker/audio/ASR (3)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 62 | `subprocess.run(timeout=)` a volta do `electron.exe` multi-processo pode nao ser tecto [INFERENCE] | `_main/_run-hidden.py:24` | **OPEN** |
 | F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |  |
-| F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **OPEN** — herdado da linha #38 |  |
-| F6 | _pump muta buf/acc com np.concatenate a cada emit (`audio-path.md:306`) | **OPEN** — herdado da linha #39 |  |
-| F2 | o falsificador sem-audio engole um erro REAL do worker (`shell-bridge.md:93`) | **OPEN** — herdado da linha #11 |  |
-| F4 | start() devolve true mesmo sem worker nenhum (`shell-bridge.md:160`) | **OPEN** — herdado da linha #13 |  |
-| F5 | AGENTS.md cita worker-bridge.js:133 como STATE_MAP (`doc-vs-code.md:25`) | **OPEN** — herdado da linha #48 |  |
-| F6 | o rank-1 do use_vad e retratado 230 linhas abaixo (`doc-vs-code.md:26`) | **OPEN** — herdado da linha #49 |  |
 | F4 | subprocess.run(timeout=) a volta do electron.exe multi-processo pode nao ser tecto [INFERENCE] (`windows-landmines.md:317`) | **OPEN** — herdado da linha #62 |  |
 
 ## 2. What BLOCKS the open rows, by class

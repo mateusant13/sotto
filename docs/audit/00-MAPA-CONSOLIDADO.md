@@ -188,36 +188,36 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | F2 | o overflow e invisivel porque flags e lido e descartado (`audio-path.md:274`) | **APPLIED** — herdado da linha #9, fechada em 2026-10-11: o `flags` deixou de ser descartado (SILENT contado, `DATA_DISCONTINUITY` contado agora, posicao comparada) e a perda de posicao tem o seu proprio contador |
 | F3 | o fallback de buffer de 100 ms e codigo morto (`audio-path.md:279`) | **OPEN** — herdado da linha #36 |
 | F4 | CoInitializeEx rejeita S_FALSE e um segundo open na mesma thread rebenta (`audio-path.md:284`) | **APPLIED** — herdado da linha #37 (medido pos-fix em flat-endpoint.md:125-142) |
-| F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **OPEN** — herdado da linha #38 |
-| F6 | _pump muta buf/acc com np.concatenate a cada emit (`audio-path.md:306`) | **OPEN** — herdado da linha #39 |
+| F5 | contabilidade: um tick de meio de corrida pode ser lido como total (`audio-path.md:302`) | **APPLIED** — herdado da linha #38, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #38 |
+| F6 | _pump muta buf/acc com np.concatenate a cada emit (`audio-path.md:306`) | **APPLIED** — herdado da linha #39, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #39 |
 
 ### shell-bridge.md (F1-F10)
 
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
 | F1 | exec_js corre cada script injectado DUAS vezes (`shell-bridge.md:45`) | **APPLIED** — herdado da linha #10 |
-| F2 | o falsificador sem-audio engole um erro REAL do worker (`shell-bridge.md:93`) | **OPEN** — herdado da linha #11 |
-| F3 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte (`shell-bridge.md:123`) | **OPEN** — herdado da linha #12 |
-| F4 | start() devolve true mesmo sem worker nenhum (`shell-bridge.md:160`) | **OPEN** — herdado da linha #13 |
-| F5 | _lock segurado durante uma ida-e-volta de UI bloqueante (`shell-bridge.md:174`) | **OPEN** — herdado da linha #14 |
-| F6 | _schedule_restart nao cancela o timer anterior (`shell-bridge.md:190`) | **OPEN** — herdado da linha #15 |
-| F7 | conjuntos de nomes de estado sensiveis a separador (`shell-bridge.md:207`) | **OPEN** — herdado da linha #40 |
-| F8 | linha de status sem type e descartada em silencio (`shell-bridge.md:226`) | **OPEN** — herdado da linha #41 |
-| F9 | stop() nao emite status final no lado Python (`shell-bridge.md:235`) | **OPEN** — herdado da linha #42 |
-| F10 | _spawn() corre na thread de restart SEM _lock (`shell-bridge.md:242`) | **OPEN** — herdado da linha #43 |
+| F2 | o falsificador sem-audio engole um erro REAL do worker (`shell-bridge.md:93`) | **APPLIED** — herdado da linha #11, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #11 |
+| F3 | uma legenda VAZIA conta como prova-de-vida e limpa o banner de morte (`shell-bridge.md:123`) | **APPLIED** — herdado da linha #12, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #12 |
+| F4 | start() devolve true mesmo sem worker nenhum (`shell-bridge.md:160`) | **APPLIED** — herdado da linha #13, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #13 |
+| F5 | _lock segurado durante uma ida-e-volta de UI bloqueante (`shell-bridge.md:174`) | **APPLIED** — herdado da linha #14, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #14 |
+| F6 | _schedule_restart nao cancela o timer anterior (`shell-bridge.md:190`) | **APPLIED** — herdado da linha #15, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #15 |
+| F7 | conjuntos de nomes de estado sensiveis a separador (`shell-bridge.md:207`) | **APPLIED** — herdado da linha #40, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #40 |
+| F8 | linha de status sem type e descartada em silencio (`shell-bridge.md:226`) | **APPLIED** — herdado da linha #41, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #41 |
+| F9 | stop() nao emite status final no lado Python (`shell-bridge.md:235`) | **APPLIED** — herdado da linha #42, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #42 |
+| F10 | _spawn() corre na thread de restart SEM _lock (`shell-bridge.md:242`) | **APPLIED** — herdado da linha #43, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #43 |
 
 ### doc-vs-code.md (F1-F10)
 
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
-| F1 | docs/README.md:8 diz que nenhum codigo de aplicacao foi escrito (`doc-vs-code.md:21`) | **OPEN** — herdado da linha #44 |
+| F1 | docs/README.md:8 diz que nenhum codigo de aplicacao foi escrito (`doc-vs-code.md:21`) | **APPLIED** — herdado da linha #44, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #44 |
 | F2 | tres documentos descrevem a stack Tauri/Rust abandonada como o produto (`doc-vs-code.md:22`) | **APPLIED** — herdado da linha #45, fechada em 2026-10-11: o README.md da raiz ja estava corrigido e os outros dois (`docs/README.md`, `docs/roadmap.md:53`) foram corrigidos nesta passagem |
 | F3 | AGENTS.md contradiz-se sobre o painel no arranque (`doc-vs-code.md:23`) | **OPEN** — herdado da linha #46 |
-| F4 | a figura fp16 do AGENTS.md (1230 MB) nao bate com o disco (`doc-vs-code.md:24`) | **OPEN** — herdado da linha #47 |
-| F5 | AGENTS.md cita worker-bridge.js:133 como STATE_MAP (`doc-vs-code.md:25`) | **OPEN** — herdado da linha #48 |
-| F6 | o rank-1 do use_vad e retratado 230 linhas abaixo (`doc-vs-code.md:26`) | **OPEN** — herdado da linha #49 |
-| F7 | live-captions deixa uma decisao supersedida de pe (`doc-vs-code.md:27`) | **OPEN** — herdado da linha #50 |
-| F8 | full-audit descreve a regra de juncao de 1200 ms (`doc-vs-code.md:28`) | **OPEN** — herdado da linha #51 |
+| F4 | a figura fp16 do AGENTS.md (1230 MB) nao bate com o disco (`doc-vs-code.md:24`) | **APPLIED** — herdado da linha #47, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #47 |
+| F5 | AGENTS.md cita worker-bridge.js:133 como STATE_MAP (`doc-vs-code.md:25`) | **APPLIED** — herdado da linha #48, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #48 |
+| F6 | o rank-1 do use_vad e retratado 230 linhas abaixo (`doc-vs-code.md:26`) | **APPLIED** — herdado da linha #49, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #49 |
+| F7 | live-captions deixa uma decisao supersedida de pe (`doc-vs-code.md:27`) | **APPLIED** — herdado da linha #50, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #50 |
+| F8 | full-audit descreve a regra de juncao de 1200 ms (`doc-vs-code.md:28`) | **APPLIED** — herdado da linha #51, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #51 |
 | F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |
 | F10 | AGENTS.md cita worker/runs/exit3-armB-worker.jsonl; o ficheiro vive em _main/ (`doc-vs-code.md:30`) | **APPLIED** — herdado da linha #53, fechada nesta revisao pelo proprio AGENTS.md:169 |
 
@@ -226,20 +226,20 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
 | F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |
-| F2 | o predicado do censo (MainWindowHandle) nao testa monitor (`window-visibility.md:187`) | **OPEN** — herdado da linha #31 |
-| F3 | o censo nao e panel-specific (`window-visibility.md:188`) | **OPEN** — herdado da linha #32 |
+| F2 | o predicado do censo (MainWindowHandle) nao testa monitor (`window-visibility.md:187`) | **APPLIED** — herdado da linha #31, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #31 |
+| F3 | o censo nao e panel-specific (`window-visibility.md:188`) | **APPLIED** — herdado da linha #32, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #32 |
 | F4 | comentarios obsoletos/contraditorios sobre a cura OFFSCREEN no sotto_webview.py (`window-visibility.md:189`) | **OPEN** — herdado da linha #33 |
 | F5 | _move_into_place morto + posicao viva x=-10000 sem explicacao (`window-visibility.md:190`) | **APPLIED** — herdado da linha #59 (a metade do metodo morto; a posicao viva e observacao de processo, fora do ficheiro) |
-| F6 | _on_navigation_start faz early-return em self.visible (`window-visibility.md:191`) | **OPEN** — herdado da linha #60 |
-| F7 | run.cmd:6 promete start hidden enquanto o shell pisca (`window-visibility.md:192`) | **OPEN** — herdado da linha #61 |
+| F6 | _on_navigation_start faz early-return em self.visible (`window-visibility.md:191`) | **APPLIED** — herdado da linha #60, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #60 |
+| F7 | run.cmd:6 promete start hidden enquanto o shell pisca (`window-visibility.md:192`) | **APPLIED** — herdado da linha #61, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #61 |
 
 ### windows-landmines.md (F1-F4)
 
 | rotulo | achado (doc:linha) | estado |
 |---|---|---|
 | F1 | console-census.py passa CREATE_NO_WINDOW + DETACHED_PROCESS -> canal de 0 bytes rc 0 (`windows-landmines.md:309`) | **OPEN** — herdado da linha #5 |
-| F2 | wait(timeout=) sem handler em 3 oraculos -> filho orfao (`windows-landmines.md:312`) | **OPEN** — herdado da linha #34 |
-| F3 | run-live-hidden.py wait(timeout=) sem handler + DETACHED_PROCESS morta (`windows-landmines.md:315`) | **OPEN** — herdado da linha #35 |
+| F2 | wait(timeout=) sem handler em 3 oraculos -> filho orfao (`windows-landmines.md:312`) | **APPLIED** — herdado da linha #34, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #34 |
+| F3 | run-live-hidden.py wait(timeout=) sem handler + DETACHED_PROCESS morta (`windows-landmines.md:315`) | **APPLIED** — herdado da linha #35, que esta APPLIED: mesmo achado, mesma prova (reconciliado 2026-10-11) — herdado da linha #35 |
 | F4 | subprocess.run(timeout=) a volta do electron.exe multi-processo pode nao ser tecto [INFERENCE] (`windows-landmines.md:317`) | **OPEN** — herdado da linha #62 |
 
 ### launch-entry.md (G1-G5)
@@ -303,13 +303,27 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 
 ## Contagem (o que torna o mapa checavel)
 
-- **APPLIED:** 81
-- **OPEN:** 54
+- **APPLIED:** 104
+- **OPEN:** 31
 - **IN-FLIGHT:** 0
 
-Conferencia: 81 + 54 + 0 = **135** = linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
+Conferencia: 104 + 31 + 0 = **135** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
+**NOTA 2026-10-11 (SEGUNDA reconciliacao — o mesmo defeito noutra forma):** o mapa tem DUAS especies de
+linha — as PRIMARIAS numeradas (um achado cada) e as HERDADAS, que repetem um achado tal como OUTRO
+documento o registou e dizem-no no proprio texto (`herdado da linha #NN`). As herdadas carregam ids que
+COLIDEM entre documentos (F1..F10 existem em varios), logo nada que agrupe por id as consegue emparelhar
+— foi por isso que a reconciliacao anterior nao as viu. `_main/inherited-row-reconciler.py` emparelha-as
+pela heranca que a PROPRIA linha declara e mediu **23 linhas herdadas a ler OPEN com a sua primaria ja
+APPLIED**: o mesmo achado contado duas vezes em dois estados, com o contador de abertos inflado por
+exactamente 23. As 23 passaram a APPLIED citando a primaria (o scanner do reconciliador ve **59 linhas
+primarias e 51 herdadas**; o portao conta **135 LINHAS** — a composicao exacta nao e afirmada alem do que
+os dois instrumentos medem). `--neg-arm` corre sobre um fixture SINTETICO (1 estale + 1 genuinamente
+aberta; ao reverter a primaria, a herdada passa a genuinamente aberta e o estale vai a 0), e nao sobre o
+mapa vivo: depois de reconciliado nao ha caso vivo para mutar, e um instrumento que so se testa ANTES da
+propria correccao nao se re-testa depois.
+
 quatro linhas velhas foram REMOVIDAS e o `findings_distinct` do proprio gate caiu de 139 para 135 na
 mesma corrida: um achado contado duas vezes nao e um achado a mais, era o mapa a contar LINHAS. Os
 estados das quatro linhas APPLIED nao mudaram — o que mudou e que agora existe so uma linha por

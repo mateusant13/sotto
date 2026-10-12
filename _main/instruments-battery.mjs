@@ -35,6 +35,8 @@ const py = [
   ['_main/panel-visibility-guard-oracle.py --neg-arm', 'visibility-guard neg'],
   ['_main/panel-window-census.py', 'panel-census 7 tests'],
   ['_main/panel-window-census.py --neg-arm', 'panel-census 7 mutants'],
+  ['_main/inherited-row-reconciler.py', 'inherited-rows reconciled'],
+  ['_main/inherited-row-reconciler.py --neg-arm', 'inherited-rows neg'],
 ];
 
 const node = [
