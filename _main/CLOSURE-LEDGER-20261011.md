@@ -9,7 +9,7 @@ hand — the map rows below are copied verbatim from
 `bash I:/!manager/scripts/audit-map-gate.sh H:/sotto/docs/audit`) is GREEN at
 **applied 106 / open 29 / in-flight 0** as this file is written, read from the gate itself.
 
-## 1. The live product — 28 rows whose state cell reads OPEN
+## 1. The live product — 29 rows whose state cell reads OPEN
 
 Each row below is an OPEN finding of the audit, with the map own location and state text.
 Rows closed this session are NOT here; they are listed in section 5 with their instruments.
@@ -47,10 +47,11 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 | F15 | o candidato de dispositivo e ordenado UMA vez no arranque e prefer_rendering_now nao existe (`auditoria-completa-20261007.md:77`) | **OPEN** — nenhuma frase da fonte nomeia cura nem transferencia para este achado (nem em :544 nem em §12.7) e a arvore viva nao tem prefer_rendering_now |  |
 
-### shell/window (6)
+### shell/window (7)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
+| 5 | `console-census.py` passa `CREATE_NO_WINDOW\ | DETACHED_PROCESS` → canal de 0 bytes rc 0, logo `python_pids()` fica cego | `_main/_probe/console-census.py:106` (path GIT-IGNORED) |
 | 25 | shell `--selftest` nao afirma qualidade do output ("verde com word-salad") | `sotto_worker.py:986-999` | **OPEN** |
 | 28 | shell selftest regista `focus_stolen=true` e mesmo assim sai 0 | `_main/webview-selftest.log:32` | **OPEN** |
 | F9 | 14 campos, 0 divergencias do webview-shell nao e reproduzivel (`doc-vs-code.md:29`) | **OPEN** — herdado da linha #52 |  |
