@@ -40,6 +40,7 @@ const py = [
   ['_main/child-channel-oracle.py', 'child-channel (row #5)'],
   ['_main/offscreen-cure-comment-oracle.py', 'offscreen-comments (row #33)'],
   ['_main/offscreen-cure-comment-oracle.py --neg-arm', 'offscreen-comments neg'],
+  ['_main/panel-exit3-oracle.py --unit --neg-arm', 'panel-exit3 unit+neg (rows #27/#64)'],
 ];
 
 const node = [
@@ -59,7 +60,7 @@ const run = (cmd, args, label) => {
     maxBuffer: 64 * 1024 * 1024, env: { ...process.env, TMPDIR: 'I:/cc-tmp' } });
   const text = (r.stdout || '') + (r.stderr || '');
   const tail = text.split(/\r?\n/).filter((l) =>
-    /VERDICT|PASS \/|GREEN|SUMMARY|ARM-VERDICT|NEG-ARM|ORACLE/.test(l));
+    /VERDICT|PASS \/|GREEN|SUMMARY|ARM-VERDICT|NEG-ARM|ORACLE|"verdict"/.test(l));
   if (r.status !== 0) {
     console.log('rc=' + r.status + ' !!! ' + label.padEnd(30) + (tail.slice(-1)[0] || text.split(/\r?\n/).filter(Boolean).slice(-1)[0] || '').trim().slice(0, 105));
   } else {

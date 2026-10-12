@@ -592,9 +592,18 @@ def arm0_recovery(report: dict) -> list[str]:
                   'never reached peak 0.002'}))
     bridge._consume(json.dumps(REAL_DONE_SILENT_DEVICE))
     bridge._wait()                 # rc=3 from the stand-in handle: arms the hold
-    bridge.stop('arm-e')           # cancel the restart timer: no real spawn here
 
+    # ── READ THE DEATH BEFORE THE STOP (measured 2026-10-11) ────────────────
+    # `stop()` PAINTS ITS OWN STATUS -- 'Nothing to stop - no worker is running',
+    # kind=busy -- and it used to land on top of the death. This read sat AFTER it,
+    # so E1 measured the stop's status instead of the death's and the arm was RED
+    # for a reason that had nothing to do with the hold it exists to guard:
+    # `--unit` returned 1 on the COMMITTED revision, twice, while the file's own
+    # usage block advertises rc=0 and two lanes cite it as PASS. The hold itself
+    # was never broken (`holding` was true, the lift worked, E5 was live) -- only
+    # the reading was.
     err = painted[-1] if painted else {}
+    bridge.stop('arm-e')           # cancel the restart timer: no real spawn here
     error_state = {'footer': err.get('footer', ''),
                    'error': err.get('kind') == 'error',
                    'holding': bridge.pending_error is not None}
@@ -929,6 +938,106 @@ def arm_e_real_shell(report: dict) -> list[str]:
     return failures
 
 
+# ── ARM A's CRITERION, factored so it can be tested with no launch ──────────
+# Audit row #27 ("panel ARM A aceita UMA legenda como LIVE") and its inherited
+# twin H3. The criterion used to be inline and permissive:
+#
+#     if not ((a['captions'] or 0) > 0 or a['live']):
+#
+# Two independent weaknesses, and both are the same family this repo keeps
+# meeting: a SINGLE caption is a SAMPLE, not a live stream -- the negative arm
+# in THIS oracle already insists the two renders must differ; and `live` is a
+# STATUS WORD the panel prints while it BELIEVES it is live, i.e. the "green
+# with word-salad" shape (row #25) and the empty-caption proof-of-life the
+# shell itself had to fix. So the rule is now: at least TWO rendered captions,
+# and the status word can never satisfy it on its own.
+#: Newline-DELIMITED, because the bare line also appears inside this very constant: counting it
+#: without the delimiters matched the definition too (2 hits, measured -- the neg-arm said so
+#: instead of quietly mutating nothing). The file is read with universal newlines, so `\n` is
+#: the separator even though the file itself is CRLF.
+ARM_A_RULE_MARKER = '\n    ok = count >= 2  # ARM-A-RULE\n'
+
+
+def arm_a_is_live(reading: dict) -> tuple[bool, str]:
+    """(does the panel prove a live stream?, why not). Pure: no launch, no shell."""
+    count = reading.get('captions') or 0
+    live_word = bool(reading.get('live'))
+    ok = count >= 2  # ARM-A-RULE
+    if ok:
+        return True, ''
+    if count == 1:
+        return False, ("ARM A: exactly ONE caption rendered -- a single caption is a sample, "
+                       "not a live stream (the historical rule accepted it as LIVE)")
+    return False, ("ARM A: no caption rendered at all; the status word live=%s is what the panel "
+                   "prints while it BELIEVES it is live, and the historical rule accepted it "
+                   "alone" % live_word)
+
+
+def arm_a_criterion_check(report: dict) -> list[str]:
+    """Synthetic readings through the REAL predicate. It must ACCEPT the good one
+    and REFUSE both readings the historical rule waved through -- a rule that only
+    knows how to say NO is not a rule."""
+    failures: list[str] = []
+    control_ok, _ = arm_a_is_live({'captions': 2, 'live': True})
+    one_ok, one_why = arm_a_is_live({'captions': 1, 'live': False})
+    word_ok, word_why = arm_a_is_live({'captions': 0, 'live': True})
+    zero_ok, _ = arm_a_is_live({'captions': 0, 'live': False})
+    report['armA_criterion'] = {'control_two_captions': control_ok, 'one_caption': one_ok,
+                                'status_word_alone': word_ok, 'nothing': zero_ok}
+    if not control_ok:
+        failures.append("ARM A criterion: the POSITIVE CONTROL (two captions) was refused -- "
+                        "the rule only knows how to say NO")
+    if one_ok:
+        failures.append("ARM A criterion: ONE caption still counts as LIVE (row #27 not fixed)")
+    if word_ok:
+        failures.append("ARM A criterion: the bare status word still counts as LIVE")
+    if zero_ok:
+        failures.append("ARM A criterion: an empty reading counted as LIVE")
+    if one_ok or word_ok:
+        failures.append("ARM A criterion: why: " + one_why + " | " + word_why)
+    return failures
+
+
+def criterion_neg_arm(report: dict) -> list[str]:
+    """Revert the ONE line to the historical permissive rule, in a COPY of this
+    file, and require the synthetic readings to go RED on the discriminating case.
+    Built by rewriting the line, never by keeping a second copy: a kept copy goes
+    stale the first time the rule moves, and a stale negative arm reports on code
+    nobody is running."""
+    import tempfile
+    failures: list[str] = []
+    here = os.path.abspath(__file__)
+    with open(here, encoding='utf-8') as handle:
+        src = handle.read()
+    if src.count(ARM_A_RULE_MARKER) != 1:
+        return ["NEGATIVE ARM (criterion): the rule line appears %d time(s) in this file "
+                "(expected exactly 1)" % src.count(ARM_A_RULE_MARKER)]
+    mutant = src.replace(ARM_A_RULE_MARKER,
+                         '\n    ok = count >= 1 or live_word  # ARM-A-RULE (mutant)\n')
+    path = os.path.join(tempfile.gettempdir(), 'panel-exit3-armA-criterion-mutant.py')
+    with open(path, 'w', encoding='utf-8', newline='') as handle:
+        handle.write(mutant)
+    proc = subprocess.run([sys.executable, path, '--criterion-only'],
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          creationflags=CREATE_NO_WINDOW, timeout=120)
+    text = proc.stdout.decode('utf-8', 'replace')
+    report['neg_arm_criterion'] = {'mutant': path, 'child_rc': proc.returncode}
+    try:
+        child = json.loads(text)
+    except ValueError:
+        return ["NEGATIVE ARM (criterion): the mutant printed no JSON verdict (rc=%d): %r"
+                % (proc.returncode, text[-300:])]
+    child_failures = list(child.get('failures') or [])
+    report['neg_arm_criterion']['child_failures'] = child_failures
+    if proc.returncode == 0:
+        failures.append("NEGATIVE ARM (criterion): the PERMISSIVE rule stayed GREEN -- the "
+                        "check cannot fail, so it proves nothing")
+    if not any('ONE caption' in f for f in child_failures):
+        failures.append("NEGATIVE ARM (criterion): the mutant went red for the WRONG reason: %s"
+                        % child_failures)
+    return failures
+
+
 def main() -> int:
     unit_only = '--unit' in sys.argv
     real_e_only = '--arm-e-real' in sys.argv
@@ -937,6 +1046,16 @@ def main() -> int:
     b_wait = float(rest[1]) if len(rest) > 1 else 26.0
     failures: list[str] = []
     report: dict = {}
+
+    # ── THE CRITERION ITSELF, checked before anything else: it is pure, so it
+    #    costs nothing and it guards the ARM A rule on every invocation.
+    if '--criterion-only' in sys.argv:
+        failures = arm_a_criterion_check(report)
+        report['verdict'] = 'PASS' if not failures else 'FAIL'
+        report['failures'] = failures
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 1 if failures else 0
+    failures += arm_a_criterion_check(report)
 
     # ── ARM E, REAL SHELL ONLY: `--arm-e-real` runs just this arm, so the two
     #    painted states can be reproduced without the audio-dependent A/B.
@@ -968,6 +1087,7 @@ def main() -> int:
     if '--neg-arm' in sys.argv:
         failures += neg_arm(report)
         failures += neg_arm_e(report)
+        failures += criterion_neg_arm(report)
 
     if unit_only:
         report['verdict'] = 'PASS' if not failures else 'FAIL'
@@ -1045,9 +1165,10 @@ def main() -> int:
 
     if a['error']:
         failures.append(f"ARM A: a live run rendered an ERROR state: {a['text']!r}")
-    if not ((a['captions'] or 0) > 0 or a['live']):
-        failures.append(f"ARM A: no live caption state (captions={a['captions']}, "
-                        f"live={a['live']}, text={a['text']!r})")
+    ok_live, why_not = arm_a_is_live(a)
+    if not ok_live:
+        failures.append(f"{why_not} [captions={a['captions']}, live={a['live']}, "
+                        f"text={a['text']!r}]")
 
     # ── the NEGATIVE arm: the two renders must NOT be the same
     if str(a['text']).strip().lower() == str(b['text']).strip().lower():
