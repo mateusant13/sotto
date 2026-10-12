@@ -21,5 +21,14 @@
     "_comment_done_text_max_chars": "LIVE as of 2026-10-07 (lane F17): the maximum NUMBER OF CHARACTERS the run's whole text may occupy in the ONE JSONL line it ships at exit (`state=done`, key `text`; the same bound applies to `selftest-done.text`, which is the same claim about a file-mode run). Without it that line was unbounded: a multi-hour stream produced a single line nobody can read and a consumer has to hold. The HEAD of the transcript is kept; `text_chars` (the untruncated length) and `text_truncated` travel beside the text so a truncated line is visible from the numbers. 0 means NO cap. A value that is not an integer, or is negative, is refused back to 20000, loudly (worker/sotto_worker.py reads it next to min_chars/partial). The list it is detokenised from is bounded too, independently: `StreamAsr.labels` keeps its newest 200000 symbols (MAX_RETAINED_LABELS) and reports `labels_pruned`.",
     "done_text_max_chars": 20000
   },
-  "use_denoise": false
+  "use_denoise": false,
+  "redux_live": {
+    "_comment": "STACK LAW, SECOND HALF (lane S3). While the panel is OPEN, every line the live engine CLOSES is held and re-transcribed by the Redux pass, and the panel REPLACES that row with the Redux version -- so the line the history takes is the Redux one, never the live nvidia one (owner, verbatim: 'o historico nao e pra ser NUNCA o historico do live nvidia'). THE OPT-IN is read in this order, most explicit first: --redux-live, then SOTTO_REDUX_LIVE=1 (=0 forces it off), then `enabled` here. With none of them the worker is byte-identical to a run without this feature. `enabled` is FALSE by default because the pass costs about one extra CPU core while it runs (measured 2026-10-12: mean 0.95 s / max 1.24 s per 5 s window at 2 threads, peak RSS 575-615 MB). A MISSING CHECKPOINT is not a reason to transcribe nothing: the worker logs REDUX_LIVE_REFUSED with the directory it would have opened and keeps streaming untouched. The `opt_in=` field on the REDUX_LIVE_ARMED / REDUX_LIVE_REFUSED line names the rung that won. Resolved by the pure function redux_live_settings() in worker/sotto_worker.py, which is what makes these keys LIVE rather than inert.",
+    "enabled": false,
+    "engine": "onnx",
+    "keep_s": 90,
+    "min_audio_s": 1,
+    "deadline_s": 4,
+    "threads": 2
+  }
 }

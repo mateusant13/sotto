@@ -1112,5 +1112,475 @@ def main(argv=None) -> int:
     return rc
 
 
+# ── THE OVERLAY: a second pass POR CIMA of every line the live engine closes ──
+# ANCHOR: redux_live_overlay -- referenced by worker/sotto_worker.py and by
+# _main/redux-live-overlay-oracle.py
+#
+# OWNER 2026-10-12, verbatim: *"nemotron a transcrever ao vivo e o parakeet
+# redux POR CIMA de tudo o que é falado ao vivo, porque tem maior qualidade."*
+#
+# This is the second half of the stack law. The live engine stays nemotron --
+# it paints the provisional rows the owner reads while he speaks -- and the
+# Redux pass runs OVER the lines that engine CLOSES, per the owner's
+# *"o historico nao e pra ser NUNCA o historico do live nvidia. e pra ser do
+# parakeet redux"* (`app/panel/panel.js`). It is NOT a new model, NOT a new
+# process and NOT a second writer of the panel's bytes: it reuses the backends
+# and the RSS helpers already measured in this file and emits the JSONL
+# `worker/sotto_worker.py` already emits.
+#
+# WHY THE LIVE FINAL IS HELD AND NOT DUPLICATED -- the whole design in one
+# paragraph, and it is a PANEL-SIDE fact, measured in
+# `_main/redux-live-overlay-oracle.py` by driving the REAL
+# `app/panel/caption-formulation.js`: `ingest` stamps `emittedEnd` ONLY inside
+# `commit()`, so while a line is still growing `emittedEnd` stays null and the
+# re-cover branch (`start === emittedStart && start < emittedEnd`) cannot fire.
+# A late event carrying the line's own `start` then takes the PLAIN path and the
+# panel's hypothesis is that event's WHOLE text. Publish the live `final` first
+# and that `commit()` stamps `emittedEnd`, so the Redux line is read as a
+# RE-COVER and its words are trimmed by `agreedPrefixLength` against the live
+# words -- the live words stay, the Redux ones after them are dropped, and the
+# transcript loses the better version. Holding the live final and publishing
+# exactly ONE line per segment is what makes the Redux text land WHOLE.
+#
+# WHAT IT COSTS, and why it is default-OFF: the measured ONNX int4 numbers in
+# this file's docstring (1.05 s load, 1.05-1.36 s per 5 s window, 615 MB peak
+# RSS, 128% of one core at threads=2) are for a standalone run. As an overlay
+# they are paid IN ADDITION to the live ASR decode on the same box, so the arm
+# is opt-in (`--redux-live` / `SOTTO_REDUX_LIVE=1`) and both receipts carry it.
+REDUX_LIVE_MODEL_DEFAULT = "parakeet-redux"
+
+
+class ReduxLiveOverlay:
+    """A second pass POR CIMA of every line the live engine closes.
+
+    PURE-ISH: it owns a rolling slice of PCM, one worker thread and a FIFO. The
+    ASR thread hands it audio (`accept`) and the closed-line events
+    (`hold_live_final`), and takes back the events to publish (`drain`). The
+    decode itself is the INJECTED `backend`, so an oracle can drive the real
+    control flow with a fake engine and learn exactly what a real run emits.
+
+    THE EVENT IT EMITS carries the line's OWN identity -- `start`, and `source`
+    when the live engine has one -- plus `producer` (the existing `PRODUCER`),
+    `producerModel`, `route` and `final: true`, which are the batch arm's own
+    keys (`worker/sotto_worker.py` `_run_runner`). No field is invented: that is
+    the shape `app/panel/history-source.js` `CANONICAL_PRODUCER` and
+    `caption-formulation.js committedProducer` / `routeSourceFor` already read.
+
+    THE HOLD IS SAFE BECAUSE IT IS NEVER LOST. For every line it took, `drain()`
+    eventually returns exactly ONE event: the Redux line when the pass answered,
+    and the live line, byte for byte, when it did not (no retained audio, an
+    empty decode, a raised exception, the deadline, a full queue, or `stop`).
+    """
+
+    def __init__(self, backend, *, producer=PRODUCER, producer_model=None, log=None,
+                 sr=16000, keep_s=None, silence_s=0.25, deadline_s=None,
+                 max_queue=6, tick_s=0.1, thread_factory=None, armed=True):
+        import numpy as np
+
+        self._np = np
+        self.backend = backend
+        self.producer = str(producer or PRODUCER)
+        self.producer_model = str(producer_model or REDUX_LIVE_MODEL_DEFAULT)
+        self._log = log if callable(log) else (lambda message: None)
+        self.sr = max(8000, int(sr))
+        self.silence_s = max(0.0, float(silence_s))
+        self.deadline_s = float(deadline_s) if deadline_s else 0.0
+        self.max_queue = max(1, int(max_queue))
+        self.tick_s = min(1.0, max(0.01, float(tick_s)))
+        self.thread_factory = thread_factory
+        # THE GUARD, both colours of one measurement. `armed=False` (or a
+        # `backend` of None) makes `hold_live_final` return False for every
+        # line, which is the pre-overlay behaviour byte for byte. The oracle's
+        # neg-arm removes the CALLER that consults it, not this line.
+        self.armed = bool(armed) and backend is not None
+
+        # How much PCM is retained. It is the ONE number that decides whether a
+        # line can still be answered: a segment whose start has already fallen
+        # out of this window ships as the live text. 90 s of 16 kHz float32 is
+        # 5.5 MB, and the buffer is a deque of blocks trimmed on every feed, so
+        # it never grows past this.
+        self.keep_s = float(keep_s) if keep_s else 90.0
+        self.keep_samples = max(self.sr, int(self.keep_s * self.sr))
+
+        self._lock = threading.Lock()
+        self._buf = deque()          # 16 kHz blocks, oldest first
+        self._buf_samples = 0
+        self._fed_samples = 0        # absolute samples ever accepted
+        self._base_samples = 0       # absolute index of the first retained sample
+        self._queue = deque()        # segments awaiting a decode, oldest first
+        self._out = deque()          # events ready to publish
+        self._inflight = None
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._worker = None
+
+        # -- counters: what the overlay DID, never what a model would do -------
+        self.segments = 0        # live finals taken over
+        self.returned = 0        # events drain() gave back
+        self.redux_lines = 0     # ... of those, the Redux text shipped
+        self.fallbacks = 0       # ... of those, the live text shipped instead
+        self.failures = 0        # decode raised
+        self.expired = 0         # ... of those, the deadline forced the fallback
+        self.overflow = 0        # live finals not accepted at all (queue full)
+        self.decodes_s = []      # per-segment wall seconds -- the COST
+        self.audio_s = 0.0       # audio seconds handed to the backend
+        self.rss_before_mb = -1.0
+        self.rss_after_mb = -1.0
+        self.refusals = {}       # reason -> count, so a refusal is never silent
+        self.started = False
+        self.stopped = False
+
+    def _note(self, message):
+        self._log(message)
+
+    # -- audio in ------------------------------------------------------------
+    def accept(self, pcm):
+        """One 16 kHz block from the ASR thread.
+
+        The lock is held for a list append and a bounded trim -- NEVER across a
+        decode -- so a slow Redux pass can never stall the audio path.
+        """
+        block = self._np.ascontiguousarray(pcm, dtype=self._np.float32).reshape(-1)
+        if block.size == 0:
+            return 0
+        with self._lock:
+            self._buf.append(block)
+            self._buf_samples += int(block.size)
+            self._fed_samples += int(block.size)
+            self._trim_locked()
+            return int(block.size)
+
+    def _trim_locked(self):
+        """Drop PCM older than `keep_s`. A single block alone may exceed the
+        cap; it is CUT rather than held whole, so memory stays the promise."""
+        while self._buf_samples > self.keep_samples and len(self._buf) > 1:
+            head = self._buf[0]
+            if head.size >= self._buf_samples - self.keep_samples:
+                break
+            self._buf.popleft()
+            self._buf_samples -= int(head.size)
+            self._base_samples += int(head.size)
+        if self._buf_samples > self.keep_samples and self._buf:
+            head = self._buf[0]
+            drop = self._buf_samples - self.keep_samples
+            if drop >= head.size:
+                self._buf.popleft()
+                self._buf_samples -= int(head.size)
+                self._base_samples += int(head.size)
+            else:
+                self._buf[0] = head[drop:]
+                self._buf_samples -= int(drop)
+                self._base_samples += int(drop)
+
+    def _window_locked(self, start_s, end_s):
+        """The PCM covering [start_s, end_s], or None when retention passed it.
+
+        `start`/`end` are the live event's own audio seconds and therefore the
+        same clock `accept` was fed on: absolute sample = second * `sr`. A line
+        whose OPENING has already been trimmed is refused rather than answered
+        with half a segment -- half a segment is a different sentence.
+        """
+        if start_s is None:
+            return None
+        try:
+            a = int(round(float(start_s) * self.sr))
+            b = (self._fed_samples if end_s is None
+                 else int(round(float(end_s) * self.sr)))
+        except (TypeError, ValueError):
+            return None
+        if a < self._base_samples or b <= a:
+            return None
+        i0 = a - self._base_samples
+        i1 = min(b - self._base_samples, self._buf_samples)
+        if i1 <= i0:
+            return None
+        out = self._np.zeros(i1 - i0, dtype=self._np.float32)
+        pos = 0
+        for block in self._buf:
+            n = int(block.size)
+            if pos + n <= i0:
+                pos += n
+                continue
+            lo = max(0, i0 - pos)
+            hi = min(n, i1 - pos)
+            if hi > lo:
+                out[(pos + lo - i0):(pos + hi - i0)] = block[lo:hi]
+            pos += n
+            if pos >= i1:
+                break
+        return out
+
+    # -- the live line in ------------------------------------------------------
+    def hold_live_final(self, event):
+        """Take ownership of ONE closed live line.
+
+        False -- publish `event` unchanged -- when the overlay is not armed, not
+        started, already stopped; when this is not a `final` caption; when it
+        carries no text or no usable audio position; when its audio is no longer
+        retained or is shorter than `silence_s`; or when the queue is full.
+        True otherwise, and then the overlay will publish exactly one line for
+        this segment.
+
+        EVERY FALSE CASE IS THE HONEST ONE: an overlay that never armed costs a
+        run nothing, and a line it cannot answer is published as it was.
+        """
+        if not self.armed or not isinstance(event, dict):
+            return False
+        if event.get("type") != "caption":
+            return False
+        if event.get("final") is not True:
+            return False
+        text = str(event.get("text") or "").strip()
+        if not text:
+            return False
+        start = event.get("start")
+        if isinstance(start, bool) or not isinstance(start, (int, float)):
+            return False
+        with self._lock:
+            if not self.started or self.stopped:
+                return False
+            pcm = self._window_locked(start, event.get("end"))
+            if pcm is None:
+                self._refuse("audio-not-retained")
+                return False
+            if pcm.size < int(self.silence_s * self.sr):
+                self._refuse("segment-too-short")
+                return False
+            # The bound counts the segment being decoded too:
+            # `max_queue` is how many segments the overlay holds at once, not
+            # how many it accepts while a decode is already running.
+            in_flight = 1 if self._inflight is not None else 0
+            if len(self._queue) + in_flight >= self.max_queue:
+                self.overflow += 1
+                self._refuse("queue-full")
+                return False
+            self._queue.append({
+                "queued_at": time.time(),
+                "start": start,
+                "end": event.get("end"),
+                "text": text,
+                "source": event.get("source"),
+                "pcm": pcm,
+                # kept WHOLE so the fallback IS the live line, byte for byte
+                "event": event,
+            })
+            self.segments += 1
+        self._wake.set()
+        return True
+
+    def _refuse(self, reason):
+        self.refusals[reason] = self.refusals.get(reason, 0) + 1
+
+    # -- events out ------------------------------------------------------------
+    def drain(self):
+        """The events to publish now, in capture order. Never partial text."""
+        with self._lock:
+            if not self._out:
+                return []
+            out = list(self._out)
+            self._out.clear()
+            self.returned += len(out)
+            return out
+
+    def start(self):
+        """Start the decode thread. Idempotent; a caller that never starts it
+        publishes every live line, because `hold_live_final` refuses."""
+        with self._lock:
+            if self.started or self.stopped:
+                return None
+            self.started = True
+            self.rss_before_mb = rss_mb()
+
+        def default(target, name):
+            return threading.Thread(target=target, name=name, daemon=True)
+
+        make = self.thread_factory or default
+        self._worker = make(self._loop, "redux-live")
+        self._worker.start()
+        return self._worker
+
+    def _loop(self):
+        """One segment at a time, in capture order.
+
+        The wake event doubles as the watchdog tick: a segment that outruns
+        `deadline_s` becomes the live-text fallback even while nothing else is
+        queued, because a held line must never wait as long as a stuck decode.
+        """
+        while not self._stop.is_set():
+            self._wake.wait(self.tick_s)
+            self._wake.clear()
+            with self._lock:
+                self._expire_locked(time.time())
+                item = self._queue.popleft() if self._queue else None
+            if item is not None:
+                self._decode(item)
+        with self._lock:
+            self._flush_locked("stop")
+
+    def _expire_locked(self, now):
+        if not self.deadline_s:
+            return
+        keep = deque()
+        while self._queue:
+            item = self._queue.popleft()
+            if now - item["queued_at"] >= self.deadline_s:
+                self._out.append(self._release(item))
+                self.expired += 1
+                self._note(
+                    f"REDUX_LIVE_EXPIRED start={item['start']} "
+                    f"deadline_s={self.deadline_s} -- the live line shipped instead")
+            else:
+                keep.append(item)
+        self._queue.extend(keep)
+
+    def _flush_locked(self, why):
+        """Release everything still held, as the live text. Only reached from
+        `stop()`, and only for work that never got a decode.
+
+        ORDER MATTERS: the in-flight segment was captured FIRST, so it is
+        released first. Releasing the queue first would publish line N+1
+        before line N and scramble the transcript's order.
+        """
+        if self._inflight is not None:
+            self._out.append(self._release(self._inflight))
+            self._inflight = None
+        while self._queue:
+            self._out.append(self._release(self._queue.popleft()))
+
+    def _release(self, item):
+        """The live line, unchanged, plus the counter and the note that say the
+        Redux pass did NOT answer this one.
+
+        The marker is what makes a release IDEMPOTENT: `stop()` releases the
+        in-flight segment and then that decode finishes a moment later, and
+        without the marker the same line would be published twice.
+        """
+        item["released"] = True
+        self.fallbacks += 1
+        return dict(item["event"])
+
+    def _decode(self, item):
+        """ONE segment, ONE backend call. The PCM snapshot was taken under the
+        lock in `hold_live_final` and the decode runs OUTSIDE it, so the audio
+        path never waits on the model."""
+        self._inflight = item
+        wall = None
+        text = ""
+        error = None
+        try:
+            started = time.perf_counter()
+            result = self.backend.transcribe(item["pcm"])
+            wall = time.perf_counter() - started
+            text = result[0] if isinstance(result, (tuple, list)) else result
+            text = "" if text is None else str(text).strip()
+        except Exception as exc:                     # reported, never re-raised
+            error = exc
+        finally:
+            self._inflight = None
+        # Already released by a concurrent `stop()`/`_expire_locked` -- the
+        # decode finished after the line was given back, so its result is
+        # dropped rather than published a second time.
+        if item.get("released"):
+            return
+        if error is not None:
+            with self._lock:
+                self.failures += 1
+                self._out.append(self._release(item))
+            self._note(f"REDUX_LIVE_DECODE_FAILED start={item['start']} "
+                       f"reason={type(error).__name__} error={error!r} -- "
+                       f"the live line shipped instead")
+            return
+        seconds = item["pcm"].size / float(self.sr)
+        # A decode that outran its deadline is released as the live text: the
+        # line is already late, and a late Redux line is worse than the live
+        # one the owner can read now.
+        if self.deadline_s and wall > self.deadline_s:
+            with self._lock:
+                self.expired += 1
+                self._out.append(self._release(item))
+            self._note(f"REDUX_LIVE_EXPIRED start={item['start']} "
+                       f"decode_s={round(wall, 3)} deadline_s={self.deadline_s} "
+                       f"-- the live line shipped instead")
+            return
+        if self.stopped:
+            with self._lock:
+                self._out.append(self._release(item))
+            return
+        with self._lock:
+            self.decodes_s.append(round(wall, 3))
+            self.audio_s += seconds
+            self.rss_after_mb = rss_mb()
+            if not text:
+                self._out.append(self._release(item))
+                self._refuse("empty-text")
+                return
+            event = {
+                "type": "caption",
+                "text": text,
+                "start": item["start"],
+                "end": item["end"],
+                "final": True,
+                "producer": self.producer,
+                "producerModel": self.producer_model,
+                "route": "redux-live",
+            }
+            if item["source"] is not None:
+                event["source"] = item["source"]
+            self.redux_lines += 1
+            self._out.append(event)
+        self._note(f"REDUX_LIVE_LINE start={item['start']} "
+                   f"decode_s={round(wall, 3)} audio_s={round(seconds, 2)} "
+                   f"chars={len(text)}")
+
+    def stop(self, timeout_s=15.0):
+        """End of stream: release every held line as the live text, so the panel
+        never waits on an overlay that is gone."""
+        with self._lock:
+            already = self.stopped
+            self.stopped = True
+            self._flush_locked("stop")
+        self._stop.set()
+        self._wake.set()
+        if already or self._worker is None:
+            return
+        try:
+            self._worker.join(timeout=timeout_s)
+        except RuntimeError:
+            pass
+
+    # -- measurement -----------------------------------------------------------
+    def stats(self):
+        """The overlay's own numbers, for the run's stats block."""
+        decodes = self.decodes_s[-64:]
+        return {
+            "reduxLive": True,
+            "reduxLiveArmed": self.armed,
+            "reduxLiveSegments": self.segments,
+            "reduxLiveLines": self.redux_lines,
+            "reduxLiveFallbacks": self.fallbacks,
+            "reduxLiveFailures": self.failures,
+            "reduxLiveExpired": self.expired,
+            "reduxLiveOverflow": self.overflow,
+            "reduxLiveDecodeMeanS": (round(sum(decodes) / len(decodes), 3)
+                                     if decodes else None),
+            "reduxLiveDecodeMaxS": (round(max(decodes), 3) if decodes else None),
+            "reduxLiveAudioS": round(self.audio_s, 2),
+            "reduxLiveRssMb": round(self.rss_after_mb, 1),
+        }
+
+    def stats_line(self):
+        row = dict(self.stats())
+        for key, value in row.items():
+            if value is None:
+                row[key] = "n/a"
+        return ("REDUX_LIVE armed=%(reduxLiveArmed)s "
+                "segments=%(reduxLiveSegments)d lines=%(reduxLiveLines)d "
+                "fallbacks=%(reduxLiveFallbacks)d failures=%(reduxLiveFailures)d "
+                "expired=%(reduxLiveExpired)d overflow=%(reduxLiveOverflow)d "
+                "decode_mean_s=%(reduxLiveDecodeMeanS)s "
+                "decode_max_s=%(reduxLiveDecodeMaxS)s audio_s=%(reduxLiveAudioS)s "
+                "rss_mb=%(reduxLiveRssMb)s" % row)
+
+
 if __name__ == "__main__":
     sys.exit(main())

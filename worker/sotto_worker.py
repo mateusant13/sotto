@@ -3249,6 +3249,46 @@ def redux_live_dirs():
             os.path.join(here, REDUX_LIVE_TERNARY_RELPATH))
 
 
+def redux_live_settings(args, cfg, env=None):
+    """Resolve the live overlay's opt-in and its knobs. PURE, so it is testable.
+
+    THE OPT-IN, most explicit first: the FLAG, then the ENV var
+    (`SOTTO_REDUX_LIVE`, where "1" is on and "0" is an explicit off), then
+    `redux_live.enabled` in the config, then OFF. The config rung is the reason
+    that block EXISTS: in this repo an unread key is a DELETED defect
+    (docs/audit/config-inert-fixed.md), so the key is read here or it is not
+    written at all. `why` names the rung that won, and the worker prints it as
+    `opt_in=` on the REDUX_LIVE_ARMED / REDUX_LIVE_REFUSED line, so which rung
+    decided a run never has to be guessed at.
+
+    EACH KNOB keeps the same order: flag, then config, then built-in. The CLI
+    spells "use the built-in" as 0 (and, for --redux-live-engine, as unset),
+    which is why `or` is the correct join here rather than a default-collapsing
+    bug: every flag default is the "unset" value, never a real setting.
+
+    Returns (opt_in, why, engine, keep_s, min_audio_s, deadline_s, threads).
+    """
+    env = os.environ if env is None else env
+    rl = (cfg or {}).get("redux_live") or {}
+    raw = str(env.get("SOTTO_REDUX_LIVE") or "").strip()
+    if getattr(args, "redux_live", False):
+        opt_in, why = True, "flag"
+    elif raw in ("0", "1"):
+        opt_in, why = raw == "1", "env"
+    else:
+        opt_in, why = bool(rl.get("enabled", False)), "config"
+    engine = str(getattr(args, "redux_live_engine", None) or rl.get("engine")
+                 or REDUX_LIVE_ENGINE_DEFAULT).strip().lower()
+    keep_s = float(getattr(args, "redux_live_keep", 0.0) or rl.get("keep_s")
+                   or REDUX_LIVE_KEEP_S)
+    min_audio_s = float(getattr(args, "redux_live_min_audio", 0.0)
+                        or rl.get("min_audio_s") or REDUX_LIVE_MIN_AUDIO_S)
+    deadline_s = float(getattr(args, "redux_live_deadline", 0.0)
+                       or rl.get("deadline_s") or REDUX_LIVE_DEADLINE_S)
+    threads = int(getattr(args, "redux_live_threads", 0) or rl.get("threads")
+                  or REDUX_LIVE_THREADS)
+    return opt_in, why, engine, keep_s, min_audio_s, deadline_s, threads
+
 def redux_live_missing(onnx_dir, ternary_dir):
     """The manifests NOT on disk under each dir; ([], []) when both can load."""
     return ([name for name in REDUX_LIVE_CHECKPOINT_FILES
@@ -4289,6 +4329,58 @@ def main():
         help=f"defer an INTERVAL batch pass while free physical memory is below "
         f"this, MB (0 = built-in default {REDUX_MIN_FREE_MB_DEFAULT}); a tail "
         f"attempts anyway and says so. 0 explicitly disables the gate.",
+    )
+    ap.add_argument(
+        "--redux-live",
+        action="store_true",
+        default=REDUX_LIVE_DEFAULT,
+        help="STACK LAW, SECOND HALF (default OFF): while the panel is "
+        "OPEN, hold every line the live engine CLOSES and re-transcribe it "
+        "with the Redux pass, publishing exactly one line per segment -- "
+        "the Redux text when the pass answered, the live text when it did "
+        "not. The panel replaces the row in place, so the history line is "
+        "the Redux version. Refused, and the run keeps streaming "
+        "untouched, if the engine's checkpoint is not on disk. Off = "
+        "byte-identical to a run without this flag. MAY ALSO BE TURNED ON "
+        "with SOTTO_REDUX_LIVE=1, so the shell can carry the opt-in without "
+        "a second flag table to drift.",
+    )
+    ap.add_argument(
+        "--redux-live-engine",
+        default=None,
+        help=f"which Redux export the overlay opens "
+        f"(onnx = {REDUX_LIVE_ONNX_RELPATH} | ternary = "
+        f"{REDUX_LIVE_TERNARY_RELPATH}); unset = redux_live.engine in the "
+        f"config, then the built-in {REDUX_LIVE_ENGINE_DEFAULT}",
+    )
+    ap.add_argument(
+        "--redux-live-deadline",
+        type=float,
+        default=0.0,
+        help=f"seconds a held line may wait for the Redux pass before the "
+        f"live text ships instead (0 = built-in default "
+        f"{REDUX_LIVE_DEADLINE_S})",
+    )
+    ap.add_argument(
+        "--redux-live-keep",
+        type=float,
+        default=0.0,
+        help=f"seconds of rolling PCM the overlay retains (0 = built-in "
+        f"default {REDUX_LIVE_KEEP_S})",
+    )
+    ap.add_argument(
+        "--redux-live-min-audio",
+        type=float,
+        default=0.0,
+        help=f"below this much audio a segment is not worth a decode (0 = "
+        f"built-in default {REDUX_LIVE_MIN_AUDIO_S})",
+    )
+    ap.add_argument(
+        "--redux-live-threads",
+        type=int,
+        default=0,
+        help=f"threads the ONNX session gets (0 = built-in default "
+        f"{REDUX_LIVE_THREADS})",
     )
     args = ap.parse_args()
 
@@ -5395,46 +5487,49 @@ def main():
                 args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
         )
         switch.boot_line()
-        # ── THE LIVE OVERLAY (lane S3), constructed ONLY when the flag is on ─────
-        # The opt-in is the flag OR the env var, mirroring the batch arm. With
-        # neither, `overlay` stays the `None` assigned above and the asr thread
-        # runs the code it ran before this lane existed.
+        # ── THE LIVE OVERLAY (lane S3), constructed only when it is opted in ────
+        # The opt-in is the flag, the env var, or `redux_live.enabled` in the
+        # config, in that order. With none of them `overlay` stays the `None`
+        # assigned above and the asr thread runs the code it ran before this
+        # lane existed.
         #
         # THE GATE. The batch arm refuses when its runner is missing; this one
         # refuses when the ENGINE is missing, and says which one it would have
         # opened. A missing checkpoint is not a reason to transcribe nothing — it
         # is a reason to say so loudly and keep streaming, because the owner's
         # live captions are the thing that must not stop.
-        redux_live_optin = bool(args.redux_live) or (
-            str(os.environ.get("SOTTO_REDUX_LIVE") or "").strip() == "1")
+        # The opt-in and its knobs come from ONE pure function, so the
+        # precedence is testable in process and not merely readable in place.
+        (redux_live_optin, _rl_why, _engine, _keep_s,
+         _min_audio_s, _deadline_s, _threads) = redux_live_settings(args, cfg)
         if redux_live_optin:
             import redux_live as _redux_live
-            _engine = str(args.redux_live_engine or REDUX_LIVE_ENGINE_DEFAULT).strip().lower()
             _onnx_dir, _ternary_dir = redux_live_dirs()
             _dir = _onnx_dir if _engine == "onnx" else _ternary_dir
             _missing = redux_live_missing(_onnx_dir, _ternary_dir)[0 if _engine == "onnx" else 1]
             if _missing:
                 err(f"REDUX_LIVE_REFUSED engine={_engine} dir={_dir} "
-                    f"missing={','.join(_missing)} -- the live engine keeps "
+                    f"opt_in={_rl_why} missing={','.join(_missing)} -- the live engine keeps "
                     f"streaming untouched; the overlay is OFF for this run")
             else:
                 try:
                     _backend = _redux_live.load_backend(
                         _engine, _onnx_dir, _ternary_dir,
-                        args.redux_live_threads or REDUX_LIVE_THREADS, "cpu")
+                        _threads, "cpu")
                     overlay = _redux_live.ReduxLiveOverlay(
                         _backend,
                         producer_model=os.path.basename(_dir),
                         log=err,
-                        keep_s=args.redux_live_keep or REDUX_LIVE_KEEP_S,
-                        silence_s=args.redux_live_min_audio or REDUX_LIVE_MIN_AUDIO_S,
-                        deadline_s=args.redux_live_deadline or REDUX_LIVE_DEADLINE_S,
+                        keep_s=_keep_s,
+                        silence_s=_min_audio_s,
+                        deadline_s=_deadline_s,
                         max_queue=REDUX_LIVE_MAX_QUEUE,
                     )
                     overlay.start()
                     err(f"REDUX_LIVE_ARMED engine={_engine} dir={_dir} "
-                        f"backend={_backend.name} keep_s={overlay.keep_s} "
-                        f"deadline_s={overlay.deadline_s} max_queue={overlay.max_queue}")
+                        f"opt_in={_rl_why} backend={_backend.name} keep_s={overlay.keep_s} "
+                        f"deadline_s={overlay.deadline_s} max_queue={overlay.max_queue} "
+                        f"threads={_threads}")
                 except Exception as exc:
                     overlay = None
                     err(f"REDUX_LIVE_REFUSED engine={_engine} dir={_dir} "
@@ -6128,6 +6223,35 @@ def main():
             reduxVisibilityReads=switch.reader.reads,
             reduxVisibilityFallbacks=switch.reader.fallbacks,
         )
+    if overlay is not None:
+        # THE OVERLAY'S OWN VERDICT, kept SEPARATE from the batch arm's. A
+        # number that mixes the two engines cannot answer the only question
+        # this lane exists to ask: did the second pass actually take the
+        # line? So the overlay reports its own counters, its own decode cost
+        # and its own refusals. And reduxLive=False means "the flag was
+        # off" -- which is a DIFFERENT fact from "the overlay was on and
+        # refused", the two never collapsing into one word.
+        done_payload.update(
+            reduxLive=True,
+            reduxLiveArmed=overlay.armed,
+            reduxLiveSegments=overlay.segments,
+            reduxLiveLines=overlay.redux_lines,
+            reduxLiveFallbacks=overlay.fallbacks,
+            reduxLiveFailures=overlay.failures,
+            reduxLiveExpired=overlay.expired,
+            reduxLiveOverflow=overlay.overflow,
+            reduxLiveAudioS=round(overlay.audio_s, 2),
+            reduxLiveRssMb=round(max(overlay.rss_before_mb,
+                                    overlay.rss_after_mb), 1),
+        )
+        if overlay.decodes_s:
+            done_payload.update(
+                reduxLiveMeanDecodeS=round(
+                    sum(overlay.decodes_s) / len(overlay.decodes_s), 3),
+                reduxLiveMaxDecodeS=round(max(overlay.decodes_s), 3),
+            )
+        if overlay.refusals:
+            done_payload["reduxLiveRefusals"] = dict(overlay.refusals)
     emit(**done_payload)
     # A run that captured digital silence is NOT a successful run. Returning 0
     # here is the specific defect measured on 2026-10-06: the worker opened a
