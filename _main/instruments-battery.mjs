@@ -72,6 +72,8 @@ const py = [
   ['_main/panel-flash-numbers-reconciliation-oracle.py', 'panel-flash-numbers (rows #4/F1)'],
   ['_main/panel-search-keyboard-oracle.py', 'panel-search-keyboard (row F9)'],
   ['_main/rtf-cpu-attribution-oracle.py', 'rtf-cpu-attribution (row F10)'],
+  ['_main/unfinished-items-coverage-oracle.py', 'unfinished-items coverage (every named source)'],
+  ['_main/unfinished-items-coverage-oracle.py --neg-arm', 'unfinished-items coverage control'],
 ];
 
 const node = [
