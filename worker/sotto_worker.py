@@ -3724,6 +3724,44 @@ class ReduxHiddenSwitch:
 
 
 # ── selftest ──────────────────────────────────────────────────────────────────
+#: The floor, DERIVED FROM TWO MEASURED RUNS OF THE SAME FILE -- both quoted from
+#: this file's own header (worker/assets/sample1.flac, 13.44 s of read speech): the
+#: greedy-walk defect returned **37 tokens = 2.75 tokens/s with rc=0**, which the
+#: header itself calls "a green exit code on word salad"; the corrected walk returns
+#: **94 tokens = 6.99 tokens/s**. The floor sits at 4.0: above the defective run,
+#: below the good one, with room for a slower speaker.
+#:
+#: WHAT THIS IS NOT, said plainly because a floor is easy to oversell: it is not a
+#: quality verdict. It cannot tell "Going along slushy Country roads" from
+#: fluent-sounding nonsense, and it is not meant to. It catches the ONE degradation
+#: this repo actually measured -- a walk that stops after a couple of symbols per
+#: chunk, which is a COUNTING failure -- in the only way a self-test can: by
+#: counting what came out against the audio that went in.
+SELFTEST_MIN_TOKENS_PER_S = 4.0
+
+
+def selftest_quality(reading: dict) -> tuple[bool, str]:
+    """(is this transcript worth a GREEN exit code?, why not). PURE: no I/O, no state.
+
+    Audit rows #25 / #H1: the self-test asked only whether the text was EMPTY, so a
+    word-salad run was indistinguishable from a good one -- measured, with rc=0.
+    """
+    if reading.get("empty"):
+        return False, "the transcript is EMPTY -- nothing was recognised, and this run used to exit 0 on that"
+    audio_s = float(reading.get("audio_s") or 0.0)
+    tokens = int(reading.get("tokens") or 0)
+    if audio_s <= 0:
+        return True, ""  # no duration to divide by: not this function to call
+    rate = tokens / audio_s
+    if rate < SELFTEST_MIN_TOKENS_PER_S:
+        detail = ("%d token(s) over %.2f s = %.2f tokens/s, below the MEASURED floor %.2f"
+                  % (tokens, audio_s, rate, SELFTEST_MIN_TOKENS_PER_S))
+        return False, detail + (" (the greedy-walk defect returned 37 tokens = 2.75/s with rc=0"
+                               " on the very file this self-test uses; the corrected walk"
+                               " returns 94 = 6.99/s)")
+    return True, ""
+
+
 def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_chars=0):
     """Prove the model works with NO audio device involved.
 
@@ -3824,7 +3862,18 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
     print(f"peak_rss_mb  : {peak_rss_mb():.1f}", file=sys.stderr)
     print(f"providers    : {asr.providers}", file=sys.stderr)
     print(f"RECOGNISED   : {full!r}", file=sys.stderr)
+    quality_ok, quality_why = selftest_quality(
+        {"tokens": len(asr.labels), "audio_s": asr.audio_s, "empty": full.strip() == ""})
+    verdict_word = "ok" if quality_ok else "REFUSED"
+    print("quality      : " + verdict_word + " (" + str(len(asr.labels)) + " token(s) over "
+          + format(asr.audio_s, ".2f") + " s, floor " + str(SELFTEST_MIN_TOKENS_PER_S) + ")",
+          file=sys.stderr)
     print("--- end selftest ---", file=sys.stderr)
+    if not quality_ok:
+        # The contract is JSONL on stdout: the refusal must be an EVENT, not only a
+        # line on stderr, or the shell paints a healthy finish for a dead transcript.
+        emit(type="status", state="error", stage="selftest", detail=quality_why)
+        return 3
     return 0
 
 

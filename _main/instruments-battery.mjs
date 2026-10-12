@@ -47,6 +47,8 @@ const py = [
   ['_main/cited-instruments-oracle.py --neg-arm', 'cited-instruments neg'],
   ['_main/device-ladder-rescan-oracle.py', 'ladder-rescan (row F15)'],
   ['_main/device-ladder-rescan-oracle.py --neg-arm', 'ladder-rescan neg'],
+  ['_main/selftest-quality-oracle.py', 'selftest-quality (rows #25/H1)'],
+  ['_main/selftest-quality-oracle.py --neg-arm', 'selftest-quality neg'],
 ];
 
 const node = [
