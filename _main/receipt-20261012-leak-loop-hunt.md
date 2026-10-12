@@ -191,3 +191,215 @@ new `ole32` binding whose failure mode I cannot exercise without a launch.
   `BRIDGE_RESTART reason=silent` → `BRIDGE_EXIT rc=1` → rc=3 restarts → spawn 7 = pid 11584, rotating,
   `BRIDGE_SILENT_BENIGN ... because="device-rotated"`), but that running shell is the **pre-pin** one and
   those lines carry **no hour stamp**, so no time is claimed.
+
+---
+
+# ROUND 2 — "the worker restart loop" (2026-10-12)
+
+**Target given by the Lead:** *"ONE worker: ~569 s of run, FOUR THOUSAND NINE HUNDRED AND
+FORTY captions emitted, then it exits rc=1 because a tap rotated onto a FLAT endpoint, and the
+bridge respawns it into a ~1 GB model reload. That is the loop."*
+
+## THE PREMISE IS REFUTED BY THE LOG. The flat rotation did not kill that worker.
+
+Read in order from `_main/webview-run.log` (live, read-only), the lines around index 117385:
+
+```
+HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=2014 max_defer_ms=25000 \
+    code_is_stale=True sha256_disk=44f9dbe80d130af6 sha256_at_spawn=5ed6d0a5697bd654
+HOT_RELOAD_WORKER_FORCED   files=1 reason=no-boundary-in-25000ms waited_ms=32046 \
+    code_is_stale=True sha256_disk=44f9dbe80d130af6 sha256_at_spawn=5ed6d0a5697bd654 cos...
+HOT_RELOAD_WORKER_RESTART  files=1 after_idle_ms=32046 waited_ms=32046
+BRIDGE_STOP reason=hot-reload pid=11584
+BRIDGE_EXIT pid=11584 rc=1 spawns=7 captions=4940 statuses=113 malformed=0 stderr_tail=[...]
+BRIDGE_START reason=hot-reload ...
+BRIDGE_SPAWNED pid=5472 ...
+```
+
+Three facts settle it:
+
+1. **`rc=1` is not a worker exit code.** CPython's `Popen.terminate()`/`kill()` on Windows calls
+   `TerminateProcess(handle, 1)`. The worker's OWN exits are 0 / 2 / 3 / 130 / 4. So `rc=1` means
+   **the shell killed it**, and the line immediately above names the shell's path:
+   `BRIDGE_STOP reason=hot-reload` -> `WorkerBridge.stop()` -> `child.terminate()`.
+2. **The kill was a HOT RELOAD, and `sha256_disk=44f9dbe80d130af6` is this lane's own round-1 F3
+   edit to `worker/sotto_worker.py`** (the previous pinned revision was `5ed6d0a5697bd654`).
+   `code_is_stale=True` is the whole reason the reload was requested at all. **This restart is a
+   self-inflicted measurement artefact of round 1, not an owner-visible loop, and it is reported as
+   such.**
+3. **No flat rotation is anywhere in that sequence.** `_on_silence`'s last word before the reload was
+   the BENIGN branch: `no_audio` was True (`device-rotated` + `reason=flat` is a
+   `WORKER_NO_AUDIO_VERDICTS` sentence), so it re-armed the watchdog and **returned without killing
+   anything** (`sotto_webview.py`, the `BRIDGE_SILENT_BENIGN` arm). The `BRIDGE_SILENT` +
+   `_kill_and_restart('silent')` path requires `no_audio == False`, and it never fired here.
+
+## The three questions, answered
+
+**Q1 — "why does a flat rotation end the whole process?"** It does not. The predicate that DID end it
+is `WorkerReloadPolicy._fire` -> `forced = capturing and not boundary and waited_ms >=
+self.max_defer_ms` -> `self.restart(files)`. The counter `_on_silence` reads is not involved:
+`_on_silence` never reached a kill.
+
+**Q2 — "does a flat rotation share a counter with a stall?"** **No, and the hypothesis is refuted by
+reading the code.** In `worker/sotto_worker.py`: `stall_reopens` (incremented at `:5733`) is the
+STALL counter and it is per-candidate, reset at `:5608-5611`; `rotations` (the ladder's) is the FLAT
+ROTATION counter and it is separate. `tap_stall_reason(pump_exited, idle_s, reopens)` (`:255-275`)
+is fed only `client_dead = bool(getattr(inner, "pump_exited", False))` (`:5678`) — `pump_exited` is
+the ONLY affirmative dead-client signal, and a flat rotation never sets it. Neither counter feeds any
+kill: the stall path's own comment at `:5707` says *"the process NEVER exits on a stall"*, and the
+`endpoint-idle` branch `time.sleep(0.1); continue`s.
+
+**Q3 — is the honest verdict intact?** **Yes, already.** `worker/sotto_worker.py` separates the two
+facts: `proved_alive["any"]` is set only by a candidate that `settled` (`:5792-5798`), and
+`ran_but_silent = bool(silent_rows) and not proved_alive["any"]` (`:5915`) -> `return 3 if
+ran_but_silent else 0` (`:6137`). A worker that emitted N>0 captions and then rotated is
+`proved_alive`, so it is NOT `ran_but_silent`. **I did not touch the silence verdict, the ladder, the
+rotation counter, the tap policy, or the worker at all in round 2.** `worker/sotto_worker.py` is
+round 2 did not
+edit `worker/sotto_worker.py` at all. **It has since moved again under another lane** — it now reads
+330239 B / sha256 `A30BA3B4BEB9A7CE...`, where at the time of the incident `sha256_disk` was
+`44f9dbe80d130af6` (round 1's F3 revision). So the digest in that FORCED line names a *past* revision of
+a file other lanes also edit, which is exactly the point.
+
+## But the Lead's QUESTION WAS RIGHT ABOUT THE CLASS, AND THE CONFLATION IS REAL — IN THE SHELL
+
+The two facts **are** conflated, one layer up. `WorkerReloadPolicy._fire` held the reload on
+`bridge.is_capturing()` = `bool(self.capturing) and self.child is not None` — **ONE flag for TWO
+different workers**:
+
+* a worker that is **TRANSCRIBING** (a caption may be in flight — restarting cuts it), and
+* a worker that merely has a stream **OPEN** (nothing in flight — restarting disturbs nothing).
+
+The guard exists for the first. **The second is the measured normal on this box** (a tap that is open
+and delivering nothing, because nothing is routed into it — see AGENTS.md *"The routing law on THIS
+box"*). Its only other exit is a closed-line boundary, raised by `on_worker_caption` on a
+`final:true` caption — **which an idle endpoint will never produce.** So the guard DEFERRED at every
+check and the ceiling FORCED the reload anyway. Measured cost, from the log above:
+`max_defer_ms=25000` but `waited_ms=32046` — because the check only runs when the timer fires, and it
+was armed with the full 10 s re-check, so the ceiling was observed **7 046 ms late**. The deferral
+bought **nothing** and cost a 32 s stall of the capture pipeline plus a ~1 GB model warm-up.
+
+This is not a one-off. Counted over the live log: **28 `HOT_RELOAD_WORKER_RESTART`, 5 of them
+`FORCED`, 188 `DEFERRED`, 68 `COOLDOWN`, 16 `APPLIED_AT_BOUNDARY`, and 14
+`BRIDGE_STOP reason=hot-reload`.** Every worker-file edit on this box pays it.
+
+## The fix (`app/webview/sotto_webview.py`, 2 places + 1 stamp)
+
+1. `WorkerBridge` now records **when** the last caption arrived, not just how many:
+   `self.last_caption_at = 0.0` in `__init__`, stamped `time.monotonic()` where a caption is
+   accepted (next to `self.captions += 1`).
+2. `_fire` computes the second fact and holds **only while a caption is RECENT**:
+   `transcribing = last_caption_at > 0 and (now - last_caption_at)*1000 < max_defer_ms`.
+   `if capturing and not boundary and not forced and transcribing:` -> defer.
+   Otherwise a worker with **nothing in flight** falls through to the same
+   boundary/floor/restart path a boundary would have taken, logging
+   `HOT_RELOAD_WORKER_IDLE_APPLIED ... reason=no-caption-in-25000ms idle_ms=... cost=one-model-warm-up`.
+3. **The ceiling is a DEADLINE, not a hint**: the re-arm is
+   `self._arm(min(self.defer_recheck_ms, max(0, self.max_defer_ms - waited_ms)))`, so
+   `max_defer_ms=25000` means 25 000 ms instead of 32 046.
+
+**The GUARD and the FLOOR are intact**: a transcribing worker still waits for a closed line
+(arm 2), the 180 s `WORKER_RELOAD_MIN_INTERVAL_MS` floor still bounds the rate (arm 8), and a
+non-capturing worker is unchanged (arm 9). Nothing in `worker/` moved, so the silence verdict and the
+exit-on-idle policy the owner feels when he pauses are untouched.
+
+## New instrument — `_main/worker-reload-guard-oracle.py` (house style, 9 arms)
+
+Imports the REAL shell in process and drives the REAL `WorkerReloadPolicy._fire` against a stand-in
+bridge that carries the two facts. `--neg-arm` restores the pre-fix policy (both anchors) in a COPY.
+
+| colour | result |
+|---|---|
+| BEFORE (shipped, unfixed) | **RED** — arms **1, 3, 5, 8** |
+| AFTER (fixed) | **PASS — failures: 0 (9 checks)** |
+| NEG-ARM (pre-fix restored in a copy) | **RED — failures: 4, arms 1, 3, 5, 8** |
+
+The neg-arm reproduces the BEFORE arm-for-arm, which is what makes it a control. Arm 5 prints
+`arm_ms=2986` where the old code armed `10000` (22014 + 2986 = 25000 exactly).
+
+## Gate battery
+
+| gate | result |
+|---|---|
+| `py -3 _main/device-silence-oracle.py` | **UNMEASURED — cannot run here** |
+| `py -3 _main/verdict-order-oracle.py` | **UNMEASURED — cannot run here** |
+| `py -3 _main/panel-exit3-oracle.py --unit --neg-arm` | **PASS** (`"verdict": "PASS"`, `failures: []`) |
+| `py -3 _main/tap-stall-policy-oracle.py` | **PASS** (shipped failures 0; control failures 17) |
+| `py -3 _main/tap-idle-liveness-oracle.py` | **VERDICT: GREEN** |
+| `py -3 _main/tap-stall-watchdog-oracle.py` | **VERDICT: GREEN -- every arm as expected** |
+| `py -3 _main/device-ladder-rescan-oracle.py` | **VERDICT: PASS** |
+| `py -3 _main/worker-reload-guard-oracle.py` (+ `--neg-arm`) | **PASS / RED** — see above |
+
+**Why the two are UNMEASURED, stated plainly: `sounddevice` is not installed on this box.**
+`py -3 _main/device-silence-oracle.py` dies at `line 33, import sounddevice` and
+`verdict-order-oracle.py` at `line 104` inside `pick_silent_device()`. Measured: the module is absent
+from `C:\Program Files\Python311\Lib\site-packages` (only `openai\_extras\sounddevice_proxy.py`
+matches the name), and **every** interpreter on the box returns `ModuleNotFoundError` for it —
+3.11 (`py -3`), the uv 3.13.14, the Astral 3.11.13, and msys64's python. So I have **no reading** for
+those two gates: not green, not red, and **not a regression** — round 2 did not touch `worker/` or the
+device ladder, and both oracles fail at import, before any subject code runs. The Lead's warning about
+device-silence ARM1 being environmentally RED is moot here: the oracle cannot reach its arms at all.
+**This is the one thing in this round I could not gate, and it needs a box with `sounddevice`.**
+
+## Left alone deliberately (round 2)
+
+* The worker's silence verdict, ladder, `TAP_IDLE_MAX_S`, `tap_stall_reason`, `stall_reopens` — the
+  Lead's rule, and Q3 shows they were already correct.
+* The worker exit-on-idle policy the owner feels when he pauses — untouched, as instructed.
+* `_on_silence`'s `BRIDGE_SILENT` kill path (`no_audio == False`) — not reached in this incident and
+  not weakened.
+* Round-1 residuals stand unchanged: `_PLP_HANDLERS` retention, `GetMixFormat`'s `mix`, and
+  `BRIDGE_CAPTION_SENT`'s one log line per caption.
+
+## Pin
+
+`app/webview/sotto_webview.py` = **476471 B**, sha256 `F141842E5151968DC5C53D4A1C778E16DDDC287DE86C83250F792FD5CBA5A5B4`, 0 bare LF.
+`worker/sotto_worker.py` = **330239 B**, sha256 `A30BA3B4BEB9A7CE4A1624B37D15872F51AC99DCE110910668C72D26D2D9EE1C` (round-1 F3, unmoved).
+
+## ROUND 2 — ADDENDUM: the shell's OWN self-test pinned the old predicate, and how that is handled
+
+Found while gating: `app/webview/sotto_webview.py` carries its own arms for this exact policy inside
+`run_selftest` (`StandInBridge` + `run_arm`). **Its arm 1 is the defect I changed** — it sets
+`br.capturing = True`, touches the worker file 6 times and asserts
+`ARM guard touches=6 restarts_during_capture=0 expect=0`, i.e. it pins *"while a capture is open, no
+restart"*. Its stand-in bridge has **no caption clock at all**, so under my first cut it would have
+taken the IDLE_APPLIED path, restarted, and turned the shell's self-test RED.
+
+**I could not run that self-test to verify a repair:** `run_selftest` is reached only from
+`if self.args.selftest: self.run_selftest()` inside the shell's startup, so running it means
+**launching the app**, which the owner's rule reserves to the Lead. Shipping an unverified edit to a
+gate is worse than not touching it, so the code was changed instead of the gate:
+
+> **A bridge that cannot report the second fact is treated as IN FLIGHT.** `getattr(bridge,
+> 'last_caption_at', None)`; `None` -> `transcribing = True` -> the reload is HELD. The guard's
+> failure mode is therefore always **"do not restart"**, which is the conservative direction and
+> exactly the contract arm 1 asserts. The REAL `WorkerBridge` always carries the attribute (0.0 until
+> the first caption), so the live path gets the fix and a never-captioned worker is still applied at
+> once.
+
+**That contract is now gated in-process instead: arm 10 of `_main/worker-reload-guard-oracle.py`
+builds a bridge with `has_clock=False` — byte-for-byte the StandInBridge surface — and asserts
+`restart=0, kinds=DEFERRED`.** It passes in BOTH colours, which is its job: it is the arm that proves
+the shell's self-test contract did **not** move. **STILL UNMEASURED: the shell's own `run_selftest`
+has not been run** — the claim here is "the conditions arm 1 drives now hold", measured in process, not
+"the self-test was executed".
+
+The docstring's rule 2 (`is_capturing() is the state the owner is watching`) and the ceiling paragraph
+were both rewritten to state the second fact and the deadline, so the file no longer documents the
+predicate it stopped using.
+
+**Final arm table (`_main/worker-reload-guard-oracle.py`, 10 checks):**
+
+| colour | result |
+|---|---|
+| BEFORE (shipped, unfixed) | **RED** — arms 1, 3, 5, 8 |
+| AFTER (fixed) | **PASS — failures: 0 (10 checks)** |
+| NEG-ARM (pre-fix restored in a copy) | **RED — failures: 4, arms 1, 3, 5, 8** |
+
+Gates re-run after the sentinel edit: `panel-exit3 --unit --neg-arm` **PASS**, `tap-stall-policy`
+**PASS** (0 shipped / 17 control), `tap-stall-watchdog` **GREEN**, `tap-idle-liveness` **GREEN**,
+`device-ladder-rescan` **PASS**. `device-silence` and `verdict-order` remain **UNMEASURED**
+(`sounddevice` absent — see above).
+
+**FINAL PIN:** `app/webview/sotto_webview.py` = **477839 B**, sha256
+`CD00E071341E9BC3A31FAC3F7DE95B477464A6C71A30D3359C1136E1A51C81CA`, 0 bare LF.

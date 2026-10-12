@@ -7158,9 +7158,17 @@ class WorkerReloadPolicy:
 
       1. DEBOUNCE -- a trailing window (WORKER_RELOAD_DEBOUNCE_MS) coalesces a
          burst of saves from several lanes into ONE request.
-      2. GUARD -- a worker that is mid-stream is never restarted under the
-         owner's feet. is_capturing() is the state the owner is watching, so a
-         reload requested while it is true is HELD. It lands at the next
+      2. GUARD -- a worker that is TRANSCRIBING is never restarted under the
+         owner's feet. `is_capturing()` alone was ONE flag for TWO different
+         workers -- one mid-sentence, and one merely holding a stream open -- and
+         on a host with nothing routed into the cable the second is the NORMAL
+         state. So the guard held a worker the owner was not watching, and the
+         ceiling then forced the reload anyway: MEASURED in the owner's own log,
+         max_defer_ms=25000 but waited_ms=32046, i.e. the deferral bought nothing
+         and cost a 32 s stall plus a warm-up. The state the owner is watching is
+         a CAPTION IN FLIGHT: the guard holds while last_caption_at is younger
+         than max_defer_ms, and a worker with nothing in flight is applied at once
+         (HOT_RELOAD_WORKER_IDLE_APPLIED). A held reload lands at the next
          boundary: either a natural respawn already re-read the file, or the
          reload is applied here.
       3. FLOOR -- the model may not be reloaded more often than
@@ -7178,8 +7186,11 @@ class WorkerReloadPolicy:
         signal that passes the capture guard while capture stays open. It is
         raised by on_worker_caption on a final:true caption.
       * WORKER_RELOAD_MAX_DEFER_MS -- the fallback for a stretch that closes no
-        line at all. After this long the reload is FORCED even with no boundary,
-        because a stale running worker is worse than one warm-up.
+          line at all. After this long the reload is FORCED even with no boundary,
+          because a stale running worker is worse than one warm-up. The deferral
+          re-arms with the REMAINDER when that is shorter than the re-check, so
+          this ceiling is a DEADLINE and not a hint: it used to be observed one
+          whole re-check late, which is how 25000 really meant 32046.
 
     The FLOOR applies AFTER both: it bounds the RATE of reloads, which is the
     owner's rule, and it is never a reason to wait for one. So the decision
@@ -7332,8 +7343,35 @@ class WorkerReloadPolicy:
         # on both paths because the useful question is never "did it restart"
         # but "was the running code stale when it did".
         boundary = self._boundary_hit
+        # -- THE SECOND FACT (added 2026-10-12) ------------------------------
+        # `is_capturing()` is ONE flag for TWO different workers: one that is
+        # TRANSCRIBING, and one that merely has a stream OPEN. The guard exists
+        # to avoid cutting the caption the owner is READING, so only the first
+        # is under his feet -- and on this box the second is the measured
+        # normal (a tap that is open and delivering nothing, because nothing is
+        # routed into it). MEASURED in the owner's own log, this revision:
+        # pid 11584, 4 940 captions, then a worker-file edit -- the guard
+        # DEFERRED at every check and the ceiling FORCED the reload anyway,
+        # `max_defer_ms=25000` but `waited_ms=32046`. The deferral bought
+        # NOTHING and cost a 32 s stall of the capture pipeline plus a model
+        # warm-up. A worker that has produced no caption within the ceiling has
+        # NOTHING in flight, so there is no boundary worth waiting for: an idle
+        # endpoint will never produce one. Hold only while a caption is RECENT.
+        last_caption_at = getattr(bridge, 'last_caption_at', None)
+        now_s = time.monotonic()
+        if last_caption_at is None:
+            # A bridge that cannot report the second fact is assumed to be in the
+            # PROTECTED state: the guard's failure mode must always be "do NOT
+            # restart". (The shell's own StandInBridge is exactly such a bridge,
+            # and its guard arm asserts this hold without carrying a clock.)
+            transcribing = True
+        else:
+            last_caption_at = float(last_caption_at)
+            transcribing = bool(
+                last_caption_at > 0.0
+                and (now_s - last_caption_at) * 1000.0 < self.max_defer_ms)
         forced = capturing and not boundary and waited_ms >= self.max_defer_ms
-        if capturing and not boundary and not forced:
+        if capturing and not boundary and not forced and transcribing:
             now = time.monotonic()
             if now - self._defer_logged_at >= WORKER_RELOAD_DEFER_LOG_MS / 1000.0:
                 self._defer_logged_at = now
@@ -7345,8 +7383,27 @@ class WorkerReloadPolicy:
                     f'code_is_stale={bool(disk and loaded and disk != loaded)} '
                     f'sha256_disk={disk} sha256_at_spawn={loaded} '
                     'applies_at=next-closed-line-or-ceiling')
-            self._arm(self.defer_recheck_ms)
+            # THE CEILING IS A DEADLINE, NOT A HINT. This check only runs when
+            # the timer fires, so arming a FULL re-check past the ceiling made
+            # `max_defer_ms=25000` really mean 32 046 ms (measured). Arm the
+            # REMAINDER whenever it is shorter than the re-check.
+            self._arm(min(self.defer_recheck_ms,
+                          max(0, self.max_defer_ms - waited_ms)))
             return
+        if capturing and not boundary and not forced and not transcribing:
+            # NOTHING IS IN FLIGHT. Say WHY, then fall through to the same
+            # boundary/floor/restart path a boundary would have taken -- the
+            # RATE floor below still bounds how often this can happen.
+            disk, loaded = self._digests(bridge)
+            idle_ms = (int((now_s - last_caption_at) * 1000)
+                       if last_caption_at > 0.0 else None)
+            self.log(
+                f'HOT_RELOAD_WORKER_IDLE_APPLIED files={len(files)} '
+                f'reason=no-caption-in-{self.max_defer_ms}ms '
+                f'waited_ms={waited_ms} idle_ms={idle_ms} '
+                f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                'cost=one-model-warm-up')
         if forced:
             disk, loaded = self._digests(bridge)
             self.log(
@@ -7473,6 +7530,11 @@ class WorkerBridge:
         self.restarts = 0
         self.spawns = 0
         self.captions = 0
+        # WHEN the last caption arrived, not just how many. The reload guard
+        # holds a worker that is TRANSCRIBING; without a clock it could only ask
+        # whether a stream was open, which is a different question (see
+        # WorkerReloadPolicy._fire).
+        self.last_caption_at = 0.0
         self.statuses = 0
         self.malformed = 0
         self.stopped = False
@@ -7986,6 +8048,7 @@ class WorkerBridge:
             meta = {k: v for k, v in message.items()
                     if k not in ('type', 'text')}
             self.captions += 1
+            self.last_caption_at = time.monotonic()
             # A caption is the ONLY proof that the current worker is really
             # transcribing, so it is the only thing allowed to lift a death the
             # panel is showing. Anything else (a restart's warm-up status) has
