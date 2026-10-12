@@ -887,6 +887,7 @@ STRIP_WIDTH_MIN = 480
 STRIP_WIDTH_FRACTION = 0.62
 #: The CSS custom property that IS the strip's height (`panel.css:52`).
 STRIP_HEIGHT_CSS_VAR = '--strip-height'
+FLOAT_HEIGHT_CSS_VAR = '--float-height'   # the floated caption's window height
 STRIP_BOTTOM_MARGIN = 48
 #: THE LOG BUDGET OF THE STATS FEED. `on_worker_stats` fires once per worker
 #: `WORKER_STATS` line, and that line is a METER sample — the worker may publish
@@ -6477,6 +6478,23 @@ class SottoShell:
         """
         work = self.work_area()
         saved = self.saved_geometry
+        # A SAVED STRIP RECT KEEPS THE OWNER'S PLACEMENT, NEVER ITS HEIGHT.
+        # Measured: the saved rect in _main/panel-visibility.json (geometry.surface=strip,
+        # 1040x100) beat the stylesheet's own --strip-height/--float-height, so the floated
+        # caption the owner asked for could never reach 220px. The stylesheet is the single
+        # source of truth for this number (strip_height_from_css :6495); a saved rect is a
+        # placement, and a placement cannot outlive a resize of the thing it places.
+        if (surface == 'strip' and isinstance(saved, dict)
+                and saved.get('surface') == 'strip'):
+            live = self.strip_height
+            if int(saved.get('height') or 0) != int(live):
+                bottom = int(saved.get('workY') or 0) + int(saved.get('workHeight') or 0)
+                saved = dict(saved)
+                saved['height'] = int(live)
+                saved['y'] = bottom - int(live)
+                saved['docked'] = 'bottom-strip'
+                log('STRIP_RECT_HEIGHT from_saved=%s to_css=%s reason=%s'
+                    % (saved.get('height'), int(live), 'geometry-strip-live'))
         if isinstance(saved, dict) and saved.get('surface') == surface:
             geometry, moved = clamp_geometry(saved, work)
             if moved:
@@ -6505,7 +6523,10 @@ class SottoShell:
         """
         script = ("(() => {"
                   "const v = getComputedStyle(document.documentElement)"
-                  f".getPropertyValue('{STRIP_HEIGHT_CSS_VAR}');"
+                  "const flo = document.documentElement.getAttribute('data-float') === 'on';"
+                  f"const v = getComputedStyle(document.documentElement)"
+                  f".getPropertyValue(flo ? '{FLOAT_HEIGHT_CSS_VAR}' : '{STRIP_HEIGHT_CSS_VAR}');"
+                  "})()"
                   "return v === null || v === undefined ? null : String(v).trim();"
                   "})()")
         try:
