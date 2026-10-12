@@ -308,6 +308,26 @@ achado, e a prova de que nenhum rotulo declarado por uma fonte ficou sem linha n
 - **OPEN:** 24
 - **IN-FLIGHT:** 0
 
+**NOTA 2026-10-11 (TERCEIRA auditoria — a CADEIA DE PROVA, nao as afirmacoes):** as duas rondas
+anteriores apanharam o mesmo formato duas vezes — um gate que os documentos davam como VERDE e que
+devolvia 1, e um gate que media um defeito e ignorava a medicao — e ambos eram invisiveis porque TODAS
+as verificacoes liam AFIRMACOES e nenhuma lia a CADEIA DE PROVA. `_main/cited-instruments-oracle.py` le
+o proprio mapa e mede-a: **31 caminhos executaveis citados** — **15** correm na bateria commitada, **5**
+sao executaveis em processo mas NAO gateados (declarado, nao fechado: `_main/_probe/console-census.py`,
+`_main/_run-hidden.py`, `_main/redux-long-probe.py`, `_moved/aireplay/_main/window-census.ps1`,
+`worker/wasapi_loopback.py`), **11** tem risco de lancamento e ficam NOMEADOS com o marcador que os
+denunciou (`run.cmd` / `sotto_webview.py` / `sotto_worker.py` / `_audit-verify-all` / 
+`webview.create_window`) em vez de serem corridos pela ordem do dono, e **2 citam um caminho errado cujo
+artefacto existe noutro sitio** (`docs/AGENTS.md` -> `AGENTS.md`; `worker/runs/exit3-armB-worker.jsonl`
+-> `_main/exit3-armB-worker.jsonl` — as linhas F10/F19 sao SOBRE essa citacao errada, portanto uma
+citacao que nao resolve nao e por si um defeito; o que seria defeito e o artefacto nao existir em lado
+nenhum). **0 artefactos inexistentes.** O scanner mentiu na primeira versao e foi corrigido por ele
+mesmo: sem fronteiras, `oracle-after.json` era lido como `oracle-after.js` e
+`_moved/aireplay/_main/window-census.ps1` como `_main/window-census.ps1` — **quatro dos seis «ausentes»
+eram erro MEU, nao do mapa**. `--neg-arm` corre sobre dois mapas sinteticos (um a citar ficheiro
+inexistente, outro a citar instrumento com risco de lancamento) e exige os dois sinalizados; medido
+`absent=1` e `risky=1`, `NEG-ARM PASS`.
+
 Conferencia: 112 + 24 + 0 = **136** linhas de achado no mapa. **NOTA 2026-10-11 (Lead):** o total
 ERA 139 porque QUATRO achados estavam listados DUAS vezes — `#2`, `#22`, `#37` e `#53`, cada um com
 uma linha APPLIED (com prova) e uma linha velha ainda OPEN/IN-FLIGHT imediatamente abaixo. As
