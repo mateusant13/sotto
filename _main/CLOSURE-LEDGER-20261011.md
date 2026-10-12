@@ -20,18 +20,18 @@ Rows closed this session are NOT here; they are listed in section 5 with their i
 |---|---|---|---|
 | F10 | RTF > 1 na CPU: a app nao acompanha a fala em tempo real (`auditoria-completa-20261007.md:72`) | **OPEN** — a fonte transfere a decisao para o dono (:756-757: GPU, export com chunk menor, ou dizer que esta atrasado) |  |
 
-### other (2)
+### other (1)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
-| 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `launch-entry.md §4` | **OPEN** |
 | G5 | o proprio pre-flight e um run pythonw sem stdout: o usage:/error: do argparse e descartado e o rc e o contrato inteiro (`launch-entry.md:119`) | **OPEN** — a fonte diz que e BY DESIGN (launch-entry.md:124-125); fica aberto enquanto o rc for o unico sinal |  |
 
-### panel/rendering (3)
+### panel/rendering (4)
 
 | id | finding (from the map) | where | state as filed |
 |---|---|---|---|
 | 4 | painel aparece sozinho no ecra ≤63 ms em cada arranque | `edgechromium.py:348`, `sotto_webview.py:995` | **OPEN** |
+| 19 | uma TERCEIRA causa do hang `STAGING_LOADED` reproduziu e nao esta nomeada | `docs/audit/launch-entry.md` §4 (o doc vive em `docs/audit/`, nao em `_main/` como a linha dizia), `_main/_live-app.log` (o artefacto), `_main/staging-hang-artefact-oracle.py` | **OPEN** — **o artefacto foi re-medido e EXCLUI tres causas; a terceira causa continua por nomear, e nomea-la exige relancar (proibido).** Medido nesta revisao sobre `_main/_live-app.log` (o |
 | F1 | o painel mostra-se sozinho sem accao do dono (edgechromium.py:348 form.Show() sob transparent=True) (`window-visibility.md:186`) | **OPEN** — herdado da linha #4 (dois censos do mesmo instrumento discordam; o AGENTS.md marca o par NAO RECONCILIADO e a ordem do dono suspendeu o censo) |  |
 | F9 | o campo de busca do painel nao pode receber teclado (`auditoria-completa-20261007.md:71`) | **OPEN** — a fonte transfere a decisao para o dono (:481, :762): hoje nao tem backend nem teclado e nao foi exercido |  |
 

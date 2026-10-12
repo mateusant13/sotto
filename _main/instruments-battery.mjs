@@ -63,6 +63,8 @@ const py = [
   ['_main/wasapi-buffer-fallback-oracle.py --neg-arm', 'wasapi-buffer-fallback neg'],
   ['_main/ready-stream-blindness-oracle.py', 'ready-stream-blindness (row #18)'],
   ['_main/ready-stream-blindness-oracle.py --neg-arm', 'ready-stream-blindness neg'],
+  ['_main/staging-hang-artefact-oracle.py', 'staging-hang-artefact (row #19)'],
+  ['_main/staging-hang-artefact-oracle.py --neg-arm', 'staging-hang-artefact neg'],
 ];
 
 const node = [
