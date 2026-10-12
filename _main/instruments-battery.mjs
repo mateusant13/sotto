@@ -71,6 +71,7 @@ const py = [
   ['_main/timeout-tree-ceiling-oracle.py', 'timeout-tree-ceiling (row #62)'],
   ['_main/panel-flash-numbers-reconciliation-oracle.py', 'panel-flash-numbers (rows #4/F1)'],
   ['_main/panel-search-keyboard-oracle.py', 'panel-search-keyboard (row F9)'],
+  ['_main/rtf-cpu-attribution-oracle.py', 'rtf-cpu-attribution (row F10)'],
 ];
 
 const node = [
