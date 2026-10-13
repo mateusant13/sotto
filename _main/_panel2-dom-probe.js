@@ -633,14 +633,28 @@ async function main() {
   currentArm = 'H';
   console.log('\n=== ARM H — the strip is SHORT, and the file a human opens is built from these bytes ===');
   const css = fs.readFileSync(PANEL_CSS, 'utf8');
-  arm('the strip surface has its own grid with a floor on the LIVE row',
-    // THE FLOOR IS DERIVED NOW, not a literal: `:root --strip-height` (the one
-    // number the SHELL sizes the strip window to) minus `--strip-chrome` (78 px,
-    // MEASURED on this surface) = the 72 px the live row has always had. The old
-    // regex demanded a bare `minmax(72px, 1fr)` and went RED the moment the number
-    // became single-sourced — which is the change the parent asked for.
-    /body\[data-surface="strip"\] \.panel \{[^}]*grid-template-rows:\s*minmax\(calc\(var\(--strip-height\) - var\(--strip-chrome\)\), 1fr\) auto auto/s.test(css),
-    true);
+  /* RE-BASELINED 2026-10-12 (Lead), AND THE OLD FORM HAD BEEN RED SINCE BEFORE
+   * THIS SESSION. It demanded the four-row strip layout with a floor on the live
+   * row. That layout was DELETED ON PURPOSE -- the bytes still carry the note
+   * "THE FOUR-ROW STRIP LAYOUT USED TO BE HERE and is deleted. It declared
+   * grid-template-rows: minmax(...)" -- so the regex was matching a string that
+   * only exists inside a COMMENT, in HEAD and in the working tree alike. It is the
+   * same defect as the two gates re-baselined in f9cb2e2: an arm pinning a
+   * cancelled contract, and unable to say NO.
+   *
+   * The strip's `.panel` rule carries what the owner actually asked for now: the
+   * drag transform, which is what makes the bar follow the pointer. */
+  const STRIP_PANEL_MOVE = /body\[data-surface="strip"\] \.panel \{[^}]*transform:\s*translate\(var\(--strip-move-x/;
+  arm('the strip surface .panel rule carries the OWNER DRAG offset',
+    STRIP_PANEL_MOVE.test(css), true);
+  /* THE CONTROL THIS ARM NEVER HAD. A bytes arm cannot be flipped by a mutant of
+   * a JS module, so it carries its own: the SAME predicate against a COPY with
+   * the transform taken out must answer false. An arm that cannot fail is not
+   * evidence, and this one had gone a day without anyone noticing it could not. */
+  arm('and that arm can still say NO (transform removed in a COPY)',
+    STRIP_PANEL_MOVE.test(css.replace(
+      /transform:\s*translate\(var\(--strip-move-x, 0px\), var\(--strip-move-y, 0px\)\);/,
+      'transform: none;')), false);
   arm('and that one number is exposed on :root for the shell to read',
     /--strip-height:\s*\d+px/.test(css) && /--strip-chrome:\s*\d+px/.test(css), true);
   arm('the strip hides the drawer, the header and the footer sentence BY CSS',
