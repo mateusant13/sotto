@@ -5619,7 +5619,18 @@ class SottoShell:
         if self.hwnd is None:
             return False
         # Geometry only — `place_panel` no longer maps the window (P0).
-        self.set_panel_surface('side', reason)
+        #
+        # CORRECTED 2026-10-12, AND THIS IS THE OWNER'S Alt+C BUG. This line
+        # passed the literal `'side'`, and `'side'` IS NOT A SURFACE NAME:
+        # `SURFACE_NAMES = ('strip', 'panel')` (:1479) and `normalise_surface_name`
+        # (:1480) returns None for anything else BY DESIGN. So every double-press
+        # logged `WARN PANEL_SURFACE_REFUSED surface="side" reason="hotkey-double"`
+        # and returned False BEFORE computing any geometry: the window was mapped
+        # with the STRIP's rect and the STRIP's document surface. That is exactly
+        # the owner's report -- two presses showed the strip and never the right
+        # panel -- and the `if not live` guard fixed earlier was necessary but not
+        # sufficient. The surface the right panel wears is `'panel'`.
+        self.set_panel_surface('panel', reason)
         # Children FIRST — same P0 reason as `show_panel` and `show_strip`: a
         # raw user32 show of the FORM leaves `Chrome_WidgetWin_0` hidden and the
         # panel a flat colour for one frame. Measured 2026-10-09.

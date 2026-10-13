@@ -131,6 +131,29 @@ def run_arms(sw, tag):
     check(tag + 'A4 fresh install is not a slab', g.get('width') == 420,
           'width=%s' % g.get('width'))
 
+    # B5 -- THE SURFACE NAME `show_side` ACTUALLY PASSES. This is the owner's
+    # Alt+C bug and the oracle did not catch it: `show_side` passed the literal
+    # 'side', and `normalise_surface_name` refuses it BY DESIGN, so the double
+    # press logged PANEL_SURFACE_REFUSED and returned before any geometry. A fake
+    # that records the ARGUMENT tests the real method body without a window.
+    # NOTE ON HOW THIS ARM IS WRITTEN. The first version called `f.show_side(...)`
+    # and measured NOTHING: `FakeShell` carries its OWN `show_side`, so the arm
+    # exercised the fake and reported `passed=None`. It was an inert arm, which is
+    # an ABSENT control. The real method touches the hwnd (children, foreground,
+    # transparency hack) and cannot be driven against a fake window, so this arm
+    # reads the SHIPPED BODY instead and asserts the surface name it asks for is
+    # one the shell actually accepts. Static, and it flips under M4.
+    import inspect
+    import re as _re
+    body = inspect.getsource(sw.SottoShell.show_side)
+    found = _re.search(r"set_panel_surface\(\s*'([^']+)'", body)
+    passed = found.group(1) if found else None
+    check(tag + 'B5 show_side asks for a surface the shell ACCEPTS',
+          sw.normalise_surface_name(passed) == 'panel',
+          'passed=%r normalised=%r' % (passed, sw.normalise_surface_name(passed)))
+    check(tag + 'B5b and "side" is not a surface name at all',
+          sw.normalise_surface_name('side') is None, 'by design')
+
     # B1/B2/B4 -- Alt+C. The owner contract: TWO PRESSES OPEN THE RIGHT PANEL.
     f = FakeShell(sw, width_dom=None)
     sw.window_visible = lambda hwnd: False
@@ -187,6 +210,10 @@ MUTANTS = [
      '                            or old_w >= int(work_w * 0.9))',
      '                    slab = True',
      'A2 owner placement kept'),
+    ('M4 side-surface-name-restored',
+     "        self.set_panel_surface('panel', reason)",
+     "        self.set_panel_surface('side', reason)",
+     'B5 show_side asks for a surface the shell ACCEPTS'),
 ]
 
 
