@@ -83,6 +83,11 @@ const py = [
   // knows; building the map IS the test. Nothing launched.
   ['_main/bridge-handler-map-oracle.py', 'handler-map (the 2.5 h outage)'],
   ['_main/bridge-handler-map-oracle.py --neg-arm', 'handler-map neg'],
+  // REGRA 10, made permanent: the shipped cinematic.css must be reproduced by a
+  // fresh run of its generator. Seeds the backdrops (or fetch_backdrop downloads)
+  // and themes.js (the generator READS the manifest it replaces).
+  ['_main/gen-cinematic-repro-oracle.py', 'generator reproduces (regra 10)'],
+  ['_main/gen-cinematic-repro-oracle.py --neg-arm', 'generator repro neg'],
 ];
 
 const node = [
