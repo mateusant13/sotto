@@ -92,6 +92,11 @@ const py = [
   // --size-meta fix: that fix edits gen_themes.py, which writes panel-designs.css.
   ['_main/gen-themes-repro-oracle.py', 'theme gen reproduces (regra 10)'],
   ['_main/gen-themes-repro-oracle.py --neg-arm', 'theme gen repro neg'],
+  // THE STRIP DRAG, SHELL HALF. The half that MOVES THE WINDOW, driven directly on a
+  // fake object: offset applied exactly, no resize, clamp load-bearing, refusal
+  // off-strip. Nothing launched.
+  ['_main/strip-drag-shell-oracle.py', 'strip drag: shell half'],
+  ['_main/strip-drag-shell-oracle.py --neg-arm', 'strip drag shell neg'],
 ];
 
 const node = [
