@@ -1,153 +1,61 @@
-/* Sotto - THE ZIP E DESIGN LANGUAGE. **DRAFT, NOT LINKED, AND THAT IS DELIBERATE.**
+/* Sotto - THE ZIP E DESIGN LANGUAGE, step 1 of 3: the STATUS PILL to the LEFT, bordered.
  *
- * MEASURED 2026-10-13: linking this file took the strip window from a 38 px bar to a
- * **380x900 LIGHT RECTANGLE**. Two causes, both mine, both worth writing down:
+ * MEASURED 2026-10-13 against the owners 5-zip demo, rendered with its own vite and driven
+ * with --virtual-time-budget so the transcript plays. Source of truth:
+ * docs/design-intake/ZIP-E-DESIGNS-AS-RENDERED.md .
  *
- *   1. `.stripbar { background: <light> }` PAINTS THE WHOLE WINDOW. The strip window is
- *      sized from the CONTENT (strip_height_from_css), so a background on the bar paints
- *      every pixel of whatever height the window ends up with. A bar background is only
- *      safe once the height is bounded FIRST.
- *   2. The height followed: the window went 40 -> 900, so the light plate filled the screen.
+ * THE ZIP PUTS ITS STATUS PILL TOP-LEFT: monospace, uppercase, letter-spaced, 1px border,
+ * rounded, with a GREEN dot. Ours sits at the RIGHT (`body[data-surface="strip"]
+ * #strip-state { order: 99 }`), which is the single most visible difference in the shared
+ * chrome.
  *
- * IT WAS REVERTED AND THE REVERT WAS VERIFIED: panel.html has NO diff against HEAD, this
- * file is referenced from nowhere (grep = 0), and the strip renders again as the 38 px bar
- * with `SOTTO` left, the grip, the boxed controls and `. CAPTIONS OFF`.
+ * THIS FILE DELIBERATELY CONTAINS NO `background` ANYWHERE, and that is the lesson from the
+ * withdrawn first attempt: `.stripbar { background: <light> }` PAINTED THE WHOLE WINDOW
+ * (380x900 light rectangle) because the strip window is sized from the CONTENT. A bar
+ * background is only safe once the height is bounded first, so this step does not touch it.
  *
- * WHAT OUR STRIP **ALREADY** HAS, seen in that render, and it is more than expected: the
- * `sotto` wordmark on the LEFT, and a MONOSPACE dot-plus-label state (`. CAPTIONS OFF`) --
- * two of the zip signature elements already exist. What the zip does differently is put the
- * status pill on the LEFT with a BORDER, and make the bottom bar LIGHT.
- *
- * SO THE NEXT ATTEMPT MUST: bound the strip height FIRST (or scope the background to the
- * bar element only, never the window), then move the status to a bordered left pill, then
- * lighten the bar. One step at a time, rendering after each -- NOT all at once, which is
- * exactly how this file got written and then withdrawn.
- *
- * --------------------------------------------------------------------------------------
- *
- * Sotto - THE ZIP E DESIGN LANGUAGE, applied to the CAPTION surface only.
- *
- * Measured 2026-10-13 by rendering the owners 5-zip demo with its own vite and driving it
- * with --virtual-time-budget so the transcript actually plays. Source of truth:
- * docs/design-intake/ZIP-E-DESIGNS-AS-RENDERED.md and docs/design-intake/rendered/.
- *
- * WHAT THE ZIP LOOKS LIKE, and it is STRUCTURE, not palette:
- *   1. THE BACKDROP IS VISIBLE. None of the five designs paints a solid opaque panel.
- *   2. A STATUS PILL, top-LEFT, MONOSPACE, uppercase, letter-spaced, 1px border, rounded,
- *      with a small GREEN dot. Identical in all five designs.
- *   3. THE CAPTION HANGS IN A RIGHT-HAND COLUMN with NO FRAME, older lines FADED.
- *   4. THE BOTTOM BAR IS LIGHT, with BOXED controls and LABELS, not dark icon buttons.
- *
- * SCOPED TO body[data-surface="strip"] ON PURPOSE, and that is load-bearing: the first
- * version of this file was unscoped and a `.captions__bar::before` GREEN DOT appeared on
- * the PANEL surface, under the TRANSCRIPT header, in a place no design puts it. The panel
- * surface is a different document area and must not receive the caption rules. Verified by
- * rendering before/after: the dot is gone from the panel render.
- *
- * Loaded LAST in panel.html so it wins without editing panel.css or a generated theme sheet.
+ * Scoped to body[data-surface="strip"]: the first attempt was unscoped and a
+ * `.captions__bar::before` green dot appeared on the PANEL surface, under the TRANSCRIPT
+ * header, where no design puts it.
  */
 
-:root {
-  --zip-paper: #f4f6f8;
-  --zip-line: rgba(255, 255, 255, 0.22);
-  --zip-dim: rgba(255, 255, 255, 0.42);
-  --zip-live: #37d67a;
-  --zip-bar: #eceff2;
-  --zip-bar-ink: #0b0f14;
-  --zip-mono: ui-monospace, "Cascadia Mono", "Consolas", "Liberation Mono", monospace;
+body[data-surface="strip"] #strip-state {
+  /* order 99 is what parked it on the right; the zip has it leftmost. */
+  order: -1;
 }
 
-/* 1. The surface is NOT a solid plate ------------------------------------------------ */
-body[data-surface="strip"] .captions__body {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* 2. THE STATUS PILL, top-left, monospace ------------------------------------------- */
-body[data-surface="strip"] .captions__bar {
-  display: flex;
+body[data-surface="strip"] .stripbar__state {
+  display: inline-flex;
   align-items: center;
   gap: 0.55em;
-  justify-content: flex-start;
   padding: 0.34em 0.62em;
-  border: 1px solid var(--zip-line);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
-  background: rgba(5, 7, 10, 0.55);
-  font-family: var(--zip-mono);
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", "Liberation Mono", monospace;
   font-size: 10.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--zip-paper);
-  width: fit-content;
-}
-body[data-surface="strip"] .captions__bar::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--zip-live);
-  box-shadow: 0 0 6px var(--zip-live);
-  flex: none;
-}
-body[data-surface="strip"] .captions__hint, body[data-surface="strip"] .captions__chip {
-  font-family: var(--zip-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 10px;
-  color: var(--zip-dim);
+  white-space: nowrap;
 }
 
-/* 3. THE CAPTION COLUMN, right-hand, unframed, with the fade ------------------------ */
-body[data-surface="strip"] .captions__list {
-  text-align: right;
-  padding-inline-end: 0.4em;
-}
-body[data-surface="strip"] .captions__list > li {
-  text-align: right;
-}
-body[data-surface="strip"] .captions__list > li:nth-last-child(1) { opacity: 1; }
-body[data-surface="strip"] .captions__list > li:nth-last-child(2) { opacity: 0.72; }
-body[data-surface="strip"] .captions__list > li:nth-last-child(3) { opacity: 0.50; }
-body[data-surface="strip"] .captions__list > li:nth-last-child(4) { opacity: 0.34; }
-body[data-surface="strip"] .captions__list > li:nth-last-child(n+5) { opacity: 0.22; }
+/* ---- STEP 2, MEASURED AND WITHDRAWN: the LIGHT BAR ----------------------------
+ * Adding ONLY `background: #eceff2` to .stripbar, with nothing else changed, produced a
+ * light plate over the WHOLE window with the labels washed out -- light text on a light
+ * plate. So the culprit is isolated and it is TWO things, not one:
+ *
+ *   (a) `.stripbar` occupies the FULL WINDOW HEIGHT, not the 38 px row it appears to be.
+ *       A background on it therefore paints every pixel of the window.
+ *   (b) The CHILDREN (.stripbar__brand, .strip-button, .stripbar__state) carry their own
+ *       light colours, so colouring the bar does NOT colour them.
+ *
+ * SO THE LIGHT BAR NEEDS BOTH, IN THIS ORDER: bound the bar height FIRST (or give the
+ * background to an inner element that really is 38 px), THEN recolour every child. Doing
+ * either alone produces a visibly broken bar, which is why this step is withdrawn rather
+ * than shipped half-done.
+ */
 
-/* 4. THE LIGHT BOTTOM BAR, boxed and labelled -------------------------------------- */
-body[data-surface="strip"] .stripbar {
-  background: var(--zip-bar);
-  color: var(--zip-bar-ink);
-  border-top: 1px solid rgba(0, 0, 0, 0.18);
-  font-family: var(--zip-mono);
-  letter-spacing: 0.06em;
-}
-body[data-surface="strip"] .stripbar__brand {
-  color: var(--zip-bar-ink);
-  font-family: var(--zip-mono);
-  text-transform: lowercase;
-  letter-spacing: 0.16em;
-}
-body[data-surface="strip"] .stripbar__grip {
-  color: rgba(0, 0, 0, 0.35);
-}
-body[data-surface="strip"] .strip-button {
-  background: transparent;
-  color: var(--zip-bar-ink);
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  border-radius: 3px;
-  font-family: var(--zip-mono);
-  letter-spacing: 0.08em;
-}
-body[data-surface="strip"] .strip-button:hover {
-  background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.55);
-}
-/* LIVE shows its state in the zip language: the on-air mark is the same GREEN dot the
- * status pill uses. */
-body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] {
-  background: var(--zip-bar-ink);
-  color: var(--zip-live);
-  border-color: var(--zip-bar-ink);
-}
-body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] .strip-button__label {
-  color: var(--zip-live);
+/* The on-air dot is the same green the zip uses in the pill. */
+body[data-surface="strip"] .stripbar__state.is-live .stripbar__dot {
+  background: #37d67a;
+  box-shadow: 0 0 6px #37d67a;
 }
