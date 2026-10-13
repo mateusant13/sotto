@@ -364,12 +364,28 @@ def build_variant(path: str, revert_gate: bool = False,
         # problem -- or logs nothing at all, which proves it never arrives and the
         # problem is the context the surface script runs in. The DELAYED call is the
         # one that would actually move the window.
-        drag_js = ('try{if(window.sotto&&window.sotto.setStripOffset)'
+        # NO SINGLE QUOTES ANYWHERE IN THE JS, AND json.dumps IS WHY. This text
+        # lands inside the shell's SINGLE-quoted Python literal, so an apostrophe in
+        # the JS terminates the Python string: MEASURED twice -- `kind:'dragprobe'`
+        # and `'move'` both produced "SyntaxError: invalid syntax" in the built
+        # variant and the shell never loaded, which read as NO WINDOW. json.dumps
+        # gives a DOUBLE-quoted JS literal and nothing needs escaping.
+        import json as _jd
+        _mv = _jd.dumps('move')
+        drag_js = ('try{window.pywebview.api.dispatch(JSON.stringify({kind:"dragprobe",'
+                   'payload:{x:' + str(int(dx)) + ',y:' + str(int(dy)) + '}}));}catch(e){}'
+                   'try{if(window.sotto&&window.sotto.setStripOffset)'
                    'window.sotto.setStripOffset(' + str(int(dx)) + ','
-                   + str(int(dy)) + ",'move');}catch(e){}"
+                   + str(int(dy)) + ',' + _mv + ');}catch(e){}'
                    'setTimeout(function(){try{if(window.sotto&&window.sotto.setStripOffset)'
                    'window.sotto.setStripOffset(' + str(int(dx)) + ','
-                   + str(int(dy)) + ",'move');}catch(e){}},900);")
+                   + str(int(dy)) + ',' + _mv + ');}catch(e){}},900);')
+        # THE LINE THAT APPLIES IT. It went missing in a rewrite, the injection was
+        # computed and thrown away, and I read "nothing arrived" as "the bridge is
+        # unreachable" -- a defect accusation against the product, from a probe that
+        # never fired. THE CHECK THAT CATCHES IT: grep the BUILT VARIANT, not this
+        # source, for the probe string.
+        out = out.replace(drag_anchor, drag_js + drag_anchor, 1)
 
     # THE CAPTION, FOR THE FLAT-THEME DISCRIMINATOR. Pushes text through the page
     # own `window.sotto.pushCaption` so the panel HAS content.
