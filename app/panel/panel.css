@@ -1647,6 +1647,76 @@ body[data-surface="strip"] .listening span {
 
 /* ------------------------------------------------------------ strip controls */
 
+/* ── THE MOVE HANDLE (owner, 2026-10-12: *"o painel de baixo tem que ser movivel
+   pra cima ou pra baixo ou pros lados"*). The strip has no header and no title
+   bar, so this is the ONE visible affordance that says the bar can be moved. It
+   is a decorative grip (`aria-hidden` in the markup, no focus stop, no click),
+   and it is NOT the only draggable area: the gesture is bound to `.stripbar`
+   itself, so the empty gaps between the buttons drag too. It exists because
+   "drag anywhere on the bar" is undiscoverable on a 40 px slab.
+
+   IT IS NOT `-webkit-app-region: drag` — that is an Electron feature and this
+   app is WebView2 (AGENTS.md: the Electron shell is DEAD). The strip's existing
+   `-webkit-app-region: drag` on `.stripbar` is kept because it is harmless, but
+   it moves nothing on this shell; the pointer gesture in `panel.html` is what
+   records the position. */
+.stripbar__grip {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  border-radius: 3px;
+  background-image: radial-gradient(circle, var(--text-faint) 1px, transparent 1.2px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
+  opacity: 0.55;
+  cursor: grab;
+  user-select: none;
+}
+body[data-surface="strip"] .stripbar__grip:hover {
+  opacity: 0.95;
+}
+body[data-surface="strip"].is-strip-dragging .stripbar__grip,
+body.is-strip-dragging .stripbar__grip {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+/* THE BAR IS THE HANDLE, so it wears the grab cursor — but only where a press
+   actually starts a drag: a button keeps `pointer`. */
+body[data-surface="strip"] .stripbar {
+  cursor: grab;
+}
+body[data-surface="strip"] .stripbar .strip-button,
+body[data-surface="strip"] .stripbar .stripbar__brand {
+  cursor: pointer;
+}
+body[data-surface="strip"] .stripbar__brand {
+  cursor: grab;
+}
+body.is-strip-dragging,
+body.is-strip-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+/* ── THE DRAG PAINT. The gesture writes `--strip-move-x`/`--strip-move-y` on the
+   root and the slab follows the pointer. THE SHELL MUST SET
+   `body[data-strip-moved]` (any value) once IT moves the WINDOW, and this rule
+   then stops transforming — otherwise the two moves would add up and the bar
+   would run away at 2x the pointer. See `_main/receipt-botoes.md` §2 for the
+   whole handoff. */
+body[data-surface="strip"] .panel {
+  transform: translate(var(--strip-move-x, 0px), var(--strip-move-y, 0px));
+}
+body[data-surface="strip"][data-strip-moved] .panel {
+  transform: none;
+}
+
+/* The floated caption is anchored to the WINDOW, not to the slab, so it does
+   NOT inherit the drag offset — the bar moves under the caption and the caption
+   stays where the owner put it on screen. */
+
 /* The strip's control row: three compact buttons and the status word. The row
    wraps rather than clipping — a button that cannot be reached is worse than a
    row that grows — and `gap` is what keeps three targets from reading as one. */
@@ -1768,21 +1838,19 @@ body[data-surface="strip"] .strip-button .strip-button__label {
 /* The exceptions. `display: inline` (not `block`) keeps the label measured the 
  * way flex already measures it, and BOTH carry the strip + id prefix so no 
  * `:root[data-theme] .strip-button__label` rule (a=0) can bring text back. */
-body[data-surface="strip"] #strip-theme-button,
+/* ── THE ONE EXCEPTION, AFTER THE TRIM: THE LIVE PILL ────────────────────────
+ * The theme pill was the other one until 2026-10-12; it is gone from the
+ * markup, so its rules are gone from here. What is left is the control the
+ * owner named in his own words: *"o botao de mostrar a legenda ao vivo deve
+ * ser o live"*. It is a PILL and not a 26 px circle because its label is the
+ * state readout — see the block below for the two colours. */
 body[data-surface="strip"] #strip-live-button {
   width: auto;
-}
-body[data-surface="strip"] #strip-theme-button .strip-button__label,
-body[data-surface="strip"] #strip-live-button .strip-button__label {
-  display: inline;
-}
-body[data-surface="strip"] #strip-theme-button {
-  gap: 6px;
-  padding: 0 9px;
-}
-body[data-surface="strip"] #strip-live-button {
   gap: 5px;
   padding: 0 9px;
+}
+body[data-surface="strip"] #strip-live-button .strip-button__label {
+  display: inline;
 }
 
 /* Twelve pixels of glyph in a twenty-six pixel box, rounded: the 12 px rule 
@@ -1813,21 +1881,33 @@ body[data-surface="strip"] .strip-button--chevron {
  * minimum"*): the theme-list chevron and the transparency button. Both entries are
  * gone from this list AND from the markup (panel.html), and the chevron is hidden by
  * CSS further down because `theme-switcher.js ensureChevron` re-creates it. */
+/* THE ROW, AFTER THE 2026-10-12 TRIM. The theme pill and the two font dial
+   circles are GONE from the markup (see panel.html for the measurement that
+   made each removal safe), so their entries are gone from here too: an
+   `order` on an id that does not exist is a rule about nothing, and this
+   file's own rule is that a dead declaration is removed rather than left
+   looking live. What is left is the bare minimum the owner asked for:
+   brand · grip · live · open · hide · linhar · pause · state.
+
+   HIDE IS LAST OF THE CONTROLS and that is the owner's ruling, verbatim
+   (2026-10-12): *"o botao de x pra dar hide introduzido em lugar aleatorio e
+   estupido. bota ele na direita dos botoes."* Same fix as the right panel's
+   `#hide-button` — the X is the rightmost CONTROL on the row; only the state
+   READOUT stands after it, because a readout is not a button. */
 body[data-surface="strip"] .stripbar__brand { order: 0; }
-body[data-surface="strip"] #strip-live-button { order: 1; }
-body[data-surface="strip"] #strip-theme-button { order: 2; }
+body[data-surface="strip"] #strip-drag-handle { order: 1; }
+body[data-surface="strip"] #strip-live-button { order: 2; }
 body[data-surface="strip"] #strip-open-button { order: 3; }
-body[data-surface="strip"] #strip-hide-button { order: 4; }
-body[data-surface="strip"] #strip-font-smaller-button { order: 5; }
-body[data-surface="strip"] #strip-font-larger-button { order: 6; }
-body[data-surface="strip"] #strip-pause-button { order: 7; }
-/* THE DEFAULT ORDER IS NOT "LAST". Linhar was added to this list's prose but not
-   to the list itself, so it fell back to `order: 0` — TIED with the brand and ahead
-   of every button that declares 1..7, which renders it SECOND, right after the
-   wordmark. Measured 2026-10-12. It belongs with Pause, the two end-of-row actions
-   the paint below describes. */
-body[data-surface="strip"] #strip-float-button { order: 8; }
+body[data-surface="strip"] #strip-pause-button { order: 4; }
+body[data-surface="strip"] #strip-float-button { order: 5; }
+body[data-surface="strip"] #strip-hide-button { order: 6; }
 body[data-surface="strip"] #strip-state { order: 99; }
+/* THE DEFAULT ORDER IS NOT "LAST", and the rule that says so is the block ABOVE
+   (Linhar declares `order: 5`, after Pause and before Hide). The duplicate
+   `#strip-float-button { order: 8 }` that stood here is REMOVED, not renumbered:
+   two declarations of one property in one file is how a later edit silently wins,
+   and the survivor is the list above. `#strip-state` stays at 99 — the readout is
+   not a control and always paints last. */
 
 /* ── THE STRIP HAS NO THEME-LIST CHEVRON. TWO LAYERS, NOT ONE. ───────────────
    Owner, 2026-10-12, verbatim: *"o painel de baixo, deve conter apenas o bare
@@ -1889,13 +1969,97 @@ body[data-surface="strip"] #strip-theme-chevron {
  * carries `body[data-surface="strip"]` + the id: a=1 beats any `:root[data-theme]
  * .class` (a=0) rule, so no direction can override it — including a hypothetical
  * theme rule that named the label class. */
-body[data-surface="strip"] #strip-live-label,
-body[data-surface="strip"] #strip-live-button[aria-pressed="false"] #strip-live-label {
-  color: #e5484d;
+/* ── THE LIVE BUTTON SAYS WHICH STATE IT IS IN, IN TWO WAYS AT ONCE ──────────
+ * Owner, 2026-10-12, verbatim: *"o botao de mostrar a legenda ao vivo deve ser
+ * o live. e deve ser CLARO quando ta live e quando nao ta."*
+ *
+ * MEASURED BEFORE THIS EDIT, because "claro" has to mean something: the two
+ * states were already distinguishable ON PAPER — `aria-pressed` is written by
+ * `panel.js applyLiveEnabled` (:2011) and the base toggle rules paint a
+ * pressed/unpressed pair (`.strip-button--toggle[aria-pressed=…]`) — but BOTH
+ * states carried the SAME word and the SAME red, so the only difference the eye
+ * got was a faint tint on a 22 px pill. The owner was looking at the control and
+ * could not tell which state it was in.
+ *
+ * THE TWO FACTS, one per state, and they never contradict each other:
+ *   ON   the word is `live` and the pill is RED (the owner's own colour, the
+ *        lamp the strip has always worn).
+ *   OFF  the word is `off` and the pill is NEUTRAL GREY: the red is gone, the
+ *        glyph dims, and the word itself changed.
+ *
+ * HOW THE WORD CHANGES WITHOUT TOUCHING `panel.js`: the module writes
+ * `dom.stripLiveLabel.textContent = 'LIVE'` on every apply (:2026) — the WORD is
+ * the control's NAME, not its state, and that is the module's own comment. A lane
+ * whose write scope is `panel.html` + `panel.css` cannot edit that line, so the
+ * DOM text stays `live` (written once in the markup) and the STATE WORD is painted
+ * by the pill's own `::after`, keyed on `aria-pressed` — the attribute the module
+ * ALREADY maintains. The DOM label is hidden with `font-size: 0`, NOT
+ * `display:none`, so its text stays in the accessibility tree and a read-back
+ * probe still finds it (measured: `_main/_panel2-dom-probe.js` ARM T reads that
+ * exact textContent and expects the word to still be there).
+ *
+ * SPECIFICITY: every rule below carries `body[data-surface="strip"]` + the id
+ * (a=1), so no `:root[data-theme] .strip-button` rule (a=0) in any theme can put
+ * the old red back on the OFF state. */
+
+/* THE WORD, PAINTED FROM THE ATTRIBUTE. The DOM text is kept (font-size: 0) and
+   the visible word is the pseudo-element, so the two can never disagree: both are
+   functions of the same `aria-pressed`. */
+body[data-surface="strip"] #strip-live-button .strip-button__label {
+  font-size: 0;
 }
-body[data-surface="strip"] #strip-live-button svg {
-  color: #e5484d;
+body[data-surface="strip"] #strip-live-button .strip-button__label::after {
+  content: "off";
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] .strip-button__label::after {
+  content: "live";
+}
+
+/* ── STATE ON: red, filled, loud. */
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] {
+  border-color: rgba(229, 72, 77, 0.85);
+  background: rgba(229, 72, 77, 0.22);
+  color: #ffd9da;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] #strip-live-label::after,
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] svg {
+  color: #ff6b70;
+}
+/* Hover must not undo the state: the generic `.strip-button:hover` paints a blue
+   tint that would read as "live" on the OFF pill. */
+body[data-surface="strip"] #strip-live-button:hover,
+body[data-surface="strip"] #strip-live-button:focus-visible {
+  border-color: rgba(229, 72, 77, 0.95);
+  background: rgba(229, 72, 77, 0.3);
+  color: #ffffff;
+}
+
+/* ── STATE OFF: the red is GONE. Grey border, grey fill, dimmed glyph, and the
+   word says `off`. This is the state the owner could not see before. */
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-dim);
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] #strip-live-label::after {
+  color: #cbd5e1;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] svg {
+  color: #94a3b8;
+  opacity: 0.75;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:hover,
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visible {
+  border-color: rgba(148, 163, 184, 0.7);
+  background: rgba(148, 163, 184, 0.2);
+  color: #ffffff;
+}
+
+/* THE UNWIRED SHELL keeps its own honest paint (`[data-wired="false"]`, the
+   diagonal stripe further up), so nothing here overrides it. */
 
 /* ── TRANSPARENCY: REMOVED, MEASURED (2026-10-12) ────────────────────────
  * The two rules that were here (`body[data-surface="strip"][data-transparency="on"]

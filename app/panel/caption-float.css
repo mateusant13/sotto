@@ -1,0 +1,136 @@
+/* caption-float.css — THE INDEPENDENT OVERLAY'S OWN STYLES (lane: caption).
+ *
+ * WHY THIS FILE EXISTS. panel.css styles the overlay INSIDE the panel's own world:
+ * it is painted only while the document is on the strip surface
+ * (body[data-surface="strip"][data-float="on"] .caption-float { display: block },
+ * panel.css:2789), it is placed below the panel's bar (top: 34px, panel.css:2815),
+ * and the page itself paints a 98%-opaque slab behind it — html, body
+ * { background: rgba(11, 15, 20, 0.98) } at panel.css:105-134, the rule that file
+ * calls THE RENDER PROTECTION. The owner's own words, verbatim:
+ *
+ *   "a porra da legenda, e pra ser independente do painel, nao acoplado."
+ *   "e eu to vendo div com cor solida inves de invisivel."
+ *
+ * That second sentence is measured, not inferred: the html/body slab above IS the
+ * solid div, and it paints on every surface, the floated caption included.
+ *
+ * SO THIS FILE OWNS THREE THINGS, and nothing else:
+ *   1. INDEPENDENT VISIBILITY — the overlay is painted from ITS OWN state
+ *      (#caption-float[data-float="on"]), never from the panel's surface. It is on
+ *      screen with no panel mounted at all. The one guard that survives: it never
+ *      paints over the FULL panel (body[data-surface="panel"]), because the panel
+ *      already shows the same words there.
+ *   2. NO PAINT — the overlay and every descendant paint no background, no box and
+ *      no border, in every state, and the page paints none behind it while the
+ *      caption is loose. The ONE body is the 4px bar on the left
+ *      (.caption-float__led), which is the owner's own design.
+ *   3. INDEPENDENT GEOMETRY — with no panel bar on screen the overlay hugs the
+ *      BOTTOM of the window (the zip's own bottom-anchored stage); with the strip
+ *      bar present it keeps panel.css's placement (bar on top, caption below).
+ *
+ * NO /!important/ EXCEPT THE ONE HARD GUARD IN RULE 1, and every rule is written at
+ * a specificity that beats panel.css's own without touching that file (which this
+ * lane may not edit).
+ *
+ * HOW IT LOADS. caption-float.js links this file itself (idempotently) when the
+ * document does not already link it, so the overlay carries its own styles and works
+ * in a document that has no panel at all. The Lead may ALSO add
+ * <link rel="stylesheet" href="caption-float.css" /> to panel.html; the module
+ * finds an existing link and adds nothing.
+ */
+
+/* ── 1. THE OVERLAY IS PAINTED FROM ITS OWN STATE, NOT FROM THE PANEL ────── */
+
+/* The module writes data-float on the HOST as well as on <body>, and it also owns an
+   inline display, so it is correct even before this stylesheet lands. Both agree:
+   on -> block. Specificity (1,1,0) beats panel.css's plain .caption-float
+   { display: none } (0,1,0), so this file is the last word on visibility. */
+#caption-float[data-float="on"] {
+  display: block;
+}
+
+/* THE ONE GUARD THAT STAYS: the right panel already shows the caption, so the
+   overlay must never be painted over it — the same rule panel.css expresses by
+   scoping the overlay to the strip surface, restated here in its hard form. */
+body[data-surface="panel"] #caption-float {
+  display: none !important;
+}
+
+/* ── 2. NOTHING PAINTS: NOT THE PAGE, NOT THE OVERLAY, NOT A DESCENDANT ──── */
+
+/* THE SOLID DIV THE OWNER REPORTED. panel.css:105-134 gives <html> and <body> the
+   same opaque base on EVERY surface ("the colour of the thing the owner sees when
+   the WebView2 does not paint"). Behind a loose caption that base is exactly the
+   solid colour he sees instead of the desktop: the overlay's own pixels are
+   transparent, so the slab is what shows. While the caption is floated the page
+   paints nothing and the window is the caption and its bar. The attribute is
+   mirrored onto <html> by caption-float.js for this selector and for the shell's own
+   geometry read (sotto_webview.py:6527 and :6579 read documentElement). */
+html[data-float="on"],
+body[data-float="on"] {
+  background: transparent;
+  border-radius: 0;
+}
+
+/* THE OVERLAY AND EVERY DESCENDANT, IN EVERY STATE. No plate, no box, no border,
+   no backdrop, no outline — the owner: "sem fundo, sem nada". The 4px left bar is
+   deliberately NOT in this list: it is the overlay's only body. */
+#caption-float,
+#caption-float .caption-float__stage,
+#caption-float .caption-float__col,
+#caption-float .caption-float__prev,
+#caption-float .caption-float__line,
+#caption-float .caption-float__credits,
+#caption-float .caption-float__meter,
+#caption-float .caption-float__meter-fill {
+  background: none;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: 0;
+  outline: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* THE METER WAS THE OTHER PLATE. panel.css:2911 gave .caption-float__meter a
+   translucent white plate (rgba(255, 255, 255, 0.16)) and :2926 gave its fill the
+   accent gradient — two descendants painting colour behind the words. The owner's
+   rule is ONE body, the bar on the left. The element and its id stay (panel.js and
+   caption-float.js still feed the level into it), the plate goes: zero height, zero
+   margin, nothing painted. */
+#caption-float .caption-float__meter {
+  height: 0;
+  margin: 0;
+}
+
+/* THE ONE BODY: the zip's 4px breathing bar, kept from panel.css and restated here
+   with a fallback so a theme that never declares --accent-gradient cannot leave the
+   overlay with no body at all. */
+#caption-float .caption-float__led {
+  background: var(--accent-gradient,
+    linear-gradient(180deg, var(--accent-from, #7dd3fc), var(--accent-to, #38bdf8)));
+}
+
+/* ── 3. GEOMETRY THAT DOES NOT NEED THE PANEL ───────────────────────────── */
+
+/* WITH NO BAR ON SCREEN the overlay hugs the bottom of the window — the zip's own
+   bottom-anchored stage — instead of stretching down from the panel's 34px bar.
+   top: auto + bottom: 0 + height: auto is the whole rule: the box is its own
+   content, anchored at the bottom, whatever height the shell hands out. */
+#caption-float[data-float="on"] {
+  top: auto;
+  bottom: 0;
+  height: auto;
+  max-height: 100vh;
+}
+
+/* WITH THE STRIP BAR ON SCREEN, panel.css's own placement wins: the bar steps to the
+   top of the window and the caption takes the rest (bar on top, caption below, never
+   overlapped). Restated here at a specificity that beats rule 3's, so the two cases
+   are decided in ONE file. */
+body[data-surface="strip"] #caption-float[data-float="on"] {
+  top: 34px;
+  bottom: 0;
+  height: auto;
+}

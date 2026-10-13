@@ -47,6 +47,11 @@
          a family. Unscoped on purpose (one copy for all five). -->
     <link rel="stylesheet" href="themes/fonts.css" />
     <link rel="stylesheet" href="panel.css" />
+    <!-- THE FLOATED CAPTION'S OWN STYLESHEET (lane CAPTION). Declared AFTER
+         `panel.css` on purpose: the overlay is a second surface, and its rules
+         are the last word on it. A missing file is not an error — a `file://`
+         stylesheet that does not resolve leaves the panel exactly as it is. -->
+    <link rel="stylesheet" href="caption-float.css" />
     <!-- All five themes load at once: switching is ONE attribute write on <html>,
          so there is no reload, no parse and no flicker. `theme-switcher.js`
          applies the stored choice before the panel paints, and adds its own picker
@@ -555,13 +560,18 @@
            it is the only content row there is. -->
       <section class="captions" id="captions" aria-live="polite" aria-label="Live caption">
         <div class="captions__bar">
-          <!-- The label names what the box IS, not the vendor that fills it:
-               the model name lives in the tooltip (audit D7). -->
-          <span
-            class="history__label"
-            id="live-label"
-            title="Live captions — streaming engine: Nemotron 3.5 ASR streaming 0.6B (NVIDIA)"
-          >Live</span>
+          <!-- REMOVED 2026-10-12 (owner: *"tira o botao da direita de mostrar
+               legenda"*). WHAT STOOD HERE WAS `#live-label` — a `<span>` that
+               painted the word "Live" over the right panel's caption box. It
+               was MEASURED before deleting, because the owner named a BUTTON and
+               this was not one: it had NO click handler anywhere (grep of
+               `panel.js` for `live-label` = 0 matches; the only `#live-label`
+               reference in the whole tree was the fixture copies under `_main/`),
+               so nothing loses a capability. The live caption is now announced
+               by the ONE control that owns it — `#strip-live-button` on the
+               bottom strip — and the caption box keeps its own `aria-label`
+               (`<section class="captions" aria-label="Live caption">`), so the
+               accessibility tree still names the region. -->
           <!-- The "behind" chip: shown ONLY when the shell reports a stats event
                that says the live path is falling behind (queue_drops > 0 or
                rate < 1). `hidden` until such an event arrives; today the shell
@@ -627,12 +637,23 @@
              the strip's own type and colour, before the controls and after nothing
              — it is the leftmost thing, the way a wordmark sits. -->
         <span class="stripbar__brand">sotto</span>
+        <!-- ── THE MOVE HANDLE (owner, 2026-10-12: *"o painel de baixo tem que ser
+             movivel pra cima ou pra baixo ou pros lados"*). It is the ONE affordance
+             the drag needs: the strip has no header and no title bar, so without a
+             visible handle the owner has no way to know the bar can be moved at all.
+             It is NOT a button — no click, no focus stop, no `role` (it is a purely
+             decorative grip, `aria-hidden`), and it never takes a click from the row.
+             `panel.js` binds the pointer gesture on `.stripbar` itself and ignores
+             pointerdowns that land on a control, so a drag started on a button is a
+             press, and a drag started anywhere on the bar moves the window. -->
+        <span class="stripbar__grip" id="strip-drag-handle" aria-hidden="true"></span>
         <button
           type="button"
           class="strip-button strip-button--toggle"
           id="strip-live-button"
           aria-pressed="true"
-          title="Live captions are on. Turn them off to stop the streaming engine and release the memory it holds."
+          aria-label="live: on"
+          title="live — captions are ON. Click to turn the live captions off."
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <rect
@@ -660,33 +681,25 @@
               stroke-linecap="round"
             />
           </svg>
-          <span class="strip-button__label" id="strip-live-label">LIVE</span>
+          <span class="strip-button__label" id="strip-live-label">live</span>
         </button>
 
-        <!-- ── THE THEME CONTROL ON THE STRIP SURFACE ─────────────────────────
-             THE TRAP THIS CLOSES. `.panel__header` is `display:none` in the
-             strip surface and the theme button has always lived inside it, so
-             the moment the shell switches to the strip the owner has NO WAY to
-             change the theme — the previous lane flagged exactly that and left
-             it standing ("the strip surface has no theme button"). It is the
-             owner's own rule that every theme must stay reachable, so the strip
-             gets its own control: same module, same one-attribute switch, a
-             second mount point. `theme-switcher.js` wires every
-             `[data-theme-button]` in the document (this one and the header's),
-             so the two can never drift apart — both are painted from the same
-             `paintButton()`. -->
-        <button
-          type="button"
-          class="strip-button strip-button--theme"
-          id="strip-theme-button"
-          data-theme-button
-          aria-haspopup="true"
-          aria-expanded="false"
-          title="Theme"
-        >
-          <span class="strip-theme__swatch" aria-hidden="true"></span>
-          <span class="strip-button__label theme-button__label"></span>
-        </button>
+        <!-- ── REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o
+             bare minimum"* / *"o painel de baixo ... deve ser menor ainda, mais
+             estreito, do tamanho dos botoes"*). WHAT STOOD HERE WAS
+             `#strip-theme-button`, a `.strip-button--theme` pill that cycled the
+             template on click. MEASURED BEFORE DELETING, because it was the strip's
+             only route to a theme and a previous lane opened a trap about exactly
+             that: the capability is NOT lost — `theme-switcher.js` owns BOTH
+             mounts, and the panel's own `#theme-chevron` (built inside
+             `.panel__controls`, `panel.html` above) opens the full list, so every
+             theme stays reachable from the panel; and `#strip-open-button` is one
+             click away on this very bar. What the strip loses is a SECOND door into
+             the same room. `panel.js` looks the node up as `stripThemeButton`? NO —
+             it never did: `grep -c strip-theme-button app/panel/panel.js` = 0, so
+             no handler is left dangling. The theme PICKER was already refused on
+             this surface by CSS (`body[data-surface="strip"] .theme-picker`), so
+             nothing else moves. -->
 
         <!-- ── REMOVED 2026-10-12: the theme-list CHEVRON on the strip ──────────
              Owner order: *"o painel de baixo, deve conter apenas o bare minimum"*.
@@ -771,50 +784,27 @@
           <span class="strip-button__label">Hide</span>
         </button>
 
-        <!-- ── THE TRANSCRIPT FONT DIAL ON THE STRIP ─────────────────────────
-             Owner, 2026-10-09, verbatim: *"bota um botao de aumentar ou diminuir
-             a fonte das transcricoes, tanto no overlay abaixo, que vamos criar,
-             tanto no painel da direita"*. This is the "overlay abaixo" half, and it
-             moves the SAME `--caption-scale` the panel's pair moves — one number,
-             two surfaces, so they cannot disagree. Painted immediately before
-             Pause, mirroring `.panel__controls`: base `order: 7`/`order: 8`
-             (`panel.css`) against Pause's new `order: 9`, so no theme can move it. -->
-        <button
-          type="button"
-          class="strip-button strip-button--font"
-          id="strip-font-smaller-button"
-          title="Smaller transcript text"
-          aria-label="Smaller transcript text"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <text
-              x="8"
-              y="12"
-              text-anchor="middle"
-              font-size="9"
-              fill="currentColor"
-            >A</text>
-          </svg>
-          <span class="strip-button__label">Smaller</span>
-        </button>
-        <button
-          type="button"
-          class="strip-button strip-button--font"
-          id="strip-font-larger-button"
-          title="Larger transcript text"
-          aria-label="Larger transcript text"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <text
-              x="8"
-              y="12.5"
-              text-anchor="middle"
-              font-size="12"
-              fill="currentColor"
-            >A</text>
-          </svg>
-          <span class="strip-button__label">Larger</span>
-        </button>
+        <!-- ── REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o
+             bare minimum"*). WHAT STOOD HERE WAS THE STRIP'S HALF OF THE FONT
+             DIAL — `#strip-font-smaller-button` and `#strip-font-larger-button`,
+             two `.strip-button--font` circles. MEASURED BEFORE DELETING, because the
+             owner asked for that dial on 2026-10-09 (*"bota um botao de aumentar ou
+             diminuir a fonte das transcricoes, tanto no overlay abaixo ... tanto no
+             painel da direita"*) and a previous lane's whole argument was that the
+             SAME `--caption-scale` must be reachable from both surfaces. The
+             capability is NOT lost and the two surfaces still cannot disagree: the
+             panel's own pair (`#font-smaller-button`, `#font-larger-button`) is
+             UNTOUCHED in `.panel__controls`, and `panel.js wireFontDial()` binds
+             all four with the same `applyCaptionScale`; removing two of the four
+             call sites leaves the two that remain, and the stored value is read
+             back at load for the whole document (`panel.js`, `readStoredFontScale`).
+             What the strip loses is a SECOND pair of buttons for a caption the
+             strip no longer even shows (`.captions` is `display:none` on this
+             surface — the owner's own rule). `panel.js` looks them up as
+             `stripFontSmallerButton`/`stripFontLargerButton` and every handler
+             NULL-CHECKS (the module's own contract for an older harness), so no
+             throw: `bind(dom.stripFontSmallerButton, -1)` with `null` returns on
+             the `if (!button) return;` at the top of `bind`. -->
 
         <!-- ─── LINHAR: float the caption on the screen ─────────────────────────
              Owner, 2026-10-12, verbatim: *"e ele tem um botao de linhar a legenda, que
@@ -1079,5 +1069,116 @@
          that lands before they execute keeps the plain-text path and never errors. -->
     <script src="letter-swap.js" defer></script>
     <script src="caption-float.js" defer></script>
+
+    <!-- ── THE STRIP'S MOVE GESTURE — THE PAGE HALF (owner, 2026-10-12: *"o painel de
+         baixo tem que ser movivel pra cima ou pra baixo ou pros lados"*).
+
+         WHY INLINE, AND NOT IN `panel.js`: `panel.js` is another lane's file and this
+         lane's write scope is `panel.html` + `panel.css`. The gesture is a PAGE
+         concern (it records a position); moving the WINDOW is the shell's, and this
+         script does NOT move it — it writes the position down and hands it over.
+
+         THE CONTRACT THE SHELL READS (see `_main/receipt-botoes.md` §2 for the
+         full handoff):
+           * `localStorage["sotto:strip-offset"]` = JSON
+             `{ "x": <int>, "y": <int>, "v": 1 }` — the CUMULATIVE offset in CSS
+             pixels (DIPs) from the strip's docked position, x right / y down.
+             Written on EVERY move and on release; absent = never dragged.
+           * `window.sotto.setStripOffset(dx, dy, phase)` — `phase` is `"move"`
+             during the drag and `"end"` on release. OPTIONAL: the script probes
+             for the method and calls it only when the shell ships it, so a shell
+             without it still gets the localStorage record.
+           * The page ALSO applies the offset to `.panel` as a CSS transform, so the
+             bar follows the pointer with or without the shell. When the shell moves
+             the WINDOW it must set `body[data-strip-moved]` (any value) and the page
+             then stops transforming — otherwise the two moves would add up. -->
+    <script>
+      (function () {
+        "use strict";
+        var KEY = "sotto:strip-offset";
+        var THRESHOLD = 4;
+        var bar = document.getElementById("strip-controls");
+        var panel = document.getElementById("panel");
+        if (!bar || !panel) return;
+
+        function read() {
+          try {
+            var raw = window.localStorage.getItem(KEY);
+            if (!raw) return { x: 0, y: 0 };
+            var v = JSON.parse(raw);
+            return { x: Number(v && v.x) || 0, y: Number(v && v.y) || 0 };
+          } catch (err) { return { x: 0, y: 0 }; }
+        }
+
+        function write(off) {
+          try {
+            window.localStorage.setItem(KEY, JSON.stringify({ x: Math.round(off.x), y: Math.round(off.y), v: 1 }));
+          } catch (err) { /* a position that cannot be remembered is not worth a broken drag */ }
+        }
+
+        function paint(off) {
+          document.documentElement.style.setProperty("--strip-move-x", Math.round(off.x) + "px");
+          document.documentElement.style.setProperty("--strip-move-y", Math.round(off.y) + "px");
+        }
+
+        function tell(off, phase) {
+          var bridge = window.sotto;
+          if (bridge && typeof bridge.setStripOffset === "function") {
+            try { bridge.setStripOffset(Math.round(off.x), Math.round(off.y), phase); } catch (err) {}
+          }
+        }
+
+        /* Restore what the owner left, BEFORE the first paint: the bar opens where
+           he put it, not where the shell docked it. */
+        var offset = read();
+        paint(offset);
+
+        var start = null;
+        var live = null;
+
+        bar.addEventListener("pointerdown", function (event) {
+          if (event.button !== 0) return;
+          /* A press on a CONTROL is that control's. The handle and the bar's own
+             gaps are the drag's. */
+          if (event.target && event.target.closest && event.target.closest("button, a, input, select, textarea")) return;
+          start = { px: event.clientX, py: event.clientY, ox: offset.x, oy: offset.y };
+          /* `live` stays NULL until the pointer actually moves: it is the flag that
+             separates a DRAG from a CLICK, and `end()` writes nothing when it is null. */
+          live = null;
+          document.body.classList.add("is-strip-dragging");
+        });
+
+        window.addEventListener("pointermove", function (event) {
+          if (!start) return;
+          var dx = event.clientX - start.px;
+          var dy = event.clientY - start.py;
+          if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+          event.preventDefault();
+          live = { x: start.ox + dx, y: start.oy + dy };
+          paint(live);
+          write(live);
+          tell(live, "move");
+        }, { passive: false });
+
+        function end() {
+          if (!start) return;
+          var moved = live !== null;
+          offset = live || offset;
+          start = null;
+          live = null;
+          document.body.classList.remove("is-strip-dragging");
+          /* A press that never moved is NOT a drag: it must not rewrite the stored
+             position (nor tell the shell anything). Measured: without this guard a
+             plain CLICK on the bar wrote {x:0,y:0} over a position the owner had
+             already chosen. */
+          if (!moved) return;
+          write(offset);
+          tell(offset, "end");
+        }
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+        window.addEventListener("blur", end);
+      })();
+    </script>
   </body>
 </html>

@@ -86,8 +86,20 @@ FAMILIES = [
     # family has no italic in this bundle because no design asks for one.
     ('Barlow Condensed',    'barlow-condensed',    (400, 500, 600, 700), ()),
     ('IBM Plex Mono',       'ibm-plex-mono',       (400, 500, 600),      (400,)),
-    ('Newsreader',          'newsreader',          (400, 500, 600),      (400, 500)),
-    ('Fraunces',            'fraunces',            (400, 500, 600),      (400, 500)),
+    # THE 300 OF NEWSWEADER AND FRAUNCES, ADDED 2026-10-12 (lane fonts). Two
+    # generated themes paint their LIVE LINE at weight 300 and the bundle had no
+    # 300 face, so CSS font matching took the nearest one (400) and the letters
+    # were heavier than the design: theme-4 (Cinema Card -- zip A
+    # src/components/Caption.tsx:110 is 'font-cine ... font-light', i.e. Fraunces
+    # 300) and cine-tideline (zip C scene 'tideline', Newsreader 300). The zips'
+    # own Google Fonts URLs ask for that weight in BOTH styles -- zip C
+    # 'Fraunces:ital,opsz,wght@0,9..144,300..500;1,9..144,300..500' and
+    # 'Newsreader:ital,opsz,wght@0,6..72,200..500;1,6..72,200..400', zip A
+    # 'Fraunces:...1,9..144,300' -- so the italic 300 is bundled too, not
+    # synthesised. Gate: node _main/fonts-fidelity-oracle.mjs (ARM C and ARM D
+    # are RED on the two families without these four files).
+    ('Newsreader',          'newsreader',          (300, 400, 500, 600), (300, 400, 500)),
+    ('Fraunces',            'fraunces',            (300, 400, 500, 600), (300, 400, 500)),
     ('Space Grotesk',       'space-grotesk',       (400, 500, 600, 700), ()),
     ('Inter',               'inter',               (300, 400, 500, 600), ()),
     ('Instrument Serif',    'instrument-serif',    (400,),               (400,)),

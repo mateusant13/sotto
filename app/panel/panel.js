@@ -604,6 +604,11 @@ if (!bridge) {
   wireLevel();
 }
 
+// THE TRANSCRIPT'S SCROLL GUARD IS ARMED WHETHER OR NOT A BRIDGE EXISTS (lane:
+// caption): the feed and the live box are in the document either way, and the owner's
+// rule is about the layout, not about captions arriving.
+wireThemeScrollGuard();
+
 // ---------------------------------------------------------------------------
 // THE AUDIO LEVEL — REAL DATA OR NOTHING (declared ABOVE the init block, which
 // reaches it, per the rule the 2026-10-07 TDZ bug bought)
@@ -1068,6 +1073,101 @@ function wireFollow() {
     const { scrollTop, scrollHeight, clientHeight } = dom.captions;
     stickToNewest = (scrollHeight - scrollTop - clientHeight) < 48;
   }, { passive: true });
+}
+
+// ---------------------------------------------------------------------------
+// THE TRANSCRIPT NEVER SCROLLS TO THE TOP ON A THEME CHANGE (lane: caption)
+// ---------------------------------------------------------------------------
+// OWNER, 2026-10-12, verbatim: *"e nao e pra mudanca de design/tema/template ficar
+// scrollando pra cima. e sempre mostrando o bottom do historico de transcript."*
+//
+// WHAT MOVES THE SCROLL WHEN A THEME CHANGES, measured in THIS document (the lane's
+// own instrument is _main/caption-independent-oracle.js; the anchors below are the
+// 2026-10-12 21:0x revision of each file):
+//   * A theme write is `data-theme` on <html>, and the document carries THREE
+//     observers on that one attribute — theme-tune.js:986, lazy-assets.js:266 and
+//     skin-host.js:555 — the last two INJECT stylesheets into the live document. A
+//     sheet that lands after the attribute write reflows the list: the scroll
+//     position is kept, the CONTENT height is not, so the newest line leaves the view.
+//   * A template/skin switch also HIDES the container outright:
+//     `body[data-skin][data-surface="panel"] .history { display: none !important }`
+//     (skin-layout.css:66-68), and `data-skin` is written on <body>
+//     (skin-host.js:304). A scroll container that is not rendered has no position to
+//     come back to, so the feed returns at its FIRST line.
+//   * The panel's own re-render did it too: `renderFeed` ended with
+//     `dom.historyList.scrollTop = 0` (this file, was :1642), and the strip surface
+//     hides `.history` as well (panel.css:1456).
+//
+// THE RULE, in one place: after ANY theme/template/skin change the transcript
+// container is at its BOTTOM, never at its top. The pin runs on the attribute write,
+// on the next frame, twice on a short timer (a stylesheet that lands late reflows
+// again) and on every stylesheet `load` — the event a template's own sheet fires.
+// `load` does not bubble, hence the capture-phase listener.
+
+/** The transcript feed (#history-list) at its newest line. Always. */
+function pinHistoryToBottom() {
+  const list = dom.historyList;
+  if (!list) return false;
+  // `scrollHeight` is 0 on a list with no layout yet (a hidden surface, a fresh
+  // document); writing it then is a no-op, not a jump to the top.
+  list.scrollTop = list.scrollHeight;
+  return true;
+}
+
+/**
+ * The LIVE box at its newest line — but only while the owner is watching it.
+ * `stickToNewest` is the older, deliberate rule (his own scroll is the only thing
+ * allowed to stop the follow, see `wireFollow`); a theme change must not override it.
+ */
+function pinLiveTranscriptToBottom() {
+  const box = dom.captions;
+  if (!box || !stickToNewest) return false;
+  box.scrollTop = box.scrollHeight;
+  return true;
+}
+
+/** Both transcript containers, one call. */
+function pinTranscriptsToBottom() {
+  const feed = pinHistoryToBottom();
+  const live = pinLiveTranscriptToBottom();
+  return feed || live;
+}
+
+/**
+ * Re-pin after a layout change: NOW, and once the layout has settled. The immediate
+ * call is what the oracle measures; the deferred ones are what catch a stylesheet
+ * that lands after the attribute write.
+ */
+function repinTranscriptsAfterLayoutChange() {
+  pinTranscriptsToBottom();
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => pinTranscriptsToBottom());
+  }
+  setTimeout(() => pinTranscriptsToBottom(), 60);
+  setTimeout(() => pinTranscriptsToBottom(), 300);
+}
+
+/** Arm the observers. A document without MutationObserver gets no pin and no throw. */
+function wireThemeScrollGuard() {
+  if (typeof MutationObserver !== 'function') return false;
+  const root = document.documentElement;
+  if (!root) return false;
+  new MutationObserver(() => repinTranscriptsAfterLayoutChange())
+    .observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.body) {
+    new MutationObserver(() => repinTranscriptsAfterLayoutChange())
+      .observe(document.body, {
+        attributes: true,
+        attributeFilter: ['data-skin', 'data-skin-theme', 'data-surface', 'data-float'],
+      });
+  }
+  document.addEventListener('load', (event) => {
+    const node = event.target;
+    if (!node || node.tagName !== 'LINK') return;
+    if (String(node.getAttribute('rel') || '').toLowerCase() !== 'stylesheet') return;
+    repinTranscriptsAfterLayoutChange();
+  }, true);
+  return true;
 }
 
 /**
@@ -1639,7 +1739,13 @@ function renderFeed() {
       dom.historyList.append(empty);
     } else {
       for (const entry of rows) dom.historyList.append(makeRow(entry));
-      dom.historyList.scrollTop = 0;
+      // NEVER THE TOP (owner, 2026-10-12, verbatim): *"e nao e pra mudanca de
+      // design/tema/template ficar scrollando pra cima. e sempre mostrando o bottom
+      // do historico de transcript."* This line WAS `dom.historyList.scrollTop = 0`
+      // — the feed was re-rendered to its first line on every paint of a bucket.
+      // The rule is one function, used by the render path AND by the theme guard
+      // below, so the two can never disagree.
+      pinHistoryToBottom();
     }
   } else {
     const hint = document.createElement('li');
@@ -2137,15 +2243,32 @@ function paintFloatState() {
  * Apply the floated state: the attribute, the button, and the window height.
  * Idempotent — a second call with the same state changes nothing.
  */
+/**
+ * THE PANEL'S ONE WRITE INTO THE INDEPENDENT OVERLAY (lane: caption, 2026-10-12).
+ * The overlay owns its own state and can be on screen with no panel mounted at all
+ * (caption-float.js show()/hide()/setFloat()); this call is how the panel's own button
+ * moves it. It is a CALL, never a dependency: a document without the module (an older
+ * harness, a browser probe) keeps the attribute and the layout and nothing throws.
+ * Returns true when the module took the state.
+ */
+function syncCaptionFloat(state) {
+  const api = window.SottoCaptionFloat;
+  if (!api || typeof api.setFloat !== 'function') return false;
+  api.setFloat(state === 'on');
+  return true;
+}
+
 function applyFloat(on) {
   const want = on ? 'on' : 'off';
   if (document.body.getAttribute('data-float') === want) {
     paintFloatState();
+    syncCaptionFloat(want);
     return;
   }
   document.body.setAttribute('data-float', want);
   setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);
   paintFloatState();
+  syncCaptionFloat(want);
   // The shell re-reads `--strip-height` on every `setPanelSurface('strip')`, which
   // is the only runtime resize this document has. A shell without the call still
   // gets the attribute and the layout (a browser, the harness).

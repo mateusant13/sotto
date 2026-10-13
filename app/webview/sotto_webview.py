@@ -175,17 +175,58 @@ class LazyAssetGate(object):
             return
         if uri in self._allowed:
             return  # the page has asked: let it reach the disk
-        from System.IO import MemoryStream
+        response = self._make_empty_response(uri)
+        if response is None:
+            # FAIL OPEN, AND THIS IS THE IMPORTANT HALF. A gate that cannot
+            # serve its empty body must NEVER block the asset: the owner's
+            # panel is worth more than the deferred bytes, and an interception
+            # that cannot answer is a broken panel waiting to happen.
+            self._allowed.add(uri)
+            log(f'PANEL_LAZY_FAIL_OPEN url={uri} why=no-response')
+            return
         try:
-            stream = MemoryStream()
-            headers = 'Content-Type: ' + _lazy_mime(uri) + '\r\n' \
-                      'Content-Length: 0\r\n'
-            response = self._core.CreateWebResourceResponse(
-                stream, 200, 'OK', headers)
             args.Response = response
             log(f'PANEL_LAZY_EMPTY url={uri}')
         except Exception as exc:
-            log(f'PANEL_LAZY_EMPTY_FAILED url={uri} error={exc!r}')
+            self._allowed.add(uri)
+            log(f'PANEL_LAZY_FAIL_OPEN url={uri} why=assign error={exc!r}')
+
+    def _make_empty_response(self, uri):
+        """An empty 200 for `uri`, or `None` when this WebView2 cannot build one.
+
+        MEASURED FAILURE THIS EXISTS FOR, on the owner's own box: EVERY one of
+        the 116 gate firings in `_main/webview-run.log` logged
+
+            PANEL_LAZY_EMPTY_FAILED url=.../themes/panel-designs.css
+            error=AttributeError("'CoreWebView2' object has no attribute
+            'CreateWebResourceResponse'")
+
+        so the gate never served a single empty body. `CreateWebResourceResponse`
+        is a method of `CoreWebView2Environment`, not of `CoreWebView2`; the
+        property that reaches it from the CoreWebView2 is `Environment`. The old
+        call is kept as a second candidate so a host where the first name is
+        absent still works, and `None` is a real answer the caller acts on.
+        """
+        from System.IO import MemoryStream
+        headers = ('Content-Type: ' + _lazy_mime(uri) + '\r\n'
+                   'Content-Length: 0\r\n')
+        candidates = []
+        env = getattr(self._core, 'Environment', None)
+        if env is not None:
+            candidates.append((env, 'core.Environment'))
+        candidates.append((self._core, 'core'))
+        why = 'no candidate'
+        for obj, how in candidates:
+            maker = getattr(obj, 'CreateWebResourceResponse', None)
+            if maker is None:
+                why = f'{how} has no CreateWebResourceResponse'
+                continue
+            try:
+                return maker(MemoryStream(), 200, 'OK', headers)
+            except Exception as exc:  # noqa: BLE001
+                why = f'{how} raised {exc!r}'
+        log(f'PANEL_LAZY_RESPONSE_UNAVAILABLE url={uri} why={why}')
+        return None
 
     def allow(self, url):
         """Mark one deferred URL as wanted by the page. Idempotent."""
@@ -3718,6 +3759,13 @@ class SottoShell:
         self.strip_height_css = None
         self.strip_height_extra = 0
         self.strip_height = STRIP_HEIGHT_FALLBACK
+        #: The strip's CONTENT width, measured in the page (the pill's own
+        #: rendered box). `None` until read, and `None` on purpose while the
+        #: caption is floated. See `strip_width_from_dom()` for the defect this
+        #: exists to kill: `STRIP_WIDTH = 1040` fixed the WINDOW while the pill
+        #: inside was `max-content`, and the form paints every pixel the page
+        #: does not with opaque `#0B0F14` -- the owner's solid slab.
+        self.strip_width_dom = None
         # ── THE TWO SURFACES (owner, 2026-10-08) ─────────────────────────────
         #: The surface the owner's control opens. `'strip'` — the SHORT caption
         #: band at the bottom, horizontally centred — because
@@ -3924,12 +3972,28 @@ class SottoShell:
         # and it is not decoration: it is the colour of the thing the owner sees
         # when the WebView2 does not paint. When the page paints, the WebView2
         # covers the form completely and this value is never seen.
+        # CORRECTED 2026-10-12, owner verbatim: *"eu to vendo div com cor solida
+        # inves de invisivel"*. The dark slab above is STILL A SLAB. It was the
+        # lesser of two evils against .NET's white `SystemColors.Control`, but
+        # the owner asked for NEITHER: the caption overlay is meant to float over
+        # whatever is on screen with nothing behind it. pywebview already sets
+        # `SupportsTransparentBackColor` on this form (platforms/winforms.py:289),
+        # so `Color.Transparent` is legal here and every pixel the page does not
+        # paint shows the DESKTOP instead of a colour.
+        #
+        # The failure mode is now "you see through the window", which is the
+        # correct failure mode for an overlay and strictly better than a slab in
+        # the wrong colour. `--opaque` still gets the dark slab, because that flag
+        # exists to give up transparency on purpose.
         try:
             from System.Drawing import Color as _DrawColor  # noqa: F401
-            form.BackColor = _DrawColor.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
-            log('FORM_BACKCOLOR set=#0B0F14 (the slab colour, the failure-mode '
-                'colour a transparent form would otherwise leave at '
-                'SystemColors.Control)')
+            if self.args.opaque:
+                form.BackColor = _DrawColor.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
+                log('FORM_BACKCOLOR set=#0B0F14 reason=--opaque')
+            else:
+                form.BackColor = _DrawColor.Transparent
+                log('FORM_BACKCOLOR set=transparent reason=overlay-not-a-slab '
+                    'cure=SupportsTransparentBackColor')
         except Exception as exc:  # noqa: BLE001
             log(f'FORM_BACKCOLOR_FAILED error={exc!r}')
 
@@ -4438,7 +4502,9 @@ class SottoShell:
             self.startup_done = True
             self.send_geometry()
             if self.surface_applied == 'strip':
-                if self.refresh_strip_height('hot-reload'):
+                h_moved = self.refresh_strip_height('hot-reload')
+                w_moved = self.refresh_strip_width('hot-reload')
+                if h_moved or w_moved:
                     self._apply_window_geometry(self.geometry_for('strip'),
                                                 reason='strip-height-hot-reload')
             # The panel AS TEXT. Armed here — once the panel document (not the
@@ -5416,11 +5482,21 @@ class SottoShell:
             self._last_hotkey_press = 0.0
             dt_ms = round((now - prev) * 1000)
             if not live:
-                # Defect 3: never surface the panel on a double. The single
-                # press that started this pair already toggled it.
+                # CORRECTED 2026-10-12 BY THE OWNER, verbatim: *"o alt c apertado
+                # 2x nao ta abrindo o painel da direita"*. Defect 3 above made a
+                # double on a HIDDEN panel a no-op, which is only predictable if
+                # the pair always aligns with the user's FIRST press -- and it
+                # does not: a stale `_last_hotkey_press` from an earlier press
+                # makes the owner's first press the double, so the pair is
+                # consumed doing nothing and his SECOND press lands as a single
+                # and only opens the strip. Two presses therefore showed the
+                # strip and never the right panel. The owner's contract is the
+                # one that holds: TWO PRESSES OPEN THE RIGHT PANEL, from hidden
+                # included. The pair is still consumed just above, so mashing
+                # Alt+C still alternates instead of pinning anything open.
                 log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                    f'mode=side action=ignore reason=panel-hidden')
-                return False
+                    f'mode=side action=show reason=panel-hidden')
+                return self.show_side('hotkey-double')
             if self.panel_mode == 'side':
                 log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
                     f'mode=side action=hide reason=already-side')
@@ -5468,7 +5544,9 @@ class SottoShell:
         # place the panel before the bridge has answered.
         if self.renderer_ready.is_set():
             self.refresh_strip_height('place-' + str(mode))
-        geometry = (dock_strip(work, height=self.strip_height)
+            self.refresh_strip_width('place-' + str(mode))
+        geometry = (dock_strip(work, width=self.strip_width_live(),
+                               height=self.strip_height)
                     if mode == 'strip' else dock_right(work))
         self.geometry = geometry
         self.panel_mode = mode
@@ -6495,6 +6573,37 @@ class SottoShell:
                 saved['docked'] = 'bottom-strip'
                 log('STRIP_RECT_HEIGHT from_saved=%s to_css=%s reason=%s'
                     % (saved.get('height'), int(live), 'geometry-strip-live'))
+        # THE SAME RULE FOR THE WIDTH, AND IT IS THE OWNER'S SOLID SLAB.
+        # The saved strip rect is 1040 wide (STRIP_WIDTH) while
+        # `body[data-surface="strip"] .panel` is `max-content` -- a small pill --
+        # and the form paints every pixel the page does not with opaque #0B0F14.
+        # The width is the CONTENT's now, exactly as the height already was.
+        if surface == 'strip':
+            live_w = self.strip_width_live()
+            if live_w is not None:
+                want_w = int(live_w)
+                old_w = int(saved.get('width') or 0) if isinstance(saved, dict) else 0
+                if old_w != want_w:
+                    saved = dict(saved) if isinstance(saved, dict) else {}
+                    saved['width'] = want_w
+                    work_w = int(work.get('width') or 0)
+                    work_x = int(work.get('x') or 0)
+                    # A SLAB IS RE-CENTRED; A PLACEMENT THE OWNER MADE IS KEPT.
+                    slab = (old_w <= 0 or old_w == STRIP_WIDTH
+                            or old_w >= int(work_w * 0.9))
+                    if slab:
+                        saved['x'] = work_x + round((work_w - want_w) / 2)
+                    else:
+                        saved['x'] = max(work_x, min(int(saved.get('x') or 0),
+                                                     work_x + work_w - want_w))
+                    saved['docked'] = 'bottom-strip'
+                    saved.setdefault('surface', 'strip')
+                    saved.setdefault('height', int(self.strip_height))
+                    saved.setdefault('y', int(work.get('y') or 0)
+                                     + int(work.get('height') or 0)
+                                     - int(self.strip_height))
+                    log(f'STRIP_RECT_WIDTH from_saved={old_w} to_content={want_w} '
+                        f'recentred={bool(slab)}')
         if isinstance(saved, dict) and saved.get('surface') == surface:
             geometry, moved = clamp_geometry(saved, work)
             if moved:
@@ -6508,7 +6617,8 @@ class SottoShell:
                     f'@({geometry["workX"]},{geometry["workY"]})')
             return geometry
         if surface == 'strip':
-            return dock_strip(work, height=self.strip_height)
+            return dock_strip(work, width=self.strip_width_live(),
+                              height=self.strip_height)
         return dock_right(work)
     def strip_height_from_css(self):
         """The strip's height, READ OUT OF THE STYLESHEET. `None` if unavailable.
@@ -6548,6 +6658,84 @@ class SottoShell:
             log(f'STRIP_HEIGHT_CSS_UNUSABLE raw={json.dumps(raw)}')
             return None
         return value
+    def strip_width_from_dom(self):
+        """The strip's CONTENT width, measured in the page. `None` if unavailable.
+
+        THE SOLID SLAB, AND WHY THIS EXISTS. Measured 2026-10-12, owner verbatim:
+        *"eu to vendo div com cor solida inves de invisivel"*. The strip WINDOW was
+        `STRIP_WIDTH = 1040` wide while `body[data-surface="strip"] .panel` is
+        `width: max-content` -- a small pill -- and the shell paints every pixel the
+        page does not with the form's opaque `#0B0F14` (:3929). A 1040-wide window
+        holding a ~400px pill IS a solid colour slab, with the real bottom panel
+        sitting in the middle of it: exactly what the owner described.
+
+        So the width is read from the thing that HAS it: the pill's own rendered
+        box. `max-content` is INTRINSIC, so the measurement does not depend on the
+        window's width and cannot feed back into it.
+
+        While the caption is floated (`data-float="on"`) this answers `None` ON
+        PURPOSE: the floated caption is `left:0; right:0` inside the window and
+        needs the room, so the caller keeps the wide dock. It also answers `None`
+        before the page has laid out, so a cold read never collapses the window.
+        """
+        script = ("(() => {"
+                  "const de = document.documentElement;"
+                  "if (!de) return null;"
+                  "if (de.getAttribute('data-float') === 'on') return null;"
+                  "const el = document.querySelector('.panel');"
+                  "if (!el || !el.getBoundingClientRect) return null;"
+                  "const r = el.getBoundingClientRect();"
+                  "if (!r || !(r.width > 0)) return null;"
+                  "return String(Math.ceil(r.width));"
+                  "})()")
+        try:
+            raw = self.exec_js(script)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_WIDTH_DOM_FAILED error={exc!r}')
+            return None
+        if not isinstance(raw, str) or not raw:
+            return None
+        text = raw.strip().lower()
+        if text.endswith('px'):
+            text = text[:-2].strip()
+        try:
+            value = float(text)
+        except ValueError:
+            log(f'STRIP_WIDTH_DOM_UNPARSED raw={json.dumps(raw)}')
+            return None
+        if not (value > 0) or value != value or value > 20000:
+            log(f'STRIP_WIDTH_DOM_UNUSABLE raw={json.dumps(raw)}')
+            return None
+        return value
+
+    def strip_width_live(self):
+        """The cached live content width, or `None`. See `strip_width_from_dom`."""
+        value = self.strip_width_dom
+        if not isinstance(value, (int, float)) or not (value > 0):
+            return None
+        return int(round(value))
+
+    def refresh_strip_width(self, reason='surface-strip'):
+        """Re-measure the pill and adopt it, once per real change.
+
+        The twin of `refresh_strip_height`: the reading is cached, so the
+        geometry path never calls into the page, and a theme change (which moves
+        the pill's width) is adopted on the next strip application. Returns True
+        when the number moved.
+        """
+        value = self.strip_width_from_dom()
+        if value is None:
+            if self.strip_width_dom is None:
+                log(f'STRIP_WIDTH source=fallback value={STRIP_WIDTH} '
+                    f'reason={reason} why=content-unavailable')
+            return False
+        value = int(round(value))
+        if value == self.strip_width_dom:
+            return False
+        was = self.strip_width_dom
+        self.strip_width_dom = value
+        log(f'STRIP_WIDTH from={was} to={value} source=content reason={reason}')
+        return True
     def set_strip_height(self, height, reason='runtime'):
         """Change the strip's height AT RUNTIME and re-derive the window.
 
@@ -6600,6 +6788,7 @@ class SottoShell:
             # applied, so the read answers with the real number instead of a copy
             # kept in this file.
             self.refresh_strip_height(f'surface-{reason}')
+            self.refresh_strip_width(f'surface-{reason}')
         script = ('(function () { if (window.SottoSurfaces) { '
                   'window.SottoSurfaces.set(' + json.dumps(name) + '); '
                   'return window.SottoSurfaces.current(); } return null; })()')
