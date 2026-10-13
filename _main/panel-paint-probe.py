@@ -197,7 +197,8 @@ GATE_REMOVED = (
 
 def build_variant(path: str, revert_gate: bool = False,
                   strip: bool = False, floated: bool = False,
-                  theme: str = '', caption: str = '') -> str:
+                  theme: str = '', caption: str = '',
+                  dragoffset=None) -> str:
     with open(SHELL, encoding='utf-8') as f:
         src = f.read()
     out = src.replace(
@@ -341,31 +342,40 @@ def build_variant(path: str, revert_gate: bool = False,
             boot,
             "  try { window.localStorage.setItem('sotto.theme', '" + safe
             + "'); } catch (err) {}\n" + boot, 1)
-    # THE DISCRIMINATOR FOR THE SIX FLAT THEMES. The census found six themes
-    # painting a single flat colour, and left two readings open: the theme paints
-    # only its surface (a defect), or the panel with NO CAPTIONS has nothing to
-    # draw on that surface (correct). This pushes a caption in through the page's
-    # own `window.sotto.pushCaption` before the capture, so the panel HAS content.
-    # If the six then paint the text, reading two was right and there is no defect;
-    # if they stay flat while a control theme paints, the defect is real.
+    # THE DRAG, VERIFIED WITHOUT A HAND ON THE MOUSE. The shell half of the strip
+    # drag has never been shown to move the WINDOW -- only that the bridge exposes
+    # the method and the gesture oracle passes. This calls the page own
+    # `window.sotto.setStripOffset(dx, dy, 'move')` from the surface script, and the
+    # probe ALREADY LOGS THE WINDOW RECT, so the two rects ARE the measurement: the
+    # window must move by exactly (dx, dy) from its docked position.
+    if dragoffset:
+        drag_anchor = 'return window.SottoSurfaces.current();'
+        if drag_anchor not in out:
+            raise SystemExit('variant: --dragoffset edit did not apply -- refusing')
+        dx, dy = dragoffset
+        # setTimeout ON PURPOSE: the surface script runs BEFORE the window is
+        # positioned, and `_set_strip_offset` refuses unless the applied surface is
+        # already `strip`. Firing immediately would be refused and the measurement
+        # would say "the drag does nothing" when the truth is "the drag was never
+        # delivered". 900 ms lands after `set_panel_surface` has finished.
+        drag_js = ('setTimeout(function(){try{if(window.sotto&&window.sotto.setStripOffset)'
+                   'window.sotto.setStripOffset(' + str(int(dx)) + ','
+                   + str(int(dy)) + ",'move');}catch(e){}},900);")
+
+    # THE CAPTION, FOR THE FLAT-THEME DISCRIMINATOR. Pushes text through the page
+    # own `window.sotto.pushCaption` so the panel HAS content.
+    #
+    # WARNING: THIS MODE IS NOT FINISHED. It builds and compiles, but EVERY capture
+    # with it came back SEM PNG -- no window mapped -- so the injection breaks the
+    # page or the window mapping and the discriminator it exists for has NOT been
+    # run. Do not read a --caption capture as evidence, and do not read its absence
+    # as a theme that paints nothing.
     if caption:
         # A DIFFERENT ANCHOR ON PURPOSE: the --theme block runs FIRST and already
-        # consumed the long form of this statement, so the caption block was
-        # refusing to build at all -- MEASURED: 'variant: --caption edit did not
-        # apply - refusing', and every capture came back SEM PNG. This anchor is
-        # the bare statement, which survives whatever the theme block did to the
-        # text around it.
-        # NO BACKSLASHES ANYWHERE, ON PURPOSE. Two earlier attempts escaped the
-        # caption by hand and produced Python that would not compile -- the
-        # variant refused and every capture came back SEM PNG. json.dumps gives a
-        # DOUBLE-QUOTED JS string, which sits happily inside the shell's
-        # single-quoted Python literal, so nothing needs escaping at all.
-        # WARNING: THIS MODE IS NOT FINISHED. It builds and compiles (after two
-        # attempts that did not, from hand-escaping the caption), but EVERY
-        # capture with it came back SEM PNG -- no window mapped. So the injection
-        # breaks the page or the window mapping, and the discriminator it exists
-        # for has NOT been run. Do not read a --caption capture as evidence, and
-        # do not read its absence as a theme that paints nothing.
+        # consumed the long form of this statement, so this anchor is the bare one,
+        # which survives whatever the theme block did to the text around it.
+        # NO BACKSLASHES: json.dumps gives a DOUBLE-QUOTED JS string, which sits
+        # happily inside the shell single-quoted Python literal.
         import json as _json
         cap_anchor = 'return window.SottoSurfaces.current();'
         if cap_anchor not in out:
@@ -547,13 +557,18 @@ def main() -> int:
     caption = ''
     if '--caption' in a:
         caption = str(a[a.index('--caption') + 1])
+    dragoffset = None
+    if '--dragoffset' in a:
+        _d = str(a[a.index('--dragoffset') + 1]).split(',')
+        dragoffset = (int(_d[0]), int(_d[1]))
     suffix = '-control' if revert else ''
     log('PAINT panel-paint-probe start='
         f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} secs={secs} '
         f'revert_gate={revert}')
     p = os.path.join(VARIANT_DIR, '_paint-offscreen-sotto_webview.py')
     sha = build_variant(p, revert_gate=revert, strip=strip, floated=floated,
-                        theme=theme, caption=caption)
+                        theme=theme, caption=caption,
+                        dragoffset=dragoffset)
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
         f'revert_gate={revert}')
     try:
