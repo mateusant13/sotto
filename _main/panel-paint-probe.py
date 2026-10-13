@@ -454,6 +454,17 @@ def arm(tag: str, extra: list, secs: float, shell: str,
         # test at --secs 12 (10.8 s) looked convincing. The settle window is now a
         # constant that --secs cannot shrink.
         SETTLE_BUDGET_S = 25.0
+        # AND THE SAMPLE INTERVAL WAS ALIASING WITH THE CARET. MEASURED
+        # 2026-10-13: `theme-3.css` carries `animation: sotto-caret 1.06s
+        # steps(1) infinite` -- a blinking caret, on purpose, that NEVER settles
+        # for more than one phase. The loop sampled every 1.2 s, which is within
+        # 0.14 s of that 1.06 s period, so consecutive frames landed in the same
+        # phase on some runs and drifted on others. THAT is the whole reason the
+        # same theme came back PAINTED and UNIFORM from the same bytes: not a
+        # racy renderer, an instrument whose sample rate beat against the thing it
+        # was measuring. 0.35 s puts about three samples inside one 1.06 s phase,
+        # so a stable pair is found while the caret is still on.
+        SAMPLE_S = 0.35
         prev = None
         settled = False
         deadline = time.time() + SETTLE_BUDGET_S
@@ -465,7 +476,7 @@ def arm(tag: str, extra: list, secs: float, shell: str,
                     settled = True
                     break
                 prev = cur
-            time.sleep(1.2)
+            time.sleep(SAMPLE_S)
         if not settled:
             # AN UNSETTLED CAPTURE MUST NOT BE ABLE TO PASS FOR A MEASUREMENT.
             # The old code fell back to the last frame and set settled=false, and
