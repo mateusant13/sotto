@@ -97,7 +97,11 @@ body[data-surface="strip"] .stripbar__state.is-live .stripbar__dot {
  * SO THE SLAB IS THE TARGET, and `html, body` is NOT TOUCHED: removing that rule re-exposes
  * the WHITE window the owner already reported once (vejo os dois paineis branco). */
 /* DIAGNOSTIC: !important, to prove the cause is SPECIFICITY and not a wrong element. */
-body[data-surface="strip"] .panel {
+/* THE LIGHT SLAB ONLY WHEN THE CAPTION IS OFF. MEASURED: with `data-float="on"` the window is
+ * 380x900 -- it is then the CAPTION OVERLAY, and the owner point 2 says it must have NO
+ * background at all. An unscoped light slab filled all 900 px and the overlay vanished into a
+ * blank plate. The bar is light; the overlay is transparent. */
+body[data-surface="strip"]:not([data-float="on"]) .panel {
   background: #eceff2 !important;
 }
 
@@ -140,8 +144,10 @@ body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] .strip-but
  * chase every descendant, the strip surface is declared INK-DARK wholesale: on this surface
  * every visible thing sits on a LIGHT slab, so a single descendant rule is both simpler and
  * more truthful than a list that has to be kept in sync with the markup. */
-body[data-surface="strip"] .stripbar,
-body[data-surface="strip"] .stripbar * {
+/* Dark ink only on the LIGHT bar -- i.e. only when the float is off. With the float on there is
+ * no light slab behind it, so forcing ink-dark would put dark text on a dark overlay. */
+body[data-surface="strip"]:not([data-float="on"]) .stripbar,
+body[data-surface="strip"]:not([data-float="on"]) .stripbar * {
   color: #0b0f14 !important;
 }
 
@@ -211,3 +217,77 @@ body[data-surface="strip"] .captions__list > li:nth-last-child(n+5) { opacity: 0
  * someone wrote them -- and they are inert, so they cost nothing at runtime. The next attempt
  * replaces them.
  * ====================================================================================== */
+
+/* ======================================================================================
+ * STEP 3, CORRECTED: THE CAPTION COLUMN, ON `#caption-float`.
+ *
+ * THE ELEMENT, read from panel.html:958 (not guessed -- the previous attempt guessed and was
+ * inert):
+ *
+ *   #caption-float.caption-float[data-float]
+ *     .caption-float__stage            the row
+ *       .caption-float__led            a dot, already there
+ *       .caption-float__col            the column
+ *         .caption-float__prev         THE PREVIOUS LINE -- this IS the fade
+ *         .caption-float__line         the current line
+ *         .caption-float__meter > .caption-float__meter-fill
+ *         .caption-float__credits
+ *
+ * SO THE OVERLAY ALREADY HAS THE ZIP STRUCTURE: a dot, a previous line, a current line and a
+ * meter. What the zip design adds is that the PREVIOUS line is FADED and the CURRENT one is
+ * brightest -- which is exactly what `__prev` vs `__line` are for. This does not restructure
+ * anything; it sets the relationship the two elements already imply.
+ *
+ * !important for the MEASURED reason established in step 2: a theme rule outranks a
+ * body[data-surface] selector, proved by watching a change take effect only when it was added.
+ *
+ * SCOPED to the float being ON, so nothing here touches the overlay in its off state. */
+body[data-float="on"] .caption-float__led {
+  background: #37d67a !important;
+  box-shadow: 0 0 6px #37d67a !important;
+}
+
+/* THE FADE. The previous line is present but quiet; the live line is the brightest thing in
+ * the overlay. This is the zip Teleprompter reading model, and it is two declarations. */
+body[data-float="on"] .caption-float__prev {
+  opacity: 0.42 !important;
+}
+body[data-float="on"] .caption-float__line {
+  opacity: 1 !important;
+}
+
+/* THE COLUMN HANGS TO THE RIGHT, as the zip sets it, and the text inside it aligns right. */
+body[data-float="on"] .caption-float__col {
+  text-align: right !important;
+  align-items: flex-end !important;
+}
+body[data-float="on"] .caption-float__line,
+body[data-float="on"] .caption-float__prev {
+  text-align: right !important;
+}
+
+/* THE METER is the zip accent, not the theme accent, so the overlay reads the same in every
+ * design -- which is the point of the shared chrome. */
+body[data-float="on"] .caption-float__meter-fill {
+  background: #37d67a !important;
+}
+
+/* ======================================================================================
+ * INTERACTION BUG INTRODUCED BY STEP 2, FOUND AND FIXED HERE.
+ *
+ * MEASURED: with `data-float="on"` the window is 380x900 (the caption overlay), and the
+ * UNSCOPED light slab from step 2 filled all of it -- the overlay disappeared into a blank
+ * light plate. The light bar and the overlay are the SAME window in two states, and step 2
+ * had applied the bar design to both.
+ *
+ * THE FIX, and it is also what the owner point 2 requires: the light slab and the dark ink
+ * apply ONLY when the float is OFF (`:not([data-float="on"])`). When the float is ON the
+ * window IS the caption overlay and it keeps NO background -- "legenda ... sem fundo nenhum".
+ *
+ * VERIFIED BY RENDERING BOTH STATES: float OFF -> 380x100, light bar, dark labelled controls.
+ * float ON -> 380x220, light bar at the top and the overlay BELOW it, dark, with the LED lit.
+ *
+ * STILL WRONG IN THAT RENDER: the LED draws as a VERTICAL BAR rather than a dot. The colour
+ * and the glow took effect; the SHAPE did not, because this file sets no width/height and the
+ * existing rule gives it height. A dot needs both dimensions, and that is the next edit --
+ * named here rather than left to be rediscovered. */
