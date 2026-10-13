@@ -389,15 +389,24 @@ def build_variant(path: str, revert_gate: bool = False,
         _dx = str(int(dx))
         _dy = str(int(dy))
         drag_js = ('setTimeout(function(){try{'
+                   # #strip-controls, WHICH IS `bar` IN THE HANDLER -- and the
+                   # pointermove goes on WINDOW, not document. Both are read straight
+                   # off panel.html: the listener is `bar.addEventListener(
+                   # "pointerdown")` where `bar = document.getElementById(
+                   # "strip-controls")` (:1098), and the move is `window.addEventListener(
+                   # "pointermove")` (:1151). I first dispatched on the right element and
+                   # the wrong move target, then "corrected" the element to `.stripbar`,
+                   # which is a DIFFERENT handler in panel.js and not this one. Two
+                   # guesses, both wrong, and the source said so the whole time.
                    'var b=document.getElementById("strip-controls");if(!b)return;'
                    'var r=b.getBoundingClientRect();'
                    'var x0=r.left+20,y0=r.top+10;'
                    'var o={bubbles:true,pointerId:1};'
                    'b.dispatchEvent(new PointerEvent("pointerdown",'
                    '{clientX:x0,clientY:y0,bubbles:true,pointerId:1}));'
-                   'document.dispatchEvent(new PointerEvent("pointermove",'
+                   'window.dispatchEvent(new PointerEvent("pointermove",'
                    '{clientX:x0+' + _dx + ',clientY:y0+' + _dy + ',bubbles:true,pointerId:1}));'
-                   'document.dispatchEvent(new PointerEvent("pointerup",'
+                   'window.dispatchEvent(new PointerEvent("pointerup",'
                    '{clientX:x0+' + _dx + ',clientY:y0+' + _dy + ',bubbles:true,pointerId:1}));'
                    '}catch(e){}},900);')
         # THE LINE THAT APPLIES IT. It went missing in a rewrite, the injection was
