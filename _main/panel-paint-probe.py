@@ -196,7 +196,8 @@ GATE_REMOVED = (
 
 
 def build_variant(path: str, revert_gate: bool = False,
-                  strip: bool = False, floated: bool = False) -> str:
+                  strip: bool = False, floated: bool = False,
+                  theme: str = '') -> str:
     with open(SHELL, encoding='utf-8') as f:
         src = f.read()
     out = src.replace(
@@ -274,6 +275,21 @@ def build_variant(path: str, revert_gate: bool = False,
             "'document.documentElement.setAttribute(\\'data-float\\',\\'on\\'); "
             "document.body.setAttribute(\\'data-float\\',\\'on\\'); "
             "return window.SottoSurfaces.current(); } return null; })()'", 1)
+    # A THEME, SO THE DESIGNS CAN BE MEASURED INSTEAD OF PARSED. The owner's
+    # report is *"varios designs estao bugados"* and every check so far has been a
+    # parse of CSS bytes. This writes `data-theme` from the surface script -- the
+    # same script the float mode uses -- so two themes can be captured and their
+    # PIXELS compared. A theme whose signature is identical to another is a
+    # recolour, which is the thing the owner said he does not want.
+    if theme:
+        anchor = ("'return window.SottoSurfaces.current(); } return null; })()'")
+        if anchor not in out:
+            raise SystemExit('variant: --theme edit did not apply — refusing')
+        safe = theme.replace('\\', '').replace("'", '')
+        out = out.replace(
+            anchor,
+            "'document.documentElement.setAttribute(\\'data-theme\\',\\'" + safe
+            + "\\'); return window.SottoSurfaces.current(); } return null; })()'", 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
@@ -389,12 +405,16 @@ def main() -> int:
     revert = '--revert-gate' in a
     strip = '--strip' in a
     floated = '--float' in a
+    theme = ''
+    if '--theme' in a:
+        theme = str(a[a.index('--theme') + 1])
     suffix = '-control' if revert else ''
     log('PAINT panel-paint-probe start='
         f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} secs={secs} '
         f'revert_gate={revert}')
     p = os.path.join(VARIANT_DIR, '_paint-offscreen-sotto_webview.py')
-    sha = build_variant(p, revert_gate=revert, strip=strip, floated=floated)
+    sha = build_variant(p, revert_gate=revert, strip=strip, floated=floated,
+                        theme=theme)
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
         f'revert_gate={revert}')
     try:
