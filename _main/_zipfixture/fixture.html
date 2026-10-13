@@ -2,10 +2,12 @@
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="panel.css">
 <link rel="stylesheet" href="zip-overlay.css">
-<style>html,body{height:auto;margin:0;background:#111}</style>
+<style>html,body{height:auto;margin:0;background:#111}
+#wrap{height:300px;display:flex;flex-direction:column}
+.panel{flex:1;min-height:0;display:flex;flex-direction:column}</style>
 </head>
 <body data-surface="strip">
-<section class="panel">
+<div id="wrap"><section class="panel">
   <div class="captions">
     <div class="captions__bar"><span class="captions__hint">FUNDO: FILME . REPRODUZINDO . AUDIO ORIGINAL</span></div>
     <div class="captions__body">
@@ -24,5 +26,5 @@
     <button class="strip-button strip-button--toggle" aria-pressed="false"><span class="strip-button__label">live</span></button>
     <span class="stripbar__state"><span class="stripbar__dot"></span>CAPTIONS ON</span>
   </section>
-</section>
+</section></div>
 </body></html>

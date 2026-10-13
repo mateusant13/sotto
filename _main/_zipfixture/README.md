@@ -56,3 +56,34 @@ Read the `.captions` rules next, not the `.caption` ones.
 **NOTHING IN THIS ROUND VERIFIED STEP 3.** The status is unchanged: applied, not visually
 verified. What the round DID produce is one real structural fact -- the caption row is a
 two-column grid with a time rail -- which any later attempt will need.
+
+## THIRD ATTEMPT: NOT THE HEIGHT EITHER, AND THE FIXTURE ROUTE IS ABANDONED
+
+HYPOTHESIS: the fixture gave `.panel` no height, so the caption region collapsed. The fixture
+was wrapped in a 300 px flex column with `.panel { flex: 1; min-height: 0 }`. **The layout DID
+change** -- the bar moved to the top of the frame and the panel filled it -- **and the captions
+were STILL absent.**
+
+**THREE VARIANTS, THREE RESULTS, AND THE CAPTION LIST NEVER PAINTED:**
+
+| variant | change | captions |
+|---|---|---|
+| 1 | one child per row | absent |
+| 2 | two children (time rail + text) | absent, BYTE-IDENTICAL to 1 |
+| 3 | a 300 px panel with flex | absent, but the LAYOUT moved |
+
+Variant 3 is the informative one: the frame changed and the list did not, so this is not a
+collapse and not the row shape. Something between `.captions` and the list keeps it out of the
+paint, and finding it means reading the `.captions` rules -- which was attempted and not
+completed.
+
+## THE FIXTURE ROUTE IS ABANDONED, AND THE REASON IS THE POINT
+
+**This instrument has cost three rounds and produced one structural fact.** The product already
+has an instrument that shows the caption list WITH REAL TEXT: the owner app, with audio. The
+fixture was meant to avoid launching it, and the cost of avoiding that has now exceeded the cost
+of asking.
+
+**So the honest close on step 3 is: APPLIED, NOT VISUALLY VERIFIED, and the verification belongs
+to the owner looking at his own panel with something playing.** The fixture stays in the tree as
+a record of a route that did not work, not as a working instrument.
