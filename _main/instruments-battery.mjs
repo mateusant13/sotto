@@ -77,6 +77,12 @@ const py = [
   ['_main/verify-all-launch-audit.py', 'verify-all starts nothing (precondition for running it)'],
   ['_main/agents-md-pins-oracle.py', 'AGENTS.md pins re-measured live (the --help size and the battery pin)'],
   ['_main/agents-md-pins-oracle.py --neg-arm', 'agents-md-pins neg (the mutated doc copy must go RED)'],
+  // THE GATE FOR THE DEFECT THAT COST 2.5 h. The handler map was a bare dict
+  // literal, so ONE bad entry killed dispatch for EVERY page->shell kind and the
+  // shell own log said NOTHING. This calls the REAL dispatch with a kind nobody
+  // knows; building the map IS the test. Nothing launched.
+  ['_main/bridge-handler-map-oracle.py', 'handler-map (the 2.5 h outage)'],
+  ['_main/bridge-handler-map-oracle.py --neg-arm', 'handler-map neg'],
 ];
 
 const node = [
