@@ -85,6 +85,14 @@
   };
 
   var ASKED = {};
+  /* url -> the callbacks waiting for the shell to CONFIRM the ask. An element
+   * injected before that confirmation is answered with the gate's EMPTY 200 and
+   * the real bytes are never fetched (see `ask` for the measured 10-55 ms). */
+  var WAITING = {};
+  /* url -> how many 50 ms turns this ask has waited for pywebview's api, which
+   * is the only channel whose promise resolves AFTER Python's dispatch() has
+   * run. After 2 s this falls back to the shell's fire-and-forget channel. */
+  var WAITED = {};
   var LOG = [];
 
   function log(kind, detail) {
@@ -133,48 +141,95 @@
     return [];
   }
 
-  /* Ask the shell for the real bytes of one deferred URL. Fire-and-forget by
-   * design: the caller adds the element anyway, and the element is what waits. */
-  function ask(url) {
-    if (ASKED[url]) return;
-    /* THE ASK WAS BEING LOST FOREVER, AND THAT IS WHY THE DEFERRED ASSETS LOADED
-     * AS EMPTY BODIES.
-     *
-     * MEASURED 2026-10-13 on a `cine-cellar` theme, in the shell own log:
-     *     PANEL_LAZY_EMPTY        4   the gate answered cinematic.css, skins.js,
-     *                                 skin-host.js and skin-layout.css with EMPTY 200s
-     *     PANEL_LAZY_ALLOW        0   the page NEVER asked for the real bytes
-     *     PANEL_LAZY_ASK_REFUSED  0   and the ask never even REACHED the shell
-     *
-     * `ASKED[url] = true` used to be set BEFORE the call, and this function runs
-     * from `boot()` at DOMContentLoaded -- BEFORE pywebview injects its api. At that
-     * moment `window.sotto.dispatch` did not exist and `window.pywebview.api` did not
-     * exist yet either, so BOTH branches fell through, the ask vanished, and the
-     * latch made sure it was never retried. The element had already been injected, so
-     * `hasThemeSheet()` was true on every later settle and nothing re-asked.
-     *
-     * THE FIX: latch only once a channel actually took the message, and retry until
-     * one exists. A retry is cheap and a lost ask is five assets the owner never sees.
-     */
-    var s = window.sotto;
-    var hasSotto = !!(s && typeof s.dispatch === 'function');
-    var hasPywebview = !!(window.pywebview && window.pywebview.api &&
-                          window.pywebview.api.dispatch);
-    if (!hasSotto && !hasPywebview) {
-      setTimeout(function () { ask(url); }, 100);
+  /* Ask the shell for the real bytes of one deferred URL, and run `done` ONLY
+   * once the shell has CONFIRMED it.
+   *
+   * WHY THE CALLBACK EXISTS, AND IT IS MEASURED. The shell's gate answers a
+   * request for a URL the page has not asked for with an EMPTY 200, and the
+   * ask travels as a MESSAGE while the <link>/<script> element the caller
+   * injects is requested IMMEDIATELY. MEASURED 2026-10-13 on a `cine-cellar`
+   * arm, after the shell's dispatch map was repaired and the asks DID arrive:
+   *     PANEL_LAZY_EMPTY  url=themes/cinematic.css   50.476
+   *     PANEL_LAZY_EMPTY  url=skins/skins.js         50.485
+   *     PANEL_LAZY_EMPTY  url=skin-host.js           50.494
+   *     PANEL_LAZY_EMPTY  url=skin-layout.css        50.521
+   *     PANEL_LAZY_ALLOW  url=themes/cinematic.css   50.531   <- 55 ms late
+   *     PANEL_LAZY_ALLOW  url=skins/skins.js         50.531
+   *     PANEL_LAZY_ALLOW  url=skin-host.js           50.531
+   *     PANEL_LAZY_ALLOW  url=skin-layout.css        50.531
+   * and the page's own readback in the same run: `cinRules=0` (the 350 KB
+   * cinematic sheet carried ZERO rules), `SOTTO_SKINS=undefined`,
+   * `window.SottoSkin=undefined`. So the ask ARRIVED and the gate OPENED, and
+   * the owner's five assets still loaded EMPTY -- the request had already been
+   * answered. The ordering, not the channel, was the remaining defect.
+   *
+   * THE ONE ASK THAT CAN BE AWAITED is pywebview's own api: `api.dispatch`
+   * resolves its promise when Python's `SottoHost.dispatch` RETURNS, i.e.
+   * strictly after `LazyAssetGate.allow()` has run. When that api is not there
+   * yet, this waits for it (50 ms turns, up to 2 s) instead of racing it, and
+   * then falls back to the shell's fire-and-forget `window.sotto.dispatch`.
+   * Every path ends in `done`, so an inject can never be skipped entirely.
+   */
+  function ask(url, done) {
+    var finish = (typeof done === 'function') ? done : function () {};
+    if (ASKED[url]) {
+      /* A second ask for a URL already in flight must NOT inject now: that is
+       * the same race. Queue behind the confirmation instead. */
+      if (WAITING[url]) { WAITING[url].push(finish); } else { finish(); }
       return;
     }
-    ASKED[url] = true;
-    log('ask', url);
-    try {
-      if (hasSotto) {
-        s.dispatch('lazy-asset', { url: String(url) });
+    var s = window.sotto;
+    var api = window.pywebview && window.pywebview.api;
+    var canAwait = !!(api && typeof api.dispatch === 'function');
+    var hasSotto = !!(s && typeof s.dispatch === 'function');
+    if (!canAwait && !hasSotto) {
+      setTimeout(function () { ask(url, done); }, 100);
+      return;
+    }
+    if (!canAwait) {
+      WAITED[url] = (WAITED[url] || 0) + 1;
+      if (WAITED[url] <= 40) {
+        setTimeout(function () { ask(url, done); }, 50);
         return;
       }
-      window.pywebview.api.dispatch('lazy-asset', { url: String(url) });
+    }
+    ASKED[url] = true;
+    WAITING[url] = [finish];
+    log('ask', url);
+    var settled = false;
+    var settle = function () {
+      if (settled) return;
+      settled = true;
+      var list = WAITING[url] || [];
+      delete WAITING[url];
+      for (var i = 0; i < list.length; i += 1) {
+        try { list[i](); } catch (err) { log('ask-callback-failed', url); }
+      }
+    };
+    if (canAwait) {
+      /* A SHELL THAT NEVER ANSWERS MUST NOT LEAVE THE INJECT UNRUN: the
+       * timeout is the floor under this, and the worst case it buys is
+       * today's behaviour (the element is injected and may be answered
+       * empty), never a page that waits forever. */
+      setTimeout(settle, 1500);
+      try {
+        Promise.resolve(api.dispatch(JSON.stringify({
+          kind: 'lazy-asset', payload: { url: String(url) }
+        }))).then(settle, function (err) {
+          log('ask-failed', url + ' ' + (err && err.message ? err.message : err));
+          settle();
+        });
+        return;
+      } catch (err) {
+        log('ask-failed', url + ' ' + (err && err.message ? err.message : err));
+      }
+    }
+    try {
+      if (hasSotto) { s.dispatch('lazy-asset', { url: String(url) }); }
     } catch (err) {
       log('ask-failed', url + ' ' + (err && err.message ? err.message : err));
     }
+    settle();
   }
 
   /* Inject one element. tag is 'link' or 'script'. Attributes go through the
@@ -212,26 +267,33 @@
      * skin-host.js mounts nothing while cinematic.css DOES arrive, i.e. a cine
      * theme half-applied. Measured: the first revision of this file asked only
      * for the theme stylesheet and shipped exactly that half. */
-    ask('skins/skins.js');
-    var step = inject('script', { src: 'skins/skins.js',
-                                   'data-sotto-lazy': 'skin' });
-    log('inject', 'skins/skins.js' + (step ? '' : ' FAILED'));
-    if (!step) return;
-    /* 812 KB of array literals executes synchronously on load, so by the time the
-     * next line runs window.SOTTO_SKINS exists. */
-    step.addEventListener('load', function () {
-      ask('skin-host.js');
-      var host = inject('script', { src: 'skin-host.js',
+    ask('skins/skins.js', function () {
+      /* THE DOM IS THE LATCH, and it is checked INSIDE the confirmation: a
+       * second settle() that arrives while this ask is in flight must not
+       * inject a second copy, and must not inject before the shell allowed it. */
+      if (hasSkinScript()) return;
+      var step = inject('script', { src: 'skins/skins.js',
                                      'data-sotto-lazy': 'skin' });
-      log('inject', 'skin-host.js' + (host ? '' : ' FAILED'));
-      if (!host) return;
-      host.addEventListener('load', function () {
-        ask('skin-layout.css');
-        inject('link', { rel: 'stylesheet', href: 'skin-layout.css',
-                         'data-sotto-lazy': 'skin' });
-        log('inject', 'skin-layout.css');
+      log('inject', 'skins/skins.js' + (step ? '' : ' FAILED'));
+      if (!step) return;
+      /* 812 KB of array literals executes synchronously on load, so by the time the
+       * next line runs window.SOTTO_SKINS exists. */
+      step.addEventListener('load', function () {
+        ask('skin-host.js', function () {
+          var host = inject('script', { src: 'skin-host.js',
+                                         'data-sotto-lazy': 'skin' });
+          log('inject', 'skin-host.js' + (host ? '' : ' FAILED'));
+          if (!host) return;
+          host.addEventListener('load', function () {
+            ask('skin-layout.css', function () {
+              inject('link', { rel: 'stylesheet', href: 'skin-layout.css',
+                               'data-sotto-lazy': 'skin' });
+              log('inject', 'skin-layout.css');
+            });
+          }, false);
+        });
       }, false);
-    }, false);
+    });
   }
 
   function hasThemeSheet(url) {
@@ -261,9 +323,22 @@
        * callbacks, in the order the contract requires. */
       if (url === 'skin-host.js' || url === 'skin-layout.css') continue;
       if (!hasThemeSheet(url)) {
-        ask(url);
-        inject('link', { rel: 'stylesheet', href: url,
-                         'data-sotto-lazy': 'theme' });
+        /* THE URL IS BOUND PER ITERATION, AND THAT IS NOT COSMETIC. `var url`
+         * is function-scoped, and this callback now runs AFTER the ask has been
+         * confirmed -- by which time the loop has advanced. MEASURED
+         * 2026-10-13 on the first revision of this callback: `cine-cellar`
+         * injects its theme sheet from the LAST list value, so the document
+         * got a `link` for skin-layout.css 2 ms after the ask (answered EMPTY
+         * at 53.284, before its own allow at 53.318) and cinematic.css was
+         * NEVER injected at all (`cinRules=-2`). An IIFE pins the value. */
+        (function (href) {
+          ask(href, function () {
+            if (hasThemeSheet(href)) return;
+            inject('link', { rel: 'stylesheet', href: href,
+                             'data-sotto-lazy': 'theme' });
+            log('inject', href);
+          });
+        })(url);
         changed = true;
       }
     }

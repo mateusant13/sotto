@@ -3602,8 +3602,23 @@ class SottoHost:
             # skips it, and the bar can only ever move INSIDE the window -- which
             # after the content-width fix is exactly the pill, so it cannot move
             # at all. The shell half is what puts it on the screen.
-            'setStripOffset': self._set_strip_offset,
-            'sotto:setStripOffset': self._set_strip_offset,
+            # THE RECEIVER IS THE SHELL, AND GETTING IT WRONG KILLED EVERY
+            # MESSAGE OF EVERY KIND. MEASURED 2026-10-13: this entry read
+            # `self._set_strip_offset`, which is a SottoShell method (:6950) and
+            # NOT a member of this class -- and a dict LITERAL evaluates every
+            # value, so the AttributeError fired while BUILDING the map, before
+            # `.get(kind)` ran. `SottoHost.dispatch` therefore died for EVERY
+            # page->shell message: the deferred-asset ask (PANEL_LAZY_ALLOW 0),
+            # panel.js's `ready()` (RECEIVER_READY 0, 298 of them in the log all
+            # from BEFORE the commit that introduced this line) and every probe
+            # kind. It surfaced ONLY in pywebview's own logger (`[pywebview]
+            # Traceback ... AttributeError: 'SottoHost' object has no attribute
+            # '_set_strip_offset'`, 35 of them in one 16 s probe arm) -- the
+            # shell's own log stayed silent and looked healthy. Introduced by
+            # 7fcd97e (2026-10-12 22:26); the last RECEIVER_READY on disk is
+            # 2026-10-12 22:12:54.
+            'setStripOffset': self._shell._set_strip_offset,
+            'sotto:setStripOffset': self._shell._set_strip_offset,
             'history-append': self._history_append,
             'history-tail': self._history_tail,
             'history-search': self._history_search,
@@ -3736,7 +3751,17 @@ class SottoHost:
         bytes, so there is nothing to return.
         """
         url = (payload or {}).get('url')
-        gate = getattr(self, '_lazy_gate', None)
+        # THE GATE LIVES ON THE SHELL, AND THE ASK WAS LOOKING FOR IT HERE.
+        # MEASURED 2026-10-13 on a fixed channel: the ask ARRIVES (four
+        # `PANEL_LAZY_ASK_REFUSED reason=no-gate` lines) and is refused because
+        # `_lazy_gate` is set by `SottoShell._arm_lazy_gate` (:4462/:4465/:4473)
+        # and never existed on `SottoHost` -- `getattr(self, ...)` here could
+        # only ever return None. This is the SECOND defect on the same path: the
+        # first (`'setStripOffset': self._set_strip_offset`, fixed the same day)
+        # killed every page->shell message at the dispatch map, so this one was
+        # unobservable -- `PANEL_LAZY_ASK_REFUSED` read 0, not because the ask was
+        # refused, but because it never got this far.
+        gate = getattr(self._shell, '_lazy_gate', None)
         if gate is None:
             log(f'PANEL_LAZY_ASK_REFUSED reason=no-gate url={url!r}')
             return

@@ -195,10 +195,162 @@ GATE_REMOVED = (
 )
 
 
+#: THE PRELOAD PROBE (2026-10-13). Fired from the PRELOAD's own context -- it is
+#: appended to `_bootstrap_js`'s return value, i.e. the same script that carries
+#: `BOOTSTRAP_JS` and `lazy-assets.js` -- and it fires the SAME two channels
+#: `ask()` can use: `window.sotto.dispatch(...)` (what lazy-assets.js calls)
+#: and a RAW `window.chrome.webview.postMessage` in the shell's own 3-slot wire
+#: format. The state is encoded IN THE KIND, because the shell logs
+#: `BRIDGE_UNKNOWN_KIND kind=...`: c=chrome.webview present,
+#: p=pywebview._returnValuesCallbacks present, s=window.sotto.dispatch present,
+#: a=pywebview.api present.
+PRELOAD_PROBE_JS = r"""
+(function () {
+  'use strict';
+  function st() {
+    var c = !!(window.chrome && window.chrome.webview && window.chrome.webview.postMessage);
+    var p = !!(window.pywebview && window.pywebview._returnValuesCallbacks);
+    var s = !!(window.sotto && typeof window.sotto.dispatch === 'function');
+    var a = !!(window.pywebview && window.pywebview.api);
+    return 'c' + (c ? 1 : 0) + 'p' + (p ? 1 : 0) + 's' + (s ? 1 : 0) + 'a' + (a ? 1 : 0);
+  }
+  function fire(kind) {
+    try {
+      var s = window.sotto;
+      if (s && typeof s.dispatch === 'function') {
+        s.dispatch(kind, { rs: String(document.readyState || '?') });
+      }
+    } catch (err) { }
+  }
+  function raw(kind) {
+    try {
+      if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+        window.chrome.webview.postMessage(['dispatch',
+          JSON.stringify([JSON.stringify({ kind: kind, payload: {} })]), '0']);
+      }
+    } catch (err) { }
+  }
+  var marks = [0, 300, 1000, 2500, 5000];
+  for (var i = 0; i < marks.length; i++) {
+    (function (i) {
+      setTimeout(function () {
+        fire('preprobe-s' + i + '-' + st());
+        raw('preprobe-r' + i + '-' + st());
+      }, marks[i]);
+    })(i);
+  }
+})();
+"""
+
+
+#: THE PAGE PROBE, and it is a REAL page script: the preload only INSTALLS a
+#: `<script>` ELEMENT, and the element's own text is what runs -- inline scripts
+#: execute in the document's own world, which is where panel.js runs. Same two
+#: channels as the preload probe, so the pair is one experiment with two arms.
+PAGE_PROBE_JS = r"""
+(function () {
+  'use strict';
+  function pageProbe() {
+    function st() {
+      var c = !!(window.chrome && window.chrome.webview && window.chrome.webview.postMessage);
+      var p = !!(window.pywebview && window.pywebview._returnValuesCallbacks);
+      var s = !!(window.sotto && typeof window.sotto.dispatch === 'function');
+      var a = !!(window.pywebview && window.pywebview.api);
+      return 'c' + (c ? 1 : 0) + 'p' + (p ? 1 : 0) + 's' + (s ? 1 : 0) + 'a' + (a ? 1 : 0);
+    }
+    function fire(kind) {
+      try {
+        var s = window.sotto;
+        if (s && typeof s.dispatch === 'function') {
+          s.dispatch(kind, { rs: String(document.readyState || '?') });
+        }
+      } catch (err) { }
+    }
+    function raw(kind) {
+      try {
+        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+          window.chrome.webview.postMessage(['dispatch',
+            JSON.stringify([JSON.stringify({ kind: kind, payload: {} })]), '0']);
+        }
+      } catch (err) { }
+    }
+    var marks = [0, 500, 1500, 3000];
+    for (var i = 0; i < marks.length; i++) {
+      (function (i) {
+        setTimeout(function () {
+          fire('pageprobe-s' + i + '-' + st());
+          raw('pageprobe-r' + i + '-' + st());
+        }, marks[i]);
+      })(i);
+    }
+  }
+  function install() {
+    try {
+      var el = document.createElement('script');
+      el.textContent = '(' + pageProbe.toString() + ')();';
+      (document.head || document.documentElement || document.body).appendChild(el);
+    } catch (err) { }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  } else { install(); }
+})();
+"""
+
+
+#: THE OUT-OF-BAND READBACK (2026-10-13). The page->shell direction is silent, so
+#: the page state is read over the seam that DOES work: exec_js
+#: (CoreWebView2.ExecuteScriptAsync), whose value comes back to Python directly
+#: and never touches the page->shell bridge. This is what says WHICH component of
+#: the shell channelOpen() -- window.pywebview,
+#: pywebview._returnValuesCallbacks, window.chrome.webview -- is missing, and it
+#: carries window.SottoLazy.log(), the deferred loader OWN record of what it did
+#: (boot / settle / load / ask / ask-failed).
+PAGE_READBACK_JS = r"""
+(function () {
+  function t(x) { return typeof x; }
+  var c = window.chrome && window.chrome.webview;
+  var out = {};
+  try {
+    out.rs = String(document.readyState);
+    out.pywebview = t(window.pywebview);
+    out.platform = window.pywebview ? String(window.pywebview.platform) : null;
+    out.rv = t(window.pywebview && window.pywebview._returnValuesCallbacks);
+    out.api = t(window.pywebview && window.pywebview.api);
+    out.chrome = t(window.chrome);
+    out.cw = t(c);
+    out.pm = t(c && c.postMessage);
+    out.sotto = t(window.sotto);
+    out.disp = t(window.sotto && window.sotto.dispatch);
+    out.ann = t(window.announceReady);
+    out.lazy = t(window.SottoLazy);
+    out.links = document.querySelectorAll("link[data-sotto-lazy]").length;
+    out.scripts = document.querySelectorAll("script[data-sotto-lazy]").length;
+    out.counts = window.__sotto_emit ? window.__sotto_emit.counts : null;
+    var p = document.getElementById("placeholder");
+    out.ph = p ? String(p.textContent).replace(/\s+/g, " ").slice(0, 60) : null;
+    out.lazyLog = window.SottoLazy ? window.SottoLazy.log() : null;
+    out.apiDispatch = t(window.pywebview && window.pywebview.api && window.pywebview.api.dispatch);
+    var cin = document.querySelector('link[href$="themes/cinematic.css"]');
+    try { out.cinRules = cin && cin.sheet && cin.sheet.cssRules ? cin.sheet.cssRules.length : (cin ? -1 : -2); } catch (e) { out.cinRules = 'blocked'; }
+    out.sottoSkins = t(window.SOTTO_SKINS);
+    out.skinHost = t(window.SottoSkin);
+    out.bodySkin = document.body ? String(document.body.getAttribute('data-skin') || '') : null;
+    out.lazyHrefs = Array.prototype.map.call(
+      document.querySelectorAll('link[data-sotto-lazy],script[data-sotto-lazy]'),
+      function (e) { return String(e.getAttribute('href') || e.getAttribute('src')); });
+    out.sheets = document.styleSheets.length;
+  } catch (e) { out.err = String(e); }
+  return JSON.stringify(out);
+})()
+"""
+
+
 def build_variant(path: str, revert_gate: bool = False,
                   strip: bool = False, floated: bool = False,
                   theme: str = '', caption: str = '',
-                  dragoffset=None) -> str:
+                  dragoffset=None, probe: str = '',
+                  readback: bool = False) -> str:
     with open(SHELL, encoding='utf-8') as f:
         src = f.read()
     out = src.replace(
@@ -449,6 +601,49 @@ def build_variant(path: str, revert_gate: bool = False,
         inject = ('try{var w=window;for(var i=0;i<12;i++){if(w.sotto&&w.sotto.pushCaption)'
                   'w.sotto.pushCaption(' + _json.dumps(caption + ' ') + ' + i, null);}}catch(e){}')
         out = out.replace(cap_anchor, inject + cap_anchor, 1)
+    # ── THE DISCRIMINATOR (2026-10-13) ─────────────────────────────────────
+    # WHY THE PRELOAD'S `ask()` NEVER ARRIVES, AND THE ONE TEST THAT DECIDES IT:
+    # the PRELOAD's own context vs a PAGE SCRIPT's, on the SAME two channels. The
+    # preload probe is appended to `_bootstrap_js`'s return value, so it is the
+    # SAME script that carries BOOTSTRAP_JS and lazy-assets.js -- same world, same
+    # moment. The page probe is an inline `<script>` element the preload only
+    # INSTALLS; its text executes as a page script. Each fires
+    # `window.sotto.dispatch` (the call lazy-assets.js makes) AND a raw
+    # `window.chrome.webview.postMessage` in the shell's 3-slot wire format.
+    # ── THE OUT-OF-BAND READBACK (2026-10-13) ─────────────────────────────
+    # Logged from `panel_state_snapshot`, which runs every 2 s on the writer
+    # thread: the page own world, read over the seam that works (exec_js).
+    if readback:
+        rb_anchor = '        dom = self.exec_js(PANEL_STATE_PROBE, timeout=5.0)\n'
+        if out.count(rb_anchor) != 1:
+            raise SystemExit('variant: readback anchor is not unique '
+                             f'({out.count(rb_anchor)}) — refusing')
+        rb = (rb_anchor +
+              '        # PAGE_READBACK (paint-probe): the page own world, over exec_js.\n'
+              '        try:\n'
+              '            _rb = self.exec_js(' + repr(PAGE_READBACK_JS) + ', timeout=5.0)\n'
+              '            log("PAGE_READBACK reason=" + str(reason) + " " + str(_rb))\n'
+              '        except Exception as _e:\n'
+              '            log("PAGE_READBACK_FAILED reason=" + str(reason) + " " + repr(_e))\n')
+        out = out.replace(rb_anchor, rb, 1)
+        if 'PAGE_READBACK reason=' not in out:
+            raise SystemExit('variant: readback edit did not apply — refusing')
+    if probe:
+        if probe not in ('preload', 'page', 'both'):
+            raise SystemExit(f'variant: unknown --probe {probe!r} — refusing')
+        anchor = '    return BOOTSTRAP_JS + "\\n" + loader\n'
+        if out.count(anchor) != 1:
+            raise SystemExit('variant: preload-probe anchor is not unique '
+                             f'({out.count(anchor)}) — refusing')
+        extra = ''
+        if probe in ('preload', 'both'):
+            extra += ' + "\\n" + ' + repr(PRELOAD_PROBE_JS)
+        if probe in ('page', 'both'):
+            extra += ' + "\\n" + ' + repr(PAGE_PROBE_JS)
+        out = out.replace(
+            anchor, '    return BOOTSTRAP_JS + "\\n" + loader' + extra + '\n', 1)
+        if 'preprobe-s' not in out or 'pageprobe-s' not in out:
+            raise SystemExit('variant: preload-probe edit did not apply — refusing')
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
@@ -582,7 +777,10 @@ def arm(tag: str, extra: list, secs: float, shell: str,
         for ln in open(alog, encoding='utf-8', errors='replace'):
             if any(k in ln for k in ('RECEIVER_READY', 'PRELOAD_ACTIVE',
                                      'PANEL_VISIBILITY_ON_SCREEN', 'PANEL_SHOWN',
-                                     'PANEL_SHOW_REFUSED', 'PANEL_SHOW_GATE')):
+                                     'PANEL_SHOW_REFUSED', 'PANEL_SHOW_GATE',
+                                     'BRIDGE_UNKNOWN_KIND', 'PANEL_LAZY_ALLOW',
+                                     'PANEL_LAZY_ASK_REFUSED', 'PANEL_LAZY_EMPTY url=',
+                                     'BRIDGE_BAD_MESSAGE', 'BRIDGE_HANDLER_FAILED')):
                 tail.append(ln.strip())
     if shot is None:
         log(f'ARM {tag}: NO mapped Sotto window found in {secs} s — nothing '
@@ -627,6 +825,10 @@ def main() -> int:
     if '--dragoffset' in a:
         _d = str(a[a.index('--dragoffset') + 1]).split(',')
         dragoffset = (int(_d[0]), int(_d[1]))
+    probe = ''
+    if '--probe' in a:
+        probe = str(a[a.index('--probe') + 1])
+    readback = '--readback' in a
     suffix = '-control' if revert else ''
     log('PAINT panel-paint-probe start='
         f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} secs={secs} '
@@ -634,9 +836,11 @@ def main() -> int:
     p = os.path.join(VARIANT_DIR, '_paint-offscreen-sotto_webview.py')
     sha = build_variant(p, revert_gate=revert, strip=strip, floated=floated,
                         theme=theme, caption=caption,
-                        dragoffset=dragoffset)
+                        dragoffset=dragoffset, probe=probe,
+                        readback=readback)
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
-        f'revert_gate={revert}')
+        f'revert_gate={revert} probe={probe!r} theme={theme!r} strip={strip} '
+        f'readback={readback}')
     try:
         # `--opaque` is the A/B for the TRANSPARENCY. The shell sets the form
         # BackColor to #0B0F14 only under that flag and to Color.Transparent
