@@ -299,3 +299,56 @@ body[data-float="on"] .caption-float__meter-fill {
  * and the glow took effect; the SHAPE did not, because this file sets no width/height and the
  * existing rule gives it height. A dot needs both dimensions, and that is the next edit --
  * named here rather than left to be rediscovered. */
+
+/* ======================================================================================
+ * STEP 4: THE ZIP D CARD, applied to `#caption-float`.
+ *
+ * WHY D AND NOT E: measured 2026-10-13 by building and VIEWING all five zips. Zip D draws
+ * its live caption as a FLOATING ROUNDED CARD -- a speaker name, ONE LINE, a caret and a
+ * metadata strip -- and that is exactly the element our `#caption-float` already is (dot,
+ * previous line, current line, meter). D is the model that requires the least structural
+ * change, and E (a right-hand column of history) describes a DIFFERENT thing from an overlay.
+ *
+ * THE FOUR THINGS THE CARD IS, read off the render:
+ *   1. a ROUNDED, BORDERED, softly filled card -- not bare text on the video
+ *   2. the current line is SERIF and large; it is the biggest thing in the card
+ *   3. a metadata strip under it, monospace, uppercase, quiet
+ *   4. the speaker name sits at the TOP of the card
+ *
+ * OUR ELEMENTS MAP ONTO IT: `__stage` is the card, `__line` is the big serif line,
+ * `__credits` is the metadata strip. `__led` already carries the green dot. Nothing is
+ * restructured -- the shapes are set, the markup is untouched. */
+body[data-float="on"] .caption-float__stage {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 10px !important;
+  background: rgba(5, 7, 10, 0.86) !important;
+  padding: 14px 16px !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45) !important;
+  max-width: min(680px, 86vw) !important;
+}
+
+/* THE SERIF LINE. Zip D sets the live line in a serif face at a size that dominates the card;
+ * the product bundles a serif, and the fallback keeps it sane if a theme does not. */
+body[data-float="on"] .caption-float__line {
+  font-family: var(--font-serif, Georgia, "Times New Roman", serif) !important;
+  font-size: 1.45em !important;
+  line-height: 1.28 !important;
+  letter-spacing: 0.005em !important;
+}
+
+/* AND THE PREVIOUS LINE STAYS QUIET -- the fade the Teleprompter model is built on. */
+body[data-float="on"] .caption-float__prev {
+  font-family: var(--font-serif, Georgia, "Times New Roman", serif) !important;
+  opacity: 0.42 !important;
+}
+
+/* THE METADATA STRIP: monospace, uppercase, letter-spaced, quiet -- the zip draws
+ * `TRANSCRIBING MARLOW . ON-DEVICE . 240 MS` exactly like this under the card line. */
+body[data-float="on"] .caption-float__credits {
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", monospace !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.14em !important;
+  font-size: 10px !important;
+  opacity: 0.55 !important;
+  margin-top: 8px !important;
+}
