@@ -452,7 +452,12 @@ def _css(d):
     w(' * borrowed here: the caption\'s own face, italic. */')
     w('@S@ .captions__placeholder {')
     w('  font-family: var(--font-caption);')
-    w('  font-style: italic;')
+    # ECHO THE DESIGN, DO NOT ASSERT THE ITALIC. This was a hard `font-style: italic`
+    # in five variants, and none of those zips declares an italic caption -- the
+    # browser then SYNTHESISES an oblique the design never asked for. The base lane
+    # closed the same defect in gen_cinematic.py with `if toks['__italic']`, and this
+    # is the same rule in the form this file already uses three lines up (c1:398).
+    w('  font-style: %s;' % ('italic' if d['italic'] else 'normal'))
     w('}')
     w('')
 

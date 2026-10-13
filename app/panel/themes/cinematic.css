@@ -2546,7 +2546,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-cafe'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
@@ -2892,7 +2892,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-rainglass'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word (soft = false)`.
@@ -3237,7 +3237,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-tideline'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
@@ -3563,7 +3563,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-fieldnotes'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word (soft = false)`.
@@ -4229,7 +4229,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-analog'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
@@ -4570,7 +4570,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-shelves'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
@@ -5236,7 +5236,7 @@
  * borrowed here: the caption's own face, italic. */
 :root[data-theme='cine-ember'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
@@ -5565,7 +5565,7 @@
  * kept and only their VOICE is borrowed: the caption's face, italic. */
 :root[data-theme='cine-rainline'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
@@ -5954,7 +5954,7 @@
  * kept and only their VOICE is borrowed: the caption's face, italic. */
 :root[data-theme='cine-cellar'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
@@ -6318,7 +6318,7 @@
  * kept and only their VOICE is borrowed: the caption's face, italic. */
 :root[data-theme='cine-linen'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
@@ -6653,7 +6653,7 @@
  * kept and only their VOICE is borrowed: the caption's face, italic. */
 :root[data-theme='cine-reading-hour'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
@@ -6995,7 +6995,7 @@
  * kept and only their VOICE is borrowed: the caption's face, italic. */
 :root[data-theme='cine-last-train'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
@@ -7313,7 +7313,7 @@
  * kept and only their VOICE is borrowed: the caption's face, italic. */
 :root[data-theme='cine-blue-hour'] .captions__placeholder {
   font-family: var(--font-caption);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`

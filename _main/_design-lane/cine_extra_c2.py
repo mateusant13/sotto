@@ -462,7 +462,9 @@ def _css(d):
     w(' * kept and only their VOICE is borrowed: the caption\'s face, italic. */')
     w('@S@ .captions__placeholder {')
     w('  font-family: var(--font-caption);')
-    w('  font-style: italic;')
+    # ECHO THE DESIGN, DO NOT ASSERT THE ITALIC -- same defect and same rule as c1,
+    # and the same form this file already uses at :423 and :440.
+    w('  font-style: %s;' % ('italic' if d['italic'] else 'normal'))
     w('}')
     w('')
 
