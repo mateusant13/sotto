@@ -284,8 +284,7 @@
 :root[data-theme='cine-midnight-rain'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -509,8 +508,7 @@
 :root[data-theme='cine-warm-hour'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -732,8 +730,7 @@
 :root[data-theme='cine-velvet-dusk'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -955,8 +952,7 @@
 :root[data-theme='cine-study-light'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -1173,8 +1169,7 @@
 :root[data-theme='cine-tideline-body'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -1398,8 +1393,7 @@
 :root[data-theme='cine-motel-glow'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -1621,8 +1615,7 @@
 :root[data-theme='cine-paper-moon'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -1837,8 +1830,7 @@
 :root[data-theme='cine-quiet-streets'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -2062,8 +2054,7 @@
 :root[data-theme='cine-last-reel'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -2285,8 +2276,7 @@
 :root[data-theme='cine-north-fog'] body[data-surface='panel'] .panel__controls {
   position: absolute;
   left: 50%;
-  /* 10 px slab padding + the status row + the 10 px grid gap, and air. */
-  bottom: 48px;
+  top: 14px;   /* the slab own 14 px padding: the header row */
   transform: translateX(-50%);
   /* the caption rows are positioned: without this they paint over it */
   z-index: 4;
@@ -2610,10 +2600,9 @@
  */
 :root[data-theme='cine-cafe'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-cafe'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -2946,10 +2935,9 @@
  */
 :root[data-theme='cine-rainglass'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-rainglass'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -3277,10 +3265,9 @@
  */
 :root[data-theme='cine-tideline'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-tideline'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -3617,10 +3604,9 @@
  */
 :root[data-theme='cine-fieldnotes'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-fieldnotes'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -3959,10 +3945,9 @@
  */
 :root[data-theme='cine-dustlight'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-dustlight'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -4269,10 +4254,9 @@
  */
 :root[data-theme='cine-analog'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-analog'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -4610,10 +4594,9 @@
  */
 :root[data-theme='cine-shelves'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-shelves'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -4949,10 +4932,9 @@
  */
 :root[data-theme='cine-rooftop'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-rooftop'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
@@ -5276,10 +5258,9 @@
  */
 :root[data-theme='cine-ember'] body[data-surface='panel'] .panel__controls {
   position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
+  left: 50%;
+  top: 14px;   /* the slab own 14 px padding: the same row as every other theme */
+  transform: translateX(-50%);
   z-index: 4;
 }
 :root[data-theme='cine-ember'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
