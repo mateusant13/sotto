@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""THE STRIP WINDOW GEOMETRY, AND THE Alt+C DOUBLE -- both colours in one run.
+"""THE STRIP WINDOW GEOMETRY, AND THE Alt+C CYCLE -- both colours in one run.
 
-Two owner reports, both measured 2026-10-12, both from his own words:
+Two owner reports, both from his own words:
 
-  *"eu to vendo div com cor solida inves de invisivel"*
+  *"eu to vendo div com cor solida inves de invisivel"*   (2026-10-12)
       The strip WINDOW was STRIP_WIDTH = 1040 wide while
       body[data-surface="strip"] .panel is width: max-content -- a small pill.
       The shell paints every pixel the page does not with the form opaque
@@ -11,11 +11,17 @@ Two owner reports, both measured 2026-10-12, both from his own words:
       slab with the real bottom panel in the middle of it. The width must come
       from the CONTENT, exactly as the height already did.
 
-  *"o alt c apertado 2x nao ta abrindo o painel da direita"*
-      The double branch made a double on a HIDDEN panel a no-op. A stale
-      _last_hotkey_press makes the owner FIRST press the double, so the pair was
-      consumed doing nothing and his SECOND press landed as a single and only
-      opened the strip. Two presses showed the strip and never the right panel.
+  *"o alt c ta meio ruim. quando o segundo painel aparece, o proximo alt c deve
+  fazer ele sumir. ai, o proximo, independente do tempo, deve fazer o painel de
+  baixo aparecer."*   (2026-10-13)
+      Each press used to be classified by a 1500 ms double-press window, so what
+      the NEXT Alt+C did depended on how fast the last one had come: two slow
+      presses were two singles and only toggled the strip, and the RIGHT panel
+      was unreachable at that speed. The window and its stamp
+      (`HOTKEY_DOUBLE_MS`, `_last_hotkey_press`) are DELETED. One press is one
+      step of HIDDEN -> STRIP -> SIDE -> HIDDEN and the interval decides nothing
+      -- arms B1..B7, where B6 is the pair that proves it by running the same six
+      presses with no gap and with 1.6 s between them.
 
 NOTHING IS LAUNCHED. The real methods are called on a fake object; the module
 is imported, never run as a program. --neg-arm loads COPIES with each fix
@@ -66,7 +72,14 @@ class FakeShell(object):
         self.strip_width_dom = width_dom
         self.hwnd = 1
         self.panel_mode = 'strip'
-        self._last_hotkey_press = 0.0
+        #: WHAT THE WINDOW READS. The real shell asks `window_visible(hwnd)`;
+        #: the arms monkeypatch that, and these two methods keep `visible` and
+        #: `panel_mode` in step the way the real `show_strip`/`show_side`/
+        #: `hide_panel` do (the mode is written by `place_panel`, which every
+        #: show reaches). WITHOUT THIS the cycle arm could not be written at all:
+        #: the fake would keep saying 'strip' after a show_side and the fourth
+        #: press would repeat the second instead of advancing.
+        self.visible = False
         self.calls = []
 
     def work_area(self):
@@ -77,14 +90,19 @@ class FakeShell(object):
 
     def hide_panel(self, reason):
         self.calls.append(('hide', reason))
+        self.visible = False
         return True
 
     def show_side(self, reason):
         self.calls.append(('side', reason))
+        self.panel_mode = 'side'
+        self.visible = True
         return True
 
     def show_strip(self, reason):
         self.calls.append(('strip', reason))
+        self.panel_mode = 'strip'
+        self.visible = True
         return True
 
     def geometry_for(self, surface):
@@ -179,46 +197,84 @@ def run_arms(sw, tag):
     src = open(getattr(sw, '__file__', SHELL), 'r', encoding='utf-8').read()
     check(tag + 'C3 the JS bridge object exposes setStripOffset',
           'setStripOffset: function' in src, 'window.sotto entry')
-    check(tag + 'C4 the dispatch map routes it',
-          "'setStripOffset': self._set_strip_offset" in src, 'bridge -> shell')
+    # RE-BASELINED 2026-10-13: this arm used to look for
+    # `'setStripOffset': self._set_strip_offset`, which WAS the live routing and
+    # is now a sentence inside a COMMENT at :3841 — so the arm passed while
+    # measuring nothing. The dispatch table was reshaped into (receiver, name)
+    # tuples by the lazy-ask fix, and the receiver for this kind is the SHELL
+    # (`('shell', '_set_strip_offset')`), resolved against `self._shell`.
+    # The pairing with M6 is the point: the arm reads the ROUTING, the mutant
+    # breaks it, and the verdict now counts an inert mutant.
+    check(tag + 'C4 the dispatch map routes it to the SHELL receiver',
+          "'setStripOffset': ('shell', '_set_strip_offset')" in src
+          and "'sotto:setStripOffset': ('shell', '_set_strip_offset')" in src,
+          'both kinds carry the shell receiver')
 
-    # B1/B2/B4 -- Alt+C. The owner contract: TWO PRESSES OPEN THE RIGHT PANEL.
-    f = FakeShell(sw, width_dom=None)
-    sw.window_visible = lambda hwnd: False
-    f._last_hotkey_press = 0.0
-    f.hotkey_pressed()
-    check(tag + 'B1 single from hidden opens the strip',
-          f.calls and f.calls[-1][0] == 'strip', str(f.calls))
+    # B1..B4/B6/B7 -- Alt+C IS A THREE-STATE CYCLE AND THE CLOCK IS GONE.
+    #
+    # THE OWNER, 2026-10-13, verbatim: *"o alt c ta meio ruim. quando o segundo
+    # painel aparece, o proximo alt c deve fazer ele sumir. ai, o proximo,
+    # independente do tempo, deve fazer o painel de baixo aparecer."*
+    #
+    # ONE press, ONE step: HIDDEN -> STRIP -> SIDE -> HIDDEN. What a press does
+    # is a function of the STATE ON SCREEN and of nothing else.
+    #
+    # WHAT THESE ARMS REPLACED, and why the old ones could not simply be
+    # re-tuned: they drove `_last_hotkey_press` to 0.10 s and 5.0 s to select the
+    # double and the single branch, i.e. they PINNED the timing dependence the
+    # owner is complaining about. B6/B7 are the pair that proves it is gone:
+    # the SAME presses, one run with no gap and one with 1.6 s between them
+    # (longer than the 1500 ms window the deleted `HOTKEY_DOUBLE_MS` used to
+    # split on), must produce the IDENTICAL call list -- the owner's own words
+    # *"independente do tempo"*, asserted instead of assumed.
 
-    f = FakeShell(sw, width_dom=None)
-    sw.window_visible = lambda hwnd: False
-    f._last_hotkey_press = time.monotonic() - 0.10
-    f.hotkey_pressed()
-    check(tag + 'B2 double from HIDDEN opens the RIGHT panel',
-          f.calls and f.calls[-1][0] == 'side', str(f.calls))
+    def cycle(start_visible=False, start_mode='strip', presses=1, gap=0.0):
+        f = FakeShell(sw, width_dom=None)
+        f.visible = start_visible
+        f.panel_mode = start_mode
+        sw.window_visible = lambda hwnd, f=f: f.visible
+        for _ in range(presses):
+            f.hotkey_pressed()
+            if gap:
+                time.sleep(gap)
+        return [c[0] for c in f.calls]
 
-    f = FakeShell(sw, width_dom=None)
-    sw.window_visible = lambda hwnd: True
-    f.panel_mode = 'side'
-    f._last_hotkey_press = time.monotonic() - 0.10
-    f.hotkey_pressed()
-    check(tag + 'B3 double while on SIDE still hides it',
-          f.calls and f.calls[-1][0] == 'hide', str(f.calls))
+    got = cycle()
+    check(tag + 'B1 HIDDEN -> STRIP', got == ['strip'], str(got))
 
-    f = FakeShell(sw, width_dom=None)
-    sw.window_visible = lambda hwnd: False
-    f._last_hotkey_press = time.monotonic() - 5.0
-    f.hotkey_pressed()
-    check(tag + 'B4 two presses far apart are two singles',
-          f.calls and f.calls[-1][0] == 'strip', str(f.calls))
+    got = cycle(start_visible=True, start_mode='strip')
+    check(tag + 'B2 STRIP -> SIDE', got == ['side'], str(got))
+
+    got = cycle(start_visible=True, start_mode='side')
+    check(tag + 'B3 SIDE -> HIDDEN', got == ['hide'], str(got))
+
+    got = cycle(presses=6)
+    check(tag + 'B4 six presses walk the whole cycle',
+          got == ['strip', 'side', 'hide', 'strip', 'side', 'hide'], str(got))
+
+    quick = cycle(presses=6)
+    slow = cycle(presses=6, gap=1.6)
+    check(tag + 'B6 the SAME six presses 1.6 s apart are the SAME cycle',
+          slow == quick and slow == ['strip', 'side', 'hide', 'strip', 'side', 'hide'],
+          'quick=%s slow=%s' % (quick, slow))
+
+    quick2 = cycle(presses=2)
+    slow2 = cycle(presses=2, gap=1.6)
+    check(tag + 'B7 the two-press pair is strip-then-SIDE at any speed',
+          quick2 == slow2 == ['strip', 'side'], 'quick=%s slow=%s' % (quick2, slow2))
 
 
 MUTANTS = [
-    # M1 -- the hotkey fix reverted: a double on a hidden panel is a no-op again.
-    ('M1 hotkey-double-ignored',
-     "                return self.show_side('hotkey-double')",
-     "                return False",
-     'B2 double from HIDDEN opens the RIGHT panel'),
+    # M1 -- THE SIDE PANEL MADE UNREACHABLE, which is the defect the owner's
+    # 2026-10-13 message names. This is the anchor the OLD M1 had to move off:
+    # it reverted the double branch ("a double on a hidden panel is a no-op"),
+    # and that branch no longer exists. The new mutant collapses the cycle to a
+    # plain strip toggle -- exactly the behaviour the owner got when he pressed
+    # slowly under the deleted double-press window, and exactly what B2 catches.
+    ('M1 side-unreachable',
+     "        return self.show_side('hotkey')",
+     "        return self.hide_panel('hotkey')",
+     'B2 STRIP -> SIDE'),
     # M2 -- THE SAVED-RECT WIDTH CORRECTION removed. This is the arm that carries
     # the owner slab: without it a 1040-wide saved rect stays 1040. NOTE: the
     # first version of this mutant reverted the FALLBACK instead and was INERT
@@ -246,10 +302,16 @@ MUTANTS = [
      'setStripOffset: function',
      'setStripOffsetX: function',
      'C3 the JS bridge object exposes setStripOffset'),
-    ('M6 dispatch-entry-removed',
-     "            'setStripOffset': self._set_strip_offset,",
-     "            'setStripOffsetX': self._set_strip_offset,",
-     'C4 the dispatch map routes it'),
+    # M6 -- the entry renamed. Its anchor had gone STALE when the dispatch table
+    # was reshaped by the lazy-ask fix, and the oracle printed
+    # "anchor missing -- the mutant would be INERT" while the VERDICT still read
+    # PASS; the verdict now counts that row, so this can never pass silently
+    # again. The mutation is the same one: the page's `setStripOffset` post
+    # lands in BRIDGE_UNKNOWN_KIND and the drag never reaches the shell.
+    ('M6 dispatch-entry-renamed',
+     "            'setStripOffset': ('shell', '_set_strip_offset'),",
+     "            'setStripOffsetX': ('shell', '_set_strip_offset'),",
+     'C4 the dispatch map routes it to the SHELL receiver'),
 ]
 
 
@@ -294,8 +356,20 @@ def main():
         # a working control read as a broken gate.
         red_checks = [r for r in RESULTS
                       if r[0].startswith('neg-arm ') and 'goes RED' in r[0]]
-        failed = control_failed + [r for r in red_checks if not r[1]]
-        total = len(control) + len(red_checks)
+        # AN INERT MUTANT IS NOT A CONTROL, AND IT IS NOW COUNTED AS A FAILURE.
+        # Measured 2026-10-13: M6's anchor had gone stale when another lane
+        # reshaped the dispatch table, the oracle PRINTED
+        # "FAIL neg-arm M6 ... anchor missing -- the mutant would be INERT", and
+        # the VERDICT still said PASS because only the 'goes RED' rows were
+        # counted. A gate that reports a dead control in its own output and
+        # green in its verdict is the failure mode this repo keeps being bitten
+        # by -- see the M4 note above, where an earlier version of these arms was
+        # INERT under --neg-arm for exactly this reason.
+        anchor_checks = [r for r in RESULTS
+                         if r[0].startswith('neg-arm ') and 'anchor found' in r[0]]
+        failed = (control_failed + [r for r in red_checks if not r[1]]
+                  + [r for r in anchor_checks if not r[1]])
+        total = len(control) + len(red_checks) + len(anchor_checks)
     else:
         failed = control_failed
         total = len(control)

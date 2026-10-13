@@ -285,9 +285,12 @@ def main():
     secs = float(argv[argv.index('--secs') + 1]) if '--secs' in argv else 6.0
     span = float(argv[argv.index('--span') + 1]) if '--span' in argv else 2.5
     #: --shows 2 measures a SECOND show of the strip with the renderer already
-    #: warm: press 1 shows, press 2 hides, press 3 shows again. Every press is
-    #: spaced WIDER than HOTKEY_DOUBLE_MS (1500 ms), because a second press
-    #: inside that window is read as the SIDE-panel gesture, not a toggle.
+    #: warm. THE PRESS COUNT IS THE CYCLE'S, and it changed on 2026-10-13: one
+    #: Alt+C is now one step of HIDDEN -> STRIP -> SIDE -> HIDDEN, so the second
+    #: SHOW of the strip is the FOURTH press (press 2 is the SIDE panel and
+    #: press 3 is the hide). `gap` no longer has to clear any double-press
+    #: window -- that window (`HOTKEY_DOUBLE_MS`) is deleted -- it is only the
+    #: settling distance between gestures, and it decides nothing.
     shows = int(argv[argv.index('--shows') + 1]) if '--shows' in argv else 1
     gap = float(argv[argv.index('--gap') + 1]) if '--gap' in argv else 2.2
     report_path = (argv[argv.index('--report') + 1]
@@ -350,18 +353,23 @@ def main():
     emit('Alt+C sent (press 1: SHOW the strip)')
     tpress2 = None
     if shows >= 2:
-        # Press 2 must be OUTSIDE the double-press window, or it is read as the
-        # SIDE gesture instead of a toggle-to-hide.
+        # THE CYCLE DECIDES, NOT THE CLOCK. Press 2 is the SIDE panel, press 3 is
+        # the hide, and press 4 is the SHOW that this arm measures.
         time.sleep(gap)
         tlast = time.perf_counter()
         send_alt_c()
-        emit('Alt+C sent (press 2: HIDE, %.0f ms after press 1)'
+        emit('Alt+C sent (press 2: SIDE panel, %.0f ms after press 1)'
              % ((tlast - tpress) * 1000.0))
+        time.sleep(gap)
+        thide = time.perf_counter()
+        send_alt_c()
+        emit('Alt+C sent (press 3: HIDE, %.0f ms after press 2)'
+             % ((thide - tlast) * 1000.0))
         time.sleep(gap)
         tpress2 = time.perf_counter()
         send_alt_c()
-        emit('Alt+C sent (press 3: SHOW again, %.0f ms after press 2)'
-             % ((tpress2 - tlast) * 1000.0))
+        emit('Alt+C sent (press 4: SHOW the strip again, %.0f ms after press 3)'
+             % ((tpress2 - thide) * 1000.0))
     time.sleep(span)
     s.stop = True
     s.join(timeout=8)
@@ -414,7 +422,7 @@ def main():
             if r['t'] >= tpress2 and r['own']:
                 second = i
                 break
-        emit('--- SECOND SHOW (press 3, renderer already warm) ---')
+        emit('--- SECOND SHOW (press 4, renderer already warm) ---')
         if second is None:
             emit('SECOND-SHOW VERDICT NO-CONFIDENCE -- no owned sample after the '
                  'second show; Alt+C mapped nothing there')
@@ -426,7 +434,7 @@ def main():
             flats2 = [r for r in ok2 if r['flat']]
             col2 = sorted({r['rgb'] for r in flats2})
             emit('  first pixel owned by the shell at row %d (+%.1f ms after '
-                 'press 3)' % (second, (tmap2 - tpress2) * 1000.0))
+                 'press 4)' % (second, (tmap2 - tpress2) * 1000.0))
             emit('  samples=%d  owned+classified=%d  flat-single-colour=%d'
                  % (len(win2), len(ok2), len(flats2)))
             if not ok2:

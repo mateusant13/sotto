@@ -4,7 +4,8 @@
  * gesture is DECLARED. That is not the same claim as "the gesture WORKS": a script
  * whose pointermove handler never fires, or whose storage write is unreachable,
  * passes every byte check in the other file. So this probe parses the REAL
- * `panel.html`, runs the REAL scripts (including the inline gesture), and pushes
+ * `panel.html`, runs the REAL scripts (including the EXTERNAL `strip-drag.js` -- the
+ * gesture was inline until 2026-10-13 and the panel's own CSP blocked it), and pushes
  * real pointer events through it.
  *
  * WHAT IT DOES NOT DO: no browser, no WebView2, no shell, no window. jsdom only.
@@ -29,6 +30,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 let JSDOM;
@@ -138,13 +140,27 @@ const r4 = p4.document.documentElement.style;
 check('6 a fresh load restores the stored offset before the first paint', [r4.getPropertyValue('--strip-move-x'), r4.getPropertyValue('--strip-move-y')], ['-40px', '12px']);
 
 /* ARM 7: THE CONTROL. The same document with the pointermove handler renamed must
-   record NOTHING, or the arms above could be passing for a reason of their own. */
-const mutantHtml = fs.readFileSync(path.join(PANEL, 'panel.html'), 'utf8');
-const p5 = load(PANEL, function (html) { return html.replace('window.addEventListener("pointermove"', 'window.addEventListener("pointermove-DELETED"'); });
-const grip5 = p5.document.getElementById('strip-drag-handle');
+   record NOTHING, or the arms above could be passing for a reason of their own.
+
+   RE-BASELINED 2026-10-13: the gesture moved OUT of \'panel.html\' into its own file
+   (the panel's CSP blocks inline script), so the mutation is applied to a COPY of
+   \'strip-drag.js\' in a scratch tree and the copy is loaded whole. The shipped bytes
+   are read first and must NOT carry the marker -- the old check asserted the string
+   was absent from BOTH files, which was vacuous (it proved only that the mutation had
+   not been written anywhere) and let this control pass while it mutated nothing. */
+const TMP = process.env.TMPDIR && fs.existsSync(process.env.TMPDIR) ? process.env.TMPDIR : os.tmpdir();
+const negDir = fs.mkdtempSync(path.join(TMP, 'sotto-gesture-neg-'));
+fs.cpSync(PANEL, negDir, { recursive: true });
+const dragSrc = fs.readFileSync(path.join(PANEL, 'strip-drag.js'), 'utf8');
+const dragMut = dragSrc.replace('window.addEventListener("pointermove"',
+                                'window.addEventListener("pointermove-DELETED"');
+if (dragMut === dragSrc) { console.error('SETUP ERROR: the pointermove anchor is absent from strip-drag.js'); process.exit(2); }
+fs.writeFileSync(path.join(negDir, 'strip-drag.js'), dragMut, 'utf8');
 check('7 CONTROL the mutant really is mutated (the anchor applied to the copy)',
-  [/pointermove-DELETED/.test(mutantHtml), /pointermove-DELETED/.test(fs.readFileSync(path.join(PANEL, 'panel.html'), 'utf8'))],
-  [false, false]);
+  [/pointermove-DELETED/.test(dragMut), /pointermove-DELETED/.test(dragSrc)],
+  [true, false]);
+const p5 = load(negDir);
+const grip5 = p5.document.getElementById('strip-drag-handle');
 p5.pointer('pointerdown', 100, 100, grip5);
 p5.pointer('pointermove', 200, 200);
 p5.pointer('pointerup', 200, 200);
@@ -156,6 +172,7 @@ check('7b CONTROL the mutant records NO position and tells the bridge NO move',
 check('7c CONTROL the mutant still PAINTS the un-dragged position (0px, not 100px)',
   [p5.document.documentElement.style.getPropertyValue('--strip-move-x'), p5.document.documentElement.style.getPropertyValue('--strip-move-y')],
   ['0px', '0px']);
+fs.rmSync(negDir, { recursive: true, force: true });
 
 let bad = 0;
 for (const r of rows) if (!r.ok) bad += 1;

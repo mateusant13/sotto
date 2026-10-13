@@ -895,26 +895,15 @@ SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
 
-#: Double-press window for Alt+C: two presses within this many ms open the
-#: RIGHT side panel; a single press toggles the bottom strip. Timestamp is
-#: taken in the hotkey handler (`SottoShell.hotkey_pressed`) with
-#: `time.monotonic()`, so wall-clock jumps cannot mis-split a double.
-#:
-#: 400 ms was too tight to be a usable control. The owner measured it himself:
-#: he reports that he cannot open the side panel reliably, and asks for 1.5 s
-#: (2026-10-09, verbatim: *"aumenta a janela de tempo do double tap do alt c pra
-#: 1 sec e meio"*). 1500 ms is roughly a comfortable human double-click - it is
-#: the same order as Windows' own double-click time - while staying far below
-#: the interval at which "two presses" would read as "wants the strip twice",
-#: which the owner would notice as the strip flickering instead of the panel
-#: opening.
-#:
-#: The trade is explicit and accepted by the owner: the FIRST press now shows the
-#: strip immediately (it always did), so a 1.5 s window means the strip is on
-#: screen for that long before the second press converts it to the side panel.
-#: If that reads as wrong, the fix is not a smaller window - it is to stop
-#: mapping on the first press, which changes what one Alt+C does at all.
-HOTKEY_DOUBLE_MS = 1500
+#: NO DOUBLE-PRESS WINDOW. `HOTKEY_DOUBLE_MS` stood here (1500 ms since
+#: 2026-10-09) and classified each press by how fast the previous one had come:
+#: two inside the window were a DOUBLE and opened the SIDE panel, two outside it
+#: were two SINGLES, so a slow presser could only toggle the strip and never
+#: reached the right panel. THE OWNER KILLED THE CLOCK (2026-10-13, verbatim:
+#: *"o alt c ta meio ruim. quando o segundo painel aparece, o proximo alt c deve
+#: fazer ele sumir. ai, o proximo, independente do tempo, deve fazer o painel de
+#: baixo aparecer."*). What one press does is now a function of the STATE ON
+#: SCREEN and of nothing else - see `SottoShell.hotkey_pressed`.
 
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
@@ -3918,11 +3907,11 @@ class SottoShell:
         self.panel_show_refused = 0
         self.pointer_interactive = False
         self.transparent = False   # panel-requested click-through (captions stay)
-        #: Last Alt+C stamp (`time.monotonic()`): a second press within
-        #: `HOTKEY_DOUBLE_MS` opens the RIGHT side panel instead of the strip.
-        self._last_hotkey_press = 0.0
         #: Where the panel lives when shown: 'strip' (bottom, the default) or
-        #: 'side' (right, after a double-press). Single Alt+C toggles the strip.
+        #: 'side' (the right panel). THIS IS THE ONLY INPUT the Alt+C cycle needs
+        #: besides whether the window is up: hidden -> strip -> side -> hidden.
+        #: `_last_hotkey_press` used to live next to it, as the double-press
+        #: stamp; it is deleted with the window it fed (owner, 2026-10-13).
         self.panel_mode = 'strip'
         self.caption_log = []
         #: The strip's height is the STYLESHEET's (`panel.css:52`
@@ -5614,80 +5603,49 @@ class SottoShell:
         return (self.hide_panel(reason) if live else self.show_panel(
             reason, surface='strip' if reason == 'hotkey' else None))
 
-    # -- Alt+C: strip toggle, double-press side panel, mouse unlock ---------
+    # -- Alt+C: the three-state cycle (strip -> side -> hidden -> strip) -----
     def hotkey_pressed(self):
-        """Alt+C: a single press toggles the bottom STRIP; a double toggles SIDE.
+        """Alt+C: ONE press, ONE step of a three-state cycle, NO CLOCK.
 
-        The timestamp is `time.monotonic()`, so a wall-clock jump cannot
-        mis-split a double. A second press within `HOTKEY_DOUBLE_MS` (1500 ms) is
-        the gesture that asks for the RIGHT side panel; anything later is a new
-        single press and toggles the strip. Runs on the hotkey thread — every
-        window call below is thread-safe (`SetWindowPos`/`ShowWindow`/
+        THE OWNER'S CONTRACT, verbatim (2026-10-13): *"o alt c ta meio ruim.
+        quando o segundo painel aparece, o proximo alt c deve fazer ele sumir.
+        ai, o proximo, independente do tempo, deve fazer o painel de baixo
+        aparecer."* So the cycle is fixed, and the interval between presses
+        decides NOTHING:
+
+            HIDDEN -> STRIP    (the bottom panel: the app's own control)
+            STRIP  -> SIDE     (the right panel: history, folder, details)
+            SIDE   -> HIDDEN
+
+        WHAT THIS REPLACES, and why the owner called it *"meio ruim"*: until
+        today each press was classified by the 1500 ms double-press window
+        (`HOTKEY_DOUBLE_MS`). Two presses INSIDE the window were a DOUBLE and
+        chose the branch; two presses further apart were two SINGLES and only
+        toggled the strip — so a slow presser never reached the right panel at
+        all, and what the next Alt+C did depended on how fast he had pressed the
+        last one. That is not a control. The clock, its stamp
+        (`_last_hotkey_press`) and the `HOTKEY_DOUBLE` log lines are all
+        deleted with it.
+
+        The live window state is read ONCE, before the branch, so the three arms
+        cannot disagree inside one call. `panel_mode` is the second input and
+        is written by `place_panel` on every show, so "which panel is up" has
+        one owner.
+
+        THE ONE CASE THE OLD CODE HANDLED THAT THIS DOES NOT, stated rather than
+        lost: a fast double-press used to reach SIDE without the strip being
+        mapped first. Now the strip IS mapped on the first press ("independente
+        do tempo" is the owner's own words for exactly that), so the side panel
+        is always the SECOND state. Runs on the hotkey thread — every window
+        call below is thread-safe (`SetWindowPos`/`ShowWindow`/
         `SetForegroundWindow` on the hwnd, `_ui` for the .NET form members).
-
-        THREE DEFECTS THIS FIXES, all measured on the owner's machine
-        (2026-10-09) by reading the PANEL_* sequence in the log, all in the
-        double branch:
-
-        1. **The double never hid anything.** It called `show_side`
-           unconditionally, so a panel already up on SIDE was MAPped again —
-           `PANEL_SHOWN reason=hotkey-double` twice in a row with no
-           `PANEL_HIDDEN` between them — and Alt+C stopped being a way out.
-        2. **The pair was not consumed.** `_last_hotkey_press` was left at
-           `now`, so the NEXT press was read as another double and re-fired
-           SIDE; pressing Alt+C repeatedly pinned the panel open.
-        3. **A double on a HIDDEN panel surfaced it.** After fix 1 the double
-           still opened SIDE from hidden, and because a consumed pair always
-           alternates single/double, mashing Alt+C oscillated
-           hide → side → hide → side and could END VISIBLE — the owner's
-           exact report, *"se eu uso mais alt c, o painel nao some"*.
-
-        THE RULE NOW, so that every press is predictable in both directions:
-        a double acts ONLY on a panel that is already up, and it always moves
-        toward OFF — already on SIDE hides it, on the STRIP it switches to SIDE.
-        A double with the panel DOWN is IGNORED, because the first press of that
-        same pair already did the toggling. Consequence, verified by test: from
-        ANY starting state, mashing Alt+C ENDS HIDDEN (6 presses, tested).
-
-        The live window state is read ONCE, before either branch, so the two
-        branches cannot disagree inside one call.
         """
-        now = time.monotonic()
-        prev = self._last_hotkey_press
-        self._last_hotkey_press = now
         live = window_visible(self.hwnd) if self.hwnd else False
-
-        if prev and (now - prev) <= (HOTKEY_DOUBLE_MS / 1000.0):
-            # Consume the pair — see defect 2 above.
-            self._last_hotkey_press = 0.0
-            dt_ms = round((now - prev) * 1000)
-            if not live:
-                # CORRECTED 2026-10-12 BY THE OWNER, verbatim: *"o alt c apertado
-                # 2x nao ta abrindo o painel da direita"*. Defect 3 above made a
-                # double on a HIDDEN panel a no-op, which is only predictable if
-                # the pair always aligns with the user's FIRST press -- and it
-                # does not: a stale `_last_hotkey_press` from an earlier press
-                # makes the owner's first press the double, so the pair is
-                # consumed doing nothing and his SECOND press lands as a single
-                # and only opens the strip. Two presses therefore showed the
-                # strip and never the right panel. The owner's contract is the
-                # one that holds: TWO PRESSES OPEN THE RIGHT PANEL, from hidden
-                # included. The pair is still consumed just above, so mashing
-                # Alt+C still alternates instead of pinning anything open.
-                log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                    f'mode=side action=show reason=panel-hidden')
-                return self.show_side('hotkey-double')
-            if self.panel_mode == 'side':
-                log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                    f'mode=side action=hide reason=already-side')
-                return self.hide_panel('hotkey-double')
-            log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                f'mode=side action=switch reason=was-strip')
-            return self.show_side('hotkey-double')
-
-        if live:
+        if not live:
+            return self.show_strip('hotkey')
+        if self.panel_mode == 'side':
             return self.hide_panel('hotkey')
-        return self.show_strip('hotkey')
+        return self.show_side('hotkey')
 
     def place_panel(self, mode):
         """Move/resize the panel window to `mode` geometry ('strip'|'side').
@@ -5789,12 +5747,16 @@ class SottoShell:
         return True
 
     def show_side(self, reason):
-        """Show the RIGHT side panel AND take foreground (double-press path).
+        """Show the RIGHT side panel AND take foreground (the cycle's 2nd step).
 
         Same activation contract as `show_strip` — the only difference is the
         geometry: `dock_right` instead of `dock_strip`. Kept as its own method
         (not a `show_panel(mode)` flag) so the `mode=` field in the log tells
         which geometry the owner is looking at.
+
+        IT IS NO LONGER "THE DOUBLE-PRESS PATH" (2026-10-13): the double-press
+        window is deleted and this is simply what the SECOND Alt+C does, from the
+        strip, at any speed. See `hotkey_pressed`.
         """
         if self.hwnd is None:
             return False
@@ -7577,21 +7539,15 @@ class SottoShell:
 
         The press is a real WM_HOTKEY posted to the registering thread's own
         queue, so the delivery path under test is the one the OS writes to.
-        The two presses land ~800 ms apart. That distance is MEANINGFUL ONLY
-        against `HOTKEY_DOUBLE_MS`, and the owner moved the goalposts on
-        2026-10-09 (400 ms -> 1500 ms, verbatim *"aumenta a janela de tempo do
-        double tap do alt c pra 1 sec e meio"*). At 400 ms these two presses
-        were OUTSIDE the window and therefore two SINGLE presses: press 1 SHOWS
-        the strip, press 2 hides it. At 1500 ms they are INSIDE it, so this
-        same sequence now reads as a DOUBLE - press 1 shows the strip and press
-        2 converts it to the RIGHT side panel - which is a DIFFERENT assertion.
-
-        So the interval is stated against the constant and asserted, not
-        assumed: the probe derives `WANT_DOUBLE = 800 < HOTKEY_DOUBLE_MS` from
-        the live value and checks the outcome it implies (the strip toggles
-        twice, or opens the side panel). A hardcoded "each is a single press"
-        would be a sentence that quietly becomes false the next time the
-        constant moves - which is exactly what happened here.
+        The two presses land ~800 ms apart, and SINCE 2026-10-13 THAT DISTANCE
+        IS NOT READ AS ANYTHING: the owner deleted the double-press window
+        (`HOTKEY_DOUBLE_MS`), so one press is one step of the fixed cycle and
+        the interval carries no meaning at all. Two presses from hidden are
+        therefore STRIP then SIDE, and the window is UP after both - which is
+        what this arm asserts. The old expectation was a function of the
+        interval (400 ms -> two singles -> hidden; 1500 ms -> a double ->
+        visible), and the owner naming that function *"meio ruim"* is why it is
+        gone rather than re-tuned.
         """
         rc = 0
         if self.hotkey is None:
@@ -7628,17 +7584,13 @@ class SottoShell:
             log(f'SELFTEST focus_before={before} focus_after={after} '
                 f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
                 f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
-            # WHAT THE SECOND PRESS MEANS depends on `HOTKEY_DOUBLE_MS`, so the
-            # expectation has to be DERIVED from it rather than typed. The two
-            # simulated presses land ~800 ms apart, so with a window of 400 ms
-            # they were two SINGLE presses (press 2 hides the strip) and with the
-            # owner's 1500 ms they are a DOUBLE (press 2 opens the RIGHT side
-            # panel). The old test hardcoded the first reading and went RED the
-            # moment the constant moved - a sentence that quietly became false,
-            # which is the same failure mode this repo has already been bitten by.
-            presses_are_double = 0.8 < (HOTKEY_DOUBLE_MS / 1000.0)
-            # `want_visible` is what the window SHOULD read after both presses.
-            want_visible = presses_are_double
+            # TWO PRESSES FROM HIDDEN, AND THE INTERVAL DECIDES NOTHING (owner,
+            # 2026-10-13). Press 1 shows the bottom STRIP and press 2 converts it
+            # to the RIGHT panel, whether they land 50 ms or 5 s apart, so after
+            # the pair the window is UP. There is no `HOTKEY_DOUBLE_MS` left to
+            # derive from: the old expectation was a function of the interval,
+            # and that function IS the defect the owner reported.
+            want_visible = True
             reading = {
                 'registered': bool(self.hotkey.registered), 'pressed': bool(pressed),
                 'presses': self.hotkey.pressed, 'visible': bool(self.visible),
@@ -7652,12 +7604,10 @@ class SottoShell:
             else:
                 log('SELFTEST broken=false focus_attributed='
                     f'{str(stolen_by_us).lower()}')
-            log('SELFTEST expectation=%s(%.0fms %s %.0fms) '
+            log('SELFTEST expectation=cycle(%.0fms apart, no window) '
                 'want_visible=%s got_visible=%s presses=%d registered=%s '
                 'delivered=%s'
-                % ('double' if presses_are_double else 'singles', 800.0,
-                   '>' if presses_are_double else '<', HOTKEY_DOUBLE_MS,
-                   str(want_visible).lower(), str(self.visible).lower(),
+                % (800.0, str(want_visible).lower(), str(self.visible).lower(),
                    self.hotkey.pressed, str(self.hotkey.registered).lower(),
                    str(pressed).lower()))
             rc = 3 if broken else 0
