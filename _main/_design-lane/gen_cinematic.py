@@ -874,10 +874,28 @@ def theme_css(d, toks, backdrop_note):
     a('%s .caption:not(.caption--latest) {' % S)
     a('  opacity: 0.72;')
     a('}')
+    # D4 OF THE AUDIT (2026-10-12), CLOSED HERE: THE PLACEHOLDER'S ITALIC IS NOT
+    # THE ZIP'S. The line below used to be emitted for ALL 25 themes, while the
+    # caption's own italic three lines up is read OUT OF THE ZIP (`__italic` comes
+    # from the design's caption class, `themes.ts`). Measured over the shipped bytes
+    # (`DC356228...`): 30 rules carried `font-style: italic`, and the 10 whose family
+    # has NO italic face in the bundle -- Outfit x5, Inter x3, Manrope x1, Jost x1 --
+    # were ALL `.captions__placeholder`, i.e. OUR empty state, an element no zip
+    # draws. The browser therefore SYNTHESISED an oblique for exactly those 10.
+    # The placeholder is not a design element, so it does not get to invent an axis
+    # the design never states: it now echoes the design's OWN answer. Where the zip
+    # italicises its caption (warm-hour, motel-glow, last-reel, dustlight, rooftop)
+    # the placeholder stays italic and the family is Fraunces/Lora, both bundled
+    # with real italics; everywhere else the placeholder is upright.
+    # The @fontsource packages of Outfit and Manrope carry NO italic file at all
+    # (measured: `files/*italic*` = 0 of 84 for Manrope, 0 of 96 for Outfit), so
+    # packaging one is impossible -- that is a real limit of the bundle, and this
+    # generator no longer asks for a face that cannot exist.
     a('%s .captions__placeholder {' % S)
     a('  color: var(--text-muted);')
     a('  font-family: var(--font-caption);')
-    a('  font-style: italic;')
+    if toks['__italic']:
+        a('  font-style: italic;')
     a('  opacity: 0.55;')
     a('}')
     a('%s .status {' % S)

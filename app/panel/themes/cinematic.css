@@ -250,7 +250,6 @@
 :root[data-theme='cine-midnight-rain'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-midnight-rain'] .status {
@@ -699,7 +698,6 @@
 :root[data-theme='cine-velvet-dusk'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-velvet-dusk'] .status {
@@ -923,7 +921,6 @@
 :root[data-theme='cine-study-light'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-study-light'] .status {
@@ -1142,7 +1139,6 @@
 :root[data-theme='cine-tideline-body'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-tideline-body'] .status {
@@ -1591,7 +1587,6 @@
 :root[data-theme='cine-paper-moon'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-paper-moon'] .status {
@@ -1808,7 +1803,6 @@
 :root[data-theme='cine-quiet-streets'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-quiet-streets'] .status {
@@ -2257,7 +2251,6 @@
 :root[data-theme='cine-north-fog'] .captions__placeholder {
   color: var(--text-muted);
   font-family: var(--font-caption);
-  font-style: italic;
   opacity: 0.55;
 }
 :root[data-theme='cine-north-fog'] .status {

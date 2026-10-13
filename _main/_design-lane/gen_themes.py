@@ -1165,7 +1165,14 @@ SKIN = """
   text-shadow: none;
 }}
 /* the words inside the forming line that are ALREADY CONFIRMED */
-{B} .caption--provisional .caption__text{{ color: {confirmed_color}; {cap_family_decl} text-shadow: {live_shadow}; }}
+/* D6, CLOSED THE OTHER WAY: this rule painted the confirmed ink as a LITERAL while
+   `--text-confirmed` was declared beside it and read by nothing. Measured over the
+   ten designs: each one's `--text-confirmed` IS this literal (theme-1
+   rgba(242,233,216,0.82), theme-2 rgba(255,255,255,0.9), theme-3 #EAE5D9, theme-4
+   #EAE5D9, theme-5 #FFFFFF, pd-tele rgba(255,255,255,0.6) …), so reading the token
+   here is the same colour with ONE source instead of two, and the token stops being
+   dead weight. */
+{B} .caption--provisional .caption__text{{ color: var(--text-confirmed); {cap_family_decl} text-shadow: {live_shadow}; }}
 /* …and the tail that may still be rewritten. panel.css also sets it italic. */
 {B} .caption--provisional .caption__provisional{{
   color: var(--text-provisional);
@@ -1220,7 +1227,16 @@ SKIN = """
 {S} .captions__placeholder{{ animation: none; }}
 {S} .listening span{{ background: var(--accent); background-image: none; opacity: 0.55; }}
 
-/* ── the footer, where Alt+C is announced ────────────────────────────────── */
+/* ── the footer ──────────────────────────────────────────────────────────── */
+/* D5 of the audit (2026-10-12), CLOSED HERE BY MEASUREMENT: this section used to
+   carry TWO more rules — `{S} .status__hint` and `{S} kbd` — and both painted an
+   element the live document CANNOT carry. The owner took the Alt+C hint out of
+   the panel himself (recorded at `panel.html:935`): `<kbd>` is now a word inside
+   that comment and nowhere else, and the 87 class tokens of `panel.html` plus the
+   49 classes the 12 loaded modules assign contain no `status__hint`. The five zips
+   do not ask for one either: the `<Kbd>` badges of the directions zip sit on its
+   LANDING-PAGE footer (`App.tsx:76-86`), never inside a panel. A selector that can
+   never match is dead weight, so the two rules are gone. */
 {S} .status{{
   border-top-color: var(--line);
   color: var(--text-secondary);
@@ -1231,20 +1247,17 @@ SKIN = """
 {S} .status--error .status__dot{{ background: var(--error); box-shadow: {err_ring}; }}
 {S} .status--live .status__text{{ color: {ok_text}; }}
 {S} .status--error .status__text{{ color: {err_text}; }}
-{S} .status__hint{{ color: var(--text-muted); }}
-{S} kbd{{
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}}
 
 /* ── the transcript drawer: SECONDARY, and it must know how to be quiet ───── */
 {S} .history{{ border-top-color: var(--line); }}
+/* D5, CLOSED: `.history__source` was a third member of this group and matches
+   nothing — no class token in `panel.html`, none assigned by the 12 modules, and
+   no history row of any zip prints a source label (the mockup rows carry text,
+   time and a confidence figure this panel refuses to invent). The two members
+   that DO exist (`.history__note` is `panel.html:490`/`:538`, `.history__count`
+   is `:478`) stay. */
 {S} .history__note,
-{S} .history__count,
-{S} .history__source{{ color: var(--text-muted); }}
+{S} .history__count{{ color: var(--text-muted); }}
 {S} .history__path{{ color: var(--text-muted); font-family: var(--font-mono); }}
 {S} .history__path:hover{{ color: var(--accent); }}
 {S} .search__input{{
@@ -1276,7 +1289,11 @@ SKIN = """
   background: var(--accent-soft);
   color: var(--text-primary);
 }}
-{S} .reveal-button--danger,
+/* D5, CLOSED: `.reveal-button--danger` was the other member of this rule and is
+   never applied — `reveal-button` exists (`panel.html:520`) but no module ever
+   gives it a `--danger` state, while `.dialog-button--danger` is static markup
+   and `.icon-button--danger` is the one the JS toggles. The live member keeps
+   the rule. */
 {S} .dialog-button--danger{{ border-color: color-mix(in srgb, var(--error) 40%, transparent); color: color-mix(in srgb, var(--error) 70%, var(--text-primary)); }}
 {S} .hist{{ border-radius: var(--radius-sm); background: color-mix(in srgb, var(--text-primary) 4%, transparent); }}
 {S} .hist:hover{{ background: color-mix(in srgb, var(--text-primary) 8%, transparent); }}
@@ -1513,9 +1530,14 @@ HEAD = """/* Sotto — theme {n}: {name}.
 
 :root[data-theme='{sel}']{{
   /* ── SURFACE ──────────────────────────────────────────────────────────── */
+  /* D6 of the audit, CLOSED: `--slab-opacity` stood here (0.96 in all ten
+     designs) and NO rule of any stylesheet in the panel ever read it. The alpha is
+     consumed at BUILD time, twice: by `over_black()`, which composites the zip's
+     translucent surface over the zip's own black stage, and by the
+     `color-mix(... N% ...)` the skin writes into the slab. A declaration nothing
+     reads is dead weight; the value is still in the ledger (`--trace`). */
   --bg-slab: {slab};
   --bg-slab-strong: {slab_strong};
-  --slab-opacity: {slab_opacity};
   --shadow-slab: {shadow_slab};
 
   /* ── TEXT ─────────────────────────────────────────────────────────────── */
@@ -1536,8 +1558,13 @@ HEAD = """/* Sotto — theme {n}: {name}.
   --theme-swatch: {accent};
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
+  /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
+     colour behind it (`--color-amberlite` / `--color-amberx`) is the FRESHEST
+     WORD, and that role is already carried by `--text-provisional` — which every
+     theme declares and the forming line reads. There is no busy STATE in this
+     panel's vocabulary (the status kinds are idle / live / error), so the second
+     name for one colour is gone. */
   --ok: {ok};
-  --busy: {busy};
   --error: {error};
   --idle: {idle};
 
@@ -1548,17 +1575,28 @@ HEAD = """/* Sotto — theme {n}: {name}.
   --radius-dialog: {radius_dialog};
 
   /* ── SPACE ────────────────────────────────────────────────────────────── */
-  --space-1: {s1}px;
+  /* D6, CLOSED for the two ENDS of the scale. The zip declares ONE spacing scale
+     (Tailwind's, which is dynamic: step N is N x 0.25rem), so all five designs
+     share it — but a step nothing reads is not a scale, it is a declaration with
+     no consumer. Measured over the ten designs: `--space-2` and `--space-3` are
+     read by `panel.css` and by the skin's own rules, `--space-4` is read by the
+     one design whose zip states `pl-4` on its live line (pd-cine's
+     `padding-left`), and `--space-1` / `--space-5` had 0 readers anywhere.
+     Those two are gone. */
   --space-2: {s2}px;
   --space-3: {s3}px;
   --space-4: {s4}px;
-  --space-5: {s5}px;
 
   /* ── TYPE ─────────────────────────────────────────────────────────────── */
   --font-sans: {font_sans};
   --font-mono: {font_mono};
-  --font-caption: {font_caption};
-  --font-closed: {font_closed};
+  /* D6, CLOSED: `--font-caption` and `--font-closed` stood here, both declared as
+     `var(--font-sans)` in all ten designs and read by no rule of any panel
+     stylesheet — the caption rule names `var(--font-sans)` directly (see the
+     `.caption__text` block of the skin) and a CLOSED line wears the same family
+     in every zip (the settled rows are the live line one size down, never another
+     face). Two names for one value and no reader is dead weight; the design's
+     family is still declared once, in `--font-sans`. */
   --size-caption: {size_caption};
   --leading-caption: {leading_caption};
   --weight-caption: {weight_caption};
@@ -1582,7 +1620,13 @@ HEAD = """/* Sotto — theme {n}: {name}.
 /* The `panel.css` names are kept as ALIASES of the tokens above, so a reader who
  * knows the old file finds the old names and they cannot drift. */
 :root[data-theme='{sel}']{{
-  --bg: var(--bg-slab);
+  /* D6, CLOSED: `--bg: var(--bg-slab)` stood here. Every other alias below is
+     READ (panel.css and the skins read --text-dim / --text-faint / --radius /
+     --font / --mono / --accent-from / --accent-to / --accent-gradient; caption-float.css
+     reads the accent pair), and `panel.css:24` declares its own `--bg` anyway —
+     measured: 0 `var(--bg)` in the whole panel and 0 mentions in the JS and in the
+     shell. The one alias with no reader is gone; the rest cannot drift because
+     they are aliases, not copies. */
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -1994,13 +2038,13 @@ CHROME[5] = """
   background: var(--accent);
   animation: sotto-5-led 1.5s ease-in-out infinite;
 }
-@S@ .chrome--inst .chrome__key{
-  margin-left: auto;
-  font-size: 9px;
-  font-weight: 400;
-  letter-spacing: 0.22em;
-  color: var(--text-muted);
-}
+/* D5, CLOSED: `@S@ .chrome--inst .chrome__key` stood here — the Alt+C badge of the
+   Instrumento header (`ON / ALT+C`, quoted in this file's own chrome header). The
+   owner ordered that hint OUT of the panel (`panel.html:935`), the element went
+   with it, and `.chrome__key` is not one of the 12 `chrome__*` classes the panel
+   actually carries (brand, chan, dot, draft, led, meter, off, on, page, rec,
+   state, tc). Measured: 0 matches in `panel.html`, in the 12 loaded modules, in
+   the 105 skin files, and in the five zips' panel sources. The rule is gone. */
 @keyframes sotto-5-led{
   0%, 100%{ transform: scaleY(0.45); opacity: 0.65; }
   50%{ transform: scaleY(1); opacity: 1; }
@@ -2880,8 +2924,11 @@ HEAD_PD = '''/* Sotto -- {name} ({sel}).
  * ONE DEVIATION, AND IT IS IN ALPHA ONLY. The zip renders its panel over its own
  * opaque black stage (Stage.tsx:48) behind a 2-8px backdrop blur, and a WebView2
  * window cannot blur the desktop behind it. So the panel tint is COMPOSITED over
- * that black and --slab-opacity is {slab} for all five: the hue is the zip's, the
- * alpha is Sotto's. The blur is dropped for the same reason.
+ * that black at alpha {slab} for all five: the hue is the zip's, the alpha is
+ * Sotto's, and the alpha is applied at GENERATION time — by `over_black()` and by
+ * the `color-mix()` of the skin's slab rule — not by a token (the dead
+ * `--slab-opacity` declaration was removed under D6). The blur is dropped for the
+ * same reason.
  *
  * THE BUTTON CLUSTER IS THE ONE THING THIS FILE DOES NOT TAKE FROM THE ZIP, and
  * it is the one thing the owner's rule allows to differ. These five designs have

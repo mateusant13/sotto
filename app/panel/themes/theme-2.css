@@ -54,9 +54,14 @@
 
 :root[data-theme='theme-2']{
   /* ── SURFACE ──────────────────────────────────────────────────────────── */
+  /* D6 of the audit, CLOSED: `--slab-opacity` stood here (0.96 in all ten
+     designs) and NO rule of any stylesheet in the panel ever read it. The alpha is
+     consumed at BUILD time, twice: by `over_black()`, which composites the zip's
+     translucent surface over the zip's own black stage, and by the
+     `color-mix(... N% ...)` the skin writes into the slab. A declaration nothing
+     reads is dead weight; the value is still in the ledger (`--trace`). */
   --bg-slab: #06090B;
   --bg-slab-strong: #1B1E24;
-  --slab-opacity: 0.96;
   --shadow-slab: 0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255, 255, 255, 0.12);
 
   /* ── TEXT ─────────────────────────────────────────────────────────────── */
@@ -77,8 +82,13 @@
   --theme-swatch: #FF6A55;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
+  /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
+     colour behind it (`--color-amberlite` / `--color-amberx`) is the FRESHEST
+     WORD, and that role is already carried by `--text-provisional` — which every
+     theme declares and the forming line reads. There is no busy STATE in this
+     panel's vocabulary (the status kinds are idle / live / error), so the second
+     name for one colour is gone. */
   --ok: #5FD3A7;
-  --busy: #FFC46B;
   --error: #FF6A55;
   --idle: #A49E90;
 
@@ -89,17 +99,28 @@
   --radius-dialog: 8px;
 
   /* ── SPACE ────────────────────────────────────────────────────────────── */
-  --space-1: 4px;
+  /* D6, CLOSED for the two ENDS of the scale. The zip declares ONE spacing scale
+     (Tailwind's, which is dynamic: step N is N x 0.25rem), so all five designs
+     share it — but a step nothing reads is not a scale, it is a declaration with
+     no consumer. Measured over the ten designs: `--space-2` and `--space-3` are
+     read by `panel.css` and by the skin's own rules, `--space-4` is read by the
+     one design whose zip states `pl-4` on its live line (pd-cine's
+     `padding-left`), and `--space-1` / `--space-5` had 0 readers anywhere.
+     Those two are gone. */
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 20px;
 
   /* ── TYPE ─────────────────────────────────────────────────────────────── */
   --font-sans: "IBM Plex Mono", ui-monospace, monospace;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
+  /* D6, CLOSED: `--font-caption` and `--font-closed` stood here, both declared as
+     `var(--font-sans)` in all ten designs and read by no rule of any panel
+     stylesheet — the caption rule names `var(--font-sans)` directly (see the
+     `.caption__text` block of the skin) and a CLOSED line wears the same family
+     in every zip (the settled rows are the live line one size down, never another
+     face). Two names for one value and no reader is dead weight; the design's
+     family is still declared once, in `--font-sans`. */
   --size-caption: clamp(18px,2.3vw,28px);
   --leading-caption: 1.4;
   --weight-caption: 500;
@@ -123,7 +144,13 @@
 /* The `panel.css` names are kept as ALIASES of the tokens above, so a reader who
  * knows the old file finds the old names and they cannot drift. */
 :root[data-theme='theme-2']{
-  --bg: var(--bg-slab);
+  /* D6, CLOSED: `--bg: var(--bg-slab)` stood here. Every other alias below is
+     READ (panel.css and the skins read --text-dim / --text-faint / --radius /
+     --font / --mono / --accent-from / --accent-to / --accent-gradient; caption-float.css
+     reads the accent pair), and `panel.css:24` declares its own `--bg` anyway —
+     measured: 0 `var(--bg)` in the whole panel and 0 mentions in the JS and in the
+     shell. The one alias with no reader is gone; the rest cannot drift because
+     they are aliases, not copies. */
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -244,7 +271,7 @@
   text-shadow: none;
 }
 :root[data-theme='theme-2'] body .caption--provisional .caption__text {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-confirmed);
   text-shadow: none;
 }
 :root[data-theme='theme-2'] body .caption--provisional .caption__provisional {
@@ -323,22 +350,11 @@
 :root[data-theme='theme-2'] .status--error .status__text {
   color: color-mix(in srgb, var(--error) 72%, var(--text-primary));
 }
-:root[data-theme='theme-2'] .status__hint {
-  color: var(--text-muted);
-}
-:root[data-theme='theme-2'] kbd {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
 :root[data-theme='theme-2'] .history {
   border-top-color: var(--line);
 }
 :root[data-theme='theme-2'] .history__note,
-:root[data-theme='theme-2'] .history__count,
-:root[data-theme='theme-2'] .history__source {
+:root[data-theme='theme-2'] .history__count {
   color: var(--text-muted);
 }
 :root[data-theme='theme-2'] .history__path {
@@ -379,7 +395,6 @@
   background: var(--accent-soft);
   color: var(--text-primary);
 }
-:root[data-theme='theme-2'] .reveal-button--danger,
 :root[data-theme='theme-2'] .dialog-button--danger {
   border-color: color-mix(in srgb, var(--error) 40%, transparent);
   color: color-mix(in srgb, var(--error) 70%, var(--text-primary));
