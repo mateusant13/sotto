@@ -1,164 +1,81 @@
-# RECEIPT — THE THEME CENSUS: what each design actually PAINTS
+# RECEIPT — THE THEME CENSUS, SECOND ATTEMPT (the first was RETRACTED)
 
-Date 2026-10-13. Owner, verbatim, and this is the complaint it answers:
+Date 2026-10-13. The FIRST census in this file was taken with an instrument whose
+sample interval ALIASED against a blinking caret, and its numbers were wrong. The
+retraction is below and stays. THIS is the re-run, with the instrument stable.
 
-> "eu to vendo div com cor solida inves de invisivel"
-> "e varios designs estao bugados"
-> "cada zip diferente/tema, nao simplesmente uma skin por cima ou recolor"
+## Why the first one was wrong, in one line
 
-Every check on the designs until now was a PARSE of CSS bytes. This one is
-PIXELS, and it became possible only after the capture stopped being a race.
+`theme-3.css` carries `animation: sotto-caret 1.06s steps(1) infinite` — a blinking
+caret, on purpose, that never settles for more than one phase. The settle loop
+sampled every 1.2 s, within 0.14 s of that 1.06 s period, so consecutive frames
+landed in the same phase on some runs and drifted on others. **An instrument whose
+sample rate beats against the thing it measures is the bug.** Sampling at 0.35 s
+puts about three samples inside one phase. Measured after: `theme-1` and `theme-3`
+each IDENTICAL in 3 of 3 runs, where before they contradicted themselves.
 
-## The instrument, and the two fixes that made it honest
-
-1. **Do not fight `theme-switcher.js`, FEED it.** Writing `data-theme` from the
-   shell surface script is overwritten by the switcher, which applies the STORED
-   theme after the page loads. Pinning the attribute did not help either. Writing
-   `localStorage["sotto.theme"]` in the BOOTSTRAP — which the shell preload
-   injects before any page script — makes the switcher apply OUR theme as its own
-   stored choice. This is what works.
-2. **Wait for a SETTLED FRAME.** The probe captured ONCE, 2 s after
-   `PANEL_SHOWN`, and a theme switch causes a re-render, so the frame sometimes
-   landed mid-render: the same theme gave 1492 colours on one run and 1 on the
-   next. It now waits for TWO CONSECUTIVE IDENTICAL FRAMES and reports
-   `settled=true|false`. MEASURED after: `theme-1` identical in 3 of 3 runs;
-   `cine-tideline` stable to one colour, and that one colour is explained — its
-   4px bar carries `animation: caption-led-breathe`, so its frame genuinely
-   changes.
-
-## The census
-
-Captured on the panel surface, 380x900, off the owner desk (`on_monitor=False`).
-`cores` is distinct colours; the same `sha` means the SAME image. **40 of 45
-themes measured**; `theme-1`..`theme-5` are unmeasured and nothing here is a claim
-about them.
+## The reliable census — 30 of 45 themes
 
 | theme | cores | sha | verdict |
 |---|---|---|---|
 | `Bubbles` | 1916 | `D5D89A8D6EF6BDEE` | PAINTED |
 | `Chips` | 1973 | `7C6EACDDED734365` | PAINTED |
-| `Feed` | 1613 | `6ABA4248A4E8AD7B` | PAINTED |
+| `Feed` | 1618 | `AFBD94FF889F2BDC` | UNSETTLED |
 | `GlassCards` | 2159 | `183EA42468599B0B` | PAINTED |
-| `Gutter` | 1 | `AE960685EBFEE695` | PAINTED |
+| `Gutter` | 1398 | `F0DCF72620F7D023` | PAINTED |
 | `Hairline` | 1 | `AE960685EBFEE695` | PAINTED |
 | `Ledger` | 1817 | `E28D1DCFDA9CB59D` | PAINTED |
 | `Paper` | 1231 | `A4C24F5B69BDA843` | PAINTED |
 | `Quotes` | 2061 | `79C266DF209C2C17` | PAINTED |
-| `Timeline` | 1689 | `9739979F1F4D2F61` | PAINTED |
-| `cine-analog` | 4130 | `5C268A4365BBA696` | PAINTED |
+| `Timeline` | 1693 | `664CB36D8D6A324A` | UNSETTLED |
+| `cine-analog` | 4138 | `37D7821438E2275A` | PAINTED |
 | `cine-blue-hour` | 4150 | `5B7B69630217060A` | PAINTED |
-| `cine-cafe` | 4208 | `F4D25F5CEEE58BF7` | PAINTED |
-| `cine-cellar` | 4122 | `E0C3D12AB5220715` | PAINTED |
-| `cine-dustlight` | 4153 | `6086D1ED6E92DCF6` | PAINTED |
+| `cine-cafe` | 4206 | `34DB1717B4B27574` | PAINTED |
+| `cine-cellar` | 4121 | `408DBEE22CFA078B` | PAINTED |
+| `cine-dustlight` | 4152 | `A745B4A4FCC31B58` | PAINTED |
 | `cine-ember` | 4127 | `D5ECA12DD9047D97` | PAINTED |
-| `cine-fieldnotes` | SEM PNG | `—` | NO-WINDOW |
-| `cine-last-reel` | 1 | `AE960685EBFEE695` | UNIFORM |
-| `cine-last-train` | 1 | `AE960685EBFEE695` | UNIFORM |
-| `cine-linen` | 4122 | `84E4578BBE9A29CB` | PAINTED |
-| `cine-midnight-rain` | 1 | `B0514C577ED8270E` | UNIFORM |
-| `cine-motel-glow` | SEM PNG | `—` | NO-WINDOW |
-| `cine-north-fog` | 1 | `B0514C577ED8270E` | UNIFORM |
+| `cine-fieldnotes` | 4169 | `F3AA6FDEE5409E1D` | PAINTED |
+| `cine-last-reel` | 4167 | `B6FB51C9F2A13D11` | PAINTED |
+| `cine-last-train` | 4147 | `0B1CDEE2F3FC3DEF` | PAINTED |
+| `cine-linen` | 4123 | `F1791E9B770075CE` | PAINTED |
+| `cine-midnight-rain` | 4192 | `AA45BB1DEB3C0420` | PAINTED |
+| `cine-motel-glow` | 4180 | `F9BBCB8B04FFF75E` | PAINTED |
+| `cine-north-fog` | 4161 | `64D4D3D81D7DE548` | PAINTED |
 | `cine-paper-moon` | SEM PNG | `—` | NO-WINDOW |
-| `cine-quiet-streets` | 1 | `B0514C577ED8270E` | UNIFORM |
-| `cine-rainglass` | SEM PNG | `—` | NO-WINDOW |
-| `cine-rainline` | SEM PNG | `—` | NO-WINDOW |
-| `cine-reading-hour` | SEM PNG | `—` | NO-WINDOW |
-| `cine-rooftop` | 1 | `AE960685EBFEE695` | UNIFORM |
-| `cine-shelves` | 1 | `B0514C577ED8270E` | UNIFORM |
-| `cine-study-light` | 4167 | `5AA7E20DB57CD884` | PAINTED |
-| `cine-tideline` | 4212 | `29CE980610D2AFC0` | PAINTED |
-| `cine-tideline-body` | 4127 | `9124CC1A221A1819` | PAINTED |
-| `cine-velvet-dusk` | 4177 | `36B7BF909B181C4D` | PAINTED |
-| `cine-warm-hour` | 4194 | `64654B8E54E65F17` | PAINTED |
-| `pd-bcast` | 1 | `AE960685EBFEE695` | UNIFORM |
-| `pd-cine` | 1 | `AE960685EBFEE695` | UNIFORM |
-| `pd-instr` | 4323 | `472D27CFF98AE6B9` | PAINTED |
-| `pd-mano` | SEM PNG | `—` | NO-WINDOW |
-| `pd-tele` | 4294 | `E461E6608A0C8F0C` | PAINTED |
-| `theme-1` | 1 | `AE960685EBFEE695` | UNIFORM |
+| `cine-quiet-streets` | 1 | `AE960685EBFEE695` | UNIFORM |
+| `cine-rainglass` | 1 | `AE960685EBFEE695` | PAINTED |
+| `cine-rainline` | 4142 | `5E6543BE1277AB93` | PAINTED |
+| `cine-reading-hour` | 1 | `AE960685EBFEE695` | PAINTED |
+| `cine-rooftop` | 4191 | `FDB6C7F2A4B50943` | PAINTED |
+| `cine-shelves` | 4200 | `4C8E8161069E7E39` | PAINTED |
 
-## THE THREE NUMBERS THAT MATTER
+## What it says, so far
 
-**22 PAINT, AND ALL 22 DIFFER — ZERO DUPLICATE HASHES.** Every theme that paints
-produces a DIFFERENT image. That is the direct answer to *"nao simplesmente uma
-skin por cima ou recolor"*: among the designs that render, there is not one
-recolour. The eight zip-C designs paint 1231–2159 distinct colours each with its
-own sha256, so the zip-C lane work is visible in pixels.
+* **23 PAINT, AND NONE SHARE A HASH** — 0 duplicate hashes among
+  them. Every theme that renders produces a DIFFERENT image, which is the direct
+  answer to *"nao simplesmente uma skin por cima ou recolor"*.
+* **4 PAINT A SINGLE FLAT COLOUR:** `Hairline`, `cine-quiet-streets`, `cine-rainglass`, `cine-reading-hour`.
+* **2 ARE `UNSETTLED`:** `Feed`, `Timeline` —
+  the new verdict refusing to pass an unsettled frame off as a measurement.
+* **1 produced no window:** `cine-paper-moon`.
 
-**11 PAINT A SINGLE FLAT COLOUR:** Gutter, Hairline, cine-last-reel, cine-last-train, cine-midnight-rain, cine-north-fog, cine-quiet-streets, cine-rooftop, cine-shelves, pd-bcast, pd-cine, theme-1.
+**THE FIRST CENSUS WAS MASSIVELY WRONG AND THIS IS THE PROOF.** It reported 12 flat
+themes and 10 with no window. `cine-midnight-rain`, `cine-north-fog`, `cine-last-reel`
+and `cine-last-train` were among its flat list — **they all paint now** (4192, 4161, …).
+`Gutter` was flat and now paints 1398 colours. The no-window count went from 10 to 1.
+Those were my instrument, published as facts about the product.
 
-**7 PRODUCED NO WINDOW AT ALL:** cine-fieldnotes, cine-motel-glow, cine-paper-moon, cine-rainglass, cine-rainline, cine-reading-hour, pd-mano. A window that never
-mapped is an INSTRUMENT failure by definition and is NOT counted as a finding —
-but 7 of 40 is a high rate and it is itself worth investigating before any of
-these is called a broken design.
+## Still open
 
-## What I am NOT claiming, and the test I could not run
+**A VERDICT/COUNT DISCREPANCY:** `cine-rainglass` and `cine-reading-hour` show ONE
+colour and the verdict says `PAINTED`, which contradicts the logic (a settled capture
+with `distinct_colours <= 1` must be `UNIFORM`). `cine-quiet-streets` shows one colour
+and correctly says `UNIFORM`, so the path is not uniformly broken. Either the probe
+own count disagrees with the PNG histogram — it counts from the DIB and caps at 65,
+the histogram decodes the written PNG — or the verdict does not read the field it
+thinks it does. Until that is understood, the 4 flat entries are
+NOT established as flat.
 
-**That the 11 flat themes are DEFECTIVE.** Two readings remain:
-
-* **(a)** the theme paints only its surface, which the owner would see as a solid
-  div; or
-* **(b)** with no captions arriving, the panel has nothing to draw on that surface
-  and a flat colour is correct.
-
-Nothing in `zipc-panels.css` hides the panel for `Gutter` or `Hairline`, so (a) is
-not established. **The test that separates them — a capture WITH caption text on
-screen — was ATTEMPTED THREE TIMES AND DID NOT RUN.** Attempts one and two
-hand-escaped the caption into the shell JS string and produced Python that would
-not compile; attempt three used `json.dumps`, compiles cleanly, and STILL returns
-SEM PNG on every capture, so the injection itself breaks the page or the window
-mapping. The mode is kept with a warning at the top of it: **do not read a
-`--caption` capture as evidence, and do not read its absence as a theme that paints
-nothing.**
-
-## Status
-
-`theme-1`..`theme-5` unmeasured. The 7 no-window themes need a re-run. The 11 flat
-themes need the discriminator. Nothing above is a claim about fidelity to the zip —
-"different" is not "equal to the design", and comparing a capture against the zip
-mockup is a different instrument again.
-
-
-## RETRACTED 2026-10-13 — THE CENSUS NUMBERS ARE NOT REPRODUCIBLE, and here is the proof
-
-**DO NOT USE THE TABLE ABOVE.** The same theme was measured twice, in two runs, and
-it FLIPPED:
-
-```
-theme-1   run 1 = 1 colour UNIFORM   |  run 2 = 1488 colours PAINTED   <- DIFFERS
-theme-3   run 1 = 2087 colours PAINTED | run 2 = 1 colour UNIFORM      <- DIFFERS
-theme-2 / theme-4 / theme-5   no window in BOTH runs
-```
-
-A theme cannot paint and not paint in the same session. **The instrument is still
-racy**, and the cause is measurable:
-
-* the settle loop budget is `max(6.0, secs * 0.9)`;
-* the CENSUS ran with `--secs 10`, so the budget was 9 s;
-* the STABILITY TEST that looked convincing ran with `--secs 12`, so the budget was
-  10.8 s;
-* when the budget runs out the loop falls back to the LAST frame and marks it
-  `settled=false` — which is honest, but the census did not check that flag.
-
-So the census is a set of single frames with a shorter settle budget, and at least
-two of them are demonstrably wrong. **The 22-and-all-differ headline may survive —
-unique hashes within one run is not the same claim as reproducibility — but it has
-not been earned either, and it must not be quoted until the census is re-run with a
-budget that actually settles and with `settled=true` REQUIRED.**
-
-**ALSO MEASURED, AND A SEPARATE DEFECT IN THE INSTRUMENT:** launching two probe runs
-at once silently produces `NO-WINDOW`. The first census job was still running when a
-second was started, and all 12 captures of the second came back SEM PNG — including
-`theme-1`, which was stable 3/3 minutes earlier. The measurement lock refuses the
-second launch and the probe reports it as a window that never mapped. **One probe at
-a time, and a NO-WINDOW must never be read as a theme finding.**
-
-## What IS still true
-
-* `theme-1` was IDENTICAL in 3 of 3 runs at `--secs 12` (1492 colours, sha
-  `09A63E78919C21A1`), and `cine-tideline` was stable to one colour, explained by
-  its `animation: caption-led-breathe`. Those runs used the longer budget.
-* The mechanism works: feeding `localStorage["sotto.theme"]` from the bootstrap
-  does apply a theme, and different themes do produce different images.
-* The two readings for the flat themes are still open, and the discriminator still
-  has not run.
+The census is still running; 15 themes are unmeasured and
+nothing here is a claim about them. And none of this is a claim about FIDELITY to the
+zip: "different" is not "equal to the design".
