@@ -197,7 +197,7 @@ GATE_REMOVED = (
 
 def build_variant(path: str, revert_gate: bool = False,
                   strip: bool = False, floated: bool = False,
-                  theme: str = '') -> str:
+                  theme: str = '', caption: str = '') -> str:
     with open(SHELL, encoding='utf-8') as f:
         src = f.read()
     out = src.replace(
@@ -341,6 +341,38 @@ def build_variant(path: str, revert_gate: bool = False,
             boot,
             "  try { window.localStorage.setItem('sotto.theme', '" + safe
             + "'); } catch (err) {}\n" + boot, 1)
+    # THE DISCRIMINATOR FOR THE SIX FLAT THEMES. The census found six themes
+    # painting a single flat colour, and left two readings open: the theme paints
+    # only its surface (a defect), or the panel with NO CAPTIONS has nothing to
+    # draw on that surface (correct). This pushes a caption in through the page's
+    # own `window.sotto.pushCaption` before the capture, so the panel HAS content.
+    # If the six then paint the text, reading two was right and there is no defect;
+    # if they stay flat while a control theme paints, the defect is real.
+    if caption:
+        # A DIFFERENT ANCHOR ON PURPOSE: the --theme block runs FIRST and already
+        # consumed the long form of this statement, so the caption block was
+        # refusing to build at all -- MEASURED: 'variant: --caption edit did not
+        # apply - refusing', and every capture came back SEM PNG. This anchor is
+        # the bare statement, which survives whatever the theme block did to the
+        # text around it.
+        # NO BACKSLASHES ANYWHERE, ON PURPOSE. Two earlier attempts escaped the
+        # caption by hand and produced Python that would not compile -- the
+        # variant refused and every capture came back SEM PNG. json.dumps gives a
+        # DOUBLE-QUOTED JS string, which sits happily inside the shell's
+        # single-quoted Python literal, so nothing needs escaping at all.
+        # WARNING: THIS MODE IS NOT FINISHED. It builds and compiles (after two
+        # attempts that did not, from hand-escaping the caption), but EVERY
+        # capture with it came back SEM PNG -- no window mapped. So the injection
+        # breaks the page or the window mapping, and the discriminator it exists
+        # for has NOT been run. Do not read a --caption capture as evidence, and
+        # do not read its absence as a theme that paints nothing.
+        import json as _json
+        cap_anchor = 'return window.SottoSurfaces.current();'
+        if cap_anchor not in out:
+            raise SystemExit('variant: --caption edit did not apply -- refusing')
+        inject = ('try{var w=window;for(var i=0;i<12;i++){if(w.sotto&&w.sotto.pushCaption)'
+                  'w.sotto.pushCaption(' + _json.dumps(caption + ' ') + ' + i, null);}}catch(e){}')
+        out = out.replace(cap_anchor, inject + cap_anchor, 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
@@ -482,13 +514,16 @@ def main() -> int:
     theme = ''
     if '--theme' in a:
         theme = str(a[a.index('--theme') + 1])
+    caption = ''
+    if '--caption' in a:
+        caption = str(a[a.index('--caption') + 1])
     suffix = '-control' if revert else ''
     log('PAINT panel-paint-probe start='
         f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} secs={secs} '
         f'revert_gate={revert}')
     p = os.path.join(VARIANT_DIR, '_paint-offscreen-sotto_webview.py')
     sha = build_variant(p, revert_gate=revert, strip=strip, floated=floated,
-                        theme=theme)
+                        theme=theme, caption=caption)
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
         f'revert_gate={revert}')
     try:
