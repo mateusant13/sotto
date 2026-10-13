@@ -407,8 +407,31 @@ def arm(tag: str, extra: list, secs: float, shell: str,
             time.sleep(0.3)
             if 'PANEL_SHOWN' in _log_text():
                 break
-        time.sleep(2.0)
-        shot = _grab()
+        # WAIT FOR A SETTLED FRAME, NOT A FIXED DELAY. MEASURED 2026-10-13: a
+        # single capture 2 s after PANEL_SHOWN is a RACE. The SAME theme produced
+        # 1492 colours on one run and 1 on the next (PAINTED then UNIFORM), and a
+        # third theme produced no PNG at all -- the capture was landing mid
+        # re-render, which is what the theme switch causes. TWO CONSECUTIVE
+        # IDENTICAL FRAMES is what makes a capture a statement about paint rather
+        # than about timing, and it costs a couple of seconds.
+        prev = None
+        deadline = time.time() + max(6.0, secs * 0.9)
+        while time.time() < deadline:
+            cur = _grab()
+            if cur is not None:
+                if prev is not None and cur.get('px_sha256') == prev.get('px_sha256'):
+                    shot = cur
+                    break
+                prev = cur
+            time.sleep(1.2)
+        if shot is None:
+            # No stable pair inside the budget: report the LAST frame, and say so,
+            # rather than pretending a single frame settled.
+            shot = prev
+            if shot is not None:
+                shot['settled'] = False
+        else:
+            shot['settled'] = True
     else:
         while time.time() - t0 < secs:
             time.sleep(0.3)
