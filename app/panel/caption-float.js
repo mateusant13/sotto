@@ -214,6 +214,31 @@
     var changed = want !== on;
     on = want;
     paint();
+    /* TELL THE SHELL, OR THE CAPTION IS CLIPPED TO THE STRIP'S HEIGHT.
+     *
+     * `paint()` mirrors `data-float` onto the host, `body` AND
+     * `documentElement` -- but the shell reads `--float-height` inside
+     * `refresh_strip_height`, which runs at the TOP of `set_panel_surface`
+     * (sotto_webview.py:6801), BEFORE the surface script that would set the
+     * attribute. Mirroring the attribute is therefore necessary and NOT
+     * sufficient: something has to ask the shell to look again.
+     *
+     * MEASURED 2026-10-12, before this fix: with `data-float="on"` written and
+     * no re-application, the floated window stayed 380x148 -- the strip's size --
+     * while the CSS laid the caption out for `--float-height`. The owner's
+     * "legenda solta na tela" would have been cut off at the strip's height.
+     *
+     * `setPanelSurface` is the shell member that switches the document surface
+     * AND resizes the window in the same breath, which is exactly what is owed
+     * here. Called only on a REAL change, so a repeated show() costs nothing. */
+    if (changed) {
+      try {
+        var b = window.sotto;
+        if (b && typeof b.setPanelSurface === 'function') {
+          b.setPanelSurface('strip', want ? 'float-on' : 'float-off');
+        }
+      } catch (err) { /* a shell that cannot resize must not break the toggle */ }
+    }
     return changed;
   }
   function show() { return setFloat(true); }

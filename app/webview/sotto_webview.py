@@ -6680,12 +6680,23 @@ class SottoShell:
         positive finite pixel value answers `None` and the caller falls back, with
         the fallback logged.
         """
+        # THE SCRIPT WAS SYNTACTICALLY BROKEN, AND I BROKE IT. Measured
+        # 2026-10-12: `STRIP_HEIGHT source=fallback value=148 ... why=css-unavailable`
+        # on EVERY surface application, i.e. the window was sized by
+        # STRIP_HEIGHT_FALLBACK and never by the stylesheet. The cause was this
+        # string: the `flo` line was spliced BETWEEN `const v =
+        # getComputedStyle(document.documentElement)` and its `.getPropertyValue`,
+        # producing `const v = getComputedStyle(...)const flo = ...` -- a
+        # SyntaxError -- plus a second `const v` and a stray `})()`. A script that
+        # cannot parse returns nothing, so the read "failed" quietly every time and
+        # the strip stayed 148 px while `panel.css` says `--strip-height: 40px`.
+        # Built as ONE valid statement chain now, and the probe measures it.
         script = ("(() => {"
-                  "const v = getComputedStyle(document.documentElement)"
-                  "const flo = document.documentElement.getAttribute('data-float') === 'on';"
-                  f"const v = getComputedStyle(document.documentElement)"
+                  "const de = document.documentElement;"
+                  "if (!de) return null;"
+                  "const flo = de.getAttribute('data-float') === 'on';"
+                  "const v = getComputedStyle(de)"
                   f".getPropertyValue(flo ? '{FLOAT_HEIGHT_CSS_VAR}' : '{STRIP_HEIGHT_CSS_VAR}');"
-                  "})()"
                   "return v === null || v === undefined ? null : String(v).trim();"
                   "})()")
         try:

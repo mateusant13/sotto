@@ -196,7 +196,7 @@ GATE_REMOVED = (
 
 
 def build_variant(path: str, revert_gate: bool = False,
-                  strip: bool = False) -> str:
+                  strip: bool = False, floated: bool = False) -> str:
     with open(SHELL, encoding='utf-8') as f:
         src = f.read()
     out = src.replace(
@@ -233,6 +233,18 @@ def build_variant(path: str, revert_gate: bool = False,
         out = out.replace(
             show_anchor,
             "self.show_panel('startup', surface='strip')\n", 1)
+        if floated:
+            # A SECOND application, because the surface script above is what sets
+            # `data-float`, and `refresh_strip_height` runs BEFORE it. Re-applying
+            # is what the fixed `setFloat` now does in real use, so this measures
+            # the real ordering instead of the broken one.
+            again = "self.show_panel('startup', surface='strip')\n"
+            if again not in out:
+                raise SystemExit('variant: float re-apply edit did not apply')
+            out = out.replace(
+                again,
+                "self.show_panel('startup', surface='strip')\n"
+                "            self.set_panel_surface('strip', 'float-probe')\n", 1)
         # THE PARKING ABOVE ONLY PATCHES THE PANEL'S `dock_right`. The strip is
         # centred by `dock_strip`, so in --strip mode the window came up AT
         # x=770 ON THE OWNER'S MONITOR -- measured: on_monitor=True
@@ -248,6 +260,20 @@ def build_variant(path: str, revert_gate: bool = False,
             geom_anchor,
             "        geometry = self.geometry_for(name)\n"
             "        geometry['x'] = -10000  # OFF-SCREEN copy (paint-probe)\n", 1)
+    # THE FLOATED CAPTION IS THE ONLY SURFACE WHERE THE PAGE DOES NOT PAINT THE
+    # WHOLE WINDOW, so it is the only one that can answer the owner's actual word:
+    # *"invisivel"*. `data-float="on"` is written by caption-float.js in normal
+    # use; here it is written from the shell's own surface script, which runs when
+    # the page is already loaded, so the float layout and --float-height are real.
+    if floated:
+        surf_anchor = ("'return window.SottoSurfaces.current(); } return null; })()'")
+        if surf_anchor not in out:
+            raise SystemExit('variant: --float edit did not apply — refusing')
+        out = out.replace(
+            surf_anchor,
+            "'document.documentElement.setAttribute(\\'data-float\\',\\'on\\'); "
+            "document.body.setAttribute(\\'data-float\\',\\'on\\'); "
+            "return window.SottoSurfaces.current(); } return null; })()'", 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
@@ -362,12 +388,13 @@ def main() -> int:
         secs = float(a[a.index('--secs') + 1])
     revert = '--revert-gate' in a
     strip = '--strip' in a
+    floated = '--float' in a
     suffix = '-control' if revert else ''
     log('PAINT panel-paint-probe start='
         f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} secs={secs} '
         f'revert_gate={revert}')
     p = os.path.join(VARIANT_DIR, '_paint-offscreen-sotto_webview.py')
-    sha = build_variant(p, revert_gate=revert, strip=strip)
+    sha = build_variant(p, revert_gate=revert, strip=strip, floated=floated)
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
         f'revert_gate={revert}')
     try:
