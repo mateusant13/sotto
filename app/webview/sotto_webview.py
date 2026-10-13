@@ -6997,7 +6997,31 @@ class SottoShell:
             warn(f'PANEL_SURFACE_REFUSED surface={json.dumps(str(surface))} '
                  f'reason={reason}')
             return False
+        # THE SECOND HALF OF THE LOOP, AND IT BELONGS HERE AS WELL AS IN THE PAGE.
+        #
+        # MEASURED 2026-10-13 by the shell audit: in the log tail, 30 647 applications
+        # carried reason strip-float-off against FIVE real hotkey transitions -- 6129 to 1
+        # repeated work over real transitions. The surface path is 78.5% of the log BYTES,
+        # 98.2% counting the write failures, and the whole rest of the app -- worker,
+        # captions, tray, autostart -- is 1.85%.
+        #
+        # `panel.js:1913` got its guard today, which closes the loop from the page side.
+        # This is the SHELL side, on purpose: if the page guard were the only thing
+        # between this app and that loop, the next regression would be worse than the one
+        # just fixed -- and today's bounded retry in write_atomic measures 482 ms per
+        # failed write, which at the loop's own rate would be ~15 s of sleep per second.
+        #
+        # IDEMPOTENT ON (name, reason): a repeated call that asks for the surface the
+        # window is ALREADY on, for the SAME reason, does nothing and says so by
+        # returning True. A genuine transition changes the name; a genuine re-apply
+        # (hotkey, --show, hot-reload, navigation) changes the reason. Neither is
+        # suppressed. The first call of a run has no previous reason, so it always runs.
+        prev = (self.surface, getattr(self, '_surface_reason', None))
         self.surface = name
+        self._surface_reason = reason
+        if prev[0] == name and prev[1] == reason:
+            return True
+        self.surface_applied = name
         if name == 'strip':
             # THE STYLESHEET DECIDES THE HEIGHT (`panel.css:52`), and this is the
             # moment it matters: the page is loaded by the time a surface is
