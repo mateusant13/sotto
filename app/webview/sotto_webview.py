@@ -668,11 +668,19 @@ def _open_log(path):
         # This runs BEFORE the append open, because on Windows the app holds the file and
         # it cannot be rotated from outside while the shell is alive.
         #
-        # IT KEEPS THE TAIL AND DELETES NOTHING: the newest lines are the ones that
-        # diagnose a live problem, and the rest is moved aside to `<log>.1` rather than
-        # discarded, so a user who wants the history still has it. A failure here is
-        # swallowed on purpose -- a log that cannot be rotated must never stop the app
-        # from starting, and the append below still works either way.
+        # IT KEEPS THE TAIL AND DISCARDS THE REST, and the first version of this comment
+        # claimed the opposite -- it said the remainder was "moved aside to <log>.1 rather
+        # than discarded, so a user who wants the history still has it". THE CODE DOES NOT
+        # DO THAT: it writes the TAIL into `<log>.1` and then `os.replace`s it onto the
+        # log, so the OLD content is gone and no `.1` survives. MEASURED IN PRODUCTION
+        # 2026-10-13 14:46: `LOG_ROTATED from=847859845 B kept=16777081 B cap=64 MB`, and
+        # `_main/webview-run.log.1` does not exist.
+        #
+        # The BEHAVIOUR is the one intended -- bounded file, newest lines kept -- but the
+        # claim was false and is corrected here rather than left to be quoted.
+        #
+        # A failure here is swallowed on purpose -- a log that cannot be rotated must never
+        # stop the app from starting, and the append below still works either way.
         try:
             cap_mb = int(os.environ.get('SOTTO_LOG_CAP_MB', '64'))
             keep_mb = int(os.environ.get('SOTTO_LOG_KEEP_MB', '16'))
