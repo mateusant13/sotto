@@ -38,18 +38,18 @@
  * So the shipped token list is not "everything a theme declares" — it is only
  * the tokens a shipped rule actually CONSUMES, and `_main/theme-tune-oracle.js`
  * gates it: for every token below, `var(--token)` must appear in the panel's
- * own CSS, or the oracle goes RED. Three tokens the themes declare are
- * therefore ABSENT on purpose, with the measurement in the oracle:
- *   * `--slab-opacity`  — declared 0.96–0.99 in all five themes, read by
- *     nothing: the slab's own background bakes the percentage into
- *     `color-mix(... 97% ...)` at generation time. Editing it would do nothing.
- *   * `--text-confirmed` — declared by all five themes, consumed by no rule
- *     (a confirmed line is painted with `--text-secondary`, see
- *     `themes/theme-1.css:226-231`).
- *   * `--font-caption` / `--font-closed` — declared as `var(--font-sans)` by
- *     all five, consumed by no rule; the caption family comes from
- *     `--font-sans` directly (`themes/theme-1.css:217`). `--font-sans` is the
- *     knob that moves, and it moves BOTH tiers, which is the truth.
+ * own CSS, or the oracle goes RED. RE-BASELINED 2026-10-12: this block used to
+ * name three tokens as ABSENT ON PURPOSE (`--slab-opacity`, `--text-confirmed`,
+ * `--font-caption`/`--font-closed`), because the themes declared them and no rule
+ * read them. That was a real defect, not a design: the dialog offered knobs that
+ * moved nothing, and the oracle PINNED it. A lane closed all four -- three were
+ * deleted outright and `--text-confirmed` gained a reader (the rule painting the
+ * confirmed ink wrote the literal, and the literal IS the token value in all ten
+ * designs; same colour, one source). The oracle now asserts the POSITIVE form
+ * over those four names, so re-declaring `--slab-opacity` turns it RED.
+ *
+ * The rule that has NOT changed: every knob this module offers must be consumed
+ * by shipped CSS, and the oracle says so as `EVERY knob is consumed`.
  *
  * ── THE DEFAULTS ARE READ, NEVER COPIED ───────────────────────────────────────
  * "Restore this theme" has to mean the value `gen_themes.py` wrote, not a second

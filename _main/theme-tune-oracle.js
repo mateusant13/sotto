@@ -163,18 +163,46 @@ check('liveness: EVERY knob is consumed by shipped CSS', unconsumed.length === 0
 const dupes = tokens.filter((t, i) => tokens.indexOf(t) !== i);
 check('liveness: no token is written by two knobs', dupes.length === 0, dupes.join(', '));
 
-/* THE KNOWN-INERT TOKENS MUST NOT BE OFFERED. This is the positive statement of
- * the same rule, with the three names this repo measured as declared-and-unread. */
-const INERT = ['--slab-opacity', '--text-confirmed', '--font-caption', '--font-closed'];
+/* RE-BASELINED 2026-10-12 (Lead). This list used to name four tokens MEASURED
+ * declared-and-unread -- --slab-opacity, --text-confirmed, --font-caption,
+ * --font-closed -- and the arms below PINNED that state. The module offered all
+ * four, so the owner could turn a knob that moved nothing, and the arms asserted
+ * the tokens STAYED unread. That is why they went RED the moment a lane fixed
+ * it: a gate that pins a defect stops being evidence once the defect is gone, and
+ * it was the GATE that had to change, not the fix.
+ *
+ * All four are closed. Three were DELETED outright; --text-confirmed GAINED a
+ * reader (the rule painting the confirmed ink wrote the literal, and the literal
+ * IS the token value in all ten designs -- same colour, one source).
+ *
+ * So INERT is EMPTY, and an empty list makes the loop below VACUOUS. That is an
+ * ABSENT control, not a passing one, and it is written here rather than left to
+ * look green. The property is asserted in the POSITIVE form instead, over the
+ * exact four names, with the right claim for each: a deleted token must NOT be
+ * declared anywhere, and the one that was kept must BE consumed. Both halves can
+ * fail -- re-declare --slab-opacity and the first arm goes RED. */
+const INERT = [];
+const CLOSED_20261012 = [
+  { t: '--text-confirmed', how: 'consumed' },
+  { t: '--slab-opacity', how: 'deleted' },
+  { t: '--font-caption', how: 'deleted' },
+  { t: '--font-closed', how: 'deleted' },
+];
+for (const { t, how } of CLOSED_20261012) {
+  const declared = css.includes(`${t}:`);
+  const consumed = tokenIsConsumed(t);
+  check(`liveness: ${t} is closed (${how})`,
+    how === 'consumed' ? consumed : !declared,
+    `declared=${declared} consumed=${consumed}`);
+}
 const offeredInert = INERT.filter((t) => tokens.indexOf(t) >= 0);
 check('liveness: the measured-inert tokens are not offered', offeredInert.length === 0,
-  offeredInert.join(', '));
+  offeredInert.join(', ') || 'none left');
 for (const t of INERT) {
-  /* They are declared in the themes — that is WHY they are the trap. */
   check(`liveness: ${t} really is declared in a theme (so it is a trap, not a typo)`,
     css.includes(`${t}:`), '');
   check(`liveness: ${t} is declared and NOT consumed (the reason it is refused)`,
-    !tokenIsConsumed(t), tokenIsConsumed(t) ? `${t} IS consumed — revisit the exclusion` : 'declared, read by nothing');
+    !tokenIsConsumed(t), '');
 }
 
 /* ── ARM 8: the wiring in the document ──────────────────────────────────────
