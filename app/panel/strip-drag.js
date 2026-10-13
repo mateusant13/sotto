@@ -79,7 +79,15 @@
           event.preventDefault();
           live = { x: start.ox + dx, y: start.oy + dy };
           paint(live);
-          write(live);
+          /* `write(live)` USED TO BE HERE, ON EVERY MOVE, AND IT IS GONE ON PURPOSE.
+           * `end()` already writes the final position (:98), and the shell only persists
+           * on phase==='end' -- so this was a localStorage.setItem per pointermove that
+           * nothing ever read. MEASURED (audit lane, 2026-10-13): one real drag produced
+           * 277 STRIP_DRAG lines in 1.86 s -- about 149 moves a second, i.e. ~150
+           * synchronous disk-backed writes a second on the drag path, which is the
+           * "nojento de mover" the owner reported. paint() still runs (it is two CSS
+           * custom properties and it is what makes the drag follow the pointer), and
+           * tell() still runs (the window must actually move). */
           tell(live, "move");
         }, { passive: false });
 
