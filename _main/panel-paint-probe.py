@@ -111,6 +111,40 @@ def find_panel_window(pid: int):
     return hits
 
 
+def _write_png(path, w: int, h: int, px: bytes) -> int:
+    """BGRA bytes (top-down) to a PNG. Stdlib only: zlib + struct."""
+    import struct
+    import zlib
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)                      # filter type 0 for every row
+        row = px[y * w * 4:(y + 1) * w * 4]
+        for x in range(w):
+            i = x * 4
+            raw += bytes((row[i + 2], row[i + 1], row[i], row[i + 3]))  # BGRA
+    # THE ALPHA IS THE WHOLE POINT of carrying it: `form.BackColor =
+    # Color.Transparent` either makes the unpainted pixels see-through or it does
+    # not, and a sha256 cannot tell you which. Reported here so the claim
+    # "the overlay is invisible" is a number and not an impression.
+    alphas = {}
+    for i in range(3, len(px), 4):
+        alphas[px[i]] = alphas.get(px[i], 0) + 1
+    top = sorted(alphas.items(), key=lambda kv: -kv[1])[:5]
+    print('ALPHA %s' % ' '.join('%d:%d' % (a, n) for a, n in top), flush=True)
+
+    def chunk(tag, data):
+        return (struct.pack('>I', len(data)) + tag + data
+                + struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff))
+
+    body = (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(bytes(raw), 6))
+            + chunk(b'IEND', b''))
+    with open(path, 'wb') as fh:
+        fh.write(body)
+    return len(body)
+
+
 def capture(hwnd, w: int, h: int) -> dict:
     """PrintWindow into a DIB and summarise the pixels (distinct colours)."""
     hdc = user32.GetWindowDC(wintypes.HWND(hwnd))
@@ -132,6 +166,18 @@ def capture(hwnd, w: int, h: int) -> dict:
     gdi32.DeleteDC(mem)
     user32.ReleaseDC(wintypes.HWND(hwnd), hdc)
     px = buf.raw[:w * h * 4]
+    # OPTIONAL PNG, added 2026-10-12 by the Lead. The probe reported a sha256 and
+    # a colour count, which proves THAT something painted but never WHAT -- and
+    # the owner's complaints are all about what he sees. With SOTTO_PAINT_PNG set
+    # the same pixels are written out so a human (or an agent reading the image)
+    # can look at the surface instead of trusting a hash.
+    dest = os.environ.get('SOTTO_PAINT_PNG')
+    if dest:
+        try:
+            n = _write_png(dest, w, h, px)
+            print('PNG %s %dx%d %d B' % (dest, w, h, n), flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print('PNG_FAILED %r' % (exc,), flush=True)
     colours = set()
     for i in range(0, len(px) - 3, 4):
         colours.add(px[i:i + 3])
@@ -159,6 +205,22 @@ def build_variant(path: str, revert_gate: bool = False) -> str:
         "        self.geometry['x'] = -10000\n", 1)
     if out == src:
         raise SystemExit('variant: offscreen edit did not apply — refusing')
+    # THE SAVED RECT DEFEATS THE OFF-SCREEN PARKING, and that is not theoretical.
+    # `geometry_for` returns `saved_geometry` whenever one exists for the surface
+    # (sotto_webview.py:6607), so the `x = -10000` above is OVERWRITTEN and the
+    # window appears ON THE OWNER'S DESK. MEASURED 2026-10-12: the probe logged
+    # `PANEL_VISIBILITY_ON_SCREEN visible=true` and then found no window to
+    # capture, because the one it made sat at the saved `panel` x=1528 and not at
+    # -10000. The parking only ever worked while NO saved rect existed, and one
+    # Alt+C run creates one. So the variant drops the saved rect as well, and
+    # REFUSES rather than running if the anchor has moved.
+    restored = "        self.restore_saved_geometry()\n"
+    if restored not in out:
+        raise SystemExit('variant: saved-geometry edit did not apply — refusing')
+    out = out.replace(
+        restored,
+        "        # OFF-SCREEN copy: a saved rect would beat the parking above\n"
+        "        self.saved_geometry = None\n", 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
