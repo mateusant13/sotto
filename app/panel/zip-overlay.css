@@ -173,3 +173,41 @@ body[data-surface="strip"] .captions__list > li:nth-last-child(2) { opacity: 0.7
 body[data-surface="strip"] .captions__list > li:nth-last-child(3) { opacity: 0.50 !important; }
 body[data-surface="strip"] .captions__list > li:nth-last-child(4) { opacity: 0.34 !important; }
 body[data-surface="strip"] .captions__list > li:nth-last-child(n+5) { opacity: 0.22 !important; }
+
+/* ======================================================================================
+ * CORRECTION, AND IT IS THE MOST IMPORTANT LINE IN THIS FILE:
+ *
+ *   >>> STEP 3 ABOVE TARGETS THE WRONG ELEMENT. IT IS INERT. <<<
+ *
+ * FOUND 2026-10-13 while chasing why the caption fixture never painted a single row, after
+ * three fixture variants failed identically. The answer was in panel.css the whole time:
+ *
+ *   panel.css:2855   body[data-surface="strip"] .captions { display: none; }
+ *
+ * and the comment above it: "NOTHING ELSE RENDERS ON THIS SURFACE ... The row is 22px of
+ * buttons and nothing may push it taller."
+ *
+ * SO ON THE STRIP SURFACE THE ENTIRE `.captions` BLOCK IS display:none BY DESIGN. Every
+ * rule in step 3 sets properties on elements that are NOT RENDERED THERE. It is not
+ * "unverified" -- it can have NO EFFECT AT ALL, and the byte-identical renders were the
+ * correct result rather than a mystery.
+ *
+ * AND THE REAL TARGET IS A DIFFERENT ELEMENT, which caption-float.css names:
+ *
+ *   caption-float.css:21   the float "paints over the FULL panel"
+ *   caption-float.css:48   #caption-float[data-float="on"]
+ *   caption-float.css:132  body[data-surface="strip"] #caption-float[data-float="on"]
+ *
+ * **`#caption-float` IS THE FLOATING CAPTION OVERLAY -- the element the owner point 2 is
+ * about ("legenda INDEPENDENTE do painel, nao acoplada, sem fundo nenhum").** `.captions` is
+ * the caption BOX on the PANEL surface, a different thing that happens to share the word.
+ *
+ * WHAT STEP 3 SHOULD HAVE BEEN: right-aligned column, no frame, faded older lines -- applied
+ * to `#caption-float` on `body[data-float="on"]`, NOT to `.captions__list` on the strip.
+ * That has NOT been done. It needs the inner markup of `#caption-float`, which has not been
+ * read, and guessing it would repeat exactly the mistake this note corrects.
+ *
+ * THE STEP-3 RULES ARE LEFT IN PLACE, NOT DELETED, because deleting them would hide that
+ * someone wrote them -- and they are inert, so they cost nothing at runtime. The next attempt
+ * replaces them.
+ * ====================================================================================== */
