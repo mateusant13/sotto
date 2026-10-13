@@ -570,14 +570,23 @@ def build_variant(path: str, revert_gate: bool = False,
                    # the wrong move target, then "corrected" the element to `.stripbar`,
                    # which is a DIFFERENT handler in panel.js and not this one. Two
                    # guesses, both wrong, and the source said so the whole time.
+                   # EVERY PROPERTY THE HANDLER READS IS SET EXPLICITLY NOW. The
+                   # handler (panel.html:1140) starts with `if (event.button !== 0)
+                   # return;` and then a `closest("button, a, input, select, textarea")`
+                   # guard. A constructed PointerEvent defaults `button` to 0, which
+                   # SHOULD pass -- but a default and an explicit value are not the same
+                   # thing to assert, and `isPrimary`/`pointerType`/`buttons` are read by
+                   # pointer code elsewhere. Set them all, so a failure means the drag
+                   # does not work and not that the event was malformed.
+                   'var P=function(t,x,y){return new PointerEvent(t,{clientX:x,clientY:y,'
+                   'bubbles:true,cancelable:true,composed:true,pointerId:1,pointerType:"mouse",'
+                   'isPrimary:true,button:0,buttons:1});};'
                    'var b=document.getElementById("strip-controls");if(!b)return;'
                    'var r=b.getBoundingClientRect();'
                    'var x0=r.left+20,y0=r.top+10;'
-                   'var o={bubbles:true,pointerId:1};'
-                   'b.dispatchEvent(new PointerEvent("pointerdown",'
-                   '{clientX:x0,clientY:y0,bubbles:true,pointerId:1}));'
-                   'window.dispatchEvent(new PointerEvent("pointermove",'
-                   '{clientX:x0+' + _dx + ',clientY:y0+' + _dy + ',bubbles:true,pointerId:1}));'
+                   'b.dispatchEvent(P("pointerdown",x0,y0));'
+                   'window.dispatchEvent(P("pointermove",x0+' + _dx + ',y0+' + _dy + '));'
+                   'window.dispatchEvent(P("pointermove",x0+' + _dx + ',y0+' + _dy + '));'
                    'window.dispatchEvent(new PointerEvent("pointerup",'
                    '{clientX:x0+' + _dx + ',clientY:y0+' + _dy + ',bubbles:true,pointerId:1}));'
                    '}catch(e){}},900);')
