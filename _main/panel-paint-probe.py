@@ -195,7 +195,8 @@ GATE_REMOVED = (
 )
 
 
-def build_variant(path: str, revert_gate: bool = False) -> str:
+def build_variant(path: str, revert_gate: bool = False,
+                  strip: bool = False) -> str:
     with open(SHELL, encoding='utf-8') as f:
         src = f.read()
     out = src.replace(
@@ -221,6 +222,32 @@ def build_variant(path: str, revert_gate: bool = False) -> str:
         restored,
         "        # OFF-SCREEN copy: a saved rect would beat the parking above\n"
         "        self.saved_geometry = None\n", 1)
+    # THE STRIP, NOT THE PANEL. `--show` hardcodes `surface='panel'`
+    # (sotto_webview.py:4557), and the strip is the surface the owner's slab
+    # complaint is ABOUT: 1040 px of window painting #0B0F14 under a small pill.
+    # Capturing the panel cannot see that, so the variant opens the strip.
+    if strip:
+        show_anchor = "self.show_panel('startup', surface='panel')\n"
+        if show_anchor not in out:
+            raise SystemExit('variant: --strip edit did not apply — refusing')
+        out = out.replace(
+            show_anchor,
+            "self.show_panel('startup', surface='strip')\n", 1)
+        # THE PARKING ABOVE ONLY PATCHES THE PANEL'S `dock_right`. The strip is
+        # centred by `dock_strip`, so in --strip mode the window came up AT
+        # x=770 ON THE OWNER'S MONITOR -- measured: on_monitor=True
+        # rect=(770, 884, 1150, 1032). Parking inside `dock_strip` does NOT work
+        # either: it ends with `max(work['x'], round(x))`, which clamps -10000
+        # straight back to 0 (tried, measured, still on_monitor=True). So the park
+        # is applied AFTER `geometry_for`, which is the one point both surfaces
+        # pass through, and this REFUSES if the anchor has moved.
+        geom_anchor = "        geometry = self.geometry_for(name)\n"
+        if geom_anchor not in out:
+            raise SystemExit('variant: geometry_for edit did not apply — refusing')
+        out = out.replace(
+            geom_anchor,
+            "        geometry = self.geometry_for(name)\n"
+            "        geometry['x'] = -10000  # OFF-SCREEN copy (paint-probe)\n", 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
@@ -334,12 +361,13 @@ def main() -> int:
     if '--secs' in a:
         secs = float(a[a.index('--secs') + 1])
     revert = '--revert-gate' in a
+    strip = '--strip' in a
     suffix = '-control' if revert else ''
     log('PAINT panel-paint-probe start='
         f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} secs={secs} '
         f'revert_gate={revert}')
     p = os.path.join(VARIANT_DIR, '_paint-offscreen-sotto_webview.py')
-    sha = build_variant(p, revert_gate=revert)
+    sha = build_variant(p, revert_gate=revert, strip=strip)
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
         f'revert_gate={revert}')
     try:
