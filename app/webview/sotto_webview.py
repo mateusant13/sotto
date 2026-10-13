@@ -6576,7 +6576,19 @@ class SottoShell:
         # 'stats' is the fallback for a line that declares no tag at all.
         payload['tag'] = (fields.get('tag') if isinstance(fields, dict) else None) or 'stats'
         if isinstance(fields, dict):
-            for key in ('peak', 'blocks'):
+            # `queue_drops` IS WHITELISTED HERE, and it is a MEASUREMENT, not an invention.
+            # MEASURED 2026-10-13 by the trade-off audit: worker/sotto_worker.py:4949 prints
+            # `queue_drops=` on EVERY WORKER_STATS line, and `parse_worker_stats` keeps EVERY
+            # `key=value` token in `fields`. The shell was already HOLDING this number and
+            # filtering it out -- which is why the panel's "behind" chip (panel.js) has a
+            # branch that has NEVER been able to fire: it was waiting on a field this file
+            # was dropping.
+            #
+            # `rate` STAYS OUT, and that is not the same kind of omission: nothing here
+            # computes a rate, and the comment above is right that inventing one would
+            # light a chip about a lag nobody measured. A dropped-by-the-worker key stays
+            # ABSENT (never zero) so the panel keeps treating absent as "no measurement".
+            for key in ('peak', 'blocks', 'queue_drops'):
                 value = fields.get(key)
                 if value is None:
                     continue
