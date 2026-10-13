@@ -340,6 +340,27 @@ PAGE_READBACK_JS = r"""
       document.querySelectorAll('link[data-sotto-lazy],script[data-sotto-lazy]'),
       function (e) { return String(e.getAttribute('href') || e.getAttribute('src')); });
     out.sheets = document.styleSheets.length;
+    // ── THE HEADER OVERLAP, AND WHY A DOM DUMP COULD NOT SEE IT ──────────────
+    // Three candidates were refuted by reading the DOM; what none of them could
+    // show is the COMPUTED style. This reads it over the seam that works.
+    try {
+      var hdr = document.querySelector(".panel__header");
+      out.hdrKids = hdr ? Array.prototype.map.call(hdr.children, function (e) {
+        var cs = getComputedStyle(e);
+        return { k: String(e.className || e.tagName), d: cs.display, v: cs.visibility,
+                 o: cs.opacity, x: String(e.textContent || "").replace(/\s+/g, " ").slice(0, 26) };
+      }) : null;
+      out.headerTxt = hdr ? String(hdr.textContent || "").replace(/\s+/g, " ").slice(0, 90) : null;
+      out.chromeStates = Array.prototype.map.call(document.querySelectorAll(".chrome__state"),
+        function (e) {
+          var par = e.closest(".chrome");
+          var on = e.querySelector(".chrome__on"), off = e.querySelector(".chrome__off");
+          return { parent: par ? getComputedStyle(par).display : "?",
+                   self: getComputedStyle(e).display,
+                   on: on ? getComputedStyle(on).display : "?",
+                   off: off ? getComputedStyle(off).display : "? " };
+        });
+    } catch (e2) { out.hdrErr = String(e2); }
   } catch (e) { out.err = String(e); }
   return JSON.stringify(out);
 })()
