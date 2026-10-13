@@ -5042,6 +5042,18 @@ def main():
         # worth of audio, not a stream's.
         seg_pcm = {}
 
+        def _second_pass_enabled():
+            """The M3 second pass, OFF by default. See `finalise` for the measurement.
+
+            `SOTTO_SECOND_PASS=1` brings it back. The audit that measured it gave
+            the number that decided this: 50.9% of all inference time in the owner
+            own run, for a text that differs from the last partial in 5 of 5 cases and
+            is no better -- while the project's own notes already said re-decoding
+            with the same checkpoint cannot fix the error, only the cut, and the cut
+            is delivered by M2."""
+            val = os.environ.get("SOTTO_SECOND_PASS", "").strip().lower()
+            return val in ("1", "true", "yes", "on")
+
         def rerun(closed):
             """M3 — the SECOND PASS over the WHOLE segment of one closed line.
 
@@ -5146,11 +5158,32 @@ def main():
             whole cure exists to fix — but the fallback is declared on stderr, not
             passed off as a second pass.
             """
-            try:
-                text = rerun(closed)
-            except Exception as exc:
-                err(f"second pass failed ({type(exc).__name__}: {exc}); "
-                    f"shipping the streaming line")
+            # THE SECOND PASS IS OPT-IN AND OFF BY DEFAULT, and that is measured, not
+            # a guess. MEASURED 2026-10-13 (trade-off audit, four independent artefacts):
+            # the second pass costs between 0.84x and 1.06x the ENTIRE inference wall time --
+            # in the owner own 4 h run, rerun_wall_s=628.66 against infer_wall_s=607.54, so
+            # 50.9% of ALL inference went to it, and RTF went 0.0425 -> 0.0864 (2.03x). It runs
+            # on the ASR thread, so it blocks the stream.
+            #
+            # IT ALSO BUYS NOTHING MEASURABLE. In _worker-fixed.out the 5 `final` lines differ
+            # from the last partial of the same `start` in 5 of 5, and both are equally
+            # word-salad. The project's own audit (docs/audit/ao-vivo-vs-redux.md section 6.3)
+            # already says re-decoding with the SAME checkpoint cannot fix the error, only the
+            # cut -- and the cut is delivered by M2. Its 7.2 listed this cost as UNMEASURED.
+            #
+            # The FALLBACK below is the path that now runs by default, and it was ALWAYS the
+            # declared path for a segment whose audio is no longer held or whose pass raised --
+            # so turning this off removes work without introducing a new failure mode.
+            #
+            # SOTTO_SECOND_PASS=1 re-enables it for anyone who wants the old behaviour.
+            if _second_pass_enabled():
+                try:
+                    text = rerun(closed)
+                except Exception as exc:
+                    err(f"second pass failed ({type(exc).__name__}: {exc}); "
+                        f"shipping the streaming line")
+                    text = None
+            else:
                 text = None
             ev = dict(closed)
             ev["text"] = text or ev.get("text") or ""
