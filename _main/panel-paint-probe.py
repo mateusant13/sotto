@@ -398,7 +398,13 @@ def main() -> int:
     log(f'VARIANT sha256_live={sha} path={os.path.basename(p)} '
         f'revert_gate={revert}')
     try:
-        asked = arm('asked' + suffix, ['--show'], secs, p, wait_for_show=True)
+        # `--opaque` is the A/B for the TRANSPARENCY. The shell sets the form
+        # BackColor to #0B0F14 only under that flag and to Color.Transparent
+        # otherwise, so running the SAME capture both ways isolates what the form
+        # contributes to the pixels the page does not paint. Without this pair, a
+        # capture showing grey tells you nothing about whether the slab is gone.
+        extra_asked = ['--show'] + (['--opaque'] if '--opaque' in a else [])
+        asked = arm('asked' + suffix, extra_asked, secs, p, wait_for_show=True)
         notasked = arm('notasked' + suffix, [], secs, p)
     finally:
         if os.path.exists(p):
