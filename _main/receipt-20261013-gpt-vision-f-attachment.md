@@ -48,3 +48,32 @@ screenshot flag before concluding anything about vision.
 same size, and **the owner can look at them right now** -- that part is done and needs nothing more
 from me. What is still missing is a machine that can describe what is in them, and the candidate
 for that is `gpt`, reached by a path this receipt does not contain.
+
+## FOLLOW-UP: the full option list, and there is no image path
+
+`gpt help` is 12 213 B and enumerates **39 options**. Every one of them is text or code
+oriented: `--files` (code context), `--lines`, `--cite-extract` / `--cite-context` /
+`--cite-followup` / `--cite-min-lines`, `--codeintel`, `--prompt`, `--prompt-file`, `--repo`,
+`--include-dir`, `--harness`, `--context-window`, `--topic`, `--human`, `--session`,
+`--keep-alive`, `--split-parallel`, `--split-multi-turn`, `--auto`, `--both`, `--ouroboros`,
+`--audit`, `--verbose`, `--dry-run`, and the browser-visibility flags.
+
+A grep of the same file for `image|screenshot|vision|png|jpg|attach|photo` returns FOUR lines,
+and none is a capability: line 27 is the `--files` description ("attach files for code
+context"), line 141 is the same flag in the summary table, line 143 is `--no-code`, and line
+198 is `reconnect | Re-attach to a kept-alive session`. **There is no flag that sends an image.**
+
+**So the AGENTS.md sentence cannot be exercised through this CLI as written.** That is not the
+same as calling it false: the sentence describes what the TOOL is for, and the round of the five
+designs may well have been done by showing the mockups some other way -- but the how-to does not
+say which way, and 39 documented options do not contain it. **Whoever needs a machine that can
+describe a screenshot has to find that path first, and it is not in `gpt help`.**
+
+## What this leaves, stated once and plainly
+
+The renders are produced, they are in the repository, they were made by one engine at one size,
+and **the only remaining instrument is the owner looking at them**. Everything else about item 10
+that can be measured by a machine has been: 50 of 50 designs implemented, 0 recolours among 45
+themes, every zip design mapped to its live theme, and the structural difference for zip C
+measured at 0 before and 63 after. The last question -- does it LOOK right -- has no machine
+here that can answer it.
