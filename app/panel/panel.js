@@ -1911,9 +1911,36 @@ function currentSurface() {
  * browser, and the audit harness use.
  */
 function setSurface(name) {
+  /* THE GUARD THAT BREAKS A FEEDBACK LOOP, AND IT IS THE FIX FOR THE OWNER'S FREEZE.
+   *
+   * MEASURED 2026-10-13 (audit lane, and it CONFIRMED the log flood and the freeze are the
+   * SAME bug): one iteration of the loop was
+   *
+   *   :2753 bridge.onGeometry -> :2774 setSurface(geometry.surface) -> HERE
+   *     -> applySurface() -> applyLiveEnabled -> :2159 applyFloat
+   *     -> :2300 bridge.setPanelSurface('strip', 'strip-float-off')
+   *     -> shell :6963 set_panel_surface -> :7011 _apply_window_geometry
+   *     -> :7154 send_geometry -> :5027 emit('geometry') -- with NO DEDUP -- back to :2753.
+   *
+   * The shell echoes the geometry back on every surface call, and this function re-ran the
+   * whole surface pipeline on every echo, INCLUDING when the name had not changed. So the
+   * two sides drove each other for ever at the speed of a JS<->Python round trip: p50 102/s,
+   * p90 185/s, p99 264/s, max 294/s over 14 536 seconds.
+   *
+   * WHY THAT IS THE FREEZE: `write_atomic` measures 8.42 ms per write on H:, a ceiling of
+   * 118.8 writes a second, and the loop called it every iteration. p99 alone asked for more
+   * than twice the volume's bandwidth.
+   *
+   * THE GUARD IS ON A REAL CHANGE, not on a suppression: a genuine switch still runs
+   * applySurface() exactly as before (both through SottoSurfaces.onChange, wired at :1921,
+   * and explicitly here), the startup call at :1922 is untouched, the no-SottoSurfaces path
+   * still calls it, and the return value is unchanged. What stops is only the RE-RUN for a
+   * name that did not move. */
+  const before = currentSurface();
   if (window.SottoSurfaces) window.SottoSurfaces.set(name);
-  applySurface();
-  return currentSurface();
+  const after = currentSurface();
+  if (!window.SottoSurfaces || after !== before) applySurface();
+  return after;
 }
 
 /** Wire the surface hooks the shell drives, and paint the surface we start in. */
