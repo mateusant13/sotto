@@ -119,9 +119,13 @@ const dom = {
   // the key is gone with it, on the file's own rule that a `null` entry would
   // reintroduce a throw at wire time. `applyTransparency` is kept (below), now
   // unreachable from the UI and harmless if a stale caller still invokes it.
-  // LINHAR — float the caption on the screen (owner, 2026-10-12). Bound in
-  // `wireStripControls`; `null` on an older harness, and the handler null-checks.
-  stripFloatButton: document.getElementById('strip-float-button'),
+  // REMOVED 2026-10-13: `stripFloatButton`. The separate "Linhar" button is gone
+  // from panel.html — the owner's prompts of the handoff conversation put the
+  // caption on the LIVE toggle (*"o botao de mostrar a legenda ao vivo deve ser o
+  // 'live'"*, *"nele eu ativo o segundo overlay, q e a legenda independente"*), so
+  // the key goes with the markup, on this file's own rule that a `null` entry is a
+  // throw waiting for the next reader. `applyFloat` still owns the overlay and
+  // `applyLiveEnabled` is now its only caller.
   // the transcript font dial (owner, 2026-10-09). FOUR buttons, ONE number:
   // two on the panel (`#font-*-button`) and two on the strip
   // (`#strip-font-*-button`) all move the same `--caption-scale`, so the two
@@ -243,7 +247,21 @@ let canonicalProducer = null;
  *                    Cancel gives it back. NEVER an autofocus: the panel does not
  *                    steal focus from the window underneath it.
  */
-let liveEnabled = true;
+/* THE APP SHIPS WITH THE CAPTION **OFF THE SCREEN** (owner, read from his own
+ * prompts of the handoff conversation, 2026-10-12, verbatim):
+ *   *"primeiro, o painel de baixo. NELE EU ATIVO o segundo overlay, q é a legenda
+ *    independente."*   — the caption is ACTIVATED from the bottom panel;
+ *   *"um botao de linhar a legenda, que LIGA ela NA TELA"* — the button TURNS IT ON.
+ * It was `true` until 2026-10-13, which meant Alt+C opened the 220px floated
+ * caption immediately and the thin band the owner keeps asking for was never the
+ * first thing he saw. `false` is the owner's model of his three overlays:
+ *   1 the bottom panel (buttons only, ~40px),
+ *   2 the caption, loose on the screen — switched on BY the `live` button in it,
+ *   3 the right panel.
+ * So the `live` button's OFF state is the SHIPPING state, and its title says what
+ * the click does; the WORD on it is still painted from `aria-pressed`, so it
+ * cannot lie about which state it is in. */
+let liveEnabled = false;
 let paused = false;
 /**
  * TRANSPARENCY (strip only): true while the owner has asked the strip to drop
@@ -1920,11 +1938,12 @@ function applySurface() {
   const body = dom.placeholder && dom.placeholder.querySelector('.captions__placeholder-body');
   if (body) body.title = surface === 'strip' ? body.textContent.trim() : '';
   applyPauseAvailability();
+  // THE LIVE STATE *IS* THE CAPTION-ON-SCREEN STATE now (owner, 2026-10-13):
+  // `applyLiveEnabled` drives `body[data-float]` through `applyFloat`, so this one
+  // call repaints the button AND the overlay after every surface switch. The caption
+  // survives a switch to the panel (the panel already shows the caption) and is
+  // restored on the way back, so the button never lies about what is on screen.
   applyLiveEnabled(liveEnabled, { silent: true });
-  // The floated caption is the strip surface's own state: it survives a switch to
-  // the panel (the panel already shows the caption) and is restored on the way
-  // back, so the button never lies about what is on screen.
-  paintFloatState();
   return surface;
 }
 
@@ -1946,13 +1965,10 @@ function wireStripControls() {
       if (bridge && typeof bridge.hide === 'function') bridge.hide();
     });
   }
-  // LINHAR: float the caption on the screen. One button, one attribute, one window
-  // height — see `applyFloat` for the whole contract.
-  if (dom.stripFloatButton) {
-    dom.stripFloatButton.addEventListener('click', () => {
-      applyFloat(document.body.getAttribute('data-float') !== 'on');
-    });
-  }
+  // LINHAR IS THE LIVE BUTTON NOW (owner, 2026-10-13): the separate float button
+  // was removed from panel.html and the click handler above (`applyLiveEnabled`)
+  // is what moves the overlay, through `applyFloat`. One control, one attribute,
+  // one window height — see `applyFloat` for the whole contract.
   // ONE handler per pause control, bound from a class so the strip's button and
   // the panel's own button cannot drift apart; `wirePause` owns the dialog.
   for (const button of dom.pauseButtons) {
@@ -2119,11 +2135,11 @@ function applyLiveEnabled(enabled, options) {
     dom.stripLiveButton.dataset.wired = wired ? 'true' : 'false';
     dom.stripLiveButton.title = liveEnabled
       ? (wired
-        ? 'Live captions are on. Turn them off to stop the live engine without unloading it.'
-        : 'Live captions are on. This shell does not implement setLiveEnabled() yet, so this switch cannot reach the engine.')
+        ? 'live — the captions are ON SCREEN and the live engine is on. Click to take them off the screen.'
+        : 'live — the captions are ON SCREEN. This shell does not implement setLiveEnabled() yet, so this switch cannot reach the engine.')
       : (wired
-        ? 'Live captions are off. Turn them back on to resume the live engine.'
-        : 'Live captions are shown as off. This shell does not implement setLiveEnabled() yet, so nothing was actually stopped.');
+        ? 'live is off — the captions are off the screen and the live engine is stopped. Click to bring them back.'
+        : 'live is off — the captions are off the screen. Click to put them ON SCREEN, loose like the .zip demos.');
   }
   if (dom.stripLiveLabel) {
     // The word is the control's NAME, not its state: it stays "LIVE" (painted
@@ -2133,6 +2149,14 @@ function applyLiveEnabled(enabled, options) {
   }
   if (dom.stripLiveButton && !liveEnabled) dom.stripLiveButton.dataset.state = 'off';
   else if (dom.stripLiveButton) delete dom.stripLiveButton.dataset.state;
+
+  // THE CAPTION ON SCREEN FOLLOWS THE LIVE STATE (owner, read from his own prompts
+  // of the handoff conversation: *"primeiro, o painel de baixo. NELE EU ATIVO o
+  // segundo overlay, q e a legenda independente."*). ONE FACT, NOT TWO: live-on
+  // means the caption is loose on the screen, and `applyFloat` owns the attribute,
+  // the window height and the overlay. Called on EVERY apply — including the silent
+  // repaint a surface switch triggers — so the button and the screen cannot drift.
+  applyFloat(liveEnabled);
 
   if (!options || options.silent !== true) {
     if (wired) {
@@ -2164,7 +2188,11 @@ function updateStripState() {
     word = 'Paused';
     state = '';
   } else if (!liveEnabled) {
-    word = 'Live off';
+    // THE READOUT SAYS WHAT IS OFF, AND IT IS THE CAPTION. It said 'Live off'
+    // until 2026-10-13, which read as "the transcription stopped" while the worker
+    // was streaming perfectly — the button's own red/grey pill is where LIVE vs
+    // NOT-LIVE is stated, and this word only says the caption is not on screen.
+    word = 'Captions off';
     state = '';
   } else if (kind === 'error') {
     word = 'Error';
@@ -2200,44 +2228,39 @@ function openFullPanel(reason) {
   setSurface('panel');
 }
 /**
- * LINHAR — float the caption on the screen (owner, 2026-10-12, verbatim:
- * *"e ele tem um botao de linhar a legenda, que liga ela NA TELA, igual um overlay,
- * EXATAMENTE IGUAL os .zip fazem"*).
+ * FLOAT THE CAPTION ON THE SCREEN — the ZIP's own behaviour (owner, 2026-10-12:
+ * *"um botao de linhar a legenda, que liga ela NA TELA, igual um overlay,
+ * EXATAMENTE IGUAL os .zip fazem"*; and his own prompts of the handoff
+ * conversation: *"primeiro, o painel de baixo. NELE EU ATIVO o segundo overlay,
+ * q e a legenda independente."*).
  *
- * ONE BUTTON, ONE ATTRIBUTE, ONE WINDOW HEIGHT. `#strip-float-button` flips
- * `body[data-float]`; `caption-float.js` owns the overlay's content; the shell owns
- * the window, and the only runtime resize it has is a re-read of `--strip-height`
- * on `setPanelSurface('strip')` — so the height is raised and lowered THROUGH
- * that call, never by the page touching the window.
+ * ONE CONTROL, ONE ATTRIBUTE, ONE WINDOW HEIGHT — and since 2026-10-13 that
+ * control is `#strip-live-button`, not a button of its own: `applyLiveEnabled`
+ * is the only caller, so "live" and "the caption is on the screen" are ONE fact.
+ * `body[data-float]` is the attribute; `caption-float.js` owns the overlay's
+ * content; the shell owns the window, and the only runtime resize it has is a
+ * re-read of `--float-height`/`--strip-height` on `setPanelSurface('strip')` —
+ * so the height is raised and lowered THROUGH that call, never by the page
+ * touching the window.
  *
  * THE STRIP SURFACE IS THE ONLY ONE THAT FLOATS. The panel already shows the
  * caption, so floating it there would hide the panel to show the same words; and
  * the overlay's own CSS is scoped to `body[data-surface="strip"]`, so the
- * attribute alone can never paint it over the panel.
+ * attribute alone can never paint it over the panel. The shell call is guarded by
+ * the surface for the same reason — see `applyFloat`.
  *
  * FAILURE MODES, all silent by design: a shell without `setPanelSurface` (a
  * browser, the audit harness) still gets the attribute and the layout, just not
- * the resize; a missing button leaves the state readable and nothing throws.
+ * the resize; a document with no live button still gets the overlay.
  */
 function setStripHeight(value) {
   document.documentElement.style.setProperty('--strip-height', value);
 }
 
-/** Paint the floated state onto the button, so the button never lies. */
-function paintFloatState() {
-  if (!dom.stripFloatButton) return;
-  const on = document.body.getAttribute('data-float') === 'on';
-  dom.stripFloatButton.setAttribute('aria-pressed', on ? 'true' : 'false');
-  dom.stripFloatButton.setAttribute('data-strip-float-state', on ? 'on' : 'off');
-  dom.stripFloatButton.setAttribute('aria-label', on
-    ? 'Deslinhar a legenda: voltar a barra de botoes'
-    : 'Linhar a legenda');
-  dom.stripFloatButton.title = on
-    ? 'A legenda esta solta no ecra. Voltar a barra de botoes.'
-    : 'Linhar a legenda: solta no ecra, sem painel, como no zip';
-  const label = dom.stripFloatButton.querySelector('.strip-button__label');
-  if (label) label.textContent = on ? 'Deslinhar' : 'Linhar';
-}
+/* REMOVED 2026-10-13: `paintFloatState()`. It existed to keep the separate
+ * "Linhar" button honest about the overlay it toggled, and that button is gone.
+ * The live button is painted by `applyLiveEnabled` from the SAME boolean that
+ * drives the overlay, so there is no second state left to paint. */
 
 /**
  * Apply the floated state: the attribute, the button, and the window height.
@@ -2260,28 +2283,22 @@ function syncCaptionFloat(state) {
 
 function applyFloat(on) {
   const want = on ? 'on' : 'off';
-  if (document.body.getAttribute('data-float') === want) {
-    paintFloatState();
-    syncCaptionFloat(want);
-    return;
+  if (document.body.getAttribute('data-float') !== want) {
+    document.body.setAttribute('data-float', want);
   }
-  document.body.setAttribute('data-float', want);
   setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);
-  paintFloatState();
   syncCaptionFloat(want);
-  // The shell re-reads `--strip-height` on every `setPanelSurface('strip')`, which
-  // is the only runtime resize this document has. A shell without the call still
-  // gets the attribute and the layout (a browser, the harness).
-  if (bridge && typeof bridge.setPanelSurface === 'function') {
+  // THE WINDOW RESIZE IS THE SHELL'S, AND ONLY WHILE THE STRIP IS UP. The shell
+  // re-reads `--float-height`/`--strip-height` on every `setPanelSurface('strip')`,
+  // which is the only runtime resize this document has. It is called ONLY when the
+  // document already wears the strip: `applyLiveEnabled` runs at load and on every
+  // surface switch, and an unguarded call here would pull the strip onto the
+  // owner's screen while he is looking at the full panel — the exact class of
+  // defect the 2026-10-12 transparency button shipped. On the panel the attribute
+  // and the height are still written, so the strip opens right.
+  if (currentSurface() === 'strip' && bridge && typeof bridge.setPanelSurface === 'function') {
     bridge.setPanelSurface('strip', on ? 'strip-float-on' : 'strip-float-off');
-  } else {
-    setSurface('strip');
   }
-}
-
-/** The button's own toggle. */
-function toggleFloat() {
-  applyFloat(document.body.getAttribute('data-float') !== 'on');
 }
 
 

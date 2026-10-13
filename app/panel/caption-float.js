@@ -2,6 +2,10 @@
  *
  * owner, 2026-10-12, verbatim: *"e ele tem um botao de linhar a legenda, que liga ela NA
  * TELA, igual um overlay, EXATAMENTE IGUAL os .zip fazem."*
+ * and, from his own prompts of the handoff conversation: *"primeiro, o painel de baixo.
+ * NELE EU ATIVO o segundo overlay, q e a legenda independente."* — so this overlay is
+ * ACTIVE ONLY WHEN ASKED, and the control that asks is the strip's `live` button
+ * (the separate "Linhar" button was removed on 2026-10-13). At load it ships OFF.
  * and, the same day, after using it: *"a porra da legenda, e pra ser independente do
  * painel, nao acoplado."* — *"e eu to vendo div com cor solida inves de invisivel."*
  *
@@ -28,9 +32,10 @@
  *     With a panel present it subscribes to NOTHING: panel.js is the single source of
  *     the text, so one caption can never be painted twice.
  *
- * WHAT IT STILL DOES NOT OWN, on purpose: the button (#strip-float-button) and the
- * window height, which belong to panel.js and the shell. The module is a call away from
- * both and a dependency on neither.
+ * WHAT IT STILL DOES NOT OWN, on purpose: the button (since 2026-10-13 that is
+ * #strip-live-button — the separate "Linhar" button was removed) and the window height,
+ * which belong to panel.js and the shell. The module is a call away from both and a
+ * dependency on neither.
  *
  * DEFERRED, like letter-swap.js: it registers itself and nothing else, so a caption that
  * lands before it executes is picked up the moment this module runs. */

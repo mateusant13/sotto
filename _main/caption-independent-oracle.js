@@ -19,7 +19,7 @@
  * events and real attribute writes through the panel's own choke points. No window, no
  * WebView2, no audio, no network, no launch of anything.
  *
- * THE CONTROL ARM (--neg-arm) is the point of the file: six mutants, one at a time,
+ * THE CONTROL ARM (--neg-arm) is the point of the file: eight mutants, one at a time,
  * each applied to a fresh copy of app/panel, and the SAME checks re-run. Every mutant
  * must go RED. One of them (N5) is the owner's own coupling restored: the module is
  * mutated so it can no longer create the overlay it does not find, which is exactly
@@ -117,7 +117,12 @@ function bridgeStub(window, entries) {
       root: function () { return Promise.resolve({ root: 'H:/sotto/history', canonicalProducer: 'redux' }); },
       reveal: function () {},
     },
-    setLiveEnabled: function () { return Promise.resolve({ liveEnabled: true }); },
+    /* ECHOES the requested value, which is what the real shell does (it returns the
+       state it confirmed). It used to answer `true` unconditionally, and under the
+       caption-OFF contract that made the first click's resolved promise "correct" the
+       second click back ON asynchronously -- the stub, not the panel, was moving the
+       overlay. An oracle whose stub lies about its own reply cannot decide the state. */
+    setLiveEnabled: function (on) { return Promise.resolve({ liveEnabled: Boolean(on) }); },
     pause: function () { return Promise.resolve({ paused: true }); },
     setPanelSurface: function (name) {
       if (window.SottoSurfaces) window.SottoSurfaces.set(String(name));
@@ -369,7 +374,7 @@ async function runChecks(dir) {
   arm = 'SETUP';
   check('SETUP every script ran without throwing', p.errors, []);
   checkTrue('SETUP the overlay, the panel and the strip bar are in the document',
-    Boolean(floatEl) && Boolean(panelEl) && Boolean(p.id('strip-float-button')));
+    Boolean(floatEl) && Boolean(panelEl) && Boolean(p.id('strip-live-button')));
   checkTrue('SETUP the two probe tokens are absent from the shipped bytes',
     p.text(doc.body).indexOf(TOKEN_A) < 0 && p.text(doc.body).indexOf(TOKEN_B) < 0);
   checkTrue('SETUP caption-float.js registered window.SottoCaptionFloat', Boolean(api));
@@ -389,8 +394,14 @@ async function runChecks(dir) {
      "sem o painel estar montado nem visivel". */
   panelEl.remove();
   doc.body.setAttribute('data-surface', 'strip');
-  const shown = api.show();
-  check('A3 show() with the panel DETACHED paints the overlay', [shown, p.display(floatEl)], [true, 'block']);
+  api.show();
+  /* RE-BASELINED 2026-10-13: the app ships the caption OFF, so the module's own
+     state is false when this arm runs and show() is a REAL transition (its documented
+     return is "did the state change"). The claim is that the overlay is PAINTED, which
+     state().painted and the resolved display both measure -- it does not depend on
+     which way show() came. */
+  check('A3 show() with the panel DETACHED paints the overlay',
+    [api.state().painted, p.display(floatEl)], [true, 'block']);
   api.push(TOKEN_B, null);
   check('A4 and it paints the text', p.text(p.id('caption-float-line')), TOKEN_B);
   check('A5 the module knows it is standalone', api.state().standalone, true);
@@ -444,9 +455,19 @@ async function runChecks(dir) {
   const doc2 = p2.document;
   const floatEl2 = p2.id('caption-float');
   doc2.body.setAttribute('data-surface', 'strip');
-  const btn = p2.id('strip-float-button');
+  const btn = p2.id('strip-live-button');
+  /* RE-BASELINED 2026-10-13 AGAIN, to the contract the Lead re-applied. The caption
+     control IS #strip-live-button and the app ships the caption OFF (the owner turns
+     the second overlay on FROM the bottom panel: *"NELE EU ATIVO o segundo
+     overlay"*). So A13 asserts UNPRESSED, A13b is the click that puts the caption ON,
+     the panel-surface arm runs while it is ON, and A13c is the click that takes it
+     OFF again -- the reverse of the interim revision. */
+  check('A13 the live button is the caption control and ships UNPRESSED (the caption is OFF)',
+    btn ? btn.getAttribute('aria-pressed') : 'ABSENT', 'false');
   p2.click(btn);
-  check('A13 the panel button floats the overlay', p2.display(floatEl2), 'block');
+  check('A13b clicking live ON puts the caption on the strip screen',
+    [btn.getAttribute('aria-pressed'), doc2.body.getAttribute('data-float'), p2.display(floatEl2)],
+    ['true', 'on', 'block']);
   check('A14 the shell geometry read (documentElement[data-float]) sees it',
     doc2.documentElement.getAttribute('data-float'), 'on');
   check('A15 and the panel attribute is still written for its own CSS',
@@ -464,6 +485,16 @@ async function runChecks(dir) {
   doc2.body.setAttribute('data-surface', 'strip');
   await p2.tick();
   check('A20 and it comes back on the strip', p2.display(floatEl2), 'block');
+  p2.click(btn);
+  check('A13c clicking live OFF takes the overlay off the screen',
+    [btn.getAttribute('aria-pressed'), doc2.body.getAttribute('data-float'), p2.display(floatEl2)],
+    ['false', 'off', 'none']);
+  /* BACK ON for ARM B: B3 measures the PAGE while the caption is FLOATED, and the
+     transparency rule keys on data-float="on". A13c is the only OFF transition, so
+     the arm restores the ON state it needs rather than letting the ordering decide. */
+  p2.click(btn);
+  check('A13d and the caption is back ON, floated, with no page behind it',
+    [btn.getAttribute('aria-pressed'), doc2.body.getAttribute('data-float')], ['true', 'on']);
 
   /* ── B. NOTHING PAINTS ───────────────────────────────────────────────────── */
   arm = 'B';
@@ -632,6 +663,17 @@ async function negArm() {
     { tag: 'N6 the shell cannot see the float state on <html> (caption-float.js)',
       file: 'caption-float.js',
       apply: function (t) { return t.replace("      d.documentElement.setAttribute('data-float', on ? 'on' : 'off');", '      void 0;'); } },
+    /* N7/N8 ARE THE CONTROLS THE 2026-10-13 RE-BASELINE NEEDED, and they break the
+       NEW contract. N7 deletes the ONE call that makes live-on mean caption-on-screen,
+       so A13b/A13c and the panel-surface arms must go RED. N8 restores the interim
+       default (`liveEnabled = true`), so A13's own "ships UNPRESSED" claim and the
+       click direction must go RED. Both are ONE-LINE mutations of TODAY'S panel.js. */
+    { tag: 'N7 the live button no longer drives the overlay (applyFloat call deleted) (panel.js)',
+      file: 'panel.js',
+      apply: function (t) { return t.replace(/  applyFloat\(liveEnabled\);\r?\n/, ''); } },
+    { tag: 'N8 the caption ships ON again (liveEnabled defaults true) (panel.js)',
+      file: 'panel.js',
+      apply: function (t) { return t.replace('let liveEnabled = false;', 'let liveEnabled = true;'); } },
   ];
   let wrong = 0;
   for (const m of muts) {

@@ -17,12 +17,17 @@
  *
  * `--neg-arm`: the same files copied with ONE behaviour removed each, and the SAME
  * checks re-run against the copies. Each mutant must go RED or the oracle cannot
- * say no, and the green is worth nothing. Five mutants:
+ * say no, and the green is worth nothing. RE-BASELINED 2026-10-13 for the owner's
+ * ruling that the LIVE button IS the caption control (*"o botao de legenda pra
+ * ativar a legenda deve ser o botao 'live'. o botao 'live' ativo deve mostrar na
+ * tela as legendas"*). Seven mutants:
  *   M1 the height goes back to the old 100px;
- *   M2 the Linhar button is deleted from the markup;
+ *   M2 the applyFloat(liveEnabled) call is deleted (live no longer drives the caption);
  *   M3 the overlay push in addCaption is deleted;
- *   M4 the runtime height change through setPanelSurface is deleted;
- *   M5 the overlay gains a background (the owner's *"sem fundo"*).
+ *   M4 the runtime height change through setStripHeight is deleted;
+ *   M5 the overlay gains a background (the owner's *"sem fundo"*);
+ *   M6 applyFloat becomes unconditional (the strip-only guard is removed);
+ *   M7 the straight band gets its rounded pill corners back.
  */
 'use strict';
 
@@ -67,11 +72,26 @@ function checks(dir) {
     add("S6 the strip buttons are the lighter fill", /background:\s*rgba\(148,\s*163,\s*184,\s*0\.16\)/.test(b), "rgba(148,163,184,0.16)");
     add("S7 the strip buttons are the lighter border", /border-color:\s*rgba\(148,\s*163,\s*184,\s*0\.3\)/.test(b), "rgba(148,163,184,0.30)");
   }
+  /* THE STRAIGHT BAND (owner, 2026-10-13: *"pro painel de baixo, ele tem que ser
+     mais uma faixa/linha reta."*). The band rule is the strip .panel rule that
+     carries border-radius: 0; the older strip .panel rule (the drag transform)
+     must not be confused with it. */
+  const cssDecls = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const band = /body\[data-surface="strip"\]\s*\.panel\s*\{([^}]*border-radius:\s*0[^}]*)\}/.exec(cssDecls);
+  add("S21 the strip slab is a STRAIGHT BAND (radius 0, no gradient, flat fill, hairline top+bottom)",
+    !!band && !/gradient/.test(band[1]) &&
+    /border:\s*0;/.test(band[1]) &&
+    /border-top:\s*1px solid var\(--line\)/.test(band[1]) &&
+    /border-bottom:\s*1px solid var\(--line\)/.test(band[1]) &&
+    /background:\s*rgba\(11,\s*15,\s*20,\s*0\.98\)/.test(band[1]),
+    band ? (band[1].match(/border-radius:\s*[^;]+/) || ['?'])[0] : "no border-radius:0 strip .panel rule");
 
   /* ---- 2. THE LINHAR BUTTON AND THE OVERLAY --------------------------- */
-  add("S8 #strip-float-button is in the markup", has("strip-float-button"), "present");
-  add("S9 the button carries data-strip-float", /data-strip-float/.test(html), "present");
-  add("S10 the button is aria-pressed", /strip-float-button[^>]*aria-pressed/.test(html), "present");
+  /* THE OWNER'S 2026-10-13 RULING: the caption control IS the live button. */
+  add("S8 #strip-live-button is the ONE caption control in the markup", has("strip-live-button"), "present");
+  add("S9 the separate Linhar button is GONE (one control, not two)", !has("strip-float-button"), has("strip-float-button") ? "STILL PRESENT" : "absent");
+  add("S10 the live button carries aria-pressed (the state the overlay keys on)", /id="strip-live-button"[^>]*aria-pressed/.test(html), "present");
+  add("S10b applyLiveEnabled drives applyFloat (live-on IS caption-on-screen, one fact)", /applyFloat\(liveEnabled\)/.test(js), "present");
   add("S11 #caption-float is in the markup", has("caption-float"), "present");
   for (const id of ["caption-float-line", "caption-float-prev", "caption-float-meter", "caption-float-meter-fill", "caption-float-credits"]) {
     add("S12 #" + id + " is in the markup", has(id), "present");
@@ -101,17 +121,20 @@ const orderMap = {};
 const orderRe = /body\[data-surface="strip"\]\s+(#[A-Za-z0-9_-]+|\.stripbar__brand)\s*\{\s*order:\s*(\d+)\s*;\s*\}/g;
 let om;
 while ((om = orderRe.exec(css)) !== null) orderMap[om[1]] = parseInt(om[2], 10);
-add("S20 the Linhar button declares its own order (the default 0 renders it second)",
-  orderMap["#strip-float-button"] !== undefined,
-  "order=" + orderMap["#strip-float-button"] + " of " + Object.keys(orderMap).length + " ordered children");
-add("S20b the float button renders AFTER Pause and BEFORE the state word",
-  orderMap["#strip-float-button"] > orderMap["#strip-pause-button"] &&
-  orderMap["#strip-float-button"] < orderMap["#strip-state"],
-  "pause=" + orderMap["#strip-pause-button"] + " float=" + orderMap["#strip-float-button"] + " state=" + orderMap["#strip-state"]);
+add("S20 the live button declares its own order (the default 0 would render it before the grip)",
+  orderMap["#strip-live-button"] !== undefined,
+  "order=" + orderMap["#strip-live-button"] + " of " + Object.keys(orderMap).length + " ordered children");
+add("S20b the row order is brand<grip<live<open<pause<hide<state",
+  orderMap["#strip-live-button"] > orderMap["#strip-drag-handle"] &&
+  orderMap["#strip-live-button"] < orderMap["#strip-open-button"] &&
+  orderMap["#strip-open-button"] < orderMap["#strip-pause-button"] &&
+  orderMap["#strip-pause-button"] < orderMap["#strip-hide-button"] &&
+  orderMap["#strip-hide-button"] < orderMap["#strip-state"],
+  "brand=" + orderMap[".stripbar__brand"] + " grip=" + orderMap["#strip-drag-handle"] + " live=" + orderMap["#strip-live-button"] + " open=" + orderMap["#strip-open-button"] + " pause=" + orderMap["#strip-pause-button"] + " hide=" + orderMap["#strip-hide-button"] + " state=" + orderMap["#strip-state"]);
 
   /* ---- 3. panel.js WIRING ---------------------------------------------- */
-  add("W1 dom.stripFloatButton is looked up", /stripFloatButton\s*:\s*document\.getElementById\(.strip-float-button.\)/.test(js), "present");
-  add("W2 the button is bound in wireStripControls", /stripFloatButton\.addEventListener\(.click./.test(js), "present");
+  add("W1 dom.stripLiveButton is looked up", /stripLiveButton\s*:\s*document\.getElementById\(.strip-live-button.\)/.test(js), "present");
+  add("W2 the live button is bound in wireStripControls", /stripLiveButton\.addEventListener\(.click./.test(js), "present");
   add("W3 addCaption pushes to the overlay", /SottoCaptionFloat\)\s*window\.SottoCaptionFloat\.push\(text,\s*meta/.test(js), "present");
   add("W4 renderProvisional pushes the forming line", /SottoCaptionFloat\)\s*\{\s*window\.SottoCaptionFloat\.push\(\(confWords/.test(js), "present");
   add("W5 paintLevel feeds the overlay meter", /SottoCaptionFloat\)\s*\{\s*window\.SottoCaptionFloat\.setMeter\(/.test(js), "present");
@@ -119,7 +142,10 @@ add("S20b the float button renders AFTER Pause and BEFORE the state word",
   const sps = (js.match(/bridge\.setPanelSurface\(.strip./g) || []).length;
   add("W7 the window height goes through setPanelSurface", sps >= 1, sps + " call site(s)");
   add("W8 the raised height is FLOAT_HEIGHT", /setStripHeight\(on\s*\?\s*FLOAT_HEIGHT\s*:\s*STRIP_HEIGHT\)/.test(js), "present");
-  add("W9 the surface switch re-paints the float state", /paintFloatState\(\)/.test(js), "present");
+  add("W9 the surface switch re-applies the live state (which repaints the float)", /function applySurface\(\)[\s\S]*?applyLiveEnabled\(liveEnabled,\s*\{\s*silent:\s*true\s*\}\)/.test(js), "present");
+  add("W10 applyFloat calls setPanelSurface ONLY while the document wears the strip",
+    /currentSurface\(\)\s*===\s*'strip'[\s\S]{0,120}?bridge\.setPanelSurface\(.strip./.test(js),
+    "currentSurface()==='strip' guard present");
 
   /* ---- 4. ZIP C: THE TEN DESIGNS -------------------------------------- */
   const names = [...zipcJs.matchAll(/name:\s*'([^']+)'/g)].map(m => m[1]);
@@ -129,8 +155,8 @@ add("S20b the float button renders AFTER Pause and BEFORE the state word",
   const blocks = [...zipcCss.matchAll(/:root\[data-theme='([^']+)'\]/g)].map(m => m[1]);
   add("Z3 the stylesheet has a scope per design", want.every(n => blocks.includes(n)), blocks.length + " scope(s)");
   add("Z4 each design declares its own accent", (zipcCss.match(/--accent\s*:/g) || []).length >= 10, (zipcCss.match(/--accent\s*:/g) || []).length + " --accent");
-  const capSizes = (zipcCss.match(/\.caption__text\s*\{[^}]*font-size:\s*\d+px/g) || []).length;
-  add("Z5 each design declares its own caption size", capSizes >= 10, capSizes + " .caption__text font-size rules");
+  const capSizes = (zipcCss.match(/\.caption__text\s*\{[^}]*font-size:\s*(?:\d+px|var\(--size-closed\))/g) || []).length;
+  add("Z5 each design declares its own caption size (literal px or the --size-closed token)", capSizes >= 10, capSizes + " .caption__text font-size rules");
   add("Z6 panel.html loads the stylesheet", /<link rel="stylesheet" href="themes\/zipc-panels\.css" \/>/.test(html), "present");
   add("Z7 panel.html loads the manifest fragment", /<script src="themes\/zipc-panels\.js"><\/script>/.test(html), "present");
 
@@ -179,13 +205,13 @@ const FILES = ["panel.html", "panel.css", "panel.js", "caption-float.js", "theme
    mutation would let M1 fail on M2's behalf and hide M2 entirely. */
 const muts = [
   { tag: "M1 the height goes back to the old 100px", file: "panel.css", from: "--strip-height: 40px", to: "--strip-height: 100px" },
-  { tag: "M2 the Linhar button is deleted", file: "panel.html", from: "<button\r\n          type=\"button\"\r\n          class=\"strip-button strip-button--float\"\r\n          id=\"strip-float-button\"\r\n          data-strip-float\r\n          data-strip-float-state=\"off\"\r\n          title=\"Linhar a legenda: solta no ecra, sem painel\"\r\n          aria-label=\"Linhar a legenda\"\r\n          aria-pressed=\"false\"\r\n        >\r\n          <svg viewBox=\"0 0 16 16\" aria-hidden=\"true\">\r\n            <path\r\n              d=\"M2.4 3.2h11.2a.8.8 0 0 1 .8.8v8a.8.8 0 0 1-.8.8H2.4a.8.8 0 0 1-.8-.8V4a.8.8 0 0 1 .8-.8z\"\r\n              fill=\"none\"\r\n              stroke=\"currentColor\"\r\n              stroke-width=\"1.3\"\r\n            />\r\n            <path d=\"M5 6.4h6M5 9h4\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" />\r\n          </svg>\r\n          <span class=\"strip-button__label\">Linhar</span>\r\n        </button>", to: "" },
+  { tag: "M2 the caption is no longer driven by live (the applyFloat call is deleted)", file: "panel.js", from: "applyFloat(liveEnabled);", to: "" },
   { tag: "M3 the overlay push in addCaption is deleted", file: "panel.js", from: "if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);", to: "" },
   { tag: "M4 the runtime height change is deleted", file: "panel.js", from: "setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);", to: "" },
-  { tag: 'M6 the float button loses its order (falls back to 0)', file: 'panel.css', from: 'body[data-surface="strip"] #strip-float-button { order: 8; }', to: '' },
+  { tag: "M6 applyFloat becomes unconditional (the strip-only guard is removed)", file: "panel.js", from: "if (currentSurface() === 'strip' && bridge && typeof bridge.setPanelSurface === 'function') {", to: "if (bridge && typeof bridge.setPanelSurface === 'function') {" },
   { tag: "M5 the overlay gains a background", file: "panel.css", from: ".caption-float__stage {", to: ".caption-float__stage {" + String.fromCharCode(10) + "  background: #0b0f14;" },
+  { tag: "M7 the straight band gets its rounded pill corners back", file: "panel.css", from: "border-radius: 0;", to: "border-radius: 10px;" },
 ];
-
 let wrong = 0;
 for (const m of muts) {
   for (const f of FILES) fs.copyFileSync(path.join(srcDir, f), path.join(scratch, f));

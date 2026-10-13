@@ -13,9 +13,12 @@
  *     tem que ser mais claros."*
  *   *"o painel de baixo, deve conter apenas o bare minimum."*
  *
- * WHAT THIS READS: THE BYTES of `app/panel/panel.html` and `app/panel/panel.css`,
- * nothing else. No browser, no shell, no worker, no network. Every check names its
- * instrument (a regex over those two files) and prints the number it read, so a
+ * WHAT THIS READS: THE BYTES of `app/panel/panel.html`, `app/panel/panel.css` and the
+ * strip's own gesture file `app/panel/strip-drag.js`. The gesture was an INLINE
+ * <script> until 2026-10-13 and the panel's own CSP (`script-src 'self'`, no
+ * 'unsafe-inline') BLOCKED it, so the bytes MOVED to an external file; this oracle
+ * reads where they are NOW. No browser, no shell, no worker, no network. Every check
+ * names its instrument (a regex over those files) and prints the number it read, so a
  * GREEN here is a statement about the shipped files and not an impression.
  *
  * ARMS
@@ -23,21 +26,22 @@
  *   B  LIVE          the live button is THE control, and it carries its state
  *   C  NO RIGHT DOOR the right panel carries no caption-display control
  *   D  X RIGHT       the X is the rightmost CONTROL on both surfaces
- *   E  MOVABLE       the gesture exists in the page and the contract is written
+ *   E  MOVABLE       the gesture exists in `strip-drag.js` and the contract is written
  *   F  THE LINK      panel.html links caption-float.css AFTER panel.css
  *   G  CLARITY       the two live states differ in WORD and in COLOUR
  *
  * NEGATIVE ARM -- how this file proves it can say NO. The whole `app/panel` tree is
  * copied to a scratch directory, ONE behaviour is deleted from the copy, and the SAME
  * checks run against it. Every mutant must go RED, or the green above is worth
- * nothing. Seven mutants, one per arm:
+ * nothing. Eight mutants, one per arm:
  *   M1 the live button is deleted
  *   M2 the live OFF state loses its word (both states say the same thing)
  *   M3 the right panel caption label comes back
  *   M4 hide stops being the rightmost control on the strip
- *   M5 the drag gesture pointerdown binding is deleted
+ *   M5 the drag gesture pointerdown binding is deleted (from strip-drag.js)
  *   M6 the caption-float.css link is deleted
  *   M7 the strip shows its caption box again
+ *   M8 the removed Linhar button comes back
  *
  * Usage:
  *   node _main/botoes-lane-oracle.js            expect GREEN, rc=0
@@ -82,6 +86,9 @@ function runChecks(dir) {
   rows.length = 0;
   const html = read(dir, 'panel.html');
   const css = read(dir, 'panel.css');
+  /* THE GESTURE LIVES IN ITS OWN FILE since 2026-10-13 (the panel's CSP blocks inline
+     script; see the file header). E1-E8 below read THESE bytes. */
+  const drag = read(dir, 'strip-drag.js');
   const ids = stripIds(html);
 
   /* ------------------------------------------------------------------ A: MINIMUM */
@@ -94,9 +101,11 @@ function runChecks(dir) {
   const stripButtons = ids.filter(function (id) { return /^strip-.*button$/.test(id); });
   check('A4 the strip is down to the bare-minimum button set (no theme pill, no font dial)',
     stripButtons.join(','),
-    'strip-live-button,strip-open-button,strip-hide-button,strip-float-button,strip-pause-button');
+    'strip-live-button,strip-open-button,strip-hide-button,strip-pause-button');
   check('A5 the transparency button the owner ordered out is STILL out',
     /strip-transparency-button/.test(html), false);
+  check('A7 the separate Linhar button is GONE (the LIVE button is the caption control)',
+    /id="strip-float-button"/.test(html), false);
   const height = /--strip-height:\s*([^;]+);/.exec(css);
   check('A6 the strip height is the button row (40px), not the old 100px',
     height ? height[1].trim() : 'ABSENT', '40px');
@@ -151,22 +160,22 @@ function runChecks(dir) {
   /* ------------------------------------------------------------------ E: MOVABLE */
   arm = 'E';
   check('E1 the page binds a pointerdown gesture on the strip bar',
-    /getElementById\("strip-controls"\)/.test(html) &&
-    /bar\.addEventListener\("pointerdown"/.test(html), true);
+    /getElementById\("strip-controls"\)/.test(drag) &&
+    /bar\.addEventListener\("pointerdown"/.test(drag), true);
   check('E2 it tracks the pointer and computes an offset',
-    /addEventListener\("pointermove"/.test(html) && /start\.ox \+ dx/.test(html), true);
+    /addEventListener\("pointermove"/.test(drag) && /start\.ox \+ dx/.test(drag), true);
   check('E3 the position is PERSISTED under a named key',
-    /var KEY = "sotto:strip-offset"/.test(html), true);
+    /var KEY = "sotto:strip-offset"/.test(drag), true);
   check('E4 the stored value is a versioned x/y object',
-    /JSON\.stringify\(\{ x: Math\.round\(off\.x\), y: Math\.round\(off\.y\), v: 1 \}\)/.test(html), true);
+    /JSON\.stringify\(\{ x: Math\.round\(off\.x\), y: Math\.round\(off\.y\), v: 1 \}\)/.test(drag), true);
   check('E5 the shell is told, and the call is OPTIONAL (probed, not assumed)',
-    /typeof bridge\.setStripOffset === "function"/.test(html), true);
+    /typeof bridge\.setStripOffset === "function"/.test(drag), true);
   check('E6 the page also paints the offset, so the bar follows with or without the shell',
     /--strip-move-x/.test(css) && /--strip-move-y/.test(css), true);
   check('E7 the double-move guard exists (the shell sets data-strip-moved)',
     /body\[data-surface="strip"\]\[data-strip-moved\] \.panel \{\s*transform:\s*none/.test(css), true);
   check('E8 the stored offset is READ BACK before the first paint',
-    /var offset = read\(\);\r?\n\s*paint\(offset\);/.test(html), true);
+    /var offset = read\(\);\r?\n\s*paint\(offset\);/.test(drag), true);
   check('E9 the drag handle exists and is not a focus stop',
     /id="strip-drag-handle"[^>]*aria-hidden="true"/.test(html), true);
 
@@ -222,7 +231,7 @@ function copyAll() {
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
   fs.cpSync(SHIPPED, scratch, { recursive: true });
-  for (const f of ['panel.html', 'panel.css']) {
+  for (const f of ['panel.html', 'panel.css', 'strip-drag.js']) {
     const a = fs.readFileSync(path.join(SHIPPED, f));
     const b = fs.readFileSync(path.join(scratch, f));
     if (!a.equals(b)) { console.error('SETUP ERROR: scratch copy of ' + f + ' differs'); process.exit(2); }
@@ -242,15 +251,17 @@ const muts = [
     } },
   { tag: 'M4 hide stops being the rightmost control on the strip', file: 'panel.css',
     apply: function (t) {
-      return t.replace('body[data-surface="strip"] #strip-hide-button { order: 6; }',
+      return t.replace('body[data-surface="strip"] #strip-hide-button { order: 5; }',
                        'body[data-surface="strip"] #strip-hide-button { order: 0; }');
     } },
-  { tag: 'M5 the drag gesture pointerdown binding is deleted', file: 'panel.html',
+  { tag: 'M5 the drag gesture pointerdown binding is deleted (from strip-drag.js)', file: 'strip-drag.js',
     apply: function (t) { return t.replace('bar.addEventListener("pointerdown", function (event) {', 'void function (event) {'); } },
   { tag: 'M6 the caption-float.css link is deleted', file: 'panel.html',
     apply: function (t) { return t.replace('<link rel="stylesheet" href="caption-float.css" />', ''); } },
   { tag: 'M7 the strip shows its caption box again', file: 'panel.css',
     apply: function (t) { return t.replace('body[data-surface="strip"] .captions {\r\n  display: none;', 'body[data-surface="strip"] .captions {\r\n  display: block;'); } },
+  { tag: 'M8 the removed Linhar button comes back (the owner moved the control to live)', file: 'panel.html',
+    apply: function (t) { return t.replace('id="strip-open-button"', 'id="strip-float-button"'); } },
 ];
 
 let wrong = 0;

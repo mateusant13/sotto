@@ -357,7 +357,8 @@ async function main() {
     [strip.display('#captions-body'), !!strip.id('captions-body').closest('.panel')],
     ['block', true]);
   arm('the live box keeps aria-live="polite"', strip.id('captions').getAttribute('aria-live'), 'polite');
-  arm('the toggle announces its state', strip.id('strip-live-button').getAttribute('aria-pressed'), 'true');
+  // RE-BASELINED 2026-10-13: the caption ships OFF, so the live control opens unpressed.
+  arm('the toggle announces its state', strip.id('strip-live-button').getAttribute('aria-pressed'), 'false');
   // ── THE OWNER'S ITEM 3, AS A PAIR (2026-10-08) ──────────────────────────────
   // *"tira o 'receiving captions'. deixa só um icone dinamico"*. The healthy
   // SENTENCE is no longer painted on the panel; the strip keeps ONE short word and
@@ -376,11 +377,13 @@ async function main() {
     // live. (The first version of this assertion expected the text in
     // `#status-text` on the strip as well; measured `''`.)
     [strip.id('strip-word').textContent, squeeze(strip.id('strip-state').title)],
-    ['Live', 'Receiving captions — click to restart the pipeline (reloads the live engine)']);
+    ['Captions off', 'Receiving captions — click to restart the pipeline (reloads the live engine)']);
   arm('the strip state carries the LIVE class, and the dot is a shape not a colour',
+    // RE-BASELINED 2026-10-13: is-live follows liveEnabled, which ships false; the dot
+    // is still a painted shape (the second value), so the pair still says which half moved.
     [strip.id('strip-state').className.includes('is-live'),
       strip.display('#strip-dot') !== 'none'],
-    [true, true]);
+    [false, true]);
   arm('the sticky follow is armed on the strip too (a caption does not throw)',
     strip.id('captions-body').scrollTop >= 0, true);
 
@@ -530,20 +533,23 @@ async function main() {
   const liveButton = wiredT.id('strip-live-button');
   const before = liveButton.getAttribute('aria-pressed');
   liveButton.click();
+  // RE-BASELINED 2026-10-13: the toggle now starts OFF, so the first click is the
+  // one that carries TRUE to the shell (the reverse of the interim revision).
   arm('the toggle flips aria-pressed on a click',
-    [before, liveButton.getAttribute('aria-pressed')], ['true', 'false']);
+    [before, liveButton.getAttribute('aria-pressed')], ['false', 'true']);
   arm('and the label follows the state', wiredT.id('strip-live-label').textContent, 'LIVE');
-  arm('and the shell is told, with the NEW value', wiredT.audit.live, [false]);
+  arm('and the shell is told, with the NEW value', wiredT.audit.live, [true]);
   liveButton.click();
-  arm('turning it back on carries true', wiredT.audit.live, [false, true]);
+  arm('turning it back off carries false', wiredT.audit.live, [true, false]);
 
   const unwiredT = await panel({ url: `${fileUrl(PANEL_HTML)}#strip` });
   unwiredT.id('strip-live-button').click();
   arm('a shell WITHOUT setLiveEnabled is never called', unwiredT.audit.live, []);
   arm('and the button is marked unwired instead of pretending',
     unwiredT.id('strip-live-button').dataset.wired, 'false');
+  // RE-BASELINED 2026-10-13: one click from OFF leaves it ON, shell or no shell.
   arm('and it still reports the state it is showing',
-    unwiredT.id('strip-live-button').getAttribute('aria-pressed'), 'false');
+    unwiredT.id('strip-live-button').getAttribute('aria-pressed'), 'true');
 
   // ------------------------------------------------------------------ ARM D
   currentArm = 'D';
@@ -615,9 +621,14 @@ async function main() {
   console.log('\n=== ARM O — Open panel, both roads ===');
   const openWired = await panel({ url: `${fileUrl(PANEL_HTML)}#strip`, wired: true });
   openWired.id('strip-open-button').click();
+  /* RE-BASELINED 2026-10-13 AGAIN: the app ships the caption OFF, and this harness
+     opens on the strip (#strip), so the load-time applyFloat already asked the shell
+     for the strip with reason 'strip-float-off' -- guarded by the strip surface, so
+     the live-on reason would only appear if the caption were ON. The open click is
+     the call that follows. */
   arm('with the shell call present, the panel asks the SHELL to switch surface',
     [openWired.audit.surfaces, openWired.document.body.getAttribute('data-surface')],
-    [[{ surface: 'panel', reason: 'strip-open' }], 'panel']);
+    [[{ surface: 'strip', reason: 'strip-float-off' }, { surface: 'panel', reason: 'strip-open' }], 'panel']);
   const openUnwired = await panel({ url: `${fileUrl(PANEL_HTML)}#strip` });
   openUnwired.id('strip-open-button').click();
   arm('without it, the document switches itself rather than doing nothing',

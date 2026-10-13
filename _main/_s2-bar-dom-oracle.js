@@ -23,14 +23,14 @@
  *   A  THE BAR CARRIES NO CAPTION TEXT (strip surface), with the PANEL surface as the
  *      live control: the same two tokens must be FOUND there. An arm that cannot find
  *      the words anywhere proves nothing, so the control is part of the arm.
- *   B  LINHAR PUTS THE SAME LINE ON THE SCREEN: the button flips data-float, the
+ *   B  THE LIVE BUTTON PUTS THE SAME LINE ON THE SCREEN: it flips data-float, the
  *      overlay becomes display:block, its live line EQUALS the panel's own newest
  *      caption row word for word, the overlay is NOT a descendant of <main class=panel>,
  *      the window-height call reaches the bridge, and a second caption lands while the
  *      panel node is DETACHED from the document (the owner's "como se nao houvesse
  *      painel"), with the previous line kept one back.
  *
- * NEGATIVE ARM -- how to show this probe can say NO. Four mutants, one at a time, each
+ * NEGATIVE ARM -- how to show this probe can say NO. Six mutants, one at a time, each
  * on a reset copy of app/panel, driven by the same checks:
  *
  *   node _main/_s2-bar-dom-oracle.js            expect GREEN, rc=0
@@ -197,15 +197,31 @@ function runChecks(dir) {
   check('A5 CONTROL: the same token IS on the panel surface', foundPanel, [TOKEN1]);
   doc.body.setAttribute('data-surface', 'strip');
 
-  /* ---------------- ARM B: LINHAR, THE SAME LINE, LOOSE ---------------- */
+  /* ---------------- ARM B: THE LIVE BUTTON, THE SAME LINE, LOOSE ----------------
+     RE-BASELINED 2026-10-13 AGAIN, to the contract the Lead re-applied. The caption
+     control IS #strip-live-button and the app ships the caption OFF -- the owner's
+     own model: *"primeiro, o painel de baixo. NELE EU ATIVO o segundo overlay, q e a
+     legenda independente."* So live starts UNPRESSED, the FIRST click puts the
+     caption on the screen and the SECOND takes it off, which is the reverse of the
+     interim revision this arm used to assert. The overlay is the module's own state
+     (caption-float.js) reached through `applyFloat`, and the button, the attribute
+     and the overlay are asserted in the SAME click so one fact cannot drift. */
   arm = 'B';
-  const btn = p.id('strip-float-button');
-  check('B1 the Linhar button exists and starts unpressed',
+  const btn = p.id('strip-live-button');
+  check('B1 the live button is the caption control and ships UNPRESSED (the caption is OFF)',
     [Boolean(btn), btn ? btn.getAttribute('aria-pressed') : 'ABSENT'], [true, 'false']);
-  check('B2 the overlay is hidden before the click', p.display(floatEl), 'none');
+  check('B2 the overlay is hidden before the strip repaints', p.display(floatEl), 'none');
   p.click(btn);
-  check('B3 the click flips data-float on the body', doc.body.getAttribute('data-float'), 'on');
-  check('B4 the overlay is display:block on the strip + float', p.display(floatEl), 'block');
+  check('B3 live ON puts the caption on the screen (button, attribute and overlay agree)',
+    [btn.getAttribute('aria-pressed'), doc.body.getAttribute('data-float'), p.display(floatEl)],
+    ['true', 'on', 'block']);
+  p.click(btn);
+  check('B4 live OFF takes the caption off the screen (button, attribute and overlay agree)',
+    [btn.getAttribute('aria-pressed'), doc.body.getAttribute('data-float'), p.display(floatEl)],
+    ['false', 'off', 'none']);
+  /* Back ON for the loose-caption half below: B6-B13 are all about the overlay while
+     the caption is on screen, and B14 is the click that lowers it again. */
+  p.click(btn);
   check('B5 the button reports itself pressed', btn.getAttribute('aria-pressed'), 'true');
   const line = p.id('caption-float-line');
   const newest = doc.querySelector('#caption-list .caption:last-child .caption__text');
@@ -232,7 +248,7 @@ function runChecks(dir) {
   check('B13 the overlay is still display:block with no panel in the document',
     p.display(floatEl), 'block');
   p.click(btn);
-  check('B14 the second click lowers it', [doc.body.getAttribute('data-float'), p.display(floatEl)], ['off', 'none']);
+  check('B14 the next click lowers it', [doc.body.getAttribute('data-float'), p.display(floatEl)], ['off', 'none']);
 
   return rows;
 }
@@ -275,9 +291,13 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
     { tag: 'N1 the strip shows its caption box again',
       file: 'panel.css',
       apply: function (t) { return t.replace(/body\[data-surface="strip"\] \.captions \{\s*display: none;/, 'body[data-surface="strip"] .captions { display: block;'); } },
-    { tag: 'N2 the overlay never becomes visible',
-      file: 'panel.css',
-      apply: function (t) { return t.replace(/body\[data-surface="strip"\]\[data-float="on"\] \.caption-float \{\s*display: block;\s*\}/, ''); } },
+    /* N2 RE-BASELINED 2026-10-13: the overlay's visibility is now the MODULE's own
+       inline style (caption-float.js paint()), set through panel.js syncCaptionFloat,
+       so the old "delete the CSS display:block rule" mutant no longer moves it. This
+       neuters the panel -> overlay call instead, which is the new contract. */
+    { tag: 'N2 the live button no longer moves the overlay (the panel->overlay call is neutered)',
+      file: 'panel.js',
+      apply: function (t) { return t.replace("api.setFloat(state === 'on');", 'void 0;'); } },
     { tag: 'N3 the overlay push is inert',
       file: 'caption-float.js',
       apply: function (t) { return t.replace('push: push', 'push: function () {}'); } },
@@ -291,6 +311,18 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
           .replace("window.SottoCaptionFloat.push((confWords.join(' ') + ' ' + provWords.join(' ')).trim(), null)", "window.SottoCaptionFloat.push('MUTANTE-A', null)")
           .replace('window.SottoCaptionFloat.push(text, meta || null)', "window.SottoCaptionFloat.push('MUTANTE-B', meta || null)");
       } },
+    /* N5/N6 ARE THE CONTROLS THE 2026-10-13 RE-BASELINE NEEDED, and they break the
+       NEW contract, not the old "Linhar button" one. N5 deletes the ONE call that
+       makes live-on mean caption-on-screen, so the button/attribute and the overlay
+       must disagree on every click (B3/B4/B13/B14). N6 restores the interim default
+       (`liveEnabled = true`), so the arm's OWN "ships UNPRESSED" claim (B1) and the
+       first-click direction (B3/B4/B5/B14) must go RED. */
+    { tag: 'N5 the live button no longer drives the overlay (applyFloat call deleted)',
+      file: 'panel.js',
+      apply: function (t) { return t.replace(/  applyFloat\(liveEnabled\);\r?\n/, ''); } },
+    { tag: 'N6 the caption ships ON again (liveEnabled defaults true)',
+      file: 'panel.js',
+      apply: function (t) { return t.replace('let liveEnabled = false;', 'let liveEnabled = true;'); } },
   ];
   let wrong = 0;
   for (const m of muts) {

@@ -43,7 +43,8 @@
  *
  * --neg-arm: the panel files copied to a scratch dir with ONE behaviour broken
  * each, and the SAME checks re-run against the copies. Every mutant must go RED
- * or the oracle cannot say no. Seven mutants, one per invariant.
+ * or the oracle cannot say no. RE-BASELINED 2026-10-13 for the owner's ruling that
+ * the LIVE button IS the caption control; nine mutants, one per invariant.
  */
 'use strict';
 
@@ -122,10 +123,11 @@ function checks(dir) {
   add('A4 the strip OPEN button reaches the right panel',
     /function openFullPanel\(reason\)[\s\S]{0,220}?bridge\.setPanelSurface\('panel',\s*reason\)/.test(js) && has('strip-open-button'),
     "openFullPanel -> bridge.setPanelSurface('panel', reason)");
-  add('A5 the float button is bound and raises the window height',
-    /stripFloatButton\.addEventListener\(.click./.test(js) &&
+  add('A5 the LIVE button is bound and raises the window height',
+    /stripLiveButton\.addEventListener\(.click./.test(js) &&
+    /applyFloat\(liveEnabled\)/.test(js) &&
     /setStripHeight\(on\s*\?\s*FLOAT_HEIGHT\s*:\s*STRIP_HEIGHT\)/.test(js),
-    'applyFloat -> setStripHeight(FLOAT_HEIGHT)');
+    'live click -> applyLiveEnabled -> applyFloat -> setStripHeight(FLOAT_HEIGHT)');
 
   /* ---- B. THE NO-BACKGROUND INVARIANT --------------------------------- */
   /* The owner: 'ela mostra na minha tela, sem fundo, sem nada, extremamente
@@ -195,13 +197,13 @@ function checks(dir) {
      must be GONE. A gate that only checks presence cannot tell "minimal" from
      "everything is still there". */
   const BARE = ['strip-live-button', 'strip-open-button', 'strip-hide-button',
-    'strip-float-button', 'strip-pause-button'];
+    'strip-pause-button'];
   const CUT = ['strip-theme-button', 'strip-font-smaller-button',
-    'strip-font-larger-button'];
+    'strip-font-larger-button', 'strip-float-button'];
   add('D1 the strip carries the bare-minimum button set',
     BARE.every((id) => barIds.indexOf(id) >= 0),
     BARE.filter((id) => barIds.indexOf(id) < 0).join(',') || 'all ' + BARE.length + ' present');
-  add('D1b and the three the owner cut are GONE',
+  add('D1b and the buttons the owner cut are GONE',
     CUT.every((id) => barIds.indexOf(id) < 0),
     CUT.filter((id) => barIds.indexOf(id) >= 0).join(',') || 'all ' + CUT.length + ' absent');
   add('D2 the strip carries NO transparency button and NO theme chevron',
@@ -314,6 +316,13 @@ const muts = [
   { tag: 'N8 the strip theme button is restored (the owner cut it)', file: 'panel.html',
     from: 'id="strip-open-button"',
     to: 'id="strip-theme-button" data-theme-button' },
+  /* N9/N10 ARE THE CONTROLS THE 2026-10-13 RE-BASELINE NEEDED: N9 removes the call
+     that makes live-on mean caption-on-screen, N10 restores the removed Linhar
+     button so D1/D1b can go red. */
+  { tag: 'N9 the LIVE button no longer drives the caption (applyFloat call deleted)', file: 'panel.js',
+    from: 'applyFloat(liveEnabled);', to: '' },
+  { tag: 'N10 the removed Linhar button comes back (the owner moved the control to live)', file: 'panel.html',
+    from: 'id="strip-open-button"', to: 'id="strip-float-button"' },
 ];
 
 let wrong = 0;

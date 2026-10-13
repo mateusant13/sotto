@@ -1881,13 +1881,18 @@ body[data-surface="strip"] .strip-button--chevron {
  * minimum"*): the theme-list chevron and the transparency button. Both entries are
  * gone from this list AND from the markup (panel.html), and the chevron is hidden by
  * CSS further down because `theme-switcher.js ensureChevron` re-creates it. */
-/* THE ROW, AFTER THE 2026-10-12 TRIM. The theme pill and the two font dial
-   circles are GONE from the markup (see panel.html for the measurement that
-   made each removal safe), so their entries are gone from here too: an
-   `order` on an id that does not exist is a rule about nothing, and this
-   file's own rule is that a dead declaration is removed rather than left
-   looking live. What is left is the bare minimum the owner asked for:
-   brand · grip · live · open · hide · linhar · pause · state.
+/* THE ROW, AFTER THE 2026-10-12 TRIM AND THE 2026-10-13 MERGE. The theme pill
+   and the two font dial circles are GONE from the markup (see panel.html for the
+   measurement that made each removal safe), so their entries are gone from here
+   too: an `order` on an id that does not exist is a rule about nothing, and this
+   file's own rule is that a dead declaration is removed rather than left looking
+   live. `#strip-float-button` ("Linhar") went the same way on 2026-10-13 — the
+   owner's own prompts of the handoff conversation put the caption on the LIVE
+   button (*"o botao de mostrar a legenda ao vivo deve ser o 'live'"*, *"nele eu
+   ativo o segundo overlay, q e a legenda independente"*), and a second door into
+   the same room is exactly what the 2026-10-12 trim was about. What is left is
+   the bare minimum the owner asked for:
+   brand · grip · live · open · pause · hide · state.
 
    HIDE IS LAST OF THE CONTROLS and that is the owner's ruling, verbatim
    (2026-10-12): *"o botao de x pra dar hide introduzido em lugar aleatorio e
@@ -1899,15 +1904,10 @@ body[data-surface="strip"] #strip-drag-handle { order: 1; }
 body[data-surface="strip"] #strip-live-button { order: 2; }
 body[data-surface="strip"] #strip-open-button { order: 3; }
 body[data-surface="strip"] #strip-pause-button { order: 4; }
-body[data-surface="strip"] #strip-float-button { order: 5; }
-body[data-surface="strip"] #strip-hide-button { order: 6; }
+body[data-surface="strip"] #strip-hide-button { order: 5; }
 body[data-surface="strip"] #strip-state { order: 99; }
-/* THE DEFAULT ORDER IS NOT "LAST", and the rule that says so is the block ABOVE
-   (Linhar declares `order: 5`, after Pause and before Hide). The duplicate
-   `#strip-float-button { order: 8 }` that stood here is REMOVED, not renumbered:
-   two declarations of one property in one file is how a later edit silently wins,
-   and the survivor is the list above. `#strip-state` stays at 99 — the readout is
-   not a control and always paints last. */
+/* ONE DECLARATION PER ID, AND THE SURVIVOR IS THE LIST ABOVE. `#strip-state`
+   stays at 99 — the readout is not a control and always paints last. */
 
 /* ── THE STRIP HAS NO THEME-LIST CHEVRON. TWO LAYERS, NOT ONE. ───────────────
    Owner, 2026-10-12, verbatim: *"o painel de baixo, deve conter apenas o bare
@@ -2807,14 +2807,28 @@ body[data-surface="strip"] .panel {
   /* THE WINDOW IS THE BAR. The geometry comes from the base `.panel` rule
      (absolute, inset 0); the overrides below only change what is INSIDE it: ONE
      row — the control bar — so a shell handing out 40px and one still handing out
-     100px both render instead of one of them breaking. */
+     100px both render instead of one of them breaking.
+
+     ── IT IS A STRAIGHT BAND, NOT A PILL (owner, 2026-10-13, verbatim: *"pro
+     painel de baixo, ele tem que ser mais uma faixa/linha reta."*). Three
+     declarations carry that and nothing else does:
+       * `border-radius: 10px` -> `0`. The rounded slab was the last thing making
+         the bar read as a floating chip; a band has square ends.
+       * the 180deg two-stop gradient -> ONE flat colour. A gradient across a
+         34-pixel-tall strip is invisible except as a seam at the ends.
+       * `border: 1px solid` -> a HAIRLINE TOP AND BOTTOM only, no left/right
+         uprights. The bar spans the window edge to edge, and an upright at each
+         end would draw the two ends of a band that has none.
+     Height, width, padding and the button geometry are UNCHANGED: the shell reads
+     `--strip-height` for the window, and this edit must not move that number. */
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(17, 24, 35, 0.97) 0%, rgba(11, 15, 20, 0.98) 100%);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(11, 15, 20, 0.98);
   /* An outer shadow is invisible by construction: the window ends where the bar
      ends, so it would be clipped to nothing (the base rule says the same). */
   box-shadow: none;
@@ -2873,19 +2887,19 @@ body[data-surface="strip"] .strip-button:focus-visible {
   color: #ffffff;
 }
 
-/* The two ACTIONS at the end of the row keep a voice of their own: Pause is the
-   one that costs a model load to resume, and Linhar is the one this lane added.
-   Both are filled rather than outlined, so they read as the row's verbs. */
-body[data-surface="strip"] .strip-button--pause,
-body[data-surface="strip"] .strip-button--float {
+/* THE ACTION AT THE END OF THE ROW keeps a voice of its own: Pause is the one
+   that costs a model load to resume, so it is filled rather than outlined and
+   reads as the row's verb. (It was a PAIR with "Linhar" until 2026-10-13; that
+   button is gone — the LIVE button carries the caption now and wears its own
+   red/grey state pair above, so it must NOT also take this blue.) */
+body[data-surface="strip"] .strip-button--pause {
   border-color: rgba(125, 211, 252, 0.4);
   background: rgba(125, 211, 252, 0.16);
   color: #dff1ff;
 }
 
 body[data-surface="strip"] .strip-button--pause:hover,
-body[data-surface="strip"] .strip-button--float:hover,
-body[data-surface="strip"] .strip-button--float[aria-pressed="true"] {
+body[data-surface="strip"] .strip-button--pause:focus-visible {
   border-color: rgba(125, 211, 252, 0.72);
   background: rgba(125, 211, 252, 0.32);
   color: #ffffff;

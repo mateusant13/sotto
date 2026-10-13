@@ -604,11 +604,21 @@
            nothing; CSS owns the whole difference.
 
            THE FIXED ORDER (base `order` rules, so no theme can reorder it):
-           brand · Live · theme cycle · open panel · hide · smaller · larger ·
-           Pause · status. The brand is leftmost and the status readout is last
-           because it is a READOUT, not a control. The two font buttons are the
-           owner 2026-10-09 dial and they sit immediately before Pause, the same
-           place their twins occupy in `.panel__controls`.
+           brand · grip · live · open panel · pause · hide · status. The brand is
+           leftmost and the status readout is last because it is a READOUT, not a
+           control.
+
+           ── THE LIVE BUTTON IS THE CAPTION CONTROL, AND IT SHIPS OFF ──────────
+           Owner, from his own prompts of the handoff conversation (2026-10-12),
+           verbatim: *"primeiro, o painel de baixo. NELE EU ATIVO o segundo
+           overlay, q e a legenda independente."* and *"um botao de linhar a
+           legenda, que LIGA ela NA TELA"*. The bottom band is overlay 1 and the
+           caption is overlay 2, ACTIVATED from it — so the caption is off the
+           screen until `live` is pressed, and the band is what Alt+C opens
+           (40px of buttons, nothing else). A separate "Linhar" button stood here
+           until 2026-10-13 and is DELETED: `#strip-live-button` owns the
+           caption, and `panel.js applyLiveEnabled` drives the SAME
+           `body[data-float]` attribute that button used to flip.
 
            REMOVED 2026-10-12 from this row, both for the owner bare-minimum order
            (*"o painel de baixo, deve conter apenas o bare minimum"*) and, in the
@@ -651,9 +661,9 @@
           type="button"
           class="strip-button strip-button--toggle"
           id="strip-live-button"
-          aria-pressed="true"
-          aria-label="live: on"
-          title="live — captions are ON. Click to turn the live captions off."
+          aria-pressed="false"
+          aria-label="live: off — the captions are off the screen. Click to put them on screen."
+          title="live — click to put the captions ON SCREEN (loose, like the .zip demos); the band itself stays a thin bar."
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <rect
@@ -806,34 +816,18 @@
              throw: `bind(dom.stripFontSmallerButton, -1)` with `null` returns on
              the `if (!button) return;` at the top of `bind`. -->
 
-        <!-- ─── LINHAR: float the caption on the screen ─────────────────────────
-             Owner, 2026-10-12, verbatim: *"e ele tem um botao de linhar a legenda, que
-             liga ela NA TELA, igual um overlay, EXATAMENTE IGUAL os .zip fazem."* One
-             button, one attribute (`data-float`), one window height: the strip keeps its own
-             geometry and the caption leaves the strip's grid for `caption-float.js`, which
-             paints it loose at the bottom of the screen exactly the way the zip's
-             `CaptionStage.tsx` does — no chrome, no background, no panel. -->
-        <button
-          type="button"
-          class="strip-button strip-button--float"
-          id="strip-float-button"
-          data-strip-float
-          data-strip-float-state="off"
-          title="Linhar a legenda: solta no ecra, sem painel"
-          aria-label="Linhar a legenda"
-          aria-pressed="false"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path
-              d="M2.4 3.2h11.2a.8.8 0 0 1 .8.8v8a.8.8 0 0 1-.8.8H2.4a.8.8 0 0 1-.8-.8V4a.8.8 0 0 1 .8-.8z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.3"
-            />
-            <path d="M5 6.4h6M5 9h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-          </svg>
-          <span class="strip-button__label">Linhar</span>
-        </button>
+        <!-- ─── REMOVED 2026-10-13: THE SEPARATE "LINHAR" BUTTON ────────────────
+             `#strip-float-button` stood here ("Linhar", the float toggle) since
+             2026-10-12. The owner's prompts of the handoff conversation put the
+             capability on the LIVE button — *"o botao de mostrar a legenda ao vivo
+             deve ser o 'live'"*, and *"nele eu ativo o segundo overlay, q e a
+             legenda independente"* — so two doors into the same room became one.
+             The capability is not lost and is one button to the left:
+             `#strip-live-button` (above) is what puts the caption loose on the
+             screen, through the SAME `body[data-float]` attribute this button
+             used to flip. Nothing else read the removed node: `panel.js`'s
+             `dom.stripFloatButton` key went with it, and
+             `_main/strip-float-oracle.js` was re-baselined in the same edit. -->
 
         <!-- Pause is `order: 9` now, after the font dial, so the two ACTIONS stay
              at the end of the row and the dial stays next to the text it sizes.
