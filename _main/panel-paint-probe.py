@@ -388,7 +388,19 @@ def build_variant(path: str, revert_gate: bool = False,
         import json as _jd
         _dx = str(int(dx))
         _dy = str(int(dy))
-        drag_js = ('setTimeout(function(){try{'
+        # THE RAW CHANNEL PROBE, AND IT IS THE DECISIVE ONE. `post()` in the shell
+        # bootstrap does NOT use window.pywebview.api.dispatch -- MEASURED at
+        # sotto_webview.py:2805-2808, it uses `window.chrome.webview.postMessage` with
+        # a three-slot ARRAY whose middle slot is JSON.stringify([JSON.stringify({kind,
+        # payload})]). My earlier probes used the pywebview api channel, which the
+        # shell never listens on, so "nothing arrived" proved nothing about the page.
+        # This posts a kind the shell does not know, so `BRIDGE_UNKNOWN_KIND
+        # kind=dragprobe` appearing in its log PROVES the raw channel and this context
+        # both work -- and that the fault, if any, is window.sotto specifically.
+        probe = ('try{window.chrome.webview.postMessage(["dispatch",'
+                 'JSON.stringify([JSON.stringify({kind:"dragprobe",payload:{}})]),"0"]);}'
+                 'catch(e){}')
+        drag_js = (probe + 'setTimeout(function(){try{'
                    # #strip-controls, WHICH IS `bar` IN THE HANDLER -- and the
                    # pointermove goes on WINDOW, not document. Both are read straight
                    # off panel.html: the listener is `bar.addEventListener(
