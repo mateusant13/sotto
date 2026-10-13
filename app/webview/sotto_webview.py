@@ -660,6 +660,41 @@ def _open_log(path):
     global _LOG_FILE, _LOG_QUEUE, _LOG_WRITER
     if path:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        # THE LOG GREW WITHOUT BOUND. MEASURED 2026-10-13: _main/webview-run.log reached
+        # **727.5 MB**, and simply READING it to check the app's own state blew a 300 s
+        # deadline -- the instrument for the app became the slowest thing about it, and
+        # every launch appended to it for ever.
+        #
+        # This runs BEFORE the append open, because on Windows the app holds the file and
+        # it cannot be rotated from outside while the shell is alive.
+        #
+        # IT KEEPS THE TAIL AND DELETES NOTHING: the newest lines are the ones that
+        # diagnose a live problem, and the rest is moved aside to `<log>.1` rather than
+        # discarded, so a user who wants the history still has it. A failure here is
+        # swallowed on purpose -- a log that cannot be rotated must never stop the app
+        # from starting, and the append below still works either way.
+        try:
+            cap_mb = int(os.environ.get('SOTTO_LOG_CAP_MB', '64'))
+            keep_mb = int(os.environ.get('SOTTO_LOG_KEEP_MB', '16'))
+            if cap_mb > 0 and os.path.getsize(path) > cap_mb * 1024 * 1024:
+                keep = max(1, keep_mb) * 1024 * 1024
+                with open(path, 'rb') as fh:
+                    fh.seek(0, os.SEEK_END)
+                    size = fh.tell()
+                    fh.seek(max(0, size - keep), os.SEEK_SET)
+                    tail = fh.read()
+                # start on a line boundary, so the kept file does not open mid-line
+                cut = tail.find(b'\n')
+                if 0 <= cut < len(tail) - 1:
+                    tail = tail[cut + 1:]
+                with open(path + '.1', 'wb') as fh:
+                    fh.write(tail)
+                os.replace(path + '.1', path)
+                with open(path, 'a', encoding='utf-8') as fh:
+                    fh.write('sotto: LOG_ROTATED from=%d B kept=%d B cap=%d MB\n'
+                             % (size, len(tail), cap_mb))
+        except Exception:
+            pass
         _LOG_FILE = open(path, 'a', encoding='utf-8', buffering=1)
         # THE FROZEN MIRROR GETS ITS OWN THREAD -- this is the freeze fix.
         # `log()` used to write AND flush the file inline, on whatever thread
