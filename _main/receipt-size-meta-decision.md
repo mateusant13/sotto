@@ -48,3 +48,30 @@ family-shared sizes, which is cheaper and visibly changes nothing.
 **Either way the ten dead declarations should not stay.** What must not happen is the
 token staying declared-and-unread, which is the same defect class this session closed
 four times already.
+
+
+## CORRECTION 2026-10-13 (Lead) — my "shared block" reading was WRONG
+
+I first wrote that the rule which should read `--size-meta` is a SHARED chrome block.
+**Measured: there are ZERO chrome rules without a `data-theme` scope in
+`panel-designs.css`.** Every chrome rule is design-scoped. My first scan said otherwise
+because the scanner never reset its "inside this design" flag, so it attributed each
+design literals from the designs that came after it. **A scanner that accumulates is
+not a measurement**, and the correction is here rather than quietly replacing the text.
+
+**WHAT IS ACTUALLY TRUE, measured:** each `pd-*` design declares its own
+`--size-meta`, and its own chrome rules paint a `font-size` LITERAL instead. Where the
+two differ, the design paints a number it did not declare:
+
+| design | declares `--size-meta` | its chrome rules paint |
+|---|---|---|
+| `pd-tele` | 11px | 10px (`:619`, `:653`) |
+
+**SO THE FIX IS LOCAL, NOT SHARED, AND THAT MAKES IT SAFER THAN I THOUGHT:** each
+design own chrome rule should read its own token. The blast radius is that design
+chrome text and nothing else — no family-wide rule is involved.
+
+**AND IT IS STILL NOT DONE HERE, for the same reason as before:** it needs a
+per-design check against each zip, design by design, and that is the work the owner
+decision buys. What is now certain is that the change is SMALL and CONTAINED, which is
+the opposite of what I first reported.
