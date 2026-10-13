@@ -304,6 +304,27 @@ def build_variant(path: str, revert_gate: bool = False,
                "try{setInterval(pin,150);}catch(e){}"
                "return window.SottoSurfaces.current(); } return null; })()'")
         out = out.replace(anchor, pin, 1)
+    # THE DISCRIMINATOR. Two readings were left open: (a) the attribute never
+    # reaches the render, or (b) with no captions the panel visible pixels are
+    # styled by panel.css alone and are theme-independent. They are told apart by
+    # ASKING THE DOCUMENT what it wears at capture time, so the variant reads
+    # `data-theme` back after the surface script and logs it. A read-back that
+    # says the theme IS set turns (a) into a false reading; one that says the
+    # switcher overwrote it turns (b) into a false reading.
+    if theme:
+        rb = "        applied = self.exec_js(script)\n"
+        if rb not in out:
+            raise SystemExit('variant: readback edit did not apply — refusing')
+        out = out.replace(
+            rb,
+            "        applied = self.exec_js(script)\n"
+            "        try:\n"
+            "            _t = self.exec_js(\"(function(){var d=document.documentElement;\"\n"
+            "                                 \"return String(d.getAttribute('data-theme')) + '|' +\"\n"
+            "                                 \"String(document.body && document.body.getAttribute('data-theme'));})()\")\n"
+            "            log('PROBE_THEME_READBACK documentElement|body=' + str(_t))\n"
+            "        except Exception as _e:\n"
+            "            log('PROBE_THEME_READBACK_FAILED ' + repr(_e))\n", 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
