@@ -5816,7 +5816,11 @@ def main():
                                         f"blocks={device_blocks['value']} reopens={stall_reopens} "
                                         f"pump_alive=True reason=waiting-not-reopening")
                                     idle_logged = True
-                                time.sleep(0.1)
+                                # `stop.wait`, NOT `time.sleep` -- the file's own rule at :5989,
+                                # and it is what makes a stop request land inside the wait instead
+                                # of after it. Measured by the audit that found this file
+                                # contradicting itself: the same delay, a wakeable primitive.
+                                stop.wait(0.1)
                                 continue
                             err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "
                                 f"reason={stall_reason} "
@@ -5872,12 +5876,14 @@ def main():
                                 TAP_STALL_S
                                 if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
                                 else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
-                        time.sleep(0.1)
+                        # stop.wait, not time.sleep -- :5989 rule, wakeable.
+                        stop.wait(0.1)
                         continue
                     if now >= window_end:
                         outcome = "flat"
                         break
-                    time.sleep(0.05)
+                    # stop.wait, not time.sleep -- :5989 rule, wakeable.
+                    stop.wait(0.05)
             finally:
                 tap_holder["tap"] = None
                 tap_holder["gen"] += 1
