@@ -144,3 +144,32 @@ body[data-surface="strip"] .stripbar,
 body[data-surface="strip"] .stripbar * {
   color: #0b0f14 !important;
 }
+
+/* ---- STEP 3: THE CAPTION COLUMN -- right-hand, UNFRAMED, with the FADE --------------
+ * From the zip Teleprompter design, which is the one that reads as a teleprompter: the
+ * caption hangs in a RIGHT-HAND COLUMN with NO FRAME, and the OLDER LINES ARE FADED with the
+ * current one brightest. That fade is not decoration -- it IS the reading model, and it is
+ * what separates this from a log.
+ *
+ * `!important` for the same measured reason as step 2: a theme rule owns these properties and
+ * outranks a body[data-surface] selector. Proved by adding it to the slab and watching a
+ * change that had NOT taken effect for two attempts appear immediately.
+ *
+ * THE FADE NEEDS NO JS AND NO PER-LINE ATTRIBUTE: the list is an <ol> in reading order, so
+ * :nth-last-child counts back from the newest line. */
+body[data-surface="strip"] .captions__body {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+body[data-surface="strip"] .captions__list {
+  text-align: right !important;
+}
+body[data-surface="strip"] .captions__list > li {
+  text-align: right !important;
+}
+body[data-surface="strip"] .captions__list > li:nth-last-child(1) { opacity: 1 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(2) { opacity: 0.72 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(3) { opacity: 0.50 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(4) { opacity: 0.34 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(n+5) { opacity: 0.22 !important; }
