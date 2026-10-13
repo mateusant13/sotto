@@ -549,10 +549,18 @@ def build_variant(path: str, revert_gate: bool = False,
         # This posts a kind the shell does not know, so `BRIDGE_UNKNOWN_KIND
         # kind=dragprobe` appearing in its log PROVES the raw channel and this context
         # both work -- and that the fault, if any, is window.sotto specifically.
-        probe = ('try{window.chrome.webview.postMessage(["dispatch",'
-                 'JSON.stringify([JSON.stringify({kind:"dragprobe",payload:{}})]),"0"]);}'
-                 'catch(e){}')
-        drag_js = (probe + 'setTimeout(function(){try{'
+        # NOT `probe`. This block used to ASSIGN to `probe`, which is a PARAMETER of
+        # build_variant -- so with --dragoffset the local overwrote it, and the
+        # `unknown --probe` refusal further down fired on the drag JS itself:
+        #   variant: unknown --probe 'try{window.chrome.webview.postMessage(["dispatch"...
+        #   -- refusing
+        # and the probe produced NO log at all. MEASURED 2026-10-13: `--dragoffset`
+        # was broken by the refactor that added --probe, and I read the silence as
+        # another failure of the drag. Shadowing a parameter is the whole bug.
+        chan_probe = ('try{window.chrome.webview.postMessage(["dispatch",'
+                      'JSON.stringify([JSON.stringify({kind:"dragprobe",payload:{}})]),"0"]);}'
+                      'catch(e){}')
+        drag_js = (chan_probe + 'setTimeout(function(){try{'
                    # #strip-controls, WHICH IS `bar` IN THE HANDLER -- and the
                    # pointermove goes on WINDOW, not document. Both are read straight
                    # off panel.html: the listener is `bar.addEventListener(
