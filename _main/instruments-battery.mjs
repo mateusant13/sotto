@@ -97,6 +97,11 @@ const py = [
   // off-strip. Nothing launched.
   ['_main/strip-drag-shell-oracle.py', 'strip drag: shell half'],
   ['_main/strip-drag-shell-oracle.py --neg-arm', 'strip drag shell neg'],
+  // THE CLASS THAT COST THE DRAG. panel.html declares script-src self with no
+  // unsafe-inline, and such a CSP BLOCKS inline scripts and inline handlers --
+  // silently. The drag handler was the only inline script and it never ran.
+  ['_main/csp-inline-oracle.py', 'CSP: no inline scripts'],
+  ['_main/csp-inline-oracle.py --neg-arm', 'CSP inline neg'],
 ];
 
 const node = [
