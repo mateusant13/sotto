@@ -1,0 +1,50 @@
+# The vision instrument exists, and `-f` will not carry a PNG
+
+2026-10-13. Recorded so the next lane does not spend 20 minutes rediscovering it.
+
+## The prompt that made me try
+
+`_moved/aireplay/AGENTS.md` says, of open design questions: "Ask `gpt` (consultgpt) ... it is
+a real browser, no API key, and it HAS VISION (the only instrument here that can look at the
+owner mockups)." Since **I cannot see images** (read_image refuses: this model does not
+declare image input), that read as the missing instrument for item 10.
+
+## What happened
+
+```
+gpt --no-code -f zip-E-panels.png panel-live-default.png \
+    --session zip-vs-live --prompt-file I:/cc-tmp/pergunta.txt
+```
+
+* `--no-code` and `--prompt-file` are exactly what `docs/tools/consultgpt.md` prescribes, and the
+  prompt file was written UTF-8 outside the shell to avoid quoting.
+* **`-f` attaches files as TEXT.** The 406 698 B PNG became **423 384 characters**, and the
+  splitter announced a plan of **13 chunks in multi-turn mode**. It was pasting the bytes of
+  a screenshot into ChatGPT as prose.
+* Result: ChatGPT is not responding, no response after 57.3 seconds, an initial attempt that
+  produced NO response, then its own Layer 1 soft retry. Killed.
+
+## Verified the way the manual demands
+
+`docs/tools/consultgpt.md` warns that the rc does NOT denounce this failure and that the FILE
+CONTENT must be checked instead. Done: resposta.txt = 4 791 B, it carries the not-responding
+warning, and it has **no** Executive Summary or Findings block. **The question was not answered.**
+
+Cleanup verified after the kill: **0** consultgpt processes, **0** headless browsers, and the
+owner app untouched (pids 44684 + 13936).
+
+## What this does NOT establish
+
+**It does not establish that gpt cannot see.** The AGENTS.md claim is probably TRUE and refers
+to the path that produced the round of the five designs (6.2 KB of useful content) -- a path that
+is not `-f image.png`. The tool has `--headed` and `--headed-offscreen`, exits for `@file`
+injection, and a session store; **how the mockups were actually shown to it is not documented in
+the how-to**, and whoever reopens this should read `gpt help` in full and look for an image or
+screenshot flag before concluding anything about vision.
+
+## Where that leaves the fidelity measurement
+
+**The two renders exist** (`docs/design-intake/rendered/`), produced by the same engine at the
+same size, and **the owner can look at them right now** -- that part is done and needs nothing more
+from me. What is still missing is a machine that can describe what is in them, and the candidate
+for that is `gpt`, reached by a path this receipt does not contain.
