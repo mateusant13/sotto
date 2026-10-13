@@ -242,9 +242,17 @@ body[data-surface="strip"] .captions__list > li:nth-last-child(n+5) { opacity: 0
  * body[data-surface] selector, proved by watching a change take effect only when it was added.
  *
  * SCOPED to the float being ON, so nothing here touches the overlay in its off state. */
+/* A DOT NEEDS BOTH DIMENSIONS. The first version set only the colour and the glow, and the
+ * render showed a VERTICAL BAR -- the existing rule gives the element height, and nothing gave
+ * it width, so it stretched. Named in the file as the next edit and done here. */
 body[data-float="on"] .caption-float__led {
+  width: 6px !important;
+  height: 6px !important;
+  min-width: 6px !important;
+  border-radius: 50% !important;
   background: #37d67a !important;
   box-shadow: 0 0 6px #37d67a !important;
+  flex: none !important;
 }
 
 /* THE FADE. The previous line is present but quiet; the live line is the brightest thing in
