@@ -2955,6 +2955,31 @@ BOOTSTRAP_JS = r"""
       post('transparency', { on: Boolean(on) });
     },
 
+    // THE MISSING CHANNEL, AND IT IS WHY THE DEFERRED ASSETS NEVER LOADED.
+    //
+    // MEASURED 2026-10-13. `lazy-assets.js:144` asks for a deferred asset with
+    //     if (s && typeof s.dispatch === 'function') { s.dispatch('lazy-asset', ...); return; }
+    //     if (window.pywebview && window.pywebview.api && window.pywebview.api.dispatch) { ... }
+    // and `window.sotto.dispatch` DID NOT EXIST -- grep over this file returned ZERO.
+    // So the loader fell through to `window.pywebview.api.dispatch`, which is NOT the
+    // channel this shell listens on: `post()` (:2805-2808) publishes on
+    // `window.chrome.webview.postMessage`. RESULT, measured on a `cine-cellar` theme:
+    //     PANEL_LAZY_ALLOW 0    the page NEVER asked
+    //     PANEL_LAZY_EMPTY 4    the gate answered 4 requests with EMPTY 200s
+    // so `cinematic.css`, `panel-designs.css`, `skins/skins.js`, `skin-host.js` and
+    // `skin-layout.css` loaded as EMPTY BODIES. The designs and their fonts never
+    // arrived, which is the owner's *"pouquissimas fontes"* and *"varios designs
+    // estao bugados"* -- measured, not guessed.
+    //
+    // ONE LINE, and it is the same class of defect as `setStripOffset` below: this
+    // object is hand-written, not generated from the Python API, so a method the page
+    // probes for has to be declared here or the probe is false and the caller skips it
+    // in silence.
+    dispatch: function (kind, payload) {
+      post(String(kind == null ? '' : kind), payload == null ? null : payload);
+      return true;
+    },
+
     // THE OWNER'S STRIP DRAG (panel.html:1087). `window.sotto` is THIS object,
     // hand-written here and not generated from the Python API, so without this
     // entry the page's `typeof bridge.setStripOffset === 'function'` probe is
