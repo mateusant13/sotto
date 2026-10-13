@@ -7116,8 +7116,23 @@ class SottoShell:
             log(f'STRIP_DRAG_MOVE_FAILED error={exc!r}')
             return
         # The page stops transforming once the WINDOW moves, or the two add up.
-        self.exec_js(STRIP_MOVED_JS)
+        #
+        # ONCE PER DRAG, NOT ONCE PER MOVE. MEASURED 2026-10-13 by the audit lane: one
+        # real drag produced 277 moves in 1.86 s -- about 149 a second -- and this was a
+        # SYNCHRONOUS `ExecuteScriptAsync` round trip on every one of them. The script it
+        # runs only sets `data-strip-moved` to '1', which is IDEMPOTENT: after the first
+        # call it can change nothing. The sibling path `edit_drag_to` refuses to call
+        # `exec_js` at all, in its own words "so the loop stays responsive".
+        #
+        # It is NOT removed, because the comment above is a real reason: the page must
+        # stop transforming once the window moves. It is sent on the FIRST move of a drag
+        # and the flag is cleared on `end`, so the next drag gets it again. The flag is
+        # read with getattr so this needs no init site and cannot break an older object.
+        if not getattr(self, '_strip_moved_sent', False):
+            self.exec_js(STRIP_MOVED_JS)
+            self._strip_moved_sent = True
         if phase == 'end':
+            self._strip_moved_sent = False
             self.saved_geometry = self.geometry_snapshot()
             self.publish_panel_visibility('strip-drag')
         log(f'STRIP_DRAG phase={phase} offset=({dx},{dy}) to=({nx},{ny}) '
