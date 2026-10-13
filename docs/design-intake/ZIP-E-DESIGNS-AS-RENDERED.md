@@ -55,3 +55,56 @@ or dark.
   outside it, the crop hides that.
 * This is a DESCRIPTION of pixels I saw. It is not a spec, and it does not yet say which of the
   five our `pd-tele`/`pd-bcast`/`pd-mano`/`pd-cine`/`pd-instr` should match.
+
+---
+
+# ALL FIVE, VIEWED IN THE PLAYED STATE (2026-10-13, second pass)
+
+## The chrome is SHARED by all five
+
+1. **The BACKDROP is visible.** Not one of the five paints a solid opaque panel: the video is
+   the surface and the text sits on it.
+2. **Status pill, top-LEFT, identical in all five**: monospace, UPPERCASE, letter-spaced, 1px
+   border, rounded, small green dot, ` . ` separators -- `FUNDO: FILME . REPRODUZINDO . AUDIO
+   ORIGINAL`.
+3. **Bottom bar is LIGHT** in all five: tabs `Filme | Jogo | Reuniao` (the active tab is an
+   inverted white box with black text), a thin scrubber with `0:24:05` and `2:07:44` at its ends,
+   then BOXED buttons `||`, `1,0x`, `fantasma`, then a dimmed hint line
+   `espaco pausa . 1-5 troca direcao . Alt+C oculta`, and a right-hand chip
+   `PAINEL 380x900 . ESCALA 68%`.
+
+## What actually DIFFERS between the five -- and it is only the CAPTION COLUMN
+
+The five designs are five ways of setting the SAME right-hand caption column. Everything else
+is shared, which is why the empty-state renders were indistinguishable.
+
+| # | design | the caption column |
+|---|---|---|
+| 1 | **Teleprompter** | right-aligned within the column; **older lines FADED**, current line brightest -- the fade IS the reading model |
+| 2 | **Broadcast** | same chrome as Teleprompter in the empty state; **the played state was NOT re-viewed** -- do not claim what it does |
+| 3 | **Manuscript** | a distinct **light column panel**; text left-aligned inside it; **no fade** (all lines equal); closes with `ouvindo` in italic plus a caret |
+| 4 | **Cinema** | **SERIF** typeface; every line prefixed with an em-dash `--`; block right-aligned on the video |
+| 5 | **Instrument** | sans-serif column over a subtle darker panel; **and `Alt` `C` drawn as BOXED KEYCAPS with `ocultar painel`** beneath it |
+
+## What this means for OUR panel, stated as structure and not as colour
+
+`app/panel/panel.html` today: a **solid dark surface**; `SOTTO` top-LEFT and the status cluster
+top-RIGHT; a **bordered empty transcript box**; a **DARK** bottom bar of icon-only buttons.
+
+The zip design: **no solid box**; status pill top-LEFT in monospace; the caption hangs in a
+**right-hand column** with **no frame**; and the bottom bar is **LIGHT with boxed, LABELLED**
+controls and tabs.
+
+Concretely different: (a) whether the surface is opaque, (b) which corner the status pill lives
+in and in what typeface, (c) whether the caption area is a framed box or an open column,
+(d) which side the text hangs from, (e) whether the bottom bar is light or dark, and (f) whether
+its controls are icons or boxed labels.
+
+## STILL NOT ESTABLISHED
+
+* **Broadcast has not been viewed with captions.** Four of five is not five of five.
+* **The zips A, B, C and D have NOT been rendered at all** -- only E. The owner asked for "each
+  .zip (each demo)"; three of them have no `node_modules` on this box and were never built.
+* No mapping has been made from these five to our `pd-tele` / `pd-bcast` / `pd-mano` /
+  `pd-cine` / `pd-instr`, and the names are a TRAP: our `pd-cine` is not obviously the zip Cinema.
+* **Nothing in the product has been changed by this note.** It is a description of what I saw.
