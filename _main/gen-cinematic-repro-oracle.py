@@ -5,6 +5,7 @@ alone is not enough -- BACKDROPS lives under ROOT, and fetch_backdrop() treats a
 already-packaged photo as INPUT, so an empty directory makes the run DOWNLOAD and the
 bytes move. So the backdrops are seeded first.
 """
+import argparse
 import hashlib
 import os
 import re
@@ -23,6 +24,10 @@ def sha(path):
     with open(path, 'rb') as fh:
         return hashlib.sha256(fh.read()).hexdigest()[:16]
 
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--neg-arm', action='store_true')
+ARGS = ap.parse_args()
 
 if os.path.exists(TMP):
     shutil.rmtree(TMP, ignore_errors=True)
@@ -52,6 +57,13 @@ old_here = re.search(r'^HERE = .*$', src, re.M)
 if not old_root or not old_here:
     print('SETUP ERROR: could not find ROOT/HERE -- refusing')
     sys.exit(2)
+# THE NEG-ARM MUTATES THE GENERATOR, so the fresh run CANNOT reproduce the shipped
+# bytes. Without it this oracle is a green check that has never been shown able to
+# fail -- and an arm that cannot say NO is not evidence.
+if ARGS.neg_arm:
+    src = src.replace("'150ms'", "'151ms'", 1)
+    print('NEG-ARM: one generator constant mutated (150ms -> 151ms)')
+
 src2 = src.replace(old_root.group(0), 'ROOT = ' + repr(TMP), 1)
 src2 = src2.replace(old_here.group(0), 'HERE = ' + repr(LANE), 1)
 out = os.path.join(TMP, 'gen_redirected.py')
@@ -84,6 +96,15 @@ if os.path.exists(SHIPPED_JS) and os.path.exists(gen_js):
     print('  themes.js     fresh   %8d B  %s' % (os.path.getsize(gen_js), sha(gen_js)))
     ok = ok and sha(SHIPPED_JS) == sha(gen_js)
 print('')
+verdict = 'PASS' if ok else 'FAIL'
 print('VERDICT: %s -- the shipped file %s reproduced by a fresh run'
-      % ('PASS' if ok else 'FAIL', 'IS' if ok else 'IS NOT'))
+      % (verdict, 'IS' if ok else 'IS NOT'))
+if ARGS.neg_arm:
+    # In neg-arm mode FAIL is the REQUIRED outcome: the mutated generator must not
+    # reproduce the shipped bytes. A PASS here would mean the mutation was INERT.
+    wanted = not ok
+    print('NEG-ARM VERDICT: %s -- the mutation %s the reproduction'
+          % ('PASS' if wanted else 'FAIL',
+             'BROKE' if wanted else 'did NOT break (INERT mutant)'))
+    sys.exit(0 if wanted else 1)
 sys.exit(0 if ok else 1)
