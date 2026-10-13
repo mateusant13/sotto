@@ -154,6 +154,34 @@ def run_arms(sw, tag):
     check(tag + 'B5b and "side" is not a surface name at all',
           sw.normalise_surface_name('side') is None, 'by design')
 
+    # C1/C2 -- THE OWNER'S DRAG. The offset is CUMULATIVE from the dock, and the
+    # result is clamped into the work area so the bar can never be dragged off
+    # the screen.
+    f = FakeShell(sw, width_dom=None)
+    docked = {'x': 770, 'y': 872, 'width': 380, 'height': 148}
+    g = sw.SottoShell._strip_offset_geometry(f, docked, (60, 30))
+    check(tag + 'C1 the drag offset moves the strip',
+          (g['x'], g['y']) == (830, 902), 'to=(%s,%s)' % (g['x'], g['y']))
+    g2 = sw.SottoShell._strip_offset_geometry(f, docked, (99999, 99999))
+    check(tag + 'C2 and it is clamped into the work area',
+          (g2['x'], g2['y']) == (1920 - 380, 1080 - 148),
+          'to=(%s,%s)' % (g2['x'], g2['y']))
+
+    # C3/C4 -- THE TWO WIRES THAT WERE MISSING, and each is a silent no-op when
+    # absent: the page probes `typeof bridge.setStripOffset === 'function'` and
+    # skips the shell half in silence, so the bar can only move inside a window
+    # that is now exactly the pill.
+    # READ THE FILE THE MODULE WAS LOADED FROM, not the SHELL constant. The first
+    # version of these two arms scanned `SHELL` and was therefore INERT under
+    # --neg-arm: the mutant is loaded from a temp copy while the arm kept reading
+    # the live file, so it passed either way. The mutant is what caught it, which
+    # is what a control is for.
+    src = open(getattr(sw, '__file__', SHELL), 'r', encoding='utf-8').read()
+    check(tag + 'C3 the JS bridge object exposes setStripOffset',
+          'setStripOffset: function' in src, 'window.sotto entry')
+    check(tag + 'C4 the dispatch map routes it',
+          "'setStripOffset': self._set_strip_offset" in src, 'bridge -> shell')
+
     # B1/B2/B4 -- Alt+C. The owner contract: TWO PRESSES OPEN THE RIGHT PANEL.
     f = FakeShell(sw, width_dom=None)
     sw.window_visible = lambda hwnd: False
@@ -214,6 +242,14 @@ MUTANTS = [
      "        self.set_panel_surface('panel', reason)",
      "        self.set_panel_surface('side', reason)",
      'B5 show_side asks for a surface the shell ACCEPTS'),
+    ('M5 bridge-entry-removed',
+     'setStripOffset: function',
+     'setStripOffsetX: function',
+     'C3 the JS bridge object exposes setStripOffset'),
+    ('M6 dispatch-entry-removed',
+     "            'setStripOffset': self._set_strip_offset,",
+     "            'setStripOffsetX': self._set_strip_offset,",
+     'C4 the dispatch map routes it'),
 ]
 
 

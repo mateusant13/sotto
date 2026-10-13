@@ -927,6 +927,12 @@ STRIP_WIDTH_MAX = 1040
 STRIP_WIDTH_MIN = 480
 STRIP_WIDTH_FRACTION = 0.62
 #: The CSS custom property that IS the strip's height (`panel.css:52`).
+#: Told to the page the moment the SHELL moves the strip window. panel.html:1093
+#: has the page stop applying its own CSS transform once this is set, because a
+#: page transform plus a window move would add up to twice the drag.
+STRIP_MOVED_JS = ("(function () { if (document.body) {"
+                  " document.body.setAttribute('data-strip-moved', '1'); }"
+                  " return true; })()")
 STRIP_HEIGHT_CSS_VAR = '--strip-height'
 FLOAT_HEIGHT_CSS_VAR = '--float-height'   # the floated caption's window height
 STRIP_BOTTOM_MARGIN = 48
@@ -2949,6 +2955,21 @@ BOOTSTRAP_JS = r"""
       post('transparency', { on: Boolean(on) });
     },
 
+    // THE OWNER'S STRIP DRAG (panel.html:1087). `window.sotto` is THIS object,
+    // hand-written here and not generated from the Python API, so without this
+    // entry the page's `typeof bridge.setStripOffset === 'function'` probe is
+    // FALSE and the whole shell half is skipped in silence -- the bar then moves
+    // only INSIDE the window, which after the content-width fix is exactly the
+    // pill, so it cannot move at all. `x`/`y` are CUMULATIVE DIP from the dock,
+    // not deltas; `phase` is `"move"` during the drag and `"end"` on release.
+    setStripOffset: function (x, y, phase) {
+      post('setStripOffset', {
+        x: Number(x) || 0,
+        y: Number(y) || 0,
+        phase: String(phase == null ? 'move' : phase),
+      });
+    },
+
     // preload.js resolves a Promise here (ipcRenderer.invoke). The WebView2
     // transport has no invoke, so the id round-trip below is what makes this a
     // real resolved Promise rather than a synchronous object.
@@ -3145,9 +3166,14 @@ BRIDGE_PROBE = r"""
     title: document.title,
     readyState: document.readyState,
     hasPanelElement: !!document.getElementById('panel'),
+    // `setStripOffset` is in the list because the page's drag probes for it with
+    // `typeof bridge.setStripOffset === 'function'` and SILENTLY skips the shell
+    // half when it is absent (panel.html:1126). A probe that does not name the
+    // method cannot report it missing, so the count is the live receipt.
     methods: ['pushCaption', 'setStatus', 'onCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
-              'captionApplied', 'statusApplied', 'ready', 'clearApplied']
+              'captionApplied', 'statusApplied', 'ready', 'clearApplied',
+              'setStripOffset']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,
@@ -3546,6 +3572,13 @@ class SottoHost:
             'pointer': self._pointer,
             'transparency': self._transparency,
             'sotto:transparency': self._transparency,
+            # The owner's strip drag (panel.html:1087). Without this entry the
+            # page's `bridge.setStripOffset(...)` is `undefined`, the typeof probe
+            # skips it, and the bar can only ever move INSIDE the window -- which
+            # after the content-width fix is exactly the pill, so it cannot move
+            # at all. The shell half is what puts it on the screen.
+            'setStripOffset': self._set_strip_offset,
+            'sotto:setStripOffset': self._set_strip_offset,
             'history-append': self._history_append,
             'history-tail': self._history_tail,
             'history-search': self._history_search,
@@ -3766,6 +3799,11 @@ class SottoShell:
         #: inside was `max-content`, and the form paints every pixel the page
         #: does not with opaque `#0B0F14` -- the owner's solid slab.
         self.strip_width_dom = None
+        #: Where the strip was DOCKED before the owner dragged it, in DIP. The
+        #: page reports a CUMULATIVE offset from the dock (panel.html:1083), so
+        #: the shell needs the base it is cumulative FROM. Recorded on every
+        #: strip application, never by the drag itself.
+        self._strip_dock_base = None
         # ── THE TWO SURFACES (owner, 2026-10-08) ─────────────────────────────
         #: The surface the owner's control opens. `'strip'` — the SHORT caption
         #: band at the bottom, horizontally centred — because
@@ -6805,6 +6843,21 @@ class SottoShell:
                   'return window.SottoSurfaces.current(); } return null; })()')
         applied = self.exec_js(script)
         geometry = self.geometry_for(name)
+        if name == 'strip':
+            # THE DOCK BASE, AND THE OWNER'S DRAG RESTORED FROM THE PAGE.
+            # The page paints the saved offset as a CSS transform, but it cannot
+            # move the WINDOW, so without this the bar would be pushed out of a
+            # window that is now exactly the pill. The offset is read from the
+            # page (its localStorage is the record) and the shell moves the
+            # window, then tells the page to stop transforming so the two do not
+            # add up.
+            self._strip_dock_base = (int(geometry['x']), int(geometry['y']))
+            offset = self._strip_offset_from_page()
+            if offset != (0, 0):
+                geometry = self._strip_offset_geometry(geometry, offset)
+                self.exec_js(STRIP_MOVED_JS)
+                log(f'STRIP_DRAG_RESTORED offset={offset} '
+                    f'to=({geometry["x"]},{geometry["y"]})')
         self._apply_window_geometry(geometry, reason=f'surface-{name}')
         self.surface_applied = name
         log(f'PANEL_SURFACE surface={name} reason={reason} '
@@ -6815,6 +6868,101 @@ class SottoShell:
             f'edit_mode={str(self.edit_mode).lower()}')
         self.publish_panel_visibility(f'surface-{name}')
         return True
+    def _strip_offset_from_page(self):
+        """The owner's strip drag offset, READ OUT OF THE PAGE. `(0, 0)` if none.
+
+        `localStorage['sotto:strip-offset']` is `{"x": int, "y": int, "v": 1}`
+        (panel.html:1083): the CUMULATIVE offset in DIP from the docked position.
+        The page owns the record and the shell reads it, so there is exactly one
+        copy of the number. Anything unparsable answers `(0, 0)` -- a bar at the
+        dock is the honest fallback for a record that cannot be read."""
+        script = ("(() => { try {"
+                  "const raw = window.localStorage.getItem('sotto:strip-offset');"
+                  "if (!raw) return null;"
+                  "const v = JSON.parse(raw);"
+                  "if (!v || typeof v !== 'object') return null;"
+                  "return String(Math.round(Number(v.x) || 0)) + ','"
+                  "     + String(Math.round(Number(v.y) || 0));"
+                  "} catch (err) { return null; } })()")
+        try:
+            raw = self.exec_js(script)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_OFFSET_READ_FAILED error={exc!r}')
+            return (0, 0)
+        if not isinstance(raw, str) or ',' not in raw:
+            return (0, 0)
+        a, _, b = raw.partition(',')
+        try:
+            return (int(float(a)), int(float(b)))
+        except ValueError:
+            log(f'STRIP_OFFSET_UNPARSED raw={json.dumps(raw)}')
+            return (0, 0)
+
+    def _strip_offset_geometry(self, geometry, offset):
+        """`geometry` shifted by `offset` and CLAMPED into the work area."""
+        work = self.work_area()
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        g = dict(geometry)
+        g['x'] = max(work['x'], min(int(geometry.get('x') or 0) + int(offset[0]),
+                                    work['x'] + work['width'] - width))
+        g['y'] = max(work['y'], min(int(geometry.get('y') or 0) + int(offset[1]),
+                                    work['y'] + work['height'] - height))
+        g['docked'] = 'strip-dragged'
+        return g
+
+    def _set_strip_offset(self, payload):
+        """The page's strip drag: move the WINDOW by the offset it reports.
+
+        The offset is CUMULATIVE from the dock, so this never accumulates a
+        delta -- `_strip_dock_base` is the fixed origin. The move is a bare
+        `SetWindowPos` with `SWP_NOSIZE`, the same shape as `edit_drag_to`, and
+        the geometry is persisted only when the drag ENDS."""
+        payload = payload or {}
+        try:
+            dx = int(round(float(payload.get('x') or 0)))
+            dy = int(round(float(payload.get('y') or 0)))
+        except (TypeError, ValueError):
+            log(f'STRIP_DRAG_REFUSED why=unparsable payload={payload!r}')
+            return
+        phase = str(payload.get('phase') or 'move')
+        if self.hwnd is None:
+            return
+        if self.surface_applied != 'strip':
+            log(f'STRIP_DRAG_REFUSED why=not-strip surface={self.surface_applied}')
+            return
+        base = self._strip_dock_base
+        if base is None:
+            geometry = dict(self.geometry or {})
+            base = (int(geometry.get('x') or 0), int(geometry.get('y') or 0))
+            self._strip_dock_base = base
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            return
+        work = self.work_area()
+        nx = max(work['x'], min(base[0] + dx, work['x'] + work['width'] - width))
+        ny = max(work['y'], min(base[1] + dy, work['y'] + work['height'] - height))
+        geometry['x'] = nx
+        geometry['y'] = ny
+        geometry['docked'] = 'strip-dragged'
+        self.geometry = geometry
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        try:
+            user32.SetWindowPos(self.hwnd, HWND_TOPMOST,
+                                int(nx * scale), int(ny * scale), 0, 0,
+                                SWP_NOSIZE | SWP_NOACTIVATE)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_DRAG_MOVE_FAILED error={exc!r}')
+            return
+        # The page stops transforming once the WINDOW moves, or the two add up.
+        self.exec_js(STRIP_MOVED_JS)
+        if phase == 'end':
+            self.saved_geometry = self.geometry_snapshot()
+            self.publish_panel_visibility('strip-drag')
+        log(f'STRIP_DRAG phase={phase} offset=({dx},{dy}) to=({nx},{ny}) '
+            f'base={base} work={work["width"]}x{work["height"]}')
     def _apply_window_geometry(self, geometry, reason='surface'):
         """Move/resize the NATIVE window, then pin the client area to it.
 
