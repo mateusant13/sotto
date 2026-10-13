@@ -325,6 +325,22 @@ def build_variant(path: str, revert_gate: bool = False,
             "            log('PROBE_THEME_READBACK documentElement|body=' + str(_t))\n"
             "        except Exception as _e:\n"
             "            log('PROBE_THEME_READBACK_FAILED ' + repr(_e))\n", 1)
+    # FEED THE SWITCHER INSTEAD OF FIGHTING IT. theme-switcher.js reads its
+    # choice from `localStorage['sotto.theme']` (theme-switcher.js:42) and applies
+    # it AFTER the page loads, which is why three rounds of pinning data-theme
+    # were defeated. The bootstrap JS below is injected by the shell PRELOAD, so it
+    # runs BEFORE any page script: writing the store key there makes the switcher
+    # apply OUR theme as its own stored choice. The bogus control decides whether
+    # it worked -- a theme that does not exist must now paint differently from one
+    # that does.
+    if theme:
+        boot = "  window.sotto = {"
+        if boot not in out:
+            raise SystemExit('variant: bootstrap edit did not apply — refusing')
+        out = out.replace(
+            boot,
+            "  try { window.localStorage.setItem('sotto.theme', '" + safe
+            + "'); } catch (err) {}\n" + boot, 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
