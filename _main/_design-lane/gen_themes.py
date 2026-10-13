@@ -1732,7 +1732,7 @@ CHROME[1] = """
   display: inline-flex;
   flex: none;
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: var(--size-meta);
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1828,7 +1828,7 @@ CHROME[2] = """
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1901,7 +1901,7 @@ CHROME[3] = """
   display: inline-flex;
   flex: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--size-meta);
   font-style: italic;
   color: var(--text-muted);
 }
@@ -1964,7 +1964,7 @@ CHROME[4] = """
   display: inline-flex;
   flex: none;
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--size-meta);
   letter-spacing: 0.5em;
   color: var(--accent);
 }

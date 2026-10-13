@@ -698,7 +698,7 @@
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);

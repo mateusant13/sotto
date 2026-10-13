@@ -662,7 +662,7 @@
   display: inline-flex;
   flex: none;
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: var(--size-meta);
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--text-muted);

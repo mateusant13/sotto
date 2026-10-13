@@ -664,7 +664,7 @@
   display: inline-flex;
   flex: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--size-meta);
   font-style: italic;
   color: var(--text-muted);
 }
