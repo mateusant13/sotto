@@ -878,8 +878,30 @@ var htmlBytes = fs.readFileSync(path.join(PANEL, 'panel.html'), 'utf8');
 var cssBytes = fs.readFileSync(path.join(PANEL, 'panel.css'), 'utf8');
 var swBytes = fs.readFileSync(path.join(PANEL, 'theme-switcher.js'), 'utf8');
 
-check('ARM14.1 panel.html still ships #strip-theme-button (the cycler stays)',
-  /id="strip-theme-button"/.test(htmlBytes), 'absent from markup');
+/* RE-BASELINED 2026-10-12 (Lead). The owner cut the strip's theme control --
+ * verbatim: *"a porra do painel, e pra ser minimo"* -- and the picker is now
+ * reached from the RIGHT panel only. The old form required the very button he
+ * removed, so this arm pinned a CANCELLED contract and went red the moment the
+ * work was done. */
+check('ARM14.1 panel.html ships NO #strip-theme-button (the strip is bare)',
+  !/id="strip-theme-button"/.test(htmlBytes), 'still in markup');
+
+/* THE CONTROL THIS ARM NEVER HAD, and why it matters. ARM14.x are BYTES arms:
+ * they read panel.html/panel.css off the disk, and every mutant below splices a
+ * JS module, so NO mutant could ever flip them. That is exactly why this one sat
+ * RED without anyone reading it as "this gate pins a dead contract" -- an arm
+ * that cannot say NO is not evidence. This runs the SAME predicate against a
+ * COPY of panel.html with the button put back, in both colours, so the arm
+ * carries its own proof that it is still able to fail. */
+var arm14_1_mutant = htmlBytes.replace('id="strip-open-button"',
+  'id="strip-theme-button" data-theme-button');
+var arm14_1_shipped = !/id="strip-theme-button"/.test(htmlBytes);
+var arm14_1_on_copy = !/id="strip-theme-button"/.test(arm14_1_mutant);
+check('ARM14.1b the arm can still say NO (button restored in a COPY)',
+  arm14_1_shipped === true && arm14_1_on_copy === false
+  && arm14_1_mutant !== htmlBytes,
+  'shipped=' + arm14_1_shipped + ' on-copy=' + arm14_1_on_copy
+  + ' copy-differs=' + (arm14_1_mutant !== htmlBytes));
 check('ARM14.2 panel.html ships NO #strip-theme-chevron',
   !/id="strip-theme-chevron"/.test(htmlBytes), 'present in markup');
 check('ARM14.3 panel.html opens on the PANEL surface',

@@ -187,11 +187,23 @@ function checks(dir) {
     'display:none !important on the strip surface');
 
   /* ---- D. BUTTON PLACEMENT -------------------------------------------- */
-  const BARE = ['strip-live-button', 'strip-theme-button', 'strip-open-button', 'strip-hide-button',
-    'strip-font-smaller-button', 'strip-font-larger-button', 'strip-float-button', 'strip-pause-button'];
+  /* RE-BASELINED 2026-10-12 (Lead). The owner ordered the theme pill and the two
+     font dials OUT of the strip -- verbatim: *"a porra do painel, e pra ser
+     minimo"* -- so the old list of EIGHT pinned a contract he had cancelled, and
+     this gate went red the moment the work was done. The assertion is now BOTH
+     halves, which is the stronger form: the five that stay, and the three that
+     must be GONE. A gate that only checks presence cannot tell "minimal" from
+     "everything is still there". */
+  const BARE = ['strip-live-button', 'strip-open-button', 'strip-hide-button',
+    'strip-float-button', 'strip-pause-button'];
+  const CUT = ['strip-theme-button', 'strip-font-smaller-button',
+    'strip-font-larger-button'];
   add('D1 the strip carries the bare-minimum button set',
     BARE.every((id) => barIds.indexOf(id) >= 0),
     BARE.filter((id) => barIds.indexOf(id) < 0).join(',') || 'all ' + BARE.length + ' present');
+  add('D1b and the three the owner cut are GONE',
+    CUT.every((id) => barIds.indexOf(id) < 0),
+    CUT.filter((id) => barIds.indexOf(id) >= 0).join(',') || 'all ' + CUT.length + ' absent');
   add('D2 the strip carries NO transparency button and NO theme chevron',
     !has('strip-transparency-button') && barIds.indexOf('strip-theme-chevron') < 0,
     'transparency:' + has('strip-transparency-button') + ' chevron:' + (barIds.indexOf('strip-theme-chevron') >= 0));
@@ -204,8 +216,11 @@ function checks(dir) {
   add('D5 the right panel holds the history toggle, search and revive',
     has('history-toggle') && has('search-button') && has('reveal-button'),
     'history-toggle search-button reveal-button');
-  add('D6 the strip theme button cycles and the picker is panel-only',
-    /id="strip-theme-button"[^>]*data-theme-button/.test(html) && /body\[data-surface="strip"\] \.theme-picker/.test(css),
+  /* RE-BASELINED 2026-10-12 (Lead), same reason as D1: the owner cut the strip's
+     theme control and the picker is now reached from the RIGHT panel only. The
+     old form required the very button he removed. */
+  add('D6 the strip has NO theme button and the picker is panel-only',
+    !/id="strip-theme-button"/.test(html) && /body\[data-surface="strip"\] \.theme-picker/.test(css),
     'data-theme-button + picker hidden on strip');
 
   /* ---- E. THE BUG IS CLOSED ------------------------------------------- */
@@ -291,6 +306,14 @@ const muts = [
     from: '<span class="caption-float__led" aria-hidden="true"></span>\r\n        ', to: '' },
   { tag: 'N7 the OUVINDO... empty state is deleted', file: 'caption-float.js',
     from: "line.classList.toggle('is-empty', empty);", to: 'false;' },
+  /* N8 IS THE CONTROL D1/D1b/D6 NEVER HAD, and that is why they could go red for a
+     day without anyone reading it as "this gate pins a dead contract". It renames
+     the open button into the theme button the owner cut, so ONE mutation moves
+     three arms: D1 loses strip-open-button, D1b gains strip-theme-button, D6 sees
+     the button it forbids. */
+  { tag: 'N8 the strip theme button is restored (the owner cut it)', file: 'panel.html',
+    from: 'id="strip-open-button"',
+    to: 'id="strip-theme-button" data-theme-button' },
 ];
 
 let wrong = 0;
