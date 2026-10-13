@@ -88,6 +88,10 @@ const py = [
   // and themes.js (the generator READS the manifest it replaces).
   ['_main/gen-cinematic-repro-oracle.py', 'generator reproduces (regra 10)'],
   ['_main/gen-cinematic-repro-oracle.py --neg-arm', 'generator repro neg'],
+  // The SAME rule for the other generator, and it is the net under the pending
+  // --size-meta fix: that fix edits gen_themes.py, which writes panel-designs.css.
+  ['_main/gen-themes-repro-oracle.py', 'theme gen reproduces (regra 10)'],
+  ['_main/gen-themes-repro-oracle.py --neg-arm', 'theme gen repro neg'],
 ];
 
 const node = [
