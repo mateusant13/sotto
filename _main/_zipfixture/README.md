@@ -37,3 +37,22 @@ APPLIED, NOT VISUALLY VERIFIED. Nothing in this file upgrades it.
 Find which `panel.css` rule hides `.captions__list` in the fixture state (candidates: a
 `[hidden]` the fixture omits, a `data-*` attribute the product sets, or a `.captions` display
 rule), add it to the fixture, and re-render. Then the fade is either visible or it is not.
+
+## SECOND ATTEMPT, AND IT FAILED THE SAME WAY
+
+FOUND AND WORTH KEEPING: `panel.css:1147` makes `.caption` a GRID with
+`grid-template-columns: auto 1fr` -- a TIME RAIL and the TEXT. So a caption row has TWO
+children, and the fixture first had ONE, which lands in the `auto` column and collapses.
+
+THE FIXTURE WAS CORRECTED to give every row a `caption__time` and a `caption__text`, matching
+that shape. **THE RENDER WAS BYTE-IDENTICAL AGAIN** (same sha256 as before the fix), so the
+caption list is not being painted AT ALL in this document -- the problem is upstream of the row
+shape, and two different markups producing the same pixels means it is not the markup.
+
+**STOPPED THERE, and the next candidate is named**: something hides `.captions` itself on this
+surface, or the region has no height because the fixture lacks a layout the product provides.
+Read the `.captions` rules next, not the `.caption` ones.
+
+**NOTHING IN THIS ROUND VERIFIED STEP 3.** The status is unchanged: applied, not visually
+verified. What the round DID produce is one real structural fact -- the caption row is a
+two-column grid with a time rail -- which any later attempt will need.
