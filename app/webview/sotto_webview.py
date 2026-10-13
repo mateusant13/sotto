@@ -3557,8 +3557,17 @@ class PanelVisibilityWriter:
             panel_state.write_atomic(self.path, payload)
         except Exception as exc:
             self.errors += 1
-            self.log(f'PANEL_VISIBILITY_WRITE_FAILED path={self.path} '
-                     f'error={exc!r}')
+            # RATE LIMITED, AND IT IS THE FLOOD FIX. MEASURED 2026-10-13: this single
+            # line fired **1 145 063 times** -- 197.7 MB of an 808.6 MB log, 62-83% of
+            # the failures inside the surface loop and only 1-2 an hour outside it.
+            # The COUNT was already kept in `self.errors`; what was unbounded was the
+            # LOGGING. The first few are logged in full because they are the ones that
+            # diagnose a cold start, and after that one line per 500 carries the running
+            # total -- so a reader still sees that it is failing, and how often, without
+            # the file growing by a megabyte a minute to say so.
+            if self.errors <= 3 or self.errors % 500 == 0:
+                self.log(f'PANEL_VISIBILITY_WRITE_FAILED path={self.path} '
+                         f'errors={self.errors} error={exc!r}')
             return False
         self.writes += 1
         return True

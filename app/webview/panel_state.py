@@ -75,13 +75,33 @@ def write_atomic(path: str, payload: dict) -> None:
     parent = os.path.dirname(os.path.abspath(path))
     if parent:
         os.makedirs(parent, exist_ok=True)
-    tmp = path + '.tmp'
+    # A UNIQUE TEMP NAME, NOT `path + '.tmp'`. MEASURED 2026-10-13 by the audit lane: TWO
+    # writers touch this file -- the shell's periodic writer and the worker -- and with a
+    # fixed temp name they collide on the SAME temp path as well as on the rename.
+    tmp = '%s.%d.%d.tmp' % (path, os.getpid(), threading.get_ident())
     with open(tmp, 'w', encoding='utf-8') as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write('\n')
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp, path)
+    # THE RENAME RETRIES, AND THAT IS THE WHOLE POINT OF THIS CHANGE. `os.replace` fails
+    # with PermissionError(13, 'O arquivo ja esta sendo usado por outro processo') while
+    # the other writer holds the target open -- measured at 1 145 063 occurrences in
+    # _main/webview-run.log, 62-83% of them inside the surface loop and only 1-2 an hour
+    # outside it. A short bounded retry turns a lost write into a delayed one.
+    last = None
+    for attempt in range(6):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as exc:
+            last = exc
+            time.sleep(0.02 * (attempt + 1))
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+    raise last if last else OSError('write_atomic failed')
 
 
 class PanelStateWriter:
