@@ -17,7 +17,13 @@
 
    THE ENTRY ANIMATIONS ARE ON THE WORD OR ON THE CHARACTER, NEVER ON THE LINE: a line
    whose text is rewritten in place must not slide or fade as a whole, or every partial
-   the worker sends would make the whole caption jump. */
+   the worker sends would make the whole caption jump.
+
+   WHY THE MOTION TOKEN IS HERE TOO: `--motion-in` is DECLARED by every one of the
+   twenty-five themes and READ by the one rule at the end of this block. A copy of
+   that rule per theme would be twenty-five places for one of them to be edited
+   alone, and the value still comes from each theme's own token block — a custom
+   property resolves per element, so the dial is live in every theme either way. */
 @keyframes cine-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -55,6 +61,29 @@
   animation: cine-caret 1.05s steps(1) infinite;
 }
 
+/* ── THE MOTION TOKEN ─────────────────────────────────────────────────────────────
+   `--motion-in` is a COLOUR/SURFACE transition duration in every other family of this
+   repo (`themes/theme-1.css:219` runs `background-color var(--motion-in),
+   border-color var(--motion-in)`), and it is one of the four knobs of the owner's
+   dialog that were DEAD in all twenty-five of these themes (D3 of the audit: 25
+   declarations, 0 readers). The VALUE is declared per theme: `cinematic-1`'s 320 ms is
+   `StreamText.tsx:40` (`transition: opacity 320ms ease`), `cinematic-2`'s 300 ms is
+   `LiveCaptions.tsx:436-437` (`color .3s ease, filter .3s ease`), and the
+   `cinematic` set keeps the repo's 150 ms because that zip states no colour
+   transition on its caption. The property list is `theme-1.css`'s, verbatim. */
+:root[data-theme^='cine-'] .caption,
+:root[data-theme^='cine-'] .caption__text,
+:root[data-theme^='cine-'] .caption__confirmed,
+:root[data-theme^='cine-'] .caption__provisional {
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+
+/* THE `prefers-reduced-motion` OVERRIDE IS THE FILE'S LAST BLOCK (`SHARED_TAIL`),
+   not this one: the per-theme rules that read `--motion-in` are emitted AFTER this
+   block, and an override at equal specificity must come LAST to win. */
+
 /* ── Midnight Rain — steel blue · the city exhales ─────────────────────────────────────────────────────────
  * from `cinematic/src/themes.ts`, id `midnight-rain`, reveal `fade` (bundled photo)
  */
@@ -62,7 +91,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(9,14,24,0.88);
   --bg-slab-strong: rgba(148,180,220,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 14px rgba(3,7,15,0.65), 0 1px 2px rgba(3,7,15,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -81,10 +109,11 @@
   --theme-swatch: #7fb3dc;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #7fb3dc;
   --error: #F87171;
   --idle: #5f6d83;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -93,16 +122,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(20px,2.7vw,31px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 20px, max 31px) */
   --leading-caption: 1.45;
   --weight-caption: 300;
@@ -111,25 +136,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(4,8,16,0.68);
-  --cine-accent-ink: #0a1220;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-midnight-rain']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -206,11 +231,18 @@
 :root[data-theme='cine-midnight-rain'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-midnight-rain'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-midnight-rain'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -227,6 +259,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-midnight-rain'] .panel__header,
+:root[data-theme='cine-midnight-rain'] .panel__header *,
+:root[data-theme='cine-midnight-rain'] .status,
+:root[data-theme='cine-midnight-rain'] .status *,
+:root[data-theme='cine-midnight-rain'] .chrome,
+:root[data-theme='cine-midnight-rain'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -273,7 +315,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(23,14,9,0.88);
   --bg-slab-strong: rgba(230,180,120,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 16px rgba(12,5,1,0.7), 0 1px 2px rgba(12,5,1,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -292,10 +333,11 @@
   --theme-swatch: #e0a35f;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #e0a35f;
   --error: #F87171;
   --idle: #8a7360;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -304,16 +346,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(21px,2.8vw,33px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 21px, max 33px) */
   --leading-caption: 1.4;
   --weight-caption: 400;
@@ -322,25 +360,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(15,7,3,0.68);
-  --cine-accent-ink: #1c1108;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-warm-hour']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -418,11 +456,18 @@
 :root[data-theme='cine-warm-hour'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-warm-hour'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-warm-hour'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -439,6 +484,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-warm-hour'] .panel__header,
+:root[data-theme='cine-warm-hour'] .panel__header *,
+:root[data-theme='cine-warm-hour'] .status,
+:root[data-theme='cine-warm-hour'] .status *,
+:root[data-theme='cine-warm-hour'] .chrome,
+:root[data-theme='cine-warm-hour'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -485,7 +540,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(25,15,24,0.88);
   --bg-slab-strong: rgba(220,160,200,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 16px rgba(14,5,13,0.68), 0 1px 2px rgba(14,5,13,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -504,10 +558,11 @@
   --theme-swatch: #d18cb2;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #d18cb2;
   --error: #F87171;
   --idle: #846479;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -516,16 +571,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(19px,2.5vw,29px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 19px, max 29px) */
   --leading-caption: 1.5;
   --weight-caption: 400;
@@ -534,25 +585,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(16,7,15,0.66);
-  --cine-accent-ink: #20101c;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-velvet-dusk']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -629,11 +680,18 @@
 :root[data-theme='cine-velvet-dusk'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-velvet-dusk'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-velvet-dusk'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -650,6 +708,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-velvet-dusk'] .panel__header,
+:root[data-theme='cine-velvet-dusk'] .panel__header *,
+:root[data-theme='cine-velvet-dusk'] .status,
+:root[data-theme='cine-velvet-dusk'] .status *,
+:root[data-theme='cine-velvet-dusk'] .chrome,
+:root[data-theme='cine-velvet-dusk'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -696,7 +764,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(20,16,12,0.9);
   --bg-slab-strong: rgba(220,190,140,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 14px rgba(10,6,2,0.72), 0 1px 2px rgba(10,6,2,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -715,10 +782,11 @@
   --theme-swatch: #d9a45f;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #d9a45f;
   --error: #F87171;
   --idle: #7f6f5a;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -727,16 +795,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(16px,2.1vw,24px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 16px, max 24px) */
   --leading-caption: 1.6;
   --weight-caption: 400;
@@ -745,25 +809,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 45ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(12,8,4,0.7);
-  --cine-accent-ink: #1a1208;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-study-light']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -840,11 +904,18 @@
 :root[data-theme='cine-study-light'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-study-light'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-study-light'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -861,6 +932,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-study-light'] .panel__header,
+:root[data-theme='cine-study-light'] .panel__header *,
+:root[data-theme='cine-study-light'] .status,
+:root[data-theme='cine-study-light'] .status *,
+:root[data-theme='cine-study-light'] .chrome,
+:root[data-theme='cine-study-light'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -902,7 +983,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(7,18,21,0.88);
   --bg-slab-strong: rgba(120,190,180,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 15px rgba(2,9,11,0.7), 0 1px 2px rgba(2,9,11,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -921,10 +1001,11 @@
   --theme-swatch: #63bfb2;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #63bfb2;
   --error: #F87171;
   --idle: #5c7874;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -933,16 +1014,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(20px,2.6vw,30px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 20px, max 30px) */
   --leading-caption: 1.45;
   --weight-caption: 300;
@@ -951,25 +1028,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 38ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(3,10,12,0.68);
-  --cine-accent-ink: #07161a;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-tideline-body']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -1046,11 +1123,18 @@
 :root[data-theme='cine-tideline-body'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-tideline-body'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-tideline-body'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -1067,6 +1151,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-tideline-body'] .panel__header,
+:root[data-theme='cine-tideline-body'] .panel__header *,
+:root[data-theme='cine-tideline-body'] .status,
+:root[data-theme='cine-tideline-body'] .status *,
+:root[data-theme='cine-tideline-body'] .chrome,
+:root[data-theme='cine-tideline-body'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -1113,7 +1207,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(24,12,16,0.89);
   --bg-slab-strong: rgba(240,150,175,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 18px rgba(13,4,7,0.72), 0 0 26px rgba(229,143,164,0.14);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -1132,10 +1225,11 @@
   --theme-swatch: #e58fa4;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #e58fa4;
   --error: #F87171;
   --idle: #8a6773;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -1144,16 +1238,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(22px,3vw,35px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 22px, max 35px) */
   --leading-caption: 1.38;
   --weight-caption: 500;
@@ -1162,25 +1252,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(15,6,9,0.7);
-  --cine-accent-ink: #230d13;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-motel-glow']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -1258,11 +1348,18 @@
 :root[data-theme='cine-motel-glow'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-motel-glow'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-motel-glow'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -1279,6 +1376,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-motel-glow'] .panel__header,
+:root[data-theme='cine-motel-glow'] .panel__header *,
+:root[data-theme='cine-motel-glow'] .status,
+:root[data-theme='cine-motel-glow'] .status *,
+:root[data-theme='cine-motel-glow'] .chrome,
+:root[data-theme='cine-motel-glow'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -1325,7 +1432,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(240,241,238,0.94);
   --bg-slab-strong: rgba(20,24,30,0.045);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 14px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.45);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -1344,10 +1450,11 @@
   --theme-swatch: #aab3c0;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #4c5666;
   --error: #F87171;
   --idle: #969ba3;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -1356,16 +1463,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(14px,1.8vw,20px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 14px, max 20px) */
   --leading-caption: 1.7;
   --weight-caption: 500;
@@ -1374,25 +1477,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 45ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(5,6,10,0.62);
-  --cine-accent-ink: #f2f3f0;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-paper-moon']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -1469,11 +1572,18 @@
 :root[data-theme='cine-paper-moon'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-paper-moon'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-paper-moon'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -1490,6 +1600,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-paper-moon'] .panel__header,
+:root[data-theme='cine-paper-moon'] .panel__header *,
+:root[data-theme='cine-paper-moon'] .status,
+:root[data-theme='cine-paper-moon'] .status *,
+:root[data-theme='cine-paper-moon'] .chrome,
+:root[data-theme='cine-paper-moon'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -1529,7 +1649,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(13,16,23,0.89);
   --bg-slab-strong: rgba(150,170,200,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 14px rgba(4,6,12,0.68), 0 1px 2px rgba(4,6,12,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -1548,10 +1667,11 @@
   --theme-swatch: #92aed4;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #92aed4;
   --error: #F87171;
   --idle: #67748a;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -1560,16 +1680,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(18px,2.3vw,27px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 18px, max 27px) */
   --leading-caption: 1.5;
   --weight-caption: 400;
@@ -1578,25 +1694,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(6,8,14,0.68);
-  --cine-accent-ink: #0d1119;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-quiet-streets']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -1673,11 +1789,18 @@
 :root[data-theme='cine-quiet-streets'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-quiet-streets'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-quiet-streets'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -1694,6 +1817,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-quiet-streets'] .panel__header,
+:root[data-theme='cine-quiet-streets'] .panel__header *,
+:root[data-theme='cine-quiet-streets'] .status,
+:root[data-theme='cine-quiet-streets'] .status *,
+:root[data-theme='cine-quiet-streets'] .chrome,
+:root[data-theme='cine-quiet-streets'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -1740,7 +1873,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(24,16,9,0.89);
   --bg-slab-strong: rgba(230,190,120,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 16px rgba(12,6,1,0.7), 0 1px 2px rgba(12,6,1,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -1759,10 +1891,11 @@
   --theme-swatch: #d9b36a;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #d9b36a;
   --error: #F87171;
   --idle: #8a7454;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -1771,16 +1904,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Fraunces", Georgia, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(21px,2.8vw,32px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 21px, max 32px) */
   --leading-caption: 1.4;
   --weight-caption: 500;
@@ -1789,25 +1918,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(14,8,3,0.68);
-  --cine-accent-ink: #1e1408;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-last-reel']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -1885,11 +2014,18 @@
 :root[data-theme='cine-last-reel'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-last-reel'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-last-reel'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -1906,6 +2042,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-last-reel'] .panel__header,
+:root[data-theme='cine-last-reel'] .panel__header *,
+:root[data-theme='cine-last-reel'] .status,
+:root[data-theme='cine-last-reel'] .status *,
+:root[data-theme='cine-last-reel'] .chrome,
+:root[data-theme='cine-last-reel'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -1952,7 +2098,6 @@
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
   --bg-slab: rgba(12,18,15,0.89);
   --bg-slab-strong: rgba(140,180,160,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 2px 15px rgba(3,8,6,0.7), 0 1px 2px rgba(3,8,6,0.5);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
@@ -1971,10 +2116,11 @@
   --theme-swatch: #7fbb9c;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
-     the same two literals the five directions already use; `--busy` and
-     `--idle` follow this palette. */
+     the same two literals the five directions already use; `--idle` follows
+     this palette. (`--busy` used to sit here and left the contract: no rule in
+     `app/panel/**` or the shell reads it — `panel.js` toggles only
+     `status--live`/`status--error`.) */
   --ok: #6EF184;
-  --busy: #7fbb9c;
   --error: #F87171;
   --idle: #64766a;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
@@ -1983,16 +2129,12 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   /* TYPE — read out of the design's own caption class string. */
   --font-sans: "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: var(--font-sans);
-  --font-closed: var(--font-sans);
   --size-caption: clamp(20px,2.6vw,30px);   /* THE DESIGN'S OWN CLAMP, VERBATIM (floor 20px, max 30px) */
   --leading-caption: 1.45;
   --weight-caption: 300;
@@ -2001,25 +2143,25 @@
   --tracking-brand: 0.42em;
   --brand-upper: uppercase;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: 13px;
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.375;
+  --weight-closed: 300;
   --weight-brand: 700;
-  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the
-     reveal is the theme's own animation, declared below. */
+  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the
+     meaning it has in every other family (`themes/theme-1.css:219`); the
+     shared set block at the top of this file reads it. The reveal is the
+     theme's own animation, declared below. */
   --motion-in: 150ms;
   --type-step: 38ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(5,10,8,0.68);
-  --cine-accent-ink: #0c1310;
 }
 
 /* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old
  * names finds them, and so the two cannot drift. */
 :root[data-theme='cine-north-fog']{
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -2096,11 +2238,18 @@
 :root[data-theme='cine-north-fog'] .caption--provisional .caption__text {
   color: var(--text-provisional);
 }
-/* Older lines: the smallest number that recedes without becoming unreadable at
- * 380 px. The zips never show an older line, so this value is mine. */
+/* THE CLOSED LINE — the four tokens of the owner's dialog that were DEAD in
+ * every one of these themes now carry the values the ZIP states for the line
+ * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px
+ * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with
+ * `--motion-in` the colour transition the shared set block runs. The values in
+ * the `var()` fallbacks are the design's own, so a cleared dial still paints
+ * the design. The opacity below is the panel's own recede (DECISION 2). */
 :root[data-theme='cine-north-fog'] .caption:not(.caption--latest) .caption__text {
   color: var(--text-secondary);
-  font-size: calc(var(--size-caption) * 0.72);
+  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));
+  line-height: var(--leading-closed, 1.375);
+  font-weight: var(--weight-closed, 300);
 }
 :root[data-theme='cine-north-fog'] .caption:not(.caption--latest) {
   opacity: 0.72;
@@ -2117,6 +2266,16 @@
   font-size: var(--size-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+:root[data-theme='cine-north-fog'] .panel__header,
+:root[data-theme='cine-north-fog'] .panel__header *,
+:root[data-theme='cine-north-fog'] .status,
+:root[data-theme='cine-north-fog'] .status *,
+:root[data-theme='cine-north-fog'] .chrome,
+:root[data-theme='cine-north-fog'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
 }
 
 /* THE CONTROL CLUSTER — the zip's own position — the caption column is centred at the foot of the
@@ -2160,7 +2319,6 @@
 :root[data-theme='cine-cafe']{
   --bg-slab: rgba(26,18,13,0.52);
   --bg-slab-strong: rgba(255,222,180,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -30px rgba(0,0,0,0.85);
   --text-primary: #F6E7D4;
   --text-confirmed: #FCEDD8;
@@ -2173,22 +2331,17 @@
   --accent-soft: rgba(255,222,180,0.07);
   --theme-swatch: #E9A85B;
   --ok: #6EF184;
-  --busy: #E9A85B;
   --error: #F87171;
   --idle: rgba(252,237,216,0.34);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Newsreader", Georgia, serif;
-  --font-closed: "Inter", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.34;
   --weight-caption: 400;
@@ -2197,16 +2350,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.45;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -2472,12 +2624,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-cafe'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-cafe'] .panel__header,
+:root[data-theme='cine-cafe'] .panel__header *,
+:root[data-theme='cine-cafe'] .status,
+:root[data-theme='cine-cafe'] .status *,
+:root[data-theme='cine-cafe'] .chrome,
+:root[data-theme='cine-cafe'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-cafe'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-cafe'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Rainglass — from the `cinematic-1` zip ── */
 :root[data-theme='cine-rainglass']{
   --bg-slab: rgba(9,15,21,0.34);
   --bg-slab-strong: rgba(159,196,216,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 20px 60px -40px rgba(0,0,0,0.9);
   --text-primary: #E4EDF3;
   --text-confirmed: #E8F1F7;
@@ -2490,22 +2672,17 @@
   --accent-soft: rgba(159,196,216,0.06);
   --theme-swatch: #9FC4D8;
   --ok: #6EF184;
-  --busy: #9FC4D8;
   --error: #F87171;
   --idle: rgba(232,241,247,0.3);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-closed: "Inter", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.5;
   --weight-caption: 300;
@@ -2514,16 +2691,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.45;
+  --weight-closed: 300;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -2784,12 +2960,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-rainglass'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-rainglass'] .panel__header,
+:root[data-theme='cine-rainglass'] .panel__header *,
+:root[data-theme='cine-rainglass'] .status,
+:root[data-theme='cine-rainglass'] .status *,
+:root[data-theme='cine-rainglass'] .chrome,
+:root[data-theme='cine-rainglass'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-rainglass'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 300);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-rainglass'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Tideline — from the `cinematic-1` zip ── */
 :root[data-theme='cine-tideline']{
   --bg-slab: rgba(13,19,23,0.5);
   --bg-slab-strong: rgba(156,195,204,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -36px rgba(0,0,0,0.88);
   --text-primary: #DFE9ED;
   --text-confirmed: #E7EFF3;
@@ -2802,22 +3008,17 @@
   --accent-soft: rgba(156,195,204,0.06);
   --theme-swatch: #9CC3CC;
   --ok: #6EF184;
-  --busy: #9CC3CC;
   --error: #F87171;
   --idle: rgba(231,239,243,0.28);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Newsreader", Georgia, serif;
-  --font-closed: "Inter", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.4;
   --weight-caption: 300;
@@ -2826,16 +3027,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.45;
+  --weight-closed: 300;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -3091,12 +3291,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-tideline'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-tideline'] .panel__header,
+:root[data-theme='cine-tideline'] .panel__header *,
+:root[data-theme='cine-tideline'] .status,
+:root[data-theme='cine-tideline'] .status *,
+:root[data-theme='cine-tideline'] .chrome,
+:root[data-theme='cine-tideline'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-tideline'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 300);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-tideline'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Field Notes — from the `cinematic-1` zip ── */
 :root[data-theme='cine-fieldnotes']{
   --bg-slab: rgba(243,239,230,0.94);
   --bg-slab-strong: rgba(63,94,96,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 34px 80px -34px rgba(0,0,0,0.75);
   --text-primary: #232A2C;
   --text-confirmed: #F3F0E8;
@@ -3109,22 +3339,17 @@
   --accent-soft: rgba(63,94,96,0.07);
   --theme-swatch: #A9CBC6;
   --ok: #6EF184;
-  --busy: #A9CBC6;
   --error: #F87171;
   --idle: rgba(243,240,232,0.3);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Newsreader", Georgia, serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-closed: "Newsreader", Georgia, serif;
   --size-caption: 17px;
   --leading-caption: 1.52;
   --weight-caption: 300;
@@ -3133,16 +3358,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.45;
+  --weight-closed: 300;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -3407,12 +3631,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-fieldnotes'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-fieldnotes'] .panel__header,
+:root[data-theme='cine-fieldnotes'] .panel__header *,
+:root[data-theme='cine-fieldnotes'] .status,
+:root[data-theme='cine-fieldnotes'] .status *,
+:root[data-theme='cine-fieldnotes'] .chrome,
+:root[data-theme='cine-fieldnotes'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-fieldnotes'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 300);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-fieldnotes'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Dustlight — from the `cinematic-1` zip ── */
 :root[data-theme='cine-dustlight']{
   --bg-slab: #F6EDE1;
   --bg-slab-strong: rgba(196,86,47,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 34px 80px -34px rgba(0,0,0,0.8);
   --text-primary: #35261B;
   --text-confirmed: #FFE7CC;
@@ -3425,22 +3679,17 @@
   --accent-soft: rgba(196,86,47,0.07);
   --theme-swatch: #F09A55;
   --ok: #6EF184;
-  --busy: #F09A55;
   --error: #F87171;
   --idle: rgba(255,231,204,0.32);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "DM Mono", ui-monospace, monospace;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Fraunces", Georgia, serif;
-  --font-closed: "DM Mono", ui-monospace, monospace;
   --size-caption: 17px;
   --leading-caption: 1.42;
   --weight-caption: 400;
@@ -3449,16 +3698,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.45;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -3725,12 +3973,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-dustlight'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-dustlight'] .panel__header,
+:root[data-theme='cine-dustlight'] .panel__header *,
+:root[data-theme='cine-dustlight'] .status,
+:root[data-theme='cine-dustlight'] .status *,
+:root[data-theme='cine-dustlight'] .chrome,
+:root[data-theme='cine-dustlight'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-dustlight'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-dustlight'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Analog — from the `cinematic-1` zip ── */
 :root[data-theme='cine-analog']{
   --bg-slab: rgba(32,22,16,0.58);
   --bg-slab-strong: rgba(217,168,108,0.07);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -30px rgba(0,0,0,0.85);
   --text-primary: #F1E3D3;
   --text-confirmed: #FFF2E0;
@@ -3743,22 +4021,17 @@
   --accent-soft: rgba(217,168,108,0.07);
   --theme-swatch: #DCB183;
   --ok: #6EF184;
-  --busy: #DCB183;
   --error: #F87171;
   --idle: rgba(255,242,224,0.32);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Lora", Georgia, serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Instrument Serif", Georgia, serif;
-  --font-closed: "Lora", Georgia, serif;
   --size-caption: 17px;
   --leading-caption: 1.3;
   --weight-caption: 400;
@@ -3767,16 +4040,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.45;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4011,12 +4283,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-analog'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-analog'] .panel__header,
+:root[data-theme='cine-analog'] .panel__header *,
+:root[data-theme='cine-analog'] .status,
+:root[data-theme='cine-analog'] .status *,
+:root[data-theme='cine-analog'] .chrome,
+:root[data-theme='cine-analog'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-analog'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-analog'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Quiet Shelves — from the `cinematic-1` zip ── */
 :root[data-theme='cine-shelves']{
   --bg-slab: rgba(17,21,16,0.6);
   --bg-slab-strong: rgba(216,176,96,0.06);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -34px rgba(0,0,0,0.88);
   --text-primary: #EDE9DA;
   --text-confirmed: #F2EDDD;
@@ -4029,22 +4331,17 @@
   --accent-soft: rgba(216,176,96,0.06);
   --theme-swatch: #D8B060;
   --ok: #6EF184;
-  --busy: #D8B060;
   --error: #F87171;
   --idle: rgba(242,237,221,0.3);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Space Grotesk", ui-sans-serif, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Lora", Georgia, serif;
-  --font-closed: "Space Grotesk", ui-sans-serif, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.38;
   --weight-caption: 400;
@@ -4053,16 +4350,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.45;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4328,12 +4624,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-shelves'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-shelves'] .panel__header,
+:root[data-theme='cine-shelves'] .panel__header *,
+:root[data-theme='cine-shelves'] .status,
+:root[data-theme='cine-shelves'] .status *,
+:root[data-theme='cine-shelves'] .chrome,
+:root[data-theme='cine-shelves'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-shelves'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-shelves'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Rooftop Dusk — from the `cinematic-1` zip ── */
 :root[data-theme='cine-rooftop']{
   --bg-slab: rgba(29,23,42,0.56);
   --bg-slab-strong: rgba(228,176,204,0.08);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -32px rgba(0,0,0,0.85);
   --text-primary: #F0E9F2;
   --text-confirmed: #F3E9F4;
@@ -4346,22 +4672,17 @@
   --accent-soft: rgba(228,176,204,0.08);
   --theme-swatch: #E4B0CC;
   --ok: #6EF184;
-  --busy: #E4B0CC;
   --error: #F87171;
   --idle: rgba(243,233,244,0.3);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Lora", Georgia, serif;
-  --font-closed: "Inter", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.42;
   --weight-caption: 400;
@@ -4370,16 +4691,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.45;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4643,12 +4963,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-rooftop'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-rooftop'] .panel__header,
+:root[data-theme='cine-rooftop'] .panel__header *,
+:root[data-theme='cine-rooftop'] .status,
+:root[data-theme='cine-rooftop'] .status *,
+:root[data-theme='cine-rooftop'] .chrome,
+:root[data-theme='cine-rooftop'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-rooftop'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-rooftop'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Ember — from the `cinematic-1` zip ── */
 :root[data-theme='cine-ember']{
   --bg-slab: rgba(24,14,11,0.66);
   --bg-slab-strong: rgba(240,138,75,0.08);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -30px rgba(0,0,0,0.88);
   --text-primary: #F6E0D2;
   --text-confirmed: #FFE4CE;
@@ -4661,22 +5011,17 @@
   --accent-soft: rgba(240,138,75,0.08);
   --theme-swatch: #F08A4B;
   --ok: #6EF184;
-  --busy: #F08A4B;
   --error: #F87171;
   --idle: rgba(255,228,206,0.3);
   --radius-sm: 7px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-dialog: 16px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
   --font-caption: "Fraunces", Georgia, serif;
-  --font-closed: "Inter", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.38;
   --weight-caption: 400;
@@ -4685,16 +5030,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.45;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 320ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4946,12 +5290,42 @@
   z-index: 4;
 }
 :root[data-theme='cine-ember'] body[data-surface='strip'] .stripbar { justify-content: flex-start; }
+:root[data-theme='cine-ember'] .panel__header,
+:root[data-theme='cine-ember'] .panel__header *,
+:root[data-theme='cine-ember'] .status,
+:root[data-theme='cine-ember'] .status *,
+:root[data-theme='cine-ember'] .chrome,
+:root[data-theme='cine-ember'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-ember'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.45);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-ember'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Rainline — from the `cinematic-2` zip ── */
 :root[data-theme='cine-rainline']{
   --bg-slab: #060c11;
   --bg-slab-strong: rgba(10,20,27,.74);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 24px 70px -30px rgba(0,0,0,.85);
   --text-primary: #eaf3f7;
   --text-confirmed: #f2f8fb;
@@ -4964,22 +5338,17 @@
   --accent-soft: color-mix(in srgb, #9fc9dd 14%, transparent);
   --theme-swatch: #9fc9dd;
   --ok: #6EF184;
-  --busy: #9fc9dd;
   --error: #F87171;
   --idle: var(--text-muted);
   --radius-sm: 5px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-dialog: 14px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-closed: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.42;
   --weight-caption: 300;
@@ -4988,16 +5357,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.42;
+  --weight-closed: 300;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 300ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -5307,12 +5675,42 @@
   10% { opacity: .5; }
   to { background-position-y: 110%; opacity: 0; }
 }
+:root[data-theme='cine-rainline'] .panel__header,
+:root[data-theme='cine-rainline'] .panel__header *,
+:root[data-theme='cine-rainline'] .status,
+:root[data-theme='cine-rainline'] .status *,
+:root[data-theme='cine-rainline'] .chrome,
+:root[data-theme='cine-rainline'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-rainline'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.42);
+  font-weight: var(--weight-closed, 300);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-rainline'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Cellar Sessions — from the `cinematic-2` zip ── */
 :root[data-theme='cine-cellar']{
   --bg-slab: #0c0807;
   --bg-slab-strong: rgba(20,15,11,.7);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 30px 80px -34px rgba(0,0,0,.9);
   --text-primary: #f3e8d7;
   --text-confirmed: #f8efe0;
@@ -5325,22 +5723,17 @@
   --accent-soft: color-mix(in srgb, #d9a94f 14%, transparent);
   --theme-swatch: #d9a94f;
   --ok: #6EF184;
-  --busy: #d9a94f;
   --error: #F87171;
   --idle: var(--text-muted);
   --radius-sm: 6px;
   --radius-md: 11px;
   --radius-lg: 18px;
   --radius-dialog: 15px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: "Cormorant Garamond", Georgia, serif;
-  --font-closed: "Cormorant Garamond", Georgia, serif;
   --size-caption: 17px;
   --leading-caption: 1.4;
   --weight-caption: 400;
@@ -5349,16 +5742,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.4;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 300ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -5623,12 +6015,42 @@
   backdrop-filter: blur(10px);
 }
 :root[data-theme='cine-cellar'] body[data-surface='strip'] .stripbar { justify-content: center; }
+:root[data-theme='cine-cellar'] .panel__header,
+:root[data-theme='cine-cellar'] .panel__header *,
+:root[data-theme='cine-cellar'] .status,
+:root[data-theme='cine-cellar'] .status *,
+:root[data-theme='cine-cellar'] .chrome,
+:root[data-theme='cine-cellar'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-cellar'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.4);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-cellar'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Linen Hours — from the `cinematic-2` zip ── */
 :root[data-theme='cine-linen']{
   --bg-slab: #efe7da;
   --bg-slab-strong: rgba(251,247,240,.86);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 22px 60px -34px rgba(70,54,36,.45);
   --text-primary: #2e2a24;
   --text-confirmed: #332d26;
@@ -5641,22 +6063,17 @@
   --accent-soft: color-mix(in srgb, #a8672f 14%, transparent);
   --theme-swatch: #a8672f;
   --ok: #6EF184;
-  --busy: #a8672f;
   --error: #F87171;
   --idle: var(--text-muted);
   --radius-sm: 6px;
   --radius-md: 11px;
   --radius-lg: 18px;
   --radius-dialog: 15px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: "Newsreader", Georgia, serif;
-  --font-closed: "Newsreader", Georgia, serif;
   --size-caption: 17px;
   --leading-caption: 1.38;
   --weight-caption: 400;
@@ -5665,16 +6082,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.38;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 300ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -5956,12 +6372,42 @@
   border-bottom: 1px solid var(--line);
 }
 :root[data-theme='cine-linen'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
+:root[data-theme='cine-linen'] .panel__header,
+:root[data-theme='cine-linen'] .panel__header *,
+:root[data-theme='cine-linen'] .status,
+:root[data-theme='cine-linen'] .status *,
+:root[data-theme='cine-linen'] .chrome,
+:root[data-theme='cine-linen'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-linen'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.38);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-linen'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Reading Hour — from the `cinematic-2` zip ── */
 :root[data-theme='cine-reading-hour']{
   --bg-slab: #110c07;
   --bg-slab-strong: rgba(22,16,10,.74);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 24px 68px -32px rgba(0,0,0,.88);
   --text-primary: #f2e6d3;
   --text-confirmed: #fbf2e1;
@@ -5974,22 +6420,17 @@
   --accent-soft: color-mix(in srgb, #c9a447 14%, transparent);
   --theme-swatch: #c9a447;
   --ok: #6EF184;
-  --busy: #c9a447;
   --error: #F87171;
   --idle: var(--text-muted);
   --radius-sm: 4px;
   --radius-md: 7px;
   --radius-lg: 12px;
   --radius-dialog: 10px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Lora", Georgia, serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: "Lora", Georgia, serif;
-  --font-closed: "Lora", Georgia, serif;
   --size-caption: 17px;
   --leading-caption: 1.44;
   --weight-caption: 400;
@@ -5998,16 +6439,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
+  --leading-closed: 1.44;
   --weight-closed: 400;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 300ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -6267,12 +6707,42 @@
   border-bottom: 1px solid var(--line);
 }
 :root[data-theme='cine-reading-hour'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
+:root[data-theme='cine-reading-hour'] .panel__header,
+:root[data-theme='cine-reading-hour'] .panel__header *,
+:root[data-theme='cine-reading-hour'] .status,
+:root[data-theme='cine-reading-hour'] .status *,
+:root[data-theme='cine-reading-hour'] .chrome,
+:root[data-theme='cine-reading-hour'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-reading-hour'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.44);
+  font-weight: var(--weight-closed, 400);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-reading-hour'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Last Train — from the `cinematic-2` zip ── */
 :root[data-theme='cine-last-train']{
   --bg-slab: #0b1113;
   --bg-slab-strong: rgba(14,21,21,.72);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 24px 68px -32px rgba(0,0,0,.86);
   --text-primary: #e8efe9;
   --text-confirmed: #f0f6f0;
@@ -6285,22 +6755,17 @@
   --accent-soft: color-mix(in srgb, #a9c4a0 14%, transparent);
   --theme-swatch: #a9c4a0;
   --ok: #6EF184;
-  --busy: #a9c4a0;
   --error: #F87171;
   --idle: var(--text-muted);
   --radius-sm: 5px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-dialog: 14px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Jost", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: "Jost", ui-sans-serif, system-ui, sans-serif;
-  --font-closed: "Jost", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.4;
   --weight-caption: 300;
@@ -6309,16 +6774,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.4;
+  --weight-closed: 300;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 300ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -6585,12 +7049,42 @@
   border-bottom: 1px solid var(--line);
 }
 :root[data-theme='cine-last-train'] body[data-surface='strip'] .stripbar { justify-content: flex-end; }
+:root[data-theme='cine-last-train'] .panel__header,
+:root[data-theme='cine-last-train'] .panel__header *,
+:root[data-theme='cine-last-train'] .status,
+:root[data-theme='cine-last-train'] .status *,
+:root[data-theme='cine-last-train'] .chrome,
+:root[data-theme='cine-last-train'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-last-train'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.4);
+  font-weight: var(--weight-closed, 300);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-last-train'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
 
 /* ── Blue Hour — from the `cinematic-2` zip ── */
 :root[data-theme='cine-blue-hour']{
   --bg-slab: #0a111c;
   --bg-slab-strong: rgba(13,20,32,.72);
-  --slab-opacity: 0.97;
   --shadow-slab: 0 24px 70px -32px rgba(0,0,0,.88);
   --text-primary: #e9eef6;
   --text-confirmed: #f2f6fb;
@@ -6603,22 +7097,17 @@
   --accent-soft: color-mix(in srgb, #e0a894 14%, transparent);
   --theme-swatch: #e0a894;
   --ok: #6EF184;
-  --busy: #e0a894;
   --error: #F87171;
   --idle: var(--text-muted);
   --radius-sm: 6px;
   --radius-md: 11px;
   --radius-lg: 18px;
   --radius-dialog: 15px;
-  --space-1: 4px;
   --space-2: 8px;
   --space-3: 13px;
-  --space-4: 20px;
-  --space-5: 30px;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --font-caption: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-closed: "Inter", ui-sans-serif, system-ui, sans-serif;
   --size-caption: 17px;
   --leading-caption: 1.46;
   --weight-caption: 300;
@@ -6627,16 +7116,15 @@
   --brand-upper: uppercase;
   --caption-upper: none;
   --size-time: 10px;
-  --size-closed: 18px;
+  --size-closed: max(13px, calc(var(--size-caption) * 0.66));
   --size-chrome: 11.5px;
   --size-meta: 10.5px;
   --size-small: 12.5px;
-  --leading-closed: 1.24;
-  --weight-closed: 400;
+  --leading-closed: 1.46;
+  --weight-closed: 300;
   --weight-brand: 700;
-  --motion-in: 150ms;
+  --motion-in: 300ms;
   --type-step: 0ms;
-  --bg: var(--bg-slab);
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -6886,3 +7374,61 @@
   backdrop-filter: blur(10px);
 }
 :root[data-theme='cine-blue-hour'] body[data-surface='strip'] .stripbar { justify-content: center; }
+:root[data-theme='cine-blue-hour'] .panel__header,
+:root[data-theme='cine-blue-hour'] .panel__header *,
+:root[data-theme='cine-blue-hour'] .status,
+:root[data-theme='cine-blue-hour'] .status *,
+:root[data-theme='cine-blue-hour'] .chrome,
+:root[data-theme='cine-blue-hour'] .chrome * {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+/* THE CLOSED LINE — the tuning tokens of the owner's dialog, which were DEAD
+ * in all 25 `cine-*` themes. The values are this family's own zip:
+ * the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight).
+ * The rule below supersedes this theme's own literal `font-size` (same
+ * specificity, emitted later). */
+:root[data-theme='cine-blue-hour'] .caption:not(.caption--provisional) .caption__text {
+  font-size: var(--size-closed, max(13px, calc(var(--size-caption) * 0.66)));
+  line-height: var(--leading-closed, 1.46);
+  font-weight: var(--weight-closed, 300);
+}
+/* THE CASE TOKEN — `--caption-upper` is the dialog's "Maiúsculas" field.
+ * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the
+ * design's transform as a LITERAL (`text-transform: none`), so the knob was
+ * DEAD in those six themes — a fifth dead control this lane found by measuring
+ * every dialog token against every theme, which the audit's D3 did not name
+ * (its count called a token live if ANY file consumed it). One rule for every
+ * extra theme; the declared value is the design's own, so the painted type is
+ * unchanged and the dial moves it. */
+:root[data-theme='cine-blue-hour'] .caption__text {
+  text-transform: var(--caption-upper, none);
+}
+
+/* ═══ THE SET'S REDUCED-MOTION OVERRIDE — THE FILE'S LAST BLOCK ══════════════════
+
+   THE SAME PROMISE `themes/theme-1.css:593-602` MAKES, for every node this file
+   gives a transition to: a reader who asked for less motion gets no transition and
+   still gets every colour change. IT IS LAST ON PURPOSE — the per-theme rules that
+   read `--motion-in` (the caption ones in `SHARED`, the chrome ones each theme
+   emits) tie on specificity with this one, so the later block is the one that wins.
+
+   IT COVERS THE CHROME TOO: `--motion-in` drives `.panel__header`, `.status` and
+   `.chrome` in every theme (`theme-1.css:576-585`), and a colour transition that
+   survives `prefers-reduced-motion` in one half of the set and not the other is a
+   promise kept by accident. */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme^='cine-'] .caption,
+  :root[data-theme^='cine-'] .caption__text,
+  :root[data-theme^='cine-'] .caption__confirmed,
+  :root[data-theme^='cine-'] .caption__provisional,
+  :root[data-theme^='cine-'] .panel__header,
+  :root[data-theme^='cine-'] .panel__header *,
+  :root[data-theme^='cine-'] .status,
+  :root[data-theme^='cine-'] .status *,
+  :root[data-theme^='cine-'] .chrome,
+  :root[data-theme^='cine-'] .chrome * {
+    transition-duration: 0ms;
+  }
+}

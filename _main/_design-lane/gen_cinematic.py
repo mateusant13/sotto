@@ -41,10 +41,31 @@ reviewer should be able to challenge them:
      line the owner actually reads. Emitting the clamp keeps BOTH ends: the floor in the
      380 px panel column, the `vw` term on the 1040 px strip, where the same design
      is 28 px wide.
-  2. Lines older than the newest get `0.72` of the caption size and `--text-secondary`.
-     The zips only ever show ONE live line, so they state no treatment for the ones
-     our panel keeps; 0.72 is the smallest number that recedes without becoming
-     unreadable at 380 px.
+  2. Lines older than the newest keep `--text-secondary` and recede at `opacity: 0.72`
+     (the panel's own decision: it keeps many lines, a zip shows one). WHAT THEY ARE
+     SIZED, LEADED AND WEIGHTED BY IS THE ZIP'S OWN, and each of the four tokens
+     below is a knob of the owner's dialog, so each theme DECLARES its family's value
+     and CONSUMES it with `var()` (D3 of `I:/cc-tmp/design-bugs-audit.md`). Read from
+     the design sources, never invented:
+       * `cinematic`   the GHOST LINE (`LiveCaption.tsx:114-125`): `text-[13px]`
+                       (`md:text-[14.5px]` needs 768 px; our column is 380), Tailwind
+                       `leading-snug` = 1.375, `font-light` = 300 (the default
+                       `ghostClassName`, `themes.ts:25` — no design overrides it).
+       * `cinematic-1` the PREVIOUS LINE (`CaptionStage.tsx:81-98`): the clamp
+                       `clamp(13px, 1.14vw, round(size*0.66))` — the `vw` term is
+                       dead in a 380 px column, so the 13 px floor is what applies —
+                       at `lineHeight: 1.45` and `fontWeight: c.weight`.
+       * `cinematic-2` the `stack` PREVIOUS LINE (`LiveCaptions.tsx:371-383`):
+                       `calc(size * 0.66)`, inheriting the caption's leading and
+                       weight; the other five variants show no previous line at all,
+                       so the sibling's relation stands for them.
+     `--motion-in` is the COLOUR/SURFACE transition duration, the meaning it has in
+     every other family (`themes/theme-1.css:219`), and the zips state their own
+     where they have one (`StreamText.tsx:40` 320 ms, `LiveCaptions.tsx:436-437`
+     300 ms); the repo's 150 ms stands where they do not. THE GHOST LINE'S 0.7 s ENTRY
+     IS NOT `--motion-in`: the dialog's range is 0-400 ms (`theme-tune.js:164`), so a
+     700 ms token there would be a control that lies about itself, and the entry is
+     already carried by `panel.css`'s own `caption-in` animation.
 
 Run: `py -3 _main/_design-lane/gen_cinematic.py`
 """
@@ -131,21 +152,38 @@ GROUPS = {
 # Every theme must declare ALL of these. The list is the canonical block of
 # `themes/theme-1.css:43-108` plus its alias block at `:112-125`; a theme that omits
 # one inherits `panel.css`'s `:root` value, which is another design's.
+#
+# SEVEN NAMES OF THAT CANONICAL BLOCK ARE NOT HERE, and each one is gone because it
+# has NO READER ANYWHERE — measured, not assumed: `var(--t)` returns 0 matches across
+# `app/panel/**` (CSS, JS, HTML, skins, caption-float) and `app/webview/sotto_webview.py`,
+# and no module reads it through `getComputedStyle` either. A token nothing reads is
+# dead weight, not a design value:
+#   `--slab-opacity`  the zip's `--panel` already carries its own alpha, and
+#                     `theme-tune.js:41-45` records it as deliberately not a knob.
+#   `--busy`          `panel.js` toggles `status--live`/`status--error` only; there
+#                     is no busy state class in the panel to paint.
+#   `--font-closed`   `cine_extra_c1.py:183` declares the PANEL font, while the zip's
+#                     own previous line paints `scene.captionFont`
+#                     (`CaptionStage.tsx:85`) — a reader would paint a font the
+#                     design never uses, so the name leaves instead of gaining one.
+#   `--space-1`, `--space-4`, `--space-5`  panel.css reads `--space-2` and
+#                     `--space-3` only (2 consumers each); the rest have none.
+#   `--bg`            the other ten aliases all have readers; this one has none.
 REQUIRED = [
-    '--bg-slab', '--bg-slab-strong', '--slab-opacity', '--shadow-slab',
+    '--bg-slab', '--bg-slab-strong', '--shadow-slab',
     '--text-primary', '--text-confirmed', '--text-provisional', '--text-secondary',
     '--text-muted',
     '--line', '--line-strong', '--accent', '--accent-soft', '--theme-swatch',
-    '--ok', '--busy', '--error', '--idle',
+    '--ok', '--error', '--idle',
     '--radius-sm', '--radius-md', '--radius-lg', '--radius-dialog',
-    '--space-1', '--space-2', '--space-3', '--space-4', '--space-5',
-    '--font-sans', '--font-mono', '--font-caption', '--font-closed',
+    '--space-2', '--space-3',
+    '--font-sans', '--font-mono', '--font-caption',
     '--size-caption', '--leading-caption', '--weight-caption', '--tracking-caption',
     '--tracking-brand', '--brand-upper', '--caption-upper',
     '--size-time', '--size-closed', '--size-chrome', '--size-meta', '--size-small',
     '--leading-closed', '--weight-closed', '--weight-brand',
     '--motion-in', '--type-step',
-    '--bg', '--bg-raised', '--text', '--text-dim', '--text-faint', '--radius',
+    '--bg-raised', '--text', '--text-dim', '--text-faint', '--radius',
     '--font', '--mono', '--accent-from', '--accent-to', '--accent-gradient',
 ]
 
@@ -161,15 +199,54 @@ ERROR_MEANING = '#F87171'
 SHAPE = {
     '--radius-sm': '7px', '--radius-md': '12px', '--radius-lg': '18px',
     '--radius-dialog': '16px',
-    '--space-1': '4px', '--space-2': '8px', '--space-3': '13px',
-    '--space-4': '20px', '--space-5': '30px',
-    '--size-time': '10px', '--size-closed': '18px', '--size-chrome': '11.5px',
+    '--space-2': '8px', '--space-3': '13px',
+    '--size-time': '10px', '--size-chrome': '11.5px',
     '--size-meta': '10.5px', '--size-small': '12.5px',
-    '--leading-closed': '1.24', '--weight-closed': '400', '--weight-brand': '700',
+    '--weight-brand': '700',
     '--tracking-brand': '0.42em', '--brand-upper': 'uppercase',
     '--caption-upper': 'none',
-    '--motion-in': '150ms', '--slab-opacity': '0.97',
+    # THE FOUR CLOSED-LINE TOKENS SIT HERE FOR ONE MECHANICAL REASON: the two extra
+    # modules read `_G.SHAPE` at IMPORT time and check it against `_G.REQUIRED`, so a
+    # name the contract demands but this table omits would fail their import before the
+    # generator could set it. THE VALUES ARE THE `cinematic` FAMILY'S OWN (its ghost
+    # line: 13 px / leading-snug / font-light), and the other two families override
+    # them in `CLOSED` below. See the header's DECISION 2 for every source.
+    '--size-closed': '13px', '--leading-closed': '1.375', '--weight-closed': '300',
+    '--motion-in': '150ms',
 }
+
+
+# ── THE FOUR CLOSED-LINE TOKENS, PER FAMILY ───────────────────────────────────────
+# These are the four knobs of the owner's dialog that were DEAD in all 25 `cine-*`
+# themes: declared 25 times each and read by no rule (D3 of the audit: 100
+# declarations, 0 `var()`). Each family now declares what ITS OWN zip states for the
+# line that is no longer live. `None` means "follow this theme's own caption token",
+# which is what the design itself does by inheritance.
+CLOSED = {
+    # family: (size, leading, weight, motion)
+    'cinematic-1': ('max(13px, calc(var(--size-caption) * 0.66))', '1.45', None, '320ms'),
+    'cinematic-2': ('max(13px, calc(var(--size-caption) * 0.66))', None, None, '300ms'),
+}
+
+# What each family's closed-line values were read from, so the emitted comment names
+# its source instead of saying "the zip" and leaving a reviewer to guess.
+CLOSED_SOURCE = {
+    'cinematic': 'the ghost line of `LiveCaption.tsx:114-125` (13 px / `leading-snug` / `font-light`)',
+    'cinematic-1': 'the previous line of `CaptionStage.tsx:81-98` (the 0.66 clamp / `lineHeight: 1.45` / `fontWeight: c.weight`)',
+    'cinematic-2': 'the `stack` previous line of `LiveCaptions.tsx:371-383` (`calc(size * 0.66)`, inheriting leading and weight)',
+}
+
+
+def apply_closed(t):
+    """Write one EXTRA theme's four closed-line tokens from its family's row in
+    `CLOSED`, falling back to the theme's own caption tokens where the zip inherits
+    them (the `stack` previous line states no leading and no weight of its own)."""
+    size, leading, weight, motion = CLOSED[t['__source']]
+    tk = t['tokens']
+    tk['--size-closed'] = size
+    tk['--leading-closed'] = leading if leading is not None else tk['--leading-caption']
+    tk['--weight-closed'] = weight if weight is not None else tk['--weight-caption']
+    tk['--motion-in'] = motion
 
 # The three families the zip's own stacks name first. The zip's `"Avenir Next"` and
 # `"Helvetica Neue"` are not on every Windows box and are NOT bundled, so the fallback
@@ -451,13 +528,11 @@ def tokens_for(d):
         '--accent-soft': v['--hover'],
         '--theme-swatch': d['swatch'],
         '--ok': OK_MEANING,
-        '--busy': v['--accent'],
         '--error': ERROR_MEANING,
         '--idle': v['--faint'],
         '--font-sans': t['family'],
         '--font-mono': FAMILIES['mono'],
         '--font-caption': 'var(--font-sans)',
-        '--font-closed': 'var(--font-sans)',
         # DECISION 1 (see the header): the design's own clamp, emitted VERBATIM.
         '--size-caption': t['size_clamp'],
         '--leading-caption': t['leading'],
@@ -467,7 +542,6 @@ def tokens_for(d):
         # the zip's `--scrim`: the layer between the wallpaper and the type. Named
         # here because it is a colour of its own and nothing in the contract owns it.
         '--cine-scrim': v['--scrim'],
-        '--cine-accent-ink': v['--accent-ink'],
     }
     out.update(SHAPE)
     # `SHAPE` carries the repo's `--caption-upper: none`, and it is the one SHAPE value
@@ -478,7 +552,7 @@ def tokens_for(d):
         out['--caption-upper'] = 'uppercase'
     # the aliases `panel.css` reads
     out.update({
-        '--bg': 'var(--bg-slab)', '--bg-raised': 'var(--bg-slab-strong)',
+        '--bg-raised': 'var(--bg-slab-strong)',
         '--text': 'var(--text-primary)', '--text-dim': 'var(--text-secondary)',
         '--text-faint': 'var(--text-muted)', '--radius': 'var(--radius-lg)',
         '--font': 'var(--font-sans)', '--mono': 'var(--font-mono)',
@@ -524,7 +598,13 @@ SHARED = """/* ═══ THE SET'S ONE SHARED BLOCK — the reveal engine and th
 
    THE ENTRY ANIMATIONS ARE ON THE WORD OR ON THE CHARACTER, NEVER ON THE LINE: a line
    whose text is rewritten in place must not slide or fade as a whole, or every partial
-   the worker sends would make the whole caption jump. */
+   the worker sends would make the whole caption jump.
+
+   WHY THE MOTION TOKEN IS HERE TOO: `--motion-in` is DECLARED by every one of the
+   twenty-five themes and READ by the one rule at the end of this block. A copy of
+   that rule per theme would be twenty-five places for one of them to be edited
+   alone, and the value still comes from each theme's own token block — a custom
+   property resolves per element, so the dial is live in every theme either way. */
 @keyframes cine-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -561,6 +641,58 @@ SHARED = """/* ═══ THE SET'S ONE SHARED BLOCK — the reveal engine and th
   transform: translateY(0.06em);
   animation: cine-caret 1.05s steps(1) infinite;
 }
+
+/* ── THE MOTION TOKEN ─────────────────────────────────────────────────────────────
+   `--motion-in` is a COLOUR/SURFACE transition duration in every other family of this
+   repo (`themes/theme-1.css:219` runs `background-color var(--motion-in),
+   border-color var(--motion-in)`), and it is one of the four knobs of the owner's
+   dialog that were DEAD in all twenty-five of these themes (D3 of the audit: 25
+   declarations, 0 readers). The VALUE is declared per theme: `cinematic-1`'s 320 ms is
+   `StreamText.tsx:40` (`transition: opacity 320ms ease`), `cinematic-2`'s 300 ms is
+   `LiveCaptions.tsx:436-437` (`color .3s ease, filter .3s ease`), and the
+   `cinematic` set keeps the repo's 150 ms because that zip states no colour
+   transition on its caption. The property list is `theme-1.css`'s, verbatim. */
+:root[data-theme^='cine-'] .caption,
+:root[data-theme^='cine-'] .caption__text,
+:root[data-theme^='cine-'] .caption__confirmed,
+:root[data-theme^='cine-'] .caption__provisional {
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--motion-in);
+  transition-timing-function: ease;
+}
+
+/* THE `prefers-reduced-motion` OVERRIDE IS THE FILE'S LAST BLOCK (`SHARED_TAIL`),
+   not this one: the per-theme rules that read `--motion-in` are emitted AFTER this
+   block, and an override at equal specificity must come LAST to win. */
+"""
+
+
+SHARED_TAIL = """/* ═══ THE SET'S REDUCED-MOTION OVERRIDE — THE FILE'S LAST BLOCK ══════════════════
+
+   THE SAME PROMISE `themes/theme-1.css:593-602` MAKES, for every node this file
+   gives a transition to: a reader who asked for less motion gets no transition and
+   still gets every colour change. IT IS LAST ON PURPOSE — the per-theme rules that
+   read `--motion-in` (the caption ones in `SHARED`, the chrome ones each theme
+   emits) tie on specificity with this one, so the later block is the one that wins.
+
+   IT COVERS THE CHROME TOO: `--motion-in` drives `.panel__header`, `.status` and
+   `.chrome` in every theme (`theme-1.css:576-585`), and a colour transition that
+   survives `prefers-reduced-motion` in one half of the set and not the other is a
+   promise kept by accident. */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme^='cine-'] .caption,
+  :root[data-theme^='cine-'] .caption__text,
+  :root[data-theme^='cine-'] .caption__confirmed,
+  :root[data-theme^='cine-'] .caption__provisional,
+  :root[data-theme^='cine-'] .panel__header,
+  :root[data-theme^='cine-'] .panel__header *,
+  :root[data-theme^='cine-'] .status,
+  :root[data-theme^='cine-'] .status *,
+  :root[data-theme^='cine-'] .chrome,
+  :root[data-theme^='cine-'] .chrome * {
+    transition-duration: 0ms;
+  }
+}
 """
 
 
@@ -580,7 +712,7 @@ def theme_css(d, toks, backdrop_note):
     a(' */')
     a('%s{' % S)
     a('  /* SURFACE — the zip\'s `--panel` is the slab, its `--panel-2` the raised tint. */')
-    for k in ('--bg-slab', '--bg-slab-strong', '--slab-opacity', '--shadow-slab'):
+    for k in ('--bg-slab', '--bg-slab-strong', '--shadow-slab'):
         a('  %s: %s;' % (k, toks[k]))
     a('  /* TEXT — the caption\'s own two tones are the zip\'s `--caption-ink`; the')
     a('     newest word takes the accent, which is the zip\'s `--caption-accent` role. */')
@@ -594,17 +726,19 @@ def theme_css(d, toks, backdrop_note):
         a('  %s: %s;' % (k, toks[k]))
     a('  /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app')
     a('     (the tap is delivering / it is not), so they are the product\'s and are')
-    a('     the same two literals the five directions already use; `--busy` and')
-    a('     `--idle` follow this palette. */')
-    for k in ('--ok', '--busy', '--error', '--idle'):
+    a('     the same two literals the five directions already use; `--idle` follows')
+    a('     this palette. (`--busy` used to sit here and left the contract: no rule in')
+    a('     `app/panel/**` or the shell reads it — `panel.js` toggles only')
+    a('     `status--live`/`status--error`.) */')
+    for k in ('--ok', '--error', '--idle'):
         a('  %s: %s;' % (k, toks[k]))
     a('  /* SHAPE and SPACE — the zip has no radius scale (it styles panes with')
     a('     Tailwind classes), so these are the repo\'s. */')
     for k in ('--radius-sm', '--radius-md', '--radius-lg', '--radius-dialog',
-              '--space-1', '--space-2', '--space-3', '--space-4', '--space-5'):
+              '--space-2', '--space-3'):
         a('  %s: %s;' % (k, toks[k]))
     a('  /* TYPE — read out of the design\'s own caption class string. */')
-    for k in ('--font-sans', '--font-mono', '--font-caption', '--font-closed'):
+    for k in ('--font-sans', '--font-mono', '--font-caption'):
         a('  %s: %s;' % (k, toks[k]))
     a('  --size-caption: %s;   /* THE DESIGN\'S OWN CLAMP, VERBATIM (floor %s, max %s) */'
       % (toks['--size-caption'], toks['__size_floor'], toks['__size_max']))
@@ -613,21 +747,22 @@ def theme_css(d, toks, backdrop_note):
               '--size-time', '--size-closed', '--size-chrome', '--size-meta',
               '--size-small', '--leading-closed', '--weight-closed', '--weight-brand'):
         a('  %s: %s;' % (k, toks[k]))
-    a('  /* MOTION — `--motion-in` is a COLOUR transition and nothing else; the')
-    a('     reveal is the theme\'s own animation, declared below. */')
+    a('  /* MOTION — `--motion-in` is the COLOUR/SURFACE transition duration, the')
+    a('     meaning it has in every other family (`themes/theme-1.css:219`); the')
+    a('     shared set block at the top of this file reads it. The reveal is the')
+    a('     theme\'s own animation, declared below. */')
     a('  --motion-in: %s;' % toks['--motion-in'])
     a('  --type-step: %s;%s' % (
         toks['--type-step'],
         '   /* the char-by-char reveal, unchanged from `panel.css` */' if toks['--type-step'] != '0ms'
         else '  /* 0: this theme reveals by WORD, not by character */'))
     a('  --cine-scrim: %s;' % toks['--cine-scrim'])
-    a('  --cine-accent-ink: %s;' % toks['--cine-accent-ink'])
     a('}')
     a('')
     a('/* The aliases `panel.css` reads. Kept as aliases so a reader who knows the old')
     a(' * names finds them, and so the two cannot drift. */')
     a('%s{' % S)
-    for k in ('--bg', '--bg-raised', '--text', '--text-dim', '--text-faint',
+    for k in ('--bg-raised', '--text', '--text-dim', '--text-faint',
               '--radius', '--font', '--mono', '--accent-from', '--accent-to',
               '--accent-gradient'):
         a('  %s: %s;' % (k, toks[k]))
@@ -723,11 +858,18 @@ def theme_css(d, toks, backdrop_note):
     a('%s .caption--provisional .caption__text {' % S)
     a('  color: var(--text-provisional);')
     a('}')
-    a('/* Older lines: the smallest number that recedes without becoming unreadable at')
-    a(' * 380 px. The zips never show an older line, so this value is mine. */')
+    a('/* THE CLOSED LINE — the four tokens of the owner\'s dialog that were DEAD in')
+    a(' * every one of these themes now carry the values the ZIP states for the line')
+    a(' * that is no longer live: the ghost line of `LiveCaption.tsx:114-125` — 13 px')
+    a(' * at Tailwind `leading-snug` (1.375) and `font-light` (300) — with')
+    a(' * `--motion-in` the colour transition the shared set block runs. The values in')
+    a(' * the `var()` fallbacks are the design\'s own, so a cleared dial still paints')
+    a(' * the design. The opacity below is the panel\'s own recede (DECISION 2). */')
     a('%s .caption:not(.caption--latest) .caption__text {' % S)
     a('  color: var(--text-secondary);')
-    a('  font-size: calc(var(--size-caption) * 0.72);')
+    a('  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));')
+    a('  line-height: var(--leading-closed, 1.375);')
+    a('  font-weight: var(--weight-closed, 300);')
     a('}')
     a('%s .caption:not(.caption--latest) {' % S)
     a('  opacity: 0.72;')
@@ -744,6 +886,26 @@ def theme_css(d, toks, backdrop_note):
     a('  font-size: var(--size-meta);')
     a('  letter-spacing: 0.14em;')
     a('  text-transform: uppercase;')
+    a('}')
+    # ── THE MOTION TOKEN, READ INSIDE THIS THEME'S OWN SCOPE ─────────────────────
+    # D3 of the audit measured `--motion-in` declared 25 times and read by NO rule of
+    # this file (the audit's own count: 25 declarations, 0 `var()`). The shared block at
+    # the top now reads it for the CAPTION — the four selectors `theme-1.css:586-592`
+    # uses — and this rule is the other half of `theme-1.css:576-585`: the chrome is
+    # what changes colour when a status flips, and the property list is that file's,
+    # verbatim. The DURATION is this theme's own token, so the knob of the tuning
+    # dialog is read INSIDE each of the twenty-five scopes instead of once for the set.
+    # No other rule of this theme sets `transition` on these nodes, so nothing later
+    # in the file can out-rank it.
+    a('%s .panel__header,' % S)
+    a('%s .panel__header *,' % S)
+    a('%s .status,' % S)
+    a('%s .status *,' % S)
+    a('%s .chrome,' % S)
+    a('%s .chrome * {' % S)
+    a('  transition-property: color, background-color, border-color, box-shadow;')
+    a('  transition-duration: var(--motion-in);')
+    a('  transition-timing-function: ease;')
     a('}')
     a('')
 
@@ -920,6 +1082,26 @@ LABEL_OVERRIDE = {
                 'nenhuma partícula',
 }
 
+# ── THE LABELS THE PICKER SHOWS, CORRECTED (D7/D8 of the audit) ─────────────────
+# Neither of these changes a single painted pixel: `themes.js` is the manifest the
+# picker renders, the swatch already agrees with the frozen skins 20/20, and only
+# the two names below disagreed with what the owner actually sees when the design
+# is mounted.
+LABEL_FIX = {
+    # TWO DESIGNS IN TWO DIFFERENT ZIPS ARE BOTH NAMED `Tideline` in their own
+    # source (`zips/cinematic/src/themes.ts:139-140`, and the `cinematic-1` zip's
+    # `tideline`). The zip B one is `cine-tideline-body` — the id carries the
+    # suffix only to keep the two apart — so IT keeps the plain label, and the
+    # `cinematic-1` design (variant `wide`, grouped with `Midnight Café`) gets the
+    # distinguishing one.
+    'cine-tideline': 'Tideline (wide)',
+    # THE SKIN IS WHAT MOUNTS (audit §1.3): the frozen skins call these two
+    # `Cellar` and `Linen`, the picker called them `Cellar Sessions`/`Linen
+    # Hours`, and the swatches already agree 20/20. The label follows the skin.
+    'cine-cellar': 'Cellar',
+    'cine-linen': 'Linen',
+}
+
 
 def _rnd(seed):
     """The source's OWN pseudo-random, character for character —
@@ -1036,6 +1218,55 @@ def extra_rules(t):
         particle, color = c2_facts(t['id'])
         if particle == 'rain':
             out.extend(rain_rules(S, color, 46))
+
+    # ── THE MOTION TOKEN, READ INSIDE THIS THEME'S OWN SCOPE ─────────────────────
+    # `--motion-in` was declared by every extra theme and read by no rule of theirs
+    # (D3). The shared block reads it for the CAPTION; this is the chrome half, the
+    # property list of `theme-1.css:576-585`, at the duration this theme declares.
+    out.extend([
+        '%s .panel__header,' % S,
+        '%s .panel__header *,' % S,
+        '%s .status,' % S,
+        '%s .status *,' % S,
+        '%s .chrome,' % S,
+        '%s .chrome * {' % S,
+        '  transition-property: color, background-color, border-color, box-shadow;',
+        '  transition-duration: var(--motion-in);',
+        '  transition-timing-function: ease;',
+        '}',
+    ])
+
+    # ── THE CLOSED LINE, and the three tokens that were dead in these themes too ──
+    # The extra module already styles the closed line with its own literal
+    # (`_PREV_SIZE`); THIS rule is what makes its size, leading and weight
+    # come from the owner's dialog. It is emitted after that module's block ON
+    # PURPOSE: the selectors tie on specificity and the later rule wins, so the
+    # token supersedes the literal without this generator editing another lane's
+    # data file. The `var()` fallbacks are the extra module's own values, so a
+    # cleared dial still paints the design.
+    out.extend([
+        '/* THE CLOSED LINE — the tuning tokens of the owner\'s dialog, which were DEAD',
+        ' * in all 25 `cine-*` themes. The values are this family\'s own zip:',
+        ' * %s.' % CLOSED_SOURCE[t['__source']],
+        ' * The rule below supersedes this theme\'s own literal `font-size` (same',
+        ' * specificity, emitted later). */',
+        '%s .caption:not(.caption--provisional) .caption__text {' % S,
+        '  font-size: var(--size-closed, %s);' % t['tokens']['--size-closed'],
+        '  line-height: var(--leading-closed, %s);' % t['tokens']['--leading-closed'],
+        '  font-weight: var(--weight-closed, %s);' % t['tokens']['--weight-closed'],
+        '}',
+        '/* THE CASE TOKEN — `--caption-upper` is the dialog\'s "Maiúsculas" field.',
+        ' * `cinematic-1` consumes it in its own caption rule; `cinematic-2` wrote the',
+        ' * design\'s transform as a LITERAL (`text-transform: none`), so the knob was',
+        ' * DEAD in those six themes — a fifth dead control this lane found by measuring',
+        ' * every dialog token against every theme, which the audit\'s D3 did not name',
+        ' * (its count called a token live if ANY file consumed it). One rule for every',
+        ' * extra theme; the declared value is the design\'s own, so the painted type is',
+        ' * unchanged and the dial moves it. */',
+        '%s .caption__text {' % S,
+        '  text-transform: var(--caption-upper, %s);' % t['tokens']['--caption-upper'],
+        '}',
+    ])
     return out
 
 
@@ -1105,6 +1336,10 @@ def main():
         if i in seen:
             raise SystemExit('extra theme %s collides with a shipped id' % i)
         seen.add(i)
+        # THE FOUR CLOSED-LINE TOKENS, PER FAMILY, before anything reads them: the
+        # extra module filled them from `SHAPE` (the `cinematic` family's values)
+        # because its own import-time check demands every `REQUIRED` name be present.
+        apply_closed(t)
         S = ":root[data-theme='%s']" % i
         strs = []
         strs.append('/* ── %s — from the `%s` zip ── */' % (t['label'], t['__source']))
@@ -1131,6 +1366,16 @@ def main():
             if t.get(k):
                 row[k] = t[k]
         rows.append(row)
+
+    # D7/D8 — THE LABELS THE PICKER SHOWS, applied in ONE place so a base theme and an
+    # extra theme cannot be fixed on one side only.
+    for r in rows:
+        if r['name'] in LABEL_FIX:
+            r['label'] = LABEL_FIX[r['name']]
+
+    # THE REDUCED-MOTION OVERRIDE GOES LAST, after every theme's own transition rules,
+    # because it ties with them on specificity and only a later block wins.
+    blocks.append(SHARED_TAIL)
 
     css = '\n'.join(blocks)
 
@@ -1189,6 +1434,17 @@ def main():
             fails.append('%s appears twice' % n)
         if re.match(r'^theme-[1-5]$', n):
             fails.append('%s collides with an original direction' % n)
+    # D7/D8 — TWO FACTS THE AUDIT MEASURED, and a build that fails on either cannot
+    # ship them again: every `LABEL_FIX` key must name a shipped theme (a rename that
+    # matches nothing is a silent no-op), and no two entries may share a label (the
+    # owner saw two "Tideline" and had no way to tell which was which).
+    for k in LABEL_FIX:
+        if k not in names:
+            fails.append('LABEL_FIX names %s, which does not ship' % k)
+    labels = [r['label'] for r in rows]
+    for lab in labels:
+        if labels.count(lab) > 1:
+            fails.append('label %r appears %d times' % (lab, labels.count(lab)))
     for url in re.findall(r'url\(([^)]*)\)', css):
         if url.startswith(('http:', 'https:')):
             fails.append('remote url in the CSS: %s' % url)

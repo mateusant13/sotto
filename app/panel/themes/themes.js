@@ -157,7 +157,7 @@
     },
     {
       name: 'cine-tideline',
-      label: 'Tideline',
+      label: 'Tideline (wide)',
       file: 'themes/cinematic.css',
       swatch: '#9CC3CC',
       group: 'abc-wide-news',
@@ -239,7 +239,7 @@
     },
     {
       name: 'cine-cellar',
-      label: 'Cellar Sessions',
+      label: 'Cellar',
       file: 'themes/cinematic.css',
       swatch: '#d9a94f',
       group: 'abc-glass',
@@ -248,7 +248,7 @@
     },
     {
       name: 'cine-linen',
-      label: 'Linen Hours',
+      label: 'Linen',
       file: 'themes/cinematic.css',
       swatch: '#a8672f',
       group: 'abc-plate',
