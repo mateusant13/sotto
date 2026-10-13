@@ -113,3 +113,45 @@ reason they were caught.
 refuses the second launch and the probe reports it as a window that never mapped. It
 contaminated a stability run (6 of 6 captures), the base-theme run (12 of 12) and a
 diagnostic. **One probe at a time, and a `NO-WINDOW` is never a theme finding.**
+
+
+## CORRECTED AGAIN 2026-10-13 — ALL FOUR "FLAT" THEMES PAINT. The census SCRIPT was wrong, not the probe.
+
+**DO NOT QUOTE THE "4 FLAT" LINE.** Each one was re-measured CLEANLY, one probe at a
+time, and every one paints:
+
+| theme | census said | clean re-measure |
+|---|---|---|
+| `Hairline` | 1 colour | **805 colours** |
+| `cine-quiet-streets` | 1 colour | **4183 colours** |
+| `cine-rainglass` | 1 colour | **4157 colours** |
+| `cine-reading-hour` | 1 colour | **4196 colours** |
+
+**THE PROBE IS NOT THE PROBLEM, AND THAT IS MEASURED.** For `cine-rainglass` the
+probe own verdict said `PAINTED` while the census recorded `1`, and the PNG on disk
+decoded to **4157 distinct colours** — the probe and its own output AGREE. The wrong
+number came from the CENSUS SCRIPT, which runs a separate histogram pass over the
+written PNG and never checks that pass against the probe own count.
+
+**THE MOST LIKELY CAUSE, and it is mine: I ran other probe runs WHILE the census was
+still running.** That is the concurrency trap written below, hit again — the
+measurement lock refuses the second launch and the probe reports NO-WINDOW, and the
+census script then read a PNG from a contaminated or stale capture. Whatever the exact
+path, the conclusion is the same: **a census script that does not cross-check its own
+read is not a measurement.**
+
+## SO THE REAL NUMBERS ARE
+
+* **42 of 45 themes PAINT**, every one with its own sha256 — **0 duplicate hashes**.
+  Every design that renders produces a DIFFERENT image. That is the answer to
+  *"nao simplesmente uma skin por cima ou recolor"*, and it is stronger than the 38
+  reported a round ago.
+* **2 are `UNSETTLED`:** `Feed`, `Timeline` — frames that never produced two identical
+  captures. Not a claim about the design; the verdict refusing to guess.
+* **1 produced no window:** `cine-paper-moon`.
+* **0 are flat.** The flat list was entirely a measurement error.
+
+**THE FIX FOR WHOEVER RE-RUNS THIS:** the census must compare the probe own
+`distinct_colours` from its log against the histogram of the PNG and REFUSE the row
+when they disagree. A single-source read of a file the probe may still be writing is
+exactly how four themes were published as broken.
