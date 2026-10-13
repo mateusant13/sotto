@@ -80,3 +80,67 @@ body[data-surface="strip"] .stripbar__state.is-live .stripbar__dot {
   background: #37d67a;
   box-shadow: 0 0 6px #37d67a;
 }
+
+/* ---- STEP 2: THE LIGHT BAR, applied to the SLAB that is actually seen --------------
+ * MEASURED, and the first two attempts failed for a reason worth keeping:
+ *
+ *   attempt 1  `background` on `.stripbar` alone      -> light plate, WASHED-OUT labels
+ *   attempt 2  light `body` + every child recoloured  -> **NO VISIBLE CHANGE AT ALL**
+ *   attempt 3  THIS ONE: light `.panel`
+ *
+ * WHY 2 FAILED: `panel.css:105-127` paints the dark base on `html, body`, and its comment
+ * says that is the RENDER PROTECTION so the window can never be white when `.panel` fails.
+ * But on the strip surface THE VISIBLE BAR IS `.panel`, which paints its own slab ON TOP of
+ * the body. A light body is therefore HIDDEN UNDERNEATH an opaque slab, and every child
+ * colour rule is irrelevant while the slab behind them stays dark.
+ *
+ * SO THE SLAB IS THE TARGET, and `html, body` is NOT TOUCHED: removing that rule re-exposes
+ * the WHITE window the owner already reported once (vejo os dois paineis branco). */
+/* DIAGNOSTIC: !important, to prove the cause is SPECIFICITY and not a wrong element. */
+body[data-surface="strip"] .panel {
+  background: #eceff2 !important;
+}
+
+/* The children carry their OWN light colours, so the slab alone is not enough -- this is the
+ * second half of the same change, not a separate one. */
+body[data-surface="strip"] .stripbar__brand,
+body[data-surface="strip"] .strip-button,
+body[data-surface="strip"] .strip-button__label,
+body[data-surface="strip"] .stripbar__state,
+body[data-surface="strip"] #strip-state {
+  color: #0b0f14 !important;
+}
+body[data-surface="strip"] .strip-button {
+  border: 1px solid rgba(0, 0, 0, 0.38) !important;
+  border-radius: 3px;
+  background: transparent !important;
+}
+body[data-surface="strip"] .strip-button:hover {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.6);
+}
+body[data-surface="strip"] .stripbar__grip {
+  color: rgba(0, 0, 0, 0.35) !important;
+}
+body[data-surface="strip"] .stripbar__state {
+  border-color: rgba(0, 0, 0, 0.35) !important;
+}
+body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] {
+  background: #0b0f14;
+  color: #37d67a;
+  border-color: #0b0f14;
+}
+body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] .strip-button__label {
+  color: #37d67a;
+}
+
+/* THE LAST TWO TEXT NODES RESISTED, and the reason is that they are CHILDREN of the elements
+ * already covered -- `CAPTIONS OFF` lives inside `.stripbar__state` and the toggle word
+ * inside `.strip-button__label`, each with its own colour at higher specificity. Rather than
+ * chase every descendant, the strip surface is declared INK-DARK wholesale: on this surface
+ * every visible thing sits on a LIGHT slab, so a single descendant rule is both simpler and
+ * more truthful than a list that has to be kept in sync with the markup. */
+body[data-surface="strip"] .stripbar,
+body[data-surface="strip"] .stripbar * {
+  color: #0b0f14 !important;
+}
