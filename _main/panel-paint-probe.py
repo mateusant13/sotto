@@ -446,22 +446,36 @@ def arm(tag: str, extra: list, secs: float, shell: str,
         # re-render, which is what the theme switch causes. TWO CONSECUTIVE
         # IDENTICAL FRAMES is what makes a capture a statement about paint rather
         # than about timing, and it costs a couple of seconds.
+        # THE BUDGET IS INDEPENDENT OF --secs, AND THAT IS THE FIX. It used to be
+        # `max(6.0, secs * 0.9)`, so a caller who shortened --secs to make the run
+        # quicker ALSO shortened the settle window without knowing it. MEASURED
+        # 2026-10-13: the census ran at --secs 10 (a 9 s budget) and the same theme
+        # came back PAINTED in one run and UNIFORM in the next, while the stability
+        # test at --secs 12 (10.8 s) looked convincing. The settle window is now a
+        # constant that --secs cannot shrink.
+        SETTLE_BUDGET_S = 25.0
         prev = None
-        deadline = time.time() + max(6.0, secs * 0.9)
+        settled = False
+        deadline = time.time() + SETTLE_BUDGET_S
         while time.time() < deadline:
             cur = _grab()
             if cur is not None:
                 if prev is not None and cur.get('px_sha256') == prev.get('px_sha256'):
                     shot = cur
+                    settled = True
                     break
                 prev = cur
             time.sleep(1.2)
-        if shot is None:
-            # No stable pair inside the budget: report the LAST frame, and say so,
-            # rather than pretending a single frame settled.
+        if not settled:
+            # AN UNSETTLED CAPTURE MUST NOT BE ABLE TO PASS FOR A MEASUREMENT.
+            # The old code fell back to the last frame and set settled=false, and
+            # the census never checked the flag -- which is exactly how two themes
+            # were published as PAINTED and UNIFORM from the same bytes. The
+            # verdict now says UNSETTLED and the caller has to deal with it.
             shot = prev
             if shot is not None:
                 shot['settled'] = False
+            log(f'CAPTURE_UNSETTLED budget_s={SETTLE_BUDGET_S}')
         else:
             shot['settled'] = True
     else:
@@ -498,7 +512,12 @@ def arm(tag: str, extra: list, secs: float, shell: str,
         log(f'  log: {ln}')
     verdict = 'NO-WINDOW'
     if shot is not None:
-        verdict = 'PAINTED' if shot['distinct_colours'] > 1 else 'UNIFORM'
+        # AN UNSETTLED FRAME IS NOT A MEASUREMENT. The old code fell back to the
+        # last frame and set settled=false, and the census never checked the flag --
+        # which is how two themes were published as PAINTED and UNIFORM from the
+        # same bytes. UNSETTLED is its own verdict and the caller must deal with it.
+        verdict = ('UNSETTLED' if not shot.get('settled', True)
+                   else ('PAINTED' if shot['distinct_colours'] > 1 else 'UNIFORM'))
     log(f'ARM-VERDICT {tag}: {verdict}')
     return {'tag': tag, 'shot': shot, 'verdict': verdict}
 
