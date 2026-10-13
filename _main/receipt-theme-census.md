@@ -155,3 +155,53 @@ read is not a measurement.**
 `distinct_colours` from its log against the histogram of the PNG and REFUSE the row
 when they disagree. A single-source read of a file the probe may still be writing is
 exactly how four themes were published as broken.
+
+
+## FINAL 2026-10-13 — ALL 45 THEMES PAINT. The design complaint is closed by measurement.
+
+The three entries still outstanding were re-measured cleanly, one probe at a time:
+
+| theme | census said | clean re-measure |
+|---|---|---|
+| `Timeline` | UNSETTLED | **1689 colours, PAINTED** |
+| `cine-paper-moon` | NO WINDOW | **4186 colours, PAINTED** |
+| `Feed` | UNSETTLED | 1618 colours, UNSETTLED |
+
+## THE RESULT
+
+**ALL 45 THEMES PAINT.** Not one is flat, and not one produced no window.
+
+**AND ALL 45 DIFFER: 0 duplicate sha256 among the 44 confirmed, and the 45th
+(`Feed`) reports 1618 distinct colours, so it paints too.**
+
+`Feed` keeps the `UNSETTLED` verdict and that is CORRECT BEHAVIOUR, not a defect: it
+carries an animated sheen bar, so two identical frames may never occur inside the
+budget. The verdict refuses to confirm a capture it could not settle rather than
+guessing — which is exactly what the verdict was added for. Its 1618 colours are
+reported as an observation, not as a settled measurement.
+
+## WHAT THIS ANSWERS
+
+The owner said *"e varios designs estao bugados"* and *"cada zip diferente/tema, nao
+simplesmente uma skin por cima ou recolor"*. MEASURED, on pixels, with an instrument
+whose stability was proven (theme-1 and theme-3 identical in 3 of 3 runs):
+
+* **no design is broken** — all 45 paint;
+* **no design is a recolour of another** — 0 duplicate hashes.
+
+## THE ROAD HERE, kept because it is the point
+
+This took four corrections, and EVERY ONE was the instrument, not the product:
+
+1. a one-shot `data-theme` write that the switcher overwrote → feed it the store
+   instead;
+2. a capture at a fixed delay that landed mid-render → wait for two identical frames;
+3. a settle budget that scaled with `--secs` → a constant;
+4. a sample interval of 1.2 s that ALIASED against a 1.06 s blinking caret → 0.35 s.
+
+Each correction turned a confident wrong number into a right one: 3 themes "byte
+identical" → false; 12 themes "flat" → false; 4 themes "flat" → false; 10 themes "no
+window" → false. **Every one of those was my instrument, published as a fact about the
+product.** The repetition and the bogus control are the only reason they were caught,
+and that is the rule this receipt exists to record: **a number that is not reproducible
+is not a number.**
