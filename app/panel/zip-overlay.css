@@ -38,7 +38,28 @@ body[data-surface="strip"] .stripbar__state {
   white-space: nowrap;
 }
 
-/* ---- STEP 2, MEASURED AND WITHDRAWN: the LIGHT BAR ----------------------------
+/* ---- STEP 2, ATTEMPTED TWICE AND THE CULPRIT IS NOW NAMED ----------------------
+ * ATTEMPT 1: `background` on `.stripbar` alone -> a light plate with WASHED-OUT labels.
+ * ATTEMPT 2: the light window (`body[data-surface="strip"] { background }`) AND every
+ *            child recoloured -> **THE RENDER DID NOT CHANGE AT ALL.** Still dark, still
+ *            light labels, while step 1 from the same file WAS visibly applied.
+ *
+ * WHY, MEASURED: `panel.css:105-127` paints the dark base on `html, body` -- and the
+ * comment there says it is the RENDER PROTECTION, so the window can never be white when
+ * `.panel` fails to paint. But on the strip surface **THE VISIBLE BAR IS `.panel`**, not the
+ * body: `.panel` paints its own slab ON TOP of the body background. So a light `body` is
+ * simply HIDDEN UNDERNEATH an opaque `.panel`, and every child colour rule is irrelevant
+ * while the slab behind them stays dark.
+ *
+ * THE NEXT STEP IS THEREFORE SPECIFIC: lighten `body[data-surface="strip"] .panel` (the
+ * SLAB that is actually seen), not `body`. The children then need the dark colours, as
+ * attempted. Do NOT touch `html, body` -- that rule is the render protection and removing
+ * it re-exposes the WHITE failure the owner already reported once.
+ *
+ * --------------------------------------------------------------------------------------
+ *
+ * Original withdrawn note, kept so the history is legible:
+ * ---- STEP 2, MEASURED AND WITHDRAWN: the LIGHT BAR ----------------------------
  * Adding ONLY `background: #eceff2` to .stripbar, with nothing else changed, produced a
  * light plate over the WHOLE window with the labels washed out -- light text on a light
  * plate. So the culprit is isolated and it is TWO things, not one:
