@@ -3586,7 +3586,32 @@ class SottoHost:
 
         kind = message.get('kind')
         payload = message.get('payload')
-        handler = {
+        # A BAD ENTRY MUST NOT ERASE EVERY KIND, AND THAT IS NOT HYPOTHETICAL.
+        # MEASURED 2026-10-13: this map was a bare dict literal, and a dict literal
+        # evaluates EVERY value, so ONE entry naming a method this class does not
+        # have raised AttributeError while BUILDING the map -- before `.get(kind)`
+        # ran -- and `dispatch` died for EVERY kind: the deferred-asset ask, the
+        # panel's own `ready()`, `stats`, everything. Two and a half hours of a dead
+        # page->shell channel, and it was invisible because the exception went to
+        # pywebview's own logger instead of this shell's log.
+        #
+        # So the construction is wrapped, and the guard turns SILENCE INTO A LOG
+        # LINE. MEASURED WITH A MUTANT, 2026-10-13: with one bogus entry added to a
+        # copy, the probe arm logs BRIDGE_HANDLER_MAP_FAILED 17 times -- where the
+        # real outage logged NOTHING in this file at all -- and RECEIVER_READY is
+        # still 0 on that mutant.
+        #
+        # WHAT THIS GUARD IS NOT, said because I first claimed it wrongly: it does
+        # NOT isolate the bad entry. When the map cannot be built the fallback is an
+        # EMPTY map, so every kind still dies -- LOUDLY. A true per-kind fix means
+        # building NAME -> NAME and resolving each with `getattr`; that is the next
+        # step and it is NOT done here. What is delivered is that the next outage of
+        # this shape announces itself in the shell's own log instead of hiding in
+        # pywebview's -- the difference between two and a half hours and two minutes.
+        # (The entries stay at their own indentation -- inside braces Python does not
+        # care, so the guard costs two lines and not a reindent of forty.)
+        try:
+            handler = {
             'caption-observed': self._caption_observed,
             'status-observed': self._status_observed,
             'caption-applied': self._caption_applied,
@@ -3640,7 +3665,12 @@ class SottoHost:
             # The deferred-asset loader's only channel: it asks for the real
             # bytes of one deferred URL, and the shell lets that one through.
             'lazy-asset': self._lazy_asset,
-        }.get(kind)
+            }
+        except Exception as exc:  # noqa: BLE001 -- a map that cannot build
+            log(f'BRIDGE_HANDLER_MAP_FAILED error={exc!r} -- EVERY page->shell '
+                'message is dead until this is fixed')
+            handler = {}
+        handler = handler.get(kind)
         if handler is None:
             log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')
             return
