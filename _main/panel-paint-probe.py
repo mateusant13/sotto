@@ -358,7 +358,16 @@ def build_variant(path: str, revert_gate: bool = False,
         # already `strip`. Firing immediately would be refused and the measurement
         # would say "the drag does nothing" when the truth is "the drag was never
         # delivered". 900 ms lands after `set_panel_surface` has finished.
-        drag_js = ('setTimeout(function(){try{if(window.sotto&&window.sotto.setStripOffset)'
+        # FIRE TWICE ON PURPOSE, FOR THE DIAGNOSTIC. The IMMEDIATE call runs before
+        # the window is positioned, so the shell either logs `STRIP_DRAG_REFUSED
+        # why=not-strip` -- which PROVES the call ARRIVES and timing is the only
+        # problem -- or logs nothing at all, which proves it never arrives and the
+        # problem is the context the surface script runs in. The DELAYED call is the
+        # one that would actually move the window.
+        drag_js = ('try{if(window.sotto&&window.sotto.setStripOffset)'
+                   'window.sotto.setStripOffset(' + str(int(dx)) + ','
+                   + str(int(dy)) + ",'move');}catch(e){}"
+                   'setTimeout(function(){try{if(window.sotto&&window.sotto.setStripOffset)'
                    'window.sotto.setStripOffset(' + str(int(dx)) + ','
                    + str(int(dy)) + ",'move');}catch(e){}},900);")
 
