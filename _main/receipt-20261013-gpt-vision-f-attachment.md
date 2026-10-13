@@ -77,3 +77,34 @@ that can be measured by a machine has been: 50 of 50 designs implemented, 0 reco
 themes, every zip design mapped to its live theme, and the structural difference for zip C
 measured at 0 before and 63 after. The last question -- does it LOOK right -- has no machine
 here that can answer it.
+
+## CLOSED: three paths tried, no vision on this box
+
+2026-10-13. The search for a machine that can describe the two renders is over, and the
+answer is negative. Three paths, all measured:
+
+| path | result |
+|---|---|
+| this agent (`read_image`) | refuses: *model "deepseek-v4.1-flash" does not declare image input* |
+| a spawned subagent, asked to look and to say so if it could not | **the SAME model**, same refusal: `SEM VISAO NESTE MODELO` |
+| `gpt` / consultgpt | 39 documented options, none of which sends an image |
+
+**The subagent behaved exactly as instructed, and that is worth recording**: it made the
+two `read_image` calls, hit the refusal, STOPPED, answered only `SEM VISAO NESTE MODELO`,
+and explicitly refused to substitute file sizes, metadata or repository reading for a look
+at the pixels. It answered none of the four design questions because it had seen nothing.
+That is the correct outcome for an instrument that cannot see -- and the opposite of what
+this session has had to retract four times.
+
+## So the residual is named precisely
+
+**Everything about item 10 that a machine can measure has been measured**: 50 of 50 zip
+designs implemented, 0 recolours among 45 themes, every zip design mapped to its live theme,
+zip C structural difference 0 before and 63 after, both generators proven reproducible, and a
+reference mockup built and rendered beside the live panel by one engine at one size.
+
+**The one remaining question -- does it LOOK like the zip -- has no instrument here.** It is
+not unmade work and it is not a measurement someone forgot to run; it is a question this box
+cannot answer, verified along every path available.
+
+The renders are at `docs/design-intake/rendered/` and are the deliverable for that question.
