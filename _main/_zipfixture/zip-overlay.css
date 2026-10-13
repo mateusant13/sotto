@@ -1,0 +1,175 @@
+/* Sotto - THE ZIP E DESIGN LANGUAGE, step 1 of 3: the STATUS PILL to the LEFT, bordered.
+ *
+ * MEASURED 2026-10-13 against the owners 5-zip demo, rendered with its own vite and driven
+ * with --virtual-time-budget so the transcript plays. Source of truth:
+ * docs/design-intake/ZIP-E-DESIGNS-AS-RENDERED.md .
+ *
+ * THE ZIP PUTS ITS STATUS PILL TOP-LEFT: monospace, uppercase, letter-spaced, 1px border,
+ * rounded, with a GREEN dot. Ours sits at the RIGHT (`body[data-surface="strip"]
+ * #strip-state { order: 99 }`), which is the single most visible difference in the shared
+ * chrome.
+ *
+ * THIS FILE DELIBERATELY CONTAINS NO `background` ANYWHERE, and that is the lesson from the
+ * withdrawn first attempt: `.stripbar { background: <light> }` PAINTED THE WHOLE WINDOW
+ * (380x900 light rectangle) because the strip window is sized from the CONTENT. A bar
+ * background is only safe once the height is bounded first, so this step does not touch it.
+ *
+ * Scoped to body[data-surface="strip"]: the first attempt was unscoped and a
+ * `.captions__bar::before` green dot appeared on the PANEL surface, under the TRANSCRIPT
+ * header, where no design puts it.
+ */
+
+body[data-surface="strip"] #strip-state {
+  /* order 99 is what parked it on the right; the zip has it leftmost. */
+  order: -1;
+}
+
+body[data-surface="strip"] .stripbar__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  padding: 0.34em 0.62em;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  font-family: ui-monospace, "Cascadia Mono", "Consolas", "Liberation Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---- STEP 2, ATTEMPTED TWICE AND THE CULPRIT IS NOW NAMED ----------------------
+ * ATTEMPT 1: `background` on `.stripbar` alone -> a light plate with WASHED-OUT labels.
+ * ATTEMPT 2: the light window (`body[data-surface="strip"] { background }`) AND every
+ *            child recoloured -> **THE RENDER DID NOT CHANGE AT ALL.** Still dark, still
+ *            light labels, while step 1 from the same file WAS visibly applied.
+ *
+ * WHY, MEASURED: `panel.css:105-127` paints the dark base on `html, body` -- and the
+ * comment there says it is the RENDER PROTECTION, so the window can never be white when
+ * `.panel` fails to paint. But on the strip surface **THE VISIBLE BAR IS `.panel`**, not the
+ * body: `.panel` paints its own slab ON TOP of the body background. So a light `body` is
+ * simply HIDDEN UNDERNEATH an opaque `.panel`, and every child colour rule is irrelevant
+ * while the slab behind them stays dark.
+ *
+ * THE NEXT STEP IS THEREFORE SPECIFIC: lighten `body[data-surface="strip"] .panel` (the
+ * SLAB that is actually seen), not `body`. The children then need the dark colours, as
+ * attempted. Do NOT touch `html, body` -- that rule is the render protection and removing
+ * it re-exposes the WHITE failure the owner already reported once.
+ *
+ * --------------------------------------------------------------------------------------
+ *
+ * Original withdrawn note, kept so the history is legible:
+ * ---- STEP 2, MEASURED AND WITHDRAWN: the LIGHT BAR ----------------------------
+ * Adding ONLY `background: #eceff2` to .stripbar, with nothing else changed, produced a
+ * light plate over the WHOLE window with the labels washed out -- light text on a light
+ * plate. So the culprit is isolated and it is TWO things, not one:
+ *
+ *   (a) `.stripbar` occupies the FULL WINDOW HEIGHT, not the 38 px row it appears to be.
+ *       A background on it therefore paints every pixel of the window.
+ *   (b) The CHILDREN (.stripbar__brand, .strip-button, .stripbar__state) carry their own
+ *       light colours, so colouring the bar does NOT colour them.
+ *
+ * SO THE LIGHT BAR NEEDS BOTH, IN THIS ORDER: bound the bar height FIRST (or give the
+ * background to an inner element that really is 38 px), THEN recolour every child. Doing
+ * either alone produces a visibly broken bar, which is why this step is withdrawn rather
+ * than shipped half-done.
+ */
+
+/* The on-air dot is the same green the zip uses in the pill. */
+body[data-surface="strip"] .stripbar__state.is-live .stripbar__dot {
+  background: #37d67a;
+  box-shadow: 0 0 6px #37d67a;
+}
+
+/* ---- STEP 2: THE LIGHT BAR, applied to the SLAB that is actually seen --------------
+ * MEASURED, and the first two attempts failed for a reason worth keeping:
+ *
+ *   attempt 1  `background` on `.stripbar` alone      -> light plate, WASHED-OUT labels
+ *   attempt 2  light `body` + every child recoloured  -> **NO VISIBLE CHANGE AT ALL**
+ *   attempt 3  THIS ONE: light `.panel`
+ *
+ * WHY 2 FAILED: `panel.css:105-127` paints the dark base on `html, body`, and its comment
+ * says that is the RENDER PROTECTION so the window can never be white when `.panel` fails.
+ * But on the strip surface THE VISIBLE BAR IS `.panel`, which paints its own slab ON TOP of
+ * the body. A light body is therefore HIDDEN UNDERNEATH an opaque slab, and every child
+ * colour rule is irrelevant while the slab behind them stays dark.
+ *
+ * SO THE SLAB IS THE TARGET, and `html, body` is NOT TOUCHED: removing that rule re-exposes
+ * the WHITE window the owner already reported once (vejo os dois paineis branco). */
+/* DIAGNOSTIC: !important, to prove the cause is SPECIFICITY and not a wrong element. */
+body[data-surface="strip"] .panel {
+  background: #eceff2 !important;
+}
+
+/* The children carry their OWN light colours, so the slab alone is not enough -- this is the
+ * second half of the same change, not a separate one. */
+body[data-surface="strip"] .stripbar__brand,
+body[data-surface="strip"] .strip-button,
+body[data-surface="strip"] .strip-button__label,
+body[data-surface="strip"] .stripbar__state,
+body[data-surface="strip"] #strip-state {
+  color: #0b0f14 !important;
+}
+body[data-surface="strip"] .strip-button {
+  border: 1px solid rgba(0, 0, 0, 0.38) !important;
+  border-radius: 3px;
+  background: transparent !important;
+}
+body[data-surface="strip"] .strip-button:hover {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.6);
+}
+body[data-surface="strip"] .stripbar__grip {
+  color: rgba(0, 0, 0, 0.35) !important;
+}
+body[data-surface="strip"] .stripbar__state {
+  border-color: rgba(0, 0, 0, 0.35) !important;
+}
+body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] {
+  background: #0b0f14;
+  color: #37d67a;
+  border-color: #0b0f14;
+}
+body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] .strip-button__label {
+  color: #37d67a;
+}
+
+/* THE LAST TWO TEXT NODES RESISTED, and the reason is that they are CHILDREN of the elements
+ * already covered -- `CAPTIONS OFF` lives inside `.stripbar__state` and the toggle word
+ * inside `.strip-button__label`, each with its own colour at higher specificity. Rather than
+ * chase every descendant, the strip surface is declared INK-DARK wholesale: on this surface
+ * every visible thing sits on a LIGHT slab, so a single descendant rule is both simpler and
+ * more truthful than a list that has to be kept in sync with the markup. */
+body[data-surface="strip"] .stripbar,
+body[data-surface="strip"] .stripbar * {
+  color: #0b0f14 !important;
+}
+
+/* ---- STEP 3: THE CAPTION COLUMN -- right-hand, UNFRAMED, with the FADE --------------
+ * From the zip Teleprompter design, which is the one that reads as a teleprompter: the
+ * caption hangs in a RIGHT-HAND COLUMN with NO FRAME, and the OLDER LINES ARE FADED with the
+ * current one brightest. That fade is not decoration -- it IS the reading model, and it is
+ * what separates this from a log.
+ *
+ * `!important` for the same measured reason as step 2: a theme rule owns these properties and
+ * outranks a body[data-surface] selector. Proved by adding it to the slab and watching a
+ * change that had NOT taken effect for two attempts appear immediately.
+ *
+ * THE FADE NEEDS NO JS AND NO PER-LINE ATTRIBUTE: the list is an <ol> in reading order, so
+ * :nth-last-child counts back from the newest line. */
+body[data-surface="strip"] .captions__body {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+body[data-surface="strip"] .captions__list {
+  text-align: right !important;
+}
+body[data-surface="strip"] .captions__list > li {
+  text-align: right !important;
+}
+body[data-surface="strip"] .captions__list > li:nth-last-child(1) { opacity: 1 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(2) { opacity: 0.72 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(3) { opacity: 0.50 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(4) { opacity: 0.34 !important; }
+body[data-surface="strip"] .captions__list > li:nth-last-child(n+5) { opacity: 0.22 !important; }

@@ -1,0 +1,3141 @@
+/* Sotto — panel styling (v2, two sections).
+ *
+ * Dark by default, with the brand accent #7DD3FC -> #A78BFA taken from
+ * brand/logo.svg. The window is transparent and sized to the slab plus a
+ * margin, so `body` is the click-through area and `.panel` is the only thing
+ * that takes pointer events.
+ *
+ * The slab is a 4-row grid, and the row order IS the product's hierarchy:
+ *   header | LIVE caption (1fr — the only flexible row) | transcript (auto) | status
+ *
+ * The LIVE caption box is the product and takes the free height. The transcript
+ * is SECONDARY and COLLAPSED: with no canonical (batch) producer it shrinks to a
+ * one-bar drawer under the live box, so the panel never shows half a screen of
+ * feed that can never hold a line. Expanding it is capped (34vh) so the live box
+ * is what yields, and never below its own 140px floor.
+ */
+
+:root {
+  --accent-from: #7dd3fc;
+  --accent-to: #a78bfa;
+  --accent: var(--accent-from);
+  --accent-gradient: linear-gradient(135deg, var(--accent-from) 0%, var(--accent-to) 100%);
+
+  --bg: #0b0f14;
+  --bg-raised: #111823;
+  --line: rgba(125, 211, 252, 0.14);
+  --line-strong: rgba(125, 211, 252, 0.28);
+
+  --text: #e8eef6;
+  --text-dim: #9aa8bd;
+  /* Measured 2026-10-06 by dom-probe.js: #64748b gave 4.04:1 on the slab and
+     3.80:1 on a caption chip — below AA for text this small. */
+  --text-faint: #8593a8;
+
+  --radius: 14px;
+  --radius-sm: 9px;
+
+  /* ── THE STRIP'S OWN HEIGHT, AS ONE NUMBER ──────────────────────────────────
+     The strip is the SHORT surface the app's one control opens, and the WINDOW
+     is sized to it by the SHELL — `app/panel/surface.js` says so in its own
+     words ("Sizing the window to the strip is the SHELL's job"), and the shell
+     cannot read a constant out of this file. So the number lives here, ONCE, as
+     a custom property the shell can read back from the live document
+     (`getComputedStyle(document.documentElement).getPropertyValue('--strip-height')`)
+     instead of keeping a second copy that drifts.
+
+     It is LOAD-BEARING and not decorative: the strip's own grid derives its live
+     row's floor from it below, so changing this one value moves both the window
+     the shell opens and the floor the caption box keeps inside it.
+
+     LANE lane/strip-controls (2026-10-09): the owner asked for a SMALLER strip
+     (~2/3 of the original). The ORIGINAL measurement this number came from was
+     150px, with the strip's chrome measured at 78px (control row + status + the
+     slab's padding and gaps, at 380x900 with the strip surface on).
+
+     CORRECTED 2026-10-12: the paragraph that stood here said "It is now 100px,
+     and --strip-chrome below is still the derivation input — the grid floor is
+     --strip-height minus --strip-chrome". BOTH HALVES ARE NOW FALSE. The live
+     number is 40px, declared at the BOTTOM of this file next to the strip rules
+     it belongs to (the declaration that used to sit here was REMOVED, not
+     lowered — two declarations of one custom property in one :root is how a
+     later edit silently wins). And there is no grid floor left to derive: the
+     strip is ONE row (the control bar), so --strip-height minus --strip-chrome
+     describes a four-row strip that no longer exists. --strip-chrome is kept
+     ONLY as the historical 78px measurement; nothing reads it today. If a
+     future lane re-measures the strip chrome, it must first re-introduce a
+     derivation that consumes it. */
+  /* WAS 100px. The strip is now the size of its own buttons (owner, 2026-10-12):
+     the number lives ONCE, at the bottom of this file, next to the strip rules it
+     belongs to, so the shell's re-read of --strip-height cannot disagree with
+     them. This declaration is removed, not lowered in place: two declarations of
+     the same custom property in one :root is how a later edit silently wins. */
+  --strip-chrome: 78px;
+
+  --font: -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+  --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* THE TYPING STEP, AS ONE NUMBER (2026-10-08): the per-character delay of the
+     live-line reveal. A theme that wants its own typing speed sets this var and
+     the reveal rule follows; a theme (or the shell) that wants NO typing at all
+     sets `--type-step: 0ms`. Zero is a real off switch: every delay collapses
+     to 0 and every character paints on its first frame. */
+   --type-step: 45ms;
+
+  /* THE TRANSCRIPT TEXT SIZE, AS ONE NUMBER (owner, 2026-10-09): *"bota um botao
+     de aumentar ou diminuir a fonte das transcricoes, tanto no overlay abaixo,
+     que vamos criar, tanto no painel da direita"*. The two controls in
+     `panel.html` (`.panel__controls` and the strip) move THIS one number and
+     nothing else: every caption and history size below derives from it, so a
+     change lands on both surfaces at once and no theme can disagree. It is a
+     scale, not a size, because 15px is the DESIGN size and the owner asked for
+     a dial around it. JS owns the live value (and the localStorage persistence);
+     CSS owns the derivation. Reset = 1. */
+  --caption-scale: 1;
+  --caption-size: 15px;
+  --caption-time-size: 10.5px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  /* ── THE RENDER PROTECTION (owner, 2026-10-09) ────────────────────────────
+     The window is WS_EX_LAYERED and the page is transparent by design, so
+     anything the page does NOT paint shows the compositor's own default —
+     WHITE. The owner reported exactly that: *"vejo os dois paineis branco.
+     parece so bug de render"* — BOTH surfaces, so it is not a per-surface rule.
+
+     `.panel` below owns the visible slab, and until now it was the ONLY thing
+     painting. That is a single point of failure: a theme rule that overrides
+     its background, a custom property that resolves to nothing, or a parse
+     error located after that one rule all leave the window white, and the
+     owner cannot tell a broken panel from a dead one.
+
+     So body carries the SAME dark base as its own background UNDERNEATH. This
+     is not a second design and it is not decoration: it is the failure mode,
+     made visible so it can never be white. When `.panel` paints, its gradients
+     sit on top and body is never seen; when `.panel` does not, body still
+     holds the panel. `border-radius` matches `.panel`'s (with a literal
+     fallback, so a broken `--radius` cannot turn the corners square and
+     re-expose the white) and `overflow: hidden` keeps the rounded shape. */
+  background: rgba(11, 15, 20, 0.98);
+  border-radius: var(--radius, 14px);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  /* An overlay never selects text on a stray drag. */
+  user-select: none;
+  cursor: default;
+}
+
+/* The slab. Everything visible lives inside this.
+ *
+ * The window IS the slab. dockRight() (main.js:131-169) sizes the BrowserWindow
+ * to PANEL_WIDTH x PANEL_HEIGHT and spends PANEL_MARGIN OUTSIDE it, between the
+ * window and the work-area edge. Measured 2026-10-06 with dom-probe.js: with
+ * `inset: 10px` the slab measured 360x880 at (10,10) inside a 380x900 window,
+ * so 20px of the window was transparent dead space and the drop shadow below
+ * was painted outside the window and clipped away by it. The slab therefore
+ * fills the window, and its depth is drawn INSIDE — the only place a
+ * transparent, frame-less window can actually show it. */
+.panel {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  /* TRANSCRIPT | LIVE (flexible, and the only flexible row) | stripbar | status.
+     THE ROWS ARE ASSIGNED IN DOM ORDER, so this template and `panel.html`'s
+     section order are ONE decision in two files — a template that does not match
+     the markup hands the `1fr` to the wrong block and the live box collapses to
+     its floor. That is why the transcript block was moved in the markup and this
+     line moved with it (owner, 2026-10-08: *"a legenda ao vivo, no painel, tem
+     que ficar embaixo do painel. o historico a cima"*).
+
+     `140px` floor on the live row, not `0`: the section above it can grow, and
+     the product must never be the row that disappears. `.stripbar` is
+     `display: none` on this surface, so it is not a grid item here and the four
+     rows below are the header, the transcript, the live box and the status. */
+  grid-template-rows: auto auto minmax(140px, 1fr) auto;
+  gap: 10px;
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(167, 139, 250, 0.14) 0%, transparent 60%),
+    radial-gradient(100% 60% at 0% 100%, rgba(125, 211, 252, 0.1) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(17, 24, 35, 0.97) 0%, rgba(11, 15, 20, 0.98) 100%);
+  /* An outer shadow is invisible here by construction: the window ends where
+     the slab ends, so it would be clipped to nothing. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 -34px 54px -34px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  /* Just inside the border, and rounded with it. At `inset: 0` the hairline ran
+     the full width of a slab with 14px corners and cut straight across them. */
+  inset: 1px 0 auto 0;
+  height: 1px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent-gradient);
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------------- header */
+
+.panel__header {
+  display: flex;
+  /* Measured: the 28px controls sat on the top edge while the 26px mark centred
+     itself inside a 34.69px text block, leaving them 3.34px apart. */
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Measured 2026-10-10 in the real document at the shipped 380x900 window: this
+     item's min-content floor is 395.13px against a 350.00px content box (wordmark
+     66.31 + chrome--tele 54.41 + controls 250.41 + 2x12 gap), so with the default
+     min-width:auto it forced the #panel grid track to 402.88px and carried
+     .panel__controls 37.88px past the window edge -- a real button, clipped by
+     .panel{overflow:hidden}. min-width:0 lets the track resolve to 350.00px and
+     puts the controls fully inside; the decorative chrome label (and, in themes
+     with no chrome block, the wordmark) then clip inside their own box instead of
+     dragging the panel wider. Themes whose header already fits are unchanged. */
+  min-width: 0;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.wordmark__mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  filter: drop-shadow(0 2px 10px rgba(125, 211, 252, 0.28));
+}
+
+.wordmark__text {
+  min-width: 0;
+}
+
+.wordmark__name {
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: 0.16em;
+  /* LOWERCASE. This said `uppercase` and every direction that keeps the wordmark
+     (theme-1) inherits it, so the owner's own spelling — *"bota o nome 'sotto' em
+     todos os temas"*, lowercase — came out as `SOTTO`. A theme may still override
+     it through `--brand-upper`; the default now agrees with him. */
+  text-transform: none;
+  /* Measured: `background-clip: text` with `color: transparent` computed to
+     rgba(0, 0, 0, 0) at 1.09:1 — the title was legible only if the renderer
+     honoured the clip, and invisible if it did not. A solid accent is legible
+     everywhere and still carries the brand. */
+  color: var(--accent-from);
+  line-height: 1.2;
+}
+
+/* ── THE NAME, `sotto`, IN EVERY DIRECTION AND ON BOTH SURFACES ───────────────
+   Owner, 2026-10-08, verbatim: *"e bota o nome 'sotto' em todos os temas."* Four
+   directions set it in their own header line and theme-1 uses its wordmark; each
+   theme's own rule (in `themes/theme-N.css`, generated) gives it that direction's
+   face, weight and colour. THIS rule is only the floor, so a theme that says
+   nothing still renders a sane name rather than an unstyled string, and it is
+   where `text-transform: none` is guaranteed: the name is lowercase and no theme
+   can make it shout. It is deliberately QUIET — muted, small, never the accent —
+   because the header also carries the state word and the clock and the name must
+   not compete with either (the header was stretched to 742.5 px once today by a
+   block of prose; the name costs a few pixels, and the receipt carries the
+   before/after). */
+.chrome__brand {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: none;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.wordmark__tag {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  line-height: 1.3;
+}
+
+.panel__controls {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* ── FIXED HEADER ORDER (BASE, NOT THEME) ───────────────────────────────────
+ * The arrangement is the panel's, never a direction's: a theme that could
+ * reorder the cluster would move Hide away from last or Pause away from it,
+ * and the owner reads position as meaning. Flex `order` keeps DOM order
+ * (tab order, screen readers) untouched while the paint order stays
+ * [theme][chevron][clear][quit][font-][font+][pause][hide] in every direction.
+ * Hide stays LAST (it has always had the last slot) and Pause stays next to it;
+ * the font dial (owner, 2026-10-09: *"aumentar ou diminuir a fonte das
+ * transcricoes... tanto no painel da direita"*) sits immediately before Pause so
+ * the two ACTIONS stay together at the end.
+ */
+.panel__controls #theme-button,
+.panel__controls [data-theme-button] {
+  order: 1;
+}
+.panel__controls #theme-chevron,
+.panel__controls [data-theme-chevron] {
+  order: 2;
+}
+.panel__controls #clear-button {
+  order: 3;
+}
+.panel__controls #quit-button {
+  order: 4;
+}
+.panel__controls #font-smaller-button,
+.panel__controls #font-larger-button {
+  order: 5;
+}
+.panel__controls #panel-pause-button,
+.panel__controls [data-pause-trigger] {
+  order: 6;
+}
+.panel__controls #hide-button {
+  order: 7;
+}
+
+/* ── THE THEME CHEVRON (BASE) ───────────────────────────────────────────────
+ * A 28 px icon button like the rest of the cluster: it opens the theme list
+ * WITHOUT cycling, while the theme button itself keeps cycling WITHOUT
+ * opening anything. `no-drag` like every control (see `.icon-button`); the
+ * svg is drawn by `theme-switcher.js` and sized here so a direction cannot
+ * forget it. */
+.theme-chevron {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.theme-chevron svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+/* ── THE THEME DROPDOWN (BASE) ──────────────────────────────────────────────
+ * The chevron's list: five options, hover (or focus) previews instantly
+ * without persisting, click (or Enter/Space) commits through the same store
+ * path as the cycle button, mouse-away or Escape reverts to the commit.
+ * Positioned like the picker's (top-right, above the slab) and usable in ANY
+ * direction: these BASE tokens are deliberately neutral, and each theme file
+ * may restyle below without moving or hiding the list. `[hidden]` wins over
+ * every display so `hidden=true` always closes it. */
+.theme-dropdown {
+  position: absolute;
+  top: 46px;
+  right: 12px;
+  z-index: 40;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--line-strong, rgba(148, 163, 184, 0.28));
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-slab-strong, rgba(13, 18, 26, 0.97));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.theme-dropdown[hidden] {
+  display: none;
+}
+.theme-dropdown__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.theme-dropdown__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-dropdown__swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--theme-swatch, currentColor);
+}
+.theme-dropdown__option:hover {
+  background: var(--accent-soft, rgba(148, 163, 184, 0.14));
+  color: var(--text-primary, #f1f5f9);
+}
+.theme-dropdown__option[aria-current="true"] {
+  border-color: var(--accent, #7dd3fc);
+  color: var(--text-primary, #f1f5f9);
+  font-weight: 600;
+}
+.theme-dropdown__option:focus-visible,
+.theme-chevron:focus-visible {
+  outline: 2px solid var(--accent-to, #a78bfa);
+  outline-offset: 1px;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+  /* THE DRAG REGION'S ONE RULE. The header is the panel's drag handle
+     (`-webkit-app-region: drag`, below), and a drag region makes its children
+     undraggable AND unclickable unless they opt out — the classic defect of the
+     technique. Every control opts out here, in one place, so a theme cannot
+     forget it. */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* Pause UNLOADS the engines and costs a model load to undo. It came up here from
+   the deleted HUD, where it was a wide labelled button; as a 28 px icon it keeps
+   the same deliberate separation from Clear/Quit/Hide that it had there. */
+.icon-button--danger {
+  color: rgba(248, 180, 180, 0.9);
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+.icon-button--danger:hover {
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE PANEL IS DRAGGABLE (owner, 2026-10-08: *"permita que eu mova o painel"*)
+   ═══════════════════════════════════════════════════════════════════════════
+   A frameless window is moved by a DRAG REGION on its header. `-webkit-app-region`
+   is the Chromium property for it: `drag` makes a region behave like the window's
+   title bar, and EVERY child of a drag region must opt out with `no-drag` or it
+   stops being clickable — the classic defect of this technique, which is why
+   `.icon-button` above carries `no-drag` and why the probe asserts BOTH halves in
+   every direction.
+
+   WHERE THE HANDLE IS: `.panel__header` — the whole header bar, in all five
+   directions, including the gaps between the controls. The controls themselves
+   are holes in it. On the STRIP surface there is no header (`display: none`), so
+   the strip is dragged by its own bar below.
+
+   HONEST LIMIT, MEASURED: this property is the CONTRACT, and Chromium parses it
+   (the probe reads back `drag`), but on this shell the window is owned by
+   pywebview's EdgeChromium backend, which does not act on app-region — it is an
+   Electron/Chrome-app integration, not a WebView2 one. So the CSS is the
+   declaration and the shell still has to do the moving; see
+   `_main/receipt-panel-per-theme-chrome.md` for the two shell-side paths
+   (`WM_NCHITTEST` → `HTCAPTION`, or a pointer-drag → `window.moveTo`). */
+.panel__header {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* The strip's own bar is the strip's handle: on the strip the header is hidden,
+   so without this the ~100 px surface could not be moved at all. */
+.stripbar {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.strip-button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE LINE'S OWN CLOCK: YELLOW WHILE IT IS BEING SAID, GREY ONCE IT IS PAST
+   ═══════════════════════════════════════════════════════════════════════════
+   Owner, 2026-10-08, verbatim: *"ate tempo, que é amarelo o atual e cinza os que
+   ficaram pra tras"*. The rule is about the PER-LINE timecode, not the header's
+   elapsed clock: `.caption--provisional` is the line the worker is still forming
+   (it is replaced in place on every partial), and every other row is closed.
+
+   The yellow is a TRUE yellow and not the theme's accent, except in `theme-4`
+   where the accent already IS gold (`#E4B363`) and the owner's own rule says to
+   use it. `--time-live` / `--time-past` are declared per direction in the theme
+   files so each surface can be tuned without touching this rule; these are the
+   defaults, chosen to pass contrast on the dark slab every direction uses. */
+:root {
+  --time-live: #ffd24a;
+  --time-past: var(--text-muted);
+}
+
+.caption__time {
+  color: var(--time-past);
+}
+
+.caption--provisional .caption__time {
+  color: var(--time-live);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE LEVEL BARS — REAL DATA, AND NOTHING WHEN THERE IS NONE
+   ═══════════════════════════════════════════════════════════════════════════
+   These five bars used to run a pure CSS keyframe loop that animated identically
+   with speech, with silence and with a DEAD WORKER
+   (`docs/research/12-audio-level-contract.md`). That animation is DELETED, and
+   the bars are now painted from the level the worker really reports: `panel.js`
+   writes `--meter-0 … --meter-4` (0…1) and the bar scales to it. `scaleY` is
+   compositor-only — no relayout, no repaint of the text — which is the whole
+   point on a box that is rewritten on every partial.
+
+   WITH NO DATA the custom property is absent, `var(--meter-N, 0.14)` falls back
+   to the floor, and `body[data-level="none"]` says so in the markup. A bar that
+   moves without a measurement is worse than a bar that does not move. */
+.chrome__meter i {
+  transform: scaleY(var(--meter-h, 0.14));
+  transform-origin: bottom;
+  transition: transform 90ms linear;
+}
+
+body[data-level="none"] .chrome__meter i {
+  transform: scaleY(0.14);
+  opacity: 0.45;
+}
+
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.icon-button:hover {
+  background: rgba(125, 211, 252, 0.14);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.icon-button:active {
+  background: rgba(167, 139, 250, 0.2);
+}
+
+/* ── THE THEME BUTTON IS NOT AN ICON BUTTON, AND IT WAS BEING CUT BY ONE ─────
+ * MEASURED 2026-10-08 by the renderer lane, on the real document: the theme
+ * button's `clientWidth` was **26 px** against a `scrollWidth` of **36–43 px** in
+ * ALL FIVE themes, so the five labels were painted as `oadca`, `nuscr`, `ema C`,
+ * `rume`, `epromp` — the owner's own control, unreadable, in every direction.
+ *
+ * The cause is a collision two files away from each other: `theme-switcher.js`
+ * builds the button as `class="icon-button theme-button"`, `.icon-button` above
+ * pins `width: 28px`, and the five theme files declare `max-width: 84px` WITHOUT
+ * a `width` — so `width` won, `max-width` never bound, and the label was clipped
+ * by the box rather than by the theme's own intent.
+ *
+ * A control that carries a WORD gets a content width; `min-width` keeps it a
+ * 28 px touch target when the word is short. `inline-block` (not the inherited
+ * `grid`) is what puts the label and the theme's own `::after` swatch on ONE
+ * line — under `grid` they were two stacked items in a 28 px box. This is one
+ * rule and it fixes all five at once, which is why it is here and not in the
+ * five theme files.
+ */
+.theme-button {
+  width: auto;
+  min-width: 28px;
+  display: inline-block;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+/* -------------------------------------------------------- section labels */
+
+.history__label {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex: none;
+}
+
+/* ------------------------------------------------------------- transcript */
+
+/* The transcript drawer, ABOVE the live box (owner's rule, 2026-10-08). Collapsed
+   by default — panel.js toggles `.history--collapsed` — so all it costs is the bar
+   plus one honest line of note, ≈50 px, and the live box below takes the rest. It
+   opens by itself when the shell reports a canonical producer, and a click always
+   opens it: the owner can read the folder and any rows that ever exist either
+   way. */
+.history {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 5px;
+  min-height: 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.history--collapsed {
+  gap: 0;
+}
+
+/* Collapsed is a CSS-only hide on purpose: the rows stay in the DOM, so a
+   read-back probe that counts `#history-list .hist` still sees them. */
+.history--collapsed .history__body {
+  display: none;
+}
+
+/* An OPEN drawer is capped at a third of the panel, so the LIVE row is what
+   keeps the height (it has a 140px floor of its own in `.panel`). */
+.history:not(.history--collapsed) {
+  max-height: 34vh;
+}
+
+.history__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The drawer handle: a chevron that points right when closed, down when open. */
+.history__toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.history__toggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 140ms ease;
+}
+
+.history:not(.history--collapsed) .history__toggle svg {
+  transform: rotate(90deg);
+}
+
+.history__toggle:hover {
+  background: rgba(125, 211, 252, 0.14);
+  color: var(--text);
+}
+
+.history__toggle:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+.history__count {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.history__count[hidden] {
+  display: none;
+}
+
+.history__body {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 6px;
+  min-height: 0;
+}
+
+/* The root path is a button: it opens the history folder. It is also the
+   owner-facing documentation of WHERE the data lives. */
+.history__path {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 1px 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* THE FOLDER GLYPH HAS NO SIZE OF ITS OWN. An `<svg>` that carries only a
+   `viewBox` and no width/height attribute falls back to `width: 100%` and an
+   auto height drawn by the aspect ratio, so the 16x16 folder glyph rendered at
+   347x347 px inside a `flex: 1` bar and the COLLAPSED transcript measured 351
+   px tall instead of the bar-and-a-line this whole block is built on. Measured
+   with `_main/_design-lane/geom.py --surface panel`: `.history__bar` 343 px,
+   `#history-root` 347x351, and the panel grid row it owns 351 px -- the live
+   box below it was squeezed to 415 px and no mid-rail rule could rescue it.
+   Every other glyph in this file sizes itself; this one now does too. */
+.history__path svg {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.history__path:hover {
+  color: var(--accent-from);
+}
+
+.history__tools {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.search {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.search__input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(8, 11, 16, 0.6);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.search__input::placeholder {
+  color: var(--text-faint);
+}
+
+.search__input:focus {
+  border-color: var(--accent-from);
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.16);
+}
+
+.search__button,
+.search__clear,
+.reveal-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.search__button:hover,
+.search__clear:hover,
+.reveal-button:hover {
+  background: rgba(125, 211, 252, 0.16);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.search__button:active,
+.search__clear:active,
+.reveal-button:active {
+  background: rgba(167, 139, 250, 0.22);
+}
+
+.search__button:focus-visible,
+.search__clear:focus-visible,
+.reveal-button:focus-visible,
+.history__path:focus-visible,
+.hist:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+.reveal-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* D5 — ONE action ("show in folder") with the fewest affordances that stay
+   honest: the path button in the bar always opens the folder, and this one
+   opens the SELECTED line, so it is disabled until there is a selection and
+   says so in its title/aria-label (panel.js `select`/`markRevealState`). */
+.reveal-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.reveal-button:disabled:hover {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: var(--line-strong);
+  color: var(--text-dim);
+}
+
+/* The drawer's honest one-liner — WHY the section is collapsed is the sentence
+   the bar must carry — and, inside the open body, the shell's own messages. The
+   bar's copy is one line by design and ellipsises; panel.js puts the whole
+   sentence in `title`, so nothing is lost, only shortened. */
+.history__note {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  padding: 3px 1px 0 30px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__note--status {
+  padding-left: 1px;
+  white-space: normal;
+}
+
+.history__note[hidden] {
+  display: none;
+}
+
+/* THE GALLERY — navigation over the days and hours the store holds, and the only
+   thing that fills the list below it. OWNER 2026-10-08, verbatim: *"tem que ter
+   apenas botoes pra navegar entre a 'galeria' de dias/horas"*.
+   It is a `nav` of small buttons, so it must NOT grow: `flex: 0 0 auto` keeps it at
+   its own height inside the drawer's column, and the list below keeps the rest.
+   The buttons wrap, because a day with 24 hours is 25 controls on one row at
+   380 px otherwise — and a horizontal scroller inside a vertical one is a trap. */
+.gallery {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 2px 4px 0;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
+}
+
+.gallery[hidden] {
+  display: none;
+}
+
+.gallery__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.gallery__btn {
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: rgba(125, 211, 252, 0.06);
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gallery__btn:hover {
+  border-color: rgba(125, 211, 252, 0.4);
+  color: var(--text);
+}
+
+.gallery__btn:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.55);
+  outline-offset: 1px;
+}
+
+/* The current pick. One look for both a range and a bucket: they are the same
+   kind of thing to the owner — "where am I" — and two looks would imply two. */
+.gallery__btn.is-active {
+  border-color: rgba(125, 211, 252, 0.6);
+  background: rgba(125, 211, 252, 0.18);
+  color: var(--text);
+}
+
+.gallery__day {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hour buttons carry the hour alone (`09`, `11`, …) — the day is the row they
+   sit in — and they are tabular so the row does not jitter as it changes. */
+.gallery__hour {
+  font-variant-numeric: tabular-nums;
+  min-width: 26px;
+  text-align: center;
+  padding: 4px 4px;
+}
+
+.gallery__warn {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+/* The drawer's scrolling feed. Oldest at the top, newest at the bottom, so the freshest
+   history sits directly above the live box: one continuous timeline. */
+.history__list {
+  list-style: none;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.28) transparent;
+  padding: 2px 2px 2px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.history__list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.history__list::-webkit-scrollbar-thumb {
+  background: rgba(125, 211, 252, 0.22);
+  border-radius: 99px;
+}
+
+.hist {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 7px;
+  border-radius: 7px;
+  border-left: 2px solid transparent;
+  background: rgba(148, 163, 184, 0.035);
+  cursor: pointer;
+}
+
+.hist:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.hist--selected {
+  border-left-color: var(--accent-to);
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.hist__time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.hist__text {
+  /* DERIVED from `--caption-scale` too: the transcript history is the same words
+     at a smaller size, so the owner's dial must reach it. */
+  font-size: calc(12.5px * var(--caption-scale));
+  line-height: 1.45;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.hist__text mark {
+  background: rgba(125, 211, 252, 0.28);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* The per-row "show in folder": an inline SVG from the same 16x16 stroke set as
+   every other control in the panel (it used to be the folder EMOJI, whose glyph
+   and metrics depended on whichever font Windows picked). */
+.hist__folder {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-faint);
+  line-height: 1;
+  padding: 3px 4px;
+  cursor: pointer;
+}
+
+.hist__folder svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.hist__folder:hover {
+  background: rgba(125, 211, 252, 0.16);
+  color: var(--text);
+}
+
+.history__empty {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  padding: 8px 6px;
+  text-align: center;
+}
+
+/* --------------------------------------------------- the live caption box */
+
+.captions {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  min-height: 0;
+}
+
+.captions__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.captions__hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* The "behind" chip: the live path is falling behind (queue drops, or a decode
+   rate under real time). Shown ONLY on that measured fact, and quiet — it is a
+   fact about the stream, not a second error state fighting the footer. */
+.captions__chip {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  background: rgba(248, 113, 113, 0.1);
+  color: #f8b4b4;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.captions__chip[hidden] {
+  display: none;
+}
+
+/* The box itself: the one the owner is looking at. Brighter rail than the
+   history feed above it, so the focus is unambiguous. */
+.captions__body {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.28) transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(8, 11, 16, 0.72) 0%, rgba(8, 11, 16, 0.3) 100%);
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.05);
+}
+
+.captions__body::-webkit-scrollbar {
+  width: 3px;
+}
+
+.captions__body::-webkit-scrollbar-thumb {
+  background: rgba(125, 211, 252, 0.22);
+  border-radius: 99px;
+}
+
+/* The history recedes under a fade, per the mockups' `mask-fade-top`: the
+   oldest lines dissolve instead of clipping hard at the box edge. Mask only —
+   no layout, no paint cost beyond the composited layer. */
+.captions__body {
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 28px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 28px);
+}
+
+/* AND THE RAIL FILLS ITS BOX AND THE ROWS SIT ON ITS HEEL, so the live line
+   never rides under the fade and never jumps when history arrives. Two
+   declarations, one measurement each:
+   • `min-height: 100%` — without it the list is exactly as tall as its rows,
+     so on a short transcript the rail shows no scroll at all and the live row
+     is parked wherever the rows happen to END, i.e. at the top of a 700 px
+     box, inside the 28 px (and, in Manuscrito and the Cinema Card, the
+     120/150 px) transparent band — invisible. Measured with the list at its
+     natural height, 2 history rows + the live row on theme-3:
+     `liveTopWindow 278, railTop 116, mask to 236`, and with ONE live row only
+     the row starts at 126, i.e. inside the fade.
+   • `justify-content: flex-end` — with the minimum height the box is filled
+     but the rows still hang at its TOP; packed to the heel the live row sits
+     at the bottom of the list, which is the ONLY position it can hold for the
+     rest of the session, because a scroll box that overflows scrolls to its
+     bottom and stays there. So the row stops moving as history grows:
+     MEASURED (geom.py, panel surface, 2 rows) `fromBottom 518.9` before, and
+     `367.2` for theme-3 / `367.5` for theme-4 / `10.8` for theme-1,2,5 after —
+     the middle for the two mid-rail themes, the heel for the bottom-anchored
+     ones, in the empty rail, the short rail AND the overflowing one alike.
+     When the rail DOES overflow this declaration has nothing left to move
+     (no free space), so reading back is untouched. */
+.captions__list {
+  min-height: 100%;
+  justify-content: flex-end;
+}
+
+.captions__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+/* An author `display` outranks the user-agent `[hidden] { display: none }`, so
+   without this the attribute panel.js sets is a no-op. Measured: after Clear,
+   #caption-list carried hidden="true" and still measured display:flex, a live
+   324x20 box on an empty panel. */
+.captions__list[hidden] {
+  display: none;
+}
+
+/* Each caption line: time on the left rail, text on the right. */
+.caption {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 2px solid transparent;
+  background: rgba(148, 163, 184, 0.05);
+  animation: caption-in 220ms ease-out both;
+}
+
+.caption:hover {
+  background: rgba(148, 163, 184, 0.09);
+}
+
+.caption--latest {
+  border-left-color: var(--accent-from);
+  background: rgba(125, 211, 252, 0.09);
+}
+
+/* The unstable tail. It is on screen but NOT settled: the model has only
+   offered one reading of it so far, and the next fragment may replace it.
+   Dimmed, with a dashed rail, so the owner can see at a glance which words
+   have not been confirmed by a second hypothesis yet. Contrast of the text
+   itself stays at var(--text-dim), which panel.css already clears WCAG AA. */
+.caption--provisional {
+  border-left-style: dashed;
+  border-left-color: rgba(148, 163, 184, 0.45);
+  background: transparent;
+}
+
+.caption--provisional .caption__text {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* The live line is the newest word: bigger than the history chips above it. */
+.caption__time {
+  font-family: var(--mono);
+  /* DERIVED from `--caption-scale` (the owner's font dial), never a second
+     literal: move the number and the time column follows the text. */
+  font-size: calc(var(--caption-time-size) * var(--caption-scale));
+  color: var(--text-faint);
+  padding-top: 2px;
+  white-space: nowrap;
+}
+
+.caption__text {
+  /* DERIVED from `--caption-scale` — see `--caption-size` in `:root`. */
+  font-size: calc(var(--caption-size) * var(--caption-scale));
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* D8 — the product IS text, so the text is copyable: a caption can be pasted
+   into a note and a transcript line into a search box. The GLOBAL
+   `user-select: none` stays, because an overlay must not select anything on a
+   stray drag; only the words opt in, and only these three. */
+.caption__text,
+.hist__text,
+.captions__placeholder-body {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The empty state. This is what the owner sees before the first caption: a
+   finished-looking panel that is honestly empty, waiting for audio. */
+.captions__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px 26px;
+  text-align: center;
+}
+
+.captions__placeholder[hidden] {
+  display: none;
+}
+
+.captions__placeholder-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.captions__placeholder-body {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-faint);
+  max-width: 26ch;
+}
+
+/* Idle "listening" bars: motion that says the panel is alive, not a spinner
+   pretending work is happening. */
+.listening {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 34px;
+  margin-bottom: 2px;
+}
+
+.listening span {
+  width: 4px;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--accent-gradient);
+  opacity: 0.5;
+  animation: listening 1.5s ease-in-out infinite;
+}
+
+.listening span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+.listening span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+.listening span:nth-child(4) {
+  animation-delay: 0.42s;
+}
+.listening span:nth-child(5) {
+  animation-delay: 0.56s;
+}
+
+@keyframes listening {
+  0%,
+  100% {
+    height: 9px;
+    opacity: 0.35;
+  }
+  50% {
+    height: 30px;
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listening span,
+  .caption {
+    animation: none;
+  }
+  /* The status icon's halo is the footer's ONLY moving thing, and a reader who
+     asked for less motion still gets the state: the dot keeps its fill and its
+     colour, only the breathing stops. */
+  .status__dot[data-state="live"]::after {
+    animation: none;
+    opacity: 0.4;
+  }
+}
+
+/* ---------------------------------------------------------------- status */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+/* ── THE STATUS IS AN ICON NOW (owner, 2026-10-08) ────────────────────────────
+   Verbatim: *"tira o 'receiving captions'. deixa só um icone dinamico"*. So this
+   dot is no longer a decoration beside a sentence — it is the ONLY thing the
+   footer says in the healthy states, and it has to carry the difference on its
+   own. Colour alone is not a readout (and it is the one channel a colour-blind
+   reader loses), so the three states differ in SHAPE as well:
+     idle   a hollow ring          — nothing is running
+     live   a filled dot, pulsing  — the engine is hearing the machine
+     error  a red dot with a ring  — something died, and `#status-text` prints the
+                                     cause beside it (see `setStatus`)
+   The pulse is `opacity` on a pseudo-element: compositor-only, no layout, no
+   blur, and it stops dead under `prefers-reduced-motion` (the reduced-motion block beside the reveal, not the foot)
+   this file). Nothing here repaints when a caption arrives. */
+.status__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  position: relative;
+  border-radius: 99px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+/* IDLE — the ring stays hollow. */
+.status__dot[data-state=""] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+}
+
+/* LIVE — filled, with a halo that breathes. */
+.status__dot[data-state="live"] {
+  background: var(--accent-from);
+  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15);
+}
+
+.status__dot[data-state="live"]::after {
+  content: "";
+  position: absolute;
+  /* `inset: 0`, NOT a negative inset: a pseudo-element that spills outside the dot
+     adds to the footer's SCROLLABLE overflow and the strip's status row is only
+     14 px tall — measured, `scrollHeight 18 > clientHeight 13`, i.e. the halo was
+     reported as content cut inside the footer. The ring breathes INSIDE the dot's
+     own box and the outer glow stays a `box-shadow`, which no layout ever counts. */
+  inset: 0;
+  border-radius: 99px;
+  border: 1.5px solid var(--accent-from);
+  animation: sotto-status-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes sotto-status-breathe {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.95; }
+}
+
+/* ERROR — filled red, ring held open so it reads as a different SHAPE too. */
+.status__dot[data-state="error"] {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
+}
+
+.status--live .status__dot {
+  background: var(--accent-from);
+  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15);
+}
+
+.status--error .status__dot {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
+}
+
+/* THE SENTENCE IS STILL IN THE DOM AND STILL READABLE TO A SCREEN READER — it is
+   only off the eye. `display: none` or `hidden` would remove it from the
+   accessibility tree, and the icon cannot say "Silent audio device … [MME]". */
+.status__text--offscreen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* D2 — the footer must not cut the CAUSE. The shell's sentences are long and
+   the cause is at the END ("Silent audio device - Mapeador de som da Microsoft
+   - Input [MME] peaked 0.000122 < floor 0.002"), which is exactly the tail a
+   single `nowrap` + ellipsis line throws away in a 380 px footer: the panel
+   showed an error and hid the number that explained it. Two lines, then; the
+   dot is unchanged; the hint that named the key is gone. */
+.status__text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* ===========================================================================
+   TWO SURFACES, ONE DOCUMENT (owner, 2026-10-08)
+   ===========================================================================
+   `body[data-surface="panel"]` is the full column this file has always styled.
+   `body[data-surface="strip"]` is what the app’s one control opens: the live captions and its
+   control row, ~100 px tall (`--strip-height`), with the header, the transcript drawer and the
+   footer block all hidden.
+
+   ONE place switches, and it is the ATTRIBUTE — `app/panel/surface.js` owns
+   the name, the shell sets it, and every rule below is a descendant of it. Both
+   surfaces are present in the DOM at all times; nothing is built, loaded or
+   fetched when the shell switches, so the switch cannot fail halfway and cannot
+   need a reload. The sections that only one surface uses are hidden with
+   `display: none`, which also removes them from the tab order and from the
+   accessibility tree — hiding with `visibility` or `opacity` would leave four
+   focusable dead controls in the strip.
+
+   The HUD that used to need its own `display` per surface IS GONE (owner,
+   2026-10-08), so only the stripbar is left to claim. */
+
+/* The strip's own control row is hidden until the strip surface claims it. */
+.stripbar {
+  display: none;
+}
+
+body[data-surface="panel"] .stripbar,
+body[data-surface="strip"] .panel__header,
+body[data-surface="strip"] .history,
+body[data-surface="strip"] .status__text {
+  display: none;
+}
+
+/* Body-appended popups are PANEL-only: both are created by JS on `document.body`
+   (theme-switcher.js `ensurePicker`, theme-tune.js `ensureDialog`), OUTSIDE the
+   `.panel__header`/`.history` subtrees the rules above hide — so without these
+   two rules they leak onto the strip. The strip keeps its own theme BUTTON
+   (`#strip-theme-button` still cycles next/previous on click); only the full
+   option LIST (the picker) and the tune dialog stay on the right panel. CSS owns
+   the difference; no button is moved in JS. `!important` because the picker is
+   shown by clearing `[hidden]` (`.theme-picker[hidden]{display:none}` below) and
+   a native `<dialog>` paints when `[open]` regardless of author `display`. */
+body[data-surface="strip"] .theme-picker,
+body[data-surface="strip"] #tune-dialog {
+  display: none !important;
+}
+
+body[data-surface="strip"] .stripbar {
+  display: flex;
+}
+
+/* ---------------------------------------------- the strip surface (the short one) */
+
+/* THE FOUR-ROW STRIP LAYOUT USED TO BE HERE and is deleted. It declared
+   grid-template-rows: minmax(calc(var(--strip-height) - var(--strip-chrome)), 1fr) auto auto,
+   plus gap: 8px, padding: 10px 11px and border-radius: 12px -- on the SAME selector
+   (body[data-surface="strip"] .panel) that the window-is-the-bar rule now owns, later in
+   this file and at equal specificity. Every one of those four declarations was therefore
+   already dead when it was read: the browser kept the later rule and dropped these. It is
+   removed rather than left looking live, which is the trap this file keeps being caught by.
+   The derivation it described (--strip-height minus the strip chrome) was correct for the
+   four-row strip and still lives in :root; the live rule is the one below, search for
+   THE WINDOW IS THE BAR. */
+
+/* The status block is the one thing the strip keeps from the footer: its dot,
+   and a word painted by `panel.js`. The bar above it is what makes the strip
+   read as a finished slab rather than a cut-off panel. */
+body[data-surface="strip"] .status {
+  padding-top: 4px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+body[data-surface="strip"] .captions__bar {
+  /* The live box's own label row is part of the product: it names the box and
+     carries the line count. Kept, one size down. */
+  min-height: 12px;
+}
+
+body[data-surface="strip"] .captions__body {
+  border-radius: 8px;
+}
+
+/* The live line is the strip's content, so it is not shrunk; only the padding
+   around it is, so three or four lines fit the ~100 px box. */
+body[data-surface="strip"] .captions__list {
+  padding: 6px 7px;
+  gap: 5px;
+}
+
+body[data-surface="strip"] .caption {
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+body[data-surface="strip"] .caption__text {
+  /* The strip's own base size is 14px, one less than the panel's 15px, and it
+     is DERIVED through `--caption-scale` exactly like the panel's — the owner's
+     dial must move BOTH surfaces (*"tanto no overlay abaixo... tanto no painel
+     da direita"*), and a literal here would silently beat the base rule. */
+  font-size: calc(14px * var(--caption-scale));
+  line-height: 1.35;
+}
+
+/* The empty state, compressed: the listening bars stay (they are what says the
+   strip is alive), the two lines of prose do not fit and are clipped by the box
+   rather than shortened — `panel.js` still writes the real sentence into them
+   for the read-back probes and the panel surface. */
+body[data-surface="strip"] .captions__placeholder {
+  gap: 6px;
+  padding: 6px 14px;
+}
+
+body[data-surface="strip"] .captions__placeholder-title {
+  font-size: 13px;
+}
+
+body[data-surface="strip"] .captions__placeholder-body {
+  font-size: 11px;
+  line-height: 1.4;
+  max-width: 34ch;
+  /* Two clamped lines: the whole sentence is in `title` (set by panel.js in the
+     strip only), so nothing is lost, only shortened. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body[data-surface="strip"] .listening {
+  height: 20px;
+  margin-bottom: 0;
+}
+
+body[data-surface="strip"] .listening span {
+  height: 7px;
+}
+
+@keyframes listening-strip {
+  0%,
+  100% {
+    height: 6px;
+    opacity: 0.35;
+  }
+  50% {
+    height: 17px;
+    opacity: 0.9;
+  }
+}
+
+body[data-surface="strip"] .listening span {
+  animation-name: listening-strip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-surface="strip"] .listening span {
+    animation: none;
+  }
+}
+
+/* The dots and the word. `flex: none` on both, so the word can ellipsise rather
+   than push the slab wider than the window. */
+/* ── THE NAME ON THE STRIP ────────────────────────────────────────────────────
+   The strip hides `.panel__header`, so the header's brand is not on that surface
+   at all: the strip carries its own, leftmost, before the controls. It is the
+   strip's own voice — the same face as the strip's other legends, the muted
+   colour, tracked wide — and it is the ONLY text on the strip that is not a
+   control label or a state word. */
+.stripbar__brand {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: none;
+  color: var(--text-muted);
+  margin-right: 2px;
+  user-select: none;
+}
+
+.stripbar__state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.stripbar__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--text-faint);
+  transition: background 160ms ease;
+}
+
+.stripbar__state.is-live .stripbar__dot {
+  background: var(--accent-from);
+  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15);
+}
+
+.stripbar__state.is-error .stripbar__dot {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
+}
+
+.stripbar__word {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------ strip controls */
+
+/* ── THE MOVE HANDLE (owner, 2026-10-12: *"o painel de baixo tem que ser movivel
+   pra cima ou pra baixo ou pros lados"*). The strip has no header and no title
+   bar, so this is the ONE visible affordance that says the bar can be moved. It
+   is a decorative grip (`aria-hidden` in the markup, no focus stop, no click),
+   and it is NOT the only draggable area: the gesture is bound to `.stripbar`
+   itself, so the empty gaps between the buttons drag too. It exists because
+   "drag anywhere on the bar" is undiscoverable on a 40 px slab.
+
+   IT IS NOT `-webkit-app-region: drag` — that is an Electron feature and this
+   app is WebView2 (AGENTS.md: the Electron shell is DEAD). The strip's existing
+   `-webkit-app-region: drag` on `.stripbar` is kept because it is harmless, but
+   it moves nothing on this shell; the pointer gesture in `panel.html` is what
+   records the position. */
+.stripbar__grip {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  border-radius: 3px;
+  background-image: radial-gradient(circle, var(--text-faint) 1px, transparent 1.2px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
+  opacity: 0.55;
+  cursor: grab;
+  user-select: none;
+}
+body[data-surface="strip"] .stripbar__grip:hover {
+  opacity: 0.95;
+}
+body[data-surface="strip"].is-strip-dragging .stripbar__grip,
+body.is-strip-dragging .stripbar__grip {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+/* THE BAR IS THE HANDLE, so it wears the grab cursor — but only where a press
+   actually starts a drag: a button keeps `pointer`. */
+body[data-surface="strip"] .stripbar {
+  cursor: grab;
+}
+body[data-surface="strip"] .stripbar .strip-button,
+body[data-surface="strip"] .stripbar .stripbar__brand {
+  cursor: pointer;
+}
+body[data-surface="strip"] .stripbar__brand {
+  cursor: grab;
+}
+body.is-strip-dragging,
+body.is-strip-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+/* ── THE DRAG PAINT. The gesture writes `--strip-move-x`/`--strip-move-y` on the
+   root and the slab follows the pointer. THE SHELL MUST SET
+   `body[data-strip-moved]` (any value) once IT moves the WINDOW, and this rule
+   then stops transforming — otherwise the two moves would add up and the bar
+   would run away at 2x the pointer. See `_main/receipt-botoes.md` §2 for the
+   whole handoff. */
+body[data-surface="strip"] .panel {
+  transform: translate(var(--strip-move-x, 0px), var(--strip-move-y, 0px));
+}
+body[data-surface="strip"][data-strip-moved] .panel {
+  transform: none;
+}
+
+/* The floated caption is anchored to the WINDOW, not to the slab, so it does
+   NOT inherit the drag offset — the bar moves under the caption and the caption
+   stays where the owner put it on screen. */
+
+/* The strip's control row: three compact buttons and the status word. The row
+   wraps rather than clipping — a button that cannot be reached is worse than a
+   row that grows — and `gap` is what keeps three targets from reading as one. */
+.stripbar {
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.strip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.strip-button svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.strip-button:hover {
+  background: rgba(125, 211, 252, 0.16);
+  color: var(--text);
+}
+
+.strip-button:active {
+  background: rgba(167, 139, 250, 0.22);
+}
+
+.strip-button:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+/* THE TOGGLE, and the reason it needs a style of its own: `aria-pressed="true"`
+   is the state a screen reader announces and `:hover` is the only state the eye
+   had, so the ON state is painted from the ATTRIBUTE — the same fact, in the one
+   place both readers can see it. */
+.strip-button--toggle[aria-pressed="true"] {
+  border-color: var(--line-strong);
+  background: rgba(125, 211, 252, 0.14);
+  color: var(--text);
+}
+
+.strip-button--toggle[aria-pressed="false"] {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+  color: var(--text-dim);
+}
+
+.strip-button--toggle[aria-pressed="false"] .strip-button__label {
+  color: #f8b4b4;
+}
+
+.strip-button__label {
+  white-space: nowrap;
+}
+
+/* ── THE STRIP BAR IS ICON GLYPHS, NOT SENTENCES ──────────────────────────────
+ * Owner, 2026-10-09, verbatim: *"the bottom panel should be really small and 
+ * minimalistic"*. Ten controls, a wordmark and a status word in a 1 040 × 100 
+ * bar used to be read as a toolbar; the same ten as 26 px round glyphs read as 
+ * the caption's own furniture. Nothing is DELETED — every label text stays in 
+ * the DOM and every button keeps (or has) a `title`, so the glyph's meaning is 
+ * one hover away; this is a PAINT decision, not a reachability one.
+ *
+ * THE TWO EXCEPTIONS, both deliberate:
+ *  1. `#strip-theme-button` keeps its label, because that label names the 
+ *     template the owner is LOOKING AT — it is a readout, not an action verb. 
+ *     It is also the button that stays in the same place while the template 
+ *     changes, so the word that moves is the word that says which one is up.
+ *  2. `#strip-live-label` keeps the word LIVE, in red, because the owner asked 
+ *     for that word in that colour on its own and it is the one text on the bar 
+ *     with state semantics.
+ *
+ * The 26 px circle is the recipe the last design direction shipped (a 36 px 
+ * round control at `bg-black/25 backdrop-blur-sm`, `active:scale-90`, no text 
+ * label); 26 px is this bar's size, not theirs — the strip window is ~100 px 
+ * tall and 26 leaves room for a 12 px glyph plus a 1 px border and a focus ring.
+ */
+/* NOTE THE `.stripbar` IN THE SELECTOR - it is not decoration. A generated
+ * theme writes the SAME property at `:root[data-theme='theme-N'] .strip-button`
+ * (three class-level parts, no element), which outranks a bare
+ * `body[data-surface="strip"] .strip-button` (two class-level, one element) on
+ * specificity *despite* the surface attribute being the more precise condition.
+ * Measured before the fix: `borderTopLeftRadius` came back 7px, i.e.
+ * `var(--radius-sm)`, and the circles were pills with square ends. Adding the
+ * bar class puts this at (0,3,1) and the round control is what actually paints.
+ */
+body[data-surface="strip"] .stripbar .strip-button {
+  width: 26px;
+  min-height: 26px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+body[data-surface="strip"] .strip-button .strip-button__label {
+  display: none;
+}
+
+/* The exceptions. `display: inline` (not `block`) keeps the label measured the 
+ * way flex already measures it, and BOTH carry the strip + id prefix so no 
+ * `:root[data-theme] .strip-button__label` rule (a=0) can bring text back. */
+/* ── THE ONE EXCEPTION, AFTER THE TRIM: THE LIVE PILL ────────────────────────
+ * The theme pill was the other one until 2026-10-12; it is gone from the
+ * markup, so its rules are gone from here. What is left is the control the
+ * owner named in his own words: *"o botao de mostrar a legenda ao vivo deve
+ * ser o live"*. It is a PILL and not a 26 px circle because its label is the
+ * state readout — see the block below for the two colours. */
+body[data-surface="strip"] #strip-live-button {
+  width: auto;
+  gap: 5px;
+  padding: 0 9px;
+}
+body[data-surface="strip"] #strip-live-button .strip-button__label {
+  display: inline;
+}
+
+/* Twelve pixels of glyph in a twenty-six pixel box, rounded: the 12 px rule 
+ * above was tuned for a 22 px pill with a text baseline beside it, and the 
+ * circle gives the glyph the whole box. */
+body[data-surface="strip"] .strip-button svg {
+  width: 13px;
+  height: 13px;
+}
+body[data-surface="strip"] .strip-button--chevron {
+  justify-content: center;
+}
+
+
+/* ── THE STRIP'S FIXED ORDER (BASE, NOT THEME) ───────────────────────────────
+ * The arrangement is the strip's, never a direction's. Flex `order` keeps DOM
+ * order (tab order, screen readers) meaningful while the paint order is fixed:
+ * brand · Live · theme · open · hide · font- · font+ · Pause · status. The
+ * selectors carry `body[data-surface="strip"]` + an id (a=1) so no theme's
+ * `:root[data-theme] .class` rule (a=0) can reorder or move a control.
+ *
+ * The font dial is the owner 2026-10-09 ask (*"aumentar ou diminuir a fonte das
+ * transcricoes, tanto no overlay abaixo... tanto no painel da direita"*) and it
+ * sits immediately before Pause here too, mirroring `.panel__controls`, so the
+ * same two controls mean the same thing on both surfaces.
+ *
+ * REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o bare
+ * minimum"*): the theme-list chevron and the transparency button. Both entries are
+ * gone from this list AND from the markup (panel.html), and the chevron is hidden by
+ * CSS further down because `theme-switcher.js ensureChevron` re-creates it. */
+/* THE ROW, AFTER THE 2026-10-12 TRIM AND THE 2026-10-13 MERGE. The theme pill
+   and the two font dial circles are GONE from the markup (see panel.html for the
+   measurement that made each removal safe), so their entries are gone from here
+   too: an `order` on an id that does not exist is a rule about nothing, and this
+   file's own rule is that a dead declaration is removed rather than left looking
+   live. `#strip-float-button` ("Linhar") went the same way on 2026-10-13 — the
+   owner's own prompts of the handoff conversation put the caption on the LIVE
+   button (*"o botao de mostrar a legenda ao vivo deve ser o 'live'"*, *"nele eu
+   ativo o segundo overlay, q e a legenda independente"*), and a second door into
+   the same room is exactly what the 2026-10-12 trim was about. What is left is
+   the bare minimum the owner asked for:
+   brand · grip · live · open · pause · hide · state.
+
+   HIDE IS LAST OF THE CONTROLS and that is the owner's ruling, verbatim
+   (2026-10-12): *"o botao de x pra dar hide introduzido em lugar aleatorio e
+   estupido. bota ele na direita dos botoes."* Same fix as the right panel's
+   `#hide-button` — the X is the rightmost CONTROL on the row; only the state
+   READOUT stands after it, because a readout is not a button. */
+body[data-surface="strip"] .stripbar__brand { order: 0; }
+body[data-surface="strip"] #strip-drag-handle { order: 1; }
+body[data-surface="strip"] #strip-live-button { order: 2; }
+body[data-surface="strip"] #strip-open-button { order: 3; }
+body[data-surface="strip"] #strip-pause-button { order: 4; }
+body[data-surface="strip"] #strip-hide-button { order: 5; }
+body[data-surface="strip"] #strip-state { order: 99; }
+/* ONE DECLARATION PER ID, AND THE SURVIVOR IS THE LIST ABOVE. `#strip-state`
+   stays at 99 — the readout is not a control and always paints last. */
+
+/* ── THE STRIP HAS NO THEME-LIST CHEVRON. TWO LAYERS, NOT ONE. ───────────────
+   Owner, 2026-10-12, verbatim: *"o painel de baixo, deve conter apenas o bare
+   minimum"*. The theme-list chevron is gone from the strip.
+
+   LAYER 1 (2026-10-12, the re-anchor) is the JAVASCRIPT: `theme-switcher.js`
+   `ensureChevrons` NO LONGER BUILDS `#strip-theme-chevron` — the block that did
+   sat at its foot and was deleted — and `registerChevron` REFUSES a chevron the
+   strip bar ships. So the strip cannot regain a theme-list door by a markup line
+   alone, and the node this rule used to have to hide every boot is simply not
+   created any more. That revision needed a CSS hide because the module kept
+   putting the node back; the revision that does not put it back does not.
+
+   LAYER 2 is THIS RULE, and it STAYS. A `#strip-theme-chevron` the strip bar ever
+   ships again is then invisible here, and a chevron the module would have wired
+   is refused before it is wired — so the idle node cannot even open the list.
+   It is scoped to the strip surface precisely so the RIGHT panel keeps its own
+   `#theme-chevron` in `.panel__controls`, which is the ONE trigger. */
+body[data-surface="strip"] #strip-theme-chevron {
+  display: none;
+}
+
+/* The wordmark, leftmost. It is the strip's brand, not a control: no hover, no
+ * pointer, and `flex: none` so it never eats the row. */
+.stripbar__brand {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+/* ── THE TEMPLATE PAIR: ONE PILL AND ONE CIRCLE ──────────────────────────────
+ * The cycle button and the list chevron keep the ONE shape the owner asked for
+ * — the theme control stays in the same place, a click cycles, the glyph beside
+ * it opens the hover-preview list. Only the trim changed: they are no longer
+ * squared together into one split control. A pill and a circle of equal height
+ * already read as one group, and the squared left/right corners were a
+ * compromise that only looked right when BOTH were rectangular pills.
+ *
+ * The chevron still has no label of its own (it never did): its glyph is the
+ * whole affordance, so it gets the tightest box on the bar.
+ */
+.strip-button--chevron {
+  min-width: 26px;
+  justify-content: center;
+}
+.strip-button--chevron svg {
+  width: 13px;
+  height: 13px;
+}
+
+
+/* ── THE LIVE LABEL IS RED, IN EVERY THEME ──────────────────────────────────
+ * The owner asked for the word LIVE in red. A theme rule on `.strip-button` or
+ * `.strip-button--toggle[aria-pressed]` would otherwise paint it, so the rule
+ * carries `body[data-surface="strip"]` + the id: a=1 beats any `:root[data-theme]
+ * .class` (a=0) rule, so no direction can override it — including a hypothetical
+ * theme rule that named the label class. */
+/* ── THE LIVE BUTTON SAYS WHICH STATE IT IS IN, IN TWO WAYS AT ONCE ──────────
+ * Owner, 2026-10-12, verbatim: *"o botao de mostrar a legenda ao vivo deve ser
+ * o live. e deve ser CLARO quando ta live e quando nao ta."*
+ *
+ * MEASURED BEFORE THIS EDIT, because "claro" has to mean something: the two
+ * states were already distinguishable ON PAPER — `aria-pressed` is written by
+ * `panel.js applyLiveEnabled` (:2011) and the base toggle rules paint a
+ * pressed/unpressed pair (`.strip-button--toggle[aria-pressed=…]`) — but BOTH
+ * states carried the SAME word and the SAME red, so the only difference the eye
+ * got was a faint tint on a 22 px pill. The owner was looking at the control and
+ * could not tell which state it was in.
+ *
+ * THE TWO FACTS, one per state, and they never contradict each other:
+ *   ON   the word is `live` and the pill is RED (the owner's own colour, the
+ *        lamp the strip has always worn).
+ *   OFF  the word is `off` and the pill is NEUTRAL GREY: the red is gone, the
+ *        glyph dims, and the word itself changed.
+ *
+ * HOW THE WORD CHANGES WITHOUT TOUCHING `panel.js`: the module writes
+ * `dom.stripLiveLabel.textContent = 'LIVE'` on every apply (:2026) — the WORD is
+ * the control's NAME, not its state, and that is the module's own comment. A lane
+ * whose write scope is `panel.html` + `panel.css` cannot edit that line, so the
+ * DOM text stays `live` (written once in the markup) and the STATE WORD is painted
+ * by the pill's own `::after`, keyed on `aria-pressed` — the attribute the module
+ * ALREADY maintains. The DOM label is hidden with `font-size: 0`, NOT
+ * `display:none`, so its text stays in the accessibility tree and a read-back
+ * probe still finds it (measured: `_main/_panel2-dom-probe.js` ARM T reads that
+ * exact textContent and expects the word to still be there).
+ *
+ * SPECIFICITY: every rule below carries `body[data-surface="strip"]` + the id
+ * (a=1), so no `:root[data-theme] .strip-button` rule (a=0) in any theme can put
+ * the old red back on the OFF state. */
+
+/* THE WORD, PAINTED FROM THE ATTRIBUTE. The DOM text is kept (font-size: 0) and
+   the visible word is the pseudo-element, so the two can never disagree: both are
+   functions of the same `aria-pressed`. */
+body[data-surface="strip"] #strip-live-button .strip-button__label {
+  font-size: 0;
+}
+body[data-surface="strip"] #strip-live-button .strip-button__label::after {
+  content: "off";
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] .strip-button__label::after {
+  content: "live";
+}
+
+/* ── STATE ON: red, filled, loud. */
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] {
+  border-color: rgba(229, 72, 77, 0.85);
+  background: rgba(229, 72, 77, 0.22);
+  color: #ffd9da;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] #strip-live-label::after,
+body[data-surface="strip"] #strip-live-button[aria-pressed="true"] svg {
+  color: #ff6b70;
+}
+/* Hover must not undo the state: the generic `.strip-button:hover` paints a blue
+   tint that would read as "live" on the OFF pill. */
+body[data-surface="strip"] #strip-live-button:hover,
+body[data-surface="strip"] #strip-live-button:focus-visible {
+  border-color: rgba(229, 72, 77, 0.95);
+  background: rgba(229, 72, 77, 0.3);
+  color: #ffffff;
+}
+
+/* ── STATE OFF: the red is GONE. Grey border, grey fill, dimmed glyph, and the
+   word says `off`. This is the state the owner could not see before. */
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-dim);
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] #strip-live-label::after {
+  color: #cbd5e1;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"] svg {
+  color: #94a3b8;
+  opacity: 0.75;
+}
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:hover,
+body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visible {
+  border-color: rgba(148, 163, 184, 0.7);
+  background: rgba(148, 163, 184, 0.2);
+  color: #ffffff;
+}
+
+/* THE UNWIRED SHELL keeps its own honest paint (`[data-wired="false"]`, the
+   diagonal stripe further up), so nothing here overrides it. */
+
+/* ── TRANSPARENCY: REMOVED, MEASURED (2026-10-12) ────────────────────────
+ * The two rules that were here (`body[data-surface="strip"][data-transparency="on"]
+ * .stripbar/.captions__bar { display: none }` and the same pair for `.panel` further
+ * down) ARE DELETED, and with them the `#strip-transparency-button` itself.
+ *
+ * THEY WERE THE BUG. Measured in `_main/webview-run.log` on the owner's shell:
+ * two in-window clicks (points (1008,955) and (1005,951), both inside the strip's
+ * rect 1040x100@(440,920)) immediately before `TRANSPARENCY_ON click_through=true
+ * captions=kept` (line 114746). After that line the window was:
+ *   • display:none on the slab, i.e. NOTHING painted by the document, and
+ *   • WS_EX_TRANSPARENT, so the owner could not click anything back.
+ * The only recovery was the hotkey, and he did not know that: *"cliquei num botao e
+ * ele sumiu"* / *"agora ta so a cor solida de volta, inteira"*.
+ *
+ * Why the CHEVRON also goes: the strip is now the bare-minimum bar (owner's order
+ * 2026-10-12: *"o painel de baixo, deve conter apenas o bare minimum"*), so the theme
+ * chevron is hidden on this surface. THE BUTTON ITSELF IS NOT DELETED — it is the
+ * header's own control on the right panel, where every button lives now. */
+
+/* A control whose backing shell call does not exist yet: visibly inert, and it
+   SAYS so in its title instead of pretending (`panel.js applyPauseAvailability`
+   / `applyLiveAvailability`). The warning stripe is what makes it readable as
+   "not wired" rather than "broken". */
+.strip-button[data-wired="false"],
+.reveal-button[data-wired="false"] {
+  opacity: 0.55;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(248, 113, 113, 0.14) 0 5px,
+    transparent 5px 10px
+  );
+}
+
+/* ------------------------------------------------------ the pause confirmation */
+
+/* In-panel, never `window.confirm`: a frameless overlay cannot style the native
+   one, cannot default its focus to Cancel, and on this shell the dialog would
+   belong to a window that is deliberately not focusable. `showModal()` supplies
+   the focus trap and the backdrop; everything below is only what makes it look
+   like the rest of the slab. */
+.pause-dialog {
+  width: min(340px, calc(100vw - 24px));
+  max-width: 340px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(167, 139, 250, 0.14) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(17, 24, 35, 0.99) 0%, rgba(11, 15, 20, 0.99) 100%);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+}
+
+.pause-dialog::backdrop {
+  background: rgba(4, 7, 10, 0.62);
+}
+
+.pause-dialog > * {
+  margin: 0;
+  padding: 0 16px;
+}
+
+.pause-dialog__title {
+  padding-top: 15px;
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+}
+
+.pause-dialog__body {
+  padding-top: 8px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* The owner's own point, in its own box: pausing is almost never worth it for
+   performance, because the background transcript is extremely light. It is NOT
+   fine print — it is the reason the dialog exists. */
+.pause-dialog__honest {
+  margin: 10px 16px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent-to);
+  border-radius: 6px;
+  background: rgba(125, 211, 252, 0.06);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* Shown ONLY when the hosting shell has no `pause()`: the confirmation is not a
+   promise the panel can keep, and the owner is told before he presses anything. */
+.pause-dialog__shell {
+  margin-top: 10px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: #f8b4b4;
+}
+
+.pause-dialog__shell[hidden] {
+  display: none;
+}
+
+.pause-dialog__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.dialog-button {
+  padding: 6px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.dialog-button:hover {
+  background: rgba(125, 211, 252, 0.16);
+  color: var(--text);
+}
+
+.dialog-button:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+.dialog-button--danger {
+  border-color: rgba(248, 113, 113, 0.32);
+  color: #f8b4b4;
+}
+
+.dialog-button--danger:hover {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+}
+
+.dialog-button--danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(248, 113, 113, 0.14) 0 5px,
+    transparent 5px 10px
+  );
+  color: var(--text-faint);
+}
+
+/* -------------------------- the theme tuning dialog (themes ARE templates) */
+
+/* The owner asked for the five designs to be templates he can adjust from inside
+   the panel, verbatim (2026-10-08): *"quero que os temas sejam templates. e quero
+   modificar coisas de cada templete de um jeito facil, pelo painel. tipo trocar a
+   fonte, entre outras coisas q tu achar bom tambem"*.
+
+   It wears `.pause-dialog` and `.dialog-button` for its shell on purpose: two
+   modal dialogs in one 380 px window that look slightly different is a defect, not
+   a style. Everything here is only what a LIST of controls needs — compact rows
+   and a scroll region — and nothing here names a colour of its own: every value
+   comes from the tokens the current theme declares, so the tuning UI itself is
+   themed by the thing it tunes. */
+.tune-dialog {
+  width: min(352px, calc(100vw - 20px));
+  max-width: 352px;
+}
+
+.tune-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 4px;
+  /* THE CAP IS THE POINT: 17 knobs do not fit a 380 px-wide window, so the LIST
+     scrolls and the dialog's own title and buttons stay on screen. `contain`
+     stops the wheel from walking out of the list and scrolling the page behind
+     the modal. */
+  max-height: 52vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tune-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'head head'
+    'control reset';
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.tune-row__head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tune-row__label {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-dim);
+}
+
+.tune-row__value {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* AN EDITED KNOB IS MARKED, in the theme's own accent. The alternative — every
+   row looking alike — makes "what did I change on this theme, and what is still
+   the design's" a memory test, and the reset button below is meaningless if the
+   reader cannot see which rows it would act on. */
+.tune-row[data-changed='true'] .tune-row__label {
+  color: var(--text);
+}
+
+.tune-row[data-changed='true'] .tune-row__value {
+  color: var(--accent-to);
+}
+
+.tune-row__range {
+  grid-area: control;
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--accent-to);
+}
+
+.tune-row__color {
+  grid-area: control;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tune-row__select {
+  grid-area: control;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11.5px;
+}
+
+.tune-row__select:focus-visible,
+.tune-row__color:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+/* The per-row reset. `var(--mono)` because the glyph is U+21BA, which is OUTSIDE
+   the bundled latin subsets' `unicode-range` (`themes/fonts.css`) — the theme's
+   own display face would not carry it and the fallback is what paints it. */
+.tune-row__reset {
+  grid-area: reset;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tune-row[data-changed='false'] .tune-row__reset {
+  opacity: 0.35;
+}
+
+.tune-row__reset:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.tune-row__reset:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 1px;
+}
+
+/* One step of feedback after a confirmed pause, on any surface. */
+body[data-surface="strip"] .panel.is-paused .captions__body,
+body[data-surface="panel"] .panel.is-paused .captions__body {
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+body[data-surface="strip"] .panel.is-paused .captions__bar .history__label,
+body[data-surface="panel"] .panel.is-paused .captions__bar .history__label {
+  color: #f8b4b4;
+}
+
+/* ===========================================================================
+   THE DIRECTION'S OWN CHROME (owner, 2026-10-08)
+   ===========================================================================
+   Each of the five directions now carries its OWN header line, footer line and
+   state indicator — the owner's words: *"quero que voce monte o painel super
+   parecido com cada tema ... nao quero a cara do design que tinhamos antes."*
+   The blocks live in the markup (`panel.html`, `.chrome--tele` … `.chrome--inst`)
+   and are ALL INERT HERE: `display: none` is the base state, and exactly one is
+   switched on by its own `themes/theme-N.css`. That is the same one-attribute
+   mechanism the five themes already use — nothing is built, moved or fetched on
+   a switch, so a switch cannot fail halfway.
+
+   WHAT IS *NOT* HERE. No number, no confidence, no buffer, no latency is painted
+   by any of this. The mockups carry `CONF 0.93`, `buffer 38ms` and `48K` because
+   `designs.ts` drives them from a SIMULATED script; this panel has no such
+   measurement, so a direction's chrome prints only what the panel can really
+   read: the state the shell reported, the clock, the line ordinal, and the
+   worker's own status sentence in `#status-text`, which is untouched.
+   --------------------------------------------------------------------------- */
+
+/* Inert until a theme claims it. */
+.chrome {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The state words: the SAME fact panel.js mirrors onto <body data-state>, in a
+   place both the header and the footer can see. One word is painted, never two,
+   and "no state yet" is the standby word rather than a stale LIVE one. */
+.chrome__on,
+.chrome__off {
+  display: none;
+  white-space: nowrap;
+}
+
+body[data-state="live"] .chrome__on {
+  display: inline;
+}
+
+body[data-state=""] .chrome__off,
+body[data-state="error"] .chrome__off {
+  display: inline;
+}
+
+.chrome__state {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chrome__meter {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 12px;
+}
+
+.chrome__meter i {
+  display: block;
+  width: 2.5px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: bottom;
+}
+
+/* --------------------------------------------------- the caption's own bits */
+
+/* The per-line ordinal USED to be painted here (`.caption__index`, `bcast` only).
+   The owner had it removed from the screen on 2026-10-08 — twice, and it was the
+   same element on every row — so the element no longer exists and the rule is
+   gone with it. The ordinal survives as `li[data-index]` for the DOM probes. */
+
+/* The forming line's own indicator (`inst`). A REAL element, not the border
+   rail: a border cannot be animated on the compositor, and the direction's one
+   dynamic element is exactly this LED. `position: absolute` so it takes no grid
+   track either. */
+.caption {
+  position: relative;
+}
+
+.caption__led {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 99px;
+  background: var(--accent-from);
+}
+
+/* A word inside the forming line. The span exists so a direction can give each
+   word its own contrast (`mano`, via `--w-op`) or its own fog (`cine`); the
+   SPACING is still the plain text node beside it, so `textContent` reads exactly
+   as it did when this was one string. */
+.caption__word {
+  display: inline;
+}
+
+/* The forming line's tail marker ('·'). Its own element so the word spans stay
+   countable by `paintWords`. */
+.caption__mark {
+  display: inline;
+}
+
+/* ------------------------------------------------- THE TYPING REVEAL (2026-10-08)
+
+   The owner's first line in the brief: *"TYPING letter-by-letter on the live
+   line"*. What types is the NEWEST WORD of the forming line, and nothing else —
+   `paintWords` gives that one word one `<span class="caption__ch">` per
+   CHARACTER and stamps `--c-i` (its index) on each through CSSOM. Every other
+   word, and every committed line, keeps the single text node it always had.
+
+   WHY THE NEWEST WORD AND NOT THE WHOLE LINE: a fragment arrives with whole
+   words in it, so a per-line reveal would have to spread its delay across a
+   sentence that is still growing, and the tail would lag seconds behind the
+   worker. One word is bounded by the longest word in the language, so the
+   reveal always finishes before the next fragment can arrive.
+
+   WHY `animation` AND NOT A TRANSITION: the reveal must be DISCRETE — a letter
+   is absent, then it is present. A transition would FADE each letter, which is
+   a different (and softer) thing than typing. `1ms` + `forwards` flips the
+   character at its own delay and holds it.
+
+   THE ONLY ANIMATED PROPERTY IS `opacity`, on an inline span, so the compositor
+   owns it and no frame pays for a relayout — the rule the whole panel is held
+   to, and the reason this feature is measurable with
+   `_main/_panel-anim-cost.js` instead of argued about.
+
+   `--type-step` lives in `:root` (45ms) so the knob is REAL: a direction that wants
+   its own typing speed sets the var and this rule follows, and a direction that
+   wants no typing at all sets `--type-step: 0ms`. Deleting this whole block is a
+   complete revert of the feature. The reveal is fail-VISIBLE by construction: the
+    char's BASE opacity is 1 and the fill mode is `both`, so the backwards fill
+    holds 0 during the per-char delay and the forwards fill holds 1 after — and
+    if anything ever suppresses the animation, the word stays READABLE instead
+    of blank (2026-10-08 full audit). `opacity: 0` as the base plus a removable
+    fill is the fail-BLANK form and is forbidden here. */
+.caption__ch {
+  display: inline;
+}
+
+.caption--provisional .caption__word[data-typing] .caption__ch {
+  opacity: 1;
+  animation: sotto-type-in 1ms linear both;
+  animation-delay: calc(var(--c-i) * var(--type-step));
+}
+
+@keyframes sotto-type-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* THE `prefers-reduced-motion` OVERRIDE IS GONE, AND THAT IS A MEASURED DECISION
+   (2026-10-08) — NOT an accessibility oversight. Read this before restoring it.
+
+   WHAT WAS HERE: a `@media (prefers-reduced-motion: reduce)` rule that set
+   `animation: none; opacity: 1` on the char spans. On the OWNER'S OWN MACHINE that
+   rule made the feature INVISIBLE: his OS client-area-animation preference is OFF
+   (`SPI_GETCLIENTAREAANIMATION` = 0, `HKCU:\Control Panel\Desktop\UserPreferencesMask`
+   = {144,18,7,128,16,0,0,0}, no `MinAnimate` value), Chromium maps that 0 onto
+   `prefers-reduced-motion: reduce`, and so the letter-by-letter reveal he asked for
+   TWICE never ran a single time on the screen he was looking at. A preference the
+   user never set, that he cannot see, and that cannot be turned off from inside the
+   product, was silently disabling a requested feature.
+
+   WHAT REPLACES IT: the documented, first-class off switch `--type-step: 0ms` (see the
+   comment above — `:root` declares it at 45ms so a direction or the shell can set
+   it). That switch is set by an editor in one line, it is the same knob the cost
+   instrument uses for its no-typing arm, and unlike the media query it is visible in
+   the source to anyone who greps for the feature. The door is still here; it is no
+   longer self-closing.
+
+   NOT YET MACHINE-CONFIRMED, stated plainly: that Chromium inside WebView2 really does
+   report `matches: true` for that media query on this box is inferred from the OS flag
+   and has NOT been read from the renderer — `grep` finds no `matchMedia` call anywhere
+   in the shell, so nothing has ever asked. Dropping the override is correct whether the
+   inference holds or not (with the override gone the reveal runs in both cases), but the
+   read itself is still owed. */
+
+/* ------------------------------------------------------- the strip's theme key */
+
+/* `#strip-theme-button` — the theme control ON THE STRIP SURFACE. `.panel__header`
+   is `display: none` there and the header's theme button lives inside it, so
+   without this the owner could not change the theme on the surface the key opens
+   (the previous lane flagged the trap; this closes it). It is a `.strip-button`
+   like its three neighbours, with the theme's accent as its swatch. */
+.strip-button--theme {
+  padding-left: 6px;
+}
+
+.strip-theme__swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--theme-swatch, var(--accent-from));
+}
+
+/* ── THE THEME DROPDOWN IS PANEL-ONLY ───────────────────────────────────────
+ * This file used to LAY OUT the dropdown for the strip window here — the strip
+ * is ~100 px tall and ~1040 px wide, so the header's vertical list was restyled
+ * as a wide row that fits. That whole block was deleted on the 2026-10-12
+ * re-anchor: the trigger lives on the RIGHT panel now (`#theme-chevron` in
+ * `.panel__controls`) and the strip carries only its cycling `#strip-theme-button`.
+ *
+ * WHY THIS IS A HIDE AND NOT JUST A DELETED LAYOUT. The dropdown is a BODY-level
+ * popup (`.panel` is `overflow:hidden`, so the list cannot be nested), and the
+ * owner can switch surfaces with the dropdown still OPEN — Alt+C away from a
+ * preview leaves `hidden=false` on `#theme-dropdown` while `data-surface` moves
+ * to `strip`, and a theme list would then paint across the short bar. So the list
+ * is refused on the strip outright, by the surface attribute rather than by
+ * anything the module has to remember to do.
+ *
+ * `!important` because `.theme-dropdown` is shown by clearing `[hidden]`, and an
+ * `!important` here is what makes "no theme list on the strip" unconditional
+ * rather than a matter of who writes last. No `#theme-chevron` exists on this
+ * surface either (see the rule above), so this cannot strand a control that the
+ * owner can see but not use. */
+body[data-surface="strip"] .theme-dropdown {
+  display: none !important;
+}
+
+/* The footer chrome is a PANEL-surface thing: the strip keeps its dot and one
+   word (the status block is the only footer it has). Specificity is deliberate —
+   `body[data-surface] .status .chrome` (0,3,2) outranks a theme's
+   `:root[data-theme] .chrome--x` (0,3,0), so no theme can leak a label into the
+   strip's ~100 px. */
+body[data-surface="strip"] .status .chrome {
+  display: none;
+}
+
+/* ------------------------------------------------- the theme picker, shared base
+
+   THE PICKER'S SHAPE CANNOT LIVE ONLY IN THE THEME FILES (2026-10-08). Every
+   `.theme-picker*` rule used to be generated into each `themes/theme-N.css`, and
+   that was fine while every theme was one of those five. The moment the owner
+   asked for the `cinematic` template set — and for near-duplicate designs to ship
+   as A/B/C alternatives — a theme that does not repeat those rules would paint the
+   picker as a stack of unstyled blocks: still functional, and visibly broken over
+   a cinematic caption. So the BASE shape is here, token-driven, and it is what any
+   new theme gets for free. The five directions still override every property they
+   set, because their rules are scoped to `:root[data-theme='theme-N']` and are
+   therefore more specific — nothing about the five moves.
+
+   THE THREE THINGS THIS ADDS FOR A BIG LIST: a scroll cap, the group heading and
+   the A/B/C badge. With five themes a picker could not overflow; with the template
+   set it can, and a list whose tail runs past the bottom of a 900 px window is a
+   list whose tail cannot be clicked. */
+.theme-picker {
+  position: absolute;
+  top: 46px;
+  right: 12px;
+  z-index: 40;
+  min-width: 186px;
+  /* 62vh of the 900 px window leaves the header above the list and the footer
+     below it reachable; `contain` stops the wheel from walking out of the list and
+     scrolling the document behind it. */
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.82);
+  font-family: var(--font);
+}
+
+.theme-picker[hidden] {
+  display: none;
+}
+
+.theme-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-picker__group {
+  padding: 7px var(--space-3) 3px;
+  color: var(--text-faint);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.theme-picker__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: var(--size-small, 12.5px);
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-picker__option:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.theme-picker__option[aria-current="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.theme-picker__swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 99px;
+  background: var(--theme-swatch, var(--accent));
+}
+
+/* `min-width: 0` + ellipsis, because the labels of the template set are long
+   ("Adobe Afternoon") and a wrapped row makes two variants of one design look like
+   four rows. */
+.theme-picker__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-picker__variant {
+  flex: none;
+  min-width: 15px;
+  padding: 1px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.theme-picker__option[aria-current="true"] .theme-picker__variant {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* ===========================================================================
+   THE STRIP, REBUILT + THE FLOATED CAPTION
+   owner, 2026-10-12, verbatim:
+     *"o painel de baixo, ta errato. ele nao deve mostrar legenda de jeito nenhum.
+       ele deve ser menor ainda, mais estreito, do tamanho dos botoes. os botoes
+       tem que ser mais claros. e ele tem um botao de linhar a legenda, que liga
+       ela NA TELA, igual um overlay, EXATAMENTE IGUAL os .zip fazem."*
+
+   Three things change here, and each is the owner's own word:
+     1. NO CAPTION on the strip. `.captions` is display:none on this surface.
+     2. SMALLER AND NARROWER. `--strip-height` drops 100 -> 40, so the BAR is the
+        height of its own buttons.
+
+        CORRECTED 2026-10-12 (the owner reported the bug this caused): the two
+        sentences that stood here said the body "stops painting its dark base on
+        this surface" and that `.panel` "shrinks to max-content ... the extra
+        width is transparent and click-through". MEASURED, THAT IS THE BUG. The
+        shell hands this document a 1040x100 window (its saved rect beats the CSS
+        variable) and paints every unpainted pixel with its OPAQUE #0B0F14 form
+        colour, so a transparent body plus a centred max-content pill IS the
+        owner's "uma cor solida, uma div inteira. no meio dela, tinha o painel de
+        baixo". The width is the SHELL's to change; a document that wants a narrow
+        strip cannot get one by refusing to paint. The bar now FILLS the window
+        (rule 1 below) and the narrowness request is recorded as cross-lane.
+     3. LINHAR. `#caption-float` is a SIBLING of `.panel`, not a child — the owner's
+        rule is that nothing goes on top of the current panel or in the panel's
+        div. It is the zip's `CaptionStage.tsx` translated: bottom-anchored,
+        centred, pointer-events-none, and with NO BACKGROUND EVER.
+   =========================================================================== */
+
+:root {
+  /* THE STRIP'S HEIGHT, AS ONE NUMBER — the shell reads this and docks the window
+     to it, so the strip's size is one number and not a derivation that can drift.
+     40px is the button row and its own padding: one row of 22px buttons, 4px of
+     slab padding top and bottom, and nothing else. `panel.js` raises this to the
+     floated height while the caption is loose and puts it back on the way down;
+     the shell re-reads the variable on every `setPanelSurface('strip')`, which is
+     the only runtime resize this document has. */
+  --strip-height: 40px;
+  /* The floated caption's own height. Same mechanism, separate number: the caption
+     is not a button row, so it does not share the 40px. */
+  --float-height: 220px;
+}
+
+/* ── 1. THE STRIP IS THE WINDOW, AND THE WINDOW IS A PANEL ──────────────
+ * MEASURED ROOT CAUSE of the owner's 2026-10-12 report (*"ta uma cor solida, uma
+ * div inteira. no meio dela, tinha o painel de baixo. cliquei num botao e ele sumiu
+ * e agora ta so a cor solida de volta, inteira"*). Three facts, all measured on
+ * the shell the owner is running (log `_main/webview-run.log`, pid 33248):
+ *
+ *   1. THE WINDOW IS 1040x100, NOT 1040x40. Line 114720:
+ *      `STRIP_HEIGHT from=148 to=40 source=css css_value=40` — the shell READ the
+ *      40px below — and the lines right after it still dock `window=1040x100@(440,920)`
+ *      and `panel client area forced to 1040x100`. The saved rect in
+ *      `_main/panel-visibility.json` (`geometry.surface=strip, 1040x100`) is what the
+ *      shell's `geometry_for` returns, so the CSS height never reaches the HWND.
+ *      Cross-lane; named in the receipt.
+ *   2. THE UNPAINTED WINDOW IS NOT SEE-THROUGH. The shell paints the form itself
+ *      with an OPAQUE `#0B0F14` (`sotto_webview.py:3926-3931`, "the colour of the thing
+ *      the owner sees when the WebView2 does not paint"), and the strip's margins are
+ *      never made click-through — except by the transparency toggle, which is the
+ *      other half of the report.
+ *   3. THE BUTTON HE MADE IT DISAPPEAR IS THE TRANSPARENCY ONE.
+ *      `#strip-transparency-button` → `panel.js applyTransparency(true)` → the
+ *      `body[data-surface="strip"][data-transparency="on"] .panel { display: none }`
+ *      rule that was in this block → the only node that STILL painted vanished, so
+ *      the window became 100% the shell's solid colour and stayed that way: the
+ *      shell also flips WS_EX_TRANSPARENT, so he could not click the button back.
+ *      Log: two in-window clicks at (1008,955)/(1005,951) then
+ *      `TRANSPARENCY_ON click_through=true captions=kept` (line 114746).
+ *
+ * The contract this file was BUILT on is restored here — `panel.html:101-106`: "the
+ * slab fills the window and is the only element that takes pointer events. There is
+ * NO transparent margin inside this window". Shrinking the slab to a centred
+ * max-content pill did not make the strip narrower; it made the window a solid
+ * colour with a pill floating in the middle of it. */
+
+body[data-surface="strip"] .panel {
+  /* THE WINDOW IS THE BAR. The geometry comes from the base `.panel` rule
+     (absolute, inset 0); the overrides below only change what is INSIDE it: ONE
+     row — the control bar — so a shell handing out 40px and one still handing out
+     100px both render instead of one of them breaking.
+
+     ── IT IS A STRAIGHT BAND, NOT A PILL (owner, 2026-10-13, verbatim: *"pro
+     painel de baixo, ele tem que ser mais uma faixa/linha reta."*). Three
+     declarations carry that and nothing else does:
+       * `border-radius: 10px` -> `0`. The rounded slab was the last thing making
+         the bar read as a floating chip; a band has square ends.
+       * the 180deg two-stop gradient -> ONE flat colour. A gradient across a
+         34-pixel-tall strip is invisible except as a seam at the ends.
+       * `border: 1px solid` -> a HAIRLINE TOP AND BOTTOM only, no left/right
+         uprights. The bar spans the window edge to edge, and an upright at each
+         end would draw the two ends of a band that has none.
+     Height, width, padding and the button geometry are UNCHANGED: the shell reads
+     `--strip-height` for the window, and this edit must not move that number. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(11, 15, 20, 0.98);
+  /* An outer shadow is invisible by construction: the window ends where the bar
+     ends, so it would be clipped to nothing (the base rule says the same). */
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* The dark base is restored: the `background: transparent` that used to sit here is
+   deleted, so the render protection at `:95-128` applies again. With the bar filling
+   the window the base is never seen while the bar paints, and it is the failure-mode
+   colour when it does not — the exact opposite of the bug above. */
+
+/* The panel's own status row is the right panel's. The strip's readout is its own
+   `#strip-state` word INSIDE the control row (`panel.js paintStripState`), so the row
+   is the only grid item on this surface and the bar stays the height of its buttons
+   whatever height the shell hands out. */
+body[data-surface="strip"] .status {
+  display: none;
+}
+
+/* NO CAPTION ON THE STRIP — the owner's rule, absolute. The strip shows no
+   caption at all: the block is display:none, which also removes it from the tab
+   order and the accessibility tree. The live caption lives in `#caption-float`,
+   outside `.panel`, and only while `data-float="on"`. */
+body[data-surface="strip"] .captions {
+  display: none;
+}
+
+/* NOTHING ELSE RENDERS ON THIS SURFACE, so nothing else is styled here. The
+   readout the owner keeps is `#strip-state`, INSIDE the bar (`order: 99`); the
+   `.status` footer is `display: none` on this surface by the rule above. This
+   block used to claim the strip "keeps the status readout" and style it — a rule
+   about a box that is never rendered, and a comment that was FALSE. Measured
+   2026-10-12: no theme or skin sets `display` on `.status` (0 of 15 stylesheets),
+   so the hide is not overridable from a theme. The row is 22px of buttons and
+   nothing may push it taller. */
+
+/* ── 2. LIGHTER, CLEARER BUTTONS ─────────────────────────────────────────── */
+
+/* Same geometry (the strip is sized to them), a lighter fill, a stronger border
+   and full-strength text: the owner asked for *"botoes mais claros"*. The hover
+   state is the same three properties, so the change is visible without a delay. */
+body[data-surface="strip"] .strip-button {
+  min-height: 22px;
+  padding: 3px 9px;
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+body[data-surface="strip"] .strip-button:hover,
+body[data-surface="strip"] .strip-button:focus-visible {
+  border-color: rgba(148, 163, 184, 0.5);
+  background: rgba(148, 163, 184, 0.28);
+  color: #ffffff;
+}
+
+/* THE ACTION AT THE END OF THE ROW keeps a voice of its own: Pause is the one
+   that costs a model load to resume, so it is filled rather than outlined and
+   reads as the row's verb. (It was a PAIR with "Linhar" until 2026-10-13; that
+   button is gone — the LIVE button carries the caption now and wears its own
+   red/grey state pair above, so it must NOT also take this blue.) */
+body[data-surface="strip"] .strip-button--pause {
+  border-color: rgba(125, 211, 252, 0.4);
+  background: rgba(125, 211, 252, 0.16);
+  color: #dff1ff;
+}
+
+body[data-surface="strip"] .strip-button--pause:hover,
+body[data-surface="strip"] .strip-button--pause:focus-visible {
+  border-color: rgba(125, 211, 252, 0.72);
+  background: rgba(125, 211, 252, 0.32);
+  color: #ffffff;
+}
+
+/* The strip's own control row is hidden until the strip surface claims it — and
+   it is the ONLY thing the strip ever shows. The rules below are scoped to the
+   strip surface on purpose: the document loads this one stylesheet for every
+   surface, so a strip-only rule must never fire on the panel. No /!important/
+   anywhere, because the chevron, the font dial and the transparency button are
+   not shown on this surface at all (see the order block above: they are REMOVED,
+   not hidden — the markup is gone in panel.html). */
+body[data-surface="strip"] .stripbar {
+  display: flex;
+}
+
+/* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ──────────── */
+
+/* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ──────────── */
+
+/* Bottom-anchored, full width, centred inside `max-w-5xl`, click-through, and
+   with NO BACKGROUND EVER — the lead receipt's own note on the zip's caption
+   tailwind classes. It is a sibling of `.panel`: nothing is added to the panel's
+   div and nothing is drawn on top of the current panel. */
+/* ── 3. THE FLOATED CAPTION (the zip's CaptionStage, translated) ────────────
+
+/* Bottom-anchored, full width, centred inside `max-w-5xl`, click-through, and
+   with NO BACKGROUND EVER — the lead receipt's own note on the zip's caption
+   tailwind classes. It is a sibling of `.panel`: nothing is added to the panel's
+   div and nothing is drawn on top of the current panel.
+
+   THE ZIP'S "inst" DESIGN, VERBATIM (I:/cc-tmp/zip1/src/components/Caption.tsx):
+     <div className="flex max-w-[720px] items-stretch gap-4">
+       <span className="w-[4px] shrink-0 rounded-full bg-led led-breathe" />
+       <div className="min-h-[2.4em]">
+         {empty ? <p className="font-inst text-[13px] font-medium tracking-[0.3em]
+                        text-white/30">OUVINDO…</p>
+                : <p className="text-left font-inst
+                        text-[clamp(24px,3.1vw,42px)] font-bold leading-[1.14]
+                        text-white>{words}</p>}
+       </div>
+     </div>
+   and its own CSS (I:/cc-tmp/zip1/src/index.css):
+     @keyframes ledBreathe { 0%,100% { transform: scaleY(0.45); opacity: 0.65 }
+                             50% { transform: scaleY(1); opacity: 1 } }
+     .led-breathe { transform-origin: bottom; animation: ledBreathe 1.5s ease-in-out infinite; }
+
+   So: ONE 4px rounded bar on the left that BREATHES, the text leaning on it, and
+   nothing else. No plate, no box, no backdrop, no border — the owner's words:
+   *"ela mostra na minha tela, sem fundo, sem nada, extremamente clean, e apenas
+   algo pra estilizar ela ou dar corpo. tipo uma barra a esquerda dela, onde ela
+   se apoia"*. The bar IS the body. */
+.caption-float {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: none;
+  pointer-events: none;
+}
+
+/* Scoped to the strip surface ON PURPOSE: the panel already shows the caption,
+   so the attribute alone must never paint the overlay over the panel. */
+body[data-surface="strip"][data-float="on"] .caption-float {
+  display: block;
+}
+/* WHILE THE CAPTION IS FLOATED THE BAR STEPS ASIDE — to the TOP of the window, and
+   takes only its own height. The two overlays share one window, so they are STACKED,
+   never overlapped: the bare-minimum control bar at the top, the caption below it,
+   bottom-anchored, exactly where a caption belongs.
+
+   WHY NOT HIDE THE BAR: the caption is pointer-events:none and the overlay has no
+   control of its own, so a hidden bar would leave the owner with a window he cannot
+   click and no way back — the same dead end the deleted transparency button built
+   (owner: *"cliquei num botao e ele sumiu"*). The bar is the exit; the bar stays.
+
+   WHY NOT CLICK-THROUGH: bridge.setTransparency(true) would float the caption over
+   the game (the true zip behaviour) but the shell flips WS_EX_TRANSPARENT with no
+   page-side recovery — measured in the log: TRANSPARENCY_ON click_through=true, and
+   the owner could not click anything back. The window stays interactive.
+
+   THE 34px is the bar height on this surface: 26px of strip-button (panel.css
+   .stripbar .strip-button min-height:26px) + 8px of .panel padding (4px top, 4px
+   bottom). It is a layout constant, not a theme value. */
+body[data-surface="strip"][data-float="on"] .panel {
+  inset: 0 0 auto 0;
+  height: auto;
+}
+
+body[data-surface="strip"][data-float="on"] .caption-float {
+  top: 34px;
+}
+
+/* The stage is the zip's `flex max-w-[720px] items-stretch gap-4`: the bar and the
+   text column, stretched to the same height, 16px apart, centred in the window.
+   `max-height: 100%` is what makes the overlay fit ANY window height — the shell
+   hands out 100px today and 220px when it honours `--float-height`, and the
+   caption must be correct in both. */
+.caption-float__stage {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 720px;
+  max-height: 100%;
+  margin: 0 auto;
+  padding: 0 24px 12px;
+  text-align: left;
+}
+
+/* THE BAR THE TEXT LEANS ON. 4px, rounded, the panel's own accent gradient (so
+   it matches every theme without a second palette), and breathing — the zip's
+   `led-breathe` keyframe, 1.5s, scaleY 0.45 -> 1 -> 0.45, opacity 0.65 -> 1.
+   `transform-origin: bottom` is the zip's own: the bar grows UP from the bottom
+   of the line, which is what makes it read as a level rather than a pulse. */
+.caption-float__led {
+  flex: none;
+  width: 4px;
+  align-self: stretch;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  transform-origin: bottom;
+  animation: caption-led-breathe 1.5s ease-in-out infinite;
+}
+
+@keyframes caption-led-breathe {
+  0%, 100% { transform: scaleY(0.45); opacity: 0.65; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+/* THE RESTING BAR. `caption-float.js setListening(false)` drops `is-on`, and the
+   zip's own inactive state is the same idea (`opacity-30` on the span when nothing
+   is forming): the bar stays — it is the overlay's only body — but it stops
+   breathing and dims, so a dead engine reads as dead rather than as a pulse over
+   a silent window. */
+.caption-float__led:not(.is-on) {
+  animation: none;
+  opacity: 0.3;
+}
+
+/* The text column: the zip's `min-h-[2.4em]` div. */
+.caption-float__col {
+  min-height: 2.4em;
+  min-width: 0;
+}
+
+/* The previous line, faint and one size down: the zip paints it at 40% and it is
+   what makes the live line read as LIVE. */
+.caption-float__prev {
+  margin: 0 0 6px;
+  color: rgba(232, 238, 246, 0.36);
+  font-size: calc(15px * var(--caption-scale));
+  line-height: 1.35;
+  letter-spacing: 0.002em;
+}
+
+/* The live line. The owner's font dial moves it, exactly as it moves the
+   panel's captions — one number, every surface. The shadow is what keeps it
+   legible over any video, and it is a shadow, not a background. */
+.caption-float__line {
+  margin: 0;
+  color: #f5f8fc;
+  font-size: calc(clamp(24px, 3.1vw, 42px) * var(--caption-scale));
+  line-height: 1.14;
+  font-weight: 700;
+  letter-spacing: 0.004em;
+  text-shadow:
+    0 2px 18px rgba(0, 0, 0, 0.88),
+    0 1px 2px rgba(0, 0, 0, 0.72);
+}
+
+/* The zip's empty state: *"OUVINDO…"* — 13px, tracking 0.3em, white at 30%.
+   Shown while the engine is listening and no line has closed yet. */
+.caption-float__line.is-empty {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: calc(13px * var(--caption-scale));
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+/* The listening meter: the zip's own three bars, collapsed to one fill the
+   panel's `--accent-gradient` already defines, so it matches every theme without
+   a second palette. `panel.js` writes the level; CSS owns the shape. */
+.caption-float__meter {
+  height: 3px;
+  width: 132px;
+  margin: 14px 0 0;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.caption-float__meter.is-on {
+  opacity: 1;
+}
+
+.caption-float__meter-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--accent-gradient);
+}
+
+/* Speaker credits, in the panel's own mono voice. */
+.caption-float__credits {
+  margin: 10px 0 0;
+  color: rgba(232, 238, 246, 0.52);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* HEIGHT ADAPTATION. The shell hands the strip 100px today (measured: the saved
+   rect in `_main/panel-visibility.json` wins over `--strip-height: 40px`) and
+   220px when it honours `--float-height`. The caption must be correct in both, so
+   the chrome that is not the caption steps aside when the window is short: the
+   previous line, the meter and the credits. The bar and the live line never go. */
+@media (max-height: 139px) {
+  .caption-float__prev,
+  .caption-float__meter,
+  .caption-float__credits {
+    display: none;
+  }
+  .caption-float__stage {
+    padding-bottom: 4px;
+  }
+}
+
