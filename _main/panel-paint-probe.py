@@ -286,10 +286,24 @@ def build_variant(path: str, revert_gate: bool = False,
         if anchor not in out:
             raise SystemExit('variant: --theme edit did not apply — refusing')
         safe = theme.replace('\\', '').replace("'", '')
-        out = out.replace(
-            anchor,
-            "'document.documentElement.setAttribute(\\'data-theme\\',\\'" + safe
-            + "\\'); return window.SottoSurfaces.current(); } return null; })()'", 1)
+        # A ONE-SHOT WRITE IS NOT ENOUGH, AND THE BOGUS CONTROL PROVED IT.
+        # Writing data-theme once produced the SAME pixels for theme-1, theme-3,
+        # GlassCards, cine-cellar, cine-north-fog AND a theme that does not exist
+        # -- all sha 09A63E78919C21A1. A nonexistent theme cannot paint the same as
+        # a real one, so the write was being overwritten: theme-switcher.js applies
+        # the STORED theme after the page loads. This PINS the attribute instead:
+        # a MutationObserver re-asserts it whenever the switcher changes it, plus a
+        # slow interval as a belt. The bogus control is what says whether it works.
+        pin = ("'const T=\\\"" + safe + "\\\";"
+               "const de=document.documentElement;"
+               "const pin=()=>{if(de.getAttribute(\\\"data-theme\\\")!==T)"
+               "de.setAttribute(\\\"data-theme\\\",T);};"
+               "pin();"
+               "try{new MutationObserver(pin).observe(de,"
+               "{attributes:true,attributeFilter:[\\\"data-theme\\\"]});}catch(e){}"
+               "try{setInterval(pin,150);}catch(e){}"
+               "return window.SottoSurfaces.current(); } return null; })()'")
+        out = out.replace(anchor, pin, 1)
     if revert_gate:
         for old, new in GATE_REMOVED:
             if old not in out:
