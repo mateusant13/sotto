@@ -3586,42 +3586,51 @@ class SottoHost:
 
         kind = message.get('kind')
         payload = message.get('payload')
-        # A BAD ENTRY MUST NOT ERASE EVERY KIND, AND THAT IS NOT HYPOTHETICAL.
-        # MEASURED 2026-10-13: this map was a bare dict literal, and a dict literal
-        # evaluates EVERY value, so ONE entry naming a method this class does not
-        # have raised AttributeError while BUILDING the map -- before `.get(kind)`
-        # ran -- and `dispatch` died for EVERY kind: the deferred-asset ask, the
-        # panel's own `ready()`, `stats`, everything. Two and a half hours of a dead
-        # page->shell channel, and it was invisible because the exception went to
+        # ONE BAD ENTRY COSTS ONLY ITS OWN KIND, and that is a REWRITE, not the
+        # guard that stood here before. MEASURED 2026-10-13: this map was a bare
+        # dict literal, and a dict literal evaluates EVERY value, so ONE entry
+        # naming a method this class does not have (`self._set_strip_offset` -- a
+        # SottoShell method at :7005, not a SottoHost one) raised AttributeError
+        # while BUILDING the map, BEFORE `.get(kind)` ran, and `dispatch` died for
+        # EVERY kind: the deferred-asset ask (PANEL_LAZY_ALLOW 0), the panel's own
+        # `ready()` (RECEIVER_READY 0) and every probe kind. Two and a half hours
+        # of a dead page->shell channel, invisible because the exception went to
         # pywebview's own logger instead of this shell's log.
         #
-        # So the construction is wrapped, and the guard turns SILENCE INTO A LOG
-        # LINE. MEASURED WITH A MUTANT, 2026-10-13: with one bogus entry added to a
-        # copy, the probe arm logs BRIDGE_HANDLER_MAP_FAILED 17 times -- where the
-        # real outage logged NOTHING in this file at all -- and RECEIVER_READY is
-        # still 0 on that mutant.
+        # THE TABLE HOLDS NAMES, NOT VALUES, and that is the fix: a STRING cannot
+        # fail to evaluate. Every entry is resolved on its own, with `getattr`, one
+        # by one, in `_resolve_handler_map`, so an entry that does not resolve is
+        # SKIPPED, NAMES ITSELF and leaves every other kind working:
+        #     BRIDGE_HANDLER_MAP_FAILED kind='...' name='...' error=...
+        # One bad entry therefore costs exactly its own kind. A kind whose entry
+        # failed still lands in BRIDGE_UNKNOWN_KIND one line later -- the page's
+        # own view, unchanged from before, with the reason right above it.
         #
-        # WHAT THIS GUARD IS NOT, said because I first claimed it wrongly: it does
-        # NOT isolate the bad entry. When the map cannot be built the fallback is an
-        # EMPTY map, so every kind still dies -- LOUDLY. A true per-kind fix means
-        # building NAME -> NAME and resolving each with `getattr`; that is the next
-        # step and it is NOT done here. What is delivered is that the next outage of
-        # this shape announces itself in the shell's own log instead of hiding in
-        # pywebview's -- the difference between two and a half hours and two minutes.
-        # (The entries stay at their own indentation -- inside braces Python does not
-        # care, so the guard costs two lines and not a reindent of forty.)
+        # The three entries that CANNOT be a name on this class -- `hide`, `toggle`
+        # and `quit` call `self._shell.<method>('page')` and DROP the page's payload
+        # -- carry ('shell-call', method, reason); the two `setStripOffset` entries
+        # carry ('shell', method), because the receiver is the SHELL and getting
+        # that wrong is the entry that killed the channel.
+        #
+        # THE try/except BELOW IS THE LAST-RESORT NET, NOT THE FIX, said because
+        # the first version of this guard claimed the opposite. If someone writes
+        # an ATTRIBUTE ACCESS in this table again, the whole table fails to build
+        # and the net is loud about it (BRIDGE_HANDLER_MAP_FAILED with NO kind=,
+        # empty map: every kind dead, LOUDLY). The per-kind isolation is the loop
+        # in `_resolve_handler_map`, and it is what the gate's isolation arm
+        # proves: the bad entry is NAMED, and the good kinds still dispatch.
         try:
-            handler = {
-            'caption-observed': self._caption_observed,
-            'status-observed': self._status_observed,
-            'caption-applied': self._caption_applied,
-            'status-applied': self._status_applied,
-            'caption-cleared': self._caption_cleared,
-            'renderer-ready': self._renderer_ready,
-            'page-error': self._page_error,
-            'pointer': self._pointer,
-            'transparency': self._transparency,
-            'sotto:transparency': self._transparency,
+            table = {
+            'caption-observed': ('host', '_caption_observed'),
+            'status-observed': ('host', '_status_observed'),
+            'caption-applied': ('host', '_caption_applied'),
+            'status-applied': ('host', '_status_applied'),
+            'caption-cleared': ('host', '_caption_cleared'),
+            'renderer-ready': ('host', '_renderer_ready'),
+            'page-error': ('host', '_page_error'),
+            'pointer': ('host', '_pointer'),
+            'transparency': ('host', '_transparency'),
+            'sotto:transparency': ('host', '_transparency'),
             # The owner's strip drag (panel.html:1087). Without this entry the
             # page's `bridge.setStripOffset(...)` is `undefined`, the typeof probe
             # skips it, and the bar can only ever move INSIDE the window -- which
@@ -3629,7 +3638,7 @@ class SottoHost:
             # at all. The shell half is what puts it on the screen.
             # THE RECEIVER IS THE SHELL, AND GETTING IT WRONG KILLED EVERY
             # MESSAGE OF EVERY KIND. MEASURED 2026-10-13: this entry read
-            # `self._set_strip_offset`, which is a SottoShell method (:6950) and
+            # `self._set_strip_offset`, which is a SottoShell method (:7005) and
             # NOT a member of this class -- and a dict LITERAL evaluates every
             # value, so the AttributeError fired while BUILDING the map, before
             # `.get(kind)` ran. `SottoHost.dispatch` therefore died for EVERY
@@ -3641,36 +3650,43 @@ class SottoHost:
             # '_set_strip_offset'`, 35 of them in one 16 s probe arm) -- the
             # shell's own log stayed silent and looked healthy. Introduced by
             # 7fcd97e (2026-10-12 22:26); the last RECEIVER_READY on disk is
-            # 2026-10-12 22:12:54.
-            'setStripOffset': self._shell._set_strip_offset,
-            'sotto:setStripOffset': self._shell._set_strip_offset,
-            'history-append': self._history_append,
-            'history-tail': self._history_tail,
-            'history-search': self._history_search,
-            'history-root': self._history_root,
-            'history-reveal': self._history_reveal,
-            'hide': lambda p: self._shell.hide_panel('page'),
-            'toggle': lambda p: self._shell.toggle_panel('page'),
-            'quit': lambda p: self._shell.quit('page'),
+            # 2026-10-12 22:12:54. It is a ('shell', ...) entry for that reason:
+            # the name is resolved against `self._shell`, and if it ever stops
+            # resolving, THESE two kinds die and say so BY NAME.
+            'setStripOffset': ('shell', '_set_strip_offset'),
+            'sotto:setStripOffset': ('shell', '_set_strip_offset'),
+            'history-append': ('host', '_history_append'),
+            'history-tail': ('host', '_history_tail'),
+            'history-search': ('host', '_history_search'),
+            'history-root': ('host', '_history_root'),
+            'history-reveal': ('host', '_history_reveal'),
+            # These three were lambdas (`lambda p: self._shell.x('page')`). They
+            # cannot be a name on this class, so they carry the method AND the
+            # fixed reason: the page's payload is dropped, exactly as the lambda
+            # dropped it, and the shell method is resolved HERE -- so a missing
+            # one is a named, isolated entry instead of a call-time surprise.
+            'hide': ('shell-call', 'hide_panel', 'page'),
+            'toggle': ('shell-call', 'toggle_panel', 'page'),
+            'quit': ('shell-call', 'quit', 'page'),
             # The panel's repair control (panel.js:2045). Without this entry
             # the page's post('revive', ...) landed in BRIDGE_UNKNOWN_KIND and
             # the click died there.
-            'revive': self._revive,
-            'info': self._info,
-            'panel-surface': self._panel_surface,
+            'revive': ('host', '_revive'),
+            'info': ('host', '_info'),
+            'panel-surface': ('host', '_panel_surface'),
             # The pull half of the stats channel: without this entry the
             # page's `post('stats', ...)` lands in BRIDGE_UNKNOWN_KIND and the
             # Promise never resolves.
-            'stats': self._stats,
+            'stats': ('host', '_stats'),
             # The deferred-asset loader's only channel: it asks for the real
             # bytes of one deferred URL, and the shell lets that one through.
-            'lazy-asset': self._lazy_asset,
+            'lazy-asset': ('host', '_lazy_asset'),
             }
         except Exception as exc:  # noqa: BLE001 -- a map that cannot build
             log(f'BRIDGE_HANDLER_MAP_FAILED error={exc!r} -- EVERY page->shell '
                 'message is dead until this is fixed')
-            handler = {}
-        handler = handler.get(kind)
+            table = {}
+        handler = self._resolve_handler_map(table).get(kind)
         if handler is None:
             log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')
             return
@@ -3678,6 +3694,52 @@ class SottoHost:
             handler(payload)
         except Exception as exc:  # a page callback must not kill the host
             log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')
+
+    def _resolve_handler_map(self, table):
+        """Resolve the NAME -> NAME table, ONE ENTRY AT A TIME.
+
+        THIS is the per-kind isolation. MEASURED 2026-10-13: the map was a dict
+        literal of VALUES, so one entry naming a method this class does not have
+        raised while the map was being BUILT and `dispatch` died for EVERY kind
+        for two and a half hours. Each entry here gets its own try/except: the
+        bad one is skipped, NAMES ITSELF in this shell's own log, and every
+        other kind keeps dispatching.
+        """
+        resolved = {}
+        for kind, spec in table.items():
+            name = spec[1] if isinstance(spec, tuple) and len(spec) > 1 else spec
+            try:
+                resolved[kind] = self._resolve_handler(spec)
+            except Exception as exc:  # noqa: BLE001 -- one dead kind, not all
+                log(f'BRIDGE_HANDLER_MAP_FAILED kind={kind!r} name={name!r} '
+                    f'error={exc!r} -- THIS kind is dead; every other kind is not')
+        return resolved
+
+    def _resolve_handler(self, spec):
+        """ONE table entry -> callable: ('host'|'shell', name), or
+        ('shell-call', name, fixed_reason) for the three that call the shell.
+
+        The name is looked up with `getattr(..., None)` and the CALLABLE test is
+        what refuses it, so a missing name raises HERE -- inside the caller's
+        per-entry try/except -- and never escapes into `dispatch`'s map build.
+        """
+        where, name = spec[0], spec[1]
+        if where == 'host':
+            owner = self
+        elif where in ('shell', 'shell-call'):
+            owner = self._shell
+        else:
+            raise ValueError(f'unknown handler source {where!r}')
+        target = getattr(owner, name, None)
+        if not callable(target):
+            raise AttributeError(f'{type(owner).__name__}.{name} is not callable')
+        if where == 'shell-call':
+            # The three that used to be `lambda p: self._shell.<method>('page')`:
+            # the shell method takes the FIXED reason and the page's payload is
+            # dropped, exactly as the lambda dropped it.
+            reason = spec[2]
+            return lambda payload, _target=target, _reason=reason: _target(_reason)
+        return target
 
     # -- receipts ----------------------------------------------------------
     def _caption_observed(self, payload):
