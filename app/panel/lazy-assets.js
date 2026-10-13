@@ -137,18 +137,41 @@
    * design: the caller adds the element anyway, and the element is what waits. */
   function ask(url) {
     if (ASKED[url]) return;
+    /* THE ASK WAS BEING LOST FOREVER, AND THAT IS WHY THE DEFERRED ASSETS LOADED
+     * AS EMPTY BODIES.
+     *
+     * MEASURED 2026-10-13 on a `cine-cellar` theme, in the shell own log:
+     *     PANEL_LAZY_EMPTY        4   the gate answered cinematic.css, skins.js,
+     *                                 skin-host.js and skin-layout.css with EMPTY 200s
+     *     PANEL_LAZY_ALLOW        0   the page NEVER asked for the real bytes
+     *     PANEL_LAZY_ASK_REFUSED  0   and the ask never even REACHED the shell
+     *
+     * `ASKED[url] = true` used to be set BEFORE the call, and this function runs
+     * from `boot()` at DOMContentLoaded -- BEFORE pywebview injects its api. At that
+     * moment `window.sotto.dispatch` did not exist and `window.pywebview.api` did not
+     * exist yet either, so BOTH branches fell through, the ask vanished, and the
+     * latch made sure it was never retried. The element had already been injected, so
+     * `hasThemeSheet()` was true on every later settle and nothing re-asked.
+     *
+     * THE FIX: latch only once a channel actually took the message, and retry until
+     * one exists. A retry is cheap and a lost ask is five assets the owner never sees.
+     */
+    var s = window.sotto;
+    var hasSotto = !!(s && typeof s.dispatch === 'function');
+    var hasPywebview = !!(window.pywebview && window.pywebview.api &&
+                          window.pywebview.api.dispatch);
+    if (!hasSotto && !hasPywebview) {
+      setTimeout(function () { ask(url); }, 100);
+      return;
+    }
     ASKED[url] = true;
     log('ask', url);
     try {
-      var s = window.sotto;
-      if (s && typeof s.dispatch === 'function') {
+      if (hasSotto) {
         s.dispatch('lazy-asset', { url: String(url) });
         return;
       }
-      if (window.pywebview && window.pywebview.api &&
-          window.pywebview.api.dispatch) {
-        window.pywebview.api.dispatch('lazy-asset', { url: String(url) });
-      }
+      window.pywebview.api.dispatch('lazy-asset', { url: String(url) });
     } catch (err) {
       log('ask-failed', url + ' ' + (err && err.message ? err.message : err));
     }
