@@ -372,14 +372,34 @@ def build_variant(path: str, revert_gate: bool = False,
         # gives a DOUBLE-quoted JS literal and nothing needs escaping.
         import json as _jd
         _mv = _jd.dumps('move')
-        drag_js = ('try{window.pywebview.api.dispatch(JSON.stringify({kind:"dragprobe",'
-                   'payload:{x:' + str(int(dx)) + ',y:' + str(int(dy)) + '}}));}catch(e){}'
-                   'try{if(window.sotto&&window.sotto.setStripOffset)'
-                   'window.sotto.setStripOffset(' + str(int(dx)) + ','
-                   + str(int(dy)) + ',' + _mv + ');}catch(e){}'
-                   'setTimeout(function(){try{if(window.sotto&&window.sotto.setStripOffset)'
-                   'window.sotto.setStripOffset(' + str(int(dx)) + ','
-                   + str(int(dy)) + ',' + _mv + ');}catch(e){}},900);')
+        # A SYNTHETIC POINTER DRAG, NOT A DIRECT BRIDGE CALL, AND THAT IS THE
+        # WHOLE POINT. MEASURED: a call made from this script does NOT reach the
+        # shell -- neither window.pywebview.api.dispatch nor
+        # window.sotto.setStripOffset -- because the context the shell own exec_js
+        # runs in cannot see the bridge. But the PANEL OWN handler can: its buttons
+        # call the bridge and change surfaces all day. So dispatch the events the
+        # handler listens for and let IT call the bridge from the page normal
+        # context. This tests the WHOLE chain -- gesture, panel code, bridge, shell,
+        # window -- which is what "is the bar movable" actually means.
+        #
+        # ALL DOUBLE QUOTES, via json.dumps: single quotes here would terminate the
+        # shell single-quoted Python literal this text lands in, which is a mistake I
+        # made three times.
+        import json as _jd
+        _dx = str(int(dx))
+        _dy = str(int(dy))
+        drag_js = ('setTimeout(function(){try{'
+                   'var b=document.getElementById("strip-controls");if(!b)return;'
+                   'var r=b.getBoundingClientRect();'
+                   'var x0=r.left+20,y0=r.top+10;'
+                   'var o={bubbles:true,pointerId:1};'
+                   'b.dispatchEvent(new PointerEvent("pointerdown",'
+                   '{clientX:x0,clientY:y0,bubbles:true,pointerId:1}));'
+                   'document.dispatchEvent(new PointerEvent("pointermove",'
+                   '{clientX:x0+' + _dx + ',clientY:y0+' + _dy + ',bubbles:true,pointerId:1}));'
+                   'document.dispatchEvent(new PointerEvent("pointerup",'
+                   '{clientX:x0+' + _dx + ',clientY:y0+' + _dy + ',bubbles:true,pointerId:1}));'
+                   '}catch(e){}},900);')
         # THE LINE THAT APPLIES IT. It went missing in a rewrite, the injection was
         # computed and thrown away, and I read "nothing arrived" as "the bridge is
         # unreachable" -- a defect accusation against the product, from a probe that
