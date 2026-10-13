@@ -117,3 +117,48 @@ nothing.**
 themes need the discriminator. Nothing above is a claim about fidelity to the zip —
 "different" is not "equal to the design", and comparing a capture against the zip
 mockup is a different instrument again.
+
+
+## RETRACTED 2026-10-13 — THE CENSUS NUMBERS ARE NOT REPRODUCIBLE, and here is the proof
+
+**DO NOT USE THE TABLE ABOVE.** The same theme was measured twice, in two runs, and
+it FLIPPED:
+
+```
+theme-1   run 1 = 1 colour UNIFORM   |  run 2 = 1488 colours PAINTED   <- DIFFERS
+theme-3   run 1 = 2087 colours PAINTED | run 2 = 1 colour UNIFORM      <- DIFFERS
+theme-2 / theme-4 / theme-5   no window in BOTH runs
+```
+
+A theme cannot paint and not paint in the same session. **The instrument is still
+racy**, and the cause is measurable:
+
+* the settle loop budget is `max(6.0, secs * 0.9)`;
+* the CENSUS ran with `--secs 10`, so the budget was 9 s;
+* the STABILITY TEST that looked convincing ran with `--secs 12`, so the budget was
+  10.8 s;
+* when the budget runs out the loop falls back to the LAST frame and marks it
+  `settled=false` — which is honest, but the census did not check that flag.
+
+So the census is a set of single frames with a shorter settle budget, and at least
+two of them are demonstrably wrong. **The 22-and-all-differ headline may survive —
+unique hashes within one run is not the same claim as reproducibility — but it has
+not been earned either, and it must not be quoted until the census is re-run with a
+budget that actually settles and with `settled=true` REQUIRED.**
+
+**ALSO MEASURED, AND A SEPARATE DEFECT IN THE INSTRUMENT:** launching two probe runs
+at once silently produces `NO-WINDOW`. The first census job was still running when a
+second was started, and all 12 captures of the second came back SEM PNG — including
+`theme-1`, which was stable 3/3 minutes earlier. The measurement lock refuses the
+second launch and the probe reports it as a window that never mapped. **One probe at
+a time, and a NO-WINDOW must never be read as a theme finding.**
+
+## What IS still true
+
+* `theme-1` was IDENTICAL in 3 of 3 runs at `--secs 12` (1492 colours, sha
+  `09A63E78919C21A1`), and `cine-tideline` was stable to one colour, explained by
+  its `animation: caption-led-breathe`. Those runs used the longer budget.
+* The mechanism works: feeding `localStorage["sotto.theme"]` from the bootstrap
+  does apply a theme, and different themes do produce different images.
+* The two readings for the flat themes are still open, and the discriminator still
+  has not run.
