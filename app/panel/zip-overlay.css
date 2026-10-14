@@ -318,13 +318,23 @@ body[data-float="on"] .caption-float__meter-fill {
  * OUR ELEMENTS MAP ONTO IT: `__stage` is the card, `__line` is the big serif line,
  * `__credits` is the metadata strip. `__led` already carries the green dot. Nothing is
  * restructured -- the shapes are set, the markup is untouched. */
+/* NO CARD, AND THAT WAS A WRONG I MADE. This rule used to paint a FILLED CARD on the
+ * overlay stage, with !important, and the css audit measured what it defeated: the
+ * caption-float.css own list NOTHING PAINTS ... in every state, and the panel.css
+ * comments NO BACKGROUND EVER and the bar IS the body. I was using !important to
+ * overwrite written contracts while a comment above claimed the card was the zip
+ * design -- when the zip draws the caption as BARE TEXT over the video.
+ *
+ * AND THE OWNER ALREADY SAID WHICH ONE WINS. His own words: a legenda ... com o
+ * design proprio dela, SEM FUNDO NENHUM. His sketch draws the caption as a bare
+ * squiggle under the pill. So the contract was right, the card was not, and the card
+ * is gone. The SERIF line, the fade, the green dot and the metadata strip stay --
+ * the zip design language lives in the TYPE and the behaviour, not in a box. */
 body[data-float="on"] .caption-float__stage {
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  border-radius: 10px !important;
-  background: rgba(5, 7, 10, 0.86) !important;
-  padding: 14px 16px !important;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45) !important;
-  max-width: min(680px, 86vw) !important;
+  border: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 /* THE SERIF LINE. Zip D sets the live line in a serif face at a size that dominates the card;
