@@ -53,7 +53,34 @@ NEEDLE = "unrecognized arguments"
 #: from the app's own traffic while the wrapper stayed mute, and the size form would
 #: have answered PASS.
 MARKER = "PREFLIGHT_REFUSED"
-PREFIX_COMMIT = "3e85202"  # the wrapper as it shipped BEFORE the G5 cure; not HEAD, by design
+# THE CONTROL IS A FILE THIS ORACLE WRITES, not a revision it reads. MEASURED
+# 2026-10-14: `git log -S` finds NO commit that INTRODUCED the G5 cure -- only
+# 5ffeefc, the durability commit that brought the whole untracked production tree
+# into the index. So run.cmd lived OUTSIDE the index for nearly its whole life, and a
+# revision pin cannot express before-the-cure. Worse: the pinned revision ALREADY
+# CARRIED the cure, so the arm failed as not-a-control.
+#
+# So the pre-cure wrapper is embedded here and written next to the real wrapper (CONTROL
+# is in APPDIR, so %HERE% resolves %SHELL% exactly as it does for the app). It carries
+# the pre-flight and the refusal code, and NO stderr capture, NO refusal echo and NO log
+# receipt -- which is the blind state arm 4 has to reproduce.
+PREFIX_SRC = """@echo off
+setlocal
+set "HERE=%~dp0"
+set "PYW=pythonw.exe"
+set "SHELL=%HERE%sotto_webview.py"
+
+"%PYW%" "%SHELL%" --check-args %*
+
+set "PREFLIGHT_RC=%ERRORLEVEL%"
+if not "%PREFLIGHT_RC%"=="0" (
+  echo run.cmd: rc=2 is a bad flag, rc=3 a missing panel, rc=1 a missing pywebview. "run.cmd --help" lists
+  exit /b %PREFLIGHT_RC%
+)
+
+exit /b 0
+"""
+
 
 
 def run_wrapper(path, args, env=None):
@@ -134,8 +161,12 @@ def main(argv=None):
         # cure was committed, HEAD BECAME the fixed wrapper, so the control silently stopped being a
         # control and the arm passed for the wrong reason (found by the battery, one round after the
         # commit that caused it). 3e85202 is the revision immediately before the cure.
-        show = subprocess.run(["git", "show", PREFIX_COMMIT + ":app/webview/run.cmd"], cwd=ROOT,
-                              capture_output=True, text=True)
+        # NO REVISION IS READ. A revision pin cannot build a control for a file that
+        # lived OUTSIDE the index (measured 2026-10-14: no commit INTRODUCED the cure,
+        # and the pinned one ALREADY CARRIED it). `show` keeps its shape -- returncode
+        # and .stdout -- so the three readers below are untouched, but what it holds is
+        # the embedded pre-cure wrapper written by this oracle.
+        show = type("_S", (), {"returncode": 0, "stdout": PREFIX_SRC})()
         if show.returncode != 0 or "check-args" not in show.stdout:
             say("  arm 4  CONTROL      : could not read the pre-fix wrapper from git HEAD")
             wrong.append("arm 4: the control could not be built (git show failed)")
