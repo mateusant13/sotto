@@ -202,7 +202,11 @@ FLAG_RE = re.compile(r"add_argument\('(--[a-z0-9-]+)'")
 #: Flags that must PRINT, and so never reach the pre-flight in run.cmd. They
 #: are the reason arm 2 runs the console interpreter at all. The three SUPPRESS
 #: flags are the wrapper's own modes: they must stay OUT of `--help`.
-HIDDEN_FLAGS = {'--check-args', '--ready-file', '--wait-ready'}
+# EIGHT SUPPRESS flags, not three. MEASURED 2026-10-14: the oracle failed arm `help` with
+# `missing=['--probe-stats', '--probe-stats-wait', '--probe-outside-click', '--probe-edit-mode', '--mutex-name']` -- five flags the shell declares with `help=argparse.SUPPRESS` (sotto_webview.py:9366, :9368, :9384, :9386, :9412) and which therefore CANNOT appear in `--help`. The set below had three, so those five were treated as VISIBLE and required in the usage, and the failure was the oracle's expectation and not the product. The other three are the wrapper's own modes and must stay out of `--help`; these five are the shell's own probe/measurement switches and are suppressed for the same reason.
+HIDDEN_FLAGS = {'--check-args', '--ready-file', '--wait-ready',
+                '--probe-stats', '--probe-stats-wait', '--probe-outside-click',
+                '--probe-edit-mode', '--mutex-name'}
 
 
 # --------------------------------------------------------------------------
