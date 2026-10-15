@@ -105,6 +105,7 @@ const py = [
   ['_main/cobertura-oracle.py', 'cobertura: 34 areas'],
   ['_main/photo-scrim-census.py', 'photo scrim: 25 themes'],
   ['_main/photo-scrim-census.py --neg-arm', 'photo scrim neg: zeroed scrim RED'],
+  ['_main/aceitacao-gate.py', 'aceitacao: every PROVADO names a gate'],
   ['_main/run-cmd-refusal-path-oracle.py', 'refusal path resolved, not hand-written'],
   ['_main/surface-loop-oracle.py', 'surface loop guard (JS<->Python)'],
   ['_main/hotkey-cycle-oracle.py', 'hotkey cycle strip->side->hide'],
