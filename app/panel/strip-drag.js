@@ -64,7 +64,8 @@
           /* A press on a CONTROL is that control's. The handle and the bar's own
              gaps are the drag's. */
           if (event.target && event.target.closest && event.target.closest("button, a, input, select, textarea")) return;
-          start = { px: event.clientX, py: event.clientY, ox: offset.x, oy: offset.y };
+          /* `screenX/screenY`, NAO `clientX/clientY`. Ver a nota grande em :74. */
+          start = { px: event.screenX, py: event.screenY, ox: offset.x, oy: offset.y };
           /* `live` stays NULL until the pointer actually moves: it is the flag that
              separates a DRAG from a CLICK, and `end()` writes nothing when it is null. */
           live = null;
@@ -73,8 +74,22 @@
 
         window.addEventListener("pointermove", function (event) {
           if (!start) return;
-          var dx = event.clientX - start.px;
-          var dy = event.clientY - start.py;
+          /* `screenX/screenY`, E ESTA E A CORRECCAO QUE FECHA O LACO. MEDIDO 2026-10-15 no
+           * log do dono: STRIP_DRAG correu 1 498 vezes e a janela saltava entre DUAS posicoes
+           * -- to=(801,804) e to=(795,812) -- com o base fixo em (779,906) e o offset a
+           * ALTERNAR. O dono chamou-lhe "completamente travado".
+           *
+           * O MECANISMO: clientX e relativo ao VIEWPORT DA JANELA. O shell move a JANELA (e
+           * tem de mover -- e o contrato), e mover a janela muda o clientX do ponteiro SEM O
+           * RATO MEXER. Entao dx encolhe sozinho, o shell puxa a janela de volta, e o ciclo
+           * repete ~90 vezes por segundo: uma ida-e-volta infinita entre dois pontos. NAO era
+           * lentidao -- era realimentacao.
+           *
+           * screenX/screenY sao relativos ao ECRA e NAO mudam quando a janela anda, portanto
+           * dx passa a medir so o que o DONO mexeu. E a diferenca entre seguir o rato e
+           * perseguir a propria cauda. */
+          var dx = event.screenX - start.px;
+          var dy = event.screenY - start.py;
           if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
           event.preventDefault();
           live = { x: start.ox + dx, y: start.oy + dy };
