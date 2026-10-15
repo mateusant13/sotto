@@ -5736,6 +5736,11 @@ class SottoShell:
         log(f'PANEL_HIDDEN reason={reason} '
             f'visible={str(self.visible).lower()}')
         self.publish_panel_visibility(reason)
+        # A JANELA DA LEGENDA ESCONDE COM O PAINEL. O dono quer a legenda *"quando eu
+        # quero ou nao"*; deixar a janela propria acesa depois de o painel se esconder
+        # seria a legenda a fugir ao controlo que ele pediu. `show_caption_window` e
+        # silencioso quando a janela ainda nao existe.
+        self.show_caption_window(False)
         return True
 
     def toggle_panel(self, reason):

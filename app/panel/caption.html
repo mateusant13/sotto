@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-caption-window="1">
+<html lang="pt-BR" data-caption-window="1" data-float="on">
 <head>
 <meta charset="utf-8">
 <title>Sotto caption</title>
@@ -33,7 +33,12 @@
   *::-webkit-scrollbar { display: none !important; width: 0 !important; }
 </style>
 </head>
-<body>
+<!-- data-surface/data-float ARE NOT DECORATION: `caption-float.css` guards its real
+     rules with `html[data-float="on"]`, `body[data-float="on"]` and
+     `body[data-surface="strip"][data-float="on"]`. Without them on THIS page those rules
+     never match and the caption paints wrong or not at all. These are the exact values the
+     running app has when the overlay is up, so the two render identically. -->
+<body data-surface="strip" data-float="on">
   <div id="caption-float" class="caption-float" data-float="on" aria-hidden="false">
     <div class="caption-float__stage">
       <span class="caption-float__led" aria-hidden="true"></span>
