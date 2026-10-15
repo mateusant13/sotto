@@ -4248,6 +4248,15 @@ class SottoShell:
         # medicao inteira: a caixa era a FORM, e `BackColor = Transparent` nao chega numa
         # form de topo -- `TransparencyKey` e o que a tira do ecra.
         self.caption_window.events.before_show += self._on_caption_before_show
+        # E O `loaded`, QUE E ONDE A TRANSPARENCIA DO WEBVIEW2 PEGA. O `before_show` corre
+        # ANTES de `EnsureCoreWebView2Async` completar (o comentario de `_on_before_show`
+        # di-lo por palavras), portanto la o `DefaultBackgroundColor` e guardado e
+        # IGNORADO -- o controlo ainda nao existe, e depois pinta o fundo DELE por cima da
+        # form ja transparente. Foi por isso que a caixa cinzenta sobreviveu com as duas
+        # curas a disparar: uma delas estava a correr cedo demais. NA SONDA funcionou
+        # porque o `Invoke` ficou em fila e correu depois; aqui o `before_show` JA esta na
+        # thread da UI, portanto o `Invoke` corre na hora -- cedo.
+        self.caption_window.events.loaded += self._on_caption_loaded
 
         # A GEOMETRIA DA JANELA DA LEGENDA, GUARDADA. O `_fit_caption_window` redimensiona-a
         # ao conteudo a cada legenda e tem de saber onde esta a ARESTA DE BAIXO para nao a
@@ -6400,6 +6409,43 @@ class SottoShell:
         finally:
             with self._revive_lock:
                 self._revive_thread = None
+
+    def _on_caption_loaded(self):
+        """A TRANSPARENCIA DO WEBVIEW2, POSTA QUANDO O CONTROLO JA EXISTE.
+
+        MEDIDO 2026-10-15, com a app a correr e o print do dono na mao: a janela da legenda
+        apareceu como uma CAIXA CINZENTA -- *"essa caixa de merda na tela ta parecendo
+        transparente pra voce?"* -- apesar de o log dizer `CAPTION_FORM_TRANSPARENCYKEY
+        set=magenta` E `CAPTION_WEBVIEW2_BGC set=transparent`. As duas curas dispararam.
+
+        PORQUE E QUE AINDA ASSIM NAO FUNCIONOU: o `before_show` corre ANTES de o
+        `CoreWebView2Controller` existir -- o comentario de `_on_before_show` di-lo:
+        *"the WinForms form is built and EnsureCoreWebView2Async has been called but has
+        not completed"*. Nesse instante `DefaultBackgroundColor` e uma propriedade sem
+        controlador por tras: fica guardada e nao tem efeito, e o WebView2 acaba por pintar
+        o fundo DELE por cima da form que ja esta transparente. **A caixa cinzenta e o
+        WebView2, nao a form.**
+
+        NA SONDA isto passou porque o `Invoke` ficou em FILA e correu depois do controlador
+        subir. No shell o `before_show` ja corre na thread da UI, portanto o `Invoke`
+        executa NA HORA -- cedo. E a diferenca que fez a cura parecer boa e falhar na app.
+
+        O `loaded` e o primeiro evento em que o controlo existe, e e onde isto vive agora.
+        """
+        form = getattr(self.caption_window, 'native', None)
+        if form is None:
+            log('CAPTION_LOADED_FORM_MISSING')
+            return
+        try:
+            from System.Drawing import Color
+            wv = getattr(form, 'webview', None)
+            if wv is None:
+                log('CAPTION_LOADED_WEBVIEW_MISSING')
+                return
+            wv.DefaultBackgroundColor = Color.Transparent
+            log('CAPTION_WEBVIEW2_BGC set=transparent at=loaded reason=controller-exists')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded error={exc!r}')
 
     def _on_caption_before_show(self):
         """A CURA DA CAIXA CLARA NA JANELA DA LEGENDA -- medida numa sonda isolada.
