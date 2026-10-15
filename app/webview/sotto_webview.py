@@ -5685,6 +5685,15 @@ class SottoShell:
     def show_panel(self, reason, surface=None):
         if self.hwnd is None:
             return False
+        # O ALT+C VOLTA A TENTAR -- ver `no_audio_restart_cap`. O shell para de reiniciar
+        # um worker que morre por SILENCIO, porque recarregar 1 GB de modelo nao arranja
+        # uma rotagem. Sem este reset o dono ficava sem caminho de volta; com ele, mostrar
+        # o painel e a forma de dizer "tenta outra vez".
+        try:
+            if getattr(self, 'bridge', None) is not None:
+                self.bridge.no_audio_restarts = 0
+        except Exception:  # noqa: BLE001
+            pass
         want = surface or self.surface
         if want != self.surface_applied:
             self.set_panel_surface(want, reason)
@@ -8303,6 +8312,18 @@ class WorkerBridge:
                  backoff_base=1000, backoff_max=30000,
                  no_audio_backoff_base=15000,
                  no_audio_backoff_max=300000,
+   no_audio_restart_cap=3,
+        #: O TECTO. O dono, verbatim (AGENTS.md): *"o worker morre e recarrega ~1 GB de
+        #: modelo 88 vezes em 17 minutos (exit 3 a cada 2,5 min). arruma"*. NUNCA FOI
+        #: ARRUMADO: medido 2026-10-15 no log dele, `deaths=6 spawns=7` e cada arranque
+        #: custa `BRIDGE_LOAD_MS ms=36547` -- 36 SEGUNDOS a ler ~1 GB de disco. A escada
+        #: de espera ja existia (15 s a 300 s), mas por muito que espere ela NUNCA PARA:
+        #: ao fim de cada espera volta a carregar o modelo inteiro, para sempre, porque
+        #: um veredicto `silent-device` diz que a ROTAGEM esta errada e recarregar um
+        #: modelo nao arranja rotagem nenhuma. **Esse churn e o stutter do dono.**
+        #:
+        #: Depois de tantas mortes seguidas por silencio, o shell PARA e diz o que fazer.
+        #: O Alt+C volta a tentar (ver `show_panel`), portanto nao ha beco sem saida.
                  target_pid=None):
         self.command = command or default_python()
         self.worker_path = worker_path
@@ -8349,6 +8370,7 @@ class WorkerBridge:
         # and until then the machine is quiet instead of thrashing.
         self.no_audio_backoff_base = no_audio_backoff_base
         self.no_audio_backoff_max = no_audio_backoff_max
+        self.no_audio_restart_cap = no_audio_restart_cap
         self.no_audio_restarts = 0
 
         self.child = None
@@ -9324,6 +9346,24 @@ class WorkerBridge:
         # time; a no-audio death -- the worker doing its job on a machine with nothing
         # routed yet -- prices itself in minutes and has its own counter, so a genuine
         # break is still answered fast and an unrouted desktop is answered slowly.
+            # O TECTO. Ver `no_audio_restart_cap`: depois de tantas mortes seguidas por
+            # silencio, REINICIAR NAO PODE ARRANJAR NADA -- um veredicto de dispositivo
+            # silencioso diz que a ROTAGEM esta errada, e recarregar 1 GB de modelo nao
+            # mexe numa rotagem. So custa 36 s de disco, RAM e GPU a cada volta. Para.
+            if self.no_audio_restarts >= self.no_audio_restart_cap:
+                self.log(f'BRIDGE_RESTART_SUPPRESSED reason={reason} ladder=no-audio '
+                         f'no_audio_restarts={self.no_audio_restarts} '
+                         f'cap={self.no_audio_restart_cap} '
+                         'why=restarting-cannot-fix-a-routing-problem '
+                         'resume=press-Alt+C')
+                self.pending_error = {
+                    'state': NO_AUDIO_STATE,
+                    'text': ('Nada foi roteado para o Sotto, e o Sotto parou de '
+                             'recarregar o modelo para nao queimar o PC. Confere a '
+                             'rotagem (VoiceMeeter / som do Windows) e aperta Alt+C, '
+                             'que ele tenta de novo.'),
+                }
+                return
         if no_audio:
             delay = min(self.no_audio_backoff_max,
                         self.no_audio_backoff_base * (2 ** self.no_audio_restarts))
