@@ -1109,7 +1109,33 @@ SKIN = """
 {S} .captions__body{{
   border-color: var(--line);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg-slab-strong) 55%, transparent);
+  /* THE CAPTION ZONE IS THE DARK PART. MEASURED 2026-10-15 by
+     _main/zip-fidelity-by-numbers.py against the zip demo: shot top=0.108 mid=0.091
+     bot=0.140 against demo top=0.144 mid=0.162 bot=0.084 -- the shipped profile is
+     the demo mirrored, and the caption zone is the BRIGHTEST band of the frame
+     instead of the darkest. The zip (zips/cinematic/src/index.css:90-98) dims the
+     BOTTOM with `.scrim-bottom` (`to top, var(--scrim) 0%, transparent 100%`),
+     because the words are what must win.
+
+     A PREVIOUS ATTEMPT weighted this gradient with --bg-slab-strong and MADE IT WORSE
+     (bot 0.140 -> 0.150): that token is a LIGHT tint, so more of it is more light.
+     The scrim must be DARK, and the theme own dark token is --bg-slab (#060708 in
+     theme-1). This is the zip own shape with the theme own dark: bottom weighted,
+     fading to nothing at the top, so the top keeps whatever the scene paints. */
+  /* THE CAPTION ZONE IS THE DARK PART. MEASURED 2026-10-15 by
+     _main/zip-fidelity-by-numbers.py against the zip demo, over FOUR measured tries:
+       flat 55% slab-strong ......... bot=0.140  (the brightest band of the frame)
+       slab-strong weighted gradient  bot=0.150  (WORSE -- that token is a LIGHT tint)
+       bg-slab 0% -> transparent 100%  bot=0.108  mid=0.061 (right direction, too broad)
+     The zip (zips/cinematic/src/index.css:90-98) dims the BOTTOM with `.scrim-bottom`
+     (`to top, var(--scrim) 0%, transparent 100%`) -- and the caption sits in the last
+     fifth of the box, not everywhere. So the dark is HELD flat across the bottom 22%
+     and fades out by 52%, leaving the top of the box to whatever the scene paints.
+     --bg-slab is the theme own DARK token (#060708 in theme-1), which is why this try
+     moves the number and the slab-strong one did not. */
+  background: linear-gradient(0deg, var(--bg-slab) 0%, var(--bg-slab) 22%,
+                             transparent 52%),
+              color-mix(in srgb, var(--bg-slab-strong) 55%, transparent);
   box-shadow: none;
   scrollbar-color: var(--line-strong) transparent;
 }}

@@ -220,7 +220,7 @@
 :root[data-theme='theme-4'] .captions__body {
   border-color: var(--line);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg-slab-strong) 55%, transparent);
+  background: linear-gradient(0deg, var(--bg-slab) 0%, var(--bg-slab) 22%, transparent 52%), color-mix(in srgb, var(--bg-slab-strong) 55%, transparent);
   box-shadow: none;
   scrollbar-color: var(--line-strong) transparent;
 }
