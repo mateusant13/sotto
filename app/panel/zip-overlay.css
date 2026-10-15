@@ -410,3 +410,12 @@ body .panel .captions__body::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
 }
+
+/* A LEGENDA DO PAINEL SAI QUANDO A JANELA PROPRIA ESTA A MOSTRAR. O dono: *"a porra da
+ * legenda, e pra ser independente do painel, nao acoplado"*. A marca e escrita pelo
+ * shell (`show_caption_window`) SO DEPOIS de o `show()` da janela ter corrido, portanto
+ * isto nao esconde a legenda do painel se a nova falhar -- e a diferenca entre tirar a
+ * antiga e tira-la apenas quando a nova esta mesmo no ecra. */
+html[data-caption-window="on"] #caption-float {
+  display: none !important;
+}

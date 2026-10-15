@@ -6489,6 +6489,21 @@ class SottoShell:
                 win.hide()
             win.evaluate_js('window.SottoCaption && window.SottoCaption.listening(%s)'
                             % ('true' if on else 'false'))
+            # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
+            # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
+            # e sem isto as duas apareciam ao mesmo tempo. Ao mesmo tempo, isto e a REDE:
+            # enquanto a janela nova nao estiver confirmada por ele, o `data-caption-window`
+            # so e escrito DEPOIS de o `show()` ter corrido, portanto se a janela falhar a
+            # legenda do painel fica onde estava -- ele nunca fica sem legenda nenhuma.
+            #
+            # UM `exec_js` POR TRANSICAO, nao por legenda: o atributo vive no documento do
+            # painel e a folha que o le e a `zip-overlay.css`, que e a ultima a carregar.
+            try:
+                self.window.evaluate_js(
+                    'document.documentElement.setAttribute('
+                    '"data-caption-window", %s)' % ('"on"' if on else '"off"'))
+            except Exception as exc2:  # noqa: BLE001
+                log(f'CAPTION_WINDOW_PANEL_MARK_FAILED on={on} error={exc2!r}')
             return True
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WINDOW_SHOW_FAILED on={on} error={exc!r}')
