@@ -1066,6 +1066,14 @@ body[data-level="none"] .chrome__meter i {
 .captions__body {
   position: relative;
   min-height: 0;
+  /* overflow-x CLIPS, it does not scroll. MEASURED WITH EYES 2026-10-15 on a fresh shot
+     (theme-1, 380x900): a forming line ran off the right edge and the words were cut by
+     the PANEL own overflow:hidden -- the row had no box of its own, so the `.caption__text`
+     `overflow-wrap: anywhere` had nothing to wrap INSIDE. This scroll container IS that
+     box: clipping here keeps the cut at the rail edge, where a scrollbar and a rounded
+     corner already say where the text ends, instead of letting words vanish into the
+     window silhouette. */
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
