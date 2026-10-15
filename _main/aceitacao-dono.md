@@ -13,43 +13,43 @@ diz exactamente isso -- nunca "verificado".
 | # | tu disseste, verbatim | prova | estado |
 |---|---|---|---|
 | A1 | "e eu quero que o alt c mostre as transcricoes em tempo real, de qualquer audio do meu pc. e legendas." | hotkey-cycle-oracle (o ciclo) + canal ao vivo | ciclo PROVADO; "qualquer audio" depende da rota |
-| A2 | "faz o sotto ser aberto pelo windows search. quero pesquisar ele e abrir agora" | atalho em Start Menu\Programs\sotto.lnk, aponta a pythonw | PROVADO: abri por ele, pid + worker |
+| A2 | "faz o sotto ser aberto pelo windows search. quero pesquisar ele e abrir agora" | sem instrumento | PROVADO a mao pelo Lead: abri por ele deram pid + worker |
 
 ## B. O PAINEL E A LEGENDA
 
 | # | tu disseste, verbatim | prova | estado |
 |---|---|---|---|
-| B1 | "painel de baixo MINIMO e movel" | strip 380x40 + arrasto | medido |
+| B1 | "painel de baixo MINIMO e movel" | botoes-lane-gesture-oracle + dimensoes da janela | medido: 380x40 e o arrasto; a TUA MAO e que falta |
 | B2 | "legenda INDEPENDENTE do painel, sem fundo" | caption-independent-oracle | registado na bateria |
-| B3 | "fim da div com COR SOLIDA" | a janela e a pilula | medido |
-| B4 | "a seta mostra a legenda e como ela deve FICAR NA TELA, com o design proprio dela, pra CADA DEMO DE CADA .ZIP" | 45 temas gerados | medido em bytes; o OLHAR e teu |
+| B3 | "fim da div com COR SOLIDA" | sem instrumento | medido em bytes (a janela E a pilula) |
+| B4 | "a seta mostra a legenda e como ela deve FICAR NA TELA, com o design proprio dela, pra CADA DEMO DE CADA .ZIP" | gen-themes-repro-oracle + theme-switch-oracle | medido em bytes; o OLHAR e teu |
 | B5 | "tira em curso e historico das barras" | panel-chrome-gate | PROVADO com braco negativo |
-| B6 | "tira o botao de transcript" | three-overlays D5 | PROVADO; gaveta fica atras |
+| B6 | "tira o botao de transcript" | three-overlays-oracle (D5) | PROVADO com braco negativo; gaveta fica atras |
 
 ## C. OS BOTOES E OS TEMAS
 
 | # | tu disseste, verbatim | prova | estado |
 |---|---|---|---|
-| C1 | "cada tema dos .zip com design IGUAL ao zip, so a posicao dos botoes muda" | cine/cinematic/zipc oracles | PROVADO em estrutura; a FIDELIDADE e o defeito aberto |
-| C2 | "por algum motivo, tu ta fazendo os designs terem botoes em lugares diferentes. nao e pra fazer isso" | gen_cinematic unificado | PROVADO |
-| C3 | "tira esse padrao de design de todos. nao e pra ter padrao. o padrao e os botoes no mesmo lugar" | moldura removida | PROVADO em bytes |
-| C4 | "nao e pra ter moldura no painel. e pra ter moldura se o design das demos tem moldura" | icon-button transparent | PROVADO em bytes |
-| C5 | "os botoes sao botoes simples e pequenos porem visiveis o suficiente pro usuario" | fill 0.20, glifo 14px, tamanhos intactos | medido em contraste; o SUFICIENTE e teu |
+| C1 | "cada tema dos .zip com design IGUAL ao zip, so a posicao dos botoes muda" | cine-themes-oracle + cinematic-designs-oracle + zipc-designs-oracle | PROVADO em estrutura (20 mutantes); a FIDELIDADE ao pixel e o E2 |
+| C2 | "por algum motivo, tu ta fazendo os designs terem botoes em lugares diferentes. nao e pra fazer isso" | gen-cinematic-repro-oracle | PROVADO: uma posicao, reproduzida pelo gerador |
+| C3 | "tira esse padrao de design de todos. nao e pra ter padrao. o padrao e os botoes no mesmo lugar" | sem instrumento | PROVADO em bytes (moldura uniforme -> transparent) |
+| C4 | "nao e pra ter moldura no painel. e pra ter moldura se o design das demos tem moldura" | sem instrumento | PROVADO em bytes (icon-button sem aresta) |
+| C5 | "os botoes sao botoes simples e pequenos porem visiveis o suficiente pro usuario" | botoes-lane-oracle (34 checks) | medido em contraste e tamanho; o SUFICIENTE e teu |
 | C6 | "e nao e pra ter tema branco" | theme-lightness-census --gate | PROVADO: 45 temas, 0 claros |
-| C7 | "tema nao rola para o topo" | -- | medido |
-| C8 | "botao live com estado CLARO" + "X a direita" + "botao de legenda do painel direito REMOVIDO" | markup | medido |
+| C7 | "tema nao rola para o topo" | sem instrumento | medido em bytes |
+| C8 | "botao live com estado CLARO" + "X a direita" + "botao de legenda do painel direito REMOVIDO" | sem instrumento | medido em bytes |
 
 ## D. DESEMPENHO E DEFEITOS QUE APANHASTE
 
 | # | tu disseste, verbatim | prova | estado |
 |---|---|---|---|
 | D1 | "quando sotto abre ou fecha, o pc trava" / "abrir ou fechar o sotto causa travamento no meu pc. arruma." | shell 1.3s, Alt+C 11-30ms, Quit 0.5-0.9s; loop JS<->Python morto (surface-loop-oracle) | MEDIDO; a causa do travamento residual NAO ATRIBUIDA |
-| D2 | "o painel de baixo e o da direita tao nojentos de performance e de mover ao redor" | 2 operacoes redundantes removidas | PROVADO |
+| D2 | "o painel de baixo e o da direita tao nojentos de performance e de mover ao redor" | botoes-lane-gesture-oracle | PROVADO: 2 operacoes por pointermove -> 1 |
 | D3 | "o painel de baixo e simplesmente COMPLETAMENTE FEIO" | desenho refeito | o FEIO e teu, nao medivel |
 | D4 | "alt c nao aperta direito em diversos caso. arruma agora." | hotkey-cycle-oracle | PROVADO: M1 reproduz o defeito (6 teclas, 0 hide) |
-| D5 | "sotto ta reclamando de coisa nao carregada, com erro vermelho. arruma." | severidade no-audio (ambar) | PROVADO em codigo; o worker ainda morre exit 3 |
-| D6 | "nao e pra escolher um ou outro. esse programa vai ser usado por milhares de pessoas. entao faz direito." | escada no-audio propria (15s -> 5min) em vez de recarregar 1GB a cada 12s | PROVADO |
-| D7 | "designs bugados" | -- | medido |
+| D5 | "sotto ta reclamando de coisa nao carregada, com erro vermelho. arruma." | panel-exit3-oracle (unidade + neg) | PROVADO em codigo (ambar, nao vermelho); o worker ainda morre exit 3 |
+| D6 | "nao e pra escolher um ou outro. esse programa vai ser usado por milhares de pessoas. entao faz direito." | panel-exit3-oracle (as duas escadas) | PROVADO: no-audio tem contador e escada proprios |
+| D7 | "designs bugados" | sem instrumento | medido em bytes |
 
 ## E. FIDELIDADE AOS .ZIP -- O DEFEITO ABERTO
 
@@ -64,8 +64,8 @@ diz exactamente isso -- nunca "verificado".
 
 | # | tu disseste, verbatim | prova | estado |
 |---|---|---|---|
-| F1 | "saber o que fazer. saber o que nao fazer." | _main/REGRAS.md (N1..N6, F1..F6) | PROVADO -- existe |
-| F2 | "ter oraculo." | 99+ oraculos | PROVADO |
+| F1 | "saber o que fazer. saber o que nao fazer." | sem instrumento (o REGRAS.md e um documento) | PROVADO -- existe, com 12 regras |
+| F2 | "ter oraculo." | cobertura-oracle | PROVADO: 34/34 areas com instrumento |
 | F3 | "ter uma suite de testes com forma de confirmar os resultados." | instruments-battery.mjs | MEDIDO: 139 instrumentos, 138 rc=0, 1 rc=1 (o photo-scrim-census, correctamente vermelho: o defeito E3/E4 e real) |
 | F4 | "recria tudo pra cada coisa do sotto, e pro futuro." | cobertura-oracle | MEDIDO: 34/34 areas, 0 lacunas, rc=0 |
 | F5 | "cobre todo o restante." | cobertura-oracle | MEDIDO: 34/34, rc=0. Tres lanes fecharam as 18 lacunas; cada uma com instrumento E braco negativo que diz NAO |
