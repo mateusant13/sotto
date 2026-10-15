@@ -6485,6 +6485,11 @@ class SottoShell:
 
         O `loaded` e o primeiro evento em que o controlo existe, e e onde isto vive agora.
         """
+
+        form = getattr(self.caption_window, 'native', None)
+        if form is None:
+            log('CAPTION_LOADED_FORM_MISSING')
+            return
         # FORA DA TASKBAR, E LAYERED -- DUAS ORDENS DELE, 2026-10-15, verbatim:
         #
         #   *"para de fazer essa porra de legenda no meio da tela ser a merda de um
@@ -6511,11 +6516,6 @@ class SottoShell:
                 f'reason=not-a-taskbar-app-and-the-key-needs-layered')
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WINDOW_STYLES_FAILED error={exc!r}')
-
-        form = getattr(self.caption_window, 'native', None)
-        if form is None:
-            log('CAPTION_LOADED_FORM_MISSING')
-            return
         # E TEM DE SER COM `Invoke`, MEDIDO NA SONDA: o evento `loaded` NAO corre na
         # thread da UI, e tocar no controlador de la falha com
         #
@@ -6546,6 +6546,29 @@ class SottoShell:
             form.Invoke(Action(_apply_bgc))
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded error={exc!r}')
+
+
+        # E RE-ESCONDE, PORQUE O PYWEBVIEW ACABOU DE A MOSTRAR. O comentario do
+        # `_on_navigation_start` explica o mecanismo e ele e o mesmo aqui:
+        #
+        #   "pywebview SHOWS the form again on EVERY navigation start when the window is
+        #    transparent (platforms/edgechromium.py:345-349, `if transparent:
+        #    self.form.Show()`)"
+        #
+        # A janela PRINCIPAL tem uma guarda para isto (`_gate_form_show`, que recusa o
+        # `Show()` do pywebview com ninguem a pedir). **A janela da legenda, que eu criei,
+        # nao tinha nenhuma** -- e por isso ela aparecia sozinha na tela dele ao abrir,
+        # GREY e sem legenda nenhuma. Ele: *"por que eu ainda to sendo atrapalhado?"*.
+        #
+        # `loaded` e o evento em que a navegacao acabou, portanto e o sitio certo para
+        # repor o estado: se ninguem mostrou a janela (`_caption_window_shown`), ela
+        # volta a esconder-se. **Se o botao live a mostrou, isto nao lhe toca.**
+        if not getattr(self, '_caption_window_shown', False):
+            try:
+                self.caption_window.hide()
+                log('CAPTION_WINDOW_REHIDDEN after=loaded reason=nobody-asked')
+            except Exception as exc3:  # noqa: BLE001
+                log(f'CAPTION_WINDOW_REHIDE_FAILED error={exc3!r}')
 
     def _on_caption_before_show(self):
         """A CURA DA CAIXA CLARA NA JANELA DA LEGENDA -- medida numa sonda isolada.
