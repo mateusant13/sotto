@@ -930,7 +930,7 @@ body[data-level="none"] .chrome__meter i {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   scrollbar-color: rgba(125, 211, 252, 0.28) transparent;
   padding: 2px 2px 2px 0;
   display: flex;
@@ -2168,6 +2168,11 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
    the focus trap and the backdrop; everything below is only what makes it look
    like the rest of the slab. */
 .pause-dialog {
+  /* F3 (CRITICO) -- O DIALOGO ABRIA NO CANTO SUPERIOR ESQUERDO. O audit mediu: sem isto
+   * a caixa fica em {0,0,340,162}; com `margin: auto` vai para {20,369}, centrada. A causa e
+   * o reset `* { margin: 0 }` (panel.css:99-103) que derruba o `margin: auto` que o
+   * user-agent da a um `dialog`. **Uma linha.** O `.tune-dialog` herda. */
+  margin: auto;
   width: min(340px, calc(100vw - 24px));
   max-width: 340px;
   padding: 0;
@@ -2322,6 +2327,13 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
   max-height: 52vh;
   overflow-y: auto;
   overscroll-behavior: contain;
+
+  /* F2 (CRITICO) -- O DIALOGO DE TEMA PINTAVA UMA BARRA DE 15 px. Medido: gutter 15,
+     `scrollbar-width: auto`, webkit `display: block`, `scrollHeight 905 > clientHeight 468`.
+     Mesma ordem [50532] do F1, outro sitio. */
+  scrollbar-width: none;}
+.tune-body::-webkit-scrollbar {
+  display: none;
 }
 
 .tune-row {
