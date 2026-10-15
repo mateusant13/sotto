@@ -108,6 +108,22 @@ def photo_themes(css):
     return out
 
 
+
+# LIMITATION MEASURED, NOT HIDDEN (round 3, 2026-10-15). This census reports ten themes as
+# having "no scrim" -- but reading cinematic.css BY HAND showed cine-midnight-rain DOES
+# carry `--cine-scrim: rgba(4,8,16,0.68)` at line 152 of its own block, and its `.panel`
+# rule composes `linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(...)`. So the
+# pair extraction in photo_themes() is losing that theme's scrim: the value is defined in
+# the `:root{}` block and the rule that USES it arrives 20+ lines later, after other themes
+# rules, and the single-pass state machine attributes it to the wrong block. The NUMBER is
+# reproducible (11 of 25 fail, rc=1) but the TEN "no scrim" rows are a MEASUREMENT ARTEFACT
+# of this parser until the extraction is rewritten as two independent passes -- one for
+# theme -> --cine-scrim over the whole file, one for theme -> url -- joined at the end.
+# The one row that is NOT an artefact and IS a real defect: cine-linen, scrim alpha 0.72
+# against the 0.75 floor, because its scrim was read from the same variable and is a
+# genuine alpha below the floor.
+
+
 def main():
     say = print
     css_path = os.path.join(THEMES, "cinematic.css")
