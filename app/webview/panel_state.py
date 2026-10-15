@@ -90,13 +90,24 @@ def write_atomic(path: str, payload: dict) -> None:
     # _main/webview-run.log, 62-83% of them inside the surface loop and only 1-2 an hour
     # outside it. A short bounded retry turns a lost write into a delayed one.
     last = None
-    for attempt in range(6):
+    # O ORCAMENTO SUBIU DE 6 PARA 20 TENTATIVAS. MEDIDO 2026-10-15 pelo subagente do
+    # caminho `emit`: `PANEL_VISIBILITY_WRITE_FAILED` aparece **17 891 vezes** numa janela
+    # de 48,9 h -- **uma a cada ~10 s** -- sempre `PermissionError(13)`. Ou seja: o retry
+    # de 6 tentativas (0,02 a 0,12 s de espera, ~0,42 s no total) NAO cobre a contencao
+    # real. Os dois escritores sao o writer periodico do shell e o worker que sonda o
+    # ficheiro; enquanto um o tem aberto, o `os.replace` do outro e recusado pelo Windows.
+    #
+    # A espera esta CAPADA em 0,1 s por tentativa: sem o cap, a progressao linear levava a
+    # ultima tentativa a 0,4 s e o pior caso a ~4,2 s. Com o cap sao ~1,9 s no pior caso --
+    # e isto corre numa thread propria (`sotto-panel-visibility`), portanto nao prende a UI.
+    # Uma escrita atrasada vale mais do que uma escrita perdida.
+    for attempt in range(20):
         try:
             os.replace(tmp, path)
             return
         except PermissionError as exc:
             last = exc
-            time.sleep(0.02 * (attempt + 1))
+            time.sleep(min(0.1, 0.02 * (attempt + 1)))
     try:
         os.remove(tmp)
     except OSError:
