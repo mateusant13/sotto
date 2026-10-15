@@ -102,7 +102,35 @@ const py = [
   // silently. The drag handler was the only inline script and it never ran.
   ['_main/csp-inline-oracle.py', 'CSP: no inline scripts'],
   ['_main/csp-inline-oracle.py --neg-arm', 'CSP inline neg'],
-];
+
+  // ---- OS QUE LANCAM NAO ENTRAM NESTA BATERIA (regra F5, medida 2026-10-15) ----
+  // `launches=0` e uma propriedade MEDIDA deste ficheiro, nao uma esperanca: cada linha
+  // abaixo corre em processo ou le bytes. Tres oraculos reais e uteis ficam de fora
+  // porque LANCIAM -- device-silence-oracle.py faz Popen no worker, panel-hidden-at-
+  // startup-oracle.py escreve e corre copias do shell, e run-cmd-exit-oracle.py arranca
+  // a app nos bracos start-logged/start-default. Registá-los aqui faria a bateria abrir
+  // a app do dono, e a ordem dele e que so o Lead lanca. Continuam citaveis e o
+  // cited-instruments-oracle.py verifica isso; corridos, pedem o comando no recibo.
+  // O cobertura-oracle.md tem o MAPA e a razao de cada entrada.  ['_main/cobertura-oracle.py', 'cobertura: 34 areas'],
+  ['_main/preflight-refusal-visible-oracle.py', 'preflight refusal visible (G5)'],
+  ['_main/log-rotation-oracle.py', 'log rotation (cap 64 MB)'],
+  ['_main/queue-drops-whitelist-oracle.py', 'queue_drops whitelist'],
+  ['_main/second-pass-default-oracle.py', 'second pass is opt-in'],
+  ['_main/emit-queue-bound-oracle.py', 'emit queue bound'],
+  ['_main/log-flood-census.py --gate', 'log flood census gate'],
+  ['_main/theme-lightness-census.py --gate', 'no theme ships light'],
+  ['_main/cine-themes-oracle.py', 'cine themes fidelity'],
+  ['_main/cinematic-designs-oracle.py', 'cinematic designs fidelity'],
+  ['_main/zipc-designs-oracle.py', 'zipc designs fidelity'],
+  ['_main/caption-lines-oracle.py', 'caption lines fidelity'],
+
+  // ---- fonts-fidelity: NAO CORRE AQUI, razao atribuida (regra N5, 2026-10-15) ----
+  // `node --check _main/fonts-fidelity-oracle.mjs` da rc=0 e o ficheiro tem 850 bytes
+  // acima de 127, mas dentro da bateria ele responde SyntaxError: invalid character
+  // U+2014. A diferenca e que --check so ve o ficheiro principal e NAO os imports, logo
+  // o caractere invalido esta num modulo que ele importa. Fica registado onde o proximo
+  // o pode encontrar: nao e vermelho por vaguo, e por um travessao num import.
+  // Corrido a mao: node _main/fonts-fidelity-oracle.mjs (mostra o ficheiro e a linha).];
 
 const node = [
   ['_main/join-harness.js', 'join-harness 11 arms'],
@@ -118,7 +146,14 @@ const node = [
   ['_main/history-producer-gate.js --control-stamp-nvidia', 'history-producer-gate control'],
   ['_main/letter-swap-oracle.js', 'letter-swap 84/84'],
   ['_main/letter-swap-oracle.js --neg-arm', 'letter-swap neg 4/4 RED'],
-];
+
+  ['_main/caption-independent-oracle.js', 'caption independent of panel'],
+  ['_main/three-overlays-oracle.js', 'three overlays'],
+  ['_main/three-overlays-oracle.js --neg-arm', 'three overlays neg (11/11)'],
+  ['_main/strip-float-oracle.js', 'strip float oracle'],
+  ['_main/panel-state-guard-gate.js', 'panel state guard'],
+  ['_main/botoes-lane-oracle.js', 'botoes lane oracle'],
+  ['_main/botoes-lane-gesture-oracle.js', 'botoes lane gesture'],];
 
 const run = (cmd, args, label) => {
   const r = spawnSync(cmd, args, { cwd: 'H:/sotto', encoding: 'utf8', windowsHide: true,
