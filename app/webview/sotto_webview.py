@@ -4461,7 +4461,7 @@ class SottoShell:
             styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT
             if str(os.environ.get('SOTTO_LAYERED') or '').strip().lower() \
                     in ('1', 'true', 'yes', 'on'):
-                styles |= WS_EX_LAYERED
+                cap_styles |= WS_EX_LAYERED
                 log('panel WS_EX_LAYERED kept by SOTTO_LAYERED=1 '
                     '(measured harmful: strip composites white)')
             set_ex_style(hwnd, add=styles)
@@ -6485,6 +6485,33 @@ class SottoShell:
 
         O `loaded` e o primeiro evento em que o controlo existe, e e onde isto vive agora.
         """
+        # FORA DA TASKBAR, E LAYERED -- DUAS ORDENS DELE, 2026-10-15, verbatim:
+        #
+        #   *"para de fazer essa porra de legenda no meio da tela ser a merda de um
+        #    processo na minha task bar"*
+        #   *"para de fazer ESSA PORRA SER CINZA E NAO TRANSPARENTE"*
+        #
+        # E O DEFEITO E O MESMO PARA AS DUAS: a janela PRINCIPAL resolve as duas em
+        # `_on_before_show` -- `WS_EX_TOOLWINDOW` e sem `WS_EX_APPWINDOW`, que e o que a
+        # tira da barra de tarefas -- e o `TransparencyKey` do WinForms so e aplicado a
+        # uma janela LAYERED. **A janela da legenda nao herdava NENHUMA das duas: eu
+        # criei-a e nunca lhe dei os estilos.**
+        #
+        # `WS_EX_NOACTIVATE` tambem vem: a legenda nunca deve roubar o foco de quem esta
+        # a escrever ou a jogar, e e o mesmo bit que a janela principal carrega.
+        try:
+            cap_hwnd = int(form.Handle.ToInt64())
+            cap_styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
+            if not self.args.opaque:
+                cap_styles |= WS_EX_LAYERED
+            set_ex_style(cap_hwnd, add=cap_styles, remove=WS_EX_APPWINDOW)
+            log(f'CAPTION_WINDOW_STYLES hwnd={cap_hwnd} toolwindow=true '
+                f'appwindow=false noactivate=true '
+                f'layered={str(not self.args.opaque).lower()} '
+                f'reason=not-a-taskbar-app-and-the-key-needs-layered')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WINDOW_STYLES_FAILED error={exc!r}')
+
         form = getattr(self.caption_window, 'native', None)
         if form is None:
             log('CAPTION_LOADED_FORM_MISSING')
