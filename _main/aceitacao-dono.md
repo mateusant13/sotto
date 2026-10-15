@@ -57,7 +57,7 @@ diz exactamente isso -- nunca "verificado".
 |---|---|---|---|
 | E1 | "por que a partir do rainline e uma MERDA os designs?" | -- | ABERTO |
 | E2 | "compara as prints das demos dos .zip com as prints do que ta implementado atual. eu nao gostei dos atuais. e pra imitar mais os .zip" | diff de pixeis | NAO EXISTE AINDA |
-| E3 | "pq tu copiou as coisas das demos q sao sem sentido? por que tem personagens falando em um dos designs replicados?" | photo-scrim-census.py | MEDIDO: 25 temas; 11 com scrim 0.62-0.72 (28-38 por cento da foto a mostrar) vs 14 com 0.82-0.93. Contraste alto em TODOS: o defeito e a foto que nao recua |
+| E3 | "pq tu copiou as coisas das demos q sao sem sentido? por que tem personagens falando em um dos designs replicados?" | photo-scrim-census.py | MEDIDO: 25 temas; 11 com scrim 0.62-0.72 vs 14 com 0.82-0.93; contraste alto em TODOS (12.5-18.3). CAUSA RAIZ MEDIDA (receipt-20261015-a-cura-e-minha.md): o zip usa TRES camadas de gradiente (scrim-top, scrim-bottom, vignette) e o MEIO da foto fica LIMPO; o gerador compoe um scrim PLANO em todo o painel. O 0.68 e do zip e esta CERTO -- o que estava errado era a FORMA, e a forma e minha. CURA no gerador, em curso (lane 02b919b7) |
 | E4 | "tu ta simplesmente botando de forma burra alguns designs por cima do painel e ai fica duas coisa sobrepostas que nao fazem sentido como se fosse um glitch, em diversos designs" | photo-scrim-census.py | MEDIDO: uma fotografia SEM scrim e uma foto crua a competir com a legenda. 10 temas assim |
 
 ## F. O PROCESSO QUE EXIGISTE
@@ -66,9 +66,9 @@ diz exactamente isso -- nunca "verificado".
 |---|---|---|---|
 | F1 | "saber o que fazer. saber o que nao fazer." | _main/REGRAS.md (N1..N6, F1..F6) | PROVADO -- existe |
 | F2 | "ter oraculo." | 99+ oraculos | PROVADO |
-| F3 | "ter uma suite de testes com forma de confirmar os resultados." | instruments-battery.mjs | PROVADO: 131/131 rc=0 |
-| F4 | "recria tudo pra cada coisa do sotto, e pro futuro." | cobertura-oracle 34/34 | PROVADO: 0 lacunas |
-| F5 | "cobre todo o restante." | cobertura 34/34 | PROVADO |
+| F3 | "ter uma suite de testes com forma de confirmar os resultados." | instruments-battery.mjs | MEDIDO: 139 instrumentos, 138 rc=0, 1 rc=1 (o photo-scrim-census, correctamente vermelho: o defeito E3/E4 e real) |
+| F4 | "recria tudo pra cada coisa do sotto, e pro futuro." | cobertura-oracle | MEDIDO: 34/34 areas, 0 lacunas, rc=0 |
+| F5 | "cobre todo o restante." | cobertura-oracle | MEDIDO: 34/34, rc=0. Tres lanes fecharam as 18 lacunas; cada uma com instrumento E braco negativo que diz NAO |
 
 ## G. O QUE NAO POSSO PROVAR, E NAO FINJO
 
