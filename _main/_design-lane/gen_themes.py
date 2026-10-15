@@ -2166,6 +2166,90 @@ CHROME[5] = """
 ROOT = ":root[data-theme='%s']"
 
 # --------------------------------------------------------------------------- #
+# LANE B's CHROME PAINTS THE DESIGN'S OWN META SIZE, NOT THE FIRST ZIP'S.
+#
+# THE ORDER (owner, verbatim): *"eu quero que, cada tema encontrado dentro dos
+# .zip, fiquem com o design IGUAL"*. Each `pd-*` design declares `--size-meta`
+# with the size ITS OWN zip states for its meta tier -- `--trace` prints the zip
+# line of every one of them -- and until this block NO rule of lane B read it:
+# every chrome row painted a LITERAL, and those literals are the FIRST zip's
+# (the shared `CHROME` templates were written from
+# `sotto-app-design-directions.zip`). Measured, the defect: `pd-tele` declared
+# 11px and painted 10px.
+#
+# WHY THE SWAP IS HERE AND NOT INSIDE THE TEMPLATES. `CHROME[n]` is SHARED by the
+# two lanes -- it is emitted into `theme-n.css` AND into `panel-designs.css` -- so
+# a literal edited inside a template rewrites `theme-1..5.css` as well, and this
+# lane is ordered not to touch those five files. The swap therefore runs on the
+# EMITTED text of the `pd-*` designs alone, keyed by design, one exact anchor per
+# rule. Each anchor must occur EXACTLY ONCE in its template or the build FAILS: a
+# template that drifts stops the build instead of silently painting the family's
+# size again.
+#
+# WHAT MOVES (the zip line is the authority; every one was re-measured against
+# the .zip member `src/components/panels.tsx`, which is byte-identical to the
+# extracted copy the generator parses):
+#   pd-tele   head  10px   -> 11px     the zip's own `sotto`, panels.tsx:31
+#   pd-bcast  head  9.5px  -> 9.5px    no visible move: it already paints its own
+#                                      meta row (panels.tsx:158) and stops being a
+#                                      literal
+#   pd-mano   draft 12.5px -> 10px     `registro continuo`, panels.tsx:182
+#   pd-cine   brand 11px   -> 13px     the zip's own `sotto`, panels.tsx:253
+#   pd-cine   state 11px   -> 13px     the same tier as the brand above
+#   pd-instr  brand 9px    -> 10px     `PT-BR . 48 kHz`, panels.tsx:340
+#   pd-instr  head  11px   -> 10px     the ON/STBY chip is SOTTO's own node, not
+#                                      the zip's status word: that one is
+#                                      `.status`, which already reads
+#                                      `--size-small`
+#   pd-instr  foot  9px    -> 10px     `PT-BR . 48 kHz`, panels.tsx:340
+#
+# WHAT IS DELIBERATELY UNTOUCHED: `bcast`'s `.chrome__brand` already reads
+# `var(--size-time)`, the design's OWN clock tier (panels.tsx:105), and its
+# `.chrome__tc` is a lane-B-only literal of that same clock -- neither is a number
+# the first zip owned. `bcast`, `mano` and `cine` already had their FOOT row read
+# `var(--size-meta)` from the shared template before this block existed.
+# --------------------------------------------------------------------------- #
+PD_CHROME_META = {
+    1: (("  font-size: 10px;",
+         "  font-size: var(--size-meta);"),),
+    2: (("  font-size: 9.5px;",
+         "  font-size: var(--size-meta);"),),
+    3: (("@S@ .chrome--mano .chrome__draft{ font-size: 12.5px; font-style: italic; color: var(--text-secondary); }",
+         "@S@ .chrome--mano .chrome__draft{ font-size: var(--size-meta); font-style: italic; color: var(--text-secondary); }"),),
+    4: (("@S@ .chrome--cine .chrome__brand{\n  font-size: 11px;",
+         "@S@ .chrome--cine .chrome__brand{\n  font-size: var(--size-meta);"),
+        ("@S@ .chrome--cine .chrome__state{ margin-left: auto; font-size: 11px; font-style: italic; }",
+         "@S@ .chrome--cine .chrome__state{ margin-left: auto; font-size: var(--size-meta); font-style: italic; }"),),
+    5: (("  font-family: var(--font-mono);\n  font-size: 9px;\n  font-weight: 600;",
+         "  font-family: var(--font-mono);\n  font-size: var(--size-meta);\n  font-weight: 600;"),
+        ("  font-size: 11px;",
+         "  font-size: var(--size-meta);"),
+        ("  font-family: var(--font-sans);\n  font-size: 9px;\n  letter-spacing: 0.22em;",
+         "  font-family: var(--font-sans);\n  font-size: var(--size-meta);\n  letter-spacing: 0.22em;"),),
+}
+
+
+def pd_chrome_meta(block, chrome):
+    """Lane B only: the chrome rows paint THIS design's own meta tier.
+
+    `block` is the FILLED `CHROME[chrome]` template; `chrome` selects the anchor
+    set. Nothing here runs for `theme-1..5`: those five keep the exact bytes this
+    generator shipped before this block existed.
+    """
+    pairs = PD_CHROME_META.get(chrome)
+    if not pairs:
+        raise SystemExit('BUILD FAILURE: no pd-chrome anchor set for chrome %r' % (chrome,))
+    out = block
+    for old, new in pairs:
+        n = out.count(old)
+        if n != 1:
+            raise SystemExit('BUILD FAILURE: the pd-chrome anchor for design %d occurs %d '
+                             'time(s), must be exactly 1: %r' % (chrome, n, old[:70]))
+        out = out.replace(old, new, 1)
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # `prefers-reduced-motion` FOR THE CHROME — ONE BLOCK, APPENDED TO ALL FIVE.
 #
 # It has to be `!important`, and that is a measured consequence, not laziness.
@@ -2567,8 +2651,12 @@ def build(t):
         font_caption=t.get('caption_family', 'var(--font-sans)'),
         font_closed=t.get('closed_family', 'var(--font-sans)'),
     )
+    chrome_text = fill(CHROME[chrome], t)
+    if t.get('sel'):
+        # LANE B ONLY -- the chrome paints THIS design's own meta size (PD_CHROME_META)
+        chrome_text = pd_chrome_meta(chrome_text, chrome)
     text = (head + scope(skin, sel) + "\n"
-            + scope(fill(CHROME[chrome], t), sel) + "\n"
+            + scope(chrome_text, sel) + "\n"
             + scope(fill(t.get('sig', ''), t), sel) + "\n"
             + scope(STRIP_GUARD, sel) + "\n"
             + scope(MOTION, sel) + "\n")

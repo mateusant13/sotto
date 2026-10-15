@@ -37,7 +37,7 @@ diz exactamente isso -- nunca "verificado".
 | C5 | "os botoes sao botoes simples e pequenos porem visiveis o suficiente pro usuario" | botoes-lane-oracle (34 checks) | medido em contraste e tamanho; o SUFICIENTE e teu |
 | C6 | "e nao e pra ter tema branco" | theme-lightness-census --gate | PROVADO: 45 temas, 0 claros |
 | C7 | "tema nao rola para o topo" | panel-chrome-marks-oracle | PROVADO: o picker nao rola o documento |
-| C8 | "botao live com estado CLARO" + "X a direita" + "botao de legenda do painel direito REMOVIDO" | panel-chrome-marks-oracle | PROVADO: sem controlo de transcript no markup |
+| C8 | "botao live com estado CLARO" + "X a direita" + "botao de legenda do painel direito REMOVIDO" | panel-chrome-marks-oracle + receipt-20261015-c8-com-olhos | VISTO COM OLHOS: X a direita e botao da legenda fora; o estado CLARO do botao live NAO CONFIRMADO |
 
 ## D. DESEMPENHO E DEFEITOS QUE APANHASTE
 
@@ -49,7 +49,7 @@ diz exactamente isso -- nunca "verificado".
 | D4 | "alt c nao aperta direito em diversos caso. arruma agora." | hotkey-cycle-oracle | PROVADO: M1 reproduz o defeito (6 teclas, 0 hide) |
 | D5 | "sotto ta reclamando de coisa nao carregada, com erro vermelho. arruma." | panel-exit3-oracle + churn no log | MEDIDO: a severidade e ambar e o worker JA NAO MORRE -- 0 BRIDGE_DEATH em 4000 linhas, com legendas a sair |
 | D6 | "nao e pra escolher um ou outro. esse programa vai ser usado por milhares de pessoas. entao faz direito." | panel-exit3-oracle (as duas escadas) | PROVADO: no-audio tem contador e escada proprios |
-| D7 | "designs bugados" | zip-fidelity-by-numbers | DUAS RETRACCOES minhas registadas (bloco negro tem limite 200; o overflow era quebra de linha) e um defeito REAL medido e curado |
+| D7 | "designs bugados" | zip-fidelity-by-numbers + photo-scrim-census | DUAS RETRACCOES minhas registadas (bloco negro tem limite 200; o overflow era quebra de linha) e um defeito REAL medido e curado |
 
 ## E. FIDELIDADE AOS .ZIP -- O DEFEITO ABERTO
 
