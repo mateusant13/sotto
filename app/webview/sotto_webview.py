@@ -4232,6 +4232,11 @@ class SottoShell:
             **({} if self.args.opaque else {'background_color': '#0b0f14'}),
             text_select=False,
         )
+
+        # E A CURA DA CAIXA CLARA, assinada na janela da legenda. Ver o metodo para a
+        # medicao inteira: a caixa era a FORM, e `BackColor = Transparent` nao chega numa
+        # form de topo -- `TransparencyKey` e o que a tira do ecra.
+        self.caption_window.events.before_show += self._on_caption_before_show
         # DO NOT clear `self.window.transparent` here. Tried 2026-10-06 and
         # MEASURED WRONG: pywebview's navigation `Show()` (edgechromium.py:347,
         # gated by `transparent`) is what makes a transparent WebView2 actually
@@ -6366,6 +6371,45 @@ class SottoShell:
         finally:
             with self._revive_lock:
                 self._revive_thread = None
+
+    def _on_caption_before_show(self):
+        """A CURA DA CAIXA CLARA NA JANELA DA LEGENDA -- medida numa sonda isolada.
+
+        DUAS COISAS FICARAM PROVADAS: (1) pintar a form de VERMELHO faz a caixa ficar
+        VERMELHA, logo a caixa e a FORM e nao a pagina (pintar o `body` de vermelho nao
+        lhe tocou); e (2) `form.BackColor = Color.Transparent` NAO basta numa form de
+        TOPO, porque o .NET nao tem pai para onde compor e cai no `SystemColors.Control`
+        -- o cinza claro que se ve. O que funciona numa form de topo e uma COR-CHAVE.
+
+        MEDIDO: com `TransparencyKey` posto a caixa passou de CLARA a ausente.
+
+        MAGENTA e nao branco: a legenda e `#f5f8fc`, e uma chave branca podia cair nas
+        letras e apaga-las. O magenta nao aparece em nenhuma folha do painel.
+
+        PORQUE AQUI E NAO NUM THREAD: o controlador do WebView2 so se toca na thread da
+        UI (medido: `CoreWebView2Controller members can only be accessed from the UI
+        thread`), e `before_show` corre nessa thread.
+
+        PORQUE A JANELA PRINCIPAL PARECE NAO PRECISAR DISTO: a pagina dela cobre a form
+        INTEIRA com o slab translucido, portanto o cinza da form nunca se ve. A pagina da
+        legenda e transparente DE PROPOSITO -- e entao a form aparecia.
+        """
+        form = getattr(self.caption_window, 'native', None)
+        if form is None:
+            log('CAPTION_FORM_MISSING')
+            return
+        try:
+            from System.Drawing import Color
+            if self.args.opaque:
+                form.BackColor = Color.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
+                log('CAPTION_FORM_BACKCOLOR set=#0B0F14 reason=--opaque')
+            else:
+                magenta = Color.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
+                form.BackColor = magenta
+                form.TransparencyKey = magenta
+                log('CAPTION_FORM_TRANSPARENCYKEY set=magenta reason=overlay-not-a-slab')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_FORM_TRANSPARENCY_FAILED error={exc!r}')
 
     def push_caption_to_window(self, text, previous=None, credits=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""

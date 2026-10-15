@@ -66,7 +66,11 @@ def drive():
             print("LATE sem controlo", flush=True)
     except Exception as exc:
         print("LATE_FAILED %r" % (exc,), flush=True)
-    time.sleep(1.3)
+    time.sleep(0.3)
+    # TESTE DECISIVO: pinta o body de VERMELHO. Se a caixa ficar vermelha, quem a pinta e
+    # a PAGINA (e o problema esta no CSS). Se ficar clara, quem a pinta e a JANELA (e o
+    # problema esta na criacao). Uma linha, e acaba com a duvida.
+    time.sleep(1.0)
     try:
         win.evaluate_js(
             'window.SottoCaption.set("Uma vez que voce foi.", "e a linha anterior fica aqui");'
@@ -95,8 +99,19 @@ def before_show():
         return
     try:
         from System.Drawing import Color
-        form.BackColor = Color.Transparent
-        print("FORM_BACKCOLOR set=transparent", flush=True)
+        # TESTE DECISIVO 2: VERMELHO na form. Se a caixa ficar vermelha, quem a pinta e a
+        # FORM; se ficar clara, e o WebView2 por cima dela.
+        # A CURA: `TransparencyKey`. Uma form de TOPO com `BackColor = Color.Transparent`
+        # NAO fica transparente -- o .NET nao tem para onde compor sem um pai, e cai no
+        # `SystemColors.Control` (a caixa clara, medido). O caminho do WinForms para uma
+        # form de topo e uma COR-CHAVE: tudo o que for exactamente essa cor sai da janela.
+        # MAGENTA e nao branco: a legenda e `#f5f8fc` e o branco puro podia cair na chave.
+        # O shell parece transparente sem isto porque a PAGINA dele cobre a form inteira; a
+        # pagina da legenda e transparente de proposito, e entao a form aparece.
+        MAGENTA = Color.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
+        form.BackColor = MAGENTA
+        form.TransparencyKey = MAGENTA
+        print("FORM_TRANSPARENCYKEY set=magenta", flush=True)
         # E O PROPRIO WEBVIEW2. O `DefaultBackgroundColor` do controlo e BRANCO por
         # omissao; e ele que pinta a caixa clara em todo o pixel que a pagina nao cobre,
         # e e o caminho suportado pela Microsoft (o `WS_EX_LAYERED`+`LWA_COLORKEY` NAO
