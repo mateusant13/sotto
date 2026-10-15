@@ -464,11 +464,14 @@
                `gen_themes.py` and the base rules in `panel.css`) went with it.
                Gate: `_main/three-overlays-oracle.js` arm D5 re-baselined in the
                same pass. -->
-          <span
-            class="history__label"
-            id="history-label"
-            title="The canonical transcript — written by the batch pass (Parakeet Redux). Its lines carry the redux producer stamp, so it stays read-only; until a line has arrived, it has nothing to show."
-          >Transcript</span>
+          <!-- THE TRANSCRIPT LABEL IS GONE. Owner: "tira o botao de transcript". The
+               CONTROL went in the previous pass; the LABEL stayed and kept painting the
+               word on the panel. MEASURED WITH EYES on a fresh shot (theme-1, 380x900,
+               2026-10-15): the word sat in the top-left corner and opened nothing.
+               history-label had 0 references in panel.js and 3 in panel.css -- and all
+               three are .captions__bar paused-state rules naming a DIFFERENT element, so
+               removing this span cannot break the drawer, which stays collapsed behind
+               its automatic half. -->
           <button
             type="button"
             class="history__path"
