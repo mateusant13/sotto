@@ -138,6 +138,66 @@ function makeResolver(themes) {
 }
 
 /* ── the zip side ──────────────────────────────────────────────────────────── */
+/* ── which family does a STACK actually ask for? ─────────────────────────────
+ * MEASURED DEFECT, 2026-10-14. \`primaryFamily\` takes the first QUOTED name of a
+ * stack. That is right for a design's own stack ("Fraunces","Georgia",serif) and
+ * WRONG for a generic one: Tailwind's default
+ *
+ *   --font-sans: ui-sans-serif,system-ui,sans-serif,"Apple Color Emoji",...
+ *   --font-mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",...
+ *
+ * quotes ONLY its fallbacks, so the first quoted name is an OPERATING-SYSTEM
+ * face. ARM A then demanded we ship "Apple Color Emoji" (Apple's, proprietary,
+ * unbundleable) and "Liberation Mono" (metric-compatible with Courier New, an OS
+ * face) -- two REDs that were the ORACLE's defect, not the product's. Both stacks
+ * are the built dist/index.html of a zip and name no design typeface at all.
+ *
+ * The rule below is the narrow one: walk the stack, skip generic CSS keywords and
+ * OS-shipped faces, and return the FIRST entry that is left. A stack made only of
+ * those asks for NOTHING and returns null. Every skip is PRINTED by ARM A, so a
+ * family cannot be dropped silently, and the Google-Fonts requests are scanned
+ * independently -- a real face named in a stack is still checked. */
+const GENERIC_FAMILIES = new Set(['ui-sans-serif', 'ui-serif', 'ui-monospace',
+  'ui-rounded', 'system-ui', '-apple-system', 'blinkmacsystemfont', 'sans-serif',
+  'serif', 'monospace', 'cursive', 'fantasy', 'math', 'emoji', 'fangsong',
+  'inherit', 'initial', 'unset', 'revert']);
+/* Faces that ship with an OPERATING SYSTEM. None can be bundled and none can be
+ * declared by an @font-face we own, so a stack that names only these asks for
+ * nothing we could deliver. */
+const SYSTEM_FACES = new Set(['apple color emoji', 'segoe ui emoji',
+  'segoe ui symbol', 'noto color emoji', 'segoe ui', 'sfmono-regular', 'menlo',
+  'monaco', 'consolas', 'liberation mono', 'courier new', 'courier',
+  'avenir next', 'helvetica neue', 'helvetica', 'arial narrow', 'arial',
+  'georgia', 'times new roman', 'times', 'verdana', 'tahoma', 'trebuchet ms',
+  'lucida console', 'lucida sans unicode', 'cambria', 'calibri', 'candara',
+  'constantia', 'corbel', 'impact', 'comic sans ms', 'palatino linotype',
+  'book antiqua', 'franklin gothic medium', 'gabriola', 'ms gothic',
+  'malgun gothic', 'microsoft yahei', 'yu gothic', 'meiryo', 'simsun',
+  'nsimsun', 'batang', 'gulim', 'dotum', 'dejavu sans', 'dejavu serif',
+  'dejavu sans mono']);
+
+function stackEntries(stack) {
+  return String(stack).split(',')
+    .map((s) => s.trim().replace(/^["']|["']$/g, '').trim())
+    .filter(Boolean);
+}
+
+/* Returns { family, skipped } -- \`skipped\` is every entry the rule passed over,
+ * so the caller can print what it dropped instead of hiding the decision. */
+function designFamily(stack) {
+  const skipped = [];
+  for (const e of stackEntries(stack)) {
+    const k = e.toLowerCase();
+    if (/^\d+$/.test(e) || e.startsWith('var(') || e.startsWith('--')) {
+      skipped.push(e); continue;
+    }
+    if (GENERIC_FAMILIES.has(k) || SYSTEM_FACES.has(k)) { skipped.push(e); continue; }
+    return { family: e, skipped: skipped };
+  }
+  return { family: null, skipped: skipped };
+}
+
+const skippedStacks = [];   // stacks that name no design face (ARM A prints them)
 function zipSources() {
   const fams = new Map();          // family -> Set(source)
   const italic = new Map();        // family -> Set(weight) the zips ask for in italic
@@ -183,8 +243,13 @@ function zipSources() {
       }
       /* 2. the @theme stacks the zips declare (--font-tele, --font-cinema, ...) */
       for (const m of text.matchAll(/--font-[a-z0-9-]+:\s*([^;]+);/g)) {
-        const p = primaryFamily(m[1]);
-        if (p) add(fams, p, d + '/' + path.basename(f) + ' (--font-*)');
+        const pick = designFamily(m[1]);
+        if (pick.family) {
+          add(fams, pick.family, d + '/' + path.basename(f) + ' (--font-*)');
+        } else {
+          /* A stack that names NO design face: printed, never silently dropped. */
+          skippedStacks.push({ where: d + '/' + path.basename(f), stack: m[1].trim() });
+        }
       }
     }
   }
@@ -202,7 +267,11 @@ function armA(faces, zips) {
     const hasFace = declared.has(fam);
     if (!hasFile || !hasFace) bad.push({ fam, hasFile, hasFace, where: [...where][0] });
   }
-  say('ARM A  zip families=' + zips.fams.size + '  not-on-disk-or-not-declared=' + bad.length);
+  say('ARM A  zip families=' + zips.fams.size + '  not-on-disk-or-not-declared=' + bad.length
+      + '  stacks-naming-no-design-face=' + skippedStacks.length);
+  for (const s of skippedStacks) {
+    say('       skip ' + s.where + '  --font-* stack names only generic/OS faces: ' + s.stack.slice(0, 70));
+  }
   for (const b of bad) say('       RED ' + b.fam + ' onDisk=' + b.hasFile + ' declared=' + b.hasFace + '  <- ' + b.where);
   return bad.length === 0;
 }

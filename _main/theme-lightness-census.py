@@ -297,12 +297,99 @@ def registry():
     return out
 
 
+VICTIM = 'theme-1'
+INJECTED_SLAB = '#ffffff'
+
+
+def neg_arm(args):
+    """THE CONTROL: a COPY of the shipped tree with ONE theme made white.
+
+    It runs THIS FILE TWICE, as two processes: once on the shipped tree (which
+    must answer GREEN) and once on the copy (which must answer RED). Two
+    processes, not two calls, because a control that shares the process that
+    produced the green is a control that can inherit its state -- and the whole
+    claim here is that the gate can tell the two trees apart.
+
+    The injection is the theme's OWN slab token, replaced inside its own
+    `:root[data-theme='<VICTIM>']` block: that is the token
+    `painted_background()` falls back to for the base layer, so the copy
+    genuinely composites white instead of being asserted to.
+    """
+    import shutil
+    import subprocess
+
+    scratch = os.path.join(os.environ.get('TMPDIR') or os.environ.get('TEMP')
+                           or os.path.dirname(os.path.abspath(__file__)),
+                           'lightness-neg')
+    shutil.rmtree(scratch, ignore_errors=True)
+    os.makedirs(os.path.join(scratch, 'themes'))
+    for n in os.listdir(THEMES):
+        src = os.path.join(THEMES, n)
+        dst = os.path.join(scratch, 'themes', n)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+
+    victim = os.path.join(scratch, 'themes', 'theme-1.css')
+    with io.open(victim, encoding='utf-8', newline='') as fh:
+        text = fh.read()
+    m = re.search(r"(:root\[data-theme='%s'\]\s*\{)(.*?)(\})" % VICTIM, text, re.S)
+    if m is None:
+        print('NEG-ARM: the %s token block was not found -- CONTROL IS DEAD' % VICTIM)
+        return 1
+    before = re.search(r'--bg-slab\s*:\s*([^;]+);', m.group(2))
+    body = re.sub(r'--bg-slab\s*:\s*[^;]+;',
+                  '--bg-slab: %s;' % INJECTED_SLAB, m.group(2), count=1)
+    if before is None or body == m.group(2):
+        print('NEG-ARM: --bg-slab not replaced in %s -- CONTROL IS DEAD' % VICTIM)
+        return 1
+    with io.open(victim, 'w', encoding='utf-8', newline='') as fh:
+        fh.write(text[:m.start(2)] + body + text[m.end(2):])
+    print('NEG-ARM injected: %s --bg-slab %s -> %s  (%s)'
+          % (VICTIM, before.group(1).strip(), INJECTED_SLAB, victim))
+
+    me = os.path.abspath(__file__)
+    live = subprocess.run([sys.executable, me, '--gate'], capture_output=True)
+    mut = subprocess.run([sys.executable, me, '--gate', '--panel', scratch],
+                         capture_output=True)
+    green = live.returncode == 0
+    red = mut.returncode != 0
+    print('NEG-ARM shipped tree : rc=%d %s'
+          % (live.returncode, 'GREEN' if green else 'RED -- the shipped tree is already light'))
+    print('NEG-ARM injected copy: rc=%d %s'
+          % (mut.returncode, 'RED as required' if red else 'STILL GREEN -- the gate cannot say no'))
+    for line in mut.stdout.decode('utf-8', 'replace').splitlines():
+        if 'GATE:' in line or 'LIGHT (' in line:
+            print('        ' + line.strip())
+    print('VERDICT: ' + ('PASS' if (green and red) else 'FAIL')
+          + '  (control GREEN=%s, injected RED=%s)' % (green, red))
+    return 0 if (green and red) else 1
+
+
 def main():
+    # The declaration comes FIRST: `--panel`'s own default reads PANEL, and a
+    # `global` after that read is a SyntaxError, which py_compile caught.
+    global PANEL, THEMES
     ap = argparse.ArgumentParser()
     ap.add_argument('--light', action='store_true', help='the light themes only')
     ap.add_argument('--gate', action='store_true',
                     help='rc=1 when ANY theme measures light (the gate form)')
+    # MEASURE A COPY. The census hard-coded the shipped tree, so it could only
+    # ever say GREEN -- a gate with no way to point it at a mutant is a gate that
+    # cannot be shown to say NO. See --neg-arm below.
+    ap.add_argument('--panel', default=PANEL,
+                    help='the panel directory to measure (default: the shipped one)')
+    ap.add_argument('--neg-arm', action='store_true',
+                    help='inject a LIGHT theme into a COPY; the gate must go RED')
     args = ap.parse_args()
+
+    if os.path.abspath(args.panel) != os.path.abspath(PANEL):
+        PANEL = os.path.abspath(args.panel)
+        THEMES = os.path.join(PANEL, 'themes')
+
+    if args.neg_arm:
+        return neg_arm(args)
 
     rows = []
     for (name, label, css_file) in registry():

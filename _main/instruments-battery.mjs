@@ -103,7 +103,18 @@ const py = [
   ['_main/csp-inline-oracle.py', 'CSP: no inline scripts'],
   ['_main/csp-inline-oracle.py --neg-arm', 'CSP inline neg'],
   ['_main/cobertura-oracle.py', 'cobertura: 34 areas'],
+  ['_main/surface-loop-oracle.py', 'surface loop guard (JS<->Python)'],
+  ['_main/hotkey-cycle-oracle.py', 'hotkey cycle strip->side->hide'],
   ['_main/preflight-refusal-visible-oracle.py', 'preflight refusal visible (G5)'],
+  // A ULTIMA LACUNA (LANE B, 2026-10-15). O gate do painel escondido no arranque vive
+  // no shell, e o oraculo JA EXISTIA -- estava de fora porque uma nota anterior o
+  // descrevia como "escreve e corre copias do shell". MEDIDO por mim antes de o
+  // registar: e HEADLESS BY CONSTRUCTION (nenhuma janela, nenhum WebView2), escreve os
+  // mutantes num TemporaryDirectory e importa-os; a prova e um census meu a volta da
+  // corrida -- visible_windows=11 antes e 11 depois, python_procs=15 antes e 15 depois.
+  // 144 decisoes de visibilidade, 4 mutantes (3 'caught' + 1 'immune' de controlo),
+  // ORACLE GREEN failures=0, rc=0, 1.4 s.
+  ['_main/panel-hidden-at-startup-oracle.py', 'panel hide gate at startup (headless, 4 mutants)'],
   ['_main/log-rotation-oracle.py', 'log rotation (cap 64 MB)'],
   ['_main/queue-drops-whitelist-oracle.py', 'queue_drops whitelist'],
   ['_main/second-pass-default-oracle.py', 'second pass is opt-in'],
@@ -113,6 +124,39 @@ const py = [
   ['_main/cinematic-designs-oracle.py', 'cinematic designs fidelity'],
   ['_main/zipc-designs-oracle.py', 'zipc designs fidelity'],
   ['_main/caption-lines-oracle.py', 'caption lines fidelity'],
+  // ── LANE C: the themes + hotkey gaps. Each area gets BOTH colours: the live
+  // row and the row that proves the instrument can say NO.
+  ['_main/hotkey-cycle-oracle.py', 'Alt+C cycle strip->side->hide'],
+  ['_main/hotkey-cycle-oracle.py --neg-arm', 'Alt+C cycle neg (3 mutants)'],
+  ['_main/panel-chrome-gate.py', 'panel chrome: footer labels, no browser'],
+  ['_main/panel-chrome-gate.py --neg-arm', 'panel chrome neg (3 mutants)'],
+  ['_main/theme-lightness-census.py --neg-arm', 'no white theme: neg (white injected)'],
+  ['_main/cine-themes-oracle.py --neg-arm', 'cine themes neg (8 mutants)'],
+  ['_main/cinematic-designs-oracle.py --neg-arm', 'cinematic designs neg (6)'],
+  ['_main/zipc-designs-oracle.py --neg-arm', 'zipc designs neg (6)'],
+  // ── LANE B: SHELL / LOG / WORKER (2026-10-15). As linhas verdes de B2/B4/B5/B6
+  // ja estao acima (log-rotation, emit-queue-bound, queue-drops, second-pass) e passam
+  // a correr os instrumentos ja com a forma de gate; o que falta aqui e o BRACO
+  // NEGATIVO de cada uma -- um oraculo que nao sabe dizer NAO nao distingue a cura da
+  // ausencia de teste (F2) -- mais as duas areas que nao tinham linha nenhuma (B1 e B3).
+  //
+  // B1 e o unico que invoca o run.cmd. Os bracos `start` deste oraculo ARRANCAM a app e
+  // os G1..G4 arrancam copias dela, por isso o que corre aqui e
+  // `--arms bogus,help --no-gaps`: o pre-flight recusa o --bogus-flag e o --help e
+  // respondido pelo argparse -- nada chega ao caminho de lancamento. A prova e do
+  // proprio oraculo, que a imprime: `leftovers=[]` e o census com 0 amostras visiveis.
+  ['_main/run-cmd-exit-oracle.py --arms bogus,help --no-gaps', 'run-cmd exit: pre-flight arms (launch-free)'],
+  ['_main/run-cmd-exit-oracle.py --arms bogus,help --no-gaps --neg-arm', 'run-cmd exit neg: pre-fix wrapper, arm1 RED'],
+  // O DEFEITO DO rc 120 TEM O SEU PROPRIO CONTROLO: o pre-fix acima nao pode ser o
+  // controlo desta cura (nao tem pre-flight nenhum), por isso `--temp-arm` restaura o
+  // alvo %TEMP% numa copia e exige RED. E estatico: nao arranca um unico processo.
+  ['_main/run-cmd-exit-oracle.py --temp-arm', 'run-cmd temp-arm: rc 120 defect restored -> RED'],
+  ['_main/log-flood-census.py --gate', 'log flood census gate: 4 events / 97 %'],
+  ['_main/log-flood-census.py --neg-arm', 'log flood census neg: synthetic flood must be RED'],
+  ['_main/log-rotation-oracle.py --neg-arm', 'log rotation neg: trigger removed in a copy'],
+  ['_main/emit-queue-bound-oracle.py --neg-arm', 'emit queue bound neg: guard removed'],
+  ['_main/queue-drops-whitelist-oracle.py --neg-arm', 'queue_drops neg: field filtered out again'],
+  ['_main/second-pass-default-oracle.py --neg-arm', 'second pass neg: default flipped to ON'],
 ];
 
 const node = [
@@ -136,6 +180,11 @@ const node = [
   ['_main/panel-state-guard-gate.js', 'panel state guard'],
   ['_main/botoes-lane-oracle.js', 'botoes lane oracle'],
   ['_main/botoes-lane-gesture-oracle.js', 'botoes lane gesture'],
+  // ── LANE C, the JS half of the same two gaps.
+  ['_main/theme-switch-oracle.js', 'theme switching: ONE attribute write'],
+  ['_main/theme-switch-oracle.js --neg-arm', 'theme switching neg (3 mutants)'],
+  ['_main/fonts-fidelity-oracle.mjs', 'fonts fidelity (the .zip faces)'],
+  ['_main/fonts-fidelity-oracle.mjs --neg-arm', 'fonts fidelity neg (face deleted)'],
 ];
 
 const run = (cmd, args, label) => {
