@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-caption-window="1">
+<head>
+<meta charset="utf-8">
+<title>Sotto caption</title>
+<!-- THE CAPTION OWN WINDOW. Owner, 2026-10-15: "a porra da legenda, e pra ser
+     independente do painel, nao acoplado" and "essa legenda ao vivo deveria aparecer
+     no MEIO EM BAIXO da minha tela, igual eu ja falei DEZENAS DE VEZES". His original
+     intent [860]: "the live subtitles in the BOTTOM AND MIDDLE of the screen".
+
+     WHY THIS FILE EXISTS: the caption used to live in the SAME window as the control
+     bar, stacked under it (panel.css: "The two overlays share one window, so they are
+     STACKED"). A shared window cannot rest the caption on the BOTTOM of the SCREEN
+     while a bar sits at the top of the same box -- and that is why his print showed
+     the panel AND the caption together, the "duas coisa sobrepostas" he described.
+     This page is loaded by a SECOND pywebview window, so the bar and the caption are
+     two windows and neither can overlap the other.
+
+     NOTHING PAINTS BUT THE WORDS: no plate, no box, no border, no scrollbar. The
+     only body is the 4px bar the text leans on, which is the zip own "inst" design. -->
+<link rel="stylesheet" href="themes/fonts.css">
+<link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="caption-float.css">
+<link rel="stylesheet" href="zip-overlay.css">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent !important; overflow: hidden !important;
+    -webkit-user-select: none; user-select: none; }
+  .caption-float { position: fixed !important; inset: 0 !important; display: block !important; }
+  .caption-float__stage { position: absolute; left: 0; right: 0; bottom: 0;
+    margin: 0 auto !important; max-width: 900px !important; padding: 0 24px 10px !important; }
+  * { scrollbar-width: none !important; }
+  *::-webkit-scrollbar { display: none !important; width: 0 !important; }
+</style>
+</head>
+<body>
+  <div id="caption-float" class="caption-float" data-float="on" aria-hidden="false">
+    <div class="caption-float__stage">
+      <span class="caption-float__led" aria-hidden="true"></span>
+      <div class="caption-float__col">
+        <p class="caption-float__prev" id="caption-float-prev" aria-hidden="true"></p>
+        <p class="caption-float__line" id="caption-float-line"></p>
+        <div class="caption-float__meter" id="caption-float-meter" aria-hidden="true">
+          <span class="caption-float__meter-fill" id="caption-float-meter-fill"></span>
+        </div>
+        <p class="caption-float__credits" id="caption-float-credits" aria-hidden="true"></p>
+      </div>
+    </div>
+  </div>
+<script>
+(function () {
+  var line = document.getElementById('caption-float-line');
+  var prev = document.getElementById('caption-float-prev');
+  var credits = document.getElementById('caption-float-credits');
+  var led = document.querySelector('.caption-float__led');
+  window.SottoCaption = {
+    set: function (text, previous) {
+      var t = (text === null || text === undefined) ? '' : String(text);
+      if (line.textContent !== t) line.textContent = t;
+      var p = (previous === null || previous === undefined) ? '' : String(previous);
+      if (prev.textContent !== p) prev.textContent = p;
+      prev.hidden = (p === '');
+      line.classList.toggle('is-empty', t === '');
+    },
+    credits: function (text) {
+      var c = (text === null || text === undefined) ? '' : String(text);
+      if (credits.textContent !== c) credits.textContent = c;
+      credits.hidden = (c === '');
+    },
+    listening: function (on) {
+      if (!led) return;
+      led.classList.toggle('is-on', !!on);
+    }
+  };
+})();
+</script>
+</body>
+</html>

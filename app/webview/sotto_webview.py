@@ -61,6 +61,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 #: and they are the contract, not ours to change.
 PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'panel'))
 PANEL_HTML = os.path.join(PANEL_DIR, 'panel.html')
+#: A LEGENDA TEM PAGINA PROPRIA. Ver o cabecalho de `caption.html` -- a legenda era
+#: empilhada dentro da janela da barra, e uma janela partilhada nao consegue pousa-la no
+#: fundo da TELA. Esta pagina e carregada por uma SEGUNDA janela pywebview.
+CAPTION_HTML = os.path.join(PANEL_DIR, 'caption.html')
 #: An empty page the shell opens FIRST, so the preload is registered before the
 #: panel is ever parsed. See stage.html for why the ordering needs buying.
 STAGE_HTML = os.path.join(HERE, 'stage.html')
@@ -4180,6 +4184,54 @@ class SottoShell:
             **({} if self.args.opaque else {'background_color': '#0b0f14'}),
             text_select=False,
         )
+        # ══════════════════════════════════════════════════════════════════════════════
+        # A SEGUNDA JANELA: A LEGENDA. Owner, 2026-10-15, verbatim -- *"a porra da
+        # legenda, e pra ser independente do painel, nao acoplado"* e *"essa legenda ao
+        # vivo deveria aparecer no MEIO EM BAIXO da minha tela, igual eu ja falei DEZENAS
+        # DE VEZES nessa sessao"*. O pedido de origem, [860]: *"the live subtitles in the
+        # BOTTOM AND MIDDLE of the screen"*.
+        #
+        # PORQUE UMA JANELA E NAO CSS: a legenda vivia DENTRO desta janela, empilhada
+        # debaixo da barra (`panel.css`: "The two overlays share one window, so they are
+        # STACKED"). Um caixote partilhado nao consegue pousar a legenda no fundo da TELA
+        # e ao mesmo tempo ter a barra no topo dele -- e era por isso que o print do dono
+        # mostrava o painel E a legenda, o *"duas coisa sobrepostas"* que ele descreveu.
+        # Duas janelas nao se podem sobrepor uma a outra; o problema deixa de existir por
+        # construcao, nao por regra de CSS.
+        #
+        # ONDE: no fundo-centro do WORKAREA -- o retangulo que exclui a barra de tarefas,
+        # para ela nao ficar por baixo. Larga (ate 900) e baixa, porque o zip poe a
+        # legenda numa faixa larga por cima do video, nao numa coluna.
+        #
+        # SO A LEGENDA: `caption.html` e a pagina propria; nada do painel entra aqui.
+        # Sem fundo (transparent), sem moldura, sem scrollbar.
+        #
+        # ESCONDIDA A NASCENCA e mostrada pelo botao live. `on_top` para ficar por cima do
+        # que estiver em ecra; o `hidden=True` e o que impede o flash no arranque.
+        # ══════════════════════════════════════════════════════════════════════════════
+        wa = self.display.get('workArea') or self.display.get('bounds')
+        cap_w = max(360, min(900, int(wa['width']) - 80))
+        cap_h = 170
+        cap_x = int(wa['x']) + (int(wa['width']) - cap_w) // 2
+        cap_y = int(wa['y']) + int(wa['height']) - cap_h - 48
+        log('caption window created at %d,%d %dx%d (bottom-centre of the workArea)'
+            % (cap_x, cap_y, cap_w, cap_h))
+        self.caption_window = webview.create_window(
+            title='Sotto caption',
+            url=file_url(CAPTION_HTML),
+            width=cap_w,
+            height=cap_h,
+            x=cap_x,
+            y=cap_y,
+            frameless=True,
+            transparent=not self.args.opaque,
+            on_top=True,
+            resizable=False,
+            easy_drag=False,
+            hidden=True,
+            **({} if self.args.opaque else {'background_color': '#0b0f14'}),
+            text_select=False,
+        )
         # DO NOT clear `self.window.transparent` here. Tried 2026-10-06 and
         # MEASURED WRONG: pywebview's navigation `Show()` (edgechromium.py:347,
         # gated by `transparent`) is what makes a transparent WebView2 actually
@@ -6310,9 +6362,53 @@ class SottoShell:
             with self._revive_lock:
                 self._revive_thread = None
 
+    def push_caption_to_window(self, text, previous=None, credits=None):
+        """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
+        win = getattr(self, 'caption_window', None)
+        if win is None:
+            return False
+        # A JANELA APARECE QUANDO HA LEGENDA. O dono quer a legenda *"quando eu quero ou
+        # nao"*; uma legenda so chega enquanto o worker esta a ouvir, portanto a janela
+        # aparece com a primeira linha. O `show_caption_window(False)` no hide do painel
+        # fecha-a. Sem polling e sem estado duplicado.
+        if not getattr(self, '_caption_window_shown', False):
+            self.show_caption_window(True)
+        try:
+            win.evaluate_js('window.SottoCaption && window.SottoCaption.set(%s, %s)'
+                            % (json.dumps(text or ''), json.dumps(previous or '')))
+            if credits is not None:
+                win.evaluate_js('window.SottoCaption && window.SottoCaption.credits(%s)'
+                                % json.dumps(credits))
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WINDOW_PUSH_FAILED error={exc!r}')
+            return False
+
+    def show_caption_window(self, on):
+        """Mostra ou esconde a janela da legenda, e diz o estado a pagina."""
+        win = getattr(self, 'caption_window', None)
+        if win is None:
+            return False
+        try:
+            if on:
+                win.show()
+                self._caption_window_shown = True
+            else:
+                win.hide()
+            win.evaluate_js('window.SottoCaption && window.SottoCaption.listening(%s)'
+                            % ('true' if on else 'false'))
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WINDOW_SHOW_FAILED on={on} error={exc!r}')
+            return False
+
     def on_worker_caption(self, text, meta):
         self.emit('caption', {'text': text, 'meta': meta})
         log(f'BRIDGE_CAPTION_SENT delivered=true text={json.dumps(text)}')
+        # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
+        # deveria aparecer no MEIO EM BAIXO da minha tela"*. Uma janela propria e a unica
+        # forma de ela pousar no fundo da TELA sem a barra no topo do mesmo caixote.
+        self.push_caption_to_window(text)
         # A CLOSED line is the boundary a held reload waits for: the worker has
         # just committed a sentence, so restarting here does not cut the caption
         # the owner is reading. final is the worker's own word for a closed line.
