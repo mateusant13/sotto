@@ -81,47 +81,46 @@ def photo_luminance(name):
     return tuple(sum(c[k] for c in px) / n for k in range(3))
 
 
-def photo_themes(css):
+def _pass(css, wanted):
+    """ONE independent pass: theme -> the value of ONE token, over the WHOLE file.
+
+    THE SINGLE-PASS STATE MACHINE WAS THE BUG (round 3). It reset its accumulator on every
+    ':root[data-theme=X]{' header, so a theme whose scrim is declared in its own block and
+    whose photo arrives 20+ lines later -- after other themes' rules -- lost the pairing and
+    was reported as having no scrim at all, when the value was RIGHT THERE at line 152 of
+    its own block. Two passes over the whole file, joined at the end, cannot mis-attribute:
+    each token is collected with the theme it belongs to, wherever that theme next speaks.
+    """
     cur = None
-    scrim = None
-    photo = None
-    out = []
+    found = {}
     for line in css.split("\n"):
         m = re.match("^:root\\[data-theme='([^']+)'\\]\\{", line)
         if m:
-            if cur and photo:
-                out.append((cur, scrim, photo))
-            cur, scrim, photo = m.group(1), None, None
+            cur = m.group(1)
             continue
-        if cur is None:
+        if cur is None or cur in found:
             continue
-        if scrim is None:
+        if wanted == "scrim":
             s = re.search(r"--cine-scrim:\s*([^;]+);", line)
             if s:
-                scrim = parse_rgba(s.group(1))
-        if photo is None:
+                found[cur] = parse_rgba(s.group(1))
+        else:
             p = re.search(r"url\(backdrops/([^)]+)\)", line)
             if p:
-                photo = p.group(1).strip()
-    if cur and photo:
-        out.append((cur, scrim, photo))
-    return out
+                found[cur] = p.group(1).strip()
+    return found
 
 
-
-# LIMITATION MEASURED, NOT HIDDEN (round 3, 2026-10-15). This census reports ten themes as
-# having "no scrim" -- but reading cinematic.css BY HAND showed cine-midnight-rain DOES
-# carry `--cine-scrim: rgba(4,8,16,0.68)` at line 152 of its own block, and its `.panel`
-# rule composes `linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(...)`. So the
-# pair extraction in photo_themes() is losing that theme's scrim: the value is defined in
-# the `:root{}` block and the rule that USES it arrives 20+ lines later, after other themes
-# rules, and the single-pass state machine attributes it to the wrong block. The NUMBER is
-# reproducible (11 of 25 fail, rc=1) but the TEN "no scrim" rows are a MEASUREMENT ARTEFACT
-# of this parser until the extraction is rewritten as two independent passes -- one for
-# theme -> --cine-scrim over the whole file, one for theme -> url -- joined at the end.
-# The one row that is NOT an artefact and IS a real defect: cine-linen, scrim alpha 0.72
-# against the 0.75 floor, because its scrim was read from the same variable and is a
-# genuine alpha below the floor.
+def photo_themes(css):
+    """(theme, scrim_rgba, photo_name) for every theme that composes a photo on .panel."""
+    scrims = _pass(css, "scrim")
+    photos = _pass(css, "photo")
+    pairs = []
+    for theme, photo in photos.items():
+        if not theme.startswith("cine-"):
+            continue
+        pairs.append((theme, scrims.get(theme), photo))
+    return pairs
 
 
 def main():

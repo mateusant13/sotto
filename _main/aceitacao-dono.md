@@ -57,7 +57,7 @@ diz exactamente isso -- nunca "verificado".
 |---|---|---|---|
 | E1 | "por que a partir do rainline e uma MERDA os designs?" | -- | ABERTO |
 | E2 | "compara as prints das demos dos .zip com as prints do que ta implementado atual. eu nao gostei dos atuais. e pra imitar mais os .zip" | diff de pixeis | NAO EXISTE AINDA |
-| E3 | "pq tu copiou as coisas das demos q sao sem sentido? por que tem personagens falando em um dos designs replicados?" | photo-scrim-census.py | MEDIDO: 25 temas pintam fotografia; 10 sem scrim medido + 1 abaixo do floor (cine-linen 0.72). A correccao e no gerador |
+| E3 | "pq tu copiou as coisas das demos q sao sem sentido? por que tem personagens falando em um dos designs replicados?" | photo-scrim-census.py | MEDIDO: 25 temas; 11 com scrim 0.62-0.72 (28-38 por cento da foto a mostrar) vs 14 com 0.82-0.93. Contraste alto em TODOS: o defeito e a foto que nao recua |
 | E4 | "tu ta simplesmente botando de forma burra alguns designs por cima do painel e ai fica duas coisa sobrepostas que nao fazem sentido como se fosse um glitch, em diversos designs" | photo-scrim-census.py | MEDIDO: uma fotografia SEM scrim e uma foto crua a competir com a legenda. 10 temas assim |
 
 ## F. O PROCESSO QUE EXIGISTE
