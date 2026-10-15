@@ -6436,14 +6436,34 @@ class SottoShell:
         if form is None:
             log('CAPTION_LOADED_FORM_MISSING')
             return
+        # E TEM DE SER COM `Invoke`, MEDIDO NA SONDA: o evento `loaded` NAO corre na
+        # thread da UI, e tocar no controlador de la falha com
+        #
+        #     CoreWebView2Controller members can only be accessed from the UI thread.
+        #
+        # Portanto a combinacao certa sao as DUAS metades, e nenhuma chega sozinha:
+        #   * `loaded` -- porque o `before_show` corre antes de o controlador existir e
+        #                 ali a propriedade fica sem efeito;
+        #   * `Invoke` -- porque o `loaded` chega numa thread que nao pode tocar-lhe.
+        # O `Invoke` que ja vive no `before_show` fica, mas e INUTIL: corre cedo demais
+        # para valer. **Este e que faz o trabalho.**
         try:
+            from System import Action
             from System.Drawing import Color
-            wv = getattr(form, 'webview', None)
-            if wv is None:
-                log('CAPTION_LOADED_WEBVIEW_MISSING')
-                return
-            wv.DefaultBackgroundColor = Color.Transparent
-            log('CAPTION_WEBVIEW2_BGC set=transparent at=loaded reason=controller-exists')
+
+            def _apply_bgc():
+                try:
+                    wv = getattr(form, 'webview', None)
+                    if wv is None:
+                        log('CAPTION_LOADED_WEBVIEW_MISSING')
+                        return
+                    wv.DefaultBackgroundColor = Color.Transparent
+                    log('CAPTION_WEBVIEW2_BGC set=transparent at=loaded-invoke '
+                        'reason=controller-exists-and-ui-thread')
+                except Exception as exc2:  # noqa: BLE001
+                    log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded-invoke error={exc2!r}')
+
+            form.Invoke(Action(_apply_bgc))
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded error={exc!r}')
 

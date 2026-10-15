@@ -147,6 +147,44 @@ def before_show():
 
 
 win.events.before_show += before_show
+
+
+def on_loaded():
+    """A TRANSPARENCIA DO WEBVIEW2, NO `loaded` -- o MESMO evento que o shell usa agora.
+    No `before_show` o controlador ainda NAO existe (EnsureCoreWebView2Async foi chamado
+    e nao completou) e a propriedade fica sem efeito. Medido na app a correr: as duas curas
+    dispararam e a caixa cinzenta ficou. Este e o evento certo."""
+    form = getattr(win, "native", None)
+    if form is None:
+        print("LOADED sem form", flush=True)
+        return
+    try:
+        from System.Drawing import Color as _C
+        wv = getattr(form, "webview", None)
+        if wv is None:
+            print("LOADED sem webview", flush=True)
+            return
+        # COM `Invoke`: o evento `loaded` nao corre na thread da UI, e tocar no
+        # controlador de la falha com "members can only be accessed from the UI thread".
+        from System import Action
+
+        def _apply():
+            try:
+                wv = getattr(form, "webview", None)
+                if wv is None:
+                    print("LOADED sem webview", flush=True)
+                    return
+                wv.DefaultBackgroundColor = _C.Transparent
+                print("LOADED_INVOKE_BGC set=transparent", flush=True)
+            except Exception as exc2:
+                print("LOADED_INVOKE_FAILED %r" % (exc2,), flush=True)
+
+        form.Invoke(Action(_apply))
+    except Exception as exc:
+        print("LOADED_BGC_FAILED %r" % (exc,), flush=True)
+
+
+win.events.loaded += on_loaded
 threading.Thread(target=drive, daemon=True).start()
 webview.start()
 print("saiu", flush=True)
