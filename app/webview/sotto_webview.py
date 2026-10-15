@@ -6408,6 +6408,29 @@ class SottoShell:
                 form.BackColor = magenta
                 form.TransparencyKey = magenta
                 log('CAPTION_FORM_TRANSPARENCYKEY set=magenta reason=overlay-not-a-slab')
+                # E O WEBVIEW2, NA THREAD DA UI. MEDIDO NUMA SONDA: com a form ja a
+                # magenta, o que sobra e um retangulo ESCURO do tamanho da janela -- e
+                # esse retangulo e o CONTROLO WebView2, que pinta o proprio fundo. Posto
+                # no `before_show` ele nao pega; posto de outro thread falha com
+                # `CoreWebView2Controller members can only be accessed from the UI
+                # thread`. `form.Invoke` e a marshala para a thread da UI, e foi a unica
+                # forma que respondeu (medido: `INVOKE_WEBVIEW2_BGC set=transparent`).
+                try:
+                    from System import Action
+
+                    def _kill_wv_bg():
+                        try:
+                            wv = getattr(form, 'webview', None)
+                            if wv is not None:
+                                from System.Drawing import Color as _C
+                                wv.DefaultBackgroundColor = _C.Transparent
+                                log('CAPTION_WEBVIEW2_BGC set=transparent')
+                        except Exception as exc2:  # noqa: BLE001
+                            log(f'CAPTION_WEBVIEW2_BGC_FAILED error={exc2!r}')
+
+                    form.Invoke(Action(_kill_wv_bg))
+                except Exception as exc3:  # noqa: BLE001
+                    log(f'CAPTION_WEBVIEW2_INVOKE_FAILED error={exc3!r}')
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_FORM_TRANSPARENCY_FAILED error={exc!r}')
 

@@ -111,6 +111,22 @@ def before_show():
         MAGENTA = Color.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
         form.BackColor = MAGENTA
         form.TransparencyKey = MAGENTA
+        # E O WEBVIEW2, NA THREAD DA UI, DEPOIS DE O CONTROLADOR EXISTIR. Medido: o
+        # `DefaultBackgroundColor` posto no `before_show` nao chega, e posto de um thread
+        # qualquer falha com "can only be accessed from the UI thread". `form.Invoke`
+        # marshala para a thread da UI. O controlo e `form.webview`.
+        from System import Action
+        def _kill_wv_bg():
+            try:
+                wv = getattr(form, "webview", None)
+                if wv is None:
+                    print("INVOKE sem controlo", flush=True)
+                    return
+                wv.DefaultBackgroundColor = Color.Transparent
+                print("INVOKE_WEBVIEW2_BGC set=transparent", flush=True)
+            except Exception as exc:
+                print("INVOKE_WEBVIEW2_BGC_FAILED %r" % (exc,), flush=True)
+        form.Invoke(Action(_kill_wv_bg))
         print("FORM_TRANSPARENCYKEY set=magenta", flush=True)
         # E O PROPRIO WEBVIEW2. O `DefaultBackgroundColor` do controlo e BRANCO por
         # omissao; e ele que pinta a caixa clara em todo o pixel que a pagina nao cobre,
