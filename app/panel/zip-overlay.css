@@ -101,8 +101,15 @@ body[data-surface="strip"] .stripbar__state.is-live .stripbar__dot {
  * 380x900 -- it is then the CAPTION OVERLAY, and the owner point 2 says it must have NO
  * background at all. An unscoped light slab filled all 900 px and the overlay vanished into a
  * blank plate. The bar is light; the overlay is transparent. */
+/* NO LIGHT SLAB -- THE OWNER SAID WHITE, AND #eceff2 IS WHITE. This rule painted a
+ * light-grey plate across the bottom bar, and the owner reported it: *"a porra do
+ * primeiro painel ta branco"*. The body already carries the dark base
+ * (panel.css `body { background: rgba(11, 15, 20, 0.98) }`), and its own comment
+ * explains why: body carries the SAME dark base UNDERNEATH so a theme rule that
+ * overrides `.panel` can never leave the window white. So the plate was not needed,
+ * and it was the white the owner was looking at. The dark base is the protection. */
 body[data-surface="strip"]:not([data-float="on"]) .panel {
-  background: #eceff2 !important;
+  background: rgba(11, 15, 20, 0.98) !important;
 }
 
 /* The children carry their OWN light colours, so the slab alone is not enough -- this is the

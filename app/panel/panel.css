@@ -409,10 +409,7 @@ body {
      botoes simples e pequenos porem visiveis o suficiente pro usuario."* The box does
      not move; only its EDGE and its FILL do, and both are numbers this file already
      used, measured on the live panel:
-       * `border: 1px solid transparent` -> `rgba(148, 163, 184, 0.34)`. MEASURED
-         BEFORE: the control had NO edge at all — 1.0:1 against the slab, a glyph
-         floating with no box, in every theme that does not restyle this class (the
-         30 `cine-*` and `zipc-*` ones; `gen_themes.py` SKIN restyles it for the ten
+       * `border: 1px solid transparent` -> `rgba(148,163,184,0.34)` WAS A MISTAKE
          `theme-N`/`pd-*` directions). AFTER: 1.89:1 on the dark slab, 1.15-1.28:1 on
          the six light ones — the census is in
          `_main/receipt-20261014-ui-fixes.md`. It is a hairline, not a frame: 0.34 is
@@ -428,9 +425,9 @@ body {
      (`panel.css`, the `.panel__header` comment), and the glyph stays 16 px. */
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.34);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: rgba(148, 163, 184, 0.12);
+  background: rgba(148, 163, 184, 0.20);
   color: var(--text-dim);
   cursor: pointer;
   transition:
