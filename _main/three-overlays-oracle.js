@@ -342,7 +342,7 @@ const muts = [
      without a mutant that puts the button back, that gate could not tell the two
      apart and would pass just as well with the control restored. */
   { tag: 'N11 the transcript button comes back (the owner removed it)', file: 'panel.html',
-    from: '<span\r\n            class="history__label"',
+    from: '<button\r\n            type="button"\r\n            class="history__path"',
     to: '<button type="button" class="history__toggle" id="history-toggle" aria-expanded="false" aria-controls="history-body" title="Expand the transcript">\r\n            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>\r\n          </button>\r\n          <span\r\n            class="history__label"' },
 ];
 
