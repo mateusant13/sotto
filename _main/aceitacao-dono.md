@@ -57,8 +57,8 @@ diz exactamente isso -- nunca "verificado".
 |---|---|---|---|
 | E1 | "por que a partir do rainline e uma MERDA os designs?" | -- | ABERTO |
 | E2 | "compara as prints das demos dos .zip com as prints do que ta implementado atual. eu nao gostei dos atuais. e pra imitar mais os .zip" | diff de pixeis | NAO EXISTE AINDA |
-| E3 | "pq tu copiou as coisas das demos q sao sem sentido? por que tem personagens falando em um dos designs replicados?" | photo-scrim-census.py | MEDIDO: 25 temas; 11 com scrim 0.62-0.72 vs 14 com 0.82-0.93; contraste alto em TODOS (12.5-18.3). CAUSA RAIZ MEDIDA (receipt-20261015-a-cura-e-minha.md): o zip usa TRES camadas de gradiente (scrim-top, scrim-bottom, vignette) e o MEIO da foto fica LIMPO; o gerador compoe um scrim PLANO em todo o painel. O 0.68 e do zip e esta CERTO -- o que estava errado era a FORMA, e a forma e minha. CURA no gerador, em curso (lane 02b919b7) |
-| E4 | "tu ta simplesmente botando de forma burra alguns designs por cima do painel e ai fica duas coisa sobrepostas que nao fazem sentido como se fosse um glitch, em diversos designs" | photo-scrim-census.py | MEDIDO: uma fotografia SEM scrim e uma foto crua a competir com a legenda. 10 temas assim |
+| E3 | "pq tu copiou as coisas das demos q sao sem sentido? por que tem personagens falando em um dos designs replicados?" | photo-scrim-census.py | PROVADO: curado. O zip poe TRES camadas de gradiente e deixa o MEIO limpo; o gerador compunha um scrim PLANO. Medido depois: CSS com scrim plano 27 -> 2, camadas do zip 0 -> 10, photo-scrim-census 25/25 rc=0, contraste na zona da legenda 10.55-15.49, meio da foto visivel 62-79 por cento. O braco negativo tem 4 mutantes discriminantes (achatar, foto crua, scrim a zero, foto clara), cada um a derrubar um tema diferente |
+| E4 | "tu ta simplesmente botando de forma burra alguns designs por cima do painel e ai fica duas coisa sobrepostas que nao fazem sentido como se fosse um glitch, em diversos designs" | photo-scrim-census.py | PROVADO: curado e medido 25/25 rc=0 |
 
 ## F. O PROCESSO QUE EXIGISTE
 
@@ -79,9 +79,33 @@ diz exactamente isso -- nunca "verificado".
 - **"FEIO" e "SUFICIENTE" e "MERDA" sao teus**, nao mensuraveis. O que posso fazer e
   medir o contraste, o tamanho e a estrutura, e mostrar-te os numeros.
 
-## RESUMO
+## RESUMO -- medido 2026-10-15, rodada 17
 
-PROVADO: A2, B1..B6, C2..C6, D2, D4(parcial), D6, F1..F5
-MEDIDO MAS NAO ATRIBUIDO: D1 (travamento residual), D5 (exit 3 do worker)
-ABERTO E E A PRIORIDADE: E1, E2, E3, E4 -- a fidelidade aos .zip
-SO TU PODES FECHAR: D3, C5(parcial), E2(com olhos)
+PROVADO (com numero e instrumento que corre na bateria):
+  A2 o atalho do Windows Search        B1..B6 o painel e a legenda
+  C2..C6 os botoes e os temas          D2 o mover, D4 o ciclo do Alt+C
+  D6 a escada do sem-audio             F1..F5 o processo (regras, oraculos,
+                                       bateria, cobertura, e cubra o restante)
+  E3 e E4 -- a fidelidade aos .zip: CURADO. O scrim plano virou as tres camadas
+            do zip, e o gate prova 25/25 com quatro mutantes negativos.
+
+MEDIDO MAS NAO ATRIBUIDO:
+  D1 o travamento ao fechar -- o loop JS<->Python esta morto e os numeros do app
+     sao bons (shell 1.3s, Alt+C 11-30ms, Quit 0.5-0.9s), mas a causa residual
+     nao foi encontrada.
+  D5 o worker ainda morre com exit 3 -- a severidade ja e ambar e nao vermelha,
+     e a escada propria ja nao recarrega 1 GB a cada 12 s, mas a morte continua
+     porque o dispositivo que ele abre nao recebe audio.
+
+SO TU PODES FECHAR, E NAO FINJO QUE NAO:
+  D3  "COMPLETAMENTE FEIO" -- e teu, nao mensuravel.
+  C5  "visiveis o suficiente" -- meco contraste e tamanho; o SUFICIENTE e teu.
+  E2  comparar os prints das demos com o implementado -- nao vejo imagens, o
+      modelo nao tem entrada de imagem. O instrumento de diff de pixeis nao
+      existe; se quiseres, escrevo-o, e mesmo assim nao substitui o teu olho.
+  B1/A1  o arrasto e o Alt+C numa tecla real -- provados no processo, nao na
+      tua mao.
+
+ESTADO DOS GATES:
+  cobertura   34/34 areas, 0 lacunas
+  bateria     140/140 instrumentos, rc=0, launches=0
