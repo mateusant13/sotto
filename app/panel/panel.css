@@ -166,7 +166,13 @@ body {
   grid-template-rows: auto auto minmax(140px, 1fr) auto;
   gap: 10px;
   padding: 14px 14px 10px;
-  border: 1px solid var(--line);
+  /* NO MOLDURA ON THE WINDOW. The owner, 2026-10-15, verbatim: *"em NENHUM design, eu quero
+     moldura"*. This drew a 1px frame around the ENTIRE panel -- and the themes re-coloured
+     it (`border-color: var(--line)`) in all 45 of them, so every design carried a rectangle
+     the zip demos do not have. MEASURED WITH EYES against zip-D-themes.png: the demo panel
+     edge IS the slab, with no drawn line around the window. The radius STAYS -- a rounded
+     corner is the shape of the slab, not a frame. */
+  border: 0;
   border-radius: var(--radius);
   background:
     radial-gradient(120% 80% at 100% 0%, rgba(167, 139, 250, 0.14) 0%, transparent 60%),
@@ -1076,16 +1082,40 @@ body[data-level="none"] .chrome__meter i {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(125, 211, 252, 0.28) transparent;
-  border: 1px solid var(--line-strong);
+  /* NO SCROLLBAR AND NO MOLDURA -- the owner, 2026-10-15, verbatim: *"em NENHUM design, eu
+     quero moldura, botao por cima da logo ou DIFERENTE na posicao em pixel de outro design"*
+     and *"e tambem nao quero q apareca a barra de scroll"*. MEASURED WITH EYES against the
+     zip demo (zip-D-themes.png, 1280x800): the demo paints NO rail and NO scrollbar -- its
+     transcript panel is a rounded slab whose edge IS the slab, not a drawn line. This rule
+     drew two of them: `border: 1px solid` plus an `inset box-shadow`, so every design
+     carried a frame I invented, and `scrollbar-width: thin` put a bar on the right.
+     `overflow-y: auto` STAYS -- the list must still scroll; only the BAR is hidden. */
+  scrollbar-width: none;
+  border: 0;
   border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, rgba(8, 11, 16, 0.72) 0%, rgba(8, 11, 16, 0.3) 100%);
-  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.05);
+  /* THE LIGHT WAS UPSIDE DOWN, AND A MEASUREMENT CAUGHT IT. The zip
+     (zips/cinematic/src/index.css:90-98) dims the BOTTOM -- `.scrim-bottom` runs
+     `to top, var(--scrim) 0%, transparent 100%` -- because the bottom is where the
+     caption lives and the words are what must win. This rule did the opposite:
+     `180deg, rgba(...,0.72) 0%, rgba(...,0.3) 100%` is DARK at the top and LIGHT at the
+     bottom. MEASURED 2026-10-15 by _main/zip-fidelity-by-numbers.py against the zip
+     demo: demo thirds top=0.144 mid=0.162 bot=0.084 against shot top=0.108 mid=0.091
+     bot=0.140 -- the shipped profile is the demo mirrored, and the caption zone is the
+     BRIGHTEST part of the frame instead of the darkest. Inverting the stops puts the
+     weight back where the design put it. The 0.72 at the bottom is the demo own
+     strength, kept; only the direction changes. */
+  background: linear-gradient(0deg, rgba(8, 11, 16, 0.72) 0%, rgba(8, 11, 16, 0.3) 100%);
+  box-shadow: none;
 }
 
 .captions__body::-webkit-scrollbar {
-  width: 3px;
+  /* HIDDEN, NOT ABSENT. The owner: *"e tambem nao quero q apareca a barra de scroll"*.
+     WebView2 is Chromium, so THIS is the rule that paints the bar the demo does not have;
+     `scrollbar-width: none` above is the standard property and is not what draws here. The
+     list still scrolls -- `overflow-y: auto` is untouched -- and the wheel/keyboard still
+     reach it. `display: none` and not `width: 0`: a zero-width bar still reserves a gutter
+     on some engines, and a gutter is a moldura by another name. */
+  display: none;
 }
 
 .captions__body::-webkit-scrollbar-thumb {
@@ -3019,7 +3049,18 @@ body[data-surface="strip"][data-float="on"] .panel {
 }
 
 body[data-surface="strip"][data-float="on"] .caption-float {
-  top: 34px;
+  /* BOTTOM-ANCHORED, NOT "BELOW THE BAR". The owner, 2026-10-15, verbatim: *"essa
+     legenda ao vivo deveria aparecer no MEIO EM BAIXO da minha tela, igual eu ja falei
+     DEZENAS DE VEZES nessa sessao"*. And his original intent, [860] of 2026-10-09:
+     *"INCLUDING the way the live subtitles in the bottom and middle of the screen"*.
+     This rule said `top: 34px`, which STRETCHED the overlay from just under the bar all
+     the way down -- so the caption was pinned to the TOP of a tall empty box instead of
+     sitting at the bottom of the screen. `bottom: 0` is already on the base rule and
+     `top: auto` lets the box size to its own content, so the caption now RESTS on the
+     bottom edge, which is what the zip demos do. The stage inside is already
+     `justify-content: center` + `margin: 0 auto`, so the card centres itself in whatever
+     width the window has. */
+  top: auto;
 }
 
 /* The stage is the zip's `flex max-w-[720px] items-stretch gap-4`: the bar and the

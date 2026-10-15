@@ -369,3 +369,44 @@ body[data-float="on"] .caption-float__credits {
   opacity: 0.55 !important;
   margin-top: 8px !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+ * AS QUATRO COISAS QUE O DONO MANDOU TIRAR DE TODOS OS DESIGNS (2026-10-15, verbatim):
+ *   *"em NENHUM design, eu quero moldura, botao por cima da logo ou DIFERENTE na
+ *   posicao em pixel de outro design"* e *"e tambem nao quero q apareca a barra de
+ *   scroll"*.
+ *
+ * PORQUE E QUE ISTO VIVE AQUI, E PORQUE `!important` E A FERRAMENTA HONESTA: os 45 temas
+ * sao gerados por TRES geradores diferentes e cada um re-desenha a moldura no seu proprio
+ * escopo (`border: 1px solid var(--line)` no `.captions__body`, `border-color` no
+ * `.panel`). Uma correccao dentro de um gerador deixa os outros dois. Esta folha e a
+ * ULTIMA que o documento carrega (panel.html:10), logo e o unico sitio onde UMA regra
+ * alcanca todos os designs de uma vez -- e isto e a REMOCAO de um padrao, nao a adicao
+ * de um, que e exactamente o que ele pediu (*"tira esse padrao de design de todos"*).
+ *
+ * O QUE NAO TOCA: o `border-radius` fica (um canto redondo e a FORMA da placa, nao uma
+ * moldura), os fundos ficam, e todas as cores e tipografia por design ficam. O rail que o
+ * ZIP desenha no `.captions__list` para Feed e Timeline tambem NAO e tocado -- esse e o
+ * spine do proprio design, lido do `PanelSetB.tsx:255`.
+ * ═══════════════════════════════════════════════════════════════════════════════════ */
+body .panel {
+  border: 0 !important;
+}
+
+body .panel .captions__body {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* A SCROLLBAR, NOS DOIS MOTORES. O WebView2 e Chromium, logo o `::-webkit-scrollbar` e o
+ * que realmente pinta; o `scrollbar-width` e a propriedade standard e NAO e o que desenha
+ * aqui. `display: none` e nao `width: 0`, porque uma barra de largura zero ainda reserva
+ * um gutter em alguns motores -- e um gutter e uma moldura com outro nome. A lista
+ * CONTINUA a rolar: o `overflow-y: auto` fica. */
+body .panel .captions__body {
+  scrollbar-width: none !important;
+}
+body .panel .captions__body::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
