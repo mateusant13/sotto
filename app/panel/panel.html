@@ -1022,11 +1022,14 @@
         Pausing unloads the live caption engine and the background transcript. RAM
         and CPU are given back, and nothing is transcribed until you resume.
       </p>
-      <p class="pause-dialog__honest" id="pause-dialog-honest">
-        Worth knowing: the background transcript is extremely light — it costs
-        almost nothing to leave running. Pausing is not necessary to keep the PC fast,
-        and resuming reloads the model and takes a few seconds.
-      </p>
+      <!-- REMOVIDO 2026-10-15. Era o paragrafo "Worth knowing: the background
+         transcript is extremely light -- it costs almost nothing to leave running.
+         Pausing is not necessary to keep the PC fast, and resuming reloads the model
+         and takes a few seconds." Ele fazia DUAS coisas ma: enchia o dialogo ate a altura
+         que obrigava o <dialog> a ganhar barra de scroll, e ARGUMENTAVA CONTRA ele proprio
+         -- um dialogo a dizer ao utilizador que nao precisa do botao que ele acabou de
+         carregar. O dono: *"jesus que coisa mais nojenta de feia"*. -->
+
       <p class="pause-dialog__shell" id="pause-dialog-shell" hidden></p>
       <div class="pause-dialog__buttons">
         <button type="button" class="dialog-button" id="pause-cancel-button">

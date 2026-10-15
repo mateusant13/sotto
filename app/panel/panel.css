@@ -2171,6 +2171,14 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
   font-family: var(--font);
   font-size: 13px;
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  /* SEM BARRA DE SCROLL, E NAO POR A ESCONDER. O dono, verbatim 2026-10-15, com o print
+   * deste dialogo na mao: *"e tambem nao quero q apareca a barra de scroll"* [50532] e
+   * *"jesus que coisa mais nojenta de feia"*. O <dialog> nao declarava `overflow`, portanto
+   * o valor do user-agent (`auto`) entrava e o conteudo -- que era mais alto do que a caixa --
+   * punha uma barra dentro do dialogo. `hidden` tira-a; e o texto de enchimento que fazia o
+   * conteudo passar da altura foi removido do markup, senao `hidden` so esconderia o corte. */
+  overflow: hidden;
+  scrollbar-width: none;
 }
 
 .pause-dialog::backdrop {
