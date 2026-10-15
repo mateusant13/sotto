@@ -1100,11 +1100,11 @@ SKIN = """
 }}
 
 /* ── section labels and the caption box chrome ───────────────────────────── */
-{S} .history__label{{
-  color: var(--text-muted);
-  letter-spacing: 0.14em;
-  font-size: var(--size-chrome);
-}}
+/* THE history__label RULE IS GONE. MEASURED 2026-10-15 by zipc-designs-oracle.py check I:
+   removing the span from panel.html left TEN rules in the generated CSS selecting a node
+   that no longer exists -- one per theme-N and one per pd-* direction. `397 selectors,
+   10 that match NO node`. A style for an element that is gone is not a style, it is debt,
+   and it is the same dead-rule class this repo measured before. */
 {S} .captions__hint{{ color: var(--text-muted); }}
 {S} .captions__body{{
   border-color: var(--line);

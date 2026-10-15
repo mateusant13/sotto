@@ -331,7 +331,7 @@ def legacy_theme_blocks(d):
     out.append((s + " .status__dot", [("background", d["muted"])]))
     out.append((s + " .status--live .status__dot", [("background", d["accent"])]))
     out.append((s + " .status__text", [("color", d["muted"])]))
-    out.append((s + " .history__label,\n" + s + " .history__note,\n" + s + " .history__count,\n" + s + " .history__source",
+    out.append((s + " .history__note,\n" + s + " .history__count,\n" + s + " .history__source",
                 [("color", d["muted"])]))
     out.append((s + " .history__path", [("color", d["text"])]))
     out.append((s + " .strip-button", [
@@ -588,7 +588,7 @@ def shared_chrome(d):
         (s + " .status__dot", [("background", "var(--text-muted)")]),
         (s + " .status--live .status__dot", [("background", "var(--accent)")]),
         (s + " .status__text", [("color", "var(--text-secondary)")]),
-        (s + " .history__label,\n" + s + " .history__note,\n" + s + " .history__count", [
+        (s + " .history__note,\n" + s + " .history__count", [
             ("color", "var(--text-muted)"),
         ]),
         (s + " .history__path", [

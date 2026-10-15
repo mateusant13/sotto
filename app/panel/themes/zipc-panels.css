@@ -179,7 +179,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='GlassCards'] .history__label,
 :root[data-theme='GlassCards'] .history__note,
 :root[data-theme='GlassCards'] .history__count {
   color: var(--text-muted);
@@ -423,7 +422,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Hairline'] .history__label,
 :root[data-theme='Hairline'] .history__note,
 :root[data-theme='Hairline'] .history__count {
   color: var(--text-muted);
@@ -674,7 +672,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Paper'] .history__label,
 :root[data-theme='Paper'] .history__note,
 :root[data-theme='Paper'] .history__count {
   color: var(--text-muted);
@@ -912,7 +909,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Quotes'] .history__label,
 :root[data-theme='Quotes'] .history__note,
 :root[data-theme='Quotes'] .history__count {
   color: var(--text-muted);
@@ -1146,7 +1142,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Ledger'] .history__label,
 :root[data-theme='Ledger'] .history__note,
 :root[data-theme='Ledger'] .history__count {
   color: var(--text-muted);
@@ -1395,7 +1390,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Feed'] .history__label,
 :root[data-theme='Feed'] .history__note,
 :root[data-theme='Feed'] .history__count {
   color: var(--text-muted);
@@ -1694,7 +1688,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Bubbles'] .history__label,
 :root[data-theme='Bubbles'] .history__note,
 :root[data-theme='Bubbles'] .history__count {
   color: var(--text-muted);
@@ -1935,7 +1928,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Timeline'] .history__label,
 :root[data-theme='Timeline'] .history__note,
 :root[data-theme='Timeline'] .history__count {
   color: var(--text-muted);
@@ -2175,7 +2167,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Chips'] .history__label,
 :root[data-theme='Chips'] .history__note,
 :root[data-theme='Chips'] .history__count {
   color: var(--text-muted);
@@ -2437,7 +2428,6 @@
   color: var(--text-secondary);
 }
 
-:root[data-theme='Gutter'] .history__label,
 :root[data-theme='Gutter'] .history__note,
 :root[data-theme='Gutter'] .history__count {
   color: var(--text-muted);
