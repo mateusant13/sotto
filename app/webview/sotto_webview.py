@@ -6626,6 +6626,27 @@ class SottoShell:
                 f'geometry={self.saved_geometry} click_through=true '
                 'noactivate=true')
         return True
+    def _drag_refused(self, why, x, y):
+        """DIZ PORQUE E QUE UM ARRASTO NAO SE MOVEU -- e nao o diz mil vezes por segundo.
+
+        O dono, 2026-10-15: *"a porra de arrastar a janela e completamente travado"*. Os
+        tres caminhos de recusa do `edit_drag_to` eram `return False` MUDOS: nenhum escrevia
+        no log, portanto "esta travado" nao deixava rasto nenhum para se ler. Um caminho que
+        falha em silencio e um caminho que nao se pode diagnosticar.
+
+        Rate-limited a UMA linha por segundo: isto corre a 20 amostras por segundo, e uma
+        linha por amostra afogaria o log que se quer ler. A primeira recusa escreve SEMPRE,
+        porque a primeira e a que explica o que se passou.
+        """
+        now = time.monotonic()
+        last = getattr(self, '_last_drag_refusal', None)
+        if last is not None and (now - last[1]) < 1.0 and why == last[0]:
+            return
+        self._last_drag_refusal = (why, now)
+        log(f'PANEL_EDIT_DRAG_REFUSED why={why} point=({int(x)},{int(y)}) '
+            f'edit_mode={str(self.edit_mode).lower()} '
+            f'moves={getattr(self, "edit_moves", 0)}')
+
     def edit_drag_to(self, x, y, persist=False):
         """One drag sample, applied at a LOW frequency (see the watcher).
 
@@ -6637,11 +6658,13 @@ class SottoShell:
         and the file write happens only when the drag ENDS.
         """
         if not self.edit_mode:
+            self._drag_refused('not-edit-mode', x, y)
             return False
         geometry = dict(self.geometry or {})
         width = int(geometry.get('width') or 0)
         height = int(geometry.get('height') or 0)
         if width <= 0 or height <= 0:
+            self._drag_refused('geometry-has-no-size w=%d h=%d' % (width, height), x, y)
             return False
         grab = self.edit_grab or (0, 0)
         work = self.work_area()
