@@ -21,7 +21,7 @@
 
 body[data-surface="strip"] #strip-state {
   /* order 99 is what parked it on the right; the zip has it leftmost. */
-  order: -1;
+  order: 99;
 }
 
 body[data-surface="strip"] .stripbar__state {
@@ -122,7 +122,7 @@ body[data-surface="strip"] #strip-state {
   color: #e8edf4 !important;
 }
 body[data-surface="strip"] .strip-button {
-  border: 1px solid rgba(232, 237, 244, 0.28) !important;
+  border: 1px solid rgba(232, 237, 244, 0.38) !important;
   border-radius: 3px;
   background: transparent !important;
 }
@@ -445,4 +445,45 @@ html[data-caption-window] body {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
+}
+
+/* ═══ AS CORRECCOES DO AUDIT DE UX -- medidas, cada uma com o numero que a justifica ═══
+ *
+ * F2 (ALTA) -- A PILULA DE ~800 px QUE EMPURRAVA A MARCA PARA FORA DO ECRA.
+ * Medido pelo audit a 1040x100 nos cinco temas: `#strip-state` com **803,48 / 795,09 /
+ * 800,59 / 799,66 / 799,97 px** de largura, e a marca `sotto` a x=**817,48** em vez de x=8.
+ * **Era isto a moldura vazia que o dono fotografou** -- uma caixa com borda, sem conteudo, a
+ * comer a barra inteira, com o nome da app empurrado para fora.
+ *
+ * A CAUSA sao DUAS regras que se somam: `#strip-state{order:-1}` logo acima (que a poe em
+ * primeiro) vezes `.stripbar__state{flex:1;justify-content:flex-end}` do `panel.css`. O
+ * `flex:1` estica-a; o `order:-1` poe-na a esquerda; e a borda faz o resto.
+ *
+ * **A cura e desfazer as duas:** a ordem volta para o fim (99) e ela deixa de esticar.
+ * A marca volta a x=8, que e onde o `panel.css` a poe. */
+body[data-surface="strip"] #strip-state {
+  order: 99;
+}
+body[data-surface="strip"] .stripbar__state {
+  flex: 0 0 auto;
+}
+
+/* F3 (MEDIA) -- O CONTORNO DE TODOS OS CONTROLES ESTAVA A 2,26:1.
+ * O limiar para elementos nao-textuais e 3:1, e a ordem do dono em [41856] e *"os botoes sao
+ * botoes simples e pequenos porem VISIVEIS O SUFICIENTE pro usuario"*. Medido nos quatro
+ * circulos de 26 px: fundo transparente + borda `rgba(232,237,244,0.28)` = 2,26:1.
+ * O preenchimento declarado no `panel.css` (rgba(148,163,184,0.16)) esta MORTO, porque a
+ * regra `background: transparent !important` logo acima o derruba.
+ * Borda a 0,38 = 3,19:1, acima do limiar. */
+body[data-surface="strip"] .strip-button {
+  border-color: rgba(232, 237, 244, 0.38) !important;
+}
+
+/* F5 (MEDIA) -- A LINHA DE 1 px QUE AINDA MOL DURAVA O TOPO.
+ * O dono, verbatim [50531]: *"em NENHUM design, eu quero moldura"*. O `border: 0` que eu pus
+ * tira a BORDA e nao toca no pseudo-elemento: o audit mediu `.panel::before` com
+ * `content='' display=block width=1040px height=1px` e um `linear-gradient` -- uma hairline
+ * de largura total no topo, que e uma moldura por outro nome. */
+body .panel::before {
+  content: none !important;
 }

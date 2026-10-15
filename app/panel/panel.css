@@ -2075,15 +2075,24 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="true"] .strip-button
   content: "live";
 }
 
-/* ── STATE ON: red, filled, loud. */
+/* ── STATE ON: GREEN, sempre. O dono, verbatim [32218]: *"o botao de mostrar a legenda
+ * ao vivo deve ser o live. e deve ser CLARO quando ta live e quando nao ta"*.
+ *
+ * ESTE BLOCO DIZIA "red, filled, loud" E PINTAVA O ESTADO LIVE DE VERMELHO -- enquanto o
+ * `zip-overlay.css` o pintava de VERDE. Duas decisoes opostas na mesma pilula, e o
+ * audit de UX mediu o resultado: fundo e borda verdes com a PALAVRA a `rgb(255,107,112)`.
+ * **Vermelho num indicador quer dizer ERRO, e "live" nao e um erro.**
+ *
+ * O pseudo-elemento `::after` e onde a palavra vive (`font-size: 0` no DOM, o texto vem
+ * do `content`), e e por isso que trocar so o fundo nao chegava. */
 body[data-surface="strip"] #strip-live-button[aria-pressed="true"] {
-  border-color: rgba(229, 72, 77, 0.85);
-  background: rgba(229, 72, 77, 0.22);
-  color: #ffd9da;
+  border-color: #37d67a;
+  background: rgba(55, 214, 122, 0.18);
+  color: #e8edf4;
 }
 body[data-surface="strip"] #strip-live-button[aria-pressed="true"] #strip-live-label::after,
 body[data-surface="strip"] #strip-live-button[aria-pressed="true"] svg {
-  color: #ff6b70;
+  color: #37d67a;
 }
 /* Hover must not undo the state: the generic `.strip-button:hover` paints a blue
    tint that would read as "live" on the OFF pill. */
