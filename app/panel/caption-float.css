@@ -93,6 +93,20 @@ body[data-float="on"] {
   backdrop-filter: none;
 }
 
+/* THE FORMING LINE CLIPS AT THE OVERLAY, NOT AT THE WINDOW. MEASURED WITH EYES
+   2026-10-15 on a fresh shot: the live line ran past the right edge and the words
+   were cut by the WINDOW silhouette instead of by the overlay own box -- so a
+   reader sees a sentence that simply stops, with no rail or radius to say where
+   the text ends. `overflow-wrap: anywhere` alone does not do it: it breaks a long
+   WORD, and a long SENTENCE of ordinary words still lays out wider than the box
+   until something constrains it. This is that constraint, on the element that
+   actually holds the line. */
+#caption-float .caption-float__line {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+
 /* THE METER WAS THE OTHER PLATE. panel.css:2911 gave .caption-float__meter a
    translucent white plate (rgba(255, 255, 255, 0.16)) and :2926 gave its fill the
    accent gradient — two descendants painting colour behind the words. The owner's
