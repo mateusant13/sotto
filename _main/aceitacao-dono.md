@@ -49,7 +49,7 @@ diz exactamente isso -- nunca "verificado".
 | D4 | "alt c nao aperta direito em diversos caso. arruma agora." | hotkey-cycle-oracle | PROVADO: M1 reproduz o defeito (6 teclas, 0 hide) |
 | D5 | "sotto ta reclamando de coisa nao carregada, com erro vermelho. arruma." | panel-exit3-oracle + churn no log | MEDIDO: a severidade e ambar e o worker JA NAO MORRE -- 0 BRIDGE_DEATH em 4000 linhas, com legendas a sair |
 | D6 | "nao e pra escolher um ou outro. esse programa vai ser usado por milhares de pessoas. entao faz direito." | panel-exit3-oracle (as duas escadas) | PROVADO: no-audio tem contador e escada proprios |
-| D7 | "designs bugados" | panel-chrome-marks-oracle | PROVADO: regra .panel duplicada e scrim plano fora |
+| D7 | "designs bugados" | zip-fidelity-by-numbers | DUAS RETRACCOES minhas registadas (bloco negro tem limite 200; o overflow era quebra de linha) e um defeito REAL medido e curado |
 
 ## E. FIDELIDADE AOS .ZIP -- O DEFEITO ABERTO
 
@@ -79,7 +79,7 @@ diz exactamente isso -- nunca "verificado".
 - **"FEIO" e "SUFICIENTE" e "MERDA" sao teus**, nao mensuraveis. O que posso fazer e
   medir o contraste, o tamanho e a estrutura, e mostrar-te os numeros.
 
-## RESUMO -- medido 2026-10-15, rodada 17
+## RESUMO -- medido 2026-10-15, rodada 13 do goal da visao
 
 PROVADO (com numero e instrumento que corre na bateria):
   A2 o atalho do Windows Search        B1..B6 o painel e a legenda
