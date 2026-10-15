@@ -807,16 +807,37 @@ def theme_css(d, toks, backdrop_note):
     a('')
 
     # ── the backdrop ─────────────────────────────────────────────────────────────
-    a('/* THE BACKDROP: the zip\'s own wallpaper behind the zip\'s own scrim. The scrim')
-    a(' * is what the design puts between the photograph and the type, and it is the')
-    a(' * reason the caption stays readable over a bright frame. */')
+    # THE ZIP'S OWN THREE READING SCRIMS, not a flat one. Copied VERBATIM out of
+    # `zips/cinematic/src/index.css:90-98` — scrim-top, scrim-bottom (the layer that
+    # carries THIS design's own `--cine-scrim`, as the zip carries each theme's
+    # `--scrim`) and the vignette — in the zip's own order and with the zip's own
+    # stops, with the photograph LAST as the base, exactly as `Backdrop.tsx:35-37`
+    # stacks them over the wallpaper.
+    # WHY NOT A FLAT SCRIM, and the cost of having shipped one: a single
+    # `linear-gradient(var(--cine-scrim), var(--cine-scrim))` over the whole panel
+    # washes the photograph out EVERYWHERE — the frame neither reads as a scene nor
+    # recedes behind the caption, which is what the owner meant by *"duas coisas
+    # sobrepostas ... como se fosse um glitch"* (E4) and *"por que tem personagens
+    # falando em um dos designs replicados?"* (E3). These three layers leave the
+    # MIDDLE of the frame showing and darken the bottom third, where the caption
+    # reads — measured, per theme, by `_main/photo-scrim-census.py`, which now
+    # composites the CAPTION ZONE instead of reading a flat alpha.
+    a('/* THE BACKDROP: the zip\'s own wallpaper under the zip\'s own THREE reading')
+    a(' * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom')
+    a(' * (the one carrying this design\'s own `--cine-scrim`) and the vignette — in')
+    a(' * the zip\'s own order and stops, photograph LAST, as `Backdrop.tsx:35-37`')
+    a(' * stacks them. The middle of the frame stays SHOWING and the caption zone is')
+    a(' * the dark one; a flat scrim washed the photograph out everywhere. */')
     a('%s .panel {' % S)
     a('  background-color: var(--bg-slab);')
     if toks.get('__photo'):
-        a('  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),')
-        a('                    url(%s);' % toks['__photo'])
-        a('  background-size: cover, cover;')
-        a('  background-position: center, center;')
+        a('  background-image:')
+        a('    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),')
+        a('    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),')
+        a('    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),')
+        a('    url(%s);' % toks['__photo'])
+        a('  background-size: cover, cover, cover, cover;')
+        a('  background-position: center, center, center, center;')
     else:
         a('  /* No photograph could be bundled for this theme, so the backdrop is a')
         a('   * vertical falloff between the palette\'s own two surface tones. It is a')
@@ -1409,7 +1430,33 @@ def main():
         strs.append('  --cine-scrim: %s;' % t['tokens'].get('--cine-scrim', 'rgba(0,0,0,0.55)'))
         strs.append('}')
         if t.get('photo'):
-            strs.append('%s .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(%s); background-size: cover, cover; background-position: center, center; }' % (S, t['photo']))
+            # THE ZIP'S OWN THREE READING SCRIMS, NOT A FLAT ONE -- the same
+            # composition theme_css() now writes for the base designs, copied
+            # VERBATIM out of `zips/cinematic/src/index.css:90-98` (scrim-top,
+            # scrim-bottom carrying this theme's own `--cine-scrim`, vignette),
+            # photograph LAST, and FOUR values in background-size /
+            # background-position -- one per layer.
+            # WHY IT IS EMITTED CONDITIONALLY: an extra module that paints its OWN
+            # `.panel` rule in `css` emits it AFTER this one, so its rule WINS.
+            # MEASURED 2026-10-15 (the parent lane's own run, and mine): changing only
+            # this site left 15 themes with a default rule that never paints,
+            # duplicated per theme -- the exact defect
+            # `receipt-20261015-duas-imagens-no-painel.md` demands be fixed as ONE
+            # `.panel` rule with ONE background-image per theme. So the default is
+            # emitted ONLY when the module does not paint its own photograph
+            # composition; today that is none of them (all 15 extras carry their
+            # design's own overlay), and a future one fails closed onto the zip's
+            # own three layers rather than onto `panel.css`'s violet slab.
+            _own = re.sub(r'/\*[\s\S]*?\*/', '', t.get('css') or '')
+            if not re.search(r'\.panel\s*\{[^}]*url\(', _own, re.S):
+                strs.append('%s .panel { background-image: '
+                            'linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)), '
+                            'linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)), '
+                            'radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%), '
+                            'url(%s); '
+                            'background-size: cover, cover, cover, cover; '
+                            'background-position: center, center, center, center; }'
+                            % (S, t['photo']))
         if t.get('css'):
             strs.append(t['css'].replace('@S@', S))
         # THE GENERATOR'S OWN RULES LAST, so the cluster and the particles cannot be

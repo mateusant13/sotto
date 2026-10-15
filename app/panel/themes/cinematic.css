@@ -168,15 +168,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-midnight-rain'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/midnight-rain.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/midnight-rain.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -390,15 +396,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-warm-hour'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/warm-hour.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/warm-hour.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -614,15 +626,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-velvet-dusk'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/velvet-dusk.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/velvet-dusk.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -836,15 +854,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-study-light'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/study-light.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/study-light.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -1053,15 +1077,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-tideline-body'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/tideline-body.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/tideline-body.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -1275,15 +1305,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-motel-glow'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/motel-glow.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/motel-glow.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -1499,15 +1535,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-paper-moon'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/paper-moon.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/paper-moon.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -1714,15 +1756,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-quiet-streets'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/quiet-streets.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/quiet-streets.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -1936,15 +1984,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-last-reel'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/last-reel.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/last-reel.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -2160,15 +2214,21 @@
   color-scheme: dark;
 }
 
-/* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
- * is what the design puts between the photograph and the type, and it is the
- * reason the caption stays readable over a bright frame. */
+/* THE BACKDROP: the zip's own wallpaper under the zip's own THREE reading
+ * scrims, copied VERBATIM out of `index.css:90-98` — scrim-top, scrim-bottom
+ * (the one carrying this design's own `--cine-scrim`) and the vignette — in
+ * the zip's own order and stops, photograph LAST, as `Backdrop.tsx:35-37`
+ * stacks them. The middle of the frame stays SHOWING and the caption zone is
+ * the dark one; a flat scrim washed the photograph out everywhere. */
 :root[data-theme='cine-north-fog'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)),
-                    url(backdrops/north-fog.jpg);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0)),
+    linear-gradient(to top, var(--cine-scrim), rgba(0,0,0,0)),
+    radial-gradient(125% 95% at 50% 42%, transparent 52%, rgba(0,0,0,0.44) 100%),
+    url(backdrops/north-fog.jpg);
+  background-size: cover, cover, cover, cover;
+  background-position: center, center, center, center;
   border-color: var(--line);
 }
 
@@ -2354,7 +2414,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(10,7,5,0.86);
 }
-:root[data-theme='cine-cafe'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/cafe.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Midnight Café — from the `cinematic-1` zip, scene `cafe` ─────────────────────
  * caption variant `wide`, panel variant `glassCards`.
  * The source states the caption as `clamp(17px, 1.72vw, 34px)`, weight 400,
@@ -2694,7 +2753,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(5,9,13,0.88);
 }
-:root[data-theme='cine-rainglass'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/rainglass.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Rainglass — from the `cinematic-1` zip, scene `rainglass` ─────────────────────
  * caption variant `tight`, panel variant `hairline`.
  * The source states the caption as `clamp(17px, 1.72vw, 28px)`, weight 300,
@@ -3029,7 +3087,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(5,8,10,0.88);
 }
-:root[data-theme='cine-tideline'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/tideline.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Tideline — from the `cinematic-1` zip, scene `tideline` ─────────────────────
  * caption variant `wide`, panel variant `timeline`.
  * The source states the caption as `clamp(17px, 1.72vw, 32px)`, weight 300,
@@ -3359,7 +3416,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(10,16,19,0.88);
 }
-:root[data-theme='cine-fieldnotes'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/fieldnotes.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Field Notes — from the `cinematic-1` zip, scene `fieldnotes` ─────────────────────
  * caption variant `tight`, panel variant `gutter`.
  * The source states the caption as `clamp(17px, 1.72vw, 27px)`, weight 300,
@@ -3697,7 +3753,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(14,8,5,0.82);
 }
-:root[data-theme='cine-dustlight'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/dustlight.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Dustlight — from the `cinematic-1` zip, scene `dustlight` ─────────────────────
  * caption variant `italic`, panel variant `paper`.
  * The source states the caption as `clamp(17px, 1.72vw, 33px)`, weight 400,
@@ -4037,7 +4092,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(12,8,6,0.9);
 }
-:root[data-theme='cine-analog'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/analog.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Analog — from the `cinematic-1` zip, scene `analog` ─────────────────────
  * caption variant `wide`, panel variant `quotes`.
  * The source states the caption as `clamp(17px, 1.72vw, 36px)`, weight 400,
@@ -4346,7 +4400,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(7,9,7,0.88);
 }
-:root[data-theme='cine-shelves'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/shelves.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Quiet Shelves — from the `cinematic-1` zip, scene `shelves` ─────────────────────
  * caption variant `editorial`, panel variant `ledger`.
  * The source states the caption as `clamp(17px, 1.72vw, 31px)`, weight 400,
@@ -4686,7 +4739,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(14,11,22,0.86);
 }
-:root[data-theme='cine-rooftop'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/rooftop.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Rooftop Dusk — from the `cinematic-1` zip, scene `rooftop` ─────────────────────
  * caption variant `italic`, panel variant `bubbles`.
  * The source states the caption as `clamp(17px, 1.72vw, 30px)`, weight 400,
@@ -5024,7 +5076,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(10,6,5,0.92);
 }
-:root[data-theme='cine-ember'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/ember.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Ember — from the `cinematic-1` zip, scene `ember` ─────────────────────
  * caption variant `editorial`, panel variant `chips`.
  * The source states the caption as `clamp(17px, 1.72vw, 32px)`, weight 400,
@@ -5350,7 +5401,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(4,12,18,.9);
 }
-:root[data-theme='cine-rainline'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/rainline.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Rainline — from the `cinematic-2` zip, design `rainline` (01) ───────────
  * caption variant `bare`, panel `sheet` (384px), chrome `bar`.
  * The source states the caption as `clamp(1.02rem, 1.72rem, 2.3rem)`, weight 300,
@@ -5735,7 +5785,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(10,7,4,.93);
 }
-:root[data-theme='cine-cellar'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/cellar.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Cellar Sessions — from the `cinematic-2` zip, design `cellar` (03) ───────────
  * caption variant `glass`, panel `rail` (368px), chrome `float`.
  * The source states the caption as `clamp(1.02rem, 1.78rem, 2.3rem)`, weight 400,
@@ -6075,7 +6124,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(20,16,11,.72);
 }
-:root[data-theme='cine-linen'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/linen.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Linen Hours — from the `cinematic-2` zip, design `linen` (04) ───────────
  * caption variant `plate`, panel `list` (380px), chrome `bar`.
  * The source states the caption as `clamp(1.02rem, 1.55rem, 2.3rem)`, weight 400,
@@ -6431,7 +6479,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(11,8,5,.92);
 }
-:root[data-theme='cine-reading-hour'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/reading-hour.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Reading Hour — from the `cinematic-2` zip, design `reading-hour` (11) ───────────
  * caption variant `chip`, panel `cards` (372px), chrome `bar`.
  * The source states the caption as `clamp(1.02rem, 1.46rem, 2.3rem)`, weight 400,
@@ -6766,7 +6813,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(8,13,13,.92);
 }
-:root[data-theme='cine-last-train'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/last-train.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Last Train — from the `cinematic-2` zip, design `last-train` (13) ───────────
  * caption variant `stack`, panel `rail` (368px), chrome `bar`.
  * The source states the caption as `clamp(1.02rem, 1.48rem, 2.3rem)`, weight 300,
@@ -7108,7 +7154,6 @@
   --accent-gradient: var(--accent);
   --cine-scrim: rgba(7,12,20,.92);
 }
-:root[data-theme='cine-blue-hour'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/blue-hour.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Blue Hour — from the `cinematic-2` zip, design `blue-hour` (17) ───────────
  * caption variant `bare`, panel `rail` (364px), chrome `float`.
  * The source states the caption as `clamp(1.02rem, 1.5rem, 2.3rem)`, weight 300,
