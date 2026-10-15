@@ -4248,6 +4248,15 @@ class SottoShell:
         # medicao inteira: a caixa era a FORM, e `BackColor = Transparent` nao chega numa
         # form de topo -- `TransparencyKey` e o que a tira do ecra.
         self.caption_window.events.before_show += self._on_caption_before_show
+
+        # A GEOMETRIA DA JANELA DA LEGENDA, GUARDADA. O `_fit_caption_window` redimensiona-a
+        # ao conteudo a cada legenda e tem de saber onde esta a ARESTA DE BAIXO para nao a
+        # mover: `resize()` do pywebview conserva o canto superior, e a legenda esta ancorada
+        # ao FUNDO. Sem estes tres numeros, crescer a janela subia-lhe a base.
+        self._caption_window_w = cap_w
+        self._caption_window_h = cap_h
+        self._caption_window_x = cap_x
+        self._caption_window_y = cap_y
         # DO NOT clear `self.window.transparent` here. Tried 2026-10-06 and
         # MEASURED WRONG: pywebview's navigation `Show()` (edgechromium.py:347,
         # gated by `transparent`) is what makes a transparent WebView2 actually
@@ -6466,14 +6475,66 @@ class SottoShell:
         if not getattr(self, '_caption_window_shown', False):
             self.show_caption_window(True)
         try:
-            win.evaluate_js('window.SottoCaption && window.SottoCaption.set(%s, %s)'
-                            % (json.dumps(text or ''), json.dumps(previous or '')))
+            # O VALOR DE RETORNO E A ALTURA QUE O CONTEUDO PEDE. `evaluate_js` devolve a
+            # ultima expressao, e o `set()` da pagina devolve a altura medida do palco.
+            # E assim que a janela fica *"dimensionada ao proprio conteudo"*, que e o que
+            # o objetivo pede: uma altura fixa corta uma linha que passa de duas linhas.
+            needed = win.evaluate_js(
+                'window.SottoCaption && window.SottoCaption.set(%s, %s)'
+                % (json.dumps(text or ''), json.dumps(previous or '')))
+            self._fit_caption_window(needed)
             if credits is not None:
                 win.evaluate_js('window.SottoCaption && window.SottoCaption.credits(%s)'
                                 % json.dumps(credits))
             return True
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WINDOW_PUSH_FAILED error={exc!r}')
+            return False
+
+    def _fit_caption_window(self, needed):
+        """Redimensiona a janela da legenda ao CONTEUDO, mantendo o FUNDO no sitio.
+
+        O objetivo pede a legenda *"dimensionada ao proprio conteudo"*. Uma altura fixa
+        corta uma linha que ocupe tres; uma janela alta a mais cobre o ecra de graca. O
+        `needed` vem do valor de retorno do `evaluate_js` da pagina, que mede o palco com
+        `getBoundingClientRect` -- portanto ja inclui o padding e a quebra de linha.
+
+        PORQUE E QUE ELE TAMBEM MOVE: `resize()` do pywebview conserva o canto SUPERIOR,
+        e a legenda esta ancorada ao FUNDO (`bottom: 0`). So redimensionar fazia a legenda
+        CRESCER PARA CIMA a partir de uma base que subia -- ou seja, a base mexia-se, que e
+        exactamente o contrario de "pousada no fundo". Por isso a posicao e recalculada
+        para que a ARESTA DE BAIXO fique onde estava.
+
+        SEM HISTERESE NAO HA TREMOR: so mexe quando a diferenca passa de 8 px. Sem isso,
+        uma medida que oscila 1 px entre duas legendas punha a janela a tremer a cada
+        linha. Um `needed` de zero significa "a pagina nao se soube medir" e nao mexe
+        nada -- falhar para o lado de nao mexer e o lado certo.
+        """
+        win = getattr(self, 'caption_window', None)
+        if win is None or not needed:
+            return False
+        try:
+            want = max(90, min(420, int(needed)))
+        except (TypeError, ValueError):
+            return False
+        have = getattr(self, '_caption_window_h', None)
+        if have is not None and abs(want - have) < 8:
+            return False
+        try:
+            cap_w = getattr(self, '_caption_window_w', None)
+            cap_x = getattr(self, '_caption_window_x', None)
+            cap_y = getattr(self, '_caption_window_y', None)
+            win.resize(cap_w, want)
+            if cap_y is not None:
+                # A ARESTA DE BAIXO NAO SE MOVE: e o fundo que a ancora.
+                bottom = cap_y + (have if have else want)
+                win.move(cap_x, bottom - want)
+                self._caption_window_y = bottom - want
+            self._caption_window_h = want
+            log(f'CAPTION_WINDOW_SIZED h={want} was={have} reason=content')
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WINDOW_SIZE_FAILED needed={needed} error={exc!r}')
             return False
 
     def show_caption_window(self, on):

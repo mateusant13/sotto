@@ -58,6 +58,14 @@
   var prev = document.getElementById('caption-float-prev');
   var credits = document.getElementById('caption-float-credits');
   var led = document.querySelector('.caption-float__led');
+  /* FORA do objeto: o `set()` e chamado depois de o objeto existir, mas e mais seguro
+     ter a medida num nome estavel do que depender da ordem de construcao. */
+  window.SottoCaption_neededHeight = function () {
+    var stage = document.querySelector('.caption-float__stage');
+    if (!stage) return 0;
+    var r = stage.getBoundingClientRect();
+    return (r && r.height) ? Math.ceil(r.height) + 8 : 0;
+  };
   window.SottoCaption = {
     set: function (text, previous) {
       var t = (text === null || text === undefined) ? '' : String(text);
@@ -66,6 +74,20 @@
       if (prev.textContent !== p) prev.textContent = p;
       prev.hidden = (p === '');
       line.classList.toggle('is-empty', t === '');
+      return window.SottoCaption_neededHeight();
+    },
+    /* A ALTURA QUE O CONTEUDO PEDE, em px. O shell le isto do valor de retorno do
+       `evaluate_js` e redimensiona a janela -- o objetivo pede a legenda
+       *"dimensionada ao proprio conteudo"*, e uma altura fixa corta uma linha longa.
+       O palco esta em `bottom: 0`, portanto a altura da janela tem de ser a altura DELE
+       mais a folga de baixo. Medido com `getBoundingClientRect`, que ja inclui o padding.
+       Zero quando o palco nao existe, e o shell trata o zero como "nao sei". */
+    neededHeight: function () {
+      var stage = document.querySelector('.caption-float__stage');
+      if (!stage) return 0;
+      var r = stage.getBoundingClientRect();
+      if (!r || !r.height) return 0;
+      return Math.ceil(r.height) + 8;
     },
     credits: function (text) {
       var c = (text === null || text === undefined) ? '' : String(text);
