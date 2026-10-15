@@ -9549,7 +9549,10 @@ def parse_args(argv):
     parser.add_argument('--exit-after', type=float, default=0.0,
                         help='quit on a wall clock, so an acceptance run ends '
                              'by itself')
-    parser.add_argument('--no-hot-reload', action='store_true',                        help='do not watch panel assets / worker sources')
+    parser.add_argument('--no-hot-reload', action='store_true',
+                        help='do not watch panel assets / worker sources (this is the default)')
+    parser.add_argument('--hot-reload', action='store_true',
+                        help='watch panel assets / worker sources and reload in place; a DEVELOPMENT feature, OFF by default because each reload re-parses the panel and re-creates the renderer on the machine the owner is using')
     #: The deferred-asset gate's CONTROL ARM. With it the shell registers no
     #: WebResourceRequested filter and every deferred URL reaches the disk, which
     #: is byte-for-byte today's behaviour. The measurement harness runs the gate
@@ -10054,13 +10057,34 @@ def main(argv=None):
         # and no message is indistinguishable from a broken app.
         shell.hotkey = arm_hotkey(shell, args.hotkey)
 
-    # Hot reload is armed AFTER the hotkey, so a watcher that cannot start can
-    # never cost the one feature the panel cannot live without. `--no-hot-reload`
-    # is checked before anything is armed, exactly like the Electron arm's.
-    if args.no_hot_reload:
+    # HOT RELOAD IS OFF BY DEFAULT, AND IT WAS ON -- WHICH IS THE FREEZE. MEASURED
+    # 2026-10-15 on the owner own log: `HOT_RELOAD_EVENT kind=panel file=panel.css`
+    # -> `HOT_RELOAD_FLUSH` -> `HOT_RELOAD_PANEL_DONE reload=10` -> `HOT_RELOAD_APPLIED`,
+    # five times in seven minutes, each one at the exact second a panel asset was
+    # written. And the reload is not cheap: the panel re-parses thirteen scripts,
+    # re-builds its DOM and re-creates the WebView2 renderer, ON THE MACHINE THE OWNER
+    # IS USING. He said it six ways over three days -- *"quando sotto abre ou fecha, o
+    # pc trava"*, *"abrir ou fechar o sotto causa travamento no meu pc"*, *"por que
+    # fechar o sotto ainda trava meu sistema?"* -- and the steady state was never the
+    # problem: measured the same day, the whole app is 266 MB and 4.2 percent of one
+    # core, with the worker transcribing. The spike is the RELOAD.
+    #
+    # THIS IS A DEVELOPMENT FEATURE AND IT WAS ARMED IN PRODUCTION. `run.cmd` passes no
+    # flag, so every edit to `panel.html`, `panel.css` or `panel.js` -- by a lane, by a
+    # generator run, by anyone -- reached into the owner running app and reloaded his
+    # panel. A user of this program has no editor open on it and will never want that.
+    #
+    # SO THE DEFAULT FLIPS: `--hot-reload` opts IN, and `--no-hot-reload` still works so
+    # every existing script and oracle that passes it keeps its meaning. The banner line
+    # names the reason either way, so the log still says which it was.
+    if args.hot_reload:
+        if not shell.start_hot_reload():
+            warn('hot reload could not arm its watchers; the app still runs')
+    elif args.no_hot_reload:
         log('HOT_RELOAD_DISABLED reason=--no-hot-reload')
-    elif not shell.start_hot_reload():
-        warn('hot reload could not arm its watchers; the app still runs')
+    else:
+        log('HOT_RELOAD_DISABLED reason=off-by-default (a development feature; pass '
+            '--hot-reload to arm it)')
 
     # THE TRAY. Last of the three, for the same reason as the others: it must not
     # be able to cost the app its start, and it is the only home the Quit has.
