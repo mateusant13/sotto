@@ -267,10 +267,22 @@ function checks(dir) {
   add('F3 the overlay adapts to a short window (the shell hands out 100px today)',
     /@media \(max-height:\s*139px\)[\s\S]*?caption-float__prev/.test(css),
     '@media (max-height: 139px) hides the non-caption chrome');
-  add('F4 while floated, the bar steps to the top and the caption takes the rest',
+  /* REBASED 2026-10-15. The contract MOVED, and it moved because the owner asked: verbatim
+   * *"essa legenda ao vivo deveria aparecer no MEIO EM BAIXO da minha tela"*, and from his
+   * original brief [860]: *"the live subtitles in the BOTTOM AND MIDDLE of the screen"*.
+   * The caption used to be `top: 34px` -- stretched from under the bar to the bottom -- and
+   * it is now `top: auto` with `bottom: 0`, which is what RESTS it on the bottom edge.
+   *
+   * THE OLD REGEX ALSO HAD A SECOND, QUIETER DEFECT: `\{\s*top:` required `top:` to be the
+   * FIRST thing inside the block, so a COMMENT between `{` and the declaration made it fail
+   * even when the value was right. `[^}]*?` accepts prose, which is what the declaration
+   * now carries. And the assertion is `top: auto`, NOT `top:` -- a check that accepts any
+   * value cannot tell the old contract from the new one, which is how F4 came to fail on the
+   * pristine AND on all 11 mutants and lose its discrimination. */
+  add('F4 while floated, the bar steps to the top and the caption RESTS ON THE BOTTOM',
     /body\[data-surface="strip"\]\[data-float="on"\] \.panel \{\s*inset:\s*0 0 auto 0/.test(css) &&
-    /body\[data-surface="strip"\]\[data-float="on"\] \.caption-float \{\s*top:/.test(css),
-    'panel inset:0 0 auto 0 + caption top:34px');
+    /body\[data-surface="strip"\]\[data-float="on"\] \.caption-float \{[^}]*?top:\s*auto/.test(css),
+    'panel inset:0 0 auto 0 + caption top:auto (bottom-anchored, owner 2026-10-15)');
 
   return out;
 }
