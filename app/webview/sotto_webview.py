@@ -627,6 +627,52 @@ def worker_status_kind(state, message):
     return 'error' if FAILURE_WORDS_RE.search(state) else 'busy'
 
 
+#: OS CODIGOS DE AUDIO DO WINDOWS QUE O DONO JA VIU NA TELA, TRADUZIDOS.
+#:
+#: Ele, verbatim 2026-10-15: *"que nojeira e essa mano? ate quando tu vai fazer essas coisas?"*,
+#: sobre a linha que o painel pintava:
+#:
+#:     Worker error at open-stream - WasapiError: Initialize(SHARED|LOOPBACK) failed:
+#:     <no description> (0x8889000A)
+#:
+#: **Um codigo hexadecimal na tela do dono nao e um diagnostico, e um segredo.** Ele ja tinha
+#: mandado arrumar isto em 2026-10-14: *"sotto ta reclamando de coisa nao carregada, com erro
+#: vermelho. arruma"*. A causa por tras do `0x8889000A` e conhecida e tem UMA acao que resolve:
+#: o dispositivo esta ocupado. Dizer isso, e dizer o que fazer, e o minimo.
+#:
+#: O detalhe CRU continua a ir para o LOG -- `BRIDGE_STATUS_ERROR` guarda-o inteiro -- portanto
+#: nada se perde para quem estiver a diagnosticar. O que muda e o que o dono LE.
+HRESULT_AUDIO_READINGS = {
+    '0x88890001': 'The audio device was not initialised. Press Alt+C to try again.',
+    '0x88890004': ('The audio device disappeared (unplugged or disabled). '
+                   'Choose another device and press Alt+C.'),
+    '0x88890008': ('That audio device does not support the format Sotto needs. '
+                   'Choose another device and press Alt+C.'),
+    '0x8889000A': ('The audio device is already in use by another program, so Sotto '
+                   'could not open it. Close whatever is holding it -- or choose '
+                   'another device -- and press Alt+C.'),
+    '0x8889000B': 'That audio buffer size is not supported by this device.',
+    '0x88890010': ('No audio device is available at all. Check that an output is '
+                   'enabled in Windows sound settings, then press Alt+C.'),
+}
+
+
+def human_audio_error(detail):
+    """A frase humana para um erro de audio do Windows, ou None se nao o conhecermos.
+
+    Procura o codigo em hexadecimal no detalhe CRU e devolve a leitura da tabela. Devolver
+    None e deliberado: um erro que nao esta na tabela continua a ser mostrado como veio,
+    porque inventar uma explicacao para um codigo desconhecido e pior do que o codigo.
+    """
+    if not detail:
+        return None
+    texto = str(detail).upper()
+    for codigo, leitura in HRESULT_AUDIO_READINGS.items():
+        if codigo.upper() in texto:
+            return leitura
+    return None
+
+
 def worker_status_text(state, message, readable):
     """The footer line for ONE worker status: the worker's OWN cause, not a token.
 
@@ -669,6 +715,13 @@ def worker_status_text(state, message, readable):
     if state == 'device-exhausted':
         return ('Audio tap carried no signal - every candidate device was flat')
     if stage and detail:
+        # A TRADUCAO, ANTES DA LINHA CRUA. Ver `HRESULT_AUDIO_READINGS`: o dono ja viu
+        # `WasapiError ... (0x8889000A)` na tela e chamou-lhe *"nojeira"*. Um codigo de erro
+        # do Windows nao lhe diz nada, e a acao que resolve -- fechar quem segura o
+        # dispositivo -- nao esta escrita em lado nenhum do hexadecimal.
+        legivel = human_audio_error(detail)
+        if legivel:
+            return f'Sotto could not start listening - {legivel}'
         return f'Worker error at {stage} - {detail}'
     if detail:
         return f'Worker error - {detail}'
