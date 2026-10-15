@@ -188,10 +188,31 @@ class FakeForm:
 
 
 class FakeArgs:
-    """Only `show` is read by the show/hide decision path."""
+    """`show` is the ONE argument the show/hide decision reads, and it is the
+    one this oracle varies.
+
+    Every OTHER field answers False and is RECORDED in `invented`. The chain
+    this harness drives (`_on_core_ready` -> `_arm_lazy_gate`, and anything a
+    future revision adds to it) reads flags that have nothing to do with
+    visibility, so an unseeded flag used to end the run with an AttributeError
+    instead of an answer. argparse flags default to False, so False is the
+    faithful answer -- and the record is printed at the end of a run so the
+    stub can never be silent about what it invented.
+    """
+
+    #: Every field this stub had to invent, across every instance. Printed
+    #: at the end of a run so the stub can never be silent about it.
+    INVENTED = []
 
     def __init__(self, show=False):
         self.show = show
+
+    def __getattr__(self, name):
+        # Only called when normal lookup fails, i.e. for a field this stub did
+        # not seed. argparse's own default for a store_true flag is False.
+        if name not in FakeArgs.INVENTED:
+            FakeArgs.INVENTED.append(name)
+        return False
 
 
 # ===========================================================================
@@ -446,8 +467,29 @@ class Harness:
         owner.visible = False
         owner.args = FakeArgs(show=show_flag)
         owner.display = {'workArea': {}, 'bounds': {}, 'scaleFactor': 1.0}
-        owner.geometry = {'x': 0, 'y': 0, 'width': 364, 'height': 861}
         owner.visibility_armed = False
+        # SEEDED FROM THE SHIPPED `__init__`, one line per field the show/hide
+        # path actually reads. This list is not decoration: each entry below was
+        # a crash this oracle produced against the live shell until it was
+        # seeded, because the harness builds the object with `__new__` and the
+        # real `__init__` never ran. Seeded exactly as `__init__` seeds them, so
+        # a shipped default that moves is a RED here rather than a silent pass.
+        #   panel_show_refused -- `_gate_form_show`'s `guarded_show` increments
+        #     it (sotto_webview.py:4496, set at :4004). Unseeded, the FIRST
+        #     pywebview Show() on a transparent form dies with AttributeError.
+        #   surface / surface_applied -- `show_panel` reads both and only calls
+        #     `set_panel_surface` when they differ (sotto_webview.py:5631-5633);
+        #     seeded equal so no surface transition is faked here.
+        #   panel_mode -- the Alt+C cycle's input (sotto_webview.py:5638).
+        #   panel_visibility -- `publish_panel_visibility` returns False when it
+        #     is None (sotto_webview.py:5269-5271), which is the honest state for
+        #     a run whose arm was never made; unseeded it raises instead.
+        owner.panel_show_refused = 0
+        owner.surface = 'panel'
+        owner.surface_applied = 'panel'
+        owner.panel_mode = 'strip'
+        owner.panel_visibility = None
+        owner.click_watcher = None
         # `_ui`/`_post` on the UI thread are `fn()` (sotto_webview.py:1589,
         # :1591). `before_show` IS the UI thread, so inline is faithful — and it
         # is what keeps pythonnet out of a headless oracle.
@@ -457,6 +499,11 @@ class Harness:
         # `_install_bootstrap` is pure pythonnet (`from System import Action`) and
         # its only effect is a log line; it does not touch visibility.
         owner._install_bootstrap = lambda where: None
+        # `_arm_lazy_gate` subscribes `WebResourceRequested` on the CoreWebView2
+        # and reads `args.no_lazy`; it is the deferred-asset gate, not part of the
+        # show/hide decision. Stubbed here for the same reason, and it is the
+        # only member `_on_core_ready` still calls.
+        owner._arm_lazy_gate = lambda: None
         self.owner = owner
 
         # NOTE: `owner_asked` is NOT acted on here. pywebview runs its
@@ -940,6 +987,8 @@ def main(argv=None):
     if args.json:
         print(json.dumps({'failures': failures, 'results': results},
                          indent=2))
+    emit('  FAKEARGS invented (answered False, and recorded so the stub is never silent): '
+          + (', '.join(sorted(FakeArgs.INVENTED)) or 'none'))
     verdict = 'GREEN' if failures == 0 else 'RED'
     emit(f'ORACLE {verdict} failures={failures}')
     return 0 if failures == 0 else 1
