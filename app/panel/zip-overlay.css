@@ -119,27 +119,32 @@ body[data-surface="strip"] .strip-button,
 body[data-surface="strip"] .strip-button__label,
 body[data-surface="strip"] .stripbar__state,
 body[data-surface="strip"] #strip-state {
-  color: #0b0f14 !important;
+  color: #e8edf4 !important;
 }
 body[data-surface="strip"] .strip-button {
-  border: 1px solid rgba(0, 0, 0, 0.38) !important;
+  border: 1px solid rgba(232, 237, 244, 0.28) !important;
   border-radius: 3px;
   background: transparent !important;
 }
 body[data-surface="strip"] .strip-button:hover {
-  background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.6);
+  background: rgba(232, 237, 244, 0.16);
+  border-color: rgba(232, 237, 244, 0.5);
 }
 body[data-surface="strip"] .stripbar__grip {
-  color: rgba(0, 0, 0, 0.35) !important;
+  color: rgba(232, 237, 244, 0.5) !important;
 }
 body[data-surface="strip"] .stripbar__state {
-  border-color: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(232, 237, 244, 0.28) !important;
 }
 body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] {
-  background: #0b0f14;
-  color: #37d67a;
-  border-color: #0b0f14;
+  /* CLARO QUANDO ESTA LIVE. O dono, verbatim: *"o botao de mostrar a legenda ao vivo deve
+   * ser o live. e deve ser CLARO quando ta live e quando nao ta"*. A regra anterior pintava
+   * `background: #0b0f14` com texto verde -- e sobre a barra, que TAMBEM e escura, o botao
+   * desaparecia: verde sobre preto e visivel, mas o BOTAO nao, porque nao tinha forma. Um
+   * fundo verde translucido e uma borda verde dao-lhe corpo sem mudar a paleta. */
+  background: rgba(55, 214, 122, 0.18) !important;
+  color: #37d67a !important;
+  border-color: #37d67a !important;
 }
 body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] .strip-button__label {
   color: #37d67a;
@@ -155,7 +160,7 @@ body[data-surface="strip"] .strip-button--toggle[aria-pressed="true"] .strip-but
  * no light slab behind it, so forcing ink-dark would put dark text on a dark overlay. */
 body[data-surface="strip"]:not([data-float="on"]) .stripbar,
 body[data-surface="strip"]:not([data-float="on"]) .stripbar * {
-  color: #0b0f14 !important;
+  color: #e8edf4 !important;
 }
 
 /* ---- STEP 3: THE CAPTION COLUMN -- right-hand, UNFRAMED, with the FADE --------------
