@@ -2537,6 +2537,22 @@ function openPauseConfirm(trigger) {
     return;
   }
   applyPauseAvailability();
+  // SE NAO HA PAUSE, NAO HA DIALOGO. E a correccao do *"jesus que coisa mais nojenta de
+  // feia"* (dono, 2026-10-15, com o print deste dialogo na mao).
+  //
+  // O RACIOCINIO QUE ESTAVA AQUI, e que e defensavel: *"o trabalho do botao e ABRIR o
+  // dialogo, e e no dialogo que o dono descobre o que esta shell pode e nao pode fazer"*.
+  // Foi uma decisao de quem escreveu, e o dono REJEITOU-A -- e a palavra dele ganha.
+  //
+  // O QUE ELE VIA: um dialogo a perguntar "Pause and unload?", com um botao DESACTIVADO
+  // a dizer "not available in this shell yet" e uma linha vermelha a explicar que a funcao
+  // nao existe. **Oferecer uma funcao que nao existe e pior do que nao a oferecer.**
+  // Esta verificacao usa o `disabled` que o `applyPauseAvailability` acabou de pos, portanto
+  // nao ha uma segunda copia da verdade sobre o que esta ligado. */
+  if (dom.pauseConfirmButton && dom.pauseConfirmButton.disabled) {
+    setStatus('Pause is not available in this build yet', '');
+    return;
+  }
   pendingFocusReturn = (trigger && typeof trigger.focus === 'function')
     ? trigger
     : (document.activeElement && document.activeElement !== document.body
