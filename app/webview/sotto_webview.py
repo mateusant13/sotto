@@ -8133,6 +8133,8 @@ class WorkerBridge:
                  silence_ms=WORKER_SILENCE_MS,
                  load_silence_ms=WORKER_LOAD_SILENCE_MS,
                  backoff_base=1000, backoff_max=30000,
+                 no_audio_backoff_base=15000,
+                 no_audio_backoff_max=300000,
                  target_pid=None):
         self.command = command or default_python()
         self.worker_path = worker_path
@@ -8163,6 +8165,23 @@ class WorkerBridge:
         self.load_silence_ms = load_silence_ms
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
+        # A NO-AUDIO DEATH IS NOT A FAILURE AND MUST NOT BE TIME-PRICED LIKE ONE.
+        # MEASURED 2026-10-14 on the owner log: 88 deaths and 88 model reloads in 17
+        # minutes -- one every ~12 s -- each reload pulling ~1 GB back into memory,
+        # while the worker was doing exactly what it was built to do: it opened a
+        # device and heard digital silence, which this repo own routing law says is
+        # the CORRECT answer of a working app on an idle desktop. This program is
+        # going to be used by thousands of people and the default state of nearly
+        # all of them is NOTHING ROUTED YET. A hot loop that reloads a gigabyte for
+        # every one of them is a broken program, not a working one.
+        #
+        # So a no-audio death gets its own much slower ladder -- 15 s growing to
+        # 5 min -- and its own counter that a REAL failure does not touch. A user who
+        # routes audio later is transcribed the moment the slow ladder comes round,
+        # and until then the machine is quiet instead of thrashing.
+        self.no_audio_backoff_base = no_audio_backoff_base
+        self.no_audio_backoff_max = no_audio_backoff_max
+        self.no_audio_restarts = 0
 
         self.child = None
         self.state = 'idle'
@@ -9119,7 +9138,7 @@ class WorkerBridge:
                           stderr_note,
                           'A restart is scheduled. Captions stay off until the '
                           'worker reports a caption.') if x)})
-        self._schedule_restart('exit')
+        self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'))
 
     def _kill_and_restart(self, reason):
         child, self.child = self.child, None
@@ -9130,12 +9149,23 @@ class WorkerBridge:
                 pass
         self._schedule_restart(reason)
 
-    def _schedule_restart(self, reason):
+    def _schedule_restart(self, reason, no_audio=False):
         if self.stopped:
             return
-        delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
-        self.restarts += 1
-        self.log(f'BRIDGE_RESTART reason={reason} in_ms={delay} '
+        # The two ladders. A REAL failure prices itself in seconds and doubles every
+        # time; a no-audio death -- the worker doing its job on a machine with nothing
+        # routed yet -- prices itself in minutes and has its own counter, so a genuine
+        # break is still answered fast and an unrouted desktop is answered slowly.
+        if no_audio:
+            delay = min(self.no_audio_backoff_max,
+                        self.no_audio_backoff_base * (2 ** self.no_audio_restarts))
+            self.no_audio_restarts += 1
+            ladder = 'no-audio'
+        else:
+            delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
+            self.restarts += 1
+            ladder = 'retry'
+        self.log(f'BRIDGE_RESTART reason={reason} ladder={ladder} in_ms={delay} '
                  f'restart={self.restarts}')
         timer = threading.Timer(delay / 1000.0, self._restart)
         timer.daemon = True

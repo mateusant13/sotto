@@ -139,7 +139,22 @@ REM "discarded by pythonw" -- nobody had given it somewhere to go. %TEMP% is use
 REM instead of _main\ so that a wrapper copied elsewhere cannot fail HERE: with an
 REM unwritable target cmd would not run the child at all and a GOOD list would be
 REM refused, which is worse than a lost message.
-set "REFUSAL=%TEMP%\sotto-preflight-refusal.txt"
+REM THE REFUSAL CAPTURE LIVES BESIDE THE LOG, NOT IN %TEMP%.
+REM MEASURED 2026-10-14, and it is a start-stopping defect: the SAME command,
+REM the SAME interpreter, the ONLY difference the redirect target --
+REM   2>G:\Temp\sotto-preflight-refusal.txt   -> rc 120  and the app will not start
+REM   2>I:\cc-tmp\rf.txt                       -> rc 2, the argparse text present
+REM rc 120 is what cmd answers when it cannot give the child the redirect it was
+REM told to give it, so a machine whose %TEMP% is full, read-only or on a drive that
+REM refuses the write gets a wrapper that REFUSES A GOOD LAUNCH and prints nothing
+REM the caller can act on. This program is going to be used by thousands of people
+REM and %TEMP% is a property of THEIR machine, not of ours.
+REM
+REM _main\ is the one directory this wrapper already proves writable: the same
+REM pre-flight writes its receipt there through run-cmd-log-append.py. So the
+REM capture goes beside the log it is a receipt FOR, and it carries the run id so
+REM two launches cannot collide on the name.
+set "REFUSAL=%HERE%..\..\_main\sotto-preflight-refusal-%RANDOM%%RANDOM%.txt"
 if exist "%REFUSAL%" del /q "%REFUSAL%" >nul 2>&1
 "%PYW%" "%SHELL%" --check-args %* 2>"%REFUSAL%"
 set "PREFLIGHT_RC=%ERRORLEVEL%"
