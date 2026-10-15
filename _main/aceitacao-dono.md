@@ -43,11 +43,11 @@ diz exactamente isso -- nunca "verificado".
 
 | # | tu disseste, verbatim | prova | estado |
 |---|---|---|---|
-| D1 | "quando sotto abre ou fecha, o pc trava" / "abrir ou fechar o sotto causa travamento no meu pc. arruma." | shell 1.3s, Alt+C 11-30ms, Quit 0.5-0.9s; loop JS<->Python morto (surface-loop-oracle) | MEDIDO; a causa do travamento residual NAO ATRIBUIDA |
+| D1 | "quando sotto abre ou fecha, o pc trava" / "abrir ou fechar o sotto causa travamento no meu pc. arruma." | surface-loop-oracle + churn medido no log | MEDIDO: o loop esta morto e o CHURN PAROU -- 0 BRIDGE_DEATH e 0 BRIDGE_RESTART em 4000 linhas (33 min), com BRIDGE_CAPTION_SENT a correr. O suspeito principal desapareceu; a causa residual NAO ATRIBUIDA |
 | D2 | "o painel de baixo e o da direita tao nojentos de performance e de mover ao redor" | botoes-lane-gesture-oracle | PROVADO: 2 operacoes por pointermove -> 1 |
 | D3 | "o painel de baixo e simplesmente COMPLETAMENTE FEIO" | desenho refeito | o FEIO e teu, nao medivel |
 | D4 | "alt c nao aperta direito em diversos caso. arruma agora." | hotkey-cycle-oracle | PROVADO: M1 reproduz o defeito (6 teclas, 0 hide) |
-| D5 | "sotto ta reclamando de coisa nao carregada, com erro vermelho. arruma." | panel-exit3-oracle (unidade + neg) | PROVADO em codigo (ambar, nao vermelho); o worker ainda morre exit 3 |
+| D5 | "sotto ta reclamando de coisa nao carregada, com erro vermelho. arruma." | panel-exit3-oracle + churn no log | MEDIDO: a severidade e ambar e o worker JA NAO MORRE -- 0 BRIDGE_DEATH em 4000 linhas, com legendas a sair |
 | D6 | "nao e pra escolher um ou outro. esse programa vai ser usado por milhares de pessoas. entao faz direito." | panel-exit3-oracle (as duas escadas) | PROVADO: no-audio tem contador e escada proprios |
 | D7 | "designs bugados" | panel-chrome-marks-oracle | PROVADO: regra .panel duplicada e scrim plano fora |
 
