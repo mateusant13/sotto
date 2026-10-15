@@ -419,3 +419,25 @@ body .panel .captions__body::-webkit-scrollbar {
 html[data-caption-window="on"] #caption-float {
   display: none !important;
 }
+
+/* A JANELA DA LEGENDA NAO TEM FUNDO -- e a regra tem de vir DAQUI.
+ *
+ * `panel.css:105-127` da a `html, body` uma base OPACA: `rgba(11, 15, 20, 0.98)`. Ela
+ * existe por uma razao medida -- e a cor que se ve quando o WebView2 nao pinta -- mas na
+ * janela da legenda ela e a CAIXA CINZENTA que o dono reportou: *"essa caixa de merda na
+ * tela ta parecendo transparente pra voce?"*. Capturada a regiao 510,814 900x170: escuro a
+ * 98% por cima do ambiente de trabalho.
+ *
+ * A `caption.html` JA traz `html, body { background: transparent !important }` no proprio
+ * `<style>`, DEPOIS das quatro folhas. Nao chegou -- o fundo continuou la. Em vez de
+ * investigar a especificidade, a regra vem para a folha que e GARANTIDAMENTE a ultima que o
+ * documento carrega (panel.html:10), com o escopo no atributo que so esta pagina tem
+ * (`<html data-caption-window="1">`). Assim nao toca em nada do painel.
+ *
+ * O `html` E o `body`: o `body` do painel leva a mesma base, e o `html` pinta o resto. */
+html[data-caption-window],
+html[data-caption-window] body {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
