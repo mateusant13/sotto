@@ -1105,7 +1105,15 @@ SKIN = """
    that no longer exists -- one per theme-N and one per pd-* direction. `397 selectors,
    10 that match NO node`. A style for an element that is gone is not a style, it is debt,
    and it is the same dead-rule class this repo measured before. */
-{S} .captions__hint{{ color: var(--text-muted); }}
+/* --size-chrome has a reader again. MEASURED 2026-10-15 by cine-themes-oracle C1 and
+   cinematic-designs-oracle C: `declared+unread: --size-chrome (x25)` and
+   `53 token(s) declared; 1 with NO reader anywhere`. The ONLY reader was the
+   `.history__label` rule removed when the transcript label went away (the owner ordered
+   the button out, and the label painted a word with no control behind it) -- so the
+   token was left declared and unread, which is the orphan class both oracles gate.
+   `.captions__hint` is the quiet line above the caption, the same chrome class of text
+   the label was, and it had no size of its own. */
+{S} .captions__hint{{ color: var(--text-muted); font-size: var(--size-chrome); }}
 {S} .captions__body{{
   border-color: var(--line);
   border-radius: var(--radius-md);
