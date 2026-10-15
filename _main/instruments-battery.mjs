@@ -104,6 +104,7 @@ const py = [
   ['_main/csp-inline-oracle.py --neg-arm', 'CSP inline neg'],
   ['_main/cobertura-oracle.py', 'cobertura: 34 areas'],
   ['_main/photo-scrim-census.py', 'photo scrim: 25 themes'],
+  ['_main/photo-scrim-census.py --neg-arm', 'photo scrim neg: zeroed scrim RED'],
   ['_main/surface-loop-oracle.py', 'surface loop guard (JS<->Python)'],
   ['_main/hotkey-cycle-oracle.py', 'hotkey cycle strip->side->hide'],
   ['_main/preflight-refusal-visible-oracle.py', 'preflight refusal visible (G5)'],
@@ -116,6 +117,18 @@ const py = [
   // 144 decisoes de visibilidade, 4 mutantes (3 'caught' + 1 'immune' de controlo),
   // ORACLE GREEN failures=0, rc=0, 1.4 s.
   ['_main/panel-hidden-at-startup-oracle.py', 'panel hide gate at startup (headless, 4 mutants)'],
+  // LANE A (2026-10-15): THE TWO HALVES OF THE JS<->PYTHON SURFACE LOOP GUARD, and
+  // the negative arm of the row above. The shell half drives the REAL
+  // SottoHost.dispatch -> SottoShell.set_panel_surface; measured 200 echoes -> 1
+  // application, and 203 applications with the guard deleted (the p99 264/s loop
+  // that froze the box). The page half is a .js row below.
+  ['_main/surface-loop-oracle.py --neg-arm', 'surface loop neg: shell guard deleted -> RED'],
+  // THE ATOMIC PANEL DUMP -- the fixed temp name that produced 1 145 063 write
+  // failures and the bounded rename retry that absorbs the PermissionError storm
+  // two writers produce. Registered here because the area's token only LOOKED
+  // covered: the row naming panel-state-guard-gate.js gates a DIFFERENT property.
+  ['_main/panel-state-atomic-oracle.py', 'panel state atomic write (1 145 063 failures)'],
+  ['_main/panel-state-atomic-oracle.py --neg-arm', 'panel state atomic neg: both halves RED'],
   ['_main/log-rotation-oracle.py', 'log rotation (cap 64 MB)'],
   ['_main/queue-drops-whitelist-oracle.py', 'queue_drops whitelist'],
   ['_main/second-pass-default-oracle.py', 'second pass is opt-in'],
@@ -180,12 +193,23 @@ const node = [
   ['_main/strip-float-oracle.js', 'strip float oracle'],
   ['_main/panel-state-guard-gate.js', 'panel state guard'],
   ['_main/botoes-lane-oracle.js', 'botoes lane oracle'],
+  // LANE A: the negative arm of the row above -- 8 mutants, one per arm of the
+  // owner's own order, every one of them RED (measured 39 s). Without this row the
+  // buttons area ran only its green arm inside the gate.
+  ['_main/botoes-lane-oracle.js --neg-arm', 'botoes lane neg 8/8 RED'],
   ['_main/botoes-lane-gesture-oracle.js', 'botoes lane gesture'],
   // ── LANE C, the JS half of the same two gaps.
   ['_main/theme-switch-oracle.js', 'theme switching: ONE attribute write'],
   ['_main/theme-switch-oracle.js --neg-arm', 'theme switching neg (3 mutants)'],
   ['_main/fonts-fidelity-oracle.mjs', 'fonts fidelity (the .zip faces)'],
   ['_main/fonts-fidelity-oracle.mjs --neg-arm', 'fonts fidelity neg (face deleted)'],
+  // LANE A: THE PAGE HALF of the same loop -- the shipped panel.html + panel.css +
+  // the document's own script list (13 scripts), in jsdom, against a bridge that
+  // answers a setPanelSurface ask the way the real shell does (surface + geometry
+  // echo). It counts the page->shell asks, which is the audit's own metric, and
+  // BOTH page guards are load-bearing: 5 of 6 arms RED for each mutant, measured.
+  ['_main/surface-loop-panel-oracle.js', 'surface loop: page half (echo asks nothing)'],
+  ['_main/surface-loop-panel-oracle.js --neg-arm', 'surface loop page neg: both guards RED'],
 ];
 
 const run = (cmd, args, label) => {

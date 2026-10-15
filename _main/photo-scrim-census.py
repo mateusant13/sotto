@@ -63,8 +63,9 @@ def parse_rgba(text):
     return (nums[0], nums[1], nums[2], alpha)
 
 
-def photo_luminance(name):
-    path = os.path.join(BACKDROPS, name)
+def photo_luminance(name, themes_dir=None):
+    base = os.path.join(themes_dir, "backdrops") if themes_dir else BACKDROPS
+    path = os.path.join(base, name)
     if not os.path.exists(path):
         return None
     try:
@@ -123,6 +124,111 @@ def photo_themes(css):
     return pairs
 
 
+def census(themes_dir, say=print):
+    """THE WHOLE MEASUREMENT against one themes directory. Returns (bad, total)."""
+    css_path = os.path.join(themes_dir, "cinematic.css")
+    if not os.path.exists(css_path):
+        say("photo-scrim-census: NO cinematic.css")
+        return None, 0
+    with open(css_path, encoding="utf-8", errors="replace") as h:
+        css = h.read()
+    pairs = photo_themes(css)
+    if not pairs:
+        say("photo-scrim-census: no theme composes a photograph on .panel")
+        return [], 0
+    bad = []
+    say("photo-scrim-census -- %d theme(s) paint a photograph" % len(pairs))
+    for theme, scrim, photo in sorted(pairs):
+        if scrim is None:
+            bad.append((theme, "no scrim at all"))
+            continue
+        lum = photo_luminance(photo, themes_dir)
+        if lum is None:
+            continue
+        sr, sg, sb, sa = scrim
+        comp = tuple(sa * v + (1 - sa) * lum[k] for k, v in enumerate((sr, sg, sb)))
+        ratio = contrast((0xF1, 0xF5, 0xF9), comp)
+        gap = (sa < SCRIM_FLOOR) or (ratio < CONTRAST_FLOOR)
+        if gap:
+            bad.append((theme, "scrim=%.2f caption_contrast=%.2f" % (sa, ratio)))
+        say("  [%s] %-22s scrim=%.2f photo_lum=%.3f composite_lum=%.3f contrast=%.2f"
+            % ("GAP " if gap else "ok  ", theme, sa,
+               relative_luminance(lum), relative_luminance(comp), ratio))
+    return bad, len(pairs)
+
+
+def neg_arm(say=print):
+    """THE CONTROL: zero one theme scrim in a COPY and require the census to go RED.
+
+    A census that can only ever answer GREEN is not a gate. MEASURED on the sibling
+    instrument: theme-lightness-census had a hardcoded PANEL and no control, so it could
+    never say no -- and a white theme shipped for months behind its green. This arm runs
+    THIS FILE against a copy of the themes directory with one scrim alpha taken to 0.0,
+    which must read as a photograph fully exposed. It writes into a TemporaryDirectory,
+    launches nothing, and copies only the CSS it needs to touch.
+    """
+    import shutil
+    import tempfile
+    # THE VICTIM IS NAMED BY ITS BLOCK HEADER, NOT BY THE LINE THAT CARRIES ITS SCRIM.
+    # MEASURED: `--cine-scrim:` sits ~60 lines inside the ':root[data-theme=X]{' block, so
+    # searching that same line for the theme name finds nothing and the control answers with
+    # a placeholder -- which then never matches a theme name and the arm reads FAIL even
+    # though the injection worked. Track the header across the lines, as the live pass does.
+    victim = None
+    cur = None
+    with open(os.path.join(THEMES, "cinematic.css"), encoding="utf-8",
+              errors="replace") as h:
+        for line in h:
+            hm = re.match("^:root\\[data-theme='([^']+)'\\]\\{", line)
+            if hm:
+                cur = hm.group(1)
+                continue
+            m = re.search(r"(--cine-scrim:\s*)(rgba?\([^)]*?\))(;)", line)
+            if m and cur and "0.0" not in m.group(2):
+                victim = cur
+                break
+    if victim is None:
+        say("NEG-ARM: could not find a scrim alpha to zero -- the control is inert")
+        return 1
+    tmp = tempfile.mkdtemp(prefix="photo-scrim-neg-")
+    try:
+        os.makedirs(os.path.join(tmp, "backdrops"), exist_ok=True)
+        shutil.copy2(os.path.join(THEMES, "cinematic.css"),
+                     os.path.join(tmp, "cinematic.css"))
+        for f in os.listdir(BACKDROPS):
+            src = os.path.join(BACKDROPS, f)
+            if os.path.isfile(src):
+                shutil.copy2(src, os.path.join(tmp, "backdrops", f))
+        target = os.path.join(tmp, "cinematic.css")
+        with open(target, encoding="utf-8", errors="replace") as h:
+            body = h.read()
+        zeroed = 0
+        lines = []
+        for line in body.split("\n"):
+            m = re.search(r"(--cine-scrim:\s*)(rgba?\([^)]*?\))(;)", line)
+            if m and zeroed == 0 and "0.0" not in m.group(2):
+                nums = [p.strip() for p in
+                        re.search(r"\(([^)]*)\)", m.group(2)).group(1).split(",")]
+                nums[-1] = "0.0"
+                lines.append(line.replace(m.group(2), "rgba(" + ",".join(nums) + ")"))
+                zeroed += 1
+                continue
+            lines.append(line)
+        with open(target, "w", encoding="utf-8") as h:
+            h.write("\n".join(lines))
+        say("NEG-ARM: zeroed the scrim of %s in a copy" % victim)
+        bad, total = census(tmp, say)
+        live = [t for t, _ in (bad or [])]
+        ok = (live == [victim]) or (victim in live and len(live) >= 1)
+        say("NEG-ARM: injected-theme RED=%s  live_bad=%s"
+            % ("yes" if ok else "NO", [t for t, _ in (bad or [])][:3]))
+        say("VERDICT: %s" % ("PASS -- the census can say NO" if ok
+                             else "FAIL -- the census is blind to a zeroed scrim"))
+        return 0 if ok else 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     say = print
     css_path = os.path.join(THEMES, "cinematic.css")
@@ -169,4 +275,10 @@ def main():
 
 
 if __name__ == "__main__":
+    # --neg-arm is the control: a copy of the tree with one scrim alpha taken to 0.0 must
+    # read as a fully exposed photograph and go RED. A census that cannot say NO is not a
+    # gate -- the sibling light census shipped a white theme for months behind its green
+    # exactly because it had none.
+    if "--neg-arm" in sys.argv:
+        sys.exit(neg_arm())
     sys.exit(main())
