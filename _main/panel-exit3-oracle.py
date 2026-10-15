@@ -248,6 +248,10 @@ def rendered(log: list[str]) -> dict:
         'text': status.get('text', probe.get('statusText', '')),
         'error': bool(status.get('error')),
         'live': bool(status.get('live')),
+        # THE CALM STATE (owner, 2026-10-14): the no-audio verdict, which must
+        # NOT be red but must still name the device. Read off the DOM so the
+        # painted fact is measured, not inferred from the kind the shell sent.
+        'noAudio': bool(status.get('noAudio')),
         'className': status.get('className'),
         'placeholderTitle': (probe.get('placeholder') or {}).get('title', ''),
         'placeholderBody': (probe.get('placeholder') or {}).get('body', ''),
@@ -293,18 +297,28 @@ def arm0_classifier(report: dict) -> list[str]:
         b.child = _Child()      # stand-in handle: `_wait` needs one, not a spawn
         return b
 
+    # THE NO-AUDIO VERDICT IS CALM (owner, 2026-10-14 -- "com erro vermelho"):
+    # a worker that opened a device and heard nothing is a WORKING app on a
+    # quiet machine, and it paints 'no-audio' -- the worker's own sentence, the
+    # device, the peak and the floor, in a calm colour, with the hold and the
+    # caption lift unchanged. RED is now reserved for a worker that FAILED
+    # (`error` state, a `done` with an absent or UNKNOWN verdict). The 2026-10-06
+    # decision this arm encodes was right that a death must never look like
+    # warm-up and wrong about the colour it picked for the no-audio half: on this
+    # host an idle desktop produces digital silence on every loopback BY DESIGN,
+    # so the red was a false alarm on every cold start.
     cases = [
         ('silent-device',
          {'type': 'status', 'state': 'silent-device', 'verdict': 'silent-device',
           'device': SILENT_DEVICE, 'api': 'MME', 'peak': 0.000122, 'peak_floor': 0.002,
           'blocks': 34, 'detail': 'delivered 34 blocks but never reached peak 0.002'},
-         'error', SILENT_DEVICE),
+         'no-audio', SILENT_DEVICE),
         ('device-exhausted',
          {'type': 'status', 'state': 'device-exhausted', 'reason': 'all-flat'},
-         'error', None),
+         'no-audio', None),
         ('done-failure',
          {'type': 'status', 'state': 'done', 'verdict': 'all-candidate-taps-flat',
-          'blocks': 34, 'peak': 0.000122, 'captions': 0}, 'error', None),
+          'blocks': 34, 'peak': 0.000122, 'captions': 0}, 'no-audio', None),
         ('done-healthy',
          {'type': 'status', 'state': 'done', 'verdict': 'captions-emitted', 'captions': 5},
          'busy', None),
@@ -327,9 +341,11 @@ def arm0_classifier(report: dict) -> list[str]:
                             f'(text={text!r})')
         if want_in_text and want_in_text not in str(text):
             failures.append(f'ARM 0/{name}: the panel text does not name it: {text!r}')
-        if want_kind == 'error' and not (info or {}).get('body'):
-            failures.append(f'ARM 0/{name}: an error with an EMPTY placeholder body '
-                            f'({info!r})')
+        if want_kind in ('error', 'no-audio') and not (info or {}).get('body'):
+            # A no-audio state carries the worker's OWN cause (device, peak,
+            # floor) in the body just like an error does -- calm is not silent.
+            failures.append(f'ARM 0/{name}: a {want_kind} state with an EMPTY '
+                            f'placeholder body ({info!r})')
 
     # A death must survive the restart's warm-up, and a caption must lift it.
     b = new_bridge()
@@ -405,7 +421,7 @@ def arm0_done_verdict(report: dict) -> list[str]:
     # name, message, want_kind, word that must reach the footer, word that must
     # reach the placeholder body ('' = do not care beyond non-empty)
     cases = [
-        ('done-silent-device-exit3', REAL_DONE_SILENT_DEVICE, 'error',
+        ('done-silent-device-exit3', REAL_DONE_SILENT_DEVICE, 'no-audio',
          'silent-device', SILENT_DEVICE.split(' - ')[0]),
         ('done-unknown-verdict',
          {'type': 'status', 'state': 'done', 'verdict': UNKNOWN_VERDICT,
@@ -432,18 +448,21 @@ def arm0_done_verdict(report: dict) -> list[str]:
         if kind != want_kind:
             failures.append(f'ARM D/{name}: kind={kind!r} expected {want_kind!r} '
                             f'(footer={footer!r})')
-        if want_kind == 'error':
+        if want_kind in ('error', 'no-audio'):
             # The two lies this arm exists to kill: the bare state token in the
             # footer, and an error painted with the panel's WARM-UP placeholder.
+            # BOTH states owe the same evidence: a noun for the footer and the
+            # worker's cause in the body. The calm one owes it MORE, not less --
+            # a state that is not red must say what it is in words.
             if not footer.strip() or footer.strip().lower() == 'done':
                 failures.append(f'ARM D/{name}: the footer is a bare/neutral '
                                 f'token, not a failure: {footer!r}')
             if not body:
-                failures.append(f'ARM D/{name}: an error with an EMPTY '
+                failures.append(f'ARM D/{name}: a {want_kind} state with an EMPTY '
                                 f'placeholder body ({info!r})')
             if not (info or {}).get('title'):
-                failures.append(f'ARM D/{name}: an error with no placeholder '
-                                f'title ({info!r})')
+                failures.append(f'ARM D/{name}: a {want_kind} state with no '
+                                f'placeholder title ({info!r})')
         else:
             if 'error' in footer.lower():
                 failures.append(f'ARM D/{name}: the positive control was painted '
@@ -477,9 +496,14 @@ def arm0_done_verdict(report: dict) -> list[str]:
     seen.append({'case': 'real-sequence-silent-device-then-done', 'kind': kind,
                  'footer': str(text or ''),
                  'placeholder_body': str((info or {}).get('body') or '')})
-    if kind != 'error':
+    # The two-line sequence is the worker's OWN: the loud `silent-device` status,
+    # then the `done`. Both are the same verdict, so both must paint the SAME
+    # state, and that state is the calm one (owner, 2026-10-14). What this arm
+    # still refuses: the verdict word being dropped, or the state drifting back
+    # to warm-up/neutral between the two lines.
+    if kind != 'no-audio':
         failures.append('ARM D/real-sequence: the `done` after a silent-device '
-                        f'status repainted a NON-error state: {kind!r} {text!r}')
+                        f'status repainted a NON-no-audio state: {kind!r} {text!r}')
     if 'silent-device' not in str(text or '') + str((info or {}).get('body') or ''):
         failures.append('ARM D/real-sequence: the verdict never reached the '
                         'footer or the placeholder after the real two-line '
@@ -534,7 +558,8 @@ def arm0_recovery(report: dict) -> list[str]:
     exit), and then feeds a REAL caption on the SAME bridge. It asserts the
     painted state returns to LIVE:
 
-      E1  the death is on screen and HELD (an error footer naming the device)
+      E1  the death is on screen and HELD (a no-audio footer naming the device;
+          red is reserved for a worker that FAILED -- owner, 2026-10-14)
       E2  a restart warm-up (`model-loading`) is SWALLOWED, not painted over it
       E3  the caption is DELIVERED to the page handler (the shell forwards it)
       E4  the caption LIFTS the hold (`pending_error` is None;
@@ -604,11 +629,20 @@ def arm0_recovery(report: dict) -> list[str]:
     # the reading was.
     err = painted[-1] if painted else {}
     bridge.stop('arm-e')           # cancel the restart timer: no real spawn here
+    # E1: the exit-3 death after a silent-device verdict. It is CALM now
+    # (owner, 2026-10-14): the worker opened a device, heard nothing and exited
+    # 3 on its own no-audio verdict, so the panel shows that verdict in a calm
+    # colour with the worker's sentence -- NOT red. What E1 still refuses is a
+    # panel that shows NOTHING (no death painted at all) or a RED one: the
+    # colour moved, the obligation to say it did not.
     error_state = {'footer': err.get('footer', ''),
-                   'error': err.get('kind') == 'error',
+                   'kind': err.get('kind'),
+                   'error': err.get('kind') in ('error', 'no-audio'),
                    'holding': bridge.pending_error is not None}
-    if not error_state['error']:
-        failures.append(f'ARM E/E1: no error was painted before the caption: {err!r}')
+    if error_state['kind'] != 'no-audio':
+        failures.append(f'ARM E/E1: the silent-device death must paint the CALM '
+                        f'no-audio state (it painted {err.get("kind")!r}, red only '
+                        f'for a FAILED worker): {err!r}')
     if not error_state['holding']:
         failures.append('ARM E/E1: the exit-3 death did not arm the hold '
                         '(pending_error is None), so there is nothing to lift')
@@ -864,7 +898,8 @@ def arm_e_real_shell(report: dict) -> list[str]:
     1500 ms) commits it.
 
       mode=hold     every run exits 3 and no caption is ever emitted -> the DOM
-                    must show the HELD ERROR and name the device
+                    must show the HELD no-audio state and name the device
+                    (red is reserved for a FAILED worker -- owner, 2026-10-14)
       mode=recover  run 1 exits 3, run 2 emits a caption             -> the DOM
                     must show 'Receiving captions', error=false, placeholder gone
 
@@ -896,8 +931,12 @@ def arm_e_real_shell(report: dict) -> list[str]:
     hold = one('hold', 12.0)
     report['arm_e_real_shell']['hold'] = hold
     hr = hold['rendered']
-    if not hr['error']:
-        failures.append(f'ARM E-real/hold: the DOM is NOT in error: {hr!r}')
+    # Same law as ARM B: the held state is the CALM one, not red -- the fake
+    # worker dies of the worker's own no-audio verdict.
+    if hr['error']:
+        failures.append(f'ARM E-real/hold: the DOM is RED for a no-audio death: {hr!r}')
+    if not hr['noAudio']:
+        failures.append(f'ARM E-real/hold: the DOM is NOT in the no-audio state: {hr!r}')
     errlow = (str(hr['text']) + ' ' + str(hr['placeholderBody'])).lower()
     if 'silent' not in errlow:
         failures.append('ARM E-real/hold: the error does not name the silent '
@@ -1144,8 +1183,15 @@ def main() -> int:
     #    ends it by request.
     if 3 not in b_exits:
         failures.append(f'ARM B: no worker exit 3 in the log (saw {b_exits})')
-    if not b['error']:
-        failures.append(f"ARM B: panel rendered a NON-error state: {b['text']!r}")
+    # THE NEW LAW (owner, 2026-10-14): a no-audio verdict must NOT be red, and
+    # must not be neutral either -- it is its own state, naming the device. RED
+    # is reserved for a worker that FAILED.
+    if b['error']:
+        failures.append(f"ARM B: the silent-device run was painted RED -- the "
+                        f"owner's 'erro vermelho' complaint: {b['text']!r}")
+    if not b['noAudio']:
+        failures.append(f"ARM B: panel rendered neither error nor the calm "
+                        f"no-audio state: {b['text']!r}")
     low = str(b['text']).lower()
     if not any(w in low for w in FAILURE_TEXT_RE) and not any(
             w in str(b['placeholderTitle']).lower() for w in FAILURE_TEXT_RE):
@@ -1174,9 +1220,14 @@ def main() -> int:
     if str(a['text']).strip().lower() == str(b['text']).strip().lower():
         failures.append('NEGATIVE ARM: the silent-device run renders the SAME '
                         f"status as the healthy run ({a['text']!r})")
-    if a['error'] == b['error']:
+    # The two arms must still be DISTINGUISHABLE: the live run is live, the
+    # silent run is the calm no-audio state. RED is no longer what separates
+    # them (that was the owner's complaint), so the pair compared is the full
+    # (error, no-audio) styling tuple -- a mutant that painted both arms the
+    # same colour is still caught.
+    if (a['error'], a['noAudio']) == (b['error'], b['noAudio']):
         failures.append('NEGATIVE ARM: error styling is identical on both arms '
-                        '(error=%r)' % (a['error'],))
+                        '(error=%r noAudio=%r)' % (a['error'], a['noAudio']))
 
     # ── ARM E on the REAL shell: the two painted states measured in the DOM.
     #    A fake worker reproduces the exit-3 death and then, in `recover` mode,

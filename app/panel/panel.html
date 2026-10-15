@@ -431,25 +431,39 @@
            them. -->
       <section class="history history--collapsed" id="history" aria-label="Transcript">
         <div class="history__bar">
-          <button
-            type="button"
-            class="history__toggle"
-            id="history-toggle"
-            aria-expanded="false"
-            aria-controls="history-body"
-            title="Expand the transcript"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M6 3.5L10.5 8 6 12.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
+          <!-- ── THE TRANSCRIPT BUTTON IS GONE (owner, 2026-10-14) ────────────
+               Verbatim: *"tira o botao de transcript. ha um botao/gaveta do
+               transcript no painel. remove o CONTROLO. se a gaveta tiver de
+               ficar por detras, esconde-a mas tira o botao."*
+
+               WHAT STOOD HERE was the drawer handle: a chevron button
+               (`#history-toggle`) that expanded and collapsed this section, and
+               the ONLY control that could open the drawer by hand.
+
+               THE CONTROL IS DELETED FROM THE MARKUP, and the drawer stays
+               BEHIND, collapsed, exactly as the owner permitted: the section
+               keeps `history--collapsed`, the CSS-only hide on `.history__body`
+               keeps its rows in the DOM for a read-back probe, and the drawer
+               still opens BY ITSELF the day the shell reports a canonical
+               producer — `panel.js isTranscriptExpanded()` is unchanged and
+               nobody can open it by hand any more, which is the point.
+
+               WHAT SURVIVES BESIDE IT: the label and the FOLDER button
+               (`#history-root`, below), because the folder is where the data
+               lives and the owner kept that affordance on its own in 2026-10-08
+               (*"tambem tira essas coisas como 'h sotto history 400 lines…'"* —
+               the PATH went, the button stayed).
+
+               WHAT THE CODE LOST WITH IT: `panel.js` looked the node up as
+               `dom.transcriptToggle` and every use was already NULL-CHECKED
+               (`if (dom.transcriptToggle)` in `wireHistory` and in
+               `applyTranscriptMode`), so removing the markup cannot throw; the
+               two dead branches and the lookup were deleted in the same pass
+               rather than left pointing at nothing. The generated rules that
+               styled it (`.history__toggle` in the `SKIN` groups of
+               `gen_themes.py` and the base rules in `panel.css`) went with it.
+               Gate: `_main/three-overlays-oracle.js` arm D5 re-baselined in the
+               same pass. -->
           <span
             class="history__label"
             id="history-label"
@@ -898,9 +912,35 @@
              theme's own `order` puts each where its mockup has it. The REAL
              status sentence (`#status-text`) is untouched and stays between
              them: the mockups are a simulation and this footer is not, so the
-             panel keeps the one line that carries the worker's own cause. -->
-        <span class="chrome chrome--tele" data-chrome="foot" data-slot="start">HISTÓRICO</span>
-        <span class="chrome chrome--tele" data-chrome="foot" data-slot="end">▲ EM CURSO</span>
+             panel keeps the one line that carries the worker's own cause.
+
+             ── THE TWO `tele` LABELS LEFT THIS BAR (owner, 2026-10-14) ────────
+             Verbatim: *"tira em curso e historico das barras. o dono quer as
+             barras LIMPAS."* What stood here was the ONLY place in the panel
+             that painted those two words — `HISTÓRICO` in the `start` slot and
+             `▲ EM CURSO` in the `end` one, the Teleprompter direction's own
+             footer chrome. BOTH SPANS ARE DELETED FROM THE MARKUP, and the
+             three generated rules that styled them (`.chrome--tele[data-chrome
+             ="foot"]` and its two `data-slot` members in `theme-1.css` and
+             `panel-designs.css`) were deleted from `gen_themes.py` in the same
+             edit: a rule about a node that no longer exists is a rule about
+             nothing, and this file's own rule is to remove it rather than
+             leave it looking live.
+
+             WHAT THE BAR KEEPS: the REAL status sentence (`#status-dot` and
+             `#status-text`, below), which is the worker's own cause and not a
+             mockup label — so the footer is not empty, it is CLEAN.
+
+             WHAT WAS LOST, AND WHY NOTHING WAS: those two spans were INERT
+             chrome. No code read either node (`panel.js` never queried either
+             id and no handler was bound to them), and the only readers anywhere
+             were the expectation tables of `_main/_panel-chrome-arm.py` and
+             `_main/_panel-chrome-probe.js`, both re-baselined in the same pass
+             to demand the labels be ABSENT. The OTHER directions keep their own
+             footer chrome — `bcast`'s meter and LIVE/EM ESPERA, `mano`'s
+             "— escrito ao ouvido", `cine`'s "· · ·", `inst`'s meter and
+             OUVINDO/EM ESPERA — because the owner named `em curso` and
+             `historico` and nothing else. -->
 
         <span class="chrome chrome--bcast" data-chrome="foot" data-slot="start">
           <span class="chrome__meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>

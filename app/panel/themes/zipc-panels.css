@@ -568,22 +568,22 @@
   --size-closed: 12.5px;
   --leading-closed: 2.16;
   --weight-closed: 400;
-  --text-provisional: #35261B;
-  --bg-slab: #F6EDE1;
-  --bg-slab-strong: #F6EDE1;
+  --text-provisional: #F6E7D4;
+  --bg-slab: rgba(26,18,13,0.96);
+  --bg-slab-strong: rgba(26,18,13,0.96);
   --radius-lg: 10px;
   --motion-in: 160ms;
   --type-step: 45ms;
   --accent: #C4562F;
-  --accent-soft: rgba(196,86,47,0.07);
+  --accent-soft: rgba(196,86,47,0.10);
   --theme-swatch: #C4562F;
-  --line: rgba(60,40,26,0.14);
-  --line-strong: rgba(60,40,26,0.14);
-  --text-primary: #35261B;
-  --text-secondary: rgba(53,38,27,0.52);
-  --text-muted: rgba(53,38,27,0.52);
+  --line: rgba(246,231,212,0.12);
+  --line-strong: rgba(246,231,212,0.12);
+  --text-primary: #F6E7D4;
+  --text-secondary: rgba(246,231,212,0.52);
+  --text-muted: rgba(246,231,212,0.52);
   --time-live: #C4562F;
-  --time-past: rgba(53,38,27,0.52);
+  --time-past: rgba(246,231,212,0.52);
   --radius-md: 6px;
   --radius-sm: 4px;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -601,7 +601,7 @@
   --accent-from: var(--accent);
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 :root[data-theme='Paper'] .caption__text {
@@ -2331,22 +2331,22 @@
   --size-closed: 13.5px;
   --leading-closed: 1.62;
   --weight-closed: 300;
-  --text-provisional: #232D30;
-  --bg-slab: rgba(243,239,230,0.94);
-  --bg-slab-strong: rgba(243,239,230,0.94);
+  --text-provisional: #E2EBEF;
+  --bg-slab: rgba(20,28,30,0.96);
+  --bg-slab-strong: rgba(20,28,30,0.96);
   --radius-lg: 16px;
   --motion-in: 500ms;
   --type-step: 45ms;
   --accent: #4A6B74;
-  --accent-soft: rgba(74,107,116,0.08);
+  --accent-soft: rgba(74,107,116,0.10);
   --theme-swatch: #4A6B74;
-  --line: rgba(35,45,48,0.12);
-  --line-strong: rgba(35,45,48,0.12);
-  --text-primary: #232D30;
-  --text-secondary: rgba(35,45,48,0.55);
-  --text-muted: rgba(35,45,48,0.55);
+  --line: rgba(226,235,239,0.12);
+  --line-strong: rgba(226,235,239,0.12);
+  --text-primary: #E2EBEF;
+  --text-secondary: rgba(226,235,239,0.55);
+  --text-muted: rgba(226,235,239,0.55);
   --time-live: #4A6B74;
-  --time-past: rgba(35,45,48,0.55);
+  --time-past: rgba(226,235,239,0.55);
   --radius-md: 10px;
   --radius-sm: 6px;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -2364,7 +2364,7 @@
   --accent-from: var(--accent);
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 :root[data-theme='Gutter'] .caption__text {

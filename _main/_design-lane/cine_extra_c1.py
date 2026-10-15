@@ -761,9 +761,16 @@ _RAW = [
         'caption_color': '#F3F0E8', 'caption_dim': 'rgba(243,240,232,0.3)',
         'caption_accent': '#A9CBC6',
         'caption_shadow': '0 2px 20px rgba(3,7,9,0.92), 0 1px 2px rgba(0,0,0,0.7)',
-        'panel_text': '#232A2C', 'panel_muted': 'rgba(35,42,44,0.5)',
-        'border': 'rgba(35,45,48,0.12)', 'surface': 'rgba(243,239,230,0.94)',
-        'soft': 'rgba(63,94,96,0.07)',
+        # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco"). The sheet
+        # was `rgba(243,239,230,0.94)` -- LIGHT paper with dark ink on it, measured at
+        # 0.81 relative luminance by `_main/theme-lightness-census.py`: one of the six
+        # themes of 45 that were white. The SURFACE AND THE INK ARE INVERTED, not the
+        # design -- the hue (the cool sage-green of `panel.accent` #A9CBC6), the caption
+        # ink (`#F3F0E8`, which sits on the graded photograph), the fonts, the 54px
+        # timestamp column and the initials avatar all stay. What goes is the paper.
+        'panel_text': '#E9F0EE', 'panel_muted': 'rgba(233,240,238,0.5)',
+        'border': 'rgba(169,203,198,0.14)', 'surface': 'rgba(20,26,28,0.94)',
+        'soft': 'rgba(169,203,198,0.07)',
         'radius': 16, 'blur': 0,
         'panel_shadow': '0 34px 80px -34px rgba(0,0,0,0.75)',
         'overlay': 'linear-gradient(180deg, rgba(17,27,32,0.62) 0%, '
@@ -771,7 +778,7 @@ _RAW = [
         'scrim': 'rgba(10,16,19,0.88)',
         'photo': 'backdrops/fieldnotes.jpg',
         'reveal_anim': 'cine-c1-word 620ms cubic-bezier(0.22, 0.68, 0.2, 1) both',
-        'light_panel': True,
+        'light_panel': False,   # NO LIGHT SLAB (owner 2026-10-14): the sheet is dark now
         'note': [
             '`gutter` is a LIGHT sheet (surface `rgba(243,239,230,0.94)`, blur 0) with',
             'a 54px margin column whose timestamps are right-aligned and whose live',
@@ -841,9 +848,16 @@ _RAW = [
         'caption_color': '#FFE7CC', 'caption_dim': 'rgba(255,231,204,0.32)',
         'caption_accent': '#F09A55',
         'caption_shadow': '0 2px 22px rgba(24,10,3,0.9), 0 1px 2px rgba(0,0,0,0.65)',
-        'panel_text': '#35261B', 'panel_muted': 'rgba(53,38,27,0.52)',
-        'border': 'rgba(60,40,26,0.14)', 'surface': '#F6EDE1',
-        'soft': 'rgba(196,86,47,0.07)',
+        # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco"). The paper
+        # was `#F6EDE1` -- LIGHT with dark ink on it, measured at 0.86 relative luminance,
+        # one of the six themes of 45 that were white (the SAME colour as the zipc
+        # `Paper` design, darkened in `gen_zipc.py` in the same pass). The SURFACE AND
+        # THE INK ARE INVERTED, not the design: the warm orange accent (`#F09A55`), the
+        # warm caption ink (`#FFE7CC`, which sits on the graded photograph), the 27px
+        # repeating rule, the red margin rule and the Fraunces caption all stay.
+        'panel_text': '#F7ECDD', 'panel_muted': 'rgba(247,236,221,0.52)',
+        'border': 'rgba(240,154,85,0.16)', 'surface': '#1E140C',
+        'soft': 'rgba(240,154,85,0.08)',
         'radius': 10, 'blur': 0,
         'panel_shadow': '0 34px 80px -34px rgba(0,0,0,0.8)',
         'overlay': 'linear-gradient(180deg, rgba(34,19,11,0.5) 0%, '
@@ -851,7 +865,7 @@ _RAW = [
         'scrim': 'rgba(14,8,5,0.82)',
         'photo': 'backdrops/dustlight.jpg',
         'reveal_anim': 'cine-c1-word-soft 520ms cubic-bezier(0.22, 0.68, 0.2, 1) both',
-        'light_panel': True,
+        'light_panel': False,   # NO LIGHT SLAB (owner 2026-10-14): the sheet is dark now
         'note': [
             '`paper` is one OPAQUE ruled sheet: `background: #F6EDE1`, radius 10,',
             '`blur: 0`, a 27px repeating rule, a 1.5px red margin rule at `left-[52px]`',

@@ -129,6 +129,41 @@ SHIP = [
 # one that carries the suffix. The plan fixes both ids; never merge them.
 RENAME = {'tideline': 'tideline-body'}
 
+# ── NO LIGHT SLAB SHIPS (owner, 2026-10-14) ─────────────────────────────────────────
+# The owner's ruling, verbatim: *"e nao e pra ter tema branco."* Measured first, by
+# `_main/theme-lightness-census.py` over the bytes this file writes: of the 45 themes the
+# picker offers, SIX declared a light surface (`--bg-slab` at or above 0.5 relative
+# luminance) — `cine-paper-moon`, `cine-fieldnotes`, `cine-dustlight`, `cine-linen`, and
+# the two `zipc` designs `Paper` and `Gutter`. The other four are fixed in their own
+# data files (`cine_extra_c1.py`, `cine_extra_c2.py`, `gen_zipc.py`); `paper-moon` is the
+# one whose palette is READ VERBATIM out of `zips/cinematic/src/themes.ts`, so its
+# override lives HERE, in one table, rather than in a hand edit of a vendored source.
+#
+# WHY AN OVERRIDE AND NOT A DELETED DESIGN. The owner kept the count explicit — *"cuidado:
+# nao percas os 45 temas que o dono tem"* — so a design is never dropped for being light;
+# its SURFACE AND INK ARE INVERTED INSTEAD, keeping the design's own hue, its accent, its
+# caption ink, its typography and its photograph. `paper-moon` keeps the silver
+# monochrome that names it; what it loses is white.
+#
+# THE PAPER-MOON INK WAS ALREADY BROKEN, and that is the half of the measurement that
+# decided this. The design states dark ink (`--ink: #191b1f`) for a light sheet, and the
+# sheet sits UNDER the scene's own scrim (`rgba(5,6,10,0.62)`) over the wallpaper — so
+# what actually painted was #212124 (measured) and the panel's own text came out at
+# 1.08:1, i.e. INVISIBLE. A light slab with dark ink is not a taste question here, it is
+# a defect, and the fix is the same one for both halves.
+NO_LIGHT_SLAB = {
+    'paper-moon': {
+        '--panel': 'rgba(22,24,28,0.96)',
+        '--panel-2': 'rgba(170,179,192,0.07)',
+        '--ink': '#EDEFF2',
+        '--dim': '#9AA2AC',
+        '--faint': '#7C838D',
+        '--line': 'rgba(237,239,242,0.12)',
+        "--accent": '#aab3c0',
+        '--hover': 'rgba(221,226,233,0.07)',
+    },
+}
+
 # The near-duplicate pairs, so the panel can offer them as alternatives to compare
 # (the owner: *"pros que sao bem parecidos, faça outra alternativa, a b c testing"*).
 # `groupLabel` is written only on the first member, and it may only claim what the CSS
@@ -1326,6 +1361,12 @@ def main():
 
     for did in SHIP:
         d = designs[did]
+        # NO LIGHT SLAB SHIPS (owner, 2026-10-14, verbatim: *"e nao e pra ter tema
+        # branco"*). The override is applied to the READ vars BEFORE anything maps them,
+        # so every derived token, the alias block and `color-scheme` all follow the dark
+        # surface in one step. A design not in the table is untouched.
+        for k, v in NO_LIGHT_SLAB.get(did, {}).items():
+            d['vars'][k] = v
         toks = tokens_for(d)
         photo, note = fetch_backdrop(d, log)
         toks['__photo'] = photo
@@ -1444,6 +1485,19 @@ def main():
         if not m or m.group(1).strip().lower() != r['swatch'].lower():
             fails.append('%s: swatch %s != --theme-swatch %s'
                          % (r['name'], r['swatch'], m.group(1).strip() if m else 'ABSENT'))
+    # THE OWNER'S OWN RULING, 2026-10-14: *"e nao e pra ter tema branco."* A build that
+    # can ship a light slab again is a build that can undo the fix silently, so the
+    # threshold is checked HERE, on the bytes this run just wrote, with the SAME number
+    # `panel_is_light()` uses to choose `color-scheme` — the census
+    # (`_main/theme-lightness-census.py`) reads these same bytes with the same line, so
+    # the generator and the instrument cannot disagree about what "light" means.
+    for r in rows:
+        bodies = re.findall(r":root\[data-theme='%s'\]\{(.*?)\n\}" % re.escape(r['name']),
+                            css, re.S)
+        m = re.search(r'\n  --bg-slab: (.*?);', '\n' + '\n'.join(bodies))
+        if m and panel_is_light(m.group(1).strip()):
+            fails.append('%s: LIGHT slab %s -- the owner ruled no white theme (2026-10-14)'
+                         % (r['name'], m.group(1).strip()))
     names = [r['name'] for r in rows]
     for n in names:
         if names.count(n) > 1:

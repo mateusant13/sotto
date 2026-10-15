@@ -73,17 +73,23 @@ DESIGNS = [
     ),
     dict(
         name="Paper", title="Paper",
-        legacy_note="italic captions, 10px radius, a LIGHT surface.",
+        legacy_note="italic captions, 10px radius, a DARK surface (light until the owner ruled no white theme, 2026-10-14).",
         # scenes.ts:255-264
-        surface="#F6EDE1", line="rgba(60,40,26,0.14)",
-        text="#35261B", muted="rgba(53,38,27,0.52)", accent="#C4562F",
-        soft="rgba(196,86,47,0.07)", soft_rgb="196,86,47",
+        # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco"). `scenes.ts`
+        # states the design as a LIGHT sheet (`#F6EDE1` with dark ink) and the census
+        # measured the painted panel at 0.86 relative luminance -- one of the six themes of
+        # 45 that were white. THE SHEET IS INVERTED, NOT THE DESIGN: warm dark linen, warm
+        # light ink, the design's own red margin rule kept at a lighter alpha, the ruled
+        # 27px page, the 10px radius and the italic Fraunces caption all stay.
+        surface="rgba(26,18,13,0.96)", line="rgba(246,231,212,0.12)",
+        text="#F6E7D4", muted="rgba(246,231,212,0.52)", accent="#C4562F",
+        soft="rgba(196,86,47,0.10)", soft_rgb="246,231,212",
         radius=10, radius_md=6, radius_sm=4,
         panel_font='"DM Mono", ui-monospace, monospace',
         caption_font='"Fraunces", Georgia, serif',
         size=33, weight=400, tracking="0.002em",
         body_radius=7, card=True, card_radius=4, card_padding="8px 12px",
-        latest_weight=500, slab_opacity="0.96", light=True,
+        latest_weight=500, slab_opacity="0.96", light=False,   # NO LIGHT SLAB (owner, 2026-10-14): the sheet is dark now
     ),
     dict(
         name="Quotes", title="Quotes",
@@ -171,17 +177,23 @@ DESIGNS = [
     ),
     dict(
         name="Gutter", title="Gutter",
-        legacy_note="tight captions, 16px radius, a LIGHT surface.",
+        legacy_note="tight captions, 16px radius, a DARK surface (light until the owner ruled no white theme, 2026-10-14).",
         # scenes.ts:725-734
-        surface="rgba(243,239,230,0.94)", line="rgba(35,45,48,0.12)",
-        text="#232D30", muted="rgba(35,45,48,0.55)", accent="#4A6B74",
-        soft="rgba(74,107,116,0.08)", soft_rgb="74,107,116",
+        # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco"). `scenes.ts`
+        # states the design as a LIGHT sheet (`rgba(243,239,230,0.94)` with dark ink) and
+        # the census measured the painted panel at 0.76 relative luminance -- one of the six
+        # themes of 45 that were white. THE SHEET IS INVERTED, NOT THE DESIGN: a deep slate
+        # slab with light ink, the design's own teal accent untouched, the 54px timestamp
+        # column and the Newsreader caption kept.
+        surface="rgba(20,28,30,0.96)", line="rgba(226,235,239,0.12)",
+        text="#E2EBEF", muted="rgba(226,235,239,0.55)", accent="#4A6B74",
+        soft="rgba(74,107,116,0.10)", soft_rgb="226,235,239",
         radius=16, radius_md=10, radius_sm=6,
         panel_font='"Newsreader", Georgia, serif',
         caption_font='"Newsreader", Georgia, serif',
         size=27, weight=300, tracking="0.002em",
         body_radius=11, card=False, card_radius=0, card_padding="6px 2px",
-        latest_weight=400, slab_opacity="0.96", light=True,
+        latest_weight=400, slab_opacity="0.96", light=False,   # NO LIGHT SLAB (owner, 2026-10-14): the sheet is dark now
     ),
 ]
 
@@ -393,8 +405,12 @@ STRUCT = {
     "Paper": dict(live_size=33, live_leading="1.42", live_weight=400,
                   live_tracking="-0.008em", upper="none",
                   closed_size=12.5, closed_leading="2.16", closed_weight=400,
-                  provisional="#35261B", bg_slab="#F6EDE1",
-                  motion="160ms", scheme="light"),
+                  # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco").
+                  # This row is where `--bg-slab`, the provisional ink and `color-scheme`
+                  # come from, so the light sheet `scenes.ts` states lived HERE as well as
+                  # in `DESIGNS` above. Both are inverted: dark warm linen, dark scheme.
+                  provisional="#F6E7D4", bg_slab="rgba(26,18,13,0.96)",
+                  motion="160ms", scheme="dark"),
     # zip: scenes.ts:310-319 + PanelSetA.tsx:357-458
     "Quotes": dict(live_size=36, live_leading="1.3", live_weight=400,
                    live_tracking="-0.01em", upper="none",
@@ -435,8 +451,10 @@ STRUCT = {
     "Gutter": dict(live_size=27, live_leading="1.52", live_weight=300,
                    live_tracking="-0.018em", upper="none",
                    closed_size=13.5, closed_leading="1.62", closed_weight=300,
-                   provisional="#232D30", bg_slab="rgba(243,239,230,0.94)",
-                   motion="500ms", scheme="light"),
+                   # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco").
+                   # Same three fields, same inversion: a deep slate sheet and a dark scheme.
+                   provisional="#E2EBEF", bg_slab="rgba(20,28,30,0.96)",
+                   motion="500ms", scheme="dark"),
 }
 
 TUNE_TOKENS = [

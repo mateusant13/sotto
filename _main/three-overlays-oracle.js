@@ -215,9 +215,23 @@ function checks(dir) {
   add('D4 the right panel holds the font dial, pause and hide',
     has('font-smaller-button') && has('font-larger-button') && has('panel-pause-button') && has('hide-button'),
     'font- font+ panel-pause hide');
-  add('D5 the right panel holds the history toggle, search and revive',
-    has('history-toggle') && has('search-button') && has('reveal-button'),
-    'history-toggle search-button reveal-button');
+  /* RE-BASELINED 2026-10-14 (lane B) on the owner's OWN new words, verbatim: *"tira o
+     botao de transcript. ha um botao/gaveta do transcript no painel. remove o CONTROLO.
+     se a gaveta tiver de ficar por detras, esconde-a mas tira o botao."* The check used
+     to DEMAND `history-toggle` -- the very control he ordered out -- so it went red the
+     moment the work was done, which is the same shape as the 2026-10-12 theme-pill
+     re-baseline above. The assertion is now BOTH halves, the stronger form: the CONTROL
+     is gone, and the DRAWER it used to open is still on the panel, still in the DOM and
+     still CSS-collapsed behind the bar. A gate that only checks absence cannot tell
+     "the button was removed" from "the whole transcript was deleted". Control: N11
+     below puts the button back and this check must go RED. */
+  add('D5 the transcript BUTTON is gone and the drawer stays behind, collapsed',
+    !has('history-toggle') && has('history') &&
+    /\.history--collapsed \.history__body \{\s*display:\s*none/.test(css),
+    'no history-toggle; #history present; .history__body collapsed');
+  add('D5b the drawer keeps its own tools on the panel (search and reveal)',
+    has('search-button') && has('reveal-button'),
+    'search-button reveal-button');
   /* RE-BASELINED 2026-10-12 (Lead), same reason as D1: the owner cut the strip's
      theme control and the picker is now reached from the RIGHT panel only. The
      old form required the very button he removed. */
@@ -323,6 +337,13 @@ const muts = [
     from: 'applyFloat(liveEnabled);', to: '' },
   { tag: 'N10 the removed Linhar button comes back (the owner moved the control to live)', file: 'panel.html',
     from: 'id="strip-open-button"', to: 'id="strip-float-button"' },
+  /* N11 IS THE CONTROL THE 2026-10-14 D5 RE-BASELINE NEEDS. The owner removed the
+     transcript BUTTON and kept the drawer behind it, so D5 now asserts BOTH halves;
+     without a mutant that puts the button back, that gate could not tell the two
+     apart and would pass just as well with the control restored. */
+  { tag: 'N11 the transcript button comes back (the owner removed it)', file: 'panel.html',
+    from: '<span\r\n            class="history__label"',
+    to: '<button type="button" class="history__toggle" id="history-toggle" aria-expanded="false" aria-controls="history-body" title="Expand the transcript">\r\n            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>\r\n          </button>\r\n          <span\r\n            class="history__label"' },
 ];
 
 let wrong = 0;

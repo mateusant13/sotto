@@ -74,9 +74,16 @@ EXPECTED = {
     # its wordmark; the other four carry `.chrome__brand` in their own header line.
     # LOWERCASE EVERYWHERE — the owner wrote it that way and `text-transform` used
     # to overrule him on two of the five.
+    # RE-BASELINED 2026-10-14 on the owner's OWN new words, verbatim: *"tira em curso e
+    # historico das barras. o dono quer as barras LIMPAS."* Both footer labels were
+    # DELETED FROM THE MARKUP (`panel.html`), so the expectation is now that NEITHER is
+    # on screen. A row that kept demanding them would pin the exact contract the owner
+    # cancelled -- the same trap this table already fell into twice (the 2026-10-08
+    # `AO VIVO`/`rascunho ao vivo` re-baseline, recorded in the probe's own header).
     'theme-1': dict(id='tele', label='Teleprompter', family='Barlow Condensed',
                     head_word='LENDO', state_word='LENDO', wordmark='sotto',
-                    foot_start='HISTÓRICO', foot_end='▲ EM CURSO',
+                    foot_start=None, foot_end=None,
+                    foot_absent=['HISTÓRICO', '▲ EM CURSO'],
                     index=False, led=False, meter=False, ramp=False, fog=False),
     'theme-2': dict(id='bcast', label='Broadcast', family='IBM Plex Mono',
                     head_word='REC', state_word='REC', wordmark=None,
@@ -406,6 +413,16 @@ def check_theme(t, exp, problems, motion):
             bad('its own footer state label is NOT on screen')
         elif not t.get('footEndHasExpectedWord'):
             bad('footer state label is %r, expected %r' % (t.get('footEndText'), exp['foot_end']))
+    # RE-BASELINED 2026-10-14 (owner: *"tira em curso e historico das barras"*). The two
+    # `tele` footer labels were DELETED FROM THE MARKUP, so a `None` expectation is not
+    # enough on its own -- it would pass just as well with the labels present and merely
+    # skipped. This is the positive half: every word in `foot_absent` must be ABSENT from
+    # the chrome the direction paints. Without it the re-baseline would be a guess.
+    for label in (exp.get('foot_absent') or ()):
+        blob = str(t.get('chromeTextAll') or '')
+        if label in blob:
+            bad('%r is STILL painted in the chrome -- the owner removed it from the bars'
+                ' on 2026-10-14' % label)
 
     if not t.get('controlsShown'):
         bad('the control cluster (with the theme button in it) is NOT on screen')

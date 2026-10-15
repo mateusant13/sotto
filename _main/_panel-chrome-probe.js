@@ -102,7 +102,11 @@
    * `headWord` for `cine` is the NAME now, not a state word: the direction's header
    * leads with the brand, so that is what the header check must find there. */
   var DIRS = [
-    { id: 'tele', theme: 'theme-1', label: 'Teleprompter', headWord: 'LENDO', stateWord: 'LENDO', foot: '▲ EM CURSO' },
+    /* RE-BASELINED 2026-10-14 (owner: *"tira em curso e historico das barras"*). Both
+       footer labels are GONE from the markup, so `foot` is null for `tele` and the arm's
+       check asserts the ABSENCE instead. The other four directions keep their own footer
+       chrome; the owner named `em curso` and `historico` and nothing else. */
+    { id: 'tele', theme: 'theme-1', label: 'Teleprompter', headWord: 'LENDO', stateWord: 'LENDO', foot: null },
     { id: 'bcast', theme: 'theme-2', label: 'Broadcast', headWord: 'REC', stateWord: 'REC', foot: 'LIVE' },
     { id: 'mano', theme: 'theme-3', label: 'Manuscrito', headWord: 'rascunho live', stateWord: 'rascunho live', foot: '— escrito ao ouvido' },
     { id: 'cine', theme: 'theme-4', label: 'Cinema Card', headWord: 'sotto', stateWord: '· live ·', foot: '· · ·' },

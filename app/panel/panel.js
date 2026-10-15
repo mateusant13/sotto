@@ -79,7 +79,13 @@ const dom = {
   statsChip: document.getElementById('stats-chip'),
   // transcript feed
   transcript: document.getElementById('history'),
-  transcriptToggle: document.getElementById('history-toggle'),
+  /* THE DRAWER HANDLE IS GONE (owner, 2026-10-14, verbatim: *"tira o botao de
+     transcript… remove o CONTROLO"*). `#history-toggle` was deleted from the
+     markup, so this lookup is deleted with it — it would return `null` forever and
+     a lookup of a node that does not exist is a claim about a document that is not
+     the one shipped. The drawer is still reachable: it opens by itself when the
+     shell reports a canonical producer (`isTranscriptExpanded`), and the FOLDER
+     button (`#history-root`, below) still opens the place the data lives. */
   transcriptNote: document.getElementById('transcript-note'),
   transcriptCount: document.getElementById('history-count'),
   historyList: document.getElementById('history-list'),
@@ -1238,17 +1244,15 @@ function updateLiveHint() {
  */
 
 function wireHistory() {
-  // The drawer handle. It always works — that is the point of collapsing rather
-  // than hiding: the owner can still read the folder and any rows that exist.
-  if (dom.transcriptToggle) {
-    dom.transcriptToggle.addEventListener('click', () => {
-      transcriptExpanded = !isTranscriptExpanded();
-      applyTranscriptMode();
-      if (isTranscriptExpanded() && dom.historyList) {
-        dom.historyList.scrollTop = dom.historyList.scrollHeight;
-      }
-    });
-  }
+  /* THE DRAWER HANDLE IS GONE (owner, 2026-10-14). The click handler that stood
+     here flipped `transcriptExpanded` and re-applied the mode, and it is deleted
+     with the `#history-toggle` button it was bound to. This is the ONLY code that
+     could open the drawer BY HAND; what remains is the automatic half —
+     `isTranscriptExpanded()` still returns true when the shell reports a canonical
+     producer, so the drawer opens itself the day a writer exists. Nothing else in
+     this file reads the removed node: every other reference was already inside an
+     `if (dom.transcriptToggle)` guard, and those two branches are deleted below
+     rather than left pointing at nothing. */
 
   if (dom.revealButton) {
     dom.revealButton.addEventListener('click', () => {
@@ -1341,9 +1345,12 @@ function canonicalProducerOf(result) {
 /**
  * D1 — the transcript section's ONE state function.
  *
- * Collapsed unless the shell reports a canonical producer (or the owner opened
- * it by hand). While collapsed it is a bar: label, folder path, row count, the
- * honest one-line note, and the chevron. The LIVE search is disabled rather than
+ * Collapsed unless the shell reports a canonical producer. While collapsed it is
+ * a bar: the label, the folder button and the row count, with the honest
+ * one-line note. THE CHEVRON THAT USED TO OPEN IT BY HAND IS GONE (owner,
+ * 2026-10-14: *"tira o botao de transcript… remove o CONTROLO. se a gaveta tiver
+ * de ficar por detras, esconde-a mas tira o botao"*), so the drawer now opens by
+ * itself or not at all. The LIVE search is disabled rather than
  * left as a box that can never match, and it re-enables itself the moment a
  * producer exists — nothing here is a permanent decision.
  */
@@ -1352,10 +1359,10 @@ function applyTranscriptMode() {
   const rows = historyEntries.length;
 
   if (dom.transcript) dom.transcript.classList.toggle('history--collapsed', !expanded);
-  if (dom.transcriptToggle) {
-    dom.transcriptToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    dom.transcriptToggle.title = expanded ? 'Collapse the transcript' : 'Expand the transcript';
-  }
+  /* The `aria-expanded` / title half is GONE with the button (owner, 2026-10-14):
+     it described a control that no longer exists. `expanded` itself is still
+     computed and still drives the collapse below — the DRAWER behaviour is
+     unchanged, only its handle is gone. */
   if (dom.transcriptCount) {
     // THE THIRD COUNT SITE — the owner's own words suggested there was more than
     // one (*"400 lines… 400 lines…"*) and there were three: this one, the live
@@ -2224,6 +2231,10 @@ function updateStripState() {
   } else if (kind === 'error') {
     word = 'Error';
     state = 'error';
+  } else if (kind === 'no-audio') {
+    // NOT red and not 'Working': the worker is alive, the endpoint is quiet.
+    word = 'No audio';
+    state = '';
   } else if (kind === 'live') {
     word = 'Live';
     state = 'live';
@@ -2763,6 +2774,17 @@ function wireStatus() {
       showReadiness({ title: 'Not transcribing', body: text }, true);
       return;
     }
+    if (state === 'no-audio') {
+      // THE CALM STATE. Same treatment as an error except the colour: the
+      // SHELL'S TEXT stays the headline (it names the device and the peak), and
+      // the readiness copy must never overwrite it — but the paint is the calm
+      // one, not red. The owner's verbatim complaint was "com erro vermelho"
+      // on every cold start with a quiet desktop; the red is now reserved for
+      // a worker that FAILED.
+      setStatus(text, 'no-audio');
+      showReadiness({ title: 'No audio to transcribe', body: text }, true);
+      return;
+    }
     if (state === 'live') {
       // Captions are flowing. The footer goes live; the placeholder is left
       // alone because readiness copy is only for the NEUTRAL states, and a real
@@ -2831,6 +2853,11 @@ function statusPayload(payload) {
 function statusKind(kind) {
   if (kind === 'error') return 'error';
   if (kind === 'live') return 'live';
+  // THE CALM STATE (owner, 2026-10-14): the worker reported that the endpoint
+  // it opened carries nothing to transcribe. NOT a fault -- red would read as
+  // "coisa nao carregada" (his own words for the defect) -- and not warm-up
+  // either, so the worker's own sentence stays on screen.
+  if (kind === 'no-audio') return 'no-audio';
   return '';
 }
 
@@ -3051,6 +3078,9 @@ function showReadiness(readiness, isError) {
 function skinStateWord(state) {
   if (state === 'live') return 'listening';
   if (state === 'error') return 'error';
+  // The calm state's word. Not 'error' (it is not one) and not 'listening'
+  // (nothing is being heard): the app is on, the endpoint is quiet.
+  if (state === 'no-audio') return 'idle';
   if (paused) return 'paused';
   if (!liveEnabled) return 'off';
   return 'idle';
@@ -3071,7 +3101,11 @@ function setStatus(text, state) {
   // that. An icon cannot name a device, so an error still paints its sentence and
   // the icon turns red beside it. He asked for the phrase he sees all day to go;
   // he did not ask for a silent death. Stated in the receipt as an exception.
-  const paintsText = state === 'error';
+  // THE CALM STATE KEEPS ITS SENTENCE TOO (owner, 2026-10-14). It is not a death,
+  // so the icon is not red — but the sentence IS the report ("Silent audio
+  // device - <device> [MME] peaked 9.2e-05 < floor 0.002"), and an icon cannot
+  // say that. Same access rule as the error path: never off screen.
+  const paintsText = state === 'error' || state === 'no-audio';
   if (dom.statusText) {
     dom.statusText.textContent = paintsText ? text : '';
     // VISUALLY hidden, not `hidden`: the sentence is the only accessible name of
@@ -3084,6 +3118,7 @@ function setStatus(text, state) {
   if (dom.status) {
     dom.status.classList.toggle('status--live', state === 'live');
     dom.status.classList.toggle('status--error', state === 'error');
+    dom.status.classList.toggle('status--noaudio', state === 'no-audio');
   }
   // THE SAME FACT, IN A PLACE THE WHOLE SLAB CAN SEE (2026-10-08). The per-theme
   // state words (`LENDO`/`PAUSA`, `REC`/`STBY`, `ON`/`OFF`, `OUVINDO`/`PAUSA`)

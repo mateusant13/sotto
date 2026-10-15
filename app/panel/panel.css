@@ -405,11 +405,32 @@ body {
 .icon-button {
   display: grid;
   place-items: center;
+  /* 28x28 — SMALL ON PURPOSE. The owner's own words (2026-10-14): *"os botoes sao
+     botoes simples e pequenos porem visiveis o suficiente pro usuario."* The box does
+     not move; only its EDGE and its FILL do, and both are numbers this file already
+     used, measured on the live panel:
+       * `border: 1px solid transparent` -> `rgba(148, 163, 184, 0.34)`. MEASURED
+         BEFORE: the control had NO edge at all — 1.0:1 against the slab, a glyph
+         floating with no box, in every theme that does not restyle this class (the
+         30 `cine-*` and `zipc-*` ones; `gen_themes.py` SKIN restyles it for the ten
+         `theme-N`/`pd-*` directions). AFTER: 1.89:1 on the dark slab, 1.15-1.28:1 on
+         the six light ones — the census is in
+         `_main/receipt-20261014-ui-fixes.md`. It is a hairline, not a frame: 0.34 is
+         the same slate family as the fill below it, and 0.50 would only reach 2.7:1,
+         so a 3:1 edge would mean a chunky border nobody asked for. The GLYPH is what
+         makes this button readable — 14-19:1 against the slab in every dark theme —
+         and it is the glyph that the six white themes were destroying (1.3:1); those
+         are darkened in the same pass.
+       * `background` 0.08 -> 0.12. Same reason, same family: the resting fill now
+         reads as a surface instead of a stain, and the hover (the `0.14`-class tint
+         plus `--line-strong`) still steps up from it.
+     SIZE IS UNCHANGED: 28 px, the number the header row was measured against
+     (`panel.css`, the `.panel__header` comment), and the glyph stays 16 px. */
   width: 28px;
   height: 28px;
-  border: 1px solid transparent;
+  border: 1px solid rgba(148, 163, 184, 0.34);
   border-radius: var(--radius-sm);
-  background: rgba(148, 163, 184, 0.08);
+  background: rgba(148, 163, 184, 0.12);
   color: var(--text-dim);
   cursor: pointer;
   transition:
@@ -626,43 +647,18 @@ body[data-level="none"] .chrome__meter i {
   min-width: 0;
 }
 
-/* The drawer handle: a chevron that points right when closed, down when open. */
-.history__toggle {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: rgba(148, 163, 184, 0.08);
-  color: var(--text-faint);
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.history__toggle svg {
-  width: 14px;
-  height: 14px;
-  transition: transform 140ms ease;
-}
-
-.history:not(.history--collapsed) .history__toggle svg {
-  transform: rotate(90deg);
-}
-
-.history__toggle:hover {
-  background: rgba(125, 211, 252, 0.14);
-  color: var(--text);
-}
-
-.history__toggle:focus-visible {
-  outline: 2px solid var(--accent-to);
-  outline-offset: 1px;
-}
+/* ── THE DRAWER HANDLE IS GONE (owner, 2026-10-14) ────────────────────────────
+   Verbatim: *"tira o botao de transcript… remove o CONTROLO. se a gaveta tiver
+   de ficar por detras, esconde-a mas tira o botao."* Six rules stood here — the
+   22 px chevron button, its 14 px glyph, the 90° rotation while open, the hover
+   tint and the focus ring. `#history-toggle` was DELETED FROM THE MARKUP in the
+   same pass (see `panel.html`, in the `.history__bar`), so every one of them
+   styled nothing; a rule about a node that no longer exists is a rule about
+   nothing, and this file's own convention is to delete it rather than leave it
+   looking live. The DRAWER itself stays: `.history--collapsed` and the CSS-only
+   hide on `.history__body` below are untouched, so the rows remain in the DOM
+   for a read-back probe and the section still opens by itself the day a
+   canonical producer exists. */
 
 .history__count {
   flex: none;
@@ -1384,6 +1380,25 @@ body[data-level="none"] .chrome__meter i {
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
 }
 
+/* NO-AUDIO — filled amber, same shape as the error dot, a different colour.
+   The worker reported that the endpoint it opened carries nothing to
+   transcribe; that is the healthy answer to a quiet machine, not a fault. The
+   owner's verbatim defect (2026-10-14): "sotto ta reclamando de coisa nao
+   carregada, com erro vermelho" — red was telling him the app was broken when
+   nothing was routed into the cable. Kept as its OWN state rather than folded
+   into the neutral ring because "nothing is running" and "nothing to
+   transcribe" are different facts, and the sentence beside it names the
+   device and the numbers. */
+.status__dot[data-state="no-audio"] {
+  background: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+}
+
+.status--noaudio .status__dot {
+  background: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+}
+
 .status--live .status__dot {
   background: var(--accent-from);
   box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15);
@@ -1856,9 +1871,16 @@ body[data-surface="strip"] #strip-live-button .strip-button__label {
 /* Twelve pixels of glyph in a twenty-six pixel box, rounded: the 12 px rule 
  * above was tuned for a 22 px pill with a text baseline beside it, and the 
  * circle gives the glyph the whole box. */
+/* Fourteen pixels of glyph in a twenty-six pixel box, rounded — the 13 px rule that
+  stood here was measured as too thin to read at a glance on the bar (owner,
+  2026-10-14: *"os botoes sao botoes simples e pequenos porem visiveis o suficiente pro
+  usuario"*). The CIRCLE does not grow — 26 px, the size the strip window is handed —
+  only the glyph does, from 13 px to 14 px, which is what the bar can carry without
+  the stroke touching the border. The stroke weights are the markup's own (`1.3`),
+  unchanged. */
 body[data-surface="strip"] .strip-button svg {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
 }
 body[data-surface="strip"] .strip-button--chevron {
   justify-content: center;
@@ -2417,7 +2439,8 @@ body[data-state="live"] .chrome__on {
 }
 
 body[data-state=""] .chrome__off,
-body[data-state="error"] .chrome__off {
+body[data-state="error"] .chrome__off,
+body[data-state="no-audio"] .chrome__off {
   display: inline;
 }
 

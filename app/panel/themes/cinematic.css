@@ -1420,23 +1420,23 @@
  */
 :root[data-theme='cine-paper-moon']{
   /* SURFACE — the zip's `--panel` is the slab, its `--panel-2` the raised tint. */
-  --bg-slab: rgba(240,241,238,0.94);
-  --bg-slab-strong: rgba(20,24,30,0.045);
+  --bg-slab: rgba(22,24,28,0.96);
+  --bg-slab-strong: rgba(170,179,192,0.07);
   --shadow-slab: 0 2px 14px rgba(0,0,0,0.6), 0 1px 2px rgba(0,0,0,0.45);
   /* TEXT — the caption's own two tones are the zip's `--caption-ink`; the
      newest word takes the accent, which is the zip's `--caption-accent` role. */
-  --text-primary: #191b1f;
+  --text-primary: #EDEFF2;
   --text-confirmed: #f4f6f4;
   --text-provisional: #f4f6f4;
-  --text-secondary: #5f646c;
-  --text-muted: #969ba3;
+  --text-secondary: #9AA2AC;
+  --text-muted: #7C838D;
   /* LINES AND ACCENT — `--line-strong` is the zip's ONE line colour at a
      higher alpha: the panel has two weights of the same line, and a second
      colour would be a colour the design never states. */
-  --line: rgba(20,24,30,0.12);
-  --line-strong: rgba(20, 24, 30, 0.34);
-  --accent: #4c5666;
-  --accent-soft: rgba(30,40,55,0.07);
+  --line: rgba(237,239,242,0.12);
+  --line-strong: rgba(237, 239, 242, 0.34);
+  --accent: #aab3c0;
+  --accent-soft: rgba(221,226,233,0.07);
   --theme-swatch: #aab3c0;
   /* STATE — the zip declares none. `--ok`/`--error` MEAN something in this app
      (the tap is delivering / it is not), so they are the product's and are
@@ -1446,7 +1446,7 @@
      `status--live`/`status--error`.) */
   --ok: #6EF184;
   --error: #F87171;
-  --idle: #969ba3;
+  --idle: #7C838D;
   /* SHAPE and SPACE — the zip has no radius scale (it styles panes with
      Tailwind classes), so these are the repo's. */
   --radius-sm: 7px;
@@ -1496,7 +1496,7 @@
   --accent-from: var(--accent);
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 /* THE BACKDROP: the zip's own wallpaper behind the zip's own scrim. The scrim
@@ -3305,18 +3305,18 @@
 
 /* ── Field Notes — from the `cinematic-1` zip ── */
 :root[data-theme='cine-fieldnotes']{
-  --bg-slab: rgba(243,239,230,0.94);
-  --bg-slab-strong: rgba(63,94,96,0.07);
+  --bg-slab: rgba(20,26,28,0.94);
+  --bg-slab-strong: rgba(169,203,198,0.07);
   --shadow-slab: 0 34px 80px -34px rgba(0,0,0,0.75);
-  --text-primary: #232A2C;
+  --text-primary: #E9F0EE;
   --text-confirmed: #F3F0E8;
   --text-provisional: #F3F0E8;
-  --text-secondary: rgba(35,42,44,0.5);
+  --text-secondary: rgba(233,240,238,0.5);
   --text-muted: rgba(243,240,232,0.3);
-  --line: rgba(35,45,48,0.12);
-  --line-strong: rgba(35, 45, 48, 0.34);
+  --line: rgba(169,203,198,0.14);
+  --line-strong: rgba(169, 203, 198, 0.34);
   --accent: #A9CBC6;
-  --accent-soft: rgba(63,94,96,0.07);
+  --accent-soft: rgba(169,203,198,0.07);
   --theme-swatch: #A9CBC6;
   --ok: #6EF184;
   --error: #F87171;
@@ -3415,7 +3415,6 @@
   backdrop-filter: none;
   box-shadow: var(--shadow-slab);
 }
-:root[data-theme='cine-fieldnotes'] body { color-scheme: light; }
 
 /* THE BAR — the design's own meta row, which `CaptionStage` draws ABOVE the
  * caption: `f-dm text-[10px] uppercase tracking-[0.3em]` in the caption's own
@@ -3644,18 +3643,18 @@
 
 /* ── Dustlight — from the `cinematic-1` zip ── */
 :root[data-theme='cine-dustlight']{
-  --bg-slab: #F6EDE1;
-  --bg-slab-strong: rgba(196,86,47,0.07);
+  --bg-slab: #1E140C;
+  --bg-slab-strong: rgba(240,154,85,0.08);
   --shadow-slab: 0 34px 80px -34px rgba(0,0,0,0.8);
-  --text-primary: #35261B;
+  --text-primary: #F7ECDD;
   --text-confirmed: #FFE7CC;
   --text-provisional: #FFE7CC;
-  --text-secondary: rgba(53,38,27,0.52);
+  --text-secondary: rgba(247,236,221,0.52);
   --text-muted: rgba(255,231,204,0.32);
-  --line: rgba(60,40,26,0.14);
-  --line-strong: rgba(60, 40, 26, 0.34);
+  --line: rgba(240,154,85,0.16);
+  --line-strong: rgba(240, 154, 85, 0.34);
   --accent: #F09A55;
-  --accent-soft: rgba(196,86,47,0.07);
+  --accent-soft: rgba(240,154,85,0.08);
   --theme-swatch: #F09A55;
   --ok: #6EF184;
   --error: #F87171;
@@ -3753,7 +3752,6 @@
   backdrop-filter: none;
   box-shadow: var(--shadow-slab);
 }
-:root[data-theme='cine-dustlight'] body { color-scheme: light; }
 
 /* THE BAR — the design's own meta row, which `CaptionStage` draws ABOVE the
  * caption: `f-dm text-[10px] uppercase tracking-[0.3em]` in the caption's own
@@ -6023,16 +6021,16 @@
 
 /* ── Linen Hours — from the `cinematic-2` zip ── */
 :root[data-theme='cine-linen']{
-  --bg-slab: #efe7da;
-  --bg-slab-strong: rgba(251,247,240,.86);
-  --shadow-slab: 0 22px 60px -34px rgba(70,54,36,.45);
-  --text-primary: #2e2a24;
-  --text-confirmed: #332d26;
-  --text-provisional: #332d26;
-  --text-secondary: #8a7f6f;
-  --text-muted: color-mix(in srgb, #8a7f6f 62%, var(--bg-slab));
-  --line: rgba(90,78,62,.16);
-  --line-strong: rgba(90, 78, 62, 0.34);
+  --bg-slab: #1a1610;
+  --bg-slab-strong: rgba(38,32,24,.86);
+  --shadow-slab: 0 22px 60px -34px rgba(0,0,0,.55);
+  --text-primary: #f2ece0;
+  --text-confirmed: #f2ece0;
+  --text-provisional: #f2ece0;
+  --text-secondary: #a99a85;
+  --text-muted: color-mix(in srgb, #a99a85 62%, var(--bg-slab));
+  --line: rgba(242,236,224,.16);
+  --line-strong: rgba(242, 236, 224, 0.34);
   --accent: #a8672f;
   --accent-soft: color-mix(in srgb, #a8672f 14%, transparent);
   --theme-swatch: #a8672f;
@@ -6075,7 +6073,7 @@
   --accent-from: var(--accent);
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
-  --cine-scrim: rgba(244,236,222,.72);
+  --cine-scrim: rgba(20,16,11,.72);
 }
 :root[data-theme='cine-linen'] .panel { background-image: linear-gradient(var(--cine-scrim), var(--cine-scrim)), url(backdrops/linen.jpg); background-size: cover, cover; background-position: center, center; }
 /* ── Linen Hours — from the `cinematic-2` zip, design `linen` (04) ───────────
@@ -6112,8 +6110,8 @@
  * fetched. */
 :root[data-theme='cine-linen'] .panel {
   background-color: var(--bg-slab);
-  background-image: linear-gradient(180deg, rgba(246,240,229,.24) 0%, rgba(246,240,229,.06) 30%, rgba(246,240,229,.2) 60%, rgba(244,236,222,.72) 100%),
-                    radial-gradient(90% 70% at 30% 20%, rgba(255,246,226,.4), transparent 62%),
+  background-image: linear-gradient(180deg, rgba(26,20,13,.24) 0%, rgba(26,20,13,.06) 30%, rgba(26,20,13,.2) 60%, rgba(20,16,11,.72) 100%),
+                    radial-gradient(90% 70% at 30% 20%, rgba(255,246,226,.12), transparent 62%),
                     url(backdrops/linen.jpg);
   background-size: cover, cover, cover;
   background-position: center, center, center;
@@ -6158,15 +6156,14 @@
  * The plate carries the two-column rail INSIDE it (see the list rules).
  */
 :root[data-theme='cine-linen'] .captions__body {
-  background: rgba(252,249,243,.9);
-  border: 1px solid rgba(120,104,84,.18);
+  background: rgba(28,23,17,.9);
+  border: 1px solid rgba(242,236,224,.18);
   border-radius: var(--radius-lg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: 0 26px 70px -36px rgba(0,0,0,.85);
   padding: 16.8px 20px 15.2px;
 }
-:root[data-theme='cine-linen'] body { color-scheme: light; }
 
 /* THE LIST — the plate's inner rail and its right column
  * The rail is drawn on the LIST, not on the plate, so it runs the height of

@@ -560,13 +560,45 @@ SHELL_SHA256_AT_IMPORT = file_sha256(SHELL_PATH)
 
 
 def worker_status_kind(state, message):
-    """'error' | 'busy' for ONE worker status line, by the reference arm's rule.
+    """'error' | 'no-audio' | 'busy' for ONE worker status line.
+
+    By the reference arm's rule, plus the calm state (owner, 2026-10-14): a
+    no-audio verdict is its OWN kind and the test for it comes FIRST, because
+    WORKER_NO_AUDIO_STATES overlaps WORKER_ERROR_STATES and the error test would
+    otherwise swallow it back into red.
 
     Either test alone gets a real case wrong — the state is what this worker
     names itself, and the verdict is the only thing that can tell a `done` that
     produced speech from a `done` that produced nothing.
     """
     state = str(state or '')
+    # ── THE NO-AUDIO VERDICT IS NOT A FAULT (owner, 2026-10-14) ─────────────
+    # CHECKED FIRST, and that order is load-bearing: the no-audio states are a
+    # SUBSET of WORKER_ERROR_STATES (the worker's own terminal vocabulary), so
+    # testing the error set first would swallow them back into red -- measured
+    # in this lane's own oracle run, where the calm branch sat behind it and
+    # `silent-device` still painted 'error'.
+    # The routing law of this file says it in as many words: "a live run that
+    # reads silence is usually CORRECT BEHAVIOUR, not a regression" -- with
+    # nothing routed into a virtual cable EVERY loopback reads digital silence
+    # (measured: peak=0.000000 over three 6 s captures, the idle-floor probe's
+    # own output file). The worker's own verdict for that case is
+    # `silent-device` / `device-exhausted` / a `done` carrying one of
+    # WORKER_NO_AUDIO_VERDICTS, and painting it the same RED as a model-load
+    # failure or a device that would not OPEN is what put "Silent audio
+    # device" in front of the owner on every cold start with a quiet desktop
+    # and had him reading it as "coisa nao carregada" -- he complained,
+    # verbatim (2026-10-14): "sotto ta reclamando de coisa nao carregada, com
+    # erro vermelho". Nothing is hidden by this: the worker's OWN sentence
+    # (device, api, peak, floor) still travels, the state still HOLDS across
+    # the automatic restart, and a caption still clears it. What changes is
+    # only the colour of a fact that is not a fault. The 2026-10-06 decision
+    # that painted these RED was right about the swallow it fixed (a death
+    # must never look like warm-up) and wrong about the colour it chose for
+    # the no-audio half: on this host the no-audio verdict is the NORMAL
+    # answer of a working app to a quiet machine.
+    if state in WORKER_NO_AUDIO_STATES:
+        return 'no-audio'
     if state in WORKER_ERROR_STATES:
         return 'error'
     if state == 'done':
@@ -579,6 +611,13 @@ def worker_status_kind(state, message):
         # verdict that SAYS captions came out is benign; an UNKNOWN word and an
         # ABSENT word are both "this worker did not tell us it worked".
         verdict = str((message or {}).get('verdict') or '').strip()
+        # The SAME split, carried by the run's `done` line: a no-audio verdict
+        # is the worker reporting a quiet endpoint, not a broken worker. An
+        # ABSENT or UNKNOWN verdict is still an error -- "this worker did not
+        # tell us it worked" is a failure, and that half of the contract is
+        # untouched.
+        if verdict in WORKER_NO_AUDIO_VERDICTS:
+            return 'no-audio'
         if verdict not in HEALTHY_DONE_VERDICTS:
             return 'error'
     return 'error' if FAILURE_WORDS_RE.search(state) else 'busy'
@@ -594,7 +633,12 @@ def worker_status_text(state, message, readable):
     """
     message = message or {}
     if state == 'done':
-        if worker_status_kind(state, message) == 'error':
+        # BOTH non-healthy kinds carry the verdict WORD: an error because that is
+        # the worker's own cause, and a no-audio verdict for exactly the same
+        # reason -- the calm state must still say what the worker concluded
+        # ("Worker finished on silent-device"), not a bare 'done'. Only the
+        # HEALTHY finish (or a `busy` kind) gets the neutral readable line.
+        if worker_status_kind(state, message) in ('error', 'no-audio'):
             verdict = str(message.get('verdict') or '').strip()
             if not verdict:
                 # An absent verdict must not be rendered as the f-string of a
@@ -3249,7 +3293,8 @@ BRIDGE_PROBE = r"""
       return { text: (document.getElementById('status-text') || {}).textContent || '',
                className: s ? String(s.className) : null,
                error: !!(s && s.classList.contains('status--error')),
-               live: !!(s && s.classList.contains('status--live')) };
+               live: !!(s && s.classList.contains('status--live')),
+               noAudio: !!(s && s.classList.contains('status--noaudio')) };
     })(),
     placeholder: (() => {
       const ph = document.getElementById('placeholder');
@@ -5077,7 +5122,8 @@ class SottoShell:
             '  if (b && body) b.textContent = body;'
             "  const s = document.getElementById('status');"
             "  if (s) { s.classList.toggle('status--live', kind === 'live');"
-            "           s.classList.toggle('status--error', kind === 'error'); }"
+            "           s.classList.toggle('status--error', kind === 'error');"
+            "           s.classList.toggle('status--noaudio', kind === 'no-audio'); }"
             "  return t ? t.textContent : '';"
             '})()')
         if shown:
@@ -5585,6 +5631,11 @@ class SottoShell:
         want = surface or self.surface
         if want != self.surface_applied:
             self.set_panel_surface(want, reason)
+        # The same `panel_mode` bookkeeping the hotkey paths do, for the shows
+        # that arrive another way (`--show`, the tray, `toggle_panel` from the
+        # page): the cycle reads this field on the next Alt+C whatever brought
+        # the panel up.
+        self.panel_mode = 'strip' if want == 'strip' else 'side'
         set_topmost(self.hwnd)
         # ── THE P0 ORDER: children FIRST, then the map ──────────────────────
         # The owner, verbatim: he pressed Alt+C, saw a solid-colour strip for
@@ -5777,6 +5828,23 @@ class SottoShell:
             return False
         # Geometry only — `place_panel` no longer maps the window (P0).
         self.set_panel_surface('strip', reason)
+        # AND SAY WHICH PANEL IS UP. `hotkey_pressed` is a three-state cycle
+        # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, and
+        # the 2026-10-09 P0 refactor removed its last writer: `place_panel` is
+        # the only assignment of `panel_mode` and NOTHING calls `place_panel`
+        # any more (measured: `grep -n place_panel` on the live shell returns
+        # the definition, two comments and a docstring -- ZERO call sites). So
+        # the SECOND Alt+C painted the side panel and every press after it
+        # painted the side panel AGAIN instead of hiding: `panel_mode` still
+        # said 'strip', so the `panel_mode == 'side'` arm of the cycle was
+        # unreachable. The owner measured it on his own keyboard -- ten presses
+        # in three seconds (2026-10-14 20:18:01.297 .. 20:18:04.605) each
+        # logging `PANEL_SHOWN reason=hotkey mode=side`, and exactly ONE
+        # `PANEL_HIDDEN` in the whole 114 394-line log (reason=page) -- and
+        # reported "alt c nao aperta direito em diversos caso". The window
+        # state is still read from `window_visible` below; this line only
+        # records WHICH surface is up, on the show itself.
+        self.panel_mode = 'strip'
         # Children FIRST, so the first frame the owner sees is already the
         # panel: `foreground_unlock` maps the FORM NOW, and the first frame of
         # a mapped form is the FORM's own background. Measured 2026-10-09 by
@@ -5825,6 +5893,11 @@ class SottoShell:
         # panel -- and the `if not live` guard fixed earlier was necessary but not
         # sufficient. The surface the right panel wears is `'panel'`.
         self.set_panel_surface('panel', reason)
+        # WHICH PANEL IS UP — see `show_strip` for the measured defect. The
+        # cycle's third arm is `panel_mode == 'side'`, and that word is what
+        # makes the next Alt+C HIDE. Without it the side panel is where the
+        # cycle stops.
+        self.panel_mode = 'side'
         # Children FIRST — same P0 reason as `show_panel` and `show_strip`: a
         # raw user32 show of the FORM leaves `Chrome_WidgetWin_0` hidden and the
         # panel a flat colour for one frame. Measured 2026-10-09.
@@ -8130,6 +8203,12 @@ class WorkerBridge:
         # non-zero exit and cleared only by a CAPTION: a restart that has
         # produced no caption has proved nothing, so it must not clear it.
         self.last_error = None
+        #: The last NO-AUDIO verdict this worker reported (the calm twin of
+        #: `last_error`). The two are mutually exclusive -- each is cleared
+        #: when the other is written -- so "the most recent verdict" is a
+        #: one-field answer and `_wait` cannot read a stale red over a fresh
+        #: no-audio (or the reverse).
+        self.last_no_audio = None
         self.pending_error = None
         #: True once THIS child has published its own verdict that the audio it
         #: opened carries nothing to transcribe (see WORKER_NO_AUDIO_STATES /
@@ -8369,6 +8448,14 @@ class WorkerBridge:
         # device` is evidence about the OLD process, and letting it survive the
         # respawn would blind the watchdog for the new one.
         self.no_audio = False
+        # The two verdict slots go with it. They are what `_wait` reads to
+        # choose the colour of THIS child's death, so a stale one would paint a
+        # fresh unexplained crash in the colour of the child before it -- and the
+        # dangerous direction is the calm slot: a crash with no verdict left MUST
+        # be red. `pending_error` (the hold) is NOT reset here: it is cleared
+        # only by a caption, by design.
+        self.last_error = None
+        self.last_no_audio = None
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
         #: instead of being presented as a current measurement. Zero = never set.
@@ -8697,10 +8784,24 @@ class WorkerBridge:
             if severity == 'error':
                 # Remembered, so the automatic restart that follows cannot paint
                 # its warm-up over a death the owner has not been shown yet.
+                # ONE verdict slot: a no-audio verdict that arrives later
+                # REPLACES the failure, and vice versa, so `_wait` reads the
+                # worker's most recent word rather than a stale colour.
                 self.last_error = {'state': state, 'text': text,
                                    'body': body or worker_status_body(state, message)}
+                self.last_no_audio = None
                 self.log(f'BRIDGE_STATUS_ERROR state={json.dumps(state)} '
                          f'kind={severity} text={json.dumps(text)}')
+            elif severity == 'no-audio':
+                # The calm twin: the worker's OWN no-audio verdict, kept the
+                # same way (state, sentence, body) so the restart that follows
+                # cannot warm its way over it, and logged with its own line
+                # name so a reader never mistakes it for a fault.
+                self.last_no_audio = {'state': state, 'text': text,
+                                      'body': body or worker_status_body(state, message)}
+                self.last_error = None
+                self.log(f'BRIDGE_STATUS_NOAUDIO state={json.dumps(state)} '
+                         f'kind=no-audio text={json.dumps(text)}')
             elif self.pending_error is not None and state in WORKER_WARMUP_STATES:
                 # A restart re-emits model-loading/model-loaded/capture-started
                 # every cycle. Painting those over a pending death is how the
@@ -8714,6 +8815,14 @@ class WorkerBridge:
                     body = (self.last_error or {}).get('body') or ''
                 if not title:
                     title = 'Not transcribing'
+            elif severity == 'no-audio':
+                # The calm headline, the worker's own cause under it. NOT
+                # 'Not transcribing': that title is the red one's, and this
+                # state is the healthy-app/no-audio answer.
+                if not body:
+                    body = (self.last_no_audio or {}).get('body') or ''
+                if not title:
+                    title = 'No audio to transcribe'
             self._status(text, severity, {'title': title, 'body': body})
         else:
             self.malformed += 1
@@ -8971,20 +9080,42 @@ class WorkerBridge:
             # keep saying so through the automatic restart, because the restart's
             # warm-up statuses say nothing about whether the death will repeat.
             self.deaths += 1
-            self.pending_error = self.last_error or {
+            # WHICH death the worker reported, not what the exit code suggests:
+            # the verdict ladder makes exit 3 the no-audio conclusion
+            # (`done.verdict == "silent-device"` iff `exit == 3`), so a run that
+            # ended on the worker's own no-audio word paints the CALM state and
+            # the worker's sentence -- the owner read the red exit line as the
+            # app being broken when the machine was simply quiet. A crash with
+            # NO verdict still paints red: the slot below is only calm when the
+            # worker said so itself.
+            self.pending_error = self.last_error or self.last_no_audio or {
                 'state': 'exit', 'text': f'worker exit {rc}', 'body': ''}
+            # CALM only when the WORKER SAID SO ITSELF: the no-audio slot set
+            # and no error slot set. A crash that published NO verdict at all
+            # (the fallback dict above) is RED -- "the worker did not tell us
+            # what happened" is a failure, and it must never borrow the calm
+            # colour of the verdict before it.
+            death_kind = ('no-audio'
+                          if (self.last_error is None
+                              and self.last_no_audio is not None)
+                          else 'error')
             text = f'Worker stopped (exit {rc}) - {self.pending_error["text"]}'
         else:
             self.pending_error = None
+            death_kind = 'error'
             text = f'Worker stopped (exit {rc})'
         if self.pending_error is not None:
             self.log(f'BRIDGE_DEATH rc={rc} deaths={self.deaths} '
+                     f'kind={death_kind} '
                      f'last={json.dumps(self.pending_error["text"])} '
                      f'stderr_tail={json.dumps(self.stderr_tail[-2:])}')
-        self._status(text, 'error',
-                     {'title': 'Worker stopped',
+        self._status(text, death_kind,
+                     {'title': ('Worker stopped' if death_kind == 'error'
+                                else 'No audio to transcribe'),
                       'body': ' '.join(x for x in (
-                          (self.last_error or {}).get('body') if rc != 0 else '',
+                          ((self.last_error or {}).get('body')
+                           or (self.last_no_audio or {}).get('body'))
+                          if rc != 0 else '',
                           stderr_note,
                           'A restart is scheduled. Captions stay off until the '
                           'worker reports a caption.') if x)})
@@ -9783,6 +9914,18 @@ def main(argv=None):
         log(f'PANEL_MISSING path={PANEL_HTML}')
         return 3
 
+    # ── A SILENT DEATH IS UNFALSIFIABLE (measured 2026-10-14) ────────────────
+    # A second launch (pid 18772, 20:16:36.257) logged its banner and the
+    # APP_USER_MODEL_ID line and then NOTHING, ever: no SINGLE_INSTANCE line,
+    # no window, no hotkey, no worker, gone by the next process census. Every
+    # step in this stretch logs its own failure EXCEPT an exception, and under
+    # pythonw.exe an exception has nowhere to print. The owner's "abrir o sotto
+    # causa travamento" needs the receipt, not a guess: name the stage reached,
+    # and catch the exception so the next occurrence exits 3 WITH a log line
+    # instead of vanishing between two lines.
+    log(f'SHELL_STARTUP_STAGE pid={os.getpid()} stage=pre-lock '
+        f'python={args.python or default_python()} '
+        f'panel={str(os.path.exists(PANEL_HTML)).lower()}')
     args.python = args.python or default_python()
 
     # ── the three autostart modes print and exit: no window, no worker ───────

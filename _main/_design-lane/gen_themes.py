@@ -1054,23 +1054,39 @@ SKIN = """
   font-size: {brand_size};
 }}
 {S} .wordmark__tag{{ color: var(--text-muted); }}
+/* ── THE TRANSCRIPT HANDLE IS NO LONGER STYLED HERE (owner, 2026-10-14) ─────
+   `{S} .history__toggle,` was a member of the three button groups below until the
+   button itself was deleted from `panel.html`, verbatim: *"tira o botao de
+   transcript… remove o CONTROLO. se a gaveta tiver de ficar por detras,
+   esconde-a mas tira o botao."* It went with the markup: a selector for a node
+   that does not exist is a selector about nothing, and the drawer it opened is
+   still in the document (collapsed, and it opens by itself the day a canonical
+   producer exists). */
+/* ── THE BUTTONS' RESTING EDGE (owner, 2026-10-14) ───────────────────────────
+   `border-color` was `var(--line)`, the FAINT tier: MEASURED, the resting edge of
+   every panel control came back at 1.18-1.51:1 against its own slab — the control
+   read as a floating glyph with no box. `var(--line-strong)` is the tier this very
+   file already used for the HOVER state directly below, so the resting edge now
+   borrows the number the hover proved instead of inventing one: 1.99:1 (theme-1) to
+   2.80:1 (theme-3) on the dark slabs. The STRIP buttons are untouched by this —
+   `panel.css` has a `body[data-surface="strip"] .strip-button` rule that outranks
+   this one on specificity and carries the lighter 0.16/0.30 pair the owner asked for
+   in 2026-10-12 (*"os botoes tem que ser mais claros"*), which is why the strip is
+   NOT re-lit here. THE SIZES ARE UNCHANGED. */
 {S} .icon-button,
-{S} .history__toggle,
 {S} .strip-button{{
-  border-color: var(--line);
+  border-color: var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
 }}
 {S} .icon-button:hover,
-{S} .history__toggle:hover,
 {S} .strip-button:hover{{
   border-color: var(--line-strong);
   background: var(--accent-soft);
   color: var(--text-primary);
 }}
 {S} .icon-button:focus-visible,
-{S} .history__toggle:focus-visible,
 {S} .strip-button:focus-visible,
 {S} .reveal-button:focus-visible,
 {S} .search__button:focus-visible,
@@ -1728,17 +1744,23 @@ CHROME[1] = """
   background: transparent;
   color: var(--accent);
 }
-@S@ .chrome--tele[data-chrome="foot"]{
-  display: inline-flex;
-  flex: none;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-@S@ .chrome--tele[data-chrome="foot"][data-slot="start"]{ order: -1; }
-@S@ .chrome--tele[data-chrome="foot"][data-slot="end"]{ order: 9; color: var(--accent); }
+/* ── THE FOOTER CHROME IS GONE (owner, 2026-10-14) ─────────────────────────
+   Verbatim: *"tira em curso e historico das barras. o dono quer as barras
+   LIMPAS."* Three rules stood here, styling the two spans `panel.html` used
+   to carry in the footer bar: `HISTÓRICO` in the `start` slot and
+   `▲ EM CURSO` in the `end` one. BOTH SPANS WERE DELETED FROM THE MARKUP in
+   the same pass, so these rules styled nothing and went with them — a rule
+   about a node that no longer exists is a rule about nothing, and the panel
+   file's own convention is to delete it rather than leave it looking live.
+
+   WHAT THE BAR KEEPS: the REAL status sentence (`#status-dot` +
+   `#status-text`), which is the worker's own cause and not a mockup label, so
+   the footer is CLEAN rather than empty. WHAT IS UNTOUCHED: this direction's
+   HEADER chrome above (the wordmark, `● LENDO` and the dot), and every OTHER
+   direction's own footer chrome — `bcast`'s meter and LIVE/EM ESPERA,
+   `mano`'s "— escrito ao ouvido", `cine`'s "· · ·", `inst`'s meter and
+   OUVINDO/EM ESPERA — because the owner named `em curso` and `historico` and
+   nothing else. */
 """
 
 CHROME[2] = """

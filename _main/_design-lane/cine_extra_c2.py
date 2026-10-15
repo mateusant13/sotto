@@ -736,25 +736,38 @@ _RAW = [
         'maxw': '66ch', 'bottom': '5.5rem',
         'italic': False, 'align': 'center',
         'cap_font': 'news', 'ui_font': 'inter',
-        'page': '#efe7da', 'text': '#2e2a24', 'dim': '#8a7f6f',
+        # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco"). Linen Hours was
+        # the zip's LIGHT `plate`: dark ink `#332d26` on `rgba(252,249,243,.9)`, and the
+        # census measured the painted panel at 0.80 relative luminance -- one of the six
+        # themes of 45 that were white. THE PLATE IS INVERTED, NOT THE DESIGN: the warm
+        # linen hue, the left rail, the 18px radius, the meta row, the Newsreader caption
+        # and the design's own caption ink role all stay; the paper becomes a dark warm
+        # slab and the ink becomes warm light.
+        'page': '#1a1610', 'text': '#f2ece0', 'dim': '#a99a85',
         'accent': '#a8672f', 'live': '#7d9c6d',
-        'surface': 'rgba(251,247,240,.86)', 'surface_2': 'rgba(46,42,36,.05)',
-        'line': 'rgba(90,78,62,.16)', 'radius': 18, 'blur': '16px',
-        'panel_shadow': '0 22px 60px -34px rgba(70,54,36,.45)',
-        'cap_bg': 'rgba(252,249,243,.9)', 'cap_text': '#332d26',
-        'cap_edge': 'rgba(120,104,84,.18)',
+        'surface': 'rgba(38,32,24,.86)', 'surface_2': 'rgba(242,236,224,.05)',
+        'line': 'rgba(242,236,224,.16)', 'radius': 18, 'blur': '16px',
+        'panel_shadow': '0 22px 60px -34px rgba(0,0,0,.55)',
+        'cap_bg': 'rgba(28,23,17,.9)', 'cap_text': '#f2ece0',
+        'cap_edge': 'rgba(242,236,224,.18)',
         'filter': 'saturate(0.9) contrast(0.98) brightness(1.06)',
-        'overlay_1': 'linear-gradient(180deg, rgba(246,240,229,.24) 0%, rgba(246,240,229,.06) 30%, '
-                     'rgba(246,240,229,.2) 60%, rgba(244,236,222,.72) 100%)',
-        'overlay_2': 'radial-gradient(90% 70% at 30% 20%, rgba(255,246,226,.4), transparent 62%)',
-        'scrim': 'rgba(244,236,222,.72)',
+        # The two overlays are the design's own legibility gradient and warm pool, copied
+        # verbatim out of `themes.ts` -- and both are LIGHT stops over the wallpaper, which
+        # is what made this panel read as white. NO LIGHT SLAB (owner, 2026-10-14): they
+        # keep their SHAPE, their positions and their stop count and lose their lightness,
+        # so the photograph is still graded and the warm pool is still there, as a warm
+        # pool of DARK.
+        'overlay_1': 'linear-gradient(180deg, rgba(26,20,13,.24) 0%, rgba(26,20,13,.06) 30%, '
+                     'rgba(26,20,13,.2) 60%, rgba(20,16,11,.72) 100%)',
+        'overlay_2': 'radial-gradient(90% 70% at 30% 20%, rgba(255,246,226,.12), transparent 62%)',
+        'scrim': 'rgba(20,16,11,.72)',
         'vignette': '0.3', 'grain': '0.03', 'particle': 'dust x26',
         'shadow': '0 2px 26px rgba(0,0,0,.72), 0 1px 6px rgba(0,0,0,.6)',   # the design's caption textShadow
         'photo': 'backdrops/linen.jpg',
         'caret_gap': '0.12em',
         'meta_size': '0.66rem', 'meta_track': '0.28em',
         'footer_size': '0.66rem', 'footer_track': '0.28em',
-        'light_panel': True,
+        'light_panel': False,   # NO LIGHT SLAB (owner, 2026-10-14): the plate is dark now
         'note': [
             '`plate` is a two-column block: a LEFT RAIL (8px dot in `var(--live)` or',
             '`var(--dim)`, above a `w-px flex-1` hairline in',
@@ -783,8 +796,13 @@ _RAW = [
             'plan\'s §1 `plate` block fixes for a 380px column (1.6rem = 51px per side).',
             'The plate carries the two-column rail INSIDE it (see the list rules).',
         ],
-        'plate': ['background: rgba(252,249,243,.9);',
-                  'border: 1px solid rgba(120,104,84,.18);',
+        # The plate is the design's own two-column block, and it was LIGHT paper
+        # (`rgba(252,249,243,.9)`) with dark ink on it -- the half of the census the owner
+        # ruled on (*"e nao e pra ter tema branco"*). NO LIGHT SLAB, 2026-10-14: the SAME
+        # plate at the SAME radius with NO blur, in dark warm linen, and the rail hairline
+        # in light instead of dark so the two-column block still reads.
+        'plate': ['background: rgba(28,23,17,.9);',
+                  'border: 1px solid rgba(242,236,224,.18);',
                   'border-radius: var(--radius-lg);',
                   'backdrop-filter: none;',
                   '-webkit-backdrop-filter: none;',

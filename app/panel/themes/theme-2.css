@@ -185,22 +185,19 @@
   color: var(--text-muted);
 }
 :root[data-theme='theme-2'] .icon-button,
-:root[data-theme='theme-2'] .history__toggle,
 :root[data-theme='theme-2'] .strip-button {
-  border-color: var(--line);
+  border-color: var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
 }
 :root[data-theme='theme-2'] .icon-button:hover,
-:root[data-theme='theme-2'] .history__toggle:hover,
 :root[data-theme='theme-2'] .strip-button:hover {
   border-color: var(--line-strong);
   background: var(--accent-soft);
   color: var(--text-primary);
 }
 :root[data-theme='theme-2'] .icon-button:focus-visible,
-:root[data-theme='theme-2'] .history__toggle:focus-visible,
 :root[data-theme='theme-2'] .strip-button:focus-visible,
 :root[data-theme='theme-2'] .reveal-button:focus-visible,
 :root[data-theme='theme-2'] .search__button:focus-visible,
