@@ -103,6 +103,7 @@ const py = [
   ['_main/csp-inline-oracle.py', 'CSP: no inline scripts'],
   ['_main/csp-inline-oracle.py --neg-arm', 'CSP inline neg'],
   ['_main/cobertura-oracle.py', 'cobertura: 34 areas'],
+  ['_main/photo-scrim-census.py', 'photo scrim: 25 themes'],
   ['_main/surface-loop-oracle.py', 'surface loop guard (JS<->Python)'],
   ['_main/hotkey-cycle-oracle.py', 'hotkey cycle strip->side->hide'],
   ['_main/preflight-refusal-visible-oracle.py', 'preflight refusal visible (G5)'],
