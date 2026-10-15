@@ -154,7 +154,21 @@ REM _main\ is the one directory this wrapper already proves writable: the same
 REM pre-flight writes its receipt there through run-cmd-log-append.py. So the
 REM capture goes beside the log it is a receipt FOR, and it carries the run id so
 REM two launches cannot collide on the name.
-set "REFUSAL=%HERE%..\..\_main\sotto-preflight-refusal-%RANDOM%%RANDOM%.txt"
+REM THE REFUSAL CAPTURE GOES BESIDE THE LOG, AND THE PATH IS RESOLVED, NOT WRITTEN BY HAND.
+REM MEASURED 2026-10-15, and this is a defect MY OWN cure introduced: a batch file with
+REM CRLF eats backslashes in some `cmd /c` invocations, and a hand-written `%HERE%..\..`
+REM relative path then resolved to `app\webview\sottoappwebviewsotto_webview.py` -- with
+REM every `\s` and `\w` gone. pythonw could not open it, the capture landed in the WRONG
+REM directory as a file named `-preflight-refusal.txt` (the `sotto-preflight-refusal-`
+REM prefix and both %RANDOM% halves eaten with the same backslashes), and the caller got a
+REM refusal whose text was an ENOENT instead of the argparse usage.
+REM
+REM `for ... in (path) do set X=%%~fI` RESOLVES the path to a normalised absolute one, which
+REM is immune to the eaten-backslash class of bug. This is the same reason run.cmd already
+REM uses %%~fI-style expansion elsewhere instead of string arithmetic on paths.
+for /f "delims=" %%I in ("%HERE%..\..\_main\") do set "LOGDIR=%%~fI"
+if not exist "%LOGDIR%" set "LOGDIR=%HERE%"
+set "REFUSAL=%LOGDIR%sotto-preflight-refusal-%RANDOM%%RANDOM%.txt"
 if exist "%REFUSAL%" del /q "%REFUSAL%" >nul 2>&1
 "%PYW%" "%SHELL%" --check-args %* 2>"%REFUSAL%"
 set "PREFLIGHT_RC=%ERRORLEVEL%"
