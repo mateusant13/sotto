@@ -195,6 +195,7 @@ const node = [
   ['_main/caption-independent-oracle.js', 'caption independent of panel'],
   ['_main/three-overlays-oracle.js', 'three overlays'],
   ['_main/three-overlays-oracle.js --neg-arm', 'three overlays neg (11/11)'],
+  ['_main/strip-drag-loop-oracle.js', 'strip drag: the loop (clientX vs screenX)'],
   ['_main/strip-float-oracle.js', 'strip float oracle'],
   ['_main/panel-state-guard-gate.js', 'panel state guard'],
   ['_main/botoes-lane-oracle.js', 'botoes lane oracle'],
