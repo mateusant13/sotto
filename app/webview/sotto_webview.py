@@ -3905,14 +3905,25 @@ class SottoHost:
     def _panel_surface(self, payload):
         """`bridge.setPanelSurface(surface, reason)` — the member this shell owed.
 
-        `panel.js:1239-1243` is the ONLY caller, and it calls it for exactly one
-        thing: opening the FULL panel from the strip. The shell must switch the
-        document surface AND resize the window, which is why this is a shell
-        member and not a page-side attribute write.
+        (CHAMADORES: `panel.js:1239-1243` para abrir o painel cheio a partir do strip,
+        E `caption-float.js:243` para o estado do overlay. A versao anterior deste
+        docstring dizia que o `panel.js` era o UNICO, e era falso.)
         """
+        # ESTE DOCSTRING ESTAVA VELHO e fica corrigido: ele diz que o `panel.js:1239-1243`
+        # e o UNICO chamador, e `caption-float.js:243` tambem chama -- e chama com a razao
+        # que interessa aqui.
         payload = payload or {}
-        self._shell.set_panel_surface(payload.get('surface'),
-                                      payload.get('reason') or 'page')
+        reason = payload.get('reason') or 'page'
+        # O BOTAO LIVE MANDA NA JANELA DA LEGENDA. O objetivo pede-o por palavras: *"Ligar/
+        # desligar pelo botao live"*. E o sinal JA chega aqui pronto: `caption-float.js:243`
+        # chama `setPanelSurface('strip', want ? 'float-on' : 'float-off')` quando o estado
+        # do overlay muda, portanto a razao E o estado, sem polling nenhum, sem um segundo
+        # metodo de ponte e sem JS novo. Antes disto a janela aparecia com a PRIMEIRA
+        # LEGENDA, que e um bom sinal mas nao e o botao -- e se ele ligasse o live sem nada
+        # a tocar, a janela nao aparecia.
+        if reason in ('float-on', 'float-off'):
+            self._shell.show_caption_window(reason == 'float-on')
+        self._shell.set_panel_surface(payload.get('surface'), reason)
 
     def _stats(self, payload):
         '''The panel's own `getStats()` pull, answered on the same id
