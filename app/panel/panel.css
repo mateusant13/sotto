@@ -344,13 +344,14 @@ body {
 }
 
 /* ── THE THEME DROPDOWN (BASE) ──────────────────────────────────────────────
- * The chevron's list: five options, hover (or focus) previews instantly
- * without persisting, click (or Enter/Space) commits through the same store
- * path as the cycle button, mouse-away or Escape reverts to the commit.
- * Positioned like the picker's (top-right, above the slab) and usable in ANY
- * direction: these BASE tokens are deliberately neutral, and each theme file
- * may restyle below without moving or hiding the list. `[hidden]` wins over
- * every display so `hidden=true` always closes it. */
+ * The chevron's list: five design directions plus a door to the full picker
+ * (45 entries total). Hover (or focus) previews instantly without persisting,
+ * click (or Enter/Space) commits through the same store path as the cycle
+ * button, mouse-away or Escape reverts to the commit. Positioned like the
+ * picker's (top-right, above the slab) and usable in ANY direction: these BASE
+ * tokens are deliberately neutral, and each theme file may restyle below
+ * without moving or hiding the list. `[hidden]` wins over every display so
+ * `hidden=true` always closes it. */
 .theme-dropdown {
   position: absolute;
   top: 46px;
@@ -588,11 +589,27 @@ body[data-level="none"] .chrome__meter i {
  * five theme files.
  */
 .theme-button {
-  width: auto;
-  min-width: 28px;
+  /* A LARGURA E FIXA, E NAO DEPENDE DO NOME. MEDIDO pelo audit de UX (header-rects.json):
+   * o #theme-button media 70,41 px no theme-1, 78,02 px no theme-2 e 169,6 px no pd-cine --
+   * e por morar numa fileira flex, CADA NOME EMPURRAVA todos os botoes a sua direita para
+   * posicoes diferentes: chevron x=218 / 210 / 235,6, smaller x=248 / 242, ..., e o hide do
+   * pd-cine a 19,6 px PARA FORA da janela de 380. A causa era `width: auto` +
+   * `white-space: nowrap` AQUI: a largura saia do CONTEUDO.
+   *
+   * A ordem do dono [50531]: *a MESMA posicao em pixel entre designs*. Com 84 px fixos e
+   * ellipsis, o nome longo e cortado com reticencias em vez de empurrar a fileira -- e 84
+   * cobre os nomes curtos sem os colar a borda. `box-sizing: border-box` para o padding
+   * nao sair da conta.
+   */
+  width: 84px;
+  min-width: 84px;
+  max-width: 84px;
+  box-sizing: border-box;
   display: inline-block;
   padding: 0 6px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .icon-button:focus-visible {
@@ -1280,7 +1297,7 @@ body[data-level="none"] .chrome__meter i {
 .captions__placeholder-body {
   font-size: 12.5px;
   line-height: 1.55;
-  color: var(--text-faint);
+  color: var(--text-secondary);
   max-width: 26ch;
 }
 
@@ -1349,7 +1366,7 @@ body[data-level="none"] .chrome__meter i {
   align-items: center;
   gap: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--line);
+  border-top: 0;
   font-size: 11.5px;
   color: var(--text-dim);
 }
@@ -2223,7 +2240,7 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
 .pause-dialog__honest {
   margin: 10px 16px 0;
   padding: 8px 10px;
-  border: 1px solid var(--line);
+  border: 0;
   border-left: 2px solid var(--accent-to);
   border-radius: 6px;
   background: rgba(125, 211, 252, 0.06);
@@ -2316,22 +2333,15 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
 }
 
 .tune-body {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
   padding: 12px 16px 4px;
-  /* THE CAP IS THE POINT: 17 knobs do not fit a 380 px-wide window, so the LIST
-     scrolls and the dialog's own title and buttons stay on screen. `contain`
-     stops the wheel from walking out of the list and scrolling the page behind
-     the modal. */
-  max-height: 52vh;
-  overflow-y: auto;
+  /* F3 (HIGH) -- sem barra de scroll: os 17 knobs cabem em duas colunas
+     (9 linhas x ~44,8 px ≈ 403 px dentro do dialogo), por isso max-height e
+     overflow saem. `overscroll-behavior: contain` fica sem efeito mas sem dano. */
   overscroll-behavior: contain;
-
-  /* F2 (CRITICO) -- O DIALOGO DE TEMA PINTAVA UMA BARRA DE 15 px. Medido: gutter 15,
-     `scrollbar-width: auto`, webkit `display: block`, `scrollHeight 905 > clientHeight 468`.
-     Mesma ordem [50532] do F1, outro sitio. */
-  scrollbar-width: none;}
+}
 .tune-body::-webkit-scrollbar {
   display: none;
 }
@@ -2364,7 +2374,7 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
   flex: none;
   font-family: var(--mono);
   font-size: 10.5px;
-  color: var(--text-faint);
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2437,7 +2447,7 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
 }
 
 .tune-row[data-changed='false'] .tune-row__reset {
-  opacity: 0.35;
+  opacity: 0.7;
 }
 
 .tune-row__reset:hover {
@@ -3150,7 +3160,7 @@ body[data-surface="strip"][data-float="on"] .caption-float {
    what makes the live line read as LIVE. */
 .caption-float__prev {
   margin: 0 0 6px;
-  color: rgba(232, 238, 246, 0.36);
+  color: rgba(232, 238, 246, 1.0);
   font-size: calc(15px * var(--caption-scale));
   line-height: 1.35;
   letter-spacing: 0.002em;
@@ -3166,6 +3176,8 @@ body[data-surface="strip"][data-float="on"] .caption-float {
   line-height: 1.14;
   font-weight: 700;
   letter-spacing: 0.004em;
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.85);
+  paint-order: stroke fill;
   text-shadow:
     0 2px 18px rgba(0, 0, 0, 0.88),
     0 1px 2px rgba(0, 0, 0, 0.72);
@@ -3211,7 +3223,7 @@ body[data-surface="strip"][data-float="on"] .caption-float {
 /* Speaker credits, in the panel's own mono voice. */
 .caption-float__credits {
   margin: 10px 0 0;
-  color: rgba(232, 238, 246, 0.52);
+  color: rgba(232, 238, 246, 1.0);
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.09em;
@@ -3236,4 +3248,37 @@ body[data-surface="strip"][data-float="on"] .caption-float {
     padding-bottom: 4px;
   }
 }
+
+
+/* F2 (CRITICO) -- pause dialog horizontal na strip, sem scroll, titulo sempre visivel. */
+body[data-surface="strip"] .pause-dialog {
+  width: 100%; max-width: none; height: 100%; max-height: none;
+  margin: 0; inset: 0; display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 10px; padding: 8px 12px;
+}
+body[data-surface="strip"] .pause-dialog__title { padding-top: 0; font-size: 13px; white-space: nowrap; }
+body[data-surface="strip"] .pause-dialog__body {
+  padding-top: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; white-space: nowrap;
+}
+body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
+
+/* F8 -- pin dialog button geometry and shared modal width across designs. */
+.pause-dialog .dialog-button,
+.tune-dialog .dialog-button {
+  padding: 6px 11px; font-size: 12px; line-height: 1;
+}
+.pause-dialog,
+.tune-dialog {
+  width: min(340px, calc(100vw - 24px));
+}
+
+
+/* F8 (audit painel) -- ancorar a linha de header e eliminar drift por design. */
+.panel__header { min-height: 56px; align-items: center; }
+.panel__controls { gap: 4px; }
+.panel__controls .icon-button { width: 28px; height: 28px; }
+#theme-button { max-width: 96px; }
+#theme-button .theme-button__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chrome__brand, .wordmark { min-width: 32px; }
 
