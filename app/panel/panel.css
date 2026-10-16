@@ -353,13 +353,18 @@ body {
  * without moving or hiding the list. `[hidden]` wins over every display so
  * `hidden=true` always closes it. */
 .theme-dropdown {
+  /* F9 -- SEM MOLDURA. Ordem do dono [50531], verbatim: *em NENHUM design, eu quero
+   * moldura*. O audit de UX mediu uma borda de 1 px em TODO dialogo e popup, e no
+   * #tune-note um QUADRO DUPLO (1 px de caixa mais 2 px a esquerda). A sombra e o fundo
+   * ja separam a superficie do que esta por tras -- a linha nao acrescenta nada e e o
+   * padrao que ele mandou tirar. */
   position: absolute;
   top: 46px;
   right: 12px;
   z-index: 40;
   min-width: 168px;
   padding: 4px;
-  border: 1px solid var(--line-strong, rgba(148, 163, 184, 0.28));
+
   border-radius: var(--radius-md, 10px);
   background: var(--bg-slab-strong, rgba(13, 18, 26, 0.97));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -2185,6 +2190,11 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
    the focus trap and the backdrop; everything below is only what makes it look
    like the rest of the slab. */
 .pause-dialog {
+  /* F9 -- SEM MOLDURA. Ordem do dono [50531], verbatim: *em NENHUM design, eu quero
+   * moldura*. O audit de UX mediu uma borda de 1 px em TODO dialogo e popup, e no
+   * #tune-note um QUADRO DUPLO (1 px de caixa mais 2 px a esquerda). A sombra e o fundo
+   * ja separam a superficie do que esta por tras -- a linha nao acrescenta nada e e o
+   * padrao que ele mandou tirar. */
   /* F3 (CRITICO) -- O DIALOGO ABRIA NO CANTO SUPERIOR ESQUERDO. O audit mediu: sem isto
    * a caixa fica em {0,0,340,162}; com `margin: auto` vai para {20,369}, centrada. A causa e
    * o reset `* { margin: 0 }` (panel.css:99-103) que derruba o `margin: auto` que o
@@ -2193,7 +2203,7 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
   width: min(340px, calc(100vw - 24px));
   max-width: 340px;
   padding: 0;
-  border: 1px solid var(--line-strong);
+
   border-radius: var(--radius);
   background:
     radial-gradient(120% 80% at 100% 0%, rgba(167, 139, 250, 0.14) 0%, transparent 60%),
