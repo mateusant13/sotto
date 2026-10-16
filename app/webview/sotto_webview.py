@@ -2061,6 +2061,14 @@ class HotkeyThread(threading.Thread):
                 break
             if msg.message == WM_HOTKEY:
                 self.pressed += 1
+                # CK -- O CONTADOR QUE NUNCA FOI ESCRITO. O subagente do diagnostico do Alt+C
+                # (2026-10-16) mediu isto: o thread da hotkey corre, o registo intacto, ZERO
+                # linhas de erro no log inteiro -- e as pressoes do dono NAO aparecem. A pergunta
+                # que ficou foi: a tecla CHEGOU ao shell e foi ignorada, ou NAO CHEGOU? O
+                # `self.pressed` conta-as. Medido: ele existe desde sempre e NUNCA foi escrito
+                # numa linha. Esta linha e essa pergunta respondida, para cada pressao, daqui
+                # para a frente.
+                self.log_fn(f'HOTKEY_PRESSED count={self.pressed} thread={self.thread_id}')
                 try:
                     self.on_hotkey()
                 except Exception as exc:  # a toggle must never kill the pump
