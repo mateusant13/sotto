@@ -492,3 +492,29 @@ body[data-surface="strip"] .strip-button {
 body .panel::before {
   content: none !important;
 }
+
+/* ═══ F8: O GAP DA FILEIRA DE BOTOES NAO PODE SER DO TEMA ══════════════════════════════
+ * Ordem do dono [50531], verbatim: *a MESMA posicao em pixel entre designs*.
+ *
+ * MEDIDO com o harness do audit (`_main/_ux-cdp.mjs` + `_ux-probe-header.js`), mesma
+ * viewport 380x900, so `data-theme` muda:
+ *
+ *     theme-1   .panel__controls  x=102  w=264  gap=2px   chevron x=218
+ *     theme-2   .panel__controls  x= 90  w=276  gap=4px   chevron x=210
+ *
+ * A conta fecha: 7 controlos (6 de 28 px, mais o theme-button de 84) = 252 px, mais SEIS
+ * espacos. 252 + 6x2 = 264 (theme-1) e 252 + 6x4 = 276 (theme-2) -- **os 12 px de diferenca
+ * na largura sao o gap, e o gap e de cada tema.**
+ *
+ * A ORIGEM sao DUAS direcoes do gerador, cada uma com o seu valor:
+ *     gen_themes.py:1770   @S@ .panel__controls{ gap: 2px; }
+ *     gen_themes.py:2017   @S@ .panel__controls{ gap: 4px; }
+ * e o `panel.css:289` ja declara a base (`gap: 6px`) que ambas derrubam.
+ *
+ * A LARGURA DO BOTAO JA FOI FIXADA (84 px, contra 70,41/78,02/169,6 conforme o nome do tema)
+ * e isso NAO chegou: com o gap a variar, o X continua a mover-se entre designs. **O gap e a
+ * segunda e ultima causa medida.** Fixado aqui, na folha que carrega por ultimo, para
+ * alcancar todos os temas de uma vez -- a mesma tecnica que a moldura e a cor-chave. */
+body .panel__controls {
+  gap: 6px !important;
+}
