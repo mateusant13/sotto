@@ -724,6 +724,12 @@ def worker_status_text(state, message, readable):
             return f'Sotto could not start listening - {legivel}'
         return f'Worker error at {stage} - {detail}'
     if detail:
+        # F6 -- o mesmo orfao do corpo, no rodape: um codigo DESCONHECIDO continua a passar
+        # cru de proposito (nao se inventa explicacao), mas um codigo CONHECIDO que chegue
+        # por este caminho tambem tem de ser lido. */
+        legivel = human_audio_error(detail)
+        if legivel:
+            return f'Sotto could not start listening - {legivel}'
         return f'Worker error - {detail}'
     if stage:
         return f'Worker error at {stage}'
@@ -743,6 +749,20 @@ def worker_status_body(state, message):
         value = message.get(key)
         if value is None or value == '':
             continue
+        # F6 -- A TRADUCAO VALE AQUI TAMBEM, e nao valia. MEDIDO pelo audit dos dialogos
+        # (2026-10-15), com a captura na mao: o CORPO do placeholder pintava
+        #
+        #     stage=capture-open detail=WasapiError: AUDCLNT_E_DEVICE_IN_USE (0x8889000A)
+        #     device=Alto-falantes api=MME peak=0.000122
+        #
+        # -- **o hexadecimal CRU, na tela do dono.** A tabela `HRESULT_AUDIO_READINGS` so
+        # estava ligada ao RODAPE (`worker_status_text`), e este irmao ao lado junta os campos
+        # como vieram. Era isto o *"que nojeira e essa mano"* que ele fotografou.
+        if key == 'detail':
+            legivel = human_audio_error(value)
+            if legivel:
+                parts.append(f'{key}={legivel}')
+                continue
         parts.append(f'{key}={value}')
     return ' '.join(parts)[:STATUS_BODY_MAX]
 
