@@ -267,11 +267,12 @@ body[data-float="on"] .caption-float__led {
   flex: none !important;
 }
 
-/* THE FADE. The previous line is present but quiet; the live line is the brightest thing in
- * the overlay. This is the zip Teleprompter reading model, and it is two declarations. */
-body[data-float="on"] .caption-float__prev {
-  opacity: 0.42 !important;
-}
+/* O FADE -- UMA ALFA SO, E LEGIVEL. O audit de UX mediu DUAS alfas a multiplicar:
+ * cor 0,36 x opacidade 0,42 = 0,15 efetivo na linha anterior, e 0,52 x 0,55 = 0,29 nos
+ * creditos. O `panel.css` ja passou a cor a 1,0, portanto a multiplicacao acabou -- mas
+ * a regra estava DUPLICADA neste ficheiro (duas vezes `opacity: 0.42` no mesmo seletor).
+ * Fica UMA, e com o valor levantado: a ordem dele [41856] e *visiveis o suficiente pro
+ * usuario*, e 0,42 sobre video era o que o audit mediu a 1,07 de contraste. */
 body[data-float="on"] .caption-float__line {
   opacity: 1 !important;
 }
@@ -365,7 +366,7 @@ body[data-float="on"] .caption-float__line {
 /* AND THE PREVIOUS LINE STAYS QUIET -- the fade the Teleprompter model is built on. */
 body[data-float="on"] .caption-float__prev {
   font-family: var(--font-serif, Georgia, "Times New Roman", serif) !important;
-  opacity: 0.42 !important;
+  opacity: 0.62 !important;
 }
 
 /* THE METADATA STRIP: monospace, uppercase, letter-spaced, quiet -- the zip draws
@@ -375,7 +376,7 @@ body[data-float="on"] .caption-float__credits {
   text-transform: uppercase !important;
   letter-spacing: 0.14em !important;
   font-size: 10px !important;
-  opacity: 0.55 !important;
+  opacity: 0.72 !important;
   margin-top: 8px !important;
 }
 
