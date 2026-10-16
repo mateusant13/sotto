@@ -1482,6 +1482,12 @@ user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
 user32.GetForegroundWindow.restype = wt.HWND
 user32.SetForegroundWindow.restype = wt.BOOL
 user32.SetForegroundWindow.argtypes = [wt.HWND]
+user32.AttachThreadInput.restype = wt.BOOL
+user32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
+user32.BringWindowToTop.restype = wt.BOOL
+user32.BringWindowToTop.argtypes = [wt.HWND]
+user32.GetWindowThreadProcessId.restype = wt.DWORD
+user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
 
 
 def foreground_window() -> int:
@@ -1543,6 +1549,43 @@ HWND_TOP = 0
 SWP_SHOWWINDOW = 0x0040
 
 
+def _foreground_steal_attached(hwnd) -> bool:
+    """Rouba o primeiro plano com a fila de input LIGADA a do dono atual.
+
+    O `SetForegroundWindow` e RECUSADO quando quem chama nao e o processo em primeiro
+    plano -- medido nesta maquina: `PANEL_FOREGROUND_UNLOCK ok=false` quatro vezes
+    seguidas (05:57:04/05:57:07/05:57:11), com o painel a aparecer ATRAS da janela em
+    uso. E o comportamento documentado do Windows, nao um bug do Sotto.
+
+    A saida documentada e `AttachThreadInput`: enquanto as duas filas estao ligadas, o
+    Windows trata os dois threads como um so para efeitos de primeiro plano, e a chamada
+    passa. Desligar no `finally` e obrigatorio -- deixar as filas ligadas prende o input
+    dos dois processos um ao outro.
+    """
+    try:
+        fg = int(user32.GetForegroundWindow() or 0)
+        if not fg:
+            return False
+        owner = wt.DWORD(0)
+        t_fg = int(user32.GetWindowThreadProcessId(wt.HWND(fg), ctypes.byref(owner)) or 0)
+        t_me = int(kernel32.GetCurrentThreadId())
+        attached = False
+        try:
+            if t_fg and t_fg != t_me:
+                attached = bool(user32.AttachThreadInput(wt.DWORD(t_me), wt.DWORD(t_fg), True))
+            user32.BringWindowToTop(wt.HWND(hwnd))
+            ok = bool(user32.SetForegroundWindow(wt.HWND(hwnd)))
+            log('PANEL_FOREGROUND_ATTACH ok=%s fg_thread=%s me_thread=%s attached=%s'
+                % (str(ok).lower(), t_fg, t_me, str(attached).lower()))
+            return ok
+        finally:
+            if attached:
+                user32.AttachThreadInput(wt.DWORD(t_me), wt.DWORD(t_fg), False)
+    except Exception as exc:  # noqa: BLE001 -- nunca matar a hotkey
+        log(f'PANEL_FOREGROUND_ATTACH_FAILED error={exc!r}')
+        return False
+
+
 def foreground_unlock(hwnd) -> bool:
     """Bring the Sotto panel to the foreground and free the mouse (Alt+C).
 
@@ -1564,6 +1607,9 @@ def foreground_unlock(hwnd) -> bool:
         user32.ShowWindow(hwnd, SW_RESTORE)
         user32.ShowWindow(hwnd, SW_SHOW)
         ok = bool(user32.SetForegroundWindow(hwnd))
+        # E SE O WINDOWS RECUSAR, INSISTE PELA FILA LIGADA. Ver o helper.
+        if not ok:
+            ok = _foreground_steal_attached(hwnd)
     except Exception as exc:  # noqa: BLE001 -- report, never kill the hotkey
         log(f'PANEL_FOREGROUND_UNLOCK_FAILED error={exc!r}')
         return False
