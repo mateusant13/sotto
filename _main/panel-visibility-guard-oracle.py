@@ -86,6 +86,7 @@ class Probe:
         self.hides = []
         self.posts = []
         self.published = []
+        self.caption_window_calls = []
         self.hwnd = 4242
         self.visible = visible
         self.args = SimpleNamespace(show=False)
@@ -105,6 +106,16 @@ class Probe:
 
     def publish_panel_visibility(self, reason):
         self.published.append(reason)
+
+    def show_caption_window(self, on):
+        """A JANELA DA LEGENDA, no stub. O `hide_panel` REAL passou a chama-la
+        (`self.show_caption_window(False)`) quando o painel se esconde -- e este stub,
+        que so carrega o que os metodos dirigidos tocam, nao a tinha: o oraculo morria
+        com `AttributeError: 'Probe' object has no attribute 'show_caption_window'`.
+        MEDIDO na bateria de 2026-10-16 (135/145, e este era UM DOS VERMELHOS).
+        Registar a chamada e o que o oraculo precisa: o efeito e do shell, nao daqui."""
+        self.caption_window_calls.append(on)
+        return True
 
 
 def promise(text):
