@@ -276,14 +276,18 @@ body[data-float="on"] .caption-float__line {
   opacity: 1 !important;
 }
 
-/* THE COLUMN HANGS TO THE RIGHT, as the zip sets it, and the text inside it aligns right. */
+/* O ALINHAMENTO A ESQUERDA. Estava `right`, com a nota "as the zip sets it" -- e o dono
+ * disse o contrario, verbatim: *"a segunda linha comeca na direita da div ainda, nao e nem
+ * na esquerda ou meio"*. MEDIDO na pagina real (probe CDP, 900x170):
+ * `align.col/prev/line = "right"`. A coluna deixa de pendurar a direita e o texto alinha a
+ * esquerda, que e onde a primeira linha ja comeca. */
 body[data-float="on"] .caption-float__col {
-  text-align: right !important;
-  align-items: flex-end !important;
+  text-align: left !important;
+  align-items: flex-start !important;
 }
 body[data-float="on"] .caption-float__line,
 body[data-float="on"] .caption-float__prev {
-  text-align: right !important;
+  text-align: left !important;
 }
 
 /* THE METER is the zip accent, not the theme accent, so the overlay reads the same in every
@@ -442,8 +446,8 @@ html[data-caption-window="on"] #caption-float {
  * O `html` E o `body`: o `body` do painel leva a mesma base, e o `html` pinta o resto. */
 html[data-caption-window],
 html[data-caption-window] body {
-  background: transparent !important;
-  background-color: transparent !important;
+  background: #ff00ff !important;
+  background-color: #ff00ff !important;
   background-image: none !important;
 }
 

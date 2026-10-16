@@ -6652,6 +6652,54 @@ class SottoShell:
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_FORM_TRANSPARENCY_FAILED error={exc!r}')
 
+    #: SEGUNDOS SEM LEGENDA NOVA ANTES DE A JANELA SUMIR SOZINHA. O dono: a legenda
+    #: fica o tempo inteiro. Cada push rearma; sem fala nova, esconde.
+    CAPTION_IDLE_HIDE_S = 6.0
+
+    def _arm_caption_idle_hide(self):
+        """Rearma o temporizador que esconde a legenda sem fala nova.
+
+        Cada legenda empurrada rearma; se NENHUMA chegar em CAPTION_IDLE_HIDE_S, a
+        janela esconde e o painel volta a mostrar a legenda dele (via show(False), que
+        escreve data-caption-window=off). A sequencia impede que um temporizador
+        velho esconda uma legenda nova.
+        """
+        import threading as _threading
+        try:
+            prev = getattr(self, '_caption_idle_timer', None)
+            if prev is not None:
+                try:
+                    prev.cancel()
+                except Exception:
+                    pass
+            seq = int(getattr(self, '_caption_idle_seq', 0) or 0) + 1
+            self._caption_idle_seq = seq
+            timer = _threading.Timer(float(self.CAPTION_IDLE_HIDE_S), self._caption_idle_hide, args=(seq,))
+            timer.daemon = True
+            self._caption_idle_timer = timer
+            timer.start()
+        except Exception as exc:  # noqa: BLE001
+            try:
+                log(f'CAPTION_IDLE_ARM_FAILED error={exc!r}')
+            except Exception:
+                pass
+
+    def _caption_idle_hide(self, seq):
+        """Esconde a janela se NENHUMA legenda chegou depois de armar (stale-safe)."""
+        try:
+            if int(getattr(self, '_caption_idle_seq', 0) or 0) != int(seq):
+                return
+            if not getattr(self, '_caption_window_shown', False):
+                return
+            self.show_caption_window(False)
+            self._caption_window_shown = False
+            log('CAPTION_WINDOW_IDLE_HIDDEN after_s=%s reason=no-caption' % (self.CAPTION_IDLE_HIDE_S,))
+        except Exception as exc:  # noqa: BLE001
+            try:
+                log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
+            except Exception:
+                pass
+
     def push_caption_to_window(self, text, previous=None, credits=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
         win = getattr(self, 'caption_window', None)
@@ -6675,6 +6723,7 @@ class SottoShell:
             if credits is not None:
                 win.evaluate_js('window.SottoCaption && window.SottoCaption.credits(%s)'
                                 % json.dumps(credits))
+            self._arm_caption_idle_hide()
             return True
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WINDOW_PUSH_FAILED error={exc!r}')
@@ -6737,6 +6786,7 @@ class SottoShell:
                 self._caption_window_shown = True
             else:
                 win.hide()
+                self._caption_window_shown = False
             win.evaluate_js('window.SottoCaption && window.SottoCaption.listening(%s)'
                             % ('true' if on else 'false'))
             # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
