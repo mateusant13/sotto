@@ -152,7 +152,7 @@
   color-scheme: dark;
 }
 :root[data-theme='pd-tele'] .panel {
-  border-color: var(--line);
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
@@ -638,7 +638,7 @@
 :root[data-theme='pd-tele'] .panel {
   background: linear-gradient(to right, rgba(5, 7, 10, 0.82) 0%, rgba(5, 7, 10, 0.42) 62%, rgba(5, 7, 10, 0.12) 100%);
   border-color: transparent;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 :root[data-theme='pd-tele'] .panel__header {
@@ -844,7 +844,7 @@
   color-scheme: dark;
 }
 :root[data-theme='pd-bcast'] .panel {
-  border-color: var(--line);
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
@@ -1382,8 +1382,8 @@
 }
 :root[data-theme='pd-bcast'] .panel {
   background: rgba(8, 10, 13, 0.88);
-  border-color: rgba(255, 255, 255, 0.1);
-  border-radius: 0;
+  border-color: transparent;
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 :root[data-theme='pd-bcast'] .panel__header {
@@ -1603,7 +1603,7 @@
   color-scheme: dark;
 }
 :root[data-theme='pd-mano'] .panel {
-  border-color: var(--line);
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
@@ -2111,7 +2111,7 @@
 :root[data-theme='pd-mano'] .panel {
   background: rgba(12, 12, 15, 0.62);
   border-color: transparent;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 :root[data-theme='pd-mano'] .panel::before {
@@ -2327,7 +2327,7 @@
   color-scheme: dark;
 }
 :root[data-theme='pd-cine'] .panel {
-  border-color: var(--line);
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
@@ -2829,7 +2829,7 @@
 :root[data-theme='pd-cine'] .panel {
   background: linear-gradient(to top, rgba(4, 5, 8, 0.72) 0%, rgba(4, 5, 8, 0.4) 55%, rgba(4, 5, 8, 0.14) 100%);
   border-color: transparent;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 :root[data-theme='pd-cine'] .panel__header {
@@ -3044,7 +3044,7 @@
   color-scheme: dark;
 }
 :root[data-theme='pd-instr'] .panel {
-  border-color: var(--line);
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);
@@ -3625,8 +3625,8 @@
 }
 :root[data-theme='pd-instr'] .panel {
   background: rgba(10, 12, 15, 0.92);
-  border-color: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  border-color: transparent;
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 :root[data-theme='pd-instr'] .panel__header {

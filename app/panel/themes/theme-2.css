@@ -62,7 +62,7 @@
      reads is dead weight; the value is still in the ledger (`--trace`). */
   --bg-slab: #06090B;
   --bg-slab-strong: #1B1E24;
-  --shadow-slab: 0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --shadow-slab: 0 28px 90px rgba(0,0,0,0.6);
 
   /* ── TEXT ─────────────────────────────────────────────────────────────── */
   --text-primary: rgba(255, 255, 255, 0.9);
@@ -164,7 +164,7 @@
   color-scheme: dark;
 }
 :root[data-theme='theme-2'] .panel {
-  border-color: var(--line);
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
   box-shadow: var(--shadow-slab);

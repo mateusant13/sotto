@@ -897,9 +897,25 @@ def build_direction_theme(n, d, pal, psrc, fonts, fsrc, ideas):
           'a strong tier for the scrollbar thumb)' % line_lbl)
     t.put('accent_soft', rgba(t['accent'], line_a),
           'derived: the accent at the surface border alpha (%s)' % line_lbl)
+    # THE WHITE RING IS GONE, and it was the thing the owner was pointing at.
+    # Owner, 2026-10-17, verbatim: *"to vendo borta branca nos paineis inves de nao
+    # aparecerem e deixar a borda redonda"*. This used to read
+    #   '%s, 0 0 0 1px %s' % (shadow_in(...), rgba(line, line_a))
+    # and the second term is a hairline re-implemented as a box-shadow ring, which
+    # draws a 1px line OUTSIDE the panel in exactly the colour of `--line`
+    # (measured on the shipped `theme-1.css`: `--line: rgba(255,255,255,0.1)`), on
+    # every theme built through this path. Together with the real `border-color:
+    # var(--line)` in `SKIN` the panel wore TWO white edges.
+    # The frame's own drop shadow is kept: it is what separates a dark panel from a
+    # dark desktop, and it is not an outline.
     t.put('shadow_slab',
-          '%s, 0 0 0 1px %s' % (shadow_in(frame, frame_src), rgba(line, line_a)),
-          '%s (the frame shadow-[...]) + the surface hairline (%s)' % (frame_src, line_lbl))
+          shadow_in(frame, frame_src),
+          '%s only. The `0 0 0 1px %s` hairline that used to be appended here is '
+          'REMOVED: owner 2026-10-17 ("borda branca ... em vez de nao aparecerem"), '
+          'and it duplicated the `border-color` in SKIN, so the panel wore two white '
+          'edges at once. Measured on the shipped theme-1.css before the change: '
+          '`--shadow-slab: 0 28px 90px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)`'
+          % (frame_src, line_lbl))
     t.put('radius_lg', '%dpx' % RADIUS_LG,
           '%s (rounded-lg on the frame) + %s' % (frame_src, TAILWIND))
     t.put('radius_sm', '%dpx' % RADIUS_SM, TAILWIND)
@@ -1032,7 +1048,15 @@ def parsed_themes(ideas):
 SKIN = """
 /* ── the slab ────────────────────────────────────────────────────────────── */
 {S} .panel{{
-  border-color: var(--line);
+  /* NO BORDER. Owner, 2026-10-17, verbatim: *"borda branca nos paineis em vez de
+     nao aparecerem"*. This was `border-color: var(--line)`, and `--line` on the
+     shipped theme-1 is `rgba(255,255,255,0.1)` -- a white hairline, on every panel
+     of every theme that did not override it in its own signature. `transparent`
+     instead, so the width still occupies the layout and NOTHING SHIFTS; what the
+     owner sees changes, the geometry does not.
+     The ROUNDED CORNER IS KEPT on purpose: it was `var(--radius-lg)` already and
+     the request was to keep the round, not to square it. */
+  border-color: transparent;
   border-radius: var(--radius-lg);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) {slab_pct}%, transparent) 0%,
@@ -2982,7 +3006,7 @@ PD_IDEAS = {
 PD_SIG = {
     1: "@S@ .panel {\n"
        "  background: linear-gradient(to right, rgba(5, 7, 10, 0.82) 0%, rgba(5, 7, 10, 0.42) 62%, rgba(5, 7, 10, 0.12) 100%);\n"
-       "  border-color: transparent;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 24px 28px 0; }\n"
        "@S@ .wordmark { display: none; }\n"
        "@S@ .chrome--tele .chrome__dot { width: 5px; height: 5px; border-radius: 999px; background: @idle@; }\n"
@@ -2993,7 +3017,7 @@ PD_SIG = {
        "@B@ .caption--provisional .caption__text { margin-left: 7px; }\n"
        "@S@ .caption__time, @S@ .caption__mark { display: none; }\n",
     2: "@S@ .panel {\n  background: rgba(8, 10, 13, 0.88);\n"
-       "  border-color: @line@;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 14px 16px 10px; border-bottom: 1px solid @line@; }\n"
        "@S@ .wordmark { display: none; }\n"
        "@S@ .chrome--bcast .chrome__dot { width: 7px; height: 7px; border-radius: 999px; background: @idle@; }\n"
@@ -3006,7 +3030,7 @@ PD_SIG = {
        "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n"
        "@S@ .chrome--bcast[data-chrome=\"foot\"] { border-top: 1px solid @line@; padding: 10px 16px; }\n",
     3: "@S@ .panel {\n  background: rgba(12, 12, 15, 0.62);\n"
-       "  border-color: transparent;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel::before {\n  content: \"\";\n  position: absolute;\n"
        "  left: 27px;\n  top: 32px;\n  bottom: 32px;\n  width: 1px;\n"
        "  background: rgba(255, 255, 255, 0.07);\n}\n"
@@ -3018,7 +3042,7 @@ PD_SIG = {
        "@S@ .caption__time, @S@ .caption__mark { display: none; }\n",
     4: "@S@ .panel {\n"
        "  background: linear-gradient(to top, rgba(4, 5, 8, 0.72) 0%, rgba(4, 5, 8, 0.4) 55%, rgba(4, 5, 8, 0.14) 100%);\n"
-       "  border-color: transparent;\n  border-radius: 0;\n  box-shadow: none;\n}\n"
+       "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 32px 36px 0; }\n"
        "@S@ .wordmark {\n  display: flex;\n  position: absolute;\n"
        "  right: 36px;\n  bottom: 28px;\n  z-index: 4;\n}\n"
@@ -3031,7 +3055,7 @@ PD_SIG = {
        "@B@ .caption__mark { margin-right: 10px; color: @text_muted@; }\n"
        "@S@ .caption__time { display: none; }\n",
     5: "@S@ .panel {\n  background: rgba(10, 12, 15, 0.92);\n"
-       "  border-color: @line@;\n  border-radius: 10px;\n  box-shadow: none;\n}\n"
+       "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 16px 20px 14px; border-bottom: 1px solid @line@; }\n"
        "@S@ .wordmark { display: none; }\n"
        "@S@ .chrome--inst .chrome__meter { display: flex; align-items: flex-end; gap: 3px; height: 18px; }\n"
