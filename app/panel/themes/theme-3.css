@@ -209,13 +209,9 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-:root[data-theme='theme-3'] .history__label {
-  color: var(--text-muted);
-  letter-spacing: 0.14em;
-  font-size: var(--size-chrome);
-}
 :root[data-theme='theme-3'] .captions__hint {
   color: var(--text-muted);
+  font-size: var(--size-chrome);
 }
 :root[data-theme='theme-3'] .captions__body {
   border-color: var(--line);
@@ -223,10 +219,6 @@
   background: linear-gradient(0deg, var(--bg-slab) 0%, var(--bg-slab) 22%, transparent 52%), color-mix(in srgb, var(--bg-slab-strong) 55%, transparent);
   box-shadow: none;
   scrollbar-color: var(--line-strong) transparent;
-}
-:root[data-theme='theme-3'] .captions__body::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: 99px;
 }
 :root[data-theme='theme-3'] .captions__chip {
   border-color: var(--line-strong);

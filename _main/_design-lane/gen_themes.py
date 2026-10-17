@@ -1147,7 +1147,7 @@ SKIN = """
   box-shadow: none;
   scrollbar-color: var(--line-strong) transparent;
 }}
-{S} .captions__body::-webkit-scrollbar-thumb{{ background: var(--line-strong); border-radius: 99px; }}
+/* the theme used to colour the scrollbar thumb; the bar is HIDDEN in panel.css now, so a colour for it would be a rule for something nobody can see. */
 {S} .captions__chip{{
   border-color: var(--line-strong);
   background: var(--accent-soft);
