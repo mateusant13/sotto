@@ -497,6 +497,8 @@
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='pd-tele'] .theme-button__label {
   text-overflow: ellipsis;
@@ -624,6 +626,8 @@
 }
 :root[data-theme='pd-tele'] .panel__controls {
   gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='pd-tele'] .panel__controls .icon-button {
   border-color: transparent;
@@ -1189,6 +1193,8 @@
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='pd-bcast'] .theme-button__label {
   text-overflow: ellipsis;
@@ -1953,6 +1959,8 @@
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='pd-mano'] .theme-button__label {
   text-overflow: ellipsis;
@@ -2674,6 +2682,8 @@
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='pd-cine'] .theme-button__label {
   text-overflow: ellipsis;
@@ -3389,6 +3399,8 @@
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='pd-instr'] .theme-button__label {
   text-overflow: ellipsis;

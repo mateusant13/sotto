@@ -1447,6 +1447,20 @@ SKIN = """
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  /* THIS BUTTON IS THE ONE THAT GIVES WAY WHEN THE HEADER IS TIGHT.
+     Measured 2026-10-17 at the shipped 380x900 window: the header needs
+     57 (wordmark) + 12 (gap) + 304 (controls) = 373px and has ~352px, so the
+     two blocks OVERLAPPED by 9x16px instead of sitting apart. Nothing was
+     allowed to shrink: this rule had `max-width` (a CAP, not a request) and the
+     label had `text-overflow: ellipsis`, which together mean "I am prepared to
+     shrink" without anything ever asking. `flex: 0 1 auto` plus `min-width: 0`
+     is what makes the request real -- `min-width: 0` is the part that matters,
+     because a flex item's automatic minimum size is its content, and content
+     never yields. The reticencias then do what they were added for.
+     No button changes PLACE: DOM order and paint order are untouched, which is
+     the owner's standing rule. */
+  flex: 0 1 auto;
+  min-width: 0;
 }}
 {S} .theme-button__label{{ text-overflow: ellipsis; overflow: hidden; }}
 {S} .theme-button::after{{
@@ -1791,7 +1805,14 @@ CHROME[1] = """
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 /* "Nothing is boxed": the controls are glyphs, not buttons. */
-@S@ .panel__controls{ gap: 2px; }
+/* `flex: 0 1 auto; min-width: 0` is the fix for a MEASURED overlap, not a taste:
+   at 380x900 this cluster is 304px wide, the wordmark 57px, and the header has
+   ~352px -- so the two blocks overlapped by 9x16px. `flex: none` upstream means
+   the cluster refuses to shrink and `space-between` collapses into a collision.
+   Authorising the shrink here is what lets the theme BUTTON's label give way,
+   which is the only part of the row that is allowed to. Button ORDER is
+   untouched: the owner's rule is that a button never changes place. */
+@S@ .panel__controls{ gap: 2px; flex: 0 1 auto; min-width: 0; }
 @S@ .panel__controls .icon-button{
   border-color: transparent;
   background: transparent;

@@ -72,7 +72,7 @@ html body[data-surface="panel"] .panel__controls {
   flex-wrap: nowrap !important;
   align-items: center !important;
   justify-content: flex-end !important;
-  gap: 6px !important;
+  gap: 4px !important;
   width: auto !important;
   height: 28px !important;
   min-width: 0 !important;
@@ -104,14 +104,57 @@ html body[data-surface="panel"] .panel__controls .theme-chevron {
   padding: 0 !important;
 }
 
+/* THE THEME BUTTON IS THE ONE THAT PAYS FOR THE HEADER (measured, 2026-10-17).
+ *
+ * The cluster is `position: fixed` anchored right at `right: 14px`, so its width
+ * decides where its LEFT edge lands -- and a fixed box sized `width: auto` cannot
+ * shrink, it simply overlaps whatever is already there. Measured on the shipped
+ * panel.html at 380x900, bridge stubbed, theme-1:
+ *
+ *   wordmark        x=14 .. 71   (w 57)
+ *   panel__controls x=62 .. 366  (w 304)   <- OVERLAP 9 x 16 px
+ *
+ * The arithmetic: six 28px icon buttons + a 100px theme button = 268, plus six
+ * 6px gaps = 304. To clear the wordmark by 8px the cluster must be <= 287px, so
+ * 17px have to come out. They come out of the two things that are decoration
+ * rather than function -- the theme button's own width budget, and the gap between
+ * buttons -- and NOT out of any button's size, position or order. The owner's
+ * standing rule is that a button never changes place, and all six of these are
+ * 28px touch targets the owner actually hits.
+ *
+ * `gap: 4px` also retires a lie: the generator has emitted `gap: 2px` per theme
+ * since it was written, and the `gap: 6px !important` up in the fixed block has
+ * been overriding it in all 45 themes. That was never a theme decision at all,
+ * which is exactly why the per-theme value never did anything.
+ */
 html body[data-surface="panel"] .panel__controls .theme-button {
-  width: 100px !important;
-  min-width: 100px !important;
-  max-width: 100px !important;
+  width: 90px !important;
+  min-width: 90px !important;
+  max-width: 90px !important;
   height: 28px !important;
   min-height: 28px !important;
   padding: 0 8px !important;
   overflow: hidden !important;
+}
+
+/* THE DECORATIVE CHROME DOT GETS A TRACK OF ITS OWN, because the controls are
+ * fixed and therefore do not participate in the header's layout at all.
+ *
+ * After the width fix above, the one overlap left was `.chrome--tele`'s 6px state
+ * dot sitting UNDER the right end of the fixed cluster: dot at x=360, controls
+ * 84..366, overlap 6x6. `justify-content: space-between` is what put it there --
+ * it pushes the dot to the header's far right, which is precisely where the
+ * controls now live, and no amount of shrinking on the controls' side moves it.
+ *
+ * So the header stops distributing: `flex-start` plus a right padding equal to the
+ * cluster's width leaves the dot sitting just after the wordmark, with the
+ * cluster's track reserved in front of it. The dot is decoration, not a button,
+ * so it carries no order rule from the owner -- but its SIZE and its role (the
+ * state is dots, owner 2026-10-17) are both preserved. */
+html body[data-surface="panel"] .panel__header {
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  padding-right: 290px !important;
 }
 
 /* DOCUMENT ORDER IS PAINT ORDER. The ids are unique, so these cannot leak to a

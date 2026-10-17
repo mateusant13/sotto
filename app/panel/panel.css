@@ -3336,6 +3336,37 @@ body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
 .chrome__brand, .wordmark { min-width: 32px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   O CABECALHO NAO CABE EM 380px, E MEU ESTAVA A SOBREPOR-SE (medido 2026-10-17)
+   ═══════════════════════════════════════════════════════════════════════════
+   MEDIDO no `panel.html` enviado, a 380x900, no browser, com o painel cheio:
+
+     wordmark         x=14  w=57    -> termina em x=71
+     panel__controls  x=62  w=304   -> começa em x=62
+     SOBREPOSICAO     9 x 16 px
+
+   E o motivo e aritmetica, nao gosto: 57 + 12 (gap) + 304 = 373px dentro de
+   ~352px de area util. Faltam 21px. Com `justify-content: space-between` e
+   excesso, o flex NAO empurra para fora -- ele COLAPSA o espaco e os dois blocos
+   passam a estar um por cima do outro.
+
+   As DUAS CAUSAS, e ambas corrigidas aqui:
+     1. `.panel__controls` tem `flex: none` (panel.css:290), portanto recusa-se a
+        encolher. O cluster mantem os 304px e transborda.
+     2. `#theme-button` tem `max-width` mas nao `flex-shrink`, e o rotulo tem
+        `text-overflow: ellipsis` -- isto é, foi feito para encolher e nunca foi
+        ligado a nada que o deixe encolher.
+
+   A correcao NAO e mover botao nenhum. A regra permanente do dono e que um botao
+   nunca mude de sitio entre temas, e esta nao mexe: a ordem do DOM e a ordem de
+   pintura ficam intactas. O que muda e que, quando falta espaco, o que encolhe e o
+   ROTULO do tema -- que e para isso que existe o reticencias. `min-width: 0` e o
+   que autoriza o encolhimento em flex; sem ele o valor minimo do conteudo e o
+   minimo e nao ha nada a negociar. */
+.panel__controls { flex: 0 1 auto; min-width: 0; }
+#theme-button { flex: 0 1 auto; min-width: 0; }
+.wordmark { flex: 0 1 auto; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
    THE STATE IS DOTS. NO WORDS ON SCREEN (owner, 2026-10-17)
    ═══════════════════════════════════════════════════════════════════════════
    The owner looked at the running panel and said the readout was text: the

@@ -509,6 +509,8 @@
   max-width: 84px;
   overflow: hidden;
   white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='theme-1'] .theme-button__label {
   text-overflow: ellipsis;
@@ -636,6 +638,8 @@
 }
 :root[data-theme='theme-1'] .panel__controls {
   gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 :root[data-theme='theme-1'] .panel__controls .icon-button {
   border-color: transparent;
