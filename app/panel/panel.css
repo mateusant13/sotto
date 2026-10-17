@@ -1322,10 +1322,23 @@ body[data-level="none"] .chrome__meter i {
 }
 
 /* Idle "listening" bars: motion that says the panel is alive, not a spinner
-   pretending work is happening. */
+   pretending work is happening.
+
+   OWNER FIX (2026-10-17): the bars were NOT centred and did NOT read as the
+   accent. Three measured causes, all in this block:
+     - `align-items: flex-end` pinned the 10 px bars to the BOTTOM of a 34 px
+       box, so the row floated off-centre. Now `center`, and the row is also
+       centred horizontally so it cannot drift when the font metrics move.
+     - `border-radius: 99px` turned a 4x10 bar into a pill. The owner called
+       them "pontinhos" and they read as grey lozenges. Radius is now the half
+       of the WIDTH, i.e. a true round cap on a bar, not a lozenge.
+     - `opacity: 0.5` halved the accent gradient into grey. The motion alone
+       carries the "alive" signal now, so the resting colour can be the accent
+       at full strength. */
 .listening {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
   height: 34px;
   margin-bottom: 2px;
@@ -1334,9 +1347,9 @@ body[data-level="none"] .chrome__meter i {
 .listening span {
   width: 4px;
   height: 10px;
-  border-radius: 99px;
+  border-radius: 2px;
   background: var(--accent-gradient);
-  opacity: 0.5;
+  opacity: 0.9;
   animation: listening 1.5s ease-in-out infinite;
 }
 
