@@ -716,6 +716,18 @@ def worker_status_text(state, message, readable):
             return f'Worker finished on {verdict}'
         return readable
     if state not in WORKER_ERROR_STATES:
+        # A ESCADA GASTA E UMA ESPERA, NAO UMA FALHA (dono, 2026-10-17, verbatim:
+        # *"o painel ta com erro vermelho. ta falando que 'audio device is in use'
+        # sendo q nao e pra acontecer nunca e nem depender disso"*).
+        #
+        # O worker emite este estado quando percorreu a escada inteira e nenhum
+        # endpoint estava livre AGORA. A app esta de pe, o shell relanca o worker e
+        # a escada recomeca: e a app a ESPERAR. O `detail` ja vem neutro do worker
+        # (ver o comentario do lado do `emit`), portanto nao ha HRESULT para
+        # traduzir, mas mesmo que houvesse esta linha e a ultima: `human_audio_error`
+        # nao deve conseguir transformar uma espera na frase que o dono mandou tirar.
+        if state == 'audio-endpoint-unavailable':
+            return ('No audio endpoint was free - Sotto keeps looking')
         return readable
     device = str(message.get('device') or '').strip()
     api = str(message.get('api') or '').strip()

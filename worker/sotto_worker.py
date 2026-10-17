@@ -5803,14 +5803,46 @@ def main():
                     # THE LADDER IS SPENT. This is the ONE place where failing to
                     # open a device is terminal, and it is terminal ONLY here --
                     # every rung before this one rotates, so it must not have been
-                    # painting red on the way through. This event carries the whole
-                    # `denials` list, which until now was collected and never read.
+                    # painting red on the way through.
+                    #
+                    # OWNER, 2026-10-17, verbatim: *"o painel ta com erro vermelho.
+                    # ta falando que 'audio device is in use' sendo q nao e pra
+                    # acontecer nunca e nem depender disso"*. He had seen this
+                    # event before the per-rung fix, and the per-rung fix was not
+                    # enough: this is the line that PAINTED it. The state was
+                    # `error`, which is in the shell's WORKER_ERROR_STATES, and the
+                    # detail carried the raw `0x8889000A`, which
+                    # `human_audio_error` then translated into the red sentence he
+                    # quoted.
+                    #
+                    # What is actually true when the ladder is spent is that Sotto
+                    # found no FREE ENDPOINT at this instant. Nothing is broken, the
+                    # app is up, and the shell respawns this worker and walks the
+                    # ladder again. That is the app WAITING, so it is reported as
+                    # waiting. The name carries none of
+                    # `error|fail|fatal|dead|stopped|crash|denied|missing`, which is
+                    # the shell's whole vocabulary for painting red.
+                    #
+                    # Nothing is lost: `denials` -- which until this run was built at
+                    # the append and read by nothing at all -- goes out in the event
+                    # AND to stderr, so the diagnosis is on the record without being
+                    # on the owner's screen. The run's `outcome` and its exit code
+                    # are untouched: exhaustion is still a failure of this RUN.
                     emit(
                         type="status",
-                        state="error",
+                        state="audio-endpoint-unavailable",
                         stage="open-stream",
                         reason="ladder-exhausted",
-                        detail=("; ".join(denials) or "no device opened"),
+                        # NEUTRAL ON PURPOSE, and this is the part that finishes
+                        # the job. `detail` is one of `STATUS_BODY_FIELDS` in the
+                        # shell, so it is RENDERED on the owner's screen and then
+                        # fed to `human_audio_error`, which turns any HRESULT it
+                        # finds into the red sentence. The raw text stays in
+                        # `denials` -- which is NOT in STATUS_BODY_FIELDS, so it
+                        # never reaches the panel -- and in the stderr line below.
+                        # The diagnosis is not lost; it is simply not on the glass.
+                        detail=(f'Sotto tried {attempt_no + 1} of {len(candidates)} '
+                                f'audio endpoints and none was free at this moment'),
                         denials=list(denials),
                         attempt=attempt_no + 1,
                         of=len(candidates),
