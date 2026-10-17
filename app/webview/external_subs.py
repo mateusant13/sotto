@@ -21,6 +21,17 @@ at y=942..1001 inside a 1920x1080 player, i.e. the bottom band. The address
 bar is an Edit element whose ValuePattern is `youtube.com/watch?v=...`.
 
 `--probe` prints what it reads for N seconds and launches nothing else.
+
+WHAT SEPARATES A CAPTION FROM PLAYER CHROME
+------------------------------------------
+Owner, 2026-10-17: *"a legenda ta pegando mais coisas do youtube que nao devia...
+passar meu mouse encima da display em alguns textos, ou carregar esses textos,
+sei la. esquisito"*. Hovering the video raises a preview card and clicking it
+raises more UI, all inside the player rect and all inside the caption band,
+none of it in the blocklist. So the separator here is TEMPORAL, not
+vocabulary: a caption holds still while someone talks, hover UI does not.
+`--probe` prints every candidate row, its streak and its verdict per poll,
+so that separation is visible instead of asserted.
 """
 
 from __future__ import annotations
@@ -33,17 +44,51 @@ import sys
 import time
 from ctypes import wintypes as wt
 
-#: Text elements that are player CHROME, not captions. A blocklist is safer
-#: than an allowlist here: a caption can be any word, including "Pause".
-#: Only LONG UI sentences, never a single word: captions are split into
-#: individual Text elements (" play", " live", " pause") and a word blocklist
-#: silently ate them. The lower-band + player-rect filter is the real separator.
+#: Text elements that are player CHROME, not captions.
+#:
+#: THIS LIST IS NOISE-TRIMMING, NOT THE SEPARATOR. YouTube A/B-tests and
+#: localises its UI strings, so any fixed list is a losing bet -- the owner
+#: reported, verbatim, that hovering the mouse over the video or clicking it
+#: put non-caption text into the caption, and none of the hover card's
+#: strings are in this list. The real separator is TEMPORAL: `_stable`.
+#:
+#: It survives as a cheap first pass (it costs one regex per element) and as
+#: an allowlist-in-reverse: a blocklist is safer than an allowlist here,
+#: because a caption can be any word, including "Pause". Only LONG UI
+#: sentences, never a single word: captions arrive as one Text element per
+#: word (" play", " live", " pause") and a word blocklist silently ate them.
 _UI_TEXT = re.compile(
     r"(?i)(atalho do teclado|player de v[ií]deo|legendas/legendas ocultas|"
     r"screen reader|closed captions|mais v[ií]deos)")
 _TIME_TEXT = re.compile(
     r"(?i)(\d+\s*(horas?|hours?|minutos?|minutes?|segundos?|seconds?))")
 _URL = re.compile(r"(?i)(youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})")
+
+#: Consecutive polls a row must survive before it counts as a caption.
+_CONFIRM_POLLS = 2
+#: YouTube never shows more than two caption lines.
+_MAX_LINES = 2
+#: Rows further apart than this (px, top edge to top edge) are not one
+#: two-line caption -- one caption line is roughly 40-56px on this box.
+_LINE_SLACK = 96.0
+#: A caption is CENTRED in the player; chrome is not. This is the veto that
+#: stops chrome SITTING ON the caption's own row from taking the row over:
+#: stability alone cannot tell speech from UI when both persist. NOTE: the
+#: docstring above records the caption fragments' Y range (942..1001) as
+#: measured; their X range was never recorded, so centring is the one
+#: discriminator in this file resting on the player convention rather than on
+#: a measurement from this box. Tolerance is a fraction of the player width so
+#: it scales with the window, with a floor for tiny players.
+_CENTRE_TOL = 0.15
+#: hwnd -> {row_key: {"text": str, "streak": int, "held": str|None}}.
+#: Bounded: past _RUNS_MAX the state is dropped rather than growing forever.
+_RUNS = {}
+_RUNS_MAX = 32
+
+
+def _reset(hwnd):
+    """Forget this window's runs (no candidates, or the window went away)."""
+    _RUNS.pop(hwnd, None)
 
 
 def _uia():
@@ -120,8 +165,15 @@ def _address_bar_url(uia, UIA, root):
     return ""
 
 
-def _player_rect(root, window_rect):
-    """The biggest Group/Pane inside the window; the window itself if none."""
+def _player_rect(uia, root, window_rect):
+    """The biggest Group/Pane inside the window; the window itself if none.
+
+    `uia` WAS NOT A PARAMETER until 2026-10-17: the name below resolved to a
+    global that does not exist, so this raised NameError, the bare
+    `except Exception` swallowed it, and every run fell through to the WINDOW
+    rect. The x-bounds half of the player filter was therefore inert and the
+    band ran to the bottom of the browser window, not the bottom of the video.
+    """
     best = None
     best_area = 0
     try:
@@ -144,35 +196,34 @@ def _player_rect(root, window_rect):
     return window_rect
 
 
-def caption_lines(hwnd, uia, UIA):
-    """[(source, [line1, line2])] for the window, or []."""
-    root = uia.ElementFromHandle(hwnd)
-    if root is None:
-        return []
-    title = _window_title(hwnd)
-    proc = _process_name(hwnd)
-    url = _address_bar_url(uia, UIA, root) if ("chrome" in proc or "msedge" in proc
-                                               or "firefox" in proc) else ""
-    source = None
-    if "youtube" in title.lower() or _URL.search(url or ""):
-        source = "external:youtube"
-    elif "stremio" in title.lower() or "stremio" in proc:
-        source = "external:stremio"
-    else:
-        # ONLY a recognised player. A generic browser window has arbitrary
-        # text at the bottom (a stream overlay read "600200M" as a caption);
-        # claiming it would replace real speech with UI noise.
-        return []
+def _join(names):
+    """One row's fragments -> one line, respecting each one's own spacing.
 
-    wx0, wy0, wx1, wy1 = _rect(root) or (0, 0, 0, 0)
-    if wx1 <= wx0 or wy1 <= wy0:
-        return []
-    px0, py0, px1, py1 = _player_rect(root, (wx0, wy0, wx1, wy1))
-    band_top = py0 + (py1 - py0) * 0.62
-    try:
-        all_el = root.FindAll(0x4, uia.CreateTrueCondition())
-    except Exception:
-        return []
+    YouTube emits one Text element per word and each carries its own leading
+    space (' the'), which is why the old "".join() worked for captions. A
+    hover-card fragment carries NO leading space, so a bare "".join() welded
+    a card's title straight onto the words: ' the' + 'Akali Brothers' became
+    ' theAkali Brothers'. Keep each fragment's own whitespace and insert one
+    space only where the fragment brings none, so chrome can be separated
+    from a caption but can never fuse onto one.
+    """
+    out = ""
+    for frag in names:
+        if not out:
+            out = frag
+        elif frag[:1].isspace() or out[-1:].isspace():
+            out += frag
+        else:
+            out += " " + frag
+    return re.sub(r"\s+", " ", out).strip()
+
+
+def _band_rows(all_el, px0, py0, px1, py1, band_top):
+    """{row_key: {"y0": px, "frags": [(x0, x1, name)]}} for Text in the band.
+
+    The rect is passed as the four bounds in reading order, then band_top.
+    Cheap first pass only: control type, the blocklist and the lower band.
+    """
     rows = {}
     for i in range(all_el.Length):
         e = all_el.GetElement(i)
@@ -191,21 +242,183 @@ def caption_lines(hwnd, uia, UIA):
             continue
         if x0 < px0 - 2 or x1 > px1 + 2:
             continue
-        key = round(y0 / 8.0)
-        rows.setdefault(key, []).append((x0, name))
-    if not rows:
+        rows.setdefault(round(y0 / 8.0), {"y0": y0, "frags": []})["frags"].append((x0, x1, name))
+    return rows
+
+
+def _caption_shaped(frags, px0, px1):
+    """True when the row sits centred in the player, the way a caption does.
+
+    Decided on the CENTROID of the row, not its extent: a hover card grafted
+    onto the caption's own line still spans the centre, so "does it cross the
+    middle" would wave it through, while the centroid of a mostly-chrome row
+    sits far to the side where a caption's never does.
+    """
+    mid = (px0 + px1) / 2.0
+    tol = max(24.0, (px1 - px0) * _CENTRE_TOL)
+    lo = min(f[0] for f in frags)
+    hi = max(f[1] for f in frags)
+    return abs((lo + hi) / 2.0 - mid) <= tol
+
+
+def _extends(old, new):
+    """True when `new` is `old` plus more -- a caption growing mid-sentence."""
+    return bool(old) and new.startswith(old)
+
+
+def _stable(hwnd, cand):
+    """{row: text} to emit as caption this poll, plus a per-row trace.
+
+    `cand` is {row: (text, caption_shaped)} from `_caption_shaped`.
+
+    THIS IS THE REAL SEPARATOR, and it is temporal, not vocabulary-based. A
+    caption stays put while a speaker talks -- many polls. A hover card or
+    click feedback appears on one poll and is gone on the next. So a row's
+    text has to look the same, or grow into itself, for _CONFIRM_POLLS
+    consecutive polls before it is emitted as caption; a row that vanished
+    on this poll is dropped at once.
+
+    A row whose text changed to something that is NOT an extension of its
+    own run resets its streak and emits NOTHING of the new text -- it keeps
+    HOLDING the last confirmed caption, unless the newcomer is centred like a
+    caption (`_caption_shaped`). Chrome therefore cannot reach the caption
+    output, and cannot displace the caption either.
+    """
+    if len(_RUNS) > _RUNS_MAX:
+        _RUNS.clear()
+    runs = _RUNS.setdefault(hwnd, {})
+    trace = []
+    for key in list(runs):
+        if key not in cand:
+            trace.append((key, runs[key]["text"], "DROPPED", "vanished on this poll"))
+            del runs[key]
+    kept = {}
+    for key in sorted(cand):
+        text, shaped = cand[key]
+        slot = runs.get(key)
+        if slot is None:
+            runs[key] = {"text": text, "streak": 1, "held": None}
+            trace.append((key, text, "PENDING", "first sight of this row"))
+            continue
+        held = slot["held"]
+        if text == slot["text"]:
+            slot["streak"] += 1
+            why = "identical to the previous poll"
+        elif _extends(slot["text"], text):
+            slot["streak"] += 1
+            why = "prefix-extension of the previous poll"
+        else:
+            slot["streak"] = 1
+            why = "NOT an extension of %r" % (slot["text"],)
+        slot["text"] = text
+        # An established caption is only ever handed over to text shaped like
+        # a caption. Chrome grafted onto the caption's own row is off-centre,
+        # so it cannot take the row -- not on its first poll and not after the
+        # user leaves it parked there for ten. A row with NO caption yet is
+        # exempt, so a left-aligned player still reads its first caption.
+        if slot["streak"] >= _CONFIRM_POLLS and held is not None and not shaped:
+            why += ", not centred like a caption: takeover vetoed"
+        elif slot["streak"] >= _CONFIRM_POLLS:
+            held = slot["held"] = text
+        if held is None:
+            trace.append((key, text, "PENDING",
+                          "%s, streak=%d < %d" % (why, slot["streak"], _CONFIRM_POLLS)))
+        elif held == text:
+            kept[key] = held
+            trace.append((key, text, "STABLE", "%s, streak=%d" % (why, slot["streak"])))
+        else:
+            kept[key] = held
+            trace.append((key, text, "HELD",
+                          "new text not confirmed (%s); still showing %r" % (why, held)))
+    return kept, trace
+
+
+def _bottom_run(kept, band, max_lines=_MAX_LINES):
+    """The rows nearest the player's bottom edge, whole, at most `max_lines`.
+
+    Captions sit in the lowest band, so the bottom row is the caption and a
+    row far above it cannot displace it. Two rows within _LINE_SLACK are one
+    two-line caption and are kept together -- a real two-line caption is
+    never split, and never silently truncated to one line.
+    """
+    def y0(key):
+        return band[key]["y0"] if key in band else float(key) * 8.0
+
+    keys = sorted(kept, key=y0, reverse=True)
+    if not keys:
         return []
-    lines = []
-    for key in sorted(rows):
-        words = [n for _, n in sorted(rows[key], key=lambda t: t[0])]
-        line = "".join(words)
-        line = re.sub(r"\s+", " ", line).strip()
+    out = [keys[0]]
+    base = y0(keys[0])
+    for key in keys[1:]:
+        if len(out) >= max_lines:
+            break
+        if base - y0(key) <= _LINE_SLACK:
+            out.append(key)
+    return sorted(out)  # top line first, so the caption reads in order
+
+
+def caption_lines(hwnd, uia, UIA, trace=None):
+    """[(source, [line1, line2])] for the window, or []."""
+    root = uia.ElementFromHandle(hwnd)
+    if root is None:
+        _reset(hwnd)
+        return []
+    title = _window_title(hwnd)
+    proc = _process_name(hwnd)
+    url = _address_bar_url(uia, UIA, root) if ("chrome" in proc or "msedge" in proc
+                                               or "firefox" in proc) else ""
+    source = None
+    if "youtube" in title.lower() or _URL.search(url or ""):
+        source = "external:youtube"
+    elif "stremio" in title.lower() or "stremio" in proc:
+        source = "external:stremio"
+    else:
+        # ONLY a recognised player. A generic browser window has arbitrary
+        # text at the bottom (a stream overlay read "600200M" as a caption);
+        # claiming it would replace real speech with UI noise.
+        _reset(hwnd)
+        return []
+
+    wx0, wy0, wx1, wy1 = _rect(root) or (0, 0, 0, 0)
+    if wx1 <= wx0 or wy1 <= wy0:
+        _reset(hwnd)
+        return []
+    px0, py0, px1, py1 = _player_rect(uia, root, (wx0, wy0, wx1, wy1))
+    band_top = py0 + (py1 - py0) * 0.62
+    try:
+        all_el = root.FindAll(0x4, uia.CreateTrueCondition())
+    except Exception:
+        _reset(hwnd)
+        return []
+    band = _band_rows(all_el, px0, py0, px1, py1, band_top)
+    cand = {}
+    for key, row in band.items():
+        frags = sorted(row["frags"], key=lambda f: f[0])
+        line = _join([n for _x0, _x1, n in frags])
         if line:
-            lines.append(line)
-    return [(source, lines[-2:])] if lines else []
+            cand[key] = (line, _caption_shaped(row["frags"], px0, px1))
+    if not cand:
+        _reset(hwnd)
+        if trace is not None:
+            trace.append(("-", "", "DROPPED", "no candidate in the lower band"))
+        return []
+    kept, decisions = _stable(hwnd, cand)
+    if trace is not None:
+        trace.extend(decisions)
+    keys = _bottom_run(kept, band)
+    if trace is not None:
+        for key in sorted(cand):
+            if key not in keys:
+                trace.append((key, cand[key][0], "SKIPPED",
+                              "not in the bottom %d lines (%s)" % (
+                                  _MAX_LINES,
+                                  "stable, further from the player bottom"
+                                  if key in kept else "not confirmed")))
+    lines = [kept[k] for k in keys]
+    return [(source, lines)] if lines else []
 
 
-def foreground_captions(uia, UIA):
+def foreground_captions(uia, UIA, trace=None):
     hwnd = int(ctypes.windll.user32.GetForegroundWindow() or 0)
     if not hwnd:
         return []
@@ -213,19 +426,28 @@ def foreground_captions(uia, UIA):
     # Never read Sotto's own panel as if it were a video.
     if title.strip().lower().startswith("sotto"):
         return []
-    return caption_lines(hwnd, uia, UIA)
+    return caption_lines(hwnd, uia, UIA, trace)
 
 
 def probe(seconds=10.0, interval=0.25):
     UIA, uia = _uia()
     started = time.monotonic()
     last = None
+    poll = 0
     while time.monotonic() - started < seconds:
+        poll += 1
+        trace = []
         try:
-            got = foreground_captions(uia, UIA)
+            got = foreground_captions(uia, UIA, trace)
         except Exception as exc:
             print("PROBE_ERROR", repr(exc), flush=True)
             got = []
+        # Per poll: every candidate row, which one is STABLE, and why each
+        # other one was rejected. The owner can watch hover noise arrive,
+        # sit at streak=1 and disappear without ever reaching PROBE.
+        for key, text, verdict, why in trace:
+            print("POLL %-4d row=%-6s %-8s %-52r %s"
+                  % (poll, key, verdict, text, why), flush=True)
         if got != last:
             print("PROBE", time.strftime("%H:%M:%S"), got, flush=True)
             last = got
