@@ -1011,7 +1011,22 @@ def dock_right(work, width=PANEL_WIDTH, height=PANEL_HEIGHT,
     panel_height = min(want_height, max(0, h - 2 * m))
 
     x = work['x'] + w - panel_width - m
-    y = work['y'] + round((h - panel_height) / 2)
+    # TOP-DOCKED, NOT VERTICALLY CENTRED (owner, 2026-10-17: *"o painel de baixo
+    # esta muito embaixo, tem que ser mais pra cima"*). The old line was
+    #     y = work['y'] + round((h - panel_height) / 2)
+    # which, with `panel_height = min(900, h - 2*m)`, left the panel's top edge
+    # half a screen below the top of the work area -- which is what the owner
+    # means by "too low".
+    #
+    # THE NEW FORMULA, exactly:  y = work['y'] + m
+    # -- the SAME `m` the right edge already uses (`max(0, min(margin, w/8, h/8))`,
+    # :1008), so the panel hangs PANEL_MARGIN (12) from the top and from the right
+    # and nothing else about the width changes. Containment is arithmetic, not a
+    # hope: `panel_height` is clamped to `h - 2*m` (:1011), so
+    # `work['y'] + m + panel_height <= work['y'] + h - m`, and both clamps below
+    # (`max(work['y'], ...)`, then `min(..., work['y'] + h - height)`) still run, so
+    # a short or offset monitor can never push the panel out of its work area.
+    y = work['y'] + m
 
     geometry = {
         'workX': work['x'],
