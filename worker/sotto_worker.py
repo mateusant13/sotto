@@ -5748,14 +5748,36 @@ def main():
                 except Exception as exc:
                     open_error = exc
                     detail = f"{type(exc).__name__}: {exc}"
+                    # OWNER FIX (2026-10-17). This used to be `state="error"`, and
+                    # `error` is in the shell's WORKER_ERROR_STATES, so EVERY rung the
+                    # ladder was about to rotate past painted the panel RED before the
+                    # `device-rotated` below had a chance to announce the rotation.
+                    # The owner, verbatim: *"o painel ta com erro vermelho. ta falando
+                    # que 'audio device is in use' sendo q nao e pra acontecer nunca e
+                    # nem depender disso"* -- and he is right: a rung failing to open is
+                    # the ladder WORKING, not a fault. It is still a warm-up state, so
+                    # the shell holds it behind a pending death and never paints it.
+                    #
+                    # The name is load-bearing: `FAILURE_WORDS_RE` in the shell is
+                    # `error|fail|fatal|dead|stopped|crash|denied|missing`, so a name
+                    # containing "failed" or "denied" would be painted red anyway by the
+                    # fall-through at worker_status_kind's last line. "refused" matches
+                    # none of them.
+                    #
+                    # The TERMINAL case is not lost: it is emitted once, below, when the
+                    # ladder is actually spent. Measured before this change: `denials`
+                    # was built at the `append` and read by NOTHING else -- the
+                    # per-rung `error` was the only signal, so exhaustion had no
+                    # terminal event of its own at all.
                     emit(
                         type="status",
-                        state="error",
+                        state="device-open-refused",
                         stage="open-stream",
                         device=dev["name"],
                         api=dev.get("api"),
                         detail=detail,
                         retry=retry,
+                        of=len(candidates),
                     )
                     # Release whatever the failed open left behind (the client is
                     # often created before Initialize refuses it) — the F4 rule: a
@@ -5778,6 +5800,23 @@ def main():
                            if all(_is_device_in_use(d) for d in denials)
                            else "open-failed")
                 if attempt_no + 1 >= len(candidates):
+                    # THE LADDER IS SPENT. This is the ONE place where failing to
+                    # open a device is terminal, and it is terminal ONLY here --
+                    # every rung before this one rotates, so it must not have been
+                    # painting red on the way through. This event carries the whole
+                    # `denials` list, which until now was collected and never read.
+                    emit(
+                        type="status",
+                        state="error",
+                        stage="open-stream",
+                        reason="ladder-exhausted",
+                        detail=("; ".join(denials) or "no device opened"),
+                        denials=list(denials),
+                        attempt=attempt_no + 1,
+                        of=len(candidates),
+                    )
+                    err(f"OPEN_LADDER_EXHAUSTED denials={len(denials)} "
+                        f"detail={'; '.join(denials) or 'none'}")
                     break
                 emit(
                     type="status",
