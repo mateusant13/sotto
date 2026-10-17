@@ -622,6 +622,11 @@ if (!bridge) {
   // controls that exist on BOTH of them.
   wireSurfaces();
   wireStripControls();
+  /* The caption button paints what the SHELL's caption window is doing, from the shell's
+   * own account of it (`data-caption-window`). Armed here, next to the wiring it serves,
+   * so a caption window the owner raised before this document existed still paints the
+   * button on load with no click. */
+  watchCaptionWindowState();
   wirePause();
   // The status is a repair control: one click revives the whole pipeline.
   wireRevive();
@@ -2010,8 +2015,12 @@ function applySurface() {
 /** The strip's three controls. Live toggle, Pause, Open panel — and no more. */
 function wireStripControls() {
   if (dom.stripLiveButton) {
+    /* THE OWNER'S BUTTON (2026-10-17): it is a switch for the caption window that
+     * lives OUTSIDE this panel, so a click ASKS the shell and paints nothing. The
+     * paint arrives with the shell's own `data-caption-window` write -- see
+     * `requestCaptionOverlay` / `watchCaptionWindowState`. */
     dom.stripLiveButton.addEventListener('click', () => {
-      applyLiveEnabled(!liveEnabled);
+      requestCaptionOverlay(!liveEnabled);
     });
   }
   if (dom.stripOpenButton) {
@@ -2177,19 +2186,87 @@ function applyTransparency(on) {
 }
 
 /**
- * The LIVE ON/OFF toggle — `bridge.setLiveEnabled(bool)`, a shell call that does
- * not exist yet (`sotto_webview.py` has no such method; see the receipt).
+ * THE CAPTION BUTTON IS A SWITCH FOR THE REAL OVERLAY, AND IT PAINTS WHAT IS
+ * ACTUALLY ON SCREEN (owner, 2026-10-17, verbatim: *"quando eu clico em legenda, ele
+ * simplesmente muda o botao. nao era pra ele fazer isso. tira todo o codigo que faz
+ * isso."*).
  *
- * The button is a REAL toggle: `aria-pressed` carries the state, the label says
- * it, and the paint is driven from the attribute so the eye and the screen
- * reader read the same fact. Turning live off is the owner's way to stop the
- * streaming engine WITHOUT unloading anything — which is why it is one click and
- * deliberately NOT the same two-step flow as Pause.
+ * WHAT WAS WRONG, in this file's own words. The click handler was
+ * `applyLiveEnabled(!liveEnabled)`, and that function FLIPPED A MODULE-LEVEL BOOLEAN and
+ * repainted `aria-pressed`, `data-state`, the label and the title from it -- before it
+ * asked anybody. So the button always moved, even on a shell where nothing came up, which
+ * is precisely what the owner saw: a button that changes and nothing else. The shell's own
+ * answer was then thrown away: the bridge resolves `{liveEnabled: <the value the page
+ * asked for>}` (`sotto_webview.py:3607-3611`), so the page painted its REQUEST back as if
+ * it were a RESULT. That echo is deleted here.
  *
- * When the shell has no `setLiveEnabled`, the toggle is NOT a lie: it is painted
- * inert, `aria-disabled="true"` and its title says the shell does not implement
- * it. The local state still flips, because the alternative — a control that does
- * nothing and says nothing — is the defect this panel has been bitten by before.
+ * WHAT IS NOW: ONE direction of travel, and the page never invents a state.
+ *   click   -> `requestCaptionOverlay()` asks the shell and paints NOTHING;
+ *   shell   -> `show_caption_window()` shows/hides its own window and writes what it
+ *              actually did onto the document as `data-caption-window`
+ *              (`sotto_webview.py:7177-7179`);
+ *   page    -> `watchCaptionWindowState()` observes THAT attribute and repaints from it.
+ * So a refused or failed overlay leaves the button exactly where it was, and a caption
+ * window that is already on screen (the owner pressed live before switching surface, or
+ * the shell raised it on its own) paints the button ON without any click at all.
+ *
+ * `applyLiveEnabled` keeps its name and its signature because the surface switch still
+ * calls it (`:2006`) to REPAINT; it is a painter now, not a switch. `{silent: true}` is
+ * accepted and ignored on purpose, so no caller has to change to get the new behaviour.
+ */
+const CAPTION_WINDOW_ATTR = 'data-caption-window';
+
+/** What the shell last said it did with its caption window. NOT what the page wants. */
+function captionOverlayIsUp() {
+  return document.documentElement.getAttribute(CAPTION_WINDOW_ATTR) === 'on';
+}
+
+/**
+ * ASK THE SHELL. Deliberately paints nothing: the paint belongs to the shell's answer,
+ * which arrives as `data-caption-window`. A shell without `setLiveEnabled` has no answer
+ * to wait for, so the page keeps its own boolean there and says so in the title.
+ */
+function requestCaptionOverlay(on) {
+  const wired = typeof bridge === 'object' && bridge !== null
+    && typeof bridge.setLiveEnabled === 'function';
+  if (!wired) {
+    applyLiveEnabled(Boolean(on));
+    return false;
+  }
+  try {
+    const result = bridge.setLiveEnabled(Boolean(on));
+    if (result && typeof result.then === 'function') {
+      result.catch((err) => {
+        setStatus('Caption overlay refused: ' + errorText(err), '');
+        // Repaint from the FACT, not from the request: the shell did not do it.
+        applyLiveEnabled(captionOverlayIsUp());
+      });
+    }
+  } catch (err) {
+    setStatus('Caption overlay refused: ' + errorText(err), '');
+    applyLiveEnabled(captionOverlayIsUp());
+  }
+  return true;
+}
+
+/** Repaint the button whenever the shell's own account of the overlay changes. */
+function watchCaptionWindowState() {
+  applyLiveEnabled(captionOverlayIsUp());
+  if (typeof MutationObserver !== 'function') return false;
+  new MutationObserver(() => {
+    const up = captionOverlayIsUp();
+    if (up !== liveEnabled) applyLiveEnabled(up);
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [CAPTION_WINDOW_ATTR],
+  });
+  return true;
+}
+
+/**
+ * THE PAINTER. Called with a FACT: the overlay's real state (from the shell's
+ * `data-caption-window`) or, on a shell with no caption window at all, the page's own
+ * fallback. It never talks to the shell -- `requestCaptionOverlay` is the only door.
  */
 function applyLiveEnabled(enabled, options) {
   liveEnabled = Boolean(enabled);
@@ -2218,31 +2295,24 @@ function applyLiveEnabled(enabled, options) {
   if (dom.stripLiveButton && !liveEnabled) dom.stripLiveButton.dataset.state = 'off';
   else if (dom.stripLiveButton) delete dom.stripLiveButton.dataset.state;
 
-  // THE CAPTION ON SCREEN FOLLOWS THE LIVE STATE (owner, read from his own prompts
-  // of the handoff conversation: *"primeiro, o painel de baixo. NELE EU ATIVO o
-  // segundo overlay, q e a legenda independente."*). ONE FACT, NOT TWO: live-on
-  // means the caption is loose on the screen, and `applyFloat` owns the attribute,
-  // the window height and the overlay. Called on EVERY apply — including the silent
-  // repaint a surface switch triggers — so the button and the screen cannot drift.
+  // THE CAPTION ON SCREEN FOLLOWS THE REAL OVERLAY STATE. ONE FACT, NOT TWO: when the
+  // shell's caption window is up, the caption is loose on the screen, and `applyFloat`
+  // owns the attribute, the window height and the page's own caption. Called on EVERY
+  // paint -- including the repaint a surface switch or the shell's attribute triggers --
+  // so the button and the screen cannot drift apart.
   applyFloat(liveEnabled);
 
-  if (!options || options.silent !== true) {
-    if (wired) {
-      // The return value is a Promise in every shipped bridge; tolerate a
-      // synchronous one, and report a rejection instead of swallowing it.
-      const result = bridge.setLiveEnabled(liveEnabled);
-      if (result && typeof result.then === 'function') {
-        result.then((payload) => {
-          const confirmed = payload && typeof payload.liveEnabled === 'boolean'
-            ? payload.liveEnabled : liveEnabled;
-          if (confirmed !== liveEnabled) applyLiveEnabled(confirmed, { silent: true });
-        }).catch((err) => {
-          setStatus('Live toggle refused: ' + errorText(err), '');
-          setTimeout(() => applyLiveEnabled(!liveEnabled, { silent: true }), 0);
-        });
-      }
-    }
-  }
+  /* DELETED 2026-10-17, and this is the code the owner named: the old tail of this
+   * function called `bridge.setLiveEnabled()` and then treated the Promise's answer as a
+   * confirmation --
+   *
+   *     result.then((payload) => { ...applyLiveEnabled(confirmed) })
+   *
+   * -- while the shell resolves `{liveEnabled: <the page's own request>}`
+   * (`sotto_webview.py:3607-3611`). That is the button painting its own wish back at
+   * itself, which is why clicking it "simplesmente muda o botao": the page confirmed
+   * itself. The one door to the shell is now `requestCaptionOverlay()`, called by the
+   * click handler only, and it paints nothing. */
   updateStripState();
 }
 
