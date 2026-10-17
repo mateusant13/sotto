@@ -1440,7 +1440,12 @@ class ExternalCaptionWatcher(threading.Thread):
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_READ_FAILED error={exc!r}')
                 got = []
-            self._tick(got)
+            try:
+                self._tick(got)
+            except Exception as exc:  # noqa: BLE001
+                self.failures += 1
+                if self.failures <= 3:
+                    log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
             self.stop_event.wait(self.INTERVAL_S)
         self._release('stopped')
         log(f'EXTERNAL_CAPTIONS_WATCH stopped=true reads={self.reads} '
@@ -1497,8 +1502,9 @@ def set_layered_color_key(hwnd, colorref: int) -> bool:
 
     WHY THIS EXISTS AND NOT JUST `form.TransparencyKey`: WinForms applies the
     key only to a window that already carries `WS_EX_LAYERED`, and the caption
-    window is created without that style -- it is added later, in
-    `_on_caption_loaded`, AFTER `_on_caption_before_show` has set the key. The
+    WebView2
+    caption window was created without that style -- the layered bit was added
+    later, only after the key had already been set. The
     result on the owner's screen (2026-10-17: *"qualquer tentativa de deixar um
     background transparente simplesmente deixa tudo rosa"*) is the page's own
     `#ff00ff` key colour painted as a solid PINK slab: the key existed on the
@@ -2920,8 +2926,10 @@ class TrayIcon:
         self.menu = None
         self._thread = None
         self._ready = threading.Event()
+        self._added = False
         self._wndproc = None
         self._failed = None
+        self._taskbar_created_msg = None
 
     # -- lifecycle ---------------------------------------------------------
     def start(self, timeout=5.0) -> bool:
@@ -2929,7 +2937,10 @@ class TrayIcon:
                                         daemon=True)
         self._thread.start()
         self._ready.wait(timeout)
-        return self.hwnd is not None
+        # The window existing is NOT proof the icon was added: `_run` returns
+        # early when `_add` fails, leaving `hwnd` set but `_ready` unset. Report
+        # the truth (icon added), not the window handle.
+        return bool(self._ready.is_set() and self._added and self.hwnd)
 
     def stop(self, reason='stop'):
         if self.hwnd:
@@ -2964,9 +2975,18 @@ class TrayIcon:
     def _add(self):
         nid = self._nid()
         ok = bool(shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid)))
+        err = ctypes.get_last_error()
         self.log(f'TRAY_ICON_ADD ok={str(ok).lower()} uid={TRAY_ID} '
                  f'cbSize={nid.cbSize} hicon={self.hicon} '
-                 f'icon={self.icon_path}')
+                 f'icon={self.icon_path} winerror={err}')
+        return ok
+
+    def _modify(self):
+        nid = self._nid()
+        ok = bool(shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid)))
+        err = ctypes.get_last_error()
+        self.log(f'TRAY_ICON_MODIFY ok={str(ok).lower()} uid={TRAY_ID} '
+                 f'winerror={err}')
         return ok
 
     def _delete(self):
@@ -2981,8 +3001,26 @@ class TrayIcon:
             self._create_window()
             if not self._load_icon():
                 return
-            if not self._add():
+            added = self._add()
+            if not added:
+                # A stale icon from a dead instance (or a transient explorer
+                # hiccup) can make NIM_ADD fail even though the (hwnd, uid) is
+                # ours. Clear any stale entry, then re-add; fall back to MODIFY
+                # if the icon is already present. This is what makes the icon
+                # appear even when a previous run did not clean up.
+                self._delete()
+                time.sleep(0.3)
+                added = self._add()
+            if not added:
+                added = self._modify()
+            if not added:
+                self._failed = 'Shell_NotifyIcon ADD/MODIFY failed'
+                self.warn(f'TRAY_UNAVAILABLE the notification-area icon did not '
+                          f'come up (add+modify both failed); the app keeps '
+                          f'running and Alt+C still works, but the Quit has no '
+                          f'home (error={self._failed})')
                 return
+            self._added = True
             # The menu is BUILT AND LOGGED at startup, so its Quit item (id and
             # text) is on the record without anyone having to right-click. It is
             # destroyed here and rebuilt when it is actually drawn.
@@ -3033,10 +3071,28 @@ class TrayIcon:
         if not hwnd:
             raise OSError(ctypes.get_last_error(), 'CreateWindowExW')
         self.hwnd = int(hwnd)
+        try:
+            user32.RegisterWindowMessageW.restype = wt.UINT
+            user32.RegisterWindowMessageW.argtypes = [wt.LPCWSTR]
+            self._taskbar_created_msg = int(user32.RegisterWindowMessageW(
+                'TaskbarCreated'))
+        except Exception:  # noqa: BLE001
+            self._taskbar_created_msg = 0
         self.log(f'TRAY_WINDOW created=true hwnd={self.hwnd} '
-                 f'class={TRAY_WINDOW_CLASS} message_only=true')
+                 f'class={TRAY_WINDOW_CLASS} message_only=true '
+                 f'taskbar_created_msg={self._taskbar_created_msg}')
 
     def _on_message(self, hwnd, msg, wparam, lparam):
+        if (getattr(self, '_taskbar_created_msg', 0)
+                and msg == self._taskbar_created_msg):
+            try:
+                self._delete()
+                if not self._add():
+                    self._modify()
+                self.log('TRAY_READDED reason=taskbar-created')
+            except Exception as exc:  # noqa: BLE001
+                self.warn(f'TRAY_READD_FAILED {type(exc).__name__}: {exc}')
+            return 0
         if msg == WM_TRAY_CALLBACK:
             if lparam in (WM_RBUTTONUP, WM_LBUTTONUP):
                 self._show_menu()
@@ -4607,6 +4663,8 @@ class SottoShell:
         self._external_parked = False
         self._vram_parked = False
         self.external_suppressed = 0
+        self.external_lines = 0
+        self._overlay_pushes = 0
         self.vram_guard = None
         #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
         #: until the panel's first load, which is when the DOM can be read.
@@ -4741,43 +4799,23 @@ class SottoShell:
         cap_h = 170
         cap_x = int(wa['x']) + (int(wa['width']) - cap_w) // 2
         cap_y = int(wa['y']) + int(wa['height']) - cap_h - 48
-        log('caption window created at %d,%d %dx%d (bottom-centre of the workArea)'
-            % (cap_x, cap_y, cap_w, cap_h))
-        self.caption_window = webview.create_window(
-            title='Sotto caption',
-            url=file_url(CAPTION_HTML),
-            width=cap_w,
-            height=cap_h,
-            x=cap_x,
-            y=cap_y,
-            frameless=True,
-            transparent=not self.args.opaque,
-            on_top=True,
-            resizable=False,
-            easy_drag=False,
-            hidden=True,
-            **({} if self.args.opaque else {'background_color': '#0b0f14'}),
-            text_select=False,
-        )
+        # THE FLOATING CAPTION IS A NATIVE LAYERED WINDOW, NOT A WEBVIEW2.
+        # WebView2 is an opaque child inside pywebview's WinForms host; no
+        # parent colour key can key its pixels (WebView2Feedback #118), and
+        # pywebview documents `transparent` as unsupported on Windows. A
+        # Win32 layered window with `UpdateLayeredWindow` is the supported
+        # per-pixel-alpha path. The panel and strip stay WebView2/HTML/CSS.
+        self.caption_overlay = None
+        try:
+            import caption_overlay
+            self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
+            self.caption_overlay.set_work_area(
+                wa, self.display.get('scaleFactor') or 1.0)
+            log(f'CAPTION_OVERLAY_MODE native=true hwnd='
+                f'{self.caption_overlay.hwnd} work={wa["width"]}x{wa["height"]}')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_OVERLAY_MODE_FAILED error={exc!r}')
 
-        # E A CURA DA CAIXA CLARA, assinada na janela da legenda. Ver o metodo para a
-        # medicao inteira: a caixa era a FORM, e `BackColor = Transparent` nao chega numa
-        # form de topo -- `TransparencyKey` e o que a tira do ecra.
-        self.caption_window.events.before_show += self._on_caption_before_show
-        # E O `loaded`, QUE E ONDE A TRANSPARENCIA DO WEBVIEW2 PEGA. O `before_show` corre
-        # ANTES de `EnsureCoreWebView2Async` completar (o comentario de `_on_before_show`
-        # di-lo por palavras), portanto la o `DefaultBackgroundColor` e guardado e
-        # IGNORADO -- o controlo ainda nao existe, e depois pinta o fundo DELE por cima da
-        # form ja transparente. Foi por isso que a caixa cinzenta sobreviveu com as duas
-        # curas a disparar: uma delas estava a correr cedo demais. NA SONDA funcionou
-        # porque o `Invoke` ficou em fila e correu depois; aqui o `before_show` JA esta na
-        # thread da UI, portanto o `Invoke` corre na hora -- cedo.
-        self.caption_window.events.loaded += self._on_caption_loaded
-
-        # A GEOMETRIA DA JANELA DA LEGENDA, GUARDADA. O `_fit_caption_window` redimensiona-a
-        # ao conteudo a cada legenda e tem de saber onde esta a ARESTA DE BAIXO para nao a
-        # mover: `resize()` do pywebview conserva o canto superior, e a legenda esta ancorada
-        # ao FUNDO. Sem estes tres numeros, crescer a janela subia-lhe a base.
         self._caption_window_w = cap_w
         self._caption_window_h = cap_h
         self._caption_window_x = cap_x
@@ -5570,6 +5608,11 @@ class SottoShell:
             self.external_caption_watcher.stop()
         if self.vram_guard is not None:
             self.vram_guard.stop()
+        if getattr(self, 'caption_overlay', None) is not None:
+            try:
+                self.caption_overlay.destroy()
+            except Exception:  # noqa: BLE001
+                pass
         self.stop_hot_reload('closing')
         log('SHELL_CLOSING')
 
@@ -7015,196 +7058,6 @@ class SottoShell:
             with self._revive_lock:
                 self._revive_thread = None
 
-    def _on_caption_loaded(self):
-        """A TRANSPARENCIA DO WEBVIEW2, POSTA QUANDO O CONTROLO JA EXISTE.
-
-        MEDIDO 2026-10-15, com a app a correr e o print do dono na mao: a janela da legenda
-        apareceu como uma CAIXA CINZENTA -- *"essa caixa de merda na tela ta parecendo
-        transparente pra voce?"* -- apesar de o log dizer `CAPTION_FORM_TRANSPARENCYKEY
-        set=magenta` E `CAPTION_WEBVIEW2_BGC set=transparent`. As duas curas dispararam.
-
-        PORQUE E QUE AINDA ASSIM NAO FUNCIONOU: o `before_show` corre ANTES de o
-        `CoreWebView2Controller` existir -- o comentario de `_on_before_show` di-lo:
-        *"the WinForms form is built and EnsureCoreWebView2Async has been called but has
-        not completed"*. Nesse instante `DefaultBackgroundColor` e uma propriedade sem
-        controlador por tras: fica guardada e nao tem efeito, e o WebView2 acaba por pintar
-        o fundo DELE por cima da form que ja esta transparente. **A caixa cinzenta e o
-        WebView2, nao a form.**
-
-        NA SONDA isto passou porque o `Invoke` ficou em FILA e correu depois do controlador
-        subir. No shell o `before_show` ja corre na thread da UI, portanto o `Invoke`
-        executa NA HORA -- cedo. E a diferenca que fez a cura parecer boa e falhar na app.
-
-        O `loaded` e o primeiro evento em que o controlo existe, e e onde isto vive agora.
-        """
-
-        form = getattr(self.caption_window, 'native', None)
-        if form is None:
-            log('CAPTION_LOADED_FORM_MISSING')
-            return
-        # FORA DA TASKBAR, E LAYERED -- DUAS ORDENS DELE, 2026-10-15, verbatim:
-        #
-        #   *"para de fazer essa porra de legenda no meio da tela ser a merda de um
-        #    processo na minha task bar"*
-        #   *"para de fazer ESSA PORRA SER CINZA E NAO TRANSPARENTE"*
-        #
-        # E O DEFEITO E O MESMO PARA AS DUAS: a janela PRINCIPAL resolve as duas em
-        # `_on_before_show` -- `WS_EX_TOOLWINDOW` e sem `WS_EX_APPWINDOW`, que e o que a
-        # tira da barra de tarefas -- e o `TransparencyKey` do WinForms so e aplicado a
-        # uma janela LAYERED. **A janela da legenda nao herdava NENHUMA das duas: eu
-        # criei-a e nunca lhe dei os estilos.**
-        #
-        # `WS_EX_NOACTIVATE` tambem vem: a legenda nunca deve roubar o foco de quem esta
-        # a escrever ou a jogar, e e o mesmo bit que a janela principal carrega.
-        try:
-            cap_hwnd = int(form.Handle.ToInt64())
-            cap_styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
-            # NO WS_EX_LAYERED. WebView2's transparency is per-pixel through
-            # `DefaultBackgroundColor = Transparent` + DirectComposition, not a
-            # layered-window colour key. Microsoft's own feedback says the
-            # colour-key route on the hosting HWND "did not work" with WebView2,
-            # and Wails measured that layered/alpha calls break per-pixel
-            # transparency. Adding it here was fighting the mechanism pywebview
-            # already set up.
-            set_ex_style(cap_hwnd, add=cap_styles, remove=WS_EX_APPWINDOW)
-            log(f'CAPTION_WINDOW_STYLES hwnd={cap_hwnd} toolwindow=true '
-                f'appwindow=false noactivate=true '
-                f'layered={str(not self.args.opaque).lower()} '
-                f'reason=not-a-taskbar-app-and-the-key-needs-layered')
-            # THE FORM MUST STAY OUT OF THE WAY. pywebview already set
-            # `SupportsTransparentBackColor` and `DefaultBackgroundColor =
-            # Transparent`; overriding `form.BackColor`/`TransparencyKey` here
-            # was what turned the caption into a solid magenta slab (owner's
-            # screenshot, 2026-10-17). No colour key, no form background.
-        except Exception as exc:  # noqa: BLE001
-            log(f'CAPTION_WINDOW_STYLES_FAILED error={exc!r}')
-        # E TEM DE SER COM `Invoke`, MEDIDO NA SONDA: o evento `loaded` NAO corre na
-        # thread da UI, e tocar no controlador de la falha com
-        #
-        #     CoreWebView2Controller members can only be accessed from the UI thread.
-        #
-        # Portanto a combinacao certa sao as DUAS metades, e nenhuma chega sozinha:
-        #   * `loaded` -- porque o `before_show` corre antes de o controlador existir e
-        #                 ali a propriedade fica sem efeito;
-        #   * `Invoke` -- porque o `loaded` chega numa thread que nao pode tocar-lhe.
-        # O `Invoke` que ja vive no `before_show` fica, mas e INUTIL: corre cedo demais
-        # para valer. **Este e que faz o trabalho.**
-        try:
-            from System import Action
-            from System.Drawing import Color
-
-            def _apply_bgc():
-                try:
-                    try:
-                        form.BackColor = Color.Transparent
-                    except Exception as exc_back:  # noqa: BLE001
-                        log(f'CAPTION_FORM_TRANSPARENT_BACKCOLOR_FAILED '
-                            f'at=loaded error={exc_back!r}')
-                    wv = getattr(form, 'webview', None)
-                    if wv is None:
-                        log('CAPTION_LOADED_WEBVIEW_MISSING')
-                        return
-                    wv.DefaultBackgroundColor = Color.Transparent
-                    log('CAPTION_WEBVIEW2_BGC set=transparent at=loaded-invoke '
-                        'reason=controller-exists-and-ui-thread')
-                except Exception as exc2:  # noqa: BLE001
-                    log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded-invoke error={exc2!r}')
-
-            form.Invoke(Action(_apply_bgc))
-        except Exception as exc:  # noqa: BLE001
-            log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded error={exc!r}')
-
-        # PROVE THE OTHER HALF OF THE TRANSPARENCY: the PAGE must not paint a
-        # background. `DefaultBackgroundColor` is only visible through pixels
-        # the page leaves transparent; an opaque body hides it.
-        try:
-            bg = self.caption_window.evaluate_js(
-                'JSON.stringify({html:getComputedStyle(document.documentElement)'
-                '.backgroundColor, body:getComputedStyle(document.body)'
-                '.backgroundColor})')
-            log(f'CAPTION_PAGE_BG {bg}')
-        except Exception as exc_bg:  # noqa: BLE001
-            log(f'CAPTION_PAGE_BG_FAILED error={exc_bg!r}')
-
-        # E RE-ESCONDE, PORQUE O PYWEBVIEW ACABOU DE A MOSTRAR. O comentario do
-        # `_on_navigation_start` explica o mecanismo e ele e o mesmo aqui:
-        #
-        #   "pywebview SHOWS the form again on EVERY navigation start when the window is
-        #    transparent (platforms/edgechromium.py:345-349, `if transparent:
-        #    self.form.Show()`)"
-        #
-        # A janela PRINCIPAL tem uma guarda para isto (`_gate_form_show`, que recusa o
-        # `Show()` do pywebview com ninguem a pedir). **A janela da legenda, que eu criei,
-        # nao tinha nenhuma** -- e por isso ela aparecia sozinha na tela dele ao abrir,
-        # GREY e sem legenda nenhuma. Ele: *"por que eu ainda to sendo atrapalhado?"*.
-        #
-        # `loaded` e o evento em que a navegacao acabou, portanto e o sitio certo para
-        # repor o estado: se ninguem mostrou a janela (`_caption_window_shown`), ela
-        # volta a esconder-se. **Se o botao live a mostrou, isto nao lhe toca.**
-        if not getattr(self, '_caption_window_shown', False):
-            try:
-                self.caption_window.hide()
-                log('CAPTION_WINDOW_REHIDDEN after=loaded reason=nobody-asked')
-            except Exception as exc3:  # noqa: BLE001
-                log(f'CAPTION_WINDOW_REHIDE_FAILED error={exc3!r}')
-
-    def _on_caption_before_show(self):
-        """A CURA DA CAIXA CLARA NA JANELA DA LEGENDA -- medida numa sonda isolada.
-
-        DUAS COISAS FICARAM PROVADAS: (1) pintar a form de VERMELHO faz a caixa ficar
-        VERMELHA, logo a caixa e a FORM e nao a pagina (pintar o `body` de vermelho nao
-        lhe tocou); e (2) `form.BackColor = Color.Transparent` NAO basta numa form de
-        TOPO, porque o .NET nao tem pai para onde compor e cai no `SystemColors.Control`
-        -- o cinza claro que se ve. O que funciona numa form de topo e uma COR-CHAVE.
-
-        MEDIDO: com `TransparencyKey` posto a caixa passou de CLARA a ausente.
-
-        MAGENTA e nao branco: a legenda e `#f5f8fc`, e uma chave branca podia cair nas
-        letras e apaga-las. O magenta nao aparece em nenhuma folha do painel.
-
-        PORQUE AQUI E NAO NUM THREAD: o controlador do WebView2 so se toca na thread da
-        UI (medido: `CoreWebView2Controller members can only be accessed from the UI
-        thread`), e `before_show` corre nessa thread.
-
-        PORQUE A JANELA PRINCIPAL PARECE NAO PRECISAR DISTO: a pagina dela cobre a form
-        INTEIRA com o slab translucido, portanto o cinza da form nunca se ve. A pagina da
-        legenda e transparente DE PROPOSITO -- e entao a form aparecia.
-        """
-        form = getattr(self.caption_window, 'native', None)
-        if form is None:
-            log('CAPTION_FORM_MISSING')
-            return
-        try:
-            from System.Drawing import Color
-            if self.args.opaque:
-                form.BackColor = Color.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
-                log('CAPTION_FORM_BACKCOLOR set=#0B0F14 reason=--opaque')
-            else:
-                # NO COLOUR KEY AND NO FORM BACKGROUND. WebView2's own
-                # `DefaultBackgroundColor=Transparent` is the supported route
-                # (Microsoft WebView2Feedback #118: LWA_COLORKEY on the hosting
-                # HWND "did not work" with WebView2; Wails #6088: layered/alpha
-                # calls break per-pixel transparency). The only thing to set
-                # here is the controller's background, on the UI thread.
-                try:
-                    from System import Action
-
-                    def _kill_wv_bg():
-                        try:
-                            wv = getattr(form, 'webview', None)
-                            if wv is not None:
-                                from System.Drawing import Color as _C
-                                wv.DefaultBackgroundColor = _C.Transparent
-                                log('CAPTION_WEBVIEW2_BGC set=transparent')
-                        except Exception as exc2:  # noqa: BLE001
-                            log(f'CAPTION_WEBVIEW2_BGC_FAILED error={exc2!r}')
-
-                    form.Invoke(Action(_kill_wv_bg))
-                except Exception as exc3:  # noqa: BLE001
-                    log(f'CAPTION_WEBVIEW2_INVOKE_FAILED error={exc3!r}')
-        except Exception as exc:  # noqa: BLE001
-            log(f'CAPTION_FORM_TRANSPARENCY_FAILED error={exc!r}')
-
     #: SEGUNDOS SEM LEGENDA NOVA ANTES DE A JANELA SUMIR SOZINHA. O dono: a legenda
     #: fica o tempo inteiro. Cada push rearma; sem fala nova, esconde.
     CAPTION_IDLE_HIDE_S = 6.0
@@ -7255,139 +7108,62 @@ class SottoShell:
 
     def push_caption_to_window(self, text, previous=None, credits=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
-        win = getattr(self, 'caption_window', None)
-        if win is None:
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
             return False
-        # A JANELA APARECE QUANDO HA LEGENDA. O dono quer a legenda *"quando eu quero ou
-        # nao"*; uma legenda so chega enquanto o worker esta a ouvir, portanto a janela
-        # aparece com a primeira linha. O `show_caption_window(False)` no hide do painel
-        # fecha-a. Sem polling e sem estado duplicado.
-        if not getattr(self, '_caption_window_shown', False):
-            self.show_caption_window(True)
+        self._caption_window_shown = True
+        dbg = self._overlay_pushes < 3
+
+        def _apply():
+            # ON THE UI THREAD, via `_post`. `ShowWindow`/`SetWindowPos` on a
+            # native window owned by the UI thread BLOCK the calling thread
+            # until the owner pumps, and the watcher thread held the GIL while
+            # waiting -> the caption window never showed (measured 2026-10-17:
+            # `CAPTION_OVERLAY_PUSH_AFTER_SET` then silence).
+            try:
+                ov.set_work_area(self.work_area(),
+                                 (self.display or {}).get('scaleFactor') or 1.0)
+                ov.set_text(text or '', previous or '')
+                ov.show(True)
+                self._overlay_pushes += 1
+                if self._overlay_pushes in (1, 50, 500):
+                    log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
+                        f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
+                        f'text={json.dumps((text or "")[:60])}')
+            except Exception as exc:  # noqa: BLE001
+                log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
+
+        if dbg:
+            log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} post=ui')
         try:
-            # O VALOR DE RETORNO E A ALTURA QUE O CONTEUDO PEDE. `evaluate_js` devolve a
-            # ultima expressao, e o `set()` da pagina devolve a altura medida do palco.
-            # E assim que a janela fica *"dimensionada ao proprio conteudo"*, que e o que
-            # o objetivo pede: uma altura fixa corta uma linha que passa de duas linhas.
-            needed = win.evaluate_js(
-                'window.SottoCaption && window.SottoCaption.set(%s, %s)'
-                % (json.dumps(text or ''), json.dumps(previous or '')))
-            self._fit_caption_window(needed)
-            if credits is not None:
-                win.evaluate_js('window.SottoCaption && window.SottoCaption.credits(%s)'
-                                % json.dumps(credits))
-            self._arm_caption_idle_hide()
-            return True
-        except Exception as exc:  # noqa: BLE001
-            log(f'CAPTION_WINDOW_PUSH_FAILED error={exc!r}')
-            return False
-
-    def _caption_bgc_transparent(self, reason):
-        """Re-assert WebView2's transparent background on the UI thread.
-
-        The controller property is the supported mechanism, and it must be set
-        AFTER the controller exists (loaded) and after a show/resize, because a
-        navigation or a geometry change can leave the surface painted with the
-        old background. No form colour, no TransparencyKey, no layered key.
-        """
-        win = getattr(self, 'caption_window', None)
-        form = getattr(win, 'native', None) if win is not None else None
-        if form is None:
-            return False
-        try:
-            from System import Action
-            from System.Drawing import Color
-
-            def _apply():
-                try:
-                    # THE FORM IS THE "HOSTING APP CONTENT" WebView2 shows
-                    # through. It was WHITE (the owner's screenshot). A
-                    # transparent BackColor is the only value that lets the
-                    # desktop/video through; `SupportsTransparentBackColor` is
-                    # already set by pywebview for a transparent window.
-                    try:
-                        form.BackColor = Color.Transparent
-                    except Exception as exc_back:  # noqa: BLE001
-                        log(f'CAPTION_FORM_TRANSPARENT_BACKCOLOR_FAILED '
-                            f'reason={reason} error={exc_back!r}')
-                    wv = getattr(form, 'webview', None)
-                    if wv is not None:
-                        wv.DefaultBackgroundColor = Color.Transparent
-                        log(f'CAPTION_BGC_VALUE reason={reason} '
-                            f'value={wv.DefaultBackgroundColor} '
-                            f'form_back={form.BackColor}')
-                except Exception as exc:  # noqa: BLE001
-                    log(f'CAPTION_BGC_REASSERT_FAILED reason={reason} error={exc!r}')
-
-            form.Invoke(Action(_apply))
-            log(f'CAPTION_BGC_REASSERT reason={reason} set=transparent')
-            return True
-        except Exception as exc:  # noqa: BLE001
-            log(f'CAPTION_BGC_REASSERT_FAILED reason={reason} error={exc!r}')
-            return False
+            self._post(_apply)
+        except Exception:  # noqa: BLE001
+            _apply()
+        self._arm_caption_idle_hide()
+        return True
 
     def _fit_caption_window(self, needed):
-        """Redimensiona a janela da legenda ao CONTEUDO, mantendo o FUNDO no sitio.
-
-        O objetivo pede a legenda *"dimensionada ao proprio conteudo"*. Uma altura fixa
-        corta uma linha que ocupe tres; uma janela alta a mais cobre o ecra de graca. O
-        `needed` vem do valor de retorno do `evaluate_js` da pagina, que mede o palco com
-        `getBoundingClientRect` -- portanto ja inclui o padding e a quebra de linha.
-
-        PORQUE E QUE ELE TAMBEM MOVE: `resize()` do pywebview conserva o canto SUPERIOR,
-        e a legenda esta ancorada ao FUNDO (`bottom: 0`). So redimensionar fazia a legenda
-        CRESCER PARA CIMA a partir de uma base que subia -- ou seja, a base mexia-se, que e
-        exactamente o contrario de "pousada no fundo". Por isso a posicao e recalculada
-        para que a ARESTA DE BAIXO fique onde estava.
-
-        SEM HISTERESE NAO HA TREMOR: so mexe quando a diferenca passa de 8 px. Sem isso,
-        uma medida que oscila 1 px entre duas legendas punha a janela a tremer a cada
-        linha. Um `needed` de zero significa "a pagina nao se soube medir" e nao mexe
-        nada -- falhar para o lado de nao mexer e o lado certo.
-        """
-        win = getattr(self, 'caption_window', None)
-        if win is None or not needed:
-            return False
-        try:
-            want = max(90, min(420, int(needed)))
-        except (TypeError, ValueError):
-            return False
-        have = getattr(self, '_caption_window_h', None)
-        if have is not None and abs(want - have) < 8:
-            return False
-        try:
-            cap_w = getattr(self, '_caption_window_w', None)
-            cap_x = getattr(self, '_caption_window_x', None)
-            cap_y = getattr(self, '_caption_window_y', None)
-            win.resize(cap_w, want)
-            if cap_y is not None:
-                # A ARESTA DE BAIXO NAO SE MOVE: e o fundo que a ancora.
-                bottom = cap_y + (have if have else want)
-                win.move(cap_x, bottom - want)
-                self._caption_window_y = bottom - want
-            self._caption_window_h = want
-            self._caption_bgc_transparent('resize')
-            log(f'CAPTION_WINDOW_SIZED h={want} was={have} reason=content')
-            return True
-        except Exception as exc:  # noqa: BLE001
-            log(f'CAPTION_WINDOW_SIZE_FAILED needed={needed} error={exc!r}')
-            return False
+        """Obsolete: the native overlay sizes itself to the text it renders."""
+        return False
 
     def show_caption_window(self, on):
         """Mostra ou esconde a janela da legenda, e diz o estado a pagina."""
-        win = getattr(self, 'caption_window', None)
-        if win is None:
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
             return False
         try:
             if on:
-                win.show()
                 self._caption_window_shown = True
-                self._caption_bgc_transparent('show')
+
+                def _show():
+                    ov.set_work_area(self.work_area(),
+                                     (self.display or {}).get('scaleFactor') or 1.0)
+                    ov.show(True)
+
+                self._post(_show)
             else:
-                win.hide()
                 self._caption_window_shown = False
-            win.evaluate_js('window.SottoCaption && window.SottoCaption.listening(%s)'
-                            % ('true' if on else 'false'))
+                self._post(lambda: ov.show(False))
             # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
             # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
             # e sem isto as duas apareciam ao mesmo tempo. Ao mesmo tempo, isto e a REDE:
@@ -7442,6 +7218,11 @@ class SottoShell:
         # over YouTube would be worse than doing nothing.
         if not (self.visible or getattr(self, '_caption_window_shown', False)):
             return False
+        self.external_lines += 1
+        if self.external_lines in (1, 50, 500) or final:
+            log(f'EXTERNAL_CAPTION_SENT count={self.external_lines} '
+                f'source={source} final={str(bool(final)).lower()} '
+                f'text={json.dumps(text[:60])}')
         if not self.external_captions_active:
             self.external_captions_active = True
             self._park_worker_for_external(source)

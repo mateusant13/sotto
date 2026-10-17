@@ -158,11 +158,10 @@ def caption_lines(hwnd, uia, UIA):
         source = "external:youtube"
     elif "stremio" in title.lower() or "stremio" in proc:
         source = "external:stremio"
-    elif any(k in proc for k in ("chrome", "msedge", "firefox", "stremio")):
-        # A browser/Electron player not named in the title: only claim a source
-        # if the bottom band really contains text elements.
-        source = "external:" + (proc or "player")
     else:
+        # ONLY a recognised player. A generic browser window has arbitrary
+        # text at the bottom (a stream overlay read "600200M" as a caption);
+        # claiming it would replace real speech with UI noise.
         return []
 
     wx0, wy0, wx1, wy1 = _rect(root) or (0, 0, 0, 0)
