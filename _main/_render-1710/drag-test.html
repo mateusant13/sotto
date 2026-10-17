@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<!-- SCRATCH INSTRUMENT -- the whole strip/panel bar is the drag surface, and a
+     press on a control is a PRESS. Loads the REAL `strip-drag.js` against a stub
+     bridge and counts what each gesture asked the shell to do. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>drag surface</title>
+<style>
+  body { background:#111; color:#eee; font:13px monospace; }
+  .panel__header { display:flex; gap:8px; height:56px; align-items:center; }
+  .stripbar { display:flex; gap:8px; height:40px; align-items:center; }
+  button { padding:4px 8px; }
+  pre { white-space:pre-wrap; }
+</style>
+</head>
+<body>
+  <header class="panel__header">
+    <span class="wordmark">sotto</span>
+    <button class="icon-button" id="panel-btn">P</button>
+    <span id="head-gap"></span>
+  </header>
+  <section class="stripbar" id="strip-controls">
+    <span class="stripbar__brand">sotto</span>
+    <span class="stripbar__grip" id="strip-drag-handle"></span>
+    <button class="strip-button" id="strip-btn">live</button>
+    <label id="strip-label"><button id="labelled-btn">X</button></label>
+    <div role="button" id="role-btn" tabindex="0">R</div>
+    <label id="bare-label">L</label>
+    <div id="strip-state"><span id="strip-dot"></span></div>
+  </section>
+  <pre id="out">pending</pre>
+  <script>
+    // The stub bridge: the real shell's `beginWindowDrag` posts one message per gesture.
+    window.__drags = [];
+    window.sotto = {
+      beginWindowDrag: function (surface) { window.__drags.push(surface); },
+      setStripOffset: function () {}
+    };
+  </script>
+  <script src="strip-drag.js"></script>
+  <script>
+  (function () {
+    function press(node) {
+      var ev = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+      node.dispatchEvent(ev);
+    }
+    function run() {
+      window.__drags.length = 0;
+      press(document.getElementById('strip-controls'));          // the bar itself
+      var afterBar = window.__drags.length;
+      press(document.getElementById('strip-drag-handle'));        // the dots
+      var afterGrip = window.__drags.length;
+      press(document.getElementById('strip-btn'));                // a control
+      var afterBtn = window.__drags.length;
+      press(document.getElementById('labelled-btn'));             // a control in a <label>
+      var afterLabelled = window.__drags.length;
+      press(document.getElementById('role-btn'));                 // role="button", no <button>
+      var afterRole = window.__drags.length;
+      press(document.getElementById('bare-label'));               // a bare <label>
+      var afterBare = window.__drags.length;
+      press(document.querySelector('.panel__header'));           // the panel's bar
+      var afterHeader = window.__drags.length;
+      press(document.getElementById('panel-btn'));                // a panel control
+      var afterPanelBtn = window.__drags.length;
+      press(document.getElementById('head-gap'));                 // header background
+      var afterGap = window.__drags.length;
+
+      var res = {
+        'bar drags'          : afterBar,
+        'grip drags (delta)' : afterGrip - afterBar,
+        'button drags(delta)': afterBtn - afterGrip,
+        'labelled ctrl delta': afterLabelled - afterBtn,
+        'role=button delta'  : afterRole - afterLabelled,
+        'bare <label> delta' : afterBare - afterRole,
+        'panel bar drags'    : afterHeader - afterBare,
+        'panel ctrl drags'   : afterPanelBtn - afterHeader,
+        'header gap drags'   : afterGap - afterPanelBtn,
+        VERDICT: ((afterBtn - afterGrip) === 0 && (afterPanelBtn - afterHeader) === 0
+                  && (afterRole - afterLabelled) === 0 && (afterBare - afterRole) === 0
+                  && afterBar === 1 && (afterGrip - afterBar) === 1
+                  && (afterHeader - afterBare) === 1 && (afterGap - afterPanelBtn) === 1)
+          ? 'PASS' : 'FAIL'
+      };
+      document.getElementById('out').textContent =
+        'DRAG-RESULTS\n' + JSON.stringify(res, null, 1);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { setTimeout(run, 0); });
+    } else { setTimeout(run, 0); }
+  })();
+  </script>
+</body>
+</html>
