@@ -30,9 +30,27 @@
   var header = document.querySelector(".panel__header");
   var native = !!(bridge && typeof bridge.beginWindowDrag === "function");
 
+  /* THE WHOLE BAR IS THE HANDLE, AND A CONTROL IS NOT PART OF IT.
+   *
+   * MEASURED on the shipped file before this change (`_main/_render-1710/
+   * drag-test.html`, real `strip-drag.js`, stub bridge counting
+   * `beginWindowDrag`): pressing the bar, the grip, the panel header and the
+   * header's empty gap each asked for one drag; pressing a `<button>` asked for
+   * none; but pressing a `role="button"` element and a bare `<label>` inside the
+   * bar asked for one EACH -- VERDICT FAIL. Both are clickable things, and a
+   * gesture that belongs to them was being taken by the window.
+   *
+   * `closest()` walks ancestors, so the `<button>` cases were already right --
+   * this list is the SET OF THINGS THAT ACT LIKE A CONTROL, not a list of tags
+   * that happen to be used today. `label` and `summary` are in it because they
+   * carry a click of their own; `data-no-drag` is the escape hatch for anything
+   * a future theme turns into a control. */
   function isControl(target) {
     return !!(target && target.closest
-      && target.closest("button, a, input, select, textarea, [contenteditable='true']"));
+      && target.closest(
+        "button, a, input, select, textarea, summary, label, "
+        + "[role='button'], [role='link'], [role='checkbox'], [role='switch'], "
+        + "[role='tab'], [role='menuitem'], [contenteditable='true'], [data-no-drag]"));
   }
 
   function endVisual() {
