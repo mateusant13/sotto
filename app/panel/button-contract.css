@@ -48,7 +48,21 @@ html body[data-surface="panel"] .panel__controls {
    * positioned) moves the row by exactly that amount. Fixed is the viewport,
    * which is this window, and no theme in the set transforms the slab. */
   position: fixed !important;
-  top: 14px !important;
+  /* THE SHARED BASELINE (owner, 2026-10-17: *"os botoes e o SOTTO estao em linhas
+   * diferentes"*). MEASURED on the live 380x900 window (`I:\cc-tmp\before-17a.png`,
+   * instrument `_main/panel-header-probe.py`, glyph rows counted from the top of
+   * the window): the control row painted at rows 22-33 (centroid 28.6) and the
+   * `sotto` wordmark at rows 37-45 (centroid 40.7) -- 12.1 px apart, which is
+   * exactly the `top: 14px` this rule used to pin, because the row is 28 px tall
+   * and the header it belongs to is 56 px (`panel.css` F8 block). The row was
+   * therefore flush with the slab's padding while the wordmark sat on the
+   * header's own centre line.
+   *
+   * THE NEW TOP IS ONE ARITHMETIC LINE, not a nudge: slab padding 14 + half of
+   * (header 56 - row 28) = 28. Written as the arithmetic so a future row height
+   * or header height changes the number with it. Still one value for all 45
+   * themes -- the row does not move BETWEEN designs, which is the contract. */
+  top: calc(14px + (56px - 28px) / 2) !important;
   right: 14px !important;
   left: auto !important;
   bottom: auto !important;

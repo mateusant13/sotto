@@ -508,6 +508,21 @@ body {
   app-region: no-drag;
 }
 
+/* THE SAME DECLARATION FOR THE PANEL'S OWN CLUSTER (2026-10-17). The strip's buttons
+ * carried `no-drag` and the panel's did not, so the two bars declared different
+ * contracts for the same gesture; `strip-drag.js` decides by `closest()`, so the
+ * behaviour was already right (measured: `drag-test.html`, a press on
+ * `.icon-button` asks for ZERO drags) and this closes the declaration half. */
+.panel__controls .icon-button,
+.panel__controls .theme-button,
+.panel__controls .theme-chevron,
+.panel__controls button,
+#theme-dropdown,
+#theme-picker {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    THE LINE'S OWN CLOCK: YELLOW WHILE IT IS BEING SAID, GREY ONCE IT IS PAST
    ═══════════════════════════════════════════════════════════════════════════
@@ -1735,13 +1750,28 @@ body[data-surface="strip"] .listening span {
 .stripbar__grip {
   flex: none;
   width: 12px;
-  align-self: stretch;
-  border-radius: 3px;
-  background-image: radial-gradient(circle, var(--text-faint) 1px, transparent 1.2px);
+  /* THE DOTS ARE AN AFFORDANCE, NOT A HANDLE (owner, 2026-10-17: *"os pontos de
+   * arrastar estao errados"*). MEASURED on the shipped page (render copy of this
+   * tree, `getComputedStyle(#strip-drag-handle).backgroundImage`): the old rule was
+   * `radial-gradient(circle, var(--text-faint) 1px, transparent 1.2px)` on a 4x4px
+   * tile inside a 12x22px box -- THREE columns of grey 30%-white dots over FIVE and a
+   * half rows, which at any zoom reads as five grey VERTICAL PILLS, and the colour is
+   * the muted token, not the accent the rest of the bar wears. THREE changes, each one
+   * a named defect:
+   *   1 the accent (`--accent`, the token the rest of the panel wears), not grey;
+   *   2 ONE centred column (`background-repeat: repeat-y`, `background-position: center`),
+   *     so the marks are separated dots and cannot merge into a pill;
+   *   3 `align-self: center` + a fixed 18px box, so the column is centred in the bar
+   *     instead of stretching from its top edge (`align-self: stretch` put the pattern's
+   *     first row against the bar's top and made the mark read as "somewhere up here"). */
+  align-self: center;
+  height: 18px;
+  border-radius: 0;
+  background-image: radial-gradient(circle, var(--accent, #7DD3FC) 1.15px, transparent 1.4px);
   background-size: 4px 4px;
-  background-position: 1px 1px;
-  background-repeat: repeat;
-  opacity: 0.55;
+  background-position: center 2px;
+  background-repeat: repeat-y;
+  opacity: 0.85;
   cursor: grab;
   user-select: none;
 }
@@ -3292,3 +3322,137 @@ body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
 #theme-button .theme-button__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chrome__brand, .wordmark { min-width: 32px; }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE STATE IS DOTS. NO WORDS ON SCREEN (owner, 2026-10-17)
+   ═══════════════════════════════════════════════════════════════════════════
+   The owner looked at the running panel and said the readout was text: the
+   header painted `LENDO` (`.chrome--tele`) and the strip painted `#strip-word`.
+   HE WANTS DOTS ONLY -- "so pontos, sem palavra". The state is still a FACT and
+   it is still told, but the eye gets a dot and the accessible name keeps the
+   word.
+
+   WHY `visually-hidden` AND NOT `display: none`. The word IS the real state:
+   `.chrome__on`/`.chrome__off` (panel.css:2515-2528) are switched by
+   `<body data-state>`, which `panel.js` mirrors from the worker's own status.
+   Hiding them with `display:none` would delete the only place the document
+   SAYS what state it is in, and the brief for this lane is explicit that the
+   state must not become a blind spot. The clip below removes the word from the
+   screen while leaving it in the accessibility tree, so a screen reader still
+   reads the same word the eye used to read -- and nothing is invented.
+
+   `position:absolute` also takes the word out of the flow, which is what makes
+   the bar a dot row: on the strip the readout was `flex:1` with the word at the
+   far end, and with the word gone the dot is the whole readout. */
+.chrome__state,
+#strip-word {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  flex: none !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+/* The dot is the readout now, so it has to SAY the four states the eye can no
+ * longer read. The colours are the theme's own (`--idle`, `--ok`, `--error`) and
+ * are already applied by the generated themes (`.stripbar__dot`,
+ * `body[data-state="live"] .chrome--tele .chrome__dot`); what is added here is
+ * the ONE thing a colour cannot do -- motion, for "working" -- and it is the
+ * opacity-only keyframe the generator already uses for the bcast REC lamp
+ * (`gen_themes.py` P2-1: a `box-shadow` spread keyframe is a paint property per
+ * frame). `body[data-state]` is the same mirror `panel.js` writes, so nothing
+ * here invents a state the worker did not report. */
+@keyframes sotto-state-breathe {
+  0% { opacity: 1; }
+  60% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+body[data-state="live"] .stripbar__state.is-live .stripbar__dot,
+body[data-state="live"] .chrome--tele .chrome__dot {
+  animation: sotto-state-breathe 1.8s ease-in-out infinite;
+}
+body[data-state="error"] .stripbar__state.is-error .stripbar__dot {
+  animation: sotto-state-breathe 0.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  body[data-state="live"] .stripbar__state.is-live .stripbar__dot,
+  body[data-state="live"] .chrome--tele .chrome__dot,
+  body[data-state="error"] .stripbar__state.is-error .stripbar__dot {
+    animation: none;
+  }
+}
+
+
+/* ===============================================================================
+   THE WINDOW EDGE IS NOT A FRAME, AND THE CORNERS ARE SEE-THROUGH (owner, 2026-10-17)
+   ===============================================================================
+   "The right panel has white, square, not transparent borders." MEASURED on the live
+   window (hwnd 9640730) before anything was changed, with three instruments:
+
+     1 GetClientRect vs GetWindowRect + GetWindowLong: client 380x900 == window 380x900,
+       style 0x06010000 (WS_CLIPSIBLINGS|WS_CLIPCHILDREN|WS_MAXIMIZEBOX) -- NO WS_CAPTION,
+       NO WS_THICKFRAME, NO WS_BORDER. THE WINDOW IS ALREADY BORDERLESS. The exstyle
+       0x080100A8 carries WS_EX_NOACTIVATE|WS_EX_TRANSPARENT|WS_EX_TOOLWINDOW and NOT
+       WS_EX_LAYERED. So the frame the owner names is not a title bar and not a resize
+       border. Anything that says otherwise should be measured before it is "fixed".
+
+     2 The frame is PAINTED BY THE PAGE. getComputedStyle(#panel).boxShadow over the real
+       stylesheets returned:
+         rgba(0,0,0,0.6) 0px 28px 90px 0px, rgba(255,255,255,0.1) 0px 0px 0px 1px
+       The second half is a 1px WHITE RING drawn AROUND the slab: the hard light frame.
+       It comes from the generated `--shadow-slab` token (`gen_themes.py:1040` emits
+       `box-shadow: var(--shadow-slab)`), so all 45 designs carry it. Both halves of that
+       token are worthless on this window: the drop shadow is drawn OUTSIDE a slab that
+       fills the window and is clipped by it (`panel.css:181-182` says so), and the ring is
+       the rectangle the owner does not want. The rules below restore the base INSET
+       shading the themes overrode -- still painted, inside, no frame -- and they need
+       `!important`, because the generated selectors `:root[data-theme=...] .panel`
+       (specificity 0,3,0) beat a plain base rule on load order (`panel.css` is linked at
+       `panel.html:49`, the themes at `panel.html:60-72`).
+
+     3 The corners were square, so nothing could be see-through: `--radius-lg` is 0px in
+       four of the designs and the slab inherits it. `html`/`body` carry
+       `rgba(11,15,20,0.98)` -- the guard against a dead WebView2 painting white -- clipped
+       by the SAME radius, so at radius 0 the entire window is opaque and square. A 12px
+       floor on the panel surface restores the radius; outside it neither `html`, `body`
+       nor `.panel` paints, the WebView2 background is `Transparent` (pywebview
+       `edgechromium.py:113-114`) and the WinForms form is `Color.Transparent`
+       (`sotto_webview.py:4900`, legal because pywebview sets `SupportsTransparentBackColor`
+       at `winforms.py:289`), so those corner pixels are the DESKTOP. That is the supported
+       route and it is the one already in the tree: `TransparencyKey`, `LWA_COLORKEY` and
+       `WS_EX_LAYERED` are NOT reintroduced anywhere (WebView2Feedback #118 -- a colour key
+       cannot key an opaque WebView2 child). The strip keeps `border-radius: 0`: it is a
+       straight band by the owner own ruling (`panel.css:2919`).
+
+   NOT MEASURED: whether the desktop shows through those corners in the RUNNING instance.
+   The CSS half is verified in the render rig, pixel by pixel, before and after. The form
+   half was already in the tree and needs one restart of the shell to be seen; this lane
+   may not restart it. */
+html body[data-surface="panel"] {
+  border-radius: 12px !important;
+}
+/* `data-surface` lives on BODY (`surface.js` owns it), so the rule above cannot
+ * reach the ROOT element -- and the root owns the canvas background, which is
+ * the paint that actually rounds the window's corners. `:has()` is the only way
+ * to key a root-element declaration off a body attribute. It is a SEPARATE rule
+ * on purpose: a selector list is all-or-nothing, so an engine without `:has()`
+ * drops the whole list -- this way the body rule above still applies. */
+html:has(> body[data-surface="panel"]) {
+  border-radius: 12px !important;
+}
+html body[data-surface="panel"] .panel {
+  border-radius: 12px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 -34px 54px -34px rgba(0, 0, 0, 0.6) !important;
+}
+html body[data-surface="panel"] .panel::before {
+  border-radius: 12px 12px 0 0 !important;
+}
