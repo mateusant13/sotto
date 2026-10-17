@@ -2422,7 +2422,7 @@ function applyPauseAvailability() {
     button.setAttribute('aria-disabled', wired ? 'false' : 'true');
     button.title = wired
       ? 'Pause — unload the live and background engines (asks first)'
-      : 'Pause — this shell does not implement bridge.pause() yet';
+      : 'Pause — este shell ainda não consegue pausar';
   }
   if (dom.pauseConfirmButton) {
     const label = wired ? 'Pause and unload' : 'Pause — not available in this shell yet';
@@ -2435,8 +2435,7 @@ function applyPauseAvailability() {
   if (dom.pauseShellNote) {
     const note = wired
       ? ''
-      : 'This build cannot pause yet. The panel has no bridge.pause() to call, so '
-        + 'the engines keep running and nothing will be unloaded.';
+      : 'Este shell ainda não consegue pausar — nada será descarregado.';
     dom.pauseShellNote.textContent = note;
     dom.pauseShellNote.hidden = note === '';
   }
@@ -2622,8 +2621,7 @@ function confirmPause() {
     // Reached only if the button was activated programmatically; the button is
     // disabled in this state and its label already says why.
     if (dom.pauseShellNote) {
-      dom.pauseShellNote.textContent = 'This build cannot pause yet — there is no '
-        + 'bridge.pause() to call, so nothing was unloaded.';
+      dom.pauseShellNote.textContent = 'Este shell ainda não consegue pausar — nada será descarregado.';
       dom.pauseShellNote.hidden = false;
     }
     return;
