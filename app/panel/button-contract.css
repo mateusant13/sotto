@@ -1,0 +1,268 @@
+/* Sotto -- THE BUTTON CONTRACT. LOADED LAST, ON PURPOSE.
+ *
+ * OWNER, 2026-10-17, verbatim: "todos os botoes deviam estar no literalmente
+ * mesmo lugar, em todos os temas. nao e pra mudar botao de lugar ou pixel. e
+ * pra ser completamente estatico."
+ *
+ * MEASURED BEFORE THIS FILE (real Chromium, the shipped page, all 45 themes
+ * loaded): the same six controls came back at x=1138 in theme-1, x=576 in the
+ * 21 cinematic themes (they position the row at left:50%), x=1102..1122 in the
+ * five panel-designs themes, and y=14/15/16/28/30/40/42/46 depending on the
+ * design. On the strip the live button was at x=73, x=633 or x=1193 depending
+ * on the theme -- and a 1040 px strip window CLIPS the x=1193 case, which is
+ * why the owner could not find a control to turn the caption overlay on.
+ *
+ * The design direction still owns colour, type, radius and decoration. It owns
+ * NOTHING about where a control sits. Every rule here is !important and scoped
+ * to the surface, so a generated theme cannot move, resize, reorder or hide a
+ * button -- and a later theme stylesheet cannot win by loading after this one.
+ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE RIGHT PANEL'S CONTROL ROW
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The controls are ABSOLUTE, so their containing block must be `.panel` in every
+ * theme. Several directions make `.panel__header` positioned (and one gives it a
+ * 1 px inset), which silently re-anchors the row 14 px left and 14 px down --
+ * measured as four different rects AFTER the rules below were already in place.
+ * A static header with visible overflow keeps the anchor where it belongs. */
+html body[data-surface="panel"] .panel__header {
+  position: static !important;
+  transform: none !important;
+  overflow: visible !important;
+  /* A `backdrop-filter` on ANY ancestor makes that ancestor the containing
+   * block for a fixed child (CSS Filter Effects). Six themes put a blur on the
+   * header, and that moved the row by exactly the header's own inset -- 28 px
+   * from the top edge instead of 14. The blur is decoration; a control that
+   * jumps between themes is the owner's complaint. */
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  contain: none !important;
+}
+
+html body[data-surface="panel"] .panel__controls {
+  /* FIXED, not absolute: the absolute containing block is `.panel`'s PADDING
+   * box, so a theme that changes the slab's padding (or makes the header
+   * positioned) moves the row by exactly that amount. Fixed is the viewport,
+   * which is this window, and no theme in the set transforms the slab. */
+  position: fixed !important;
+  top: 14px !important;
+  right: 14px !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  width: auto !important;
+  height: 28px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  /* A 1 px border on the ROW (cine-cellar/blue-hour ship one) is enough to
+   * shift every button one pixel: the row is right-anchored, so its border
+   * steals that pixel from the left. The buttons draw their own borders. */
+  border: 0 !important;
+  outline: 0 !important;
+  z-index: 60 !important;
+}
+
+html body[data-surface="panel"] .panel__controls > * {
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html body[data-surface="panel"] .panel__controls .icon-button,
+html body[data-surface="panel"] .panel__controls .theme-chevron {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 !important;
+}
+
+html body[data-surface="panel"] .panel__controls .theme-button {
+  width: 100px !important;
+  min-width: 100px !important;
+  max-width: 100px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  overflow: hidden !important;
+}
+
+/* DOCUMENT ORDER IS PAINT ORDER. The ids are unique, so these cannot leak to a
+ * second cluster. The row is: theme · chevron · A- · A+ · pause · hide. */
+html body[data-surface="panel"] #theme-button { order: 1 !important; }
+html body[data-surface="panel"] #theme-chevron { order: 2 !important; }
+html body[data-surface="panel"] #font-smaller-button { order: 3 !important; }
+html body[data-surface="panel"] #font-larger-button { order: 4 !important; }
+html body[data-surface="panel"] #panel-pause-button { order: 5 !important; }
+html body[data-surface="panel"] #hide-button { order: 6 !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE BOTTOM STRIP'S CONTROL ROW
+   ══════════════════════════════════════════════════════════════════════════ */
+
+html body[data-surface="strip"] .stripbar {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  padding: 4px 8px !important;
+  margin: 0 !important;
+  transform: none !important;
+  position: relative !important;
+}
+
+html body[data-surface="strip"] .stripbar > * {
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* The wordmark and the grip are part of the geometry: a theme font that makes
+ * "sotto" two pixels wider would move every button after it. */
+html body[data-surface="strip"] .stripbar__brand {
+  order: 1 !important;
+  width: 46px !important;
+  min-width: 46px !important;
+  max-width: 46px !important;
+  overflow: hidden !important;
+}
+
+html body[data-surface="strip"] #strip-drag-handle {
+  order: 2 !important;
+  width: 12px !important;
+  min-width: 12px !important;
+  max-width: 12px !important;
+  height: 22px !important;
+}
+
+html body[data-surface="strip"] #strip-live-button {
+  order: 3 !important;
+  width: 60px !important;
+  min-width: 60px !important;
+  max-width: 60px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 6px !important;
+  gap: 4px !important;
+}
+
+html body[data-surface="strip"] #strip-open-button {
+  order: 4 !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+}
+
+html body[data-surface="strip"] #strip-font-smaller-button {
+  order: 5 !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+}
+
+html body[data-surface="strip"] #strip-font-larger-button {
+  order: 6 !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+}
+
+html body[data-surface="strip"] #strip-hide-button {
+  order: 7 !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+}
+
+html body[data-surface="strip"] #strip-pause-button {
+  order: 8 !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+}
+
+html body[data-surface="strip"] #strip-state {
+  order: 9 !important;
+  flex: 0 0 auto !important;
+  margin-left: 6px !important;
+  max-width: 92px !important;
+  width: auto !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* The live pill is the only labelled control on the strip; the other three are
+ * glyphs. Forced here so a theme cannot bring a word back and move the row. */
+html body[data-surface="strip"] .strip-button:not(#strip-live-button) .strip-button__label {
+  display: none !important;
+}
+html body[data-surface="strip"] #strip-live-button .strip-button__label {
+  display: inline !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE THEME DROPDOWN: ALL 45, TWO COLUMNS, NO SCROLLBAR
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* A CLOSED DIALOG MUST NOT PAINT. `body[data-surface="strip"] .pause-dialog`
+ * sets `display: grid` unconditionally (panel.css:3264), which overrides the
+ * user-agent `dialog:not([open]) { display: none }`. MEASURED 2026-10-17: the
+ * pause dialog was painted over the whole 40 px strip at every launch -- the
+ * owner's screenshot of a "panel with no buttons" was this dialog, not the
+ * strip. The strip's pause button now pauses directly (no dialog). */
+.pause-dialog:not([open]),
+.tune-dialog:not([open]) {
+  display: none !important;
+}
+body[data-surface="strip"] .pause-dialog[open] {
+  display: grid !important;
+}
+
+.theme-dropdown__list {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 2px 8px !important;
+  max-height: 76vh !important;
+  overflow: auto !important;
+  scrollbar-width: none !important;
+}
+.theme-dropdown__list::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
+.theme-dropdown__option {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}

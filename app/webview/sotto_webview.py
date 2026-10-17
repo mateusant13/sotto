@@ -91,6 +91,9 @@ def file_url(path):
 PANEL_WIDTH = 380
 PANEL_HEIGHT = 900
 PANEL_MARGIN = 12
+#: The strip's own bottom gap. 12 px glued the bar to the taskbar and the owner
+#: reported it "spawnando muito abaixo"; 44 px leaves air under the caption bar.
+STRIP_MARGIN = 44
 PANEL_MAX_WORK_FRACTION = 0.34
 MAX_CAPTIONS = 200
 
@@ -537,6 +540,19 @@ STATUS_BODY_FIELDS = ('stage', 'detail', 'verdict', 'device', 'api', 'peak',
                       'peak_floor', 'blocks', 'window_s', 'captions', 'tokens',
                       'chunks', 'rotations', 'reason', 'rate')
 STATUS_BODY_MAX = 400
+
+def _reap_child(child):
+    """Wait for a killed worker OFF the caller's thread, then discard it.
+
+    Used by `WorkerBridge.stop`. The wait is what reaps the OS process handle;
+    doing it on the shell's UI or tray thread is what made quitting take up to
+    five seconds against a 2 GB child.
+    """
+    try:
+        child.wait(timeout=5)
+    except Exception:  # noqa: BLE001
+        pass
+
 
 def file_sha256(path):
     """First 16 hex chars of a file's SHA-256, or None if it cannot be read.
@@ -1158,15 +1174,40 @@ def dpi_scale() -> float:
     return (dpi / 96.0) if dpi else 1.0
 
 
-def primary_display() -> dict:
-    """Primary display bounds + work area, in DIP, the shape Electron reports."""
+MONITOR_DEFAULTTONEAREST = 0x00000002
+
+
+def _monitor_scale(handle) -> float:
+    """Per-monitor DPI, falling back to the process DPI when shcore refuses.
+
+    `dpi_scale()` is the SYSTEM DPI (GetDpiForSystem). On a two-monitor desk
+    with different scaling that number is right for exactly one of them, so a
+    window docked to the other monitor lands at the wrong physical size. The
+    owner's report (2026-10-17) is that every panel spawns in the wrong place
+    and "em diferentes monitores faria pior ainda"; this is that defect.
+    """
+    try:
+        shcore = ctypes.WinDLL('shcore', use_last_error=True)
+        shcore.GetDpiForMonitor.argtypes = [
+            ctypes.c_void_p, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+        shcore.GetDpiForMonitor.restype = ctypes.c_long
+        dx = ctypes.c_uint(0)
+        dy = ctypes.c_uint(0)
+        if shcore.GetDpiForMonitor(handle, 0, ctypes.byref(dx),
+                                   ctypes.byref(dy)) == 0 and dx.value:
+            return dx.value / 96.0
+    except Exception:  # noqa: BLE001
+        pass
+    return dpi_scale()
+
+
+def _display_for_monitor(handle) -> dict:
     mi = MONITORINFO()
     mi.cbSize = ctypes.sizeof(MONITORINFO)
-    handle = user32.MonitorFromPoint(POINT(0, 0), MONITOR_DEFAULTTOPRIMARY)
     if not user32.GetMonitorInfoW(handle, ctypes.byref(mi)):
         raise ctypes.WinError(ctypes.get_last_error())
-
-    scale = dpi_scale()
+    scale = _monitor_scale(handle)
 
     def as_rect(r):
         return {
@@ -1184,12 +1225,300 @@ def primary_display() -> dict:
     }
 
 
+def primary_display() -> dict:
+    """Primary display bounds + work area, in DIP, the shape Electron reports."""
+    handle = user32.MonitorFromPoint(POINT(0, 0), MONITOR_DEFAULTTOPRIMARY)
+    return _display_for_monitor(handle)
+
+
+def target_display() -> dict:
+    """The monitor the OWNER is looking at: the one under the mouse pointer.
+
+    Alt+C is pressed while looking at a screen, and the panel belongs on THAT
+    screen. The old code always used `MonitorFromPoint(POINT(0,0))`, i.e. the
+    primary monitor, so on a multi-monitor desk every panel opened on the
+    primary no matter where the owner was.
+    """
+    # First the monitor of the FOREGROUND window: Alt+C is pressed while the
+    # owner is watching/using another app, and that app's screen is the target.
+    # When Sotto itself is foreground, fall back to the mouse, then primary.
+    try:
+        user32.GetForegroundWindow.restype = wt.HWND
+        user32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
+        user32.MonitorFromWindow.restype = ctypes.c_void_p
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        fg = user32.GetForegroundWindow()
+        if fg:
+            b = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(fg, b, 256)
+            if not b.value.strip().lower().startswith('sotto'):
+                handle = user32.MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
+                if handle:
+                    return _display_for_monitor(handle)
+    except Exception:  # noqa: BLE001
+        pass
+    pt = POINT()
+    try:
+        if user32.GetCursorPos(ctypes.byref(pt)):
+            handle = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+            return _display_for_monitor(handle)
+    except Exception:  # noqa: BLE001
+        pass
+    return primary_display()
+
+
 def set_ex_style(hwnd, add=0, remove=0) -> int:
     """Toggle extended styles on the panel HWND and return the new value."""
     current = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     updated = (current | add) & ~remove
     user32.SetWindowLongW(hwnd, GWL_EXSTYLE, updated)
     return updated
+
+
+class VramGuard(threading.Thread):
+    """PARK THE WORKER WHEN ANOTHER APP NEEDS THE GPU (owner, 2026-10-17).
+
+    Owner, verbatim: *"se tem qualquer processo que quer usar vram, deviamos
+    tirar os modelos da vram, tipo um jogo pesado... nem q fazer o modelo ser
+    descarregado da vram"*.
+
+    The worker owns a CUDA context and ~1.8 GB of VRAM. A game that wants most
+    of the 16 GB cannot get it while that context lives, and "paused but still
+    loaded" does NOT release it. This thread samples NVML's device free memory;
+    when it stays below LOW_MB it kills the worker (TerminateProcess releases
+    the CUDA context with the process), and when free memory stays above
+    RESUME_MB it starts it again. Killing rather than a soft pause is deliberate:
+    a soft pause keeps the allocation, which is the thing the game needs.
+    """
+
+    INTERVAL_S = 3.0
+    LOW_MB = 1200.0
+    RESUME_MB = 2400.0
+    STREAK = 2
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-vram-guard', daemon=True)
+        self.shell = shell
+        self.stop_event = threading.Event()
+        self.low = 0
+        self.high = 0
+        self.parked = 0
+        self.resumed = 0
+
+    def stop(self):
+        self.stop_event.set()
+
+    def run(self):
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+        except Exception as exc:  # noqa: BLE001
+            log(f'VRAM_GUARD_UNAVAILABLE error={exc!r}')
+            return
+        log(f'VRAM_GUARD started=true interval_s={self.INTERVAL_S} '
+            f'low_mb={self.LOW_MB} resume_mb={self.RESUME_MB}')
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    free = min(
+                        pynvml.nvmlDeviceGetMemoryInfo(
+                            pynvml.nvmlDeviceGetHandleByIndex(i)).free / (1024.0 * 1024.0)
+                        for i in range(pynvml.nvmlDeviceGetCount()))
+                except Exception as exc:  # noqa: BLE001
+                    if self.low == 0:
+                        log(f'VRAM_GUARD_READ_FAILED error={exc!r}')
+                    free = None
+                if free is not None:
+                    bridge = getattr(self.shell, 'bridge', None)
+                    running = (bridge is not None
+                               and getattr(bridge, 'child', None) is not None)
+                    if running and free < self.LOW_MB:
+                        self.low += 1
+                        self.high = 0
+                        if self.low >= self.STREAK:
+                            self.low = 0
+                            if self.shell.park_worker_for_vram(free):
+                                self.parked += 1
+                    elif self.shell._vram_parked and free >= self.RESUME_MB:
+                        self.high += 1
+                        self.low = 0
+                        if self.high >= self.STREAK:
+                            self.high = 0
+                            if self.shell.resume_after_vram(free):
+                                self.resumed += 1
+                    else:
+                        self.low = 0
+                        self.high = 0
+                self.stop_event.wait(self.INTERVAL_S)
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            log(f'VRAM_GUARD stopped=true parked={self.parked} '
+                f'resumed={self.resumed}')
+
+
+class ExternalCaptionWatcher(threading.Thread):
+    """READ THE CAPTIONS A PLAYER ALREADY SHOWS (owner, 2026-10-17).
+
+    YouTube and Stremio (Electron) render their subtitles as UI Automation Text
+    elements at the bottom of their player. Those captions are already
+    synchronised by the player itself, so this thread does not download,
+    parse or clock anything: it reads the line the player is painting and hands
+    it to the panel as a caption event.
+
+    MEASURED 2026-10-17: a YouTube video in Chrome exposed `'>> So'`, `' the'`,
+    `' Akali'`, ... at y=942..1001 inside a 1920x1080 player, and the address
+    bar's ValuePattern was `youtube.com/watch?v=...`.
+
+    It is OPTIONAL and fail-open: no comtypes/UIA, a non-video foreground
+    window, or a read error simply produces nothing, and the ASR engine is
+    untouched.
+    """
+
+    INTERVAL_S = 0.30
+    #: A line that has not changed for this long is closed even if the player
+    #: has not moved on yet (the panel's own hold timer is the fallback).
+    STABLE_FINAL_S = 1.6
+    #: No caption for this long = the player stopped showing them; give the
+    #: microphone back to the ASR engine.
+    RELEASE_S = 1.8
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-external-captions', daemon=True)
+        self.shell = shell
+        self.stop_event = threading.Event()
+        self.last_line = ''
+        self.last_source = ''
+        self.last_change = 0.0
+        self.last_seen = 0.0
+        self.finalized = False
+        self.failures = 0
+        self.reads = 0
+        #: The video window we last read captions from. When the owner presses
+        #: Alt+C, Sotto becomes foreground and YouTube no longer is; keeping the
+        #: handle lets us keep reading the player BEHIND the panel.
+        self.target_hwnd = 0
+
+    def stop(self):
+        self.stop_event.set()
+
+    def replay(self):
+        """Emit the CURRENT player line again (a panel just became visible)."""
+        self.last_line = ''
+        self.finalized = False
+        self.last_change = 0.0
+
+    def run(self):
+        try:
+            import external_subs
+            UIA, uia = external_subs._uia()
+        except Exception as exc:  # noqa: BLE001
+            log(f'EXTERNAL_CAPTIONS_UNAVAILABLE error={exc!r}')
+            return
+        log('EXTERNAL_CAPTIONS_WATCH started=true interval_s=%.2f' % self.INTERVAL_S)
+        while not self.stop_event.is_set():
+            try:
+                got = external_subs.foreground_captions(uia, UIA)
+                self.reads += 1
+                if got:
+                    self.target_hwnd = int(
+                        ctypes.windll.user32.GetForegroundWindow() or 0)
+                elif self.target_hwnd and ctypes.windll.user32.IsWindow(
+                        wt.HWND(self.target_hwnd)):
+                    # Sotto is foreground now, or the player lost focus: keep
+                    # reading the remembered player window so the captions do
+                    # not vanish the moment Alt+C opens the panel.
+                    got = external_subs.caption_lines(self.target_hwnd, uia, UIA)
+                else:
+                    self.target_hwnd = 0
+            except Exception as exc:  # noqa: BLE001
+                self.failures += 1
+                if self.failures <= 3:
+                    log(f'EXTERNAL_CAPTIONS_READ_FAILED error={exc!r}')
+                got = []
+            self._tick(got)
+            self.stop_event.wait(self.INTERVAL_S)
+        self._release('stopped')
+        log(f'EXTERNAL_CAPTIONS_WATCH stopped=true reads={self.reads} '
+            f'failures={self.failures}')
+
+    def _tick(self, got):
+        now = time.monotonic()
+        if got:
+            source, lines = got[0]
+            line = lines[-1] if lines else ''
+            if line:
+                self.last_seen = now
+                self.shell.external_captions_available = True
+                if line != self.last_line:
+                    if self.last_line and not self.finalized:
+                        self.shell.external_caption(self.last_line, self.last_source,
+                                                    final=True)
+                    self.last_line = line
+                    self.last_source = source
+                    self.last_change = now
+                    self.finalized = False
+                    self.shell.external_caption(line, source, final=False)
+                elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
+                    self.shell.external_caption(line, source, final=True)
+                    self.finalized = True
+                return
+        if self.last_line and (now - self.last_seen) >= self.RELEASE_S:
+            self._release('no-caption')
+
+    def _release(self, reason):
+        if self.last_line:
+            if not self.finalized:
+                self.shell.external_caption(self.last_line, self.last_source, final=True)
+            log(f'EXTERNAL_CAPTIONS_RELEASED reason={reason}')
+            self.last_line = ''
+            self.last_source = ''
+            self.finalized = False
+        self.shell.external_captions_active = False
+        self.shell.external_captions_available = False
+        try:
+            self.shell.on_external_captions_released()
+        except Exception as exc:  # noqa: BLE001
+            log(f'EXTERNAL_CAPTIONS_RESUME_FAILED error={exc!r}')
+
+
+#: `SetLayeredWindowAttributes` flags. LWA_COLORKEY makes ONE RGB value fully
+#: transparent; LWA_ALPHA would make the whole window translucent, which is a
+#: different effect and would dim the caption text too.
+LWA_COLORKEY = 0x00000001
+
+
+def set_layered_color_key(hwnd, colorref: int) -> bool:
+    """Make `colorref` (0x00BBGGRR) fully transparent on a LAYERED window.
+
+    WHY THIS EXISTS AND NOT JUST `form.TransparencyKey`: WinForms applies the
+    key only to a window that already carries `WS_EX_LAYERED`, and the caption
+    window is created without that style -- it is added later, in
+    `_on_caption_loaded`, AFTER `_on_caption_before_show` has set the key. The
+    result on the owner's screen (2026-10-17: *"qualquer tentativa de deixar um
+    background transparente simplesmente deixa tudo rosa"*) is the page's own
+    `#ff00ff` key colour painted as a solid PINK slab: the key existed on the
+    form before the layered bit did, and the composition never had a reason to
+    punch it out.
+
+    Calling the Win32 primitive directly, AFTER `WS_EX_LAYERED` is in place, is
+    deterministic: the colour key is matched against the composited window,
+    which is exactly the surface WebView2 paints into.
+    """
+    try:
+        user32.SetLayeredWindowAttributes.argtypes = [
+            wt.HWND, ctypes.c_uint32, ctypes.c_ubyte, ctypes.c_uint32]
+        user32.SetLayeredWindowAttributes.restype = ctypes.c_bool
+        ok = user32.SetLayeredWindowAttributes(
+            hwnd, ctypes.c_uint32(colorref), ctypes.c_ubyte(0),
+            ctypes.c_uint32(LWA_COLORKEY))
+        return bool(ok)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def make_click_through(hwnd, enabled: bool) -> int:
@@ -1695,7 +2024,7 @@ def normalise_surface_name(name):
     value = re.sub(r'^surface-+', '', value)
     return value if value in SURFACE_NAMES else None
 def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
-               margin=PANEL_MARGIN):
+               margin=STRIP_MARGIN):
     """Dock a wide short strip to the bottom centre of `work`.
 
     The twin of `dock_right`: same pure-function contract (output contained
@@ -2956,7 +3285,7 @@ BOOTSTRAP_JS = r"""
   'use strict';
   if (window.sotto) return;   // a second injection must not replace a live bridge
 
-  var subs = { caption: [], status: [], geometry: [], stats: [] };
+  var subs = { caption: [], 'external-caption': [], status: [], geometry: [], stats: [] };
   var queue = [];
   var infoSeq = 0;
   var infoPending = {};
@@ -3135,6 +3464,9 @@ BOOTSTRAP_JS = r"""
     },
 
     onCaption: function (cb) { return subscribe('caption', cb); },
+    // THE PLAYER'S OWN CAPTIONS (YouTube/Stremio). A separate channel because
+    // each line REPLACES the live box instead of joining the ASR hypothesis.
+    onExternalCaption: function (cb) { return subscribe('external-caption', cb); },
     onStatus: function (cb) { return subscribe('status', cb); },
     onGeometry: function (cb) { return subscribe('geometry', cb); },
     onStats: function (cb) { return subscribe('stats', cb); },
@@ -3200,6 +3532,36 @@ BOOTSTRAP_JS = r"""
         y: Number(y) || 0,
         phase: String(phase == null ? 'move' : phase),
       });
+    },
+
+    // THE NATIVE WINDOW DRAG (2026-10-17). ONE call per drag: the shell enters
+    // Windows' own modal move loop (`ReleaseCapture` + `WM_NCLBUTTONDOWN` /
+    // `HTCAPTION`) and persists the final rect when the owner releases the
+    // mouse. There is no per-move message and no per-move `SetWindowPos`, which
+    // is what the old JS drag was made of -- see `strip-drag.js`.
+    beginWindowDrag: function (surface) {
+      post('beginWindowDrag', { surface: surface == null ? '' : String(surface) });
+    },
+
+    // THE LIVE PILL (2026-10-17). It existed in the page but the shell had no
+    // method, so `applyLiveEnabled` painted it `aria-disabled` and its own
+    // title said the switch could not reach the engine. The shell now owns the
+    // second window: `true` shows the independent caption overlay, `false`
+    // hides it. Resolved synchronously because the visibility change is local.
+    setLiveEnabled: function (on) {
+      var want = !!on;
+      post('setLiveEnabled', { on: want });
+      return Promise.resolve({ liveEnabled: want });
+    },
+
+    // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
+    // always called `bridge.pause()`; the shell never had it, so the dialog
+    // said "este shell ainda não consegue pausar". The shell now stops the
+    // worker (which releases the CUDA context and its VRAM) and keeps the
+    // process paused until the owner revives it.
+    pause: function (payload) {
+      post('pause', payload || {});
+      return Promise.resolve({ paused: true, text: 'Paused - engines unloaded' });
     },
 
     // preload.js resolves a Promise here (ipcRenderer.invoke). The WebView2
@@ -3402,10 +3764,10 @@ BRIDGE_PROBE = r"""
     // `typeof bridge.setStripOffset === 'function'` and SILENTLY skips the shell
     // half when it is absent (panel.html:1126). A probe that does not name the
     // method cannot report it missing, so the count is the live receipt.
-    methods: ['pushCaption', 'setStatus', 'onCaption', 'onStatus', 'onGeometry',
+    methods: ['pushCaption', 'setStatus', 'onCaption', 'onExternalCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
               'captionApplied', 'statusApplied', 'ready', 'clearApplied',
-              'setStripOffset']
+              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,
@@ -3872,6 +4234,19 @@ class SottoHost:
             # resolving, THESE two kinds die and say so BY NAME.
             'setStripOffset': ('shell', '_set_strip_offset'),
             'sotto:setStripOffset': ('shell', '_set_strip_offset'),
+            # THE NATIVE DRAG (2026-10-17). The page sends ONE of these per
+            # gesture; the shell blocks in Windows' move loop and persists the
+            # result. Entry shape is a name on the SHELL, like the one above.
+            'beginWindowDrag': ('shell', '_begin_window_drag'),
+            'sotto:beginWindowDrag': ('shell', '_begin_window_drag'),
+            # THE LIVE PILL's own switch. The page's `applyLiveEnabled` probes
+            # for `bridge.setLiveEnabled` to decide whether the control is real;
+            # before this entry it was not, so the button said so in its title.
+            'setLiveEnabled': ('shell', '_set_live_enabled'),
+            'sotto:setLiveEnabled': ('shell', '_set_live_enabled'),
+            # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
+            'pause': ('shell', '_pause_shell'),
+            'sotto:pause': ('shell', '_pause_shell'),
             'history-append': ('host', '_history_append'),
             'history-tail': ('host', '_history_tail'),
             'history-search': ('host', '_history_search'),
@@ -4134,6 +4509,9 @@ class SottoShell:
         self.geometry = None
         self.display = None
         self.visible = False
+        #: The owner explicitly paused and unloaded the engines. Opening the
+        #: panel again must NOT silently reload them; the status click revives.
+        self._paused = False
         # True once the "hide unless the owner asked" guard is subscribed to the
         # control's NavigationStarting. It is the precondition of the panel being
         # hidden at startup, and it is armed in `_on_before_show` — see
@@ -4219,6 +4597,17 @@ class SottoShell:
         self.tray = None
         self.click_watcher = None
         self.hot_reload = None       # hot_reload.HotReload
+        #: THE PLAYER'S OWN CAPTIONS (2026-10-17): YouTube/Stremio already paint
+        #: their subtitles, so the shell reads them through UI Automation. While
+        #: this is true the ASR captions are suppressed and the worker is parked
+        #: (its VRAM is not needed for captions that already exist).
+        self.external_captions_active = False
+        self.external_captions_available = False
+        self.external_caption_watcher = None
+        self._external_parked = False
+        self._vram_parked = False
+        self.external_suppressed = 0
+        self.vram_guard = None
         #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
         #: until the panel's first load, which is when the DOM can be read.
         self.panel_state = None
@@ -4994,6 +5383,15 @@ class SottoShell:
             # this same block, so a worker spawned on this launch always finds
             # the file. The order is the point: see `self.panel_visibility`.
             self.start_panel_visibility()
+            # THE PLAYER'S OWN CAPTIONS (YouTube/Stremio), normal runs only.
+            self.start_external_caption_watcher()
+            # FREE THE GPU WHEN ANOTHER APP NEEDS IT (normal runs only).
+            try:
+                if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
+                    self.vram_guard = VramGuard(self)
+                    self.vram_guard.start()
+            except Exception as exc:  # noqa: BLE001
+                log(f'VRAM_GUARD_START_FAILED error={exc!r}')
             if self.args.show:
                 self.show_panel('startup', surface='panel')
             self._measure_on_screen_visibility('startup')
@@ -5047,7 +5445,24 @@ class SottoShell:
             # does and no reader has to learn a second shape. `start_worker`
             # declines by itself when a bridge already exists, and nothing
             # added here takes `self._lock`.
-            self.start_worker(worker_reason)
+            #
+            # THE DEFAULT IS NOW DEFERRED (owner, 2026-10-17: *"abrir ou fechar
+            # o sotto causa um travamento muito forte no meu pc"*). Spawning the
+            # worker here means the app's own launch pays a ~750 MB weight read
+            # plus a CUDA context and ~2 GB of RSS before the desktop settles.
+            # Nothing is being transcribed before the panel is opened, so the
+            # load now happens on FIRST OPEN (see `show_panel`), at below-normal
+            # priority, with lazy CUDA kernels. Explicit/measurement paths are
+            # untouched: `--with-worker` still starts here, and a measurement
+            # flag still declines.
+            if worker_reason == 'default':
+                if getattr(self, 'bridge', None) is not None:
+                    log('WORKER_AUTOSTART=started reason=default by=startup-show')
+                else:
+                    log('WORKER_AUTOSTART=deferred reason=default '
+                        'start=first-panel-open')
+            else:
+                self.start_worker(worker_reason)
             # -- D3: no worker means the panel must say so ------------------
             # The panel's shipped footer says "Idle · no audio source", which
             # claims the machine has no audio -- measured false (there IS audio;
@@ -5151,6 +5566,10 @@ class SottoShell:
             self.bridge.stop('closing')
         if self.hotkey is not None:
             self.hotkey.stop()
+        if self.external_caption_watcher is not None:
+            self.external_caption_watcher.stop()
+        if self.vram_guard is not None:
+            self.vram_guard.stop()
         self.stop_hot_reload('closing')
         log('SHELL_CLOSING')
 
@@ -5838,6 +6257,41 @@ class SottoShell:
         # would otherwise catch it up to `interval_s` later.
         self.publish_panel_visibility('reassert-hidden')
 
+    def _start_deferred_worker(self, source):
+        """Start the worker the FIRST time any panel is actually on screen.
+
+        THE ALT+C PATH DOES NOT CALL `show_panel`: `hotkey_pressed` cycles
+        through `show_strip` -> `show_side` -> `hide_panel`, and each of those
+        maps the window itself. A start hook placed only in `show_panel` was
+        therefore never reached by the owner's key -- MEASURED 2026-10-17:
+        `HOTKEY_PRESSED count=4` and `PANEL_SHOWN` in the log, and ZERO
+        `WORKER_AUTOSTART`. This one helper is called by all three show paths.
+
+        It starts ONLY for reason `default`: `--with-worker` already spawned
+        at load, and a measurement flag must stay worker-free.
+        """
+        if getattr(self, 'bridge', None) is not None:
+            return False
+        if (getattr(self, '_paused', False) or self.external_captions_active
+                or self.external_captions_available or self._vram_parked):
+            log(f'WORKER_PANEL_START_SKIPPED source={source} '
+                f'paused={str(getattr(self, "_paused", False)).lower()} '
+                f'external={str(self.external_captions_active).lower()}')
+            return False
+        try:
+            reason = self._worker_autostart_reason(self.args)
+        except Exception as exc:  # noqa: BLE001
+            log(f'WORKER_PANEL_START_FAILED source={source} error={exc!r}')
+            return False
+        log(f'WORKER_PANEL_START source={source} reason={reason}')
+        if reason != 'default':
+            return False
+        try:
+            return self.start_worker('panel-open')
+        except Exception as exc:  # noqa: BLE001
+            log(f'WORKER_PANEL_START_FAILED source={source} error={exc!r}')
+            return False
+
     def show_panel(self, reason, surface=None):
         if self.hwnd is None:
             return False
@@ -5881,6 +6335,14 @@ class SottoShell:
         # navigation-time `form.Show()`.
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        # THE DEFERRED DEFAULT WORKER STARTS HERE (2026-10-17). The launch is
+        # light on purpose; the first time the panel is actually on screen is
+        # the first moment a caption can be seen, so it is the honest moment to
+        # pay the model load. `start_worker` refuses when a bridge already
+        # exists, so every later Alt+C is a no-op here.
+        self._start_deferred_worker('show-panel')
+        if self.external_captions_available and self.external_caption_watcher is not None:
+            self.external_caption_watcher.replay()
         # ARMED HERE, and only here: the watcher can close the panel from now on,
         # which is what keeps the two startup navigations from closing anything
         # (the panel is hidden then, so the visible-guard already refuses, and
@@ -5999,7 +6461,7 @@ class SottoShell:
         order in `show_strip`.
         """
         try:
-            self.display = primary_display()
+            self.display = target_display()
         except Exception as exc:  # noqa: BLE001 -- stale cache beats no window
             warn(f'PANEL_PLACE_DISPLAY_FAILED mode={mode} error={exc!r}')
         if not self.display:
@@ -6087,6 +6549,9 @@ class SottoShell:
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        self._start_deferred_worker('show-strip')
+        if self.external_captions_available and self.external_caption_watcher is not None:
+            self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=strip '
             f'visible={str(self.visible).lower()} '
             'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
@@ -6135,6 +6600,9 @@ class SottoShell:
         foreground_unlock(self.hwnd)
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        self._start_deferred_worker('show-side')
+        if self.external_captions_available and self.external_caption_watcher is not None:
+            self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=side '
             f'visible={str(self.visible).lower()} '
             'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
@@ -6391,7 +6859,14 @@ class SottoShell:
     #: `_worker_autostart_reason`, which NAMES why; this tuple is what makes the
     #: name binding. `hot-reload` is here because a file change must restart the
     #: worker it already had (the reload policy decides WHEN, not whether).
-    START_REASONS = ('default', 'with-worker', 'hot-reload', 'revive')
+    START_REASONS = ('default', 'with-worker', 'hot-reload', 'revive',
+                     # The deferred default's own reason: the first time the
+                     # panel is actually on screen (2026-10-17).
+                     'panel-open',
+                     # The player stopped supplying its own captions.
+                     'external-end',
+                     # The GPU became free after a game/video demanded it.
+                     'vram-resume')
 
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
@@ -6519,6 +6994,9 @@ class SottoShell:
             log(f'REVIVE_REQUESTED caller={caller} '
                 f'had_bridge={str(bridge is not None).lower()} pid={pid}')
             self._reload_policy.stop()
+            self._paused = False
+            self._external_parked = False
+            self._vram_parked = False
             if bridge is not None:
                 bridge.stop('revive')
                 bridge.pending_error = None
@@ -6588,6 +7066,22 @@ class SottoShell:
                 f'appwindow=false noactivate=true '
                 f'layered={str(not self.args.opaque).lower()} '
                 f'reason=not-a-taskbar-app-and-the-key-needs-layered')
+            if not self.args.opaque:
+                # THE PINK SLAB CURE (owner, 2026-10-17). The page paints
+                # `#ff00ff` where the window must be see-through; that colour
+                # only disappears once the LAYERED bit is set AND the key is
+                # re-applied to the composited window. Doing it here -- after
+                # the style, not in `before_show` -- is the whole point.
+                try:
+                    from System.Drawing import Color as _KeyColor
+                    _magenta = _KeyColor.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
+                    form.BackColor = _magenta
+                    form.TransparencyKey = _magenta
+                except Exception as exc_key:  # noqa: BLE001
+                    log(f'CAPTION_FORM_KEY_SET_FAILED error={exc_key!r}')
+                ok_key = set_layered_color_key(cap_hwnd, 0x00FF00FF)
+                log(f'CAPTION_COLORKEY set=#FF00FF applied={str(ok_key).lower()} '
+                    f'at=loaded-after-layered reason=kill-the-pink-slab')
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WINDOW_STYLES_FAILED error={exc!r}')
         # E TEM DE SER COM `Invoke`, MEDIDO NA SONDA: o evento `loaded` NAO corre na
@@ -6679,7 +7173,17 @@ class SottoShell:
                 magenta = Color.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
                 form.BackColor = magenta
                 form.TransparencyKey = magenta
-                log('CAPTION_FORM_TRANSPARENCYKEY set=magenta reason=overlay-not-a-slab')
+                # Belt and braces: if the HWND is ALREADY layered (a re-show of
+                # the same window), the Win32 key takes effect right here. A
+                # first show reaches the same call from `_on_caption_loaded`,
+                # after the layered bit has been added.
+                try:
+                    ok_key = set_layered_color_key(int(form.Handle.ToInt64()), 0x00FF00FF)
+                except Exception:  # noqa: BLE001
+                    ok_key = False
+                log('CAPTION_FORM_TRANSPARENCYKEY set=magenta '
+                    f'win32_key_applied={str(ok_key).lower()} '
+                    'reason=overlay-not-a-slab')
                 # E O WEBVIEW2, NA THREAD DA UI. MEDIDO NUMA SONDA: com a form ja a
                 # magenta, o que sobra e um retangulo ESCURO do tamanho da janela -- e
                 # esse retangulo e o CONTROLO WebView2, que pinta o proprio fundo. Posto
@@ -6864,6 +7368,17 @@ class SottoShell:
             return False
 
     def on_worker_caption(self, text, meta):
+        # THE PLAYER'S OWN CAPTIONS WIN WHILE THEY EXIST (owner, 2026-10-17).
+        # A YouTube/Stremio line is already synchronised by the player; mixing
+        # the ASR hypothesis into the same row would produce two half-lines.
+        source = ''
+        if isinstance(meta, dict):
+            source = str(meta.get('source') or '')
+        if self.external_captions_active and not source.startswith('external:'):
+            self.external_suppressed += 1
+            if self.external_suppressed in (1, 100, 1000):
+                log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
+            return
         self.emit('caption', {'text': text, 'meta': meta})
         log(f'BRIDGE_CAPTION_SENT delivered=true text={json.dumps(text)}')
         # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
@@ -6875,6 +7390,112 @@ class SottoShell:
         # the owner is reading. final is the worker's own word for a closed line.
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
+
+    def external_caption(self, text, source, final=False):
+        """One line read from the PLAYER's own captions (YouTube/Stremio)."""
+        text = str(text or '').strip()
+        if not text:
+            return False
+        # Only when the owner is actually looking at Sotto. While the panel is
+        # hidden there is nothing to replace, and painting a second subtitle
+        # over YouTube would be worse than doing nothing.
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        if not self.external_captions_active:
+            self.external_captions_active = True
+            self._park_worker_for_external(source)
+        now = time.monotonic()
+        meta = {
+            'start': round(now, 2),
+            'end': round(now + 0.01, 2),
+            'chunk_start': round(now, 2),
+            'chunks': [[round(now, 2), round(now + 0.01, 2), text]],
+            'final': bool(final),
+            'source': str(source or 'external:player'),
+        }
+        # A DEDICATED CHANNEL: the player's line must REPLACE the live box, not
+        # be joined to the previous hypothesis. The panel handles this kind by
+        # resetting the engine for that source, ingesting exactly one line and,
+        # on `final`, committing it. MEASURED 2026-10-17: feeding it through
+        # the ASR `caption` kind produced "previous. previous. current." in the
+        # history, because the engine appends a new partial before its hold
+        # timer commits the previous one.
+        self.emit('external-caption', {'text': text, 'meta': meta})
+        self.push_caption_to_window(text)
+        if final:
+            self._reload_policy.boundary(closed=True, why='external-line')
+        return True
+
+    def _park_worker_for_external(self, source):
+        """Free the worker (and its VRAM) while the player supplies captions."""
+        if self._paused or self._external_parked:
+            return False
+        bridge = getattr(self, 'bridge', None)
+        if bridge is None or getattr(bridge, 'child', None) is None:
+            return False
+        log(f'EXTERNAL_CAPTIONS_WORKER_PARKED source={source} '
+            f'pid={getattr(bridge.child, "pid", None)}')
+        bridge.stop('external-captions')
+        self.bridge = None
+        self._external_parked = True
+        return True
+
+    def park_worker_for_vram(self, free_mb):
+        """Free the worker's CUDA context because another app needs the GPU."""
+        if self._paused or self._external_parked or self._vram_parked:
+            return False
+        bridge = getattr(self, 'bridge', None)
+        if bridge is None or getattr(bridge, 'child', None) is None:
+            return False
+        pid = getattr(bridge.child, 'pid', None)
+        log(f'VRAM_GUARD_PARKING free_mb={free_mb:.0f} pid={pid}')
+        bridge.stop('vram-pressure')
+        self.bridge = None
+        self._vram_parked = True
+        self.apply_panel_state(
+            'Paused - GPU in use by another app', 'idle',
+            {'title': 'GPU busy',
+             'body': 'Another application needs the GPU, so the transcription '
+                     'engines were unloaded to free their VRAM. They reload when '
+                     'the GPU is free again.'})
+        return True
+
+    def resume_after_vram(self, free_mb):
+        """The GPU is free again: reload the engines if a panel is on screen."""
+        if not self._vram_parked or self._paused:
+            return False
+        self._vram_parked = False
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f}')
+        return self.start_worker('vram-resume')
+
+    def on_external_captions_released(self):
+        """The player stopped showing captions: give the microphone back."""
+        if not self._external_parked:
+            return False
+        self._external_parked = False
+        if self._paused:
+            return False
+        if self.visible or getattr(self, '_caption_window_shown', False):
+            log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
+            return self.start_worker('external-end')
+        return False
+
+    def start_external_caption_watcher(self):
+        """Start the UIA reader once per process (normal runs only)."""
+        if self.external_caption_watcher is not None:
+            return False
+        try:
+            reason = self._worker_autostart_reason(self.args)
+        except Exception:  # noqa: BLE001
+            reason = 'unknown'
+        if reason not in ('default', 'with-worker'):
+            log(f'EXTERNAL_CAPTIONS_SKIPPED reason={reason}')
+            return False
+        self.external_caption_watcher = ExternalCaptionWatcher(self)
+        self.external_caption_watcher.start()
+        return True
 
     def start_click_watcher(self) -> bool:
         """Arm the outside-click watcher (see `OutsideClickWatcher`)."""
@@ -7413,7 +8034,14 @@ class SottoShell:
         the multi-monitor case is disclosed as unmeasured in
         `_main/receipt-strip-surface.md`.
         """
-        display = self.display or primary_display()
+        # RE-READ THE MONITOR ON EVERY LAYOUT, not once at startup: the owner
+        # may move the mouse to another screen between two Alt+C presses, and
+        # the panel must follow. `target_display` is the mouse's monitor;
+        # fallback keeps a stale cache rather than refusing to lay out.
+        try:
+            display = target_display()
+        except Exception:  # noqa: BLE001
+            display = self.display or primary_display()
         self.display = display
         return display['workArea']
     def geometry_for(self, surface):
@@ -7834,6 +8462,134 @@ class SottoShell:
             self.publish_panel_visibility('strip-drag')
         log(f'STRIP_DRAG phase={phase} offset=({dx},{dy}) to=({nx},{ny}) '
             f'base={base} work={work["width"]}x{work["height"]}')
+
+    #: Windows' "start a caption drag" message pair. `WM_NCLBUTTONDOWN` with
+    #: `HTCAPTION` puts the window manager in its OWN modal move loop: the mouse
+    #: is tracked by Windows, not by the page, so there is no per-move bridge
+    #: message and no per-move `SetWindowPos`.
+    WM_NCLBUTTONDOWN = 0x00A1
+    HTCAPTION = 2
+
+    def _begin_window_drag(self, payload):
+        """ONE native drag for the panel header or the bottom strip.
+
+        Owner, 2026-10-17: *"mover os paineis e extremamente ruim e nao
+        otimizado, parece q foi implementado completamente errado."* The old
+        path moved the window from a JS `pointermove` at up to ~150 samples a
+        second, every one of them a bridge hop plus a `SetWindowPos` plus a log
+        line. This enters `DefWindowProc`'s move loop instead: `SendMessageW`
+        blocks until the owner releases the mouse, and the window follows the
+        cursor at compositor speed with zero page involvement.
+
+        The final rect is read after the loop returns, clamped into the work
+        area, and persisted exactly once -- the same `geometry`/_main/
+        panel-visibility.json contract the edit-mode drag uses.
+        """
+        payload = payload or {}
+        surface = str(payload.get('surface') or self.surface_applied or 'panel')
+        if surface not in ('panel', 'strip'):
+            surface = self.surface_applied or 'panel'
+        hwnd = self.hwnd
+        if not hwnd:
+            log(f'WINDOW_DRAG_REFUSED why=no-hwnd surface={surface}')
+            return
+        log(f'WINDOW_DRAG_BEGIN surface={surface} hwnd={hwnd}')
+        try:
+            user32.ReleaseCapture()
+            # The return value is 0 for this message (DefWindowProc), so it is
+            # deliberately not tested: the observable result is the rect below.
+            user32.SendMessageW(hwnd, self.WM_NCLBUTTONDOWN, self.HTCAPTION, 0)
+        except Exception as exc:  # noqa: BLE001
+            log(f'WINDOW_DRAG_FAILED surface={surface} error={exc!r}')
+            return
+        self._persist_dragged_geometry(hwnd, surface)
+
+    def _persist_dragged_geometry(self, hwnd, surface):
+        """Read the rect the native loop left, clamp it, and persist it ONCE."""
+        rect = RECT()
+        try:
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                log(f'WINDOW_DRAG_RECT_FAILED surface={surface} '
+                    f'last_error={ctypes.get_last_error()}')
+                return
+        except Exception as exc:  # noqa: BLE001
+            log(f'WINDOW_DRAG_RECT_FAILED surface={surface} error={exc!r}')
+            return
+        # The drop may be on another monitor: refresh the target (and therefore
+        # its scale factor) BEFORE converting the physical rect to DIP.
+        work = self.work_area()
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        width = max(0, int(round((rect.right - rect.left) / scale)))
+        height = max(0, int(round((rect.bottom - rect.top) / scale)))
+        if width <= 0 or height <= 0:
+            log(f'WINDOW_DRAG_RECT_EMPTY surface={surface} '
+                f'rect=({rect.left},{rect.top},{rect.right},{rect.bottom})')
+            return
+        x = int(round(rect.left / scale))
+        y = int(round(rect.top / scale))
+        clamped_x = max(work['x'], min(x, work['x'] + work['width'] - width))
+        clamped_y = max(work['y'], min(y, work['y'] + work['height'] - height))
+        # A drag that ran past an edge is pulled back, so the window can never
+        # be left unreachable. One `SetWindowPos`, only when the clamp moved it.
+        if (clamped_x, clamped_y) != (x, y):
+            try:
+                user32.SetWindowPos(hwnd, HWND_TOPMOST,
+                                    int(clamped_x * scale), int(clamped_y * scale),
+                                    0, 0, SWP_NOSIZE | SWP_NOACTIVATE)
+            except Exception as exc:  # noqa: BLE001
+                log(f'WINDOW_DRAG_CLAMP_FAILED surface={surface} error={exc!r}')
+        geometry = dict(self.geometry or {})
+        geometry.update({
+            'surface': self.surface_applied,
+            'x': clamped_x,
+            'y': clamped_y,
+            'width': width,
+            'height': height,
+            'docked': 'window-drag',
+            'workWidth': work['width'],
+            'workHeight': work['height'],
+        })
+        self.geometry = geometry
+        self.saved_geometry = self.geometry_snapshot()
+        self.publish_panel_visibility('window-drag')
+        log(f'WINDOW_DRAG_DONE surface={surface} to=({clamped_x},{clamped_y}) '
+            f'size={width}x{height} from=({x},{y})')
+
+    def _set_live_enabled(self, payload):
+        """The live pill's switch: show/hide the independent caption window."""
+        on = bool((payload or {}).get('on'))
+        try:
+            self.show_caption_window(on)
+            log(f'LIVE_ENABLED on={str(on).lower()}')
+        except Exception as exc:  # noqa: BLE001
+            log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
+
+    def _pause_shell(self, payload):
+        """PAUSE = UNLOAD the worker, freeing its CUDA context and VRAM."""
+        reason = str((payload or {}).get('reason') or 'panel')
+        bridge = getattr(self, 'bridge', None)
+        if bridge is None or getattr(bridge, 'child', None) is None:
+            self._paused = True
+            log(f'WORKER_PAUSED reason={reason} already=true')
+            self.apply_panel_state(
+                'Paused - engines unloaded', 'idle',
+                {'title': 'Paused',
+                 'body': 'The live and background engines are unloaded. Click the '
+                         'status to reload them.'})
+            return {'paused': True, 'text': 'Paused - engines unloaded'}
+        pid = getattr(bridge.child, 'pid', None)
+        bridge.stop('pause')
+        self.bridge = None
+        self._paused = True
+        self._external_parked = False
+        log(f'WORKER_PAUSED reason={reason} pid={pid}')
+        self.apply_panel_state(
+            'Paused - engines unloaded', 'idle',
+            {'title': 'Paused',
+             'body': 'The live and background engines are unloaded, so their VRAM '
+                     'is free. Click the status to reload them.'})
+        return {'paused': True, 'text': 'Paused - engines unloaded'}
+
     def _apply_window_geometry(self, geometry, reason='surface'):
         """Move/resize the NATIVE window, then pin the client area to it.
 
@@ -9018,6 +9774,12 @@ class WorkerBridge:
         byte-identical environment it produced before the parameter existed.
         """
         env = dict(os.environ)
+        # THE FREEZE CURES LIVE IN THE WORKER, NOT HERE (2026-10-17). Its own
+        # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS=4` defaults are set at
+        # module scope before onnxruntime is imported, so they apply to every
+        # way the worker can be launched. `_main/app-target-oracle.py` pins this
+        # dict to `os.environ + SOTTO_CAPTURE_MODE` (+ the target pid), and that
+        # contract is worth keeping.
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
@@ -9092,6 +9854,15 @@ class WorkerBridge:
 
         creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
             if os.name == 'nt' else 0
+        if os.name == 'nt':
+            # BELOW_NORMAL_PRIORITY_CLASS. The worker is a background
+            # transcriber; it must never outrank the desktop while it reads a
+            # gigabyte of weights or runs a burst of inference. MEASURED
+            # 2026-10-17: the cold start is ~4.6 s and the process peaks at
+            # ~2 GB RSS, which is exactly the window the owner reported as a
+            # freeze. Below-normal keeps the shell, the browser and Explorer
+            # responsive through it.
+            creationflags |= 0x00004000
 
         try:
             self.child = subprocess.Popen(
@@ -9156,14 +9927,26 @@ class WorkerBridge:
             self.capturing = False
         if child is not None:
             self.log(f'BRIDGE_STOP reason={reason} pid={child.pid}')
+            # NEVER BLOCK THE CALLER ON A DYING WORKER. `terminate()` on Windows
+            # is `TerminateProcess`, but the old `wait(timeout=5)` then made the
+            # shell's UI/tray thread sit for up to five seconds while a 2 GB
+            # process was torn down -- the "fechar o sotto trava o PC" the owner
+            # reported on 2026-10-17. Kill it, reap in a daemon thread, and let
+            # the caller return immediately.
             try:
-                child.terminate()
-                child.wait(timeout=5)
-            except Exception:
+                child.kill()
+            except Exception:  # noqa: BLE001
                 try:
-                    child.kill()
+                    child.terminate()
                 except Exception:
                     pass
+            try:
+                reaper = threading.Thread(
+                    target=lambda c=child: _reap_child(c),
+                    name='sotto-worker-reap', daemon=True)
+                reaper.start()
+            except Exception:  # noqa: BLE001
+                pass
             return True
         # SAYS SO (row #42, 2026-10-11): returning False silently left whatever the
         # panel was showing standing -- symmetric with `start()`, which always tells

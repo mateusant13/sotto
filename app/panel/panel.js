@@ -612,6 +612,7 @@ if (!bridge) {
 } else {
   wireHistory();
   wireCaptions();
+  wireExternalCaptions();
   wireStatus();
   // Silent no-op unless the hosting shell exposes `onStats` (see `wireStats`).
   wireStats();
@@ -941,6 +942,31 @@ function wireCaptions() {
     // no-source engine — the same fail-closed reading `addCaption` uses for the row.
     const source = meta && typeof meta.source === 'string' && meta.source ? meta.source : null;
     engineFor(source).ingest(String(text || '').trim(), meta || {});
+  });
+}
+
+/**
+ * THE PLAYER'S OWN CAPTIONS (YouTube/Stremio), on their own channel.
+ *
+ * The shell reads the line the player is painting and sends it here. Unlike
+ * the ASR stream, these lines are ALREADY complete: each one REPLACES the live
+ * box. `reset()` empties the per-source buffer, `ingest` shows exactly this
+ * line, and `final` commits it once. Without the reset the engine appended the
+ * new line to the previous partial and the history read
+ * "previous. previous. current." (measured 2026-10-17).
+ */
+function wireExternalCaptions() {
+  if (!bridge || typeof bridge.onExternalCaption !== 'function') return;
+  bridge.onExternalCaption((payload) => {
+    const text = String((payload && payload.text) || '').trim();
+    if (!text) return;
+    const meta = (payload && payload.meta) || {};
+    const source = typeof meta.source === 'string' && meta.source
+      ? meta.source : 'external:player';
+    const engine = engineFor(source);
+    engine.reset();
+    engine.ingest(text, meta);
+    if (meta.final === true) engine.flush('external-final');
   });
 }
 
@@ -2006,7 +2032,15 @@ function wireStripControls() {
   // ONE handler per pause control, bound from a class so the strip's button and
   // the panel's own button cannot drift apart; `wirePause` owns the dialog.
   for (const button of dom.pauseButtons) {
-    button.addEventListener('click', () => openPauseConfirm(button));
+    // THE STRIP IS 40 px TALL: a confirmation dialog cannot fit there (the
+    // 2026-10-17 screenshot showed it always painted over the bar). Its pause
+    // button IS the confirmation: one click unloads. The side panel keeps the
+    // dialog.
+    if (button.id === 'strip-pause-button') {
+      button.addEventListener('click', () => confirmPause());
+    } else {
+      button.addEventListener('click', () => openPauseConfirm(button));
+    }
   }
   // The font dial is wired from the STRIP side too, so the strip's pair and the
   // panel's pair reach the same apply function. See `wireFontDial`.
@@ -2226,7 +2260,7 @@ function updateStripState() {
     // until 2026-10-13, which read as "the transcription stopped" while the worker
     // was streaming perfectly — the button's own red/grey pill is where LIVE vs
     // NOT-LIVE is stated, and this word only says the caption is not on screen.
-    word = 'Captions off';
+    word = 'OFF';
     state = '';
   } else if (kind === 'error') {
     word = 'Error';

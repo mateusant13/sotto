@@ -729,6 +729,18 @@
     box.hidden = true;
     box.setAttribute('role', 'listbox');
     box.setAttribute('aria-label', 'Choose a theme — hover previews, click keeps');
+    /* ALL THE THEMES, IN TWO COLUMNS.
+     *
+     * IT WAS FIVE PLUS A DOOR, AND THE DOOR WAS NEVER BUILT: this function used
+     * `list` without declaring it (it was a local of `ensurePicker`), so the
+     * first chevron click threw `ReferenceError: list is not defined` and the
+     * dropdown never existed at all. MEASURED 2026-10-17 in a real Chromium
+     * against the shipped page: `#theme-chevron.click()` -> zero
+     * `#theme-dropdown`, one console error. That is the owner's "o dropdown que
+     * mostra todos os designs/temas nao funciona".
+     *
+     * The list below is ALL 45, rendered in a two-column grid by
+     * `button-contract.css` so every design is reachable without a scrollbar. */
     var list = doc.createElement('div');
     list.className = 'theme-dropdown__list';
     list.setAttribute('role', 'group');
@@ -790,7 +802,7 @@
     var name = currentTheme();
     var theme = known(name);
     btn.dataset.themeCurrent = name;
-    btn.title = 'Theme: ' + labelOf(name) + ' — click for the next one, right-click for all five';
+    btn.title = 'Theme: ' + labelOf(name) + ' — click for the next one, right-click for every theme';
     btn.setAttribute('aria-label', btn.title);
     if (theme) btn.style.setProperty('--theme-swatch', theme.swatch);
     var label = btn.querySelector('.theme-button__label');

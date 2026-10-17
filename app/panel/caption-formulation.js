@@ -55,6 +55,15 @@ const TERMINAL = /[.!?…]["')\]]?$/;
 /** Openers that make a line a question when the model gave no punctuation. */
 const QUESTION_OPENERS = new Set([
   'what', 'why', 'how', 'when', 'where', 'who', 'whom', 'whose', 'which',
+  // Portuguese single-word openers. `porque` is deliberately absent: it is far
+  // more often the ANSWER ("porque choveu") than a question.
+  'quem', 'onde', 'quando', 'como', 'qual', 'quais', 'quanto', 'quantos',
+  'quantas', 'cadê', 'cade',
+]);
+
+/** Two-word interrogative openers, joined and lowercased ("o que", "por que"). */
+const QUESTION_PREFIXES = new Set([
+  'o que', 'por que', 'pra que', 'para que', 'será que', 'sera que',
 ]);
 
 /**
@@ -73,6 +82,48 @@ const SENTENCE_GAP_S = 8;
 
 /** Hard cap, so a model that never pauses still cannot grow without bound. */
 const SENTENCE_MAX_CHARS = 90;
+
+/* ── TIMING-AWARE PUNCTUATION (owner, 2026-10-17) ──────────────────────────
+ * Verbatim: *"a estrutura das frases sao simplesmente erradas, a gente devia
+ * pesquisar online uma formulacao melhor das frases. saber como usar virgula
+ * levando em conta o tempo da fala, ponto final, nova frase, etc."*
+ *
+ * WHAT THE RESEARCH SAYS, and why these two numbers:
+ *   - Pause duration is the single most informative acoustic cue for a PERIOD;
+ *     it is much weaker for a comma, which also needs a lexical cue (Tilk &
+ *     Alumäe, Interspeech 2015; Christensen et al., Prosody 2001).
+ *   - Caption practice segments at punctuation AND natural pauses, and warns
+ *     against splitting inside a phrase (BBC/DCMP captioning guidance).
+ * So: a long silence closes a sentence, a medium silence becomes a comma, and
+ * a lexical comma is added before contrastive conjunctions even with no pause.
+ *
+ * The gaps are measured from the worker's own audio clock (`chunk_start` on
+ * each fragment, added the same day) -- never from wall-clock arrival, which
+ * would turn a slow frame into a full stop.
+ */
+const PUNCT_PERIOD_GAP_S = 1.10;
+const PUNCT_COMMA_GAP_S = 0.38;
+
+/** Words that read badly with a full stop in front of them after a hesitation. */
+const FUNCTION_WORDS = new Set([
+  'a', 'o', 'as', 'os', 'um', 'uma', 'de', 'do', 'da', 'dos', 'das', 'em', 'no',
+  'na', 'nos', 'nas', 'por', 'para', 'pra', 'com', 'sem', 'que', 'e', 'ou',
+  'se', 'ao', 'aos', 'à', 'às', 'the', 'a', 'an', 'of', 'to', 'in', 'on',
+  'at', 'for', 'with', 'and', 'or', 'that', 'is', 'are',
+]);
+
+/** A comma belongs before these even when the speaker did not pause. */
+const CONTRASTIVE = new Set([
+  'mas', 'porém', 'porem', 'contudo', 'entretanto', 'todavia', 'embora',
+  'apesar', 'but', 'however', 'although', 'though', 'yet',
+]);
+
+/** An introductory word is followed by a comma, the way prose writes it. */
+const INTRO_MARKERS = new Set([
+  'então', 'entao', 'agora', 'olha', 'bom', 'bem', 'hoje', 'depois', 'enfim',
+  'aliás', 'alias', 'inclusive', 'basicamente', 'geralmente', 'normalmente',
+  'finalmente', 'primeiro', 'antes', 'ontem', 'well', 'so', 'now', 'then',
+]);
 
 /**
  * How long a provisional tail may wait for a second opinion before the
@@ -206,15 +257,100 @@ function healSeams(parts) {
 function formulate(text) {
   const parts = words(text);
   if (!parts.length) return '';
+  return formulateTokens(parts.map((w) => ({ w, a: null, b: null })));
+}
 
-  let out = parts[0];
-  out = out.charAt(0).toUpperCase() + out.slice(1);
-  for (let i = 1; i < parts.length; i += 1) out += ` ${parts[i]}`;
+function capitalise(word) {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/**
+ * FORMULATION WITH TOKEN TIMING: the pass that finally uses the audio clock to
+ * decide a comma from a full stop.
+ *
+ * Each token may carry `a`/`b` (audio seconds). The gap between one token's end
+ * and the next token's start is a real silence, because the worker now reports
+ * the newest chunk's own start (`chunk_start`) beside the line's start/end.
+ *
+ * Rules, in order, at every word boundary:
+ *   1. a silence >= PUNCT_PERIOD_GAP_S closes the sentence -- unless the word
+ *      before it is a function word ("de", "que", "the"): a hesitation there
+ *      is a comma, not a sentence;
+ *   2. a silence >= PUNCT_COMMA_GAP_S is a comma;
+ *   3. no silence, but the NEXT word is contrastive ("mas", "porém", "but") ->
+ *      a comma, which is where written Portuguese puts one;
+ *   4. the first word after an introductory marker ("então", "agora", "well")
+ *      gets a comma, the way prose writes it.
+ * A model-supplied terminal mark is never doubled, and the word after it is
+ * capitalised -- so an interior sentence keeps its capital letter.
+ */
+function formulateTokens(tokens) {
+  const parts = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const w = String(tokens[i] && tokens[i].w != null ? tokens[i].w : '').trim();
+    if (!w) continue;
+    parts.push({
+      w,
+      a: tokens[i].a == null ? null : tokens[i].a,
+      b: tokens[i].b == null ? null : tokens[i].b,
+    });
+  }
+  if (!parts.length) return '';
+
+  // A standalone punctuation token is not a word: it belongs to the word on
+  // its left (the model emits ".", ",", "?" as separate tokens often enough to
+  // matter). Without this the line read "acabou . Depois".
+  const merged = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    const p = parts[i];
+    if (/^[.,;:!?…]+$/.test(p.w) && merged.length) {
+      const prev = merged[merged.length - 1];
+      prev.w += p.w;
+      if (p.b !== null) prev.b = p.b;
+    } else {
+      merged.push(p);
+    }
+  }
+  const clean = merged.length ? merged : parts;
+
+  let out = capitalise(clean[0].w);
+  const firstLower = clean[0].w.toLowerCase().replace(/[^\p{L}]+/gu, '');
+  const firstTwo = clean.slice(0, 2)
+    .map((p) => p.w.toLowerCase().replace(/[^\p{L}]+/gu, ''))
+    .join(' ');
+
+  for (let i = 1; i < clean.length; i += 1) {
+    const prev = clean[i - 1];
+    const next = clean[i];
+    const prevHasMark = /[.,;:!?…]$/.test(prev.w);
+    const terminal = TERMINAL.test(prev.w);
+    const gap = (prev.b !== null && next.a !== null) ? next.a - prev.b : 0;
+    const nextLower = next.w.toLowerCase().replace(/^[^\p{L}]+/u, '');
+    const prevLower = prev.w.toLowerCase().replace(/[^\p{L}]+$/u, '');
+    let mark = '';
+
+    if (!prevHasMark) {
+      if (gap >= PUNCT_PERIOD_GAP_S
+          && !FUNCTION_WORDS.has(prevLower)
+          && !FUNCTION_WORDS.has(nextLower)) {
+        mark = '.';
+      } else if (gap >= PUNCT_COMMA_GAP_S) {
+        mark = ',';
+      } else if (CONTRASTIVE.has(nextLower)) {
+        mark = ',';
+      } else if (i === 1 && clean.length > 2 && INTRO_MARKERS.has(prevLower)) {
+        mark = ',';
+      }
+    }
+
+    out += mark;
+    out += ' ';
+    out += (terminal || mark === '.') ? capitalise(next.w) : next.w;
+  }
 
   if (TERMINAL.test(out)) return out;
-
-  const opener = parts[0].toLowerCase().replace(/[^a-z]/g, '');
-  return QUESTION_OPENERS.has(opener) ? `${out}?` : `${out}.`;
+  const asks = QUESTION_OPENERS.has(firstLower) || QUESTION_PREFIXES.has(firstTwo);
+  return asks ? `${out}?` : `${out}.`;
 }
 
 /**
@@ -565,7 +701,9 @@ function createEngine(options) {
     const start = lineStart;
     const all = takeBuffer();
     if (!all.length) return '';
-    const line = formulate(all.map((t) => t.w).join(' '));
+    // The TOKENS, not just their words: `formulateTokens` reads the audio clock
+    // to place commas and full stops at real pauses (2026-10-17).
+    const line = formulateTokens(all);
     if (line) {
       // The literal below is spelled out rather than left implicit, because the
       // ONE thing a reader must be able to check is that `producer` is present
@@ -606,6 +744,10 @@ function createEngine(options) {
 
     const start = meta && typeof meta.start === 'number' ? meta.start : null;
     const end = meta && typeof meta.end === 'number' ? meta.end : null;
+    // The NEWEST chunk's own start (worker `LineFormer._event`, 2026-10-17).
+    // `start` is the LINE's start and never moves, so it cannot express a pause
+    // inside the line; this can.
+    const chunkStart = meta && typeof meta.chunk_start === 'number' ? meta.chunk_start : null;
 
     // A silence in the AUDIO closes the sentence. This is the boundary the
     // old 1200 ms WALL-CLOCK rule could never see.
@@ -650,15 +792,64 @@ function createEngine(options) {
       return;
     }
 
-    // Spread the fragment's words across its audio window, so a later re-read
-    // can tell which of them it supersedes.
+    // Spread the fragment's words across the audio window they were actually
+    // spoken in, so a later re-read can tell which of them it supersedes AND
+    // the formulation pass can see the silence in front of the new words.
+    //
+    // IT USED TO START AT `start` -- the LINE's start -- even for a cumulative
+    // fragment that only ADDS words. Every new word therefore carried a time
+    // from the beginning of the line, which made all interior gaps meaningless
+    // and is why timing-based punctuation was impossible before 2026-10-17.
     const parts = words(fragment);
-    const span = start !== null && end !== null && end > start ? end - start : 0;
-    const incoming = parts.map((w, i) => ({
-      w,
-      a: start === null ? null : start + (span * i) / parts.length,
-      b: start === null ? null : start + (span * (i + 1)) / parts.length,
-    }));
+    // THE WORKER'S OWN CHUNK CLOCKS, when it sent them (2026-10-17). Each
+    // chunk is `[start, end, text]`, so the silence BETWEEN chunks is a real
+    // measurement rather than a guess spread over the whole line. When the
+    // chunk texts do not add up to the same word count as the joined line (a
+    // sub-word chunk like "próx" + "ima" joins to "próxima"), the uniform
+    // fallback below is used instead of pretending.
+    let incoming = null;
+    const rawChunks = meta && Array.isArray(meta.chunks) ? meta.chunks : null;
+    if (rawChunks && rawChunks.length) {
+      const built = [];
+      for (let ci = 0; ci < rawChunks.length; ci += 1) {
+        const c = rawChunks[ci];
+        if (!Array.isArray(c) || c.length < 3) { built.length = 0; break; }
+        const cs = Number(c[0]);
+        const ce = Number(c[1]);
+        const cw = words(String(c[2] == null ? '' : c[2]));
+        if (!cw.length || !isFinite(cs) || !isFinite(ce) || ce < cs) {
+          built.length = 0;
+          break;
+        }
+        const cspan = ce - cs;
+        for (let j = 0; j < cw.length; j += 1) {
+          built.push({
+            a: cs + (cspan * j) / cw.length,
+            b: cs + (cspan * (j + 1)) / cw.length,
+          });
+        }
+      }
+      if (built.length === parts.length) {
+        incoming = parts.map((w, i) => ({ w, a: built[i].a, b: built[i].b }));
+      }
+    }
+    if (!incoming) {
+      let baseA = start;
+      if (chunkStart !== null && (start === null || chunkStart >= start)) {
+        baseA = chunkStart;
+      } else if (lastAudioEnd !== null && end !== null && end > lastAudioEnd) {
+        baseA = lastAudioEnd;
+      }
+      if (baseA !== null && lastAudioEnd !== null && baseA < lastAudioEnd) {
+        baseA = lastAudioEnd;
+      }
+      const span = baseA !== null && end !== null && end > baseA ? end - baseA : 0;
+      incoming = parts.map((w, i) => ({
+        w,
+        a: baseA === null ? null : baseA + (span * i) / parts.length,
+        b: baseA === null ? null : baseA + (span * (i + 1)) / parts.length,
+      }));
+    }
 
     // CONTINUATION OF A LINE ALREADY WRITTEN TO HISTORY.
     //
@@ -809,12 +1000,15 @@ function createEngine(options) {
 const SottoFormulation = {
   createEngine,
   formulate,
+  formulateTokens,
   healSeams,
   describeReadiness,
   agreedPrefixLength,
   words,
   SENTENCE_GAP_S,
   SENTENCE_MAX_CHARS,
+  PUNCT_PERIOD_GAP_S,
+  PUNCT_COMMA_GAP_S,
   COMMIT_MAX_HOLD_MS,
   READY_SECONDS_MEASURED,
 };

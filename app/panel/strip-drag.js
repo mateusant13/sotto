@@ -1,128 +1,142 @@
-/* Sotto -- THE STRIP DRAG, as a SEPARATE FILE ON PURPOSE.
+/* Sotto -- WINDOW DRAG (panel header + bottom strip).
  *
- * IT WAS AN INLINE <script> UNTIL 2026-10-13, AND IT NEVER RAN. MEASURED: panel.html
- * declares `script-src 'self'` with NO `'unsafe-inline'` (:22-25), and a CSP without
- * 'unsafe-inline' BLOCKS every inline <script> block. The handler below was the ONLY
- * inline script in the document -- 1 inline against 12 with src -- so the one piece of
- * panel code that made the strip MOVABLE was dead in every launch.
+ * OWNER, 2026-10-17, verbatim: "mover os paineis e extremamente ruim e nao
+ * otimizado, parece q foi implementado completamente errado."
  *
- * That is why the strip could not be dragged, and it is a measure of how quietly this
- * failed: the page threw nothing, the console stayed clean, and the shell log had no
- * error, because a BLOCKED SCRIPT IS NOT AN ERROR -- it simply does not execute. My own
- * probe failed to trigger it for rounds and I blamed the probe (and once the bridge),
- * when the handler had never been attached at all. The lane that built the page probe
- * reported the same thing from the other side: an inline probe 'never fired, blocked by
- * the panel's own CSP'.
+ * WHAT IT WAS: the strip moved the WINDOW from a JS `pointermove` handler --
+ * up to ~150 bridge messages and ~150 `SetWindowPos` calls per second, each
+ * one also writing a log line. A move that is driven from JavaScript is always
+ * chasing the compositor: every sample is at least one frame late, and the
+ * shell's own "move the window" answer is another hop. That is why it felt
+ * heavy and rubbery no matter how many writes were removed.
  *
- * Moving the bytes here is the whole fix. A file under script-src 'self' is allowed.
+ * WHAT IT IS NOW: the OS moves the window. `pointerdown` on the header or on
+ * the strip asks the shell for ONE native drag (`ReleaseCapture()` +
+ * `WM_NCLBUTTONDOWN` with `HTCAPTION`), which enters Windows' own modal move
+ * loop. The pointer is then tracked by the window manager, not by this page:
+ * no per-move messages, no per-move writes, no lag, and no feedback loop
+ * between `clientX` and the window position.
+ *
+ * The shell persists the final rect (clamped into the work area) when the
+ * native loop returns. The old JS path is kept ONLY as a fallback for a host
+ * that does not ship `beginWindowDrag` (a browser harness, an older shell).
  */
-      (function () {
-        "use strict";
-        var KEY = "sotto:strip-offset";
-        var THRESHOLD = 4;
-        var bar = document.getElementById("strip-controls");
-        var panel = document.getElementById("panel");
-        if (!bar || !panel) return;
+(function () {
+  "use strict";
 
-        function read() {
-          try {
-            var raw = window.localStorage.getItem(KEY);
-            if (!raw) return { x: 0, y: 0 };
-            var v = JSON.parse(raw);
-            return { x: Number(v && v.x) || 0, y: Number(v && v.y) || 0 };
-          } catch (err) { return { x: 0, y: 0 }; }
-        }
+  var bridge = window.sotto;
+  var bar = document.getElementById("strip-controls");
+  var panel = document.getElementById("panel");
+  var header = document.querySelector(".panel__header");
+  var native = !!(bridge && typeof bridge.beginWindowDrag === "function");
 
-        function write(off) {
-          try {
-            window.localStorage.setItem(KEY, JSON.stringify({ x: Math.round(off.x), y: Math.round(off.y), v: 1 }));
-          } catch (err) { /* a position that cannot be remembered is not worth a broken drag */ }
-        }
+  function isControl(target) {
+    return !!(target && target.closest
+      && target.closest("button, a, input, select, textarea, [contenteditable='true']"));
+  }
 
-        function paint(off) {
-          document.documentElement.style.setProperty("--strip-move-x", Math.round(off.x) + "px");
-          document.documentElement.style.setProperty("--strip-move-y", Math.round(off.y) + "px");
-        }
+  function endVisual() {
+    document.body.classList.remove("is-strip-dragging");
+  }
 
-        function tell(off, phase) {
-          var bridge = window.sotto;
-          if (bridge && typeof bridge.setStripOffset === "function") {
-            try { bridge.setStripOffset(Math.round(off.x), Math.round(off.y), phase); } catch (err) {}
-          }
-        }
+  if (native) {
+    function start(surface, event) {
+      if (event.button !== 0 || isControl(event.target)) return;
+      /* A drag must not also select text or start a native image drag. */
+      event.preventDefault();
+      document.body.classList.add("is-strip-dragging");
+      try {
+        bridge.beginWindowDrag(surface);
+      } catch (err) {
+        /* A refused drag is not a reason to break the page. */
+        endVisual();
+      }
+    }
 
-        /* Restore what the owner left, BEFORE the first paint: the bar opens where
-           he put it, not where the shell docked it. */
-        var offset = read();
-        paint(offset);
+    if (bar) {
+      bar.addEventListener("pointerdown", function (event) { start("strip", event); });
+    }
+    if (header) {
+      /* The header AROUND the controls is the panel's drag handle. Presses
+       * that land on a control stay the control's -- `isControl` is that
+       * boundary, and it is the same one the strip has always used. */
+      header.addEventListener("pointerdown", function (event) { start("panel", event); });
+    }
+    window.addEventListener("pointerup", endVisual);
+    window.addEventListener("pointercancel", endVisual);
+    window.addEventListener("blur", endVisual);
+    return;
+  }
 
-        var start = null;
-        var live = null;
+  /* ── FALLBACK: the old JS drag, for a host without the native call ────────
+   * It is byte-for-byte the behaviour that shipped before 2026-10-17. Do not
+   * extend it: a real shell takes the branch above and never runs this. */
+  var KEY = "sotto:strip-offset";
+  var THRESHOLD = 4;
+  if (!bar || !panel) return;
 
-        bar.addEventListener("pointerdown", function (event) {
-          if (event.button !== 0) return;
-          /* A press on a CONTROL is that control's. The handle and the bar's own
-             gaps are the drag's. */
-          if (event.target && event.target.closest && event.target.closest("button, a, input, select, textarea")) return;
-          /* `screenX/screenY`, NAO `clientX/clientY`. Ver a nota grande em :74. */
-          start = { px: event.screenX, py: event.screenY, ox: offset.x, oy: offset.y };
-          /* `live` stays NULL until the pointer actually moves: it is the flag that
-             separates a DRAG from a CLICK, and `end()` writes nothing when it is null. */
-          live = null;
-          document.body.classList.add("is-strip-dragging");
-        });
+  function read() {
+    try {
+      var raw = window.localStorage.getItem(KEY);
+      if (!raw) return { x: 0, y: 0 };
+      var v = JSON.parse(raw);
+      return { x: Number(v && v.x) || 0, y: Number(v && v.y) || 0 };
+    } catch (err) { return { x: 0, y: 0 }; }
+  }
 
-        window.addEventListener("pointermove", function (event) {
-          if (!start) return;
-          /* `screenX/screenY`, E ESTA E A CORRECCAO QUE FECHA O LACO. MEDIDO 2026-10-15 no
-           * log do dono: STRIP_DRAG correu 1 498 vezes e a janela saltava entre DUAS posicoes
-           * -- to=(801,804) e to=(795,812) -- com o base fixo em (779,906) e o offset a
-           * ALTERNAR. O dono chamou-lhe "completamente travado".
-           *
-           * O MECANISMO: clientX e relativo ao VIEWPORT DA JANELA. O shell move a JANELA (e
-           * tem de mover -- e o contrato), e mover a janela muda o clientX do ponteiro SEM O
-           * RATO MEXER. Entao dx encolhe sozinho, o shell puxa a janela de volta, e o ciclo
-           * repete ~90 vezes por segundo: uma ida-e-volta infinita entre dois pontos. NAO era
-           * lentidao -- era realimentacao.
-           *
-           * screenX/screenY sao relativos ao ECRA e NAO mudam quando a janela anda, portanto
-           * dx passa a medir so o que o DONO mexeu. E a diferenca entre seguir o rato e
-           * perseguir a propria cauda. */
-          var dx = event.screenX - start.px;
-          var dy = event.screenY - start.py;
-          if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
-          event.preventDefault();
-          live = { x: start.ox + dx, y: start.oy + dy };
-          paint(live);
-          /* `write(live)` USED TO BE HERE, ON EVERY MOVE, AND IT IS GONE ON PURPOSE.
-           * `end()` already writes the final position (:98), and the shell only persists
-           * on phase==='end' -- so this was a localStorage.setItem per pointermove that
-           * nothing ever read. MEASURED (audit lane, 2026-10-13): one real drag produced
-           * 277 STRIP_DRAG lines in 1.86 s -- about 149 moves a second, i.e. ~150
-           * synchronous disk-backed writes a second on the drag path, which is the
-           * "nojento de mover" the owner reported. paint() still runs (it is two CSS
-           * custom properties and it is what makes the drag follow the pointer), and
-           * tell() still runs (the window must actually move). */
-          tell(live, "move");
-        }, { passive: false });
+  function write(off) {
+    try {
+      window.localStorage.setItem(KEY, JSON.stringify({ x: Math.round(off.x), y: Math.round(off.y), v: 1 }));
+    } catch (err) { /* a position that cannot be remembered is not worth a broken drag */ }
+  }
 
-        function end() {
-          if (!start) return;
-          var moved = live !== null;
-          offset = live || offset;
-          start = null;
-          live = null;
-          document.body.classList.remove("is-strip-dragging");
-          /* A press that never moved is NOT a drag: it must not rewrite the stored
-             position (nor tell the shell anything). Measured: without this guard a
-             plain CLICK on the bar wrote {x:0,y:0} over a position the owner had
-             already chosen. */
-          if (!moved) return;
-          write(offset);
-          tell(offset, "end");
-        }
-        window.addEventListener("pointerup", end);
-        window.addEventListener("pointercancel", end);
-        window.addEventListener("blur", end);
-      })();
-    
+  function paint(off) {
+    document.documentElement.style.setProperty("--strip-move-x", Math.round(off.x) + "px");
+    document.documentElement.style.setProperty("--strip-move-y", Math.round(off.y) + "px");
+  }
+
+  function tell(off, phase) {
+    if (bridge && typeof bridge.setStripOffset === "function") {
+      try { bridge.setStripOffset(Math.round(off.x), Math.round(off.y), phase); } catch (err) {}
+    }
+  }
+
+  var offset = read();
+  paint(offset);
+  var start = null;
+  var live = null;
+
+  bar.addEventListener("pointerdown", function (event) {
+    if (event.button !== 0 || isControl(event.target)) return;
+    start = { px: event.screenX, py: event.screenY, ox: offset.x, oy: offset.y };
+    live = null;
+    document.body.classList.add("is-strip-dragging");
+  });
+
+  window.addEventListener("pointermove", function (event) {
+    if (!start) return;
+    var dx = event.screenX - start.px;
+    var dy = event.screenY - start.py;
+    if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+    event.preventDefault();
+    live = { x: start.ox + dx, y: start.oy + dy };
+    paint(live);
+    tell(live, "move");
+  }, { passive: false });
+
+  function finish() {
+    if (!start) return;
+    var moved = live !== null;
+    offset = live || offset;
+    start = null;
+    live = null;
+    endVisual();
+    if (!moved) return;
+    write(offset);
+    tell(offset, "end");
+  }
+
+  window.addEventListener("pointerup", finish);
+  window.addEventListener("pointercancel", finish);
+  window.addEventListener("blur", finish);
+})();

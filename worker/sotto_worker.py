@@ -65,6 +65,16 @@ import sys
 import threading
 import time
 
+# THE FREEZE DEFAULTS (owner, 2026-10-17: *"abrir ou fechar o sotto causa um
+# travamento muito forte no meu pc"*). Set BEFORE onnxruntime is imported:
+#   * LAZY defers CUDA kernel compilation to first use instead of compiling the
+#     whole set during model load -- the burst that stalls the desktop.
+#   * 4 intra-op threads (see `SessionOptions.intra_op_num_threads` below)
+#     leave the scheduler room on the owner's box; the worker is GPU-backed.
+# `setdefault`, so an explicit environment still wins.
+os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The model loaded when NEITHER `--model` NOR config.json's `model.dir` names one.
 # It MUST be the export the shipped config.json points at (…-int8). It used to be
@@ -73,7 +83,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # the shipped choice is int8 — the same "silent substitution" class the device ladder
 # removed. Defect and evidence: docs/audit/model-config.md §6.3; fix receipts:
 # docs/audit/config-inert-fixed.md.
-DEFAULT_MODEL = os.path.join(HERE, "models", "nemotron-3.5-asr-streaming-0.6b-int8")
+DEFAULT_MODEL = os.path.join(HERE, "models", "nemotron-3.5-asr-ptbr-onnx-int4")
 TARGET_SR = 16000
 
 # ── the universal ladder ──────────────────────────────────────────────────────
@@ -2945,6 +2955,18 @@ class LineFormer:
         self._words = []
         self._start = None
         self._end = None
+        # WHERE THE NEWEST CHUNK BEGAN, in audio seconds. `_start` is the LINE's
+        # start and `_end` the newest chunk's end; their difference is the whole
+        # line, not the pause before the newest words. The renderer needs the
+        # chunk's own start to see a silence: `chunk_start - previous_end` is
+        # the honest gap, and it is what `caption-formulation.js` turns into a
+        # comma or a full stop. Reset with the line, like `_start`.
+        self._chunk_start = None
+        #: The chunks that make up the OPEN line, as `(start, end, text)`.
+        #: The line is cumulative, so a renderer cannot recover an interior
+        #: pause from `start`/`end` alone; this list is the raw material for
+        #: timing-aware punctuation (`caption-formulation.js`, 2026-10-17).
+        self._chunks = []
         # The text this LINE last sent, so a partial and the final of the same
         # text cannot both go out. Reset with the line, never across lines.
         self._shown = None
@@ -2991,6 +3013,23 @@ class LineFormer:
             # itself word for word. MEASURED against the real renderer module.
             "start": None if self._start is None else round(self._start, 2),
             "end": None if self._end is None else round(self._end, 2),
+            # THE TIMING FIELDS (2026-10-17), ONLY ON A SOURCED EVENT.
+            # `start` above is the LINE's start, so a renderer cannot derive a
+            # pause inside the line from the pair. `chunk_start` is the newest
+            # chunk's own start and `chunks` is the whole line's
+            # `[start, end, text]` list; together they are what drives the
+            # timing-aware punctuation in the panel.
+            #
+            # GATED ON `source` ON PURPOSE: `--selftest` and the file arm have
+            # no source, and their event key set is pinned by an oracle
+            # (`_main/per-app-source-plumbing-oracle.py`, CHK-3). A live tap
+            # always has a source, so every caption the owner actually sees
+            # carries the timing fields.
+            **({"chunk_start": round(self._chunk_start, 2),
+                "chunks": [[round(s, 2), round(e, 2), t]
+                           for (s, e, t) in self._chunks]}
+               if (self.source is not None and self._chunk_start is not None)
+               else {}),
             # THE ROUTE (M2). `final:true` is a line the WORKER CLOSED and is the
             # ONLY text the transcript may take (`panel.js recordHistory`:
             # `if (route !== 'final') return`); every partial is `final:false`.
@@ -3033,6 +3072,8 @@ class LineFormer:
                 # publishes the transcript's copy from the second pass.
                 out.append(self._event(text))
         self._words, self._start, self._end, self._shown = [], None, None, None
+        self._chunk_start = None
+        self._chunks = []
         return out
 
     def take_closed(self):
@@ -3073,9 +3114,15 @@ class LineFormer:
         if self._words and len(join_fragments(self._words + [(frag, cont)])) > self.max_chars:
             out += self._close()
             cont = False
-        # (3) append, remembering where the LINE began.
+        # (3) append, remembering where the LINE began and where THIS chunk
+        # began. The two are different clocks: `_start` never moves, and the
+        # chunk start is what makes an interior pause visible to the renderer.
         if not self._words:
             self._start = start
+        if start is not None:
+            self._chunk_start = start
+        if start is not None and end is not None:
+            self._chunks.append((start, end, frag))
         self._words.append((frag, cont))
         if end is not None:
             self._end = end
@@ -4206,7 +4253,32 @@ def decide_verdict(counters, outcome, ran_but_silent) -> str:
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
+def _lower_process_priority():
+    """Put the WHOLE worker at BELOW_NORMAL priority, on Windows.
+
+    Owner, 2026-10-17: *"abrir ou fechar o sotto causa um travamento muito
+    forte no meu pc"*. The cold start allocates ~2 GB and compiles/loads CUDA
+    kernels; at NORMAL priority that burst outranks Explorer and the shell and
+    the desktop visibly stalls. This is the worker's own promise, independent
+    of how it was spawned (a `python sotto_worker.py` typed in a terminal gets
+    the same treatment as the shell's child).
+    """
+    if os.name != 'nt':
+        return 'not-windows'
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_bool
+        ok = kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x00004000)
+        return 'below-normal' if ok else 'failed'
+    except Exception as exc:  # noqa: BLE001
+        return 'failed:%r' % (exc,)
+
+
 def main():
+    _lower_process_priority()
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
     ap.add_argument("--config", default=os.path.join(HERE, "config.json"))
     ap.add_argument("--selftest", action="store_true", help="transcribe a file, no audio device needed")

@@ -69,7 +69,13 @@
          buttons — the owner's rule: *"eu quero que tudo seja traduzido pro tamanho
          atual, e com os botoes atuais. o resto, tem que ser igual."* -->
     <link rel="stylesheet" href="themes/zipc-panels.css" />
-    <link rel="stylesheet" href="zip-overlay.css" />    <!-- THE TEMPLATE SET (owner, 2026-10-08): *"gostei de alguns designs que botei
+    <link rel="stylesheet" href="zip-overlay.css" />
+    <!-- THE BUTTON CONTRACT (owner, 2026-10-17: *"todos os botoes deviam estar
+         no literalmente mesmo lugar, em todos os temas"*). It is the LAST sheet
+         on purpose: every rule is !important and scoped to the surface, so it
+         wins against the 45 generated theme sheets regardless of their order. -->
+    <link rel="stylesheet" href="button-contract.css" />
+    <!-- THE TEMPLATE SET (owner, 2026-10-08): *"gostei de alguns designs que botei
          ai no workspace. sao .zip novos… eu nao quero só a paleta de cores. eu
          quero uma mudança mesmo, a cada tema/template. super parecida com o que ta
          no zip, ou igual"*. These are the `cinematic` designs from the three zips he
@@ -789,6 +795,38 @@
             />
           </svg>
           <span class="strip-button__label">Open panel</span>
+        </button>
+
+        <!-- THE CAPTION FONT DIAL, BACK ON THE STRIP (owner, 2026-10-17,
+             verbatim: *"quero o botao nesse painel de baixo da ativar a
+             legenda, aumentar ou diminuir a legenda, e pausar"*). The two
+             buttons were removed on 2026-10-12 as part of the bare-minimum
+             trim; the owner now asks for them BY NAME, so they are back with
+             the same ids `panel.js wireFontDial` already binds. One number,
+             `--caption-scale`, shared with the side panel. -->
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-font-smaller-button"
+          title="Smaller captions"
+          aria-label="Smaller captions"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <text x="8" y="12" text-anchor="middle" font-size="9" fill="currentColor">A</text>
+          </svg>
+          <span class="strip-button__label">Smaller</span>
+        </button>
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-font-larger-button"
+          title="Larger captions"
+          aria-label="Larger captions"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <text x="8" y="12.5" text-anchor="middle" font-size="12" fill="currentColor">A</text>
+          </svg>
+          <span class="strip-button__label">Larger</span>
         </button>
 
         <!-- ── HIDE: the strip's own dismiss. It calls the SAME `bridge.hide()`
