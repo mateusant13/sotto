@@ -596,6 +596,76 @@ function paintChars(span, word, typing) {
   }
 }
 
+/* THE CAPTION WINDOW'S ATTRIBUTE NAME, DECLARED HERE FOR THE SAME REASON THE AUDIO
+ * LEVEL IS (see the note at the bottom of this block): the init block below
+ * REACHES it, and a `const` reached from above its own declaration throws at load.
+ *
+ * MEASURED 2026-10-17 16:00:40, real WebView2, the shell's own log:
+ *   WARN PAGE_ERROR text="Uncaught ReferenceError: Cannot access
+ *   'CAPTION_WINDOW_ATTR' before initialization" at=panel.js:2221:48
+ *   stack="... at captionOverlayIsUp (panel.js:2221:48) at
+ *   watchCaptionWindowState (panel.js:2254:20) at panel.js:629:3"
+ * Line 629 called `watchCaptionWindowState()`; the constant it reads was declared
+ * at 2217. The throw happened INSIDE the init block, so every statement after it
+ * in that block -- wirePause, wireRevive, announceReady, wireLevel and
+ * wireThemeScrollGuard -- never ran at all, which is why the owner's caption
+ * button did nothing and nothing said why.
+ *
+ * ONLY THE NAME AND ITS ONE READER MOVED. `watchCaptionWindowState`,
+ * `requestCaptionOverlay` and `applyLiveEnabled` are function declarations, so they
+ * hoist and stay beside the long explanation they belong to. This is the SECOND
+ * time this file has paid for a binding below the code that reaches it (the audio
+ * level was the first), which is why the gate exists:
+ *   node _main/tdz-reach-oracle.js app/panel/panel.js 612 635
+ */
+const CAPTION_WINDOW_ATTR = 'data-caption-window';
+
+/** What the shell last said it did with its caption window. NOT what the page wants. */
+function captionOverlayIsUp() {
+  return document.documentElement.getAttribute(CAPTION_WINDOW_ATTR) === 'on';
+}
+
+// ---------------------------------------------------------------------------
+// this reads `LEVEL`. It sat BELOW the burst until 2026-10-17, which was the
+// second TDZ in this file; it was masked because the first one threw first.
+// THE AUDIO LEVEL — REAL DATA OR NOTHING. Declared ABOVE the init block, which
+// reaches it: `wireLevel()` ends in a SYNCHRONOUS `pull()` -> `pushLevel()` ->
+// ---------------------------------------------------------------------------
+// THE WAVE THE DESIGN DREW WAS FAKE, AND IT IS DELETED. `.chrome__meter` ran a
+// pure CSS keyframe loop that animated identically with speech, with silence and
+// with a DEAD WORKER — measured in `docs/research/12-audio-level-contract.md`.
+// A wave that lies is worse than no wave, which is what the owner forbade.
+//
+// WHAT THE REAL DATA IS, and what is still missing (that document's finding, not
+// a guess): the worker's `peak` is the MAXIMUM OF THE RUN so far — it only rises,
+// so three ticks in a row print the same number while the `rms` drifts — and it
+// is published at about ONE POINT PER 10 s, where a wave needs ~10/s. Both are
+// being fixed in the worker and in the shell by other lanes; the contract this
+// code is built against is `stats.peak` = the level OF ONE WINDOW, plus
+// `stats.blocks`.
+//
+// SO THE WAVE IS MOUNTED AND OFF. It consumes `onStats`/`getStats` when a shell
+// has them, keeps an N=128 history (≈12.8 s at 10 Hz), smooths it with an
+// INSTANT ATTACK and a ~200 ms release, and paints five compositor-only bars.
+// With no data the bars sit at the floor, `body[data-level="none"]` says so, and
+// the probe asserts that they do not move.
+const LEVEL = {
+  /** Ring buffer of window levels, newest at `(head - 1 + N) % N`. */
+  hist: new Float32Array(128),
+  head: 0,
+  n: 0,
+  /** The smoothed value the bars show. */
+  level: 0,
+  /** False until a REAL measurement arrives — never inferred from anything. */
+  have: false,
+  /** Local clock of the last measurement, so a stale feed can be detected. */
+  at: null,
+};
+/** Instant attack, ~200 ms release: without the release the bars shake. */
+const LEVEL_RELEASE_MS = 200;
+const LEVEL_FLOOR = 0.14;
+let lastLevelPaint = 0;
+
 /** No bridge means no captions can ever arrive; say so instead of looking idle. */
 if (!bridge) {
   if (dom.status) dom.status.classList.add('status--error');
@@ -639,44 +709,6 @@ if (!bridge) {
 // rule is about the layout, not about captions arriving.
 wireThemeScrollGuard();
 
-// ---------------------------------------------------------------------------
-// THE AUDIO LEVEL — REAL DATA OR NOTHING (declared ABOVE the init block, which
-// reaches it, per the rule the 2026-10-07 TDZ bug bought)
-// ---------------------------------------------------------------------------
-// THE WAVE THE DESIGN DREW WAS FAKE, AND IT IS DELETED. `.chrome__meter` ran a
-// pure CSS keyframe loop that animated identically with speech, with silence and
-// with a DEAD WORKER — measured in `docs/research/12-audio-level-contract.md`.
-// A wave that lies is worse than no wave, which is what the owner forbade.
-//
-// WHAT THE REAL DATA IS, and what is still missing (that document's finding, not
-// a guess): the worker's `peak` is the MAXIMUM OF THE RUN so far — it only rises,
-// so three ticks in a row print the same number while the `rms` drifts — and it
-// is published at about ONE POINT PER 10 s, where a wave needs ~10/s. Both are
-// being fixed in the worker and in the shell by other lanes; the contract this
-// code is built against is `stats.peak` = the level OF ONE WINDOW, plus
-// `stats.blocks`.
-//
-// SO THE WAVE IS MOUNTED AND OFF. It consumes `onStats`/`getStats` when a shell
-// has them, keeps an N=128 history (≈12.8 s at 10 Hz), smooths it with an
-// INSTANT ATTACK and a ~200 ms release, and paints five compositor-only bars.
-// With no data the bars sit at the floor, `body[data-level="none"]` says so, and
-// the probe asserts that they do not move.
-const LEVEL = {
-  /** Ring buffer of window levels, newest at `(head - 1 + N) % N`. */
-  hist: new Float32Array(128),
-  head: 0,
-  n: 0,
-  /** The smoothed value the bars show. */
-  level: 0,
-  /** False until a REAL measurement arrives — never inferred from anything. */
-  have: false,
-  /** Local clock of the last measurement, so a stale feed can be detected. */
-  at: null,
-};
-/** Instant attack, ~200 ms release: without the release the bars shake. */
-const LEVEL_RELEASE_MS = 200;
-const LEVEL_FLOOR = 0.14;
-let lastLevelPaint = 0;
 
 // ---------------------------------------------------------------------------
 // Caption formulation. The TEXT decisions live in `caption-formulation.js`,
@@ -2213,13 +2245,12 @@ function applyTransparency(on) {
  * `applyLiveEnabled` keeps its name and its signature because the surface switch still
  * calls it (`:2006`) to REPAINT; it is a painter now, not a switch. `{silent: true}` is
  * accepted and ignored on purpose, so no caller has to change to get the new behaviour.
+ *
+ * `CAPTION_WINDOW_ATTR` and `captionOverlayIsUp` used to live HERE, and the init block
+ * reached them from above -- a ReferenceError at load, measured and logged on
+ * 2026-10-17 16:00:40. Both are now declared just above that init block, which is the
+ * only reason this whole mechanism works on the first paint. Do not move them back.
  */
-const CAPTION_WINDOW_ATTR = 'data-caption-window';
-
-/** What the shell last said it did with its caption window. NOT what the page wants. */
-function captionOverlayIsUp() {
-  return document.documentElement.getAttribute(CAPTION_WINDOW_ATTR) === 'on';
-}
 
 /**
  * ASK THE SHELL. Deliberately paints nothing: the paint belongs to the shell's answer,
