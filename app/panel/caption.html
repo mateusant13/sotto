@@ -24,7 +24,12 @@
 <link rel="stylesheet" href="zip-overlay.css">
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%;
-    background: #ff00ff !important; overflow: hidden !important;
+    /* TRANSPARENT, not magenta. The magenta was the chroma key, but it was
+       painted by the WebView2 CHILD, and a WinForms TransparencyKey on the
+       parent cannot key a child's opaque pixels -- that is the solid pink slab
+       in the owner's screenshot. The page now paints nothing where there is no
+       text; WebView2 composites that as alpha, and the form behind it is keyed. */
+    background: transparent !important; overflow: hidden !important;
     -webkit-user-select: none; user-select: none; }
   .caption-float { position: fixed !important; inset: 0 !important; display: block !important; }
   .caption-float__stage { position: absolute; left: 0; right: 0; bottom: 0;

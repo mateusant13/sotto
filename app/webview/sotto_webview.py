@@ -7059,29 +7059,23 @@ class SottoShell:
         try:
             cap_hwnd = int(form.Handle.ToInt64())
             cap_styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
-            if not self.args.opaque:
-                cap_styles |= WS_EX_LAYERED
+            # NO WS_EX_LAYERED. WebView2's transparency is per-pixel through
+            # `DefaultBackgroundColor = Transparent` + DirectComposition, not a
+            # layered-window colour key. Microsoft's own feedback says the
+            # colour-key route on the hosting HWND "did not work" with WebView2,
+            # and Wails measured that layered/alpha calls break per-pixel
+            # transparency. Adding it here was fighting the mechanism pywebview
+            # already set up.
             set_ex_style(cap_hwnd, add=cap_styles, remove=WS_EX_APPWINDOW)
             log(f'CAPTION_WINDOW_STYLES hwnd={cap_hwnd} toolwindow=true '
                 f'appwindow=false noactivate=true '
                 f'layered={str(not self.args.opaque).lower()} '
                 f'reason=not-a-taskbar-app-and-the-key-needs-layered')
-            if not self.args.opaque:
-                # THE PINK SLAB CURE (owner, 2026-10-17). The page paints
-                # `#ff00ff` where the window must be see-through; that colour
-                # only disappears once the LAYERED bit is set AND the key is
-                # re-applied to the composited window. Doing it here -- after
-                # the style, not in `before_show` -- is the whole point.
-                try:
-                    from System.Drawing import Color as _KeyColor
-                    _magenta = _KeyColor.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
-                    form.BackColor = _magenta
-                    form.TransparencyKey = _magenta
-                except Exception as exc_key:  # noqa: BLE001
-                    log(f'CAPTION_FORM_KEY_SET_FAILED error={exc_key!r}')
-                ok_key = set_layered_color_key(cap_hwnd, 0x00FF00FF)
-                log(f'CAPTION_COLORKEY set=#FF00FF applied={str(ok_key).lower()} '
-                    f'at=loaded-after-layered reason=kill-the-pink-slab')
+            # THE FORM MUST STAY OUT OF THE WAY. pywebview already set
+            # `SupportsTransparentBackColor` and `DefaultBackgroundColor =
+            # Transparent`; overriding `form.BackColor`/`TransparencyKey` here
+            # was what turned the caption into a solid magenta slab (owner's
+            # screenshot, 2026-10-17). No colour key, no form background.
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WINDOW_STYLES_FAILED error={exc!r}')
         # E TEM DE SER COM `Invoke`, MEDIDO NA SONDA: o evento `loaded` NAO corre na
@@ -7101,6 +7095,11 @@ class SottoShell:
 
             def _apply_bgc():
                 try:
+                    try:
+                        form.BackColor = Color.Transparent
+                    except Exception as exc_back:  # noqa: BLE001
+                        log(f'CAPTION_FORM_TRANSPARENT_BACKCOLOR_FAILED '
+                            f'at=loaded error={exc_back!r}')
                     wv = getattr(form, 'webview', None)
                     if wv is None:
                         log('CAPTION_LOADED_WEBVIEW_MISSING')
@@ -7115,6 +7114,17 @@ class SottoShell:
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_WEBVIEW2_BGC_FAILED at=loaded error={exc!r}')
 
+        # PROVE THE OTHER HALF OF THE TRANSPARENCY: the PAGE must not paint a
+        # background. `DefaultBackgroundColor` is only visible through pixels
+        # the page leaves transparent; an opaque body hides it.
+        try:
+            bg = self.caption_window.evaluate_js(
+                'JSON.stringify({html:getComputedStyle(document.documentElement)'
+                '.backgroundColor, body:getComputedStyle(document.body)'
+                '.backgroundColor})')
+            log(f'CAPTION_PAGE_BG {bg}')
+        except Exception as exc_bg:  # noqa: BLE001
+            log(f'CAPTION_PAGE_BG_FAILED error={exc_bg!r}')
 
         # E RE-ESCONDE, PORQUE O PYWEBVIEW ACABOU DE A MOSTRAR. O comentario do
         # `_on_navigation_start` explica o mecanismo e ele e o mesmo aqui:
@@ -7170,27 +7180,12 @@ class SottoShell:
                 form.BackColor = Color.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
                 log('CAPTION_FORM_BACKCOLOR set=#0B0F14 reason=--opaque')
             else:
-                magenta = Color.FromArgb(0xFF, 0xFF, 0x00, 0xFF)
-                form.BackColor = magenta
-                form.TransparencyKey = magenta
-                # Belt and braces: if the HWND is ALREADY layered (a re-show of
-                # the same window), the Win32 key takes effect right here. A
-                # first show reaches the same call from `_on_caption_loaded`,
-                # after the layered bit has been added.
-                try:
-                    ok_key = set_layered_color_key(int(form.Handle.ToInt64()), 0x00FF00FF)
-                except Exception:  # noqa: BLE001
-                    ok_key = False
-                log('CAPTION_FORM_TRANSPARENCYKEY set=magenta '
-                    f'win32_key_applied={str(ok_key).lower()} '
-                    'reason=overlay-not-a-slab')
-                # E O WEBVIEW2, NA THREAD DA UI. MEDIDO NUMA SONDA: com a form ja a
-                # magenta, o que sobra e um retangulo ESCURO do tamanho da janela -- e
-                # esse retangulo e o CONTROLO WebView2, que pinta o proprio fundo. Posto
-                # no `before_show` ele nao pega; posto de outro thread falha com
-                # `CoreWebView2Controller members can only be accessed from the UI
-                # thread`. `form.Invoke` e a marshala para a thread da UI, e foi a unica
-                # forma que respondeu (medido: `INVOKE_WEBVIEW2_BGC set=transparent`).
+                # NO COLOUR KEY AND NO FORM BACKGROUND. WebView2's own
+                # `DefaultBackgroundColor=Transparent` is the supported route
+                # (Microsoft WebView2Feedback #118: LWA_COLORKEY on the hosting
+                # HWND "did not work" with WebView2; Wails #6088: layered/alpha
+                # calls break per-pixel transparency). The only thing to set
+                # here is the controller's background, on the UI thread.
                 try:
                     from System import Action
 
@@ -7287,6 +7282,50 @@ class SottoShell:
             log(f'CAPTION_WINDOW_PUSH_FAILED error={exc!r}')
             return False
 
+    def _caption_bgc_transparent(self, reason):
+        """Re-assert WebView2's transparent background on the UI thread.
+
+        The controller property is the supported mechanism, and it must be set
+        AFTER the controller exists (loaded) and after a show/resize, because a
+        navigation or a geometry change can leave the surface painted with the
+        old background. No form colour, no TransparencyKey, no layered key.
+        """
+        win = getattr(self, 'caption_window', None)
+        form = getattr(win, 'native', None) if win is not None else None
+        if form is None:
+            return False
+        try:
+            from System import Action
+            from System.Drawing import Color
+
+            def _apply():
+                try:
+                    # THE FORM IS THE "HOSTING APP CONTENT" WebView2 shows
+                    # through. It was WHITE (the owner's screenshot). A
+                    # transparent BackColor is the only value that lets the
+                    # desktop/video through; `SupportsTransparentBackColor` is
+                    # already set by pywebview for a transparent window.
+                    try:
+                        form.BackColor = Color.Transparent
+                    except Exception as exc_back:  # noqa: BLE001
+                        log(f'CAPTION_FORM_TRANSPARENT_BACKCOLOR_FAILED '
+                            f'reason={reason} error={exc_back!r}')
+                    wv = getattr(form, 'webview', None)
+                    if wv is not None:
+                        wv.DefaultBackgroundColor = Color.Transparent
+                        log(f'CAPTION_BGC_VALUE reason={reason} '
+                            f'value={wv.DefaultBackgroundColor} '
+                            f'form_back={form.BackColor}')
+                except Exception as exc:  # noqa: BLE001
+                    log(f'CAPTION_BGC_REASSERT_FAILED reason={reason} error={exc!r}')
+
+            form.Invoke(Action(_apply))
+            log(f'CAPTION_BGC_REASSERT reason={reason} set=transparent')
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_BGC_REASSERT_FAILED reason={reason} error={exc!r}')
+            return False
+
     def _fit_caption_window(self, needed):
         """Redimensiona a janela da legenda ao CONTEUDO, mantendo o FUNDO no sitio.
 
@@ -7327,6 +7366,7 @@ class SottoShell:
                 win.move(cap_x, bottom - want)
                 self._caption_window_y = bottom - want
             self._caption_window_h = want
+            self._caption_bgc_transparent('resize')
             log(f'CAPTION_WINDOW_SIZED h={want} was={have} reason=content')
             return True
         except Exception as exc:  # noqa: BLE001
@@ -7340,8 +7380,9 @@ class SottoShell:
             return False
         try:
             if on:
-                win.show()
+                win.show()
                 self._caption_window_shown = True
+                self._caption_bgc_transparent('show')
             else:
                 win.hide()
                 self._caption_window_shown = False

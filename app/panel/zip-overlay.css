@@ -445,10 +445,23 @@ html[data-caption-window="on"] #caption-float {
  * (`<html data-caption-window="1">`). Assim nao toca em nada do painel.
  *
  * O `html` E o `body`: o `body` do painel leva a mesma base, e o `html` pinta o resto. */
+/* THE OWNER DOES NOT WANT THE SHADOW ON THE LIVE CAPTION (2026-10-17). The
+ * shadow belongs to the panel's inline caption, where there is a plate under
+ * the words; on the transparent overlay it reads as a dark halo around every
+ * letter. The stroke stays (it is what keeps white text legible over video). */
+html[data-caption-window] #caption-float .caption-float__line {
+  text-shadow: none !important;
+}
+
 html[data-caption-window],
 html[data-caption-window] body {
-  background: #ff00ff !important;
-  background-color: #ff00ff !important;
+  /* TRANSPARENT, NOT MAGENTA. The magenta was a chroma key for a WinForms
+   * TransparencyKey, but WebView2 is an opaque child: the parent cannot key
+   * its pixels (Microsoft WebView2Feedback #118 measured exactly that). The
+   * supported mechanism is WebView2's `DefaultBackgroundColor=Transparent`
+   * plus a page that paints nothing where there is no text. */
+  background: transparent !important;
+  background-color: transparent !important;
   background-image: none !important;
 }
 
