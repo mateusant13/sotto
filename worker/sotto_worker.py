@@ -174,6 +174,80 @@ def is_soundmapper_pseudo(name):
     return any(pat in low for pat in SOUNDMAPPER_PATTERNS)
 
 
+#: Names that DENOUNCE a Bluetooth audio endpoint. Measured 2026-10-17 on this
+#: host, and the driver path is the one that matters:
+#:
+#:     Headset (@System32\drivers\bthhfenum.sys,#2;%1 Hands-Free%0...
+#:
+#: `bthhfenum.sys` is the Windows **Bluetooth** audio driver. A name alone is not
+#: enough — the same headset is "Headset (soundcore Space Q45)" under MME,
+#: DirectSound and WASAPI, with no word "bluetooth" anywhere in it — which is
+#: exactly why a name-based filter would have missed it.
+BLUETOOTH_AUDIO_MARKS = (
+    "bthhfenum", "bthenumer", "bthmodem", "hands-free", "hands free",
+    "wireless headset", "bluetooth", "airpods",
+)
+
+
+def is_bluetooth_audio_device(name):
+    """True when this NAME ALONE proves a Bluetooth audio endpoint.
+
+    O DONO, 2026-10-17: *"por que eu fico sem audio de tempos em tempos? ... me
+    força a desconectar ele e a reconectar pra eu ouvir meu pc de novo?"*. Abrir o
+    microfone de um auscultador sem fios obriga o Windows a passar o dispositivo
+    de **A2DP** (musica, stereo) para **HFP** (chamadas, mono, 16 kHz). A musica
+    cai e so volta com um novo emparelhamento.
+
+    **ISTO SO APANHA UM DOS QUATRO NOMES, E SABE-SE.** MEDIDO 2026-10-17: o
+    auscultador do dono chama-se
+        `Headset (@System32\\drivers\\bthhfenum.sys,#2;%1 Hands-Free%0...;(soundcore Space Q45))`
+    em WDM-KS, e `Headset (soundcore Space Q45)` em MME, DirectSound e WASAPI —
+    sem a palavra "bluetooth" em lado nenhum. Por isso esta funcao devolveu
+    `False` para tres dos quatro, que era exactamente o estrago que veio
+    corrigir. Nao se usa este predicado sozinho; ve-se
+    `bluetooth_fingerprints(devs)`."""
+    low = str(name).lower()
+    return any(mark in low for mark in BLUETOOTH_AUDIO_MARKS)
+
+
+def bluetooth_fingerprints(devs):
+    """Every device name that appears in this enumeration AS a Bluetooth endpoint.
+
+    MEASURED 2026-10-17, and this is the half that was missing: one physical
+    headset shows up under four host APIs, and only ONE of the four names carries
+    the driver path. The other three carry nothing but the friendly name — the
+    very name the owner would recognise as his own headphones. So the enumeration
+    is read ONCE: any device whose name announces Bluetooth contributes its
+    FRIENDLY part — the LAST parenthesised group, which is where Windows puts
+    `(soundcore Space Q45)` — and every other device carrying that same fragment
+    is the same hardware and is refused too.
+
+    On this host that turns one refusal into four, which is what it takes to stop
+    opening it. A wired device of the same brand does not appear in this list,
+    because it never appears WITH a `bthhfenum` name next to it."""
+    prints_found = set()
+    for d in devs:
+        raw = str(d.get("name", "") if isinstance(d, dict) else getattr(d, "name", ""))
+        if not is_bluetooth_audio_device(raw):
+            continue
+        groups = raw.split("(")
+        for group in reversed(groups):
+            friend = group.split(")")[0].strip()
+            if len(friend) >= 6 and not any(
+                    mark in friend.lower() for mark in BLUETOOTH_AUDIO_MARKS):
+                prints_found.add(friend.lower())
+                break
+    return prints_found
+
+
+def is_bluetooth_audio_device_in(devs, name):
+    """The check the ladder uses: this name is Bluetooth, by itself or by family."""
+    if is_bluetooth_audio_device(name):
+        return True
+    low = str(name).lower()
+    return any(finger in low for finger in bluetooth_fingerprints(devs))
+
+
 def heuristic_loopback_score(name):
     """How much a device NAME looks like a loopback of the PC's own output.
 
@@ -1156,6 +1230,30 @@ def device_candidates(cfg_audio=None, wanted=None, target_pid=None):
         if "micro" in low or "mic" in low:
             continue
         if is_soundmapper_pseudo(d["name"]):
+            continue
+        # ── NUNCA UM AUSCULTADOR BLUETOOTH, EM NENHUMA DESTA RUNG ───────────
+        # O DONO, 2026-10-17, furioso: *"por que eu fico sem audio de tempos em
+        # tempos? por acaso tu faz alguma OUTRA merda no meu headphone q me
+        # força a desconectar ele e a reconectar pra eu ouvir meu pc de novo?"*
+        # SIM, E ISTO IA FAZER ISSO A CADA RUN.
+        #
+        # MEDIDO nesta maquina, o auscultador dele aparece assim:
+        #     id=60  WDM-KS  Headset (@System32\drivers\bthhfenum.sys,#)   16000 Hz
+        #     id=39  WASAPI  Headset (soundcore Space Q45)                16000 Hz
+        #     id=12  MME     Headset (soundcore Space Q45 Hands-Free...)  44100 Hz
+        #
+        # `bthhfenum.sys` e o driver de audio BLUETOOTH do Windows, 16 000 Hz e a
+        # taxa do perfil HFP, e existe uma saida chamada "Hands-Free" so porque o
+        # dispositivo esta em HFP. Abrir o microfone de um auscultador sem fios
+        # obriga o Windows a passar o dispositivo de A2DP (musica, stereo) para HFP
+        # (chamadas, mono, 16 kHz): a musica cai ou passa a qualidade de telefone
+        # e so volta com um novo emparelhamento.
+        #
+        # A TRAPACHA DESTA RUNG: o nome do auscultador NAO tem "micro" nem "mic" —
+        # "Headset (soundcore Space Q45)" passa nas duas linhas de cima e era
+        # OFERECIDO COMO "remaining non-microphone input". Por isso o nome
+        # sozinho nao chega: o caminho do driver e que denuncia.
+        if is_bluetooth_audio_device(d["name"]):
             continue
         offer(d, "tail", "remaining non-microphone input")
     return out

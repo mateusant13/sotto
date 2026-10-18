@@ -290,19 +290,29 @@ class OnnxBackend:
     producer = PRODUCER
 
     def __init__(self, model_dir: str, threads: int = 0):
-        if ONNX_REFERENCE_DIR not in sys.path:
-            sys.path.insert(0, ONNX_REFERENCE_DIR)
+        # THE MODEL DIRECTORY FIRST. MEASURED 2026-10-17: this loader put only
+        # `ONNX_REFERENCE_DIR` on sys.path, and the export ships its OWN
+        # `transcribe.py` inside the model directory, so a correct, complete
+        # download still died with `ModuleNotFoundError: No module named
+        # 'transcribe'` -- state="error", stage="model". The reference directory
+        # stays as the fallback for the layout where the three small files were
+        # split out, and it is tried SECOND so a stale copy there can never shadow
+        # the one that ships with the weights it belongs to.
+        model_path = Path(model_dir)
+        for candidate in (str(model_path), ONNX_REFERENCE_DIR):
+            if candidate not in sys.path:
+                sys.path.insert(0, candidate)
         import transcribe as reference
 
         # The reference implementation takes a Path and divides it
         # (`model_dir / "config.json"`); handing it the CLI's str is a TypeError,
         # measured. Convert once, here.
-        model_path = Path(model_dir)
         if not (model_path / "encoder-model.onnx").is_file():
             raise SystemExit(
                 f"redux_live: no ONNX export in {model_path}\n"
-                f"  fetch it (measured: 12.4 s on this box, 445 MB):\n"
-                f"    hf download eschmidbauer/parakeet-redux-onnx --local-dir {model_path}"
+                f"  fetch AND verify it (measured 2026-10-17: 7 s on this box,\n"
+                f"  416 MB, revision 1c285ba78d6f1880803f65355133a5ad3559a407):\n"
+                f"    python _main\\fetch-parakeet.py"
             )
         self._ref = reference
         self._model = reference.OnnxParakeet(model_path,

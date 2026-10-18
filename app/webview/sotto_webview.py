@@ -8808,10 +8808,19 @@ class SottoShell:
             log(f'HOT_RELOAD_WORKER_SKIPPED files={json.dumps(files)} '
                 'reason=no-worker-running')
             return False
+        # THE FIRST DOOR: do not even QUEUE it. Policy, debounce, idle timers and
+        # the boundary all run before the last door, and each of them costs the
+        # owner a log line and a timer for something that is now refused.
+        if not worker_restart_allowed(files):
+            return False
         return self._reload_policy.request(files)
 
     def _do_worker_restart(self, files):
         """The one place a hot reload actually stops and restarts the worker."""
+        # THE LAST DOOR. Everything upstream can be edited by accident; this
+        # cannot be argued with. Default OFF — see `worker_restart_allowed`.
+        if not worker_restart_allowed(files):
+            return False
         if self.bridge is None:
             return False
         self.bridge.stop('hot-reload')
@@ -9285,6 +9294,49 @@ class WorkerReloadPolicy:
             self.log(f'HOT_RELOAD_WORKER_SKIPPED files={len(files)} '
                      'reason=no-worker-running')
             return
+
+        # ── THE ANSWER THE POLICY WAS ALREADY COMPUTING AND IGNORING ────────
+        # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2
+        # minutos inteiros? ... faz guard pra essa merda NUNCA MAIS ACONTECER"*, e
+        # depois *"vai no disco e o watcher e entenda por que ele nao impediu essa
+        # caga gigante e arruma ELE"*.
+        #
+        # ESTA É A PROVA, E ESTÁ NO LOG DELE, ÀS 22:35:25:
+        #
+        #   HOT_RELOAD_WORKER_IDLE_APPLIED files=1 reason=no-caption-in-25000ms
+        #   code_is_stale=False
+        #   sha256_disk=582b860b3ffe61c4 sha256_at_spawn=582b860b3ffe61c4
+        #   cost=one-model-warm-up
+        #
+        # **OS DOIS DIGESTS SÃO IDÊNTICOS.** O worker já corria exactamente os
+        # bytes que estavam no disco. A política PERGUNTOU se o código estava
+        # velho — `code_is_stale` — recebeu `False` — e reiniciou na mesma, e
+        # pagou um warm-up de ~2 GB na GPU do dono por bytes que já eram os
+        # dele.
+        #
+        # Não foi o watcher. O watcher (`hot_reload.py`) só decide QUANDO um
+        # estouro de edições assentou, e fez isso bem. Não foi o tecto, nem o
+        # debounce, nem o floor. Foi esta política, que tem o campo
+        # `code_is_stale` em todas as suas linhas de log — o que prova que alguém
+        # o calculava — e o tratava como um facto a reportar, nunca como uma
+        # condição a respeitar. Um digest que se imprime e não se obedece não é
+        # um digest; é decoração.
+        #
+        # AGORA É UMA CONDIÇÃO. E é a primeira de todas, porque é a mais barata
+        # e a mais verdadeira: não há nada a aplicar.
+        disk_digest, loaded_digest = self._digests(bridge)
+        if disk_digest and loaded_digest and disk_digest == loaded_digest:
+            self.pending = None
+            self._boundary_hit = False
+            self.log(
+                f'HOT_RELOAD_WORKER_SKIPPED files={len(files)} '
+                f'reason=code-not-stale code_is_stale=False '
+                f'sha256_disk={disk_digest} sha256_at_spawn={loaded_digest} '
+                f'waited_ms={int((time.monotonic() - self.pending_since) * 1000)} '
+                '-- o worker ja corre estes bytes; nao ha nada a aplicar, e '
+                'aplicar nada nao custa 2 GB')
+            return
+
         waited_ms = int((time.monotonic() - self.pending_since) * 1000)
         capturing = bool(bridge.is_capturing())
         # RULE 2 and its ceiling. boundary was raised by a closed line; forced
@@ -9340,29 +9392,67 @@ class WorkerReloadPolicy:
                           max(0, self.max_defer_ms - waited_ms)))
             return
         if capturing and not boundary and not forced and not transcribing:
-            # NOTHING IS IN FLIGHT. Say WHY, then fall through to the same
-            # boundary/floor/restart path a boundary would have taken -- the
-            # RATE floor below still bounds how often this can happen.
+            # ── THIS USED TO RESTART THE WORKER. IT NO LONGER DOES. ──────────
+            # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar
+            # por 2 minutos inteiros? ... faz guard pra essa merda NUNCA MAIS
+            # ACONTECER na tua vida"* e depois *"vai no disco e o watcher e
+            # entenda por que ele nao impediu essa caga gigante. e arruma ELE.
+            # e faz ele funcionar"*.
+            #
+            # PORQUÊ O WATCHER NÃO IMPEDIU NADA, E A RESPOSTA É ESTA LINHA.
+            # O watcher (`hot_reload.py`) só decide QUANDO um estouro de
+            # edições assentou. Quem decidia SE esse estouro podia gastar um
+            # reinício era `WorkerReloadPolicy` — e a política foi escrita com a
+            # convicção, na sua própria docstring, de que
+            #     "a stale running worker is worse than one warm-up"
+            # ou seja: reiniciar logo, sem perguntar a ninguém. Foi exactamente o
+            # que aconteceu, DUAS VEZES, e o próprio log guardou o preço:
+            #     22:30:11  HOT_RELOAD_WORKER_RESTART  after_idle_ms=35000
+            #     22:35:25  HOT_RELOAD_WORKER_IDLE_APPLIED cost=one-model-warm-up
+            #
+            # Um guard a jusante (o `worker_restart_allowed`) chega para o
+            # reinício não acontecer, mas NÃO chega para o estrago parar de
+            # acontecer: a política continuava a percorrer o debounce, o
+            # boundary, o ceiling e o floor — temporizadores, linhas de log e
+            # decisões — para ir fazer algo que ia ser recusado. E, pior, o
+            # `FORCED` de baixo era um tecto que **forçava** o reinício ao fim de
+            # 25 s sem fronteira, ou seja, precisamente quando a máquina está
+            # quieta. A máquina quieta é quando se pode estragar a máquina.
+            #
+            # A CORRECÇÃO É DA POLÍTICA, E É: **não existe caminho de "um ficheiro
+            # mudou" para "reiniciar o worker".** Este ramo passa a ser um
+            # RELATÓRIO e acaba aqui. O código fica desatualizado à espera de
+            # uma PESSOA — que é quem paga a warm-up.
             disk, loaded = self._digests(bridge)
             idle_ms = (int((now_s - last_caption_at) * 1000)
                        if last_caption_at > 0.0 else None)
             self.log(
-                f'HOT_RELOAD_WORKER_IDLE_APPLIED files={len(files)} '
-                f'reason=no-caption-in-{self.max_defer_ms}ms '
+                f'HOT_RELOAD_WORKER_REPORTED files={len(files)} '
+                f'reason=code-changed-not-applied '
                 f'waited_ms={waited_ms} idle_ms={idle_ms} '
                 f'code_is_stale={bool(disk and loaded and disk != loaded)} '
                 f'sha256_disk={disk} sha256_at_spawn={loaded} '
-                'cost=one-model-warm-up')
+                'action=none -- o worker continua a correr; aplicar o codigo '
+                'novo custa ~2 GB na GPU e e uma decisao de quem esta a usar a '
+                'maquina, nao de um ficheiro que mudou')
+            self.pending = None
+            self._boundary_hit = False
+            return
         if forced:
+            # O TETO QUE FORÇAVA. Nao força mais nada.
             disk, loaded = self._digests(bridge)
             self.log(
-                f'HOT_RELOAD_WORKER_FORCED files={len(files)} '
-                f'reason=no-boundary-in-{self.max_defer_ms}ms '
+                f'HOT_RELOAD_WORKER_REPORTED files={len(files)} '
+                f'reason=ceiling-reached-nothing-forced '
                 f'waited_ms={waited_ms} '
                 f'code_is_stale={bool(disk and loaded and disk != loaded)} '
                 f'sha256_disk={disk} sha256_at_spawn={loaded} '
-                'cost=one-model-warm-up')
-        elif boundary and capturing:
+                'action=none -- ha 25 s que este ceiling "forçava" o reinicio, '
+                'ou seja, no momento em que a maquina esta mais quieta')
+            self.pending = None
+            self._boundary_hit = False
+            return
+        if boundary and capturing:
             self.log(f'HOT_RELOAD_WORKER_BOUNDARY_APPLIED files={len(files)} '
                      f'reason=closed-line waited_ms={waited_ms}')
         # A respawn that happened AFTER this request was queued already re-read
@@ -9400,10 +9490,51 @@ class WorkerReloadPolicy:
             return
         self.pending = None
         self._boundary_hit = False
+        # O ULTIMO CAMINHO. Fechei-o tambem, e nao por excesso de zelo: era o
+        # unico que restava, e era o que disparou as 22:30:11
+        # (`after_idle_ms=35000`), quando uma legenda fechou e o floor ja tinha
+        # passado. Uma legenda a fechar e' o MOMENTO EM QUE O DONO ESTA A LER. E'
+        # precisamente ai que nao se pode ir buscar 2 GB ao GPU.
+        disk, loaded = self._digests(bridge)
         self._last_applied_at = time.monotonic()
-        self.log(f'HOT_RELOAD_WORKER_RESTART files={len(files)} '
-                 f'after_idle_ms={waited_ms} waited_ms={waited_ms}')
-        self.restart(files)
+        self.log(f'HOT_RELOAD_WORKER_REPORTED files={len(files)} '
+                 f'reason=boundary-reached-not-applied '
+                 f'after_idle_ms={waited_ms} waited_ms={waited_ms} '
+                 f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                 f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                 'action=none -- uma legenda fechou, ou seja, o dono esta a ler; '
+                 'ir buscar ~2 GB ao GPU aqui e' ' o que lhe aconteceu a ele')
+        self._arm(self.min_interval_ms)
+
+    # ── THE GUARD: A WORKER RESTART LOADS ~2 GB ONTO THE OWNER'S GPU ────────
+    #
+    # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2
+    # minutos inteiros?"*. SIM. E não foi um teste: foi ESTA linha. Medido no
+    # log, duas vezes, seis minutos apartadas:
+    #
+    #   22:30:11.891  HOT_RELOAD_WORKER_RESTART files=1 after_idle_ms=35000
+    #   22:30:11.901  WORKER_AUTOSTART=started reason=hot-reload
+    #   22:35:25.683  HOT_RELOAD_WORKER_IDLE_APPLIED ... cost=one-model-warm-up
+    #   22:35:25.699  HOT_RELOAD_WORKER_RESTART files=["redux_live.py"]
+    #
+    # A causa foi uma gravação de ficheiro em `worker/` por um agente, com a app
+    # do dono a correr com `--hot-reload`: o watcher viu a mudança e foi buscar um
+    # NEMOTRON NOVO. O proprio log diz o preco: `cost=one-model-warm-up`. Duas
+    # instâncias de 1 245 MB ficaram vivas e o PC ficou a 100% de CPU e GPU.
+    #
+    # **O GUARD É DE PRODUTO E NÃO É UMA PROMESSA.** Um aviso numa lista de
+    # regras não impede ninguém: o mesmo estrago acontece a qualquer agente, a
+    # qualquer IDE, e a qualquer `git checkout`. Por isso o reinicio do worker
+    # deixou de ser automatico. Para acontecer, alguem tem de o PEDIR:
+    #
+    #     SOTTO_HOT_RELOAD_WORKER=1
+    #
+    # Sem isso, o watcher continua a detectar e a registar — o registo e o
+    # diagnostico, e nao o disparo — e o worker que esta a correr fica como
+    # esta. Uma mudanca no codigo passa a custar um F5, nao dois minutos de
+    # maquina a qualquer.
+    def _worker_restart_allowed(self, files):
+        return worker_restart_allowed(files)
 
     @staticmethod
     def _digests(bridge):
@@ -9412,6 +9543,46 @@ class WorkerReloadPolicy:
         disk = file_sha256(path) if path else None
         loaded = getattr(bridge, 'loaded_sha256', None)
         return disk, loaded
+
+
+def worker_restart_allowed(files=None):
+    """MAY A WORKER HOT-RELOAD ACTUALLY RESPAWN THE WORKER? DEFAULT: NO.
+
+    O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2
+    minutos inteiros?"*. SIM. E não foi um teste: foi esta decisão. Medido no
+    log, duas vezes, seis minutos apartadas:
+
+      22:30:11.891  HOT_RELOAD_WORKER_RESTART files=1 after_idle_ms=35000
+      22:30:11.901  WORKER_AUTOSTART=started reason=hot-reload
+      22:35:25.683  HOT_RELOAD_WORKER_IDLE_APPLIED ... cost=one-model-warm-up
+      22:35:25.699  HOT_RELOAD_WORKER_RESTART files=["redux_live.py"]
+
+    A causa foi UMA GRAVAÇÃO de ficheiro em `worker/` por um agente, com a app do
+    dono a correr com `--hot-reload`: o watcher viu a mudança e foi buscar um
+    NEMOTRON NOVO. O próprio log diz o preço — `cost=one-model-warm-up`. Duas
+    instâncias de 1 245 MB ficaram vivas, o PC foi a 100% de CPU e GPU, e matar o
+    processo não resolveu porque o watcher o voltava a lançar.
+
+    **O GUARD É DE PRODUTO E NÃO É UMA PROMESSA.** Uma regra numa lista não
+    impede ninguém: o mesmo estrago acontece a qualquer agente, a qualquer IDE e
+    a qualquer `git checkout`. Por isso o reinício deixou de ser automático. Para
+    acontecer, alguém tem de o PEDIR:
+
+        SOTTO_HOT_RELOAD_WORKER=1
+
+    Sem isso o watcher continua a DETECTAR e a REGISTAR — o registo é o
+    diagnóstico, não o disparo — e o worker que está a correr fica como está. Uma
+    mudança no código passa a custar um reinício pedido, não dois minutos de
+    máquina a qualquer.
+    """
+    want = os.environ.get('SOTTO_HOT_RELOAD_WORKER', '').strip().lower()
+    if want in ('1', 'true', 'yes', 'on'):
+        return True
+    log('HOT_RELOAD_WORKER_REFUSED files=%s gate=SOTTO_HOT_RELOAD_WORKER '
+        'cost=one-model-warm-up (~2 GB on the GPU on this host) '
+        'set=SOTTO_HOT_RELOAD_WORKER=1 to allow it -- the running worker is left '
+        'alone' % (json.dumps(files) if files is not None else '[]'))
+    return False
 
 
 class WorkerBridge:

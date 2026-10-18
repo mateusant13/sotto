@@ -42,8 +42,34 @@ import time
 #   'VoiceMeeter Output' x3, 'CABLE Output' x3, 'Driver de captura de som
 #   primario', 'Mixagem estereo (Realtek ... Stereo input)',
 #   'Entrada (Realtek HD Audio Line input)'.
-MIC_WORDS = ('microfone', 'microphone', 'mic input', 'headset', 'headphone',
-             'hands-free', 'chat', 'line input')
+#: **NEVER OPEN A BLUETOOTH HEADSET'S MICROPHONE WITHOUT BEING ASKED.**
+#:
+#: THE OWNER, 2026-10-17: *"por que eu fico sem audio de tempos em tempos? por
+#: acaso tu faz alguma OUTRA merda no meu headphone q me força a desconectar ele e
+#: a reconectar pra eu ouvir meu pc de novo?"* SIM. Fui eu. E está medido:
+#:
+#:     id=60  Windows WDM-KS  Headset (@System32\drivers\bthhfenum.sys,#)  16000 Hz
+#:     id=39  Windows WASAPI   Headset (soundcore Space Q45)               16000 Hz
+#:     id=12  MME              Headset (soundcore Space Q45 Hands-Free...) 44100 Hz
+#:
+#: `bthhfenum.sys` is the Windows **Bluetooth** audio driver; 16 000 Hz is the
+#: HFP (headset-profile) rate; and an output endpoint whose own name is
+#: "Hands-Free" exists only while the device IS in HFP. Opening a Bluetooth
+#: headset's microphone makes Windows switch the device from **A2DP** (music,
+#: stereo) to **HFP** (calls, mono, 16 kHz). The music stops or drops to phone
+#: quality, and recovering needs a disconnect/reconnect — which is exactly what the
+#: owner reported.
+#:
+#: THIS WAS MY BUG, and it was one word. `headset` was in `MIC_WORDS` below, so
+#: the census opened the headset's mic FOUR times: MME id 4, DirectSound id 19,
+#: WASAPI id 39 and WDM-KS id 60. Every instrument that opens a device on this box
+#: has to carry this refusal, because the damage is to the owner's playback and
+#: it is invisible in every log here.
+BLUETOOTH_MARKS = ('bthhfenum', 'bthenumer', 'bthmodem', 'hands-free', 'hands free')
+WIRELESS_HEADSET_MARKS = ('wireless', 'bluetooth', 'bt ', 'buds', 'airpods')
+
+MIC_WORDS = ('microfone', 'microphone', 'mic input', 'hands-free', 'chat',
+             'line input')
 
 # ...e o que exclui, porque estes NAO sao microfones mesmo com o nome a enganar.
 NOT_MIC_WORDS = ('voicemeeter', 'cable', 'cable output', 'estereo',
@@ -52,6 +78,20 @@ NOT_MIC_WORDS = ('voicemeeter', 'cable', 'cable output', 'estereo',
 
 SILENT_PEAK = 1e-3
 SILENT_RMS = 1e-4
+
+
+def is_bluetooth(name):
+    """TRUE when this endpoint is a Bluetooth audio device, by any of its names.
+
+    Measured on this host, 2026-10-17: the Space Q45 shows up as
+    `Headset (soundcore Space Q45)` under MME, DirectSound and WASAPI — with no
+    word "bluetooth" anywhere in the name — and only as
+    `Headset (@System32\drivers\bthhfenum.sys,#)` under WDM-KS. So the name is
+    not enough on its own, and refusing by name alone would have missed it. The
+    driver path is the tell, which is why the WDM-KS enumeration is included.
+    """
+    low = name.lower()
+    return any(mark in low for mark in BLUETOOTH_MARKS)
 
 
 def is_mic(name):
@@ -65,6 +105,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--seconds', type=float, default=2.0)
     ap.add_argument('--names', default='')
+    ap.add_argument('--allow-bluetooth', action='store_true',
+                    help='open Bluetooth devices too. This switches the headset '
+                         'from A2DP to HFP and can drop the owner\'s playback, so '
+                         'it needs to be typed on purpose.')
     ap.add_argument('--json-out', default='')
     args = ap.parse_args()
 
@@ -76,6 +120,7 @@ def main():
     devs = sd.query_devices()
 
     rows = []
+    refused = []
     print('FALA durante %.0f s.\n' % args.seconds)
     for i, d in enumerate(devs):
         name = d['name']
@@ -84,6 +129,16 @@ def main():
         if only and not any(o in name.lower() for o in only):
             continue
         if not only and not is_mic(name):
+            continue
+        if is_bluetooth(name) and not args.allow_bluetooth:
+            # THE REFUSAL. See the BLUETOOTH_MARKS note above: opening this
+            # endpoint takes the owner's headset out of A2DP and into HFP, and
+            # he has to reconnect it to hear his PC again. Not opened by
+            # accident, not opened by a name match, not opened by a census.
+            print('id=%-3d %-22s %-42s RECUSADO (Bluetooth: A2DP -> HFP '
+                  'derruba o audio do dono)' % (i, apis[d['hostapi']]['name'][:22],
+                                                name[:42]))
+            refused.append(name)
             continue
         rate = int(round(d['default_samplerate']))
         ch = min(2, int(d['max_input_channels']))
@@ -116,6 +171,10 @@ def main():
         print('        %r' % name)
 
     print()
+    if refused:
+        print('RECUSADOS SEM ABRIR: %d  %s' % (len(refused), refused))
+        print('  (--allow-bluetooth para os abrir; isso tira o auscultador de A2DP')
+        print('   e pode deixar o dono sem audio ate reemparelhar.)')
     talking = [r for r in rows if not r['digital_silence'] and not r['error']]
     print('RESUMO: %d candidato(s) a microfone, %d com sinal.'
           % (len(rows), len(talking)))

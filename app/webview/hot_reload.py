@@ -51,6 +51,28 @@ import time
 #: same reason, as hot-reload.js:DEBOUNCE_MS.
 DEBOUNCE_MS = 250
 
+#: THE WORKER FILES THAT ARE ACTUALLY RUN. Not "every .py in worker/".
+#:
+#: MEASURED 2026-10-17: this watcher accepted `base.endswith('.py')`, so
+#: `worker/` has THIRTEEN of them — `sotto_worker.py`, `redux_live.py`,
+#: `redux_batch.py`, `denoise.py`, `lang_prompt.py`, `qwen_summary.py`,
+#: `model_vram_pool.py`, `vram_residency.py`, `wasapi_loopback.py`,
+#: `inspect_model.py`, `audio_recorder.py`, `audio_queue_consumer.py`, plus
+#: `_prefix_audioflag.py` — and a change to ANY of them was "the worker changed".
+#: That is how editing a recorder module, which the bridge never re-executes, ends
+#: up as a request to throw away a warm model and go and get another one.
+#:
+#: The list is not a guess about the product: `WorkerReloadPolicy` already
+#: resolves the file the bridge is RUNNING (`bridge.worker_path`) and compares
+#: its digest. So the honest set is that one file, and the policy's digest is the
+#: arbiter. `SOTTO_WATCH_WORKER` overrides for an unusual layout.
+def watched_worker_files():
+    raw = os.environ.get('SOTTO_WATCH_WORKER', '').strip()
+    if raw:
+        return {os.path.basename(p) for p in raw.split(';') if p.strip()}
+    return {'sotto_worker.py', 'redux_live.py'}
+
+
 #: The renderer assets that reload in place. Same set as hot-reload.js.
 PANEL_ASSETS = frozenset(('panel.html', 'panel.css', 'panel.js'))
 
@@ -69,11 +91,29 @@ FILE_NOTIFY_CHANGE_ATTRIBUTES = 0x00000004
 FILE_NOTIFY_CHANGE_SIZE = 0x00000008
 FILE_NOTIFY_CHANGE_LAST_WRITE = 0x00000010
 FILE_NOTIFY_CHANGE_CREATION = 0x00000040
-FILE_NOTIFY_CHANGE_ALL = (FILE_NOTIFY_CHANGE_NAME
-                          | FILE_NOTIFY_CHANGE_ATTRIBUTES
-                          | FILE_NOTIFY_CHANGE_SIZE
-                          | FILE_NOTIFY_CHANGE_LAST_WRITE
-                          | FILE_NOTIFY_CHANGE_CREATION)
+#: WHAT A CODE CHANGE LOOKS LIKE TO THE KERNEL. This used to be
+#: `FILE_NOTIFY_CHANGE_ALL`, and that is the second half of why a save cost the
+#: owner a model load.
+#:
+#: O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2 minutos
+#: inteiros? ... vai no disco e o watcher e entenda por que ele nao impediu essa
+#: caga gigante e arruma ELE"*.
+#:
+#: `FILE_NOTIFY_CHANGE_ALL` includes `FILE_NOTIFY_CHANGE_ATTRIBUTES` and
+#: `FILE_NOTIFY_CHANGE_CREATION`. An ATTRIBUTE change is not a code change: an
+#: antivirus scan, an indexer, a backup, an `os.utime`, a `touch`, or this agent
+#: setting an mtime all raise one. So the watcher reported "the worker's code
+#: changed" for files whose BYTES had not moved. And the policy then asked the
+#: next question and got the right answer — `code_is_stale=False`, with both
+#: sha256 digests identical (22:35:25 in his own log) — and restarted anyway,
+#: because that answer was printed and not obeyed.
+#:
+#: A code change is NAME (a new file, a rename) or LAST_WRITE or SIZE. Anything
+#: else is somebody else's business.
+FILE_NOTIFY_CHANGE_CODE = (FILE_NOTIFY_CHANGE_NAME
+                           | FILE_NOTIFY_CHANGE_LAST_WRITE
+                           | FILE_NOTIFY_CHANGE_SIZE)
+FILE_NOTIFY_CHANGE_ALL = FILE_NOTIFY_CHANGE_CODE   # kept as the module's name
 INVALID_HANDLE_VALUE = wt.HANDLE(-1).value
 ERROR_OPERATION_ABORTED = 995
 WAIT_OBJECT_0 = 0x00000000
@@ -354,6 +394,7 @@ class HotReload:
             os.path.join(self.panel_dir, os.pardir, os.pardir, 'worker'))
 
         self._watchers = []
+        self._worker_files = watched_worker_files()
         self._lock = threading.Lock()
         self._pending = {'panel': set(), 'worker': set()}
         self._events = 0
@@ -369,7 +410,10 @@ class HotReload:
         if kind == 'panel':
             accept = base in PANEL_ASSETS
         else:
-            accept = base.endswith('.py') and not base.startswith('.')
+            # ONLY THE FILE THE BRIDGE RUNS. See `watched_worker_files`: this used
+            # to be `base.endswith('.py')`, which made all THIRTEEN .py files in
+            # `worker/` a reason to throw away a warm model.
+            accept = base in self._worker_files
         if not accept:
             return
         with self._lock:
