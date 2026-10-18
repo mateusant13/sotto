@@ -59,16 +59,30 @@ const FONT_SCALE_STEP = 0.1;
 const FONT_SCALE_DEFAULT = 1;
 const FONT_SCALE_KEY = 'sotto:caption-scale';
 /**
- * THE STRIP'S TWO HEIGHTS (owner, 2026-10-12). The shell reads `--strip-height`
- * out of the stylesheet and docks the window to it, so the strip's size is ONE
- * number the page can raise and lower at runtime — the only runtime resize this
- * document has. `STRIP_HEIGHT` is the button row and nothing else (the owner:
- * *"ele deve ser menor ainda, mais estreito, do tamanho dos botoes"*);
- * `FLOAT_HEIGHT` is the same window while the caption is loose on the screen.
- * Both are STRINGS with the unit, because they are written to a custom property.
+ * THE STRIP'S HEIGHT — AND WHY THERE IS ONLY ONE, 2026-10-17.
+ *
+ * Until this morning there were TWO constants here, `STRIP_HEIGHT = '40px'` and
+ * `FLOAT_HEIGHT = '220px'`, and `applyFloat` picked between them. The second one
+ * is GONE, and it is gone because of what the log measured when the owner
+ * clicked the caption button (`_main/webview-run.log`, 2026-10-17):
+ *
+ *   21:40:12.621 STRIP_HEIGHT from=40 to=220 source=css css_value=220 reason=surface-strip-float-on
+ *   21:40:12.638 PANEL_SURFACE surface=strip reason=strip-float-on window=380x220@(770,768)
+ *
+ * One click grew the owner's panel from 380x40 to 380x220 — +180 px of empty box.
+ * His words, verbatim: *"ao clicar no botao de legenda, nao deve abrir qualquer
+ * coisa. e pra ativar a legenda, na minha tela, sem background, sem estar
+ * conectada a qualquer painel. ela e livre na minha tela, um overlay"*. The
+ * 220 px window WAS the thing that opened, so the constant that produced it is
+ * deleted instead of being re-tuned: there is no height to grow to.
+ *
+ * `--strip-height` still EXISTS and is still the shell's source of truth — it is
+ * read out of the stylesheet (`sotto_webview.py:7970`, `reason=surface-*`,
+ * `source=css`) — it is just no longer written from here. The owner's reference
+ * is a short, simple bar: that is the `float-off` state the log already shows as
+ * `window=380x40@(770,948)`.
  */
 const STRIP_HEIGHT = '40px';
-const FLOAT_HEIGHT = '220px';
 const dom = {
   panel: document.getElementById('panel'),
   // live caption box
@@ -2454,24 +2468,71 @@ function syncCaptionFloat(state) {
   return true;
 }
 
+/**
+ * THE OWNER'S RULE, 2026-10-17, verbatim — this function used to break it:
+ *
+ *   "ao clicar no botao de legenda, nao deve abrir qualquer coisa. e pra ativar a
+ *    legenda, na minha tela, sem background, sem estar conectada a qualquer
+ *    painel. ela e livre na minha tela, um overlay"
+ *
+ * MEASURED, in `_main/webview-run.log`, what ONE click of that button did:
+ *
+ *   21:40:12.621  STRIP_HEIGHT from=40 to=220 source=css css_value=220 reason=surface-strip-float-on
+ *   21:40:12.638  PANEL_SURFACE surface=strip reason=strip-float-on window=380x220@(770,768)
+ *   21:40:12.643  PANEL_SURFACE surface=strip reason=float-on      window=380x220@(770,768)
+ *
+ * The panel's own window GREW BY 180 PX — that is the "abrir qualquer coisa", and
+ * it is not the short simple bar in the owner's reference image. Worse, the page
+ * went TRANSPARENT at the same moment (`caption-float.css:69`), and the panel's
+ * window is NOT layered — `WS_EX_LAYERED` is opt-in and off by default
+ * (`sotto_webview.py:4969-4994`, log: `style=WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|
+ * WS_EX_TRANSPARENT` with no `|WS_EX_LAYERED`) — so a transparent page inside an
+ * opaque WinForms window is the WHITE SLAB and the white corners, measured.
+ *
+ * THERE WERE THREE WRITES, NOT ONE, and every one of them is gone below:
+ *   1. `setStripHeight(FLOAT_HEIGHT)` put `--strip-height: 220px` on <html>.
+ *   2. `bridge.setPanelSurface('strip', 'strip-float-on')` asked the shell to
+ *      re-surface the strip; `refresh_strip_height` read that variable back
+ *      (`sotto_webview.py:7970`) and docked the window to it.
+ *   3. `syncCaptionFloat()` -> `caption-float.js:243` asked for the SAME
+ *      `setPanelSurface('strip', 'float-on')`, so a call that skipped (2) still
+ *      grew the window. That is why the two `PANEL_SURFACE` lines are one
+ *      millisecond apart in the log above.
+ *
+ * SO A SHELL THAT OWNS A CAPTION WINDOW GETS NOTHING FROM THIS FUNCTION. The
+ * caption is `NativeCaptionOverlay` — a topmost, per-pixel-alpha, click-through
+ * Win32 window on its own thread (`caption_overlay.py:257-269`, measured live as
+ * `CAPTION_OVERLAY_PUSH count=1 visible=true hwnd=1775132`). It is on the
+ * DESKTOP, not inside this window. `requestCaptionOverlay()` is the only door to
+ * it and `watchCaptionWindowState()` paints the button from the shell's own
+ * `data-caption-window` write. Clicking LIVE changes no geometry here, and the
+ * panel keeps its own dark base (`panel.css:105-127`, THE RENDER PROTECTION) so
+ * the window cannot come out white.
+ *
+ * THE FALLBACK IS WHY THIS IS A BRANCH AND NOT A DELETION. A shell with NO
+ * `setLiveEnabled` — a browser probe, `_main/_audit-verify` — has no caption
+ * window of its own, so there the page's own overlay IS the caption and the old
+ * path is the only way a word reaches the screen. That harness is what
+ * `_main/panel-caption-button-probe.mjs` drives, and it must keep working.
+ */
+function shellOwnsCaptionWindow() {
+  return typeof bridge === 'object' && bridge !== null
+    && typeof bridge.setLiveEnabled === 'function';
+}
+
+/**
+ * Apply the floated state. With a shell that owns a caption window this is a
+ * NO-OP by design and by measurement; without one it is the page's own overlay,
+ * which is all a browser probe has. Idempotent either way.
+ */
 function applyFloat(on) {
+  if (shellOwnsCaptionWindow()) return;
   const want = on ? 'on' : 'off';
   if (document.body.getAttribute('data-float') !== want) {
     document.body.setAttribute('data-float', want);
   }
-  setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);
+  setStripHeight(STRIP_HEIGHT);
   syncCaptionFloat(want);
-  // THE WINDOW RESIZE IS THE SHELL'S, AND ONLY WHILE THE STRIP IS UP. The shell
-  // re-reads `--float-height`/`--strip-height` on every `setPanelSurface('strip')`,
-  // which is the only runtime resize this document has. It is called ONLY when the
-  // document already wears the strip: `applyLiveEnabled` runs at load and on every
-  // surface switch, and an unguarded call here would pull the strip onto the
-  // owner's screen while he is looking at the full panel — the exact class of
-  // defect the 2026-10-12 transparency button shipped. On the panel the attribute
-  // and the height are still written, so the strip opens right.
-  if (currentSurface() === 'strip' && bridge && typeof bridge.setPanelSurface === 'function') {
-    bridge.setPanelSurface('strip', on ? 'strip-float-on' : 'strip-float-off');
-  }
 }
 
 

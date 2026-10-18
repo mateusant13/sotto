@@ -4499,15 +4499,18 @@ class SottoHost:
         # que interessa aqui.
         payload = payload or {}
         reason = payload.get('reason') or 'page'
-        # O BOTAO LIVE MANDA NA JANELA DA LEGENDA. O objetivo pede-o por palavras: *"Ligar/
-        # desligar pelo botao live"*. E o sinal JA chega aqui pronto: `caption-float.js:243`
-        # chama `setPanelSurface('strip', want ? 'float-on' : 'float-off')` quando o estado
-        # do overlay muda, portanto a razao E o estado, sem polling nenhum, sem um segundo
-        # metodo de ponte e sem JS novo. Antes disto a janela aparecia com a PRIMEIRA
-        # LEGENDA, que e um bom sinal mas nao e o botao -- e se ele ligasse o live sem nada
-        # a tocar, a janela nao aparecia.
-        if reason in ('float-on', 'float-off'):
-            self._shell.show_caption_window(reason == 'float-on')
+        # A JANELA DA LEGENDA TEM UMA PORTA E SO UMA: `_set_live_enabled`, o botao LIVE.
+        #
+        # Aqui havia, ate 2026-10-17, uma SEGUNDA porta --
+        # `if reason in ('float-on', 'float-off'): show_caption_window(...)` -- que
+        # levantava a janela da legenda a partir de uma mudanca de SUPERFICIE. Ela
+        # existia porque `caption-float.js:243` mandava `setPanelSurface('strip',
+        # 'float-on')` ao proprio `setFloat`, e o objectivo pedia *"ligar/desligar
+        # pelo botao live"*. As DUAS portas foram cortadas no mesmo dia, pelo
+        # mesmo dono e a mesma medicao (a janela a crescer 40 -> 220 px num clique,
+        # log de 2026-10-17). Hoje `grep -rn 'float-on' app/` so encontra isto e
+        # comentarios: nenhuma linha viva manda a razao. Fica a porta unica, e uma
+        # superficie ja nao decide se ha legenda no ecra -- o dono decide.
         self._shell.set_panel_surface(payload.get('surface'), reason)
 
     def _stats(self, payload):
@@ -4833,6 +4836,19 @@ class SottoShell:
         # Win32 layered window with `UpdateLayeredWindow` is the supported
         # per-pixel-alpha path. The panel and strip stay WebView2/HTML/CSS.
         self.caption_overlay = None
+        # THE OWNER'S SWITCH, AND IT IS NOT THE SAME FACT AS "A WINDOW IS UP".
+        # Owner 2026-10-17, verbatim: *"ao clicar no botao de legenda, nao deve
+        # abrir qualquer coisa. e pra ativar a legenda, na minha tela, sem
+        # background, sem estar conectada a qualquer painel."* So the caption is
+        # OFF until he turns it on: before this flag, every caption line pushed the
+        # window up by itself (`push_caption_to_window`, measured live as
+        # `CAPTION_OVERLAY_PUSH count=1 visible=true hwnd=1775132` with no click
+        # anywhere in the log) and the button was decoration. The page paints its
+        # own `aria-pressed` from this flag, so the switch and the words cannot
+        # disagree. `_caption_window_shown` stays the OTHER fact — whether pixels
+        # are on screen right now — because silence must be able to blank the
+        # overlay without switching the owner off.
+        self._caption_wanted = False
         try:
             import caption_overlay
             self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
@@ -6438,11 +6454,15 @@ class SottoShell:
         log(f'PANEL_HIDDEN reason={reason} '
             f'visible={str(self.visible).lower()}')
         self.publish_panel_visibility(reason)
-        # A JANELA DA LEGENDA ESCONDE COM O PAINEL. O dono quer a legenda *"quando eu
-        # quero ou nao"*; deixar a janela propria acesa depois de o painel se esconder
-        # seria a legenda a fugir ao controlo que ele pediu. `show_caption_window` e
-        # silencioso quando a janela ainda nao existe.
-        self.show_caption_window(False)
+        # ESCONDER O PAINEL JA NAO DESLIGA A LEGENDA. A frase do dono que esta linha
+        # executava -- *"quando eu quero ou nao"* -- e' a do interruptor, nao a do painel:
+        # em 2026-10-17 ele sharpenou-a, verbatim, *"sem estar conectada a qualquer
+        # painel. ela e' livre na minha tela, um overlay"*. Esconder o painel e' uma
+        # accao sobre o painel; matar a legenda com ela era a legenda a estar LIGADA ao
+        # painel, que e' exactamente o que ele proibiu. O que se tira sao os PIXELS
+        # (`_blank_caption_window`, que nao escreve `data-caption-window`), e a legenda
+        # volta a aparecer na proxima linha sem ninguem tocar em nada.
+        self._blank_caption_window('panel-hidden')
         return True
 
     def toggle_panel(self, reason):
@@ -7117,6 +7137,41 @@ class SottoShell:
             except Exception:
                 pass
 
+    def _blank_caption_window(self, reason):
+        """TIRA OS PIXELS sem desligar o interruptor do dono.
+
+        MEDIDO 2026-10-17, o defeito que isto corrige, no log:
+            21:43:36.719  PANEL_SURFACE surface=strip reason=float-on window=380x220@(770,812)
+            21:43:51.360  CAPTION_WINDOW_IDLE_HIDDEN after_s=6.0 reason=no-caption
+            21:43:51.362  STRIP_HEIGHT from=220 to=40 reason=surface-strip-float-off
+            21:43:51.376  PANEL_SURFACE surface=strip reason=float-off window=380x40@(770,992)
+
+        Seis segundos sem legenda e o botao DESLIGAVA-SE SOZINHO: o
+        `_caption_idle_hide` chamava `show_caption_window(False)`, que escreve
+        `data-caption-window="off"`, e a pagina -- que pinta o `aria-pressed` a
+        partir desse atributo -- voltava a off. O dono nunca tinha tocado no botao
+        e mesmo assim a barra cresce e caia sozinha.
+
+        Sao DOIS factos e nao um: o interruptor e dele, a janela e um pixel. O
+        silencio limpa o pixel; a proxima legenda volta a escreve-lo sem tocar em
+        nada. E `hide_panel` usa a MESMA funcao: esconder o painel ja nao pode
+        matar a legenda, porque uma legenda "conectada a um painel" era
+        exactamente o que ele proibiu.
+
+        NAO escreve `data-caption-window`, e por isso o botao fica como o dono o
+        deixou."""
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return False
+        self._caption_window_shown = False
+        try:
+            self._post(lambda: ov.show(False))
+        except Exception:  # noqa: BLE001
+            pass
+        log(f'CAPTION_WINDOW_BLANKED reason={reason} wanted='
+            f'{str(bool(getattr(self, "_caption_wanted", False))).lower()}')
+        return True
+
     def _caption_idle_hide(self, seq):
         """Esconde a janela se NENHUMA legenda chegou depois de armar (stale-safe)."""
         try:
@@ -7124,9 +7179,7 @@ class SottoShell:
                 return
             if not getattr(self, '_caption_window_shown', False):
                 return
-            self.show_caption_window(False)
-            self._caption_window_shown = False
-            log('CAPTION_WINDOW_IDLE_HIDDEN after_s=%s reason=no-caption' % (self.CAPTION_IDLE_HIDE_S,))
+            self._blank_caption_window('no-caption-for-%ss' % (self.CAPTION_IDLE_HIDE_S,))
         except Exception as exc:  # noqa: BLE001
             try:
                 log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
@@ -7137,6 +7190,14 @@ class SottoShell:
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
+            return False
+        # O INTERRUPTOR DO DONO E A CONDICAO. Sem isto cada linha levantava a
+        # janela sozinha -- medido no log de 2026-10-17: `CAPTION_OVERLAY_PUSH
+        # count=1 visible=true hwnd=1775132` sem nenhum clique no botao -- e o
+        # proprio texto capturado chegava ("15 mil ha 8 h", o contador de
+        # visualizacoes do YouTube), que nao e legenda nenhuma. Ele pediu que o
+        # botao seja o que liga isto; enquanto ele nao ligar, a janela nao existe.
+        if not getattr(self, '_caption_wanted', False):
             return False
         self._caption_window_shown = True
         dbg = self._overlay_pushes < 3
@@ -8405,11 +8466,20 @@ class SottoShell:
             f'size={width}x{height} from=({x},{y})')
 
     def _set_live_enabled(self, payload):
-        """The live pill's switch: show/hide the independent caption window."""
+        """O interruptor do botao LIVE: mostra/esconde a janela da legenda.
+
+        ISTO E UM INTERRUPTOR DO DONO, NAO UM IMPULSO. `_caption_wanted` fica
+        True ate ele voltar a clicar; e `push_caption_to_window` so escreve na
+        janela quando a flag esta ligada. Antes, cada linha de legenda levantava a
+        janela por si (sem clique nenhum no log) e o botao so pintava.
+
+        `show_caption_window(on)` continua a ser quem mostra/esconde e quem escreve
+        `data-caption-window` -- a pagina pinta o botao a partir desse atributo."""
         on = bool((payload or {}).get('on'))
         try:
+            self._caption_wanted = on
             self.show_caption_window(on)
-            log(f'LIVE_ENABLED on={str(on).lower()}')
+            log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()}')
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 

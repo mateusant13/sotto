@@ -56,21 +56,44 @@ body[data-surface="panel"] #caption-float {
   display: none !important;
 }
 
-/* ── 2. NOTHING PAINTS: NOT THE PAGE, NOT THE OVERLAY, NOT A DESCENDANT ──── */
+/* ── 2. NOTHING PAINTS: NOT THE OVERLAY, NOT A DESCENDANT ───────────────── */
 
-/* THE SOLID DIV THE OWNER REPORTED. panel.css:105-134 gives <html> and <body> the
-   same opaque base on EVERY surface ("the colour of the thing the owner sees when
-   the WebView2 does not paint"). Behind a loose caption that base is exactly the
-   solid colour he sees instead of the desktop: the overlay's own pixels are
-   transparent, so the slab is what shows. While the caption is floated the page
-   paints nothing and the window is the caption and its bar. The attribute is
-   mirrored onto <html> by caption-float.js for this selector and for the shell's own
-   geometry read (sotto_webview.py:6527 and :6579 read documentElement). */
-html[data-float="on"],
-body[data-float="on"] {
-  background: transparent;
-  border-radius: 0;
-}
+/* DELETED 2026-10-17, AND THIS WAS THE OWNER'S "BACKGROUND".
+ *
+ * This file used to carry, verbatim:
+ *
+ *     html[data-float="on"],
+ *     body[data-float="on"] { background: transparent; border-radius: 0; }
+ *
+ * The owner, the same day, verbatim: *"sem background, sem estar conectada a
+ * qualquer painel"*. The intent was right and the mechanism was exactly wrong,
+ * and the reason is a MEASURED property of the panel's window:
+ * `WS_EX_LAYERED` is OPT-IN AND OFF BY DEFAULT here — `sotto_webview.py:4969`
+ * ("`WS_EX_LAYERED` IS OPT-IN AND OFF BY DEFAULT, MEASURED … it is the reason
+ * the strip composites WHITE"), and the running shell logs
+ * `panel setAlwaysOnTop(floating) … style=WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|
+ * WS_EX_TRANSPARENT` with NO `|WS_EX_LAYERED`.
+ *
+ * So the panel's HWND is an ordinary OPAQUE WinForms window. `transparent` on
+ * its page does not reveal the desktop; it reveals whatever the form does not
+ * paint, which is white — and it did, in the same gesture, because
+ * `data-float="on"` was written at the exact moment the caption button was
+ * clicked. That is the white slab and the white corners, measured, and the
+ * caption's own pixels were never the cause: they are transparent in every state
+ * (the list below), so what showed was the PAGE behind them.
+ *
+ * The protection stays where it belongs: `panel.css:105-127` calls its opaque
+ * base THE RENDER PROTECTION and it is never overridden from here again. The
+ * real caption has no background because it is not in this window at all — it is
+ * `NativeCaptionOverlay`, one topmost layered Win32 window drawn with
+ * `UpdateLayeredWindow` (`caption_overlay.py`), alpha per pixel, nothing behind
+ * the words.
+ *
+ * `caption.html` — the standalone caption page, which this file also serves —
+ * keeps its own transparency from its own inline `<style>` (`background:
+ * transparent !important`, after all four stylesheets), so nothing that page
+ * needs depends on the rule deleted here.
+ */
 
 /* THE OVERLAY AND EVERY DESCENDANT, IN EVERY STATE. No plate, no box, no border,
    no backdrop, no outline — the owner: "sem fundo, sem nada". The 4px left bar is
