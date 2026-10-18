@@ -126,7 +126,106 @@ class WNDCLASSEXW(ctypes.Structure):
                 ("hIconSm", wt.HICON)]
 
 
-def _premultiplied_bitmap(text, previous, width, height, scale):
+def _measure(text, px, cache):
+    """Width in px of `text` at `px`, measured by the renderer that draws it.
+
+    `GraphicsPath.AddString` + `FillPath` is what paints the caption, so the width
+    that decides a line break has to come from the same GDI+ engine. The tighter
+    `StringFormat.GenericTypographic` measures ~4.7% smaller (measured 2026-10-17:
+    683.32 px against 715.24 px for 20 W at 34 px), and that is GDI's opinion, not
+    GDI+ path metrics -- break for one and draw with the other and the last letter
+    gets clipped. Over-estimating is safe; clipping is not.
+
+    THE CACHE IS NOT AN OPTIMISATION, IT IS CORRECTNESS. MEASURED 2026-10-17:
+    with the `Graphics`/`Bitmap`/`Font` held only in the local scope of the factory,
+    they are collected the moment it returns and the NEXT call raises
+    `ArgumentException: Parametro invalido`. Default arguments pin them in the
+    closure for the life of the function object.
+    """
+    import clr
+    clr.AddReference('System.Drawing')
+    from System.Drawing import Bitmap, Graphics, Font, FontStyle, GraphicsUnit
+    key = round(float(px), 2)
+    hit = cache.get(key)
+    if hit is None:
+        bmp = Bitmap(8, 8)
+        g = Graphics.FromImage(bmp)
+        font = Font('Segoe UI', key, FontStyle.Bold, GraphicsUnit.Pixel)
+
+        def width_of(text, _g=g, _f=font):
+            return 0.0 if not text else _g.MeasureString(text, _f).Width
+
+        hit = width_of
+        cache[key] = hit
+    return hit
+
+
+_MEASURE_CACHE = {}
+
+#: THE OWNER, 2026-10-17, verbatim: *"e a legenda ta do tamanho da tela. é pra tu
+#: verificar online como quebrar de um jeito bom. ou como o youtube faz"*.
+#:
+#: A pesquisa deu o consenso de Netflix/TED/BBC/Section508/VEED: no maximo 2
+#: linhas, ~42 caracteres por linha, quebrar apos pontuacao e antes de
+#: conjuncao/preposicao, e a largura limitada a 68% de um quadro 16:9. Duas coisas
+#: da pesquisa mudao a implementacao, e as duas estao escritas no modulo:
+#: `caption_wrap.py`. O overflow -- o que nao cabe em duas linhas -- VOLTA ao
+#: desenho em vez de ser cortado em silencio: uma frase truncada sem sinal e pior
+#: do que uma frase partida.
+try:
+    import caption_wrap as _cw
+except Exception:  # noqa: BLE001  -- a legenda nao pode partir por um import
+    _cw = None
+
+
+def _layout(text, previous, scale, work_width):
+    """ONE layout for the caption, used by the measure AND by the draw.
+
+    Having two copies of "how many lines" is how a caption gets measured at one
+    height and drawn at another. This returns everything both sides need:
+    `(cur_lines, prev_line, width, height)`.
+
+    MEASURED 2026-10-17 at Segoe UI Bold 34 px on this box: budget 727 px, the
+    68% fraction of a 1920 px work area being 1305 px and the 42-character ceiling
+    being the one that binds.
+    """
+    cur_px = max(16.0, 34.0 * scale)
+    prev_px = max(12.0, 24.0 * scale)
+    pad = 14.0 * scale
+    led = 10.0 * scale
+    gap = 8.0 * scale
+    side = pad + led + gap + pad
+
+    cur_w = _measure('cur', cur_px, _MEASURE_CACHE)
+    prev_w = _measure('prev', prev_px, _MEASURE_CACHE)
+    budget = _cw.budget_px(work_width, cur_px, cur_w) if _cw else int(work_width * 0.5)
+
+    if _cw:
+        cur_lines, _overflow = _cw.wrap(text or '', cur_w, budget)
+    else:
+        cur_lines = [text] if text else []
+    if not cur_lines:
+        cur_lines = ['']
+
+    # The previous line is ONE line, kept one back, and clamped to the same budget
+    # so it can never be the wide one.
+    prev_line = ''
+    if previous:
+        if _cw:
+            prev_line = _cw.wrap(previous, prev_w, int(budget * 0.8))[0][0]
+        else:
+            prev_line = previous
+
+    widest = max([cur_w(l) for l in cur_lines] + ([prev_w(prev_line)] if prev_line else [0]))
+    max_text = max(1.0, work_width - side)
+    width = int(max(240 * scale, min(widest + side, max_text)))
+    line_h = cur_px * 1.35
+    height = int(pad * 2 + line_h * len(cur_lines)
+                 + (prev_px * 1.35 if prev_line else 0))
+    return cur_lines, prev_line, max(1, width), max(1, height)
+
+
+def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale):
     """Draw the caption onto a 32bpp premultiplied-ARGB bitmap (GDI+)."""
     import clr
     clr.AddReference("System.Drawing")
@@ -155,11 +254,9 @@ def _premultiplied_bitmap(text, previous, width, height, scale):
     pad = int(14 * scale)
     led = int(10 * scale)
     gap = int(8 * scale)
-    cur_h = int(cur_px * 1.35)
-    prev_h = int(prev_px * 1.35) if previous else 0
-    y = pad
     x0 = pad + led + gap
     inner_w = max(1, width - x0 - pad)
+    y = float(pad)
 
     def draw_line(s, font, color, top, h):
         brush = SolidBrush(color)
@@ -175,15 +272,18 @@ def _premultiplied_bitmap(text, previous, width, height, scale):
         pen.Dispose()
         brush.Dispose()
 
-    if previous:
-        draw_line(previous, prev_font,
-                  Color.FromArgb(215, 240, 245, 252), y, prev_h)
-        y += prev_h
-    if text:
-        draw_line(text, cur_font, Color.FromArgb(255, 245, 248, 252),
-                  y, cur_h)
-        # The LED the panel's caption uses, at the left of the live line.
-        cy = y + cur_h / 2.0
+    if prev_line:
+        h = int(prev_px * 1.35)
+        draw_line(prev_line, prev_font, Color.FromArgb(215, 240, 245, 252), y, h)
+        y += h
+    h = int(cur_px * 1.35)
+    for line in cur_lines:
+        draw_line(line, cur_font, Color.FromArgb(255, 245, 248, 252), y, h)
+        y += h
+    # The LED, once, beside the FIRST line of the caption -- the zip's own design:
+    # one 4px bar on the left that the words lean on.
+    if cur_lines and cur_lines[0]:
+        cy = pad + h / 2.0
         g.FillEllipse(SolidBrush(Color.FromArgb(255, 55, 214, 122)),
                       float(pad), float(cy - led / 2.0),
                       float(led), float(led))
@@ -282,36 +382,10 @@ class NativeCaptionOverlay:
         self.scale = float(scale or 1.0)
 
     def _measure(self, text, previous):
-        """Width/height in physical pixels for the current text."""
-        import clr
-        clr.AddReference("System.Drawing")
-        from System.Drawing import (Bitmap, Graphics, Font, FontStyle,
-                                    GraphicsUnit, SizeF)
-        scale = self.scale
-        cur_px = max(16.0, 34.0 * scale)
-        prev_px = max(12.0, 24.0 * scale)
-        cur_font = Font("Segoe UI", cur_px, FontStyle.Bold, GraphicsUnit.Pixel)
-        prev_font = Font("Segoe UI", prev_px, FontStyle.Bold, GraphicsUnit.Pixel)
-        tmp = Bitmap(8, 8)
-        g = Graphics.FromImage(tmp)
-        max_text = max(200 * scale, self.work.get('width', 1920) * 0.92)
-        pad = 14 * scale
-        led = 10 * scale
-        gap = 8 * scale
-        side = pad + led + gap + pad
-        def width_of(s, f):
-            if not s:
-                return 0.0
-            return g.MeasureString(s, f).Width
-        cur_w = width_of(text, cur_font)
-        prev_w = width_of(previous, prev_font) if previous else 0.0
-        text_w = min(max(cur_w, prev_w), max_text - side)
-        width = int(max(240 * scale, text_w + side))
-        h_cur = cur_px * 1.35
-        h_prev = prev_px * 1.35 if previous else 0
-        height = int(pad * 2 + h_prev + h_cur)
-        g.Dispose(); tmp.Dispose()
-        return max(1, width), max(1, height)
+        """Width/height for the current text. ONE layout, shared with the draw."""
+        cur_lines, prev_line, width, height = _layout(
+            text, previous, self.scale, self.work.get('width', 1920))
+        return width, height
 
     def _update(self):
         if not self.hwnd:
@@ -321,8 +395,11 @@ class NativeCaptionOverlay:
         if not text and not previous:
             self.hide()
             return True
-        width, height = self._measure(text, previous)
-        bmp = _premultiplied_bitmap(text, previous, width, height, self.scale)
+        # ONE layout, computed once, handed to the bitmap. Two copies of "how many
+        # lines" is how a caption gets measured at one height and drawn at another.
+        cur_lines, prev_line, width, height = _layout(
+            text, previous, self.scale, self.work.get('width', 1920))
+        bmp = _premultiplied_bitmap(cur_lines, prev_line, width, height, self.scale)
         try:
             from System.Drawing.Imaging import ImageLockMode, PixelFormat
             from System.Drawing import Rectangle

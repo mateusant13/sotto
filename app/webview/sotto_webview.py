@@ -2810,14 +2810,41 @@ class OutsideClickWatcher(threading.Thread):
         return True
 
     def _record(self, x, y, source, reason, closed):
+        # O RING EM MEMORIA E SEMPRE. O LOG NAO.
+        #
+        # MEDIDO 2026-10-17: esta linha escrevia no ficheiro de log **toda** vez
+        # que `reason is not None`, e `reason` e tambem 'panel-not-visible' e
+        # 'inside' -- ou seja, UM CLIQUE EM QUALQUER SITIO DO TEU ECRÃ, com o
+        # painel escondido, escrevia uma linha. O ficheiro carries:
+        #
+        #     73 420 linhas OUTSIDE_CLICK
+        #     crescimento medido: 3 185 B em 5 s = ~640 B/s = ~55 MB/dia
+        #
+        # E ISTO E UM INSTRUMENTO QUEIMADO, nao so um ficheiro grande: este log e
+        # onde se mede `LIVE_ENABLED`, `STRIP_HEIGHT` e `PANEL_SURFACE`, ou seja as
+        # provas de que o botao da legenda nao abre nada. Enterrar a evidencia
+        # num ruido de 640 B/s para o painel ja estar escondido nao tem razao de
+        # ser: 'o painel nao estava avel' NAO E UMA DECISAO, e a ausencia de uma.
+        #
+        # A REGRA: o log regista DECISOES (`closed=true`, ou uma janela que estava
+        # mesmo avel e o clique caiu fora dela). O resto conta-se e viaja na
+        # proxima linha real -- o numero nao se perde, so nao ocupa o ficheiro a
+        # 640 B/s.
+        self._idle_clicks = getattr(self, '_idle_clicks', 0) + 1
         entry = {'x': x, 'y': y, 'source': source, 'decision': reason,
                  'closed': closed}
         self.decisions.append(entry)
         del self.decisions[:-20]
+        visible = bool(self.shell.hwnd and window_visible(self.shell.hwnd))
+        idle = self._idle_clicks
+        self._idle_clicks = 0
+        if not closed and not self.armed and not visible:
+            return          # nada a decidir, nada a escrever
         log(f'OUTSIDE_CLICK source={source} point=({x},{y}) '
             f'decision={reason} closed={str(closed).lower()} '
             f'armed={str(self.armed).lower()} '
-            f'visible={str(bool(self.shell.hwnd and window_visible(self.shell.hwnd))).lower()}')
+            f'visible={str(visible).lower()}'
+            + (f' ignored_since_last={idle}' if idle else ''))
 
 def _unpack_point(packed):
     """One integer carries both coordinates: x in the low 16 bits, y above."""
@@ -8474,12 +8501,31 @@ class SottoShell:
         janela por si (sem clique nenhum no log) e o botao so pintava.
 
         `show_caption_window(on)` continua a ser quem mostra/esconde e quem escreve
-        `data-caption-window` -- a pagina pinta o botao a partir desse atributo."""
+        `data-caption-window` -- a pagina pinta o botao a partir desse atributo.
+
+        LIGAR ESCONDE O PAINEL. Dono, 2026-10-17, verbatim: *"e assim q eu ativar a
+        legenda, esconda o painel"*. E' a MESMA frase que cortou o crescimento da
+        janela, dita de outra maneira: a legenda nao leva o painel atras dela. O que
+        fica no ecra e so a janela nativa da legenda.
+
+        A ORDEM IMPORTA E MEDE-SE: `hide_panel` chama `_blank_caption_window`, que
+        tira os PIXELS. Se `show_caption_window(True)` corresse primeiro, a propria
+        chamada que liga a legenda ia-a apagar a seguir, e a legenda so voltava
+        com a primeira palavra -- o que nao e visivel para quem so diz "acendi e
+        nao aparece nada". Por isso: esconder primeiro, acender depois.
+
+        O BOTAO CONTINUA ACESSIVEL: `hide_panel` nao escreve `data-caption-window`,
+        logo o interruptor fica ligado; Alt+C traz o painel e o botao de volta,
+        la para o desligar. Esconder o painel e' o que ele pediu, e o caminho de
+        volta e o atalho que ele ja usa para o abrir."""
         on = bool((payload or {}).get('on'))
         try:
             self._caption_wanted = on
+            if on:
+                self.hide_panel('caption-on')
             self.show_caption_window(on)
-            log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()}')
+            log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()} '
+                f'panel_hidden={str(bool(on)).lower()}')
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 
