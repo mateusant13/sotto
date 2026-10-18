@@ -138,6 +138,29 @@ App relançada depois da mudança: `SINGLE_INSTANCE already_running=false`,
 `CAPTION_OVERLAY_MODE native=true hwnd=4592906`, **0 `PAGE_ERROR`**, **0**
 `Traceback`.
 
+### A barra, medida em píxeis e não em opinião
+
+Alt+C, depois da mudança:
+
+```
+22:03:00.673  STRIP_HEIGHT from=148 to=40 source=css css_value=40 extra=0 reason=surface-hotkey
+22:03:00.674  STRIP_WIDTH from=None to=380 source=content reason=surface-hotkey
+22:03:00.714  PANEL_SURFACE surface=strip reason=hotkey document_surface="strip"
+              window=380x40@(770,948) docked=bottom-strip edit_mode=false
+```
+
+Captura **só** da janela (`I:\cc-tmp\shot-panel.ps1`, 380x100), lida byte a byte:
+
+| sítio | cor | o que é |
+|---|---|---|
+| (0,0) e (379,0) | `rgb(15,19,23)` | a laje do tema |
+| (0,50) | `rgb(11,15,20)` | **`rgba(11,15,20,0.98)`** — `panel.css:127`, THE RENDER PROTECTION, viva outra vez |
+| (0,99) e (379,99) | `rgb(13,16,20)` | bordo inferior |
+
+Anel de bordo: **1920 px amostrados, 0 quase-brancos (0.0 %)**. Cores distintas
+na janela: **141** — um quadro liso teria muito menos, e uma página morta teria
+duas. **Nenhum branco em lado nenhum.**
+
 ### O oráculo leu três comentários como se fossem código
 
 Correção que o próprio oráculo impõe, na primeira execução: B1 e D1 deram RED
