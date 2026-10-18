@@ -5385,6 +5385,18 @@ def main():
                 except Exception as exc:
                     err(f"overlay accept failed ({type(exc).__name__}: {exc}); "
                         f"this segment will ship as the live text")
+            # ── THE AUDIO RECORDER (owner, 2026-10-17) ───────────────────────
+            # "e guarda os audios, vao ser processados continuamente por modelo
+            # melhor. o parakeet". Here, and HERE: the block is already at 16 kHz
+            # mono, already resampled and already counted, and it is the same PCM
+            # the decoder is about to see -- so what lands on disk is what the
+            # model heard, not a second capture of the same room that drifts.
+            #
+            # INERT unless `SOTTO_AUDIO_DIR` is set: `from_env` returns None and
+            # this is one `is not None` test. Nothing is opened, nothing is
+            # written, nothing is charged to the live path when nobody asked.
+            if recorder is not None:
+                recorder.accept(block)
             # ── THE STACK LAW: which engine transcribes THIS block ───────────
             # Inert when the flag is off (`switch is None`): not one read, not one
             # line, not one branch taken. When it is on, the ONLY thing that stops
@@ -5532,6 +5544,16 @@ def main():
             for event in overlay.drain():
                 counters["redux_live_captions"] += 1
                 emit(**event)
+        # The recorder's own tail, in the same place and for the same reason: a
+        # stream that ends with a segment open must still have that segment on
+        # disk and in the index, or the last words the owner spoke are the ones
+        # no better model ever gets to see. `close()` is idempotent and the
+        # `finally` below is safe.
+        if recorder is not None:
+            try:
+                recorder.close()
+            except Exception as exc:  # noqa: BLE001
+                err(f"AUDIO_RECORDER_CLOSE_FAILED {type(exc).__name__}: {exc}")
 
     # ── run the candidates until one of them is measurably alive ────────────
     # The loop is bounded twice over: at most one pass per candidate, and at
@@ -5640,6 +5662,26 @@ def main():
                     err(f"REDUX_LIVE_REFUSED engine={_engine} dir={_dir} "
                         f"reason={type(exc).__name__}: {exc} -- the live engine "
                         f"keeps streaming untouched")
+    # ── THE AUDIO RECORDER (owner, 2026-10-17) ─────────────────────────────
+    # "e guarda os audios, vao ser processados continuamente por modelo melhor.
+    # o parakeet". `SOTTO_AUDIO_DIR=<pasta>` is the whole opt-in: without it
+    # `from_env` returns None, nothing is constructed, no file is opened and no
+    # time is charged to the live path. It is declared HERE, beside the overlay it
+    # sits next to in `asr_thread`, because both are fed the same block.
+    #
+    # A recorder that cannot be built says so once and the run continues: audio
+    # on disk is a feature, transcription on screen is the product.
+    recorder = None
+    try:
+        import audio_recorder as _audio_recorder
+        recorder = _audio_recorder.from_env(log=err)
+        if recorder is not None:
+            err(f"AUDIO_RECORDER_ARMED dir={recorder.outdir} "
+                f"rate={recorder.rate} segment_s={recorder.segment_s}")
+    except Exception as exc:  # noqa: BLE001
+        recorder = None
+        err(f"AUDIO_RECORDER_REFUSED reason={type(exc).__name__}: {exc} -- "
+            f"the live stream continues without writing audio")
     worker = threading.Thread(target=asr_thread, name="asr", daemon=True)
     worker.start()
     next_stats = time.time() + args.stats_interval if args.stats_interval > 0 else float("inf")
@@ -6163,6 +6205,11 @@ def main():
             for event in overlay.drain():
                 counters["redux_live_captions"] += 1
                 emit(**event)
+        if recorder is not None:
+            try:
+                recorder.close()
+            except Exception as exc:  # noqa: BLE001
+                err(f"AUDIO_RECORDER_CLOSE_FAILED {type(exc).__name__}: {exc}")
 
     if outcome in ("all-flat", "open-failed"):
         emit(
