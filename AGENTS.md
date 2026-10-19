@@ -4,6 +4,98 @@ Real-time transcription of ANY audio on this PC, shown as captions on a global *
 Owner's acceptance, verbatim: *"e eu quero que o alt c mostre as transcricoes em tempo real,
 de qualquer audio do meu pc. e legendas."*
 
+## ORDEM DO DONO — 2026-10-19 16:5x -03:00 — DUAS ORDENS NOVAS, E A PREMISSA QUE ESTAVA ERRADA
+
+### Ordem n.º 1 — **MUTA O ÁUDIO DE TESTE**
+
+> *"se tu vai usar audio padrao pra testar qualquer coisa, muta. nao quero ficar ouvindo."*
+> (verbatim, o dono)
+
+A regra que fica: **qualquer teste que renderize áudio tem de ser mudo.** A
+protecção anterior era uma **recusa** — comparar o endpoint de render com o
+default do sistema e sair com `rc=4` **sem tocar** (`_main/inject-all-probe.py`,
+`_main/_audio-tone-inject.py`). O mute é mais forte, porque cobre o caso que a
+recusa **não** cobre: um teste que TENHA de usar o endpoint default.
+
+- A libraria é `_main/mute-audio.py` (pycaw). `--mute` / `--unmute` / `--status`.
+- O portão é `_main/mute-audio-oracle.py`: **21/21 arms, 8/8 mutantes**; o
+  `--neg-arm` sai com `rc=1` **por desenho**.
+- **Medido:** o default de render desta máquina é **"VoiceMeeter Input (VB-Audio
+  VoiceMeeter VAIO)"**; o volume é um escalar 0..1 (o `SetMasterVolumeLevel` são
+  dB e +50 dB é inválido); o round-trip é **quantizado a float32**, portanto se
+  restaura o valor **lido**, nunca o escrito.
+- **A recusa CONTINUA.** O mute acrescenta-se; não a substitui.
+- **Continua por medir, e é declarado:** que o mute tape *todos* os caminhos
+  até aos ouvidos. O recibo de 2026-10-07 mediu som real na sala (mic
+  0,24–0,77) por um caminho não identificado; medir isso exige renderizar
+  áudio. O pendency `DONO-20261007-sotto-nunca-audivel` fica **aberto**.
+- O render de teste continua a ir para **"CABLE Input"** (MME), que é
+  inaudível por construção. A demo de 2026-10-19 renderizou para lá e o
+  recibo confirma `render_is_system_default: false`.
+
+### Ordem n.º 2 — **AS LEGENDAS DO YOUTUBE SUBSTITUEM A AO VIVO**
+
+> *"eu quero que tu trabalhe nas legendas do youtube substituem a ao vivo."*
+> (verbatim, o dono)
+
+**O mecanismo JÁ EXISTE e funciona.** O log da app do próprio dono mostra a
+sequência inteira: `EXTERNAL_CAPTION_SENT` → `EXTERNAL_CAPTIONS_WORKER_PARKED`
+→ `BRIDGE_STOP reason=external-captions`. O worker de ASR é **parado** e a
+linha do jogador ocupa a caixa. A substituição é real, não uma sobreposição.
+
+**O defeito era o conteúdo.** Censo sobre as **220 linhas externas reais** do
+log do dono (`_main/external-caption-chrome-census.py`): **17 de 21** linhas em
+17/10 e **9 de 199** em 18/10 eram **chrome do YouTube** — o contador de views
+(`"1,9 mil"`, `"15 mil há 8 h"`), a idade do vídeo (`"há 1 dia"`), um handle de
+chat (`"@zachw2906"`), um separador (`"·"`) e números soltos (`"344"`, `"2"`).
+
+**Duas causas, ambas medidas:**
+1. Os filtros viam **uma palavra de cada vez** — um contador partido pelo
+   YouTube em `"1,9"` + `" mil"` é invisível a um filtro de elemento.
+2. O gate **temporal** — que é a regra real do ficheiro — **não pode** apanhar
+   um contador: um contador de views **fica quieto durante minutos**, ganha
+   streak como uma legenda e é confirmado.
+
+**A correcção** (`app/webview/external_subs.py`): as regras passam a ser
+julgadas **na linha já unida** e são **ancoradas à linha inteira**, para não
+comer uma legenda real: `_COUNTER_ONLY`, `_AGO_ONLY`, `_NO_LETTER`,
+`_HANDLE`. **Depois:** 26 chrome apanhados, 194 legendas sobrevivem, **nenhuma
+legenda real comida**.
+
+**Os portões, e estão na bateria** (um portão que não está na bateria apodrece
+em silêncio — foi assim que o braço `head` do primeiro apodreceu):
+`_main/_external-subs-stability-oracle.py` (o `caption_lines` **real** contra
+polls sintéticos de UI Automation: 6 formas de chrome → **0** linhas; a legenda
+real sobrevive ao lado do chrome; o braço `nochrome` sem a regra → **17**
+linhas de chrome chegam à saída) e
+`_main/external-caption-chrome-census.py` (as 220 linhas reais; sem a regra os
+sobreviventes sobem de 194 para **220**).
+
+### A PREMISSA QUE ESTAVA ERRADA — e onde ela estava escrita
+
+O dono, 2026-10-19, verbatim:
+
+> *"nao tem nome de voz. ... tu fala 'der no discord' eu nao faço ideia doq
+> seja der. 'quem falava quando' nao é importante, cara. tu quer que eu nomeie
+> quem fala na porra do app? sendo que é só separar audio pra transcrever cada
+> falante?"*
+
+**O Sotto NÃO dá nomes a vozes, e ninguém volta a propôr isso.** O DER
+(Diarization Error Rate) é jargão de diarização e **não** é o que o Sotto tem
+de fazer. O objectivo da cadeia de atribuição é **separar o áudio para
+transcrever cada falante em separado**; *"quem falava quando"* **não** é o
+objectivo e o DER **não** é a métrica de aceitação. A premissa errada entrou
+pelo **design do painel** (que mostra vozes com nome), não pelo produto.
+
+O que é medido e interessa: o diarizador encontra **4 de 4 vozes** no ground
+truth do upstream, com o limiar **0,9** (o 0,5 do exemplo upstream daria **7**).
+
+Onde a premissa estava escrita: §8.2 e §8.3 de
+`_main/receipt-20261018-fase-a-multivoice.md` (agora marcadas como removidas
+da premissa) e na resposta ao dono. **Este ficheiro nunca a carregou** —
+verificado por grep com fronteiras de palavra (`\bDER\b`, "quem falava quando",
+"nome de voz"): **0 ocorrências**.
+
 ## ORDEM DO DONO — **LEVANTADA** 2026-10-12 04:2x -03:00 (o registo de 2026-10-11 fica abaixo, como história)
 
 > **LEVANTADA.** O dono escreveu, verbatim: *"faz o sotto abrir, agora ele ta fechado."* Lançar a app

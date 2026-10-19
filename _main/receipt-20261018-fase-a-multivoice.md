@@ -1996,6 +1996,156 @@ medir a aritmética.**
 
 ---
 
+## 7.28 A PREMISSA CORRIGIDA, A DEMO QUE O DONO NUNCA VIU, E AS DUAS ORDENS DE 2026-10-19
+
+### A premissa que estava errada, e onde estava escrita
+
+O dono, 2026-10-19, verbatim:
+
+> *"nao tem nome de voz. oq tu acha q o sotto é? ... tu fala 'der no discord'
+> eu nao faço ideia doq seja der. 'quem falava quando' nao é importante, cara.
+> tu quer que eu nomeie quem fala na porra do app? sendo que é só separar
+> audio pra transcrever cada falante?"*
+
+A premissa errada — **nomes de voz, DER, "quem falava quando"** — tinha-me
+entrado pelo **design do painel**, que mostra vozes com nome, e não pelo
+produto. O produto é o que o dono escreveu no `AGENTS.md`:
+
+> *"o alt c mostre as transcricoes em tempo real, de qualquer audio do meu pc.
+> e legendas."*
+
+Consequência prática: a atribuição de falantes existe para **separar o áudio e
+transcrever cada um em separado**. "Quem falava quando" **não** é o
+objectivo, o DER **não** é a métrica de aceitação, e os nomes **não** são um
+pedido. Onde isso estava escrito de mais: §8.2 e §8.3 deste recibo (agora
+marcadas como removidas da premissa), a resposta ao dono
+(`_main/RESPOSTA-AO-DONO-20261019.md`) e o texto herdado dos comentários. O
+`AGENTS.md` **não** carregava a premissa — verificado por grep com fronteiras
+de palavra (`\bDER\b`, "quem falava quando", "nome de voz"): **0
+ocorrências**.
+
+### A demo: a legenda ao viva, com o pipeline inteiro
+
+O pedido mais antigo por responder era *"mostra pra mim a legenda ao vivo
+… encaixa no sotto"*. O script existia (`I:\cc-tmp\demo-legenda.py`) mas
+**nunca tinha corrido**. Correu hoje, e corrreu de verdade:
+
+| | |
+|---|---|
+| fonte | `_main/pt-br-sample.wav` (661 544 B), render para **"CABLE Input"** (MME) |
+| endpoint de render = default do sistema? | **NÃO** (`render_is_system_default: false`) |
+| worker | `worker/sotto_worker.py`, modo vivo, modelo `nemotron-3.5-asr-ptbr-onnx-int4` |
+| modelo carregado em | 11,6 s, RSS 1 218,6 MB |
+| dispositivo escolhido | `WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)`, **tentativa 1 de 12**, 48 kHz |
+| pico de áudio capturado | 0,24 – 0,60 |
+| **legendas** | **177** em **152,2 s** |
+| worker no fim | terminado por pid, `rc=1` (terminado à força) |
+
+A legenda cresceu linha a linha, como deve ser (`output.partial: true`):
+`'segunda'` → `'segunda os os moradores'` → `'… precisam de um caminho
+alternativo'` → `'… para chegar ao trabalho'`.
+
+**O que isto prova:** a cadeia inteira funciona nesta máquina — ficheiro de
+áudio real → cabo virtual → captura pelo worker → transcrição em português →
+JSONL `{"type":"caption"}` no stdout, que é exactamente o que o shell consome
+(`WorkerBridge._pump` → `_consume` → `on_worker_caption` → `emit('caption')`).
+**O que não prova:** que a legenda *pintada* no ecrã do dono é correcta — isso
+exige a app a correr, e o dono estava numa chamada.
+
+### Ordem do dono n.º 1 — *"se tu vai usar audio padrao pra testar qualquer coisa, muta"*
+
+A protecção que existia era uma **recusa** (comparar o endpoint de render com
+o default do sistema e sair com `rc=4` sem tocar). A ordem do dono pede um
+**mute**, e o mute é mais forte porque cobre o caso que a recusa não cobre: um
+teste que TENHA de usar o endpoint default.
+
+Entregue (lane isolada, com portão e braço negativo):
+`_main/mute-audio.py` (libraria + CLI, pycaw), `_main/mute-audio-oracle.py`
+(**21/21 arms, 8/8 mutantes**, `--neg-arm` com `rc=1` por desenho) e
+`_main/receipt-20261019-mute-audio.md`.
+
+Medido: o default de render desta máquina é **"VoiceMeeter Input (VB-Audio
+VoiceMeeter VAIO)"**; o volume é um escalar 0..1 (o `SetMasterVolumeLevel` são
+dB, e +50 dB é inválido); o round-trip é **quantizado a float32** (0,37 →
+`0.3700000047683716`), portanto o que se restaura é o valor **lido**, nunca o
+escrito. O volume do dono está em **1,0** e o estado é `unmuted` depois de
+cada corrida.
+
+**Continua por medir, e é declarado:** que o mute tape *todos* os caminhos até
+aos ouvidos. O recibo de 2026-10-07 mediu som real na sala (mic 0,24–0,77) por
+um caminho não identificado; medir isso exige renderizar áudio. O pendency
+`DONO-20261007-sotto-nunca-audivel` fica **aberto**.
+
+### Ordem do dono n.º 2 — *"trabalhe nas legendas do youtube substituem a ao vivo"*
+
+**Primeiro, o que já estava feito** (e que o dono não sabia): o mecanismo de
+substituição existe e **funciona**. O log da app do próprio dono mostra a
+sequência completa:
+
+```
+EXTERNAL_CAPTION_SENT count=1 source=external:youtube final=false text="1,9 mil"
+EXTERNAL_CAPTIONS_WORKER_PARKED source=external:youtube pid=40208
+BRIDGE_STOP reason=external-captions pid=40208
+```
+
+O worker de ASR é **parado** e a linha do jogador ocupa a caixa. A substituição
+é real, não uma sobreposição.
+
+**Segundo, o defeito:** o que chegava à caixa era, muitas vezes, **chrome do
+YouTube**. Censo sobre as **220 linhas externas reais** do log do dono
+(`_main/external-caption-chrome-census.py`):
+
+| dia | linhas | chrome |
+|---|---|---|
+| 2026-10-17 | 21 | **17 (81 %)** |
+| 2026-10-18 | 199 | **9 (5 %)** |
+
+O chrome era: `'1,9 mil'`, `'15 mil há 8 h'`, `'4,6 mi há 5 dias'`, `'344'`,
+`'277'`, `'1'`, `'2'`, `'há 1 dia'`, `'@zachw2906'`, `'·'`.
+
+**Terceiro, a causa:** duas.
+1. Os filtros existiam mas viam **uma palavra de cada vez** — um contador
+   partido pelo YouTube em `"1,9"` + `" mil"` é invisível a um filtro de
+   elemento.
+2. O gate **temporal** (a regra real do ficheiro) **não pode** apanhar um
+   contador: um contador de views **fica quieto durante minutos**, ganha
+   streak como uma legenda e é confirmado.
+
+**A correcção** (`app/webview/external_subs.py`): as regras passam a ser
+julgadas **na linha já unida**, e são **ancoradas à linha inteira** para não
+comer uma legenda real:
+
+- `_COUNTER_ONLY` — a linha **é** um contador (`"1,9 mil"`, `"15 mil há 8 h"`).
+- `_AGO_ONLY` — a linha **é** a idade do vídeo (`"há 1 dia"`). Antes só havia
+  a forma em horas.
+- `_NO_LETTER` — uma linha sem uma única letra não é uma frase (`"344"`,
+  `"2"`, `"·"`).
+- `_HANDLE` — um handle de chat sozinho não é uma legenda (`"@zachw2906"`).
+
+**Depois:** **26** linhas de chrome apanhadas, **194** sobrevivem como
+legendas, e **nenhuma legenda real foi comida** (verificado, incluindo
+`"quando ele disse >> aquilo"`, `"ficou lá 1 dia"` e `"foram 2 os que
+chegaram"` — frases que contêm o padrão e **não** podem ser cortadas).
+
+**Portões, ambos novos, ambos agora na bateria:**
+
+| portão | o que mede | braço negativo |
+|---|---|---|
+| `_main/_external-subs-stability-oracle.py` | o `caption_lines` **real** contra polls sintéticos de UI Automation: **6** formas de chrome (incluindo as partidas em duas palavras) produzem **0** linhas, e uma legenda real **sobrevive** ao lado do chrome | `nochrome` — sem a regra, **17** linhas de chrome chegam à saída |
+| `_main/external-caption-chrome-census.py` | as **220** linhas reais do log: quantas eram chrome | sem a regra, os sobreviventes sobem de 194 para **220** |
+
+**E um achado de podridão no caminho:** `_external-subs-stability-oracle.py`
+**não estava na bateria**, e por isso o braço `head` dele apodreceu em
+silêncio — continuava a correr e já não provava nada (a premissa dele era
+"o HEAD ainda é o módulo pré-correcção", que deixou de ser verdade no dia em
+que a correcção foi commitada). O braço `head` saiu do conjunto por omissão
+(e fica disponível com `--arms live,nogate,head`); os braços negativos são
+agora **mutantes**, que não dependem do histórico do git. Os dois portões
+entraram na bateria: *um portão que não está na bateria é um portão que
+apodrece em silêncio*.
+
+---
+
 ## 8. O que NÃO está feito
 
 1. **Política de "quando é seguro separar as vozes"** — é do dono. As condições
@@ -2012,8 +2162,22 @@ medir a aritmética.**
    um núcleo livre, e imprime a carga no RTF e dentro do payload. Isto não diz
    *quando* correr — diz *agora não*, e só num caso que se mede. O agendador e a
    decisão continuam a ser dele.
-2. **DER no regime Discord** — exige truth humana do dono.
-3. **Nomes das vozes** — exige os nomes reais dele. Não se inventam.
+2. ~~**DER no regime Discord** — exige truth humana do dono.~~ **REMOVIDO DA
+   PREMESSA 2026-10-19.** O dono, verbatim: *"tu fala 'der no discord' eu nao
+   faço ideia doq seja der"*. **O DER (Diarization Error Rate) é jargão de
+   diarização, e não é o que o Sotto tem de fazer.** O objectivo da cadeia é
+   **separar o áudio para transcrever cada falante em separado**, e isso
+   mede-se por outra coisa. O que era "truth humana do dono" era uma
+   pergunta errada, feita a partir da premissa errada. O que fica medido é o
+   que interessa: o diarizador encontra **4 de 4 vozes** no ground truth do
+   upstream, com o limiar **0,9** (§7.27).
+3. ~~**Nomes das vozes** — exige os nomes reais dele.~~ **REMOVIDO DA PREMESSA
+   2026-10-19.** O dono, verbatim: *"nao tem nome de voz ... tu quer dar nome
+   pra que?"*. **O Sotto não dá nomes a vozes, e ninguém volta a propôr
+   isso.** O produto é a legenda ao vivo de qualquer áudio do PC
+   (*"o alt c mostre as transcricoes em tempo real, de qualquer audio do meu
+   pc. e legendas."*); a atribuição existe para **separar o áudio** e
+   transcrever cada um em separado. Nomes não se inventam.
 4. ~~**Nada foi commitado nem pushado** — proibido.~~ **SUPERADO 2026-10-19.**
    O dono mandou *"pusha quando conseguir"*, e foi feito: branch
    `feat/speaker-attribution-20261019`, commit **`8639fef`**, **exactamente 38

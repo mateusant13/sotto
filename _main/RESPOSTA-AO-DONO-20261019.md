@@ -1,245 +1,216 @@
-# As cinco perguntas — respondidas com números
+# O que o Sotto é, o que eu assumi errado, e o estado dos teus 47 prompts
 
-*Dono, 2026-10-19. Escrevi isto porque mereces as respostas antes das excuses.
-Cada resposta tem um número atrás. Onde não tenho número, digo "não sei".*
-
----
-
-## 1. "Por que tu tá a 15 horas seguidas no Sotto?"
-
-**Resposta curta: porque nunca houve uma linha de chegada declarada, e porque
-as últimas horas foram quase todas *medição*, não produto.**
-
-O produto — a atribuição de orador em duas fases — foi feito e pushado cedo
-(`8639fef`, 38 ficheiros). O que encheu o resto foi o **sistema de medição**:
-24 portões, 4 oráculos reescritos, pins podres, e os restos da auditoria.
-
-E há uma razão técnica para isso ter sido necessário, que é a que está no
-`AGENTS.md` e que eu próprio escrevi lá: *"os defeitos mais graves que
-apareceram foram nos portões, não no produto"*. Três oráculos contavam
-mutantes que **nunca executavam um check** como apanhados (D2); um portão
-media a vida da app a partir do instante errado (§7.25); um pin tinha 7 dias de
-idade (§7.18). **Um gate que mente produz trabalho por fazer duas vezes** — e
-foi exactamente isso que aconteceu: Gastei horas a "consertar" coisas que já
-estavam certas, e a re-verificar contra o HEAD cada achado antes de mexer.
-
-**A parte feia da resposta:** eu devia ter corrido a auditoria completa logo no
-início. Tu pediste-a depois de 15 horas. Demorou ~2 horas e **confirmou os dois
-achados graves que eu já tinha corrigido** (o pipe sem leitor, os mutantes
-decorativos) — ou seja, o meu trabalho reactivo já tinha chegado lá. Mas a
-auditoria encontrou mais três coisas que a minha reactividade **não** tinha
-alcançado: a constante morta, o `catch` vazio, e (com o censo que fiz hoje)
-quatro falhas engolidas **com consequência que tu sentes**.
+*Dono, 2026-10-19 15:5x. Reescrevi a resposta anterior: ela partia de uma
+premissa errada (a de "dar nome às vozes"), e por isso respondia à pergunta
+errada.*
 
 ---
 
-## 2. "Por que já não concluiu o Sotto inteiro?"
+## 1. O que o Sotto é (com as tuas palavras, não com as minhas)
 
-**Porque "concluído" não é um estado que eu possa declarar sozinho.** Há duas
-metades:
+O `AGENTS.md` tem a tua aceitação, verbatim:
 
-**(a) O que está feito e medido** — a cadeia inteira está no branch
-`feat/speaker-attribution-20261019`, **pushada, 0/0**:
+> *"e eu quero que o alt c mostre as transcricoes em tempo real, de qualquer
+> audio do meu pc. e legendas."*
 
-| | medido |
-|---|---|
-| Fase A (detectar 2+ vozes) | powerset `{4,5,6}` sobre a onda crua, porta própria com braço negativo |
-| Fase B (separar, offline) | RTF **0,416**, **45 MB** de RAM, fora do caminho do tempo real |
-| DER | **0,03 %** — número de 2026-10-18 cuja **proveniência não consegui
-re-verificar hoje** (o único DER do repo, o `der-oracle.py`, imprime 18,4 %–90,7 %
-porque mede a aritmética sobre áudio sintético, não um RTTM do fornecedor). **Em
-aberto.** O que medi hoje: o diarizador encontra as **4/4 vozes** certas no wav
-do upstream. |
-| A decisão de atribuir | função pura, porta com **79/79 arms + 13/13 mutantes** |
-| Bateria | **24 portões, 0 vermelhos** (15:22, depois de tudo) |
+Ou seja: **o Sotto é uma legenda ao vivo, de qualquer áudio do PC, num overlay
+global, com Alt+C.** Nada mais. Não é uma ferramenta de dublagem, não é um
+rastreador de falantes, não tem pessoas dentro.
 
-**(b) O que falta, e é CONTIGO — não depende de mim:**
+## 2. O que eu assumi errado — e era uma merda, sim
 
-1. **Os nomes das vozes** (são teus; o gravador não inventa nomes).
-2. **O DER no regime Discord** (preciso da truth humana: quem falava quando).
-3. **A política de "quando é seguro acelerar a Fase B"** (a capacidade e a
-   guarda de carga estão prontas e medidas; o agendador não foi construído de
-   propósito, porque essa decisão é tua).
-4. **`core.autocrlf` sem `.gitattributes`** (1110 de 3833 ficheiros versionados
-   chegam CRLF a qualquer checkout; o censo e a solução estão prontos, a
-   decisão é política tua).
-5. **As 764 entradas alheias *staged*** (0 minhas; o índice original está em
-   `.git/index.backup-20261019`; não toquei nelas).
+**Assumi que o Sotto tinha "nomes de voz"**, e a partir daí construí metade
+da minha framing: os "nomes" como decisão tua, o "quem falava quando" como
+truth humana, o DER como métrica de aceitação.
 
-**A minha culpa aqui é real:** eu fui empurrando o "mais uma coisa" em vez de
-consolidar e declarar um estado. O ficheiro que estás a ler é essa
-consolidação — e a lista de restos, logo abaixo, fecha a superfície.
+**De onde veio:** o design do painel mostrava linhas com falantes, e eu li
+isso como "o produto tem pessoas". Não tem. Tu disseste-o agora, e tens
+razão: **é só separar o áudio para transcrever cada falante em separado.** O
+que interessa é que a legenda saia certa — não é a etiqueta.
 
----
+**O que fiz com isso:** está tudo no meu arquivo de resposta anterior e no
+recibo. Vou **corrigir o texto** para que nenhuma lane e nenhum agente
+herde a premissa errada. E sai da lista de decisões: **ninguuma decisão tua
+passa a ser "dar nome a ninguém"**.
 
-## 3. "Por que tu reage a bugs em vez de já fazer full audit do comportamento e
-consertar logo?"
+## 3. "DER" — o que era, e porque não devia ter-te dito isso
 
-**Porque o audit só foi pedido (e feito) tarde — e porque eu confundi
-"reagir" com "garantir".**
+DER = *Diarization Error Rate*: uma métrica padrão de diarização, a fração de
+tempo em que a atribuição de falantes está errada. Saiu do meu jargão de
+engenharia e não te serve de nada.
 
-O que devia ter acontecido: um audit do **comportamento**, um plano, e uma
-execução. O que aconteceu: uma sequência de achados, cada um com a sua
-medição, cada medição com a sua bateria.
+**O que interessa, em português:** o modelo achou as vozes certas? A legenda
+saiu certa? Em vez de um DER, o número que te interessa é **"a legenda ao
+vivo está certa?"** — e isso mede-se vendo a legenda, não num índice de erro
+de diarização.
 
-Dito com números, o que a reaç��ão custa: **5 defeitos de produto** fechada
-nesta sessão (D1 pipe sem leitor, D1b, e os quatro `except` de hoje) e **9
-defeitos de medição** (3 oráculos com mutantes decorativos, 1 pin podre, 1
-`run.cmd` em LF, 1 portão que media a vida errada, 1 oráculo obsoleto, 1
-oráculo que acusava uma tua aplicação, 11 frases com caracteres CJK, 1
-orçamento de gate). **A proporção é ~1/3 produto, ~2/3 medição.** Não é o
-quociente que tu querias, e eu sei porquê: tu vês o produto; eu via os
-portões.
+## 4. "Qual é a Fase B?" — e onde entra o clone do ShadowPlay
 
-**O que mudou hoje, e é a resposta honesta a esta pergunta:** o censo dos
-`except:` da shell. Não é um "audit" em prosa — é um **instrumento**:
-**157 handlers, 46 a engolir em silêncio**, mapeados por função, e foi esse
-mapa que encontrou os quatro com consequência. Um audit em prosa diz "há
-catches silenciosos"; o censo diz **onde** e **quantos**, e por isso apanha
-defeitos que a leitura não apanha.
+**Fase A** (o que fiz): *detetar* que há duas vozes ao mesmo tempo, em tempo
+real, barato, sobre a onda crua. Só para **decidir** se vale a pena separar.
+
+**Fase B** (o que fiz): *separar* mesmo — as duas vozes em streams separados —
+**offline/depois**, com um modelo leve, para não pesar no teu PC enquanto
+transcreve. É a tua ideia de 2026-10-18, verbatim: *"se em tempo real for
+pesado pro usuario separar as vozes, devemos fazer isso depois apenas. mas
+preciamos detectar que sao multiplas vozes, pra decidir isso pra processar
+depois quando e seguro e nao travar o pc do usuario."* ✓
+
+**E o clone do NVIDIA ShadowPlay é OUTRO PRODUTO** — `app/shadowplay/`, com
+15 suites de teste próprias: captura D3D11→NVENC, replay ring, clip writer,
+hotkeys, áudio, e **`captions.js` + `broadcast.js`**, que são a junção: as
+legendas do Sotto entram no clip gravado (sidecar de captions por clip).
+
+**Erro meu:** eu tratei a Fase B como "o Sotto acaba aqui" e nunca te disse
+que a junção com o ShadowPlay é o outro lado da moeda. A pergunta que tens
+feito e que eu não respondi: **o que é que eu próprio tenho de entregar para
+que a junção exista?** E é a lista de baixo.
 
 ---
 
-## 4. "Por que parece mais complexo do que deveria?"
+## 5. Os teus 47 prompts — o estado honesto
 
-**Porque a complexidade que tu sentes (app grande, muitas peças) é quase toda
-pré-existente, e a complexidade que EU criei (medição) não é do tipo que se
-vê na interface.**
+Extraí-os do histórico (47 mensagens, de 2026-10-17 a hoje) e classifiquei
+cada um. **Contei, não estimei.**
 
-- A shell tem **670 KB** e **157** handlers de excepção. Isso é anterior a mim
-  — eu construí ~5 ficheiros na cadeia de oradores.
-- O que eu acrescentei foi **medição**: 24 portões, ~30 oráculos, cada um com
-  braços negativos. Isso é o que "parece complexo" quando se olha para o
-  repositório, e **não é o que te atrasa**: não te atrasa, e é o que impede a
-  próxima lane de partir o teu PC outra vez.
-- O que te atrasa a ti é mais simples do que parece: **faltam 5 decisões
-  tuas** (acima). Nenhuma delas é técnica.
+### Feitos e medidos
 
-E há uma coisa que é minha e que eu aceito: **eu não pus um fim**. Worked
-hours sem uma linha de chegada declarada é exactamente o que transforma "15
-horas" em "15 horas". Esta resposta e a lista de restos são a linha de
-chegada.
-
----
-
-## 5. "Por que tu não tá pesquisando nada online, pra te ajudar?"
-
-**Porque não pesquisei. Zero vezes em 15 horas. Tens razão.**
-
-Acabei de pesquisar, e o `web_search` do meu toolbox está a falhar
-(`MATRIX_TOOL_REQUEST_FAILED`) — fui pelo `web_fetch` directo às fontes
-primárias. O que saiu, e é útil:
-
-**CONFIRMADO (a nossa configuração é a do upstream):**
-
-| | upstream (`offline-speaker-diarization.py`) | Sotto | |
-|---|---|---|---|
-| modelo de segmentação | `sherpa-onnx-pyannote-segmentation-3-0` | o mesmo | ✅ |
-| modelo de embedding | 3D-Speaker `eres2net_base_16k` | o mesmo | ✅ |
-| `min_duration_on` | 0.3 | 0.3 | ✅ |
-| `min_duration_off` | 0.5 | 0.5 | ✅ |
-| ground truth | `0-four-speakers-zh.wav` | o **mesmo ficheiro** | ✅ |
-
-Ou seja: o DER de 0,03 % foi medido contra a amostra do **próprio upstream**, com
-os **modelos do próprio upstream**. Isso é melhor do que eu achava.
-
-**DIFERENÇA (uma) — e o dado já a resolveu:**
-
-| | upstream | Sotto | |
-|---|---|---|---|
-| `FastClusteringConfig.threshold` | **0.5** | **0.9** | o upstream diz: *"a smaller cluster_threshold leads to more clusters (more speakers); a larger one leads to fewer"* |
-
-**Medi no ground truth de 4 vozes do próprio upstream** (`0-four-speakers-zh.wav`,
-56,86 s de áudio, 2 threads):
-
-| limiar | vozes encontradas | RTF |
+| # | prompt | como sei que está feito |
 |---|---|---|
-| **0,9 (nosso)** | **4** — o número certo | 0,528 |
-| 0,5 (o do exemplo upstream) | **7** — sobre-partiu | 0,422 |
+| 1, 8–11 | CPU dos subagents, matar processos indesejados, parar de spawnar | censo de janela a 60 s; 0 processos do Sotto agora |
+| 6 | goal para o Sotto | goal activo, com o objectivo por escrito |
+| 7, 15, 44 | separar áudio de pessoas no Discord: modelo vs engenharia, e em duas fases | Fase A + Fase B construídas, com portões |
+| 13, 31, 34, 35 | Alt+C / duplo / triplo, esconder o painel, palavra-por-palavra (não letra) | documentados e portados no `AGENTS.md` |
+| 16, 26, 27, 32, 33 | bugs de legenda, travamento ao ativar, ícone do YouTube, "2" do nada, cortar palavras | corrigidos e com portão |
+| 17–19, 38 | a GPU/CPU a 100% | **guarda de carga** + medição (nunca mais) |
+| 21 | áudio guardado até processar, depois apagado; modelo leve em tempo real; **nemotron não** | retenção FIFO + guarda; o "modelo bom" (Redux) reescreve a linha do nemotron |
+| 28 | "arruma TODOS OS DESIGNS" | gerador de temas com o scope corrigido; 8 folhas, zero fuga |
+| 37 | "não é pra ter o modelo no repo do GitHub" | `worker/models/` ignorado; nunca versionado |
+| 45, 46 | full audit + **um** subagent | auditoria entregue (o subagent encontrou o pipe sem leitor e os mutantes decorativos) |
+| 47 | as cinco perguntas | esta resposta |
 
-Ou seja: **o nosso 0,9 está certo e o 0,5 do exemplo partiria a mesma gravação
-em 7 vozes.** Isto deixa de ser uma decisão tua e passa a ser um número: o
-limiar fica **0,9**. (E o RTF medido agora, 0,528, confirma a ordem de grandeza
-do 0,416 que eu anunciava — o RTF 0,003 que o `der-oracle` imprime é porque o
-áudio dele é quase todo silêncio: sem fala, o passo caro — a extracção dos
-embeddings — quase não corre.)
+### Feitos, mas **não te disse** (erro de comunicação, não de trabalho)
 
-*Instrumento: `_main/_diar-run.py` (o do DER), com o wav do upstream, duas
-corridas, 25 s e 31 s de parede. Recibos em `I:\cc-tmp\diar-upstream-t0.9.json`
-e `…t0.5.json`.*
+| # | prompt | a resposta existe |
+|---|---|---|
+| **43** | *"2 slots para 2 pessoas (era 8), por que não 8? pesquisa como fazer"* | **Está medido, no código**: com `--num-speakers 2` o modelo dá **12 slots** (3,7× mais lento); com `--min-on 2,0 s` dá 4 slots mas **deita fora 58 % da fala**. O horizonte (`StableSpeakerSlots`, 60 s) casa por **tempo falado**, não por similaridade — por isso 2 chamadas curtas são 2 pessoas, e 8 slots era o bug do horizonte (8 slots para 2 pessoas). **8 slots é o sintoma, não o objectivo.** |
+| 30 | legenda ao vivo com maiúsculas e estrutura de frase | a formulação da legenda (`caption-formulation.js`) e a troca letra-a-letra do S4 |
+| 14 | tamanho da legenda, como o YouTube quebra a linha | a janela própria da legenda, com o `zip-overlay.css` |
+| 36 (metade) | *"índice de que pesa 4 GB? faz full audit"* | censo: **`_main` = 3,6 GB** (modelos de diarização: mossformer2 670 MB, sherpa, UVR), `_moved` 2,6 GB, `worker` 1,2 GB (os pesos), `app` 795 MB, `.git` 10,7 MB. O "índice" são **artefactos e pesos**, não o histórico |
+| 5 | "são simplesmente dots, não texto" | o painel passou a dizer o que está a fazer |
+
+### **NÃO feitos** — e aqui é que está a culpa
+
+| # | prompt | onde está |
+|---|---|---|
+| **22–25** | o **!watcher** no disco I: — "faz o watcher fazer o trabalho dele. e sempre iniciar com o windows" | é **outro projeto**, no disco I:, não neste repo. Tenho de ir lá ver o estado |
+| 42 | *"me fala se tu usou [a pasta rea] ou não e porquê"* | resposta a dar: **não usei** — e porquê |
+| 29 | a busca tem de ser "extremamente inteligente" | por confirmar |
+| 20 | "por que eu fico sem áudio de tempos em tempos?" (o headphone a desconectar) | por confirmar |
+
+> **Actualizado 17:0x — o #36/#40/#41 passou de "não feito" a "corrido e medido".**
+> Ver a secção 7. A demo nunca tinha corrido; hoje correu.
 
 ---
 
-# O que mudei em resposta a isto
+## 6. O que estou a fazer AGORA, por esta ordem
 
-1. **Pesquisa online feita** (acima), com a fonte primária citada.
-2. **A superfície fecha.** A lista de restos abaixo: cada item tem uma
-   decisão — corrigido, medir depois, ou tua. **Nada fica aberto por omissão.**
-3. **O censo dos `except:`** — instrumento, não prosa (§7.26 do recibo).
-4. **Quatro falhas engolidas com consequência corrigidas**, e a passarem a dizer:
-   `BRIDGE_KILL_FAILED`, `BRIDGE_NO_AUDIO_RESET_FAILED`,
-   `BRIDGE_TERMINATE_FAILED`, `BRIDGE_RESTART_TIMER_CANCEL_FAILED`.
-5. **A constante morta passou a portão** (36/36 arms, 8/8 mutantes).
-6. **O `catch` vazio do `strip-drag.js` passou a dizer o porque.**
-7. **O portão do `run.cmd` deixou de medir a vida errada** (margem real
-   +8767 ms / +9149 ms, com a app **viva** no instante do retorno), e ganhou
-   um **mutante com o seu controlo** para provar que sabe dizer *não*.
+1. **Esta resposta no teu VS Code** (já aberta).
+2. **Ir ao disco I: ao !watcher** — ver o estado dele, porque me pediste para
+   o fazer funcionar e para arrancar com o Windows, e isso não é deste repo.
+3. **Responder ao #42** — a pasta `rea`: usei-a ou não, e porquê.
+4. **Confirmar #29, #20 e #5** — os três que ficaram em aberto.
+
+**E o que NÃO vou fazer:** voltar a abrir o "Sotto inteiro" sem linha de
+chegada. A lista de restos acima é a linha de chegada, e é curta.
 
 ---
 
-# O estado do Sotto — a linha de chegada
+## 7. O que aconteceu depois desta resposta (16:5x — 17:4x)
+
+Três coisas, e as três são tuas.
+
+### 7.1 A DEMO — a legenda ao viva, com a cadeia inteira
+
+O teu pedido mais antigo por responder era *"mostra pra mim a legenda ao vivo …
+de forma natural, encaixa no sotto"*. **O script existia e nunca tinha
+corrido.** Correu hoje:
+
+| | |
+|---|---|
+| fonte | o teu `pt-br-sample.wav`, render para **"CABLE Input"** (o cabo virtual) |
+| saiu som nos teus altifalantes? | **Não** — o recibo regista `render_is_system_default: false` |
+| worker | modelo `nemotron-3.5-asr-ptbr-onnx-int4`, carregado em 11,6 s |
+| dispositivo que o worker tapsou | `WASAPI loopback: CABLE Input`, **tentativa 1 de 12** |
+| **legendas** | **177** em **152 s** |
+
+A legenda cresceu linha a linha, como deve ser: `'segunda'` → `'segunda os os
+moradores'` → `'… precisam de um caminho alternativo'` → `'… para chegar ao
+trabalho'`.
+
+**O que isto prova:** a cadeia inteira funciona nesta máquina — áudio real →
+cabo → worker → transcrição em português → JSONL, que é exactamente o que o
+overlay consome. **O que não prova:** que a legenda *pintada* no teu ecrã é
+correcta — isso exige a app aberta, e estavas em chamada.
+
+### 7.2 A tua ordem n.º 1 — *"muta o audio de teste"*
+
+Fiz isto: `_main/mute-audio.py` (pycaw), com um portão de **21/21 arms e
+8/8 mutantes** e um `--neg-arm` que dá vermelho por desenho.
+
+**Medido:** o default de saída do teu PC é **"VoiceMeeter Input"**; o mute
+põe o volume a 0 e o unmute repõe **exactamente** o valor guardado (o
+round-trip é quantizado a float32, portanto repõe-se o valor *lido*, nunca o
+escrito). O teu volume está em **1,0** e o estado é `unmuted` depois de cada
+corrida.
+
+**Continua por medir, e digo-to:** que o mute tape *todos* os caminhos até aos
+teus ouvidos. Em 07/10 medi-se som real na sala (mic 0,24–0,77) por um caminho
+que não identifiquei. Medir isso exige renderizar áudio. Esse pendency fica
+**aberto** — não o vou declarar fechado.
+
+### 7.3 A tua ordem n.º 2 — *"as legendas do youtube substituem a ao vivo"*
+
+**Primeiro, o que já existia e tu não sabias:** a substituição **funciona**,
+e está no log da tua app:
 
 ```
-                    ┌───────────────────────────────────────────┐
-                    │  TUDO O QUE É DO DONO (5 decisões)        │
-                    │  nomes · truth do DER · política da Fase B │
-                    │  .gitattributes · as 764 entradas          │
-                    └───────────────────┬───────────────────────┘
-                                        │ (destravam o resto)
-                    ┌───────────────────▼───────────────────────┐
-                    │  FASE B: separar (offline, 45 MB, RTF 0,4) │
-                    │  guardada por carga, nunca em tempo real    │
-                    └───────────────────┬───────────────────────┘
-                                        │
-                    ┌───────────────────▼───────────────────────┐
-                    │  FASE A: "há 2+ vozes?" (powerset, tempo   │
-                    │  real, barato) → decide se vale separar     │
-                    └───────────────────┬───────────────────────┘
-                                        │
-                    ┌───────────────────▼───────────────────────┐
-                    │  TRANSCRIÇÃO + LEGENDAS (Alt+C)            │
-                    │  ✅ o que o dono pediu ao início           │
-                    └───────────────────────────────────────────┘
+EXTERNAL_CAPTION_SENT count=1 source=external:youtube final=false text="1,9 mil"
+EXTERNAL_CAPTIONS_WORKER_PARKED source=external:youtube pid=40208
+BRIDGE_STOP reason=external-captions pid=40208
 ```
 
-**O que falta para isto estar "concluído": as 5 decisões tuas.** Nada de
-técnico. Quando as deres, a parte que me cabe está feita — e está escrita
-neste ramo, com portões, para não voltar a partir.
+O worker de ASR é **parado** e a linha do YouTube ocupa a caixa. Não é uma
+sobreposição — é uma substituição.
 
----
+**Segundo, o defeito:** o que chegava à caixa era muitas vezes **chrome do
+YouTube**. Censo das **220 linhas externas reais** do teu log: **17 de 21**
+(17/10) e **9 de 199** (18/10) eram chrome — o contador de views (`"1,9 mil"`,
+`"15 mil há 8 h"`), a idade do vídeo (`"há 1 dia"`), um handle de chat
+(`"@zachw2906"`), um separador (`"·"`) e números soltos (`"344"`, `"2"`).
 
-# A lista de restos (a superfície fecha aqui)
+**A causa era dupla:** os filtros viam **uma palavra de cada vez** (um contador
+partido pelo YouTube em `"1,9"` + `" mil"` era invisível), e o gate temporal
+**não pode** apanhar um contador — um contador de views fica quieto durante
+minutos e ganha streak como uma legenda.
 
-| # | resto | severidade | decisão |
-|---|---|---|---|
-| 1 | o `threshold` do clustering (0,9 vs 0,5 do upstream) | **RESOLVIDO por medição** | o nosso 0,9 dá **4/4 vozes** no ground truth do upstream; o 0,5 daria **7**. **Fica 0,9** |
-| 2 | os nomes das vozes | **teu** | o gravador não inventa nomes |
-| 3 | truth do DER em Discord | **teu** | "quem falava quando" |
-| 4 | política de acelerar a Fase B | **tua** | capacidade + guarda prontas |
-| 5 | `core.autocrlf` / `.gitattributes` | **tua** (política) | censo + solução prontos (§7.20) |
-| 6 | as 764 entradas *staged* | **tua** (operação) | índice original em `.git/index.backup-20261019` |
-| 7 | R1: o skew do `stream_epoch` | **medir depois** | exige worker com dispositivo real — linha que mandaste não atravessar |
-| 8 | o modelo sherpa em execução (`_speaker-chain-live.py`) | **medir depois** | exige o modelo em RAM; os números são de 2026-10-18 e não foram re-medidos |
-| 9 | o runtime do painel (nada foi renderizado) | **medir depois** | único sintoma de leitura estática encontrado: o `catch` vazio (já corrigido) |
-| 10 | 46 `except` que ainda engolem em silêncio | **deixados** | o mapa está no §7.26; nenhum tem consequência conhecida |
+**A correcção** (`app/webview/external_subs.py`): as regras passam a ser
+julgadas **na linha já unida** e **ancoradas à linha inteira**, para não comer
+uma legenda real. **Depois: 26 chrome apanhados, 194 legendas sobrevivem,
+nenhuma legenda real comida.**
 
-**Nada nesta lista cresce sem uma decisão escrita.** É a diferença entre
-"trabalhar durante 15 horas" e "trabalhar durante 15 horas a chegar a algum
-sítio".
+**E dois portões novos, agora na bateria:** um conduz o `caption_lines` real
+contra polls sintéticos (6 formas de chrome → **0** linhas; a legenda real
+sobrevive ao lado do chrome; sem a regra, **17** linhas de chrome chegam à
+saída), e o outro mede as 220 linhas do teu log (sem a regra, os sobreviventes
+sobem de 194 para **220**).
 
----
+### 7.4 E uma coisa que encontrei pelo caminho, que não é tua
 
-*Feito com o recibo mestre em
-`_main/receipt-20261018-fase-a-multivoice.md` (§7.25 o contrato G3, §7.26 a
-auditoria, §7.27 a pesquisa online) e com a bateria `i`: 24 portões, 0
-vermelhos.*
+A bateria grande (`_main/_audit-verify-all.cmd`) está **vermelha em 8 passos**,
+e **não é culpa de hoje**: os ficheiros que esses portões leem estão
+inalterados desde o último commit, e o `verdict-gate` é de **07/10** — julga
+código de 19/10. Já mandei duas lanes resolverem isso. Os **meus** dois portões
+novos estão verdes, e a bateria de oradores (24 portões) volta a correr depois
+disto.
+
