@@ -146,6 +146,7 @@ NOISE = ("AKALI BROTHERS", "1.2M", "views", "Pause", "FULL MOVIE")
 CHROME_ROWS = {
     "count":       (960, [("344", 940)]),
     "ago":         (960, [("há 1 dia", 930)]),
+    "ago_pt":      (960, [("há 4 sem.", 930)]),
     "handle":      (960, [("@zachw2906", 920)]),
     "dot":         (960, [("·", 955)]),
     "split_count": (960, [("1,9", 930), (" mil", 960)]),
@@ -156,6 +157,7 @@ CHROME_ROWS = {
 CHROME_TEXT = {
     "count": "344",
     "ago": "há 1 dia",
+    "ago_pt": "há 4 sem.",
     "handle": "@zachw2906",
     "dot": "·",
     "split_count": "1,9 mil",

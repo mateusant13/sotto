@@ -9223,29 +9223,35 @@ class SottoShell:
         `show_caption_window(on)` continua a ser quem mostra/esconde e quem escreve
         `data-caption-window` -- a pagina pinta o botao a partir desse atributo.
 
-        LIGAR ESCONDE O PAINEL. Dono, 2026-10-17, verbatim: *"e assim q eu ativar a
-        legenda, esconda o painel"*. E' a MESMA frase que cortou o crescimento da
-        janela, dita de outra maneira: a legenda nao leva o painel atras dela. O que
-        fica no ecra e so a janela nativa da legenda.
+        O PANEL NAO SE FECHA. A regra de 2026-10-17 ("ligar a legenda esconde o
+        painel") foi TROCADA pelo dono a 2026-10-19, verbatim: *"clicar pra
+        ligar a legenda pelo painel do alt c nao deve fechar o painel. com o painel
+        aberto, usar alt c uma vez nao deve fechar o painel. deve ligar ou desligar
+        a legenda mesmo com qualquer dos paineis abertos."*
 
-        A ORDEM IMPORTA E MEDE-SE: `hide_panel` chama `_blank_caption_window`, que
-        tira os PIXELS. Se `show_caption_window(True)` corresse primeiro, a propria
-        chamada que liga a legenda ia-a apagar a seguir, e a legenda so voltava
-        com a primeira palavra -- o que nao e visivel para quem so diz "acendi e
-        nao aparece nada". Por isso: esconder primeiro, acender depois.
+        O QUE SE VIA, e porque o dono escrevia que o Alt+C "nao ta ligando ou
+        desligando bem": um Alt+C com o painel aberto LIGAVA a legenda E FECHAVA
+        o painel. Duas accoes num gesto, e a segunda apagava a prova da primeira.
+        O interruptor e um interruptor: liga, desliga, e nao mexe no painel.
 
-        O BOTAO CONTINUA ACESSIVEL: `hide_panel` nao escreve `data-caption-window`,
-        logo o interruptor fica ligado; Alt+C traz o painel e o botao de volta,
-        la para o desligar. Esconder o painel e' o que ele pediu, e o caminho de
-        volta e o atalho que ele ja usa para o abrir."""
+        `show_caption_window(on)` continua a ser quem mostra/esconde a janela
+        NATIVA da legenda e quem escreve `data-caption-window` -- a pagina pinta o
+        botao e o indicador a partir desse atributo. O que mudou foi so o
+        `hide_panel('caption-on')` que accompanyava, que nao existe mais.
+
+        A JANELA NATIVA E SEPARADA DO PAINEL, e por isso os dois podem estar
+        visiveis ao mesmo tempo: a legenda e um overlay livre na tela do dono
+        ("sem estar conectada a qualquer painel", owner, 2026-10-17), e o painel
+        e onde se liga e desliga. Fechar um por causa do outro era o defeito."""
         on = bool((payload or {}).get('on'))
         try:
             self._caption_wanted = on
-            if on:
-                self.hide_panel('caption-on')
+            # O PANEL NAO SE FECHA -- ver a docstring: a ordem de 2026-10-19
+            # trocou a de 2026-10-17, e o `hide_panel('caption-on')` que vivia
+            # aqui era a causa do "o alt c nao ta ligando ou desligando bem".
             self.show_caption_window(on)
             log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()} '
-                f'panel_hidden={str(bool(on)).lower()}')
+                f'panel_closed=false')
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 

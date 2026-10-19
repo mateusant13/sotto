@@ -125,12 +125,24 @@ def main(argv=None):
     # the caption box in the real app.
     MUST_CATCH = [
         "344", "277", "1", "2", "1,9 mil", "15 mil há 8 h", "4,6 mi há 5 dias",
-        "há 1 dia", "@zachw2906", "·",
+        "há 1 dia", "há 4 sem.", "@zachw2906", "·",
     ]
     caught_texts = set(t for _d, t in chrome)
     for t in MUST_CATCH:
         if t not in caught_texts:
             failures.append("chrome %r is NOT caught by the shipped rule" % t)
+    # The RESIDUE: chrome that is a SENTENCE, so no shape rule can take it
+    # without eating a real caption. It is REPORTED, not failed -- and it is
+    # the reason the real caption track exists (the reader that paints the
+    # page can only ever read the page).
+    KNOWN_RESIDUE = [
+        "Oferta sujeita aos termos. Cancele quando quiser.",
+    ]
+    kept_texts = set(t for _d, t in kept)
+    for t in KNOWN_RESIDUE:
+        if t in kept_texts:
+            print("  RESIDUE (chrome that is a sentence, so shape cannot take it):"
+                  " %r" % t)
     # The captions must NOT be eaten: these are real lines from the log.
     MUST_KEEP = [
         "Same with Jame time and their outsider major win. the ultima",

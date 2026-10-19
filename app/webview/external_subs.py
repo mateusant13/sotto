@@ -87,19 +87,32 @@ _VIEW_COUNTER = re.compile(
 )
 _URL = re.compile(r"(?i)(youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})")
 
+#: The units YouTube prints next to a video's age, in the forms this box
+#: actually produces -- and it is NOT only the spelled-out ones.
+#:
+#: MEASURED in the owner's LIVE session (2026-10-19 19:14, the app he had
+#: open): the row `ha 4 sem.` -- Portuguese for "four weeks ago" -- reached
+#: the caption box, because the list only knew `semana`/`semanas` and not the
+#: abbreviation `sem.`. A rule that only knows the pretty spelling is a rule
+#: that loses the first time the page is in another language.
+#:
+#: ONE string, used by both rules below, so they cannot drift apart.
+_AGE_UNITS = (r"(?:h|hr|hrs|hora|horas|dia|dias|sem|semana|semanas|"
+              r"min|minuto|minutos|m[eê]s|meses|ano|anos)")
+
 #: The "how long ago" row, ALONE on its line.
 #:
-#: YouTube prints the age of a video next to its view count: "há 11 h", "há 1
-#: dia", "há 3 semanas". The HOURS form was already caught, inside
-#: `_VIEW_COUNTER`; the DAY form was NOT, and "há 1 dia" reached the caption
-#: box on 2026-10-18 13:44 — the last time the owner watched a video with
-#: the app running. The census is `_main/external-caption-chrome-census.py`.
+#: YouTube prints the age of a video next to its view count: "ha 11 h", "ha 1
+#: dia", "ha 4 sem.", "ha 3 semanas". The HOURS form was already caught,
+#: inside `_VIEW_COUNTER`; the DAY form was NOT, and "ha 1 dia" reached the
+#: caption box on 2026-10-18 13:44 -- the last time the owner watched a
+#: video with the app running. The census is
+#: `_main/external-caption-chrome-census.py`.
 #:
-#: It is ANCHORED on purpose. A sentence that merely mentions "há 1 dia" is
+#: It is ANCHORED on purpose. A sentence that merely mentions "ha 1 dia" is
 #: a caption, not a counter, and a search-anywhere rule would eat it.
 _AGO_ONLY = re.compile(
-    r"(?i)^\s*h[áa]\s*\d+\s*(?:h|hr|hrs|hora|horas|dia|dias|semana|semanas|"
-    r"m[eê]s|meses|ano|anos)\s*$")
+    r"(?i)^\s*h[áa]\s*\d+\s*" + _AGE_UNITS + r"\b\.?\s*$")
 
 #: The VIEW COUNT row, ALONE on its line: "1,9 mil", "17 mil há 11 h",
 #: "4,6 mi há 5 dias".
@@ -113,8 +126,7 @@ _AGO_ONLY = re.compile(
 #: ficaram na rua" is a caption, not a counter.
 _COUNTER_ONLY = re.compile(
     r"(?i)^\s*\d[\d.,]*\s*(?:mil|mi|k)\b"
-    r"(?:\s*h[áa]\s*\d+\s*(?:h|hr|hrs|hora|horas|dia|dias|semana|semanas|"
-    r"m[eê]s|meses|ano|anos)\b)?\s*$")
+    r"(?:\s*h[áa]\s*\d+\s*" + _AGE_UNITS + r"\b\.?)?\s*$")
 
 #: A row with NO LETTER in it is never a caption.
 #:
