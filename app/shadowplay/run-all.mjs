@@ -62,7 +62,13 @@ console.log(`  SUITES ${suitePassed} passed, ${suiteFailed} failed, ${noReport} 
 // ---- GATE -------------------------------------------------------------------------------
 let gateStatus = "ABSENT", gateExit = null;
 if (existsSync(join(HERE, GATE))) {
-  const r = spawnSync(process.execPath, [join(HERE, GATE)], { cwd: HERE, encoding: "utf8", timeout: 300000 });
+  // O ORCAMENTO DO GATE TEM DE COBRIR O GATE. Os probes correm SEQUENCIALMENTE
+  // (`classify()` em parse-gate.mjs usa spawnSync, que bloqueia) e o
+  // `perf-probe.mjs` tem agora 600 s de orcamento proprio -- MEDIDO 2026-10-19:
+  // 231 s isolado. Com 300 s o gate era MATADO A MEIO pelo runner, e a saida
+  // era a mesma do probe: "exit null". Um orcamento que mata o gate antes de
+  // o gate acabar e' um orcamento que mede a maquina, nao o codigo.
+  const r = spawnSync(process.execPath, [join(HERE, GATE)], { cwd: HERE, encoding: "utf8", timeout: 900000 });
   gateExit = r.status;
   const m = (r.stdout || "").match(/RESULT\s+(\d+)\s+passed,\s*(\d+)\s+refused/);
   if (m) gateStatus = `${m[1]} passed / ${m[2]} refused`;

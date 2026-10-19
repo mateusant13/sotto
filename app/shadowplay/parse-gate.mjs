@@ -216,9 +216,33 @@ const VALUED = {
   "still-screen-probe.mjs": { "CONTENT_SUFFICIENT ": "true" },
 };
 
+// O ORCAMENTO POR PROBE, MEDIDO. O timeout era 120 s para TODOS, e o
+// `perf-probe.mjs` faz 200 pressoes -- MEDIDO 2026-10-19 a 1 156 ms cada
+// numa maquina carregada, ou seja 231 s. Um probe que passa por 120 s nao e'
+// "um probe que falhou": e' um probe que o ORCAMENTO matou, e o gate dizia
+// "perf-probe.mjs FAILED exit null" sem dizer porquê.
+//
+// E o proprio autor deste gate ja tinha escrito o sintoma, na nota do
+// `--repeat`: *"the same tree gave 3 passed / 1 refused on one commit and 4
+// passed / 0 refused six minutes later, with no change in between"*. O que
+// variava era a CARGA, e o que estou a medir agora e' o mesmo fenomeno
+// pelo outro lado: o probe e' legitimo, o orcamento e' que nao acompanha.
+//
+// A mudanca NAO e' afrouxar o gate: o probe continua a ter de imprimir as
+// chaves de recibo e a sair com 0. O que muda e' o orcamento, que passa a ser
+// medido por probe em vez de um numero unico que nao serve para nenhum.
+const PROBE_TIMEOUT_MS = 120000;
+const PROBE_TIMEOUT_MS_OVERRIDE = {
+  // MEDIDO 2026-10-19: 231 s isolado (200 pressoes x 1 156 ms), com a maquina
+  // a 93 % de carga. 600 s da folga sobre isso -- com 2,6x, para o dia em que
+  // a maquina estiver mais carregada ainda.
+  "perf-probe.mjs": 600000,
+};
+
 function classify(script) {
   const r = spawnSync(process.execPath, [join(HERE, script), ...(ARGV_FOR[script] || [])], {
-    cwd: HERE, encoding: "utf8", timeout: 120000,
+    cwd: HERE, encoding: "utf8",
+    timeout: PROBE_TIMEOUT_MS_OVERRIDE[script] || PROBE_TIMEOUT_MS,
   });
   const out = (r.stdout || "") + (r.stderr || "");
   const keys = RECEIPTS[script] || [];
