@@ -28,13 +28,30 @@
  *          `provisional-draft`/`panel-deadline`), not by the `final:true` the
  *          cleared buffer carried.
  *   ARM 6  the rest of the engine's API is untouched and `reset` exists
+ *   ARM 6c the module's TOP-LEVEL SURFACE is unchanged - a change detector over
+ *          the real exports (the list is the surface as of 2026-10-19; the
+ *          2026-10-17 revision added `PUNCT_PERIOD_GAP_S`, `PUNCT_COMMA_GAP_S`
+ *          and `formulateTokens` to it)
+ *   ARM 6d THE NEGATIVE ARM of 6c, EXECUTED: a COPY of the module with ONE
+ *          extra top-level export must be FLAGGED by the same comparison. An
+ *          arm that only ever compares two lists and says "ok" when one IS the
+ *          other proves nothing about the other direction.
  *
  *   node _main/_lane2-reset-probe.js
  */
 
+const fs = require('node:fs');
 const path = require('node:path');
 
-const ENGINE = path.join(__dirname, '..', 'app', 'panel', 'caption-formulation.js');
+// WHICH MODULE IS UNDER TEST. The default is the shipped one. `--engine <path>`
+// points the probe at another copy — it exists so the negative arm (ARM 6c) can
+// be demonstrated END TO END: point it at a copy with one extra export and the
+// arm goes RED, in this file's own code, not in a re-implementation of it.
+const ENGINE = (() => {
+  const i = process.argv.indexOf('--engine');
+  if (i >= 0 && i + 1 < process.argv.length) return path.resolve(process.argv[i + 1]);
+  return path.join(__dirname, '..', 'app', 'panel', 'caption-formulation.js');
+})();
 const F = require(ENGINE);
 
 const arms = [];
@@ -143,10 +160,82 @@ arm('ARM 6 createEngine still returns ingest/flush/expireHold/visible/state/rese
   typeof a.state, typeof a.reset,
 ], ['function', 'function', 'function', 'function', 'function', 'function']);
 arm('ARM 6b reset() is idempotent and returns nothing', a.reset() === undefined && JSON.stringify(a.state()) === JSON.stringify({ committed: [], provisional: [], lastAudioEnd: null }), true);
-arm('ARM 6c the module surface is unchanged (no new top-level export)', Object.keys(F).sort(), [
-  'COMMIT_MAX_HOLD_MS', 'READY_SECONDS_MEASURED', 'SENTENCE_GAP_S', 'SENTENCE_MAX_CHARS',
-  'agreedPrefixLength', 'createEngine', 'describeReadiness', 'formulate', 'healSeams', 'words',
-]);
+
+// ARM 6c is a CHANGE DETECTOR over the module's top-level surface. The
+// EXPECTED list below is the REAL surface, measured 2026-10-19 against
+// `app/panel/caption-formulation.js` at commit 494a927 (2026-10-17), which is
+// the revision that added `PUNCT_PERIOD_GAP_S`, `PUNCT_COMMA_GAP_S` and
+// `formulateTokens` to it. A NEW export is a red arm, on purpose: `panel.js`
+// and every oracle read this module's surface, and a silent addition is
+// exactly what nobody notices.
+//
+// The comparison lives in ONE function (`surfaceDiff`) because ARM 6d runs the
+// SAME code against a mutated copy.
+const EXPECTED_SURFACE = [
+  'COMMIT_MAX_HOLD_MS',
+  'PUNCT_COMMA_GAP_S',
+  'PUNCT_PERIOD_GAP_S',
+  'READY_SECONDS_MEASURED',
+  'SENTENCE_GAP_S',
+  'SENTENCE_MAX_CHARS',
+  'agreedPrefixLength',
+  'createEngine',
+  'describeReadiness',
+  'formulate',
+  'formulateTokens',
+  'healSeams',
+  'words',
+];
+
+function surfaceDiff(real, expected) {
+  const added = real.filter((k) => !expected.includes(k));
+  const removed = expected.filter((k) => !real.includes(k));
+  return { added, removed, ok: added.length === 0 && removed.length === 0 };
+}
+
+const liveSurface = Object.keys(F).sort();
+const liveDiff = surfaceDiff(liveSurface, EXPECTED_SURFACE);
+console.log(`  live surface : ${JSON.stringify(liveSurface)}`);
+console.log(`  expected     : ${JSON.stringify(EXPECTED_SURFACE)}`);
+console.log(`  diff         : added=${JSON.stringify(liveDiff.added)} removed=${JSON.stringify(liveDiff.removed)}`);
+arm('ARM 6c the module surface is unchanged (no new top-level export)',
+  { added: liveDiff.added, removed: liveDiff.removed },
+  { added: [], removed: [] });
+
+// ── ARM 6d — THE NEGATIVE ARM of 6c: the surface check CAN fail ─────────────
+// A COPY of the module with ONE extra top-level export. The SAME `surfaceDiff`
+// must FLAG it; if the mutated copy slips through, this arm goes RED and the
+// check above is decoration. The copy is deleted before the probe exits.
+//
+// WHY A COPY AND NOT A STUB: the arm has to run the REAL comparison against a
+// REAL module object. A hand-made object with one extra key would only prove
+// that `surfaceDiff` compares objects, which is not what is being claimed.
+const COPY = path.join(__dirname, '_lane2-formulation-copy.js');
+let mutatedSurface = [];
+let mutatedError = null;
+try {
+  const src = fs.readFileSync(ENGINE, 'utf8');
+  fs.writeFileSync(COPY, `${src}\nmodule.exports.__lane2_probe_extra__ = 1;\n`, 'utf8');
+  mutatedSurface = Object.keys(require(COPY)).sort();
+} catch (err) {
+  mutatedError = String(err && err.stack ? err.stack : err);
+} finally {
+  try {
+    if (fs.existsSync(COPY)) fs.unlinkSync(COPY);
+  } catch (err) {
+    console.log(`  [WARN] the mutated copy could not be deleted: ${err}`);
+  }
+}
+if (mutatedError) console.log(`  [FAIL] the mutated copy could not be built:\n${mutatedError}`);
+const mutatedDiff = surfaceDiff(mutatedSurface, EXPECTED_SURFACE);
+console.log(`  mutated copy : ${JSON.stringify(mutatedSurface)}`);
+console.log(`  diff         : added=${JSON.stringify(mutatedDiff.added)} removed=${JSON.stringify(mutatedDiff.removed)}`);
+arm('ARM 6d the surface check FLAGS a new top-level export (the mutated copy)',
+  mutatedError || mutatedDiff.added,
+  ['__lane2_probe_extra__']);
+arm('ARM 6d and the mutated copy differs from the real one by THAT export only',
+  { added: mutatedDiff.added, removed: mutatedDiff.removed },
+  { added: ['__lane2_probe_extra__'], removed: [] });
 
 const failed = arms.filter((x) => !x.ok);
 console.log(`\nRESULT: ${failed.length ? `RED — ${failed.length} violation(s)` : 'GREEN — reset() clears the engine, and the cleared line cannot come back'}`);

@@ -39,9 +39,25 @@ contract the sibling worker lane is landing. The arms:
        NEGATIVE CONTROL, both colours in ONE command: a COPY of
        `worker/sotto_worker.py` (`_main/_lane6-worker-copy.py`) with ONLY the
        `captions == 0` branch removed - the pre-F3 chain, where the fall-through
-       announces captions it never emitted. The gate must go RED, on arm (b)
-       alone. Exits 0 only when the control really went RED. The copy is deleted
-       before exit.
+       announces captions it never emitted. The gate must go RED, on the arms
+       the control names (arm (b) and arm d5, the arm that asserts the word
+       `captions-zero`). Exits 0 only when the control really went RED. The copy
+       is deleted before exit.
+   cmd /c "python _main\\verdict-gate.py --control-drop-redux-live ..."
+       THE SECOND NEGATIVE CONTROL, for the SECOND engine: a COPY
+       (`_main/_lane6-worker-copy-live.py`) whose `emitted` sum ignores
+       `redux_live_captions` (the live overlay's counter). The gate must go RED
+       on arm d4 - the arm that says a run whose only lines came from the
+       overlay emitted captions. This is what proves d4 is an arm that can FAIL
+       and not a decoration.
+
+THE TWO ENGINES, ONE QUESTION. `emitted = captions + redux_captions +
+redux_live_captions`: the streaming engine's lines, the BATCH engine's lines
+and the LIVE OVERLAY's lines are all captions the owner read. Each counter is
+COUNTED, never NAMED: no verdict word may rest on one of them alone (the
+`redux_word_lines` check), and the arms d1/d2 (batch) and d4/d5 (overlay) are
+the pairs that prove each sum, because a counter that is read but never tested
+is an assumption.
 
 Exit codes: 0 every arm holds (or the control behaved as expected) | 1 an arm
 does not hold | 2 setup error (the contract is absent, the module has no
@@ -66,6 +82,7 @@ import types
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER = os.path.join(REPO, "worker", "sotto_worker.py")
 COPY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_lane6-worker-copy.py")
+COPY_LIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_lane6-worker-copy-live.py")
 CONTRACT = "def decide_verdict(counters, outcome, ran_but_silent) -> str"
 
 # ---------------------------------------------------------------------------
@@ -86,6 +103,18 @@ HEALTHY = {
     # 0, so every arm that does not name it below behaves exactly as it did before
     # the key existed.
     "redux_captions": 0,
+    # The LIVE OVERLAY's counter — the SECOND engine, on the STREAMING path
+    # (`counters["redux_live_captions"] += 1` at the three `overlay.drain()`
+    # sites, `worker/sotto_worker.py:5638`, `:5884`, `:6574`). It is summed into
+    # `emitted` exactly like `redux_captions`
+    # (`emitted = captions + redux_captions + redux_live_captions`).
+    # 0 is the SHIPPED value and not a convenient one: `--redux-live` defaults to
+    # False (`REDUX_LIVE_DEFAULT = False`, `worker/sotto_worker.py:3539`), so the
+    # overlay is not even built and the counter can only be 0. The arms d4/d5
+    # below are what carry the non-zero case; every arm that asserts a FAILURE
+    # word must have it at 0, because a run with an overlay line has emitted
+    # something and cannot be in that state.
+    "redux_live_captions": 0,
     "peak": 0.1,
     "queue_drops": 0,
     "music_gated_chunks": 0,
@@ -229,6 +258,45 @@ ARMS = [
         ran_but_silent=True,
         want="silent-device",
         src_word="silent-device",
+    ),
+    # ---------------------------------------------------------------------
+    # THE LIVE OVERLAY'S COUNTER (`redux_live_captions`) — the SECOND engine,
+    # on the STREAMING path. It has NO verdict word of its own and must never
+    # get one: like `redux_captions` it is only SUMMED into `emitted`
+    # (`sotto_worker.py`: `emitted = captions + redux_captions +
+    # redux_live_captions`). d4/d5 are the pair that proves that sum, and the
+    # `--control-drop-redux-live` control is what proves d4 can FAIL.
+    # ---------------------------------------------------------------------
+    dict(
+        name="d4 redux_live_captions > 0 alone (the overlay's line, no streaming caption)",
+        # REALISTIC, and not by accident: the overlay is a second engine ON the
+        # streaming path, so the chunks it read WERE cut (`chunks: 5`) — but the
+        # overlay TAKES OVER every final line, so the streaming counter stays 0
+        # while the overlay's own lines are counted here (`emitted` = 4). This is
+        # the shape of a run with `--redux-live` on.
+        counters={"blocks": 214, "nonzero_blocks": 214, "resampled_samples": 16000, "chunks": 5,
+                  "captions": 0, "redux_captions": 0, "redux_live_captions": 4,
+                  "music_gated_chunks": 0, "vad_gated_chunks": 0},
+        outcome="run-ended",
+        ran_but_silent=False,
+        want="captions-emitted",
+        src_word="captions-emitted",
+    ),
+    dict(
+        name="d5 the same run with redux_live_captions == 0 (nothing was emitted)",
+        # d4's exact arm with ONE counter moved: `redux_live_captions` 4 -> 0.
+        # The word must go back to naming the measured fact ("captions-zero"),
+        # which is what makes d4's `captions-emitted` a READING of the counter
+        # and not a fall-through. This arm is ALSO the one the
+        # `--control-unguard-captions-zero` copy breaks (that copy cannot produce
+        # "captions-zero" any more), so d5 is demonstrably capable of failing.
+        counters={"blocks": 214, "nonzero_blocks": 214, "resampled_samples": 16000, "chunks": 5,
+                  "captions": 0, "redux_captions": 0, "redux_live_captions": 0,
+                  "music_gated_chunks": 0, "vad_gated_chunks": 0},
+        outcome="run-ended",
+        ran_but_silent=False,
+        want="captions-zero",
+        src_word="captions-zero",
     ),
 ]
 
@@ -389,21 +457,24 @@ def analyse(worker_path: str, module_name: str, as_package: bool, label: str):
             % (os.path.basename(worker_path), ", ".join(missing_words), word_lines)
         )
 
-    # `redux_captions` IS COUNTED, NOT NAMED — and this is the check that keeps
-    # that a measured fact rather than an assumption. The counter has no word of
-    # its own; it is an input to the SHARED predicates (`emitted`). If a future
-    # revision ever makes a verdict word rest on it ALONE, that word is a word this
-    # gate's arm table has no arm for, and the arms above would be proving a table
-    # the function no longer follows. Fail closed: extension must be stated, never
+    # `redux_captions` AND `redux_live_captions` ARE COUNTED, NOT NAMED — and
+    # this is the check that keeps that a measured fact rather than an
+    # assumption. Neither counter has a word of its own; they are inputs to the
+    # SHARED predicates (`emitted`). If a future revision ever makes a verdict
+    # word rest on one of them ALONE, that word is a word this gate's arm table
+    # has no arm for, and the arms above would be proving a table the function
+    # no longer follows. Fail closed: extension must be stated, never
     # inherited.
     redux_word_lines = sorted(
         ln for ln, text in enumerate(src.splitlines(), 1)
         if re.search(r"^\s*verdict\s*=\s*[\"']", text)
-        and "redux_captions" in text and "captions-emitted" not in text
+        and re.search(r"redux_(live_)?captions", text)
+        and "captions-emitted" not in text
     )
     if redux_word_lines:
         raise SetupError(
-            "SETUP ERROR: %s now assigns a verdict word FROM `redux_captions` alone (line(s) %s).\n"
+            "SETUP ERROR: %s now assigns a verdict word FROM `redux_captions`/`redux_live_captions` alone "
+            "(line(s) %s).\n"
             "  This gate's arm table has no arm for that word, and it must not inherit one: give the word an\n"
             "  arm of its own in ARMS (both colours) before reading any green here."
             % (os.path.basename(worker_path), ", ".join(str(n) for n in redux_word_lines))
@@ -449,6 +520,7 @@ def analyse(worker_path: str, module_name: str, as_package: bool, label: str):
                   % (a["src_word"], os.path.basename(worker_path), ",".join(str(n) for n in word_lines[a["src_word"]])))
 
     results = []
+    failed = []
     print("\n--- arms ---")
     for a in ARMS:
         counters = dict(HEALTHY)
@@ -465,6 +537,7 @@ def analyse(worker_path: str, module_name: str, as_package: bool, label: str):
             print("       decide_verdict raised %r on counters=%s outcome=%r ran_but_silent=%r"
                   % (exc, counters, a["outcome"], a["ran_but_silent"]))
             results.append(False)
+            failed.append(a["name"])
             continue
         if a["want"] == NOT_CAPTIONS_EMITTED:
             ok = real != "captions-emitted"
@@ -473,6 +546,8 @@ def analyse(worker_path: str, module_name: str, as_package: bool, label: str):
             ok = real == a["want"]
             want_display = repr(a["want"])
         results.append(ok)
+        if not ok:
+            failed.append(a["name"])
         print("[%s] %s" % ("PASS" if ok else "FAIL", a["name"]))
         print("       real = %r" % (real,))
         print("       want = %s" % want_display)
@@ -482,6 +557,8 @@ def analyse(worker_path: str, module_name: str, as_package: bool, label: str):
     print("\n--- the wiring: does the pipeline actually call it? ---")
     ok_wired = bool(call_sites)
     results.append(ok_wired)
+    if not ok_wired:
+        failed.append("wiring: main() calls decide_verdict")
     print("[%s] main() calls decide_verdict" % ("PASS" if ok_wired else "FAIL"))
     print("       real = %s" % (("call site line(s) %s" % call_sites) if ok_wired else "DECIDE_VERDICT IS NEVER CALLED"))
     print("       want = a call site outside the definition")
@@ -490,7 +567,9 @@ def analyse(worker_path: str, module_name: str, as_package: bool, label: str):
 
     real_verdict = "GREEN" if all(results) else "RED"
     print("RESULT (%s): %s - %d/%d arm(s)" % (label, real_verdict, sum(1 for r in results if r), len(results)))
-    return all(results), results
+    if failed:
+        print("arms that went RED: %s" % ", ".join(failed))
+    return all(results), results, failed
 
 
 def unguarded_copy() -> str:
@@ -538,53 +617,142 @@ def unguarded_copy() -> str:
     return COPY
 
 
+LIVE_TERM = re.compile(r"counters\.get\(\s*[\"']redux_live_captions[\"']\s*,\s*0\s*\)")
+
+
+def drop_live_copy() -> str:
+    """A COPY of the worker whose `emitted` sum IGNORES the live overlay's counter.
+
+    WHAT IT BREAKS, and why it is not the same break as the unguard control. The
+    unguard control removes the `captions == 0` GUARD (the word `captions-zero`);
+    this one removes a COUNTER FROM THE SUM
+    (`emitted = captions + redux_captions + redux_live_captions`), so a run whose
+    ONLY lines came from the live overlay would be announced as `captions-zero`
+    while it had really emitted captions — the exact defect class this gate
+    exists for, one layer down.
+
+    The READ is kept on purpose (`0 * counters.get(...)`): the gate's key
+    analysis must still SEE the counter, or the copy would trip the "an arm
+    names a key the predicate never reads" setup check and the control would
+    fail for the WRONG reason — a setup error is not evidence that the arm can
+    fail.
+
+    ANCHOR: the live term is searched for AFTER the `emitted = (` assignment,
+    because the same expression appears once more, earlier, in the counter
+    coercion (`'redux_live_captions'` in the key tuple). Neutralising that one
+    would not change the sum at all, and the control would stay GREEN for a
+    reason that has nothing to do with the defect.
+    """
+    with io.open(WORKER, encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"emitted\s*=\s*\(", src)
+    if not m:
+        raise SetupError(
+            "SETUP ERROR: the `emitted = (...)` sum is not there in worker/sotto_worker.py, so this control has\n"
+            "  nothing to break. Re-anchor it on the sum before reading any green from it."
+        )
+    t = LIVE_TERM.search(src, m.end())
+    if not t:
+        raise SetupError(
+            "SETUP ERROR: the live overlay's counter (`redux_live_captions`) is not in the `emitted` sum of\n"
+            "  worker/sotto_worker.py, so this control has nothing to break. If the counter has been renamed or\n"
+            "  dropped upstream, the arm that reads it is proving nothing and this control must fail closed."
+        )
+    with io.open(COPY_LIVE, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(src[: t.start()] + "0 * " + src[t.start():t.end()] + src[t.end():])
+    return COPY_LIVE
+
+
+# ---------------------------------------------------------------------------
+# THE CONTROLS. Each one is a COPY of the worker with ONE thing broken, and
+# each one NAMES the arms it must send RED. "The gate went red" alone cannot
+# tell a surgical break from a broken setup, so the expected arms are declared
+# and the failing arms are printed.
+# ---------------------------------------------------------------------------
+CONTROLS = {
+    "--control-unguard-captions-zero": dict(
+        title="the `captions == 0` branch neutralised (the pre-F3 fall-through)",
+        build=unguarded_copy,
+        label="the unguarded COPY (control)",
+        must_fail=[
+            "b  captions == 0, tap ALIVE, no no-audio evidence",
+            # d5 asserts the word `captions-zero`, which is EXACTLY the word the
+            # neutralised branch used to produce: it must go RED here too, and
+            # that is what makes d5 an arm that can fail.
+            "d5 the same run with redux_live_captions == 0 (nothing was emitted)",
+        ],
+    ),
+    "--control-drop-redux-live": dict(
+        title="the live overlay's counter dropped from the `emitted` sum",
+        build=drop_live_copy,
+        label="the live-blind COPY (control)",
+        must_fail=[
+            "d4 redux_live_captions > 0 alone (the overlay's line, no streaming caption)",
+        ],
+    ),
+}
+
+
 def main() -> int:
-    control = "--control-unguard-captions-zero" in sys.argv[1:]
+    argv = sys.argv[1:]
+    control = None
+    for name, spec in CONTROLS.items():
+        if name in argv:
+            control = spec
+            break
     target = WORKER
     as_package = True
     label = "worker/sotto_worker.py (as shipped)"
-    if "--worker" in sys.argv[1:]:
-        i = sys.argv.index("--worker")
-        if i + 1 < len(sys.argv):
-            target = os.path.abspath(sys.argv[i + 1])
+    if "--worker" in argv:
+        i = argv.index("--worker")
+        if i + 1 < len(argv):
+            target = os.path.abspath(argv[i + 1])
             as_package = False
             label = "%s (--worker override)" % os.path.relpath(target, REPO)
     try:
-        ok, results = analyse(target, "_lane6_worker_override", as_package, label)
+        ok, results, failed = analyse(target, "_lane6_worker_override", as_package, label)
     except SetupError as exc:
         print(str(exc))
         return 2
 
-    if not control:
+    if control is None:
         print("\nRESULT: %s" % ("GREEN" if ok else "RED"))
         return 0 if ok else 1
 
     print("")
+    path = None
     try:
-        path = unguarded_copy()
-        print("control  : %s - a COPY of worker/sotto_worker.py with ONLY the `captions == 0` branch removed"
-              % os.path.relpath(path, REPO))
-        print("           (the pre-F3 chain: the fall-through announced captions it never emitted)")
+        path = control["build"]()
+        print("control  : %s - a COPY of worker/sotto_worker.py with ONLY %s"
+              % (os.path.relpath(path, REPO), control["title"]))
+        print("           (the shipped worker with that ONE change; nothing else is touched)")
         print("")
-        cok, _ = analyse(path, "_lane6_worker_copy", False, "the unguarded COPY (control)")
+        cok, _, cfailed = analyse(path, "_lane6_worker_copy", False, control["label"])
     except SetupError as exc:
         print(str(exc))
         return 2
     finally:
         try:
-            if os.path.isfile(COPY):
-                os.remove(COPY)
+            if path and os.path.isfile(path):
+                os.remove(path)
         except OSError:
             pass
 
-    print("\nCONTROL-ARM (only the `captions == 0` branch removed, nothing else)")
+    print("\nCONTROL-ARM (%s)" % control["title"])
     print("  verdict real = %s" % ("GREEN" if cok else "RED"))
     print("  verdict want = RED")
-    passed = not cok
-    print("  CONTROL %s - %s" % ("PASS" if passed else "FAIL",
-                                 "arm (b) fails on the copy exactly as it should"
-                                 if passed else "THE GATE STAYED GREEN WITH `captions-emitted` UNGUARDED"))
-    print("\nRESULT: %s (control satisfied: gate RED on the unguarded copy, gate %s on the shipped worker)"
+    print("  arms that went RED on the copy: %s" % (", ".join(cfailed) or "(none)"))
+    missing = [n for n in control["must_fail"] if n not in cfailed]
+    passed = (not cok) and not missing
+    if passed:
+        why = "the gate went RED on the broken copy, on the arm(s) it was built to catch"
+    elif cok:
+        why = "THE GATE STAYED GREEN WITH THE DEFECT IN"
+    else:
+        why = ("the gate went RED, but NOT on the arm(s) this control was built to catch: %s"
+               % ", ".join(missing))
+    print("  CONTROL %s - %s" % ("PASS" if passed else "FAIL", why))
+    print("\nRESULT: %s (control satisfied: gate RED on the broken copy, gate %s on the shipped worker)"
           % ("GREEN" if passed else "RED", "GREEN" if ok else "RED"))
     return 0 if passed else 1
 

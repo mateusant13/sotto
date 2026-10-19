@@ -109,6 +109,15 @@ node _main\historico-vs-redux-probe.js > "%OUT%\oracle-historico-vs-redux.log" 2
 call :record historico-vs-redux-probe !ERRORLEVEL!
 
 echo === the gates added by this round ===
+REM The SECOND control of the same gate, added 2026-10-19: the first one
+REM drops the `captions-zero` guard; this one drops the LIVE-OVERLAY term
+REM from `emitted` while KEEPING the read. A control that fails for the
+REM wrong reason is not a control, and the read is kept on purpose so the
+REM copy goes RED on the CLAIM and not on a KeyError.
+if exist _main\verdict-gate.py (
+  python _main\verdict-gate.py --control-drop-redux-live > "%OUT%\control-verdict-gate-drop-redux-live.log" 2>&1
+  call :control control-verdict-gate-drop-redux-live !ERRORLEVEL! "%OUT%\control-verdict-gate-drop-redux-live.log" "CONTROL PASS"
+) else ( call :control control-verdict-gate-drop-redux-live MISSING "%OUT%\control-verdict-gate-drop-redux-live.log" "CONTROL PASS" )
 if exist _main\history-producer-gate.js (
   node _main\history-producer-gate.js > "%OUT%\gate-history-producer.log" 2>&1
   call :record history-producer-gate !ERRORLEVEL!

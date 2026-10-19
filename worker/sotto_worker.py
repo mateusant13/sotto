@@ -4402,7 +4402,15 @@ def decide_verdict(counters, outcome, ran_but_silent) -> str:
     already refuses to call any non-`captions-emitted` verdict healthy.
 
     `counters` keys read: `captions`, `chunks`, `blocks`, `nonzero_blocks`,
-    `resampled_samples`, `music_gated_chunks`, `vad_gated_chunks`.
+    `resampled_samples`, `music_gated_chunks`, `vad_gated_chunks`,
+    `redux_captions`, `redux_live_captions`.
+
+    (NINE, not seven. The two `redux_*` counters were added when the batch
+    and the live redux engines came to the worker, and this docstring kept
+    saying seven — so "Every key read is named below" above was FALSE, and a
+    reader counting the names would have built a gate that could not supply
+    an input the predicate reads. That is exactly what
+    `_main/verdict-gate.py` did, until 2026-10-19.)
 
     The exhaustion case is decided FIRST and on captions, not on tokens.
     Measured on a forced all-flat run: `tokens=1` with `captions=0` sent this
