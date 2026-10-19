@@ -275,9 +275,21 @@ def battery(lineformer_cls, baseline=None, source_text=None) -> list:
                      if a != b), None)))
 
     # --- a provider that has nothing to say changes nothing ----------------
+    # UMA EXCEPCA QUE ESCAPA DO CODIGO EM TESTE E' UM VERMELHO, NAO UMA FALHA
+    # DO HARNESS. Antes disto o RuntimeError do fixture `boom` subia por
+    # battery() inteiro e o harness imprimia "mutante nao correu / DECORATIVO"
+    # -- ou seja, um mutante COM DENTES era classificado como um que nao prova
+    # nada. Sao opostos: uma coisa e' o codigo a falhar (prova), a outra e' o
+    # gate a nao carregar (mentira). Agora rebenta para um check vermelho.
     for label, provider in (("no payload", fresh_provider(None)),
                             ("a provider that raises", boom)):
-        got = run_scenario(lineformer_cls, provider=provider)
+        try:
+            got = run_scenario(lineformer_cls, provider=provider)
+        except Exception as exc:                                # noqa: BLE001
+            chk(False, "OFF-equivalent: " + label + " -> identical events",
+                "O CODIGO EM TESTE LEVANTOU %s (%s): o event loop morreu com "
+                "um provider que se porta mal" % (type(exc).__name__, exc))
+            continue
         chk(got == events, "OFF-equivalent: " + label + " -> identical events",
             "%s" % ("" if got == events else "DIFFERENT"))
 
@@ -520,20 +532,35 @@ def main() -> int:
 
     print("\nNEGATIVE ARM (broken plumbing must go RED)")
     caught = 0
+    weak = 0
     tmp = tempfile.mkdtemp(prefix="speaker-plumbing-")
     try:
         for idx, (label, old, new) in enumerate(MUTANTS):
             if old not in live_src:
                 print("  RED   mutant %-46s ANCHOR MISSING -- oracle is stale"
                       % label)
+                weak += 1
                 continue
             broken = live_src.replace(old, new, 1)
+            # CARREGAR e CORRER sao coisas diferentes e nunca podem ser
+            # confundidas: se a copia nao carrega, o mutante nao foi testado
+            # (decorativo); se carrega mas rebenta a bateria, o codigo partiu
+            # mas o gate nao consegue dizer QUAL check o apanhou -- tambem nao
+            # cumpre o que promete. Nenhum dos dois pode virar "caught".
             try:
-                res = battery(extract_lineformer(broken), baseline, source_text=broken)
-            except Exception as exc:                                # noqa: BLE001
-                print("  GREEN mutant %-46s refused to run (%s)"
+                broken_cls = extract_lineformer(broken)
+            except Exception as exc:                            # noqa: BLE001
+                print("  RED   mutant %-46s DECORATIVO: nao carregou (%s) -- "
+                      "NAO foi testado" % (label, type(exc).__name__))
+                weak += 1
+                continue
+            try:
+                res = battery(broken_cls, baseline, source_text=broken)
+            except Exception as exc:                            # noqa: BLE001
+                print("  RED   mutant %-46s INCONCLUSIVO: carregou mas a "
+                      "bateria morreu antes de um check nomeado (%s)"
                       % (label, type(exc).__name__))
-                caught += 1
+                weak += 1
                 continue
             reds = [name for ok, name, _ in res if not ok]
             if reds:
@@ -546,9 +573,14 @@ def main() -> int:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    ok = green == len(rows) and caught == len(MUTANTS)
+    total = len(MUTANTS)
+    ok = green == len(rows) and caught == total and weak == 0
     print("\nVERDICT: %s  arms %d/%d  mutants %d/%d"
-          % ("PASS" if ok else "FAIL", green, len(rows), caught, len(MUTANTS)))
+          % ("PASS" if ok else "FAIL", green, len(rows), caught, total))
+    if weak:
+        print("  %d mutante(s) DECORATIVO(S): nao correram, logo nao provaram "
+              "nada. Um braco negativo que promete %d e testa %d nao cumpre."
+              % (weak, total, caught))
     return EXIT_PASS if ok else EXIT_FAIL
 
 

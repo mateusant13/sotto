@@ -31,7 +31,7 @@ Tres defeitos, e so um deles e o que matou a maquina
    a maquina esta mais quieta. A maquina quieta e quando se pode estragar a
    maquina. A docstring dela dizia, com conviccao, que "a stale running worker is
    worse than one warm-up". Foi o julgamento de um agente anterior, e o dono
-   acabei de o黑的. Nao ha tecto: ha um RELATORIO.
+   acabou de o matar. Nao ha tecto: ha um RELATORIO.
 
 3. O WATCHER (`app/webview/hot_reload.py`) ouvia `FILE_NOTIFY_CHANGE_ALL`, que
    inclui `FILE_NOTIFY_CHANGE_ATTRIBUTES` e `..._CREATION`. Uma mudanca de
@@ -46,7 +46,7 @@ O QUE FOI FEITO
     criacao ja nao sao codigo.
   watcher: aceita o conjunto explicito do que a ponte executa
     (`watched_worker_files()`), nao os treze `.py`. `SOTTO_WATCH_WORKER`
-    sobrepoe para layouts、杨 nombrados fora do comum.
+    sobrepoe para layouts e ficheiros nombrados fora do comum.
   politica: `code_is_stale=False` e AGORA A PRIMEIRA CONDICAO, e sai antes de
     qualquer temporizador. Nao ha nada a aplicar.
   politica: os tres ramos que aplicavam passaram a REPORTAR e a acabar ali. Ja nao

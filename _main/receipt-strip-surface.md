@@ -465,7 +465,7 @@ botões da faixa estão sempre laid-out) **e acrescenta o que a CSS não diz**: 
 não há nada a revelar, e na faixa os botões são clicáveis. A instrumentação está em
 `_main\_hover-probe-run2.log` (o `run` anterior tinha um snapshot lido entre duas
 frames, quando a janela `WINDOW_GEOMETRY` e o `display:none` caíam em frames
-separados; o `settled`加上 resolve).
+separados; o `settled` ja resolve).
 
 **Trapaça do CDP, registada:** o `_cdp` do `mouseMoved` dá `cdp-timeout` (o `Task` sem
 genérico do pythonnet não completa o `ContinueWith` num move coalescido), **mas o

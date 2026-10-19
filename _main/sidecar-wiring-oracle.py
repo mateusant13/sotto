@@ -15,7 +15,7 @@ Por isso este portao NAO lanca nada. Ele:
     sidecar arranca, onde e' parado, se a flag existe).
 
 O BRACO NEGATIVO NAO E' SOBRE O TEXTO. A primeira versao fazia `broken =
-src.replace(...)` e depois afirmava que a substituicao tinha村长occurido -- o que
+src.replace(...)` e depois afirmava que a substituicao tinha acontecido -- o que
 e' trivialmente verdade e prova NADA. Agora o mutante e' **executado**: a classe
 extraida da copia quebrada corre no mesmo sandbox, e os arms comportamentais
 têm de ir a RED. Uma mutacao que so muda o texto e' decorativa.

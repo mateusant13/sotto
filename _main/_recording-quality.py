@@ -12,7 +12,7 @@ segmentacao -- "ninguem" -- ocupa 9486 frames de 10663. Sao **89 % de nao-fala**
 E o pipeline completo encontrou so 15 segmentos em 180 s.
 
 Se o audio e' maioritariamente silencio, entao "13 slots" pode ser o
-comportamento honesto de um diarizador a receber姿eca: nao ha fala para casar,
+comportamento honesto de um diarizador a receber silência: nao ha fala para casar,
 `min_duration_off` parte o resto em micro-segmentos, e o casamento por tempo
 falado partilhado -- que e' o que `StableSpeakerSlots` faz -- nao tem nada com
 que trabalhar.

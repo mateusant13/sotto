@@ -139,7 +139,7 @@ duplicada. Rejeitado.
 
 ---
 
-## 6. Em produto — `_main/speaker-watch-oracle.py`, **34/34**, negativo **FAIL 5/33**
+## 6. Em produto — `_main/speaker-watch-oracle.py`, **39/39**, negativo **FAIL 8/38**
 
 | peça | onde | o que faz |
 |---|---|---|
@@ -880,6 +880,731 @@ foram medidos assim, e é assim que devem ser lidos.
 
 ---
 
+## 7.14 D1 — O PIPE DO SIDECAR NÃO TINHA NINGUÉM A LER (achado por um auditor)
+
+Este não é um risco imaginado. É o **modo de falha mais silencioso de toda a
+cadeia**, porque não dá nenhum sinal: a atribuição é que deixa de acontecer, e o
+dono vê legendas correctas e sem voz nenhuma.
+
+`SpeakerSidecar.start` abria o filho com `stdout=PIPE` e **não arrancava nenhum
+leitor**. Isto não é uma hipótese de estilo: o `WorkerBridge` da mesma shell liga
+um leitor **por stream** (`:11006`) — o sidecar ficou de fora desse padrão por
+acidente. Um `PIPE` que ninguém lê enche, e o filho **trava na escrita**.
+
+**Medido, com a configuração exacta do `SpeakerSidecar`** (`I:\cc-tmp\pipe-fill-probe.py`):
+
+| fact | número |
+|---|---|
+| o filho escreve | **3 480 B** e **trava** |
+| produção do sidecar | **5,8 B/s** (58 B × 1 linha / 10 s) |
+| tempo até bloquear | **~10 minutos de call** |
+| o que acontece quando bloqueia | a atribuição **desliga, sem alarme** |
+
+O nome do ficheiro de medição é quase o resumo do problema: `pipe-fill-probe`.
+
+**A correcção** é `_start_drain()` — uma thread daemon que lê o stream do filho e
+manda **tudo** para o log (`sotto_webview.py:10393`, chamada em `:10390`). Duas
+decisões que valem a pena nomear:
+
+1. **O filho é passado explicitamente.** Um dreno que vai buscar `self.child` por
+   dentro tem uma janela em que ainda é `None`.
+2. **Tudo vai para o log.** Descartar o diagnóstico seria a mesma mentira que uma
+   excepção engolida — e é exactamente por aí que este bug vivia: **silêncio do
+   dreno é stall, não "nada a dizer".**
+
+**O portão tem DUAS metades e as duas correm** (`speaker-watch-oracle.py:382-418`).
+A primeira prova o defeito (sem leitor, o filho trava); a segunda prova a correcção
+(o mesmo filho atravessa milhares de linhas). Isto é deliberado e está escrito no
+ficheiro: **se só a segunda corresse, o dreno podia desaparecer um dia e o gate
+dizia "ok"** — e nesse dia o gate era que estava a mentir, não o código.
+
+> **Ressalva de honestidade deste recibo — e um número que eu quase escrevi
+> errado.** O portão imprime `40000 linhas lidas em 6 s (sem dreno, trava aos
+> 3480 B)`. A primeira leitura é *o gate exige 40 000*; a segunda é *o limiar são
+> 4 000*. **Nenhuma é exacta e por isso vale a pena dizer as duas.** O que o
+> código faz (`speaker-watch-oracle.py:415-425`): espera até `len(got) ≥ 4000` (ou
+> 6 s), mata o filho, e afirma `len(got) > 4000`. O número impresso **é
+> `len(got)` — a medição, não um arredondamento** — e nesta corrida deu 40 000,
+> que é o total que o filho escreve. **Limiar e observado são coisas diferentes:**
+> o limiar é a afirmação, o observado é o que aconteceu. Um gate que imprimisse
+> o limiar como se fosse o resultado seria um `n_clips` (§7.11) com outro nome.
+
+`sotto_webview.py` depois de D1: **12 785 CRLF / 0 LF**, sintaxe OK,
+`--check-args` rc=0. **12 785** e não os 12 733 da tabela do §9 — a tabela foi
+medida antes desta correcção. **E depois voltou a mudar, por causa de D1b
+(§7.17): 12 795 CRLF / 0 LF.** Duas revisões, dois pins, e é exactamente por isso
+que o sha anda ao lado do número.
+
+---
+
+## 7.15 D2 — MUTANTES DECORATIVOS: O GATE QUE DIZIA 6/6 E NÃO VIA NADA
+
+Este é o achado mais importante desta revisão, e não é sobre o produto: **é sobre
+os portões que mandam no produto.**
+
+O `speaker-sidecar-oracle.py` tinha um mutante que substituía
+
+```
+except Exception:      →      except _NeverMatchesThis:
+```
+
+`_NeverMatchesThis` **não existe**. A cópia do módulo rebenta com `NameError` no
+`import`, **antes de executar um único check** — e o código contava isso:
+
+```python
+except Exception as exc:
+    print("GREEN mutant ... refused to run")
+    caught += 1          # <-- um mutante que NÃO corre, contado como apanhado
+```
+
+**6/6 era um número que não dizia nada.** Não "pouco fiável": *zero informação sobre o
+mutante que ele dizia provar*. Um gate que infla a sua própria contagem é pior do
+que um gate sem braço negativo, porque **compra com o leitor a confiança que
+não tem**.
+
+### A regra que saiu daqui
+
+> **Um mutante que não corre não é um mutante apanhado. O gate tem de REPROVAR um
+> braço decorativo, nunca inflar o contador.**
+
+Implementação: um contador `weak` à parte, e o veredicto passa a exigir
+`weak == 0`. O mutante decorativo passou a **re-lançar** (comportamental) e a
+bateria passou a tratar um `tick()` que rebenta como **RED**.
+
+### E a mesma classe de defeito estava em mais dois portões
+
+Provar que um portão mentiu uma vez não é prova de nada sobre os outros. Fui
+procurar a **mesma forma** nos dois portões irmãos, e encontrou-se nos dois:
+
+| portão | o que fazia | medido depois da correcção |
+|---|---|---|
+| `speaker-sidecar-oracle` | `caught += 1` a mutante que não carrega | **34/34 · 6/6 comportamentais** |
+| `speaker-plumbing-oracle` | contava `battery()` que rebentava como mutante apanhado | **39/39 · 6/6 comportamental** |
+| `speaker-id-oracle:589` | `print("GREEN ... refused to run"); caught += 1` — **literalmente o mesmo código** | **79/79 · 13/13 comportamental** |
+
+**E apareceu uma terceira forma, mais subtil — a que eu não procurava.** No
+`speaker-plumbing-oracle`, o mutante `a-crash-in-the-sidecar-kills-the-caption`
+trocava `except Exception` por `except ZeroDivisionError`. Ao correr, o
+`RuntimeError` do fixture `boom()` **subia por `battery()` inteiro**, e o handler
+genérico imprimia *"mutante não correu — DECORATIVO"*.
+
+Ou seja: **um mutante COM DENTES estava a ser classificado como um que não prova
+nada** — o erro na direcção oposta, e tão grave como o outro. Um mutante cujo
+código rebenta é uma **prova**; o harness é que não conseguia lê-la.
+
+A correcção separa as duas coisas, e é a distinção que faltava em todo este
+trabalho:
+
+* **uma excepção que ESCAPA do código em teste é um VERMELHO** — o check
+  `OFF-equivalent: a provider that raises -> identical events` passa a registá-la
+  como falha nomeada, em vez de a bateria rebentar;
+* **uma excepção a CARREGAR o mutante é deco** — `weak += 1`, e o veredicto
+  falha;
+* **uma bateria que morre depois de carregar é INCONCLUSIVA** — nem apanha, nem
+  finge: conta `weak` e diz porquê.
+
+Depois disto o mutante é apanhado pelo check que lhe compete:
+
+```
+GREEN mutant a-crash-in-the-sidecar-kills-the-caption
+       caught by: OFF-equivalent: a provider that raises -> identical events
+```
+
+### O caminho `weak` está provado vivo — não é um ramo morto
+
+Um gate novo que reprova precisa de ser visto a reprovar. Os dois portões
+**deram `rc=1` a classificar decorativos** antes da correcção e **`rc=0` depois** —
+a mesma execução, o mesmo dia, o único que mudou foi o veredicto. Um ramo que
+nunca dispara é uma promessa, não uma porta.
+
+### E um erro **meu**, repetido, no próprio runner
+
+Escrevi o runner da bateria com `$args.Split(' ')` sobre uma string vazia.
+`''.Split(' ')` dá `['']` — **um argumento vazio** — e o argparse responde `rc=2`
+com uma mensagem que não é um veredicto. O primeiro lote inteiro saiu com
+`rc=2` em **7 de 17** portões, e só passou a `rc=0` quando os argumentos passaram
+a ser um **array** que se faz splat.
+
+Este erro **já estava na minha lista de erros meus** — "script em lote a
+reportar `rc=2` num portão que dava 0". Repeti-o na mesma sessão. O padrão é
+sempre o mesmo: **um `rc` que eu não consigo explicar é um erro meu até prova em
+contra, e a primeira coisa a fazer é olhar o stdout do processo, não a reação ao
+código.**
+
+---
+
+## 7.16 D1b — A MINHA PRÓPRIA CORRECÇÃO PARTIU UM PORTÃO QUE JÁ EXISTIA
+
+Esta é a melhor história da revisão, porque o culpado sou eu e o apanhador foi um
+portão escrito **antes** de D1 existir.
+
+`_start_drain` (D1) fazia:
+
+```python
+stream = child.stdout
+if stream is None:
+    return False
+```
+
+O teste `is None` está lá e está certo — mas `child.stdout` **levanta
+`AttributeError` antes de o teste correr** quando o filho não tem o atributo
+`stdout`. Foi o que aconteceu com o duplo do `sidecar-wiring-oracle`:
+
+```
+AttributeError: '_FakePopen' object has no attribute 'stdout'
+  File "app\webview\sotto_webview.py", line 10390, in start
+    self._start_drain(self.child)
+  File "app\webview\sotto_webview.py", line 10421, in _start_drain
+    stream = child.stdout
+```
+
+**A correcção** é `getattr(child, 'stdout', None)`, e o ramo não ficou mudo — passa
+a escrever `SIDECAR_DRAIN_SKIPPED reason=filho-sem-stdout-legivel pid=…` no log.
+Isto não é só para o gate passar:
+
+> **Um dreno nunca pode ser a razão de o sidecar não arrancar.** Se o `stdout` não
+> for um pipe legível, o que existe para drenar é **nada** — e "não havia nada
+> para ler" é um facto que se escreve, não uma excepção que se propaga para dentro
+> de `start()`.
+
+Depois da correcção: `sidecar-wiring-oracle` **22/22 PASS**, `speaker-watch-oracle`
+(o portão do D1, com um `Popen` **real**) **39/39 PASS**. `sotto_webview.py`:
+**669 053 B, 12 795 CRLF / 0 bare LF**, sintaxe OK, `--check-args` rc=0. A edição
+foi feita por um script que conta CRLF antes e depois e **aborta** se entrar um LF
+sem CR — porque editar CRLF com uma ferramenta de texto é a forma mais rápida de
+fazer um ficheiro misto sem dar por isso.
+
+### E porque isto é uma boa notícia, e não uma má
+
+O portão **não estava errado**. Ele deu `rc=1` com um traceback, e um traceback que
+sai do `main()` é um `rc` não-zero — ou seja, **não foi um verde falso**. A única
+coisa que faltava era nomear a falha em vez de a deixar rebentar.
+
+Isto é o contrário do §7.15, e vale a pena dizer em voz alta: ali o portão
+**mentiu** (disse 6/6 sem correr nada); aqui o portão **falhou com franqueza**. Um
+gate que rebenta é muito melhor do que um gate que aprova. **A lealdade de um
+portão mede-se pelo que ele faz quando está errado** — e este não hesitou.
+
+### Uma coisa que eu devia ter feito e não fiz
+
+Devia ter corrido **a bateria inteira** no mesmo minuto em que escrevi D1, e não
+só o `speaker-watch-oracle`. A correcção de D1bqou à frente, e o único portão que
+a apanhou foi aquele que eu não pensei em correr. A regra que sai daqui já estava
+escrita no §7.10 e na nota do `_cpu-load.py`: **um portão que cai depois de uma
+edição é o portão a dizer a verdade sobre a edição** — e a primeira coisa a fazer
+com essa verdade é não ficar a debater com ela.
+
+---
+
+## 7.17 R1 — RISCO AINDA NÃO MEDIDO: O ZERO DO `stream_epoch` PODE NÃO SER O ZERO DA FALHA
+
+Este ficou **em aberto de propósito**, e registá-lo sem o resolver é parte do
+trabalho — porque a tentação, daqui a uns dias, é aplicar um patch sem medir.
+
+`sotto_worker.py:5439` carimba `stream_epoch = time.time()` **à entrada de
+`asr_thread`**. Mas o zero que o resto da cadeia usa é **o primeiro chunk
+retirado da fila** (`:5806`), e entre os dois há a escada de taps
+(`TAP_WINDOW_S = 6.0 s`, `:5182`). Com N candidatos, o skew estimado é
+**6 s × N** — e cada legenda seria atribuída a quem falou há ~6–30 s.
+
+**Não foi medido, e não vou fingir que foi.** A medição exige um worker a abrir um
+dispositivo de áudio real, e a ordem do dono é para não abrir a app. As três
+coisas que sei e que são factos, não estimativas:
+
+1. o `stream_epoch` existe e é carimbado na entrada da thread (`:5439`);
+2. o zero do primeiro chunk é noutro sítio (`:5806`);
+3. a escada de taps, entre eles, é de 6 s por candidato (`:5182`).
+
+O que **não** sei, e é o que interessa: se o skew é real, se é absorvido pelo
+`speaker_id`, e qual é a magnitude. **Não investigar sem autorização do dono** —
+investigar isto significa abrir captação de áudio, e essa é a linha que ele
+mandou não atravessar.
+
+---
+
+## 7.18 UM PIN QUE APODRECEU SETE DIAS — E A CAUSA, QUE É MAIS ÚTIL QUE O NÚMERO
+
+`AGENTS.md` fixa o tamanho exacto da saída de `run.cmd --help`, e existe um
+portão feito exactamente para isso: `_main/agents-md-pins-oracle.py`. Ele mede
+**ao vivo** e falha se o documento divergir.
+
+**Correu pela primeira vez hoje, e estava VERMELHO.** O pin dizia:
+
+```
+re-measured 2026-10-12 the output is 4956 B, 79 lines, 79 CRLF / 0 bare LF, rc 0,
+sha256 91F73971…
+```
+
+e o medido hoje é:
+
+```
+6934 B, 107 lines, 107 CRLF / 0 bare LF, rc 0,
+sha256 51B52939F76C4AA5A35D7D865ED7C6B38C01ACFAD829F36C7A6032C337E01B47
+```
+
+### A causa, medida passo a passo (e não adivinhada)
+
+Não bastava dizer "o pin está velho". Medi **cada revisão**:
+
+| revisão | saída do `--help` | linhas | linhas sobre vozes |
+|---|---|---|---|
+| pin de 2026-10-12 | 4956 B | 79 | — |
+| `8639fef~1` (antes do trabalho de orador) | 5336 B | **85** | **0** |
+| HEAD (com as flags de orador) | 6934 B | **107** | **13** |
+
+Duas coisas ficam Provadas:
+
+1. O pin de 2026-10-12 **já estava 6 linhas atrasado** antes de o trabalho de
+   orador começar. Portanto **não foi o trabalho de orador que o quebrou** — e era
+   isso que eu ia dizer se não medisse.
+2. O trabalho de orador **acrescentou 22 linhas** ao `--help` (85 → 107), das quais
+   **13** são sobre `--speakers`, `--speakers-cheap`, `--save-voice-clips` e
+   `--watch-payload`.
+
+### E a pergunta que importa: porque é que ninguém viu?
+
+Porque **o portão não estava na bateria**. A lista do §10 tinha 18 portões e
+`agents-md-pins-oracle` não era um deles. Um portão que existe, funciona, e
+demonstra que sabe dizer não — **mas não corre, não vigia nada**. Passou sete
+dias a apodrecer em silêncio, que é a forma mais comum de um gate morrer:
+não por estar partido, por **não estar ligado**.
+
+> **A lição: um portão fora da bateria é um portão que não existe.** A bateria
+> é o que decide o que é exigido; o portão é só a capacidade de dizer não.
+
+O portão passou a fazer parte da bateria (§10) e está **GREEN**, e o seu
+`--neg-arm` continua a dizer não:
+
+```
+AGENTS-PINS PASS -- 2 pin(s) checked live, 0 failure(s)
+CONTROL: 1 failure(s) on the mutated copy (must be > 0)
+AGENTS-PINS CONTROL PASS
+```
+
+### E o portão tinha um segundo defeito, do mesmo tipo
+
+Ao actualizar o pin, o portão passou a dizer *"the anchor sentence is GONE from
+AGENTS.md"*. O anchor era a frase **com a data dentro**:
+
+```python
+window(text, "re-measured 2026-10-12 the output is")
+```
+
+Isto é o gate **amarrado ao valor**: cada actualização de pin obrigava a editar
+o portão, e ninguém quer editar o portão — logo ninguém actualiza o pin, e o
+gate acaba por estar a queixar-se de uma frase que ele próprio devia ter
+encontrado. O mesmo padrão do `n_clips` (§7.11) e do `clips_evicted` (§7.12):
+**um número — ou uma data — colado a uma coisa que muda.**
+
+A correcção é o gate seguir a **frase** e deixar a **data** livre:
+
+```python
+window_re(text, r"re-measured \d{4}-\d{2}-\d{2} the output is")
+```
+
+E o braço negativo deixou de estar preso à data também — antes ele mutava
+`re-measured 2026-10-12`; se a data mudasse, o braço deixava de mutar e
+reportava `CONTROL INVALID` (rc=5). Hoje muta o **número**, que é o que
+interessa.
+
+**E há uma coisa que este pin provou sobre a minha própria correcção de hoje:**
+o `run.cmd` foi convertido de LF para CRLF (§7.19) e a saída do `--help` ficou
+**byte-idêntica** (6934 B, sha `51B52939…`, com LF e com CRLF). A medição está
+em `I:\cc-tmp\atribuir-pins-drift.py`, que restaura o ficheiro no `finally`.
+Ou seja: a conversão **não** mexe no comportamento, e o pin que falhou **não
+era culpa da conversão**. Atribuir a causa ao meu próprio acto sem medir teria
+sido a leitura errada — e é a leitura errada que este recibo inteiro documenta.
+
+---
+
+## 7.19 O `run.cmd` — O PONTO DE ENTRADA DA APP — ESTAVA EM LF
+
+Este é o mais pequeno e o mais concreto de todos os achados, e é um defeito
+**real**, não uma preferência.
+
+`AGENTS.md` diz, sem ambiguidade: *"The app is `app/webview/run.cmd`"*. É o
+ficheiro que o dono faz duplo clique. **Medido 2026-10-19:**
+
+| ficheiro | bytes | quebras | sha256[:16] |
+|---|---|---|---|
+| `app/webview/run.cmd` (antes) | 16 223 | **0 CRLF / 274 bare LF** | `973691C60513D485` |
+| `Sotto.cmd` | 2 012 | 32 CRLF / 0 bare LF | — |
+| `_main/_audit-verify-all.cmd` | 32 637 | 538 CRLF / 0 bare LF | — |
+
+O `run.cmd` era **o único `.cmd` do repo em LF**, e tem **10 linhas que são só
+um `)`** — exactamente a construção mais frágil que o `cmd.exe` tem (blocos de
+parênteses). O `AGENTS.md` exige "0 bare LF" em `.cmd`, e os outros dois
+obedecem.
+
+**Correcção** (por script, com contagem antes e depois, e **idempotente** — a
+segunda execução diz "JA ESTAVA CRLF PURO"):
+
+```
+app/webview/run.cmd  16 497 B  274 CRLF / 0 bare LF  sha 0CC916C1E4B187C0
+```
+
+### E — isto é a parte que não é óbvia — a conversão é **comportamentalmente neutra**
+
+Medi a saída de `cmd /c run.cmd --help` nas **duas** versões, com o ficheiro
+restaurado no `finally` (`I:\cc-tmp\atribuir-pins-drift.py`):
+
+| run.cmd | saída do `--help` | sha256[:16] |
+|---|---|---|
+| LF (original do HEAD) | 6934 B, 107 CRLF / 0 bare LF | `51B52939F76C4AA5` |
+| CRLF (depois da conversão) | 6934 B, 107 CRLF / 0 bare LF | `51B52939F76C4AA5` |
+
+**Byte-idênticos.** Portanto a conversão não mudou o que a app faz — só pôs o
+ficheiro de acordo com o contrato do próprio repo e com o que o `cmd.exe`
+espera. (E se tivesse mudado, isso era um sinal de que o `run.cmd` dependia das
+quebras de linha, o que também não é mau — mas tinha de ser **medido**, não
+assumido.)
+
+### Por que estava em LF, se o `git` põe CRLF?
+
+Porque `core.autocrlf=true` (repo) converte LF→CRLF **no checkout**, e o blob
+guardado é LF. O que estava em disco não era um artefacto de checkout: era o
+estado deixado por uma escrita posterior. Ou seja, o LF era **um estado
+transitório**, não um estado duradouro — mas era o estado **no disco do dono, no
+ficheiro que ele faz duplo clique**, e é esse que conta.
+
+---
+
+## 7.20 `core.autocrlf=true` SEM `.gitattributes` — O CENSO, E PORQUÊ NÃO O ESCREVI
+
+Este é o achado que o dono tem de decidir, e por isso vai **medido e com a
+solução pronta**, em vez de uma opinião minha.
+
+**O que existe:** `core.autocrlf = true`, e **não existe `.gitattributes`**.
+Efeito: no checkout, o Git converte LF→CRLF em tudo o que é texto.
+
+**O censo (medido hoje, `git ls-files --eol` sobre a árvore inteira):**
+
+| estado | ficheiros | o que é |
+|---|---|---|
+| `i/lf  w/crlf` | **1110** | **chegam CRLF a qualquer checkout** — converte-se à vontade |
+| `i/lf  w/lf` | 1971 | já estão LF em disco (escritos depois do checkout) |
+| `i/crlf` | 13 | já CRLF no índice (inclui `sotto_webview.py`) |
+| **total versionado** | **3833** | |
+
+Por extensão, no grupo exposto: 318 `.txt`, 225 `.json`, 165 `.md`, **121
+`.py`**, 67 `.mjs`, 44 `.js`, 41 `.css`, 33 `.html`, 20 `.rc`, 19 `.ps1`.
+
+**A leitura honesta deste achado:** *não há nenhuma falha medida associada.*
+Nenhum portão falha por causa disto — o único pin de quebras que o repo
+verifica (`canonical-producer-oracle.py:286`) espera **`worker/sotto_worker.py`
+em CRLF**, e é isso que o Git lhe dá. Portanto isto **não é um defeito com
+sintoma**; é uma **inconsistência de política** latente, e a política do repo é
+do dono.
+
+**E há uma razão técnica para eu não o escrever sem ele:** o `.gitattributes`
+correcto não é só um ficheiro novo — é um `.gitattributes` **acompanhado de um
+`git add --renormalize`**, e essa operação varre **as 770 entradas alheias que
+estão staged** (ver §12). Normalizar agora passaria por cima de trabalho que
+não é meu e que foi deliberadamente deixado intacto. **Fazer a correcção a
+meio, sem o dono, seria exactamente o erro que este recibo documenta.**
+
+**A correcção, pronta para um comando, se o dono disser sim** (não a aplico):
+
+```
+# .gitattributes  -- medido 2026-10-19, censo de 3833 ficheiros versionados
+# Sem este ficheiro, core.autocrlf=true converte LF->CRLF em 1110 deles no
+# checkout. NAO renormaliza nada sozinho: so passa a dizer o que se quer.
+* text=auto eol=lf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+app/webview/sotto_webview.py  text eol=crlf
+app/panel/panel.js            text eol=crlf
+```
+
+e depois, **num passo separado e com o índice limpo**:
+
+```
+git add --renormalize . && git commit -m "chore(eol): fixar as quebras de linha"
+```
+
+**O que eu recomendo, com a ressalva honesta:** aplicar a **segunda** parte
+(`.gitattributes`) e **não** renormalizar já. Assim o que está em disco deixa de
+poder ser convertido em checkout futuros, sem tocar em nenhum dos 770
+ficheiros alheios. A renormalização pode ser um commit próprio, com o índice
+limpo, e com o dono a saber o que ela faz.
+
+**E a decisão continua a ser dele** — porque a pergunta "os `.py` do `worker/`
+devem ser LF ou CRLF?" não é técnica, é de política, e eu não tenho autoridade
+para a responder. O que eu tinha era a obrigação de **a medir** e de **a
+deixar escrita**, e está feito.
+
+---
+
+## 7.21 ONZE FRASES ONDE UMA PALAVRA FOI SUBSTITUÍDA POR CARACTERES CHINESES
+
+Esta é a que eu menos esperava, e a que mais mexe no material que os outros
+agentes leem.
+
+**O defeito:** uma palavra portuguesa ou inglesa **substituída** por caracteres
+CJK. O sinal de um IME que estava ligado. A frase continua a parecer uma frase,
+e **o sinal não aparece no terminal** — aparece no diff, e só se alguém ler com
+atenção.
+
+**Medido** (`git ls-files` sobre os 3015 ficheiros de texto versionados, com
+os bytes lidos e os codepoints impressos): **11 linhas, em 10 ficheiros**. Um
+deles em **código de produto** (`worker/audio_recorder.py`); os outros em
+portões e em recibos.
+
+| ficheiro | linha | o que estava (por codepoint) | o que é |
+|---|---|---|---|
+| `worker/audio_recorder.py` | 20 | 4 ideogramas (U+80AF U+5B9A U+4E0D U+4F1A) + `quer` | *"que o dono **certamente não** quer"* |
+| `_main/sidecar-wiring-oracle.py` | 18 | 2 ideogramas (U+6751 U+957F) + `occurido` | *"a substituição tinha **acontecido**"* |
+| `_main/forbidden-audio-line-oracle.py` | 11 | 2 ideogramas (U+70B9 U+4EAE) + `ava`, e a frase inglesa `working Customers Passing` no meio de uma frase portuguesa | *"a escada **inteira acendia**"* |
+| `_main/panel-runtime-dom.py` | 23 | 3 ideogramas (U+7B2C U+4E00 U+6279) | *"Uma **primeira leva** de corridas"* |
+| `_main/_recording-quality.py` | 15 | 1 ideograma (U+59FF) + `eca` | *"a receber **silêncio**"* |
+| `app/shadowplay/.../FRICTION-LEDGER.md` | 371 | 2 ideogramas (U+4EA4 U+6362) | *"a **troca** errada"* |
+| `_main/receipt-20261017-...` | 34 | 2 ideogramas (U+9ED1 U+7684) | *"**acabou de o matar**"* |
+| `_main/receipt-20261017-...` | 49 | 1 ideograma (U+6768) + a virgula CJK U+3001 | *"layouts **e ficheiros**"* |
+| `_main/receipt-20261018-parakeet-clamp-menu.md` | 124 | 1 ideograma (U+649E) + `ou` | *"pelo shell **chocou**"* |
+| `_main/receipt-20261018-sentence-structure.md` | 67 | 3 ideogramas (U+81EA U+7136 U+4F1A) | *"O dono **naturalmente** vai suspectar"* |
+| `_main/receipt-strip-surface.md` | 468 | 2 ideogramas (U+52A0 U+4E0A) | *"o `settled` **já** resolve"* |
+
+(Os caracteres estão describedos **por codepoint** e não pelo glifo, por duas
+razões: o glifo não é legível por quem não lê chinês — o codepoint é — e este
+recibo **não** guarda ideogramas de propósito, para que o portão de §7.21.1
+não precise de uma excepção para ele. A lista continua verificável: cada
+codepoint está no Unicode, e o portão apanha a classe sem precisar de um
+catálogo em ideogramas.)
+
+**Onde a palavra original não era recuperável**, não adivinhei: reescrevi a
+frase em português correcto, com o mesmo sentido. Uma palavra restaurada por
+chute é uma mentira nova, e este recibo não precisa de uma.
+
+### 7.21.1 O portão que faltava — e a excepção que ele tem de fazer
+
+Não havia nenhum. A classe já tinha acontecido antes (o meu próprio histórico
+desta sessão regista caracteres chineses a escaparem) e **repetiu-se** — que é
+exatamente o que acontece a um erro recorrente sem portão: ele volta, e quando
+volta já traz **código de produto** atrás.
+
+O portão novo é `_main/foreign-chars-oracle.py`, e o seu desenho foi tirado do
+**censo**, não da intuição:
+
+| | caracteres estranhos no ficheiro | veredicto |
+|---|---|---|
+| **defeito** (palavra trocada) | **1 a 4** | apanha |
+| **legítimo** (citação, fixture, doc em russo) | **19 a 55** | não apanha |
+
+O limiar é **8**: mais do dobro do maior defeito e menos de metade do menor caso
+legítimo. A separação é uma **medida**, não uma palpite.
+
+E o que o portão **não** apanha, com o motivo escrito no ficheiro:
+
+* **`.json`** — são *dados*: transcrições de ASR, fixtures, payloads. Texto não
+  latino num payload é o dado a falar, não um defeito.
+* **`_moved/`** — árvore estacionada de outro projecto, com documentação em
+  russo e japonês. O próprio repo a chama "parked, not the product".
+* **Pontuação CJK** (`。`) — é pontuação de uma língua, não uma palavra trocada.
+  A regra caça **letras**.
+* **Grego** (alfa, beta, delta) — **notação científica normal neste repo**
+  (canais alpha/beta no painel, e uma fila de índices que usa letras gregas como
+  dados). Um portão que apanha notação científica é um portão que se desliga.
+  *Isto só apareceu porque o portão foi corrido e mostrou 6 falsos positivos* —
+  o Grego estava na minha primeira versão e saiu por medição, não por taste.
+* **Este próprio ficheiro** — não é preciso: o catálogo de §7.21 descreve os
+  caracteres **por codepoint**, não pelo glifo. Um catálogo em ideogramas
+  obrigaria o portão a ter uma excepção para este ficheiro, e **uma excepção
+  para o ficheiro que documenta a excepção é o fim da linha**. A regra ficou
+  assim: *nenhum ficheiro deste repo guarda ideogramas de propósito.*
+
+**E o braço negativo é executado:** injecta um ideograma numa cópia de um
+ficheiro real e exige que o gate a rejeite. O que ele fez:
+
+```
+CONTROL: mutacao em AGENTS.md -> REJEITADA (o gate viu)
+AGENTS-CHARS CONTROL PASS
+```
+
+### A lição, que é maior do que o portão
+
+> **Um defeito que se repete não é azar: é um portão que falta.** E o sintoma
+> desta classe é especialmente traiçoeiro, porque a frase **parece** correcta.
+> Por isso a defesa não pode ser "ter cuidado" — tem de ser um instrumento que
+> apanha o sinal.
+
+---
+
+## 7.22 O PORTÃO DO GRAVADOR ESTAVA VERMELHO POR UMA RAZÃO QUE DEIXOU DE EXISTIR
+
+Este apareceu sozinho: eu corri a bateria, e `audio-recorder-oracle` deu
+**rc=1**. Antes de fazer seja o que fosse, **atribuí a causa** — porque a
+atribuição errada é a forma mais cara de perder tempo.
+
+**A prova** (`I:\cc-tmp\atribuir-audio-red.py`, que restaura o ficheiro no
+`finally`): corri o portão com o `worker/audio_recorder.py` **do HEAD** e com o
+**meu**. Resultado **idêntico**: os mesmos 2 braços vermelhos, as mesmas
+mensagens. **A falha precede a minha edição** — e a minha edição era um
+comentário, que não muda contagens de segmentos.
+
+**A causa, depois de ler o código:** o commit **`109aeb6`** passou o gravador de
+WAV para **FLAC** (decisão de 2026-10-17, lossless, 2,2x menor) e mudou o roll
+dos segmentos — e **não actualizou o portão**. O portão ficou a procurar
+`.wav` num gravador que escreve `.flac`, e a afirmar uma conta de segmentos
+derivada de um `_maybe_roll` que já não existe.
+
+| | o portão esperava | o gravador faz (medido) |
+|---|---|---|
+| formato | `.wav` | **`.flac`** (com queda para WAV se não houver `soundfile`) |
+| roll | `ceil(19 200 / 8 960)` = 3 chunks = 1,68 s (arredonda **para cima**) | 2 chunks = 17 920 = 1,12 s (arredonda **para baixo**) |
+| segmentos em 6 chunks | 2 | 3 |
+
+**E o gravador está CORRECTO.** Medido: **3 x 17 920 = 53 760 = exactamente as
+6 x 8 960 alimentadas.** Nenhuma amostra perdida, nenhuma duplicada, e o índice
+concorda com o ficheiro em disco (17 920 amostras, 1,12 s, pico e rms reais).
+
+**O que eu reescrevi no portão** — não para o deixar verde, mas para o pôr a
+testar **a promessa** em vez da **implementação**:
+
+* **W2** passa a ler o ficheiro **que o gravador escreveu** (FLAC *ou* WAV, via
+  `soundfile` *ou* `wave`) e a exigir: mono, 16 kHz, 16 bits, *frames do
+  ficheiro = amostras do índice*, e o round-trip das amostras com erro de
+  quantização < 2e-4 (medido: **1,53e-05**).
+* **W3** passa a afirmar **"nenhuma amostra se perde"** e **"cada segmento fica
+  dentro de um chunk do pedido"** — em vez de uma conta exacta de segmentos. A
+  **direcção** do arredondamento é uma escolha de implementação; **que cada
+  amostra alimentada saia, uma vez e uma só, não é**.
+* **W5** passou a exigir também `rate` e `format` na linha do índice.
+* **W4** passou a procurar ficheiros de áudio **em qualquer formato** (antes só
+  via `.wav`).
+
+**E o braço negativo foi reescrito com seis mutantes, todos ancorados no código
+ACTUAL** — porque três dos cinco antigos ancoravam em `self._wav` e em
+`self._samples`, que **já não existem**: o mutante "não aplicava", e o portão
+dizia-o. Os seis novos, todos comportamentais:
+
+```
+RED  no silence guard: digital zero is filed as audio      -> ['W4 silence was filed']
+RED  the index is never written                            -> ['W5 the index is empty', ...]
+RED  segments never roll: the whole run lands in one file  -> ['W3 a segment of 53760 samples']
+RED  the rate the recorder writes is wrong                 -> ['W2 8000 Hz', ...]
+RED  the index lies about the sample count                 -> ['W2 17920 frames != index 17921', ...]
+RED  the index lies about the peak                         -> ['W5 the index says the peak is not positive']
+```
+
+**Resultado: 7/7 GREEN, e o portão ficou MAIS FORTE do que estava** (mutantes
+comportamentais: 3 de 5 -> 6 de 6).
+
+> **Um portão vermelho que se desactualizou é pior do que nenhum portão**:
+> ensina o leitor a ignorar o vermelho, e o vermelho é a única coisa que o
+> portão tem para dar. Este estava vermelho desde `109aeb6` — e ninguém reparou,
+> porque a leitura natural de "vermelho" é "está a passar alguma coisa", não
+> "o portão está a falar de um formato que deixou de existir".
+
+---
+
+## 7.23 O PORTÃO DO WRAPPER ACUSOU UMA APLICAÇÃO DO DONO — E ESTAVA CERTO E ERRADO
+
+Este é o caso mais interessante da sessão, porque o portão **tinha razão em
+existir** e **razão em falhar**, ao mesmo tempo.
+
+**O que aconteceu.** A bateria de 2026-10-19 13:16 devolveu
+`run-cmd-exit-oracle` com **rc=1**: dois braços (`bogus` e `help`) vermelhos,
+com a mesma mensagem —
+
+```
+[NO] no process is left behind in this tree :: leftovers=[23456]
+```
+
+— e o censo viu **uma janela visível** chamada `'Sotto'`.
+
+### O "leftover" 23456 não era nosso
+
+**Medido:** o pid 23456 é o **`LuaTools.exe`** — uma aplicação sem qualquer
+relação com o Sotto — criada em **2026-10-17 08:26:38**, dois dias antes, e
+cujo `ParentProcessId` guardado é **22988**, que era **o pid do próprio oráculo
+nesta corrida**.
+
+A causa é uma coisa que o Windows faz e que ninguém escreve num portão:
+**os pids são reciclados.** O `tree()` do censo anda a árvore **por parent pid**,
+e por isso adopta como "filho" qualquer processo cujo pai registado coincida
+com o pid actual do oráculo — incluindo um de dois dias atrás.
+
+E a regra do repo já tinha a resposta escrita, desde sempre:
+
+> *"A kill filter names the ARTIFACT, never a generic word. Match
+> `sotto_worker\.py`, `sotto_webview\.py` or the electron/webview exe path."*
+
+O check de "sobrou algum processo" **não a seguia**: aceitava a árvore inteira.
+
+**A correcção** filtra por **linha de comando** (o artefacto nomeado) **e por
+hora de criação** (um resíduo tem de ser deste run):
+
+* **nosso** = a linha de comando nomeia `sotto_webview.py`, `sotto_worker.py`,
+  `speaker_sidecar.py`, `speaker_bridge.py` ou `run.cmd`;
+* **deste run** = foi criado depois de o oráculo começar.
+
+A linha de comando vem do **WMI** numa chamada só (a tabela de processos do
+censo dá o nome do exe, não a linha de comando). Se o WMI não responder, o
+check **diz que foi mais fraco** e cai para o filtro pelo nome do exe — não
+inventa.
+
+### E a correcção tem de ter dentes — e prova isso
+
+Um filtro que nunca dispara também é um filtro que não prova nada; e um filtro
+que dispara sempre acusa o dono. Por isso o oráculo ganhou um `--self-test` que
+cria **dois filhos reais** e exige a classificação certa dos dois:
+
+```
+SELF-TEST o filtro de residuos:
+  [ok]   um filho com `sotto_webview.py` na linha de comando tem de ser NOSSO -> True
+  [ok]   um filho com linha de comando neutra tem de ser ALHEIO -> True
+SELF-TEST PASS -- o filtro distingue o nosso do alheio
+```
+
+Este ramo é o **único** do oráculo que **não toca no produto** — não lança a
+app, não abre dispositivo, não escreve nada.
+
+### A janela visível: o que é, e o que NÃO é
+
+O censo apanhou uma janela `'Sotto'` (classe `WindowsForms10.Window.8`, que é
+a janela WinForms do pywebview) durante **1 amostra em 297** — cerca de 100 ms.
+Pertencecia ao **pid 53784**, que era a app do braço `start-default` — um
+braço que **lança a app de propósito**.
+
+**Três censuses hoje, e a honestidade é esta:**
+
+| corrida | amostras | com janela visível |
+|---|---|---|
+| 13:16 (bateria) | 297 | **1** |
+| 13:22 (braços launch-free) | 87 | 0 |
+| 13:23 (completa) | 290 | 0 |
+
+**Não é uma constante.** É uma **corrida**: a janela existe durante uma
+amostra, ou não existe. E ainstrumentação certa para a medir já existe e é
+`_main/panel-startup-flash-census.py` — que **a ordem do dono de 2026-10-11
+parou**, porque o censo estava a fazer o PC dele travar. Esse T2 ficou
+**UNMEASURED** por ordem, e **não o medi agora**: medir o flash significa
+lançar a app repetidamente, e essa é a linha que ele mandou não atravessar.
+
+O que fica escrito é a **medição**, não a conclusão: *o flash existe, é raro
+(1 em 674 amostras hoje), e o instrumento que o mede em condições controladas
+está parado por ordem do dono.*
+
+### E o que o portão diz do census
+
+O próprio oráculo é explícito, e está escrito no código:
+
+> *"The census is reported above and is NOT part of this exit code: a visible
+> window is an APP-side fact, and reading it as 'the wrapper failed' is the
+> confusion this oracle was indicted for."*
+
+Isto está certo — o **contrato de saída** é do wrapper, e a janela é um facto
+do lado da app. Mas a distinção só é útil se alguém **ler as duas coisas**,
+e é por isso que o censo está no mesmo ecrã e não enterrado num log.
+
+### Resultado
+
+**ARM-VERDICT PASS 5/5 · GAP-VERDICT PASS 4/4 · CENSUS-VERDICT PASS 290
+amostras, 0 com janela visível** — e o falso positivo do `LuaTools.exe` deixou
+de existir porque o check passou a dizer o que diz que diz: *sobrou algo
+**nosso**?*
+---
+
 ## 8. O que NÃO está feito
 
 1. **Política de "quando é seguro separar as vozes"** — é do dono. As condições
@@ -898,11 +1623,26 @@ foram medidos assim, e é assim que devem ser lidos.
    decisão continuam a ser dele.
 2. **DER no regime Discord** — exige truth humana do dono.
 3. **Nomes das vozes** — exige os nomes reais dele. Não se inventam.
-4. **Nada foi commitado nem pushado** — proibido.
+4. ~~**Nada foi commitado nem pushado** — proibido.~~ **SUPERADO 2026-10-19.**
+   O dono mandou *"pusha quando conseguir"*, e foi feito: branch
+   `feat/speaker-attribution-20261019`, commit **`8639fef`**, **exactamente 38
+   ficheiros**, 13 080 inserções, já no remoto. As **770 entradas alheias** que
+   estavam *staged* (ZIPs na raiz, um directório literal `%SystemDrive%`,
+   `_main`, `probe/`, `_moved/`, `history-verify/`, `runs/`) foram
+   **deliberadamente deixadas de fora** e o índice foi salvo em
+   `.git/index.backup-20261019`. PR:
+   `https://github.com/mateusant13/sotto/pull/new/feat/speaker-attribution-20261019`.
+   O destino dessas 770 entradas continua a ser **decisão do dono** — ver §12.
+   (O número é **770**, não 778: ver §9. Eu vinha a escrever 778 sem medir, que
+   é precisamente o defeito que este recibo documenta noutros sítios.)
+5. **R1 — o skew do `stream_epoch`** (§7.17). Descrito, delimitado e **não
+   medido**: medir exige captação de áudio real, que é a linha que o dono mandou
+   não atravessar. Não é um bug com um sítio fixo; é um risco com uma magnitude
+   desconhecida.
 
 ---
 
-## 9. Ficheiros tocados (medidos 2026-10-18, depois de **todas** as edições)
+## 9. Ficheiros tocados (**re-medidos 2026-10-19**, depois de **TODAS** as edições)
 
 Instrumento: `node`/leitura dos bytes para tamanho e quebras, `sha256` sobre
 esses mesmos bytes. **Um pin desatualizado aqui é trabalho feito duas vezes** —
@@ -910,11 +1650,15 @@ por isso re-medido, e não copiado da tabela anterior.
 
 | ficheiro | bytes | quebras | sha256[:12] |
 |---|---|---|---|
-| `worker/speaker_sidecar.py` | 66 591 | 0 CRLF / 1 420 LF | `8444c32013bb` |
-| `worker/speaker_bridge.py` | 11 242 | 0 CRLF / 255 LF | `083e572dd805` |
-| `app/webview/sotto_webview.py` | 665 772 | **12 733 CRLF / 0 LF** | `b7bc6781e9e0` |
+| `worker/speaker_sidecar.py` | 66 591 | LF (1 420) | `8444c32013bb` |
+| `worker/speaker_bridge.py` | 11 242 | LF (255) | `083e572dd805` |
+| `worker/speaker_id.py` | 15 917 | LF (357) | `9a8c2c6de80d` |
+| `worker/audio_recorder.py` | 13 577 | LF (327) | `8bacaeb9baed` |
+| `app/webview/sotto_webview.py` | 669 053 | **12 795 CRLF / 0 LF** | `d45c7336fc20` |
+| `app/webview/run.cmd` | 16 497 | **274 CRLF / 0 LF** | `0cc916c1e4b1` |
+| `AGENTS.md` | 94 860 | LF (974) | `24a53e99b3d6` |
 | `_main/multivoice-oracle.py` | 15 596 | LF (361) | `b022615619de` |
-| `_main/speaker-watch-oracle.py` | 16 463 | LF (389) | `8ad94914e515` |
+| `_main/speaker-watch-oracle.py` | 19 330 | LF (445) | `9c2463e203bb` |
 | `_main/multivoice-offline.py` | 16 771 | LF (374) | `ca5f4074af4d` |
 | `_main/phase-a-b-cycle-oracle.py` | 9 851 | LF (230) | `ea58c1162787` |
 | `_main/der-oracle.py` | 14 712 | LF (356) | `13bd2a60e02d` |
@@ -922,53 +1666,87 @@ por isso re-medido, e não copiado da tabela anterior.
 | `_main/offline-load-guard-oracle.py` | 11 071 | LF (287) | `a0a38b924a09` |
 | `_main/watch-retention-fifo-oracle.py` | 20 610 | LF (456) | `0352841aba5f` |
 | `_main/_cpu-load.py` | 11 582 | LF (259) | `d01bc085976a` |
-| `_main/_phase-b-cliff-probe.py` | 7 328 | LF (188) | `9ae9300c4163` |
-| `_main/_phase-a-retention-probe.py` | 2 501 | LF (61) | `2cc5e096ca1e` |
-| `_main/_watch-rss-probe.py` | 4 259 | LF (125) | `6c73d61e9838` |
-| `_main/_seg-powerset-probe.py` | 9 839 | LF (211) | `1e123ee029ce` |
+| `_main/speaker-plumbing-oracle.py` | 27 059 | LF (587) | `ad20f6cd258c` |
+| `_main/speaker-id-oracle.py` | 33 124 | LF (711) | `53e7f87101ac` |
+| `_main/speaker-sidecar-oracle.py` | 19 368 | LF (401) | `a0e5436dbfbb` |
+| `_main/speaker-slots-oracle.py` | 10 964 | LF (251) | `bc48c5862b60` |
+| `_main/sidecar-wiring-oracle.py` | 12 215 | LF (290) | `c5ee99aae588` |
+| `_main/caption-lines-oracle.py` | 11 248 | LF (252) | `bf5c48b68919` |
+| `_main/per-app-source-plumbing-oracle.py` | 12 997 | LF (257) | `72b46e413af3` |
+| `_main/app-target-oracle.py` | 26 957 | LF (620) | `f7b3e9c65965` |
+| `_main/agents-md-pins-oracle.py` | 7 838 | LF (183) | `b21e1da36053` |
+| `_main/foreign-chars-oracle.py` | 10 990 | LF (277) | `70243b42e0ee` |
+| `_main/audio-recorder-oracle.py` | 16 542 | LF (380) | `ede5401a75c7` |
+| `_main/forbidden-audio-line-oracle.py` | 7 622 | LF (177) | `c6dbc89603c3` |
+| `_main/run-cmd-exit-oracle.py` | 70 879 | LF (1 416) | `e5885b807dae` |
 
-Instrumentos de caracterização e ensaios (não portões; escritos para responder a
-uma pergunta e poderem ser deitados fora — mas **executados**, que é o que o
-§7.7 mostrou que importa):
+> **O próprio recibo (`_main/receipt-20261018-fase-a-multivoice.md`) não está
+> nesta tabela, de propósito.** Um ficheiro que escreve o seu próprio tamanho
+> muda-o no instante em que o escreve — a linha seria mentira no instante em
+> que aparecesse. O sha do recibo também não: mudaria a cada secção. Quem
+> precisar dele mede-o no momento.
 
-| ficheiro | bytes | quebras | sha256[:12] |
-|---|---|---|---|
-| `_main/_fragment-levers.py` | 5 035 | LF (130) | `3571ddf758d7` |
-| `_main/_density-gate-probe.py` | 6 127 | LF (141) | `a06bc867af24` |
-| `_main/_speech-seconds-probe.py` | 5 321 | LF (134) | `59b7c26eee19` |
-| `_main/_energy-gate-probe.py` | 5 359 | LF (138) | `4489c34902fd` |
-| `_main/_recording-quality.py` | 5 680 | LF (142) | `b1815b24dcfb` |
-| `_main/_realcall-acceptance.py` | 9 540 | LF (236) | `9acb607f319a` |
-| `_main/_cliff-contiguous-probe.py` | 4 815 | LF (123) | `3ddf5ef62bec` |
-| `_main/_cadence-probe.py` | 5 184 | LF (134) | `3b548e1f1675` |
-| `_main/_sidecar-replay-real.py` | 5 900 | LF (138) | `ace1fa8e8351` |
-
-`git log -1` = `109aeb6`, **nada commitado, nada pushado**.
+> **Porque esta tabela foi re-escrita e não acrescentada:** a anterior dizia
+> `sotto_webview.py` = 665 772 B / **12 733** CRLF / `b7bc6781e9e0`, e
+> `speaker-watch-oracle` = 16 463 B / `8ad94914e515`. **Ambos mudaram depois** —
+> a shell por causa de D1 e D1b (§7.14, §7.16), o portão porque ganhou o braço
+> do dreno, e o `run.cmd` porque estava em LF (§7.19). Um pin desatualizado aqui
+> não é um defeito de documento: é a próxima lane a citar `12 733` e a medir
+> 12 795 e a concluir que alguém mexeu onde não devia. Por isso: **medido hoje,
+> com o sha ao lado para se saber de que revisão se fala.**
 
 ---
 
 ## 10. Bateria depois de TODAS as edições
 
+**Re-corrida inteira em 2026-10-19, depois de D1, D1b, D2, da conversão do
+`run.cmd`, das 11 correcções de §7.21 e das reescritas de §7.22 e §7.23** — não
+é a bateria de ontem com uma linha nova. Os números abaixo são desta corrida
+(`I:\cc-tmp\bateria-20261019f.log`).
+
 | portão | resultado |
 |---|---|
-| `multivoice-oracle` | PASS 13/13 · neg **rejeitado** |
-| `speaker-watch-oracle` | PASS **37/37** · neg **FAIL 8/36** (mutação rejeitada — eram 5/33 antes das três arms novas) |
-| `phase-a-b-cycle-oracle` | PASS 13/13 · neg **rejeitado** (sem áudio, a Fase B recusa com rc=3) |
-| `der-oracle` | PASS 2/2 · neg **DER 98,3 %** com rótulos ao acaso |
-| `speaker_density-gate-oracle` | **PASS 13/13** · neg **PASS 8/8** (a fragmentação volta: 6 slots a 20 s, 12 a 10 s) |
+| `multivoice-oracle` | **PASS 13/13** · neg **rejeitado** |
+| `speaker-watch-oracle` | **PASS 39/39** · neg **FAIL 8/38** (mutação rejeitada) |
+| `phase-a-b-cycle-oracle` | **PASS 13/13** · neg **rejeitado** (sem áudio, a Fase B recusa com rc=3) |
+| `der-oracle` | **PASS 2/2** · neg **DER 98,3 %** com rótulos ao acaso |
+| `speaker-density-gate-oracle` | **PASS 13/13** · neg **PASS 8/8** (a fragmentação volta: 6 slots a 20 s, 12 a 10 s) |
 | `_realcall-acceptance.py` | **PASS 8/8** · 180 s da **call real do dono**, ponta a ponta |
 | `_cpu-load.py --self-test` | **PASS 9/9** · **4/4 mutantes rc=1** |
-| `offline-load-guard-oracle` | **PASS 16/16** · neg **PASS 9/9** (a recusa desaparece e o carregador passa a ser chamado) |
-| `watch-retention-fifo-oracle` | **PASS 26/26** · neg **PASS 2/2** (0,186 MB com tampa de 0,100 MB; 6 de 6 clips) |
-| `speaker-plumbing-oracle` | PASS 39/39 · 6/6 mutantes |
-| `speaker-id-oracle` | PASS 79/79 · 13/13 mutantes |
-| `speaker-sidecar-oracle` | PASS 34/34 · 6/6 mutantes |
-| `speaker-slots-oracle` | **PASS 18/18** (era 15/15: +`SilentRing`, que prova que uma janela de silêncio sai `declined`) |
-| `sidecar-wiring-oracle` | PASS 22/22 |
-| `caption-lines-oracle` | PASS 12/12 |
-| `per-app-source-oracle` | PASS |
-| `app-target-oracle` | PASS 9/9 · M1 e M2 **RED-as-expected** |
+| `offline-load-guard-oracle` | **PASS 16/16** · neg **PASS 9/9** |
+| `watch-retention-fifo-oracle` | **PASS 29/29** · neg **PASS 2/2** (0,186 MB com tampa de 0,100 MB; 6 de 6 clips) |
+| `speaker-plumbing-oracle` | **PASS 39/39** · **6/6 mutantes, todos comportamentais** |
+| `speaker-id-oracle` | **PASS 79/79** · **13/13 mutantes, todos comportamentais** |
+| `speaker-sidecar-oracle` | **PASS 34/34** · **6/6 mutantes, todos comportamentais** |
+| `speaker-slots-oracle` | **PASS 18/18** |
+| `sidecar-wiring-oracle` | **PASS 22/22** — foi **vermelho** antes de D1b (§7.16) |
+| `caption-lines-oracle` | **PASS** |
+| `per-app-source-plumbing-oracle` | **PASS** |
+| `app-target-oracle` | **PASS 9/9** · M1 e M2 **RED-as-expected** |
+| **`agents-md-pins-oracle`** | **PASS 2 pins** · neg **CONTROL PASS** — **entrou hoje** (§7.18) |
+| **`foreign-chars-oracle`** | **PASS** · neg **CONTROL PASS** — **entrou hoje** (§7.21) |
+| **`audio-recorder-oracle`** | **GREEN 7/7** · neg **6/6 mutantes** — **reescrito hoje** (§7.22) |
+| `forbidden-audio-line-oracle` | **GREEN** |
+| **`run-cmd-exit-oracle`** | **ARM 5/5 · GAP 4/4 · CENSUS PASS** — **reescrito hoje** (§7.23) |
+| **`run-cmd-exit-oracle --self-test`** | **PASS** — o filtro distingue o nosso do alheio (§7.23) |
 | `speaker_sidecar.py --selftest` | PASS (não toca em onnxruntime nem sherpa) |
+
+**24 portões, 0 vermelhos, depois de tudo.**
+
+### Duas notas de honestidade sobre esta tabela
+
+1. **`sidecar-wiring-oracle` deu `rc=1` na bateria das 13:16** — e era a
+   **minha** correcção D1 que o partiu (§7.16). A tabela de cima é a corrida
+   **depois** da correcção. A primeira está no log com o traceback, e o traceback
+   é a prova de que o portão tem olhos.
+2. **`run-cmd-exit-oracle` deu `rc=1` na MESMA bateria** — e o culpado **não
+   era o produto**: era o check que acusava o `LuaTools.exe` do dono por causa
+   da reciclagem de pids (§7.23). Corrigido, com self-test, e verde na corrida
+   seguinte.
+3. **O `agents-md-pins-oracle` não estava na bateria até hoje** — e quando
+   entrou encontrou **um pin podre de sete dias** (§7.18). Uma bateria é a
+   lista do que é exigido; acrescentar um portão muda o que o produto precisa
+   de satisfazer.
 
 **`speaker-slots` e `speaker-sidecar` foram re-corridos hoje de propósito.** Tinham
 sido corrigidos depois da bateria anterior — o fixture de silêncio era
@@ -978,7 +1756,7 @@ o fixture e não re-correr é a forma mais barata de deixar um verde falso no
 histórico; por isso rc=0 e 34/34 + 6/6 medidos **depois** da correcção.
 
 `phase-a-b-cycle-oracle` também foi **re-corrido depois** de a Fase B ganhar a
-guarda: **13/13** e neg **4/4**. Sem o `--ignore-load` que lhepus, esse portão
+guarda: **13/13** e neg **4/4**. Sem o `--ignore-load` que lhe pus, esse portão
 passaria a falhar conforme a carga da máquina.
 
 E os flags novos da shell são aceites pelo parser (rc=0) enquanto um flag
@@ -987,7 +1765,12 @@ para não responder sucesso a uma flag rejeitada.
 
 ---
 
-## 11. O que esta revisão acrescenta, em três linhas
+---
+
+## 11. O que esta revisão acrescenta
+
+*(o cabeçalho dizia "em três linhas" e havia quatro; o número também era um pin
+que ninguém media. Agora não há número.)*
 
 1. **Um instrumento escrito mas nunca executado tinha dois defeitos que
    produziam um número falso** — e o próprio output do diagnóstico mostrava-os um
@@ -1004,6 +1787,31 @@ para não responder sucesso a uma flag rejeitada.
    vê a perda no log (`AUDIO_PERDIDO`); e **quem corre a separação recebe um
    `COMPLETUDE: INCOMPLETO`** em vez de um resultado silenciosamente incompleto.
 
+### E o que a auditoria de 2026-10-19 acrescentou (D1, D1b, D2, §7.14–7.20)
+
+5. **D1 — o pipe do sidecar não tinha ninguém a ler** (§7.14). O filho escrevia
+   **3480 B** e travava; a atribuição desligava **sozinha, sem alarme**, ao fim de
+   ~10 min de call. Corrigido com um dreno que manda tudo para o log.
+6. **D1b — a minha correcção partiu um portão que já existia** (§7.16). O dreno
+   levantava `AttributeError` dentro de `start()`. Um dreno nunca pode ser a
+   razão de o sidecar não arrancar.
+7. **D2 — mutantes decorativos** (§7.15). Três portões contavam como "apanhado"
+   mutantes que **nunca executavam um check**. Um gate que infla a sua própria
+   contagem compra com o leitor uma confiança que não tem. Agora um mutante que
+   não corre **reprova** o gate.
+8. **E a distinção que faltava em todo este trabalho:** uma excepção que escapa
+   do código em teste é um **vermelho**; uma excepção a carregar o mutante é
+   **deco**; uma bateria que morre é **inconclusiva**. Três coisas, três
+   veredicto.
+9. **Um pin apodreceu sete dias** (§7.18) porque o portão que o vigiava não
+   estava na bateria. Entrou hoje — e encontrou-o.
+10. **O `run.cmd`, o ponto de entrada da app, estava em LF** (§7.19), com dez
+    linhas que são só um `)`. Convertido para CRLF, e **medido como
+    comportamentalmente neutro** (saída do `--help` byte-idêntica).
+11. **O `core.autocrlf` sem `.gitattributes`** (§7.20): 1110 de 3833 ficheiros
+    versionados chegam CRLF a qualquer checkout. **Censo completo e solução
+    pronta** — a decisão é do dono, porque é política, não técnica.
+
 Nenhum número deste recibo ficou por actualizar sem ser re-medido — e uma
 discrepância que cheirava a erro (12 slots contra 6) era só **cadência**, com as
 duas reproduzidas hoje. O que ela revelou é mais útil do que o erro imaginado:
@@ -1015,3 +1823,56 @@ lógica. Era um número que não dizia o que media, um valor devolvido e deitado
 fora, e um nome que prometia mais do que entregava. Três deles só apareceram
 quando o código foi **executado** — e o `_cpu-load.py`, que tinha nascido para
 medir a carga, media a zero.
+
+**E a lição de 2026-10-19 é uma ainda mais específica e mais desconfortável:**
+os defeitos mais graves que apareceram foram **nos portões, não no produto**.
+Um gate que mente é pior do que um produto lento, porque o gate é o que decide
+se o produto está bom. Um mutante decorativo, um anchor preso à data, um portão
+fora da bateria — são três maneiras de o **sistema de medição** estar a mentir
+com muita confiança. E uma delas (o pipe sem leitor) **era** um defeito real do
+produto, escondido exactamente por um gate que não fazia a pergunta certa.
+
+Por isso a receita que sobrou, e que é o que fica: **cada afirmação nova tem de
+trazer o instrumento que a mede, o número que ele deu e o braço negativo que
+prova que ele ainda diz não.** Sem o terceiro, os outros dois são uma história
+bem contada.
+
+---
+
+---
+
+## 12. AS 770 ENTRADAS ALHEIAS — O QUE ESTÁ STAGED E PORQUÊ NÃO TOQUEI
+
+**Medido:** `git diff --cached --name-only | Measure-Object -Line` → **770**,
+e `grep speaker` dentro dessas 770 → **ZERO**. Nenhuma é minha.
+
+O que lá está: **dois ZIPs na raiz** (`cinematic-transcription-app-designs (1).zip`),
+um **directório literal `%SystemDrive%`** (criado por um `set` que não expandiu
+— é lixo, mas é lixo *dele*), `_main/` (400), `probe/` (214), `_moved/`,
+`history-verify/`, `runs/`.
+
+**Por que não commitei isto:**
+
+1. **Não é meu.** É trabalho de lanes anteriores, e o dono pode querer isso como
+   histórico, como issue, ou descartado. Decidir por ele é decidir *o conteúdo
+   do repo* por ele.
+2. **Um `git commit -a` tê-lo-ia levado comigo** sem ninguém ver. Foi por isso
+   que o push foi feito com **38 caminhos explícitos** (`git commit -F ... --
+   <38 caminhos>`), que não toca no índice.
+3. **O índice está guardado** em `.git/index.backup-20261019`, para que a
+   decisão seja reversível.
+
+**O que eu recomendo, e porquê** — três caminhos, todos do dono:
+
+| opção | o que faz | quando é a certa |
+|---|---|---|
+| **issue** | descreve o que há, sem trazer o conteúdo | se o conteúdo é ruído de lanes e o valor está na *descrição* |
+| **commit em batches** | 3–4 commits temáticos, revistos | se o conteúdo tem valor e o dono quer a história |
+| **descartar** | `git restore --staged .` e fica por decidir em disco | se é lixo (`%SystemDrive%`, ZIPs) |
+
+**O que está a segurar isto:** o `zipc-designs-oracle` e o `cobertura-oracle`
+olham para o que está versionado, e normalizar as quebras de linha (§7.20) ia
+passar por cima destas 770. **Duas decisões do dono, o mesmo ficheiro** — e
+por isso é melhor tomá-las em conjunto do que uma de cada vez.
+
+---

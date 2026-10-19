@@ -87,6 +87,25 @@ def window(text, anchor, span=420):
     return text[max(0, at - span):at + span]
 
 
+def window_re(text, pattern, span=420):
+    """The text around the first REGEX match.
+
+    O anchor do PIN 1 era a frase INTEIRA, com a data dentro: "re-measured
+    2026-10-12 the output is". Isso amarrava o gate ao valor -- e um gate
+    armado para partir de cada actualizacao de pin e' um gate que ninguem
+    actualiza. Medido 2026-10-19: o pin foi actualizado para 2026-10-19 e o
+    gate passou a dizer "the anchor sentence is GONE" -- o gate a queixar-se
+    de uma frase que ele proprio devia ter encontrado. A DATA e' o que muda a
+    cada revisao; a FRASE e' o que identifica o pin. O gate tem de seguir a
+    frase e deixar a data livre.
+    """
+    hit = re.search(pattern, text)
+    if hit is None:
+        return None
+    at = hit.start()
+    return text[max(0, at - span):at + span]
+
+
 def check(where, tokens):
     if where is None:
         failures.append("the anchor sentence is GONE from AGENTS.md -- the pin cannot be checked")
@@ -119,7 +138,7 @@ def main(argv=None):
         # this arm matched `is **(\d+) B`, but the shipped sentence bolds from "the SIZE here was
         # stale" onwards, so the regex matched NOTHING and the control reported "0 failure(s) ...
         # cannot say NO" instead of quietly passing. An unmutable control is an INVALID control.
-        pattern = r"(re-measured 2026-10-12 the output is )(\d+) B"
+        pattern = r"(re-measured \d{4}-\d{2}-\d{2} the output is )(\d+) B"
         matches = len(re.findall(pattern, text))
         moved = re.sub(pattern, lambda m: m.group(1) + str(int(m.group(2)) + 1) + " B", text, count=1)
         say("  --neg-arm: anchor matches=%d changed=%s (0 and the control is INVALID)"
@@ -129,7 +148,7 @@ def main(argv=None):
             return 5
         text = moved
     say("PIN 1 -- the run.cmd --help sentence:")
-    anchor = window(text, "re-measured 2026-10-12 the output is")
+    anchor = window_re(text, r"re-measured \d{4}-\d{2}-\d{2} the output is")
     check(anchor, ["%d B" % help_facts["bytes"], "%d lines" % help_facts["lines"],
                    "%d CRLF" % help_facts["crlf"], "%d bare LF" % help_facts["barelf"],
                    "rc %d" % help_facts["rc"], help_facts["sha256"]])

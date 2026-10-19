@@ -368,7 +368,7 @@ o invoca. A fonte da verdade e revizivel.
   run-all.mjs nao existir, em vez de passar em silencio por nao haver nada para correr.
 
   O custo e assumido em vez de escondido: o run completo demora minutos neste host, e um
-  gancho lento e contornado. Se isso passar a ser o交换 errado, a correcao e uma CI de
+  gancho lento e contornado. Se isso passar a ser a troca errada, a correcao e uma CI de
   fundo, nao uma fuga silenciosa.
 ## 2026-10-11T07:01:30Z - the hook's pass path, proven by a commit that had nothing to hide
 

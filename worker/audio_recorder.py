@@ -17,7 +17,7 @@ Traduzido em quatro regras que este modulo cumpre:
   3. **NÃO PODE SER PESADO.** FLAC em vez de WAV, e é **lossless**: medido em
      2026-10-17 sobre `_main/pt-br-sample.wav`, 2,2× menor com erro máximo
      **0,0** (`np.array_equal` True). Perder qualidade ANTES do modelo bom ver o
-     audio seria exactamente o erro que o dono肯定不会 quer — e a compressão
+     audio seria exactamente o erro que o dono certamente não quer — e a compressão
      com perdas antes do melhor modelo é uma troca que se faz ao contrário.
   4. **NUNCA O NEMOTRON.** Nada aqui chama o motor principal. O consumidor é o
      Parakeet; e esta lei já é do repo desde 2026-07-14 ("o histórico nunca deve

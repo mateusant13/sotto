@@ -187,6 +187,10 @@ time.sleep(600)
 CREATE_NO_WINDOW = 0x08000000
 PREFLIGHT_MARK = '--check-args'
 RUN_ID = time.strftime('%H%M%S')
+#: Quando este run comecou. Um residuo nosso tem de ter sido criado DEPOIS
+#: disto -- um processo que ja estava a correr antes do oraculo comecar nunca
+#: foi resíduo deste run. Ver `leftover_of_ours`.
+RUN_STARTED_ISO = time.strftime('%Y-%m-%dT%H:%M:%S')
 #: The shell's first line, and the only source of the pid this oracle kills.
 READY_RE = re.compile(r'shell=webview2[^\n]*?\bpid=(\d+)')
 SHELL_EXIT_RE = re.compile(r'SHELL_EXIT rc=(-?\d+)')
@@ -380,6 +384,102 @@ def pids_in_tree(pr, root: int) -> set:
     return set(pr.tree(root))
 
 
+#: Os ARTEFACTOS DELE. A regra do repo, escrita: *"A kill filter names the
+#: ARTIFACT, never a generic word."* Este check de "sobrou algum processo" nao a
+#: seguia, e o resultado foi MEDIDO 2026-10-19: `tree()` anda a arvore pelo
+#: PARENT PID, e o Windows RECICLA pids -- um `LuaTools.exe` de dois dias antes,
+#: cujo ParentProcessId guardado era o pid que o oraculo tem hoje, foi adoptado
+#: como filho e acusado como resíduo. O portao acusou uma aplicacao do dono
+#: que nunca foi dele. Um gate que acusa o dono e' pior do que um gate calado.
+OUR_ARTEFACTS = ('sotto_webview.py', 'sotto_worker.py', 'speaker_sidecar.py',
+                  'run.cmd', 'speaker_bridge.py')
+
+#: Os exe's que o NOSSO wrapper pode deixar para tras. So se usa quando o WMI
+#: nao responde -- e nesse caso o check diz que foi mais fraco.
+OUR_RUNTIMES = ('python.exe', 'pythonw.exe', 'cmd.exe', 'conhost.exe',
+                 'msedgewebview2.exe')
+
+
+def wmi_process_info(pids, since_iso: str) -> dict:
+    """{pid: (cmdline, criado_depois_de_since)} para os pids dados.
+
+    A tabela de processos do censo (`_armE-window-census.py`) da o NOME DO
+    EXE, nao a linha de comando -- e a linha de comando e' o que a regra do repo
+    pede. Uma chamada so ao WMI, sem janela, e' o preco.
+
+    Devolve {} se o WMI nao responder: o chamador entao diz que o check foi
+    mais fraco, em vez de fingir que viu o que nao viu.
+    """
+    if not pids:
+        return {}
+    ids = ','.join(str(int(p)) for p in pids)
+    script = (
+        "$ids=@(%s); $since=[datetime]::Parse('%s'); "
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $ids -contains $_.ProcessId } | "
+        "ForEach-Object { "
+        "\"$($_.ProcessId)`t$($_.CreationDate -gt $since)`t$($_.CommandLine)\" }"
+        % (ids, since_iso))
+    try:
+        out = subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+            capture_output=True, text=True, errors='replace',
+            creationflags=CREATE_NO_WINDOW, timeout=60)
+    except Exception:
+        return {}
+    rows = {}
+    for line in (out.stdout or '').splitlines():
+        parts = line.split('\t', 2)
+        if len(parts) == 3 and parts[0].strip().isdigit():
+            rows[int(parts[0])] = (parts[2].strip(), parts[1].strip().lower() == 'true')
+    return rows
+
+
+def leftover_of_ours(pr, root: int, since_iso: str):
+    """(nossos, alheios_ignorados) -- os processos que sao MESMOS residuo nosso.
+
+    Um residuo nosso tem de ser NOSSO e tem de ser DESTE RUN:
+
+      * **nosso** -- a linha de comando nomeia um artefacto do produto
+        (`sotto_webview.py`, `run.cmd`, ...);
+      * **deste run** -- foi criado depois de o oraculo comecar. Um processo de
+        dois dias atras nao pode ser o que este run deixou para tras.
+
+    A arvore por parent-pid fica como o que e: uma lista de CANDIDATOS. A
+    decisao e' da linha de comando.
+    """
+    tree = pids_in_tree(pr, root) - {root}
+    if not tree:
+        return set(), []
+    rows = wmi_process_info(tree, since_iso)
+    if not rows:
+        # O WMI nao respondeu: nao se pode afirmar nada pela linha de comando,
+        # e nao se vai inventar. Fica o filtro pelo nome do exe, e diz-se.
+        table = {p: exe for p, _pp, exe in pr.process_table()}
+        ours = {p for p in tree
+                if table.get(p, '').lower() in OUR_RUNTIMES}
+        return ours, [(p, table.get(p, '?')) for p in tree if p not in ours]
+    ours, others = set(), []
+    for pid in tree:
+        cmdline, _born_after = rows.get(pid, ('', False))
+        low = cmdline.lower()
+        if any(a in low for a in OUR_ARTEFACTS):
+            ours.add(pid)
+        else:
+            others.append((pid, cmdline[:70] or '(sem linha de comando)'))
+    return ours, others
+
+
+def leftover_check(pr, root: int, since_iso: str) -> tuple:
+    """(ok, detalhe) do check 'nao sobrou nada nosso'."""
+    ours, others = leftover_of_ours(pr, root, since_iso)
+    detail = 'leftovers=%s' % sorted(ours)
+    if others:
+        detail += ('  (ignorados %d processo(s) alheios da arvore: %s)'
+                   % (len(others), others[:2]))
+    return not ours, detail
+
+
 def wait_gone(pr, pid: int, timeout: float) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -406,6 +506,80 @@ def default_log_for(run_cmd: str) -> str:
     web = os.path.dirname(os.path.abspath(run_cmd))          # <root>/app/webview
     root = os.path.dirname(os.path.dirname(web))             # <root>
     return os.path.join(root, '_main', 'webview-run.log')
+
+
+#: The refusal capture, and the rc 120 defect it closes. MEASURED 2026-10-14: the
+#: SAME command with the SAME interpreter answered **rc 120** when the capture was
+#: redirected into the system %TEMP% (`2>G:\Temp\sotto-preflight-refusal.txt`) and
+#: **rc 2** with the argparse text present when it went to a writable path. rc 120 is
+#: what cmd answers when it cannot give the child the redirect it was told to give it,
+#: so a machine whose TEMP is full, read-only or on a drive that refuses the write got
+#: a wrapper that REFUSED A GOOD LAUNCH and printed nothing the caller could act on.
+#: The cure moved the capture BESIDE THE LOG it is a receipt for (`run.cmd:157`).
+REFUSAL_RE = re.compile(r'set "REFUSAL=([^"]*)"', re.I)
+TEMP_REDIRECT_RE = re.compile(r'2>\s*"%?%TEMP%', re.I)
+
+
+def temp_target_checks(run_cmd: str) -> list:
+    """STATIC -- launches nothing. Where does the wrapper AIM its refusal capture?
+
+    Three checks, and the second is the one the defect failed: a wrapper that aims
+    the capture at %TEMP% is a wrapper that can refuse a good launch on someone
+    else's machine, which is exactly what the owner's brief calls out ("this program
+    is going to be used by thousands of people and %TEMP% is a property of THEIR
+    machine, not of ours").
+    """
+    text = text_of(run_cmd)
+    m = REFUSAL_RE.search(text)
+    value = m.group(1) if m else None
+    aimed_at_temp = bool(value) and '%TEMP%' in value.upper()
+    found = TEMP_REDIRECT_RE.search(text)
+    return [('the wrapper DEFINES the refusal capture (the cure is present)',
+             value is not None,
+             f'REFUSAL={value if value is not None else "(not set)"}'),
+            ('the capture is NOT aimed at the system %TEMP% (rc 120, measured 2026-10-14)',
+             value is not None and not aimed_at_temp, f'REFUSAL={value}'),
+            ('no `2>"%TEMP%..."` redirect survives anywhere in the wrapper',
+             not found, 'a redirect into TEMP is still there' if found else 'none')]
+
+
+def temp_arm(label) -> int:
+    """The rc 120 defect restored in a COPY. STATIC: no process is started at all."""
+    live = text_of(RUN_CMD)
+    m = REFUSAL_RE.search(live)
+    if not m:
+        print('TEMP-ARM REFUSED: the live wrapper defines no refusal capture, so there is '
+              'nothing to mutate and no control to build.')
+        return 1
+    mutant_text = live.replace(
+        m.group(0), 'set "REFUSAL=%TEMP%\\sotto-preflight-refusal.txt"', 1)
+    if mutant_text == live:
+        print('TEMP-ARM REFUSED: the mutation changed nothing -- the control is DEAD')
+        return 1
+    path = os.path.join(tempfile.gettempdir(), f'run-cmd-temp-mutant-{RUN_ID}.cmd')
+    with open(path, 'w', encoding='utf-8', newline='') as fh:
+        fh.write(mutant_text)
+    print(f'TEMP-ARM label={label} -- the rc 120 defect restored in a COPY (static)')
+    print(f'TEMP-ARM live={RUN_CMD}')
+    print(f'TEMP-ARM mutant={path} ({len(mutant_text)} chars, the target is the ONLY difference)')
+    live_checks = temp_target_checks(RUN_CMD)
+    for name, ok, ev in live_checks:
+        print(f'    [{"ok" if ok else "NO"}] LIVE   {name} :: {ev}')
+    checks = temp_target_checks(path)
+    for name, ok, ev in checks:
+        print(f'    [{"ok" if ok else "NO"}] MUTANT {name} :: {ev}')
+    live_ok = all(c[1] for c in live_checks)
+    red = any(not c[1] for c in checks)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    ok = live_ok and red
+    print(f'TEMP-ARM: live green={live_ok}  mutant RED-as-expected={red}')
+    print('NEG-ARM ' + ('PASS' if ok else 'FAIL')
+          + (': the %TEMP% target is refused by the check, and the live wrapper is clean'
+             if ok else ': the check did not separate the two colours'))
+    return 0 if ok else 1
 
 
 def arm_argv(run_cmd, pr, census, notes) -> dict:
@@ -479,9 +653,8 @@ def arm_bogus(run_cmd, pr, census, notes) -> dict:
                    'shell=webview2' not in appended,
                    f'appended_bytes={len(appended)}'))
     time.sleep(1.0)
-    leftovers = pids_in_tree(pr, os.getpid()) - {os.getpid()}
-    checks.append(('no process is left behind in this tree',
-                   not leftovers, f'leftovers={sorted(leftovers)}'))
+    ok, detail = leftover_check(pr, os.getpid(), RUN_STARTED_ISO)
+    checks.append(('no process is left behind in this tree', ok, detail))
     return {'name': 'bogus', 'args': res['args'], 'rc': res['rc'],
             'expect_rc': 2, 'ms': res['ms'], 'checks': checks,
             'log': log, 'log_appended': appended.strip()[:400]}
@@ -508,9 +681,8 @@ def arm_help(run_cmd, pr, census, notes) -> dict:
     checks.append(('the pre-flight switch stays OUT of --help',
                    not leaked, f'leaked={leaked}' if leaked else 'hidden'))
     time.sleep(0.5)
-    leftovers = pids_in_tree(pr, os.getpid()) - {os.getpid()}
-    checks.append(('no process is left behind in this tree',
-                   not leftovers, f'leftovers={sorted(leftovers)}'))
+    ok, detail = leftover_check(pr, os.getpid(), RUN_STARTED_ISO)
+    checks.append(('no process is left behind in this tree', ok, detail))
     return {'name': 'help', 'args': res['args'], 'rc': res['rc'],
             'expect_rc': 0, 'ms': res['ms'], 'checks': checks,
             'stdout_bytes': len(out)}
@@ -911,6 +1083,55 @@ def verdict_from(arms_ok, gaps_ok, census_ok):
                 " (app-side, rows #4/#46) -- see CENSUS-VERDICT above")
     return contract_ok, why
 
+def self_test(pr) -> int:
+    """Prova que o filtro de "sobrou algum processo nosso" tem DENTES e nao
+    dispara em falso.
+
+    MEDIDO 2026-10-19: o filtro original (arvore por parent-pid) acusou um
+    `LuaTools.exe` de dois dias antes, cujo ParentProcessId guardado coincidia
+    com o pid do oraculo. A correccao filtra por LINHA DE COMANDO e por HORA DE
+    CRIACAO -- mas um filtro que nunca dispara tambem e' um filtro que nao prova
+    nada, e um filtro que dispara sempre e' um filtro que acusa o dono.
+
+    Este self-test cria DOIS filhos REAIS do oraculo:
+      * um cuja linha de comando nomeia `sotto_webview.py`  -> tem de ser NOSSO;
+      * um com uma linha de comando neutra                   -> tem de ser ALHEIO.
+
+    Se qualquer um dos dois for classificado ao contrario, o self-test falha.
+    E' um oraculo sobre o proprio oraculo -- que e' a unica forma de provar
+    que a correccao nao estragou o check.
+    """
+    sleepy = 'import time; time.sleep(30)'
+    ours = subprocess.Popen([sys.executable, '-c', sleepy, 'sotto_webview.py'],
+                             creationflags=CREATE_NO_WINDOW)
+    theirs = subprocess.Popen([sys.executable, '-c', sleepy, 'unrelated-thing.py'],
+                               creationflags=CREATE_NO_WINDOW)
+    try:
+        time.sleep(1.5)
+        found, ignored = leftover_of_ours(pr, os.getpid(), RUN_STARTED_ISO)
+        ours_in = ours.pid in found
+        theirs_in = theirs.pid in found
+        theirs_listed = any(p == theirs.pid for p, _ in ignored)
+    finally:
+        for proc in (ours, theirs):
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    print('SELF-TEST o filtro de residuos:')
+    print('  %-6s um filho com `sotto_webview.py` na linha de comando tem de ser '
+          'NOSSO -> %s (pid %d)'
+          % ('[ok]' if ours_in else '[NO]', ours_in, ours.pid))
+    print('  %-6s um filho com linha de comando neutra tem de ser ALHEIO -> %s '
+          '(pid %d)'
+          % ('[ok]' if (not theirs_in and theirs_listed) else '[NO]',
+             not theirs_in and theirs_listed, theirs.pid))
+    ok = ours_in and not theirs_in and theirs_listed
+    print('\nSELF-TEST %s -- o filtro distingue o nosso do alheio'
+          % ('PASS' if ok else 'FAIL'))
+    return 0 if ok else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description='Assert run.cmd\'s exit contract on both colours.')
@@ -919,6 +1140,9 @@ def main() -> int:
     ap.add_argument('--label', default=None)
     ap.add_argument('--neg-arm', action='store_true',
                     help='revert the wrapper in a COPY and require arm 1 RED')
+    ap.add_argument('--self-test', action='store_true',
+                    help='prova que o filtro de "sobrou processo nosso" tem dentes '
+                         'E nao dispara em falso (cria dois filhos reais)')
     ap.add_argument('--neg-src', default=NEG_SRC,
                     help='the pre-fix wrapper the copy is built from')
     ap.add_argument('--exit-after', type=float, default=8.0,
@@ -927,7 +1151,38 @@ def main() -> int:
     ap.add_argument('--json', default=None, help='receipt path')
     ap.add_argument('--no-gaps', action='store_true',
                     help='skip the G1..G4 before/after arms')
+    # WHICH ARMS RUN (lane B, 2026-10-15). The battery must be able to gate this
+    # wrapper's exit contract WITHOUT starting the app, because 'launches=0' is a
+    # MEASURED property of the battery and not a hope (F5: only the Lead launches).
+    # The four arms are NOT equal in what they start:
+    #   argv   'run.cmd --check-args <set>' -- the pre-flight IS the action, so the
+    #          wrapper returns the parser's status and starts NOTHING (live wrapper).
+    #   bogus  'run.cmd --bogus-flag'      -- refused by the pre-flight, starts nothing.
+    #   help   'run.cmd --help'            -- argparse answers and exits.
+    #   start  'run.cmd [--log ...]'       -- THE APP IS LAUNCHED (both normal branches).
+    # The DEFAULT is every arm, so a bare run is the behaviour this oracle always
+    # had; selecting a subset is additive. '--arms bogus,help' is the launch-free
+    # subset the battery registers, and it carries BOTH COLOURS: on the live wrapper
+    # both arms are green, and on the pre-fix copy ('--neg-arm') arm 1 goes RED while
+    # '--help' stays green, which is what makes it a control.
+    ap.add_argument('--arms', default='argv,bogus,help,start',
+                    help='comma subset of {argv,bogus,help,start} (default: all four)')
+    # THE rc 120 DEFECT'S OWN CONTROL (lane B, 2026-10-15). The refusal capture used
+    # to be redirected into the SYSTEM %TEMP%; MEASURED 2026-10-14, the same command
+    # with the same interpreter answered rc 120 (and refused a GOOD launch) with
+    # `2>G:\Temp\...` and rc 2 with the argparse text on a writable path. This flag
+    # restores exactly that target in a COPY and requires the check to go RED.
+    ap.add_argument('--temp-arm', action='store_true',
+                    help='restore the %%TEMP%% capture target in a COPY -> must go RED')
     a = ap.parse_args()
+
+    if a.temp_arm:
+        return temp_arm(a.label or 'temp-arm')
+
+    if a.self_test:
+        # LANCA-NADA: o self-test cria dois filhos `python -c ...` e NEM
+        # LANCA O APP. E' o unico ramo deste oraculo que nao toca no produto.
+        return self_test(load_census_primitives())
 
     notes: list = []
     label = a.label or ('neg-arm' if a.neg_arm else 'fixed')
@@ -962,22 +1217,62 @@ def main() -> int:
     arm_log = os.path.join(os.path.dirname(shared_log),
                            f'run-cmd-exit-oracle-{label}-{RUN_ID}.log')
 
+    # THE ARM SELECTION (see --arms above). An unknown name is a REFUSAL, not
+    # a silent skip: a typo that dropped arm 1 would turn the negative arm vacuous,
+    # and this oracle's whole value is that it can say no.
+    want = [n.strip() for n in str(a.arms).split(',') if n.strip()]
+    ARM_NAMES = ('argv', 'bogus', 'help', 'start')
+    unknown = sorted(set(want) - set(ARM_NAMES))
+    if unknown:
+        print(f'VERDICT FAIL  --arms names arm(s) that do not exist: {unknown} '
+              f'(known: {", ".join(ARM_NAMES)})')
+        return 1
+    if not want:
+        print('VERDICT FAIL  --arms selected no arm at all')
+        return 1
+    if a.neg_arm and 'bogus' not in want:
+        print('NEG-ARM REFUSED: the control is arm 1 (bogus). Without it the run '
+              'cannot go RED, so it is not a negative arm.')
+        return 1
+    print(f'ARM-SELECT {",".join(want)}'
+          + ('   (LAUNCH-FREE: nothing below reaches the launch path)'
+             if 'start' not in want else '   (the start arms LAUNCH the app)'))
+
     arms = []
-    arms.append(arm_argv(run_cmd, pr, census, notes))
-    for arm in arms:
-        _print_arm(arm)
-    arms.append(arm_bogus(run_cmd, pr, census, notes))
-    _print_arm(arms[-1])
-    arms.append(arm_help(run_cmd, pr, census, notes))
-    _print_arm(arms[-1])
-    arms.append(arm_start(run_cmd, pr, census, notes, 'start-logged', arm_log,
-                          ['--log', arm_log, '--no-hotkey', '--no-hot-reload',
-                           '--exit-after', a.exit_after], a.exit_after))
-    _print_arm(arms[-1])
-    arms.append(arm_start(run_cmd, pr, census, notes, 'start-default', shared_log,
-                          ['--no-hotkey', '--no-hot-reload',
-                           '--exit-after', a.exit_after], a.exit_after))
-    _print_arm(arms[-1])
+    if 'argv' in want:
+        arms.append(arm_argv(run_cmd, pr, census, notes))
+        _print_arm(arms[-1])
+    if 'bogus' in want:
+        arms.append(arm_bogus(run_cmd, pr, census, notes))
+        _print_arm(arms[-1])
+    if 'help' in want:
+        arms.append(arm_help(run_cmd, pr, census, notes))
+        _print_arm(arms[-1])
+    if 'start' in want:
+        arms.append(arm_start(run_cmd, pr, census, notes, 'start-logged', arm_log,
+                              ['--log', arm_log, '--no-hotkey', '--no-hot-reload',
+                               '--exit-after', a.exit_after], a.exit_after))
+        _print_arm(arms[-1])
+        arms.append(arm_start(run_cmd, pr, census, notes, 'start-default', shared_log,
+                              ['--no-hotkey', '--no-hot-reload',
+                               '--exit-after', a.exit_after], a.exit_after))
+        _print_arm(arms[-1])
+
+    # THE rc 120 CONTRACT, statically (see temp_arm above). SKIPPED in the neg-arm
+    # run, and the reason is a fact about the control and not a convenience: the
+    # pre-fix wrapper predates the pre-flight entirely, so it has no capture to aim
+    # anywhere and cannot control for this cure. The defect has its OWN control,
+    # `--temp-arm`, which restores the %TEMP% target in a copy.
+    temp_checks: list = []
+    if not a.neg_arm:
+        temp_checks = temp_target_checks(run_cmd)
+        print('ARM temp-target   (the refusal capture is not aimed at the system %TEMP%)')
+        for name, ok, ev in temp_checks:
+            print(f'    [{"ok" if ok else "NO"}] {name} :: {ev}')
+    else:
+        print('ARM temp-target   SKIPPED in the neg-arm copy: the pre-fix wrapper has no'
+              ' pre-flight and no capture, so it cannot control for this cure (the rc 120'
+              ' defect is gated by --temp-arm instead)')
 
     # The ARMS are done. The census so far is the app-under-the-FIXED-wrapper's
     # own window behaviour, so snapshot it HERE, before the gap arms
@@ -1025,6 +1320,7 @@ def main() -> int:
     results = {arm['name']: arm for arm in arms}
     failed = [n for n, arm in results.items()
               if not all(ok for _nm, ok, _ev in arm['checks'])]
+    failed += [c[0] for c in temp_checks if not c[1]]
     if census_ok:
         print(f'CENSUS OK: no visible window in {snap_arms["samples"]} samples '
               f'of this run\'s own pids during the ARMS phase (the census '
@@ -1049,8 +1345,9 @@ def main() -> int:
                        f'failed={sorted(failed)}')
     else:
         arms_ok = not failed
-        arms_reason = ('all 4 arms green' if arms_ok
+        arms_reason = (f'all {len(arms)} arm(s) green' if arms_ok
                        else f'failed arms={sorted(failed)}')
+
     census_reason = (f'{snap_arms["samples"]} samples, '
                      f'{snap_arms["visible_samples"]} with a visible window')
     gaps_failed = [g['gap'] for g in gaps
@@ -1066,10 +1363,12 @@ def main() -> int:
     if gaps:
         print(f'GAP-VERDICT    {"PASS" if gaps_ok else "FAIL"}  {gaps_reason}')
     print(f'CENSUS-VERDICT {"PASS" if census_ok else "FAIL"}  {census_reason}')
-    print(f'ARM-RCS ' + ' '.join(
-        f'{n}={results[n]["rc"]}(want {results[n]["expect_rc"]})'
-        for n in ('bogus', 'help', 'start-logged', 'start-default',
-                  'argv')))
+    # ONLY THE ARMS THAT RAN. The literal tuple this used to print indexed
+    # results[n], which KeyERRORED the moment a subset was selected -- a
+    # launch-free battery row would have crashed instead of reporting. This is
+    # the crash the first version of the --arms patch produced, caught by running it.
+    print('ARM-RCS ' + ' '.join(
+        f'{arm["name"]}={arm["rc"]}(want {arm["expect_rc"]})' for arm in arms))
     for g in gaps:
         print(f'GAP-RCS {g["gap"]:<22} after={g["after"]["rc"]} '
               f'before={g["before"]["rc"]}')
@@ -1088,6 +1387,7 @@ def main() -> int:
                    'under_test_sha256': sha256(RUN_CMD),
                    'preflight_in_under_test': PREFLIGHT_MARK in text_of(run_cmd),
                    'notes': notes, 'arms': arms, 'gaps': gaps,
+                   'temp_target': temp_checks,
                    'census': snap_arms, 'census_gaps': snap_gaps,
                    'arms_ok': arms_ok, 'gaps_ok': gaps_ok, 'census_ok': census_ok,
                    'arm_verdict': 'PASS' if arms_ok else 'FAIL',

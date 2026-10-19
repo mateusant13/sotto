@@ -474,34 +474,51 @@ def bridge_arms(mod) -> list:
             fh.write(body)
 
         missing = os.path.join(tmp, "nope.json")
-        chk(mod.payload_if_fresh(missing) is None, "absent payload -> None")
-        chk(mod.payload_if_fresh("") is None, "empty path -> None")
 
         empty = os.path.join(tmp, "empty.json")
         open(empty, "w").close()
-        chk(mod.payload_if_fresh(empty) is None, "zero-byte payload -> None")
 
         partial = os.path.join(tmp, "partial.json")
         with open(partial, "w", encoding="utf-8") as fh:
             fh.write(body[:len(body) // 2])
-        chk(mod.payload_if_fresh(partial) is None,
-            "a payload caught mid-write -> None, not an exception")
 
         garbage = os.path.join(tmp, "garbage.json")
         with open(garbage, "w", encoding="utf-8") as fh:
             fh.write("this is not json at all")
-        chk(mod.payload_if_fresh(garbage) is None, "garbage payload -> None")
 
         nosegs = os.path.join(tmp, "nosegs.json")
         with open(nosegs, "w", encoding="utf-8") as fh:
             json.dump({"rtf": 0.4}, fh)
-        chk(mod.payload_if_fresh(nosegs) is None,
-            "a payload with no segments -> None")
 
         notadict = os.path.join(tmp, "list.json")
         with open(notadict, "w", encoding="utf-8") as fh:
             json.dump([1, 2, 3], fh)
-        chk(mod.payload_if_fresh(notadict) is None, "a JSON list -> None")
+
+        # `payload_if_fresh` tem de devolver None, NUNCA LEVANTAR. E o mutante
+        # `raises-on-a-partial-read` existe precisamente para rebentar essa
+        # promessa. UMA EXCEPCA QUE ESCAPA DO CODIGO EM TESTE E' UM VERMELHO,
+        # NAO UMA FALHA DO HARNESS: sem esta proteccao o mutante rebentava a
+        # bateria com JSONDecodeError e o gate reportava-o como DECORATIVO --
+        # trocando uma prova por uma mentira na direccao oposta.
+        def none_or_red(path, label):
+            try:
+                got = mod.payload_if_fresh(path)
+            except Exception as exc:                            # noqa: BLE001
+                chk(False, label, "LEVANTOU %s em vez de devolver None: %r"
+                    % (type(exc).__name__, exc))
+                return None
+            chk(got is None, label,
+                "" if got is None else "devolveu %r em vez de None" % (got,))
+            return got
+
+        none_or_red(missing, "absent payload -> None")
+        none_or_red("", "empty path -> None")
+        none_or_red(empty, "zero-byte payload -> None")
+        none_or_red(partial,
+                    "a payload caught mid-write -> None, not an exception")
+        none_or_red(garbage, "garbage payload -> None")
+        none_or_red(nosegs, "a payload with no segments -> None")
+        none_or_red(notadict, "a JSON list -> None")
 
         got = mod.payload_if_fresh(good)
         chk(isinstance(got, dict) and len(got.get("segments", [])) == 10,
@@ -572,24 +589,45 @@ BRIDGE_MUTANTS = [
 
 
 def run_mutants(label_prefix, source, mutants, arms_for, tmp):
-    """Break one file on purpose, N ways, and demand the gate notice each."""
+    """Break one file on purpose, N ways, and demand the gate notice each.
+
+    UM MUTANTE QUE NAO CORRE NAO E' UM MUTANTE APANHADO. Este codigo contava
+    uma excepcao de import/carregamento como "GREEN mutant ... refused to run" e
+    somava ao contador -- exactamente o defeito que um auditor provou no
+    oraculo de plumbing em 2026-10-19 (mutantes que nunca executam um unico
+    check, gate a dizer 6/6). O veredicto tem de REPROVAR um braco decorativo,
+    nunca inflar a contagem. `weak` conta os que nao provaram nada.
+    """
     caught = 0
+    weak = 0
     for offset, (label, old, new) in enumerate(mutants):
         if old not in source:
             print("  RED   mutant %-32s ANCHOR MISSING -- the oracle is stale"
                   % label)
+            weak += 1
             continue
         broken = source.replace(old, new, 1)
         path = os.path.join(tmp, "%s_%d.py" % (label_prefix, offset))
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(broken)
+        # CARREGAR e CORRER sao coisas diferentes e nunca podem ser confundidas:
+        # se a copia nao carrega, o mutante nao foi testado; se carrega mas
+        # rebenta a bateria, o codigo partiu mas o gate nao consegue dizer QUAL
+        # check o apanhou. Nenhum dos dois pode virar "caught".
         try:
             bad = load_module(path, "%s_mut_%d" % (label_prefix, offset))
+        except Exception as exc:                                # noqa: BLE001
+            print("  RED   mutant %-32s DECORATIVO: nao carregou (%s) -- "
+                  "NAO foi testado" % (label, type(exc).__name__))
+            weak += 1
+            continue
+        try:
             res = arms_for(bad)
         except Exception as exc:                                # noqa: BLE001
-            print("  GREEN mutant %-32s refused to run (%s)"
+            print("  RED   mutant %-32s INCONCLUSIVO: carregou mas a bateria "
+                  "morreu antes de um check nomeado (%s)"
                   % (label, type(exc).__name__))
-            caught += 1
+            weak += 1
             continue
         reds = [name for ok, name, _ in res if not ok]
         if reds:
@@ -599,7 +637,7 @@ def run_mutants(label_prefix, source, mutants, arms_for, tmp):
         else:
             print("  RED   mutant %-32s SURVIVED -- the gate is blind here"
                   % label)
-    return caught
+    return caught, weak
 
 
 def main() -> int:
@@ -644,20 +682,29 @@ def main() -> int:
 
     print("\nNEGATIVE ARM (broken copies must go RED)")
     tmp = tempfile.mkdtemp(prefix="speaker-id-oracle-")
+    weak = 0
     try:
-        caught = run_mutants(
+        caught, weak_a = run_mutants(
             "sid", source, MUTANTS,
             lambda bad: battery(bad, trials=600) + real_data_arms(bad)
             + epoch_arms(bad), tmp)
-        caught += run_mutants("brg", bridge_source, BRIDGE_MUTANTS,
-                              bridge_arms, tmp)
+        weak += weak_a
+        caught_b, weak_b = run_mutants("brg", bridge_source, BRIDGE_MUTANTS,
+                                       bridge_arms, tmp)
+        caught += caught_b
+        weak += weak_b
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     total_mutants = len(MUTANTS) + len(BRIDGE_MUTANTS)
-    ok = (not heavy) and green == len(rows) and caught == total_mutants
+    ok = ((not heavy) and green == len(rows)
+          and caught == total_mutants and weak == 0)
     print("\nVERDICT: %s  arms %d/%d  mutants %d/%d"
           % ("PASS" if ok else "FAIL", green, len(rows), caught, total_mutants))
+    if weak:
+        print("  %d mutante(s) DECORATIVO(S): nao correram, logo nao provaram "
+              "nada. Um braco negativo que promete %d e testa %d nao cumpre."
+              % (weak, total_mutants, caught))
     return EXIT_PASS if ok else EXIT_FAIL
 
 

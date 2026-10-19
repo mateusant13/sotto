@@ -66,6 +66,45 @@ def silence(seconds, rate=RATE):
     return np.zeros(int(seconds * rate), dtype=np.float32)
 
 
+AUDIO_SUFFIXES = ('.wav', '.flac')
+
+
+def audio_files(out):
+    """Every audio file in `out`, whatever the format."""
+    return sorted(f for f in os.listdir(out) if f.endswith(AUDIO_SUFFIXES))
+
+
+def read_audio(path):
+    """(samples float32, n_frames, bits, rate, channels) de um FLAC ou de um WAV.
+
+    O gravador escreve FLAC quando o `soundfile` esta importavel e cai para WAV
+    quando nao esta (`worker/audio_recorder.py:181-199`). A extensao e' um
+    detalhe de implementacao que MUDOU: o commit `109aeb6` passou o gravador de
+    WAV para FLAC e nao actualizou este portao, que ficou VERMELHO desde entao
+    em W2 e W3 -- a queixar-se de um formato que ja nao existe.
+
+    Um portao que grita por um motivo que deixou de ser verdade ensina o
+    leitor a ignorar o vermelho. Este le o que o gravador escreveu.
+    """
+    try:
+        import soundfile as sf
+        data, rate = sf.read(path, dtype='float32', always_2d=True)
+        info = sf.info(path)
+        subtype = str(info.subtype).upper()
+        bits = 16 if subtype.endswith('PCM_16') else 0
+        flat = data.reshape(-1)
+        return flat, int(data.shape[0]), bits, int(rate), int(data.shape[1])
+    except Exception:
+        with wave.open(path, 'rb') as w:
+            frames = w.readframes(w.getnframes())
+            n = w.getnframes()
+            rate = w.getframerate()
+            width = w.getsampwidth()
+            chans = w.getnchannels()
+        samples = np.frombuffer(frames, dtype='<i2').astype(np.float32) / 32767.0
+        return samples, int(n), int(width * 8), int(rate), int(chans)
+
+
 def run_control(root):
     results = []
 
@@ -81,47 +120,70 @@ def run_control(root):
         rec.accept(speechish(CHUNK / float(RATE)))
     rec.close()
 
-    wavs = sorted(f for f in os.listdir(out) if f.endswith('.wav'))
     index_path = os.path.join(out, 'index.jsonl')
     rows = []
     if os.path.exists(index_path):
         with open(index_path, encoding='utf-8') as fh:
             rows = [json.loads(l) for l in fh if l.strip()]
 
+    fed_samples = 6 * CHUNK
+    seg_samples = [int(r.get('samples', 0)) for r in rows]
+    total_written = sum(seg_samples)
+
+    # W2 -- o ficheiro e' AUDIO de verdade, no formato que o gravador escolheu.
     ok_chans = ok_rate = ok_width = ok_roundtrip = False
-    detail = 'no wav written'
-    # THE ROLL IS CHUNK-QUANTISED, and this oracle got that wrong first.
-    # `_maybe_roll` tests the running sample count BEFORE each chunk is appended,
-    # so a segment is "at least segment_s, rounded UP to a whole chunk". With
-    # segment_s = 1.2 s (19 200 samples) and CHUNK = 8 960, that is
-    # ceil(19200/8960) = 3 chunks per segment, i.e. 26 880 samples = 1.68 s -- and
-    # the first oracle expected 19 200 exactly and reported a rounding as a bug.
-    per_segment = int(np.ceil((1.2 * RATE) / CHUNK))
-    if wavs:
-        with wave.open(os.path.join(out, wavs[0]), 'rb') as w:
-            ok_chans = w.getnchannels() == 1
-            ok_rate = w.getframerate() == RATE
-            ok_width = w.getsampwidth() == 2
-            frames = w.readframes(w.getnframes())
-            n_frames = w.getnframes()
-        got = np.frombuffer(frames, dtype='<i2').astype(np.float32) / 32767.0
-        want = np.concatenate([speechish(CHUNK / float(RATE))
-                               for _ in range(max(1, n_frames // CHUNK))])
-        want = want[:n_frames]
-        # int16 round-trip: the error is the quantisation, not the plumbing.
-        err = float(np.abs(got - want).max()) if len(got) else 1.0
-        ok_roundtrip = len(got) == n_frames == per_segment * CHUNK and err < 2e-4
-        detail = ('ch=%d rate=%d width=%dB frames=%d (expected %d = %d chunks) '
-                  'max_err=%.2e' % (1, RATE, 2, n_frames, per_segment * CHUNK,
-                                    per_segment, err))
-    results.append(('W2 the wav is mono/16k/16-bit and round-trips',
+    detail = 'no segment written'
+    fmt = '?'
+    if rows:
+        first = rows[0]
+        path = os.path.join(out, first['file'])
+        fmt = os.path.splitext(first['file'])[1].lstrip('.') or '?'
+        try:
+            audio, n_frames, bits, rate, chans = read_audio(path)
+        except Exception as exc:  # noqa: BLE001
+            audio, n_frames, bits, rate, chans = None, 0, 0, 0, 0
+            detail = 'nao consegui ler %s: %r' % (first['file'], exc)
+        ok_chans = chans == 1
+        ok_rate = rate == RATE
+        ok_width = bits == 16
+        if audio is not None and len(audio):
+            want = np.concatenate([speechish(CHUNK / float(RATE))
+                                   for _ in range(max(1, n_frames // CHUNK))])
+            want = want[:n_frames]
+            # int16 round-trip: o erro e' a quantizacao, nao a canalizacao.
+            err = float(np.abs(audio - want).max())
+        else:
+            err = 1.0
+        ok_roundtrip = (audio is not None and len(audio) == n_frames
+                        and n_frames == int(first.get('samples', -1))
+                        and err < 2e-4)
+        detail = ('file=%s ch=%d rate=%d bits=%d frames=%d (o indice diz %s) '
+                  'max_err=%.2e' % (first['file'], chans, rate, bits, n_frames,
+                                    first.get('samples'), err))
+    results.append(('W2 the audio file is mono/16k/16-bit and round-trips',
                     ok_chans and ok_rate and ok_width and ok_roundtrip, detail))
 
-    expected_segments = int(np.ceil(6 / float(per_segment)))
-    results.append(('W3 the segment closes at the requested size',
-                    len(rows) == expected_segments,
-                    '%d segment(s), expected %d for 6 chunks at %d chunks/segment'
-                    % (len(rows), expected_segments, per_segment)))
+    # W3 -- A PROMESA REAL: NENHUMA AMOSTRA SE PERDE, e o indice concorda com o
+    # que esta em disco. O portao afirmava uma CONTA EXACTA de segmentos,
+    # derivada de um `_maybe_roll` que ja nao existe: o roll hoje e' "fecha
+    # quando pendente + novo > segment_s * rate", que arredonda PARA BAIXO
+    # (2 chunks = 17 920 = 1,12 s para um pedido de 1,2 s), onde o antigo
+    # arredondava PARA CIMA (3 chunks = 1,68 s).
+    #
+    # A DIRECAO do arredondamento e' uma escolha de implementacao. O que NAO e'
+    # uma escolha e' que cada amostra alimentada sai, uma vez e uma so. E um
+    # portao que afirme a conta em vez da promessa fica vermelho quando o
+    # codigo e' mudado de proposito -- que foi exactamente o que aconteceu.
+    requested = 1.2 * RATE
+    ok_total = bool(rows) and total_written == fed_samples
+    ok_bounded = bool(rows) and all(requested - CHUNK <= s <= requested + CHUNK
+                                    for s in seg_samples)
+    results.append(('W3 no audio is lost and each segment is the requested size',
+                    ok_total and ok_bounded,
+                    '%d segment(s) em %s, %d amostras escritas de %d alimentadas, '
+                    'tamanhos %s (pedido %d, +- 1 chunk de %d)'
+                    % (len(rows), fmt, total_written, fed_samples, seg_samples,
+                       int(requested), CHUNK)))
 
     row = rows[0] if rows else {}
     # `duration_s` IS the audio duration: samples/rate. It is deliberately NOT
@@ -132,7 +194,8 @@ def run_control(root):
     dur_ok = bool(row) and abs(row['duration_s']
                               - row['samples'] / float(RATE)) < 1e-6 \
         and row['end_s'] >= row['start_s'] and row['peak'] > 0.0
-    needed = {'file', 'start_s', 'end_s', 'duration_s', 'samples', 'peak', 'rms'}
+    needed = {'file', 'start_s', 'end_s', 'duration_s', 'samples', 'peak', 'rms',
+              'rate', 'format'}
     results.append(('W5 the index row is complete and self-consistent',
                     dur_ok and needed.issubset(set(row))
                     and os.path.exists(os.path.join(out, row.get('file', ''))),
@@ -152,9 +215,9 @@ def run_control(root):
         with open(os.path.join(out2, 'index.jsonl'), encoding='utf-8') as fh:
             rows2 = [json.loads(l) for l in fh if l.strip()]
     results.append(('W4 digital silence is dropped, not filed as audio',
-                    not [f for f in left if f.endswith('.wav')] and not rows2,
-                    '%d wav(s) %d index row(s), %d dropped'
-                    % (len([f for f in left if f.endswith('.wav')]), len(rows2),
+                    not audio_files(out2) and not rows2,
+                    '%d ficheiro(s) de audio %d index row(s), %d dropped'
+                    % (len(audio_files(out2)), len(rows2),
                        rec2.segments_dropped_silent)))
 
     # W6 -- accept() never raises, whatever arrives.
@@ -191,14 +254,20 @@ def run_neg_arm(root):
          'if peak < DIGITAL_SILENCE_PEAK and rms < DIGITAL_SILENCE_RMS:',
          'if False:'),
         ('the index is never written',
-         "with open(self._index_path, 'a', encoding='utf-8') as fh:",
+         "with open(path, 'a', encoding='utf-8') as fh:",
          "with open(os.devnull, 'a', encoding='utf-8') as fh:"),
         ('segments never roll: the whole run lands in one file',
-         'self._samples < self.segment_s * self.rate', 'True'),
-        ('the sample rate written into the wav is wrong',
-         'self._wav.setframerate(self.rate)', 'self._wav.setframerate(8000)'),
-        ('the channel count is wrong',
-         'self._wav.setnchannels(1)', 'self._wav.setnchannels(2)'),
+         'if self._pending_n and self._pending_n + len(data) > self.segment_s * self.rate:',
+         'if False:'),
+        ('the rate the recorder writes is wrong',
+         'self.rate = int(rate)',
+         'self.rate = 8000'),
+        ('the index lies about the sample count',
+         "'samples': samples,",
+         "'samples': samples + 1,"),
+        ('the index lies about the peak',
+         "'peak': round(peak, 6),",
+         "'peak': 0.0,"),
     ]
     import importlib.util
     ok = True
@@ -229,22 +298,45 @@ def run_neg_arm(root):
                 rows = [json.loads(l) for l in fh if l.strip()]
         broke = []
         if rows:
-            with wave.open(os.path.join(out, rows[0]['file']), 'rb') as w:
-                if w.getnchannels() != 1:
-                    broke.append('W2 %d channels' % w.getnchannels())
-                if w.getframerate() != RATE:
-                    broke.append('W2 %d Hz' % w.getframerate())
+            path = os.path.join(out, rows[0]['file'])
+            try:
+                audio, n_frames, bits, rate, chans = read_audio(path)
+            except Exception:  # noqa: BLE001
+                audio, n_frames, bits, rate, chans = None, 0, 0, 0, 0
+            if chans != 1:
+                broke.append('W2 %d channels' % chans)
+            if rate != RATE:
+                broke.append('W2 %d Hz' % rate)
+            if bits != 16:
+                broke.append('W2 %d bits' % bits)
+            if audio is None or n_frames != int(rows[0].get('samples', -1)):
+                broke.append('W2 %d frames != index %s'
+                             % (n_frames, rows[0].get('samples')))
         else:
             broke.append('W5 the index is empty')
-        if len(rows) != int(np.ceil((6 * CHUNK) / (1.2 * RATE))):
-            broke.append('W3 %d segments' % len(rows))
+        # W3 -- a promessa, nao a conta: nada se perde, e cada segmento fica
+        # dentro de um chunk do pedido.
+        total = sum(int(r.get('samples', 0)) for r in rows)
+        if total != 6 * CHUNK:
+            broke.append('W3 %d of %d samples written' % (total, 6 * CHUNK))
+        requested = 1.2 * RATE
+        for r in rows:
+            s = int(r.get('samples', 0))
+            if not (requested - CHUNK <= s <= requested + CHUNK):
+                broke.append('W3 a segment of %d samples' % s)
+                break
+        if rows and float(rows[0].get('peak', 0.0)) <= 0.0:
+            broke.append('W5 the index says the peak is not positive')
+        if rows and abs(float(rows[0].get('duration_s', -1))
+                        - int(rows[0].get('samples', 0)) / float(RATE)) > 1e-6:
+            broke.append('W5 the index duration does not match the samples')
 
         rec2 = mod.AudioRecorder(os.path.join(sub, 'b'), rate=RATE,
                                  segment_s=0.8, prefix='probe')
         for _ in range(4):
             rec2.accept(silence(CHUNK / float(RATE)))
         rec2.close()
-        left = [f for f in os.listdir(os.path.join(sub, 'b')) if f.endswith('.wav')]
+        left = audio_files(os.path.join(sub, 'b'))
         if left:
             broke.append('W4 silence was filed')
 

@@ -71,6 +71,20 @@ undone. Three rules, both earned today:
    "nothing stamps this field" are all claims that a single grep, or a 60 s census, cannot support. Name
    the instrument, its cadence and its count — the same rule the panel's own windows and the segment-rerun
    canary were held to.
+4. **A SCREENSHOT PROVES COLOUR, NOT COORDINATES (2026-10-18, and it nearly cost a wrong fix).**
+   Headless Edge clamps the **layout viewport to 492 px in BOTH `--screenshot` AND `--dump-dom`** on this
+   machine, whatever `--window-size` asks for. `--headless=new` and `--headless=old` return
+   **byte-identical 62 570-byte PNGs** on the same input; forcing `html{width:380px}` moves the body and the
+   header while the control boxes stay on the 492 geometry. `_main/_design-lane/shot.py`'s docstring
+   claimed the opposite ("re-measured 2026-10-09 with --screenshot … there is no clamp to escape") — that
+   sentence is **retracted** and rewritten in the file.
+   What it nearly caused: a measured `header r=478` with the panel-pause, hide and caption-size buttons
+   reading 34–98 px past the edge, which looks exactly like a header overflow worth fixing in the product.
+   **It is not a defect.** `sotto_webview.py --dump-dom` — the real WebView2 window, no clamp — measures
+   (theme-1, panel): cluster `[116..366]`, every button `onscreen=true`, `past_by=0`. **A PNG answers what is
+   painted; only `--dump-dom` answers where.** Its new `controls` key prints `viewport_w` beside every
+   number so the two instruments can never be read as one. `--dump-dom` shows **no window** and starts
+   **no worker**, so it is cheap to run.
 
 ## CORRECTIONS 2026-10-07 (lane/docs) — every claim below was re-measured; see `_main/AGENTS-AUDIT.md`
 
@@ -658,7 +672,7 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   `sotto: ARGS_REJECTED rc=<n> by=run.cmd-preflight` to `_main/webview-run.log`
   (before the fix that file gained NO bytes at all) and `exit /b <child rc>`;
   nothing is spawned. `--check-args` is `help=argparse.SUPPRESS`, so `run.cmd
-  --help` output is byte-identical before/after **the SIZE here was stale and is corrected per rules 1 and 2 of this file: 2272 B was the 2026-10-06 revision; 4872 B / 78 lines was the 2026-10-12 EARLY revision and is now stale in turn -- `app/webview/run.cmd` was committed 2026-10-12 **00:13:55** (`d893212`), so the help text grew again. **re-measured 2026-10-12 the output is 4956 B, 79 lines, 79 CRLF / 0 bare LF, rc 0, sha256 91F739712EB4139C589742D6EC30132F01F074312DDF2CA9C774701960AE90CA** (three agreeing hands at 05:5x -03:00: the pins oracle, lane S4, and a direct capture by the Lead). Which is why the number must carry its date. The claim is the COMPARISON (the pre-flight does not change the output), and `_main/run-cmd-exit-oracle.py` measures both sides). The two branches SottoRunCmdEntry measured working stay working:
+  --help` output is byte-identical before/after **the SIZE here was stale and is corrected per rules 1 and 2 of this file: 2272 B was the 2026-10-06 revision; 4872 B / 78 lines was the 2026-10-12 EARLY revision and is now stale in turn -- `app/webview/run.cmd` was committed 2026-10-12 **00:13:55** (`d893212`), so the help text grew again. **re-measured 2026-10-19 the output is 6934 B, 107 lines, 107 CRLF / 0 bare LF, rc 0, sha256 51B52939F76C4AA5A35D7D865ED7C6B38C01ACFAD829F36C7A6032C337E01B47** — the rot happened in TWO steps, and the CAUSE of each is measured, which is the part worth keeping: the 2026-10-12 pin said 4956 B / 79 lines (three agreeing hands at 05:5x -03:00: the pins oracle, lane S4, and a direct capture by the Lead); by `8639fef~1` the output was already **5336 B / 85 lines** (+6, from flags added in between), and the speaker work took it to **107 lines** (+22, of which **13** are now about voices: `--speakers`, `--speakers-cheap`, `--save-voice-clips`, `--watch-payload`). A pin that breaks because the code grew is a pin DOING ITS JOB; a pin that breaks because nobody re-ran the gate is rot, and the two look identical until you ask WHY. So: ask WHY, and the gate is `_main/agents-md-pins-oracle.py`, which had not been run since the speaker flags landed. **It is now in the battery** (§10 of `_main/receipt-20261018-fase-a-multivoice.md`) — a gate that is not in the battery is a gate that rots in silence, and this one rotted in silence for seven days. Which is why the number must carry its date. The claim is the COMPARISON (the pre-flight does not change the output), and `_main/run-cmd-exit-oracle.py` measures both sides). The two branches SottoRunCmdEntry measured working stay working:
   pythonw for a normal hidden launch (arm rc 0, and the wrapper returns in
   ~250 ms while the app lives 8 s — it still detaches), python.exe for the
   `--help`/`--dump-dom`/`--selftest`/`--memory` flags. NOT covered by the

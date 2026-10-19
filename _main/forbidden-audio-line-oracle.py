@@ -8,7 +8,7 @@ device is in use' sendo q nao e pra acontecer nunca e nem depender disso"*.
 QUE HISTORIA ESTA GUARDA, em ordem:
 
   1. O worker pintava `state="error"` em CADA degrau que nao abria. `error` esta
-     em WORKER_ERROR_STATES, entao a escada working Customers Passing ac点亮ava o
+     em WORKER_ERROR_STATES, entao a escada inteira acendia o
      painel vermelho a cada rotacao. Corrigido em `fbe830b` para
      `device-open-refused`, que nao casa com nada do vocabulario de falha.
 

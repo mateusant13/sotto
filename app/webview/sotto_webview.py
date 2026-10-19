@@ -10384,6 +10384,68 @@ class SpeakerSidecar:
         self.log(f'SIDECAR_SPAWNED pid={self.child.pid} '
                  f'path={self.sidecar_path} reason={reason} '
                  f'argv={json.dumps([self.command, self.sidecar_path] + list(self.extra_args))}')
+        # O pipe so deixa de encher se alguem o le. Sem isto o sidecar
+        # trava a meio de uma call (medido: ~10 min) e a atribuicao
+        # desliga sem alarme.
+        self._start_drain(self.child)
+        return True
+
+    def _start_drain(self, child):
+        """LER o que o sidecar diz, ou o pipe enche e o sidecar trava.
+
+        MEDIDO 2026-10-19, e nao suspeitado. `start` faz `stdout=PIPE`
+        sem ligar leitor nenhum; o `WorkerBridge` liga um por stream em 11006
+        desde sempre. O grep na shell confirma: entre 10313 e 10440, `stdout`
+        so aparecia no `PIPE` e no `STDOUT`.
+
+        O CUSTO MEDIDO, com a configuracao exacta deste `Popen` e NINGUEM a
+        ler: o filho escreve **3480 B** e trava. O sidecar escreve uma linha
+        de 58 B por tick de 10 s (`DEFAULT_EVERY_S`), 5,8 B/s -- 3480/5,8 sao
+        **~10 minutos de call**. Passados 10 min o sidecar bloqueava a
+        escrever, deixava de publicar, e a ponte via o payload envelhecer e
+        devolvia `None`: a atribuicao desligava SO, sem erro e sem alarme.
+        Nenhum portao o apanhou, porque todos correm `watch_tick` no
+        processo -- nunca atraves do pipe.
+
+        VAO TUDO PARA O LOG, e nao se deita nada fora. O log nao e' consola:
+        `run.cmd` lanca com `pythonw.exe --log`, e o `print()` do `log()` e'
+        no-op sem stdout. 3600 linhas/hora sao ~200 KB num ficheiro. Um dreno
+        que engolisse o diagnostico do sidecar seria a mesma mentira que uma
+        excepcao engolida, so que mais lenta.
+
+        O filho e' passado EXPLICITAMENTE, e nao lido de `self.child` dentro
+        da thread: um sidecar morto pode ainda estar a drenar enquanto
+        `self.child` ja aponta para o substituto, e uma linha com o pid
+        ERRADO e' um numero sem dono.
+        """
+        # `getattr`, e nao `child.stdout`: um filho que NAO tem atributo
+        # `stdout` levantava AttributeError AQUI, dentro de start() -- e
+        # um dreno nunca pode ser a raza de o sidecar nao arrancar.
+        # MEDIDO 2026-10-19: `sidecar-wiring-oracle` rebentou com
+        # traceback exacto por isto (`AttributeError: '_FakePopen' object
+        # has no attribute 'stdout'`), que e' o portao a fazer o que
+        # existe para fazer. Este ramo tambem nao e' silencioso: diz no
+        # log que nao ha nada para drenar, em vez de fingir que drenou.
+        stream = getattr(child, 'stdout', None)
+        if stream is None:
+            self.log('SIDECAR_DRAIN_SKIPPED reason=filho-sem-stdout-legivel'
+                     ' pid=%s' % getattr(child, 'pid', '?'))
+            return False
+
+        def drain():
+            try:
+                for line in iter(stream.readline, ''):
+                    self.log('SIDECAR %s' % line.rstrip('\r\n'))
+            except Exception as exc:                                   # noqa: BLE001
+                self.log(f'SIDECAR_DRAIN_FAILED error={exc!r}')
+            finally:
+                try:
+                    stream.close()
+                except Exception:                                       # noqa: BLE001
+                    pass
+
+        threading.Thread(target=drain, name='speaker-sidecar-drain',
+                         daemon=True).start()
         return True
 
     def stop(self, reason):
