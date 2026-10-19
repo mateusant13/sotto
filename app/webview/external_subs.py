@@ -62,7 +62,93 @@ _UI_TEXT = re.compile(
     r"screen reader|closed captions|mais v[ií]deos)")
 _TIME_TEXT = re.compile(
     r"(?i)(\d+\s*(horas?|hours?|minutos?|minutes?|segundos?|seconds?))")
+#: THE VIEW COUNTER, and it is the one that got through. Measured 2026-10-18 on
+#: the owner's own screenshot: the row read `17 mil há 11 h` and was pushed to
+#: the caption overlay verbatim (`CAPTION_OVERLAY_PUSH text="17 mil há 11 h"`).
+#: It survived BOTH regexes above for two independent reasons, and both had to
+#: be closed:
+#:
+#: 1. `_TIME_TEXT` only knows the time words spelled OUT (`horas`, `hours`).
+#:    YouTube renders the ABBREVIATION — `11 h`, not `11 horas`. The string that
+#:    reached the caption carried no word the regex knew.
+#: 2. There was no rule for the thousands cluster at all (`17 mil`, `4,2 mi`,
+#:    `1,2K`), so the number that makes the row obviously chrome had nothing to
+#:    match.
+#:
+#: It is deliberately a CLUSTER, not bare words: `h` alone and `há` alone are
+#: ordinary Portuguese speech ("não há", "hà"), and a caption may contain a
+#: digit. What no caption ever is, is a number, an abbreviated unit, and an
+#: "ago" marker in one row.
+_VIEW_COUNTER = re.compile(
+    r"(?i)("
+    r"\d[\d.,]*\s*(?:mil|mi|k)\b"                 # 17 mil / 4,2 mi / 1,2K
+    r"|h[áa]\s*\d+\s*(?:h|hr|hrs|hora|horas)\b"      # há 11 h
+    r"|\d+\s*(?:h|hr|hrs)\s*(?:de|atr[áa]s|antes)\b)"
+)
 _URL = re.compile(r"(?i)(youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})")
+
+#: The "how long ago" row, ALONE on its line.
+#:
+#: YouTube prints the age of a video next to its view count: "há 11 h", "há 1
+#: dia", "há 3 semanas". The HOURS form was already caught, inside
+#: `_VIEW_COUNTER`; the DAY form was NOT, and "há 1 dia" reached the caption
+#: box on 2026-10-18 13:44 — the last time the owner watched a video with
+#: the app running. The census is `_main/external-caption-chrome-census.py`.
+#:
+#: It is ANCHORED on purpose. A sentence that merely mentions "há 1 dia" is
+#: a caption, not a counter, and a search-anywhere rule would eat it.
+_AGO_ONLY = re.compile(
+    r"(?i)^\s*h[áa]\s*\d+\s*(?:h|hr|hrs|hora|horas|dia|dias|semana|semanas|"
+    r"m[eê]s|meses|ano|anos)\s*$")
+
+#: The VIEW COUNT row, ALONE on its line: "1,9 mil", "17 mil há 11 h",
+#: "4,6 mi há 5 dias".
+#:
+#: The count form WAS caught, inside `_VIEW_COUNTER` — but only per ELEMENT,
+#: and YouTube splits a row into words. A counter that arrives as "1,9" +
+#: "mil" is invisible to an element-shaped rule, so the row is judged again
+#: once it is whole.
+#:
+#: Anchored like the others, and for the same reason: "17 mil pessoas
+#: ficaram na rua" is a caption, not a counter.
+_COUNTER_ONLY = re.compile(
+    r"(?i)^\s*\d[\d.,]*\s*(?:mil|mi|k)\b"
+    r"(?:\s*h[áa]\s*\d+\s*(?:h|hr|hrs|hora|horas|dia|dias|semana|semanas|"
+    r"m[eê]s|meses|ano|anos)\b)?\s*$")
+
+#: A row with NO LETTER in it is never a caption.
+#:
+#: MEASURED on the 220 external lines the owner's own app produced: "344",
+#: "277", "1", "2" and "·" all reached the caption box. The temporal gate
+#: cannot tell them apart — a view counter sits STILL for minutes, so it
+#: earns a streak exactly like a caption does.
+_NO_LETTER = re.compile(r"^[^A-Za-z]*$")
+
+#: A chat handle alone is not a caption: "@zachw2906" reached the caption box
+#: (same census).
+_HANDLE = re.compile(r"^@[\w.\-]+$")
+
+
+def _joined_row_is_chrome(line):
+    """True when a JOINED row is player chrome, not a caption.
+
+    THE JOINED ROW IS THE RIGHT PLACE, and the reason is not tidiness: the
+    cheap per-element pass sees ONE WORD of a row at a time, so a counter
+    that YouTube splits into "há 1" + "dia" is invisible to it. The row is
+    what the caption is, so the row is what is judged.
+
+    Every rule here is ANCHORED to the whole row, and that is the point: a
+    sentence that happens to contain "há 1 dia", or a number, is a caption.
+    """
+    text = str(line or '').strip()
+    if not text:
+        return True
+    if _AGO_ONLY.match(text) or _HANDLE.match(text):
+        return True
+    if _COUNTER_ONLY.match(text) or _NO_LETTER.match(text):
+        return True
+    return False
+
 
 #: Consecutive polls a row must survive before it counts as a caption.
 _CONFIRM_POLLS = 2
@@ -71,6 +157,16 @@ _MAX_LINES = 2
 #: Rows further apart than this (px, top edge to top edge) are not one
 #: two-line caption -- one caption line is roughly 40-56px on this box.
 _LINE_SLACK = 96.0
+#: Polls a CONFIRMED row may stay off-centre before it is dropped. This is the
+#: rule that was missing, and its absence is why a wrong row lived forever.
+#: Measured 2026-10-18: `17 mil há 11 h` (YouTube's view counter) entered on the
+#: "first caption is exempt from the centring test" rule, was confirmed, and
+#: the takeover veto below could not touch it -- the veto only blocks a row's
+#: text from CHANGING, while `kept[key] = held` emitted it on every poll after.
+#: So chrome that wins once is chrome until the player is closed.
+#: 6 polls at INTERVAL_S=0.30 is ~1.8 s: longer than a hover card or a click
+#: flash, shorter than a caption that stays put for a sentence.
+_UNSHAPED_DROP_POLLS = 6
 #: A caption is CENTRED in the player; chrome is not. This is the veto that
 #: stops chrome SITTING ON the caption's own row from taking the row over:
 #: stability alone cannot tell speech from UI when both persist. NOTE: the
@@ -232,7 +328,8 @@ def _band_rows(all_el, px0, py0, px1, py1, band_top):
         name = _name(e)
         if not name.strip():
             continue
-        if _UI_TEXT.match(name.strip()) or _TIME_TEXT.search(name):
+        if _UI_TEXT.match(name.strip()) or _TIME_TEXT.search(name) \
+                or _VIEW_COUNTER.search(name):
             continue
         r = _rect(e)
         if not r:
@@ -297,10 +394,22 @@ def _stable(hwnd, cand):
         text, shaped = cand[key]
         slot = runs.get(key)
         if slot is None:
-            runs[key] = {"text": text, "streak": 1, "held": None}
+            runs[key] = {"text": text, "streak": 1, "held": None, "unshaped": 0}
             trace.append((key, text, "PENDING", "first sight of this row"))
             continue
         held = slot["held"]
+        slot["unshaped"] = 0 if shaped else slot.get("unshaped", 0) + 1
+        # THE EXIT THAT DID NOT EXIST. A row that was confirmed and has now sat
+        # off-centre for _UNSHAPED_DROP_POLLS is chrome that got in on the
+        # first-caption exemption; it is DELETED, not merely vetoed. Before this,
+        # `held` was assigned once and `kept[key] = held` ran on every poll
+        # forever after, so no sequence of later polls could ever retract it.
+        if held is not None and slot["unshaped"] >= _UNSHAPED_DROP_POLLS:
+            trace.append((key, text, "DROPPED",
+                          "not centred like a caption for %d polls (chrome that "
+                          "won the first-caption exemption)" % slot["unshaped"]))
+            del runs[key]
+            continue
         if text == slot["text"]:
             slot["streak"] += 1
             why = "identical to the previous poll"
@@ -395,7 +504,10 @@ def caption_lines(hwnd, uia, UIA, trace=None):
     for key, row in band.items():
         frags = sorted(row["frags"], key=lambda f: f[0])
         line = _join([n for _x0, _x1, n in frags])
-        if line:
+        # THE JOINED ROW IS JUDGED AS A ROW. The per-element pass above is a
+        # cheap first pass and it cannot see a row that YouTube split into
+        # pieces ("há 1" + "dia"). See `_joined_row_is_chrome`.
+        if line and not _joined_row_is_chrome(line):
             cand[key] = (line, _caption_shaped(row["frags"], px0, px1))
     if not cand:
         _reset(hwnd)

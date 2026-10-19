@@ -182,6 +182,32 @@ if exist _main\_lane1-worker-default-arms.py (
   call :record lane1-worker-default-arms !ERRORLEVEL!
 ) else ( call :record lane1-worker-default-arms MISSING )
 
+echo === the YouTube captions that REPLACE the live one: the chrome must not reach the box ===
+REM Owner, 2026-10-19, verbatim: "eu quero que tu trabalhe nas legendas do youtube
+REM substituem a ao vivo". TWO instruments, two claims.
+REM
+REM `_external-subs-stability-oracle.py` drives the REAL `app/webview/external_subs.py`
+REM `caption_lines` against synthetic UI Automation polls, and checks that the chrome the
+REM owner's own log produced -- the view counter, the age of the video, a chat handle, a
+REM separator glyph, and the counter SPLIT IN TWO WORDS (the case an element-shaped rule
+REM cannot see) -- never reaches the caption box. Its `nochrome` arm removes the rule from
+REM a COPY and MUST let the chrome through: the oracle has to be able to say no.
+REM
+REM `external-caption-chrome-census.py` reads the 220 real external lines out of the app's
+REM OWN log and says how many of them were chrome; its negative arm removes the rule and
+REM shows the survivors going back up.
+REM
+REM BOTH were outside this battery until 2026-10-19, which is how the `head` arm of the
+REM first one rotted in silence: it kept running and it stopped proving anything.
+if exist _main\_external-subs-stability-oracle.py (
+  python _main\_external-subs-stability-oracle.py > "%OUT%\external-subs-stability.log" 2>&1
+  call :record external-subs-stability !ERRORLEVEL!
+) else ( call :record external-subs-stability MISSING )
+if exist _main\external-caption-chrome-census.py (
+  python _main\external-caption-chrome-census.py --neg-arm > "%OUT%\external-caption-chrome-census.log" 2>&1
+  call :record external-caption-chrome-census !ERRORLEVEL!
+) else ( call :record external-caption-chrome-census MISSING )
+
 echo === the adversary lane's probes (corrected: the filters it wrote were RED-forever) ===
 if exist _main\_review-f1f3.py (
   python _main\_review-f1f3.py > "%OUT%\review-f1f3.log" 2>&1

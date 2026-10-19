@@ -16,10 +16,23 @@ y=942..1001 inside a 1920x1080 player). Window (0,0,1920,1080), player
 ARMS
   live     the shipped module                         -> noise must NOT appear
   nogate   copy with the stability gate disabled      -> noise MUST appear
-  head     the pre-fix module from git HEAD           -> noise MUST appear
+  head     the module as committed (OPT-IN, see below)
+  chrome   the REAL chrome out of the owner's log     -> it must NOT appear
+  nochrome copy with the chrome rule removed          -> it MUST appear
 
-The two negative arms exist so this oracle can say NO. It launches nothing:
-no browser, no player, no Sotto shell, no worker.
+THE NEGATIVE ARMS are MUTANTS, not git history, and that is deliberate: the
+`head` arm used to mean "the module before the fix", and it STOPPED meaning
+that the day the fix was committed -- it kept running, it just stopped
+proving anything, and a gate that cannot fail is a promise. It is still
+available with `--arms live,nogate,head`, but it is not part of the default
+set and it is not what says no. The two mutants are.
+
+THE CHROME SCENARIO uses the chrome the owner's own app actually produced --
+the view counter, the age of the video, a chat handle, a separator glyph, and
+the counter SPLIT IN TWO WORDS, which is the case an element-shaped rule
+cannot see. The census is `_main/external-caption-chrome-census.py`.
+
+It launches nothing: no browser, no player, no Sotto shell, no worker.
 
     python _main\_external-subs-stability-oracle.py
     python _main\_external-subs-stability-oracle.py --arms live,nogate,head
@@ -69,10 +82,34 @@ def _els(spec_rows):
 
 
 def caption_row(which):
+    if which.startswith("chrome:"):
+        spec = CHROME_ROWS[which.split(":", 1)[1]]
+        return _els([spec])
     spec = {"c1": CAPTION_1, "c1m": CAPTION_1_MORE, "c2": CAPTION_2,
             "c2m": CAPTION_2_MORE, "card": CARD_ROW, "click": CLICK_ROW,
             "fused": FUSED_ROW}[which]
     return _els([spec])
+
+
+def POLLS_CHROME():
+    """Three polls of each chrome row -- it HOLDS, which is exactly why the
+    temporal gate cannot tell a counter apart from a caption."""
+    polls = []
+    for kind in sorted(CHROME_ROWS):
+        polls.append(("chrome %s appears" % kind, ["chrome:" + kind]))
+        polls.append(("chrome %s holds" % kind, ["chrome:" + kind]))
+        polls.append(("chrome %s holds" % kind, ["chrome:" + kind]))
+    return polls
+
+
+def POLLS_CHROME_WITH_CAPTION():
+    """A real caption beside the chrome: the caption must SURVIVE and the
+    chrome must not take the row."""
+    return [
+        ("caption arrives", ["c1m"]),
+        ("caption holds + chrome", ["c1m", "chrome:split_count"]),
+        ("caption holds + chrome", ["c1m", "chrome:split_count"]),
+    ]
 
 
 def POLLS():
@@ -94,6 +131,36 @@ def POLLS():
 
 
 NOISE = ("AKALI BROTHERS", "1.2M", "views", "Pause", "FULL MOVIE")
+
+#: THE REAL CHROME, taken from the owner's own log (the 220 external lines of
+#: 2026-10-17/18 -- the census is `_main/external-caption-chrome-census.py`):
+#: the view counter, the age of the video, a chat handle, a separator glyph,
+#: and the counter SPLIT IN TWO WORDS.
+#:
+#: The last two are the case an element-shaped rule CANNOT see: the per-
+#: element pass looks at one word at a time, so "1,9" + " mil" and "há 1" +
+#: " dia" are each invisible to it. The row is judged once it is whole.
+#:
+#: Every one of these is CENTRED, so the geometry veto cannot be what stops
+#: it: the chrome rule is the only thing that can.
+CHROME_ROWS = {
+    "count":       (960, [("344", 940)]),
+    "ago":         (960, [("há 1 dia", 930)]),
+    "handle":      (960, [("@zachw2906", 920)]),
+    "dot":         (960, [("·", 955)]),
+    "split_count": (960, [("1,9", 930), (" mil", 960)]),
+    "split_ago":   (960, [("há 1", 935), (" dia", 975)]),
+}
+
+#: What the joined row of each chrome row is. The chrome must NOT be here.
+CHROME_TEXT = {
+    "count": "344",
+    "ago": "há 1 dia",
+    "handle": "@zachw2906",
+    "dot": "·",
+    "split_count": "1,9 mil",
+    "split_ago": "há 1 dia",
+}
 
 #: Set per module in run_polls: the pre-fix caption_lines takes no trace arg.
 HAS_TRACE = True
@@ -188,12 +255,12 @@ def load_module(path, name):
     return mod
 
 
-def run_polls(mod, verbose=False):
+def run_polls(mod, verbose=False, polls=None):
     """[(poll label, output, trace)] -- state carried across polls on purpose."""
     global HAS_TRACE
     HAS_TRACE = len(inspect.signature(mod.caption_lines).parameters) >= 4
     out = []
-    for label, rows in POLLS():
+    for label, rows in (POLLS() if polls is None else polls):
         items = []
         for rid in rows:
             items.extend(caption_row(rid))
@@ -257,6 +324,22 @@ def _mutate_gate(src):
     return out
 
 
+def _mutate_chrome(src):
+    """Copy with the JOINED-ROW chrome rule neutered -> the pre-fix behaviour.
+
+    ONE mutation, count-asserted, so a stale anchor fails loudly instead of
+    silently measuring the shipped code a second time. The temporal and
+    geometric gates are left ALONE on purpose: this arm has to show that the
+    chrome rule is the thing that stops the chrome, not the gates.
+    """
+    out, n = re.subn(r"(?m)^    text = str\(line or ''\)\.strip\(\)$",
+                     "    return False\n    text = str(line or '').strip()",
+                     src)
+    if n != 1:
+        raise SystemExit("MUTANT INVALID: anchor matched %d times, want 1" % n)
+    return out
+
+
 def _head_source():
     r = subprocess.run(["git", "-C", REPO, "show", "HEAD:app/webview/external_subs.py"],
                        capture_output=True)
@@ -274,6 +357,55 @@ def check_negative(results, arm):
                 leaked.append("%s: %r" % (label, t))
     if not leaked:
         return ["NEGATIVE ARM %r PRODUCED NO NOISE -> the oracle cannot say no" % arm]
+    return []
+
+
+def check_chrome(results, with_caption_results=None):
+    """The chrome must NOT reach the caption box; the caption must survive.
+
+    The chrome rows are stable AND centred, so neither the temporal gate nor
+    the centring veto can be what stops them -- only the chrome rule can.
+    """
+    fails = []
+    chrome_seen = []
+    for label, got, _trace in results:
+        want = None
+        for kind, ctext in CHROME_TEXT.items():
+            if kind in label:
+                want = ctext
+                break
+        for t in line_texts(got):
+            if want and (want in t or t.strip() == want):
+                chrome_seen.append("%s: %r" % (label, t))
+        for t in line_texts(got):
+            if t.strip() in CHROME_TEXT.values():
+                chrome_seen.append("%s: %r" % (label, t))
+    if chrome_seen:
+        fails.append("CHROME REACHED THE CAPTION: %s" % (chrome_seen[:6],))
+    if with_caption_results is not None:
+        survived = False
+        for label, got, _trace in with_caption_results:
+            texts = line_texts(got)
+            if any("Akali" in t for t in texts):
+                survived = True
+            for t in texts:
+                if t.strip() in CHROME_TEXT.values():
+                    fails.append("chrome took the row next to a caption: %r" % (t,))
+        if not survived:
+            fails.append("the real caption did NOT survive next to the chrome")
+    return fails
+
+
+def check_chrome_negative(results):
+    """The chrome MUST appear here, or the oracle cannot say no."""
+    leaked = []
+    for label, got, _trace in results:
+        for t in line_texts(got):
+            if t.strip() in CHROME_TEXT.values():
+                leaked.append("%s: %r" % (label, t))
+    if not leaked:
+        return ["NEGATIVE ARM (chrome rule removed) PRODUCED NO CHROME -> "
+                "the oracle cannot say no"]
     return []
 
 
@@ -310,7 +442,9 @@ def check_entrypoints(mod):
 
 def main(argv=None):
     ap = __import__("argparse").ArgumentParser()
-    ap.add_argument("--arms", default="live,nogate,head")
+    ap.add_argument("--arms", default="live,nogate")
+    ap.add_argument("--no-chrome", action="store_true",
+                    help="skip the chrome scenario")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args(argv)
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
@@ -345,6 +479,14 @@ def main(argv=None):
         if source is None:
             print("ARM %s  SKIPPED (no git HEAD copy of the pre-fix module)" % arm)
             continue
+        if source == src:
+            # The HEAD copy IS the working copy: there is nothing to compare
+            # against, and pretending otherwise would make this arm rot in
+            # silence the day the fix is committed. The `nogate` arm is the
+            # one that says no.
+            print("ARM %s  SKIPPED (HEAD is the working copy -- nothing to "
+                  "compare; the `nogate` arm is the negative one)" % arm)
+            continue
         path = os.path.join(tmp, "extsubs_%s.py" % arm)
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(source)
@@ -359,11 +501,48 @@ def main(argv=None):
             print("   RED %s" % f)
         failures += fails
 
+    # --- THE CHROME SCENARIO: the real noise out of the owner's own log ----
+    if not args.no_chrome:
+        # A FRESH module instance: `check_entrypoints` above leaves the
+        # window title stubbed as an UNRECOGNISED window ("algum site
+        # qualquer"), and with that stub the player gate refuses the window
+        # and every caption comes back empty. A scenario must not inherit
+        # another scenario's stubs.
+        chrome_mod = load_module(TARGET, "extsubs_chrome")
+        chrome_res = run_polls(chrome_mod, args.verbose, POLLS_CHROME())
+        chrome_mod._RUNS.clear()
+        cap_res = run_polls(chrome_mod, args.verbose, POLLS_CHROME_WITH_CAPTION())
+        cfails = check_chrome(chrome_res, cap_res)
+        print("ARM chrome")
+        print("   chrome rows tried: %d   output lines produced: %d"
+              % (len(CHROME_ROWS),
+                 sum(len(line_texts(g)) for _l, g, _t in chrome_res)))
+        print("   a real caption beside the chrome: %r"
+              % ([line_texts(g) for _l, g, _t in cap_res],))
+        for f in cfails:
+            print("   RED %s" % f)
+        failures += ["chrome: " + f for f in cfails]
+
+        path2 = os.path.join(tmp, "extsubs_nochrome.py")
+        with open(path2, "w", encoding="utf-8", newline="") as fh:
+            fh.write(_mutate_chrome(src))
+        broken = load_module(path2, "extsubs_nochrome")
+        broken._RUNS.clear()
+        nres = run_polls(broken, False, POLLS_CHROME())
+        nfails = check_chrome_negative(nres)
+        leaked = [t for _l, g, _t in nres for t in line_texts(g)
+                  if t.strip() in CHROME_TEXT.values()]
+        print("ARM nochrome (negative)")
+        print("   chrome that reached the output: %d line(s) %s"
+              % (len(leaked), leaked[:6]))
+        for f in nfails:
+            print("   RED %s" % f)
+        failures += nfails
+
     print("VERDICT: %s" % ("PASS" if not failures else "FAIL"))
     for f in failures:
         print("  - %s" % f)
     return 0 if not failures else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
