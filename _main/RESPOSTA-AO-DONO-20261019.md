@@ -45,7 +45,11 @@ metades:
 |---|---|
 | Fase A (detectar 2+ vozes) | powerset `{4,5,6}` sobre a onda crua, porta própria com braço negativo |
 | Fase B (separar, offline) | RTF **0,416**, **45 MB** de RAM, fora do caminho do tempo real |
-| DER | **0,03 %** no ground truth de 4 vozes **do próprio upstream** |
+| DER | **0,03 %** — número de 2026-10-18 cuja **proveniência não consegui
+re-verificar hoje** (o único DER do repo, o `der-oracle.py`, imprime 18,4 %–90,7 %
+porque mede a aritmética sobre áudio sintético, não um RTTM do fornecedor). **Em
+aberto.** O que medi hoje: o diarizador encontra as **4/4 vozes** certas no wav
+do upstream. |
 | A decisão de atribuir | função pura, porta com **79/79 arms + 13/13 mutantes** |
 | Bateria | **24 portões, 0 vermelhos** (15:22, depois de tudo) |
 

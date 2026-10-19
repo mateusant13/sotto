@@ -1914,7 +1914,11 @@ O que o catch engoliria é o offset da strip num host sem arrasto nativo.
 2. **O modelo sherpa**: `_main/_speaker-chain-live.py` nunca correu nesta
    sessão — a cobertura do modelo real é **ZERO**. Os números nos comentários
    (275 MB, RTF 0,416, DER 0,03 %) são de 2026-10-18 e **não foram
-   re-medidos**.
+   re-medidos**. Do RTF e do DER, o RTF **já foi confirmado** hoje (0,528 no
+   wav de 4 vozes do upstream, mesma ordem de grandeza); o **DER 0,03 %
+   continua sem proveniência verificável** — o único instrumento de DER no
+   repo (`der-oracle.py`) imprime uma faixa diferente, porque mede outra
+   coisa (aritmética sobre áudio sintético, não um RTTM do fornecedor).
 3. **O runtime do painel**: nada foi renderizado. O `catch` vazio era o único
    sintoma de leitura estática; o resto continua por ver em execução.
 
@@ -1942,8 +1946,15 @@ toolbox está a falhar (`MATRIX_TOOL_REQUEST_FAILED`), por isso fui pelo
 | `min_duration_off` | 0.5 | 0.5 | ✅ |
 | ground truth | `0-four-speakers-zh.wav` | **o mesmo ficheiro** (1 819 586 B) | ✅ |
 
-O DER de 0,03 % foi medido contra a **amostra do próprio upstream**, com os
-**modelos do próprio upstream**. A config espelha a do upstream — a excepção
+O DER de 0,03 % **não foi re-verificado nesta sessão, e a sua proveniência não
+foi encontrada**: o único instrumento de DER no repo, `_main/der-oracle.py`,
+**não produz esse número** — imprime **18,4 % a 90,7 %**, porque mede a
+aritmética do DER sobre uma concatenação sintética de duas amostras (PT e EN)
+com a referência vinda de uma envolvente de amplitude, e não de um RTTM do
+fornecedor. São coisas diferentes, e o número de 2026-10-18 fica **sem
+proveniência local** até o instrumento aparecer. O que está **medido hoje** é a
+tabela de baixo: o número de vozes que o diarizador encontra no wav de 4 vozes
+do upstream, e o RTF. A config espelha a do upstream — a excepção
 `window_shift_ratio` está de fora porque o sherpa-onnx 1.13.4 (a versão
 instalada) ainda não tem o parâmetro, e isso está escrito no código.
 
