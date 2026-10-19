@@ -36,6 +36,23 @@ them -- each arm carries a second, independent observation)
                                        Armed 3 and 4 cover the wrapper's two
                                        normal branches (explicit `--log` and the
                                        default log).
+                                       BOTH carry the G3 contract, in two
+                                       independent measurements:
+                                         (a) the app was STILL RUNNING when
+                                             the wrapper returned -- so the
+                                             wrapper returned on the READINESS
+                                             handshake, not on the app's death;
+                                         (b) the MARGIN between the wrapper's
+                                             return and the app's own exit,
+                                             read from the log's own
+                                             timestamps. The app's life is
+                                             counted from the READINESS moment
+                                             (the `--exit-after` timer is armed
+                                             in the navigation-completed
+                                             callback, sotto_webview.py:6044),
+                                             which is why the margin does not
+                                             depend on how loaded the machine
+                                             is.
 
 THE LINE ARMS 3/4 KEY ON (the readiness line a handshake would use)
     `sotto: shell=webview2 pywebview=<v> python=<v> pid=<N>`
@@ -96,6 +113,17 @@ GAP ARMS (G1..G4, from docs/audit/launch-entry.md §2; lane SottoRunCmdGaps)
     Every detached child the arms start is killed by the pid in its OWN log
     line (_kill_log_pid), never by image name.
 
+MUTANT PHASE (the teeth of the G3 contract)
+    The two G3 measurements above are only worth something if they CAN go
+    RED. The MUTANT is the app that only gets ready once it is DEAD: the
+    wrapper then returns with the app already gone, and the checks must say
+    NO. The CONTROL is the same stub with the opposite polarity -- it gets
+    ready and STAYS ALIVE -- so a RED control means the instrument is broken
+    and the mutant proves nothing. The wrapper under test is the real
+    run.cmd, byte for byte; only the shell is the stub, and the stub is
+    plain Python: no WebView2, no model, no window -- a few seconds, and the
+    owner's machine does not feel it.
+
 USAGE
     py -3 _main/run-cmd-exit-oracle.py                 # the wrapper under test
     py -3 _main/run-cmd-exit-oracle.py --neg-arm       # revert-in-a-COPY, RED
@@ -105,6 +133,7 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -184,6 +213,101 @@ w('sotto: STAGING_LOADED core=yes -> navigating to panel (G3 STUB never-ready)')
 time.sleep(600)
 '''
 
+#: O MUTANTE DO CONTRATO G3 (2026-10-19). A app de mentira cuja PRONTIDAO
+#: chega no MESMO INSTANTE EM QUE MORRE -- a forma exacta do defeito que o
+#: check "a app estava VIVA quando o wrapper voltou" tem de apanhar: um
+#: wrapper que esperou pela MORTE e devolveu 0 como se fosse a PRONTIDAO.
+#:
+#: O stub e' a MESMA shell nos dois polos; so o ENV muda:
+#:   SOTTO_STUB_READY_AFTER_DEATH=1 -> a metade `--wait-ready` so resolve
+#:   DEPOIS do marcador de morte (o mutante);
+#:   sem a variavel -> resolve assim que o ready-file existe (o CONTROLE, em
+#:   que a app fica pronta e CONTINUA VIVA).
+#:
+#: E' um stub em Python: sem WebView2, sem modelo, sem janela, alguns segundos.
+#: O custo nao se sente no PC do dono -- ao contrario de um mutante que lance
+#: a app de verdade. E o wrapper (`run.cmd`) e' o de VERDADE, byte a byte.
+MUTANT_STUB = '''\
+import datetime
+import os
+import sys
+import time
+
+argv = sys.argv[1:]
+log = None
+ready = None
+life = 2.0
+alive_after = 3.0
+for i, a in enumerate(argv):
+    if a == '--log' and i + 1 < len(argv):
+        log = argv[i + 1]
+    if a == '--ready-file' and i + 1 < len(argv):
+        ready = argv[i + 1]
+    if a == '--stub-life' and i + 1 < len(argv):
+        life = float(argv[i + 1])
+    if a == '--stub-alive-after' and i + 1 < len(argv):
+        alive_after = float(argv[i + 1])
+
+# O wrapper chama a MESMA shell com `--wait-ready` para a espera limitada.
+# Esta metade e' a que decide QUANDO o wrapper volta.
+if '--wait-ready' in argv:
+    k = argv.index('--wait-ready')
+    path = argv[k + 1] if k + 1 < len(argv) else None
+    try:
+        bound = float(os.environ.get('SOTTO_READY_BOUND', '30'))
+    except ValueError:
+        bound = 30.0
+    deadline = time.time() + bound
+    while True:
+        if path and os.path.exists(path):
+            if os.environ.get('SOTTO_STUB_READY_AFTER_DEATH') == '1':
+                # O MUTANTE: a prontidao so conta DEPOIS da app estar morta.
+                marker = path + '.dead'
+                while not os.path.exists(marker):
+                    if time.time() >= deadline:
+                        sys.exit(4)
+                    time.sleep(0.02)
+                # A app escreve o marcador e morre logo a seguir; este
+                # intervalo e' o que torna a morte DETERMINISTA antes do
+                # wrapper voltar (a app ja nao existe quando ele retorna).
+                time.sleep(0.25)
+            sys.exit(0)
+        if time.time() >= deadline:
+            sys.exit(4)
+        time.sleep(0.1)
+if '--check-args' in argv:
+    sys.exit(0)
+
+
+def stamp():
+    now = datetime.datetime.now()
+    return now.strftime('%Y-%m-%d %H:%M:%S.') + '%03d' % (now.microsecond // 1000)
+
+
+def w(line):
+    if not log:
+        return
+    d = os.path.dirname(os.path.abspath(log))
+    if d:
+        os.makedirs(d, exist_ok=True)
+    with open(log, 'a', encoding='utf-8') as f:
+        f.write(stamp() + ' ' + line + '\\n')
+
+
+w('sotto: shell=webview2 pywebview=stub python=stub pid=%d' % os.getpid())
+time.sleep(life)
+if ready:
+    with open(ready, 'w') as f:
+        f.write('ready\\n')
+if alive_after > 0:
+    time.sleep(alive_after)
+w('sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0')
+if ready:
+    with open(ready + '.dead', 'w') as f:
+        f.write('dead\\n')
+sys.exit(0)
+'''
+
 CREATE_NO_WINDOW = 0x08000000
 PREFLIGHT_MARK = '--check-args'
 RUN_ID = time.strftime('%H%M%S')
@@ -202,6 +326,15 @@ PREFLIGHT_REFUSED_RE = re.compile(r'sotto: PREFLIGHT_REFUSED rc=(\d+)')
 HANG_RE = re.compile(r'sotto: HANG rc=(\d+)')
 #: The readiness boundary the app crosses: the panel navigation completed.
 READY_BOUNDARY_RE = re.compile(r'PRELOAD_ACTIVE hasSotto=(?:true|false)')
+#: O carimbo que a shell poe a cada linha do log: `2026-10-19 14:04:34.873`.
+#: A shell carimba com `datetime.now()` em milissegundos (sotto_webview.py:1143-1144),
+#: e esse carimbo e' o unico RELOGIO que o oraculo e' a app partilham. A margem
+#: real do contrato G3 -- o wrapper voltou ANTES da app sair -- le-se assim: o
+#: instante da MORTE (o carimbo da linha SHELL_EXIT) contra o instante do
+#: RETORNO do wrapper. As duas leituras sao conservadoras (o carimbo e' anterior
+#: a morte real; o retorno e' posterior ao retorno real), logo uma margem
+#: negativa e' mesmo negativa.
+LOG_STAMP_RE = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s')
 FLAG_RE = re.compile(r"add_argument\('(--[a-z0-9-]+)'")
 #: Flags that must PRINT, and so never reach the pre-flight in run.cmd. They
 #: are the reason arm 2 runs the console interpreter at all. The three SUPPRESS
@@ -246,6 +379,40 @@ def tail_from(path: str, offset: int) -> str:
     with open(path, 'rb') as f:
         f.seek(offset)
         return f.read().decode('utf-8', 'replace')
+
+
+def line_of(txt: str, pattern) -> str:
+    """A linha INTEIRA que contem o match do pattern -- com o carimbo que a
+    shell poe a frente dela. `m.group(0)` da so o trecho casado."""
+    m = pattern.search(txt or '')
+    if not m:
+        return ''
+    start = txt.rfind('\n', 0, m.start()) + 1
+    end = txt.find('\n', m.end())
+    if end == -1:
+        end = len(txt)
+    return txt[start:end]
+
+
+def parse_log_stamp(line: str):
+    """O instante (epoch local) do carimbo de uma linha do log, ou None.
+
+    O carimbo e' o mesmo relogio do `time.time()` do oraculo: a shell escreve
+    `datetime.now()` em milissegundos (sotto_webview.py:1143-1144) e o
+    `datetime` sem fuso, convertido com `.timestamp()`, e' o epoch local -- o
+    mesmo numero que `time.time()` devolve. None quando a linha nao tem
+    carimbo legivel: e' melhor um "nao medido" do que um zero inventado.
+    """
+    if not line:
+        return None
+    m = LOG_STAMP_RE.match(line.strip())
+    if not m:
+        return None
+    try:
+        return datetime.datetime.strptime(m.group(1),
+                                          '%Y-%m-%d %H:%M:%S.%f').timestamp()
+    except ValueError:
+        return None
 
 
 def wait_for(path: str, offset: int, pattern, timeout: float):
@@ -688,23 +855,37 @@ def arm_help(run_cmd, pr, census, notes) -> dict:
             'stdout_bytes': len(out)}
 
 
-def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after) -> dict:
+def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after,
+              env=None) -> dict:
     """A normal detached start: rc 0 AND the app really came up, AND it ends
     without a leftover."""
     os.makedirs(os.path.dirname(log), exist_ok=True)
     before = size_of(log)
-    res = run_wrapper(run_cmd, extra, capture=False)
+    res = run_wrapper(run_cmd, extra, capture=False, env=env)
+    t_return = time.time()
     checks = [('rc == 0', res['rc'] == 0, f"rc={res['rc']}")]
-    # G3 changed what a launch waits for: the wrapper now waits for READINESS
-    # (the bounded handshake), NOT for the app to exit. So the honest bound is
-    # "returned before the app's own lifetime elapsed" -- the old "< half the
-    # life" bar was written when the wrapper returned instantly. Measured with
-    # NO pipe held open by the detached child.
-    budget_ms = int(exit_after * 1000)
-    checks.append((f'the wrapper returned BEFORE the app exited (the wait is the '
-                   f'bounded READINESS handshake, not the {exit_after}s lifetime)',
-                   res['ms'] < budget_ms, f"wrapper_ms={res['ms']} "
-                   f"app_lives={exit_after}s"))
+    # ---- O CONTRATO G3, MEDIDO ---------------------------------------------
+    # run.cmd espera a PRONTIDAO da app -- o ficheiro --ready-file que a app
+    # toca DEPOIS de PRELOAD_ACTIVE -- e essa espera e' LIMITADA
+    # (SOTTO_READY_BOUND, 30 s por omissao na shell, :12565). O wrapper NAO
+    # espera pela saida da app.
+    #
+    # A MEDIDA QUE PROVA "voltou pela PRONTIDAO e nao pela MORTE" e' pontual:
+    # no instante em que o wrapper voltou, a app ainda estava VIVA.
+    #
+    # POR QUE O CHECK ANTIGO REPROVAVA (medido 2026-10-19, bateria g):
+    #   wrapper_ms=8198 contra app_lives=8.0s, com a app SAUDAVEL no log
+    #   (PRELOAD_ACTIVE hasSotto=true e SHELL_EXIT rc=0). O check comparava o
+    #   retorno do wrapper com o TEMPO DE VIDA PEDIDO (8 s) contados desde o
+    #   ARRANQUE. Mas o timer de --exit-after e' armado na shell DEPOIS da
+    #   navegacao completar (sotto_webview.py:6044, no callback que chama
+    #   mark_launch_ready em :5882): a vida da app comeca em T_ready, nao no
+    #   arranque. A app morre em T_ready + 8 s; o wrapper volta em T_ready +
+    #   ~0.1 s. A margem real e' de ~11 s e NAO depende da carga da maquina --
+    #   e o check antigo media essa margem como se a vida comecasse no
+    #   arranque, por isso reprovava uma app perfeitamente saudavel.
+    #   A margem passa a ser lida do PROPRIO LOG (o carimbo da linha
+    #   SHELL_EXIT) e comparada com o instante do retorno do wrapper.
     m, _txt = wait_for(log, before, READY_RE, timeout=15.0)
     pid = int(m.group(1)) if m else None
     if pid:
@@ -712,6 +893,17 @@ def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after) -> dict:
     checks.append(('the app\'s OWN first line is in the run log, with its pid',
                    pid is not None,
                    m.group(0)[:120] if m else '(no `shell=webview2 ... pid=` line)'))
+    alive_at_return = False
+    seen_after_ms = -1
+    if pid is not None:
+        alive_at_return = pid_alive(pr, pid)
+        seen_after_ms = int((time.time() - t_return) * 1000)
+    checks.append(('the app was STILL RUNNING when the wrapper returned -- so '
+                   'the wrapper returned on the READINESS handshake, not on '
+                   'the app\'s death',
+                   alive_at_return,
+                   f'pid={pid} alive={alive_at_return} '
+                   f'observed_{seen_after_ms}ms_after_the_return'))
     if pid is None:
         return {'name': name, 'args': res['args'], 'rc': res['rc'],
                 'expect_rc': 0, 'ms': res['ms'], 'checks': checks, 'log': log,
@@ -724,9 +916,31 @@ def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after) -> dict:
             time.sleep(0.05)
     checks.append((f'the published pid ({pid}) was a real, running process',
                    alive, f'pid={pid} alive={alive}'))
-    em, _ = wait_for(log, before, SHELL_EXIT_RE, timeout=exit_after + 12.0)
+    em, etxt = wait_for(log, before, SHELL_EXIT_RE, timeout=exit_after + 12.0)
     checks.append(('the app reached its own clean exit (SHELL_EXIT line)',
                    em is not None, em.group(0) if em else '(no SHELL_EXIT line)'))
+    # A MARGEM REAL, lida do proprio log: o instante da MORTE (o carimbo da
+    # linha SHELL_EXIT) contra o instante do RETORNO do wrapper. Os dois
+    # relogios sao o mesmo relogio desta maquina, e as duas leituras sao
+    # conservadoras -- o carimbo e' anterior a morte real e o retorno e'
+    # posterior ao retorno real -- logo uma margem negativa e' mesmo negativa.
+    exit_at = parse_log_stamp(line_of(etxt, SHELL_EXIT_RE))
+    margin_ms = int((exit_at - t_return) * 1000) if exit_at is not None else None
+    if em is None:
+        margin_ev = '(no SHELL_EXIT line to read a timestamp from)'
+    elif margin_ms is None:
+        margin_ev = '(the SHELL_EXIT line carries no parsable timestamp)'
+    else:
+        margin_ev = (f'margin={margin_ms}ms wrapper_ms={res["ms"]} '
+                     + ('(the wrapper returned BEFORE the app died)'
+                        if margin_ms > 0 else
+                        '(the wrapper returned AFTER the app died -- the G3 '
+                        'contract is broken)'))
+    checks.append(('the wrapper returned BEFORE the app exited (the margin is '
+                   'read from the log\'s own timestamps, not from the '
+                   'requested lifetime)',
+                   margin_ms is not None and margin_ms > 0,
+                   margin_ev))
     # The boundary run.cmd's G3 handshake waits on: the wrapper returned only
     # after the app crossed it, so a normal launch cannot time out as a HANG.
     ready_m = READY_BOUNDARY_RE.search(tail_from(log, before))
@@ -760,7 +974,7 @@ PANEL_FILES = ('panel.html', 'panel.css', 'panel.js', 'caption-formulation.js')
 
 def build_tree(notes, variant, shell_src=None, wrapper_src=None,
                drop_panel=False, shadow_webview=False, fake_pythonw=False,
-               hang_stub=False):
+               hang_stub=False, stub_text=None, env_extra=None):
     """A COPY of the tree for one gap arm, plus the environment that arm needs.
 
     The copy lives under _main so a failing arm can be inspected, and so a run
@@ -795,12 +1009,14 @@ def build_tree(notes, variant, shell_src=None, wrapper_src=None,
         src = os.path.join(SOTTO, 'app', 'panel', name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(elec, name))
-    if hang_stub:
+    if hang_stub or stub_text:
         with open(os.path.join(web, 'sotto_webview.py'), 'w',
                   encoding='utf-8') as f:
-            f.write(HANG_STUB)
+            f.write(stub_text if stub_text else HANG_STUB)
     env = dict(os.environ)
     env['SOTTO_READY_BOUND'] = GAP_BOUND_S
+    for _k, _v in (env_extra or {}).items():
+        env[_k] = _v
     if shadow_webview:
         shadow = os.path.join(root, 'shadow')
         os.makedirs(shadow, exist_ok=True)
@@ -1010,6 +1226,87 @@ def print_gaps(gaps) -> None:
 
 
 # --------------------------------------------------------------------------
+# the MUTANT of the G3 contract, with its CONTROL at its side
+# --------------------------------------------------------------------------
+
+def check_of(arm: dict, needle: str):
+    """(ok, evidence) do check cujo nome contem `needle`.
+
+    (None, ...) quando nao existe tal check: um check que desapareceu tem de
+    ser um VERMELHO nomeado, nunca um verde silencioso.
+    """
+    for name, ok, ev in arm.get('checks', []):
+        if needle in name:
+            return ok, ev
+    return None, f'(no check in this arm mentions {needle!r})'
+
+
+def arm_mutant(notes, pr, census) -> dict:
+    """O MUTANTE do contrato G3, com o CONTROLE ao lado.
+
+    A PERGUNTA que o check novo tem de responder: "um wrapper que voltou
+    quando a app JA TINHA MORRIDO conta como pronto?". A resposta tem de ser
+    NAO.
+
+    O CONTROLE e' a MESMA app de mentira com a OUTRA polaridade: ela fica
+    PRONTA e CONTINUA VIVA, e o wrapper tem de voltar com a app viva. Se o
+    controle for vermelho, o instrumento esta partido e o mutante nao prova
+    nada -- o mesmo principio do ramo `--neg-arm`: um mutante que nao pode
+    ficar verde nao e' evidencia.
+
+    O wrapper e' o de VERDADE (byte a byte) numa COPIA da arvore; so a shell e'
+    o stub. O stub e' Python puro: sem WebView2, sem modelo, sem janela -- o
+    custo sao alguns segundos e o PC do dono nao sente nada.
+    """
+    # ---- o CONTROLE: a app fica pronta e CONTINUA VIVA ----------------------
+    ccmd, cenv = build_tree(notes, 'mutant-control', stub_text=MUTANT_STUB)
+    clog = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(ccmd))),
+                        '_main', 'mutant-control.log')
+    control = arm_start(ccmd, pr, census, notes, 'mutant-control', clog,
+                        ['--log', clog, '--stub-life', '2.0',
+                         '--stub-alive-after', '3.0'], 8.0, env=cenv)
+    # ---- o MUTANTE: a app so fica pronta quando JA MORREU ------------------
+    mcmd, menv = build_tree(notes, 'mutant-ready-at-death',
+                            stub_text=MUTANT_STUB,
+                            env_extra={'SOTTO_STUB_READY_AFTER_DEATH': '1'})
+    mlog = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(mcmd))),
+                        '_main', 'mutant-ready-at-death.log')
+    mutant = arm_start(mcmd, pr, census, notes, 'mutant-ready-at-death', mlog,
+                       ['--log', mlog, '--stub-life', '2.0',
+                        '--stub-alive-after', '0'], 8.0, env=menv)
+    c_alive, c_alive_ev = check_of(control, 'STILL RUNNING when the wrapper returned')
+    c_margin, c_margin_ev = check_of(control, 'the wrapper returned BEFORE the app exited')
+    m_alive, m_alive_ev = check_of(mutant, 'STILL RUNNING when the wrapper returned')
+    m_margin, m_margin_ev = check_of(mutant, 'the wrapper returned BEFORE the app exited')
+    checks = [
+        ('CONTROL: the wrapper returned while the app was STILL ALIVE (the '
+         'instrument is not always-red)',
+         c_alive is True, c_alive_ev),
+        ('CONTROL: the margin is positive (the wrapper returned before the app '
+         'exited)',
+         c_margin is True, c_margin_ev),
+        ('MUTANT: the wrapper returned with the app DEAD -> the check says NO',
+         m_alive is False, m_alive_ev),
+        ('MUTANT: the margin is not positive -> the check says NO',
+         m_margin is False, m_margin_ev),
+    ]
+    return {'name': 'mutant-ready-at-death', 'checks': checks,
+            'control': control, 'mutant': mutant}
+
+
+def print_mutant(m: dict) -> None:
+    ok = all(c[1] for c in m['checks'])
+    print(f'MUTANT {m["name"]:<22} {"PASS" if ok else "FAIL"} '
+          f'(the CONTROL green AND the MUTANT red on the two new checks)')
+    for name, cok, ev in m['checks']:
+        print(f'    [{"ok" if cok else "NO"}] {name} :: {ev}')
+    for side in ('control', 'mutant'):
+        r = m[side]
+        print(f'  {side:<8} rc={r["rc"]} ms={r["ms"]} pid={r.get("pid")} '
+              f'log={os.path.basename(r.get("log", ""))}')
+
+
+# --------------------------------------------------------------------------
 # the negative arm: revert the wrapper in a COPY
 # --------------------------------------------------------------------------
 def build_reverted_copy(neg_src: str, notes: list) -> str:
@@ -1059,7 +1356,7 @@ def build_reverted_copy(neg_src: str, notes: list) -> str:
 
 
 # --------------------------------------------------------------------------
-def verdict_from(arms_ok, gaps_ok, census_ok):
+def verdict_from(arms_ok, gaps_ok, census_ok, mutant_ok=True):
     """(exit_ok, why) for the WRAPPER's exit contract. PURE: no I/O, no state.
 
     AUDIT ROWS #30 / #C: this oracle prints THREE verdicts because they are three different claims,
@@ -1073,11 +1370,12 @@ def verdict_from(arms_ok, gaps_ok, census_ok):
     key in the receipt -- and when it is RED the reason says so in capitals, because dropping it
     silently would be the opposite defect: a number that stops being reported.
     """
-    contract_ok = bool(arms_ok) and bool(gaps_ok)
+    contract_ok = bool(arms_ok) and bool(gaps_ok) and bool(mutant_ok)
     why = ("the wrapper's exit contract is GREEN" if contract_ok else
            "arms=" + ("PASS" if arms_ok else "FAIL") +
            " gaps=" + ("PASS" if gaps_ok else "FAIL") +
-           " -> the arms/gaps failed (see the [NO] lines above)")
+           " mutant=" + ("PASS" if mutant_ok else "FAIL") +
+           " -> the arms/gaps/mutant failed (see the [NO] lines above)")
     if not census_ok:
         why += (" | NOTE, NOT carried by this exit code: this run ALSO measured a VISIBLE window"
                 " (app-side, rows #4/#46) -- see CENSUS-VERDICT above")
@@ -1293,6 +1591,21 @@ def main() -> int:
             gaps.append(g)
             print_gaps([g])
 
+    # ---- o MUTANTE do contrato G3, com o CONTROLE ao lado ------------------
+    # O mutante e' o que da DENTES aos checks novos: sem ele, "a app estava
+    # VIVA quando o wrapper voltou" e' um check que nunca foi posto a
+    # falhar. O CONTROLE (a app fica pronta e VIVA) garante que o
+    # instrumento nao e' sempre-vermelho -- um mutante que nao pode ficar
+    # verde nao e' evidencia.
+    mutants: list = []
+    if not a.no_gaps:
+        print('MUTANT the G3 contract, with its control: the CONTROL app gets '
+              'ready and STAYS ALIVE; the MUTANT app only gets ready once it '
+              'is DEAD')
+        m = arm_mutant(notes, pr, census)
+        mutants.append(m)
+        print_mutant(m)
+
     time.sleep(0.5)
     snap_gaps = census.snapshot()
     census.stop()
@@ -1355,6 +1668,12 @@ def main() -> int:
     gaps_ok = not gaps_failed
     gaps_reason = ('all 4 gaps green (AFTER non-zero, BEFORE 0)' if gaps_ok
                    else f'failed gaps={gaps_failed}')
+    mutants_failed = [m['name'] for m in mutants
+                      if not all(c[1] for c in m['checks'])]
+    mutant_ok = not mutants_failed
+    mutant_reason = ('the MUTANT is red on the two new checks and the CONTROL '
+                     'is green' if mutant_ok
+                     else f'failed mutants={mutants_failed}')
     print(f'ARM-VERDICT    {"PASS" if arms_ok else "FAIL"}  {arms_reason}')
     if a.neg_arm and PREFLIGHT_MARK not in text_of(run_cmd):
         print('ARM-NOTE       the argv arm is VACUOUS in this copy: the pre-fix '
@@ -1362,6 +1681,8 @@ def main() -> int:
               '(that is what the fix adds). Only arm 1 carries the signal here.')
     if gaps:
         print(f'GAP-VERDICT    {"PASS" if gaps_ok else "FAIL"}  {gaps_reason}')
+    if mutants:
+        print(f'MUTANT-VERDICT {"PASS" if mutant_ok else "FAIL"}  {mutant_reason}')
     print(f'CENSUS-VERDICT {"PASS" if census_ok else "FAIL"}  {census_reason}')
     # ONLY THE ARMS THAT RAN. The literal tuple this used to print indexed
     # results[n], which KeyERRORED the moment a subset was selected -- a
@@ -1372,9 +1693,9 @@ def main() -> int:
     for g in gaps:
         print(f'GAP-RCS {g["gap"]:<22} after={g["after"]["rc"]} '
               f'before={g["before"]["rc"]}')
-    verdict_ok, why = verdict_from(arms_ok, gaps_ok, census_ok)
+    verdict_ok, why = verdict_from(arms_ok, gaps_ok, census_ok, mutant_ok)
     print(f'VERDICT {"PASS" if verdict_ok else "FAIL"}  {why}')
-    print('VERDICT-CARRIES the wrapper exit contract (arms+gaps). The census is reported above'
+    print('VERDICT-CARRIES the wrapper exit contract (arms+gaps+mutant). The census is reported above'
           ' and is NOT part of this exit code: a visible window is an APP-side fact (rows'
           ' #4/#46), and reading it as "the wrapper failed" is the confusion this oracle was'
           ' indicted for.')
@@ -1387,14 +1708,17 @@ def main() -> int:
                    'under_test_sha256': sha256(RUN_CMD),
                    'preflight_in_under_test': PREFLIGHT_MARK in text_of(run_cmd),
                    'notes': notes, 'arms': arms, 'gaps': gaps,
+                   'mutants': mutants,
                    'temp_target': temp_checks,
                    'census': snap_arms, 'census_gaps': snap_gaps,
                    'arms_ok': arms_ok, 'gaps_ok': gaps_ok, 'census_ok': census_ok,
+                   'mutant_ok': mutant_ok,
                    'arm_verdict': 'PASS' if arms_ok else 'FAIL',
                    'gap_verdict': 'PASS' if gaps_ok else 'FAIL',
+                   'mutant_verdict': 'PASS' if mutant_ok else 'FAIL',
                    'census_verdict': 'PASS' if census_ok else 'FAIL',
                    'verdict': 'PASS' if verdict_ok else 'FAIL',
-                   'verdict_carries': 'arms+gaps (the wrapper exit contract)',
+                   'verdict_carries': 'arms+gaps+mutant (the wrapper exit contract)',
                    'reason': why}, f, indent=2)
     print(f'RECEIPT {receipt_path}')
     return 0 if verdict_ok else 1

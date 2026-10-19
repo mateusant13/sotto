@@ -674,7 +674,15 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   nothing is spawned. `--check-args` is `help=argparse.SUPPRESS`, so `run.cmd
   --help` output is byte-identical before/after **the SIZE here was stale and is corrected per rules 1 and 2 of this file: 2272 B was the 2026-10-06 revision; 4872 B / 78 lines was the 2026-10-12 EARLY revision and is now stale in turn -- `app/webview/run.cmd` was committed 2026-10-12 **00:13:55** (`d893212`), so the help text grew again. **re-measured 2026-10-19 the output is 6934 B, 107 lines, 107 CRLF / 0 bare LF, rc 0, sha256 51B52939F76C4AA5A35D7D865ED7C6B38C01ACFAD829F36C7A6032C337E01B47** — the rot happened in TWO steps, and the CAUSE of each is measured, which is the part worth keeping: the 2026-10-12 pin said 4956 B / 79 lines (three agreeing hands at 05:5x -03:00: the pins oracle, lane S4, and a direct capture by the Lead); by `8639fef~1` the output was already **5336 B / 85 lines** (+6, from flags added in between), and the speaker work took it to **107 lines** (+22, of which **13** are now about voices: `--speakers`, `--speakers-cheap`, `--save-voice-clips`, `--watch-payload`). A pin that breaks because the code grew is a pin DOING ITS JOB; a pin that breaks because nobody re-ran the gate is rot, and the two look identical until you ask WHY. So: ask WHY, and the gate is `_main/agents-md-pins-oracle.py`, which had not been run since the speaker flags landed. **It is now in the battery** (§10 of `_main/receipt-20261018-fase-a-multivoice.md`) — a gate that is not in the battery is a gate that rots in silence, and this one rotted in silence for seven days. Which is why the number must carry its date. The claim is the COMPARISON (the pre-flight does not change the output), and `_main/run-cmd-exit-oracle.py` measures both sides). The two branches SottoRunCmdEntry measured working stay working:
   pythonw for a normal hidden launch (arm rc 0, and the wrapper returns in
-  ~250 ms while the app lives 8 s — it still detaches), python.exe for the
+  ~~250 ms while the app lives 8 s — it still detaches~~ **4–7 s while the app
+  lives T_ready + 8 s — it still detaches; the wrapper waits for the BOUNDED
+  readiness handshake (G3: `SOTTO_READY_BOUND`, 30 s by default,
+  `sotto_webview.py:12565`), and the `--exit-after` timer is armed in the
+  shell's navigation-completed callback (`:6044`), so the app's life is counted
+  from the READINESS moment and not from the launch. Re-measured 2026-10-19
+  (run h): `wrapper_ms=6614` and `3994`, the app ALIVE at the wrapper's return,
+  and a margin of 8767 ms / 9149 ms to its own exit — §7.25 of
+  `_main/receipt-20261018-fase-a-multivoice.md`**), python.exe for the
   `--help`/`--dump-dom`/`--selftest`/`--memory` flags. NOT covered by the
   pre-flight: a list argparse accepts that fails later (missing pywebview, bad
   panel path) still reports 0 — covering it needs a readiness handshake on the
@@ -686,9 +694,13 @@ estão **AUSENTES**, logo os números int4/fp16 acima não são re-medíveis nes
   restored in a COPY from `_main/run-cmd-prefix-20261006.cmd`, sha256
   `b9c08fec…`) → `ARM-VERDICT PASS   arm1(bogus) RED-as-expected=True
   arms2-4-still-green=True failed=['bogus']` with rc 0 on the copy: only the
-  bogus arm moved, which is what makes it a control. TWO verdicts are printed
-  and the final VERDICT is their conjunction, because they are different
-  claims: `ARM-VERDICT` is this wrapper's exit contract, `CENSUS-VERDICT` is
+  bogus arm moved, which is what makes it a control. FOUR verdicts are printed
+  and the final VERDICT carries the three contract ones, because they are
+  different claims: `ARM-VERDICT` is this wrapper's exit contract, `GAP-VERDICT`
+  the four before/after pairs of `docs/audit/launch-entry.md` §2,
+  `MUTANT-VERDICT` the TEETH of the two G3 checks (the CONTROL green AND the
+  MUTANT red: the MUTANT is an app that only gets ready once it is DEAD, and a
+  green MUTANT would mean the check can no longer say NO), and `CENSUS-VERDICT` is
   "no visible window in this run's pids" (see the next bullet — the app itself
   can flash its panel, and a census RED must never be read as "the wrapper
   failed"). The census samples its OWN pid tree at 100 ms and seeds the tracked

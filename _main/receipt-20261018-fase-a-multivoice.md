@@ -1705,6 +1705,121 @@ perence ao histórico do código. Uma linha no `.gitignore`.
 > ainda dá a ilusão de que está a vigiar. A diferença entre os dois está em
 > **dizer qual é a razão** — e o `exit null` não dizia nada. Foi por isso que
 > o gate recebeu um orçamento **medido** e não um número maior à sorte.
+
+---
+
+## 7.25 O PORTÃO DO `run.cmd` MEDIA A VIDA DA APP A PARTIR DO INSTANTE ERRADO
+
+O único vermelho da bateria `g` (2026-10-19 14:00) era o `run-cmd-exit-oracle`,
+e a linha que o reprovava era esta:
+
+```
+[NO] the wrapper returned BEFORE the app exited (the wait is the bounded
+     READINESS handshake, not the 8.0s lifetime) :: wrapper_ms=8198 app_lives=8.0s
+```
+
+À primeira vista parece um sintoma: *"o wrapper demorou 8,198 ms a responder"*.
+**Não era.** O log da própria app dizia que ela estava perfeitamente saudável:
+`PRELOAD_ACTIVE hasSotto=true` e `SHELL_EXIT rc=0`. O check é que estava a
+medir a coisa errada — e a coisa errada era **o instante a partir do qual se
+conta a vida da app**.
+
+### A vida da app começa na prontidão, não no arranque
+
+O timer de `--exit-after` é armado na shell **depois** da navegação do painel
+completar — está no callback que também chama `mark_launch_ready`
+(`app/webview/sotto_webview.py:6044`, dentro do mesmo bloco que chama
+`mark_launch_ready` em `:5882`). Portanto a app não vive `exit_after` segundos
+a contar do arranque: vive `exit_after` segundos a contar de **T_ready**, o
+instante em que o painel ficou pronto.
+
+Medido no log da run `g` (o log carimba cada linha em milissegundos,
+`sotto_webview.py:1143-1144`):
+
+```
+2026-10-19 14:04:23.587  sotto: PRELOAD_ACTIVE hasSotto=true …      <- T_ready
+2026-10-19 14:04:31.724  sotto: TRAY_ICON_DELETE ok=true …           <- o timer disparou
+2026-10-19 14:04:34.873  sotto: SHELL_EXIT rc=0 reason=requested …   <- a morte
+```
+
+`23.587 + 8 s = 31.587` — e o `TRAY_ICON_DELETE` está às `31.724`. **A app
+viveu 11,286 s depois de ficar pronta**, com `--exit-after 8`. O wrapper, que
+espera pela *prontidão*, voltou a essa altura (`T_ready + ~0,1 s`).
+
+Ou seja: a margem real entre o wrapper voltar e a app morrer é de **~11 s**, e
+**não depende da carga da máquina** — porque o timer nasce em T_ready, que é
+justamente o instante que o wrapper espera. O check antigo comparava o retorno
+do wrapper com `8 s` contados **desde o arranque**, e por isso reprovava uma
+app saudável numa máquina saturada. Era a mesma classe de erro do §7.24: **um
+gate que falha por carga em vez de por defeito**.
+
+### A correcção: duas medições independentes, e nenhuma delas depende da carga
+
+1. **A app estava VIVA quando o wrapper voltou?** — medição pontual, feita logo
+   a seguir ao retorno: o pid publicado pela própria app, vivo ou morto. Se
+   estivesse morta, o wrapper podia ter esperado a morte e estar a responder
+   *"pronto"* a uma app que já não existia.
+2. **A margem, lida do próprio log** — o instante da morte (o carimbo da linha
+   `SHELL_EXIT`) contra o instante do retorno do wrapper. Os dois são o mesmo
+   relógio desta máquina, e as duas leituras são conservadoras: o carimbo é
+   anterior à morte real e o retorno é posterior ao retorno real, logo uma
+   margem negativa é mesmo negativa.
+
+**O que o check já não faz** (e é preciso dizer): o check antigo também
+limitava a *prontidão* da resposta do wrapper. A nova medição já não o faz — mas
+isso está coberto pelo contrato do produto, que é o **limite de 30 s**
+(`SOTTO_READY_BOUND`, `sotto_webview.py:12565`) e se manifesta como **rc 4**
+(HANG), que o check `rc == 0` apanha. A promptness deixa de ser uma medição
+deste portão e passa a ser o que é: uma propriedade do limite do produto.
+
+### O mutante: a prova de que os checks novos TÊM dentes
+
+Um check que nunca foi posto a falhar não é um check. O mutante é a app que
+**só fica pronta quando já está morta** — a forma exacta do defeito que a
+medição (1) existe para apanhar. E o **controlo** é a mesma app de mentira com
+a polaridade oposta: fica pronta e **continua viva**.
+
+O mutante é um *stub* em Python puro — sem WebView2, sem modelo, sem janela.
+O `run.cmd` é o de verdade, byte a byte; só a shell é o stub. O custo são
+alguns segundos e o PC do dono não sente nada.
+
+| | a app no instante do retorno | margem |
+|---|---|---|
+| **controlo** (pronta e viva) | `alive=True` (observada 46 ms depois do retorno) | **+2 938 ms** |
+| **mutante** (pronta só ao morrer) | `alive=False` (observada 143 ms depois) | **−287 ms** |
+
+O instrument **diz não** quando o contrato está partido, e **diz sim** quando
+não está. A margem negativa do mutante é determinística (o stub deixa a
+morte assentar 250 ms antes de o wrapper resolver a espera) — não é uma
+corrida.
+
+### Resultado (run `h`, 2026-10-19 14:37)
+
+```
+ARM start-logged  rc=0 want=0 PASS pid=51172
+    [ok] the app was STILL RUNNING when the wrapper returned … :: observed_95ms_after_the_return
+    [ok] the wrapper returned BEFORE the app exited … :: margin=8767ms wrapper_ms=6614
+ARM start-default rc=0 want=0 PASS pid=61612
+    [ok] the app was STILL RUNNING when the wrapper returned … :: observed_64ms_after_the_return
+    [ok] the wrapper returned BEFORE the app exited … :: margin=9149ms wrapper_ms=3994
+MUTANT-VERDICT PASS  the MUTANT is red on the two new checks and the CONTROL is green
+ARM-VERDICT PASS 5/5 · GAP-VERDICT PASS 4/4 · CENSUS-VERDICT PASS 235 amostras, 0 visíveis
+```
+
+E o ramo negativo continua a saber dizer não: `--neg-arm` →
+`ARM-VERDICT PASS arm1(bogus) RED-as-expected=True arms2-4-still-green=True
+failed=['bogus']`, e o `--self-test` do filtro de resíduos → **PASS**.
+
+### A lição
+
+> **O número que se lê como caminho quando não é caminho é pior do que não
+> imprimir.** `wrapper_ms=8198` lia-se como *"o wrapper demorou"* e o veredicto
+> lia-se como *"o wrapper falhou"*. Nenhum dos dois era verdade: o wrapper
+> tinha cumpri exactamente o que promete, e a app estava de pé. A correção não
+> foi afrouxar a asserção — foi **descobrir de que instante se conta a vida** e
+> medir a partir daí, com **duas** observações independentes e um mutante ao
+> lado que prova que ambas sabem dizer *não*.
+
 ---
 
 ## 8. O que NÃO está feito
@@ -1758,7 +1873,7 @@ por isso re-medido, e não copiado da tabela anterior.
 | `worker/audio_recorder.py` | 13 577 | LF (327) | `8bacaeb9baed` |
 | `app/webview/sotto_webview.py` | 669 053 | **12 795 CRLF / 0 LF** | `d45c7336fc20` |
 | `app/webview/run.cmd` | 16 497 | **274 CRLF / 0 LF** | `0cc916c1e4b1` |
-| `AGENTS.md` | 94 860 | LF (974) | `24a53e99b3d6` |
+| `AGENTS.md` | 95 769 | LF (986) | `b9cbddc56b27` |
 | `_main/multivoice-oracle.py` | 15 596 | LF (361) | `b022615619de` |
 | `_main/speaker-watch-oracle.py` | 19 330 | LF (445) | `9c2463e203bb` |
 | `_main/multivoice-offline.py` | 16 771 | LF (374) | `ca5f4074af4d` |
@@ -1780,7 +1895,7 @@ por isso re-medido, e não copiado da tabela anterior.
 | `_main/foreign-chars-oracle.py` | 10 990 | LF (277) | `70243b42e0ee` |
 | `_main/audio-recorder-oracle.py` | 16 542 | LF (380) | `ede5401a75c7` |
 | `_main/forbidden-audio-line-oracle.py` | 7 622 | LF (177) | `c6dbc89603c3` |
-| `_main/run-cmd-exit-oracle.py` | 70 879 | LF (1 416) | `e5885b807dae` |
+| `_main/run-cmd-exit-oracle.py` | 86 293 | LF (1 740) | `713f9e06ec3b` |
 
 > **O próprio recibo (`_main/receipt-20261018-fase-a-multivoice.md`) não está
 > nesta tabela, de propósito.** Um ficheiro que escreve o seu próprio tamanho
@@ -1796,15 +1911,26 @@ por isso re-medido, e não copiado da tabela anterior.
 > não é um defeito de documento: é a próxima lane a citar `12 733` e a medir
 > 12 795 e a concluir que alguém mexeu onde não devia. Por isso: **medido hoje,
 > com o sha ao lado para se saber de que revisão se fala.**
+>
+> **E esta revisão (depois do §7.25) mudou DOIS pins desta tabela**, e ambos
+> por causa do mesmo achado: o `run-cmd-exit-oracle.py` passou de 70 879 B
+> (`e5885b807dae`) para 86 293 B (`713f9e06ec3b`) — as duas medições novas do
+> contrato G3 e a fase do mutante com o seu controlo — e o `AGENTS.md` passou
+> de 94 860 B (`24a53e99b3d6`) para 95 769 B (`b9cbddc56b27`), porque a linha
+> que dizia *"the wrapper returns in ~250 ms while the app lives 8 s"* estava
+> **podre desde o handshake G3** (é de 2026-10-06, e o wrapper hoje espera pela
+> prontidão: 4–7 s medidos). Uma linha falsa no `AGENTS.md` é lida por todos os
+> agentes — por isso se corrige no mesmo sítio em que se mede.
 
 ---
 
 ## 10. Bateria depois de TODAS as edições
 
 **Re-corrida inteira em 2026-10-19, depois de D1, D1b, D2, da conversão do
-`run.cmd`, das 11 correcções de §7.21 e das reescritas de §7.22 e §7.23** — não
-é a bateria de ontem com uma linha nova. Os números abaixo são desta corrida
-(`I:\cc-tmp\bateria-20261019f.log`).
+`run.cmd`, das 11 correcções de §7.21, das reescritas de §7.22 e §7.23 e da
+correcção do contrato G3 (§7.25)** — não é a bateria de ontem com uma linha
+nova. Os números abaixo são desta corrida (`I:\cc-tmp\bateria-20261019h.log`,
+14:40→14:48:54): **24 portões, 0 vermelhos.**
 
 | portão | resultado |
 |---|---|
@@ -1829,7 +1955,7 @@ por isso re-medido, e não copiado da tabela anterior.
 | **`foreign-chars-oracle`** | **PASS** · neg **CONTROL PASS** — **entrou hoje** (§7.21) |
 | **`audio-recorder-oracle`** | **GREEN 7/7** · neg **6/6 mutantes** — **reescrito hoje** (§7.22) |
 | `forbidden-audio-line-oracle` | **GREEN** |
-| **`run-cmd-exit-oracle`** | **ARM 5/5 · GAP 4/4 · CENSUS PASS** — **reescrito hoje** (§7.23) |
+| **`run-cmd-exit-oracle`** | **ARM 5/5 · GAP 4/4 · MUTANT PASS · CENSUS PASS (235 amostras, 0 visíveis)** — o contrato G3 medido em **duas** observações independentes, com o mutante e o seu controlo ao lado (§7.25) |
 | **`run-cmd-exit-oracle --self-test`** | **PASS** — o filtro distingue o nosso do alheio (§7.23) |
 | `speaker_sidecar.py --selftest` | PASS (não toca em onnxruntime nem sherpa) |
 
@@ -1849,6 +1975,12 @@ por isso re-medido, e não copiado da tabela anterior.
    entrou encontrou **um pin podre de sete dias** (§7.18). Uma bateria é a
    lista do que é exigido; acrescentar um portão muda o que o produto precisa
    de satisfazer.
+4. **A bateria `g` (14:00) deu `rc=1` no `run-cmd-exit-oracle`** — e o culpado
+   **também não era o produto**: o check media a vida da app a partir do
+   *arranque*, e a vida conta-se desde a *prontidão* (§7.25). Com a medição
+   corrigida, a mesma app saudável dá **margem de 8767 ms e 9149 ms** entre o
+   retorno do wrapper e a sua própria morte, e a app estava **viva** no
+   instante do retorno. A bateria `h` (14:40) está verde.
 
 **`speaker-slots` e `speaker-sidecar` foram re-corridos hoje de propósito.** Tinham
 sido corrigidos depois da bateria anterior — o fixture de silêncio era
@@ -1864,8 +1996,6 @@ passaria a falhar conforme a carga da máquina.
 E os flags novos da shell são aceites pelo parser (rc=0) enquanto um flag
 inventado é recusado (rc=2) — o contrato de `--check-args`, que `run.cmd` usa
 para não responder sucesso a uma flag rejeitada.
-
----
 
 ---
 
@@ -1913,6 +2043,15 @@ que ninguém media. Agora não há número.)*
 11. **O `core.autocrlf` sem `.gitattributes`** (§7.20): 1110 de 3833 ficheiros
     versionados chegam CRLF a qualquer checkout. **Censo completo e solução
     pronta** — a decisão é do dono, porque é política, não técnica.
+12. **O contrato G3 estava medido a partir do instante errado** (§7.25). O check
+    comparava o retorno do wrapper com a vida *pedida* da app contada desde o
+    arranque — mas o timer de `--exit-after` é armado na *prontidão*, e é dali
+    que a vida se conta. Uma app perfeitamente saudável reprovava o portão numa
+    máquina saturada (`wrapper_ms=8198` contra `app_lives=8.0s`), e a linha lia-se
+    como se o wrapper tivesse falhado. Agora são **duas** observações
+    independentes — a app **viva** no instante do retorno, e a **margem** até à
+    morte lida do carimbo do próprio log — com um **mutante e o seu controlo** a
+    provar que as duas sabem dizer *não*.
 
 Nenhum número deste recibo ficou por actualizar sem ser re-medido — e uma
 discrepância que cheirava a erro (12 slots contra 6) era só **cadência**, com as
@@ -1930,16 +2069,15 @@ medir a carga, media a zero.
 os defeitos mais graves que apareceram foram **nos portões, não no produto**.
 Um gate que mente é pior do que um produto lento, porque o gate é o que decide
 se o produto está bom. Um mutante decorativo, um anchor preso à data, um portão
-fora da bateria — são três maneiras de o **sistema de medição** estar a mentir
-com muita confiança. E uma delas (o pipe sem leitor) **era** um defeito real do
-produto, escondido exactamente por um gate que não fazia a pergunta certa.
+fora da bateria, uma vida contada desde o instante errado — são quatro maneiras
+de o **sistema de medição** estar a mentir com muita confiança. E uma delas (o
+pipe sem leitor) **era** um defeito real do produto, escondido exactamente por um
+gate que não fazia a pergunta certa.
 
 Por isso a receita que sobrou, e que é o que fica: **cada afirmação nova tem de
 trazer o instrumento que a mede, o número que ele deu e o braço negativo que
 prova que ele ainda diz não.** Sem o terceiro, os outros dois são uma história
 bem contada.
-
----
 
 ---
 
