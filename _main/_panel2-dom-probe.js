@@ -25,12 +25,16 @@
  *   B  BOTH COLOURS in this one command: the same documents with the surface
  *      attribute forced the other way, so a probe that cannot tell the two
  *      apart fails instead of passing twice.
- *   T  The LIVE toggle: `aria-pressed` flips, and `bridge.setLiveEnabled(bool)`
- *      really carries the value — and is NEVER called on a shell without it.
- *   D  The PAUSE two-step: one click opens the dialog (nothing called yet), the
- *      DEFAULT FOCUS IS CANCEL, Confirm carries `{reason:'panel-confirm'}` to
- *      `bridge.pause()`, and a shell without `pause()` paints the confirm button
- *      disabled with an honest sentence instead of pretending.
+ *   T  The LIVE toggle: a click ASKS the shell (`bridge.setLiveEnabled(bool)`)
+ *      and paints NOTHING -- the button's state comes from the shell's own
+ *      `data-caption-window` write -- and is NEVER called on a shell without
+ *      it.
+ *   D  The PAUSE flow: the STRIP's button IS the confirmation (one click
+ *      unloads, the dialog does not fit in a 40 px bar), the PANEL's button
+ *      keeps the two steps (one click opens the dialog and calls NOTHING yet,
+ *      the DEFAULT FOCUS IS CANCEL, Confirm carries `{reason:'panel-confirm'}`
+ *      to `bridge.pause()`), and a shell without `pause()` paints the confirm
+ *      button disabled with an honest sentence instead of pretending.
  *   O  Open panel: through `bridge.setPanelSurface('panel', reason)` when the
  *      shell has it, and by switching the document itself when it does not.
  *   H  The strip's HEIGHT cannot be measured here (the sandbox has no layout
@@ -377,7 +381,12 @@ async function main() {
     // live. (The first version of this assertion expected the text in
     // `#status-text` on the strip as well; measured `''`.)
     [strip.id('strip-word').textContent, squeeze(strip.id('strip-state').title)],
-    ['Captions off', 'Receiving captions — click to restart the pipeline (reloads the live engine)']);
+    // RE-BASELINED 2026-10-19: the word is 'OFF', not 'Captions off'. The strip
+    // says WHAT IS OFF, and it is the CAPTION: it read 'Live off' until
+    // 2026-10-13, which read as "the transcription stopped" while the worker
+    // was streaming perfectly (panel.js:2478-2483). The LIVE-vs-NOT-LIVE state
+    // is the button's own pill, not this word.
+    ['OFF', 'Receiving captions — click to restart the pipeline (reloads the live engine)']);
   arm('the strip state carries the LIVE class, and the dot is a shape not a colour',
     // RE-BASELINED 2026-10-13: is-live follows liveEnabled, which ships false; the dot
     // is still a painted shape (the second value), so the pair still says which half moved.
@@ -533,12 +542,24 @@ async function main() {
   const liveButton = wiredT.id('strip-live-button');
   const before = liveButton.getAttribute('aria-pressed');
   liveButton.click();
-  // RE-BASELINED 2026-10-13: the toggle now starts OFF, so the first click is the
-  // one that carries TRUE to the shell (the reverse of the interim revision).
-  arm('the toggle flips aria-pressed on a click',
-    [before, liveButton.getAttribute('aria-pressed')], ['false', 'true']);
+  // RE-BASELINED 2026-10-19. THE BUTTON DOES NOT PAINT ITSELF. The owner's
+  // button (panel.js:2129-2135, :2348-2399) asks the shell and paints NOTHING:
+  // the shell shows or hides its own caption window and writes what it ACTUALLY
+  // did onto the document as `data-caption-window`
+  // (sotto_webview.py:7939-7941), and the page's MutationObserver repaints from
+  // THAT. The old arm wanted aria-pressed to flip on the click -- i.e. it
+  // wanted the page to paint its own wish back at itself, which is the defect
+  // that was deleted on 2026-10-17.
+  arm('a click ASKS the shell and paints NOTHING',
+    [before, liveButton.getAttribute('aria-pressed')], ['false', 'false']);
   arm('and the label follows the state', wiredT.id('strip-live-label').textContent, 'LIVE');
   arm('and the shell is told, with the NEW value', wiredT.audit.live, [true]);
+  // THE SHELL'S ANSWER is what paints the button. The harness writes the same
+  // attribute the real shell writes, and the page's own observer repaints.
+  wiredT.document.documentElement.setAttribute('data-caption-window', 'on');
+  await tick();
+  arm("and the shell's own answer paints the button (the page never invents a state)",
+    liveButton.getAttribute('aria-pressed'), 'true');
   liveButton.click();
   arm('turning it back off carries false', wiredT.audit.live, [true, false]);
 
@@ -553,26 +574,45 @@ async function main() {
 
   // ------------------------------------------------------------------ ARM D
   currentArm = 'D';
-  console.log('\n=== ARM D — PAUSE: two steps, Cancel focused, and the honest confirmation ===');
+  console.log('\n=== ARM D — PAUSE: the strip unloads at once, the panel asks first ===');
   const wiredD = await panel({ url: `${fileUrl(PANEL_HTML)}#strip`, wired: true });
+  // RE-BASELINED 2026-10-19. THE STRIP IS 40 px TALL: a confirmation dialog
+  // cannot fit there (panel.js:2155-2163 -- the 2026-10-17 screenshot showed it
+  // always painted over the bar), so the STRIP's button IS the confirmation and
+  // the SIDE PANEL keeps the dialog. The old arm clicked the strip's button and
+  // wanted a dialog; the product answered with an unload, which is the design.
   wiredD.id('strip-pause-button').click();
-  arm('step one opens the confirmation and calls NOTHING yet',
-    [wiredD.id('pause-dialog').hasAttribute('open'), wiredD.audit.pause.length], [true, 0]);
-  arm('the DEFAULT FOCUS is CANCEL, not the destructive button',
-    wiredD.focusId(), 'pause-cancel-button');
-  arm('the dialog says what pause does (unload)',
-    wiredD.id('pause-dialog-body').textContent.includes('unloads the live caption engine'), true);
-  arm('and that the background transcript is extremely light',
-    wiredD.id('pause-dialog-honest').textContent.includes('extremely light'), true);
-  arm('and that pausing is not necessary to keep the PC fast',
-    wiredD.id('pause-dialog-honest').textContent.includes('not necessary to keep the PC fast'), true);
-  arm('the confirm button is live when the shell can pause',
-    [wiredD.id('pause-confirm-button').disabled, wiredD.id('pause-confirm-button').textContent],
-    [false, 'Pause and unload']);
-  wiredD.id('pause-confirm-button').click();
-  arm('step two calls bridge.pause with its reason',
+  await tick();
+  arm("the STRIP's pause button IS the confirmation: one click unloads",
+    [wiredD.id('pause-dialog').hasAttribute('open'), wiredD.audit.pause.length],
+    [false, 1]);
+  arm('and it carries the reason the dialog would have carried',
     wiredD.audit.pause, [{ reason: 'panel-confirm' }]);
-  arm('and the dialog is closed', wiredD.id('pause-dialog').hasAttribute('open'), false);
+
+  // THE PANEL's own button keeps the two steps: open the dialog, call NOTHING
+  // yet, the DEFAULT FOCUS IS CANCEL, and only the confirm button unloads.
+  const wiredD2 = await panel({ url: `${fileUrl(PANEL_HTML)}#panel`, wired: true });
+  wiredD2.id('panel-pause-button').click();
+  arm('step one opens the confirmation and calls NOTHING yet',
+    [wiredD2.id('pause-dialog').hasAttribute('open'), wiredD2.audit.pause.length], [true, 0]);
+  arm('the DEFAULT FOCUS is CANCEL, not the destructive button',
+    wiredD2.focusId(), 'pause-cancel-button');
+  arm('the dialog says what pause does (unload)',
+    wiredD2.id('pause-dialog-body').textContent.includes('unloads the live caption engine'), true);
+  // REMOVED 2026-10-19: the two arms that wanted the paragraph "the background
+  // transcript is extremely light" / "pausing is not necessary to keep the PC
+  // fast". THE OWNER REMOVED THAT PARAGRAPH (panel.html:1099-1105): it filled
+  // the dialog until it grew a scrollbar and it argued against the button the
+  // owner had just pressed -- *"jesus que coisa mais nojenta de feia"*. The
+  // element `#pause-dialog-honest` no longer exists, which is why the old arm
+  // CRASHED the probe on a null.
+  arm('the confirm button is live when the shell can pause',
+    [wiredD2.id('pause-confirm-button').disabled, wiredD2.id('pause-confirm-button').textContent],
+    [false, 'Pause and unload']);
+  wiredD2.id('pause-confirm-button').click();
+  arm('step two calls bridge.pause with its reason',
+    wiredD2.audit.pause, [{ reason: 'panel-confirm' }]);
+  arm('and the dialog is closed', wiredD2.id('pause-dialog').hasAttribute('open'), false);
   arm('and BOTH surfaces paint the paused state',
     // ── A GAP, STATED RATHER THAN ENCODED ─────────────────────────────────────
     // This pair used to read the HUD's State row (`Paused — engines unloaded`) and
@@ -583,21 +623,25 @@ async function main() {
     // this assertion should enshrine, so the claim is narrowed to what is true and
     // the gap is named here and in the lane's receipt: the paused state must be
     // re-measured with its own instrument.
-    [wiredD.id('strip-word').textContent.length > 0,
-      wiredD.id('pause-dialog').hasAttribute('open')],
+    [wiredD2.id('strip-word').textContent.length > 0,
+      wiredD2.id('pause-dialog').hasAttribute('open')],
     [true, false]);
 
-  const cancelD = await panel({ url: `${fileUrl(PANEL_HTML)}#strip`, wired: true });
-  cancelD.id('strip-pause-button').click();
+  const cancelD = await panel({ url: `${fileUrl(PANEL_HTML)}#panel`, wired: true });
+  cancelD.id('panel-pause-button').click();
   cancelD.id('pause-cancel-button').click();
   arm('Cancel closes the dialog, unloads nothing, and gives focus back',
     [cancelD.id('pause-dialog').hasAttribute('open'), cancelD.audit.pause.length, cancelD.focusId()],
-    [false, 0, 'strip-pause-button']);
+    [false, 0, 'panel-pause-button']);
 
   const unwiredD = await panel({ url: `${fileUrl(PANEL_HTML)}#strip` });
   unwiredD.id('strip-pause-button').click();
-  arm('a shell without pause() says so in the dialog',
-    unwiredD.id('pause-dialog-shell').textContent.includes('cannot pause yet'), true);
+  // RE-BASELINED 2026-10-19: the note is the LIVE sentence
+  // ("Este shell ainda nao consegue pausar -- nada sera descarregado",
+  // panel.js:2704). The old arm wanted the English 'cannot pause yet', which
+  // the product never wrote -- the English phrase lives on the BUTTON's label.
+  arm('a shell without pause() says so, in the note the owner reads',
+    unwiredD.id('pause-dialog-shell').textContent.includes('não consegue pausar'), true);
   arm('and its confirm button is disabled and names the reason',
     [unwiredD.id('pause-confirm-button').disabled, unwiredD.id('pause-confirm-button').textContent],
     [true, 'Pause — not available in this shell yet']);
@@ -626,9 +670,16 @@ async function main() {
      for the strip with reason 'strip-float-off' -- guarded by the strip surface, so
      the live-on reason would only appear if the caption were ON. The open click is
      the call that follows. */
+  /* RE-BASELINED 2026-10-19: the load-time call is GONE, by design. When the shell
+   owns the caption window (`bridge.setLiveEnabled` exists -- panel.js:2622-2633),
+   `applyFloat` is a NO-OP: the caption is a separate Win32 window
+   (`NativeCaptionOverlay`), not a surface of this one, so asking the shell to
+   re-surface the strip at load time was asking for a geometry that no longer
+   exists. The old arm wanted `[{surface:'strip',reason:'strip-float-off'}, ...]`
+   -- a call the product deliberately stopped making on 2026-10-17. */
   arm('with the shell call present, the panel asks the SHELL to switch surface',
     [openWired.audit.surfaces, openWired.document.body.getAttribute('data-surface')],
-    [[{ surface: 'strip', reason: 'strip-float-off' }, { surface: 'panel', reason: 'strip-open' }], 'panel']);
+    [[{ surface: 'panel', reason: 'strip-open' }], 'panel']);
   const openUnwired = await panel({ url: `${fileUrl(PANEL_HTML)}#strip` });
   openUnwired.id('strip-open-button').click();
   arm('without it, the document switches itself rather than doing nothing',
@@ -929,7 +980,7 @@ async function main() {
       ['roeu', 4, 4]);
   }
 
-  for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, cancelD, unwiredD, openWired, openUnwired, gal]) {
+  for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, wiredD2, cancelD, unwiredD, openWired, openUnwired, gal]) {
     if (p.errors.length) {
       arm('no loaded panel may have thrown', p.errors, []);
       break;

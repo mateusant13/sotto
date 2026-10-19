@@ -57,6 +57,15 @@ def main() -> int:
     ap.add_argument('--closed-at', type=float,
                     default=float(os.environ.get('SOTTO_STANDIN_CLOSED_AT',
                                                  '-1')))
+    #: Emit a `caption` with `final:true` EVERY this many seconds. 0 = only the
+    #: one `--closed-at` line (the default, and what the other three probes
+    #: that use this stand-in expect). The reload instrument needs captions
+    #: that KEEP COMING: the shell's guard holds a request only while a caption
+    #: is RECENT (sotto_webview.py:10089-10101), so a single caption cannot
+    #: keep a request held for the time an arm has to measure.
+    ap.add_argument('--closed-every', type=float,
+                    default=float(os.environ.get('SOTTO_STANDIN_CLOSED_EVERY',
+                                                 '0')))
     args, _unknown = ap.parse_known_args()
 
     sys.stdout.write(json.dumps({
@@ -90,7 +99,8 @@ def main() -> int:
                 'type': 'caption', 'text': 'stand-in closed line',
                 'final': True, 'start': 0.0, 'end': 1.0}) + '\n')
             sys.stdout.flush()
-            next_closed = None
+            next_closed = (now + args.closed_every
+                           if args.closed_every > 0 else None)
         time.sleep(min(0.05, interval))
     return 0
 

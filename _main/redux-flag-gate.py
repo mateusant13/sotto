@@ -186,8 +186,15 @@ def check_worker(src: str):
     # path ran" and "it ran and its lines were counted": the verdict function
     # must SUM both producers, or a hidden-from-start run is verdicted a failure
     # word and the panel paints it as an error.
+    # The pattern has to survive the code it judges CHANGING SHAPE. The
+    # worker now writes the sum inside parentheses and across TWO LINES (it
+    # grew a third term, `redux_live_captions`, on 2026-10-12), so the old
+    # one-line pattern stopped matching and this claim went RED against a
+    # product that still counts the batch. The PROMISE is "the verdict sums
+    # the batch producer"; the shape it is written in is not the promise.
     emitted = re.search(
-        r'emitted = counters\.get\("captions", 0\) \+ counters\.get\("redux_captions", 0\)',
+        r'emitted\s*=\s*\(?\s*counters\.get\("captions", 0\)\s*\+\s*'
+        r'counters\.get\("redux_captions", 0\)',
         src)
     verdict_uses = len(re.findall(r'\bemitted\b', src))
     claims["verdict-counts-batch"] = bool(emitted) and verdict_uses >= 4
@@ -300,8 +307,9 @@ MUTANTS = [
      'if switch is not None:\n        done_payload.update(',
      'if True:\n        done_payload.update('),
     ("verdict-counts-batch", "worker",
-     'emitted = counters.get("captions", 0) + counters.get("redux_captions", 0)',
-     'emitted = counters.get("captions", 0)'),
+     'emitted = (counters.get("captions", 0) + counters.get("redux_captions", 0)\n'
+     '               + counters.get("redux_live_captions", 0))',
+     'emitted = (counters.get("captions", 0))'),
     ("shell-loop", "shell",
      'while not self._stop.wait(self.interval_s):',
      'while False:'),

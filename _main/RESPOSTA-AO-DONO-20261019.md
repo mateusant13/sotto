@@ -214,3 +214,156 @@ código de 19/10. Já mandei duas lanes resolverem isso. Os **meus** dois portõ
 novos estão verdes, e a bateria de oradores (24 portões) volta a correr depois
 disto.
 
+**Já fechado:** o `verdict-gate` (a tabela de arms é de 07/10 e não conhecia o
+contador `redux_live_captions` que o worker lê hoje) — **16/16 arms**, com
+**dois** control a dar vermelho na cópia quebrada; e o probe do lane2 (a lista
+esperada da superfície do painel ficou para trás de 17/10) — **20 arms**, com um
+**braço negativo novo** a apanhar um export novo. E, no caminho, um defeito de
+produto que **não tapei**: a docstring de `decide_verdict` no worker nomeava
+**sete** chaves lidas e omitia duas — a frase "every key read is named below"
+era falsa, e era ela que fazia o portão ficar vermelho. Corrigida.
+
+---
+
+## 8. As perguntas que ainda estavam por responder, respondidas
+
+### #42 — *"me fala se tu usou [a pasta rea] ou não e porquê"*
+
+**Não usei.** E digo-te porquê, com o que medi:
+
+`I:\rea` é o **REA** — *"Reverse Engineer Anything"*, um MCP server + CLI de
+engenharia reversa, v6.3.0, do `github.com/morluto/rea`. É um **monorepo
+TypeScript** (`turbo.json`, `vitest.config.ts`, `package.json` com
+`"mcpName": "io.github.morluto/rea"`), com READMEs em 16 idiomas.
+
+Grep nos três ficheiros de topo (`README.md`, `package.json`, `AGENTS.md`) por
+`sotto`, `caption`, `subtitle`, `transcri`: **ZERO ocorrências**. Não há
+legendas, nem transcrição, nem nada de áudio lá dentro. A última vez que foi
+tocado foi em **10/10**, e o último commit dele é de um projecto que não é
+este.
+
+Ou seja: **não usei porque não tinha nada para me dar**, e não porque me
+esqueci. O que eu precisava — a cadeia de legenda do Sotto — já estava
+escrita em `app/webview/` e `app/panel/`, e a parte de diarização mediu-se
+com o `sherpa-onnx` local (`_main/diar-models/`).
+
+### #22–25 — o **!watcher**: "faz o watcher fazer o trabalho dele. e sempre iniciar com o windows"
+
+**A primeira metade: está feita.** O watcher está vivo e a trabalhar — heartbeat
+`ok: true`, `mood: steady`, `pulse_n: 1 268 543`, e o `logs/history.jsonl` a
+escrever. E está a fazer exactamente o trabalho para que existe: está a
+gritar que os teus discos estão em mau estado, e tem razão.
+
+**O alarme (medido, e é verdade):**
+| disco | livre |
+|---|---|
+| **I:** | **22,9 GB de 3 703 GB = 0,6 %** |
+| D: | 19,3 GB = 2,1 % |
+| E: | 10,6 GB = 2,3 % |
+| F: | 16,5 GB = 7,4 % |
+| C: | 41,6 GB = 14,6 %, e **bit sujo do NTFS** (fix offline pendente) |
+
+O `diskhealth` do watcher está vermelho à **2281 verificações seguidas**
+(`last_ok_ts: ""` — nunca passou). **Não o silenciei:** o alarme está certo.
+
+**A segunda metade — "arrancar com o Windows" — eu achei que faltava, e
+estava errado.** Eu medi `Get-ScheduledTask` e não vi a task "Steady Watcher";
+a lane foi ao registo real e mostrou-me que **eu é que não a conseguia abrir**:
+a partir de um token médio, `schtasks /Query` e `Get-ScheduledTask` devolvem
+"Acesso negado"/"não encontrado" — que se lê como "não existe", mas não é.
+(É a mesma doença do `ENOENT` que prova que o *caminho* está errado, não que
+o artefacto não exista.)
+
+**O registo real** (`C:\Windows\System32\Tasks\Steady Watcher`, 3 676 B,
+escrito a 17/10 23:10):
+
+| | |
+|---|---|
+| triggers | **LogonTrigger** (8 s de atraso) + **TimeTrigger de 1 minuto** |
+| acção | `pythonw.exe -m watcher serve`, cwd `I:\!watcher`, `RunLevel=HighestAvailable` |
+| settings | `StartWhenAvailable=true`, `MultipleInstancesPolicy=IgnoreNew`, `ExecutionTimeLimit=PT0S`, `Hidden=true`, `RestartOnFailure` 1 min × 99 |
+| estado | **enabled e a correr** |
+
+E o prova de que foi ela que arrancou: o processo do daemon (pid **46124**)
+tem como pai o `svchost.exe` (pid 3624) do serviço **Schedule** — foi a task
+que o arrancou, a 18/10 17:58:32. E com `IgnoreNew` e o daemon vivo, a
+caminhada de 1 minuto não nasce nova: medido com uma poll de 80–150 ms
+durante 285 s, **0** processos novos.
+
+**Portanto: o watcher arranca com o Windows, e está a trabalhar.** Não há
+nada partido.
+
+**O que ficou por fazer, e é do dono (precisa de elevação):**
+- `schtasks /Query /TN "Steady Watcher" /V /FO LIST` — para veres o estado
+  vivo com os teus olhos.
+- As **4 tasks auxiliares** seguem desligadas (`DeepSweep`, `LogSweep`,
+  `Retention` desligadas; `DumpCleanup` pronta). Religá-las também exige
+  elevação (`Enable-ScheduledTask -TaskName SteadyWatcher-DeepSweep`).
+- **Um defeito pré-existente que ninguém corrigiu**: `logs/watcher.log` não
+  recebe nada desde **20/09 04:23** — o sink assíncrono morreu. Foi por isso
+  que eu não conseguia ver "serve up" do daemon actual, e é por isso que o
+  ficheiro de pid (`46124`) parece obsoleto: **o pid está vivo**, é o daemon.
+
+**E o alarme do disco continua vermelho, e tem razão** (ver acima). Não o
+silenciei.
+
+### #20 — "por que eu fico sem áudio de tempos em tempos?" — **A CAUSA, MEDIDA**
+
+Não ficou por confirmar. Medi-o com um instrumento novo
+(`_main/probe-capture-open.py`), que abre cada endpoint de captura numa
+thread com timeout — porque a diferença entre "ocupado" e "preso" é
+justamente o que importa aqui.
+
+**O resultado, nesta máquina, agora:**
+
+| endpoint | o que acontece ao abrir |
+|---|---|
+| **Headset (soundcore Space Q45) — MME** | **BLOQUEIA** (>3 s, sem erro) |
+| **Headset (soundcore Space Q45) — WASAPI** | **BLOQUEIA** (>3 s, sem erro) |
+| Headset (soundcore Space Q45) — DirectSound | abre em 0,01 s |
+| CABLE Output (MME / DirectSound / WASAPI) | abre |
+| VoiceMeeter Output (MME / DS / WASAPI) | abre |
+| os três endpoints WDM-KS | erro do PortAudio ("Blocking API not supported yet") |
+
+**O mesmo dispositivo, três APIs: duas prendem, uma não.**
+
+**Porque isto te deixa sem áudio:** o worker abre os candidatos da escada
+**em linha** (`worker/sotto_worker.py:6127` → `:1764`). O código de retry
+(`:6178`) só corre se a abertura **levantar erro** — mas um `open` que
+**bloqueia** não levanta nada: fica lá. A escada nunca passa ao candidato
+seguinte, o worker fica parado, e não sai legenda nenhuma.
+
+**E é o que o teu próprio log mostra**, de 15/10 15:56:
+
+```
+BRIDGE_EXIT   pid=43676 rc=3 captions=0
+  stderr_tail=["OPEN_RETRY_RETRY device='WASAPI loopback: Fones de ouvido (...
+BRIDGE_DEATH  last="Sotto could not start listening - The audio device is
+              already in use by another program, so Sotto co..."
+```
+
+O headphone é o teu **soundcore Space Q45**, e o log do worker_probe ao
+longo dos dias mostra-o a ser escolhido: o `OPEN_RETRY_RETRY` happened
+porque o `open` do endpoint do headphone não voltou.
+
+**A cura, em duas partes:**
+
+1. **Já, sem tocar em código:** o worker tem `--device` para fixar a
+   captura. Apontá-lo para um endpoint que abre (`--device "CABLE Output"`)
+   tira o headphone da caminhada e o problema deixa de aparecer. É a
+   mitigação de hoje.
+2. **A cura de raiz** (que fica para uma sessão contigo, porque mexe no
+   caminho de captura): abrir cada candidato **com timeout**, para que um
+   `open` preso seja tratado como "este endpoint não está livre" e a escada
+   **rode** em vez de ficar presa. É uma mudança no ficheiro mais
+   sensível do repo, e por isso não a faço sem a tua confirmação e sem o
+   portão que a prove.
+
+### #29 e #5 — continuam em aberto
+
+A busca "extremamente inteligente" (#29) e os pontos-vs-texto (#5) são
+perguntas de ecra, e precisam de ti a ver o que eu não consigo ver de fora.
+Não os vou marcar como feitos a dedo. São dois prompts de uma linha cada — o
+mais rápido de todos é fazermos isso numa conversa só, com o ecrã partilhado.
+
+

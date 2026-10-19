@@ -5213,6 +5213,19 @@ class SottoShell:
             js_api=SottoHost(self),
             width=geometry['width'],
             height=geometry['height'],
+            # THE MINIMUM, ON PURPOSE. pywebview's own default is
+            # `min_size = (200, 100)` (webview/window.py:92), applied as
+            # `form.MinimumSize` (webview/platforms/winforms.py:210-212),
+            # and the shell resizes THIS SAME window to 380x40 when the
+            # caption floats out of the strip (measured in the log:
+            # "PANEL_SURFACE surface=strip reason=float-off window=380x40").
+            # With the default minimum that resize was clamped to 380x100 --
+            # a window 60 px taller than the shell asked for. MEASURED in a
+            # bare hidden WinForms form: min(200,100) -> 380x100;
+            # min(0,0) -> 380x40; min(200,40) -> 380x40.
+            # 40 is the height the shell itself uses for the floated
+            # caption; 200 is below the narrowest geometry in use.
+            min_size=(200, 40),
             # CREATED AT ITS REAL GEOMETRY. An off-screen creation
             # (`x=OFFSCREEN, y=OFFSCREEN`, OFFSCREEN=-32000) was tried
             # 2026-10-06 as the flash cure and MEASURED BROKEN: WebView2 does

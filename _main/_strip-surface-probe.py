@@ -161,6 +161,21 @@ def css_strip_height():
         return None
 
 
+def saved_rect(lns):
+    """The (width, height) the shell says it SAVED, read from its own line.
+
+    `PANEL_EDIT_GEOMETRY_SAVED surface=strip window=380x40@(700,400)` -- the
+    size is whatever the strip really is at that moment (the stylesheet's
+    height, the content's width), so the expectation is DERIVED from the
+    shell's own record instead of being typed here.
+    """
+    for ln in lns or []:
+        m = re.search(r'window=(\d+)x(\d+)@\((\d+),(\d+)\)', ln)
+        if m:
+            return (int(m.group(1)), int(m.group(2)))
+    return None
+
+
 def placed_of(lns):
     """The window the shell placed and the work area it computed it in."""
     for ln in lns or []:
@@ -492,14 +507,23 @@ def main():
         ('D ran at all (rc=0 and a log was written) -- without this every D pass',
          bool(d.get('ran'))),
         ('D edit mode entered through the tray id', bool(d.get('enter'))),
+        # REBASELINED 2026-10-19: the strip is NOT 1040x100 any more. Its
+        # height is the stylesheet's (`--strip-height: 40px`) and its width is
+        # the CONTENT's (the pill is `max-content` -- 380 px). This pin used
+        # to TYPE 1040x100, so the arm went RED on a rectangle the shell had
+        # measured correctly. The size is now DERIVED from the shell's OWN
+        # saved line (`PANEL_EDIT_GEOMETRY_SAVED ... window=380x40@(700,400)`),
+        # which is the same record the check below is about.
         ('D the drag sample was applied and persisted (in-process)',
          bool([ln for ln in d.get('saved', [])
                if re.search(r'window=\d+x\d+@\(\d+,\d+\)', ln)])
          and isinstance(d.get('saved_geometry'), dict)
          and d['saved_geometry'].get('x') == 700
          and d['saved_geometry'].get('y') == 400
-         and d['saved_geometry'].get('width') == 1040
-         and d['saved_geometry'].get('height') == 100),
+         and saved_rect(d.get('saved')) is not None
+         and (d['saved_geometry'].get('width'),
+              d['saved_geometry'].get('height'))
+         == saved_rect(d.get('saved'))),
         ('D edit mode left and the ex-styles restored', bool(d.get('leave'))),
         ('D an outside click while editing does NOT close the band',
          bool([ln for ln in d.get('outside_while_editing', [])

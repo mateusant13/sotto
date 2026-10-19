@@ -21,20 +21,37 @@ process (`_main/_strip-stats-worker.py`, which opens NO audio device):
                     copy and it says `stale=true` with both hashes. This is the
                     difference between a QUERY and a discovery.
   C. CLOSED-LINE    the child emits a `caption` with `final:true` (the line the
-                    WORKER closed) and the held reload APPLIES — a NEW pid, while
-                    the worker is still capturing. This is the fix, end to end
-                    through the REAL `SottoShell.on_worker_caption`.
-  D. CEILING        no boundary ever arrives and the ceiling is short: the reload
-                    applies ANYWAY and the log says FORCED. An unbounded deferral
-                    is a broken promise.
-  E. FLOOR          the ceiling has elapsed but the owner's floor has not:
-                    COOLDOWN, PID unchanged, request still held. The floor bounds
-                    the RATE even when a boundary or the ceiling says "now".
+                    WORKER closed) and the shell sees it as the boundary -- and
+                    it does NOT restart anything (see THE CONTRACT, below).
+  D. CEILING        no boundary ever arrives and the ceiling is short: the hold
+                    ENDS, the log says the ceiling forced NOTHING, and the
+                    child's PID is unchanged.
+  E. FLOOR          a closed line arrives while the owner's floor has not
+                    elapsed: COOLDOWN, PID unchanged, request still held. The
+                    floor bounds the RATE even when a boundary says "now".
   F. THE WAVE       a real child publishing `{"type":"meter",...}` at 20 Hz: the
                     payload the panel receives is the WINDOW peak (oscillating),
                     NOT the stderr running maximum, the push count is in the tens,
                     and the log grows by ONE line (the old unknown-kind path
                     logged 35 B per sample = ~20.5 KB/min, forever).
+
+THE CONTRACT (REBASELINED 2026-10-19, and this is the whole point of the
+re-baseline). Until 2026-10-17 this probe asserted that a held reload is
+APPLIED: on the closed line ("a NEW pid"), or at the ceiling ("the log says it
+FORCED"). The owner closed that path with *"faz guard pra essa merda NUNCA MAIS
+ACONTECER na tua vida"* (sotto_webview.py:10124-10128), after the watcher spent
+two model warm-ups (~2 GB on his GPU) on a machine that was already at 100%:
+there is now NO path from "a file changed" to "the worker restarts", and the
+policy REPORTS instead (HOT_RELOAD_WORKER_REPORTED action=none). So the arms
+below assert the contract that is LIVE: the guard still HOLDS the request
+visibly, the closed line and the ceiling still END the hold, the floor still
+bounds the rate, and NOTHING is ever applied behind the owner's back. A probe
+that kept asserting the old contract would go RED on a product that is RIGHT,
+which is the worst kind of rot.
+
+Everything else here is unchanged: the request is made against a TEMP COPY of
+the worker file (never `worker/sotto_worker.py`), and the child is a stand-in
+that opens no device.
 
 Nothing here touches `worker/sotto_worker.py`: the file under the watcher is a
 TEMP COPY, and the child is a stand-in that opens no device.
@@ -409,13 +426,14 @@ def survey(module):
              'method of the live policy; arms A and B read it'),
             ('max_defer_ms', 'WorkerReloadPolicy.max_defer_ms',
              lambda: _attr('WorkerReloadPolicy', 'max_defer_ms'),
-             'the CEILING on a held reload is not a policy parameter; arm D '
-             'needs it and arm A asserts it'),
+             'an INSTANCE attribute (set in __init__), so a class-level lookup '
+             'cannot see it -- the LIVE value is read off the policy the arm '
+             'builds; see survey_instance'),
             ('defer_recheck_ms', 'WorkerReloadPolicy.defer_recheck_ms',
              lambda: _attr('WorkerReloadPolicy', 'defer_recheck_ms'),
-             'the guard has no recheck timer: _fire returns WITHOUT re-arming '
-             'while the child is capturing, so a held reload waits for a '
-             'boundary that may never come'),
+             'an INSTANCE attribute (set in __init__), so a class-level lookup '
+             'cannot see it -- the LIVE value is read off the policy the arm '
+             'builds; see survey_instance'),
             ('boundary_closed',
              'boundary(closed=True) / HOT_RELOAD_WORKER_BOUNDARY',
              lambda: _srcline('HOT_RELOAD_WORKER_BOUNDARY'),
@@ -424,11 +442,15 @@ def survey(module):
              'boundary, and on_worker_caption does not call it'),
             ('forced', 'HOT_RELOAD_WORKER_FORCED',
              lambda: _srcline('HOT_RELOAD_WORKER_FORCED'),
-             'no forced-apply line exists; arm D needs it'),
+             'the ceiling does NOT force anything any more (owner, 2026-10-17: '
+             '"faz guard pra essa merda NUNCA MAIS ACONTECER"): the policy '
+             'REPORTS instead -- arm D asserts the REPORT, and the token that '
+             'used to carry the force is gone on purpose'),
             ('meters', 'WorkerBridge.meters',
              lambda: _attr('WorkerBridge', 'meters'),
-             'the live bridge counts no meter frames; a meter line reaches the '
-             'unknown-kind branch and is logged as BRIDGE_UNKNOWN'),
+             'an INSTANCE attribute (the bridge counts its own meter frames), '
+             'so a class-level lookup cannot see it -- the LIVE value is read '
+             'off the bridge the arm builds; see survey_instance'),
             ('meter_pushes', 'SottoShell.meter_pushes',
              lambda: _srcline('meter_pushes'),
              'the live shell has no meter push path'),
@@ -452,6 +474,41 @@ def survey(module):
                    'searched': 'the loaded shell module, at run time',
                    'present_in_loaded_shell': False, 'why': why}
         SURFACES[key] = row
+    return SURFACES
+
+
+def survey_instance(harness):
+    """The three surfaces that live on the INSTANCE, not on the class.
+
+    `max_defer_ms`, `defer_recheck_ms` and `meters` are set in the object's own
+    `__init__`, so a class-level lookup answers "absent" about a shell that
+    carries them -- and a survey that says "the CEILING is not a policy
+    parameter" while the arm is using the ceiling is a survey that lies.
+    Measured 2026-10-19: the SURFACE table printed ABSENT for all three while
+    the arms read the live values and used them. This pass reads them off the
+    objects the arms actually built.
+    """
+    policy = getattr(harness, 'policy', None)
+    for key, name in (('max_defer_ms', 'max_defer_ms'),
+                      ('defer_recheck_ms', 'defer_recheck_ms')):
+        value = getattr(policy, name, None)
+        SURFACES[key] = {
+            'file': os.path.basename(SHELL), 'line': None,
+            'name': f'WorkerReloadPolicy.{name}',
+            'surface': key, 'value': value,
+            'present_in_loaded_shell': value is not None,
+            'why': 'an INSTANCE attribute of the LIVE policy this arm built -- '
+                   'a class-level lookup cannot see it',
+        }
+    bridge = getattr(harness, 'bridge', None)
+    value = getattr(bridge, 'meters', None)
+    SURFACES['meters'] = {
+        'file': os.path.basename(SHELL), 'line': None,
+        'name': 'WorkerBridge.meters', 'surface': 'meters', 'value': value,
+        'present_in_loaded_shell': isinstance(value, int),
+        'why': 'an INSTANCE attribute of the LIVE bridge this arm built -- a '
+               'class-level lookup cannot see it',
+    }
     return SURFACES
 
 
@@ -483,6 +540,13 @@ class Harness:
         # here: the subject is the `boundary(why='status')` call that follows it,
         # which is the real one and stays real.
         self.shell.apply_panel_state = lambda *a, **k: None
+        # `on_worker_caption` (the REAL method, :7949) reads these two BEFORE it
+        # emits. The stand-in did not carry them, so the real method raised
+        # AttributeError inside the bridge's reader thread: the closed line
+        # never reached the panel, the boundary never happened, and arm C saw
+        # 0 captions and 0 boundary lines (measured 2026-10-19).
+        self.shell.external_captions_active = False
+        self.shell.external_suppressed = 0
         self.shell.meter_pushes = 0
         self.shell.stats_pushes = 0
         self.shell.stats_replies = 0
@@ -563,19 +627,131 @@ def wait_for(fn, timeout, step=0.05):
     return bool(fn())
 
 
+def caption_seen(harness):
+    """True once a caption has reached the panel through the REAL shell."""
+    return any(k == 'caption' for k, _p in harness.emitted)
+
+
+def wait_for_caption(harness, timeout=8):
+    """Wait for a CLOSED line to reach the panel.
+
+    THE GUARD HOLDS ONLY WHILE A CAPTION IS RECENT. `WorkerBridge` starts with
+    `last_caption_at = 0.0` and the policy reads it
+    (sotto_webview.py:10089-10101): a request made while NOTHING was
+    transcribed is not held at all -- it is reported at once
+    (`reason=code-changed-not-applied`). So every arm that wants a HOLD waits
+    for a real closed line first, and only then asks for the reload.
+    """
+    return wait_for(lambda: caption_seen(harness), timeout)
+
+
+def negative_control(module, tmp):
+    """THE ARMS MUST BE ABLE TO FAIL -- and here they are seen failing.
+
+    Two broken copies of the shell, ONE thing broken in each, and the line the
+    arm pins must be GONE in the copy and PRESENT in the real shell:
+
+      * the GUARD (the DEFERRED hold) does not defer  -> arm A loses the hold;
+      * the BOUNDARY (the closed line) does not raise  -> arm C loses it.
+
+    A control that only counts "the arm is green" measures nothing; this one
+    runs the arms' own subject against a shell that had the arm's subject
+    removed, and FAILS the step if the arm would still have passed.
+    """
+    controls = []
+    mutants = (
+        ('guard',
+         "        if capturing and not boundary and not forced and transcribing:\n",
+         "        if False and capturing and not boundary and not forced"
+         " and transcribing:\n",
+         'HOT_RELOAD_WORKER_DEFERRED'),
+        ('boundary',
+         "        if closed:\n            self._boundary_hit = True\n",
+         "        if False and closed:\n            self._boundary_hit = True\n",
+         'HOT_RELOAD_WORKER_BOUNDARY reason=closed-line'),
+    )
+    for label, needle, replacement, line in mutants:
+        path = os.path.join(tmp, f'sotto_worker_mutant_{label}.py')
+        shutil.copyfile(SHELL, path)
+        with open(path, encoding='utf-8') as fh:
+            src = fh.read()
+        broken = src.replace(needle, replacement, 1)
+        if broken == src:
+            controls.append({'mutant': label, 'ok': False,
+                             'why': 'the text to break was not found verbatim'})
+            continue
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(broken)
+        broken_module = load(path, f'sotto_reload_mutant_{label}')
+        copy = os.path.join(tmp, f'sotto_worker_copy_mutant_{label}.py')
+        shutil.copyfile(STANDIN, copy)
+        harness = Harness(broken_module, copy,
+                          env={'SOTTO_STANDIN_HZ': '0.5',
+                               'SOTTO_STANDIN_SECS': '30',
+                               'SOTTO_STANDIN_CLOSED_AT': '0.3',
+                               'SOTTO_STANDIN_CLOSED_EVERY': '0.6'},
+                          debounce_ms=0, min_interval_ms=0,
+                          max_defer_ms=600000, defer_recheck_ms=5000).start()
+        wait_for(lambda: harness.bridge.is_capturing(), 6)
+        wait_for_caption(harness)
+        with open(copy, 'a', encoding='utf-8') as fh:
+            fh.write('\n# one byte more\n')
+        harness.policy.request([copy])
+        wait_for(lambda: harness.has('HOT_RELOAD_WORKER_DEFERRED')
+                 or harness.has('HOT_RELOAD_WORKER_REPORTED'), 6)
+        time.sleep(1.0)
+        seen = harness.has(line)
+        harness.close()
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        controls.append({'mutant': label, 'line': line,
+                         'line_seen_in_the_broken_copy': seen,
+                         'ok': not seen,
+                         'why': ('the broken copy still produced the line, so '
+                                 'the arm that pins it cannot fail') if seen
+                         else 'the broken copy lost the line: the arm can fail'})
+    report['negative_control'] = controls
+    failed = [c for c in controls if not c['ok']]
+    check('NEG: every arm of this probe is able to FAIL (a broken copy loses '
+          'its line)',
+          not failed, failed)
+    return controls
+
+
 def arm_a_and_b(module, tmp):
     """A. the request is held VISIBLY. B. the staleness query is real."""
-    copy = os.path.join(tmp, 'sotto_worker_copy.py')
-    shutil.copyfile(STANDIN, copy)
-    harness = Harness(module, copy, env={'SOTTO_STANDIN_HZ': '0.5',
-                                         'SOTTO_STANDIN_SECS': '30'},
+    # ── A ────────────────────────────────────────────────────────────────────
+    # THE REQUEST MUST BE ABOUT A FILE THAT IS ACTUALLY STALE. The policy skips
+    # a request whose disk bytes are the ones the child already loaded
+    # (HOT_RELOAD_WORKER_SKIPPED reason=code-not-stale), and the old arm A
+    # asked for a reload of exactly the bytes the child was running -- so the
+    # guard never engaged and the arm measured the SKIP (measured 2026-10-19:
+    # 0 DEFERRED lines, pending=None, and the arm failed on the two checks
+    # that wanted a visible hold).
+    copy_a = os.path.join(tmp, 'sotto_worker_copy_a.py')
+    shutil.copyfile(STANDIN, copy_a)
+    harness = Harness(module, copy_a, env={'SOTTO_STANDIN_HZ': '0.5',
+                                          'SOTTO_STANDIN_SECS': '30',
+                                          'SOTTO_STANDIN_CLOSED_AT': '0.3'},
                       debounce_ms=0, min_interval_ms=0,
                       max_defer_ms=600000, defer_recheck_ms=5000).start()
     wait_for(lambda: harness.bridge.is_capturing(), 6)
+    # The three INSTANCE surfaces are read off the LIVE objects now that one
+    # exists (the class-level survey could not see them).
+    survey_instance(harness)
     pid0 = harness.pid()
     capturing = harness.bridge.is_capturing()
     state0 = policy_state(harness)
-    harness.policy.request([copy])
+    # A caption has to be RECENT for the guard to hold the request at all
+    # (`last_caption_at`, :10089). One closed line, then the reload.
+    wait_for_caption(harness)
+    # ONE BYTE, APPENDED AFTER the child loaded the file: now the disk and the
+    # running process disagree, which is what "the code changed" means.
+    with open(copy_a, 'a', encoding='utf-8') as fh:
+        fh.write('\n# one byte more\n')
+    harness.policy.request([copy_a])
     wait_for(lambda: harness.has('HOT_RELOAD_WORKER_DEFERRED'), 4)
     deferred = harness.has('HOT_RELOAD_WORKER_DEFERRED')
     line = deferred[0] if deferred else ''
@@ -603,22 +779,32 @@ def arm_a_and_b(module, tmp):
     check('A: the wait is BOUNDED (a ceiling is declared)',
           attr(harness.policy, 'max_defer_ms') == 600000
           and held_state['pending_ms'] is not None)
+    harness.close()
 
-    # ── B. the staleness query, both colours, on the SAME bridge ────────────
+    # ── B. the staleness query, both colours, on its OWN copy ───────────────
+    # A's copy is already stale by the time B runs, and "the query says
+    # CURRENT" is only meaningful against a file the child has just loaded.
+    copy_b = os.path.join(tmp, 'sotto_worker_copy_b.py')
+    shutil.copyfile(STANDIN, copy_b)
+    harness = Harness(module, copy_b, env={'SOTTO_STANDIN_HZ': '0.5',
+                                          'SOTTO_STANDIN_SECS': '30'},
+                      debounce_ms=0, min_interval_ms=0,
+                      max_defer_ms=600000, defer_recheck_ms=5000).start()
+    wait_for(lambda: harness.bridge.is_capturing(), 6)
     # The probe's OWN hashes of the very file the child loaded, taken either
     # side of the edit: the same two numbers state() is asked to publish, so the
     # report carries the measurement even when the query is absent.
-    sha_before_edit = sha256(copy)
+    sha_before_edit = sha256(copy_b)
     before = policy_state(harness)['worker']
-    with open(copy, 'a', encoding='utf-8') as fh:
+    with open(copy_b, 'a', encoding='utf-8') as fh:
         fh.write('\n# one byte more\n')
-    sha_after_edit = sha256(copy)
+    sha_after_edit = sha256(copy_b)
     after = policy_state(harness)['worker']
     report['arms']['B_staleness'] = {
         'before': before, 'after': after,
         'probe_sha256_before_edit': sha_before_edit,
         'probe_sha256_after_edit': sha_after_edit,
-        'probe_bytes': os.path.getsize(copy),
+        'probe_bytes': os.path.getsize(copy_b),
         'probe_changed': sha_before_edit != sha_after_edit,
     }
     check('B: the query says CURRENT while the disk matches the spawn',
@@ -635,16 +821,28 @@ def arm_a_and_b(module, tmp):
     return harness
 
 
-def arm_c(module):
-    """C. the CLOSED LINE applies the held reload, with the worker capturing."""
-    harness = Harness(module, STANDIN, env={'SOTTO_STANDIN_HZ': '0.5',
-                                            'SOTTO_STANDIN_SECS': '30',
-                                            'SOTTO_STANDIN_CLOSED_AT': '1.5'},
+def arm_c(module, tmp):
+    """C. the CLOSED LINE is the boundary -- and it applies NOTHING."""
+    # The request is about a COPY, and the copy is made STALE after the child
+    # loaded it: a request about bytes the child is already running is SKIPPED
+    # (code-not-stale) and never reaches the guard (measured 2026-10-19).
+    copy = os.path.join(tmp, 'sotto_worker_copy_c.py')
+    shutil.copyfile(STANDIN, copy)
+    harness = Harness(module, copy, env={'SOTTO_STANDIN_HZ': '0.5',
+                                         'SOTTO_STANDIN_SECS': '30',
+                                         'SOTTO_STANDIN_CLOSED_AT': '0.3',
+                                         'SOTTO_STANDIN_CLOSED_EVERY': '0.6'},
                       debounce_ms=0, min_interval_ms=0,
                       max_defer_ms=600000, defer_recheck_ms=5000).start()
     wait_for(lambda: harness.bridge.is_capturing(), 6)
     pid0 = harness.pid()
-    harness.policy.request([STANDIN])
+    # ONE closed line FIRST: the guard holds a request only while a caption is
+    # recent, and the boundary is the SECOND line -- the one that arrives
+    # while the request is held.
+    wait_for_caption(harness)
+    with open(copy, 'a', encoding='utf-8') as fh:
+        fh.write('\n# one byte more\n')
+    harness.policy.request([copy])
     wait_for(lambda: harness.has('HOT_RELOAD_WORKER_DEFERRED'), 4)
     held_pid = harness.pid()
     # SNAPSHOT, not a live read: the checks below run after the boundary has
@@ -652,11 +850,10 @@ def arm_c(module):
     # assertion would fail for the wrong reason (measured once).
     held_restarts = len(harness.restarts)
     # the child closes a line at ~1.5 s; nothing else drives the boundary
-    applied = wait_for(lambda: bool(harness.restarts), 8)
-    # The restart runs on the policy's TIMER thread: wait for the NEW child to be
-    # up AND to have declared its own capture, or both reads below are a race.
-    wait_for(lambda: harness.pid() not in (None, pid0)
-             and harness.bridge.is_capturing(), 10)
+    boundary_seen = wait_for(
+        lambda: bool(harness.has('HOT_RELOAD_WORKER_BOUNDARY reason=closed-line')), 8)
+    # The line reaches the panel as a caption, and the policy reacts to it.
+    wait_for(lambda: any(k == 'caption' for k, _p in harness.emitted), 4)
     pid1 = harness.pid()
     report['arms']['C_closed_line'] = {
         'pid_before': pid0, 'pid_while_held': held_pid, 'pid_after': pid1,
@@ -664,6 +861,7 @@ def arm_c(module):
         'restarts': len(harness.restarts),
         'boundary_lines': harness.has('HOT_RELOAD_WORKER_BOUNDARY'),
         'applied_lines': harness.has('HOT_RELOAD_WORKER_BOUNDARY_APPLIED'),
+        'reported_lines': harness.has('HOT_RELOAD_WORKER_REPORTED'),
         'captions': [p for k, p in harness.emitted if k == 'caption'],
         'still_capturing_after': harness.bridge.is_capturing(),
         # What the REAL shell emitted around the boundary, so the report carries
@@ -677,12 +875,16 @@ def arm_c(module):
     check('C: the REAL child closed a line and the shell saw it as the boundary',
           bool(harness.has('HOT_RELOAD_WORKER_BOUNDARY reason=closed-line')),
           harness.has('HOT_RELOAD_WORKER_BOUNDARY'))
-    check('C: the held reload APPLIED on the closed line (a NEW pid)',
-          applied and pid1 != pid0 and pid1 is not None,
-          {'pid_before': pid0, 'pid_after': pid1})
-    check('C: it applied while the worker was still capturing (not on a stop)',
-          bool(harness.has('HOT_RELOAD_WORKER_BOUNDARY_APPLIED'))
-          and harness.bridge.is_capturing())
+    # REBASELINED 2026-10-19: the closed line does NOT apply the reload. The
+    # owner's order closed that path (sotto_webview.py:10221-10225): the line
+    # that closes IS the moment the owner is reading, and paying a ~2 GB model
+    # warm-up there is the thing that froze his PC twice.
+    check('C: the closed line applies NOTHING (no new pid, no restart)',
+          boundary_seen and pid1 == pid0 and not harness.restarts,
+          {'pid_before': pid0, 'pid_after': pid1,
+           'restarts': len(harness.restarts)})
+    check('C: the worker is STILL capturing after the closed line',
+          harness.bridge.is_capturing())
     check('C: the closed line reached the panel as a caption',
           any(isinstance(p, dict) and p.get('meta', {}).get('final') is True
               for _k, p in harness.emitted if _k == 'caption'),
@@ -690,51 +892,81 @@ def arm_c(module):
     harness.close()
 
 
-def arm_d_and_e(module):
-    """D. the ceiling applies with no boundary. E. the floor still bounds."""
-    harness = Harness(module, STANDIN, env={'SOTTO_STANDIN_HZ': '0.5',
-                                            'SOTTO_STANDIN_SECS': '30'},
+def arm_d_and_e(module, tmp):
+    """D. the ceiling ends the hold and applies NOTHING. E. the floor still bounds."""
+    # ── D. the CEILING ──────────────────────────────────────────────────────
+    copy_d = os.path.join(tmp, 'sotto_worker_copy_d.py')
+    shutil.copyfile(STANDIN, copy_d)
+    harness = Harness(module, copy_d, env={'SOTTO_STANDIN_HZ': '0.5',
+                                          'SOTTO_STANDIN_SECS': '30',
+                                          'SOTTO_STANDIN_CLOSED_AT': '0.3'},
                       debounce_ms=0, min_interval_ms=0,
-                      max_defer_ms=600, defer_recheck_ms=100).start()
+                      max_defer_ms=1000, defer_recheck_ms=250).start()
     wait_for(lambda: harness.bridge.is_capturing(), 6)
     pid0 = harness.pid()
-    harness.policy.request([STANDIN])
-    forced = wait_for(lambda: bool(harness.restarts), 6)
-    # The restart runs on the policy's TIMER thread, so `restarts` can be
-    # recorded before the new bridge exists. Wait for the NEW child to be up and
-    # to have declared its own capture, or the pid read is a race (measured: a
-    # `pid_after=None` from reading the old, stopped bridge).
-    wait_for(lambda: harness.pid() not in (None, pid0)
-             and harness.bridge.is_capturing(), 10)
+    # ONE closed line, and no more: a caption is what makes the guard HOLD the
+    # request, and a second one would be the boundary -- and the ceiling is
+    # exactly the arm that must see NO boundary.
+    wait_for_caption(harness)
+    with open(copy_d, 'a', encoding='utf-8') as fh:
+        fh.write('\n# one byte more\n')
+    harness.policy.request([copy_d])
+    # The ceiling ends the hold on its own: wait for the REPORT that says so.
+    reported = wait_for(
+        lambda: any('ceiling-reached-nothing-forced' in ln
+                    for ln in harness.has('HOT_RELOAD_WORKER_REPORTED')), 8)
+    time.sleep(0.3)
     pid1 = harness.pid()
     report['arms']['D_ceiling'] = {
         'pid_before': pid0, 'pid_after': pid1,
         'forced_lines': harness.has('HOT_RELOAD_WORKER_FORCED'),
+        'reported_lines': harness.has('HOT_RELOAD_WORKER_REPORTED'),
         'reload_lines': harness.has('HOT_RELOAD_WORKER_'),
         'restarts': len(harness.restarts),
         'still_capturing': harness.bridge.is_capturing(),
         'policy_pending': attr(harness.policy, 'pending'),
     }
-    check('D: with NO boundary the ceiling applies the reload anyway',
-          forced and pid1 != pid0, {'pid_before': pid0, 'pid_after': pid1})
-    check('D: the log says it FORCED, with the reason and the wait',
-          any('HOT_RELOAD_WORKER_FORCED' in line
-              and 'reason=no-boundary-in-600ms' in line
+    # REBASELINED 2026-10-19: the ceiling does NOT apply the reload any more.
+    # The owner's order (2026-10-17) closed every path from "a file changed" to
+    # "the worker restarts": the ceiling REPORTS and clears the request
+    # (sotto_webview.py:10169-10182). The old arm wanted a NEW pid and the
+    # token HOT_RELOAD_WORKER_FORCED -- both of which the product no longer has.
+    check('D: with NO boundary the ceiling ends the hold and applies NOTHING',
+          reported and pid1 == pid0 and not harness.restarts,
+          {'pid_before': pid0, 'pid_after': pid1,
+           'restarts': len(harness.restarts)})
+    check('D: the log says the ceiling forced NOTHING, and says why',
+          any('HOT_RELOAD_WORKER_REPORTED' in line
+              and 'reason=ceiling-reached-nothing-forced' in line
               and 'waited_ms=' in line
-              for line in report['arms']['D_ceiling']['forced_lines']),
-          report['arms']['D_ceiling']['forced_lines'])
-    check('D: nothing is left pending after the ceiling applied',
+              and 'action=none' in line
+              for line in report['arms']['D_ceiling']['reported_lines']),
+          report['arms']['D_ceiling']['reported_lines'])
+    check('D: nothing is left pending after the ceiling ended the hold',
           harness.policy.pending is None)
     harness.close()
 
-    harness = Harness(module, STANDIN, env={'SOTTO_STANDIN_HZ': '0.5',
-                                            'SOTTO_STANDIN_SECS': '30'},
+    # ── E. the FLOOR ────────────────────────────────────────────────────────
+    # The floor is reached through the BOUNDARY path -- the only path that
+    # reaches it now that nothing is ever applied -- so the child must close a
+    # line, and the ceiling must be far enough away not to end the hold first.
+    copy_e = os.path.join(tmp, 'sotto_worker_copy_e.py')
+    shutil.copyfile(STANDIN, copy_e)
+    harness = Harness(module, copy_e, env={'SOTTO_STANDIN_HZ': '0.5',
+                                          'SOTTO_STANDIN_SECS': '30',
+                                          'SOTTO_STANDIN_CLOSED_AT': '0.3',
+                                          'SOTTO_STANDIN_CLOSED_EVERY': '0.6'},
                       debounce_ms=0, min_interval_ms=60000,
-                      max_defer_ms=400, defer_recheck_ms=100).start()
+                      max_defer_ms=600000, defer_recheck_ms=5000).start()
     wait_for(lambda: harness.bridge.is_capturing(), 6)
     pid0 = harness.pid()
-    harness.policy.request([STANDIN])
-    time.sleep(1.5)                      # > the 400 ms ceiling, << the floor
+    wait_for_caption(harness)
+    with open(copy_e, 'a', encoding='utf-8') as fh:
+        fh.write('\n# one byte more\n')
+    harness.policy.request([copy_e])
+    # the child closes a line again at ~0.9 s; the boundary then meets the floor
+    wait_for(lambda: bool(harness.has('HOT_RELOAD_WORKER_COOLDOWN')), 8)
+    time.sleep(0.3)
     report['arms']['E_floor'] = {
         'pid_before': pid0, 'pid_after': harness.pid(),
         'restarts': len(harness.restarts),
@@ -743,16 +975,13 @@ def arm_d_and_e(module):
         'policy_lines': harness.has('HOT_RELOAD_WORKER_'),
         'pending': attr(harness.policy, 'pending'),
     }
-    if getattr(module.WorkerReloadPolicy, 'max_defer_ms', None) is None:
-        # The reload really is still held -- but nothing here can attribute that
-        # to the FLOOR: with no ceiling in the shell, the capturing GUARD is
-        # what is holding it, and the floor was never reached. The green is real
-        # and its CLAIM is not, so it is labelled.
-        note_vacuous("E: the owner's floor bounds the RATE even after the ceiling",
-                     'the shell carries no ceiling to survive: the request is '
-                     'still held by the capturing GUARD, so the floor is not '
-                     'what bounded it')
-    check('E: the owner\'s floor bounds the RATE even after the ceiling',
+    # THE VACUOUS ARM IS GONE. It used to be labelled VACUOUS because the
+    # survey looked for `max_defer_ms` on the CLASS (where it does not live)
+    # and concluded that the shell carried no ceiling -- and the "green" it
+    # wrote was the capturing GUARD holding the request, not the FLOOR. The
+    # ceiling is read off the LIVE policy (survey_instance) and the floor is
+    # now reached through the boundary, so this arm measures the floor.
+    check('E: the owner\'s floor bounds the RATE even after the boundary',
           harness.pid() == pid0 and not harness.restarts
           and harness.policy.pending is not None,
           {'pid': harness.pid(), 'restarts': len(harness.restarts)})
@@ -871,9 +1100,10 @@ def main():
     tmp = tempfile.mkdtemp(prefix='sotto-reload-probe-')
     try:
         arm_a_and_b(module, tmp)
-        arm_c(module)
-        arm_d_and_e(module)
+        arm_c(module, tmp)
+        arm_d_and_e(module, tmp)
         arm_f(module)
+        negative_control(module, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     report['mapping'] = MAPPING
@@ -904,7 +1134,8 @@ if __name__ == '__main__':
     for key in sorted(report.get('surface') or {}):
         row = report['surface'][key]
         at = (f'{row.get("file")}:{row.get("line")}' if row.get('line')
-              else 'ABSENT')
+              else (f'INSTANCE(value={row.get("value")!r})'
+                    if row.get('present_in_loaded_shell') else 'ABSENT'))
         print(f'  {key:18} {at:32} {row.get("name") or ""}')
         if row.get('why'):
             print(f'  {"":18} why: {row["why"]}')

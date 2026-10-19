@@ -101,7 +101,13 @@ def check(module):
     d = module.dock_right(work)
     want('panel.width', d['width'], 380)
     want('panel.height', d['height'], 900)
-    want('panel.pos', (d['x'], d['y']), (1528, 66))
+    # REBASELINED 2026-10-19: the panel is TOP-DOCKED, not vertically centred
+    # (owner, 2026-10-17: *"o painel de baixo esta muito embaixo, tem que ser
+    # mais pra cima"*). The live formula is `y = work['y'] + m` with the SAME
+    # `m` the right edge uses (sotto_webview.py:1252), so the panel hangs
+    # PANEL_MARGIN (12) from the top and from the right. This pin used to
+    # expect the old centred y (66).
+    want('panel.pos', (d['x'], d['y']), (1528, module.PANEL_MARGIN))
 
     # -- 2. THE CLAMP (a saved rect into the CURRENT work area) --------------
     clamped, moved = module.clamp_geometry(
@@ -154,12 +160,54 @@ def check(module):
         def reply_stats(self, stats_id, payload):
             self.calls.append(('reply_stats', stats_id, payload))
 
+        # ── THE SEVEN KINDS THE MAP RESOLVES AGAINST THE SHELL ──────────────
+        # The handler table holds NAMES, not values, and an entry that does not
+        # resolve is SKIPPED with a loud `BRIDGE_HANDLER_MAP_FAILED` line
+        # (sotto_webview.py:4786-4792). A stub without these seven therefore
+        # does not fail an arm -- it fills the oracle's own log with eleven
+        # lines per dispatch that have nothing to do with what is being
+        # measured (measured 2026-10-19: 22 of them in the battery's log).
+        # These are the REAL shell methods' names, from the table at
+        # sotto_webview.py:4720-4747, and they are stubs that RECORD, so the
+        # arm below can prove the routing instead of assuming it.
+        def _set_strip_offset(self, payload):
+            self.calls.append(('_set_strip_offset', payload))
+
+        def _begin_window_drag(self, payload):
+            self.calls.append(('_begin_window_drag', payload))
+
+        def _set_live_enabled(self, payload):
+            self.calls.append(('_set_live_enabled', payload))
+
+        def _pause_shell(self, payload):
+            self.calls.append(('_pause_shell', payload))
+
+        def hide_panel(self, reason):
+            self.calls.append(('hide_panel', reason))
+
+        def toggle_panel(self, reason):
+            self.calls.append(('toggle_panel', reason))
+
+        def quit(self, reason):
+            self.calls.append(('quit', reason))
+
     fake = FakeShell()
     host = module.SottoHost(fake)
     host.dispatch(json.dumps({'kind': 'panel-surface',
                               'payload': {'surface': 'panel',
                                           'reason': 'strip-open'}}))
     host.dispatch(json.dumps({'kind': 'stats', 'payload': {'id': 's1'}}))
+    # The seven SHELL-side kinds, driven through the same `dispatch`. Each one
+    # must land on the shell; a map entry that stops resolving must take its
+    # kind down ALONE, and the arm has to see that.
+    for kind, payload in (('setStripOffset', {'dx': 12}),
+                          ('beginWindowDrag', {'x': 5, 'y': 7}),
+                          ('setLiveEnabled', {'on': True}),
+                          ('pause', {'reason': 'strip'}),
+                          ('hide', {'ignored': True}),
+                          ('toggle', {'ignored': True}),
+                          ('quit', {'ignored': True})):
+        host.dispatch(json.dumps({'kind': kind, 'payload': payload}))
     facts['dispatch.calls'] = fake.calls
     facts['dispatch.source_tail'] = inspect.getsource(
         module.SottoHost.dispatch)[-420:]
@@ -170,6 +218,23 @@ def check(module):
     if ('reply_stats', 's1', {'peak': 0.5, 'blocks': 12.0}) not in fake.calls:
         failures.append("dispatch does not route 'stats' to "
                         'reply_stats(id, payload)')
+    # The seven SHELL-side kinds. The table holds names, so a name that stops
+    # resolving kills ITS kind and nothing else -- and it says so in the log
+    # (BRIDGE_HANDLER_MAP_FAILED). These seven are the ones the strip's own
+    # controls use, so a map entry that rots takes a real control with it.
+    for kind, expected in (('setStripOffset', ('_set_strip_offset', {'dx': 12})),
+                            ('beginWindowDrag', ('_begin_window_drag',
+                                                 {'x': 5, 'y': 7})),
+                            ('setLiveEnabled', ('_set_live_enabled',
+                                                {'on': True})),
+                            ('pause', ('_pause_shell', {'reason': 'strip'})),
+                            ('hide', ('hide_panel', 'page')),
+                            ('toggle', ('toggle_panel', 'page')),
+                            ('quit', ('quit', 'page'))):
+        facts[f'dispatch.{kind}'] = expected in fake.calls
+        if expected not in fake.calls:
+            failures.append(f"dispatch does not route {kind!r} to the shell's "
+                            f'{expected[0]} -- the strip control is dead')
     for name in ('_panel_surface', '_stats'):
         facts[f'host.{name}'] = hasattr(module.SottoHost, name)
         if not hasattr(module.SottoHost, name):
@@ -226,8 +291,14 @@ def check(module):
 
     shell.bridge = FakeBridge()
     stats = shell.stats()
-    want('stats.payload', stats, {'tag': 'stats', 'peak': 0.443448, 'blocks': 812.0})
-    if 'nonzero_blocks' in stats or 'queue_drops' in stats:
+    # REBASELINED 2026-10-19: `queue_drops` IS a field the panel reads --
+    # panel.js:3334 uses it to show the "behind" chip, so the shell carrying it
+    # is not a leak. The pin used to call it a leak and expected the payload
+    # without it, and the whole step went RED on a payload that grew on
+    # purpose.
+    want('stats.payload', stats, {'tag': 'stats', 'peak': 0.443448,
+                                  'blocks': 812.0, 'queue_drops': 0.0})
+    if 'nonzero_blocks' in stats:
         failures.append('stats() leaks fields the panel does not read')
 
     class EmptyBridge:
@@ -252,6 +323,14 @@ def check(module):
     shell2 = module.SottoShell.__new__(module.SottoShell)
     shell2.display = {'workArea': work, 'scaleFactor': 1.0}
     shell2.strip_height = module.STRIP_HEIGHT_FALLBACK
+    # `strip_width_dom` is an INSTANCE attribute the real shell sets in
+    # `__init__` (sotto_webview.py:5073) and `geometry_for` READS through
+    # `strip_width_live()` (:8866). The stand-in did not have it, so the
+    # oracle CRASHED with AttributeError on the first call (measured
+    # 2026-10-19: the battery's step exited rc=3 with an empty log and a
+    # report whose verdict was CRASH). `None` is the real initial state: the
+    # content width is unknown until the page answers.
+    shell2.strip_width_dom = None
     shell2.saved_geometry = {'surface': 'strip', 'x': -100, 'y': 99999,
                              'width': 1040, 'height': 148, 'docked': 'edited'}
     got = shell2.geometry_for('strip')
@@ -261,25 +340,17 @@ def check(module):
     got2 = shell2.geometry_for('strip')
     # THE CALL SITE IS `dock_strip`, AND THIS PIN USED TO ASSERT THE OTHER
     # FUNCTION'S NUMBERS. Measured 2026-10-11: with no saved rect,
-    # `geometry_for('strip')` returns dock_strip(work, height=148) --
-    # y = 1032 - 148 - PANEL_MARGIN(12) = 872 with docked='bottom-strip' -- while
-    # this line expected 836, i.e. strip_geometry's STRIP_BOTTOM_MARGIN(48).
-    # strip_geometry is a DIFFERENT, still-live function and its own numbers are
-    # pinned at :64-71 above, which is why those checks stayed green while this
-    # one went red. The port receipt corrected the call site
-    # (`_main/receipt-20261011-strip-contract-port.md`, section 2: "Corrected to
-    # the keyword form dock_strip(work, height=self.strip_height)") and quotes
-    # the live reference line `PANEL_PLACED mode=strip docked=bottom-strip
-    # work=1920x1032@(0,0) window=1040x100@(440,920) margin=12`, which the ported
-    # shell reproduces exactly (probe arm A, 2026-10-11: WINDOW_GEOMETRY
-    # `window=1040x100@(440,920) margin=12 docked=bottom-strip`).
-    # The pin is now STRONGER than the one it replaces: it asserts the label, the
-    # margin and the surface too, so a regression back to strip_geometry fails
-    # on four checks instead of one.
+    # `geometry_for('strip')` returns dock_strip(work, height=148) -- with the
+    # STRIP'S OWN bottom gap, not the panel's. REBASELINED 2026-10-19: the
+    # strip's gap is `STRIP_MARGIN` (44) and not `PANEL_MARGIN` (12) --
+    # the owner said 12 px glued the bar to the taskbar ("spawnando muito
+    # abaixo", sotto_webview.py:127-129) -- so y = 1032 - 148 - 44 = 840 and
+    # the margin the geometry carries is 44. This pin used to expect the
+    # panel's margin and the old y (872).
     want('geometry_for.default', (got2['x'], got2['y'], got2['width'],
-                                 got2['height']), (440, 872, 1040, 148))
+                                 got2['height']), (440, 840, 1040, 148))
     want('geometry_for.default.docked', got2.get('docked'), 'bottom-strip')
-    want('geometry_for.default.margin', got2.get('margin'), module.PANEL_MARGIN)
+    want('geometry_for.default.margin', got2.get('margin'), module.STRIP_MARGIN)
     want('geometry_for.default.surface', got2.get('surface'), 'strip')
 
     # -- 11. THE SURFACE LABEL in the persisted rect -------------------------
@@ -443,6 +514,15 @@ def check(module):
     # -- 19. THE RELOAD CONTRACT (the owner's order: never old code again) ----
     # Driven, not grepped: a stand-in bridge that stays CAPTURING, so the guard,
     # the boundary, the ceiling and the floor are all exercised as CODE.
+    #
+    # REBASELINED 2026-10-19. The contract these arms used to assert -- "a
+    # closed line APPLIES the held reload", "the ceiling FORCES it" -- was
+    # CLOSED BY THE OWNER on 2026-10-17: *"faz guard pra essa merda NUNCA MAIS
+    # ACONTECER na tua vida"* (sotto_webview.py:10124-10128). There is now NO
+    # path from "a file changed" to "the worker restarts": the policy REPORTS
+    # instead, and the restart is a person's decision. So the arms below assert
+    # the CURRENT contract: the guard still HOLDS, the boundary and the ceiling
+    # still END the hold, and NOTHING is ever applied automatically.
     class CapturingBridge:
         child = object()
         loaded_sha256 = 'deadbeefdeadbeef'
@@ -497,13 +577,23 @@ def check(module):
     settle(0.6)
     reload_facts['closed_line'] = {'restarts': len(restarts),
                                    'lines': [ln for ln in lines
-                                             if 'BOUNDARY' in ln]}
-    want('reload.closed-line-applies-while-capturing', len(restarts), 1)
+                                             if 'BOUNDARY' in ln],
+                                   'reported': [ln for ln in lines
+                                                if 'REPORTED' in ln]}
     want('reload.closed-line-is-named',
          any('reason=closed-line' in ln for ln in lines), True)
+    # THE OWNER'S ORDER, ASSERTED: a closed line does NOT apply the reload.
+    # The caption that closed IS the moment the owner is reading (the shell's
+    # own words at :10221-10225), and paying a ~2 GB model warm-up there is
+    # the exact thing that froze his PC twice.
+    want('reload.closed-line-does-not-restart', len(restarts), 0)
+    want('reload.closed-line-reports-instead', any(
+        'HOT_RELOAD_WORKER_REPORTED' in ln
+        and 'reason=boundary-reached-not-applied' in ln
+        and 'action=none' in ln for ln in lines), True)
     policy.stop()
 
-    # (b) the CEILING: no boundary ever, and it still applies — loudly.
+    # (b) the CEILING: no boundary ever -- and it REPORTS, it does not force.
     br = CapturingBridge(module.SHELL_PATH)
     policy, lines, restarts = policy_for(br, debounce_ms=0, min_interval_ms=0,
                                          max_defer_ms=250, defer_recheck_ms=50)
@@ -511,27 +601,37 @@ def check(module):
     settle(1.0)
     reload_facts['ceiling'] = {'restarts': len(restarts),
                                'forced': [ln for ln in lines if 'FORCED' in ln],
+                               'reported': [ln for ln in lines
+                                            if 'REPORTED' in ln],
                                'pending': policy.pending is not None}
-    want('reload.ceiling-applies-with-no-boundary', len(restarts), 1)
+    want('reload.ceiling-does-not-force', len(restarts), 0)
     want('reload.ceiling-says-so', any(
-        'HOT_RELOAD_WORKER_FORCED' in ln and 'reason=no-boundary-in-250ms' in ln
-        for ln in lines), True)
+        'HOT_RELOAD_WORKER_REPORTED' in ln
+        and 'reason=ceiling-reached-nothing-forced' in ln
+        and 'waited_ms=' in ln and 'action=none' in ln for ln in lines), True)
     want('reload.ceiling-leaves-nothing-pending', policy.pending, None)
     policy.stop()
 
-    # (c) the FLOOR still bounds the rate — and the `>` that makes it work.
+    # (c) the FLOOR still bounds the rate -- through the BOUNDARY path, which
+    # is the only path that reaches it now that nothing is ever applied.
     br = CapturingBridge(module.SHELL_PATH)
     br.spawned_at = time.monotonic()   # the SAME clock tick as the request
     policy, lines, restarts = policy_for(br, debounce_ms=0,
                                          min_interval_ms=60000,
                                          max_defer_ms=150, defer_recheck_ms=50)
     policy.request(['worker/sotto_worker.py'])
-    settle(0.9)
+    settle(0.05)
+    policy.boundary(closed=True, why='closed-line')   # before the ceiling
+    settle(0.6)
     reload_facts['floor'] = {'restarts': len(restarts),
                              'cooldown': [ln for ln in lines if 'COOLDOWN' in ln],
                              'pending': policy.pending is not None}
     want('reload.floor-bounds-the-rate', len(restarts), 0)
     want('reload.floor-keeps-the-request', policy.pending is not None, True)
+    want('reload.floor-is-named', any(
+        'HOT_RELOAD_WORKER_COOLDOWN' in ln and 'left_ms=' in ln
+        and 'min_interval_ms=' in ln and 'applies_when=floor-elapses' in ln
+        for ln in lines), True)
     # THE COARSE-CLOCK BUG: a spawn recorded in the SAME `time.monotonic()` tick
     # as the request must NOT be read as "a respawn happened after the request".
     # With `>=` it was, and the held reload was silently declared satisfied —
@@ -625,9 +725,16 @@ def main():
     shutil.copyfile(SHELL, MUTANT)
     with open(MUTANT, encoding='utf-8') as fh:
         src2 = fh.read()
-    reverted2 = src2.replace("            'stats': self._stats,\n", '')
-    reverted2 = reverted2.replace(
-        "            'panel-surface': self._panel_surface,\n", '')
+    # The table holds NAMES now (`'stats': ('host', '_stats')`, not
+    # `'stats': self._stats`), so the control removes the ENTRY BY ITS KEY
+    # instead of by the value it used to hold. A verbatim value-match rotted
+    # here on 2026-10-13, when the map became name-in-tuple, and the oracle
+    # died with "the second negative control could not be built" (measured
+    # 2026-10-19: the battery's step exited rc=1 with no verdict at all).
+    # Both keys occur exactly once in the shell, so the removal is exact.
+    reverted2 = re.sub(r"^[ \t]*'stats':[^\n]*\n", '', src2, count=1, flags=re.M)
+    reverted2 = re.sub(r"^[ \t]*'panel-surface':[^\n]*\n", '', reverted2,
+                       count=1, flags=re.M)
     if reverted2 == src2:
         raise SystemExit('the second negative control could not be built: the '
                          'dispatch entries were not found verbatim')
@@ -693,6 +800,37 @@ def main():
             pass
     logbudget_failures = [f for f in mut4_failures if 'stats.log' in f]
 
+    # The FIFTH control, and it is the one the reload arms needed: the arms of
+    # section 19 assert the OWNER'S ORDER (2026-10-17) -- a changed file is
+    # never applied on its own; the policy REPORTS. Without a control, those
+    # arms would pass on every copy and would measure nothing. This copy puts
+    # the ceiling back to what it was: a restart.
+    shutil.copyfile(SHELL, MUTANT)
+    with open(MUTANT, encoding='utf-8') as fh:
+        src5 = fh.read()
+    reverted5 = src5.replace(
+        "        if forced:\n"
+        "            # O TETO QUE FORÇAVA. Nao força mais nada.\n",
+        "        if forced:\n"
+        "            # MUTANT: the ceiling forces the restart again.\n"
+        "            self.restart(files)\n"
+        "            self.pending = None\n"
+        "            self._boundary_hit = False\n"
+        "            return\n", 1)
+    if reverted5 == src5:
+        raise SystemExit('the fifth negative control could not be built: the '
+                         "`if forced:` ceiling branch was not found verbatim")
+    with open(MUTANT, 'w', encoding='utf-8') as fh:
+        fh.write(reverted5)
+    try:
+        mut5_failures, _ = check(load(MUTANT, 'sotto_mutant5'))
+    finally:
+        try:
+            os.remove(MUTANT)
+        except OSError:
+            pass
+    reload_failures = [f for f in mut5_failures if f.startswith('reload.')]
+
     report['arms']['real'] = {'failures': real_failures, 'facts': real_facts}
     report['arms']['mutant'] = {
         'failures': mut_failures,
@@ -714,21 +852,28 @@ def main():
         'red_on_the_log_budget': bool(logbudget_failures),
         'control_failures': logbudget_failures,
     }
+    report['arms']['mutant5'] = {
+        'failures': mut5_failures,
+        'red_on_the_reload_contract': bool(reload_failures),
+        'control_failures': reload_failures,
+    }
     green = ((not real_failures) and bool(member_failures)
              and bool(routed_failures) and bool(css_failures)
-             and bool(logbudget_failures))
+             and bool(logbudget_failures) and bool(reload_failures))
     report['verdict'] = 'GREEN' if green else 'RED'
     report['reason'] = (
         'the real shell passes every arm; the member-removed COPY goes RED on '
         'the member it is missing, the routing-removed COPY goes RED on the '
         'driven dispatch arm, the CSS-blind COPY goes RED on the stylesheet '
-        'height, and the per-sample-log COPY goes RED on the log budget'
+        'height, the per-sample-log COPY goes RED on the log budget, and the '
+        'ceiling-forces-restart COPY goes RED on the reload contract'
         if green else
         f'real failures={len(real_failures)} '
         f'mutant red-on-member={bool(member_failures)} '
         f'mutant2 red-on-routing={bool(routed_failures)} '
         f'mutant3 red-on-css-height={bool(css_failures)} '
-        f'mutant4 red-on-log-budget={bool(logbudget_failures)}')
+        f'mutant4 red-on-log-budget={bool(logbudget_failures)} '
+        f'mutant5 red-on-reload-contract={bool(reload_failures)}')
     with open(REPORT, 'w', encoding='utf-8') as fh:
         json.dump(report, fh, indent=2, ensure_ascii=False)
     print(report['verdict'], '--', report['reason'])
@@ -742,11 +887,13 @@ def main():
         print('  MUTANT3-FAIL (expected)', line)
     for line in logbudget_failures:
         print('  MUTANT4-FAIL (expected)', line)
+    for line in reload_failures:
+        print('  MUTANT5-FAIL (expected)', line)
     if green:
         # THE CONTROL VERDICT the battery's `:control` kind demands: rc=0 alone
         # is not enough, because an oracle that never built its broken copies
         # would also exit 0.
-        print(f'STRIP-ORACLE CONTROL PASS broken-copies-red=4 '
+        print(f'STRIP-ORACLE CONTROL PASS broken-copies-red=5 '
               f'arms={len(real_facts)}')
     return 0 if green else 3
 
