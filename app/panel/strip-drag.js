@@ -115,7 +115,20 @@
 
   function tell(off, phase) {
     if (bridge && typeof bridge.setStripOffset === "function") {
-      try { bridge.setStripOffset(Math.round(off.x), Math.round(off.y), phase); } catch (err) {}
+      try {
+        bridge.setStripOffset(Math.round(off.x), Math.round(off.y), phase);
+      } catch (err) {
+        /* A host that refuses the offset is a host that is going away, and a
+         * drag must not break the page because of it. But SAY SO: this was the
+         * only catch in this file with neither a body nor a reason, and a strip
+         * that quietly stops following the drag is the kind of thing that gets
+         * "fixed" by guessing. The token follows the panel's own convention
+         * (`sotto: <WHAT> <detail>`, as in history-store.js). */
+        if (window.console && window.console.error) {
+          window.console.error('sotto: STRIP_OFFSET_FAILED phase=' + phase +
+                               ' error=' + (err && err.message));
+        }
+      }
     }
   }
 

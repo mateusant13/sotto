@@ -6876,8 +6876,11 @@ class SottoShell:
         try:
             if getattr(self, 'bridge', None) is not None:
                 self.bridge.no_audio_restarts = 0
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            # O RESET QUE ABRE A VOLTA AO DONO. O Alt+C existe para dar
+            # caminho de volta a um worker que morreu em silencio; engolida a
+            # falha, o Alt+C deixa de fazer isso e ninguem diz porquê.
+            log(f'BRIDGE_NO_AUDIO_RESET_FAILED error={exc!r}')
         want = surface or self.surface
         if want != self.surface_applied:
             self.set_panel_surface(want, reason)
@@ -11094,18 +11097,27 @@ class WorkerBridge:
             # the caller return immediately.
             try:
                 child.kill()
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 try:
                     child.terminate()
-                except Exception:
-                    pass
+                except Exception as exc2:  # noqa: BLE001
+                    # A WORKER THAT SURVIVES THE KILL IS A CAPTURE THAT
+                    # CONTINUES. `stop()` answers True ("parou") while a 2 GB
+                    # process may still be holding the device and writing
+                    # captions. SAY SO: a falha silenciosa aqui e' o "fechei o
+                    # Sotto e o worker continuou a correr" que ninguem consegue
+                    # diagnosticar de fora.
+                    self.log(f'BRIDGE_KILL_FAILED pid={child.pid} '
+                             f'kill={exc!r} terminate={exc2!r}')
             try:
                 reaper = threading.Thread(
                     target=lambda c=child: _reap_child(c),
                     name='sotto-worker-reap', daemon=True)
                 reaper.start()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # O processo ja morreu; ninguem o vai recolher. E' um handle
+                # vazado, e um vazamento que pertence ao log.
+                self.log(f'BRIDGE_REAPER_FAILED pid={child.pid} error={exc!r}')
             return True
         # SAYS SO (row #42, 2026-10-11): returning False silently left whatever the
         # panel was showing standing -- symmetric with `start()`, which always tells
@@ -11680,8 +11692,12 @@ class WorkerBridge:
         if child is not None:
             try:
                 child.terminate()
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # UM WORKER QUE SOBREVIVE AO TERMINATE E' UM SEGUNDO
+                # TRABALHADOR A CAPTAR: o restart agenda-se a seguir, e dois
+                # captadores no mesmo dispositivo ao mesmo tempo e' a falha
+                # mais difícil de ver que existe.
+                self.log(f'BRIDGE_TERMINATE_FAILED pid={child.pid} error={exc!r}')
         self._schedule_restart(reason)
 
     def _schedule_restart(self, reason, no_audio=False):
@@ -11729,8 +11745,12 @@ class WorkerBridge:
         if self._restart_timer is not None:
             try:
                 self._restart_timer.cancel()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # O TIMER ANTIGO PODE SOBREVIVER AO CANCELAMENTO -- e um timer
+                # armado e inalcancavel e' EXACTAMENTE o bug que a row #15
+                # (2026-10-11) removeu: dois reinicios para uma morte. O
+                # cancelamento e' o cure; engoli-lo devolve o bug calado.
+                self.log(f'BRIDGE_RESTART_TIMER_CANCEL_FAILED error={exc!r}')
         self._restart_timer = timer
         timer.start()
 

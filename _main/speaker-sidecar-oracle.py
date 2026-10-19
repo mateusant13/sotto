@@ -151,13 +151,50 @@ def battery(mod) -> list:
         chk("voice:speaker-1" in str(lines[0].get("source")),
             "and its own source key", repr(lines[0].get("source")))
 
+        # --- A COUPLING THAT WAS ONLY PROMISED IN A COMMENT -------------------
+        # `speaker_sidecar.py` keeps a COPY of the bridge's freshness window so
+        # that "the writer's own output must not be refused as stale" is
+        # visible. The copy was NEVER READ: the relationship was asserted in
+        # prose and enforced by nothing -- change the bridge's window and the
+        # sidecar would still claim the coupling held. The audit was right to
+        # call that a comment that lies. It is a CHECK now, and this is the
+        # gate that keeps it.
+        chk(mod.DEFAULT_MAX_AGE_S == bridge.DEFAULT_MAX_AGE_S,
+            "the sidecar's freshness window is the bridge's (the copy is not stale)",
+            "sidecar=%.1fs bridge=%.1fs" % (mod.DEFAULT_MAX_AGE_S,
+                                             bridge.DEFAULT_MAX_AGE_S))
+        # TWO cadences, not one: a payload that arrives a tick late is still
+        # fresh. One cadence would make the coupling true only in the perfect
+        # case, and the perfect case is the one that does not happen.
+        chk(bridge.DEFAULT_MAX_AGE_S >= 2 * mod.DEFAULT_EVERY_S,
+            "the bridge's window outlives two publish cadences "
+            "(a payload is fresh when it is read)",
+            "window=%.1fs cadence=%.1fs margin=%.1fs"
+            % (bridge.DEFAULT_MAX_AGE_S, mod.DEFAULT_EVERY_S,
+               bridge.DEFAULT_MAX_AGE_S - 2 * mod.DEFAULT_EVERY_S))
+
         # --- honesty about failure ----------------------------------------
         def boom(samples, threshold=0.9, num_speakers=-1):
             raise RuntimeError("the model fell over")
-        failed = mod.tick(ring, boom, out_file)
-        chk(failed.get("state") == "error", "a diarizer that raises is reported",
-            repr(failed.get("state")))
-        chk(failed.get("n_segments") == 0, "and publishes nothing")
+
+        # O mutante "a-raised-model-kills-the-sidecar" re-lanca a excepcao, e
+        # portanto `tick()` REBENTA aqui em vez de devolver um estado. Se a
+        # bateria deixasse a excepcao escapar, o mutante contava como
+        # "decorativo / nao testado" -- e isso era mentira a favor do gate: o
+        # mutante fez exactamente o que promete e a bateria e' que nao soube
+        # olhar. Rebentar aqui e' um RED, que e' o que o arm quer dizer.
+        try:
+            failed = mod.tick(ring, boom, out_file)
+            raised = None
+        except Exception as exc:                                    # noqa: BLE001
+            failed = {}
+            raised = type(exc).__name__
+        chk(raised is None and failed.get("state") == "error",
+            "a diarizer that raises is reported",
+            "REBENTOU com %s -- o sidecar morreu em vez de o dizer"
+            % raised if raised else repr(failed.get("state")))
+        chk(failed.get("n_segments") == 0, "and publishes nothing",
+            repr(failed.get("n_segments")))
         with open(out_file, "r", encoding="utf-8") as fh:
             after = json.load(fh)
         chk(after.get("segments") == got.get("segments"),
@@ -275,9 +312,32 @@ MUTANTS = [
     ("no-retry-on-the-windows-sharing-race",
      "            _replace_with_retry(tmp, path)",
      "            os.replace(tmp, path)"),
+    # ESTE ERA DECORATIVO, e o proprio oracao nao via: substituia
+    # `except Exception` por `except _NeverMatchesThis`, um nome que nao
+    # existe, e o mutante rebentava no IMPORT com NameError. Contava como
+    # "apanhado" sem ter corrido um unico check -- e `caught += 1` nao sabia a
+    # diferenca. Um mutante que nao carrega prova que o gate esta vivo, nao
+    # que o gate tem olhos.
+    #
+    # Agora o mutante RE-LANCA: o modelo que rebenta leva o sidecar abaixo, que
+    # e' exactamente o defeito que o arm quer apanhar. Carrega, corre, e os
+    # checks veem.
     ("a-raised-model-kills-the-sidecar",
      "    except Exception as exc:                                    # noqa: BLE001",
-     "    except _NeverMatchesThis:                                  # noqa: BLE001"),
+     "    except Exception as exc:                                    # noqa: BLE001\n"
+     "        raise"),
+    # A COPIA PODRE (achado da auditoria): a constante do sidecar passa a
+    # discordar da ponte. O mutante tem de ser apanhado pelo check de
+    # IGUALDADE -- e nao por um accidento qualquer.
+    ("a-stale-freshness-copy",
+     "DEFAULT_MAX_AGE_S = 30.0",
+     "DEFAULT_MAX_AGE_S = 45.0"),
+    # A CADENCIA CORRIDA: publica de 40 em 40 s com uma janela de 30 s na
+    # ponte, e um payload atrasado um tick ja e' velho. O check do intervalo
+    # tem de o apanhar.
+    ("a-cadence-outlives-the-window",
+     "DEFAULT_EVERY_S = 10.0",
+     "DEFAULT_EVERY_S = 40.0"),
 ]
 
 
@@ -317,23 +377,37 @@ def main() -> int:
 
     print("\nNEGATIVE ARM (broken copies must go RED)")
     caught = 0
+    weak = 0
     tmp = tempfile.mkdtemp(prefix="sidecar-oracle-mut-")
     try:
         for idx, (label, old, new) in enumerate(MUTANTS):
             if old not in source:
                 print("  RED   mutant %-42s ANCHOR MISSING -- oracle is stale"
                       % label)
+                weak += 1
                 continue
             path = os.path.join(tmp, "mutant_%d.py" % idx)
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(source.replace(old, new, 1))
             try:
                 bad = load_module(path, "speaker_sidecar_mut_%d" % idx)
+            except Exception as exc:                                # noqa: BLE001
+                # UM MUTANTE QUE NAO CARREGA NAO E' UM MUTANTE APANHADO.
+                # E' uma mutacao decorativa: nada foi testado. Contar isto
+                # como apanhado foi o defeito que o auditor provou -- o gate
+                # dizia 6/6 com dois mutantes que nunca correram um check.
+                # Agora conta a parte e o VERDICT REPROVA, porque um braco
+                # negativo que promete N mutantes e testa N-2 nao cumpre.
+                print("  RED   mutant %-42s DECORATIVO: nao carregou (%s) -- "
+                      "NAO foi testado" % (label, type(exc).__name__))
+                weak += 1
+                continue
+            try:
                 res = battery(bad)
             except Exception as exc:                                # noqa: BLE001
-                print("  GREEN mutant %-42s refused to run (%s)"
-                      % (label, type(exc).__name__))
-                caught += 1
+                print("  RED   mutant %-42s a bateria rebentou (%s) -- "
+                      "NAO foi testado" % (label, type(exc).__name__))
+                weak += 1
                 continue
             reds = [name for ok, name, _ in res if not ok]
             if reds:
@@ -346,9 +420,15 @@ def main() -> int:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    ok = (not heavy) and green == len(rows) and caught == len(MUTANTS)
+    total = len(MUTANTS)
+    ok = (not heavy) and green == len(rows) and caught == total and weak == 0
     print("\nVERDICT: %s  arms %d/%d  mutants %d/%d"
-          % ("PASS" if ok else "FAIL", green, len(rows), caught, len(MUTANTS)))
+          % ("PASS" if ok else "FAIL", green, len(rows), caught, total))
+    if weak:
+        print("  %d mutante(s) DECORATIVO(S): nao carregaram, logo nao provaram "
+              "nada. Um braco negativo que promete %d e testa %d nao cumpre -- "
+              "reescreve o mutante para ser COMPORTAMENTAL."
+              % (weak, total, caught))
     return EXIT_PASS if ok else EXIT_FAIL
 
 

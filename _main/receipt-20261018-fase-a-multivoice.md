@@ -1815,10 +1815,159 @@ failed=['bogus']`, e o `--self-test` do filtro de resíduos → **PASS**.
 > **O número que se lê como caminho quando não é caminho é pior do que não
 > imprimir.** `wrapper_ms=8198` lia-se como *"o wrapper demorou"* e o veredicto
 > lia-se como *"o wrapper falhou"*. Nenhum dos dois era verdade: o wrapper
-> tinha cumpri exactamente o que promete, e a app estava de pé. A correção não
+> tinha cumprido exactamente o que promete, e a app estava de pé. A correção não
 > foi afrouxar a asserção — foi **descobrir de que instante se conta a vida** e
 > medir a partir daí, com **duas** observações independentes e um mutante ao
 > lado que prova que ambas sabem dizer *não*.
+
+---
+
+## 7.26 A AUDITORIA DE 2026-10-19 — O QUE ELA DEIXOU ABERTO, E O QUE EU FECHEI
+
+O subagent de **full audit** entregou o seu relatório (a nota "bloqueado" era
+uma única chamada de `Set-Location` que ele contornou; o resto do trabalho
+correu). Os **dois** achados mais graves dele — o pipe do sidecar sem leitor e
+os mutantes decorativos — **já estavam corrigidos** por mim (§7.14 e §7.15),
+porque os encontraram pelo mesmo caminho. O que ele deixou **aberto** foi outra
+coisa, e é isso que está aqui.
+
+### O censo dos `except:` da shell — a medição que faltava
+
+O auditor escreveu, e com razão: *"não avaliei um a um se engulam um erro
+observável. Isso é leitura, não medição — está por fazer."*
+
+Feito. Instrumento: `ast` sobre `app/webview/sotto_webview.py`, a classificar
+cada handler pelo que o corpo **faz** com a excepção.
+
+| | |
+|---|---|
+| handlers no total | **157** (o "uns 23" do auditor eram os `except:` **nus**) |
+| registam o erro (chamam `log`/`warn`/`print`) | **90** |
+| **engolem em silêncio** | **46** (24 com `pass`, 22 que seguem em frente) |
+| devolvem um valor | **20** |
+| re-lançam | **1** |
+| apanham `BaseException` | **1** — e **re-lança**, portanto está certo |
+
+O número sozinho não diz nada; o que diz alguma coisa é **onde** cada um
+está, e o mapa por função mais interna levou-me a quatro que **não são
+indiferentes**: são catches defensivos em caminhos onde o silêncio **tem
+consequência que o dono sente**.
+
+### Quatro falhas engolidas que tinham consequência — fechadas
+
+| onde | o que o silêncio escondia |
+|---|---|
+| `WorkerBridge.stop()` | o `kill()` **e** o `terminate()` falhavam: um worker de 2 GB sobrevivía e `stop()` respondia *"parou"* — **a captação continuava** |
+| `SottoShell.show_panel()` | o reset `no_audio_restarts = 0` falhava: o **Alt+C deixava de ser o caminho de volta** ao worker que morreu em silêncio |
+| `WorkerBridge._kill_and_restart()` | o `terminate()` falhava: o worker sobrevivía e o restart agendava-se a seguir — **dois captadores no mesmo dispositivo** |
+| `WorkerBridge._schedule_restart()` | o `cancel()` do timer antigo falhava: o timer sobrevivia — **exactamente o bug da row #15 (2026-10-11)**, dois reinícios para uma morte |
+
+Os quatro passaram a **dizer o que aconteceu** (`BRIDGE_KILL_FAILED`,
+`BRIDGE_NO_AUDIO_RESET_FAILED`, `BRIDGE_TERMINATE_FAILED`,
+`BRIDGE_RESTART_TIMER_CANCEL_FAILED`), com o token-forma que o resto do log da
+shell usa. Nenhum deles muda o comportamento quando **não** há excepção: aqui
+só se acrescenta a voz que faltava.
+
+O `except BaseException` da shell (único) foi verificado: **re-lança**, portanto
+o `Ctrl+C` ainda interrompe. Está certo como está.
+
+### A constante morta que prometia um acoplamento — agora é um portão
+
+`worker/speaker_sidecar.py` tinha `DEFAULT_MAX_AGE_S = 30.0` com o comentário
+*"Must be >= the bridge's `DEFAULT_MAX_AGE_S` […] Kept as a constant here so the
+coupling is visible."*. **A cópia nunca era lida.** Nada a usava, portanto
+mudar a janela da ponte deixava aquele ficheiro a **afirmar uma relação que já
+não existia** — e o auditor tinha razão em chamar-lhe um comentário que mente.
+
+Agora o acoplamento é um **check**, e o check tem **dois mutantes** que o
+apanham pela razão certa:
+
+```
+GREEN the sidecar's freshness window is the bridge's (the copy is not stale)  sidecar=30.0s bridge=30.0s
+GREEN the bridge's window outlives two publish cadences (a payload is fresh when it is read)  window=30.0s cadence=10.0s margin=10.0s
+GREEN mutant a-stale-freshness-copy         caught by: the sidecar's freshness window is the bridge's (the copy is not stale)
+GREEN mutant a-cadence-outlives-the-window  caught by: the bridge's window outlives two publish cadences (a payload is fresh when it is read)
+VERDICT: PASS  arms 36/36  mutants 8/8
+```
+
+O porquê de **duas** cadências e não uma: com a janela a valer exactamente
+para uma cadência, o acoplamento só é verdade no caso perfeito — e o caso
+perfeito é o que não acontece. A margem medida é de **10 s**.
+
+### O `catch` vazio do `strip-drag.js` — convenção quebrada, gravidade baixa
+
+O ficheiro tem **quatro** catches: três trazem um valor seguro ou uma
+explicação. O quarto — `catch (err) {}` — não tinha corpo **nem razão**, e era
+o único do ficheiro assim. Passou a dizer o que a convenção do painel exige
+(`console.error("sotto: <TOKEN> …")`, como em `history-store.js`).
+
+**Gravidade baixa, e é preciso dizê-lo:** a shell expõe `beginWindowDrag`
+(`sotto_webview.py:3978`), portanto o `native` é verdadeiro e o `tell()` — que
+é onde o catch vive — está no **caminho de fallback** que a app real não toma.
+O que o catch engoliria é o offset da strip num host sem arrasto nativo.
+
+### O que a auditoria deixou por medir (e o que eu também não medi)
+
+1. **R1 — o skew do `stream_epoch`**: por medir exige worker com dispositivo
+   de captura real, que é a linha que o dono mandou não atravessar. **Não
+   medido, não sondado.**
+2. **O modelo sherpa**: `_main/_speaker-chain-live.py` nunca correu nesta
+   sessão — a cobertura do modelo real é **ZERO**. Os números nos comentários
+   (275 MB, RTF 0,416, DER 0,03 %) são de 2026-10-18 e **não foram
+   re-medidos**.
+3. **O runtime do painel**: nada foi renderizado. O `catch` vazio era o único
+   sintoma de leitura estática; o resto continua por ver em execução.
+
+---
+
+## 7.27 PESQUISA ONLINE — O QUE O UPSTREAM DIZ, E O QUE ISSO MUDA
+
+O dono perguntou porque é que eu não pesquisava nada online. **Porque não
+pesquisei — zero vezes em 15 horas.** Corrigido hoje. O `web_search` do
+toolbox está a falhar (`MATRIX_TOOL_REQUEST_FAILED`), por isso fui pelo
+`web_fetch` às **fontes primárias**.
+
+**Fonte 1 — o exemplo oficial do sherpa-onnx (Xiaomi/k2-fsa):**
+`https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/master/python-api-examples/offline-speaker-diarization.py`
+**Fonte 2 — a documentação:** `https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/index.html`
+**Fonte 3 — o upstream do modelo do repo:** `https://github.com/DimQ1/nemotron-speech-csharp`
+
+### O que a pesquisa CONFIRMA
+
+| | upstream | Sotto | |
+|---|---|---|---|
+| modelo de segmentação | `sherpa-onnx-pyannote-segmentation-3-0` | o mesmo | ✅ |
+| modelo de embedding | 3D-Speaker `eres2net_base_16k` | o mesmo | ✅ |
+| `min_duration_on` | 0.3 | 0.3 | ✅ |
+| `min_duration_off` | 0.5 | 0.5 | ✅ |
+| ground truth | `0-four-speakers-zh.wav` | **o mesmo ficheiro** (1 819 586 B) | ✅ |
+
+O DER de 0,03 % foi medido contra a **amostra do próprio upstream**, com os
+**modelos do próprio upstream**. A config espelha a do upstream — a excepção
+`window_shift_ratio` está de fora porque o sherpa-onnx 1.13.4 (a versão
+instalada) ainda não tem o parâmetro, e isso está escrito no código.
+
+### A ÚNICA diferença — e é uma decisão do dono
+
+| | upstream | Sotto | o que significa |
+|---|---|---|---|
+| `FastClusteringConfig.threshold` | **0.5** | **0.9** | a docstring do upstream: *"a smaller cluster_threshold leads to more clusters (more speakers); a larger one leads to fewer"* |
+
+O nosso 0,9 **é o valor medido**: `der-oracle.py` tem `--threshold 0.9` por
+omissão e é com ele que o DER sai. É mais **conservador** que o upstream —
+duas vozes com timbres parecidos no mesmo microfone podem ser **juntadas**.
+Mudar é **uma flag** (`--threshold`), não uma reescrita; e depende de como o
+dono fala numa call, que é uma coisa que só ele sabe.
+
+### O que a pesquisa NÃO mudou
+
+- O `threshold` **não** é o limiar de detecção da Fase A: é o do *clustering*
+  (a distância de cosseno a partir da qual dois embeddings passam a ser
+  vozes diferentes). A detecção "há duas vozes?" é a Fase A, que tem o seu
+  próprio portão (`multivoice-oracle.py`). Está escrito no código, e agora
+  também está aqui.
+- Nenhuma conclusão do recibo muda. A pesquisa **confirma** a proveniência
+  (é o upstream, não é invenção nossa) e **marca uma decisão** que é do dono.
 
 ---
 
@@ -1867,11 +2016,12 @@ por isso re-medido, e não copiado da tabela anterior.
 
 | ficheiro | bytes | quebras | sha256[:12] |
 |---|---|---|---|
-| `worker/speaker_sidecar.py` | 66 591 | LF (1 420) | `8444c32013bb` |
+| `worker/speaker_sidecar.py` | 67 261 | LF (1 431) | `7b236ad3510e` |
 | `worker/speaker_bridge.py` | 11 242 | LF (255) | `083e572dd805` |
 | `worker/speaker_id.py` | 15 917 | LF (357) | `9a8c2c6de80d` |
 | `worker/audio_recorder.py` | 13 577 | LF (327) | `8bacaeb9baed` |
-| `app/webview/sotto_webview.py` | 669 053 | **12 795 CRLF / 0 LF** | `d45c7336fc20` |
+| `app/webview/sotto_webview.py` | 670 842 | **12 815 CRLF / 0 LF** | `4bc836c15c9d` |
+| `app/panel/strip-drag.js` | 7 318 | **173 CRLF / 0 LF** | `b93a438ed9c0` |
 | `app/webview/run.cmd` | 16 497 | **274 CRLF / 0 LF** | `0cc916c1e4b1` |
 | `AGENTS.md` | 95 769 | LF (986) | `b9cbddc56b27` |
 | `_main/multivoice-oracle.py` | 15 596 | LF (361) | `b022615619de` |
@@ -1885,7 +2035,7 @@ por isso re-medido, e não copiado da tabela anterior.
 | `_main/_cpu-load.py` | 11 582 | LF (259) | `d01bc085976a` |
 | `_main/speaker-plumbing-oracle.py` | 27 059 | LF (587) | `ad20f6cd258c` |
 | `_main/speaker-id-oracle.py` | 33 124 | LF (711) | `53e7f87101ac` |
-| `_main/speaker-sidecar-oracle.py` | 19 368 | LF (401) | `a0e5436dbfbb` |
+| `_main/speaker-sidecar-oracle.py` | 21 391 | LF (435) | `11649d7e9449` |
 | `_main/speaker-slots-oracle.py` | 10 964 | LF (251) | `bc48c5862b60` |
 | `_main/sidecar-wiring-oracle.py` | 12 215 | LF (290) | `c5ee99aae588` |
 | `_main/caption-lines-oracle.py` | 11 248 | LF (252) | `bf5c48b68919` |
@@ -1921,16 +2071,29 @@ por isso re-medido, e não copiado da tabela anterior.
 > **podre desde o handshake G3** (é de 2026-10-06, e o wrapper hoje espera pela
 > prontidão: 4–7 s medidos). Uma linha falsa no `AGENTS.md` é lida por todos os
 > agentes — por isso se corrige no mesmo sítio em que se mede.
+>
+> **E a revisão seguinte (§7.26) mudou mais QUATRO pins**, todos pelo mesmo
+> motivo — as quatro falhas engolidas com consequência, a constante que passou
+> a ser portão, e o `catch` vazio: a shell passou de 669 053 B / 12 795 CRLF
+> (`d45c7336fc20`) para **670 842 B / 12 815 CRLF** (`4bc836c15c9d`); o
+> `speaker_sidecar.py` de 66 591 B (`8444c32013bb`) para 67 261 B
+> (`7b236ad3510e`); o `speaker-sidecar-oracle.py` de 19 368 B (`a0e5436dbfbb`)
+> para **21 391 B** (`11649d7e9449`); e o `app/panel/strip-drag.js` — que
+> **não estava na tabela** — entra com 7 318 B / **173 CRLF** (`b93a438ed9c0`).
+> A shell e o `strip-drag.js` são CRLF puro e foram editados **por bytes**,
+> com um script que aborta se introduzir LF nu (§7.26).
 
 ---
 
 ## 10. Bateria depois de TODAS as edições
 
 **Re-corrida inteira em 2026-10-19, depois de D1, D1b, D2, da conversão do
-`run.cmd`, das 11 correcções de §7.21, das reescritas de §7.22 e §7.23 e da
-correcção do contrato G3 (§7.25)** — não é a bateria de ontem com uma linha
-nova. Os números abaixo são desta corrida (`I:\cc-tmp\bateria-20261019h.log`,
-14:40→14:48:54): **24 portões, 0 vermelhos.**
+`run.cmd`, das 11 correcções de §7.21, das reescritas de §7.22 e §7.23, da
+correcção do contrato G3 (§7.25) e das quatro falhas engolidas com
+consequência (§7.26)** — não é a bateria de ontem com uma linha nova. Os
+números abaixo são desta corrida (`I:\cc-tmp\bateria-20261019h.log` — ver a
+nota de rodapé sobre este ficheiro —, 15:07→15:22:37): **24 portões, 0
+vermelhos.**
 
 | portão | resultado |
 |---|---|
@@ -1981,6 +2144,12 @@ nova. Os números abaixo são desta corrida (`I:\cc-tmp\bateria-20261019h.log`,
    corrigida, a mesma app saudável dá **margem de 8767 ms e 9149 ms** entre o
    retorno do wrapper e a sua própria morte, e a app estava **viva** no
    instante do retorno. A bateria `h` (14:40) está verde.
+5. **O log `bateria-20261019h.log` foi SOBRESCRITO** pela corrida seguinte: o
+   runner tem o caminho do log fixo no script, e a corrida `i` (15:07→15:22:37,
+   a que está em cima) escreveu para o mesmo nome. O que **sobrevive** da
+   corrida `h` é o resumo por portão, em `I:\cc-tmp\bateria-h-resumo.log` (24
+   portões, rc e duração de cada um). A lição, que é de agora em diante: o
+   runner tem de receber o caminho do log como argumento.
 
 **`speaker-slots` e `speaker-sidecar` foram re-corridos hoje de propósito.** Tinham
 sido corrigidos depois da bateria anterior — o fixture de silêncio era
@@ -2052,6 +2221,21 @@ que ninguém media. Agora não há número.)*
     independentes — a app **viva** no instante do retorno, e a **margem** até à
     morte lida do carimbo do próprio log — com um **mutante e o seu controlo** a
     provar que as duas sabem dizer *não*.
+13. **A auditoria de 2026-10-19 entregou o que faltava medir** (§7.26): o censo
+    dos **157** `except` da shell, com **46** a engolir em silêncio, e o mapa
+    por função que levou a **quatro** falhas engolidas **com consequência que o
+    dono sente** — o worker que sobrevivia ao `stop()`, o Alt+C que deixava de
+    ser caminho de volta, o segundo captador, e o timer de reinício que
+    ressuscitava o bug da row #15. E a **constante morta** que prometia um
+    acoplamento sem o impor, que passou a ser um **portão com dois mutantes**.
+14. **A pesquisa online que faltava** (§7.27) e a **consolidação que faltava**:
+    `_main/RESPOSTA-AO-DONO-20261019.md` — as cinco perguntas do dono
+    respondidas com números, a linha de chegada que nunca tinha sido
+    declarada, e a **lista de restos** com a decisão de cada um (10 itens:
+    5 são do dono, 3 ficam para medir depois, 2 ficam de fora com o motivo).
+    A pesquisa ao upstream **confirma** a proveniência dos modelos e do
+    ground truth, e **marca uma diferença** — o `threshold` do clustering
+    (nosso 0,9, upstream 0,5) — que é uma flag, e uma decisão do dono.
 
 Nenhum número deste recibo ficou por actualizar sem ser re-medido — e uma
 discrepância que cheirava a erro (12 slots contra 6) era só **cadência**, com as

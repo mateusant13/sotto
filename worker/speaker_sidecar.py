@@ -65,8 +65,19 @@ DEFAULT_EMB_MODEL = os.path.join(REPO, "_main", "diar-models",
 DEFAULT_RATE = 16000
 DEFAULT_WINDOW_S = 20.0
 DEFAULT_EVERY_S = 10.0
-#: Must be >= the bridge's `DEFAULT_MAX_AGE_S` or the writer's own output would
-#: be refused as stale. Kept as a constant here so the coupling is visible.
+#: The bridge's freshness window, COPIED here so the coupling is visible: the
+#: writer's own output must not be refused as stale, which means the bridge's
+#: window has to outlive the publish cadence below.
+#:
+#: This copy used to be a PROMISE IN PROSE. Nothing read it, so changing the
+#: bridge's window left this file still asserting a relationship that no
+#: longer held -- and the audit that found it was right to call it a comment
+#: that lies. It stays a copy and not an import on purpose (the sidecar must
+#: remain loadable on its own, by path, without `worker/` on sys.path), so
+#: what keeps it honest is the GATE: `_main/speaker-sidecar-oracle.py`, "the
+#: sidecar's freshness window is the bridge's" and "the bridge's window
+#: outlives two publish cadences". Change one of the numbers and the gate
+#: goes RED.
 DEFAULT_MAX_AGE_S = 30.0
 
 
