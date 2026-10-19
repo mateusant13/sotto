@@ -1947,17 +1947,31 @@ O DER de 0,03 % foi medido contra a **amostra do próprio upstream**, com os
 `window_shift_ratio` está de fora porque o sherpa-onnx 1.13.4 (a versão
 instalada) ainda não tem o parâmetro, e isso está escrito no código.
 
-### A ÚNICA diferença — e é uma decisão do dono
+### A ÚNICA diferença — e a medição resolveu-a
 
 | | upstream | Sotto | o que significa |
 |---|---|---|---|
 | `FastClusteringConfig.threshold` | **0.5** | **0.9** | a docstring do upstream: *"a smaller cluster_threshold leads to more clusters (more speakers); a larger one leads to fewer"* |
 
-O nosso 0,9 **é o valor medido**: `der-oracle.py` tem `--threshold 0.9` por
-omissão e é com ele que o DER sai. É mais **conservador** que o upstream —
-duas vozes com timbres parecidos no mesmo microfone podem ser **juntadas**.
-Mudar é **uma flag** (`--threshold`), não uma reescrita; e depende de como o
-dono fala numa call, que é uma coisa que só ele sabe.
+**MEDIDO HJE** no ground truth de 4 vozes **do próprio upstream**
+(`_main/diar-models/0-four-speakers-zh.wav`, 56,86 s de áudio, 2 threads),
+com o instrumento `_main/_diar-run.py` (o do DER), duas corridas:
+
+| limiar | vozes encontradas | RTF | parede |
+|---|---|---|---|
+| **0,9 (nosso)** | **4** — o número certo | 0,528 | 30,0 s |
+| 0,5 (o do exemplo upstream) | **7** — sobre-partiu | 0,422 | 24,0 s |
+
+**Logo o nosso 0,9 está certo e o 0,5 do exemplo partiria a mesma gravação em
+7 vozes.** Isto deixou de ser uma decisão do dono e passou a ser um número: o
+limiar **fica 0,9**. Recipientes: `I:\cc-tmp\diar-upstream-t0.9.json` e
+`I:\cc-tmp\diar-upstream-t0.5.json`.
+
+O RTF medido agora (0,528) confirma a ordem de grandeza do 0,416 anunciado.
+E fica explicado o RTF 0,003 que o `der-oracle.py` imprime: o áudio dele é
+quase todo silêncio, e sem fala o passo caro — a extracção dos embeddings —
+quase não corre. **Não é uma contradição; é a diferença entre medir o modelo e
+medir a aritmética.**
 
 ### O que a pesquisa NÃO mudou
 
@@ -2232,7 +2246,8 @@ que ninguém media. Agora não há número.)*
     `_main/RESPOSTA-AO-DONO-20261019.md` — as cinco perguntas do dono
     respondidas com números, a linha de chegada que nunca tinha sido
     declarada, e a **lista de restos** com a decisão de cada um (10 itens:
-    5 são do dono, 3 ficam para medir depois, 2 ficam de fora com o motivo).
+    **1 resolvido por medição** — o `threshold` do clustering, §7.27 —, 5 são
+    do dono, 3 ficam para medir depois, 1 fica de fora com o motivo).
     A pesquisa ao upstream **confirma** a proveniência dos modelos e do
     ground truth, e **marca uma diferença** — o `threshold` do clustering
     (nosso 0,9, upstream 0,5) — que é uma flag, e uma decisão do dono.

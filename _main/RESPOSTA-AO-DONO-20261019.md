@@ -139,17 +139,30 @@ primárias. O que saiu, e é útil:
 Ou seja: o DER de 0,03 % foi medido contra a amostra do **próprio upstream**, com
 os **modelos do próprio upstream**. Isso é melhor do que eu achava.
 
-**DIFERENÇA (uma, e é uma decisão tua):**
+**DIFERENÇA (uma) — e o dado já a resolveu:**
 
-| | upstream | Sotto | o que significa |
+| | upstream | Sotto | |
 |---|---|---|---|
-| `FastClusteringConfig.threshold` | **0.5** | **0.9** | o upstream diz, na sua própria docstring: *"a smaller cluster_threshold leads to more clusters (more speakers); a larger one leads to fewer"*. |
+| `FastClusteringConfig.threshold` | **0.5** | **0.9** | o upstream diz: *"a smaller cluster_threshold leads to more clusters (more speakers); a larger one leads to fewer"* |
 
-O nosso 0,9 é **medido** (o `der-oracle.py` tem `--threshold 0.9` por omissão,
-e é com ele que o DER 0,03 % sai). É mais **conservador** que o upstream: em
-duas vozes com timbres parecidos no mesmo microfone, 0,9 pode **juntá-las**.
-É uma flag (`--threshold`), não uma reescrita. **É a tua chamada** — e só tua,
-porque depende de como tu falas numa call.
+**Medi no ground truth de 4 vozes do próprio upstream** (`0-four-speakers-zh.wav`,
+56,86 s de áudio, 2 threads):
+
+| limiar | vozes encontradas | RTF |
+|---|---|---|
+| **0,9 (nosso)** | **4** — o número certo | 0,528 |
+| 0,5 (o do exemplo upstream) | **7** — sobre-partiu | 0,422 |
+
+Ou seja: **o nosso 0,9 está certo e o 0,5 do exemplo partiria a mesma gravação
+em 7 vozes.** Isto deixa de ser uma decisão tua e passa a ser um número: o
+limiar fica **0,9**. (E o RTF medido agora, 0,528, confirma a ordem de grandeza
+do 0,416 que eu anunciava — o RTF 0,003 que o `der-oracle` imprime é porque o
+áudio dele é quase todo silêncio: sem fala, o passo caro — a extracção dos
+embeddings — quase não corre.)
+
+*Instrumento: `_main/_diar-run.py` (o do DER), com o wav do upstream, duas
+corridas, 25 s e 31 s de parede. Recibos em `I:\cc-tmp\diar-upstream-t0.9.json`
+e `…t0.5.json`.*
 
 ---
 
@@ -205,7 +218,7 @@ neste ramo, com portões, para não voltar a partir.
 
 | # | resto | severidade | decisão |
 |---|---|---|---|
-| 1 | o `threshold` do clustering (0,9 vs 0,5 do upstream) | **decisão tua** | 1 flag; medido nos dois lados, o 0,9 dá DER 0,03 % |
+| 1 | o `threshold` do clustering (0,9 vs 0,5 do upstream) | **RESOLVIDO por medição** | o nosso 0,9 dá **4/4 vozes** no ground truth do upstream; o 0,5 daria **7**. **Fica 0,9** |
 | 2 | os nomes das vozes | **teu** | o gravador não inventa nomes |
 | 3 | truth do DER em Discord | **teu** | "quem falava quando" |
 | 4 | política de acelerar a Fase B | **tua** | capacidade + guarda prontas |
