@@ -1,0 +1,8463 @@
+{
+  "demo": "legenda ao viva, pipeline real",
+  "source": "H:\\sotto\\_main\\pt-br-sample.wav",
+  "render": "CABLE Input (VB-Audio Virtual C",
+  "render_api": "MME",
+  "render_is_system_default": false,
+  "seconds": 152.2,
+  "worker_rc": 1,
+  "n_captions": 177,
+  "captions": [
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda",
+      "start": 2.24,
+      "end": 2.8,
+      "chunk_start": 2.24,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os",
+      "start": 2.24,
+      "end": 4.48,
+      "chunk_start": 3.92,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores",
+      "start": 2.24,
+      "end": 5.04,
+      "chunk_start": 4.48,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de",
+      "start": 2.24,
+      "end": 6.16,
+      "chunk_start": 5.6,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho",
+      "start": 2.24,
+      "end": 6.72,
+      "chunk_start": 6.16,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho alternativo",
+      "start": 2.24,
+      "end": 7.84,
+      "chunk_start": 7.28,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ],
+        [
+          7.28,
+          7.84,
+          "alternativo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho alternativo para",
+      "start": 2.24,
+      "end": 8.4,
+      "chunk_start": 7.84,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ],
+        [
+          7.28,
+          7.84,
+          "alternativo"
+        ],
+        [
+          7.84,
+          8.4,
+          "para"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho alternativo para chegar",
+      "start": 2.24,
+      "end": 8.96,
+      "chunk_start": 8.4,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ],
+        [
+          7.28,
+          7.84,
+          "alternativo"
+        ],
+        [
+          7.84,
+          8.4,
+          "para"
+        ],
+        [
+          8.4,
+          8.96,
+          "chegar"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho alternativo para chegar ao trabalho",
+      "start": 2.24,
+      "end": 9.52,
+      "chunk_start": 8.96,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ],
+        [
+          7.28,
+          7.84,
+          "alternativo"
+        ],
+        [
+          7.84,
+          8.4,
+          "para"
+        ],
+        [
+          8.4,
+          8.96,
+          "chegar"
+        ],
+        [
+          8.96,
+          9.52,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho alternativo para chegar ao trabalho rádio",
+      "start": 2.24,
+      "end": 11.76,
+      "chunk_start": 11.2,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ],
+        [
+          7.28,
+          7.84,
+          "alternativo"
+        ],
+        [
+          7.84,
+          8.4,
+          "para"
+        ],
+        [
+          8.4,
+          8.96,
+          "chegar"
+        ],
+        [
+          8.96,
+          9.52,
+          "ao trabalho"
+        ],
+        [
+          11.2,
+          11.76,
+          "rádio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou",
+      "start": 11.76,
+      "end": 12.32,
+      "chunk_start": 11.76,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda os os moradores precisam de um caminho alternativo para chegar ao trabalho rádio",
+      "start": 2.24,
+      "end": 11.76,
+      "chunk_start": 11.2,
+      "chunks": [
+        [
+          2.24,
+          2.8,
+          "segunda"
+        ],
+        [
+          3.92,
+          4.48,
+          "os"
+        ],
+        [
+          4.48,
+          5.04,
+          "os moradores"
+        ],
+        [
+          5.6,
+          6.16,
+          "precisam de"
+        ],
+        [
+          6.16,
+          6.72,
+          "um caminho"
+        ],
+        [
+          7.28,
+          7.84,
+          "alternativo"
+        ],
+        [
+          7.84,
+          8.4,
+          "para"
+        ],
+        [
+          8.4,
+          8.96,
+          "chegar"
+        ],
+        [
+          8.96,
+          9.52,
+          "ao trabalho"
+        ],
+        [
+          11.2,
+          11.76,
+          "rádio"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a",
+      "start": 11.76,
+      "end": 12.88,
+      "chunk_start": 12.32,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre",
+      "start": 11.76,
+      "end": 13.44,
+      "chunk_start": 12.88,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio",
+      "start": 11.76,
+      "end": 14.0,
+      "chunk_start": 13.44,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai",
+      "start": 11.76,
+      "end": 14.56,
+      "chunk_start": 14.0,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser inter",
+      "start": 11.76,
+      "end": 15.12,
+      "chunk_start": 14.56,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada",
+      "start": 11.76,
+      "end": 15.68,
+      "chunk_start": 15.12,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada na",
+      "start": 11.76,
+      "end": 16.24,
+      "chunk_start": 15.68,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada naxima",
+      "start": 11.76,
+      "end": 16.8,
+      "chunk_start": 16.24,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ],
+        [
+          16.24,
+          16.8,
+          "xima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada naxima segund",
+      "start": 11.76,
+      "end": 17.36,
+      "chunk_start": 16.8,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ],
+        [
+          16.24,
+          16.8,
+          "xima"
+        ],
+        [
+          16.8,
+          17.36,
+          "segund"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada naxima segunda feira",
+      "start": 11.76,
+      "end": 17.92,
+      "chunk_start": 17.36,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ],
+        [
+          16.24,
+          16.8,
+          "xima"
+        ],
+        [
+          16.8,
+          17.36,
+          "segund"
+        ],
+        [
+          17.36,
+          17.92,
+          "a feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada naxima segunda feira os",
+      "start": 11.76,
+      "end": 19.6,
+      "chunk_start": 19.04,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ],
+        [
+          16.24,
+          16.8,
+          "xima"
+        ],
+        [
+          16.8,
+          17.36,
+          "segund"
+        ],
+        [
+          17.36,
+          17.92,
+          "a feira"
+        ],
+        [
+          19.04,
+          19.6,
+          "os"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada naxima segunda feira os moradores",
+      "start": 11.76,
+      "end": 20.16,
+      "chunk_start": 19.6,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ],
+        [
+          16.24,
+          16.8,
+          "xima"
+        ],
+        [
+          16.8,
+          17.36,
+          "segund"
+        ],
+        [
+          17.36,
+          17.92,
+          "a feira"
+        ],
+        [
+          19.04,
+          19.6,
+          "os"
+        ],
+        [
+          19.6,
+          20.16,
+          "moradores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam",
+      "start": 20.16,
+      "end": 20.72,
+      "chunk_start": 20.16,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que a fonte sobre o rio vai ser interditada naxima segunda feira os moradores",
+      "start": 11.76,
+      "end": 20.16,
+      "chunk_start": 19.6,
+      "chunks": [
+        [
+          11.76,
+          12.32,
+          "anunciou"
+        ],
+        [
+          12.32,
+          12.88,
+          "que a"
+        ],
+        [
+          12.88,
+          13.44,
+          "fonte sobre"
+        ],
+        [
+          13.44,
+          14.0,
+          "o rio"
+        ],
+        [
+          14.0,
+          14.56,
+          "vai"
+        ],
+        [
+          14.56,
+          15.12,
+          "ser inter"
+        ],
+        [
+          15.12,
+          15.68,
+          "ditada"
+        ],
+        [
+          15.68,
+          16.24,
+          "na"
+        ],
+        [
+          16.24,
+          16.8,
+          "xima"
+        ],
+        [
+          16.8,
+          17.36,
+          "segund"
+        ],
+        [
+          17.36,
+          17.92,
+          "a feira"
+        ],
+        [
+          19.04,
+          19.6,
+          "os"
+        ],
+        [
+          19.6,
+          20.16,
+          "moradores"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de",
+      "start": 20.16,
+      "end": 21.28,
+      "chunk_start": 20.72,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho",
+      "start": 20.16,
+      "end": 21.84,
+      "chunk_start": 21.28,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna",
+      "start": 20.16,
+      "end": 22.4,
+      "chunk_start": 21.84,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser inter",
+      "start": 20.16,
+      "end": 30.24,
+      "chunk_start": 29.68,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada",
+      "start": 20.16,
+      "end": 30.8,
+      "chunk_start": 30.24,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax",
+      "start": 20.16,
+      "end": 31.36,
+      "chunk_start": 30.8,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax na",
+      "start": 20.16,
+      "end": 31.92,
+      "chunk_start": 31.36,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ],
+        [
+          31.36,
+          31.92,
+          "na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax na segunda",
+      "start": 20.16,
+      "end": 32.48,
+      "chunk_start": 31.92,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ],
+        [
+          31.36,
+          31.92,
+          "na"
+        ],
+        [
+          31.92,
+          32.48,
+          "segunda"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax na segunda feira",
+      "start": 20.16,
+      "end": 33.04,
+      "chunk_start": 32.48,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ],
+        [
+          31.36,
+          31.92,
+          "na"
+        ],
+        [
+          31.92,
+          32.48,
+          "segunda"
+        ],
+        [
+          32.48,
+          33.04,
+          "feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax na segunda feira os mora",
+      "start": 20.16,
+      "end": 34.72,
+      "chunk_start": 34.16,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ],
+        [
+          31.36,
+          31.92,
+          "na"
+        ],
+        [
+          31.92,
+          32.48,
+          "segunda"
+        ],
+        [
+          32.48,
+          33.04,
+          "feira"
+        ],
+        [
+          34.16,
+          34.72,
+          "os mora"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax na segunda feira os moradores",
+      "start": 20.16,
+      "end": 35.28,
+      "chunk_start": 34.72,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ],
+        [
+          31.36,
+          31.92,
+          "na"
+        ],
+        [
+          31.92,
+          32.48,
+          "segunda"
+        ],
+        [
+          32.48,
+          33.04,
+          "feira"
+        ],
+        [
+          34.16,
+          34.72,
+          "os mora"
+        ],
+        [
+          34.72,
+          35.28,
+          "dores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de",
+      "start": 35.28,
+      "end": 35.84,
+      "chunk_start": 35.28,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna ser interditada na prax na segunda feira os moradores",
+      "start": 20.16,
+      "end": 35.28,
+      "chunk_start": 34.72,
+      "chunks": [
+        [
+          20.16,
+          20.72,
+          "precisam"
+        ],
+        [
+          20.72,
+          21.28,
+          "de"
+        ],
+        [
+          21.28,
+          21.84,
+          "um caminho"
+        ],
+        [
+          21.84,
+          22.4,
+          "alterna"
+        ],
+        [
+          29.68,
+          30.24,
+          "ser inter"
+        ],
+        [
+          30.24,
+          30.8,
+          "ditada"
+        ],
+        [
+          30.8,
+          31.36,
+          "na prax"
+        ],
+        [
+          31.36,
+          31.92,
+          "na"
+        ],
+        [
+          31.92,
+          32.48,
+          "segunda"
+        ],
+        [
+          32.48,
+          33.04,
+          "feira"
+        ],
+        [
+          34.16,
+          34.72,
+          "os mora"
+        ],
+        [
+          34.72,
+          35.28,
+          "dores"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um cami",
+      "start": 35.28,
+      "end": 36.4,
+      "chunk_start": 35.84,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho",
+      "start": 35.28,
+      "end": 36.96,
+      "chunk_start": 36.4,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna",
+      "start": 35.28,
+      "end": 37.52,
+      "chunk_start": 36.96,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar",
+      "start": 35.28,
+      "end": 38.64,
+      "chunk_start": 38.08,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho",
+      "start": 35.28,
+      "end": 39.2,
+      "chunk_start": 38.64,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o",
+      "start": 35.28,
+      "end": 40.88,
+      "chunk_start": 40.32,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o rádio",
+      "start": 35.28,
+      "end": 41.44,
+      "chunk_start": 40.88,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ],
+        [
+          40.88,
+          41.44,
+          "rádio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o rádio anunciou",
+      "start": 35.28,
+      "end": 42.0,
+      "chunk_start": 41.44,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ],
+        [
+          40.88,
+          41.44,
+          "rádio"
+        ],
+        [
+          41.44,
+          42.0,
+          "anunciou"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o rádio anunciou que a",
+      "start": 35.28,
+      "end": 42.56,
+      "chunk_start": 42.0,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ],
+        [
+          40.88,
+          41.44,
+          "rádio"
+        ],
+        [
+          41.44,
+          42.0,
+          "anunciou"
+        ],
+        [
+          42.0,
+          42.56,
+          "que a"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o rádio anunciou que aponte sobre",
+      "start": 35.28,
+      "end": 43.12,
+      "chunk_start": 42.56,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ],
+        [
+          40.88,
+          41.44,
+          "rádio"
+        ],
+        [
+          41.44,
+          42.0,
+          "anunciou"
+        ],
+        [
+          42.0,
+          42.56,
+          "que a"
+        ],
+        [
+          42.56,
+          43.12,
+          "ponte sobre"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o rádio anunciou que aponte sobre o rio",
+      "start": 35.28,
+      "end": 43.68,
+      "chunk_start": 43.12,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ],
+        [
+          40.88,
+          41.44,
+          "rádio"
+        ],
+        [
+          41.44,
+          42.0,
+          "anunciou"
+        ],
+        [
+          42.0,
+          42.56,
+          "que a"
+        ],
+        [
+          42.56,
+          43.12,
+          "ponte sobre"
+        ],
+        [
+          43.12,
+          43.68,
+          "o rio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser",
+      "start": 43.68,
+      "end": 44.24,
+      "chunk_start": 43.68,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "precisam de um caminho alterna chegar ao trabalho o rádio anunciou que aponte sobre o rio",
+      "start": 35.28,
+      "end": 43.68,
+      "chunk_start": 43.12,
+      "chunks": [
+        [
+          35.28,
+          35.84,
+          "precisam de"
+        ],
+        [
+          35.84,
+          36.4,
+          "um cami"
+        ],
+        [
+          36.4,
+          36.96,
+          "nho"
+        ],
+        [
+          36.96,
+          37.52,
+          "alterna"
+        ],
+        [
+          38.08,
+          38.64,
+          "chegar"
+        ],
+        [
+          38.64,
+          39.2,
+          "ao trabalho"
+        ],
+        [
+          40.32,
+          40.88,
+          "o"
+        ],
+        [
+          40.88,
+          41.44,
+          "rádio"
+        ],
+        [
+          41.44,
+          42.0,
+          "anunciou"
+        ],
+        [
+          42.0,
+          42.56,
+          "que a"
+        ],
+        [
+          42.56,
+          43.12,
+          "ponte sobre"
+        ],
+        [
+          43.12,
+          43.68,
+          "o rio"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser inter",
+      "start": 43.68,
+      "end": 44.8,
+      "chunk_start": 44.24,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada",
+      "start": 43.68,
+      "end": 45.36,
+      "chunk_start": 44.8,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada na",
+      "start": 43.68,
+      "end": 45.92,
+      "chunk_start": 45.36,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima",
+      "start": 43.68,
+      "end": 46.48,
+      "chunk_start": 45.92,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segund",
+      "start": 43.68,
+      "end": 47.04,
+      "chunk_start": 46.48,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira",
+      "start": 43.68,
+      "end": 47.6,
+      "chunk_start": 47.04,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os",
+      "start": 43.68,
+      "end": 49.28,
+      "chunk_start": 48.72,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores",
+      "start": 43.68,
+      "end": 49.84,
+      "chunk_start": 49.28,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores precisam",
+      "start": 43.68,
+      "end": 50.4,
+      "chunk_start": 49.84,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ],
+        [
+          49.84,
+          50.4,
+          "precisam"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores precisam de um",
+      "start": 43.68,
+      "end": 50.96,
+      "chunk_start": 50.4,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ],
+        [
+          49.84,
+          50.4,
+          "precisam"
+        ],
+        [
+          50.4,
+          50.96,
+          "de um"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores precisam de um caminho",
+      "start": 43.68,
+      "end": 51.52,
+      "chunk_start": 50.96,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ],
+        [
+          49.84,
+          50.4,
+          "precisam"
+        ],
+        [
+          50.4,
+          50.96,
+          "de um"
+        ],
+        [
+          50.96,
+          51.52,
+          "caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores precisam de um caminho alterna",
+      "start": 43.68,
+      "end": 52.08,
+      "chunk_start": 51.52,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ],
+        [
+          49.84,
+          50.4,
+          "precisam"
+        ],
+        [
+          50.4,
+          50.96,
+          "de um"
+        ],
+        [
+          50.96,
+          51.52,
+          "caminho"
+        ],
+        [
+          51.52,
+          52.08,
+          "alterna"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores precisam de um caminho alternativo",
+      "start": 43.68,
+      "end": 52.64,
+      "chunk_start": 52.08,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ],
+        [
+          49.84,
+          50.4,
+          "precisam"
+        ],
+        [
+          50.4,
+          50.96,
+          "de um"
+        ],
+        [
+          50.96,
+          51.52,
+          "caminho"
+        ],
+        [
+          51.52,
+          52.08,
+          "alterna"
+        ],
+        [
+          52.08,
+          52.64,
+          "tivo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para che",
+      "start": 52.64,
+      "end": 53.2,
+      "chunk_start": 52.64,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "vai ser interditada naxima segunda feira os moradores precisam de um caminho alternativo",
+      "start": 43.68,
+      "end": 52.64,
+      "chunk_start": 52.08,
+      "chunks": [
+        [
+          43.68,
+          44.24,
+          "vai ser"
+        ],
+        [
+          44.24,
+          44.8,
+          "inter"
+        ],
+        [
+          44.8,
+          45.36,
+          "ditada"
+        ],
+        [
+          45.36,
+          45.92,
+          "na"
+        ],
+        [
+          45.92,
+          46.48,
+          "xima"
+        ],
+        [
+          46.48,
+          47.04,
+          "segund"
+        ],
+        [
+          47.04,
+          47.6,
+          "a feira"
+        ],
+        [
+          48.72,
+          49.28,
+          "os"
+        ],
+        [
+          49.28,
+          49.84,
+          "moradores"
+        ],
+        [
+          49.84,
+          50.4,
+          "precisam"
+        ],
+        [
+          50.4,
+          50.96,
+          "de um"
+        ],
+        [
+          50.96,
+          51.52,
+          "caminho"
+        ],
+        [
+          51.52,
+          52.08,
+          "alterna"
+        ],
+        [
+          52.08,
+          52.64,
+          "tivo"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao",
+      "start": 52.64,
+      "end": 53.76,
+      "chunk_start": 53.2,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho",
+      "start": 52.64,
+      "end": 54.32,
+      "chunk_start": 53.76,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio",
+      "start": 52.64,
+      "end": 56.0,
+      "chunk_start": 55.44,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou",
+      "start": 52.64,
+      "end": 56.56,
+      "chunk_start": 56.0,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que",
+      "start": 52.64,
+      "end": 57.12,
+      "chunk_start": 56.56,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte",
+      "start": 52.64,
+      "end": 57.68,
+      "chunk_start": 57.12,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o",
+      "start": 52.64,
+      "end": 58.24,
+      "chunk_start": 57.68,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o vai",
+      "start": 52.64,
+      "end": 58.8,
+      "chunk_start": 58.24,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ],
+        [
+          58.24,
+          58.8,
+          "vai"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o vai ser",
+      "start": 52.64,
+      "end": 59.36,
+      "chunk_start": 58.8,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ],
+        [
+          58.24,
+          58.8,
+          "vai"
+        ],
+        [
+          58.8,
+          59.36,
+          "ser"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o vai ser interdita",
+      "start": 52.64,
+      "end": 59.92,
+      "chunk_start": 59.36,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ],
+        [
+          58.24,
+          58.8,
+          "vai"
+        ],
+        [
+          58.8,
+          59.36,
+          "ser"
+        ],
+        [
+          59.36,
+          59.92,
+          "interdita"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o vai ser interdita na",
+      "start": 52.64,
+      "end": 60.48,
+      "chunk_start": 59.92,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ],
+        [
+          58.24,
+          58.8,
+          "vai"
+        ],
+        [
+          58.8,
+          59.36,
+          "ser"
+        ],
+        [
+          59.36,
+          59.92,
+          "interdita"
+        ],
+        [
+          59.92,
+          60.48,
+          "na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o vai ser interdita na próxima",
+      "start": 52.64,
+      "end": 61.04,
+      "chunk_start": 60.48,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ],
+        [
+          58.24,
+          58.8,
+          "vai"
+        ],
+        [
+          58.8,
+          59.36,
+          "ser"
+        ],
+        [
+          59.36,
+          59.92,
+          "interdita"
+        ],
+        [
+          59.92,
+          60.48,
+          "na"
+        ],
+        [
+          60.48,
+          61.04,
+          "próxima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira",
+      "start": 61.6,
+      "end": 62.16,
+      "chunk_start": 61.6,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "para chegar ao trabalho o rádio anunciou que a fonte sobre o vai ser interdita na próxima",
+      "start": 52.64,
+      "end": 61.04,
+      "chunk_start": 60.48,
+      "chunks": [
+        [
+          52.64,
+          53.2,
+          "para che"
+        ],
+        [
+          53.2,
+          53.76,
+          "gar ao"
+        ],
+        [
+          53.76,
+          54.32,
+          "trabalho"
+        ],
+        [
+          55.44,
+          56.0,
+          "o rádio"
+        ],
+        [
+          56.0,
+          56.56,
+          "anunciou"
+        ],
+        [
+          56.56,
+          57.12,
+          "que"
+        ],
+        [
+          57.12,
+          57.68,
+          "a fonte"
+        ],
+        [
+          57.68,
+          58.24,
+          "sobre o"
+        ],
+        [
+          58.24,
+          58.8,
+          "vai"
+        ],
+        [
+          58.8,
+          59.36,
+          "ser"
+        ],
+        [
+          59.36,
+          59.92,
+          "interdita"
+        ],
+        [
+          59.92,
+          60.48,
+          "na"
+        ],
+        [
+          60.48,
+          61.04,
+          "próxima"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores",
+      "start": 61.6,
+      "end": 64.4,
+      "chunk_start": 63.84,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam",
+      "start": 61.6,
+      "end": 65.52,
+      "chunk_start": 64.96,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um",
+      "start": 61.6,
+      "end": 66.08,
+      "chunk_start": 65.52,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho",
+      "start": 61.6,
+      "end": 66.64,
+      "chunk_start": 66.08,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho alternativo",
+      "start": 61.6,
+      "end": 67.2,
+      "chunk_start": 66.64,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ],
+        [
+          66.64,
+          67.2,
+          "alternativo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho alternativo para",
+      "start": 61.6,
+      "end": 67.76,
+      "chunk_start": 67.2,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ],
+        [
+          66.64,
+          67.2,
+          "alternativo"
+        ],
+        [
+          67.2,
+          67.76,
+          "para"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho alternativo para chegar",
+      "start": 61.6,
+      "end": 68.32,
+      "chunk_start": 67.76,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ],
+        [
+          66.64,
+          67.2,
+          "alternativo"
+        ],
+        [
+          67.2,
+          67.76,
+          "para"
+        ],
+        [
+          67.76,
+          68.32,
+          "chegar"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho alternativo para chegar ao trabalho",
+      "start": 61.6,
+      "end": 68.88,
+      "chunk_start": 68.32,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ],
+        [
+          66.64,
+          67.2,
+          "alternativo"
+        ],
+        [
+          67.2,
+          67.76,
+          "para"
+        ],
+        [
+          67.76,
+          68.32,
+          "chegar"
+        ],
+        [
+          68.32,
+          68.88,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho alternativo para chegar ao trabalho o",
+      "start": 61.6,
+      "end": 70.56,
+      "chunk_start": 70.0,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ],
+        [
+          66.64,
+          67.2,
+          "alternativo"
+        ],
+        [
+          67.2,
+          67.76,
+          "para"
+        ],
+        [
+          67.76,
+          68.32,
+          "chegar"
+        ],
+        [
+          68.32,
+          68.88,
+          "ao trabalho"
+        ],
+        [
+          70.0,
+          70.56,
+          "o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio an",
+      "start": 70.56,
+      "end": 71.12,
+      "chunk_start": 70.56,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "segunda feira os moradores precisam de um caminho alternativo para chegar ao trabalho o",
+      "start": 61.6,
+      "end": 70.56,
+      "chunk_start": 70.0,
+      "chunks": [
+        [
+          61.6,
+          62.16,
+          "segunda feira"
+        ],
+        [
+          63.84,
+          64.4,
+          "os moradores"
+        ],
+        [
+          64.96,
+          65.52,
+          "precisam"
+        ],
+        [
+          65.52,
+          66.08,
+          "de um"
+        ],
+        [
+          66.08,
+          66.64,
+          "caminho"
+        ],
+        [
+          66.64,
+          67.2,
+          "alternativo"
+        ],
+        [
+          67.2,
+          67.76,
+          "para"
+        ],
+        [
+          67.76,
+          68.32,
+          "chegar"
+        ],
+        [
+          68.32,
+          68.88,
+          "ao trabalho"
+        ],
+        [
+          70.0,
+          70.56,
+          "o"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que",
+      "start": 70.56,
+      "end": 71.68,
+      "chunk_start": 71.12,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fo",
+      "start": 70.56,
+      "end": 72.24,
+      "chunk_start": 71.68,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre",
+      "start": 70.56,
+      "end": 72.8,
+      "chunk_start": 72.24,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio",
+      "start": 70.56,
+      "end": 73.36,
+      "chunk_start": 72.8,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser",
+      "start": 70.56,
+      "end": 73.92,
+      "chunk_start": 73.36,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser di",
+      "start": 70.56,
+      "end": 74.48,
+      "chunk_start": 73.92,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na",
+      "start": 70.56,
+      "end": 75.04,
+      "chunk_start": 74.48,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na próx",
+      "start": 70.56,
+      "end": 75.6,
+      "chunk_start": 75.04,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ],
+        [
+          75.04,
+          75.6,
+          "próx"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na próxima",
+      "start": 70.56,
+      "end": 76.16,
+      "chunk_start": 75.6,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ],
+        [
+          75.04,
+          75.6,
+          "próx"
+        ],
+        [
+          75.6,
+          76.16,
+          "ima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na próxima segunda",
+      "start": 70.56,
+      "end": 76.72,
+      "chunk_start": 76.16,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ],
+        [
+          75.04,
+          75.6,
+          "próx"
+        ],
+        [
+          75.6,
+          76.16,
+          "ima"
+        ],
+        [
+          76.16,
+          76.72,
+          "segunda"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na próxima segunda feira",
+      "start": 70.56,
+      "end": 77.28,
+      "chunk_start": 76.72,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ],
+        [
+          75.04,
+          75.6,
+          "próx"
+        ],
+        [
+          75.6,
+          76.16,
+          "ima"
+        ],
+        [
+          76.16,
+          76.72,
+          "segunda"
+        ],
+        [
+          76.72,
+          77.28,
+          "feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na próxima segunda feira os",
+      "start": 70.56,
+      "end": 78.4,
+      "chunk_start": 77.84,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ],
+        [
+          75.04,
+          75.6,
+          "próx"
+        ],
+        [
+          75.6,
+          76.16,
+          "ima"
+        ],
+        [
+          76.16,
+          76.72,
+          "segunda"
+        ],
+        [
+          76.72,
+          77.28,
+          "feira"
+        ],
+        [
+          77.84,
+          78.4,
+          "os"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores",
+      "start": 78.4,
+      "end": 78.96,
+      "chunk_start": 78.4,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "rádio anunciou que a fonte sobre o rio vai ser ditada na próxima segunda feira os",
+      "start": 70.56,
+      "end": 78.4,
+      "chunk_start": 77.84,
+      "chunks": [
+        [
+          70.56,
+          71.12,
+          "rádio an"
+        ],
+        [
+          71.12,
+          71.68,
+          "unciou que"
+        ],
+        [
+          71.68,
+          72.24,
+          "a fo"
+        ],
+        [
+          72.24,
+          72.8,
+          "nte sobre"
+        ],
+        [
+          72.8,
+          73.36,
+          "o rio"
+        ],
+        [
+          73.36,
+          73.92,
+          "vai ser"
+        ],
+        [
+          73.92,
+          74.48,
+          "di"
+        ],
+        [
+          74.48,
+          75.04,
+          "tada na"
+        ],
+        [
+          75.04,
+          75.6,
+          "próx"
+        ],
+        [
+          75.6,
+          76.16,
+          "ima"
+        ],
+        [
+          76.16,
+          76.72,
+          "segunda"
+        ],
+        [
+          76.72,
+          77.28,
+          "feira"
+        ],
+        [
+          77.84,
+          78.4,
+          "os"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam",
+      "start": 78.4,
+      "end": 80.08,
+      "chunk_start": 79.52,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um",
+      "start": 78.4,
+      "end": 80.64,
+      "chunk_start": 80.08,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho",
+      "start": 78.4,
+      "end": 81.2,
+      "chunk_start": 80.64,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo",
+      "start": 78.4,
+      "end": 81.76,
+      "chunk_start": 81.2,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo para",
+      "start": 78.4,
+      "end": 82.32,
+      "chunk_start": 81.76,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ],
+        [
+          81.76,
+          82.32,
+          "para"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo para chegar",
+      "start": 78.4,
+      "end": 82.88,
+      "chunk_start": 82.32,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ],
+        [
+          81.76,
+          82.32,
+          "para"
+        ],
+        [
+          82.32,
+          82.88,
+          "chegar"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo para chegar ao trabalho",
+      "start": 78.4,
+      "end": 83.44,
+      "chunk_start": 82.88,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ],
+        [
+          81.76,
+          82.32,
+          "para"
+        ],
+        [
+          82.32,
+          82.88,
+          "chegar"
+        ],
+        [
+          82.88,
+          83.44,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo para chegar ao trabalho o rádio",
+      "start": 78.4,
+      "end": 85.12,
+      "chunk_start": 84.56,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ],
+        [
+          81.76,
+          82.32,
+          "para"
+        ],
+        [
+          82.32,
+          82.88,
+          "chegar"
+        ],
+        [
+          82.88,
+          83.44,
+          "ao trabalho"
+        ],
+        [
+          84.56,
+          85.12,
+          "o rádio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo para chegar ao trabalho o rádio anunci",
+      "start": 78.4,
+      "end": 85.68,
+      "chunk_start": 85.12,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ],
+        [
+          81.76,
+          82.32,
+          "para"
+        ],
+        [
+          82.32,
+          82.88,
+          "chegar"
+        ],
+        [
+          82.88,
+          83.44,
+          "ao trabalho"
+        ],
+        [
+          84.56,
+          85.12,
+          "o rádio"
+        ],
+        [
+          85.12,
+          85.68,
+          "anunci"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que",
+      "start": 85.68,
+      "end": 86.24,
+      "chunk_start": 85.68,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "os moradores precisam de um caminho alternativo para chegar ao trabalho o rádio anunci",
+      "start": 78.4,
+      "end": 85.68,
+      "chunk_start": 85.12,
+      "chunks": [
+        [
+          78.4,
+          78.96,
+          "os moradores"
+        ],
+        [
+          79.52,
+          80.08,
+          "precisam"
+        ],
+        [
+          80.08,
+          80.64,
+          "de um"
+        ],
+        [
+          80.64,
+          81.2,
+          "caminho"
+        ],
+        [
+          81.2,
+          81.76,
+          "alternativo"
+        ],
+        [
+          81.76,
+          82.32,
+          "para"
+        ],
+        [
+          82.32,
+          82.88,
+          "chegar"
+        ],
+        [
+          82.88,
+          83.44,
+          "ao trabalho"
+        ],
+        [
+          84.56,
+          85.12,
+          "o rádio"
+        ],
+        [
+          85.12,
+          85.68,
+          "anunci"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte",
+      "start": 85.68,
+      "end": 86.8,
+      "chunk_start": 86.24,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o",
+      "start": 85.68,
+      "end": 87.36,
+      "chunk_start": 86.8,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai",
+      "start": 85.68,
+      "end": 87.92,
+      "chunk_start": 87.36,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser inter",
+      "start": 85.68,
+      "end": 88.48,
+      "chunk_start": 87.92,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada",
+      "start": 85.68,
+      "end": 89.04,
+      "chunk_start": 88.48,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada na",
+      "start": 85.68,
+      "end": 89.6,
+      "chunk_start": 89.04,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima",
+      "start": 85.68,
+      "end": 90.16,
+      "chunk_start": 89.6,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima seg",
+      "start": 85.68,
+      "end": 90.72,
+      "chunk_start": 90.16,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima segunda feira",
+      "start": 85.68,
+      "end": 91.28,
+      "chunk_start": 90.72,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ],
+        [
+          90.72,
+          91.28,
+          "unda feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima segunda feira os mora",
+      "start": 85.68,
+      "end": 92.96,
+      "chunk_start": 92.4,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ],
+        [
+          90.72,
+          91.28,
+          "unda feira"
+        ],
+        [
+          92.4,
+          92.96,
+          "os mora"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima segunda feira os moradores",
+      "start": 85.68,
+      "end": 93.52,
+      "chunk_start": 92.96,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ],
+        [
+          90.72,
+          91.28,
+          "unda feira"
+        ],
+        [
+          92.4,
+          92.96,
+          "os mora"
+        ],
+        [
+          92.96,
+          93.52,
+          "dores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima segunda feira os moradores preci",
+      "start": 85.68,
+      "end": 94.08,
+      "chunk_start": 93.52,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ],
+        [
+          90.72,
+          91.28,
+          "unda feira"
+        ],
+        [
+          92.4,
+          92.96,
+          "os mora"
+        ],
+        [
+          92.96,
+          93.52,
+          "dores"
+        ],
+        [
+          93.52,
+          94.08,
+          "preci"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima segunda feira os moradores precim de",
+      "start": 85.68,
+      "end": 94.64,
+      "chunk_start": 94.08,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ],
+        [
+          90.72,
+          91.28,
+          "unda feira"
+        ],
+        [
+          92.4,
+          92.96,
+          "os mora"
+        ],
+        [
+          92.96,
+          93.52,
+          "dores"
+        ],
+        [
+          93.52,
+          94.08,
+          "preci"
+        ],
+        [
+          94.08,
+          94.64,
+          "m de"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho",
+      "start": 94.64,
+      "end": 95.2,
+      "chunk_start": 94.64,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ou que a ponte sobre o vai ser interditada naxima segunda feira os moradores precim de",
+      "start": 85.68,
+      "end": 94.64,
+      "chunk_start": 94.08,
+      "chunks": [
+        [
+          85.68,
+          86.24,
+          "ou que"
+        ],
+        [
+          86.24,
+          86.8,
+          "a ponte"
+        ],
+        [
+          86.8,
+          87.36,
+          "sobre o"
+        ],
+        [
+          87.36,
+          87.92,
+          "vai"
+        ],
+        [
+          87.92,
+          88.48,
+          "ser inter"
+        ],
+        [
+          88.48,
+          89.04,
+          "ditada"
+        ],
+        [
+          89.04,
+          89.6,
+          "na"
+        ],
+        [
+          89.6,
+          90.16,
+          "xima"
+        ],
+        [
+          90.16,
+          90.72,
+          "seg"
+        ],
+        [
+          90.72,
+          91.28,
+          "unda feira"
+        ],
+        [
+          92.4,
+          92.96,
+          "os mora"
+        ],
+        [
+          92.96,
+          93.52,
+          "dores"
+        ],
+        [
+          93.52,
+          94.08,
+          "preci"
+        ],
+        [
+          94.08,
+          94.64,
+          "m de"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alt",
+      "start": 94.64,
+      "end": 95.76,
+      "chunk_start": 95.2,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo",
+      "start": 94.64,
+      "end": 96.32,
+      "chunk_start": 95.76,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para",
+      "start": 94.64,
+      "end": 96.88,
+      "chunk_start": 96.32,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar",
+      "start": 94.64,
+      "end": 97.44,
+      "chunk_start": 96.88,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho",
+      "start": 94.64,
+      "end": 98.0,
+      "chunk_start": 97.44,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o",
+      "start": 94.64,
+      "end": 99.68,
+      "chunk_start": 99.12,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio an",
+      "start": 94.64,
+      "end": 100.24,
+      "chunk_start": 99.68,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio anunciou que",
+      "start": 94.64,
+      "end": 100.8,
+      "chunk_start": 100.24,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ],
+        [
+          100.24,
+          100.8,
+          "unciou que"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio anunciou que a",
+      "start": 94.64,
+      "end": 101.36,
+      "chunk_start": 100.8,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ],
+        [
+          100.24,
+          100.8,
+          "unciou que"
+        ],
+        [
+          100.8,
+          101.36,
+          "a"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio anunciou que a fonte sobre",
+      "start": 94.64,
+      "end": 101.92,
+      "chunk_start": 101.36,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ],
+        [
+          100.24,
+          100.8,
+          "unciou que"
+        ],
+        [
+          100.8,
+          101.36,
+          "a"
+        ],
+        [
+          101.36,
+          101.92,
+          "fonte sobre"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio anunciou que a fonte sobre o",
+      "start": 94.64,
+      "end": 102.48,
+      "chunk_start": 101.92,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ],
+        [
+          100.24,
+          100.8,
+          "unciou que"
+        ],
+        [
+          100.8,
+          101.36,
+          "a"
+        ],
+        [
+          101.36,
+          101.92,
+          "fonte sobre"
+        ],
+        [
+          101.92,
+          102.48,
+          "o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio anunciou que a fonte sobre o vai",
+      "start": 94.64,
+      "end": 103.04,
+      "chunk_start": 102.48,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ],
+        [
+          100.24,
+          100.8,
+          "unciou que"
+        ],
+        [
+          100.8,
+          101.36,
+          "a"
+        ],
+        [
+          101.36,
+          101.92,
+          "fonte sobre"
+        ],
+        [
+          101.92,
+          102.48,
+          "o"
+        ],
+        [
+          102.48,
+          103.04,
+          "vai"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser inter",
+      "start": 103.04,
+      "end": 103.6,
+      "chunk_start": 103.04,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "um caminho alternativo para chegar ao trabalho o rádio anunciou que a fonte sobre o vai",
+      "start": 94.64,
+      "end": 103.04,
+      "chunk_start": 102.48,
+      "chunks": [
+        [
+          94.64,
+          95.2,
+          "um caminho"
+        ],
+        [
+          95.2,
+          95.76,
+          "alt"
+        ],
+        [
+          95.76,
+          96.32,
+          "ernativo"
+        ],
+        [
+          96.32,
+          96.88,
+          "para"
+        ],
+        [
+          96.88,
+          97.44,
+          "chegar"
+        ],
+        [
+          97.44,
+          98.0,
+          "ao trabalho"
+        ],
+        [
+          99.12,
+          99.68,
+          "o"
+        ],
+        [
+          99.68,
+          100.24,
+          "rádio an"
+        ],
+        [
+          100.24,
+          100.8,
+          "unciou que"
+        ],
+        [
+          100.8,
+          101.36,
+          "a"
+        ],
+        [
+          101.36,
+          101.92,
+          "fonte sobre"
+        ],
+        [
+          101.92,
+          102.48,
+          "o"
+        ],
+        [
+          102.48,
+          103.04,
+          "vai"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada na",
+      "start": 103.04,
+      "end": 104.16,
+      "chunk_start": 103.6,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima",
+      "start": 103.04,
+      "end": 105.28,
+      "chunk_start": 104.72,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda",
+      "start": 103.04,
+      "end": 105.84,
+      "chunk_start": 105.28,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira",
+      "start": 103.04,
+      "end": 106.4,
+      "chunk_start": 105.84,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os mora",
+      "start": 103.04,
+      "end": 108.08,
+      "chunk_start": 107.52,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os moradores",
+      "start": 103.04,
+      "end": 108.64,
+      "chunk_start": 108.08,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ],
+        [
+          108.08,
+          108.64,
+          "dores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os moradores precisam",
+      "start": 103.04,
+      "end": 109.2,
+      "chunk_start": 108.64,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ],
+        [
+          108.08,
+          108.64,
+          "dores"
+        ],
+        [
+          108.64,
+          109.2,
+          "precisam"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os moradores precisam de um ca",
+      "start": 103.04,
+      "end": 109.76,
+      "chunk_start": 109.2,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ],
+        [
+          108.08,
+          108.64,
+          "dores"
+        ],
+        [
+          108.64,
+          109.2,
+          "precisam"
+        ],
+        [
+          109.2,
+          109.76,
+          "de um ca"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os moradores precisam de um ca ao trabalho",
+      "start": 103.04,
+      "end": 113.12,
+      "chunk_start": 112.56,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ],
+        [
+          108.08,
+          108.64,
+          "dores"
+        ],
+        [
+          108.64,
+          109.2,
+          "precisam"
+        ],
+        [
+          109.2,
+          109.76,
+          "de um ca"
+        ],
+        [
+          112.56,
+          113.12,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os moradores precisam de um ca ao trabalho o rádio",
+      "start": 103.04,
+      "end": 114.8,
+      "chunk_start": 114.24,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ],
+        [
+          108.08,
+          108.64,
+          "dores"
+        ],
+        [
+          108.64,
+          109.2,
+          "precisam"
+        ],
+        [
+          109.2,
+          109.76,
+          "de um ca"
+        ],
+        [
+          112.56,
+          113.12,
+          "ao trabalho"
+        ],
+        [
+          114.24,
+          114.8,
+          "o rádio"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou",
+      "start": 114.8,
+      "end": 115.36,
+      "chunk_start": 114.8,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ser interditada naxima segunda-feira os moradores precisam de um ca ao trabalho o rádio",
+      "start": 103.04,
+      "end": 114.8,
+      "chunk_start": 114.24,
+      "chunks": [
+        [
+          103.04,
+          103.6,
+          "ser inter"
+        ],
+        [
+          103.6,
+          104.16,
+          "ditada na"
+        ],
+        [
+          104.72,
+          105.28,
+          "xima"
+        ],
+        [
+          105.28,
+          105.84,
+          "segunda"
+        ],
+        [
+          105.84,
+          106.4,
+          "-feira"
+        ],
+        [
+          107.52,
+          108.08,
+          "os mora"
+        ],
+        [
+          108.08,
+          108.64,
+          "dores"
+        ],
+        [
+          108.64,
+          109.2,
+          "precisam"
+        ],
+        [
+          109.2,
+          109.76,
+          "de um ca"
+        ],
+        [
+          112.56,
+          113.12,
+          "ao trabalho"
+        ],
+        [
+          114.24,
+          114.8,
+          "o rádio"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que",
+      "start": 114.8,
+      "end": 115.92,
+      "chunk_start": 115.36,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o",
+      "start": 114.8,
+      "end": 117.04,
+      "chunk_start": 116.48,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai",
+      "start": 114.8,
+      "end": 117.6,
+      "chunk_start": 117.04,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser",
+      "start": 114.8,
+      "end": 118.16,
+      "chunk_start": 117.6,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita",
+      "start": 114.8,
+      "end": 118.72,
+      "chunk_start": 118.16,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita na",
+      "start": 114.8,
+      "end": 119.28,
+      "chunk_start": 118.72,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima",
+      "start": 114.8,
+      "end": 119.84,
+      "chunk_start": 119.28,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima seg",
+      "start": 114.8,
+      "end": 120.4,
+      "chunk_start": 119.84,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira",
+      "start": 114.8,
+      "end": 120.96,
+      "chunk_start": 120.4,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira os moradores",
+      "start": 114.8,
+      "end": 122.64,
+      "chunk_start": 122.08,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ],
+        [
+          122.08,
+          122.64,
+          "os moradores"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira os moradores preci",
+      "start": 114.8,
+      "end": 123.2,
+      "chunk_start": 122.64,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ],
+        [
+          122.08,
+          122.64,
+          "os moradores"
+        ],
+        [
+          122.64,
+          123.2,
+          "preci"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira os moradores precim de",
+      "start": 114.8,
+      "end": 123.76,
+      "chunk_start": 123.2,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ],
+        [
+          122.08,
+          122.64,
+          "os moradores"
+        ],
+        [
+          122.64,
+          123.2,
+          "preci"
+        ],
+        [
+          123.2,
+          123.76,
+          "m de"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira os moradores precim de um caminho",
+      "start": 114.8,
+      "end": 124.32,
+      "chunk_start": 123.76,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ],
+        [
+          122.08,
+          122.64,
+          "os moradores"
+        ],
+        [
+          122.64,
+          123.2,
+          "preci"
+        ],
+        [
+          123.2,
+          123.76,
+          "m de"
+        ],
+        [
+          123.76,
+          124.32,
+          "um caminho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira os moradores precim de um caminho alt",
+      "start": 114.8,
+      "end": 124.88,
+      "chunk_start": 124.32,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ],
+        [
+          122.08,
+          122.64,
+          "os moradores"
+        ],
+        [
+          122.64,
+          123.2,
+          "preci"
+        ],
+        [
+          123.2,
+          123.76,
+          "m de"
+        ],
+        [
+          123.76,
+          124.32,
+          "um caminho"
+        ],
+        [
+          124.32,
+          124.88,
+          "alt"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ernativo",
+      "start": 124.88,
+      "end": 125.44,
+      "chunk_start": 124.88,
+      "chunks": [
+        [
+          124.88,
+          125.44,
+          "ernativo"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "anunciou que o vai ser dita naxima sega feira os moradores precim de um caminho alt",
+      "start": 114.8,
+      "end": 124.88,
+      "chunk_start": 124.32,
+      "chunks": [
+        [
+          114.8,
+          115.36,
+          "anunciou"
+        ],
+        [
+          115.36,
+          115.92,
+          "que"
+        ],
+        [
+          116.48,
+          117.04,
+          "o"
+        ],
+        [
+          117.04,
+          117.6,
+          "vai"
+        ],
+        [
+          117.6,
+          118.16,
+          "ser"
+        ],
+        [
+          118.16,
+          118.72,
+          "dita"
+        ],
+        [
+          118.72,
+          119.28,
+          "na"
+        ],
+        [
+          119.28,
+          119.84,
+          "xima"
+        ],
+        [
+          119.84,
+          120.4,
+          "seg"
+        ],
+        [
+          120.4,
+          120.96,
+          "a feira"
+        ],
+        [
+          122.08,
+          122.64,
+          "os moradores"
+        ],
+        [
+          122.64,
+          123.2,
+          "preci"
+        ],
+        [
+          123.2,
+          123.76,
+          "m de"
+        ],
+        [
+          123.76,
+          124.32,
+          "um caminho"
+        ],
+        [
+          124.32,
+          124.88,
+          "alt"
+        ]
+      ],
+      "final": true,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ernativo para",
+      "start": 124.88,
+      "end": 126.0,
+      "chunk_start": 125.44,
+      "chunks": [
+        [
+          124.88,
+          125.44,
+          "ernativo"
+        ],
+        [
+          125.44,
+          126.0,
+          "para"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ernativo para chegar",
+      "start": 124.88,
+      "end": 126.56,
+      "chunk_start": 126.0,
+      "chunks": [
+        [
+          124.88,
+          125.44,
+          "ernativo"
+        ],
+        [
+          125.44,
+          126.0,
+          "para"
+        ],
+        [
+          126.0,
+          126.56,
+          "chegar"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    },
+    {
+      "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+      "type": "caption",
+      "text": "ernativo para chegar ao trabalho",
+      "start": 124.88,
+      "end": 127.12,
+      "chunk_start": 126.56,
+      "chunks": [
+        [
+          124.88,
+          125.44,
+          "ernativo"
+        ],
+        [
+          125.44,
+          126.0,
+          "para"
+        ],
+        [
+          126.0,
+          126.56,
+          "chegar"
+        ],
+        [
+          126.56,
+          127.12,
+          "ao trabalho"
+        ]
+      ],
+      "final": false,
+      "source": "device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable)"
+    }
+  ],
+  "statuses": [
+    {
+      "type": "meter",
+      "peak": 0.0141,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.0102,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.031,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.0311,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.1143,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.2419,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.1257,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.3452,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.3788,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.5045,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.6409,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.2383,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.3302,
+      "blocks": 1
+    },
+    {
+      "type": "meter",
+      "peak": 0.2975,
+      "blocks": 1
+    }
+  ]
+}
