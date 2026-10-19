@@ -319,6 +319,22 @@ TAP_SILENT_BLOCKS = 20
 TAP_STALL_S = 8.0
 TAP_STALL_MAX_S = 60.0
 TAP_STALL_SAME_DEVICE_TRIES = 2
+# -- THE ROTATION CEILING (2026-10-18, owner: "o pc ficou lento") ---------------
+# The backoff below caps the RATE at one rotation every 8 s. A rate cap is not a
+# stop, and on this box the ladder never stopped: MEASURED in the owner's own
+# log between 01:18 and 01:28 while he pressed the caption button once --
+# 2 188 `reason=flat` rotations, a 1 245 MB model resident the whole time, and
+# `WORKER_AUTOSTART=started reason=panel-open` twice because the shell restarts
+# a worker that exits, which reset the backoff to 1 s and began it again. Each
+# rotation is an IAudioClient::Initialize on a NEW endpoint, so a machine with
+# nothing routed into any candidate reconfigured the audio stack every few
+# seconds, forever. That is his "os clicks nao iam" and his dropped headset
+# audio, and it is why the run below must stop rather than slow down.
+#
+# DELIBERATELY CONDITIONAL: it fires only on a run that has produced NOTHING --
+# no caption, and no run_peak above the floor. A run that is transcribing
+# rotates for as long as it needs to, because that rotation is the product.
+MAX_ROTATIONS_WITHOUT_SIGNAL = 8
 # -- AN IDLE ENDPOINT IS NOT A STALL (added 2026-10-12, owner freeze) ----
 # MEASURED live on the owner box (pid 39388, instrument
 # _main/rotation-burst-monitor.py, a 200 s window): the default render
@@ -3044,7 +3060,39 @@ class LineFormer:
         # STEP 3: the identity of the tap this former's events come from.
         # NOT reset by `reset()` -- it belongs to the STREAM, not the line.
         self.source = source or None
+        # WHO IS SPEAKING. `None` means "not asked for", and that is the
+        # shipped default: with no provider `_event` adds no key and touches no
+        # field, so the event is byte-identical to the day before this existed.
+        # A provider is a zero-argument callable returning the current payload
+        # (or None); it is called once per caption event and must be cheap.
+        self.speaker_provider = None
+        # WHERE THIS STREAM'S ZERO IS, on the wall clock. `None` means "nobody
+        # said", and then no offset is applied and nothing is attributed across
+        # processes. Set by the live arm when `--speakers` is on, because the
+        # sidecar is a SEPARATE PROCESS and its zero is unrelated to ours --
+        # `sotto_worker.py:5736` stamps `start` as `(idx - 1) * chunk / SR`,
+        # which is seconds since THIS capture began, not since the epoch.
+        self.stream_epoch = None
+        # WHO OWNS THE CURRENT LINE, decided ONCE. See `_attribute`: a line's
+        # window grows with its text, and re-deciding on every emission gave one
+        # sentence two `source`s, which the panel renders as two rows with the
+        # words duplicated. These three are the memory of that decision and are
+        # cleared by `reset()`, which is where a line ends.
+        self._speaker_decided = False
+        self._speaker = None
+        self._speaker_source = None
         self.reset()
+
+    def set_speaker_provider(self, provider):
+        """Point this former at whoever knows who is speaking.
+
+        Separate from `set_source` on purpose: the source is the DEVICE and
+        changes when the tap ladder moves; the provider is a CAPABILITY and
+        changes when the owner passes `--speakers`. Keeping them apart means
+        neither can silently reset the other.
+        """
+        self.speaker_provider = provider
+        return self
 
     def reset(self):
         # `_words` holds `(text, continues)` PAIRS, not bare strings: `continues`
@@ -3073,6 +3121,13 @@ class LineFormer:
         # renderer has always consumed; the line the TRANSCRIPT accepts is the
         # one collected here, and it is the only thing that ever claims `final`.
         self._closed = []
+        # A line belongs to whoever was talking when it OPENED, and that is
+        # decided once. Cleared here, with the rest of the line, so the next
+        # sentence starts with a clean memory -- and so two consecutive lines
+        # from two different people are attributed to two different people.
+        self._speaker_decided = False
+        self._speaker = None
+        self._speaker_source = None
 
     @property
     def open_start(self):
@@ -3100,7 +3155,7 @@ class LineFormer:
         return len(text.strip()) >= self.min_chars
 
     def _event(self, text, final=False, closed=False):
-        return {
+        event = {
             "type": "caption",
             "text": text,
             # `start` is the START OF THE LINE, never the newest chunk's start.
@@ -3144,6 +3199,126 @@ class LineFormer:
             # `route`/`start`/`routeSource` keep their exact meanings.
             **({"source": self.source} if self.source is not None else {}),
         }
+        return self._attribute(event)
+
+    def _attribute(self, event):
+        """Stamp WHO SPOKE on one caption event. Returns it unchanged if not asked.
+
+        THE ONE PLACE. Every caption the owner sees -- partial, final and the
+        out-of-band close -- is built by `_event`, so this is the choke point
+        and there is no second path to keep in step.
+
+        WHAT IT CHANGES, and the reason it is safe to leave off by default:
+        with no provider the event is returned untouched, key for key. With a
+        provider and a FRESH payload, the line's `source` becomes the voice's
+        own key (`device:<name>/voice:speaker-2`) and a `speaker` field rides
+        along. `panel.js` already keys its provisional rows, its engines and its
+        paint cache by `source` (`rowIdentity` :386, `engineFor` :743), so one
+        `source` per voice is what gives each person their own forming line
+        WITHOUT ANY PANEL CHANGE.
+
+        A line nobody owns keeps the DEVICE's `source` and gets
+        `speaker: None`. That is the honest answer -- silence is not a speaker,
+        and dropping the device on an unattributed line would be a worse lie
+        than no name at all.
+
+        WHO OWNS THE LINE IS DECIDED ONCE, and this is not a style choice.
+
+        A line is emitted repeatedly as it grows, and each emission has a
+        LARGER window: the same sentence that sat entirely inside one voice's
+        segment at the first chunk can straddle two by the time it closes.
+        MEASURED, with a line that starts at 0,0-0,6 s in speaker-1's territory
+        and grows into 0,7-4,0 s of speaker-2's:
+
+            "e eu"                                        -> speaker-1
+            "e eu quero que o alt c"                      -> speaker-2
+            "e eu quero que o alt c mostre as transcricoes" -> speaker-2
+
+        Two different `source`s for ONE line. The panel keys its provisional
+        row AND its engine by that string (`rowIdentity` :386, `engineFor`
+        :743), so the second emission does not move the words -- it starts a
+        SECOND row that also receives the whole accumulated line. The owner
+        would see half a sentence twice, in two places, attributed to two
+        different people, and nothing would say why.
+
+        So the decision is taken on the FIRST emission that has a payload AND finds
+        an owner, and then held for the life of the line. "Whoever was talking
+        when it started" is a defensible rule; a badge that changes its mind
+        mid sentence is not a rule at all.
+
+        THE LOCK IS ON A POSITIVE DECISION. A line's first chunk is often too
+        short to belong to anybody -- MEASURED: a first partial spanning
+        0,0-0,4 s overlaps a segment that starts at 0,317 s by 0,08 s, far
+        under the 0,30 s floor. Locking that in would mark the line `None` for
+        ever, and since most lines start too short to be conclusive, most lines
+        would never be attributed at all. `None` therefore means "nobody YET":
+        the line keeps asking as it grows and locks the first time somebody
+        owns it. The flicker this exists to prevent -- a NAMED line changing
+        owner -- is still prevented, because that needs a positive decision to
+        be overturned.
+
+        A line that never finds an owner ends as `None` and keeps the device's
+        `source`, which is true, and is a better failure than moving words
+        between rows.
+
+        FAILURE IS FAIL-SAFE, IN BOTH DIRECTIONS. If attribution raises, the
+        owner gets the caption he would have got without it -- a transcription
+        that dies because a neighbouring process was halfway through writing a
+        file would be a far worse outcome than a caption with no name.
+        """
+        provider = self.speaker_provider
+        if provider is None or event.get("source") is None:
+            return event
+        if self._speaker_decided:
+            if self._speaker is None:
+                event["speaker"] = None
+            else:
+                event["speaker"] = self._speaker
+                event["source"] = self._speaker_source or event["source"]
+            return event
+        try:
+            import speaker_bridge                                       # noqa: PLC0415
+            payload = provider()
+            # NOTHING TO SAY, NOTHING TO CHANGE. A flag that is on but has no
+            # fresh payload must not add `speaker: None` to every caption: the
+            # events would no longer be byte-identical to the day before the
+            # flag existed, and the panel does not read that key anyway. The
+            # promise in `--speakers`' own help text has to be true -- and
+            # NOTE that this returns WITHOUT deciding, so the line still gets
+            # its chance on the next emission, when a payload may exist.
+            if payload is None:
+                return event
+            lines = speaker_bridge.apply_to_lines(
+                [event], base_source=event["source"], payload=payload,
+                epoch=self.stream_epoch)
+            if not lines:
+                return event
+            got = lines[0]
+            speaker = got.get("speaker")
+            # THE LOCK IS ON A POSITIVE DECISION ONLY, and that distinction is
+            # the whole subtlety. A first chunk is often too short to belong to
+            # anybody -- MEASURED: the first partial of a line spanning
+            # 0,0-0,4 s overlaps a segment starting at 0,317 s by 0,08 s, well
+            # under the 0,30 s floor. Locking THAT in would mark the line
+            # `None` for ever, and most lines start too short to be conclusive,
+            # so most lines would never be attributed at all.
+            #
+            # `None` therefore means "nobody yet", not "nobody ever": the line
+            # keeps asking as it grows, and locks the moment somebody owns it.
+            # The flicker this prevents -- a named line CHANGING owner -- is
+            # still prevented, because that can only happen after a positive
+            # decision exists to be overturned.
+            if speaker is None:
+                event["speaker"] = None
+                return event
+            self._speaker_decided = True
+            self._speaker = speaker
+            self._speaker_source = got.get("source")
+            event["speaker"] = speaker
+            event["source"] = got.get("source") or event["source"]
+        except Exception:                                             # noqa: BLE001
+            return event
+        return event
 
     def _close(self):
         text = self.line()
@@ -3367,7 +3542,37 @@ REDUX_LIVE_DEFAULT = False
 #: the engine it would open is not on disk.
 REDUX_LIVE_TERNARY_RELPATH = os.path.join("models", "parakeet-redux-ternary")
 REDUX_LIVE_ONNX_RELPATH = os.path.join("models", "parakeet-redux-onnx-int4")
-REDUX_LIVE_CHECKPOINT_FILES = ("config.json", "model.safetensors", "ternary.json")
+#: WHAT EACH ENGINE'S CHECKPOINT ACTUALLY IS. The one list, applied to both
+#: directories, was WRONG, and it is the reason the owner's captions were always
+#: the Nemotron's. MEASURED 2026-10-18 in the owner's own tree:
+#:
+#:     worker/models/parakeet-redux-onnx-int4/   config.json
+#:                                           encoder-model.onnx
+#:                                           decoder_joint-model.onnx
+#:                                           preprocessor.onnx
+#:                                           vad-model.onnx
+#:                                           vocab.txt   transcribe.py
+#:
+#: An ONNX export has no `model.safetensors` and no `ternary.json` -- it never
+#: will, that is what an ONNX export IS. So `redux_live_missing()` reported the
+#: ONNX directory as incomplete even with every one of its real files present,
+#: `--redux-live` was REFUSED, and the flag's own help describes what happens
+#: next: *"Refused, and the run keeps streaming untouched, if the engine's
+#: checkpoint is not on disk."* The owner had the accurate model sitting on his
+#: disk and was told no.
+#:
+#: ONNX IS THE MEASURED DEFAULT (`REDUX_LIVE_ENGINE_DEFAULT`), and its comment
+#: below already says ONNX is 615 MB / 8.33x RTF against the ternary's 3856 MB
+#: for byte-identical text. The gate was therefore refusing the cheap engine
+#: while asking for the expensive one's files.
+REDUX_LIVE_ONNX_CHECKPOINTS = (
+    "config.json", "encoder-model.onnx", "decoder_joint-model.onnx",
+    "preprocessor.onnx", "vad-model.onnx", "vocab.txt",
+)
+REDUX_LIVE_TERNARY_CHECKPOINTS = ("config.json", "model.safetensors", "ternary.json")
+#: Kept as a NAME for anything that imported the old constant. It is no longer
+#: used to gate anything -- the two lists above are.
+REDUX_LIVE_CHECKPOINT_FILES = REDUX_LIVE_TERNARY_CHECKPOINTS
 #: ONNX is the measured default: 615 MB peak, 8.33x RTF on a 15 s clip, versus
 #: the ternary's 3856 MB and 2.2x the latency for byte-identical text (the packed
 #: int8 CPU kernel is absent from the published kestrel wheel).
@@ -3435,10 +3640,17 @@ def redux_live_settings(args, cfg, env=None):
     return opt_in, why, engine, keep_s, min_audio_s, deadline_s, threads
 
 def redux_live_missing(onnx_dir, ternary_dir):
-    """The manifests NOT on disk under each dir; ([], []) when both can load."""
-    return ([name for name in REDUX_LIVE_CHECKPOINT_FILES
+    """The manifests NOT on disk under each dir; ([], []) when both can load.
+
+    PER-ENGINE, since 2026-10-18. It used to test `REDUX_LIVE_CHECKPOINT_FILES`
+    (the TERNARY's list) against BOTH directories, so the ONNX export -- which
+    has no safetensors and never will -- was reported incomplete with every real
+    file present, and `--redux-live` was refused on a fully-downloaded engine.
+    See the two lists above for the measurement.
+    """
+    return ([name for name in REDUX_LIVE_ONNX_CHECKPOINTS
              if not os.path.isfile(os.path.join(onnx_dir, name))],
-            [name for name in REDUX_LIVE_CHECKPOINT_FILES
+            [name for name in REDUX_LIVE_TERNARY_CHECKPOINTS
              if not os.path.isfile(os.path.join(ternary_dir, name))])
 
 
@@ -4552,6 +4764,19 @@ def main():
         help=f"threads the ONNX session gets (0 = built-in default "
         f"{REDUX_LIVE_THREADS})",
     )
+    # ── WHO IS SPEAKING ────────────────────────────────────────────────────
+    # OFF by default, and INERT when off. This flag does not start a model and
+    # does not open an audio device: it only lets the caption path READ a
+    # diarization payload that `worker/speaker_sidecar.py` already wrote
+    # (see `worker/speaker_bridge.py`). No payload, or a stale one, and the
+    # events are byte-identical to the day before this flag existed -- which is
+    # pinned by `_main/speaker-plumbing-oracle.py`.
+    ap.add_argument(
+        "--speakers",
+        action="store_true",
+        help="name who spoke on each caption line, from a diarization payload "
+             "another process publishes (worker/speaker_sidecar.py)",
+    )
     args = ap.parse_args()
 
     # -- the panel WAVE: resolve the meter rate BEFORE the audio path ---------
@@ -5196,6 +5421,22 @@ def main():
         # The chunk stream is joined into LINES here, so the panel receives a
         # phrase that grows instead of one decoded chunk per caption.
         former = LineFormer(min_chars=min_chars, emit_partial=partial)
+        # ── WHO IS SPEAKING, ON THE LIVE ARM ONLY ────────────────────────────
+        # `--speakers` is off by default and NO PROVIDER MEANS NO CHANGE: with
+        # `speaker_provider` left None, `_attribute` returns the event key for
+        # key and the file arm, the second pass and every `--selftest` run are
+        # untouched. The provider reads a payload another process publishes
+        # (`worker/speaker_sidecar.py`); `PayloadCache` re-parses only when the
+        # file's mtime moves, because this path fires on every partial.
+        if getattr(args, "speakers", False):
+            import speaker_bridge                                   # noqa: PLC0415
+            former.set_speaker_provider(speaker_bridge.PayloadCache())
+            # The sidecar is another process with another zero. This line is
+            # the ONLY thing that makes the two timelines comparable; without
+            # it the join silently attributes every line to the wrong voice.
+            # Measured skew against the real tap is in
+            # `_main/_speaker-chain-live.py`'s output.
+            former.stream_epoch = time.time()
         # ── THE STACK LAW, in this thread ────────────────────────────────────
         # `mode` mirrors what the switch decided. It is `'stream'` and never
         # consulted at all when `switch is None` (the flag is off), so this whole
@@ -6264,6 +6505,35 @@ def main():
                 }
             )
             rotations += 1
+            # -- THE CEILING. THE BACKOFF IS A RATE, NOT A STOP. -------------------
+            # `MAX_ROTATIONS_WITHOUT_SIGNAL` (above) is why this exists: the ladder
+            # measured 2 188 flat rotations on this box in ten minutes, reopening an
+            # endpoint every time, and the shell restarting the worker on its way out
+            # reset the backoff so the cycle never ended. A run that has produced
+            # NOTHING stops here and says so, with the numbers that justify it; a run
+            # that is transcribing never reaches this line.
+            if (rotations >= MAX_ROTATIONS_WITHOUT_SIGNAL
+                    and counters["captions"] == 0
+                    and counters["peak"] < tap_floor):
+                emit(
+                    type="status",
+                    state="device-exhausted",
+                    reason="rotation-ceiling",
+                    rotations=rotations,
+                    of=len(candidates),
+                    run_peak=round(counters["peak"], 6),
+                    peak_floor=tap_floor,
+                    window_s=tap_window,
+                    detail=("%d rotations, %d captions, run peak %.6f < floor %.6f -- "
+                            "stopping instead of reopening an endpoint forever"
+                            % (rotations, counters["captions"],
+                               counters["peak"], tap_floor)),
+                )
+                err(f"ROTATION_CEILING reached rotations={rotations} "
+                    f"captions={counters['captions']} "
+                    f"run_peak={counters['peak']:.6f} floor={tap_floor}")
+                outcome = "rotation-ceiling"
+                break
             # -- THE LADDER'S OWN BACKOFF (added 2026-10-12) -------------------------
             # A `flat` rotation used to be IMMEDIATE: close one tap, open the next, serve
             # out its window, rotate again. With nothing routed into any candidate -- the

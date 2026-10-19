@@ -42,6 +42,7 @@ import ctypes
 import ctypes.wintypes as wt
 import hashlib
 import json
+import math          # search: edit budgets are ceil(ratio * len)
 import os
 import queue
 import re
@@ -51,6 +52,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata  # search: folding the diacritics off
 from datetime import datetime
 
 import hot_reload
@@ -68,6 +70,37 @@ CAPTION_HTML = os.path.join(PANEL_DIR, 'caption.html')
 #: An empty page the shell opens FIRST, so the preload is registered before the
 #: panel is ever parsed. See stage.html for why the ordering needs buying.
 STAGE_HTML = os.path.join(HERE, 'stage.html')
+#: WHICH TRANSCRIBER THE APP RUNS. ** THIS IS STILL `sotto_worker.py`, AND ON
+#: 2026-10-18 I CHANGED IT TO `redux_live.py` AND REVERTED IT WITHIN MINUTES. **
+#:
+#: The revert is the finding, so it is written down rather than edited away.
+#: `redux_live.py` speaks the same wire contract and is 586 MB against 1 988 MB,
+#: so on the contract alone it looked like a safe default. It is not: the shell
+#: builds the worker's command line from the worker's OWN flags, and the two
+#: parsers are not the same. Measured, diffing every `add_argument`:
+#:
+#:     shared (5):   config device max-seconds stats-interval threads
+#:     worker-only (24): --target-pid --selftest --tap-peak-floor --tap-window
+#:                        --lang-id --panel-visibility --meter-hz --max-chunks
+#:                        --redux-live --redux-live-engine --redux-live-threads
+#:                        --redux-live-keep --redux-live-min-audio
+#:                        --redux-live-deadline --redux-batch --redux-when-hidden
+#:                        --redux-min-free-mb --redux-runner-timeout ... and more
+#:
+#: Pointing the default at `redux_live.py` would have handed that program a
+#: `--target-pid` it does not define, and argparse exits 2 on an unknown flag:
+#: no captions at all, on the per-app capture path, on the selftest path, and
+#: on every tuning flag the shell forwards. **A smaller model is not a drop-in
+#: replacement for the process.**
+#:
+#: THE REAL ANSWER, which is in the 24: `sotto_worker.py` ALREADY HOSTS THE
+#: PARAKEEP. `--redux-live` and `--redux-live-engine` are the worker's own
+#: switches for it. So the owner's real question -- *"por que tu nao
+#: simplesmente swapa as legendas pelas mais precisas, sem o usuario nem
+#: notar?"* -- has an answer that does not touch this constant at all: the
+#: ENGINE changes, the PROCESS does not.
+#:
+#: HOW TO GO BACK: `SOTTO_WORKER=sotto_worker.py`, or `--worker <path>`.
 DEFAULT_WORKER_PATH = os.path.normpath(
     os.path.join(HERE, os.pardir, os.pardir, 'worker', 'sotto_worker.py')
 )
@@ -356,6 +389,184 @@ HISTORY_ROUTES = ('final', 'provisional-draft')
 #: written with NO `src=` marker at all: provenance thinner than the decision that
 #: produced it. The list must equal the declared set, in both twins.
 HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback')
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEARCH. The owner asked, 2026-10-18: make the history search FIND things --
+# *"quando eu procurar uma coisa no historico, eu quero que ele ache"*.
+#
+# WHAT IT WAS, and why that is not search but string equality:
+#     needle = str(query or '').strip().lower()
+#     if needle in entry['text'].lower():
+# One `in`, byte for byte, no accents, no typos, no sounds. Measured on this box's
+# own store (211 341 B over 11 files, 2 days): typing `maca` cannot find `maçã`,
+# `cabeleireiro` cannot find `cabeleireira`, and `fales` cannot find `falés`. The
+# owner does not type the way a machine compares.
+#
+# THREE LAYERS, IN THIS ORDER, AND THE ORDER IS THE PRODUCT:
+#   0  LITERAL   the query, accents folded, is a substring. Ranked first, always,
+#                and it is the ONLY layer that can return the whole query as a
+#                phrase. A fix that demoted this would be a regression wearing a
+#                feature's clothes.
+#   1  PHONETIC  every query word has a SOUNDEX twin somewhere in the entry. This
+#                is the layer that finds the word the owner MEANT.
+#   2  FUZZY     every query word is within a bounded edit distance of some word in
+#                the entry -- typos, one letter dropped, one doubled.
+#
+# EVERY LAYER AFTER 0 IS ALL-WORDS, NOT ANY-WORD. That is the difference between a
+# search and a slot machine: with any-word semantics, the query `o preco do acucar`
+# would return every entry containing `o`, which on a two-day store is nearly all of
+# them. All-words makes the later layers able to SAY NO, and a layer that cannot say
+# no is not a ranking, it is noise with a rank attached.
+#
+# EDIT DISTANCE IS PER WORD, NEVER OVER THE WHOLE SENTENCE. Over the sentence the
+# threshold would have to grow with the sentence, so a 90-character line would
+# tolerate ~30 edits and match everything; over a word the threshold stays at
+# 0.34 x len and a 5-letter word tolerates 2.
+#
+# The pt-BR fold is not a nicety, it is the bug: the store is Portuguese and the
+# keyboard often is not, so `maçã` has to be reachable from `maca`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+#: The share of a word's length that may be wrong and still count as the same word.
+#: 0.34 is the ratio used throughout this repo's fuzz gates. A 3-letter word gets
+#: ceil(1.02) = 2 -- which is too generous, so words shorter than 4 are excluded
+#: from layer 2 entirely rather than half-matched (see `_FUZZY_MIN_WORD`).
+SEARCH_FUZZ_RATIO = 0.34
+#: Below this length an edit budget of 1 makes almost every short word match every
+#: other short word, so short words are LITERAL-ONLY.
+FUZZY_MIN_WORD = 4
+#: Hard ceiling, whatever the ratio asks for: no word is ever allowed more than
+#: this many edits. `ceil(0.34 * 9) = 4` on a long word is already four typos.
+SEARCH_MAX_EDITS = 2
+
+
+def search_fold(text):
+    """Lowercase and strip diacritics: `Maçã`/`MACA`/`maçá` all fold to `maca`.
+
+    NFD splits the base letter from its combining mark, and combining marks are
+    dropped. `ç` and `ã` and `õ` all become their base letter, which is what a
+    pt-BR search wants: the owner does not type tildes.
+    """
+    decomposed = unicodedata.normalize('NFD', str(text or ''))
+    stripped = ''.join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return stripped.lower()
+
+
+#: Soundex, folded to ASCII by `search_fold` first. Standard grouping:
+#: bfpv->1  cgjkqsxz->2  dt->3  l->4  mn->5  r->6, vowels and h/w do not code.
+SEARCH_SOUNDEX = {
+    **{c: '1' for c in 'bfpv'},
+    **{c: '2' for c in 'cgjkqsxz'},
+    **{c: '3' for c in 'dt'},
+    'l': '4',
+    **{c: '5' for c in 'mn'},
+    'r': '6',
+}
+
+
+def search_soundex(word):
+    """A 4-character sound key for `word`, or `''` if it has no letters.
+
+    Collisions are expected and fine: this is layer 1 of 3, it only ADDS candidates
+    after the literal layer has already failed, and every candidate it adds must
+    still satisfy all-words. A pt-BR owner searching `casa`/`casso`/`caza` landing
+    in the same bucket is the feature, not a bug -- what would be a bug is the
+    bucket being allowed to ANSWER, which only layer 0 does.
+    """
+    letters = ''.join(ch for ch in search_fold(word) if ch.isalpha() and ch.isascii())
+    if not letters:
+        return ''
+    first = letters[0]
+    codes = []
+    previous = SEARCH_SOUNDEX.get(first, '')
+    for ch in letters[1:]:
+        code = SEARCH_SOUNDEX.get(ch, '')
+        if code and code != previous:
+            codes.append(code)
+        if ch not in 'hw':          # h and w are transparent, they do not reset
+            previous = code
+    return (first.upper() + ''.join(codes) + '000')[:4]
+
+
+def search_edits(word):
+    """The edit budget for `word`: `ceil(ratio * len)`, capped twice.
+
+    Capped at `FUZZY_MIN_WORD - 1` for short words and at `SEARCH_MAX_EDITS`
+    always. Returns 0 for anything shorter than `FUZZY_MIN_WORD`, which sends it
+    to the literal layer and out of the fuzzy one.
+    """
+    n = len(word)
+    if n < FUZZY_MIN_WORD:
+        return 0
+    return min(SEARCH_MAX_EDITS, int(math.ceil(SEARCH_FUZZ_RATIO * n)))
+
+
+def bounded_levenshtein(a, b, cap):
+    """Edit distance between `a` and `b`, or None if it exceeds `cap`.
+
+    Two-row DP with a row minimum early exit: the moment a whole row costs more than
+    `cap` no later row can come back under it, so the scan stops. Without that, a
+    mistyped 40-character query against a short entry costs the full table.
+    """
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) > cap:
+        return None
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost))
+        # The early exit must read the row's MINIMUM, not its label. Seeding
+        # `row_min = i` and never updating it made the scan give up on the third
+        # row for any word of 7+ letters, so `mercado`/`merdado` -- one substitution,
+        # distance 1 -- came back as None and the fuzzy layer was dead on exactly
+        # the long words it exists for. The rule still holds: the minimum of a row
+        # is a lower bound on the distance of every later row.
+        if min(current) > cap:
+            return None
+        previous = current
+    return previous[-1] if previous[-1] <= cap else None
+
+
+def search_match_rank(text, folded_query, query_words):
+    """Which layer, if any, `text` matches. 0/1/2, or -1 for no match.
+
+    Layer 0 short-circuits on the folded substring. Layers 1 and 2 both require
+    EVERY query word to be accounted for by SOME word of the entry, which is what
+    makes them able to reject.
+
+    Note the shape of the phonetic test: `all(search_soundex(w) == key for w in
+    query_words)` would demand that every query word sound like every OTHER one --
+    correct only for a single-word query, and silently wrong for anything longer.
+    The test that is actually meant is `each query word's key is present among the
+    entry's keys`.
+    """
+    folded_text = search_fold(text)
+    if not folded_query:
+        return -1                    # an empty query matches nothing, not everything
+    if folded_query in folded_text:
+        return 0
+    words = folded_text.split()
+    if not words:
+        return -1
+    query_keys = [search_soundex(w) for w in query_words]
+    entry_keys = {search_soundex(x) for x in words}
+    # Layer 1 — every query word's SOUND is somewhere in the entry.
+    if query_keys and all(k and k in entry_keys for k in query_keys):
+        return 1
+    # Layer 2 — every query word is a bounded typo of some entry word.
+    for qw in query_words:
+        budget = search_edits(qw)
+        if budget <= 0:
+            if qw not in words:
+                return -1
+            continue
+        if not any(bounded_levenshtein(qw, w, budget) is not None for w in words):
+            return -1
+    return 2
+
 #: `explorer` for "show in folder" must never open a console window.
 CREATE_NO_WINDOW = 0x08000000
 
@@ -1102,15 +1313,55 @@ SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
 
-#: NO DOUBLE-PRESS WINDOW. `HOTKEY_DOUBLE_MS` stood here (1500 ms since
-#: 2026-10-09) and classified each press by how fast the previous one had come:
-#: two inside the window were a DOUBLE and opened the SIDE panel, two outside it
-#: were two SINGLES, so a slow presser could only toggle the strip and never
-#: reached the right panel. THE OWNER KILLED THE CLOCK (2026-10-13, verbatim:
-#: *"o alt c ta meio ruim. quando o segundo painel aparece, o proximo alt c deve
-#: fazer ele sumir. ai, o proximo, independente do tempo, deve fazer o painel de
-#: baixo aparecer."*). What one press does is now a function of the STATE ON
-#: SCREEN and of nothing else - see `SottoShell.hotkey_pressed`.
+#: THE GESTURE WINDOW -- it separates THREE gestures, not two. Owner, verbatim,
+#: 2026-10-18:
+#:
+#:     *"pra habilitar a legenda: primeiro alt c. pra ir pro priemiro painel:
+#:       double alt c. caso double alt c, a legenda nao habilita"*
+#:     *"triple alt c é pra mostrar o painel da direita"*
+#:
+#:     ONE press    -> the caption on/off
+#:     TWO presses  -> the FIRST panel (the bottom strip)
+#:     THREE        -> the RIGHT panel
+#:
+#: IT WAS HERE AND WAS DELETED ON PURPOSE. `HOTKEY_DOUBLE_MS` stood here from
+#: 2026-10-09 at 1500 ms and classified each press by speed; the owner killed it
+#: on 2026-10-13, verbatim: *"o alt c ta meio ruim..."* -- because WHAT A PRESS
+#: DOES had been made a function of the WINDOW STATE and the interval, and a
+#: slow presser could never reach the panel he wanted.
+#:
+#: IT COMES BACK FOR A JOB THAT IS NOT THAT ONE. It no longer decides WHICH PANEL
+#: is up -- `hotkey_pressed` still reads the live window for that. It decides
+#: only WHETHER A PRESS IS A GESTURE OR PART OF A BIGGER ONE, because the owner
+#: has now given a press three different meanings and "the double must not enable
+#: the caption" cannot be honoured any other way.
+#:
+#: AND SINCE THE TRIPLE, NEITHER CAN A PANEL. A double used to raise the strip on
+#: the instant it was recognised, which is correct for two presses and wrong for
+#: three: the strip would go up at press two and be replaced at press three, so
+#: the owner would see the panel he did NOT ask for for as long as his finger
+#: stayed down. Both panel gestures are therefore deferred by this same window,
+#: and each panel appears once, when the gesture is resolved.
+#:
+#: 250 ms, NOT 1500. This is the whole cost, stated rather than hidden: a caption
+#: cannot appear faster than the window that proves it is not part of a larger
+#: gesture -- and neither can a panel, for the same reason and with the same
+#: deferral. 1500 ms is the delay the owner called bad. 250 ms reads as
+#: confirmation rather than as lag, and it is the number to change if he says it
+#: still feels slow.
+#:
+#: THE WINDOW IS PER PRESS, NOT PER GESTURE: press n+1 starts its own window from
+#: press n. Three presses 240 ms apart are a triple; three presses a second apart
+#: are three captions, which is the right reading -- a man pressing Alt+C slowly
+#: three times wants three captions, not a panel.
+HOTKEY_DOUBLE_MS = 250
+
+#: Minimum seconds between two `external-end` resumes of the worker. Measured
+#: 2026-10-18: two full model loads 2 min 52 s apart, with 1 245 MB resident, each
+#: followed by the device ladder. 45 s is long enough that a player blinking its
+#: caption layer cannot drive a load, and short enough that when the owner stops
+#: watching captions the microphone comes back while he is still waiting for it.
+EXTERNAL_RESUME_MIN_S = 45.0
 
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
@@ -1901,6 +2152,20 @@ def selftest_broken(reading: dict) -> tuple[bool, str]:
         return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
                       'SW_SHOWNOACTIVATE is the contract and this is it being broken'
                       % (reading.get('focus_before'), reading.get('focus_after')))
+    # -- THE 2026-10-18 CONTRACT: one press is the CAPTION, two fast presses are
+    # the FIRST PANEL. Checked ONLY when the reading carries the key, so the older
+    # synthetic readings the focus oracle builds keep meaning what they meant --
+    # a reading without these keys is not evidence about these clauses, and
+    # treating its absence as failure would make that oracle lie.
+    if 'single_flipped_caption' in reading and not reading['single_flipped_caption']:
+        return True, ('ONE Alt+C press did not flip the caption: the deferred '
+                      'single never fired, or fired twice')
+    if 'single_left_panel_down' in reading and not reading['single_left_panel_down']:
+        return True, ('ONE Alt+C press RAISED the panel. A single press is the '
+                      'caption and must leave the panel down.')
+    if 'double_left_caption' in reading and not reading['double_left_caption']:
+        return True, ('the DOUBLE moved the caption. The owner''s rule is '
+                      'verbatim: "caso double alt c, a legenda nao habilita".')
     return False, ''
 
 
@@ -2041,6 +2306,67 @@ def clamp_geometry(rect, work):
              or want_width != int(rect.get('width') or want_width)
              or want_height != int(rect.get('height') or want_height))
     return clamped, moved
+#: THE PLAYER'S OWN LEADING MARKERS. MEASURED 2026-10-18 on this box's own
+#: log: 25 of the 219 `EXTERNAL_CAPTION_SENT` lines began with `>>`, and 31 of the
+#: 9 937 painted captions carried it -- `">> That's all that."`, `">> Oh, oh my"`.
+#: Two chevrons read as a doubled mark, which is the stray "2" the owner reported
+#: verbatim ("ainda ta aparecendo um '2' do nada na legenda").
+#:
+#: Everything here is stripped from the FRONT of a line and only there. A
+#: chevron inside a sentence is a real character and stays; `>` is not decoration.
+LEAD_MARKER_RE = re.compile(
+    r"^\s*(?:[>\u00bb\u203a]+\s*|\[\s*(?:music|aplausos?|risos?|riso|"
+    r"s(?:om|ound)\s*effects?|sil(?:e|\u00e7ncia|encio)\s*)\]\s*|"
+    r"[-\u2013\u2014]\s+)+")
+
+
+def clean_external_text(text):
+    """One player cue, with its leading marker removed. Never raises.
+
+    A line that is ONLY a marker becomes the empty string, and `external_caption`
+    drops it: a caption window that paints nothing is correct, a caption window
+    that paints `">>"` is the bug.
+    """
+    try:
+        raw = str(text or '')
+    except Exception:  # noqa: BLE001
+        return ''
+    if not raw.strip():
+        return ''
+    try:
+        return LEAD_MARKER_RE.sub('', raw).strip()
+    except Exception:  # noqa: BLE001
+        return raw.strip()
+
+
+def extends_previous(old, new):
+    """Is `new` the same sentence as `old`, with more words?
+
+    THE PLAYER'S CUE IS CUMULATIVE, and that is the whole finding. Consecutive
+    `EXTERNAL_CAPTION_SENT` lines from one video:
+
+        "So, with the eyes of a nation"
+        "So, with the eyes of a nation on them,"
+        "FURIA seized their moment."
+        "FURIA seized their moment. They run"
+
+    Each cue repeats the previous one and adds a few words. Case is ignored
+    because the player's own capitalisation drifts mid-sentence, and the
+    comparison is on WORDS, so a trailing full stop or a missing space does not
+    read as a new sentence.
+    """
+    try:
+        o = str(old or '').split()
+        n = str(new or '').split()
+    except Exception:  # noqa: BLE001
+        return False
+    if not o or not n:
+        return False
+    if len(n) < len(o):
+        return False
+    return [w.lower() for w in o] == [w.lower() for w in n[:len(o)]]
+
+
 #: The surfaces the ONE document can wear. The names are `app/panel/surface.js`'s
 #: (`SURFACES`), and this shell refuses anything else instead of guessing.
 SURFACE_NAMES = ('strip', 'panel')
@@ -3851,6 +4177,55 @@ DUMP_DOM_PROBE = r"""
                    // so the two arms still diff on the keys they already shared.
                    bgc: cs.backgroundColor, bgi: cs.backgroundImage.slice(0, 160) };
   }
+  /* THE CONTROL CLUSTER AGAINST THE PANEL'S OWN RIGHT EDGE. Added 2026-10-18.
+   *
+   * WHY IT IS HERE AND NOT IN A PROBE SCRIPT. Every measurement of "does the
+   * header fit" taken outside this shell has been wrong on this box: headless
+   * Edge clamps the layout viewport to 492px in BOTH --screenshot and --dump-dom
+   * (measured 2026-10-18: `--headless=new` and `--headless=old` produce
+   * BYTE-IDENTICAL 62 570-byte PNGs at `--window-size=380,900`, and the outline
+   * probe reports `header r=478` in a 380-wide PNG, i.e. the 492 layout cropped
+   * to 380). `shot.py`'s docstring claims --screenshot is exempt; on this
+   * machine it is not. Only the WebView2 window the shell actually creates has
+   * the owner's 380px, and this is the only place that asks.
+   *
+   * WHAT IT ANSWERS. One number per control: how far its RIGHT edge is past the
+   * panel's right edge. `.panel__controls` is `flex: 0 1 auto` and the cluster
+   * is 250px of six fixed-width buttons inside a 352px header row, so whether
+   * the last ones are reachable is a fact, not a style opinion -- and on
+   * 2026-10-18 the answer was that Hide, Pause and the caption-size button were
+   * past the edge, which is three controls the owner cannot click.
+   *
+   * ADDITIVE, like `bgc` above: no key above is removed, so the two arms still
+   * diff on the keys they already shared. */
+  out.controls = (function () {
+    const panel = document.querySelector('main.panel');
+    const right = panel ? panel.getBoundingClientRect().right : innerWidth;
+    const ctl = document.querySelector('.panel__controls');
+    const list = [];
+    const btns = document.querySelectorAll('.panel__controls button');
+    for (let i = 0; i < btns.length; i += 1) {
+      const b = btns[i];
+      const r = b.getBoundingClientRect();
+      const cs = getComputedStyle(b);
+      list.push({ id: b.id || null,
+                  left: Math.round(r.left), right: Math.round(r.right),
+                  w: Math.round(r.width),
+                  past_by: Math.round(Math.max(0, r.right - right)),
+                  onscreen: r.right <= right + 0.5 && r.left >= -0.5,
+                  display: cs.display, visibility: cs.visibility });
+    }
+    return { panel_right: Math.round(right), viewport_w: innerWidth,
+             cluster: ctl ? (function () {
+               const r = ctl.getBoundingClientRect();
+               const cs = getComputedStyle(ctl);
+               return { left: Math.round(r.left), right: Math.round(r.right),
+                        w: Math.round(r.width), computed_w: cs.width,
+                        flex: cs.flex, min_width: cs.minWidth,
+                        justify_self: cs.justifySelf };
+             })() : null,
+             buttons: list };
+  })();
   return out;
 })()
 """
@@ -4608,6 +4983,42 @@ class SottoHost:
 # ===========================================================================
 # the shell
 # ===========================================================================
+
+
+#: How many hits each layer may contribute, as a fraction of `limit`.
+#:
+#: NOT EQUAL ON PURPOSE, and the numbers come from a measurement rather than a taste.
+#: On this box's own store -- 2 077 lines over 11 files -- the phonetic layer returns
+#: 172 candidates for `maca`, 94 for `audio`, 72 for `preco`. That is not a bug in
+#: Soundex; it is Soundex colliding with Portuguese: `maca`, `mais`, `faca` and `massa`
+#: are all M200, and "mais" is the most common word in the language. The layer is
+#: correct -- those words DO sound alike -- but a layer that can contribute 185 of a
+#: 2077-line result is a layer that drowns the answer if it is given the same budget as
+#: the literal one. So the loose layers get a fraction, and the fraction is the
+#: product decision: literal answers the question, phonetic suggests, fuzzy stumbles.
+SEARCH_LAYER_CAPS = (1.0, 0.25, 0.05)
+#: A loose layer may never be floored into uselessness: below these, the fractions
+#: above would return nothing and the layers would be dead code.
+SEARCH_LAYER_MIN = (1, 8, 4)
+
+
+def search_layer_cap(rank, limit):
+    """The cap for layer `rank` at `limit`. Integer, never below `SEARCH_LAYER_MIN`.
+
+    MODULE LEVEL, and that is load-bearing. An earlier draft of this session put it
+    inside `class SottoShell`, immediately above `history_search`, and re-indented
+    that method back to four spaces -- which made Python read it as a NESTED `def`
+    inside `search_layer_cap`, so every remaining method of the class (`reply_history`
+    through `_do_worker_restart`) silently became part of that one function body.
+    The module still PARSED -- nothing about that is a syntax error -- and the shell
+    died at startup with `AttributeError: 'SottoShell' object has no attribute
+    '_do_worker_restart'`, which names a symptom four thousand lines away from the
+    mistake. `_class-map.py` below is the instrument that found it: it reports each
+    top-level node's line span, and `search_layer_cap 6461..9497` is not a span any
+    author would have written.
+    """
+    fraction, floor = SEARCH_LAYER_CAPS[rank], SEARCH_LAYER_MIN[rank]
+    return max(floor, int(math.floor(limit * fraction)))
 
 
 class SottoShell:
@@ -5684,6 +6095,18 @@ class SottoShell:
             except Exception:  # noqa: BLE001
                 pass
         self.stop_hot_reload('closing')
+        # The diarizer dies with the SHELL, not with the worker. The worker is
+        # restarted constantly by its own ladder (measured: 88 deaths in 17
+        # minutes); killing a 277 MB model on every restart would be the exact
+        # churn the owner complained about, and the payload the worker reads is
+        # only 30 s fresh anyway, so a diarizer that outlives one restart costs
+        # nothing and a diarizer that dies with it costs a reload.
+        _sidecar = getattr(self, '_speaker_sidecar', None)
+        if _sidecar is not None:
+            _sidecar.stop('shell-closing')
+        _watch = getattr(self, '_multivoice_watch', None)
+        if _watch is not None:
+            _watch.stop('shell-closing')
         log('SHELL_CLOSING')
 
     # -- UI thread marshalling --------------------------------------------
@@ -6198,14 +6621,52 @@ class SottoShell:
         return {'entries': entries, 'root': HISTORY_ROOT}
 
     def history_search(self, query, limit=200):
-        needle = str(query or '').strip().lower()
-        hits = []
-        if needle:
+        """THE SEARCH. Owner, 2026-10-18: *"eu quero que ele ache"*.
+
+        WAS, in full:
+            needle = str(query or '').strip().lower()
+            if needle in entry['text'].lower():
+
+        That is byte equality with a fold the pt-BR keyboard does not perform, and
+        it is why the owner had stopped trusting the box. The three layers live at
+        module scope above (`search_match_rank`), so an oracle can call the
+        predicate without standing up the whole shell.
+
+        RANKING IS THE FEATURE. Three buckets, filled in ONE pass over the stream,
+        then concatenated: literal, then phonetic, then fuzzy. Within a bucket the
+        newest-first order of `_history_entries()` is preserved, so a typo'd query
+        does not bury the newest true match under the oldest.
+
+        EACH BUCKET IS CAPPED SEPARATELY, AND NOT AT THE SAME NUMBER. See
+        `SEARCH_LAYER_CAPS`: the phonetic layer returns 172 candidates for `maca` on
+        this box's own 2 077-line store, because `mais`/`faca`/`massa` are all M200
+        next to `maca`. Capping the merged list at `limit` (as an earlier draft did)
+        let that flood push the literal hits off the end -- a search that hides its
+        own best answer once the store gets noisy. Caps are per layer, applied in
+        stream order, so the newest `limit` literals always survive and the loose
+        layers can only ever add a bounded tail.
+
+        `match` is carried on each hit so the UI can say WHY a line matched instead
+        of presenting a fuzzy guess with the same confidence as an exact phrase.
+        """
+        folded_query = search_fold(query).strip()
+        query_words = folded_query.split()
+        cap = max(1, int(limit))
+        caps = [search_layer_cap(r, cap) for r in (0, 1, 2)]
+        buckets = ([], [], [])     # 0 literal, 1 phonetic, 2 fuzzy
+        if query_words:
             for entry in self._history_entries():
-                if needle in entry['text'].lower():
-                    hits.append(entry)
-                    if len(hits) >= max(1, int(limit)):
-                        break
+                rank = search_match_rank(entry['text'], folded_query, query_words)
+                if rank < 0:
+                    continue
+                bucket = buckets[rank]
+                if len(bucket) < caps[rank]:
+                    bucket.append(dict(entry, match=('literal', 'phonetic', 'fuzzy')[rank]))
+                if all(len(b) >= c for b, c in zip(buckets, caps)):
+                    # Every bucket is at its own cap: no later entry can enter the
+                    # result set at ANY rank, because buckets fill in stream order.
+                    break
+        hits = buckets[0] + buckets[1] + buckets[2]
         return {'query': query, 'hits': hits, 'root': HISTORY_ROOT}
 
     def reply_history(self, history_id, payload):
@@ -6512,49 +6973,161 @@ class SottoShell:
         return (self.hide_panel(reason) if live else self.show_panel(
             reason, surface='strip' if reason == 'hotkey' else None))
 
-    # -- Alt+C: the three-state cycle (strip -> side -> hidden -> strip) -----
+    # -- Alt+C: caption / first panel / right panel ------------------------
     def hotkey_pressed(self):
-        """Alt+C: ONE press, ONE step of a three-state cycle, NO CLOCK.
+        """Alt+C: ONE = the CAPTION. TWO = the FIRST panel. THREE = the RIGHT.
 
-        THE OWNER'S CONTRACT, verbatim (2026-10-13): *"o alt c ta meio ruim.
-        quando o segundo painel aparece, o proximo alt c deve fazer ele sumir.
-        ai, o proximo, independente do tempo, deve fazer o painel de baixo
-        aparecer."* So the cycle is fixed, and the interval between presses
-        decides NOTHING:
+        THE OWNER'S CONTRACT, verbatim (2026-10-18): *"pra habilitar a legenda:
+        primeiro alt c. pra ir pro priemiro painel: double alt c. caso double alt
+        c, a legenda nao habilita"*, and, adding the step the old branch could not
+        reach, the same day: *"triple alt c é pra mostrar o painel da direita"*.
 
-            HIDDEN -> STRIP    (the bottom panel: the app's own control)
-            STRIP  -> SIDE     (the right panel: history, folder, details)
-            SIDE   -> HIDDEN
+            ONE press    -> the caption on/off
+            TWO presses  -> the FIRST panel (the bottom strip)
+            THREE        -> the RIGHT panel
 
-        WHAT THIS REPLACES, and why the owner called it *"meio ruim"*: until
-        today each press was classified by the 1500 ms double-press window
-        (`HOTKEY_DOUBLE_MS`). Two presses INSIDE the window were a DOUBLE and
-        chose the branch; two presses further apart were two SINGLES and only
-        toggled the strip — so a slow presser never reached the right panel at
-        all, and what the next Alt+C did depended on how fast he had pressed the
-        last one. That is not a control. The clock, its stamp
-        (`_last_hotkey_press`) and the `HOTKEY_DOUBLE` log lines are all
-        deleted with it.
+        THE THIRD STEP WAS UNREACHABLE, and that is the whole bug. The old double
+        branch ended the gesture with `self._last_hotkey_press = 0.0  # a third
+        press begins a new gesture`, so a third press started a fresh single and
+        the panel that came up was always the strip. `show_side` -- the right
+        panel, surface `'panel'`, `dock_right` -- was left as a live method with
+        no caller on this path, the same shape as the 2026-10-14 defect recorded
+        in `show_strip`, where every press after the second painted the side
+        panel AGAIN instead of advancing.
 
-        The live window state is read ONCE, before the branch, so the three arms
-        cannot disagree inside one call. `panel_mode` is the second input and
-        is written by `place_panel` on every show, so "which panel is up" has
-        one owner.
+        BOTH PANEL GESTURES ARE DEFERRED, and that is the part that changed rather
+        than merely grew. The double used to run the instant it was recognised,
+        which is right for two presses and wrong for three: presses at 0/120/240
+        ms would map the strip at 120 ms and replace it at 240 ms, so pressing
+        three times on purpose would flash the panel the owner did NOT ask for.
+        Deferring by the same `HOTKEY_DOUBLE_MS` the caption already pays means
+        each panel appears once, when the gesture resolves. The cost is stated at
+        the constant.
 
-        THE ONE CASE THE OLD CODE HANDLED THAT THIS DOES NOT, stated rather than
-        lost: a fast double-press used to reach SIDE without the strip being
-        mapped first. Now the strip IS mapped on the first press ("independente
-        do tempo" is the owner's own words for exactly that), so the side panel
-        is always the SECOND state. Runs on the hotkey thread — every window
-        call below is thread-safe (`SetWindowPos`/`ShowWindow`/
-        `SetForegroundWindow` on the hwnd, `_ui` for the .NET form members).
+        THIS REPLACES the three-state cycle (2026-10-13: HIDDEN -> STRIP -> SIDE
+        -> HIDDEN, one press one step, no clock). That contract is retired
+        because the owner gave one press a meaning of its own -- the caption --
+        and panel navigation moved to the double. The cycle is not lost, it is
+        reachable again: `show_strip`/`show_side` still exist and `place_panel`
+        still owns which panel is where.
+
+        WHAT IS DELIBERATELY GONE WITH IT: *"independente do tempo"*. One press
+        no longer means one state transition regardless of speed, because now
+        it can mean three different things and only the interval tells them
+        apart. That reversal is recorded at `HOTKEY_DOUBLE_MS`, with the reason
+        it was first deleted and why it returns at 250 ms and not 1500.
+
+        EVERY PRESS RETIRES THE PENDING HANDLERS by bumping the token, and every
+        deferred handler compares it at RUN time rather than trying to cancel a
+        `threading.Timer` that may already be inside the window calls. That is
+        the owner's rule *"caso double alt c, a legenda nao habilita"*, and one
+        counter now keeps it true for the caption AND for the first panel when a
+        third press arrives.
+
+        Runs on the hotkey thread -- every window call below is thread-safe
+        (`SetWindowPos`/`ShowWindow`/`SetForegroundWindow` on the hwnd, `_ui`
+        for the .NET form members).
         """
         live = window_visible(self.hwnd) if self.hwnd else False
-        if not live:
-            return self.show_strip('hotkey')
-        if self.panel_mode == 'side':
-            return self.hide_panel('hotkey')
-        return self.show_side('hotkey')
+        self.visible = live
+        now = time.monotonic()
+        prev = getattr(self, '_last_hotkey_press', 0.0)
+        count = getattr(self, '_hotkey_press_count', 0)
+        # A press that is not inside the window starts a NEW gesture whatever the
+        # count was, which is what makes a FOURTH press a caption rather than a
+        # fourth step.
+        if not (prev and (now - prev) * 1000.0 <= HOTKEY_DOUBLE_MS):
+            prev, count = 0.0, 0
+        count += 1
+        self._last_hotkey_press = now
+        self._hotkey_press_count = count
+        # The token bump is what makes a pending handler abort when its timer
+        # fires; the timer itself cannot be cancelled here because it lives in
+        # `threading`, so the decision is made at RUN time, which is the same
+        # trick the caption push queue uses. ONE counter retires the pending
+        # caption AND the pending first panel when a third press arrives.
+        #
+        # AND IT IS BUMPED ONLY WHEN THE GESTURE GROWS -- `count >= 2` -- which
+        # `_main/hotkey-triple-oracle.py` forced. Bumping on every press made two
+        # presses 900 ms apart cancel each other out and leave the caption where
+        # it started: the second press retired the first press's already-due
+        # handler, so the owner pressed Alt+C twice and the caption toggled once.
+        # On a toggle that is the difference between "I turned it off" and
+        # "nothing happened".
+        #
+        # NOT BUMPING ON A LONE PRESS IS SAFE, and the argument is short: a press
+        # more than `HOTKEY_DOUBLE_MS` after the previous one arrives strictly
+        # after that gesture's timer was armed to fire
+        # (`first_press + HOTKEY_DOUBLE_MS`), so nothing is pending and nothing
+        # can be resurrected. Only a press INSIDE the window shares a pending
+        # timer, and that is exactly `count >= 2`.
+        if count >= 2:
+            self._hotkey_single_token = getattr(self, '_hotkey_single_token', 0) + 1
+        token = getattr(self, '_hotkey_single_token', 0)
+        if count >= 3:
+            # TRIPLE -- the RIGHT panel, immediately and finally. The gesture is
+            # closed here, so a fourth press begins a new one.
+            self._hotkey_press_count = 0
+            self._last_hotkey_press = 0.0
+            return self.show_side('hotkey-triple')
+        # ONE arms the caption, TWO arms the FIRST panel: same window, same
+        # token, same deferral, because the strip must not go on screen only to
+        # be replaced when the third press arrives.
+        handler = self._hotkey_single if count == 1 else self._hotkey_double
+        t = threading.Timer(HOTKEY_DOUBLE_MS / 1000.0, lambda: handler(token))
+        t.daemon = True
+        t.start()
+        return None
+
+    def _hotkey_double(self, token):
+        """Alt+C TWICE: the FIRST panel, the bottom strip.
+
+        DEFERRED BY `HOTKEY_DOUBLE_MS`, for the reason in `hotkey_pressed`: the
+        strip must not go on screen only to be replaced by the right panel when a
+        third press arrives. The cost is stated at the constant -- up to 250 ms
+        after the press that started the gesture -- and it is the same cost the
+        caption has already paid and the owner has already accepted.
+
+        CANCELLED AT RUN TIME, not by cancelling the timer, exactly like
+        `_hotkey_single`: a Timer may already be inside `show_strip` when the
+        third press arrives, and a brief flash of the strip is precisely the
+        thing this deferral exists to prevent.
+
+        IT DOES NOT TOUCH THE CAPTION. That is the owner's rule verbatim --
+        *"caso double alt c, a legenda nao habilita"* -- and it holds here for
+        the same reason it holds for the single: the second press bumped the
+        token before this method was ever armed.
+        """
+        if token != getattr(self, '_hotkey_single_token', 0):
+            log('HOTKEY_DOUBLE_SWALLOWED double=discarded '
+                f'window_ms={HOTKEY_DOUBLE_MS}')
+            return None
+        log(f'HOTKEY_DOUBLE panel=strip after_ms={HOTKEY_DOUBLE_MS}')
+        return self.show_strip('hotkey-double')
+
+    def _hotkey_single(self, token):
+        """Alt+C ONCE: the caption on/off. The other half of the gesture.
+
+        DEFERRED BY `HOTKEY_DOUBLE_MS`, because the owner gave one press two
+        meanings and "the double must not enable the caption" cannot be honoured
+        without waiting to find out whether it is a double. The cost is that the
+        caption appears up to 250 ms after the key; that cost is stated at the
+        constant rather than hidden.
+
+        CANCELLED AT RUN TIME, not by cancelling the timer: a Timer may already
+        be inside `_set_live_enabled` when a second press arrives, so the token
+        is checked here and the work is skipped. Acting early instead would flash
+        the caption on and then have to switch it off, which is exactly the
+        flicker the owner is asking to remove.
+        """
+        if token != getattr(self, '_hotkey_single_token', 0):
+            log('HOTKEY_DOUBLE_SWALLOWED single=discarded '
+                f'window_ms={HOTKEY_DOUBLE_MS}')
+            return None
+        on = not getattr(self, '_caption_wanted', False)
+        log(f'HOTKEY_SINGLE caption_on={str(on).lower()} '
+            f'after_ms={HOTKEY_DOUBLE_MS}')
+        return self._set_live_enabled({'on': on})
 
     def place_panel(self, mode):
         """Move/resize the panel window to `mode` geometry ('strip'|'side').
@@ -6832,6 +7405,12 @@ class SottoShell:
             self.tray.stop('exit')
         if self.bridge is not None:
             self.bridge.stop('exit')
+        _sidecar_exit = getattr(self, '_speaker_sidecar', None)
+        if _sidecar_exit is not None:
+            _sidecar_exit.stop('shell-exit')
+        _watch_exit = getattr(self, '_multivoice_watch', None)
+        if _watch_exit is not None:
+            _watch_exit.stop('shell-exit')
         if self.hotkey is not None:
             self.hotkey.stop()
         if self.panel_state is not None:
@@ -7048,6 +7627,13 @@ class SottoShell:
             on_stats=self.on_worker_stats,
             on_meter=self.on_worker_meter,
             target_pid=target_pid,
+            # MEASURED: este parametro faltava. O --speakers chegava
+            # ao SIDECAR mas nunca ao WORKER, que e' quem o consome -- e o
+            # _main/sidecar-wiring-oracle.py arm 2 foi a RED exactamente por
+            # isso. Um diarizador a correr e a bridge sem o flag que consome o
+            # seu ficheiro e' o peor dos dois mundos: 207 MB e zero atribuicao.
+            extra_args=(['--speakers'] if getattr(self.args, 'speakers', False)
+                         else None),
         )
         log(f'WORKER_PATH {self.args.worker}')
         log(f'WORKER_COMMAND {self.args.python}')
@@ -7056,7 +7642,65 @@ class SottoShell:
             f'reason={reason}')
         if started:
             self.code_state_log(f'worker-started-{reason}')
+            # THE SIDECAR RIDES THE WORKER'S LIFETIME, AND ONLY WHEN THE WORKER
+            # ACTUALLY STARTED. Starting it on a declined worker would leave a
+            # 277 MB diarizer running against nobody, which is the failure the
+            # `WORKER_AUTOSTART=declined` path exists to prevent.
+            if getattr(self.args, 'speakers', False) \
+                    or getattr(self.args, 'speakers_cheap', False):
+                sidecar = self.speaker_sidecar()
+                if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
+                        and not getattr(self.args, 'speakers', False):
+                    # Only when the sidecar ACTUALLY started: a reader polling a
+                    # file nobody writes is a thread that reports "quiet" forever,
+                    # which reads exactly like "the detector ran and saw nothing".
+                    self.multivoice_watch().start(reason)
         return started
+
+    def speaker_sidecar(self):
+        """The one sidecar object, created on first use.
+
+        Lazy so that a shell that never asks for voices never constructs it,
+        and so `stop` sites can call this without a None check.
+        """
+        sidecar = getattr(self, '_speaker_sidecar', None)
+        if sidecar is None:
+            # FASE A vs FASE B. `--speakers` is the full attribution and keeps
+            # a byte-identical argv; `--speakers-cheap` only answers "were two
+            # voices talking at the same time?" and pays 90,3 MB instead of
+            # 135,4 MB. If BOTH are asked for, the full attribution wins: it
+            # already contains the segmentation model, so the cheap watch would
+            # be a second model doing a subset of its work.
+            tail = []
+            if not getattr(self.args, 'speakers', False) \
+                    and getattr(self.args, 'speakers_cheap', False):
+                tail = ['--watch-only']
+                save = getattr(self.args, 'save_voice_clips', '') or ''
+                if save:
+                    # ONLY reachable with the cheap arm. Writing the owner's own
+                    # call audio to disk is not a default anybody should inherit
+                    # by accident, so it is empty unless asked for BY NAME.
+                    tail += ['--watch-save', save]
+            sidecar = SpeakerSidecar(
+                command=getattr(self.args, 'python', None),
+                log=log,
+                extra_args=tail)
+            self._speaker_sidecar = sidecar
+            # FASE A's CONSUMER. Without this the watch payload would be written
+            # by nobody's reader, and a detection nobody reads decides nothing.
+            # Only for the cheap arm: `--speakers` is the full attribution and
+            # has its own path for everything it knows.
+            if tail:
+                self._multivoice_watch = MultiVoiceWatch(log=log)
+        return sidecar
+
+    def multivoice_watch(self):
+        """The Fase A reader, created on first use, never None."""
+        watch = getattr(self, '_multivoice_watch', None)
+        if watch is None:
+            watch = MultiVoiceWatch(log=log)
+            self._multivoice_watch = watch
+        return watch
 
     #: The exact sentence the panel is painted with while a revive runs.
     #: ARM S of _main/revive-pipeline-oracle.py compares it literally.
@@ -7324,10 +7968,35 @@ class SottoShell:
             self._reload_policy.boundary(closed=True, why='closed-line')
 
     def external_caption(self, text, source, final=False):
-        """One line read from the PLAYER's own captions (YouTube/Stremio)."""
-        text = str(text or '').strip()
+        """One line read from the PLAYER's own captions (YouTube/Stremio).
+
+        THE OWNER'S TWO COMPLAINTS, 2026-10-18, both fixed HERE because this is
+        the one place every external line passes through: the panel and the
+        caption's own window are both fed from the line below, so a fix in the
+        reader or in the page would fix only half of what he sees.
+
+        THE STRAY "2" -- *"ainda ta aparecendo um '2' do nada na legenda"*. It is
+        the PLAYER's own `>>`, measured: 25 of 219 sent lines and 31 of 9 937
+        painted captions carried it. `clean_external_text` removes a leading
+        marker and nothing else.
+
+        THE FRAGMENTATION -- *"a legenda que passa do youtube pro sotto ... nao ta
+        funcionando"*. It is not that the player sends fragments; the player's cue
+        is CUMULATIVE, each one repeating the last and adding a few words, and
+        every one of them arrived `final=true` (213 of 219). Closing each one as a
+        sentence is what produced `"Responsible for the most ridiculous."` -- a
+        capital and a full stop in the middle of a clause. So `final` is now
+        DECIDED FROM THE TEXT: a cue that extends the previous one is a FORMING
+        line whatever the player claims, and only a cue that does not extend it
+        closes the line. That is the same split the ASR path already has.
+        """
+        text = clean_external_text(text)
         if not text:
             return False
+        prev = str(getattr(self, '_external_last_text', '') or '')
+        if extends_previous(prev, text):
+            final = False
+        self._external_last_text = text
         # Only when the owner is actually looking at Sotto. While the panel is
         # hidden there is nothing to replace, and painting a second subtitle
         # over YouTube would be worse than doing nothing.
@@ -7408,27 +8077,62 @@ class SottoShell:
         return self.start_worker('vram-resume')
 
     def on_external_captions_released(self):
-        """The player stopped showing captions: give the microphone back."""
+        """The player stopped showing captions: give the microphone back.
+
+        THIS PATH WAS THE TREADMILL. MEASURED 2026-10-18, in the owner's own
+        log: `WORKER_AUTOSTART=started reason=external-end` at 01:18:23 and again
+        at 01:21:15 -- two fresh model loads three minutes apart, 1 245 MB
+        resident, each followed by the device ladder spinning. `start_worker` is
+        a DIRECT spawn, so calling it from here bypassed `WorkerReloadPolicy`
+        entirely, and with it the `no_audio_backoff` (15 s base, doubling, 5 min
+        ceiling) that exists for precisely the "there is no audio" case.
+
+        The trigger is a UI element, not audio: the external reader polls every
+        0.30 s and this fires whenever the player's caption node disappears for
+        `RELEASE_S`. A player that blinks its caption layer therefore costs a
+        full model load, and the cadence is the player's, not ours.
+        """
         if not self._external_parked:
             return False
         self._external_parked = False
         if self._paused:
             return False
-        if self.visible or getattr(self, '_caption_window_shown', False):
-            log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
-            return self.start_worker('external-end')
-        return False
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        now = time.monotonic()
+        last = getattr(self, '_last_external_resume', 0.0)
+        waited = now - last
+        if last and waited < EXTERNAL_RESUME_MIN_S:
+            # DEFERRED, NOT DROPPED. The worker is wanted; it is simply not
+            # wanted `waited` seconds after the last time we loaded it. Saying so
+            # is the whole point -- a silent skip here is what made this
+            # invisible for as long as it was running.
+            log(f'EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED since_s={waited:.1f} '
+                f'min_s={EXTERNAL_RESUME_MIN_S}')
+            return False
+        self._last_external_resume = now
+        log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
+        return self.start_worker('external-end')
 
     def start_external_caption_watcher(self):
         """Start the UIA reader once per process (normal runs only)."""
         if self.external_caption_watcher is not None:
             return False
-        try:
-            reason = self._worker_autostart_reason(self.args)
-        except Exception:  # noqa: BLE001
-            reason = 'unknown'
-        if reason not in ('default', 'with-worker'):
-            log(f'EXTERNAL_CAPTIONS_SKIPPED reason={reason}')
+        # THE EXTERNAL READER IS NOT THE WORKER. MEASURED 2026-10-18: launched
+        # with SOTTO_NO_WORKER=1 the log said
+        #   `EXTERNAL_CAPTIONS_SKIPPED reason=env`
+        # because this gate used to ask the WORKER's autostart reason. Reading the
+        # captions a player already shows costs NO model, NO audio device and NO
+        # VRAM -- it is one UIA query every 300 ms against a window that is
+        # already on screen. Tying it to the worker therefore switched OFF the
+        # one caption path that still works with no worker at all, which is the
+        # path the owner was testing (YouTube) when this was found.
+        #
+        # Its own switch is SOTTO_NO_EXTERNAL=1 and nothing else. If you ever want
+        # it back under the worker flag, the reason must be the OTHER way round:
+        # `--no-worker` must never imply "no captions at all".
+        if os.environ.get('SOTTO_NO_EXTERNAL') == '1':
+            log('EXTERNAL_CAPTIONS_SKIPPED reason=SOTTO_NO_EXTERNAL=1')
             return False
         self.external_caption_watcher = ExternalCaptionWatcher(self)
         self.external_caption_watcher.start()
@@ -9021,19 +9725,27 @@ class SottoShell:
         return report
 
     def run_selftest(self):
-        """Prove the hotkey registers and toggles, without a human at a keyboard.
+        """Prove the hotkey registers and DISAMBIGUATES, without a human at a keyboard.
 
         The press is a real WM_HOTKEY posted to the registering thread's own
         queue, so the delivery path under test is the one the OS writes to.
-        The two presses land ~800 ms apart, and SINCE 2026-10-13 THAT DISTANCE
-        IS NOT READ AS ANYTHING: the owner deleted the double-press window
-        (`HOTKEY_DOUBLE_MS`), so one press is one step of the fixed cycle and
-        the interval carries no meaning at all. Two presses from hidden are
-        therefore STRIP then SIDE, and the window is UP after both - which is
-        what this arm asserts. The old expectation was a function of the
-        interval (400 ms -> two singles -> hidden; 1500 ms -> a double ->
-        visible), and the owner naming that function *"meio ruim"* is why it is
-        gone rather than re-tuned.
+
+        IT NOW TESTS THE 2026-10-18 CONTRACT, NOT THE 2026-10-13 ONE. This arm
+        used to press twice ~800 ms apart and assert the PANEL was up, because
+        that contract said the interval decided nothing. Under the contract the
+        owner set today -- one press is the caption, two fast presses are the
+        first panel -- 800 ms apart is TWO SINGLES, so the panel must stay
+        DOWN and the caption must have toggled twice. A self-test that still
+        asserted the old answer would have gone red for a correct build.
+
+            arm 1  one press, then wait past the window
+                   -> caption flipped ONCE, panel still DOWN
+            arm 2  two presses 120 ms apart
+                   -> panel UP on the FIRST panel, caption UNCHANGED
+
+        Arm 2 is the one that can fail for the reason that matters: if the
+        deferred single is not cancelled, the caption goes on inside the double
+        and the owner's *"caso double alt c, a legenda nao habilita"* is broken.
         """
         rc = 0
         if self.hotkey is None:
@@ -9051,18 +9763,32 @@ class SottoShell:
                 f'accelerator={self.hotkey.accelerator}')
             before = foreground_window()
             self.hide_panel('selftest-baseline')
-            log(f'SELFTEST state=hidden visible={str(self.visible).lower()}')
+            caption_start = bool(getattr(self, '_caption_wanted', False))
+            log(f'SELFTEST state=hidden visible={str(self.visible).lower()} '
+                f'caption={str(caption_start).lower()}')
+            # ARM 1 -- ONE PRESS IS THE CAPTION, and the panel stays DOWN.
             pressed = self.hotkey.simulate_press()
-            time.sleep(0.8)
-            log(f'SELFTEST state=after-hotkey-1 '
-                f'visible={str(self.visible).lower()} '
-                f'press_delivered={str(pressed).lower()} '
-                f'presses={self.hotkey.pressed}')
+            time.sleep(HOTKEY_DOUBLE_MS / 1000.0 + 0.55)
+            arm1_caption = bool(getattr(self, '_caption_wanted', False))
+            arm1_visible = bool(self.visible)
+            log(f'SELFTEST arm=single visible={str(arm1_visible).lower()} '
+                f'caption={str(arm1_caption).lower()} '
+                f'caption_flipped={str(arm1_caption != caption_start).lower()}')
+            # Put it back so arm 2 starts from a known state.
+            if arm1_caption != caption_start:
+                self._set_live_enabled({'on': caption_start})
+                time.sleep(0.2)
+            # ARM 2 -- A DOUBLE IS THE FIRST PANEL, AND THE CAPTION DOES NOT MOVE.
+            caption_before_double = bool(getattr(self, '_caption_wanted', False))
             self.hotkey.simulate_press()
-            time.sleep(0.8)
-            log(f'SELFTEST state=after-hotkey-2 '
-                f'visible={str(self.visible).lower()} '
-                f'presses={self.hotkey.pressed}')
+            time.sleep(0.12)                      # inside HOTKEY_DOUBLE_MS on purpose
+            self.hotkey.simulate_press()
+            time.sleep(HOTKEY_DOUBLE_MS / 1000.0 + 0.55)
+            arm2_caption = bool(getattr(self, '_caption_wanted', False))
+            arm2_visible = bool(self.visible)
+            log(f'SELFTEST arm=double visible={str(arm2_visible).lower()} '
+                f'caption={str(arm2_caption).lower()} '
+                f'caption_moved={str(arm2_caption != caption_before_double).lower()}')
             after = foreground_window()
             after_pid = window_pid(after)
             focus_stolen = before != after
@@ -9070,17 +9796,16 @@ class SottoShell:
             log(f'SELFTEST focus_before={before} focus_after={after} '
                 f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
                 f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
-            # TWO PRESSES FROM HIDDEN, AND THE INTERVAL DECIDES NOTHING (owner,
-            # 2026-10-13). Press 1 shows the bottom STRIP and press 2 converts it
-            # to the RIGHT panel, whether they land 50 ms or 5 s apart, so after
-            # the pair the window is UP. There is no `HOTKEY_DOUBLE_MS` left to
-            # derive from: the old expectation was a function of the interval,
-            # and that function IS the defect the owner reported.
+            # A SINGLE must flip the caption and leave the panel DOWN; a DOUBLE
+            # must raise the FIRST panel and leave the caption where it was.
             want_visible = True
             reading = {
                 'registered': bool(self.hotkey.registered), 'pressed': bool(pressed),
-                'presses': self.hotkey.pressed, 'visible': bool(self.visible),
+                'presses': self.hotkey.pressed, 'visible': arm2_visible,
                 'want_visible': bool(want_visible),
+                'single_flipped_caption': bool(arm1_caption != caption_start),
+                'single_left_panel_down': not arm1_visible,
+                'double_left_caption': arm2_caption == caption_before_double,
                 'focus_stolen_by_own_window': stolen_by_us,
                 'focus_before': before, 'focus_after': after,
             }
@@ -9585,6 +10310,231 @@ def worker_restart_allowed(files=None):
     return False
 
 
+class SpeakerSidecar:
+    """The diarizer, as its OWN process, beside the worker.
+
+    WHY A SEPARATE PROCESS AND NOT PART OF THE WORKER. The worker already loads
+    1.2-2 GB of ASR; the diarizer is another 277 MB and ~1,4x realtime of CPU on
+    this box. The worker's own `--speakers` (added 2026-10-18) reads
+    `_main/diar-live.json` through `speaker_bridge.py` and REFUSES a payload that
+    is absent, stale past 30 s, partial or unreadable. So the attribution can go
+    quiet without taking transcription with it -- which is the fail-safe the
+    whole chain is built on, and it only holds if the two lifetimes are
+    separate.
+
+    WHAT IT MAY NOT DO, and both are this repo's standing rules:
+
+      * OPEN A CONSOLE WINDOW. `CREATE_NO_WINDOW`, always. The owner has been
+        shown a stray console by this house more than once.
+      * LIFT THE WORKER OFF THE FLOOR. `BELOW_NORMAL_PRIORITY_CLASS`, like the
+        worker itself: the owner has said *"PARA DE FAZER MEU PC TRAVAR"*.
+
+    IT TOUCHES NOTHING OF THE WORKER'S. No env key, no argv, no restart ladder.
+    `_main/app-target-oracle.py` ARM e holds the worker's env contract and this
+    class exists so that adding a feature does not have to break it.
+    """
+
+    def __init__(self, command=None, sidecar_path=None, log=log, extra_args=None):
+        self.command = command or default_python()
+        self.sidecar_path = sidecar_path or default_speaker_sidecar_path()
+        self.log = log
+        #: ARGV TAIL FOR THE SIDECAR. Empty list means byte-identical argv to
+        #: what shipped, which is what the `--speakers` path must keep doing.
+        #: Only the FASE A path sets it, to `['--watch-only']`.
+        self.extra_args = list(extra_args or [])
+        self.child = None
+        self.reason = None
+
+    @property
+    def running(self):
+        return self.child is not None and self.child.poll() is None
+
+    def start(self, reason):
+        if self.child is not None:
+            return False
+        if not os.path.isfile(self.sidecar_path):
+            # LOUDLY, and without taking the worker down with it: captions with
+            # no voices are the designed fail-safe, a dead app is not.
+            self.log(f'SIDECAR_MISSING path={self.sidecar_path} '
+                     f'reason={reason} by=SpeakerSidecar.start')
+            return False
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
+            if os.name == 'nt' else 0
+        if os.name == 'nt':
+            flags |= 0x00004000          # BELOW_NORMAL_PRIORITY_CLASS
+        try:
+            argv = [self.command, self.sidecar_path] + list(self.extra_args)
+            self.child = subprocess.Popen(
+                argv,
+                cwd=os.path.dirname(self.sidecar_path) or os.getcwd(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                bufsize=1,
+                creationflags=flags,
+            )
+        except Exception as exc:                                   # noqa: BLE001
+            self.child = None
+            self.log(f'SIDECAR_SPAWN_FAILED error={exc!r} reason={reason}')
+            return False
+        self.reason = reason
+        self.log(f'SIDECAR_SPAWNED pid={self.child.pid} '
+                 f'path={self.sidecar_path} reason={reason} '
+                 f'argv={json.dumps([self.command, self.sidecar_path] + list(self.extra_args))}')
+        return True
+
+    def stop(self, reason):
+        """Terminate the child, naming it. NEVER a bare kill on a generic word:
+        the AGENTS.md rule about kill filters is the same rule -- this names the
+        PROCESS OBJECT, which is the safe form of the same thing."""
+        child, self.child = self.child, None
+        if child is None:
+            return False
+        try:
+            child.terminate()
+            try:
+                child.wait(timeout=5)
+            except Exception:                                       # noqa: BLE001
+                child.kill()
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f'SIDECAR_STOP_FAILED error={exc!r} reason={reason}')
+            return False
+        self.log(f'SIDECAR_STOPPED pid={child.pid} reason={reason}')
+        return True
+
+
+def _evicted_note(payload):
+    """O que a fila FIFO perdeu de audio do dono, em uma frase -- ou nada.
+
+    Este e' o UNICO sitio onde o dono fica a saber. O payload traz o numero
+    desde que a retencao passou a contar o que apaga; se o watcher o ignora,
+    o audio continua a desaparecer em silencio -- agora com um campo
+    correcto num ficheiro que ninguem le.
+
+    Devolve a string VAZIA e nao '0 apagados': uma janela sem eviccao e' o
+    caso normal e nao merece uma linha mais longa do que ja e'.
+    """
+    try:
+        lost = int(payload.get("clips_evicted") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return ""
+    if lost <= 0:
+        return ""
+    kept = int(payload.get("clips_saved") or 0)
+    return (" AUDIO_PERDIDO=%d (a fila encheu: %d apagado(s),"
+            " %d guardado(s) nesta janela)"
+            % (lost, lost, kept))
+
+
+class MultiVoiceWatch:
+    """FASE A: o que o sidecar `--watch-only` viu, lido aqui e registado.
+
+    PORQUE ISTO EXISTE
+    ------------------
+    Sem este leitor, `--speakers-cheap` escrevia `_main/diar-watch.json` e nao
+    acontecia mais nada: um sinal sem consumidor nao decide nada, e o dono pediu
+    exactamente uma DETECCAO que lhe permitisse decidir mais tarde. Este e' o
+    consumidor, e ele e' deliberadamente pequeno: **regista**, nao decide.
+
+    O QUE ELE NAO FAZ
+    ------------------
+    Nao escreve no painel. Nao acrescenta um numero a lado da legenda -- o dono
+    tirou um numero visivel duas vezes, e `_main/panel-voice-dot-oracle.js` e' o
+    portao que garante que o painel nao ganha texto. Nao lanca a separacao de
+    vozes: QUANDO isso e' seguro para o PC do dono e' uma politica dele, e
+    adivinha-la aqui seria a forma mais rapida de voltar a fazer-lhe o PC heavier
+    sem ele pedir.
+
+    O QUE ELE LE
+    -------------
+    `speaker_bridge.watch_payload_if_fresh`, que exige a chave `multivoice` e
+    RECUSA um payload que traga `segments`. Um ficheiro trocado por engano, ou um
+    payload de fala no sitio errado, da `None` -- e `None` significa "nada a
+    dizer", nunca "zero vozes".
+    """
+
+    #: HOW OFTEN. The sidecar publishes a window every 10 s, so a 4 s poll sees
+    #: every window and costs a stat() four times a second.
+    POLL_S = 4.0
+
+    def __init__(self, path=None, poll_s=None, log=log):
+        self.path = path or speaker_watch_payload_path()
+        self.poll_s = float(poll_s or self.POLL_S)
+        self.log = log
+        self.thread = None
+        self._stop = threading.Event()
+        self._last_key = None
+
+    def poll_once(self):
+        """One read. Returns the short form, or None when there is nothing new.
+
+        Returning only on CHANGE is what keeps a 4-hour call from producing
+        3600 identical log lines.
+        """
+        try:
+            bridge = _speaker_bridge()
+            payload = bridge.watch_payload_if_fresh(self.path)
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f'WATCH_READ_FAILED error={exc!r}')
+            return None
+        if payload is None:
+            return None
+        state = bridge.multivoice(payload)
+        key = (state.get("written_at"), state.get("n_spans"),
+               state.get("multivoice_s"))
+        if key == self._last_key:
+            return None
+        first = self._last_key is None
+        self._last_key = key
+        if not state.get("multivoice"):
+            # MEASURED BUG, found by `_main/speaker-watch-oracle.py`: this used to
+            # log on ANY change, so a quiet window that followed a busy one was
+            # recorded as `WATCH_MULTIVOICE spans=0` -- a loud line for a window
+            # in which nothing overlapped. A log that cries wolf on quiet is
+            # worse than no log, because the reader stops believing it.
+            if first:
+                # The first read after start-up says "the detector is alive and
+                # has not seen two voices yet". That is worth one line: it
+                # separates "running and quiet" from "never ran".
+                self.log('WATCH_ALIVE multivoice_s=0.0')
+            return state
+        self.log('WATCH_MULTIVOICE spans=%s seconds=%.2f%s'
+                 % (state.get("n_spans"), state.get("multivoice_s", 0.0),
+                    _evicted_note(payload)))
+        return state
+
+    def start(self, reason):
+        if self.thread is not None:
+            return False
+        self._stop.clear()
+
+        def loop():
+            while not self._stop.is_set():
+                try:
+                    self.poll_once()
+                except Exception as exc:                           # noqa: BLE001
+                    self.log(f'WATCH_LOOP_FAILED error={exc!r}')
+                self._stop.wait(self.poll_s)
+
+        self.thread = threading.Thread(target=loop, name='multivoice-watch',
+                                       daemon=True)
+        self.thread.start()
+        self.log(f'WATCH_STARTED path={self.path} every={self.poll_s:.0f}s '
+                 f'reason={reason}')
+        return True
+
+    def stop(self, reason):
+        thread, self.thread = self.thread, None
+        self._stop.set()
+        if thread is not None:
+            thread.join(timeout=2.0)
+        self.log(f'WATCH_STOPPED reason={reason}')
+        return True
+
+
 class WorkerBridge:
     """Spawns worker/sotto_worker.py and turns its JSONL into panel events.
 
@@ -9619,9 +10569,19 @@ class WorkerBridge:
         #:
         #: Depois de tantas mortes seguidas por silencio, o shell PARA e diz o que fazer.
         #: O Alt+C volta a tentar (ver `show_panel`), portanto nao ha beco sem saida.
-                 target_pid=None):
+                 target_pid=None, extra_args=None):
         self.command = command or default_python()
         self.worker_path = worker_path
+        #: ARGV TAIL. The per-voice attribution is `--speakers`, and it reaches
+        #: the worker in ARGV and NOT in the environment -- deliberately:
+        #: `_main/app-target-oracle.py` ARM e holds the env contract ("os.environ
+        #: + SOTTO_CAPTURE_MODE, nothing else"), and adding a key there turns that
+        #: arm RED, which is the gate being right. The worker's `--speakers` is a
+        #: real flag it already declares; the shell's job is to pass it.
+        #:
+        #: Empty tuple by default, so every bridge built without this parameter
+        #: spawns the EXACT argv it always did: `[command, worker_path]`.
+        self.extra_args = tuple(extra_args or ())
         self.device = device if isinstance(device, str) and device.strip() else None
         self.capture_mode = capture_mode
         #: THE PER-APP TAP, opt-in: the pid of the ONE app whose process tree the
@@ -10001,8 +10961,9 @@ class WorkerBridge:
             creationflags |= 0x00004000
 
         try:
+            argv = [self.command, self.worker_path] + list(self.extra_args)
             self.child = subprocess.Popen(
-                [self.command, self.worker_path],
+                argv,
                 cwd=os.path.dirname(self.worker_path) or os.getcwd(),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -10027,7 +10988,7 @@ class WorkerBridge:
             return
 
         self.log(f'BRIDGE_SPAWNED pid={self.child.pid} '
-                 f'argv={json.dumps([self.command, self.worker_path])} '
+                 f'argv={json.dumps([self.command, self.worker_path] + list(self.extra_args))} '
                  f'SOTTO_CAPTURE_MODE={self.capture_mode} '
                  'SOTTO_AUDIO_DEVICE=' +
                  (self.device if self.device is not None else '(unset)'))
@@ -10733,6 +11694,58 @@ def default_python() -> str:
     return shutil.which('python') or sys.executable
 
 
+def default_speaker_sidecar_path():
+    """`worker/speaker_sidecar.py`, next to the worker, resolved from THIS file.
+
+    The shell lives at `app/webview/`; the worker at `worker/`. Resolving from
+    `__file__` rather than the CWD means a `start`-detached launch -- whose CWD
+    is wherever the double-click happened -- still finds it. That is not
+    hypothetical: `run.cmd` does `cd /d "%~dp0"` before `start`, and the Windows
+    autostart task (2026-10-12) does not.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, 'worker', 'speaker_sidecar.py'))
+
+
+def speaker_watch_payload_path():
+    """`_main/diar-watch.json`, resolved the SAME way, from `__file__`.
+
+    A different file from `_main/diar-live.json` on purpose. The two are written
+    by the two arms of the sidecar and read by two different readers with two
+    different required keys; sharing one path would make "which model ran?" a
+    question the reader could not answer.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, '_main', 'diar-watch.json'))
+
+
+def _speaker_bridge():
+    """`worker/speaker_bridge.py`, imported the first time Fase A needs it.
+
+    LAZY on purpose. The bridge is a worker-side module, and the shell runs on a
+    machine that is already loading a ~2,4 GB ASR model; pulling `worker/` onto
+    `sys.path` at import time would change start-up for every run, including the
+    ones that never ask for voices. A shell that never enables Fase A never pays
+    for it.
+    """
+    global _SPEAKER_BRIDGE
+    if _SPEAKER_BRIDGE is not None:
+        return _SPEAKER_BRIDGE
+    here = os.path.dirname(os.path.abspath(__file__))
+    worker = os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, 'worker'))
+    if worker not in sys.path:
+        sys.path.insert(0, worker)
+    import speaker_bridge                                           # noqa: PLC0415
+    _SPEAKER_BRIDGE = speaker_bridge
+    return _SPEAKER_BRIDGE
+
+
+_SPEAKER_BRIDGE = None
+
+
 # ===========================================================================
 # memory
 # ===========================================================================
@@ -11040,6 +12053,76 @@ def parse_args(argv):
                              'already starts by default (F1), so this flag now '
                              'only FORCES the worker where an automatic '
                              'opt-out would decline it -- see --no-worker')
+    #: PER-VOICE ATTRIBUTION. Off by default, because it costs a second model
+    #: (277 MB) and ~1,4x realtime of CPU on this box -- a cost nobody should
+    #: pay for a feature they did not ask for. What it does, end to end:
+    #: this shell ALSO starts `worker/speaker_sidecar.py`, which taps the same
+    #: WASAPI loopback, diarizes into `_main/diar-live.json`, and the worker
+    #: reads that file per caption (`speaker_bridge.py`) and stamps ONE `source`
+    #: PER VOICE on each line. The panel already renders one forming row per
+    #: `source` and paints a coloured dot per voice (`panel.js` `applyVoice`), so
+    #: nothing else in the app changes shape.
+    #:
+    #: WHY IT IS A SHELL FLAG AND NOT A WORKER-ONLY ONE: the worker alone would
+    #: read a file nobody writes. Measured end to end on the owner's own Discord
+    #: call (`_main/_sidecar-replay-real.py`): the real chain over 60 s of real
+    #: audio gives 2 global voice slots, which is the 2 people who were talking.
+    parser.add_argument('--speakers', action='store_true',
+                        help='ATTRIBUTE EACH LINE TO ITS SPEAKER. Also starts '
+                             'the diarizer sidecar (a second model). WITHOUT IT '
+                             'every line carries the device source and the rows '
+                             'are not separated by voice. NOTE the ~277 MB here '
+                             'is `speaker_bridge.py:12`, a figure measured on the '
+                             'STANDALONE diarizer process; two 2026-10-18 runs on '
+                             'the same box, different processes, measured '
+                             '207 MB for the real sidecar and 135,4 MB for a '
+                             'minimal child that loads the same two models '
+                             '(`_main/_watch-rss-probe.py`). None of the three '
+                             'is this process, so none of them is quoted here. '
+                             '--speakers-cheap quotes its own, and that one IS '
+                             'measured for what it starts.')
+    #: FASE A. Answers ONE question -- "were two voices talking at the same
+    #: time?" -- and nothing else. It starts the SAME sidecar process with
+    #: `--watch-only`, which loads the 5,7 MB segmentation model and NOT the
+    #: 37,8 MB embeddings one, so it can stay on when the full attribution must
+    #: not. MEASURED on this box (`_main/multivoice-oracle.py` 13/13,
+    #: `_main/_watch-rss-probe.py`): RTF 0,0097 vs 0,503 of the full pipeline
+    #: (52x cheaper), RSS 90,3 MB vs 135,4 MB, F1 0,932 on a 100 % overlap
+    #: built from known offsets with zero false alarm on the same voice doubled.
+    #:
+    #: IT GIVES NO NAMES AND NO `source`. It writes `_main/diar-watch.json`,
+    #: which has NO `segments` key, and `speaker_bridge.payload_if_fresh`
+    #: returns `None` for such a payload -- so the caption path cannot mistake
+    #: "nao medido" for "medido: zero vozes". That property is a check, not a
+    #: comment: `_main/speaker-watch-oracle.py` (22/22).
+    #:
+    #: WHY IT IS A SEPARATE FLAG AND NOT A MODE OF `--speakers`: the owner's ask
+    #: (2026-10-18) was to keep DETECTING while separating LATER. If the cheap
+    #: watch only existed as a mode of the expensive flag, it could not be on
+    #: when the expensive one is off, which is the whole point.
+    parser.add_argument('--speakers-cheap', action='store_true',
+                        help='only DETECT that several voices were talking at '
+                             'once (Fase A, ~90 MB). Does not name voices and '
+                             'does not stamp them on the lines; that is '
+                             '--speakers. Keep this on and use --speakers when '
+                             'it is safe to separate them')
+    #: Keeps the FLAGGED audio, which is the only way "process the voices later"
+    #: can mean anything. MEASURED: the sidecar's RingBuffer is in memory and
+    #: slides -- a window is freed 10 s after it is seen, so the detection
+    #: survives and the audio does not (`_main/_phase-a-retention-probe.py`).
+    #: One 16 kHz mono WAV per flagged span (2-7 s each, 2 s of context), named
+    #: with the absolute instant, FIFO-capped at 256 MB. Then
+    #: `_main/multivoice-offline.py` separates the voices on those clips.
+    #:
+    #: EMPTY BY DEFAULT, on purpose. This writes the owner's own call audio to
+    #: disk, and that is not something an app should start doing because nobody
+    #: thought to type a flag.
+    parser.add_argument('--save-voice-clips', default='', metavar='DIR',
+                        help='with --speakers-cheap: keep the audio where two '
+                             'voices overlapped, so the voices can be '
+                             'separated LATER (needs '
+                             '_main/multivoice-offline.py). Empty = keep '
+                             'nothing')
     parser.add_argument('--dump-dom', action='store_true',
                         help="measure the panel with the Electron arm's probe "
                              'and exit')

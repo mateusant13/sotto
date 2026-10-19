@@ -146,15 +146,14 @@ const dom = {
   // the key goes with the markup, on this file's own rule that a `null` entry is a
   // throw waiting for the next reader. `applyFloat` still owns the overlay and
   // `applyLiveEnabled` is now its only caller.
-  // the transcript font dial (owner, 2026-10-09). FOUR buttons, ONE number:
-  // two on the panel (`#font-*-button`) and two on the strip
-  // (`#strip-font-*-button`) all move the same `--caption-scale`, so the two
+  // the transcript font dial (owner, 2026-10-09; ONE button each since
+  // 2026-10-18, *"1 botao de tamanho em vez de 2"*). TWO buttons, ONE number:
+  // one on the panel (`#font-scale-button`) and one on the strip
+  // (`#strip-font-scale-button`), both cycling the same `--caption-scale`, so the two
   // surfaces cannot disagree. `null` on an older harness, and every handler
   // below null-checks — the same contract the strip keys above carry.
-  fontSmallerButton: document.getElementById('font-smaller-button'),
-  fontLargerButton: document.getElementById('font-larger-button'),
-  stripFontSmallerButton: document.getElementById('strip-font-smaller-button'),
-  stripFontLargerButton: document.getElementById('strip-font-larger-button'),
+  fontScaleButton: document.getElementById('font-scale-button'),
+  stripFontScaleButton: document.getElementById('strip-font-scale-button'),
   // the pause confirmation (`panel.html`, outside `.panel` so the slab's own
   // `overflow: hidden` cannot clip its backdrop)
   pauseDialog: document.getElementById('pause-dialog'),
@@ -387,6 +386,63 @@ let committedByStart = new Map();
 function rowIdentity(source, start) {
   if (start === null || start === undefined) return null;
   return source === null || source === undefined ? start : String(source) + "\u0000" + start;
+}
+
+/**
+ * THE VOICE A LINE BELONGS TO, read back out of its `source` -- DISPLAY ONLY.
+ *
+ * `source` is an OPAQUE key. The panel never parses it, and neither does the
+ * shell: the whole trick of per-voice `source` is that the existing per-source
+ * machinery gives one forming row per person with no structural change. This
+ * is the FIRST thing in the panel that looks inside the string, so it is
+ * written to be provably incapable of changing behaviour:
+ *
+ *   - it RETURNS A DISPLAY VALUE. Nothing here is ever fed back into
+ *     `rowIdentity`, `committedByStart`, `retireProvisional` or any lookup. If
+ *     the hue were the key, renaming a voice would move a line -- the exact
+ *     failure the key was chosen to prevent.
+ *   - it returns `null` for anything that is not exactly `<base>/voice:speaker-<n>`
+ *     (or a bare `voice:speaker-<n>`), so a row with no voice -- which is every
+ *     row the owner sees today -- is untouched, byte for byte.
+ *
+ * WHY A DOT AND NO TEXT: the owner removed a visible ordinal once, verbatim
+ * ("nao e' pra ter mais ele", 2026-10-08), twice, for the same element on every
+ * row. A coloured dot carries the whole message -- "these rows are the same
+ * person" / "these are not" -- and adds no string to the caption. The identity
+ * is still on the row as `data-voice`, for probes and for whatever the owner
+ * decides the display should become.
+ *
+ * The hue is the golden angle off the slot number, so two voices never land on
+ * the same colour and the colour does not change between windows -- which is
+ * what makes it legible at all.
+ */
+const SOTTO_VOICE_RE = /(?:^|\/)voice:(speaker-\d+)\s*$/;
+const SOTTO_GOLDEN_ANGLE = 137.508;
+
+function voiceFromSource(source) {
+  if (typeof source !== 'string' || !source) return null;
+  const m = SOTTO_VOICE_RE.exec(source);
+  if (!m) return null;
+  const n = Number(String(m[1]).replace(/^speaker-/, ''));
+  if (!Number.isFinite(n)) return null;
+  return { label: m[1], n: n, hue: (n * SOTTO_GOLDEN_ANGLE) % 360 };
+}
+
+/** Paint (or repaint) the voice dot. Idempotent; a no-op when there is none. */
+function applyVoice(line, source) {
+  const v = voiceFromSource(source);
+  if (!line || !line.dataset) return;
+  if (!v) return;                      // no voice -> nothing added, nothing removed
+  line.dataset.voice = v.label;
+  let dot = line.querySelector('.caption__voice');
+  if (!dot) {
+    dot = document.createElement('span');
+    dot.className = 'caption__voice';
+    dot.setAttribute('aria-hidden', 'true');
+    line.insertBefore(dot, line.firstChild);
+  }
+  dot.style.setProperty('--voice-hue', String(Math.round(v.hue)));
+  line.setAttribute('aria-label', 'voz ' + v.n);
 }
 
 /**
@@ -917,6 +973,14 @@ function renderProvisional(committed, provisional, source) {
     followNewestLine();
   }
 
+  // THE VOICE DOT, on the FORMING line -- this is the row the owner is actually
+  // looking at, so it is the one that had to be handled here and not only in the
+  // commit path. MEASURED: with the dot on the commit path alone, the DOM after
+  // a forming caption carried `data-source` and NO `data-voice`, and a probe
+  // showed `caption caption--provisional`, zero `.caption__voice`. Idempotent,
+  // so calling it on a reused row costs nothing and cannot double the dot.
+  applyVoice(line, key);
+
   // Update the two inner spans IN PLACE — reusing every span that already holds
   // the right word (see `paintWords`). The cache is THIS source's, so the other
   // app's row keeps its spans and its ramp.
@@ -1060,6 +1124,7 @@ function addCaption(text, reason, meta) {
     // The SOURCE half of the identity, for probes — UNSET when there is none, so
     // the no-source DOM stays byte-identical to before this change.
     if (source !== null) line.dataset.source = source;
+    applyVoice(line, source);
   }
 
   if (existing) {
@@ -2107,13 +2172,20 @@ function wireStripControls() {
  * aumentar ou diminuir a fonte das transcricoes, tanto no overlay abaixo, que
  * vamos criar, tanto no painel da direita"*).
  *
- * FOUR BUTTONS, ONE NUMBER. Two live in `.panel__controls` (`#font-smaller-button`,
- * `#font-larger-button`) and two in the strip (`#strip-font-smaller-button`,
- * `#strip-font-larger-button`). All four call the same `applyCaptionScale`, which
- * sets `--caption-scale` on the document element — the ONE value
- * `panel.css` derives every caption, history and strip-caption size from. So the
- * two surfaces can never disagree, and because the derivation lives in BASE rules
+ * TWO BUTTONS, ONE NUMBER. One lives in `.panel__controls` (`#font-scale-button`)
+ * and one in the strip (`#strip-font-scale-button`). Both call the same
+ * `applyCaptionScale`, which sets `--caption-scale` on the document element — the ONE
+ * value `panel.css` derives every caption, history and strip-caption size from. So
+ * the two surfaces can never disagree, and because the derivation lives in BASE rules
  * (`body[data-surface="strip"] .caption__text` included), no theme can override it.
+ *
+ * ONE BUTTON PER SURFACE, CYCLING (owner, 2026-10-18, *"1 botao de tamanho em vez
+ * de 2"*). It was a smaller/larger PAIR on each surface — four buttons for one
+ * number. The dial still has thirteen stops (0.8 → 2.0 by 0.1), so a two-state toggle
+ * was not an option: it would have thrown away eleven sizes. Instead the single
+ * button steps UP one stop and WRAPS to the minimum after the maximum. That also
+ * removes the `disabled` ends of travel the old pair needed, which is a real gain —
+ * the control can now never sit greyed out doing nothing.
  *
  * WHAT IS DELIBERATELY NOT HERE: a second source of truth. The value is written to
  * localStorage only so it survives a restart, and it is READ BACK HERE at load and
@@ -2131,16 +2203,34 @@ function wireFontDial() {
   const stored = readStoredFontScale();
   if (stored !== null) applyCaptionScale(stored, { persist: false });
 
-  const bind = (button, delta) => {
+  const bind = (button) => {
     if (!button) return;
-    button.addEventListener('click', () => {
-      applyCaptionScale(captionScale + delta * FONT_SCALE_STEP);
-    });
+    button.addEventListener('click', cycleCaptionScale);
   };
-  bind(dom.fontSmallerButton, -1);
-  bind(dom.fontLargerButton, +1);
-  bind(dom.stripFontSmallerButton, -1);
-  bind(dom.stripFontLargerButton, +1);
+  bind(dom.fontScaleButton);
+  bind(dom.stripFontScaleButton);
+}
+
+/**
+ * ONE CLICK = ONE STEP UP, THEN WRAP.
+ *
+ * The arithmetic is done through `applyCaptionScale` so there is exactly one place
+ * that clamps, rounds and persists. The wrap is decided HERE and not in
+ * `applyCaptionScale` on purpose: `applyCaptionScale` clamps, and clamping is what
+ * the pair's `disabled` state used to make visible. If the wrap lived there, a
+ * stored value or a programmatic call would silently teleport from 2.0 to 0.8 —
+ * correct for a button, wrong for a function that is also the restore path
+ * (`wireFontDial` calls it with `persist: false` before the first caption paints).
+ *
+ * The epsilon guard matters: `FONT_SCALE_MAX - 1e-9` rather than `===`, because the
+ * value is rounded to a step and stored as a float. At the top stop the old pair's
+ * `larger` button disabled; without the guard a click there would compute
+ * 2.0 + 0.1, clamp back to 2.0 and read as a button that did nothing.
+ */
+function cycleCaptionScale() {
+  const atTop = captionScale >= FONT_SCALE_MAX - 1e-9;
+  const next = atTop ? FONT_SCALE_MIN : captionScale + FONT_SCALE_STEP;
+  applyCaptionScale(next);
 }
 
 /** Read the persisted scale, or null when absent/unreadable/out of range. */
@@ -2183,19 +2273,33 @@ function applyCaptionScale(next, options) {
   reportFontScaleState();
 }
 
-/** Tell each button whether it is at the end of its travel, via `disabled`. */
+/**
+ * The scale dial is TWO buttons now, and it NEVER disables either of them.
+ *
+ * The old pair reported its ends with `disabled`, which is honest for a button that
+ * runs off a rail — but this button WRAPS. The last stop goes back to the first, so
+ * there is no end of travel to report, and a control that sits greyed out at a
+ * boundary is a control the owner has to think about. What replaces the state is the
+ * NUMBER, written where each surface can actually show it: `aria-label`/`title` on
+ * the panel's icon button, and a printed percentage in the strip's label line.
+ */
 function reportFontScaleState() {
-  const atMin = captionScale <= FONT_SCALE_MIN + 1e-9;
-  const atMax = captionScale >= FONT_SCALE_MAX - 1e-9;
-  const set = (button, atEnd) => {
+  const percent = Math.round(captionScale * 100);
+  const label = `Caption size: ${percent}%`;
+  const set = (button) => {
     if (!button) return;
-    button.disabled = atEnd;
-    button.setAttribute('aria-disabled', atEnd ? 'true' : 'false');
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-disabled', 'false');
+    button.disabled = false;
+    // The value goes on the button as DATA too, so a probe can read the current
+    // stop without reaching into panel.js's module scope.
+    button.setAttribute('data-font-scale', String(captionScale));
+    const readout = button.querySelector('[data-font-scale-readout]');
+    if (readout) readout.textContent = `${percent}%`;
   };
-  set(dom.fontSmallerButton, atMin);
-  set(dom.stripFontSmallerButton, atMin);
-  set(dom.fontLargerButton, atMax);
-  set(dom.stripFontLargerButton, atMax);
+  set(dom.fontScaleButton);
+  set(dom.stripFontScaleButton);
 }
 
 /**

@@ -60,6 +60,39 @@ setlocal
 set "HERE=%~dp0"
 cd /d "%HERE%"
 
+REM ---- THE REDUX LIVE OVERLAY, ON BY DEFAULT (owner, 2026-10-18) -------------
+REM WHY THIS LINE EXISTS HERE AND NOT ANYWHERE ELSE.
+REM
+REM The owner asked for the Parakeet to rewrite the closed lines. It was turned
+REM on for the RUNNING shell by putting SOTTO_REDUX_LIVE=1 in that process's
+REM environment -- which lasts exactly as long as that process. Measured
+REM 2026-10-18: the value was also written to HKCU\Environment and
+REM WM_SETTINGCHANGE was broadcast (the call returned success), and that is
+REM NOT the same as the next launch inheriting it: a double-click here inherits
+REM the EXPLORER's environment block, built at logon, and no instrument available
+REM here can read what the Explorer will pass down. The probe that tried to ask
+REM it answered with Path= set to PowerShell's own, i.e. it asked the wrong
+REM process. So "configured and proven" was true for the shell in front of me
+REM and unproven for the one the owner returns to -- which is the state that
+REM made this line necessary.
+REM
+REM IT IS NOT HERE BECAUSE OF DRIFT. `WorkerBridge._child_env` builds the
+REM child's environment as `dict(os.environ)` plus the keys the bridge owns, and
+REM `_main/app-target-oracle.py` ARM e exists to hold that contract: "the env is
+REM byte-identical to the pre-existing contract: os.environ + SOTTO_CAPTURE_MODE,
+REM nothing else". Adding a default there was tried and turned ARM e RED, which
+REM is the gate being right -- a bridge that quietly starts adding keys of its
+REM own is how a second table appears. THIS file is the documented entry
+REM ("Double-click it"), it already decides things the shell cannot see, and a
+REM value set here is inherited by `start "" "%PYW%" ...` and by every child the
+REM shell spawns from there.
+REM
+REM HOW TO TURN IT OFF: `set SOTTO_REDUX_LIVE=0` in the shell before running
+REM this. The worker reads "0" and "1" as the only two values the environment
+REM rung recognises (worker/sotto_worker.py `redux_live_settings`), and "0" is an
+REM explicit off. The line below only ever supplies a value when there is none.
+if not defined SOTTO_REDUX_LIVE set "SOTTO_REDUX_LIVE=1"
+
 set "SHELL=%HERE%sotto_webview.py"
 if not exist "%SHELL%" (
   echo run.cmd: %SHELL% is missing. The app cannot start.
