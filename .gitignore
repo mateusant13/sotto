@@ -57,6 +57,12 @@ _main/runcmd-entry-report.json
 _main/console-census-*.json
 _main/run-cmd-exit-oracle-*.json
 _main/vad-arm-*.json
+# O PAYLOAD DE RUNTIME do diarizador. MEDIDO 2026-10-19: nao estava versionado
+# e nao estava ignorado -- um `git add -A` trazia para dentro do repo o
+# resultado da diarizacao DESTA maquina, reescrito a cada execucao. E' a saida
+# do produto, nao uma captura de um instrumento: nao pertence ao historico do
+# codigo, pertence a uma run.
+_main/diar-live.json
 _main/_probe/
 
 # Per-run scratch inside the production trees. worker/models/ is the downloaded
@@ -125,3 +131,63 @@ _main/_probe-crons.py
 # diarization / source-separation model assets: local only, like worker/models/
 # (S5 measured MossFormer2_SS_16K 670 353 271 B installed 2026-10-12; weights are not repo content)
 _main/diar-models/
+
+
+# ── VIRTUAL ENVIRONMENTS (2026-10-18) ────────────────────────────────────────
+# WHY THIS BLOCK EXISTS, in one measurement. The owner said "commita tudo" and a
+# literal `git add -A` staged 13 803 files, of which 8 834 were `_main/_epvenvs/`
+# -- a whole Python virtualenv, `site-packages` included -- and 779 more were
+# `_main/_venv-diar/`. Every one of them looked like new SOURCE because this file
+# had rules for `worker/models/`, `history/`, `node_modules/` and
+# `_main/diar-models/` and had nothing at all for an environment.
+#
+# A virtualenv in history is not a big commit, it is an unremovable one: taking it
+# back out needs a history rewrite on every clone. So the rule is here now.
+#
+# A venv is REBUILT FROM requirements, never tracked. The `_main/_venv-*` names
+# are matched too: the diarization venv is worth reusing, not worth versioning.
+.venv/
+venv/
+env/
+ENV/
+*_venv/
+_venv-*/
+_main/_epvenvs/
+_main/_venv-*/
+**/site-packages/
+**/__pycache__/
+*.egg-info/
+
+# ── RENDER DUMPS AND SCRATCH DIRS UNDER _main/ ─────────────────────────────────
+# `_main/_render-1710/` held 1 475 files including a 12.9 MB before.zip: a render
+# comparison, not source. The scratch directories carry random suffixes
+# (`_gaps-g4-after-pq5ty2v8`), which is the shape of "an instrument cleaned up
+# after itself, badly" -- not something to version.
+_main/_render-*/
+_main/_libs/
+_main/_gaps-*/
+_main/revive-panel-render-test/
+_main/_tmp-panel-*/
+_main/_skin-owner/
+_main/_skin-lane/
+
+# ORACLE OUTPUT, kept separate from the oracle SOURCES. This repeats the rule
+# already at the top of this file (the ORACLE sources stay tracked on purpose --
+# they are how every claim in this repo gets checked -- and only their output is
+# ignored) because the two easy mistakes are ignoring `_main/` wholesale and
+# ignoring the probes. Do neither.
+_main/_gaps-*/
+_main/*-mutant.py
+_main/_*mutant.py
+
+# NESTED npm TREES (2026-10-18) -- the plain rule at the top of this file does
+# not catch them, and that is measured rather than assumed. After the
+# environment rules above were added, "git add -A" staged 8 261 files, of which
+# 5 122 were node_modules (the trees under
+# _main/_design-lane/zips/cinematic-2/node_modules and friends). The rule
+# "node_modules/" IS present at the top of this file, the file has no BOM, and
+# there is no negation anywhere in it; "git check-ignore -v node_modules/jsdom"
+# returns nothing. The cause of that is NOT known and is NOT claimed here.
+# What is claimed is the only thing that was measured: the explicit glob below
+# excludes them, and "git add -A" afterwards stages none.
+**/node_modules/

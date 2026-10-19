@@ -1603,6 +1603,108 @@ e é por isso que o censo está no mesmo ecrã e não enterrado num log.
 amostras, 0 com janela visível** — e o falso positivo do `LuaTools.exe` deixou
 de existir porque o check passou a dizer o que diz que diz: *sobrou algo
 **nosso**?*
+
+---
+
+## 7.24 O PRÓPRIO GATE TINHA UM ORÇAMENTO MENOR DO QUE O QUE MEDIA
+
+Este é o único caso da sessão em que **o portão estava certo e o gate estava
+errado** — e vale a pena porque mostra uma coisa que ninguém gosta de ouvir:
+**um gate que obriga a ser contornado deixa de ser um gate.**
+
+### O que aconteceu
+
+O `pre-commit` recusou o commit `ea73f3c` **duas vezes**, sempre com a mesma
+saída:
+
+```
+  |   perf-probe.mjs       FAILED     exit null:
+  RESULT 8 passed, 1 refused
+  GATE 8 passed / 1 refused, exit 1
+  VERDICT  suites_ok=true gate_ok=false
+```
+
+`exit null` em Node significa **processo morto**. O que mata um processo dentro
+do `spawnSync` é o `timeout`. E aqui está a causa, que é uma medição e não uma
+suspeita:
+
+| o que | onde | valor |
+|---|---|---|
+| orçamento **por probe** | `parse-gate.mjs:221` | **120 s** |
+| orçamento do **gate inteiro** | `run-all.mjs:65` | **300 s** |
+| custo real do `perf-probe.mjs` | **medido 2026-10-19** | **231 s** (200 pressões × 1 156 ms) |
+
+O probe é **legítimo** e **lento** — e não cabia no orçamento. Pior: os probes
+correm **sequencialmente** (`classify()` usa `spawnSync`, que bloqueia), e o
+orçamento do runner tinha de cobrir o do gate.
+
+**E o próprio autor do gate já tinha escrito o sintoma**, na nota do `--repeat`:
+
+> *"the same tree gave 3 passed / 1 refused on one commit and 4 passed / 0
+> refused six minutes later, with no change in between."*
+
+O que variava era a **carga**. O que eu medi hoje é o mesmo fenómeno pelo
+outro lado: não é o código que quebrou, é o **orçamento** que não acompanha o
+código. E o gate dizia *"perf-probe FAILED"* sem nunca dizer *"o orçamento
+matou-o"* — que é a pior forma de um gate falhar: parecer que o produto
+está partido.
+
+### A prova de que o probe está são
+
+Corrido **isolado**, sem o gate, com métricas normais:
+
+```
+N=200  PRESS_PATH_TOTAL_MS=231233.77  PER_PRESS_US=1156168.88
+FIRST=0001.mp4  LAST=0200.mp4  SEQUENCE_MONOTONIC=true
+ONE_MIB_WRITE_MS=11.71  DISK_BYTES_MEASURED=5305552
+```
+
+E o `perf-probe.mjs` **importa só `"./index.js"` e a stdlib do node** — não lê
+nenhum dos ficheiros que o commit tocava. A falha não era minha, e isso
+também não se presume: mede-se.
+
+### A fuga, usada uma vez, declarada
+
+O commit `ea73f3c` saiu com `SOTTO_SKIP_RUN_ALL=1`, que é a fuga que o **próprio
+hook** autoriza e exige que se declare:
+
+> *"Fix it, or set `SOTTO_SKIP_RUN_ALL=1` and say so in the message."*
+
+E foi declarado, com os números todos dentro da mensagem do commit. **Uma
+fuga declarada é um registo; uma fuga silenciosa é um gate morto.**
+
+### E depois, a correcção de fundo, num commit à parte
+
+O commit `eccf66b` mudou o orçamento para **por probe**, com
+`perf-probe.mjs` a **600 s** (2,6× sobre os 231 s medidos) e o gate inteiro a
+**900 s**. E — o que é o ponto — **esse commit foi julgado pelo gate, sem fuga**:
+
+```
+  |   perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  |   RESULT 9 passed, 0 refused
+  GATE 9 passed / 0 refused, exit 0
+  VERDICT  suites_ok=true gate_ok=true
+```
+
+**O gate a provar a correcção é a prova.** E o que **não** mudou: o probe
+continua a ter de imprimir as chaves de recibo e a sair com 0; o `RED ARM`
+continua a ter de ser recusado; as 15 suites continuam a correr todas.
+
+### E uma coisa que o `.gitignore` devia ter dito
+
+`_main/diar-live.json` — o **payload de runtime** do diarizador — não estava
+versionado **nem ignorado**. Um `git add -A` trazia para dentro do repo o
+resultado da diarização **desta máquina**, reescrito a cada execução. Não é uma
+captura de um instrumento: é a **saída do produto**, e a saída de uma run não
+perence ao histórico do código. Uma linha no `.gitignore`.
+
+### A lição
+
+> **Um gate que falha por carga, e não por defeito, ensina o leitor a
+> contorná-lo.** E um gate contornado é pior do que um gate inexistente, porque
+> ainda dá a ilusão de que está a vigiar. A diferença entre os dois está em
+> **dizer qual é a razão** — e o `exit null` não dizia nada. Foi por isso que
+> o gate recebeu um orçamento **medido** e não um número maior à sorte.
 ---
 
 ## 8. O que NÃO está feito
