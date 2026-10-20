@@ -350,6 +350,19 @@ if exist _main\shots-delta-oracle.py (
   call :step red-as-expected-shots-delta-oracle 1 "_main\shots-delta-oracle.py;_main\_design-lane\shots-delta.py;_main\_design-lane\intake-shots.py" "%OUT%\shots-delta-oracle-neg.log" python _main\shots-delta-oracle.py --neg-arm
   call :expectred red-as-expected-shots-delta-oracle !STEP_RC! "%OUT%\shots-delta-oracle-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-shots-delta-oracle MISSING "%OUT%\shots-delta-oracle-neg.log" "NEG-ARM PASS" )
+REM ---------------------------------------------------------------------------
+REM O EOL DO REPO PASSOU A SER UMA REGRA. Sem `.gitattributes`, um
+REM checkout nesta box entregava CRLF a TODOS os ficheiros de texto
+REM (medido: 9/9 ficheiros representativos), o que destruia a convencao
+REM do AGENTS.md (`_main/*.py` = LF) e mudava o sha de tudo o que esta
+REM byte-pinhado. O verificador materializa um checkout REAL e compara
+REM os terminadores um a um com a arvore de trabalho de hoje.
+REM Custo medido: 3,35 s e 45,7 MB (pasta fixa em TMPDIR, nao cresce).
+REM ---------------------------------------------------------------------------
+if exist _main\_gitattributes-verify.py (
+  call :step gitattributes-verify 0 "_main\_gitattributes-verify.py;_main\_make-gitattributes.py;.gitattributes" "%OUT%\gitattributes-verify.log" python _main\_gitattributes-verify.py
+  call :record gitattributes-verify !STEP_RC!
+) else ( call :record gitattributes-verify MISSING )
 if exist _main\youtube-track-wiring-oracle.py (
   call :step youtube-track-wiring 0 "_main\youtube-track-wiring-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-track-wiring.log" python _main\youtube-track-wiring-oracle.py
   call :record youtube-track-wiring !STEP_RC!
