@@ -181,7 +181,7 @@ shell mostra **54 s entre duas linhas consecutivas** (`03:29:21` ->
 `03:30:05`), e uma shell lançada com a minha correcção e um `--mutex-name`
 privado arranca **sem qualquer problema** (`SINGLE_INSTANCE ... already_running=false`,
 janela criada, `PANEL_SHOW_REFUSED reason=not-asked` — ou seja, **escondida**,
-como a regra exige). A correction não parte o arranque: o arranque morre
+como a regra exige). A correcção não parte o arranque: o arranque morre
 **antes** de qualquer código que esta lane tenha tocado (a linha
 `SHELL_STARTUP_STAGE ... stage=pre-lock` é a última que escreve).
 
@@ -197,6 +197,20 @@ caixa calma para fechar a verde.
 entraram no commit `6d23811` da lane do cache/delta, que versionou o ficheiro
 da bateria **depois** de eu o ter editado — o conteúdo é o que eu escrevi e o
 passo está no HEAD.
+
+**UMA ATESTAÇÃO INDEPENDENTE:** a lane dos strip-stats, **sem saber do meu
+A/B**, chegou à mesma conclusão pelo mesmo caminho — o commit `414f046`
+("strip-stats: os dois gates mediam a CARGA da maquina, nao o produto") e o
+recibo `_main/receipt-20261020-strip-stats-carga.md` dizem que os gates
+mediam a **carga da máquina**, não o produto. Duas lanes, a mesma conclusão,
+por instrumentos diferentes.
+
+**A PROCEDÊNCIA DESTE COMMIT (para quem ler o `git log`):** os três ficheiros
+desta lane foram versionados no commit `468ab3c`, com a **mensagem de outra
+lane** — o índice deste repo é partilhado e tinha ~756 entradas alheias
+staged, e um `git commit` de outra lane os sweptou. O conteúdo é o meu (as
+três dif do commit são os meus três ficheiros); a mensagem é de outro autor.
+Não há uma segunda cópia deste trabalho por fazer.
 
 
 ## 6. O QUE **NÃO** FOI MEDIDO
