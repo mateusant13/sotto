@@ -10,7 +10,7 @@ where the cache must not be trusted.
 
 ## 1. WHAT WAS DONE
 
-### 1.1 The engine — `_main/_stepcache.py` (NEW, 14 868 B, LF, sha256 `8771D98B…`)
+### 1.1 The engine — `_main/_stepcache.py` (NEW, 15 228 B, LF, sha256 `CFD676BA…`)
 
 One step, one fingerprint, one honest answer.
 
@@ -30,6 +30,8 @@ One step, one fingerprint, one honest answer.
   * `python _main/_stepcache.py check --step NAME --deps "a;b" [--log L]
     [--expect-rc N] [--state FILE] [--always]` → prints exactly two lines,
     `HIT` + `rc=<n>` or `MISS` + `reason=<why>`, and exits 0 (HIT) or 1 (MISS).
+    `--deps` accepts BOTH forms: one `;`-separated string (`--deps "a;b"`) and
+    several space-separated files (`--deps a b`).
   * `python _main/_stepcache.py record --step NAME --deps "a;b" --rc N
     [--log L] [--state FILE]`
   * `python _main/_stepcache.py status [--step NAME]`
@@ -164,6 +166,38 @@ which has to go RED **on its own claim**:
 **mutantes : 4/4 RED.** An anchor that is missing or ambiguous is refused as
 decorative (and would be counted as a failure, not as a catch).
 
+### 2.3 THE BATTERY IS RED RIGHT NOW, AND IT IS NOT THIS LANE'S CACHE
+
+**The final runs (02:59, 03:19, 03:28) are RED: `strip-stats-log-budget=3`,
+`strip-geometry-restore=3`** (`steps : 52 gate=40 control=10 skipped=1
+expect-red=1 missing=0 cached=44`, exit 1). The measured cause:
+
+* `app\webview\sotto_webview.py` was rewritten by ANOTHER lane at **02:55:53**
+  (707 907 B). It is a file this lane does not own and must not touch.
+* The three strip probes launch the shell as
+  `pythonw.exe app\webview\sotto_webview.py --no-tray --exit-after 8 --log ...`
+  and wait for it. With the shell as it is NOW, **the instance does not exit**:
+  `_main\_strip-restore-probe.py:181` raises
+  `subprocess.TimeoutExpired: Command '[...pythonw.exe, ...sotto_webview.py,
+  --no-hotkey, --no-hot-reload, --no-worker, --no-tray, --exit-after, 8,
+  --log, ...]' timed out after 10 seconds`, and the probe exits **rc=3
+  (CRASH)**. The control `strip-stats-log-budget` dies the same way (its log is
+  0 B), so it never prints `STRIP-LOG CONTROL PASS` and the control FAILS.
+  The shell's OWN comment describes this exact failure mode (`:5645-5648`:
+  *"the shell HANGS before the panel loads ... It also broke the `--exit-after`
+  probes the same way"*).
+* **The same three steps were GREEN in this lane's 02:22 cold run, with the
+  cache layer already in place** (`strip-stats-log-budget rc=0 [CONTROL] went
+  RED on the broken copy as required`, `strip-geometry-restore rc=0`,
+  `strip-stats-wave rc=0`). The battery was GREEN WITH 1 SKIPPED then.
+* **The cache did not cause it and did not hide it.** The deps of those three
+  steps include `app\webview\sotto_webview.py`, so when that file's bytes
+  changed the cache invalidated EXACTLY those steps, they re-ran, and the
+  battery reported the real failure instead of reusing the previous green log.
+  That is the cache doing its job; the RED is the other lane's regression, and
+  the fix belongs to the shell's lane (this lane is forbidden from touching
+  `app/webview\**`).
+
 ---
 
 ## 3. WHAT WAS NOT MEASURED
@@ -191,6 +225,16 @@ decorative (and would be counted as a failure, not as a catch).
   own words: *"to verify the skipped arm: close the Sotto shell and re-run this
   probe"* — the owner's shell was running (pid 51264, `--show`) and holds Alt+C.
   That is the pre-existing, declared behaviour of that arm, not a change.
+* **NOT fixed by this lane: the three strip steps that are RED now** (§2.3).
+  The cause is measured and it is in `app/webview/sotto_webview.py`, a file
+  this lane does not own. Two of the three failures were also present before
+  this lane's last commit (the shell has not changed since 02:55:53).
+* **NOT measured: the battery's verdict with the shell fixed.** The last GREEN
+  full run measured by this lane is the 02:22 cold run (49 steps) and the
+  other lane's 02:37 run (51 steps, cached=46). The runs after 02:55:53 are
+  RED because of the shell, so the number this lane can report for "the
+  battery with the cache, green" is the 02:37 one (another lane's run, with
+  46 of 51 steps reused) and this lane's own 02:22/02:26 runs.
 
 ---
 
