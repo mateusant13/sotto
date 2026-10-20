@@ -317,6 +317,52 @@ PANEL_STATE_PATH = os.path.join(REPO_ROOT, '_main', 'panel-state.json')
 PANEL_STATE_REQUEST = PANEL_STATE_PATH + '.request'
 PANEL_STATE_INTERVAL_S = 2.0
 
+# --- THE UI MARSHALLING BOUNDS (2026-10-20) --------------------------------
+# MEASURED 2026-10-20 on the OWNER'S OWN log (`I:\cc-tmp\sotto-012524.log`,
+# the app launched at 01:25:24): 93 `UI_THREAD_STALL begin-invoke not run in
+# 10 s` and 68 `exec_js TIMEOUT after 10.0s` -- ALL of them inside ONE 50 s
+# window (01:55:30 -> 01:56:20), while a design lane was rendering 45 themes
+# with headless Edge. The LOAD is the TRIGGER; the CODE is the FREEZE.
+#
+# THE CHAIN, read in the code: `panel.js` pulls `getStats()` every 1000 ms ->
+# `_stats()` -> `reply_stats()` -> `exec_js()` (SYNCHRONOUS, 10 s budget) ->
+# `_ui()` -> `form.BeginInvoke` + `done.wait(10)`. A busy UI thread therefore
+# did not only delay the stats: it HELD the pump thread -- the one that
+# carries the captions -- for 10 s at a time, 93 times.
+UI_MARSHAL_TIMEOUT_S = 10.0      # the DEFAULT budget of `_ui` (unchanged)
+PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
+STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
+
+
+class NoAnswer(dict):
+    """`exec_js`/`_ui` did NOT get an answer -- and it says WHY.
+
+    A `dict`, so `json.dumps` of it WORKS (the probes log the value as JSON
+    and a plain object would raise), and FALSY, so every `if value:` check in
+    the shell behaves exactly as it did when the answer was a bare `None`.
+
+    It is NOT `None`, and that is the whole point. Measured 2026-10-20: 93
+    `UI_THREAD_STALL` warnings inside a 50 s window, and every reader
+    downstream saw a bare `None` -- the probe logged `PANEL_STATS_PROBE null`
+    with no reason, so "the panel answered null" and "the panel never
+    answered" were the SAME observation. This says which one it was.
+
+    Keys: `reason`, `requested`, `timeout`, `detail`.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, reason, requested=None, timeout=None, detail=None):
+        super().__init__(reason=reason, requested=requested,
+                         timeout=timeout, detail=detail)
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return '<no-answer reason=%s requested=%r timeout=%s>' % (
+            self.get('reason'), self.get('requested'), self.get('timeout'))
+
 # --- THE PANEL'S VISIBILITY, as a file the WORKER can poll -------------------
 # THE STACK LAW (owner, 2026-10-07, verbatim): *"o nvidia é pro ao vivo, o
 # parakeet redux é pro geral. o ao vivo só acontece quando o painel ta aberto.
@@ -5515,6 +5561,22 @@ class SottoShell:
         #: is the LATEST, which is all the panel reads (see `emit_async`).
         self._emit_lock = threading.Lock()
         self._emit_pending = {}
+        # THE STATS-REPLY CHANNEL (2026-10-20): the ids waiting for the UI
+        # thread, the ones pushed out of the way, and whether a post is
+        # already pending. The REPLY is a POST -- see `reply_stats`.
+        self._stats_reply_lock = threading.Lock()
+        self._stats_reply_pending = []
+        self._stats_reply_evicted = []
+        self._stats_reply_posted = False
+        self._stats_reply_payload = '""'
+        # THE PANEL-STATE DOM READ (2026-10-20): the last value, its age, and
+        # whether a newer read is on the way. AT MOST ONE read outstanding.
+        self._panel_dom_lock = threading.Lock()
+        self._panel_dom_value = None
+        self._panel_dom_at = 0.0
+        self._panel_dom_pending = False
+        self._panel_dom_reason = ''
+        self._panel_dom_detail = None
         self.startup_done = False    # startup actions run once per process
         self.startup_visible = None  # None until the window is measured
         self._exit_code = 0
@@ -6172,7 +6234,12 @@ class SottoShell:
                         self.webview2.CoreWebView2 is not None:
                     return self.webview2.CoreWebView2
                 return None
-            self.core = self._ui(_grab)
+            grabbed = self._ui(_grab)
+            # A STALL IS NOT A CORE (2026-10-20): `_ui` answers a stall with
+            # a `NoAnswer`, and that must not become `self.core` -- the next
+            # `ExecuteScriptAsync` would raise on a dict instead of on a
+            # missing core.
+            self.core = None if isinstance(grabbed, NoAnswer) else grabbed
 
         # ── THE BOUNCE IS DECIDED BY THE DOCUMENT, NOT BY A FLAG ───────────────
         # `stage.html` is empty, so landing on it and stopping is the white
@@ -6472,12 +6539,16 @@ class SottoShell:
         log('SHELL_CLOSING')
 
     # -- UI thread marshalling --------------------------------------------
-    def _ui(self, fn):
+    def _ui(self, fn, timeout=UI_MARSHAL_TIMEOUT_S):
         """Run `fn` on the thread that owns the WebView2 control.
 
         CoreWebView2 members must be called from the UI thread; the worker
         reader thread and the hotkey thread are not it. pywebview marshals only
         its own form operations, so the host does it for itself.
+
+        `timeout` is the budget for the marshalling wait, and it is the SAME
+        clock the caller asked for (2026-10-20) -- see `exec_js`. A stall
+        returns a `NoAnswer`, never a silent `None`.
         """
         from System import Func, Type  # pythonnet, loaded by pywebview
 
@@ -6497,15 +6568,27 @@ class SottoShell:
                     done.set()
 
             form.BeginInvoke(Func[Type](run))
-            # A SILENT `return None` here is how a stalled UI thread became a
-            # VACUOUS result in the instruments: `exec_js` then sees None, the
-            # probe logs `PANEL_STATS_PROBE null`, and the check that read the
-            # value fails with no reason attached to it. Measured 2026-10-11:
-            # a worker publishing 43 stats pushes/s left the posted callable
-            # unrun for the whole 10 s and NOTHING in the log said so.
-            if not done.wait(10):
-                warn('UI_THREAD_STALL begin-invoke not run in 10 s fn='
-                     + str(getattr(fn, '__name__', fn)))
+            # THE BUDGET IS A PARAMETER (2026-10-20). It used to be a hard-coded
+            # 10 s INSIDE this method, so a caller that asked `exec_js` for 5 s
+            # waited 10 s HERE and then another 5 s THERE -- 15 s to learn that
+            # a 5 s question had timed out. The caller and this method now
+            # share ONE clock.
+            if not done.wait(timeout):
+                name = str(getattr(fn, '__name__', fn))
+                warn('UI_THREAD_STALL begin-invoke not run in %gs fn=%s'
+                     % (timeout, name))
+                # THE STALL IS A VALUE, NOT A SILENT `None`. A SILENT `return
+                # None` here is how a stalled UI thread became a VACUOUS
+                # result in the instruments: `exec_js` then sees None, the
+                # probe logs `PANEL_STATS_PROBE null`, and the check that read
+                # the value fails with no reason attached to it. Measured
+                # 2026-10-11: a worker publishing 43 stats pushes/s left the
+                # posted callable unrun for the whole 10 s and NOTHING in the
+                # log said so. Measured 2026-10-20 on the owner's own log: 93
+                # of these inside ONE 50 s window, and every reader
+                # downstream STILL could not tell "answered null" from
+                # "never answered".
+                return NoAnswer('ui-thread-stall', name, timeout)
             if 'error' in box:
                 raise box['error']
             return box.get('value')
@@ -6554,6 +6637,15 @@ class SottoShell:
         control's `Invoke` so it runs on the UI thread, and completion arrives
         on a `ContinueWith(Action[Task[String]])`. `.Completed` does not exist
         on a `Task[String]` in this binding.
+
+        NO ANSWER IS NOT `None` (2026-10-20). Every way this can fail to get
+        an answer -- the UI thread never ran the callable, the task did not
+        finish, the task faulted -- returns a `NoAnswer`: FALSY (so `if value:`
+        is unchanged) and JSON-serialisable (so a probe can log it), and it
+        carries the REASON and WHAT WAS ASKED. Measured on the owner's own log
+        (2026-10-20): 68 `exec_js TIMEOUT after 10.0s` and 93
+        `UI_THREAD_STALL` inside one 50 s window, and the reader could not
+        tell a null answer from no answer.
         """
         from System import Action, Func, Object, String
         from System.Threading.Tasks import Task
@@ -6577,18 +6669,35 @@ class SottoShell:
                 lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
                     Action[Task[String]](_complete))))
 
+        # ONE BUDGET, NOT TWO (2026-10-20). The marshalling wait (`_ui`) and
+        # the task wait were TWO separate waits, each up to `timeout`: a
+        # question that timed out held the caller for 2x `timeout` -- 20 s for
+        # the 10 s default `reply_stats` used, on the pump thread. The
+        # deadline is computed ONCE and the two waits SHARE it.
+        deadline = time.monotonic() + float(timeout)
+        marshalled = None
         try:
-            self._ui(_run)
+            marshalled = self._ui(_run, timeout=timeout)
         except Exception as exc:
             box['error'] = repr(exc)
             done.set()
 
-        if not done.wait(timeout):
+        if isinstance(marshalled, NoAnswer):
+            # THE UI THREAD NEVER RAN IT. The script is still QUEUED on the
+            # form, so the answer may arrive later -- but the caller is NOT
+            # going to wait for it, and the REASON is on the record.
+            warn(f'exec_js STALL reason=ui-thread-stall timeout={timeout}s '
+                 f'script={script[:90]!r}')
+            return marshalled
+
+        left = deadline - time.monotonic()
+        if left <= 0 or not done.wait(left):
             warn(f'exec_js TIMEOUT after {timeout}s script={script[:90]!r}')
-            return None
+            return NoAnswer('exec-js-timeout', script[:90], timeout)
+
         if 'error' in box:
             warn(f'exec_js failed: {box["error"]}')
-            return None
+            return NoAnswer('exec-js-error', script[:90], timeout, box['error'])
         try:
             return json.loads(box.get('json', 'null'))
         except ValueError:
@@ -6677,9 +6786,31 @@ class SottoShell:
         is the bridge's own already-held state. Nothing here starts a process or
         a window, and nothing here changes what the owner sees.
         """
-        dom = None
+        # THE DOM READ IS A POST, NOT A ROUND TRIP (2026-10-20). It used to
+        # be `exec_js(PANEL_STATE_PROBE, timeout=5.0)`, and `exec_js` waits on
+        # the UI thread: a busy UI thread held the WRITER for 5 s there and
+        # another 10 s inside `_ui` (two waits, one budget -- the bug fixed
+        # above), and the callable it posted stayed QUEUED on the form, so a
+        # dump every 2 s grew the WinForms queue for as long as the UI thread
+        # was busy.
+        #
+        # Now the read is a POST with AT MOST ONE outstanding: while a read is
+        # in flight the next dump does not post another one, and the dump
+        # reports the LAST value it has, with its age and whether a newer one
+        # is on the way. The FILE keeps being written every 2 s -- the dump is
+        # not sacrificed, it stops being able to TRAVA.
         if self.core is not None:
-            dom = self.exec_js(PANEL_STATE_PROBE, timeout=5.0)
+            self._request_panel_dom()
+        lock = getattr(self, '_panel_dom_lock', None)
+        if lock is None:
+            lock = self._panel_dom_lock = threading.Lock()
+        with lock:
+            dom = getattr(self, '_panel_dom_value', None)
+            dom_at = getattr(self, '_panel_dom_at', 0.0)
+            dom_pending = getattr(self, '_panel_dom_pending', False)
+            dom_reason = getattr(self, '_panel_dom_reason', '')
+            dom_detail = getattr(self, '_panel_dom_detail', None)
+        dom_age = (time.monotonic() - dom_at) if dom_at else None
         bridge = self.bridge
         worker = bridge.snapshot() if bridge is not None else None
         # THE STATUS OBJECT, not just its text. `panel.js:2896-2903` blanks
@@ -6700,6 +6831,15 @@ class SottoShell:
         return {
             'namedState': self._named_panel_state(worker, panel_status, panel_kind),
             'panel': dom,
+            # WHY the DOM half is what it is: its age, whether a newer read is
+            # on the way, and the reason of the last failure. A dump that
+            # cannot say this is a dump that lies about being fresh.
+            'panelDom': {
+                'ageSeconds': round(dom_age, 3) if dom_age is not None else None,
+                'pending': dom_pending,
+                'reason': dom_reason,
+                'detail': dom_detail,
+            },
             'shell': {
                 'visible': self.visible,
                 'hotkey': self.args.hotkey,
@@ -6725,6 +6865,75 @@ class SottoShell:
                 'statsPushes': self.stats_pushes,
             'worker': worker,
         }
+
+    def _request_panel_dom(self):
+        """Ask the page for the panel's DOM -- WITHOUT waiting for it.
+
+        Returns True when a read was POSTED, False when one is already in
+        flight (or the form is gone). AT MOST ONE read is outstanding, ever:
+        that is the bound the DIAGNOSTIC channel needs, and the product does
+        not.
+        """
+        lock = getattr(self, '_panel_dom_lock', None)
+        if lock is None:
+            lock = self._panel_dom_lock = threading.Lock()
+        with lock:
+            if getattr(self, '_panel_dom_pending', False):
+                return False
+            self._panel_dom_pending = True
+        try:
+            queued = self._post(self._read_panel_dom)
+        except BaseException:
+            with lock:
+                self._panel_dom_pending = False
+            raise
+        if queued is False:
+            with lock:
+                self._panel_dom_pending = False
+            return False
+        return True
+
+    def _read_panel_dom(self):
+        """Read the panel's DOM ON THE UI THREAD, and keep the result."""
+        from System import Action, Func, Object, String
+        from System.Threading.Tasks import Task
+
+        def _complete(task):
+            value = None
+            reason = ''
+            detail = None
+            try:
+                if task.IsFaulted:
+                    reason = 'exec-js-error'
+                    detail = repr(task.Exception)
+                else:
+                    value = json.loads(task.Result)
+            except Exception as exc:  # noqa: BLE001
+                reason = 'exec-js-error'
+                detail = repr(exc)
+            lock = getattr(self, '_panel_dom_lock', None)
+            if lock is None:
+                lock = self._panel_dom_lock = threading.Lock()
+            with lock:
+                self._panel_dom_value = value
+                self._panel_dom_at = time.monotonic()
+                self._panel_dom_pending = False
+                self._panel_dom_reason = reason
+                self._panel_dom_detail = detail
+
+        try:
+            self.webview2.Invoke(Func[Object](
+                lambda: self.core.ExecuteScriptAsync(PANEL_STATE_PROBE).ContinueWith(
+                    Action[Task[String]](_complete))))
+        except Exception as exc:  # noqa: BLE001
+            lock = getattr(self, '_panel_dom_lock', None)
+            if lock is None:
+                lock = self._panel_dom_lock = threading.Lock()
+            with lock:
+                self._panel_dom_pending = False
+                self._panel_dom_reason = 'exec-js-error'
+                self._panel_dom_detail = repr(exc)
+            warn(f'PANEL_STATE_DOM_FAILED error={exc!r}')
 
     @staticmethod
     def _named_panel_state(worker, panel_status, panel_kind=None):
@@ -8911,6 +9120,37 @@ class SottoShell:
                     continue
         return payload
     def reply_stats(self, stats_id, payload):
+        """The panel's `getStats()` pull, ANSWERED -- without holding the caller.
+
+        MEASURED 2026-10-20 (the owner's own log, `I:\cc-tmp\sotto-012524.log`):
+        93 `UI_THREAD_STALL begin-invoke not run in 10 s` and 68 `exec_js
+        TIMEOUT after 10.0s`, ALL of them inside ONE 50 s window. The chain was
+        `panel.js` -> `_stats()` -> `reply_stats()` -> `exec_js()` (SYNCHRONOUS,
+        10 s budget) -> `_ui()` -> `form.BeginInvoke` + `done.wait(10)`. Every
+        pull was a SYNCHRONOUS round trip through the UI thread, and the thread
+        that made it is the PUMP thread -- the one that carries the captions. A
+        busy UI thread therefore delayed the CAPTIONS, 93 times.
+
+        THE FIX IS THE ONE `emit_async` ALREADY HOLDS (2026-10-11): the reply
+        is a POST, not a round trip, and the number of POSTED callables is
+        BOUNDED at ONE per channel whatever the pull rate is.
+
+        BUT A REPLY IS NOT A PUSH, AND THAT IS THE WHOLE DIFFERENCE. `emit_async`
+        may REPLACE the pending payload, because its payload is a whole state
+        and the panel is a pure function of the last one it saw. A REPLY is the
+        ANSWER to an id: every id asked a question, and a question that is not
+        answered leaves the panel's Promise pending FOREVER (`statsPending[id]`
+        in the shell's own injected JS, `__sotto_stats` resolves ONE id). So
+        the pending slot here is a LIST of ids, and the ids ACCUMULATE while
+        the CALLABLES do not.
+
+        THE BOUND: `STATS_REPLY_MAX_PENDING` ids wait for the UI thread. Past
+        that, the OLDEST id is moved aside -- and it is still ANSWERED, with
+        the NEWEST payload: the payload is a whole state, so the newest state
+        is a TRUE answer to an older question. An id that is never answered
+        leaks one entry in the page's `statsPending` map, and the page is not
+        mine to fix.
+        """
         # LOGGED, not silent: the panel's own poll (`panel.js:1722`, every 1000 ms)
         # is the only way to tell "the member exists" from "the member is ANSWERED".
         # The first reply and then every 60th — one line a minute at the panel's
@@ -8919,8 +9159,93 @@ class SottoShell:
         if self.stats_replies == 1 or self.stats_replies % 60 == 0:
             log(f'BRIDGE_STATS_REPLY id={stats_id} count={self.stats_replies} '
                 f'payload={json.dumps(payload, separators=(",", ":"))}')
-        self.exec_js(f'window.__sotto_stats({json.dumps(stats_id)}, '
-                     f'{json.dumps(json.dumps(payload))})')
+
+        payload_json = json.dumps(json.dumps(payload))
+        lock = getattr(self, '_stats_reply_lock', None)
+        if lock is None:
+            lock = self._stats_reply_lock = threading.Lock()
+        with lock:
+            pending = getattr(self, '_stats_reply_pending', None)
+            if pending is None:
+                pending = self._stats_reply_pending = []
+            evicted = getattr(self, '_stats_reply_evicted', None)
+            if evicted is None:
+                evicted = self._stats_reply_evicted = []
+            if len(pending) >= STATS_REPLY_MAX_PENDING:
+                oldest = pending.pop(0)
+                evicted.append(oldest)
+                if len(evicted) > STATS_REPLY_MAX_PENDING:
+                    dropped = evicted.pop(0)
+                    log(f'STATS_REPLY_DROPPED id={dropped} '
+                        f'reason=reply-queue-overflow pending={len(pending)} '
+                        f'evicted={len(evicted)}')
+            pending.append(stats_id)
+            self._stats_reply_payload = payload_json
+            already = getattr(self, '_stats_reply_posted', False)
+            self._stats_reply_posted = True
+
+        if already:
+            # A POST IS ALREADY PENDING and it will carry this id too. Nothing
+            # new is posted: THAT is the bound.
+            return True
+
+        try:
+            queued = self._post(self._drain_stats_replies)
+        except BaseException:
+            with lock:
+                self._stats_reply_posted = False
+            raise
+        if queued is False:
+            # `_post` DROPS the callable when the form does not exist yet. The
+            # slot must not stick on that answer -- a stats channel that goes
+            # permanently silent is a worse failure than the queue this bound
+            # exists to fix.
+            with lock:
+                self._stats_reply_posted = False
+                pending.clear()
+                evicted.clear()
+            return False
+        return True
+
+    def _drain_stats_replies(self):
+        """Deliver the pending replies. Runs ON THE UI THREAD.
+
+        EVERY id is answered, with the NEWEST payload: the payload is a whole
+        state, so the newest state answers an older question truthfully, and
+        the panel's Promise resolves either way.
+        """
+        from System import Action, Func, Object, String
+        from System.Threading.Tasks import Task
+
+        def _complete(task):
+            try:
+                if task.IsFaulted:
+                    warn(f'stats reply failed: {task.Exception!r}')
+            except Exception as exc:  # noqa: BLE001
+                warn(f'stats reply failed: {exc!r}')
+
+        lock = getattr(self, '_stats_reply_lock', None)
+        if lock is None:
+            return
+        with lock:
+            pending = getattr(self, '_stats_reply_pending', [])
+            evicted = getattr(self, '_stats_reply_evicted', [])
+            ids = list(pending) + list(evicted)
+            pending.clear()
+            evicted.clear()
+            self._stats_reply_posted = False
+            payload_json = getattr(self, '_stats_reply_payload', '""')
+        if not ids:
+            return
+        for stats_id in ids:
+            script = ('window.__sotto_stats(' + json.dumps(stats_id) + ','
+                      + payload_json + ')')
+            try:
+                self.webview2.Invoke(Func[Object](
+                    lambda s=script: self.core.ExecuteScriptAsync(s).ContinueWith(
+                        Action[Task[String]](_complete))))
+            except Exception as exc:  # noqa: BLE001
+                warn(f'STATS_REPLY_FAILED id={stats_id} error={exc!r}')
     def on_worker_stats(self, parsed):
         """PUSH half of the stats channel: the worker just published counters.
 
@@ -9954,8 +10279,11 @@ class SottoShell:
         needs a drawable surface).
         """
         dump = self.exec_js(DUMP_DOM_PROBE)
-        if dump is None:
-            log('DOMDUMP failed: probe returned nothing')
+        if not dump:
+            # THE REASON, NOT A BARE "nothing" (2026-10-20): a `NoAnswer`
+            # says WHICH kind of nothing it was.
+            reason = dump.get('reason') if isinstance(dump, NoAnswer) else 'empty'
+            log(f'DOMDUMP failed: probe returned nothing reason={reason}')
             self.request_exit(3, reason='dump-dom-failed')
             return
         log('DOMDUMP ' + json.dumps(dump, separators=(',', ':')))
