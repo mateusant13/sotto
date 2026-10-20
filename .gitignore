@@ -49,6 +49,14 @@ history/
 !_main/_wordsplit-before.jsonl
 !_main/_wordsplit-after.jsonl
 
+# The FROZEN COPY of the owner's own log (the lines the app really sent to the
+# caption box). It is a DERIVED artefact of a file that is already ignored
+# (`*.log`), and it carries what the owner was actually watching -- so it is
+# NOT versioned either. The census can still be reproduced anywhere, because
+# the `--fixture` mode builds the SAME rows from the lists the instrument
+# already carries (no log, no privacy, and the numbers never move).
+_main/_audit-verify/*.rows.json
+
 # _main/ holds the oracles (tracked) AND their captures. Only the captures go.
 _main/*.txt
 _main/*.png

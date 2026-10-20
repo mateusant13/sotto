@@ -241,9 +241,11 @@ REM separator glyph, and the counter SPLIT IN TWO WORDS (the case an element-sha
 REM cannot see) -- never reaches the caption box. Its `nochrome` arm removes the rule from
 REM a COPY and MUST let the chrome through: the oracle has to be able to say no.
 REM
-REM `external-caption-chrome-census.py` reads the 220 real external lines out of the app's
+REM `external-caption-chrome-census.py` reads the REAL external lines out of the app's
 REM OWN log and says how many of them were chrome; its negative arm removes the rule and
-REM shows the survivors going back up.
+REM shows the survivors going back up. THE COUNT IS NOT A CONSTANT: the log keeps growing
+REM (the app is open), so the number in that REM was true when it was written and moves
+REM from then on. The FIXTURE step below is the one with a number that does NOT move.
 REM
 REM BOTH were outside this battery until 2026-10-19, which is how the `head` arm of the
 REM first one rotted in silence: it kept running and it stopped proving anything.
@@ -255,6 +257,16 @@ if exist _main\external-caption-chrome-census.py (
   call :step external-caption-chrome-census 0 "_main\external-caption-chrome-census.py;app\webview\external_subs.py;_main\webview-run.log" "%OUT%\external-caption-chrome-census.log" python _main\external-caption-chrome-census.py --neg-arm
   call :record external-caption-chrome-census !STEP_RC!
 ) else ( call :record external-caption-chrome-census MISSING )
+REM The FIXTURE: the SAME rules over the SAME rows, built from the lists the
+REM instrument itself carries. The numbers are a property of the RULES, not of
+REM whatever the log happens to hold today -- so anybody can reproduce them:
+REM     python _main/external-caption-chrome-census.py --fixture --neg-arm
+REM MEDIDO 2026-10-20: 19 linhas, 11 de chrome apanhadas, 8 legendas que sobrevivem,
+REM 1 RESIDUE reportada; o braco negativo leva o chrome de 11 a 0 e as legendas de 8 a 19.
+if exist _main\external-caption-chrome-census.py (
+  call :step external-caption-chrome-census-fixture 0 "_main\external-caption-chrome-census.py;app\webview\external_subs.py" "%OUT%\external-caption-chrome-census-fixture.log" python _main\external-caption-chrome-census.py --fixture --neg-arm
+  call :record external-caption-chrome-census-fixture !STEP_RC!
+) else ( call :record external-caption-chrome-census-fixture MISSING )
 REM Owner, 2026-10-20, verbatim: "eu ja mandei tu resolver o negocio de que por
 REM algum motivo texto de outras coisas que nao sao o transcript do video do youtube
 REM fica vazando pro nosso app". TWO HOLES, and this is the instrument that says

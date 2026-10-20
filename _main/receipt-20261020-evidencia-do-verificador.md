@@ -143,6 +143,55 @@ negativo deixa passar **20** linhas (eram 17). **A estrutura da prova é a mesma
 e os dois braços continuam a dizer o que dizem**; só os absolutos andaram com
 o log.
 
+### 5.1 O QUE FOI FEITO COM ISSO: o censo passou a ser DETERMINÍSTICO
+
+Um número que anda não pode ser verificado por ninguém excepto a máquina que o
+produziu — e o verificador tinha razão em pedir 220/26/194 sem poder obtê-los.
+**O censo ganhou um modo `--fixture`**, que faz a **mesma pergunta às mesmas
+regras** sobre um conjunto de linhas **FIXO**, construído a partir das listas
+que o próprio instrumento já carregava (`MUST_CATCH`, `MUST_KEEP`,
+`KNOWN_RESIDUE`):
+
+```
+python _main/external-caption-chrome-census.py --fixture --neg-arm
+```
+
+**MEDIDO (3 execuções, idênticas):**
+
+```
+CENSUS: 19 external lines in the FIXTURE (this file's own lists)
+  chrome the shipped rule CATCHES (11):
+  lines that SURVIVE as captions (8):
+  RESIDUE (chrome that is a sentence, so shape cannot take it):
+    'Oferta sujeita aos termos. Cancele quando quiser.'
+  chrome caught: 11 -> 0   lines kept as captions: 8 -> 19
+VERDICT: PASS
+```
+
+Estes números **não andam** — são uma propriedade das REGRAS, e qualquer
+pessoa os reproduce com um comando, sem log e sem o texto do dono.
+
+O censo **vivo** continua a ser a prova real (é ele que vai contra o log que a
+app escreveu de facto) e continua na bateria como `external-caption-chrome-census`.
+O passo novo é `external-caption-chrome-census-fixture`, e a bateria ficou com
+**85 passos** (`gate=60, control=9, skipped=1, expect-red=15, missing=0,
+failed=0` → GREEN WITH 1 SKIPPED, rc=0).
+
+**Três coisas que accompanyam a mudança:**
+
+1. O **REM** da bateria dizia *"reads the **220** real external lines"* — um
+   número que era verdade quando foi escrito e que anda desde então. Corrigido
+   para dizer que o número anda e para apontar para o passo da fixture.
+2. O `--write-rows` guarda uma cópia congelada das linhas em
+   `_main/_audit-verify/*.rows.json`, e essa cópia foi posta no `.gitignore`:
+   é um artefacto derivado de um ficheiro já ignorado (`*.log`) e **carrega o
+   que o dono estava a ver**, por isso nunca vai para o repositório. A fixture
+   não tem esse problema — não precisa de log nenhum.
+3. A propriedade CRLF da bateria **HOLDou** (1059 CRLF / 0 bare LF) e o
+   `AGENTS.md` foi re-pinhado pelo portão dos pinos: **78075 B / 1059 CRLF /
+   0 bare LF**, sha `F780D397BDD54B80DEA77CA9547D555C0E703ECE681455D20278DFE33D35D0FC`.
+
+
 Nota: este oráculo **não tem `--neg-arm`**; o braço negativo dele é o
 `--no-chrome` (e `--arms`). Passar `--neg-arm` dá rc=2 (uso inválido), e por
 isso **não é um portão vermelho** — é uma invocação errada.
