@@ -214,7 +214,7 @@ const node = [
   // at the retired contract). Re-anchored, they work (rc=0, 'every mutant
   // went RED') -- and a negative arm that is not listed is a mutant nobody
   // ever looks at again.
-  ['_main/caption-independent-oracle.js --neg-arm', 'caption independent neg (8 mutants)'],
+  ['_main/caption-independent-oracle.js --neg-arm', 'caption independent neg (10 mutants)'],
   ['_main/three-overlays-oracle.js', 'three overlays'],
   ['_main/three-overlays-oracle.js --neg-arm', 'three overlays neg (11/11)'],
   ['_main/strip-drag-loop-oracle.js', 'strip drag: the loop (clientX vs screenX)'],

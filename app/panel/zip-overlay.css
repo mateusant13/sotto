@@ -426,7 +426,7 @@ body .panel .captions__body::-webkit-scrollbar {
  * shell (`show_caption_window`) SO DEPOIS de o `show()` da janela ter corrido, portanto
  * isto nao esconde a legenda do painel se a nova falhar -- e a diferenca entre tirar a
  * antiga e tira-la apenas quando a nova esta mesmo no ecra. */
-html[data-caption-window="on"] #caption-float {
+html[data-caption-window="on"]:not([data-caption-doc]) #caption-float {
   display: none !important;
 }
 
@@ -441,20 +441,30 @@ html[data-caption-window="on"] #caption-float {
  * A `caption.html` JA traz `html, body { background: transparent !important }` no proprio
  * `<style>`, DEPOIS das quatro folhas. Nao chegou -- o fundo continuou la. Em vez de
  * investigar a especificidade, a regra vem para a folha que e GARANTIDAMENTE a ultima que o
- * documento carrega (panel.html:10), com o escopo no atributo que so esta pagina tem
- * (`<html data-caption-window="1">`). Assim nao toca em nada do painel.
+ * documento carrega (panel.html:10), com o escopo no atributo que SO ESTA PAGINA tem
+ * (`<html data-caption-doc="1">`, caption.html:2).
+ *
+ * O ESCOPO ANTIGO ERA `data-caption-window`, E ISSO ERA FALSO (medido 2026-10-20, Blink):
+ * o shell escreve `data-caption-window` no documento do PAINEL a cada mudanca do LIVE
+ * (sotto_webview.py:8722-8724, com "on" e com "off"), portanto estas tres regras -- que
+ * sao DA JANELA DA LEGENDA -- tambem acertavam o painel: tiravam-lhe a proteccao de
+ * render (panel.css:105-127, o `rgba(11, 15, 20, 0.98)`) e tiravam-lhe a sombra da
+ * legenda INLINE, que e a que tem uma placa por baixo das palavras. O painel ficava
+ * transparente a partir do primeiro Alt+C, para sempre. O `data-float` NAO pode ser o
+ * discriminador: `caption-float.js:211` escreve-o no documentElement do PAINEL tambem.
+ * O marcador e `data-caption-doc`, que so o caption.html tem.
  *
  * O `html` E o `body`: o `body` do painel leva a mesma base, e o `html` pinta o resto. */
 /* THE OWNER DOES NOT WANT THE SHADOW ON THE LIVE CAPTION (2026-10-17). The
  * shadow belongs to the panel's inline caption, where there is a plate under
  * the words; on the transparent overlay it reads as a dark halo around every
  * letter. The stroke stays (it is what keeps white text legible over video). */
-html[data-caption-window] #caption-float .caption-float__line {
+html[data-caption-doc] #caption-float .caption-float__line {
   text-shadow: none !important;
 }
 
-html[data-caption-window],
-html[data-caption-window] body {
+html[data-caption-doc],
+html[data-caption-doc] body {
   /* TRANSPARENT, NOT MAGENTA. The magenta was a chroma key for a WinForms
    * TransparencyKey, but WebView2 is an opaque child: the parent cannot key
    * its pixels (Microsoft WebView2Feedback #118 measured exactly that). The

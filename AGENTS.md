@@ -207,20 +207,25 @@ undone. Three rules, both earned today:
    `external_subs.py`. Two product files were MISTO and are now pure CRLF
    (`app/panel/zip-overlay.css`, `app/webview/run-cmd-log-append.py`). **Never hand-edit
    `.gitattributes`: regenerate and re-verify.**
-6. **THE CENSUS OF GATES OUTSIDE THE BATTERY (2026-10-20).** This file names **42 instruments as
+6. **THE CENSUS OF GATES OUTSIDE THE BATTERY (2026-10-20).** This file names **43 instruments as
    the PROOF of its own claims**. **RE-MEASURED after this day's registrations: 20 are IN the
-   battery and 22 are still out** — and of the 22, only **5 are in-process** (proved by the second
+   battery and 23 are still out** — and of the 23, only **5 are in-process** (proved by the second
    battery, `instruments-battery.mjs`, whose own header says *"Launches NOTHING"* and whose run
    reports `launches=0`): `app-target-oracle.py`, `canonical-producer-oracle.py`,
    `emit-queue-bound-oracle.py`, `panel-row-identity-oracle.js`,
-   `run-cmd-exit-oracle.py`. The other 17 create a process (shell, worker, browser or audio) and
+   `run-cmd-exit-oracle.py`. The other 18 create a process (shell, worker, browser or audio) and
    stay out **by design** — and that is now written down here, so it stops looking like an
    omission. (**RE-MEASURED 2026-10-20 09:2x:** the count moved from 19/23 to **20/22** because
    `panel-hidden-at-startup-oracle.py` entered the MAIN battery — it is PURE, the AST of the shell
    plus a FAKE, no browser, no app, no audio, no process — and it was the last in-process gate
    whose negative arm had been executed but registered NOWHERE. A census is a claim with a shelf
    life: this one is re-measured, not remembered. Receipt:
-   `_main/receipt-20261020-portoes-fora-da-bateria.md`.) Every gate that came in was born with its
+   `_main/receipt-20261020-portoes-fora-da-bateria.md`. **RE-MEASURED 2026-10-20 10:2x (rule 1
+   again: a census is a claim with a shelf life):** it moved from **20/22** to **20/23** — the
+   43rd instrument named here is `_main/caption-doc-scope-blink.py` (rule 8), which LAUNCHES Edge
+   and therefore stays out by the rule below; the 5 in-process stay 5, and the ones that create
+   a process go from 17 to **18**. Receipt: `_main/receipt-20261020-caption-doc-scope.md`.)
+   Every gate that came in was born with its
    negative arm **already executed** (rc=1 by
    design, `NEG-ARM PASS` in the log — the `:expectred` contract; the `:record`/rc=0 form would
    pass a SURVIVING mutant as green). **Two of them were dying in silence**: `lang-id-oracle.py`
@@ -254,6 +259,39 @@ undone. Three rules, both earned today:
    timeout** (300 s) so a hung instrument can no longer take the whole battery down with it —
    measured: a run was killed at minute 3 and the instrument that came next (2 s on its own) was
    innocent.
+8. **A RULE THAT IS NOT IN THE INSTRUMENT'S POPULATION CANNOT BE CAUGHT BY IT (2026-10-20).**
+   The panel's RENDER PROTECTION was DEAD in the shipped product for as long as the caption
+   window has existed, and **every gate was GREEN**. Measured in Blink (Edge headless, the real
+   `app/panel/panel.html`, the real sheets, the real order) with the shell's own write present:
+   `data-caption-window="off"` — which the shell writes on **EVERY LIVE switch**
+   (`sotto_webview.py:8722-8724`, with "on" and with "off") — made the panel's `<html>`/`<body>`
+   computed background `rgba(0, 0, 0, 0)`, i.e. **TRANSPARENT**, instead of the
+   `rgba(11, 15, 20, 0.98)` of `panel.css:105-127`; and the panel's inline caption lost its
+   shadow (the shadow belongs to the caption that HAS a plate under the words).
+   **TWO INDEPENDENT HOLES hid it, and both of them were green:**
+   (i) the jsdom harness (`_main/caption-independent-oracle.js`) inlined `panel.css` and
+   `caption-float.css` and **NOT** `zip-overlay.css` — the sheet that carried the three offending
+   rules. *A rule outside the population cannot fail a check.*
+   (ii) the same gate's static census **SKIPPED** any transparent `<html>`/`<body>` rule whose
+   selector mentioned `data-caption-window` — which is exactly the rule that was wrong. *An
+   instrument that skips a selector by name is blind precisely where it was told to look.*
+   **THE FIX:** the caption document gets its OWN marker — `data-caption-doc="1"`
+   (`app/panel/caption.html:2`) — and the three caption-only rules are scoped to it.
+   `data-float` **CANNOT** be the discriminator: `caption-float.js:211` writes it on the PANEL's
+   `documentElement` too. `data-caption-window` is the SHELL'S account of the caption window and
+   it LIVES ON THE PANEL (`panel.js:697` reads it to paint the button and the lamp).
+   **THE RULE:** an instrument's population is part of its contract, and a skip-list is part of
+   its blindness — write down what it does NOT load, and justify every selector it excuses.
+   Both are closed: the harness loads `zip-overlay.css`, the census accepts only
+   `data-caption-doc`, and two mutants reproduce the pre-fix bytes and go RED (**N9** → B3, B3d,
+   B3e; **N10** → B3d, B3e). The real-engine proof is `_main/caption-doc-scope-blink.py`: it
+   **LAUNCHES** Edge, so by rule 6 it stays OUT of the batteries; its negative arm is executed
+   (the pre-fix bytes → P2, P3, P4 RED) and recorded in
+   `_main/receipt-20261020-caption-doc-scope.md`. **MEASURED, Blink, after the fix:** the panel's
+   base is `rgba(11, 15, 20, 0.98)` in ALL THREE attribute states, the panel's inline caption
+   keeps its shadow, and the caption document is still transparent with no shadow and its
+   caption visible — including the `"on"` state, which BEFORE the fix would have hidden the
+   caption itself.
 
 ## CORRECTIONS 2026-10-07 (lane/docs) — every claim below was re-measured; see `_main/AGENTS-AUDIT.md`
 

@@ -171,7 +171,15 @@ function loadPanel(dir, opts) {
   const css = fs.readFileSync(path.join(dir, 'panel.css'), 'utf8');
   const floatCssPath = path.join(dir, 'caption-float.css');
   const floatCss = fs.existsSync(floatCssPath) ? fs.readFileSync(floatCssPath, 'utf8') : '';
-  style.textContent = css + '\n' + floatCss;
+  /* zip-overlay.css IS IN THE POPULATION NOW (2026-10-20). It was NOT, and that is
+     exactly why this gate was a FALSE GREEN for the caption-window defect: the
+     three rules it carries (the transparent base, the shadow, the display:none)
+     lived in THAT sheet, and a harness that never loads it cannot see them.
+     Order = the order panel.html loads them (panel.css, caption-float.css,
+     then zip-overlay.css last). */
+  const zipCssPath = path.join(dir, 'zip-overlay.css');
+  const zipCss = fs.existsSync(zipCssPath) ? fs.readFileSync(zipCssPath, 'utf8') : '';
+  style.textContent = css + '\n' + floatCss + '\n' + zipCss;
   window.document.head.prepend(style);
   const bridge = bridgeStub(window, historyEntries(12), opts);
   const errors = [];
@@ -606,6 +614,23 @@ async function runChecks(dir) {
   const baseIs = function (v) { return (v === 'rgba(0, 0, 0, 0)' || v === 'transparent') ? 'TRANSPARENT' : 'OPAQUE'; };
   check('B3 the PAGE keeps its OPAQUE base (the render protection -- the caption is not in this window)',
     [baseIs(p2.bg(doc2.documentElement)), baseIs(p2.bg(doc2.body))], ['OPAQUE', 'OPAQUE']);
+  /* B3d/B3e -- ADDED 2026-10-20, after the caption-window defect was measured.
+     THE SHADOW IS THE OVERLAY'S BUSINESS, NOT THE PANEL'S. The rule that kills the
+     text-shadow belongs to the CAPTION DOCUMENT: the overlay has no plate under the
+     words, so a shadow reads as a dark halo around every letter (owner, 2026-10-17).
+     The PANEL's inline caption DOES have a plate -- so ITS shadow stays, and it has
+     to stay even when the shell has written `data-caption-window="off"` on this very
+     document, which is what it does on EVERY LIVE switch (sotto_webview.py:8722-8724).
+     Before the fix, the rule was scoped to `data-caption-window`, so it reached the
+     panel too and took the shadow off the inline caption. */
+  const hasShadow = function (v) { return Boolean(v) && v !== 'none' && v !== 'rgba(0, 0, 0, 0)'; };
+  check('B3d the PANEL own inline caption KEEPS its shadow (the no-shadow rule is the caption document only)',
+    [hasShadow(p2.window.getComputedStyle(p2.id('caption-float-line')).textShadow)], [true]);
+  /* B3e -- and the CAPTION document, the one that carries the marker, has no shadow. */
+  const p4 = loadPanel(dir);
+  p4.document.documentElement.setAttribute('data-caption-doc', '1');
+  check('B3e the CAPTION document line has NO shadow (the overlay has no plate under the words)',
+    [hasShadow(p4.window.getComputedStyle(p4.id('caption-float-line')).textShadow)], [false]);
   /* B3b -- RE-BASELINED 2026-10-20 (lane caption). The old arm asked "does any sheet
      paint <html>/<body> HARDER than caption-float.css's transparency rule?" -- and
      that rule was DELETED on 2026-10-17, so the arm was asking about a rule that no
@@ -625,9 +650,16 @@ async function runChecks(dir) {
       for (const member of rule.members) {
         const key = targetKey(member);
         if (key !== 'html' && key !== 'body') continue;
-        /* THE CAPTION WINDOW IS ALLOWED ITS OWN TRANSPARENCY -- the rule is scoped
-           to the attribute that marks that document (zip-overlay.css:456-465). */
-        if (member.indexOf('data-caption-window') >= 0) continue;
+        /* THE CAPTION WINDOW IS ALLOWED ITS OWN TRANSPARENCY -- but only if the rule
+           is scoped to the marker that says "THIS document is the caption window".
+           THE OLD TOKEN WAS `data-caption-window`, AND THAT WAS THE HOLE (measured
+           2026-10-20): the SHELL writes `data-caption-window` on the PANEL document
+           on every LIVE switch (sotto_webview.py:8722-8724, with "on" and with
+           "off"), so a rule scoped to it ALSO matched the panel -- and took the
+           panel's render protection (panel.css:105-127) away for the rest of the
+           session. The marker that really marks the caption document is
+           `data-caption-doc`, and only caption.html carries it. */
+        if (member.indexOf('data-caption-doc') >= 0) continue;
         pagePainters.push(path.basename(f) + ' :: ' + member + ' { background: ' + bg + ' }');
       }
     }
@@ -718,7 +750,7 @@ function report(label) {
 async function negArm() {
   const TMP = process.env.TMPDIR && fs.existsSync(process.env.TMPDIR) ? process.env.TMPDIR : os.tmpdir();
   const scratch = fs.mkdtempSync(path.join(TMP, 'sotto-caption-neg-'));
-  const FILES = ['panel.html', 'panel.css', 'panel.js', 'caption-float.js', 'caption-float.css'];
+  const FILES = ['panel.html', 'panel.css', 'panel.js', 'caption-float.js', 'caption-float.css', 'zip-overlay.css'];
   const copyAll = function () {
     fs.rmSync(scratch, { recursive: true, force: true });
     fs.mkdirSync(scratch, { recursive: true });
@@ -781,6 +813,33 @@ async function negArm() {
     { tag: 'N8 the caption ships ON again (the page believes the window is already up) (panel.js)',
       file: 'panel.js',
       apply: function (t) { return t.replace("return document.documentElement.getAttribute(CAPTION_WINDOW_ATTR) === 'on';", 'return true;'); } },
+    /* N9 -- 2026-10-20. THE DEFECT, AS A MUTANT. The pre-fix bytes scoped the three
+       caption-window rules to `html[data-caption-window]` -- the attribute the SHELL
+       writes on the PANEL document on every LIVE switch, with "on" and with "off".
+       So the caption-document-only rules also matched the panel, and the panel lost
+       its render protection (panel.css:105-127). The mutation below reproduces those
+       bytes EXACTLY, and B3 (the panel's base, measured with the attribute present,
+       because arm A13e left `data-caption-window="off"` on this document) must go RED.
+       Before 2026-10-20 this mutant could not go red: the harness did not load
+       zip-overlay.css, so the rule was not in the population at all. */
+    { tag: 'N9 the caption-window rules go back to the attribute the shell writes on the PANEL (zip-overlay.css)',
+      file: 'zip-overlay.css',
+      apply: function (t) {
+        return t
+          .replace('html[data-caption-window="on"]:not([data-caption-doc]) #caption-float',
+                   'html[data-caption-window="on"] #caption-float')
+          .replace(/html\[data-caption-doc\]/g, 'html[data-caption-window]');
+      } },
+    /* N10 -- 2026-10-20. THE SAME HOLE, IN ONE RULE. The text-shadow rule alone goes
+       back to `data-caption-window`, so it reaches the panel and takes the shadow off
+       the inline caption -- the one that HAS a plate under the words. B3d must go RED
+       while B3 (the base) stays GREEN: two defects, one rule each. */
+    { tag: 'N10 the no-shadow rule goes back to the attribute the shell writes on the PANEL (zip-overlay.css)',
+      file: 'zip-overlay.css',
+      apply: function (t) {
+        return t.replace('html[data-caption-doc] #caption-float .caption-float__line',
+                         'html[data-caption-window] #caption-float .caption-float__line');
+      } },
   ];
   let wrong = 0;
   for (const m of muts) {
