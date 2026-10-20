@@ -77,6 +77,11 @@ que o braço não correu — não é uma falha escondida.
 | `render_is_system_default` | **false** |
 | `worker_rc` | **1** |
 
+Os **picos do meter** (a lista `statuses`, 14 amostras, todas `type: meter`):
+`0.0141, 0.0102, 0.031, 0.0311, 0.1143, 0.2419, 0.1257, 0.3452, 0.3788,
+0.5045, **0.6409**, 0.2383, 0.3302, 0.2975` — ou seja, **mínimo 0,0102 e máximo
+0,6409**: o "0,01 → 0,64" afirmado, medido.
+
 `worker_rc: 1` **não é uma falha**: o script termina o worker de propósito
 (`_main/demo-legenda.py:145-151`). O `render` vai para o CABLE, que é inaudível
 por construção — o `render_is_system_default: false` é a prova de que nada
