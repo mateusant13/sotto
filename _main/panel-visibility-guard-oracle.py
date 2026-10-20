@@ -16,10 +16,16 @@ FOUR CASES, no launch:
   D. the residual, named: visible=True STALE while the window is mapped -> the re-assert bails, so
      nothing hides. That is real, and it is why `toggle_panel` reads the window live and logs
      PANEL_VISIBILITY_CACHE_STALE, and why the navigation-time Show gate exists upstream.
+  E. (added 2026-10-20) the contract of `hide_panel` AFTER the product changed on 2026-10-17:
+     hiding the panel takes the CAPTION PIXELS away and leaves the owner's switch alone
+     (`_blank_caption_window('panel-hidden')`, NOT `show_caption_window(False)`), because the
+     caption is "a free overlay on my screen" and hiding a panel must not switch it off.
 
-BOTH COLOURS. `--neg-arm` runs the same four cases against a COPY of the shell with the guard in
+BOTH COLOURS. `--neg-arm` runs the same cases against a COPY of the shell with the guard in
 `_reassert_hidden` removed: case D must FLIP (the mutant hides a panel the owner asked for) while
-A, B and C stay put. An arm that cannot tell the guard from the mechanism cannot report on it.
+A, B, C and E stay put. A SECOND copy takes the caption-window blank out of `hide_panel` and case
+E must FLIP; a THIRD cut strips the precision clause out of `run.cmd` and the promise check must
+break. An arm that cannot tell the guard from the mechanism cannot report on it.
 """
 
 from __future__ import annotations
@@ -87,6 +93,7 @@ class Probe:
         self.posts = []
         self.published = []
         self.caption_window_calls = []
+        self.blank_caption_calls = []
         self.hwnd = 4242
         self.visible = visible
         self.args = SimpleNamespace(show=False)
@@ -108,13 +115,36 @@ class Probe:
         self.published.append(reason)
 
     def show_caption_window(self, on):
-        """A JANELA DA LEGENDA, no stub. O `hide_panel` REAL passou a chama-la
-        (`self.show_caption_window(False)`) quando o painel se esconde -- e este stub,
-        que so carrega o que os metodos dirigidos tocam, nao a tinha: o oraculo morria
-        com `AttributeError: 'Probe' object has no attribute 'show_caption_window'`.
-        MEDIDO na bateria de 2026-10-16 (135/145, e este era UM DOS VERMELHOS).
+        """A JANELA DA LEGENDA, no stub.
+
+        NOTA 2026-10-20: o `hide_panel` REAL JA NAO chama este metodo -- desde
+        2026-10-17 ele chama `_blank_caption_window` (o stub de baixo). O stub
+        fica porque e' o registo do mesmo interruptor, e porque um caminho que
+        volte a LIGAR a legenda tem de ter onde registar a chamada.
+        MEDIDO na bateria de 2026-10-16 (135/145, e este era UM DOS VERMELHOS):
+        este stub foi acrescentado quando o oraculo morria com
+        `AttributeError: 'Probe' object has no attribute 'show_caption_window'`.
         Registar a chamada e o que o oraculo precisa: o efeito e do shell, nao daqui."""
         self.caption_window_calls.append(on)
+        return True
+
+    def _blank_caption_window(self, reason):
+        """A JANELA DA LEGENDA VAZIA, no stub -- o metodo que o `hide_panel` REAL chama.
+
+        PRODUTO, 2026-10-17: ESCONDER O PAINEL JA NAO DESLIGA A LEGENDA. A frase do
+        dono que a linha executava -- *"quando eu quero ou nao"* -- e' a do
+        INTERRUPTOR, nao a do painel; a legenda e' *"um overlay, livre na minha
+        tela"*, entao `hide_panel` tira os PIXELS (`_blank_caption_window`, que nao
+        escreve `data-caption-window`) e nao toca no interruptor. No produto de
+        hoje: `app/webview/sotto_webview.py:7726` `self._blank_caption_window
+        ('panel-hidden')`, def em `:8597`.
+
+        SEM ESTE STUB O ORACULO MORRE: `AttributeError: 'Probe' object has no
+        attribute '_blank_caption_window'` -- medido na bateria de 2026-10-20. Era
+        um CRASH do instrumento (que nao media nada), nao um vermelho de produto.
+        O registo e' o mesmo do `show_caption_window`: o efeito e' do shell, nao
+        daqui."""
+        self.blank_caption_calls.append(reason)
         return True
 
 
@@ -167,15 +197,33 @@ def run_cases(mod):
     case_d = {"hides": d.hides, "visible": d.visible,
               "stale_cache_residual": d.hides == []}
 
+    # E -- ADDED 2026-10-20: the contract of `hide_panel` DEPOIS de 2026-10-17. O
+    # produto trocou "esconder o painel desliga a legenda" por "esconder o painel
+    # tira os PIXELS e deixa o interruptor do dono como esta" (o dono, verbatim:
+    # *"ela e' livre na minha tela, um overlay"*). O `hide_panel` REAL chama
+    # `self._blank_caption_window('panel-hidden')` (`app/webview/sotto_webview.py:7726`)
+    # e NAO chama `show_caption_window(False)`. Sem este caso, o stub recem-acrescentado
+    # era decoracao -- um mutante que tirasse a chamada passava despercebido, que e'
+    # exactamente o que um portao nao pode ser.
+    e = Probe(mod, Shell, mapped=True, visible=True)
+    hide(e, "audit-row60")
+    case_e = {"blank_caption_calls": e.blank_caption_calls,
+              "caption_window_calls": e.caption_window_calls,
+              "hides_the_pixels_not_the_switch":
+                  (e.blank_caption_calls == ["panel-hidden"]
+                   and e.caption_window_calls == [])}
+
     return {
         "case_a_hidden": case_a,
         "case_b_shown": case_b,
         "case_c_cycle": case_c,
         "case_d_stale_cache": case_d,
+        "case_e_caption_window": case_e,
         "reasserts_when_hidden": case_a["reasserts_when_hidden"],
         "respected_when_shown": case_b["respected_when_shown"],
         "reasserts_after_a_hide_cycle": case_c["reasserts_after_a_hide_cycle"],
         "stale_cache_residual": case_d["stale_cache_residual"],
+        "hides_the_pixels_not_the_switch": case_e["hides_the_pixels_not_the_switch"],
     }
 
 
@@ -192,11 +240,12 @@ def main(argv=None):
     run_cmd_text = open(parsed.run_cmd, encoding="utf-8").read()
     got.update(promise(run_cmd_text))
     for key in ("reasserts_when_hidden", "respected_when_shown",
-                "reasserts_after_a_hide_cycle", "stale_cache_residual"):
-        say("  live  " + key.ljust(30) + str(got[key]))
+                "reasserts_after_a_hide_cycle", "stale_cache_residual",
+                "hides_the_pixels_not_the_switch"):
+        say("  live  " + key.ljust(36) + str(got[key]))
     for key in ("claims_start_hidden", "marks_precision", "cites_the_receipt",
                 "promise_precise"):
-        say("  live  " + key.ljust(30) + str(got[key]))
+        say("  live  " + key.ljust(36) + str(got[key]))
 
     if not parsed.neg_arm:
         refuted = got["reasserts_when_hidden"] and got["reasserts_after_a_hide_cycle"]
@@ -214,7 +263,15 @@ def main(argv=None):
             + " -- run.cmd claims_start_hidden=" + str(got["claims_start_hidden"])
             + " marks_precision=" + str(got["marks_precision"])
             + " cites_the_receipt=" + str(got["cites_the_receipt"]))
-        ok = refuted and got["promise_precise"]
+        say("VERDICT hide_panel (2026-10-17): "
+            + ("BLANKS THE PIXELS, LEAVES THE SWITCH" if got["hides_the_pixels_not_the_switch"]
+               else "DOES NOT BLANK THE PIXELS")
+            + " -- hiding the panel calls _blank_caption_window('panel-hidden') and does NOT"
+            + " call show_caption_window(False): measured "
+            + "blank=" + str(got["case_e_caption_window"]["blank_caption_calls"])
+            + " switch=" + str(got["case_e_caption_window"]["caption_window_calls"]))
+        ok = (refuted and got["promise_precise"]
+              and got["hides_the_pixels_not_the_switch"])
         say("VERDICT: " + ("BOTH ROWS CLOSED" if ok else "ONE OF THE TWO ROWS IS NOT CLOSED"))
         return 0 if ok else 1
 
@@ -229,18 +286,38 @@ def main(argv=None):
     mutant_mod = load_shell(path, "sotto_shell_row60_mutant")
     mut = run_cases(mutant_mod)
     for key in ("reasserts_when_hidden", "respected_when_shown",
-                "reasserts_after_a_hide_cycle", "stale_cache_residual"):
-        say("  mut   " + key.ljust(30) + str(mut[key]))
+                "reasserts_after_a_hide_cycle", "stale_cache_residual",
+                "hides_the_pixels_not_the_switch"):
+        say("  mut   " + key.ljust(36) + str(mut[key]))
     wrong = []
     if not got["stale_cache_residual"]:
         wrong.append("live case D did not bail (the residual is not what this says it is)")
     if mut["stale_cache_residual"]:
         wrong.append("mutant case D still bailed (removing the guard changed nothing)")
     for key in ("reasserts_when_hidden", "respected_when_shown",
-                "reasserts_after_a_hide_cycle"):
+                "reasserts_after_a_hide_cycle", "hides_the_pixels_not_the_switch"):
         if mut[key] != got[key]:
             wrong.append("mutant moved " + key + ", which this mutant must not touch")
     say("")
+    # THIRD MUTANT, added 2026-10-20: the caption-window case E has to be able to say
+    # NO. Without this copy, case E would be DECORATION -- a check that is green in the
+    # live tree for a reason nobody could contradict. The cut takes the
+    # `_blank_caption_window('panel-hidden')` call out of `hide_panel`, so the product
+    # would go back to leaving the caption pixels up; case E MUST go RED.
+    BLANK_CALL = "        self._blank_caption_window('panel-hidden')"
+    if text.count(BLANK_CALL) != 1:
+        say("SETUP ERROR: the hide_panel caption-window call is not where this oracle "
+            "documents it")
+        return 2
+    blank_path = os.path.join(scratch, "sotto_webview_no_blank.py")
+    with open(blank_path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text.replace(BLANK_CALL, "        pass  # oracle mutant: no blank", 1))
+    blank_mod = load_shell(blank_path, "sotto_shell_row60_noblank")
+    blank = run_cases(blank_mod)
+    say("  mut   hides_the_pixels_not_the_switch " + str(blank["hides_the_pixels_not_the_switch"]))
+    if blank["hides_the_pixels_not_the_switch"]:
+        wrong.append("the hide_panel mutant still blanked the caption window"
+                     " (case E cannot say NO -- it is decoration)")
     # SECOND MUTANT, different file: strip the precision clause out of run.cmd (row #61).
     run_text = open(parsed.run_cmd, encoding="utf-8").read()
     if PRECISION not in run_text:
@@ -254,8 +331,9 @@ def main(argv=None):
     if mut_promise["promise_precise"]:
         wrong.append("run.cmd mutant still read precise (the check cannot see the clause)")
     say("")
-    say("NEG-ARM: removing the re-assert guard must flip case D ALONE, and stripping the run.cmd"
-        " precision clause must break the promise check; wrong: " + str(wrong))
+    say("NEG-ARM: removing the re-assert guard must flip case D ALONE, stripping the run.cmd"
+        " precision clause must break the promise check, and taking the caption-window"
+        " blank out of hide_panel must flip case E; wrong: " + str(wrong))
     say("NEG-ARM " + ("PASS" if not wrong else "FAIL"))
     return 0 if not wrong else 1
 

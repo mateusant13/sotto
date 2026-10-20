@@ -9,7 +9,10 @@ WHAT IT GATES, and the audit section each arm answers
   D  D7/D8 the picker's labels are unique and the shared ids agree with the frozen
            skins that actually mount
   E  rule 10  the bytes on disk ARE a fresh run of the generator
-  F  pins  the four values are the ones each zip states, family by family
+  F  pins  the four values are the ones each zip states, family by family -- the
+           closed-line size PINNED WITH the owner's `--caption-scale` font dial in it
+           (re-anchored 2026-10-20; the dial is a multiplier and the product now
+           carries it)
 
 Run:  py -3 _main/cinematic-designs-oracle.py
       py -3 _main/cinematic-designs-oracle.py --neg-arm
@@ -445,12 +448,30 @@ def arm_f(rules):
     """Pins -- the four values are each zip's own, family by family."""
     blocks = theme_blocks(rules)
     bad = []
+    # THE PIN IS THE SHIPPED FORM, and the shipped form carries the owner's font dial.
+    # RE-ANCHORED 2026-10-20: `--caption-scale` is the MULTIPLIER of the transcript
+    # font dial (`app/panel/panel.js:306` -- "THE TRANSCRIPT FONT DIAL (owner,
+    # 2026-10-09)"), written on the document element at `panel.js:2312` and read by
+    # the CSS. The generator now carries it on BOTH terms of the floor -- the zip's
+    # own 0.66 ratio AND the 13 px floor -- because a hard 13 px floor was a SECOND,
+    # invisible size dial fighting the visible one (`_main/_design-lane/
+    # gen_cinematic.py:260-271`, the generator's own words: "NEITHER TERM CARRIED
+    # THE DIAL ... that is the 'inconsistent size' the owner reports").
+    # MEASURED 2026-10-20 on `app/panel/themes/cinematic.css`: 15 declarations carry
+    # `max(13px * var(--caption-scale), calc(var(--size-caption) * 0.66 *
+    # var(--caption-scale)))` -- the 9 `cinematic-1` + the 6 `cinematic-2` themes --
+    # and 10 carry the `cinematic` family's own fixed `13px` (its zip's ghost line:
+    # `gen_cinematic.py:249` and `CLOSED_SOURCE` at :285), which does not move with
+    # the dial because that family never had a `max()` to scale.
+    # PINNING THE DIAL IN is what gives this arm its teeth over the dial: drop
+    # `--caption-scale` from the product and this pin goes RED, which is exactly the
+    # defect the generator's comment is about.
     want = {
         'cinematic': {'--size-closed': '13px', '--leading-closed': '1.375',
                       '--weight-closed': '300', '--motion-in': '150ms'},
-        'cinematic-1': {'--size-closed': 'max(13px, calc(var(--size-caption) * 0.66))',
+        'cinematic-1': {'--size-closed': 'max(13px * var(--caption-scale), calc(var(--size-caption) * 0.66 * var(--caption-scale)))',
                         '--leading-closed': '1.45', '--motion-in': '320ms'},
-        'cinematic-2': {'--size-closed': 'max(13px, calc(var(--size-caption) * 0.66))',
+        'cinematic-2': {'--size-closed': 'max(13px * var(--caption-scale), calc(var(--size-caption) * 0.66 * var(--caption-scale)))',
                         '--motion-in': '300ms'},
     }
     checked = 0
@@ -518,9 +539,21 @@ def neg_arm(args):
     themes = args.themes
     mutants = []
     # M1 -- D3: one theme stops consuming --size-closed (the literal comes back).
+    # THE ANCHOR IS THE SHIPPED FORM (re-anchored 2026-10-20). The owner's font dial
+    # `--caption-scale` is a MULTIPLIER, so the generator emits the closed line as
+    # `calc(var(--size-caption) * 0.72 * var(--caption-scale))` and NOT the old
+    # `calc(var(--size-caption) * 0.72)` (`_main/_design-lane/gen_cinematic.py:958`).
+    # MEASURED 2026-10-20 on `app/panel/themes/cinematic.css`: the old anchor has
+    # count=0 -- which is why this arm died with "mutant anchor not found" -- and
+    # the shipped one has count=10, the first at `cinematic.css:251`, inside
+    # `:root[data-theme='cine-midnight-rain'] .caption:not(.caption--latest)
+    # .caption__text` -- a THEME scope, and the set-wide block
+    # (`:root[data-theme^='cine-']`) does not read `--size-closed` at all (measured:
+    # 0 of the shared rules read it). So the mutant really does take that theme's
+    # only `var(--size-closed)` reader away, and the D3 arm goes RED.
     m1 = mutate_css(css, os.path.join(tmp, 'm1.css'),
-                    'font-size: var(--size-closed, calc(var(--size-caption) * 0.72));',
-                    'font-size: calc(var(--size-caption) * 0.72);')
+                    'font-size: var(--size-closed, calc(var(--size-caption) * 0.72 * var(--caption-scale)));',
+                    'font-size: calc(var(--size-caption) * 0.72 * var(--caption-scale));')
     mutants.append(('M1 one theme stops consuming --size-closed (the D3 defect)', m1, themes, 'A'))
     # M2 -- D5: a scoped selector that matches no node of the real markup.
     m2 = mutate_css(css, os.path.join(tmp, 'm2.css'),

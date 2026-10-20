@@ -129,7 +129,21 @@ def module_constants(source):
 
 def build_namespace(source, table):
     names = module_constants(source)
-    for helper in ("heuristic_loopback_score", "is_soundmapper_pseudo"):
+    # THE THIRD HELPER, ADDED 2026-10-20. O `device_candidates` REAL chama
+    # `is_bluetooth_audio_device(d["name"])` na rung de cauda
+    # (`worker/sotto_worker.py:1284`, def em `:192`) -- a rung que NUNCA oferece um
+    # auscultador sem fios (o dono, 2026-10-17: abrir o microfone de um auscultador
+    # sem fios obriga o Windows a passar o dispositivo de A2DP para HFP, e o audio
+    # cai). A tupla de extracao nao a acompanhava e o oraculo MORREVA:
+    # `NameError: name 'is_bluetooth_audio_device' is not defined` (medido na bateria
+    # de 2026-10-20). Era um CRASH do instrumento -- que nao media nada -- e nao um
+    # vermelho de produto.
+    # `is_bluetooth_audio_device_in` (a variante por FAMILIA, `sotto_worker.py:243`)
+    # NAO entra: a ladder nao a chama (so `bluetooth_fingerprints` a usa, e tambem
+    # nao e' chamada pela ladder). Cada helper extraido e' um pedaco de produto que
+    # este oraculo passa a medir, e nao um stub escrito por mim.
+    for helper in ("heuristic_loopback_score", "is_soundmapper_pseudo",
+                   "is_bluetooth_audio_device"):
         snippet = extract(source, helper)
         if not snippet:
             raise LookupError("the worker has no " + helper + " -- the ladder cannot be driven")

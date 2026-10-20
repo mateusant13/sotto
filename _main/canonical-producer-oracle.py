@@ -465,12 +465,47 @@ def main() -> int:
     check("B", "the status also carries producer (but a status never reaches the caption hop)",
           empty.get("producer") == "redux", "producer=" + repr(empty.get("producer")))
 
-    weights = [p for p in (REDUX_MODEL_DIR, REDUX_MODEL_DIR_INT4) if p.is_dir()]
-    checkpoint_present = bool(weights)
+    # RE-ANCHORED 2026-10-20. A check antiga media a UNIAO de DOIS directorios --
+    # `parakeet-redux-ternary` (o default do runner) e `parakeet-redux-onnx-int4` (o
+    # engine do OVERLAY `--redux-live`) -- e por isso ia a VERMELHO: o `onnx-int4` foi
+    # re-baixado e esta em disco (AGENTS.md, correccao 7: `encoder-model.onnx`
+    # 343 841 943 B, `decoder_joint-model.onnx` 72 552 270 B, `preprocessor.onnx`
+    # 1 224 294 B, `vad-model.onnx` 18 300 687 B -- a mesma exportacao de sempre).
+    #
+    # SAO DOIS CAMINHOS DIFERENTES:
+    #   * o BATCH (o que este arm mede) corre `worker/redux_batch.py`, cujo default e'
+    #     `DEFAULT_MODEL_DIR = HERE / "models" / "parakeet-redux-ternary"`
+    #     (`worker/redux_batch.py:39`) -- e o worker usa o MESMO caminho relativo no
+    #     gate do switch (`worker/sotto_worker.py:3581` REDUX_CHECKPOINT_RELPATH).
+    #     E' esse que a passagem de batch abriria.
+    #   * o OVERLAY `--redux-live` (`worker/sotto_worker.py:3635`
+    #     REDUX_LIVE_ONNX_RELPATH) e' um interruptor OUTRO, com outro runner, e NAO
+    #     arma este arm nem produz a linha `producer:'redux'` que este arm mede.
+    #
+    # O GAP que este check existe para fixar continua REAL: o `ternary` nao esta em
+    # disco, portanto `redux_batch.load_runtime` aborta e o branch de batch nao emite
+    # legenda. So a MEDIDA estava errada: media a uniao de dois caminhos.
+    #
+    # E A MEDIDA E' TAMBEM MAIS EXATA: o runner nao carrega um DIRECTORIO, carrega os
+    # MANIFESTOS (`worker/redux_batch.py:111-120`: `config.json`, `model.safetensors`,
+    # `ternary.json` -- cada um ausente e' um `SystemExit`; a lista do worker e'
+    # `REDUX_CHECKPOINT_FILES`, `worker/sotto_worker.py:3585`, que diz o mesmo: "o
+    # DIRECTORIO existir nao e' o teste"). Um directorio vazio nao faria o batch arm
+    # emitir legenda, portanto conta-lo como "checkpoint presente" seria um alarme
+    # FALSO. Este check e' uma ARMADILHA: ela dispara quando o branch de batch passa
+    # a poder emitir a linha -- e so entao a ANSWER abaixo muda.
+    REDUX_MANIFESTS = ("config.json", "model.safetensors", "ternary.json")
+    missing_manifests = [f for f in REDUX_MANIFESTS if not (REDUX_MODEL_DIR / f).is_file()]
+    checkpoint_present = REDUX_MODEL_DIR.is_dir() and not missing_manifests
     check("B", "LIVE-GAP PINNED: the checkpoint the runner defaults to is ABSENT today",
           checkpoint_present is False,
-          "default=" + str(REDUX_MODEL_DIR) + " exists=" + str(REDUX_MODEL_DIR.is_dir())
-          + " -- if this ever goes green the ANSWER below changes: re-read it")
+          "default=" + str(REDUX_MODEL_DIR)
+          + " exists=" + str(REDUX_MODEL_DIR.is_dir())
+          + " missing_manifests=" + repr(missing_manifests)
+          + " -- the BATCH runner's default (worker/redux_batch.py:39 DEFAULT_MODEL_DIR);"
+            " the --redux-live OVERLAY's engine (" + REDUX_MODEL_DIR_INT4.name
+          + ") is a DIFFERENT switch on a DIFFERENT path and does NOT arm this arm"
+          + " -- if this check ever goes RED, the ANSWER below changes: re-read it")
     note("redux_batch.py load_runtime raises SystemExit when config.json / model.safetensors /"
          " ternary.json are missing, so the batch arm cannot emit a caption today")
     armed_switch = worker_mod.ReduxHiddenSwitch(
@@ -683,6 +718,10 @@ def main() -> int:
           "queues a redux-batch-empty STATUS instead.", flush=True)
     print("  * THE ONE REMAINING GAP: the Redux checkpoint is not on disk, so the batch arm "
           "cannot produce the line.", flush=True)
+    print("    (The OTHER Redux engine IS on disk -- worker/models/parakeet-redux-onnx-int4 --"
+          " but it belongs to the `--redux-live` OVERLAY: a different switch, a different"
+          " runner, a different path. It does NOT make THIS batch arm able to emit a line.)",
+          flush=True)
     print("    (Second, deliberate layer: the flag is OFF, and the switch's own gate "
           "sotto_worker.py:" + str(a_worker_avail) + " is now TWO", flush=True)
     print("     facts -- the runner FILE *and* the checkpoint it will LOAD -- so with the "

@@ -111,8 +111,17 @@ const py = [
   ['_main/battery-rows-gate.py', 'battery rows: 142'],
   ['_main/run-cmd-refusal-path-oracle.py', 'refusal path resolved, not hand-written'],
   ['_main/surface-loop-oracle.py', 'surface loop guard (JS<->Python)'],
-  ['_main/hotkey-cycle-oracle.py', 'hotkey cycle strip->side->hide'],
-  ['_main/preflight-refusal-visible-oracle.py', 'preflight refusal visible (G5)'],
+  // 2026-10-20: this instrument was listed TWICE in this runner -- here, and
+  // again in the LANE C block below under a second label. Same file, same
+  // command, so the second run only repeated the first one's verdict. The row
+  // in the LANE C block stays (it sits next to its own negative arm) and this
+  // one is gone.
+  // The same duplication, found in the SAME audit: `preflight-refusal-visible-
+  // oracle.py` was listed twice as well -- once in the block above (label
+  // "preflight-refusal-visible (row G5)") and once here. Identical command,
+  // identical verdict, one wasted run. The row above stays; this one is gone.
+  // (Its negative arm is NOT listed anywhere -- that gap is a RECEIPT to open,
+  // not a row to invent here.)
   // A ULTIMA LACUNA (LANE B, 2026-10-15). O gate do painel escondido no arranque vive
   // no shell, e o oraculo JA EXISTIA -- estava de fora porque uma nota anterior o
   // descrevia como "escreve e corre copias do shell". MEDIDO por mim antes de o
@@ -145,8 +154,15 @@ const py = [
   ['_main/caption-lines-oracle.py', 'caption lines fidelity'],
   // ── LANE C: the themes + hotkey gaps. Each area gets BOTH colours: the live
   // row and the row that proves the instrument can say NO.
-  ['_main/hotkey-cycle-oracle.py', 'Alt+C cycle strip->side->hide'],
-  ['_main/hotkey-cycle-oracle.py --neg-arm', 'Alt+C cycle neg (3 mutants)'],
+  // The Alt+C contract is the 1/2/3 GESTURE today (one = the caption, two =
+  // the FIRST panel, three = the RIGHT panel, inside a 250 ms window) -- the
+  // three-state cycle of 2026-10-13 was retired by the owner on 2026-10-18
+  // (app/webview/sotto_webview.py:7780), and this instrument was re-anchored
+  // to the gesture on 2026-10-20. The row stays in the list: the acceptance
+  // register cites it (_main/aceitacao-dono.md A1 and D4) and
+  // _main/aceitacao-gate.py requires a cited instrument to be LISTED here.
+  ['_main/hotkey-cycle-oracle.py', 'Alt+C gesture 1/2/3 (caption, 1st, right)'],
+  ['_main/hotkey-cycle-oracle.py --neg-arm', 'Alt+C gesture neg (3 mutants)'],
   ['_main/panel-chrome-gate.py', 'panel chrome: footer labels, no browser'],
   ['_main/panel-chrome-gate.py --neg-arm', 'panel chrome neg (3 mutants)'],
   ['_main/theme-lightness-census.py --neg-arm', 'no white theme: neg (white injected)'],
@@ -193,10 +209,17 @@ const node = [
   ['_main/letter-swap-oracle.js', 'letter-swap 84/84'],
   ['_main/letter-swap-oracle.js --neg-arm', 'letter-swap neg 4/4 RED'],
   ['_main/caption-independent-oracle.js', 'caption independent of panel'],
+  // MEASURED 2026-10-20: these two negative arms were NOT listed, because
+  // they were BROKEN (rc=2, SETUP ERROR -- the mutant anchors still pointed
+  // at the retired contract). Re-anchored, they work (rc=0, 'every mutant
+  // went RED') -- and a negative arm that is not listed is a mutant nobody
+  // ever looks at again.
+  ['_main/caption-independent-oracle.js --neg-arm', 'caption independent neg (8 mutants)'],
   ['_main/three-overlays-oracle.js', 'three overlays'],
   ['_main/three-overlays-oracle.js --neg-arm', 'three overlays neg (11/11)'],
   ['_main/strip-drag-loop-oracle.js', 'strip drag: the loop (clientX vs screenX)'],
   ['_main/strip-float-oracle.js', 'strip float oracle'],
+  ['_main/strip-float-oracle.js --neg-arm', 'strip float neg (7 mutants)'],
   ['_main/panel-state-guard-gate.js', 'panel state guard'],
   ['_main/botoes-lane-oracle.js', 'botoes lane oracle'],
   // LANE A: the negative arm of the row above -- 8 mutants, one per arm of the
@@ -264,8 +287,17 @@ const CRASHED = /Traceback \(most recent call last\):/;
 const ARM_FAILED = /VERDICT[^\n]*\bFAIL\b|mutant anchor not found/;
 
 const run = (cmd, args, label) => {
+  // A PER-INSTRUMENT TIMEOUT, so one hung instrument cannot take the whole
+  // battery down with it. MEASURED 2026-10-20: a run was killed at minute 3
+  // and the instrument that came next (the Lead's
+  // `panel-hidden-at-startup-oracle.py`, 2 s on its own) was innocent --
+  // `spawnSync` without a timeout waits for ever, and the box was busy.
+  // 300 s is far above the slowest instrument measured (60 s) and far below
+  // 'the operator gave up'. A timeout is reported as a failure of THAT
+  // instrument, with the reason -- the summary still comes out.
   const r = spawnSync(cmd, args, { cwd: 'H:/sotto', encoding: 'utf8', windowsHide: true,
-    maxBuffer: 64 * 1024 * 1024, env: { ...process.env, TMPDIR: 'I:/cc-tmp' } });
+    maxBuffer: 64 * 1024 * 1024, timeout: 300000,
+    env: { ...process.env, TMPDIR: 'I:/cc-tmp' } });
   const text = (r.stdout || '') + (r.stderr || '');
   const tail = text.split(/\r?\n/).filter((l) =>
     /VERDICT|PASS \/|GREEN|SUMMARY|ARM-VERDICT|NEG-ARM|ORACLE|"verdict"/.test(l));
@@ -273,19 +305,21 @@ const run = (cmd, args, label) => {
     || text.split(/\r?\n/).filter(Boolean).slice(-1)[0] || '').trim().slice(0, 105);
   const neg = isNegativeArm(args);
   const status = r.status;
+  const timedOut = !!r.error && r.error.code === 'ETIMEDOUT';
   const crashed = status !== 0 && CRASHED.test(text);
   const armFailed = ARM_FAILED.test(verdict);
   const ok = neg
-    ? (status === 0 || status === 1) && !crashed && !armFailed
-    : (status === 0) && !armFailed;
-  const why = crashed ? 'CRASHED (a traceback): the instrument is BROKEN'
+    ? (status === 0 || status === 1) && !crashed && !armFailed && !timedOut
+    : (status === 0) && !armFailed && !timedOut;
+  const why = timedOut ? 'TIMED OUT (300 s): the instrument hung -- the battery says so instead of dying with it'
+            : crashed ? 'CRASHED (a traceback): the instrument is BROKEN'
             : armFailed ? 'the arm says in its own verdict that it is BROKEN'
             : neg ? 'a NEGATIVE arm that did not even RUN (rc>=2 = setup error)'
             : 'the instrument is BROKEN';
   if (ok) {
     console.log('rc=' + status + '  ' + label.padEnd(30) + verdict);
   } else {
-    console.log('rc=' + status + ' !!! ' + label.padEnd(30) + verdict + '   <-- ' + why);
+    console.log('rc=' + (timedOut ? 'TIMEOUT' : status) + ' !!! ' + label.padEnd(30) + verdict + '   <-- ' + why);
   }
   return ok;
 };

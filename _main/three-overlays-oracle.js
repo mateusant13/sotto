@@ -108,6 +108,18 @@ function checks(dir) {
   const out = [];
   const add = (name, ok, detail) => out.push({ name: name, ok: !!ok, detail: String(detail == null ? '' : detail) });
   const has = (id) => html.indexOf('id="' + id + '"') >= 0;
+  /* THE MARKUP, WITHOUT THE NOTES. panel.html documents the controls it REMOVED
+     in HTML comments (panel.html:301-304, :725-728, :807-818), so a grep over the
+     raw document finds the button the owner cut -- inside the sentence that says
+     the button is gone. A gate that reads the note as the thing measures PROSE.
+     The markup below is the document with its comments stripped, which is what
+     the product's own note asks for (*"MEASURED: `id="strip-theme-button"` is
+     absent from this document"*, panel.html:303). */
+  const markup = html.replace(/<!--[\s\S]*?-->/g, '');
+  /* THE CODE, WITHOUT ITS PROSE. panel.js explains in comments the constants it
+     DELETED -- the name `FLOAT_HEIGHT` survives ONLY there (panel.js:65, :2693)
+     -- so a check that reads the CODE reads the code, not the note about it. */
+  const jsCode = js.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
   const stripRules = rules.filter((r) => r.members.some((m) => m.indexOf('[data-surface="strip"]') >= 0));
   const panelRules = rules.filter((r) => r.members.some((m) => m.indexOf('[data-surface="panel"]') >= 0));
 
@@ -123,11 +135,21 @@ function checks(dir) {
   add('A4 the strip OPEN button reaches the right panel',
     /function openFullPanel\(reason\)[\s\S]{0,220}?bridge\.setPanelSurface\('panel',\s*reason\)/.test(js) && has('strip-open-button'),
     "openFullPanel -> bridge.setPanelSurface('panel', reason)");
-  add('A5 the LIVE button is bound and raises the window height',
-    /stripLiveButton\.addEventListener\(.click./.test(js) &&
-    /applyFloat\(liveEnabled\)/.test(js) &&
-    /setStripHeight\(on\s*\?\s*FLOAT_HEIGHT\s*:\s*STRIP_HEIGHT\)/.test(js),
-    'live click -> applyLiveEnabled -> applyFloat -> setStripHeight(FLOAT_HEIGHT)');
+  /* RE-ANCHORED 2026-10-20 (lane caption). The old third clause demanded
+     `setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT)` -- the TWO-HEIGHT contract
+     the product DELETED on 2026-10-17 (panel.js:62-85, verbatim: *"the constant
+     that produced it is deleted instead of being re-tuned"*). There is ONE height
+     now, `STRIP_HEIGHT = '40px'`, and `applyFloat` writes it unconditionally
+     (panel.js:2734). The clause below reads the CODE with its comments
+     stripped, so the note that explains the deletion cannot be mistaken for the
+     deletion itself. */
+  add('A5 the LIVE button is bound and the window height is THE ONE HEIGHT',
+    /stripLiveButton\.addEventListener\(.click./.test(jsCode) &&
+    /applyFloat\(liveEnabled\)/.test(jsCode) &&
+    /const\s+STRIP_HEIGHT\s*=\s*'40px'/.test(jsCode) &&
+    /setStripHeight\(STRIP_HEIGHT\)/.test(jsCode) &&
+    !/FLOAT_HEIGHT/.test(jsCode),
+    'live click -> applyLiveEnabled -> applyFloat -> setStripHeight(STRIP_HEIGHT); no FLOAT_HEIGHT');
 
   /* ---- B. THE NO-BACKGROUND INVARIANT --------------------------------- */
   /* The owner: 'ela mostra na minha tela, sem fundo, sem nada, extremamente
@@ -212,9 +234,23 @@ function checks(dir) {
   add('D3 the chevron is hidden by CSS on the strip (theme-switcher re-creates it)',
     /body\[data-surface="strip"\] #strip-theme-chevron \{\s*display:\s*none/.test(css),
     'display:none on the strip surface');
-  add('D4 the right panel holds the font dial, pause and hide',
-    has('font-smaller-button') && has('font-larger-button') && has('panel-pause-button') && has('hide-button'),
-    'font- font+ panel-pause hide');
+  /* D4, RE-BASELINED 2026-10-18 on the owner's verbatim *"1 botao de tamanho em vez
+   de 2"*. It asserted the smaller/larger PAIR, which no longer exists: the dial is
+   ONE cycling button per surface (`#font-scale-button` on the panel,
+   `#strip-font-scale-button` on the strip). A gate left naming the old ids would go
+   RED the moment the owner's order was carried out, and a RED gate nobody can act
+   on is how gates get switched off. */
+  add('D4 the right panel holds ONE font button, pause and hide',
+    has('font-scale-button') && has('panel-pause-button') && has('hide-button'),
+    'font-scale panel-pause hide');
+  /* AND the pair must be GONE, not merely un-asserted: a check that stops mentioning
+     an id is indistinguishable from a check that stopped noticing it. */
+  add('D4b and the smaller/larger PAIR is gone from the document',
+    !has('font-smaller-button') && !has('font-larger-button') &&
+    !has('strip-font-smaller-button') && !has('strip-font-larger-button'),
+    'pair ids: ' + ['font-smaller-button', 'font-larger-button',
+      'strip-font-smaller-button', 'strip-font-larger-button']
+      .filter((id) => has(id)).join(',') || 'all 4 absent');
   /* RE-BASELINED 2026-10-14 (lane B) on the owner's OWN new words, verbatim: *"tira o
      botao de transcript. ha um botao/gaveta do transcript no painel. remove o CONTROLO.
      se a gaveta tiver de ficar por detras, esconde-a mas tira o botao."* The check used
@@ -234,10 +270,17 @@ function checks(dir) {
     'search-button reveal-button');
   /* RE-BASELINED 2026-10-12 (Lead), same reason as D1: the owner cut the strip's
      theme control and the picker is now reached from the RIGHT panel only. The
-     old form required the very button he removed. */
+     old form required the very button he removed.
+     RE-ANCHORED 2026-10-20 (lane caption): the clause grepped the RAW panel.html
+     for `id="strip-theme-button"`, and the ONLY occurrences of that string in the
+     document are inside the COMMENTS that document the removal (panel.html:301-304,
+     :725-728, :807-818). The gate was reading the NOTE as if it were the BUTTON --
+     prose, not markup. The clause below reads the MARKUP (the document with its
+     comments stripped). The control is unchanged: N8 below puts the button back
+     in the markup and this check must go RED. */
   add('D6 the strip has NO theme button and the picker is panel-only',
-    !/id="strip-theme-button"/.test(html) && /body\[data-surface="strip"\] \.theme-picker/.test(css),
-    'data-theme-button + picker hidden on strip');
+    !/id="strip-theme-button"/.test(markup) && /body\[data-surface="strip"\] \.theme-picker/.test(css),
+    'no id in the MARKUP + picker hidden on strip');
 
   /* ---- E. THE BUG IS CLOSED ------------------------------------------- */
   const trap = rules.filter((r) => r.members.some((m) => m.indexOf('[data-transparency="on"]') >= 0) && r.decls.display === 'none');

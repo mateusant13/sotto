@@ -208,14 +208,20 @@ undone. Three rules, both earned today:
    (`app/panel/zip-overlay.css`, `app/webview/run-cmd-log-append.py`). **Never hand-edit
    `.gitattributes`: regenerate and re-verify.**
 6. **THE CENSUS OF GATES OUTSIDE THE BATTERY (2026-10-20).** This file names **42 instruments as
-   the PROOF of its own claims**. **RE-MEASURED after this day's registrations: 19 are IN the
-   battery and 23 are still out** — and of the 23, only **6 are in-process** (proved by the second
+   the PROOF of its own claims**. **RE-MEASURED after this day's registrations: 20 are IN the
+   battery and 22 are still out** — and of the 22, only **5 are in-process** (proved by the second
    battery, `instruments-battery.mjs`, whose own header says *"Launches NOTHING"* and whose run
    reports `launches=0`): `app-target-oracle.py`, `canonical-producer-oracle.py`,
-   `emit-queue-bound-oracle.py`, `panel-hidden-at-startup-oracle.py`, `panel-row-identity-oracle.js`,
+   `emit-queue-bound-oracle.py`, `panel-row-identity-oracle.js`,
    `run-cmd-exit-oracle.py`. The other 17 create a process (shell, worker, browser or audio) and
    stay out **by design** — and that is now written down here, so it stops looking like an
-   omission. Every gate that came in was born with its negative arm **already executed** (rc=1 by
+   omission. (**RE-MEASURED 2026-10-20 09:2x:** the count moved from 19/23 to **20/22** because
+   `panel-hidden-at-startup-oracle.py` entered the MAIN battery — it is PURE, the AST of the shell
+   plus a FAKE, no browser, no app, no audio, no process — and it was the last in-process gate
+   whose negative arm had been executed but registered NOWHERE. A census is a claim with a shelf
+   life: this one is re-measured, not remembered. Receipt:
+   `_main/receipt-20261020-portoes-fora-da-bateria.md`.) Every gate that came in was born with its
+   negative arm **already executed** (rc=1 by
    design, `NEG-ARM PASS` in the log — the `:expectred` contract; the `:record`/rc=0 form would
    pass a SURVIVING mutant as green). **Two of them were dying in silence**: `lang-id-oracle.py`
    and `word-split-oracle.py` pointed at `worker/models/nemotron-3.5-asr-streaming-0.6b-int8`, a
@@ -235,6 +241,19 @@ undone. Three rules, both earned today:
    anchor is repo hygiene, a red *claim* is a product defect, and the two look identical until you
    read what the instrument printed. Receipt:
    `_main/receipt-20261020-portoes-fora-da-bateria.md`.
+   **RE-MEASURED 2026-10-20 09:4x: the second battery is GREEN — 145/145, failed=0, launches=0.**
+   That took the classification of every red (23 → 0), in four lanes with disjoint files, and
+   every one of them turned out to be a **stale anchor**: the product had moved on purpose and the
+   instrument was measuring the retired contract. **Zero product defects** — the classification
+   receipt records the cause of each one with a `file:line`. The corrections were re-anchors, not
+   relaxations: the rule that made them acceptable is that **a negative arm that cannot say NO is
+   decoration**, and every one of them was proved to still bite (a blind copy of an instrument now
+   reports `INERT` and exits rc=2; a mutant that survives is a failure, not a green). Two arms
+   that were **not listed** in the runner (`caption-independent-oracle.js --neg-arm` and
+   `strip-float-oracle.js --neg-arm`) are now listed, and the runner got a **per-instrument
+   timeout** (300 s) so a hung instrument can no longer take the whole battery down with it —
+   measured: a run was killed at minute 3 and the instrument that came next (2 s on its own) was
+   innocent.
 
 ## CORRECTIONS 2026-10-07 (lane/docs) — every claim below was re-measured; see `_main/AGENTS-AUDIT.md`
 

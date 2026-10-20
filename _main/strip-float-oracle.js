@@ -42,10 +42,35 @@ const NEG = process.argv.includes("--neg-arm");
 
 const read = (p) => fs.readFileSync(p, "utf8");
 
+/* THE SOURCE OF ONE FUNCTION, by brace matching.
+ * RE-ANCHORED 2026-10-20 (lane caption): W10 used to measure `applyFloat` with a
+ * REGEX SPREAD OVER THE WHOLE FILE (`/currentSurface\(\)\s*===\s*'strip'[\s\S]
+ * {0,120}?bridge\.setPanelSurface\(.strip./`), which is a measurement of the
+ * FILE, not of the FUNCTION -- it was green whenever those two strings happened
+ * to be 120 characters apart anywhere in panel.js. It has to be the function's
+ * OWN body, so the body is extracted and the check reads it. */
+function functionSource(src, name) {
+  const i = src.indexOf("function " + name);
+  if (i < 0) return "";
+  const open = src.indexOf("{", i);
+  if (open < 0) return "";
+  let depth = 0;
+  for (let k = open; k < src.length; k += 1) {
+    if (src[k] === "{") depth += 1;
+    else if (src[k] === "}") { depth -= 1; if (depth === 0) return src.slice(i, k + 1); }
+  }
+  return "";
+}
+
 function checks(dir) {
   const html = read(path.join(dir, "panel.html"));
   const css = read(path.join(dir, "panel.css"));
   const js = read(path.join(dir, "panel.js"));
+  /* THE CODE, WITHOUT ITS PROSE. panel.js documents the contract it USED to
+     have in comments -- including the name of the constant it DELETED -- so a
+     grep for a retired name must not read the note that explains the removal.
+     The comments are stripped; the CODE is what is measured. */
+  const jsCode = js.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
   const float = read(path.join(dir, "caption-float.js"));
   const zipcJs = read(path.join(dir, "themes", "zipc-panels.js"));
   const zipcCss = read(path.join(dir, "themes", "zipc-panels.css"));
@@ -118,19 +143,44 @@ function checks(dir) {
    2026-10-12: Linhar rendered SECOND, right after the wordmark, while the paint below
    describes it as one of "the two ACTIONS at the end of the row". */
 const orderMap = {};
-const orderRe = /body\[data-surface="strip"\]\s+(#[A-Za-z0-9_-]+|\.stripbar__brand)\s*\{\s*order:\s*(\d+)\s*;\s*\}/g;
+/* RE-ANCHORED 2026-10-20 (lane caption). The old extractor demanded a rule whose
+   WHOLE BODY was `order: N;` and whose selector was exactly
+   `body[data-surface="strip"] <id>`. TWO things changed in the product and both
+   are deliberate:
+     - the X and the readout are pinned with `!important` AND ONE MORE CLASS
+       than the contract's (`html body[data-surface="strip"] .stripbar
+       #strip-hide-button`, panel.css:2117-2118) so the owner's X sits LAST
+       whatever the contract sheet does with its own numbers;
+     - the caption-size dial joined the row on 2026-10-18 (`order: 5`).
+   The old extractor therefore read `hide=undefined state=undefined` -- a gate
+   that could not see the two ENDS of the row it was measuring. The extractor
+   below reads the ORDER of any strip-scoped rule, whatever else the rule
+   carries, and it reads it from the CSS WITH ITS COMMENTS STRIPPED (a comment
+   that talks about `order:` is prose, not a declaration). */
+const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, "\n");
+const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
 let om;
-while ((om = orderRe.exec(css)) !== null) orderMap[om[1]] = parseInt(om[2], 10);
+while ((om = ruleRe.exec(cssNoComments)) !== null) {
+  const sel = om[1].trim();
+  if (sel.indexOf('data-surface="strip"') < 0) continue;
+  const ord = /(?:^|;)\s*order:\s*(\d+)\s*(?:!\s*important\s*)?(?:;|$)/.exec(om[2]);
+  if (!ord) continue;
+  const ids = sel.match(/#[A-Za-z0-9_-]+/g);
+  const key = (ids && ids.length) ? ids[ids.length - 1]
+    : (sel.indexOf(".stripbar__brand") >= 0 ? ".stripbar__brand" : null);
+  if (key) orderMap[key] = parseInt(ord[1], 10);
+}
 add("S20 the live button declares its own order (the default 0 would render it before the grip)",
   orderMap["#strip-live-button"] !== undefined,
   "order=" + orderMap["#strip-live-button"] + " of " + Object.keys(orderMap).length + " ordered children");
-add("S20b the row order is brand<grip<live<open<pause<hide<state",
+add("S20b the row order is brand<grip<live<open<font<pause<hide<state",
   orderMap["#strip-live-button"] > orderMap["#strip-drag-handle"] &&
   orderMap["#strip-live-button"] < orderMap["#strip-open-button"] &&
-  orderMap["#strip-open-button"] < orderMap["#strip-pause-button"] &&
+  orderMap["#strip-open-button"] < orderMap["#strip-font-scale-button"] &&
+  orderMap["#strip-font-scale-button"] < orderMap["#strip-pause-button"] &&
   orderMap["#strip-pause-button"] < orderMap["#strip-hide-button"] &&
   orderMap["#strip-hide-button"] < orderMap["#strip-state"],
-  "brand=" + orderMap[".stripbar__brand"] + " grip=" + orderMap["#strip-drag-handle"] + " live=" + orderMap["#strip-live-button"] + " open=" + orderMap["#strip-open-button"] + " pause=" + orderMap["#strip-pause-button"] + " hide=" + orderMap["#strip-hide-button"] + " state=" + orderMap["#strip-state"]);
+  "brand=" + orderMap[".stripbar__brand"] + " grip=" + orderMap["#strip-drag-handle"] + " live=" + orderMap["#strip-live-button"] + " open=" + orderMap["#strip-open-button"] + " font=" + orderMap["#strip-font-scale-button"] + " pause=" + orderMap["#strip-pause-button"] + " hide=" + orderMap["#strip-hide-button"] + " state=" + orderMap["#strip-state"]);
 
   /* ---- 3. panel.js WIRING ---------------------------------------------- */
   add("W1 dom.stripLiveButton is looked up", /stripLiveButton\s*:\s*document\.getElementById\(.strip-live-button.\)/.test(js), "present");
@@ -139,13 +189,44 @@ add("S20b the row order is brand<grip<live<open<pause<hide<state",
   add("W4 renderProvisional pushes the forming line", /SottoCaptionFloat\)\s*\{\s*window\.SottoCaptionFloat\.push\(\(confWords/.test(js), "present");
   add("W5 paintLevel feeds the overlay meter", /SottoCaptionFloat\)\s*\{\s*window\.SottoCaptionFloat\.setMeter\(/.test(js), "present");
   add("W6 paintLevel feeds the overlay listening", /window\.SottoCaptionFloat\.setListening\(LEVEL\.have\)/.test(js), "present");
-  const sps = (js.match(/bridge\.setPanelSurface\(.strip./g) || []).length;
-  add("W7 the window height goes through setPanelSurface", sps >= 1, sps + " call site(s)");
-  add("W8 the raised height is FLOAT_HEIGHT", /setStripHeight\(on\s*\?\s*FLOAT_HEIGHT\s*:\s*STRIP_HEIGHT\)/.test(js), "present");
+  /* W7 -- RE-ANCHORED 2026-10-20 (lane caption). The old check counted
+   `bridge.setPanelSurface('strip', ...)` call sites in the RAW FILE, and it was
+   GREEN ON A COMMENT: the only two `bridge.setPanelSurface('strip'` strings in
+   panel.js live in the block comment that explains the three writes the owner
+   had deleted (panel.js:2692-2700). A gate that counts the note explaining the
+   removal is measuring prose, not the product. THE CONTRACT TODAY: the strip's
+   height is the SHELL's (the caption is a native window), so the page asks the
+   shell for the FULL PANEL and for NOTHING else -- and the count is read from
+   the CODE, with the comments stripped. */
+  const sps = (jsCode.match(/bridge\.setPanelSurface\([^)]*\)/g) || []);
+  add("W7 the page asks the shell for the FULL PANEL only (the strip's height is the shell's)",
+    sps.length === 1 && /bridge\.setPanelSurface\('panel'/.test(sps[0]),
+    sps.length ? sps.join(" | ") : "NO LIVE CALL (the count was coming from a comment)");
+  add("W8 the window height is THE ONE HEIGHT (2026-10-17: FLOAT_HEIGHT was DELETED, not re-tuned -- panel.js:62-85)",
+    /const\s+STRIP_HEIGHT\s*=\s*'40px'/.test(jsCode) &&
+    /setStripHeight\(STRIP_HEIGHT\)/.test(jsCode) &&
+    !/FLOAT_HEIGHT/.test(jsCode),
+    "STRIP_HEIGHT='40px' + setStripHeight(STRIP_HEIGHT) + no FLOAT_HEIGHT in the code");
   add("W9 the surface switch re-applies the live state (which repaints the float)", /function applySurface\(\)[\s\S]*?applyLiveEnabled\(liveEnabled,\s*\{\s*silent:\s*true\s*\}\)/.test(js), "present");
-  add("W10 applyFloat calls setPanelSurface ONLY while the document wears the strip",
-    /currentSurface\(\)\s*===\s*'strip'[\s\S]{0,120}?bridge\.setPanelSurface\(.strip./.test(js),
-    "currentSurface()==='strip' guard present");
+  /* W10 -- RE-ANCHORED 2026-10-20 (lane caption). The old W10 demanded that
+     applyFloat call `bridge.setPanelSurface` behind a `currentSurface() ===
+     'strip'` guard -- and it measured that with a REGEX SPREAD OVER THE WHOLE
+     FILE, which is a measurement of the FILE, not of the FUNCTION. THE PRODUCT
+     DELETED BOTH HALVES ON PURPOSE (panel.js:2692-2700, the owner's *"nao deve
+     abrir qualquer coisa"*): the caption is a native window
+     (`NativeCaptionOverlay`), the page's overlay is the FALLBACK for a shell
+     without `setLiveEnabled`, and the three writes that used to resize the
+     window are GONE. THE CONTRACT TODAY: applyFloat opens NOTHING on the shell
+     -- it writes the attribute, the ONE height and the overlay -- and a shell
+     that owns a caption window gets NOTHING from it at all. The body below is
+     the FUNCTION's own body, extracted by brace matching. */
+  const applyFloatSrc = functionSource(jsCode, "applyFloat");
+  add("W10 applyFloat asks the shell NOTHING (2026-10-17: the caption window belongs to the shell -- panel.js:2692-2700)",
+    applyFloatSrc.length > 0 && !/setPanelSurface/.test(applyFloatSrc) && /setStripHeight\(STRIP_HEIGHT\)/.test(applyFloatSrc),
+    applyFloatSrc.length ? ("no setPanelSurface; " + (/setStripHeight\(STRIP_HEIGHT\)/.test(applyFloatSrc) ? "setStripHeight(STRIP_HEIGHT) present" : "setStripHeight MISSING")) : "applyFloat NOT FOUND");
+  add("W10b a shell that owns a caption window gets NOTHING from applyFloat (the guard is load-bearing)",
+    /if\s*\(\s*shellOwnsCaptionWindow\(\)\s*\)\s*return;/.test(applyFloatSrc),
+    applyFloatSrc.length ? (/if\s*\(\s*shellOwnsCaptionWindow\(\)\s*\)\s*return;/.test(applyFloatSrc) ? "the native guard is present" : "THE NATIVE GUARD IS GONE") : "applyFloat NOT FOUND");
 
   /* ---- 4. ZIP C: THE TEN DESIGNS -------------------------------------- */
   const names = [...zipcJs.matchAll(/name:\s*'([^']+)'/g)].map(m => m[1]);
@@ -155,8 +236,16 @@ add("S20b the row order is brand<grip<live<open<pause<hide<state",
   const blocks = [...zipcCss.matchAll(/:root\[data-theme='([^']+)'\]/g)].map(m => m[1]);
   add("Z3 the stylesheet has a scope per design", want.every(n => blocks.includes(n)), blocks.length + " scope(s)");
   add("Z4 each design declares its own accent", (zipcCss.match(/--accent\s*:/g) || []).length >= 10, (zipcCss.match(/--accent\s*:/g) || []).length + " --accent");
-  const capSizes = (zipcCss.match(/\.caption__text\s*\{[^}]*font-size:\s*(?:\d+px|var\(--size-closed\))/g) || []).length;
-  add("Z5 each design declares its own caption size (literal px or the --size-closed token)", capSizes >= 10, capSizes + " .caption__text font-size rules");
+  /* Z5 -- RE-ANCHORED 2026-10-20 (lane caption). The design's caption size is no
+   longer a bare `13px` nor a bare `var(--size-closed)`: the caption-size dial
+   landed on 2026-10-18 and every design now declares
+   `font-size: calc(var(--size-closed) * var(--caption-scale))`
+   (zipc-panels.css:114 and its nine siblings). The old pattern matched
+   neither the `calc()` nor the scale, so it counted ZERO and the gate was red
+   on a product that ships all ten sizes. The scale is now part of the
+   contract, and the pattern says so. */
+  const capSizes = (zipcCss.match(/\.caption__text\s*\{[^}]*font-size:\s*(?:\d+px|var\(--size-closed\)|calc\(var\(--size-closed\)\s*\*\s*var\(--caption-scale\)\))/g) || []).length;
+  add("Z5 each design declares its own caption size (literal px, the --size-closed token or the --caption-scale dial)", capSizes >= 10, capSizes + " .caption__text font-size rules");
   add("Z6 panel.html loads the stylesheet", /<link rel="stylesheet" href="themes\/zipc-panels\.css" \/>/.test(html), "present");
   add("Z7 panel.html loads the manifest fragment", /<script src="themes\/zipc-panels\.js"><\/script>/.test(html), "present");
 
@@ -207,10 +296,32 @@ const muts = [
   { tag: "M1 the height goes back to the old 100px", file: "panel.css", from: "--strip-height: 40px", to: "--strip-height: 100px" },
   { tag: "M2 the caption is no longer driven by live (the applyFloat call is deleted)", file: "panel.js", from: "applyFloat(liveEnabled);", to: "" },
   { tag: "M3 the overlay push in addCaption is deleted", file: "panel.js", from: "if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);", to: "" },
-  { tag: "M4 the runtime height change is deleted", file: "panel.js", from: "setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);", to: "" },
-  { tag: "M6 applyFloat becomes unconditional (the strip-only guard is removed)", file: "panel.js", from: "if (currentSurface() === 'strip' && bridge && typeof bridge.setPanelSurface === 'function') {", to: "if (bridge && typeof bridge.setPanelSurface === 'function') {" },
+  /* M4 -- RE-ANCHORED 2026-10-20 (lane caption). The old anchor was
+     `setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);`, the call the product
+     DELETED on 2026-10-17 (there is ONE height now: `setStripHeight(STRIP_HEIGHT)`,
+     panel.js:2734). With the anchor gone the negative arm died with
+     "SETUP ERROR: mutant anchor absent" (rc=2) -- a broken instrument, not a
+     red one. The MUTATION is the same one (the runtime height change is
+     deleted); only the ANCHOR moved. */
+  { tag: "M4 the runtime height change is deleted", file: "panel.js", from: "setStripHeight(STRIP_HEIGHT);", to: "" },
+  /* M6 -- RE-ANCHORED 2026-10-20 (lane caption). The old anchor was the
+     `currentSurface() === 'strip'` guard around the `bridge.setPanelSurface`
+     call -- a call and a guard the product DELETED on 2026-10-17. The guard
+     that is load-bearing TODAY is the NATIVE one: a shell that owns a caption
+     window gets NOTHING from applyFloat (panel.js:2729), and W10b measures
+     exactly that. Deleting it is the same class of defect the old mutant
+     described: applyFloat acting on a shell that did not ask for it. */
+  { tag: "M6 applyFloat becomes unconditional (the native-caption-window guard is removed)", file: "panel.js", from: "  if (shellOwnsCaptionWindow()) return;", to: "" },
   { tag: "M5 the overlay gains a background", file: "panel.css", from: ".caption-float__stage {", to: ".caption-float__stage {" + String.fromCharCode(10) + "  background: #0b0f14;" },
-  { tag: "M7 the straight band gets its rounded pill corners back", file: "panel.css", from: "border-radius: 0;", to: "border-radius: 10px;" },
+  /* M7 -- RE-ANCHORED 2026-10-20 (lane caption). The old anchor was the bare
+     `border-radius: 0;`, and panel.css carries TWO of them: the FIRST (line
+     1845) belongs to the accent bar, not to the strip slab -- so the mutation
+     was landing on a rule nobody measures and S21 stayed green. The mutant was
+     INERT and the pre-existing reds in the pristine were HIDING it (a mutant
+     "went red" only because the shipped file was already red). The anchor is
+     now the strip band's OWN block, verified to appear exactly once. The
+     mutation is the same one: the rounded pill corners come back. */
+  { tag: "M7 the straight band gets its rounded pill corners back", file: "panel.css", from: "  border-bottom: 1px solid var(--line);\r\n  border-radius: 0;\r\n  background: rgba(11, 15, 20, 0.98);", to: "  border-bottom: 1px solid var(--line);\r\n  border-radius: 10px;\r\n  background: rgba(11, 15, 20, 0.98);" },
 ];
 let wrong = 0;
 for (const m of muts) {

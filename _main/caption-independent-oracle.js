@@ -3,11 +3,23 @@
  * THE OWNER'S THREE DEMANDS, verbatim, and the check that answers each:
  *   "a porra da legenda, e pra ser independente do painel, nao acoplado."
  *        -> ARM A: the overlay paints with NO panel in the document at all, owns its
- *           own state (show/hide), and the shell's own geometry read
- *           (documentElement[data-float]) sees it.
+ *           own state (show/hide), and -- in the host that owns a caption window --
+ *           the PAGE asks the SHELL and paints NOTHING itself. The page's own
+ *           overlay is the FALLBACK, for a host with no caption window.
  *   "e eu to vendo div com cor solida inves de invisivel."
- *        -> ARM B: neither the overlay, nor a descendant, nor the page behind it
- *           paints a background. The one body is the 4px left bar.
+ *        -> ARM B: neither the overlay, nor a descendant, paints a background. The
+ *           one body is the 4px left bar. The PAGE behind it keeps its own OPAQUE
+ *           base -- that is the RENDER PROTECTION, not a defect.
+ *
+ * RE-BASELINED 2026-10-20 (lane caption). THE CONTRACT MOVED ON 2026-10-17, and the
+ * ten arms that were red were measuring a contract the product DELETED on purpose:
+ * the caption is a NATIVE WINDOW (`NativeCaptionOverlay`, a topmost Win32 window on
+ * the desktop -- panel.js:2702-2710), the page's own overlay is the FALLBACK for a
+ * host with no caption window (panel.js:2712-2716), and the panel's dark base is
+ * THE RENDER PROTECTION (panel.css:105-127) -- `caption-float.css` DELETED its
+ * `html[data-float="on"] { background: transparent }` rule on purpose, because a
+ * transparent page inside an opaque WinForms window IS the white slab the owner
+ * reported. The arms below measure what the product does TODAY, on BOTH hosts.
  *   "e nao e pra mudanca de design/tema/template ficar scrollando pra cima. e sempre
  *    mostrando o bottom do historico de transcript."
  *        -> ARM C: after a theme write, a skin write and a stylesheet load, the
@@ -99,8 +111,9 @@ function historyEntries(count) {
   return out;
 }
 
-function bridgeStub(window, entries) {
+function bridgeStub(window, entries, opts) {
   const subs = { caption: [], status: [] };
+  const liveCalls = [];
   const bridge = {
     onCaption: function (cb) { subs.caption.push(cb); },
     onStatus: function (cb) { subs.status.push(cb); },
@@ -122,19 +135,30 @@ function bridgeStub(window, entries) {
        caption-OFF contract that made the first click's resolved promise "correct" the
        second click back ON asynchronously -- the stub, not the panel, was moving the
        overlay. An oracle whose stub lies about its own reply cannot decide the state. */
-    setLiveEnabled: function (on) { return Promise.resolve({ liveEnabled: Boolean(on) }); },
+    setLiveEnabled: function (on) { liveCalls.push(Boolean(on)); return Promise.resolve({ liveEnabled: Boolean(on) }); },
     pause: function () { return Promise.resolve({ paused: true }); },
     setPanelSurface: function (name) {
       if (window.SottoSurfaces) window.SottoSurfaces.set(String(name));
       return Promise.resolve({ surface: String(name) });
     },
     __emit: function (kind, payload) { for (const cb of subs[kind]) cb(payload); },
+    /* EVERY ASK THE PAGE MADE OF THE SHELL'S CAPTION WINDOW, in order. The native
+       contract is "the page asks, the shell moves the window" -- and an arm that
+       cannot see the ASK cannot say the page asked. */
+    __liveCalls: liveCalls,
   };
+  /* THE FALLBACK HOST (2026-10-17). A shell with NO caption window of its own -- a
+     browser probe (`_main/panel-caption-button-probe.mjs`) -- does not ship
+     `setLiveEnabled`, and there the page's own overlay IS the caption
+     (panel.js:2712-2716). The stub can drop the method so the gate measures BOTH
+     paths: a harness that always had it measured the fallback branch on paper and
+     the native branch in fact. */
+  if (opts && opts.noLive) delete bridge.setLiveEnabled;
   window.sotto = bridge;
   return bridge;
 }
 
-function loadPanel(dir) {
+function loadPanel(dir, opts) {
   const htmlPath = path.join(dir, 'panel.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, {
@@ -149,7 +173,7 @@ function loadPanel(dir) {
   const floatCss = fs.existsSync(floatCssPath) ? fs.readFileSync(floatCssPath, 'utf8') : '';
   style.textContent = css + '\n' + floatCss;
   window.document.head.prepend(style);
-  const bridge = bridgeStub(window, historyEntries(12));
+  const bridge = bridgeStub(window, historyEntries(12), opts);
   const errors = [];
   for (const src of scriptSources(html)) {
     const file = path.resolve(dir, src);
@@ -225,6 +249,14 @@ function memberIsConstraintFree(member) {
 }
 function memberIsLed(member) {
   return member.indexOf('.caption-float__led') >= 0;
+}
+/* THE PAGE'S OWN BASE (html / body). 2026-10-17: the caption is a native window,
+   so the page behind it is the panel, and the panel's base is the render
+   protection. A rule that paints <html>/<body> is the page's own business, not
+   the overlay's -- and B3/B3b hold the base to its real contract. */
+function memberIsPageBase(member) {
+  const key = targetKey(member);
+  return key === 'html' || key === 'body';
 }
 function paintsValue(prop, value) {
   const v = String(value).trim().toLowerCase();
@@ -321,6 +353,15 @@ function paintScan(dir) {
       scanned += 1;
       for (const member of rule.members) {
         if (!memberTouchesFloat(member) && !memberIsConstraintFree(member)) continue;
+        /* THE PAGE'S OWN BASE IS NOT THE OVERLAY'S BUSINESS (2026-10-17). The caption
+           is a NATIVE WINDOW; the page behind it is the PANEL, and the panel's dark
+           base is THE RENDER PROTECTION (panel.css:105-127) -- `caption-float.css`
+           DELETED its `html[data-float="on"] { background: transparent }` rule on
+           purpose, because a transparent page inside an opaque WinForms window IS the
+           white slab the owner reported. So the base is not an offender; the
+           compensating arms are B3 (the base IS opaque) and B3b (nothing may make it
+           transparent again). */
+        if (memberIsPageBase(member)) continue;
         for (const prop of PAINT_PROPS) {
           if (!(prop in rule.decls)) continue;
           if (!paintsValue(prop, rule.decls[prop])) continue;
@@ -464,14 +505,34 @@ async function runChecks(dir) {
      OFF again -- the reverse of the interim revision. */
   check('A13 the live button is the caption control and ships UNPRESSED (the caption is OFF)',
     btn ? btn.getAttribute('aria-pressed') : 'ABSENT', 'false');
+  /* RE-BASELINED 2026-10-20 (lane caption). THE CONTRACT MOVED ON 2026-10-17: the
+     caption is a NATIVE WINDOW and the PAGE's own overlay is the fallback. With a
+     shell that owns a caption window, `applyFloat` returns at its first line
+     (panel.js:2729) and the page paints NOTHING; the only door to the caption is
+     `requestCaptionOverlay` -> `bridge.setLiveEnabled` (panel.js:2218-2240). The
+     old arms demanded "clicking live ON puts the caption on the strip screen" and
+     "the page writes data-float" -- a contract the product DELETED on purpose --
+     and the button is now painted from the SHELL's own account
+     (`data-caption-window` on <html>, panel.js:700, :2450-2468), never from a
+     local wish. The arms below measure what the page does TODAY. */
   p2.click(btn);
-  check('A13b clicking live ON puts the caption on the strip screen',
+  await p2.tick();
+  check('A13b clicking live ON asks the SHELL for its caption window and the PAGE paints nothing',
+    [p2.bridge.__liveCalls.slice(), btn.getAttribute('aria-pressed'),
+     doc2.body.getAttribute('data-float'), p2.display(floatEl2)],
+    [[true], 'false', null, 'none']);
+  /* THE SHELL'S OWN ACCOUNT. This is the write the shell makes when the window is
+     really up; the button is painted FROM it, which is why the page's own state
+     never has to be a guess. */
+  doc2.documentElement.setAttribute('data-caption-window', 'on');
+  await p2.tick();
+  check('A13c the shell own write paints the button ON and the PAGE still paints no overlay',
     [btn.getAttribute('aria-pressed'), doc2.body.getAttribute('data-float'), p2.display(floatEl2)],
-    ['true', 'on', 'block']);
-  check('A14 the shell geometry read (documentElement[data-float]) sees it',
-    doc2.documentElement.getAttribute('data-float'), 'on');
-  check('A15 and the panel attribute is still written for its own CSS',
-    doc2.body.getAttribute('data-float'), 'on');
+    ['true', null, 'none']);
+  check('A14 the page NEVER floats itself (documentElement[data-float] is the module own state, not the caption)',
+    doc2.documentElement.getAttribute('data-float'), 'off');
+  check('A15 and the page writes no float attribute on its own body (the caption is not in this window)',
+    doc2.body.getAttribute('data-float'), null);
   check('A16 with a panel mounted the module does NOT feed itself (no double paint)',
     p2.window.SottoCaptionFloat.state().feed, 'panel');
   checkTrue('A17 the overlay is not inside the panel div', !p2.id('panel').contains(floatEl2));
@@ -480,21 +541,40 @@ async function runChecks(dir) {
     p2.text(p2.id('caption-float-line')), TOKEN_A + ' uma linha');
   doc2.body.setAttribute('data-surface', 'panel');
   await p2.tick();
-  check('A19 on the FULL panel surface the overlay never paints over it',
-    [doc2.body.getAttribute('data-float'), p2.display(floatEl2)], ['on', 'none']);
+  check('A19 on the FULL panel surface the page paints no overlay either (the caption is the shell own window)',
+    [doc2.body.getAttribute('data-float'), p2.display(floatEl2)], [null, 'none']);
   doc2.body.setAttribute('data-surface', 'strip');
   await p2.tick();
-  check('A20 and it comes back on the strip', p2.display(floatEl2), 'block');
+  check('A20 and on the strip the page still paints no overlay (the caption lives in the shell own window)',
+    p2.display(floatEl2), 'none');
   p2.click(btn);
-  check('A13c clicking live OFF takes the overlay off the screen',
-    [btn.getAttribute('aria-pressed'), doc2.body.getAttribute('data-float'), p2.display(floatEl2)],
-    ['false', 'off', 'none']);
-  /* BACK ON for ARM B: B3 measures the PAGE while the caption is FLOATED, and the
-     transparency rule keys on data-float="on". A13c is the only OFF transition, so
-     the arm restores the ON state it needs rather than letting the ordering decide. */
-  p2.click(btn);
-  check('A13d and the caption is back ON, floated, with no page behind it',
-    [btn.getAttribute('aria-pressed'), doc2.body.getAttribute('data-float')], ['true', 'on']);
+  await p2.tick();
+  check('A13d clicking live OFF asks the shell to take the caption window down',
+    [p2.bridge.__liveCalls.slice(), btn.getAttribute('aria-pressed'), p2.display(floatEl2)],
+    [[true, false], 'true', 'none']);
+  doc2.documentElement.setAttribute('data-caption-window', 'off');
+  await p2.tick();
+  check('A13e and the shell own write paints the button OFF again',
+    [btn.getAttribute('aria-pressed'), p2.display(floatEl2)], ['false', 'none']);
+
+  /* THE FALLBACK HOST. A shell with NO caption window of its own -- a browser
+     probe (`_main/panel-caption-button-probe.mjs`) -- does not ship
+     `setLiveEnabled`, and there the page's own overlay IS the caption
+     (panel.js:2712-2716). The product keeps that path on purpose, so the gate
+     measures it too -- and it is where N7 has its teeth: with the
+     `applyFloat(liveEnabled)` call deleted, the fallback caption never comes up,
+     and a gate that only measured the native host could not tell. */
+  const p3 = loadPanel(dir, { noLive: true });
+  const doc3 = p3.document;
+  const floatEl3 = p3.id('caption-float');
+  doc3.body.setAttribute('data-surface', 'strip');
+  const btn3 = p3.id('strip-live-button');
+  check('A21 THE FALLBACK host ships the caption OFF', btn3.getAttribute('aria-pressed'), 'false');
+  p3.click(btn3);
+  await p3.tick();
+  check('A21b THE FALLBACK host: clicking live ON paints the PAGE own overlay',
+    [btn3.getAttribute('aria-pressed'), doc3.body.getAttribute('data-float'), p3.display(floatEl3)],
+    ['true', 'on', 'block']);
 
   /* ── B. NOTHING PAINTS ───────────────────────────────────────────────────── */
   arm = 'B';
@@ -507,41 +587,52 @@ async function runChecks(dir) {
   check('B1 NO element of the overlay paints a background (jsdom, resolved values)',
     painters, []);
   const scan = paintScan(dir);
-  check('B2 every painting rule on the overlay or a descendant is neutralised',
+  check('B2 every painting rule on the overlay or a descendant is neutralised (the PAGE own base is the render protection, not an offender)',
     scan.offenders, []);
   checkTrue('B2b and the left bar really does paint something', scan.allowed.length >= 1);
   checkTrue('B2c the panel.css meter plate really was found and covered',
     scan.covered.some(function (e) { return e.indexOf('caption-float__meter') >= 0; }));
   console.log('         covered by caption-float.css: ' + scan.covered.length + ' rule(s)');
   for (const c of scan.covered) console.log('           ' + c);
-  check('B3 while floated the PAGE paints nothing either (the owner solid div)',
-    [p2.bg(doc2.documentElement), p2.bg(doc2.body)], ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
-  /* The page-level transparency is the ONE rule in this lane that a later theme could
-     out-specify, so it is gated: nothing in the document's own sheet population may
-     paint <html>/<body> with a specificity that beats caption-float.css's rule. */
-  const ownRules = parseCss(fs.readFileSync(path.join(dir, 'caption-float.css'), 'utf8'));
-  const transparency = ownRules.filter(function (r) {
-    return r.members.some(function (m) {
-      const k = targetKey(m);
-      return (k === 'html' || k === 'body') && r.decls.background === 'transparent';
-    });
-  });
+  /* B3 -- RE-BASELINED 2026-10-20 (lane caption). THE CONTRACT MOVED ON 2026-10-17:
+     the caption is a NATIVE WINDOW, so there is no caption BEHIND this page to make
+     transparent -- and `caption-float.css` DELETED its
+     `html[data-float="on"], body[data-float="on"] { background: transparent }` rule
+     on purpose, because a transparent page inside an opaque WinForms window IS the
+     white slab the owner reported (panel.js:2686-2710). The page keeps its own DARK
+     base: that is THE RENDER PROTECTION (panel.css:105-127), so the window can
+     never come out white when the panel fails to paint. The arm now says THAT,
+     instead of demanding the transparency the product removed on purpose. */
+  const baseIs = function (v) { return (v === 'rgba(0, 0, 0, 0)' || v === 'transparent') ? 'TRANSPARENT' : 'OPAQUE'; };
+  check('B3 the PAGE keeps its OPAQUE base (the render protection -- the caption is not in this window)',
+    [baseIs(p2.bg(doc2.documentElement)), baseIs(p2.bg(doc2.body))], ['OPAQUE', 'OPAQUE']);
+  /* B3b -- RE-BASELINED 2026-10-20 (lane caption). The old arm asked "does any sheet
+     paint <html>/<body> HARDER than caption-float.css's transparency rule?" -- and
+     that rule was DELETED on 2026-10-17, so the arm was asking about a rule that no
+     longer exists and counted the panel's own dark base as an offender. THE
+     CONTRACT TODAY: the panel's base is OPAQUE on purpose, the ONE place a
+     transparent <html>/<body> is allowed is the CAPTION WINDOW (scoped to the
+     attribute that marks that document), and an UNSCOPED transparency would take the
+     panel's page with it -- the white slab, again. So the arm asks exactly that,
+     over the whole document sheet population. */
   const pagePainters = [];
   for (const f of documentSheets(dir)) {
-    if (path.resolve(f) === path.resolve(path.join(dir, 'caption-float.css'))) continue;
     for (const rule of parseCss(fs.readFileSync(f, 'utf8'))) {
-      if (!rule.decls.background || !paintsValue('background', rule.decls.background)) continue;
+      const bg = rule.decls.background;
+      if (bg === undefined) continue;
+      const v = String(bg).trim().toLowerCase();
+      if (!(v === 'transparent' || v === 'none' || v === 'rgba(0, 0, 0, 0)')) continue;
       for (const member of rule.members) {
         const key = targetKey(member);
         if (key !== 'html' && key !== 'body') continue;
-        const beats = transparency.some(function (r) {
-          return r.members.some(function (m) { return keyMatches(m, key) && specGte(specificity(m), specificity(member)); });
-        });
-        if (!beats) pagePainters.push(path.basename(f) + ' :: ' + member + ' { background: ' + rule.decls.background + ' }');
+        /* THE CAPTION WINDOW IS ALLOWED ITS OWN TRANSPARENCY -- the rule is scoped
+           to the attribute that marks that document (zip-overlay.css:456-465). */
+        if (member.indexOf('data-caption-window') >= 0) continue;
+        pagePainters.push(path.basename(f) + ' :: ' + member + ' { background: ' + bg + ' }');
       }
     }
   }
-  check('B3b no document sheet paints <html>/<body> harder than the transparency rule',
+  check('B3b the only TRANSPARENT <html>/<body> is scoped to the caption window (the panel own render protection holds)',
     pagePainters, []);
   check('B4 the meter plate and its fill paint nothing',
     [p2.bg(p2.id('caption-float-meter')), p2.bgImage(p2.id('caption-float-meter')),
@@ -645,11 +736,18 @@ async function negArm() {
     { tag: 'N2 the pin writes the TOP instead of the bottom (panel.js)',
       file: 'panel.js',
       apply: function (t) { return t.replace('  list.scrollTop = list.scrollHeight;', '  list.scrollTop = 0;'); } },
-    { tag: 'N3 the page paints its solid slab behind the caption (caption-float.css)',
+    /* N3 -- RE-ANCHORED 2026-10-20 (lane caption). The old mutant replaced
+       caption-float.css's `html[data-float="on"], body[data-float="on"] { ... }`
+       rule -- and that rule was DELETED on 2026-10-17, so the anchor was absent
+       and the negative arm died with "SETUP ERROR: mutant anchor absent" (rc=2):
+       a broken instrument, not a red one. THE MUTATION IS THE SAME DEFEIT the
+       old one described -- the page becomes transparent and the white slab is
+       back -- and it is now INJECTED rather than substituted: the deleted rule
+       is put back, and B3b (the render protection) must go RED. */
+    { tag: 'N3 the render protection is undone (the page is made transparent again) (caption-float.css)',
       file: 'caption-float.css',
       apply: function (t) {
-        return t.replace(/html\[data-float="on"\],\r?\nbody\[data-float="on"\] \{[^}]*\}/,
-          'html[data-float="on"],\r\nbody[data-float="on"] {\r\n  background: rgba(11, 15, 20, 0.98);\r\n}');
+        return 'html[data-float="on"],\r\nbody[data-float="on"] {\r\n  background: transparent;\r\n}\r\n\r\n' + t;
       } },
     { tag: 'N4 the meter plate comes back (caption-float.css)',
       file: 'caption-float.css',
@@ -671,9 +769,18 @@ async function negArm() {
     { tag: 'N7 the live button no longer drives the overlay (applyFloat call deleted) (panel.js)',
       file: 'panel.js',
       apply: function (t) { return t.replace(/  applyFloat\(liveEnabled\);\r?\n/, ''); } },
-    { tag: 'N8 the caption ships ON again (liveEnabled defaults true) (panel.js)',
+    /* N8 -- RE-ANCHORED 2026-10-20 (lane caption). The old mutation was
+       `let liveEnabled = false;` -> `true`, and it is INERT under the native
+       contract: the page's `liveEnabled` is no longer the caption's state, it is
+       a mirror of the SHELL's account (`data-caption-window`), and
+       `watchCaptionWindowState()` overwrites it at init with what the shell said
+       -- which is "nothing yet". The caption's state moved to the shell, so the
+       defect moved with it: the page BELIEVING the window is already up. The
+       mutation is that belief, and A13 ("ships UNPRESSED") and A21 (the fallback
+       host ships OFF) must go RED. */
+    { tag: 'N8 the caption ships ON again (the page believes the window is already up) (panel.js)',
       file: 'panel.js',
-      apply: function (t) { return t.replace('let liveEnabled = false;', 'let liveEnabled = true;'); } },
+      apply: function (t) { return t.replace("return document.documentElement.getAttribute(CAPTION_WINDOW_ATTR) === 'on';", 'return true;'); } },
   ];
   let wrong = 0;
   for (const m of muts) {

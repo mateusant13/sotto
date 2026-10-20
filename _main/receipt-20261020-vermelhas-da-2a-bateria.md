@@ -167,9 +167,36 @@ O numero actual da 2a bateria e' **123/145, failed=22** — porque o `panel-hidd
 | **#8/#9** `handler-map` (+neg) | O pin `EXPECTED_KINDS` foi re-ancorado nas 6 entradas novas. | normal: `VERDICT: PASS -- 7 check(s), 0 fail` (`the shipped table holds the page vocabulary (31 kind(s)) -- exact`); neg-arm: `VERDICT: PASS -- 9 check(s), 0 fail` — **os 3 mutantes continuam a ir a RED**. |
 | **#11** `panel hide gate at startup` | Ja nao e' vermelho: `fe3ef4b` semeou as flags no fake. | `VERDICT: PASS` (medido na corrida de 08:23). |
 
-**As outras 21 correccoes (a) continuam NAO aplicadas** — a tabela do §3 tem o plano exacto de cada
-uma. E a bateria PRINCIPAL continua a ser a prova de referencia: **84 passos, gate=59, control=9,
+**As outras 21 correccoes (a) foram APLICADAS todas** — o Lead despachou quatro lanes com
+**ficheiros disjuntos** (nenhuma commita; o Lead commita), re-ancorou cada instrumento no
+**contrato actual** e provou que cada um **ainda tem dente**. A 2a bateria esta agora
+**145/145, failed=0, launches=0** — verde pela primeira vez.
+
+| lane | instrumentos | o que mudou |
+|---|---|---|
+| W1 | `panel-visibility-guard-oracle.py`, `device-ladder-rescan-oracle.py`, `canonical-producer-oracle.py` | os tres que **rebentavam**: o stub `_blank_caption_window` (o `hide_panel` real ja nao chama `show_caption_window(False)` desde 2026-10-17), o helper `is_bluetooth_audio_device` que a casca nao extraia, e o pin do checkpoint Redux (media a UNIAO de dois directorios; o gap e' real, a MEDIDA e' que media dois caminhos). |
+| W2 | `cine-themes-oracle.py`, `cinematic-designs-oracle.py` | os pins do CSS, re-ancorados na forma **com** `--caption-scale` (o dial do dono) — e um `replace_once()` novo: uma ancora ausente deixa de mutar o nada em silencio e passa a dizer porquê. **Matou a classe do bug "mutante inerte".** |
+| W3 | `panel-chrome-gate.py`, `caption-independent-oracle.js`, `three-overlays-oracle.js`, `strip-float-oracle.js`, `botoes-lane-gesture-oracle.js`, `surface-loop-panel-oracle.js` | os seis do painel: a janela de legenda **nativa**, a altura unica (40 px), o drag **nativo do SO** com o JS como fallback, e o `data-caption-window` escrito pelo shell. **Tres mutantes que estavam INERTES foram reparados**, nao papered over. |
+| W4 | `hotkey-cycle-oracle.py`, `verify-all-launch-audit.py`, `instruments-battery.mjs` | o oraculo do **gesto 1/2/3** (o braço "NO CLOCK" foi **invertido**, nao apagado: o gesto e' cronometrado de proposito); a auditoria que separou o **comando** das **DEPS** (o falso positivo do `agents-md-pins`); e a duplicacao do mesmo ficheiro no runner (duas, nao uma). |
+
+**A regra que tornou estas correccoes aceitaveis** (e que manda um grep a cada vez): *"um portao
+que nao pode dizer NAO e' decoracao"*. Por isso cada lane teve de **provar o dente**:
+* uma **copia cega** de cada instrumento tem de reportar `INERT` e sair **rc=2**;
+* um mutante que sobrevive tem de ser uma **falha**, nunca um verde;
+* e o `--neg-arm` tem de continuar a apanhar o mutante **pelo motivo dele**.
+
+Tambem ficaram: um **timeout de 300 s por instrumento** no runner (uma corrida foi morta ao
+minuto 3 e o instrumento seguinte, de 2 s, era inocente — `spawnSync` sem timeout espera para
+sempre), e os **dois braços negativos que nao estavam listados**
+(`caption-independent-oracle.js --neg-arm` e `strip-float-oracle.js --neg-arm`) agora listados:
+estavam **quebrados** (rc=2) e, re-ancorados, dao `NEG-ARM VERDICT: PASS -- every mutant went RED.`
+
+A bateria PRINCIPAL continua a ser a prova de referencia: **85 passos, gate=60, control=9,
 skipped=1, expect-red=15, missing=0, failed=0 -> GREEN WITH 1 SKIPPED**, rc=0.
+
+**E o produto nao foi tocado.** `app/webview/`, `app/panel/` e `worker/` intactos: **ZERO
+defeitos de produto** confirmados, e as trocas que explicavam os vermelhos estao todas
+documentadas no proprio codigo do produto, com data e motivo.
 
 
 ---

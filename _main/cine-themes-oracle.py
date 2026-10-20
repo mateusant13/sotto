@@ -90,6 +90,20 @@ def read(path):
         return fh.read()
 
 
+def replace_once(text, old, new, label):
+    """Mutate, or REFUSE to mutate nothing.
+
+    A mutant whose anchor is not in its subject changes NOTHING: the arm still
+    reports GREEN and the gate is blind at that point. An inert mutant is worse
+    than a red one -- a red one is a verdict, an inert one is silence.
+    (MEASURED 2026-10-20: M1 went inert exactly this way. The product grew the
+    `--caption-scale` dial, the old anchor's count fell to 0, and the arm printed
+    `1 inert` while the gate could not see that point at all.)"""
+    if old not in text:
+        raise SystemExit('mutant anchor not found: %r (in %s)' % (old[:60], label))
+    return text.replace(old, new, 1)
+
+
 # -- a small strict CSS reader (no dependency; the file is generated and flat) ---
 
 def blocks(css):
@@ -516,29 +530,48 @@ def neg_arm():
     print('')
 
     mutants = []
-    m1 = css.replace("var(--size-closed, calc(var(--size-caption) * 0.72))", "13px", 1)
+    # M1 -- the theme stops reading --size-closed.
+    # THE ANCHOR IS THE SHIPPED FORM (re-anchored 2026-10-20). The owner's font dial
+    # is a MULTIPLIER: `--caption-scale` is written on the document element by
+    # `app/panel/panel.js:2312` (the dial itself: `panel.js:306`, "THE TRANSCRIPT
+    # FONT DIAL (owner, 2026-10-09)") and the generator carries it on BOTH terms of
+    # the closed line (`_main/_design-lane/gen_cinematic.py:958` and the `CLOSED`
+    # table at :274), so the closed line shrinks and grows with the live one.
+    # MEASURED 2026-10-20 on `app/panel/themes/cinematic.css` (the file this oracle
+    # reads): the OLD anchor `var(--size-closed, calc(var(--size-caption) * 0.72))`
+    # has count=0 -- that is WHY M1 was INERT -- and the SHIPPED one has count=10,
+    # one per theme of the `cinematic` family, the first at `cinematic.css:251`
+    # (`:root[data-theme='cine-midnight-rain'] .caption:not(.caption--latest)
+    # .caption__text`). The first of the ten is in a THEME scope, so the mutant
+    # really does take that theme's `var(--size-closed)` reader away and the A3 arm
+    # goes RED.
+    m1 = replace_once(css,
+                      "var(--size-closed, calc(var(--size-caption) * 0.72 * var(--caption-scale)))",
+                      "13px", 'M1')
     mutants.append(('M1 one theme stops reading --size-closed',
                     write('m1.css', m1, 'm1'), JS_DISK, GEN, 'a', ['A3']))
     m2 = re.sub(r":root\[data-theme='cine-warm-hour'\] \.chrome \* \{.*?\n\}\n",
                 '', css, count=1, flags=re.S)
+    if m2 == css:
+        raise SystemExit('mutant anchor not found: cine-warm-hour .chrome * (in M2)')
     mutants.append(('M2 one theme stops reading --motion-in',
                     write('m2.css', m2, 'm2'), JS_DISK, GEN, 'b', ['B1']))
-    m3 = css.replace("--cine-scrim:", "--slab-opacity: 0.97;\n  --cine-scrim:", 1)
+    m3 = replace_once(css, "--cine-scrim:", "--slab-opacity: 0.97;\n  --cine-scrim:", 'M3')
     mutants.append(('M3 a token comes back declared and unread',
                     write('m3.css', m3, 'm3'), JS_DISK, GEN, 'c', ['C1', 'C2']))
-    m4 = css.replace(".captions__hint {", ".status__hint {", 1)
+    m4 = replace_once(css, ".captions__hint {", ".status__hint {", 'M4')
     mutants.append(('M4 a dead class reference comes back',
                     write('m4.css', m4, 'm4'), JS_DISK, GEN, 'd', ['D1', 'D2']))
-    m5 = js.replace("label: 'Tideline (wide)'", "label: 'Tideline'", 1)
+    m5 = replace_once(js, "label: 'Tideline (wide)'", "label: 'Tideline'", 'M5')
     mutants.append(('M5 two picker entries share a label again',
                     CSS_DISK, write('m5.js', m5, 'm5'), GEN, 'e', ['E1']))
-    m6 = js.replace("label: 'Cellar'", "label: 'Cellar Sessions'", 1)
+    m6 = replace_once(js, "label: 'Cellar'", "label: 'Cellar Sessions'", 'M6')
     mutants.append(('M6 a picker label stops matching the mounted skin',
                     CSS_DISK, write('m6.js', m6, 'm6'), GEN, 'f', ['F1']))
-    m7 = gen.replace("'--motion-in': '150ms',", "'--motion-in': '151ms',", 1)
+    m7 = replace_once(gen, "'--motion-in': '150ms',", "'--motion-in': '151ms',", 'M7')
     mutants.append(('M7 the generator itself is mutated (the CSS bytes move)',
                     CSS_DISK, JS_DISK, write('gen_m7.py', m7, 'm7'), 'h', ['H1']))
-    m8 = css.replace("  --cine-scrim:", "  --cine-scrim: /* hand edit */", 1)
+    m8 = replace_once(css, "  --cine-scrim:", "  --cine-scrim: /* hand edit */", 'M8')
     mutants.append(('M8 the shipped CSS is a hand edit of the generator output',
                     write('m8.css', m8, 'm8'), JS_DISK, GEN, 'h', ['H1']))
 

@@ -20,7 +20,7 @@ directions keep their own footer chrome, because the owner named `em curso` and
          HTML comment (the note explaining the removal), and the `tele`
          direction has NO footer block at all.
   ARM B  THE OTHER FOUR KEEP THEIRS. `bcast` (meter + LIVE/EM ESPERA), `mano`
-         ("- escrito ao ouvido"), `cine` ("- - -") and `inst` (meter +
+         ("- escrito ao ouvído"), `cine` ("- - -") and `inst` (meter +
          OUVINDO/EM ESPERA) still carry their own footer chrome. A gate that only
          checked the removal would pass on a panel with NO footer chrome at all.
   ARM C  THE CSS AGREES. Zero `chrome--tele[data-chrome="foot"]` rules in every
@@ -39,6 +39,14 @@ directions keep their own footer chrome, because the owner named `em curso` and
 THE CONTROL IS THREE MUTANTS, NOT A COMMENT (`--neg-arm`). Each is a COPY of the
 shipped bytes under `$TMPDIR` with ONE half of the mechanism reverted:
   M1  the two `tele` footer spans are PUT BACK into the markup;
+        (RE-ANCHORED 2026-10-20, lane caption -- the anchor MOVED, the mutation
+         did NOT. The old anchor was the `mano` FOOTER span, which the product
+         DELETED on 2026-10-18 (owner: *"tirar rascunho live / escrito ao
+         ouvido"*): `mano` moved UP to the head row and, like `tele`, carries no
+         footer block at all. The anchor was dead (count=0), so the control was a
+         MUTANT THAT COULD NOT RUN -- "CONTROL IS DEAD" means this gate could not
+         say no. The anchor is now the node that exists today, `panel.html:245`,
+         and its count is VERIFIED to be 1 before the mutation runs.)
   M2  the chrome class contract is renamed (`class="chrome` ->
       `class="chrome-off`), the same mutation `_panel-chrome-arm.py --neg-arm`
       calls `markup`;
@@ -82,7 +90,13 @@ if hasattr(sys.stdout, 'reconfigure'):
 DIRS = {
     'tele':  ('theme-1.css', []),
     'bcast': ('theme-2.css', [('start', None), ('end', 'LIVE')]),
-    'mano':  ('theme-3.css', [('start', '\u2014 escrito ao ouvido')]),
+    # EMPTY ON PURPOSE (owner, 2026-10-18). `mano` used to carry
+    # `- escrito ao ouvído` and now carries no footer block at all, the same
+    # shape as `tele`. ARM B skips an empty row -- that is its documented
+    # behaviour -- so the demand on `bcast`, `cine` and `inst` is untouched.
+    # ARM A is what holds this one down: the words must be absent from live
+    # markup and present only in the note that explains the removal.
+    'mano':  ('theme-3.css', []),
     'cine':  ('theme-4.css', [('start', '\u00b7 \u00b7 \u00b7')]),
     'inst':  ('theme-5.css', [('start', None), ('end', 'OUVINDO')]),
 }
@@ -91,7 +105,11 @@ SHEETS = ['theme-1.css', 'theme-2.css', 'theme-3.css', 'theme-4.css',
 
 # The words the owner ordered off the bars. They may survive ONLY inside the
 # comment that explains the removal.
-ORDERED_OFF = ('HIST\u00d3RICO', 'EM CURSO')
+# 2026-10-18: two more, verbatim from the owner -- *"tirar rascunho live /
+# escrito ao ouvído"*. Same rule, same reason: `rascunho live` claimed the forming
+# line is a DRAFT and `— escrito ao ouvído` was decoration in the `mano` footer.
+# Both are now absent from live markup and present only in the note that says so.
+ORDERED_OFF = ('HIST\u00d3RICO', 'EM CURSO', 'rascunho live', 'escrito ao ouvído')
 # The mockups' invented readings (same list as `_panel-chrome-arm.py`).
 FORBIDDEN_TEXT = ('CONF', '48K', '380\u00d7900', '380x900', 'buffer', '0.93',
                   'PT-BR \u00b7 48')
@@ -335,11 +353,23 @@ def main() -> int:
         print('   LIVE ' + line)
 
     # ── M1: the two tele footer spans, put back ──────────────────────────────
+    # RE-ANCHORED 2026-10-20 (lane caption). The anchor was the `mano` FOOTER
+    # span -- `        <span class="chrome chrome--mano" data-chrome="foot"
+    # data-slot="start">` -- which the product DELETED on 2026-10-18 (owner:
+    # *"tirar rascunho live / escrito ao ouvido"*). `mano` moved UP to the head
+    # row (`panel.html:245`, `        <div class="chrome chrome--mano"
+    # data-chrome="head">`) and, like `tele`, carries no footer block at all.
+    # The old anchor therefore had count=0 and the mutant COULD NOT RUN: the
+    # gate could not say no, which is worse than a red gate.
+    # THE MUTATION IS UNCHANGED -- the two `tele` footer spans are put back into
+    # the markup, which is exactly what ARM A is about (the words live only in
+    # the note that explains the removal, and `tele` has no footer). Only the
+    # ANCHOR MOVED, and its count is checked to be exactly 1 before the copy is
+    # written.
     base, gen = scratch_tree('m1')
     path = os.path.join(base, 'panel.html')
     html = read(path)
-    anchor = ('        <span class="chrome chrome--mano" data-chrome="foot" '
-              'data-slot="start">')
+    anchor = '        <div class="chrome chrome--mano" data-chrome="head">'
     if html.count(anchor) != 1:
         print('NEG-ARM M1 tele labels back: CONTROL IS DEAD (anchor count=%d)'
               % html.count(anchor))

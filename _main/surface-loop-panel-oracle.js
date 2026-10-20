@@ -35,32 +35,56 @@
  * stub counts the page's asks separately from this file's own driver calls, by
  * re-entrancy: a call made while the stub is already running is the page's.
  *
+ * RE-ANCHORED 2026-10-20 (lane caption). THE ASK IS GONE, AND THAT IS THE
+ * PRODUCT'S DOING, NOT A DECAY. On 2026-10-17 the caption became a NATIVE WINDOW
+ * (`NativeCaptionOverlay`) and the three writes that used to resize the panel
+ * were DELETED: `applyFloat` returns at its first line when the shell owns the
+ * caption window (panel.js:2729) and asks the shell for NOTHING. So the
+ * page->shell ask count is identically ZERO on the shipped page, and a metric
+ * that is zero cannot tell the shipped page from a page whose guards are gone:
+ * arm A was RED for a reason that had nothing to do with the switch.
+ *
+ * WHAT THE TWO GUARDS ACTUALLY PROTECT, AND WHAT IS COUNTED NOW: a REPEAT. A
+ * genuine switch repaints the page; a repeat must not. The page's repaint is
+ * `applySurface()`, which ends in `applyLiveEnabled()` -> `paintLiveLamps()` --
+ * ONE write of `aria-label` on `#live-lamp`, which is the DOM boundary this
+ * file counts (the prototype's `setAttribute` is wrapped in the harness, which
+ * is an INSTRUMENT, never a product change). The ask count is KEPT, and it is
+ * now the SECOND claim of arm A: the page opens NOTHING on the shell.
+ *
  * ARMS
- *   A GENUINE-SWITCH a real surface switch repaints once (one ask).
- *   B ECHO-STORM     200 identical geometry echoes produce no further ask.
- *   C PAGE-REASK     the page's own re-ask for the same surface produces no ask.
- *   D REFUSAL        an unknown name changes nothing and asks nothing.
- *   E FIX-POINT      the closed loop, 200 rounds: one ask in round one, none after.
+ *   A GENUINE-SWITCH a real surface switch still repaints (and asks nothing).
+ *   B ECHO-STORM     200 identical geometry echoes produce no further repaint.
+ *   C PAGE-REASK     the page's own re-ask for the same surface repaints nothing.
+ *   D REFUSAL        an unknown name changes nothing and repaints nothing.
+ *   E FIX-POINT      the closed loop, 200 rounds: one repaint in round one, none after.
  *
  * THE NEGATIVE ARM (--neg-arm) IS THE POINT OF THE FILE: app/panel is copied to a
  * scratch directory, ONE page guard is deleted from the copy, and the SAME arms
- * re-run. Two mutants, one per page guard, and BOTH are load-bearing -- MEASURED,
- * after a first draft of this header claimed the second was inert:
+ * re-run. Two mutants, one per page guard, and BOTH are load-bearing -- MEASURED
+ * after this file's metric moved (see the RE-ANCHORED note above):
  *   M1 surface.js  the `if (value !== previous)` change-guard is deleted, so a
- *                listener fires on EVERY set. Measured: 5 of 6 arms RED, the echo
- *                storm alone going from 0 to 200 page asks.
+ *                listener fires on EVERY set. MEASURED 2026-10-20: 3 of 6 arms
+ *                RED -- the echo storm goes from 0 to 200 repaints, the page's own
+ *                re-ask from 0 to 2 and the closed loop from 0 to 400.
  *   M2 panel.js    the `after !== before` guard in setSurface() is deleted, so the
  *                page repaints on every echo even when its own answer did not
- *                move. Measured: 5 of 6 arms RED, the echo storm 0 -> 200 asks.
- *                The claim that surface.js already covered this one was WRONG and
- *                is retracted here: setSurface() calls applySurface() itself, so
- *                the guard it lost is the one that stopped the loop on the echo
- *                path. Both halves of the page guard are therefore gated.
+ *                move. MEASURED 2026-10-20: 4 of 6 arms RED -- the echo storm
+ *                0 -> 200, the re-ask 0 -> 1, the refusal 0 -> 1, the closed
+ *                loop 0 -> 200. The claim that surface.js already covered this
+ *                one was WRONG and is retracted here: setSurface() calls
+ *                applySurface() itself, so the guard it lost is the one that
+ *                stopped the loop on the echo path. Both halves of the page guard
+ *                are therefore gated.
  *
- * AND THE RUNAWAY IS A NUMBER, NOT A HANG: with either guard deleted the two sides
- * drive each other without bound. The stub carries a depth cap and a breaker, and
- * every arm asserts `capped === 0`, so the shipped page is GREEN and a mutant is
- * RED with the runaway counted (measured: capped=1, and 200 asks for 200 echoes).
+ * AND THE RUNAWAY IS A NUMBER, NOT A HANG. The stub carries a depth cap and a
+ * breaker, and every arm asserts `capped === 0`, so the shipped page is GREEN and
+ * a mutant is RED with the runaway counted. NOTE WHAT CHANGED ON 2026-10-20: the
+ * runaway is no longer a BRIDGE RECURSION -- the page asks the shell for nothing
+ * any more (the caption window belongs to the shell), so `capped` stays 0 in every
+ * arm, mutant or not, and the number that goes wrong is the REPAINT COUNT
+ * (0 -> 200, measured). The cap is kept because it still bounds the one thing
+ * that could still recurse: a page that asked the shell again.
  *
  *   node _main/surface-loop-panel-oracle.js            expect VERDICT: PASS
  *   node _main/surface-loop-panel-oracle.js --neg-arm  expect M1 RED, rc=0
@@ -122,7 +146,7 @@ function historyEntries(count) {
  * loop that does not exist. */
 function bridgeStub(window, entries) {
   const subs = { caption: [], status: [], geometry: [] };
-  const state = { pageAsks: 0, driverAsks: 0, inEcho: 0, depth: 0, capped: 0 };
+  const state = { pageAsks: 0, driverAsks: 0, inEcho: 0, depth: 0, capped: 0, repaints: 0 };
   const fireGeometry = function (payload) {
     state.inEcho += 1;
     try {
@@ -219,6 +243,22 @@ function loadPanel(dir) {
   style.textContent = css + '\n' + floatCss;
   window.document.head.prepend(style);
   const bridge = bridgeStub(window, historyEntries(12));
+  const state = bridge.state;
+  /* THE PAGE'S REPAINT, COUNTED AT THE DOM BOUNDARY. `applySurface()` ends in
+     `applyLiveEnabled()` -> `paintLiveLamps()`, and that is ONE write of
+     `aria-label` on `#live-lamp` per repaint -- the one DOM write a surface
+     switch always makes and a repeat must not. The page no longer ASKS the shell
+     anything when it repaints (the caption window belongs to the shell now,
+     panel.js:2729), so the ask count is zero on the shipped page and cannot
+     tell the shipped page from an unguarded one. The repaint count is what the
+     two page guards actually protect.
+     THE WRAP IS IN THE HARNESS, NEVER IN THE PRODUCT: this file measures the
+     shipped bytes, it does not change them. */
+  const realSetAttribute = window.Element.prototype.setAttribute;
+  window.Element.prototype.setAttribute = function (name, value) {
+    if (name === 'aria-label' && this.id === 'live-lamp') state.repaints += 1;
+    return realSetAttribute.call(this, name, value);
+  };
   const errors = [];
   for (const src of scriptSources(html)) {
     const file = path.resolve(dir, src);
@@ -266,44 +306,55 @@ function runArms(dir, label) {
         scriptSources(fs.readFileSync(path.join(dir, 'panel.html'), 'utf8')).length
         + ' scripts, 0 errors');
 
-  /* A -- a real switch repaints once: the document moves to the strip and the
-     page asks the shell for it exactly once. */
-  const beforeA = state.pageAsks;
+  /* A -- a real switch repaints: the document moves to the strip and the page
+     paints it -- and it asks the shell for NOTHING, because the caption window
+     belongs to the shell now (panel.js:2729). The cure is a guard on a REPEAT,
+     never a suppression of the switch: so the repaint must HAPPEN here. */
+  const beforeA = state.repaints;
+  const beforeAAsks = state.pageAsks;
   drive(state, function () { echo(bridge, 'strip'); });
   push('A GENUINE-SWITCH a real surface switch still repaints',
-        state.pageAsks - beforeA > 0 && surfaceOf(document) === 'strip' && state.capped === 0,
-        'pageAsks=' + (state.pageAsks - beforeA) + ' surface=' + surfaceOf(document)
+        state.repaints - beforeA > 0 && state.pageAsks - beforeAAsks === 0
+        && surfaceOf(document) === 'strip' && state.capped === 0,
+        'repaints=' + (state.repaints - beforeA) + ' asks=' + (state.pageAsks - beforeAAsks)
+        + ' surface=' + surfaceOf(document)
         + ' -- the cure is a guard on a REPEAT, never a suppression of the switch');
 
-  /* B -- the echo storm asks nothing. */
-  const beforeB = state.pageAsks;
+  /* B -- the echo storm repaints nothing. */
+  const beforeB = state.repaints;
+  const beforeBAsks = state.pageAsks;
   for (let i = 0; i < 200; i += 1) drive(state, function () { echo(bridge, 'strip'); });
-  push('B ECHO-STORM 200 identical echoes ask nothing',
-        state.pageAsks - beforeB === 0 && surfaceOf(document) === 'strip' && state.capped === 0,
-        'pageAsks=' + (state.pageAsks - beforeB) + ' over 200 echoes');
+  push('B ECHO-STORM 200 identical echoes repaint nothing',
+        state.repaints - beforeB === 0 && state.pageAsks - beforeBAsks === 0
+        && surfaceOf(document) === 'strip' && state.capped === 0,
+        'repaints=' + (state.repaints - beforeB) + ' asks=' + (state.pageAsks - beforeBAsks) + ' over 200 echoes');
 
-  /* C -- the page's own re-ask for the same surface asks nothing more. */
-  const beforeC = state.pageAsks;
+  /* C -- the page's own re-ask for the same surface repaints nothing more. */
+  const beforeC = state.repaints;
+  const beforeCAsks = state.pageAsks;
   drive(state, function () { bridge.setPanelSurface('strip', 'strip-float-off'); });
-  push('C PAGE-REASK the page own re-ask asks nothing more',
-        state.pageAsks - beforeC === 0 && state.capped === 0,
-        'pageAsks=' + (state.pageAsks - beforeC) + ' capped=' + state.capped);
+  push('C PAGE-REASK the page own re-ask repaints nothing more',
+        state.repaints - beforeC === 0 && state.pageAsks - beforeCAsks === 0 && state.capped === 0,
+        'repaints=' + (state.repaints - beforeC) + ' asks=' + (state.pageAsks - beforeCAsks) + ' capped=' + state.capped);
 
-  /* D -- an unknown name is refused and asks nothing. */
-  const beforeD = state.pageAsks;
+  /* D -- an unknown name is refused and repaints nothing. */
+  const beforeD = state.repaints;
+  const beforeDAsks = state.pageAsks;
   drive(state, function () { echo(bridge, 'nonsense'); });
   push('D REFUSAL an unknown name changes nothing',
-        state.pageAsks - beforeD === 0 && surfaceOf(document) === 'strip' && state.capped === 0,
-        'pageAsks=' + (state.pageAsks - beforeD) + ' surface=' + surfaceOf(document));
+        state.repaints - beforeD === 0 && state.pageAsks - beforeDAsks === 0
+        && surfaceOf(document) === 'strip' && state.capped === 0,
+        'repaints=' + (state.repaints - beforeD) + ' asks=' + (state.pageAsks - beforeDAsks) + ' surface=' + surfaceOf(document));
 
-  /* E -- the closed loop, 200 rounds: round one asks, the rest must not. */
-  const beforeE = state.pageAsks;
+  /* E -- the closed loop, 200 rounds: round one repaints, the rest must not. */
+  const beforeE = state.repaints;
+  const beforeEAsks = state.pageAsks;
   for (let i = 0; i < 200; i += 1) {
     drive(state, function () { bridge.setPanelSurface('strip', 'strip-float-off'); });
   }
-  const asked = state.pageAsks - beforeE;
-  push('E FIX-POINT the closed loop asks nothing after the switch',
-        asked === 0 && state.capped === 0, 'pageAsks=' + asked + ' capped=' + state.capped + ' over 200 rounds of the closed loop '
+  const asked = state.repaints - beforeE;
+  push('E FIX-POINT the closed loop repaints nothing after the switch',
+        asked === 0 && state.pageAsks - beforeEAsks === 0 && state.capped === 0, 'repaints=' + asked + ' asks=' + (state.pageAsks - beforeEAsks) + ' capped=' + state.capped + ' over 200 rounds of the closed loop '
         + ' (the page is already on that surface; a guarded loop adds no traffic)');
 
   return out;
@@ -335,7 +386,7 @@ const MUTANTS = [
   },
   {
     file: 'panel.js',
-    label: 'M2 panel.js after!==before guard deleted (load-bearing: 5 of 6 arms RED)',
+    label: 'M2 panel.js after!==before guard deleted (load-bearing: 4 of 6 arms RED, MEASURED 2026-10-20)',
     old: '  if (!window.SottoSurfaces || after !== before) applySurface();',
     neu: '  applySurface();',
   },
@@ -383,7 +434,8 @@ function summary(label, arms) {
 console.log('ORACLE surface-loop panel (the page half of the JS<->Python surface loop)');
 console.log('  document  ' + PANEL);
 console.log('  arms      A switch / B echo-storm / C page re-ask / D refusal / E closed loop');
-console.log('  counter   page->shell setPanelSurface asks (the audit own metric: 30 647)');
+console.log('  counter   the page REPAINTS (applySurface -> applyLiveEnabled -> the live lamp); the');
+  console.log('            page->shell setPanelSurface asks are counted too, and are 0 by design');
 
 const shipped = summary('SHIPPED app/panel', runArms(PANEL, 'shipped'));
 
@@ -414,8 +466,8 @@ if (NEG) {
   if (allMoved) {
     console.log('');
     console.log('VERDICT: PASS -- both page guards are load-bearing: deleting either one turns');
-    console.log('the echo into a runaway that the cap counts (capped=1) and the arms report RED.');
-    console.log('Measured red counts per mutant: ' + moved.join(', ') + '.');
+    console.log('the echo into a repeat the arms count (the repaint count, measured) and the arms');
+    console.log('report RED. Measured red counts per mutant: ' + moved.join(', ') + '.');
   } else {
     console.log('');
     console.log('VERDICT: FAIL -- a page mutant did not move any arm, so this file cannot');
