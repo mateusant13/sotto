@@ -218,18 +218,76 @@ const node = [
   ['_main/surface-loop-panel-oracle.js --neg-arm', 'surface loop page neg: both guards RED'],
 ];
 
+// ── WHAT THIS BATTERY IS, AND WHAT IT IS NOT ─────────────────────────────────
+// IT IS AN INVENTORY: "this instrument EXISTS, it RUNS, and it is not broken".
+// IT IS NOT the gate of CONVENTIONS. The house battery (`_main/_audit-verify-all.cmd`)
+// is where the `:expectred` contract lives -- a negative arm has to exit the code the
+// house expects. This file does not require any arm to exit a particular code, and it
+// says so here so that nobody reads a green here as "the house convention holds".
+//
+// SO THE RC RULE IS PER ARM KIND, and it is the ONLY thing this runner judges BY RC:
+//   NORMAL entry (no --neg*)
+//       rc has to be 0. Anything else = the instrument is BROKEN: a check failed, or
+//       it crashed.
+//   NEGATIVE entry (--neg-arm / --neg-cadence / --control-stamp-nvidia)
+//       rc 0 or 1 = the negative arm RAN, which is what is expected: the arm has to
+//       be RED, and the instruments in this house are split between the two
+//       conventions (some exit 1 when they catch the mutant, some exit 0).
+//       rc >= 2 = a REAL failure: a setup error, an anchor that is missing or
+//       ambiguous, a mutant that changed nothing. Those are BROKEN instruments and
+//       they are reported as failures.
+//
+// WHY THIS MATTERS (measured 2026-10-20): the OLD runner read `r.status !== 0` as a
+// failure, so the negative arms that exit 1 BY DESIGN were reported as RED -- and
+// the noise HID the real reds (the ones whose anchor had gone stale, rc=2)
+// underneath them. A false red on top of a real red is the worst kind of noise: it
+// makes the reader stop looking.
+//
+// AND THE TWO THINGS THE RC ALONE CANNOT SEE (measured the same day, and both are
+// read out of the OUTPUT -- they add NO red that the old rule did not already have;
+// they only stop the new rc rule from DROPPING a real red):
+//   1. A CRASH. The convention is rc=1 when the negative arm CATCHES the mutant, so
+//      a Python traceback (rc=1) looks exactly like a caught mutant. Only the
+//      traceback tells them apart. THE TRACEBACK HAS TO COME WITH A NON-ZERO RC: an
+//      arm that PRINTS a traceback on purpose (to prove that a guard re-raises) and
+//      still exits 0 is working, not broken.
+//   2. AN ARM THAT REPORTS ITS OWN FAILURE. The convention is rc=0 when a mutant
+//      SURVIVES, and 0 is also the code of a negative arm that did its job under the
+//      other convention -- so the rc cannot tell a surviving mutant from a caught
+//      one. The arm's OWN verdict line can, and the verdict line of every entry is
+//      printed, so a reader can always see what the arm said.
+const NEG_FLAGS = ['--neg-arm', '--neg-cadence', '--control-stamp-nvidia'];
+
+const isNegativeArm = (args) => args.some((a) => NEG_FLAGS.includes(a));
+
+const CRASHED = /Traceback \(most recent call last\):/;
+const ARM_FAILED = /VERDICT[^\n]*\bFAIL\b|mutant anchor not found/;
+
 const run = (cmd, args, label) => {
   const r = spawnSync(cmd, args, { cwd: 'H:/sotto', encoding: 'utf8', windowsHide: true,
     maxBuffer: 64 * 1024 * 1024, env: { ...process.env, TMPDIR: 'I:/cc-tmp' } });
   const text = (r.stdout || '') + (r.stderr || '');
   const tail = text.split(/\r?\n/).filter((l) =>
     /VERDICT|PASS \/|GREEN|SUMMARY|ARM-VERDICT|NEG-ARM|ORACLE|"verdict"/.test(l));
-  if (r.status !== 0) {
-    console.log('rc=' + r.status + ' !!! ' + label.padEnd(30) + (tail.slice(-1)[0] || text.split(/\r?\n/).filter(Boolean).slice(-1)[0] || '').trim().slice(0, 105));
+  const verdict = (tail.slice(-1)[0]
+    || text.split(/\r?\n/).filter(Boolean).slice(-1)[0] || '').trim().slice(0, 105);
+  const neg = isNegativeArm(args);
+  const status = r.status;
+  const crashed = status !== 0 && CRASHED.test(text);
+  const armFailed = ARM_FAILED.test(verdict);
+  const ok = neg
+    ? (status === 0 || status === 1) && !crashed && !armFailed
+    : (status === 0) && !armFailed;
+  const why = crashed ? 'CRASHED (a traceback): the instrument is BROKEN'
+            : armFailed ? 'the arm says in its own verdict that it is BROKEN'
+            : neg ? 'a NEGATIVE arm that did not even RUN (rc>=2 = setup error)'
+            : 'the instrument is BROKEN';
+  if (ok) {
+    console.log('rc=' + status + '  ' + label.padEnd(30) + verdict);
   } else {
-    console.log('rc=0  ' + label.padEnd(30) + (tail.slice(-1)[0] || '').trim().slice(0, 105));
+    console.log('rc=' + status + ' !!! ' + label.padEnd(30) + verdict + '   <-- ' + why);
   }
-  return r.status === 0;
+  return ok;
 };
 
 console.log('--- python oracles (' + py.length + ') ---');
@@ -239,7 +297,10 @@ console.log('--- node oracles (' + node.length + ') ---');
 for (const [a, l] of node) if (!run('node', a.split(' '), l)) failed += 1;
 const total = py.length + node.length;
 console.log('');
-console.log('SUMMARY: ' + (total - failed) + '/' + total + ' instrument(s) rc=0; failed=' + failed
+console.log('SUMMARY: ' + (total - failed) + '/' + total + ' instrument(s) OK under the rule above'
+  + ' (a normal entry has to be rc=0 and must not report itself broken; a negative arm has to be'
+  + ' rc=0 or rc=1, rc>=2 is a real failure, and a crash or an arm that reports its own failure'
+  + ' is broken too); failed=' + failed
   + '; launches=0 (no shell, app or worker is opened -- the ONE run.cmd invocation in this list is'
   + ' its --help pre-flight, which argparse answers and exits; measured 2026-10-12: 0 processes left)');
 process.exit(failed === 0 ? 0 : 1);

@@ -53,9 +53,16 @@ Both must go RED, or a green above cannot tell the cure from an untested file.
 
 USAGE
   py -3 _main/panel-state-atomic-oracle.py            expect VERDICT: PASS, rc=0
-  py -3 _main/panel-state-atomic-oracle.py --neg-arm  expect both mutants RED, rc=0
+  py -3 _main/panel-state-atomic-oracle.py --neg-arm  expect both mutants RED, rc=1 BY DESIGN
 
-Exit codes: 0 PASS, 1 FAIL, 2 setup error. No window, no launch, no audio.
+Exit codes
+  0  the green arm PASSED -- OR, in the negative arm, a mutant was INERT (it moved no
+     check, so the gate is blind there: that is a FAILURE of the negative arm)
+  1  the green arm FAILED -- OR, in the negative arm, EVERY mutant went RED (BY
+     DESIGN: the negative arm has to fail, so this is its success)
+  2  setup error: the anchor is missing or ambiguous. A decorative mutant proves
+     nothing, so the arm refuses to count it instead of reporting a green.
+  No window, no launch, no audio.
 """
 
 from __future__ import annotations
@@ -361,15 +368,20 @@ def mutant_edits():
     '''(label, old, new) -- exact strings, and a count of 1 is required.'''
     fixed_name = (
         "    tmp = '%s.%d.%d.tmp' % (path, os.getpid(), threading.get_ident())")
+    # THE ANCHOR MOVED (2026-10-20): the retry grew from 6 to 20 attempts and the
+    # sleep is now CAPPED at 0.1 s (`time.sleep(min(0.1, 0.02 * (attempt + 1)))`), so
+    # the old 6-attempt block matched 0 times and the negative arm died with a SETUP
+    # ERROR instead of proving anything. THE MUTATION IS THE SAME ONE THIS INSTRUMENT
+    # DOCUMENTS: the retry is deleted and the rename becomes ONE bare `os.replace` --
+    # the defect the row names (a lost write instead of a delayed one).
     retry_block = chr(10).join([
-        '    last = None',
-        '    for attempt in range(6):',
+        '    for attempt in range(20):',
         '        try:',
         '            os.replace(tmp, path)',
         '            return',
         '        except PermissionError as exc:',
         '            last = exc',
-        '            time.sleep(0.02 * (attempt + 1))'])
+        '            time.sleep(min(0.1, 0.02 * (attempt + 1)))'])
     return [
         ('M1 the FIXED temp name is restored (the measured collision)',
          fixed_name,
@@ -444,6 +456,8 @@ def main() -> int:
             if mutant is None:
                 emit('  SETUP ERROR: the anchor for %s appears %d time(s), not once'
                      % (label, count))
+                emit('  -- the mutation would not be the one this instrument '
+                     'documents, so the mutant is DECORATIVE and proves nothing.')
                 return 2
             scratch = tempfile.mkdtemp(prefix='panel-state-neg-', dir=SCRATCH_ROOT)
             m = load_module(mutant, 'panel_state_mutant_%d' % len(moved))
@@ -462,12 +476,17 @@ def main() -> int:
         emit('')
         emit('NEG-ARM SUMMARY: red counts per mutant = %r' % (moved,))
         if all(n > 0 for n in moved):
-            emit('VERDICT: PASS -- both halves of the cure are load-bearing: removing '
-                 'the unique temp name or the bounded retry turns this oracle RED.')
-            return 0
-        emit('VERDICT: FAIL -- a mutant moved no check, so a green above cannot tell '
-             'the cure from an untested file.')
-        return 1
+            emit('VERDICT: NEG-ARM PASS -- both halves of the cure are load-bearing: '
+                 'removing the unique temp name or the bounded retry turns this '
+                 'oracle RED.')
+            # rc=1 BY DESIGN: the negative arm has to FAIL -- a green here would mean
+            # the instrument cannot say NO. rc=0 is what an INERT mutant gets: the
+            # mutation changed nothing, the gate is blind there, and that is a
+            # FAILURE of the negative arm, not a pass.
+            return 1
+        emit('VERDICT: NEG-ARM FAIL -- a mutant moved no check, so a green above '
+             'cannot tell the cure from an untested file.')
+        return 0
     except Exception as exc:  # noqa: BLE001 -- a setup failure is rc 2, not 1
         emit('SETUP ERROR: %r' % (exc,))
         return 2

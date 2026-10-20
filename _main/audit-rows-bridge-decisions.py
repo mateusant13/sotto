@@ -20,9 +20,18 @@
 # shell -- the defect FIXED by ONE literal replacement -- written into a COPY
 # under %TEMP%, and the arm must FLIP colour on that copy. An arm that returns
 # the same answer against today's bytes and against the fixed mutant is RED: it
-# is a printed label, not a detector.
+# is a printed label, not a detector. A mutant whose ANCHOR is missing or
+# ambiguous is DECORATIVE -- it proves nothing -- so the instrument refuses to
+# count it (SETUP ERROR, rc=2) instead of reporting a green.
 #
 # Usage:  py -3 _main/audit-rows-bridge-decisions.py [--neg-arm] [--verbose]
+#
+# Exit codes
+#   0  the live arm PASSED -- OR, in the negative arm, a mutant SURVIVED (the gate
+#      is blind there: that is a FAILURE of the negative arm)
+#   1  the live arm FAILED -- OR, in the negative arm, EVERY mutant flipped its own
+#      arm (BY DESIGN: the negative arm has to fail, so this is its success)
+#   2  setup error: an anchor is missing or ambiguous in the judged file
 # =============================================================================
 from __future__ import annotations
 
@@ -116,6 +125,12 @@ MUTANTS = {
         "            return value\n",
         "        pass  # m14: emitted INSIDE the lock -- the defect\n"),
     # #15 -- INVERTED: the live shell cancels the armed timer; the mutant overwrites it.
+    # ANCHOR MOVED (2026-10-20): the `except Exception: pass` that used to SWALLOW a
+    # failed cancel now LOGS it (`BRIDGE_RESTART_TIMER_CANCEL_FAILED`), so the old
+    # anchor matched 0 times and this instrument died with a SETUP ERROR instead of
+    # measuring anything. THE MUTATION IS THE SAME ONE THIS INSTRUMENT DOCUMENTS: the
+    # timer handle is OVERWRITTEN and the previous timer is left ARMED and unreachable
+    # -- two restarts for one death (the row #15 defect).
     'm15-timer-overwritten': (
         "        # CANCEL BEFORE OVERWRITING (row #15, 2026-10-11): overwriting the handle\n"
         "        # left the previous timer ARMED and unreachable, so two restarts could\n"
@@ -124,8 +139,12 @@ MUTANTS = {
         "        if self._restart_timer is not None:\n"
         "            try:\n"
         "                self._restart_timer.cancel()\n"
-        "            except Exception:  # noqa: BLE001\n"
-        "                pass\n"
+        "            except Exception as exc:  # noqa: BLE001\n"
+        "                # O TIMER ANTIGO PODE SOBREVIVER AO CANCELAMENTO -- e um timer\n"
+        "                # armado e inalcancavel e' EXACTAMENTE o bug que a row #15\n"
+        "                # (2026-10-11) removeu: dois reinicios para uma morte. O\n"
+        "                # cancelamento e' o cure; engoli-lo devolve o bug calado.\n"
+        "                self.log(f'BRIDGE_RESTART_TIMER_CANCEL_FAILED error={exc!r}')\n"
         "        self._restart_timer = timer\n",
         "        self._restart_timer = timer\n"),
     # #38 -- INVERTED: the live payload SAYS which source it came from; the mutant drops
@@ -647,6 +666,12 @@ def main(argv=None):
         say('VERDICT: FAIL  (' + str(len(verdicts) - len(failed)) + '/'
             + str(len(verdicts)) + ' labels matched; wrong: ' + str(failed)
             + ')')
+        if parsed.neg_arm:
+            # A mutant that did NOT flip its own arm SURVIVED: the gate is BLIND
+            # there. In the negative arm that is a FAILURE, and rc=0 is what says
+            # "the arm ran, and it found nothing".
+            say('VERDICT: NEG-ARM FAIL -- a mutant SURVIVED; the gate is blind there.')
+            return 0
         return 1
     if not live_measured:
         live_text = 'live NOT probed in this mode (--neg-arm), so no live set is claimed'
@@ -657,6 +682,13 @@ def main(argv=None):
     else:
         live_text = ('0 of ' + str(len(ARMS)) + ' defects present on the live shell -- every'
                      ' one refuted by the bytes')
+    if parsed.neg_arm:
+        # rc=1 BY DESIGN: the negative arm has to FAIL -- a green here would mean
+        # the instrument cannot say NO. rc=0 is what a SURVIVING mutant gets.
+        say('VERDICT: NEG-ARM PASS -- ' + str(len(ARMS)) + '/' + str(len(ARMS))
+            + ' mutants flipped exactly their own arm (rc=1 BY DESIGN: the negative '
+              'arm has to fail).')
+        return 1
     say('VERDICT: PASS  live: ' + live_text + '; ' + str(len(ARMS)) + '/' + str(len(ARMS))
         + ' mutants flipped exactly their own arm')
     return 0
