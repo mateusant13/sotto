@@ -60,14 +60,33 @@ ARMS
   MUTATION   hygiene: this file must be able to go RED. It rebuilds the ticket's
              exact mutation and the pre-fix shape in temp files and requires
              itself to reject both.
+  SHOW-ROBUST  the show path survives an owner that never ran `__init__`:
+             the three external-caption flags it reads are DEFENSIVE reads
+             (`getattr(self, ..., False)`), so a missing one is False and not
+             an AttributeError on the owner's only key. This arm is what stops
+             the defensive reads from regressing.
+  EXTERNAL-FLAG  the DECISION did not change: the player's own captions still
+             flip `external_captions_active` to True, and the show path still
+             writes `WORKER_PANEL_START_SKIPPED ... external=true`.
+  NEG-ARM    hygiene, for the DEFENSIVE reads: three textual mutants, each
+             with a UNIQUE anchor, each of which must turn SHOW-ROBUST RED. An
+             anchor that is missing or ambiguous is DECORATIVE -- it proves
+             nothing -- so the oracle REFUSES to count it and says so.
 
 EXIT: 0 GREEN, 1 RED, 2 the oracle itself could not run (a distinct verdict
 from a RED — see the rc-carries-a-verdict rule in I:\\!manager\\AGENTS.md).
+THE `--neg-arm` RUN HAS ITS OWN RC CONTRACT, and it is INVERTED on purpose:
+  rc=1  every declared mutant was applied AND seen (BY DESIGN: the negative
+        arm has to fail, so the oracle's own failure is the success)
+  rc=0  a mutant SURVIVED -- the gate is blind there
+  rc=2  an anchor was missing or ambiguous (a decorative mutant is worse than
+        no mutant at all)
 
 USAGE
   py -3 H:\\sotto\\_main\\panel-hidden-at-startup-oracle.py
   py -3 H:\\sotto\\_main\\panel-hidden-at-startup-oracle.py --shell <path>
   py -3 H:\\sotto\\_main\\panel-hidden-at-startup-oracle.py --repeats 25
+  py -3 H:\\sotto\\_main\\panel-hidden-at-startup-oracle.py --neg-arm  (rc=1 by design)
 """
 
 from __future__ import annotations
@@ -213,6 +232,30 @@ class FakeArgs:
         if name not in FakeArgs.INVENTED:
             FakeArgs.INVENTED.append(name)
         return False
+
+
+class _FakeReloadPolicy:
+    """The reload policy is a real object with real state and a real cadence.
+
+    The arms that drive `external_caption` only need to know that it was
+    called, and nothing about the visibility decision depends on it -- so this
+    records the call and answers, and never sleeps.
+    """
+
+    def __init__(self):
+        self.boundaries = []
+        self.stops = 0
+
+    def boundary(self, **kwargs):
+        self.boundaries.append(kwargs)
+        return True
+
+    def state(self):
+        return {'boundaries': len(self.boundaries)}
+
+    def stop(self):
+        self.stops += 1
+        return True
 
 
 # ===========================================================================
@@ -437,7 +480,8 @@ class Harness:
 
     def __init__(self, shell, show_flag=False, owner_asked=False,
                  mid_show=False, transparent=True,
-                 stage_url='file:///stage.html', panel_url='file:///panel.html'):
+                 stage_url='file:///stage.html', panel_url='file:///panel.html',
+                 seed_external_flags=True):
         self.shell = shell
         self.cls = shell.SottoShell
         self.hwnd = 4242
@@ -490,6 +534,29 @@ class Harness:
         owner.panel_mode = 'strip'
         owner.panel_visibility = None
         owner.click_watcher = None
+        #   external_captions_active / external_captions_available /
+        #     _vram_parked -- the three flags the SHOW path reads, and the
+        #     three the defensive `getattr(self, ..., False)` reads protect
+        #     (sotto_webview.py:7616-7619, and the three show paths at :7690,
+        #     :8016, :8068). `__init__` seeds them False (:5710-5711, :5718).
+        #   _paused -- `__init__` seeds it False (:5620). The show path reads it
+        #     with `getattr(self, '_paused', False)` (already defensive), and
+        #     `_park_worker_for_external` reads it directly (:8813).
+        #   _external_parked -- `__init__` seeds it False (:5717); read directly
+        #     by `_park_worker_for_external` (:8813) and `park_worker_for_vram`.
+        #   external_lines -- `__init__` seeds it 0 (:5720); `external_caption`
+        #     counts the player's lines in it (:8781).
+        # `seed_external_flags=False` OMITS the three external-caption flags
+        # ON PURPOSE: that is the owner the SHOW-ROBUST arm builds -- an owner
+        # that never ran `__init__`, which is exactly the shape that used to
+        # kill this oracle with an AttributeError.
+        if seed_external_flags:
+            owner.external_captions_active = False
+            owner.external_captions_available = False
+            owner._vram_parked = False
+        owner._paused = False
+        owner._external_parked = False
+        owner.external_lines = 0
         # `_ui`/`_post` on the UI thread are `fn()` (sotto_webview.py:1589,
         # :1591). `before_show` IS the UI thread, so inline is faithful — and it
         # is what keeps pythonnet out of a headless oracle.
@@ -504,6 +571,30 @@ class Harness:
         # show/hide decision. Stubbed here for the same reason, and it is the
         # only member `_on_core_ready` still calls.
         owner._arm_lazy_gate = lambda: None
+        # `start_worker` BUILDS A WORKER BRIDGE and spawns a process. This
+        # oracle opens no window, no worker, no audio device and no browser, so
+        # the spawn is replaced by a recorder that says WHICH reason the show
+        # path asked for. The DECISION is still measured: `WORKER_PANEL_START`
+        # and `WORKER_PANEL_START_SKIPPED` are written by the real
+        # `_start_deferred_worker` before it ever gets here.
+        owner.worker_start_calls = []
+
+        def _start_worker(reason):
+            owner.worker_start_calls.append(reason)
+            return False
+        owner.start_worker = _start_worker
+        # `set_panel_surface` is the DOCUMENT+HWND half of a surface change and
+        # runs `exec_js` against a WebView2 that does not exist here. Stubbed so
+        # the Alt+C path (`show_strip`/`show_side`) can be driven for real.
+        owner.set_panel_surface = lambda surface, reason='page': True
+        # The two ways a caption leaves the shell. The EXTERNAL-FLAG arm drives
+        # the real `external_caption`, which calls both; they need the page.
+        owner.emit = lambda kind, payload: None
+        owner.push_caption_to_window = (lambda text, previous=None,
+                                        credits=None: False)
+        # `_reload_policy` carries real state; the arm only needs to know that
+        # it was called.
+        owner._reload_policy = _FakeReloadPolicy()
         self.owner = owner
 
         # NOTE: `owner_asked` is NOT acted on here. pywebview runs its
@@ -707,6 +798,116 @@ def arm_armed_once(shell, stage_url, panel_url):
 
 
 # ===========================================================================
+# ARM 4 — SHOW-ROBUST: the show path survives an owner without `__init__`
+# ===========================================================================
+
+def arm_show_robust(shell, stage_url, panel_url):
+    """The show path must not die on a missing external-caption flag.
+
+    WHY THIS ARM EXISTS. Alt+C is the owner's ONLY control. The show path
+    (`show_panel` -> `_start_deferred_worker`, and the Alt+C pair
+    `show_strip`/`show_side`) read three flags -- `external_captions_active`,
+    `external_captions_available` and `_vram_parked` -- in the SAME `if` as
+    the defensive `getattr(self, '_paused', False)` that was already there.
+    Read DIRECTLY, an owner that never ran `__init__` died with an
+    AttributeError on the one key the owner presses. That is not a
+    hypothesis: it is how THIS oracle died, because the harness builds the
+    object with `__new__` and the real `__init__` never runs. The same shape
+    is a derived class that skips `__init__`, a renamed attribute, or a
+    future field that is read before it is written.
+
+    The arm builds that owner on purpose -- the three flags ABSENT -- and
+    drives the real show paths. A crash is the failure it is looking for;
+    the arm is what stops the defensive reads from regressing.
+    """
+    results = []
+    h = Harness(shell, stage_url=stage_url, panel_url=panel_url,
+                seed_external_flags=False)
+    h.shell_before_show()
+    h.hidden_dance()
+    h.init_completed()
+    h.navigate(panel_url)
+    crashed = []
+    for label, call in (
+            ('show_panel', lambda: h.owner.show_panel('oracle-missing-flags')),
+            ('show_strip', lambda: h.owner.show_strip('oracle-missing-flags'))):
+        try:
+            call()
+        except Exception as exc:  # noqa: BLE001
+            crashed.append(f'{label} raised {type(exc).__name__}: {exc}')
+    absent = [name for name in ('external_captions_active',
+                                'external_captions_available',
+                                '_vram_parked')
+              if hasattr(h.owner, name)]
+    ok = not crashed and not absent
+    results.append({
+        'arm': 'SHOW-ROBUST',
+        'check': 'the show path survives missing external-caption flags',
+        'ok': ok,
+        'detail': (f'owner built WITHOUT external_captions_active / '
+                   f'external_captions_available / _vram_parked; show_panel '
+                   f'and show_strip were both driven; crashes='
+                   f'{crashed or "NONE"}; flags that should be ABSENT and are '
+                   f'not={absent or "NONE"}')})
+    return results, 0 if ok else 1
+
+
+# ===========================================================================
+# ARM 5 — EXTERNAL-FLAG: the decision did not change
+# ===========================================================================
+
+def arm_external_flag(shell, stage_url, panel_url):
+    """The player's own captions still park the worker, and the skip line
+    still says `external=true`.
+
+    `external_caption` (sotto_webview.py:8746) is the ONE place every
+    external line passes through, and it flips `external_captions_active` to
+    True at :8786-8787. The show path must then SKIP the worker start and
+    WRITE `WORKER_PANEL_START_SKIPPED ... external=true`.
+
+    This arm drives the REAL method and reads the REAL log lines, so it is
+    the proof that making the reads DEFENSIVE did not change what they MEAN:
+    a flag that IS there still reads as True, and the worker is still not
+    started while the player supplies the captions. A defensive read that
+    swallowed a flag that is really set would be RED here.
+    """
+    results = []
+    h = Harness(shell, stage_url=stage_url, panel_url=panel_url)
+    h.owner.visible = True          # the owner is looking at Sotto
+    h.log_lines.clear()
+    crash = None
+    try:
+        h.owner.external_caption('linha do jogador', 'external:youtube',
+                                 final=True)
+    except Exception as exc:  # noqa: BLE001
+        crash = f'external_caption raised {type(exc).__name__}: {exc}'
+    active = getattr(h.owner, 'external_captions_active', None)
+    show_crash = None
+    try:
+        h.owner.show_panel('oracle-external-flag')
+    except Exception as exc:  # noqa: BLE001
+        show_crash = f'show_panel raised {type(exc).__name__}: {exc}'
+    skipped = [ln for ln in h.log_lines if 'WORKER_PANEL_START_SKIPPED' in ln]
+    said_true = [ln for ln in skipped if 'external=true' in ln]
+    ok = (crash is None and show_crash is None and active is True
+          and bool(said_true) and not h.owner.worker_start_calls)
+    results.append({
+        'arm': 'EXTERNAL-FLAG',
+        'check': "the player's captions still flip the flag and still skip the "
+                 'worker',
+        'ok': ok,
+        'detail': (f'external_captions_active after the player line='
+                   f'{active!r} (expected True); crash={crash or "NONE"}; '
+                   f'show_crash={show_crash or "NONE"}; '
+                   f'WORKER_PANEL_START_SKIPPED lines={skipped or "NONE"}; '
+                   f'of those, with external=true: {len(said_true)}; '
+                   f'worker_start_calls={h.owner.worker_start_calls} '
+                   f'(expected NONE: the worker stays PARKED while the player '
+                   f'supplies the captions)')})
+    return results, 0 if ok else 1
+
+
+# ===========================================================================
 # scenarios
 # ===========================================================================
 
@@ -906,6 +1107,101 @@ def arm_mutation(shell_path, shell):
 
 
 # ===========================================================================
+# ARM 6 — NEG-ARM: the DEFENSIVE reads must be able to go RED
+# ===========================================================================
+
+#: Three textual mutants of the DEFENSIVE reads, each with a UNIQUE anchor in
+#: the judged file. The same rule as `_main/yt-mirror-align-oracle.py`:
+#: a mutant whose anchor is missing or ambiguous is DECORATIVE -- it proves
+#: nothing -- so the oracle REFUSES to count it, says so, and the `--neg-arm`
+#: run exits rc=2. A mutant that loads and changes nothing is reported as
+#: SURVIVED (the gate is blind there) and the `--neg-arm` run exits rc=0.
+NEG_ARM_MUTANTS = [
+    {
+        'name': 'sem-getattr-external-captions-active',
+        'why': 'the show path reads external_captions_active DIRECTLY again, so '
+               'an owner without the flag dies with an AttributeError',
+        'anchor': ("        _ext_active = getattr(self, "
+                   "'external_captions_active', False)\n"),
+        'replace': "        _ext_active = self.external_captions_active\n",
+    },
+    {
+        'name': 'sem-getattr-external-captions-available',
+        'why': 'the show path reads external_captions_available DIRECTLY again',
+        'anchor': ("                or getattr(self, "
+                   "'external_captions_available', False)\n"),
+        'replace': "                or self.external_captions_available\n",
+    },
+    {
+        'name': 'sem-getattr-vram-parked',
+        'why': 'the show path reads _vram_parked DIRECTLY again',
+        'anchor': "                or getattr(self, '_vram_parked', False)):\n",
+        'replace': "                or self._vram_parked):\n",
+    },
+]
+
+
+def arm_neg_arm(shell_path, stage_url, panel_url):
+    """Every declared mutant must be applied AND seen.
+
+    A mutant is SEEN when the SHOW-ROBUST arm turns RED against it: that arm
+    exists to catch exactly this, so a mutant that leaves the arm GREEN is a
+    SURVIVOR -- the gate is blind there, which is the worst outcome a gate
+    can have.
+
+    Returns (results, caught, weak): `caught` is the number of mutants that
+    were applied and seen, `weak` the number that were DECORATIVE (anchor
+    missing or ambiguous, or the mutant did not even load).
+    """
+    results = []
+    caught = 0
+    weak = 0
+    with open(shell_path, 'r', encoding='utf-8') as fh:
+        original = fh.read()
+    with tempfile.TemporaryDirectory(prefix='sotto-show-neg-') as tmp:
+        for spec in NEG_ARM_MUTANTS:
+            name, why = spec['name'], spec['why']
+            anchor = spec['anchor']
+            hits = original.count(anchor)
+            if hits != 1:
+                weak += 1
+                results.append({
+                    'arm': 'NEG-ARM', 'check': name, 'ok': False,
+                    'detail': (f'ANCHOR '
+                               f'{("MISSING" if hits == 0 else "AMBIGUOUS")} '
+                               f'({hits} occurrences) -- the mutant is '
+                               f'DECORATIVE and proves nothing, so it is NOT '
+                               f'counted -- {why}')})
+                continue
+            path = os.path.join(tmp, f'sotto_webview_neg_{name}.py')
+            with open(path, 'w', encoding='utf-8') as fh:
+                fh.write(original.replace(anchor, spec['replace'], 1))
+            try:
+                m_shell = load_shell(path)
+            except Exception as exc:  # noqa: BLE001
+                weak += 1
+                results.append({
+                    'arm': 'NEG-ARM', 'check': name, 'ok': False,
+                    'detail': (f'DECORATIVO: o mutante nao carregou ({exc!r}) '
+                               f'-- NAO foi testado -- {why}')})
+                continue
+            res, fail = arm_show_robust(m_shell, stage_url, panel_url)
+            detail = res[0]['detail'] if res else 'the arm said nothing'
+            if fail > 0:
+                caught += 1
+                results.append({
+                    'arm': 'NEG-ARM', 'check': name, 'ok': True,
+                    'detail': (f'APPLIED and SEEN: the SHOW-ROBUST arm went '
+                               f'RED against the mutant -- {detail}')})
+            else:
+                results.append({
+                    'arm': 'NEG-ARM', 'check': name, 'ok': False,
+                    'detail': ('SURVIVED: the SHOW-ROBUST arm stayed GREEN '
+                               'against the mutant -- the gate is blind here')})
+    return results, caught, weak
+
+
+# ===========================================================================
 # main
 # ===========================================================================
 
@@ -915,6 +1211,11 @@ def main(argv=None):
                     help='the shell under test (default: the shipped one)')
     ap.add_argument('--repeats', type=int, default=8,
                     help='repeats per scenario/timing cell (default: 8)')
+    ap.add_argument('--neg-arm', action='store_true',
+                    help='run ONLY the negative arm -- the three mutants of '
+                         'the defensive reads -- and nothing else; rc=1 BY '
+                         'DESIGN (0 = a mutant survived, 2 = a decorative '
+                         'anchor)')
     ap.add_argument('--json', action='store_true', help='machine-readable only')
     args = ap.parse_args(argv)
 
@@ -946,6 +1247,30 @@ def main(argv=None):
     for ref, what in PYWEBVIEW_FACTS.items():
         emit(f'    {ref:<28} {what}')
 
+    if args.neg_arm:
+        # THE NEGATIVE ARM ONLY. The arms above are NOT run: this mode answers
+        # ONE question -- do the three mutants of the DEFENSIVE reads turn the
+        # SHOW-ROBUST arm RED? -- and its rc contract is INVERTED on purpose
+        # (see the header): rc=1 when every declared mutant was applied AND
+        # seen, rc=0 when one SURVIVED, rc=2 when an anchor is decorative.
+        res, caught, weak = arm_neg_arm(args.shell, stage_url, panel_url)
+        for r in res:
+            emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
+                 f'— {r["detail"]}')
+        total = len(NEG_ARM_MUTANTS)
+        if weak:
+            emit(f'VERDICT: NEG-ARM FAIL  mutants {caught}/{total}  '
+                 f'DECORATIVE ANCHORS={weak}  (rc=2: an anchor that does not '
+                 f'hold is worse than no mutant at all)')
+            return 2
+        if caught != total:
+            emit(f'VERDICT: NEG-ARM FAIL  mutants {caught}/{total}  (rc=0: a '
+                 f'mutant SURVIVED -- the gate is blind there)')
+            return 0
+        emit(f'VERDICT: NEG-ARM PASS  mutants {caught}/{total}  (rc=1 POR '
+             f'DESENHO: o braco negativo tem de falhar)')
+        return 1
+
     results = []
     failures = 0
 
@@ -974,6 +1299,20 @@ def main(argv=None):
         emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
              f'— {r["detail"]}')
 
+    res, fail = arm_show_robust(shell, stage_url, panel_url)
+    results += res
+    failures += fail
+    for r in res:
+        emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
+             f'— {r["detail"]}')
+
+    res, fail = arm_external_flag(shell, stage_url, panel_url)
+    results += res
+    failures += fail
+    for r in res:
+        emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
+             f'— {r["detail"]}')
+
     if os.path.abspath(args.shell) == os.path.abspath(DEFAULT_SHELL):
         res, fail = arm_mutation(args.shell, shell)
         results += res
@@ -981,8 +1320,18 @@ def main(argv=None):
         for r in res:
             emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] MUTATION {r['check']} "
                  f'— {r["detail"]}')
+        # THE NEGATIVE ARM, RUN IN THE NORMAL PASS TOO: a gate that can only
+        # prove itself in a separate mode is a gate nobody runs.
+        res, caught, weak = arm_neg_arm(args.shell, stage_url, panel_url)
+        results += res
+        failures += (len(NEG_ARM_MUTANTS) - caught) + weak
+        for r in res:
+            emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
+                 f'— {r["detail"]}')
     else:
         emit('  MUTATION skipped: --shell is not the shipped shell')
+        emit('  NEG-ARM skipped: --shell is not the shipped shell (the '
+             'anchors are the shipped shell\'s own lines)')
 
     if args.json:
         print(json.dumps({'failures': failures, 'results': results},
@@ -991,6 +1340,7 @@ def main(argv=None):
           + (', '.join(sorted(FakeArgs.INVENTED)) or 'none'))
     verdict = 'GREEN' if failures == 0 else 'RED'
     emit(f'ORACLE {verdict} failures={failures}')
+    emit(f'VERDICT: {"PASS" if failures == 0 else "FAIL"}')
     return 0 if failures == 0 else 1
 
 

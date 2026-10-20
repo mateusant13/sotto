@@ -7608,11 +7608,18 @@ class SottoShell:
         """
         if getattr(self, 'bridge', None) is not None:
             return False
-        if (getattr(self, '_paused', False) or self.external_captions_active
-                or self.external_captions_available or self._vram_parked):
+        # THE SHOW PATH MUST NOT DIE ON A MISSING FLAG. Alt+C is the owner's
+        # ONLY control, and these three flags are read in the SAME `if` as the
+        # defensive `getattr(self, '_paused', False)` that was already there.
+        # Read them the same way: a flag that is not there is False, never an
+        # AttributeError on the one key the owner presses.
+        _ext_active = getattr(self, 'external_captions_active', False)
+        if (getattr(self, '_paused', False) or _ext_active
+                or getattr(self, 'external_captions_available', False)
+                or getattr(self, '_vram_parked', False)):
             log(f'WORKER_PANEL_START_SKIPPED source={source} '
                 f'paused={str(getattr(self, "_paused", False)).lower()} '
-                f'external={str(self.external_captions_active).lower()}')
+                f'external={str(_ext_active).lower()}')
             return False
         try:
             reason = self._worker_autostart_reason(self.args)
@@ -7680,7 +7687,8 @@ class SottoShell:
         # pay the model load. `start_worker` refuses when a bridge already
         # exists, so every later Alt+C is a no-op here.
         self._start_deferred_worker('show-panel')
-        if self.external_captions_available and self.external_caption_watcher is not None:
+        if (getattr(self, 'external_captions_available', False)
+                and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
         # ARMED HERE, and only here: the watcher can close the panel from now on,
         # which is what keeps the two startup navigations from closing anything
@@ -8005,7 +8013,8 @@ class SottoShell:
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-strip')
-        if self.external_captions_available and self.external_caption_watcher is not None:
+        if (getattr(self, 'external_captions_available', False)
+                and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=strip '
             f'visible={str(self.visible).lower()} '
@@ -8056,7 +8065,8 @@ class SottoShell:
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-side')
-        if self.external_captions_available and self.external_caption_watcher is not None:
+        if (getattr(self, 'external_captions_available', False)
+                and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=side '
             f'visible={str(self.visible).lower()} '
