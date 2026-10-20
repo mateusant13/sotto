@@ -462,8 +462,8 @@ MUTANTS = [
     # THE SWITCH IS NOT LOGGED: the app changes the track (or keeps the wrong
     # one) and the log never says what it knew.
     ("the-switch-is-not-logged",
-     '            _log_player_track(psig, result["lang"], result["source"])',
-     '            pass'),
+     '        _log_player_track(psig_used, result["lang"], result["source"])',
+     '        pass'),
     # A REFUSED PAYLOAD IS READ AS "THIS VIDEO HAS NO CAPTIONS": the
     # refusal stops being a fallback and becomes a verdict.
     ("a-refused-payload-is-a-verdict",

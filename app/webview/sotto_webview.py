@@ -1739,6 +1739,16 @@ class YouTubeTrackThread(threading.Thread):
     REFRESH_S = 30.0
     #: How often the thread looks for work.
     POLL_S = 0.20
+    #: HOW OFTEN the track is searched AGAIN by the painted words. The
+    #: search costs an extract (MEASURED 5.0 s), and a video can carry a
+    #: hundred automatic translations; so after a search that found nothing
+    #: the next one waits this long. MEASURED 2026-10-20: the owner's own
+    #: video was found on the FIRST search (the third candidate), and the
+    #: state "the paint does not match the served track" is SHORT -- it is
+    #: a video changing, or the player changing its own caption language.
+    #: While it lasts the app shows nothing, so the wait is 20 s and not
+    #: 300 s.
+    PAINT_SEARCH_RETRY_S = 20.0
 
     def __init__(self, shell):
         super().__init__(name='sotto-yt-track', daemon=True)
@@ -1753,15 +1763,44 @@ class YouTubeTrackThread(threading.Thread):
         self.next_fetch_at = 0.0
         self.fetches = 0
         self.failures = 0
+        #: The words the player is painting RIGHT NOW, and the video they
+        #: belong to. They are the QUESTION that decides the track.
+        self.painted = None
+        self.painted_for = ''
+        #: The video we last searched BY PAINT, and when.
+        self.paint_search_for = ''
+        self.paint_search_at = 0.0
 
-    def request(self, video_id):
-        """Ask for this video's track. Returns the track if it is already here."""
+    def request(self, video_id, painted=None):
+        """Ask for this video's track. Returns the track if it is already here.
+
+        `painted` is the list of words the player is painting RIGHT NOW. It
+        is the QUESTION that decides the track: the track the player shows
+        is the one whose cues HOLD those words. MEASURED 2026-10-20 on the
+        owner's own video: the player painted `en-orig` while the language
+        preference would have served `pt-orig` -- Portuguese against
+        English, in the owner's own comparison.
+        """
         vid = str(video_id or '')
         with self.lock:
             if vid != self.track_for:
                 # A NEW video: ask for it NOW, not in up to `REFRESH_S`.
                 self.next_fetch_at = 0.0
             self.want = vid
+            if painted:
+                self.painted = list(painted)
+                self.painted_for = vid
+                now = time.monotonic()
+                if (self.paint_search_for != vid
+                        or (now - self.paint_search_at)
+                        > self.PAINT_SEARCH_RETRY_S):
+                    # A NEW QUESTION for the track: the player is painting
+                    # words the track we have does not hold, so the track we
+                    # have is the WRONG one. Ask again NOW -- and not more
+                    # than once every `PAINT_SEARCH_RETRY_S`.
+                    self.paint_search_for = vid
+                    self.paint_search_at = now
+                    self.next_fetch_at = 0.0
             if self.track_for == vid:
                 return self.track
         return None
@@ -1788,11 +1827,12 @@ class YouTubeTrackThread(threading.Thread):
     def _fetch(self, video_id):
         with self.lock:
             self.inflight = video_id
+            paint = self.painted if self.painted_for == video_id else None
         track = None
         error = None
         try:
             import youtube_captions
-            track = youtube_captions.fetch_track(video_id)
+            track = youtube_captions.fetch_track(video_id, painted=paint)
         except Exception as exc:  # noqa: BLE001
             error = exc
         with self.lock:
@@ -1817,6 +1857,16 @@ class YouTubeTrackThread(threading.Thread):
             % (video_id, track.get('state'), len(track.get('cues') or ()),
                track.get('lang'), track.get('source'), track.get('reason'),
                track.get('error'), bool(track.get('cached'))))
+        # HOW THE TRACK WAS CHOSEN. `painted` means the player's own words
+        # are IN it; `painted-no-match` means no candidate held them and
+        # this one is a FALLBACK. Neither is ever silent.
+        log('YOUTUBE_TRACK_PAINT video_id=%s source=%s cue=%s match=%s '
+            'painted_words=%s'
+            % (video_id, track.get('player_source') or '-',
+               (track.get('paint_cue')
+                if track.get('paint_cue') is not None else '-'),
+               '1' if track.get('player_match') else '0',
+               len(paint) if paint else 0))
 
 
 class ExternalCaptionWatcher(threading.Thread):
@@ -1879,6 +1929,18 @@ class ExternalCaptionWatcher(threading.Thread):
         #: stays 0 and the worker is NOT released; a player that disappeared
         #: is a different fact.
         self.yt_no_clock_since = 0.0
+        #: THE LAST ALIGNMENT between the player's painted words and the
+        #: served track. It is the app's knowledge of WHERE THE VIDEO IS,
+        #: and it is what tells a FROZEN clock from a real one.
+        self.yt_hit = None
+        #: Why the last read of the painted caption ended the way it did. The
+        #: log line is written when it CHANGES, so a state that is never
+        #: written is not a state that never happened.
+        self.yt_paint_why = ''
+        #: The last line we wrote to the log. THE DECISION IS WRITTEN ONCE
+        #: PER CHANGE, not once per poll: a line per poll is noise, and a
+        #: decision that is never written is a decision nobody can check.
+        self.yt_caption_logged = ''
 
     def stop(self):
         self.stop_event.set()
@@ -1997,20 +2059,93 @@ class ExternalCaptionWatcher(threading.Thread):
         self.target_hwnd = 0
         return 0
 
+    def _youtube_painted(self, hwnd, uia, UIA):
+        """The words the player is painting RIGHT NOW -> [] when there are none.
+
+        READ-ONLY: it opens nothing, clicks nothing, moves nothing.
+
+        The reason is logged when it CHANGES, so "the captions are off" is
+        never confused with "the player is between cues".
+        """
+        try:
+            import youtube_captions
+            got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_READ_FAILED error={exc!r}')
+            return []
+        words = got.get('words') or []
+        why = str(got.get('why') or '')
+        if why != self.yt_paint_why:
+            self.yt_paint_why = why
+            log(f'YOUTUBE_PAINT_STATE why={why} words={len(words)}')
+        return words
+
+    def _yt_clock_agrees(self, t):
+        """Is the clock INSIDE the cue the player was painting?
+
+        MEASURED 2026-10-20 on the owner's own Chrome: the seek bar's
+        RangeValue AND the player's own clock text are FROZEN -- +0.00 s in
+        8.35 s of wall clock, while the painted line advanced +8.96 s in the
+        track. The clock read t=2.0 while the video was at t=530.
+
+        So the clock is only TRUSTED when the last alignment says the video
+        IS there. A line from another minute is worse than no line. With no
+        alignment yet there is nothing to compare with, and the clock is
+        used -- it is all there is.
+        """
+        hit = self.yt_hit
+        if not hit:
+            return True
+        cue = hit.get('cue') or {}
+        try:
+            start = float(cue.get('start'))
+            end = float(cue.get('end'))
+        except (TypeError, ValueError):
+            return True
+        return (start - 2.0) <= float(t) <= (end + 2.0)
+
     def _youtube(self, hwnd, uia, UIA):
-        """The YouTube video's OWN caption track, at this instant.
+        """The YouTube video's OWN caption track, AT THE INSTANT THE PLAYER
+        IS SHOWING IT.
 
         RETURNS `([(source, [line])], urgent)`:
           * the first is the REAL caption -- one line -- or `[]`;
-          * `urgent` is True when the ASR must be given back NOW, because
-            the video has NO caption track.
+          * `urgent` is True when the ASR must be given back NOW, because the
+            video has NO caption track.
 
-        THE THREE "NOTHING TO SHOW" CASES, AND WHAT EACH ONE MEANS:
+        THE SOURCE IS THE PLAYER'S OWN PAINTED LINE. MEASURED 2026-10-20 on
+        the owner's own Chrome, on the video he was watching: the player's
+        caption window holds the words it is painting, one UIA child per
+        word, and those words CHANGE while the video plays. The two things
+        the app used to ask the UIA for were BOTH wrong there:
+
+          * the SEEK BAR AND THE PLAYER'S CLOCK TEXT ARE FROZEN: +0.00 s in
+            8.35 s of wall clock, while the painted line advanced +8.96 s in
+            the track. The clock the app read (t=2.0) was eight minutes away
+            from the truth (t=530);
+          * the caption window exposes NO language (0 of 448 elements have
+            UIA 30007), so the app fell back to the language preference and
+            served `pt-orig` while the player painted `en-orig` -- the owner
+            would have compared Portuguese against English.
+
+        So the line is the painted one, and the track is the one that HOLDS
+        it (`youtube_captions.align_painted`). The clock is then not read at
+        all on that path, and the poll gets CHEAPER: 106.5 ms of clock
+        against 92.7 ms of paint (MEASURED).
+
+        THE "NOTHING TO SHOW" CASES, AND WHAT EACH ONE MEANS:
           * `no-video-id`   -- we cannot read which video this is. The page
             text is not a caption, so the ASR keeps the box.
           * `track-pending` -- the first fetch is a network call (MEASURED
             5.0 s). Until it lands there is no caption, and the ASR keeps
             the box.
+          * `painted-other-track` -- the player is painting words that are
+            not in the track we have, so the track we have is the WRONG one.
+            The search is asked again WITH those words; until it lands the
+            ASR stays parked (the video HAS captions).
+          * `clock-stale`   -- the clock does not agree with the line the
+            player was painting, so it is frozen: no line is shown rather
+            than a line from another minute.
           * `no-cue`        -- a gap between the cues, or a clock we cannot
             read. The player shows nothing here either. The ASR is only
             given back after a LONG silence (`YT_RELEASE_S`): a caption
@@ -2023,17 +2158,61 @@ class ExternalCaptionWatcher(threading.Thread):
         if vid != self.yt_video_id:
             self.yt_video_id = vid
             self.yt_cue = ''
+            # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
+            # the line of this one, and it is what the clock is compared
+            # with, so it goes with the video.
+            self.yt_hit = None
             log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
         thread = getattr(self.shell, 'youtube_track_thread', None)
         if thread is None:
             return [], self._yt_forget('no-track-thread', urgent=False)
+        # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
+        painted = self._youtube_painted(hwnd, uia, UIA)
+        # THE THREAD IS TOLD WHAT IS BEING PAINTED, EVERY TIME. MEASURED
+        # 2026-10-20: the thread's own log said `cue=126` for a minute while
+        # the player was already painting another cue -- the paint it had
+        # was the one from the last REQUEST, and the request only happened
+        # when the alignment failed.
+        thread.request(vid, painted=painted)
         track = thread.current(vid)
         if track is None:
-            thread.request(vid)
             return [], self._yt_forget('track-pending', urgent=False)
         if track.get('state') != 'has-track':
             reason = track.get('reason') or track.get('state') or 'unknown'
             return [], self._yt_forget('no-track:%s' % reason, urgent=True)
+        if painted:
+            hit = None
+            try:
+                import youtube_captions
+                hit = youtube_captions.align_painted(track.get('cues') or (),
+                                                      painted)
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
+            if hit:
+                text = str(hit.get('text') or '').strip()
+                if text:
+                    self.yt_hit = hit
+                    self.yt_cue = text
+                    self.yt_reason = 'painted'
+                    # THE DECISION, WRITTEN. This is the line the owner can
+                    # compare with the screen: the cue of the track the
+                    # player is painting, at the instant it is painting it.
+                    if text != self.yt_caption_logged:
+                        self.yt_caption_logged = text
+                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s '
+                            'track=%s words=%s text=%r'
+                            % (vid, hit.get('index'),
+                               hit.get('cue', {}).get('start'),
+                               track.get('lang') or '-', hit.get('exact'),
+                               text[:90]))
+                    return [('external:youtube:track', [text])], False
+            # THE PLAYER IS PAINTING ANOTHER TRACK: the words it paints are
+            # IN that track and nowhere else, so that is the question to ask
+            # (the thread already has the words; the request above did it).
+            return [], self._yt_forget('painted-other-track', urgent=False)
+        # NO PAINTED LINE: the captions are off, or the player is between
+        # cues. Then the clock is the only clock there is -- but it is only
+        # trusted when the last alignment agrees with it.
         t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
         if t is None:
             # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
@@ -2048,6 +2227,18 @@ class ExternalCaptionWatcher(threading.Thread):
                 self.yt_no_clock_since = now
             overdue = (now - self.yt_no_clock_since) >= self.YT_RELEASE_S
             return [], self._yt_forget('clock-unreadable', urgent=overdue)
+        if not self._yt_clock_agrees(t):
+            # THE CLOCK IS FROZEN. MEASURED 2026-10-20: it read t=2.0 for
+            # eight minutes while the video was at t=530. A line from
+            # another minute is worse than no line at all -- so the LAST
+            # line the player was painting is shown instead: that is the
+            # app's best knowledge of where the video is.
+            stale = str((self.yt_hit or {}).get('text') or '').strip()
+            if stale:
+                self.yt_cue = stale
+                self.yt_reason = 'clock-stale-last-cue'
+                return [('external:youtube:track', [stale])], False
+            return [], self._yt_forget('clock-stale', urgent=False)
         self.yt_no_clock_since = 0.0
         cue = None
         try:

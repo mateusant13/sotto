@@ -242,14 +242,20 @@ class FakeTrackThread(object):
         self.track = track
         self.track_for = VIDEO_ID if track is not None else ''
         self.requested = []
+        #: THE WORDS THE PLAYER WAS PAINTING when the track was asked for
+        #: (2026-10-20: the track the player shows is decided by the words
+        #: it paints). A fake that does not know about them is not the real
+        #: contract.
+        self.painted = []
 
     def current(self, video_id):
         if self.track is None or self.track_for != video_id:
             return None
         return self.track
 
-    def request(self, video_id):
+    def request(self, video_id, painted=None):
         self.requested.append(video_id)
+        self.painted = list(painted or [])
         if self.track is None or self.track_for != video_id:
             return None
         return self.track
@@ -509,7 +515,9 @@ MUTANTS = (
      "        if (self.last_line\n"
      "                and (now - self.last_seen) >= self.RELEASE_S):"),
     ("m4", "the real cue is never emitted",
+     "        self.yt_reason = 'has-cue'\n"
      "        return [('external:youtube:track', [text])], False",
+     "        self.yt_reason = 'has-cue'\n"
      "        return [], False"),
     ("m5", "the Stremio path is demoted too",
      "        if source == 'external:youtube':",

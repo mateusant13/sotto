@@ -301,6 +301,37 @@ if exist _main\yt-player-track-oracle.py (
   call :step yt-player-track 0 "_main\yt-player-track-oracle.py;app\webview\youtube_captions.py" "%OUT%\yt-player-track.log" python _main\yt-player-track-oracle.py
   call :record yt-player-track !STEP_RC!
 ) else ( call :record yt-player-track MISSING )
+REM `yt-mirror-align-oracle.py` judges the CAMINHO ESPELHO (owner, 2026-10-20,
+REM verbatim: *"eu quero a legenda 1:1 do video do youtube. eu mesmo vou
+REM comparar a nossa legenda em tempo real com a do youtube. ... e eu ja mandou
+REM tu resolver o negocio de que por algum motivo texto de outras coisas que
+REM nao sao o transcript do video do youtube fica vazando pro nosso app."*).
+REM
+REM THE TWO THINGS THE UIA COULD NOT ANSWER, both measured on the owner's own
+REM Chrome on 2026-10-20:
+REM   * the player's CLOCK IS FROZEN -- the seek bar's RangeValue and the
+REM     player's own clock text read +0.00 s in 8.35 s of wall clock, while
+REM     the painted line advanced +8.96 s in the track (the clock said t=2.0
+REM     with the video at t=530);
+REM   * the caption window exposes NO LANGUAGE -- 0 of 448 elements have the
+REM     UIA 30007 property -- so the app served the track of the language
+REM     PREFERENCE (`pt-orig`) while the player painted `en-orig`.
+REM
+REM So the app reads the line the player is PAINTING and finds the track that
+REM HOLDS it. This gate pins the alignment, the discrimination between the two
+REM languages of the same video, and the three rules the rollup forces: the cut
+REM at the front (the rollup drops its oldest line), the half-written word
+REM ('...on t' for '...on the'), and the minimum of exact words.
+if exist _main\yt-mirror-align-oracle.py (
+  call :step yt-mirror-align 0 "_main\yt-mirror-align-oracle.py;app\webview\youtube_captions.py" "%OUT%\yt-mirror-align.log" python _main\yt-mirror-align-oracle.py
+  call :record yt-mirror-align !STEP_RC!
+) else ( call :record yt-mirror-align MISSING )
+REM O BRACO NEGATIVO: os mutantes tem de virar um braço VERMELHO. rc=1 POR
+REM DESENHO (o `--neg-arm` REPROVA de proposito), como em `mute-audio-oracle.py`.
+if exist _main\yt-mirror-align-oracle.py (
+  call :step red-as-expected-yt-mirror-align 1 "_main\yt-mirror-align-oracle.py;app\webview\youtube_captions.py" "%OUT%\yt-mirror-align-neg.log" python _main\yt-mirror-align-oracle.py --neg-arm
+  call :expectred red-as-expected-yt-mirror-align !STEP_RC! "%OUT%\yt-mirror-align-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-yt-mirror-align MISSING "%OUT%\yt-mirror-align-neg.log" "NEG-ARM PASS" )
 if exist _main\youtube-track-wiring-oracle.py (
   call :step youtube-track-wiring 0 "_main\youtube-track-wiring-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-track-wiring.log" python _main\youtube-track-wiring-oracle.py
   call :record youtube-track-wiring !STEP_RC!

@@ -778,7 +778,7 @@ def _retry_payload(video_id, stale, timeout):
 
 
 def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
-                player_lang=None):
+                player_lang=None, painted=None):
     """The video's caption track -- THE ONE THE PLAYER IS PAINTING.
 
     Returns a dict:
@@ -797,6 +797,15 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
     result (`player_lang`, `player_known`, `player_source`, `player_why`),
     because a track chosen WITHOUT knowing what the player shows is a
     FALLBACK, and the log has to say so.
+
+    `painted` is the list of words the player is painting RIGHT NOW (see
+    `painted_words`). When it is given, it DECIDES the track: the track the
+    player shows is the one whose cues CONTAIN those words. MEASURED
+    2026-10-20 on the owner's own video: the player painted `en-orig` while
+    the language preference would have served `pt-orig`, and the owner's own
+    comparison would have been Portuguese against English. With the paint,
+    the served track is the one the player is REALLY showing -- and the
+    result says so (`player_source="painted"`).
 
     The first call for a video is a network call and takes ~5 s (MEASURED);
     every later call is a disk read. Call it OFF the UI thread.
@@ -824,11 +833,24 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
     result["player_known"] = bool(psig.get("known"))
     result["player_source"] = psig.get("source") or ""
     result["player_why"] = psig.get("why") or ""
+    cached = None
     if use_cache:
         cached = _cache_read(vid)
         if cached is not None:
             cached_lang = str(cached.get("player_lang") or "")
-            if cached_lang == plang:
+            # THE PAINT DECIDES WHICH TRACK THIS IS. The cached track is
+            # served only when the player's own words ARE a cue of it.
+            # MEASURED 2026-10-20: the cache held `pt-orig` while the player
+            # painted `en-orig` -- serving the cache was serving the wrong
+            # LANGUAGE to the owner.
+            paint_hit = None
+            paint_ok = True
+            if painted:
+                paint_hit = align_painted(cached.get("cues") or (), painted)
+                paint_ok = paint_hit is not None
+                if not paint_ok:
+                    result["reason"] = "painted-other-track"
+            if cached_lang == plang and paint_ok:
                 cached.pop("stale", None)
                 # WHAT THE PLAYER SAYS is knowledge of NOW, not of the
                 # payload: the cached cues are still the right ones, but the
@@ -838,12 +860,20 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
                 cached["player_source"] = psig.get("source") or ""
                 cached["player_why"] = psig.get("why") or ""
                 cached["player_match"] = _player_match(plang, cached.get("lang"))
+                if paint_hit is not None:
+                    # THE PLAYER'S OWN WORDS ARE IN THIS TRACK. That is a
+                    # stronger answer than any language preference.
+                    cached["player_source"] = "painted"
+                    cached["player_known"] = True
+                    cached["player_match"] = True
+                    cached["paint_cue"] = paint_hit["index"]
                 return cached
             # THE PLAYER CHANGED THE TRACK. The cached one is the WRONG
             # line for the owner, so it is not served: the candidates are
             # asked again, with the player's own language first. This is
             # not a verdict about the video -- it is a new question.
-            result["reason"] = "player-track-changed"
+            if result.get("reason") != "painted-other-track":
+                result["reason"] = "player-track-changed"
         else:
             # A REFUSED payload is retried WITHOUT repeating the 5 s extract:
             # the track and its signed URL are still in the cache, and only
@@ -864,6 +894,15 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
     if isinstance(duration, (int, float)):
         result["duration"] = float(duration)
     tracks = tracks_from_info(info, lang_prefs, plang)
+    if painted:
+        # A BUSCA PELA PINTURA TEM UMA ORDEM MELHOR: as faixas ORIGINAIS
+        # primeiro. MEASURED 2026-10-20: o pedido do player e `lang=X` SEM
+        # `tlang`, que e a chave `-orig`; e num video com quatro variantes
+        # de portugues (pt, pt-BR, pt-BR-orig, pt-PT) a original estava na
+        # QUINTA posicao -- e a procura parava no limite antes de a ver.
+        tracks = sorted(
+            tracks,
+            key=lambda t: 0 if str(t.get("lang") or "").endswith("-orig") else 1)
     result["fetched_at"] = time.time()
     if not tracks:
         result["reason"] = "no-tracks-listed"
@@ -873,26 +912,98 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
     # payload is a FALLBACK, never a verdict about the video.
     tried = []
     last_err = None
+    fallback = None
     for track in tracks:
+        if painted and len(tried) >= _PAINT_SEARCH_MAX:
+            # THE BOUND IS CHECKED BEFORE THE FETCH, not after it. MEASURED
+            # 2026-10-20: a search that checked the bound only after a
+            # candidate with cues made TWENTY network calls (most of them
+            # refused) to look for a track that was the fifth one.
+            break
         cues, err = _fetch_payload(track, timeout)
         tried.append({"lang": track.get("lang"), "source": track.get("source"),
                       "ext": track.get("ext"), "url": track.get("url"),
                       "error": err, "cues": len(cues)})
-        if cues:
-            result["state"] = "has-track"
-            result["reason"] = "ok"
-            result["error"] = None
-            result["cues"] = cues
-            result["lang"] = track.get("lang")
-            result["source"] = track.get("source")
-            result["ext"] = track.get("ext")
-            result["track"] = tried[-1]
-            result["tracks"] = tried
-            result["player_match"] = _player_match(plang, result.get("lang"))
-            _log_player_track(psig, result["lang"], result["source"])
-            _cache_write(vid, result)
-            return result
-        last_err = err
+        if not cues:
+            last_err = err
+            continue
+        hit = align_painted(cues, painted) if painted else None
+        if painted and hit is None:
+            # THIS TRACK DOES NOT HOLD THE WORDS THE PLAYER IS PAINTING.
+            # It is kept as the FALLBACK (a track is better than no track)
+            # and the search goes on -- the track the player shows is the
+            # one that CONTAINS its words.
+            if fallback is None:
+                fallback = (track, cues)
+            if len(tried) >= _PAINT_SEARCH_MAX:
+                break
+            continue
+        result["state"] = "has-track"
+        result["reason"] = "ok"
+        result["error"] = None
+        result["cues"] = cues
+        result["lang"] = track.get("lang")
+        result["source"] = track.get("source")
+        result["ext"] = track.get("ext")
+        result["track"] = tried[-1]
+        result["tracks"] = tried
+        result["player_match"] = _player_match(plang, result.get("lang"))
+        psig_used = psig
+        if hit is not None:
+            # THE PLAYER'S OWN WORDS ARE IN THIS TRACK. That is a stronger
+            # answer than any language preference, and the log says so.
+            result["player_match"] = True
+            result["player_known"] = True
+            result["player_source"] = "painted"
+            result["paint_cue"] = hit["index"]
+            psig_used = dict(psig)
+            psig_used["known"] = True
+            psig_used["source"] = "painted"
+            psig_used["lang"] = result.get("lang") or ""
+            psig_used["why"] = ""
+        _log_player_track(psig_used, result["lang"], result["source"])
+        _cache_write(vid, result)
+        return result
+    if fallback is not None:
+        # NO CANDIDATE HELD THE PLAYER'S WORDS. The track that WAS serving
+        # is KEPT -- not the language preference. A preference is a GUESS,
+        # and serving a guess against the player's own words is exactly how
+        # the owner ended up comparing Portuguese with English. MEASURED
+        # 2026-10-20: the running app fell back to `pt-orig` and the log
+        # said `player_source=painted-no-match` while the player painted
+        # `en-orig`.
+        if (cached is not None and cached.get("state") == "has-track"
+                and cached.get("cues")):
+            cues = cached.get("cues") or []
+            lang = cached.get("lang")
+            source = cached.get("source")
+            ext = cached.get("ext")
+        else:
+            track, cues = fallback
+            lang = track.get("lang")
+            source = track.get("source")
+            ext = track.get("ext")
+        result["state"] = "has-track"
+        result["reason"] = "ok"
+        result["error"] = None
+        result["cues"] = cues
+        result["lang"] = lang
+        result["source"] = source
+        result["ext"] = ext
+        result["track"] = tried[0] if tried else None
+        result["tracks"] = tried
+        result["player_match"] = False
+        result["player_known"] = False
+        result["player_source"] = "painted-no-match"
+        result["player_why"] = ("as palavras pintadas nao estao em nenhum "
+                                "candidato")
+        psig_used = dict(psig)
+        psig_used["known"] = False
+        psig_used["source"] = "painted-no-match"
+        psig_used["why"] = result["player_why"]
+        _log_player_track(psig_used, result.get("lang"), result.get("source"))
+        _cache_write(vid, result)
+        return result
     result["error"] = last_err
     result["reason"] = "payload-failed" if last_err else "empty-track"
     result["track"] = tried[0] if tried else None
@@ -1426,6 +1537,205 @@ def _log_player_track(signal, served_lang, served_source):
 def _foreground_hwnd():
     import ctypes
     return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+
+
+# ── THE LINE THE PLAYER IS PAINTING (the 1:1 source) ────────────────────────
+#
+# MEASURED 2026-10-20 on the owner's own Chrome, on the video he was
+# watching (`cUeZMUGCxrw`, 21:55), with the player PLAYING:
+#
+#   * the caption window is `caption-window ytp-caption-window-bottom
+#     ytp-caption-window-rollup ytp-rollup-mode`, and its UIA children are
+#     ONE PER WORD (15 children, 15 words, no class, no children of their
+#     own);
+#   * those words CHANGE while the video plays: 'with this one. So, let me
+#     click on this. Here's what the workflow looks like. If you' ->
+#     'over here. Now one thing to note is that some of you might see this',
+#     8 s later;
+#   * and the words ARE a cue of the track: 'further. And in theory, this
+#     should help you generate a' is the cue 426.64-430.72 of `en-orig`.
+#
+# SO THE PAINT IS THE TRUTH about the two things the UIA could not answer:
+#
+#   1. WHICH TRACK the player is showing. MEASURED: the caption window has
+#      NO language property (0 of 448 elements expose UIA 30007), so the
+#      app fell back to the preference and served `pt-orig` while the player
+#      painted `en-orig` -- the owner would have compared Portuguese against
+#      English and called it broken.
+#   2. WHERE THE VIDEO IS. MEASURED: the seek bar's RangeValue AND the
+#      player's own clock text are FROZEN: +0.00 s in 8.35 s of wall clock,
+#      while the painted line advanced +8.96 s in the track. The clock the
+#      app read (t=2.0) was 8 minutes away from the truth (t=530).
+#
+# ⇒ THE PAINT IS THE SOURCE, AND THE TRACK IS FOUND BY MATCHING IT.
+
+#: The class of the PLAYER'S OWN caption window. The container
+#: (`ytp-caption-window-container`) carries the same prefix and NO words: it
+#: must not win.
+_CAPTION_WINDOW_WORDS = "caption-window"
+
+#: The minimum number of words that must match EXACTLY for an alignment to
+#: count. MEASURED: the WRONG track (Portuguese, on the same video) aligns
+#: with ZERO words, while the right track aligns with the whole cue.
+_ALIGN_MIN_EXACT = 3
+
+#: HOW MANY CANDIDATE TRACKS are fetched while looking for the one that
+#: holds the player's words. MEASURED 2026-10-20 on the owner's own video:
+#: the paint is in `en-orig`, which is the THIRD candidate (`pt-orig`, `pt`,
+#: `en-orig`), so three payload fetches find it. The bound keeps a video
+#: with a hundred automatic translations from costing a hundred requests.
+_PAINT_SEARCH_MAX = 6
+
+
+def _painted_children(el, uia):
+    """The words of ONE caption-window element, in reading order."""
+    out = []
+    try:
+        kids = el.FindAll(0x2, uia.CreateTrueCondition())  # TreeScope_Children
+    except Exception:
+        return out
+    for k in range(kids.Length):
+        c = kids.GetElement(k)
+        try:
+            name = str(c.CurrentName or "").strip()
+        except Exception:
+            continue
+        if name:
+            out.append(name)
+    return out
+
+
+def painted_words(uia, UIA, hwnd=None, root=None):
+    """The words the player is painting NOW -> {"words": [...], "why": ...}.
+
+    READ-ONLY: it opens nothing, clicks nothing, moves nothing.
+
+    `why` says what happened, so an empty answer is never read as "the
+    player has no caption": `no-window`, `no-root`, `no-painted-caption`
+    (the captions are OFF, or the player is between cues) or `painted`.
+    """
+    if root is None:
+        if not hwnd:
+            return {"words": [], "cls": "", "why": "no-window"}
+        try:
+            root = uia.ElementFromHandle(hwnd)
+        except Exception as exc:  # noqa: BLE001
+            return {"words": [], "cls": "",
+                    "why": "no-root (%s)" % type(exc).__name__}
+    if root is None:
+        return {"words": [], "cls": "", "why": "no-root"}
+    best = []
+    best_cls = ""
+    for el in _elements(_all_elements(uia, root)):
+        cls = _class_name(el).lower()
+        if _CAPTION_WINDOW_WORDS not in cls:
+            continue
+        words = _painted_children(el, uia)
+        if len(words) > len(best):
+            best = words
+            best_cls = _class_name(el)
+    if not best:
+        return {"words": [], "cls": "", "why": "no-painted-caption"}
+    return {"words": best, "cls": best_cls, "why": "painted"}
+
+
+def _align_from(cue_words, low, j0, off0):
+    """Walk the cues from (j0, off0) against the painted words.
+
+    Returns `{"index", "painted_from", "aligned", "exact", "partial"}` or
+    None. `partial` is True when the painted words stop INSIDE the cue --
+    the player types a cue word by word and we may catch it mid-word.
+    """
+    n = len(low)
+    pos = 0
+    idx = j0
+    off = off0
+    cur = None
+    cur_start = 0
+    exact = 0
+    partial = False
+    while pos < n and idx < len(cue_words):
+        cwords = cue_words[idx]
+        if not cwords:
+            idx += 1
+            off = 0
+            continue
+        take = min(len(cwords) - off, n - pos)
+        last = (pos + take) >= n
+        for i in range(take):
+            a = cwords[off + i].lower()
+            b = low[pos + i]
+            if a == b:
+                exact += 1
+                continue
+            # THE PLAYER IS MID-WORD. MEASURED 2026-10-20: the rollup showed
+            # '...click anywhere on t' while the track says '...anywhere on
+            # the', and '...connect the output ba' while the track says
+            # '...the output back'. The LAST word may be a prefix of the
+            # track's word -- even a ONE LETTER prefix ('t' for 'the') --
+            # and any other mismatch is a mismatch.
+            if last and i == take - 1 and len(b) >= 1 and a.startswith(b):
+                partial = True
+                continue
+            return None
+        pos += take
+        cur = idx
+        cur_start = pos - take
+        if off + take < len(cwords):
+            break
+        idx += 1
+        off = 0
+    if pos != n or cur is None:
+        return None
+    return {"index": cur, "painted_from": cur_start, "aligned": pos,
+            "exact": exact, "partial": partial}
+
+
+def align_painted(cues, painted):
+    """Which cue is the player painting? -> dict or None.
+
+    The rollup holds the last few cues and the player types the current one
+    word by word, so the painted words are the CONCATENATION of the last
+    cues' texts, cut at the word being typed -- and cut at the FRONT too,
+    because the rollup drops the oldest line. MEASURED: the rollup's first
+    word is often in the middle of a cue.
+
+    So the alignment walks the track's cues and accepts a run that matches
+    the painted words from ANY point of any cue.
+
+    Returns:
+        `{"index", "cue", "text", "exact", "aligned", "partial"}` -- `text`
+        is the FULL text of the cue being painted (the app shows the whole
+        line; the player shows it a word at a time), or None when no cue
+        matches (the paint belongs to ANOTHER track, or is empty).
+    """
+    if isinstance(painted, str):
+        painted = painted.split()
+    painted = [str(w).strip() for w in (painted or []) if str(w).strip()]
+    if not painted:
+        return None
+    low = [w.lower() for w in painted]
+    cue_words = [str((c or {}).get("text") or "").split() for c in (cues or ())]
+    best = None
+    for j0, cwords in enumerate(cue_words):
+        if not cwords:
+            continue
+        for off0 in range(len(cwords)):
+            if cwords[off0].lower() != low[0]:
+                continue
+            hit = _align_from(cue_words, low, j0, off0)
+            if hit is None or hit["exact"] < _ALIGN_MIN_EXACT:
+                continue
+            if best is None or hit["exact"] > best["exact"]:
+                best = hit
+            break
+    if best is None:
+        return None
+    cue = (cues or ())[best["index"]]
+    return {"index": best["index"], "cue": cue,
+            "text": str((cue or {}).get("text") or "").strip(),
+            "exact": best["exact"], "aligned": best["aligned"],
+            "partial": best["partial"]}
 
 
 def probe(seconds=8.0, interval=0.4, duration=None):

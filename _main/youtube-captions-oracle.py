@@ -863,11 +863,9 @@ MUTANTS = [
     # refused payload ends the search and the video reads as "no captions".
     ("the-fallback-is-not-tried",
      '    for track in tracks:\n'
-     '        cues, err = _fetch_payload(track, timeout)\n'
-     '        tried.append({',
+     '        if painted and len(tried) >= _PAINT_SEARCH_MAX:\n',
      '    for track in tracks[:1]:\n'
-     '        cues, err = _fetch_payload(track, timeout)\n'
-     '        tried.append({'),
+     '        if painted and len(tried) >= _PAINT_SEARCH_MAX:\n'),
     # The HLS playlist is parsed as WebVTT: the track reads as EMPTY, and an
     # empty track reads as "this video has no legend".
     ("the-hls-playlist-is-accepted-as-vtt",
