@@ -880,6 +880,38 @@ function armHoldTimer() {
 }
 
 /**
+ * THE LIVE BOX AND THE PLACEHOLDER ARE ONE SLOT IN TWO STATES.
+ *
+ * THE LIST IS BORN HIDDEN: `panel.html` ships `<ol class="captions__list"
+ * id="caption-list" hidden>` and `panel.css` makes that attribute bite
+ * (`.captions__list[hidden] { display: none; }`), because an empty box must not
+ * take the placeholder's place. The attribute was taken off in ONE place only
+ * -- `addCaption`, the path a COMMITTED line takes. A line that is still
+ * PROVISIONAL -- the player's own captions, the ASR hypothesis still growing --
+ * never goes through `addCaption`, so it was painted into a box that stayed
+ * `display: none`.
+ *
+ * MEASURED 2026-10-20, 02:22:35, on the owner's own panel with the YouTube
+ * track open (`_main/panel-state.json`): `live.count = 1`, `live.hidden = true`,
+ * the placeholder visible, and the line's own text right there in the DOM. The
+ * caption HAD arrived and the owner could not see it.
+ *
+ * So ONE function owns both directions: the box is unhidden wherever a line is
+ * painted, and the placeholder comes back wherever the box has nothing left to
+ * show. No path can paint a line into an invisible box again.
+ */
+function syncCaptionBox() {
+  if (!dom.list) return;
+  if (dom.list.childElementCount > 0) {
+    dom.list.hidden = false;
+    if (dom.placeholder) dom.placeholder.hidden = true;
+  } else {
+    dom.list.hidden = true;
+    if (dom.placeholder) dom.placeholder.hidden = false;
+  }
+}
+
+/**
  * The provisional line: one `<li>` whose text is REWRITTEN IN PLACE as the
  * hypothesis changes. It is never acknowledged as applied until it commits,
  * because a caption the model later contradicts is not a caption.
@@ -975,6 +1007,11 @@ function renderProvisional(committed, provisional, source) {
     body.append(confirmedSpan, provisionalSpan, mark);
     line.append(led, time, body);
     dom.list.append(line);
+    // THE BOX IS VISIBLE FROM THE FIRST LINE, not from the first COMMIT. This
+    // row is a PROVISIONAL one, and `addCaption` was the only path that ever
+    // took the `hidden` off the list -- so a forming line was painted into a
+    // `display: none` box (see `syncCaptionBox`).
+    syncCaptionBox();
     paintedWordsBySource.set(key, { confirmed: [], provisional: [], total: 0 });
     followNewestLine();
   }
@@ -1040,6 +1077,9 @@ function retireProvisional(source) {
   if (line && line.isConnected) dom.list.removeChild(line);
   provisionalRows.delete(key);
   paintedWordsBySource.delete(key);
+  // THE BOX EMPTIED ITSELF: the placeholder comes back, so the owner is told
+  // there is nothing to read instead of staring at an empty strip.
+  syncCaptionBox();
   if (window.SottoSkin && SottoSkin.active) {
     SottoSkin.live({ committed: [], provisional: [] });
   }
@@ -1114,8 +1154,6 @@ function addCaption(text, reason, meta) {
   // Retire the open row of THIS source only — a commit for app A must not blank
   // app B's sentence while it is still forming (STEP 4).
   retireProvisional(source);
-  if (dom.placeholder) dom.placeholder.hidden = true;
-  dom.list.hidden = false;
 
   const start = meta && typeof meta.start === 'number' ? meta.start : null;
   const identity = rowIdentity(source, start);
@@ -1196,6 +1234,10 @@ function addCaption(text, reason, meta) {
     if (trimmedKey !== null) committedByStart.delete(trimmedKey);
     dom.list.removeChild(first);
   }
+
+  // THE ROW IS IN THE LIST NOW, so the box can show it. This is the COMMITTED
+  // path; the PROVISIONAL one calls the same function where it creates its row.
+  syncCaptionBox();
 
   followNewestLine();
   updateLiveHint();
