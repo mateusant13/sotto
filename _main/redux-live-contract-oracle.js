@@ -42,17 +42,39 @@
  *   node _main/redux-live-contract-oracle.js            # all arms; ARM D GREEN
  *   node _main/redux-live-contract-oracle.js --neg-arm  # ARM B/C RED, and ARM D
  *                                                       # RED under the OLD keying
- * Exit 0 iff every arm's expectation held.
+ *
+ * EXIT CODES
+ *   normal run   0 = PASS ("VERDICT: PASS"), 1 = FAIL
+ *   --neg-arm    1 = PASS BY DESIGN (the negative arm is SUPPOSED to find the
+ *                 defect; the battery's :expectred recorder asks for exactly that),
+ *                 0 = a mutant was NOT caught, 2 = setup error (a decorative
+ *                 mutant: an anchor that is missing or ambiguous).
+ *
+ * The negative arm has TWO halves, and both must hold:
+ *   (a) ARM D goes RED under the pre-STEP-4 keying -- the MODEL can say NO;
+ *   (b) the TEXTUAL MUTANTS on `app/panel/panel.js` (the file this oracle
+ *       judges) make the staleness detector go RED -- the ORACLE can say NO
+ *       about a panel that moved under it. Each mutant is an EXACT anchor
+ *       string; before it is used the oracle COUNTS it in the file. An anchor
+ *       that is missing (the panel was refactored and the oracle is now stale)
+ *       or that appears more than once is DECORATIVE: it proves nothing, so
+ *       the oracle refuses to count it, says so, and exits 2.
  */
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const HERE = __dirname;
 const ROOT = path.resolve(HERE, '..');
+const argv = process.argv.slice(2);
+const argOf = (name, dflt) => {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : dflt;
+};
 const FORMULATION = path.join(ROOT, 'app', 'panel', 'caption-formulation.js');
-const PANEL = path.join(ROOT, 'app', 'panel', 'panel.js');
+const PANEL = path.resolve(argOf('--panel', path.join(ROOT, 'app', 'panel', 'panel.js')));
 const STREAM = path.join(HERE, 'redux-live-smoke.jsonl');
 
 const MAX_CAPTIONS = 200; // panel.js:42
@@ -258,6 +280,45 @@ function record(name, ok, detail, expect) {
   console.log(`  [${tag}] ${name}: ${detail}`);
 }
 
+// ---------------------------------------------------------------------------
+// THE STALENESS DETECTOR. The model below is only trustworthy while the panel
+// still has the shape it was written against. ARM 0 claims that a panel which
+// changes its keying makes THIS FILE FAIL rather than quietly modelling a
+// panel that no longer exists -- so the anchors include the KEYING BODY, not
+// only the names.
+// ---------------------------------------------------------------------------
+
+const PANEL_ANCHORS = [
+  'function rowIdentity(source, start)',
+  'String(source) + "\\u0000" + start',
+  'function engineFor(source)',
+  'const provisionalRows = new Map()',
+  'const engines = new Map()',
+  'function renderProvisional(committed, provisional, source)',
+  'function retireProvisional(source)',
+  'if (source !== null) line.dataset.source = source;',
+  'const trimmedSource = first && first.dataset && first.dataset.source',
+];
+
+/** {missing, n} -- the anchors of `src` that are NOT there any more. */
+function panelAnchors(src) {
+  return { missing: PANEL_ANCHORS.filter((a) => !src.includes(a)), n: PANEL_ANCHORS.length };
+}
+
+// THE MUTANTS: (tag, the UNIQUE anchor in panel.js, its replacement).
+const MUTANTS = [
+  {
+    tag: 'M1 the keying body loses the source separator',
+    anchor: 'String(source) + "\\u0000" + start',
+    replace: 'String(source) + start',
+  },
+  {
+    tag: 'M2 the open-row registry changes shape',
+    anchor: 'const provisionalRows = new Map()',
+    replace: 'const provisionalRows = new Set()',
+  },
+];
+
 function main() {
   const negArm = process.argv.includes('--neg-arm');
   console.log('redux-live-contract-oracle - worker/redux_live.py JSONL -> the real panel engine');
@@ -274,20 +335,10 @@ function main() {
     true);
 
   const panelSrc = fs.readFileSync(PANEL, 'utf8');
-  const anchors = [
-    'function rowIdentity(source, start)',
-    'function engineFor(source)',
-    'const provisionalRows = new Map()',
-    'const engines = new Map()',
-    'function renderProvisional(committed, provisional, source)',
-    'function retireProvisional(source)',
-    'if (source !== null) line.dataset.source = source;',
-    'const trimmedSource = first && first.dataset && first.dataset.source',
-  ];
-  const missing = anchors.filter((a) => !panelSrc.includes(a));
+  const { missing, n: nAnchors } = panelAnchors(panelSrc);
   record('A0/panel-anchors', missing.length === 0,
     missing.length ? `panel.js no longer contains: ${JSON.stringify(missing)} - the model below `
-      + `is STALE and this oracle must not be trusted` : `${anchors.length}/${anchors.length} `
+      + `is STALE and this oracle must not be trusted` : `${nAnchors}/${nAnchors} `
       + `shipped lines present in panel.js (${Buffer.byteLength(panelSrc, 'utf8')} B)`, true);
 
   const all = readStream(STREAM);
@@ -373,18 +424,71 @@ function main() {
               : (dGreen ? ' -> GREEN as required' : ' -> RED: a source was overwritten')),
     dOk);
 
+  // ---- the TEXTUAL MUTANTS on the file this oracle judges -------------------
+  // ARM 0 claims: "a panel that changes its keying makes THIS FILE FAIL instead
+  // of quietly modelling a panel that no longer exists". That is a CLAIM about
+  // this oracle's ability to say NO, so it needs a negative arm of its own: a
+  // COPY of panel.js with ONE anchored line changed must make the staleness
+  // detector go RED. The copies live in TMPDIR, never in the product tree.
+  let mutCaught = 0;
+  let mutDecorative = 0;
+  let mutWrong = 0;
+  if (negArm) {
+    console.log('\nNEG-ARM MUTANTS (panel.js -- the file this oracle judges)');
+    const tmpRoot = process.env.TMPDIR && fs.existsSync(process.env.TMPDIR)
+      ? process.env.TMPDIR : os.tmpdir();
+    const scratch = fs.mkdtempSync(path.join(tmpRoot, 'sotto-redux-neg-'));
+    try {
+      const live = fs.readFileSync(PANEL, 'utf8');
+      for (const m of MUTANTS) {
+        const hits = live.split(m.anchor).length - 1;
+        if (hits !== 1) {
+          mutDecorative += 1;
+          mutWrong += 1;
+          console.log('  RED   mutant ' + m.tag.padEnd(48) + ' ANCHOR '
+            + (hits === 0 ? 'MISSING' : 'AMBIGUOUS') + ' (' + hits + ' hit(s))'
+            + ' -- DECORATIVE, not counted');
+          continue;
+        }
+        const copy = path.join(scratch, 'panel-' + m.tag.replace(/[^\w]+/g, '-') + '.js');
+        fs.writeFileSync(copy, live.replace(m.anchor, m.replace));
+        const res = panelAnchors(fs.readFileSync(copy, 'utf8'));
+        if (res.missing.length > 0) {
+          mutCaught += 1;
+          console.log('  PASS mutant ' + m.tag.padEnd(48) + ' went RED: panel.js no longer '
+            + 'contains ' + JSON.stringify(res.missing));
+        } else {
+          mutWrong += 1;
+          console.log('  RED   mutant ' + m.tag.padEnd(48)
+            + ' SURVIVED -- the gate is blind here');
+        }
+      }
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+
   // ---- verdict -------------------------------------------------------------
   const hard = results.filter((r) => r.name.startsWith('A0/') || r.name.startsWith('A'));
   const bad = hard.filter((r) => !r.ok);
   console.log('');
   const controlsOk = bRed && cRed && dOk;
-  const ok = controlsOk && bad.length === 0;
+  const mutOk = !negArm
+    || (mutWrong === 0 && mutDecorative === 0 && mutCaught === MUTANTS.length);
+  const ok = controlsOk && bad.length === 0 && mutOk;
   console.log(`CONTROL-VERDICT ${controlsOk ? 'PASS' : 'FAIL'}  `
     + `armB(wrong start)-RED=${bRed} armC(shared start)-RED=${cRed} `
     + `armD(${negArm ? 'legacy keying' : 'per source'})-${negArm ? 'RED' : 'GREEN'}=${dOk}`);
-  console.log(`VERDICT ${ok ? 'PASS' : 'FAIL'} - `
+  console.log(`VERDICT: ${ok ? 'PASS' : 'FAIL'} - `
     + `${hard.length - bad.length}/${hard.length} shipped-contract arm(s) held`
     + (bad.length ? `; failed: ${JSON.stringify(bad.map((r) => r.name))}` : ''));
+  if (negArm) {
+    console.log(`NEG-ARM ${ok ? 'PASS' : 'FAIL'} -- armD(legacy keying)=RED, `
+      + `mutants ${mutCaught}/${MUTANTS.length} caught, ${mutDecorative} decorative`);
+    // rc=1 BY DESIGN when the arm passes: the negative arm is SUPPOSED to find
+    // the defect. rc=0 means a mutant was NOT caught. rc=2 is a setup error.
+    return ok ? 1 : (mutDecorative > 0 ? 2 : 0);
+  }
   return ok ? 0 : 1;
 }
 

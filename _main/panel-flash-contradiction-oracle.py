@@ -21,6 +21,11 @@ WHAT IT MEASURES, in AGENTS.md:
   --neg-arm removes the note marker from a COPY and requires the end that carried it to go RED.
 
 NO LAUNCH: this reads one document.
+
+EXIT CODES: the normal run is 0 PASS / 1 FAIL. `--neg-arm` is 1 BY DESIGN when it
+passes (the negative arm is SUPPOSED to find the defect), 0 when the mutant was
+NOT caught, and 2 when the anchor is missing or ambiguous -- a decorative mutant
+is worse than no mutant at all, so the oracle refuses to count it.
 """
 
 from __future__ import annotations
@@ -40,6 +45,13 @@ NO_WINNER = "escolhi um vencedor"
 INSTRUMENT = "panel-startup-flash-census.py"
 NUMBERS = ("0/20", "18/20", "19/20", "88/130", "141 de 262")
 WINDOW = 40
+
+# THE ANCHOR of the negative arm: the exact text of the reconciliation note.
+# It must be UNIQUE in AGENTS.md -- an anchor that is missing (the oracle is
+# stale) or that appears more than once (the mutation would hit the wrong end)
+# is DECORATIVE, and a decorative mutant proves nothing. The oracle refuses to
+# count it, says so, and exits != 0.
+MUTANT_ANCHOR = "NAO RECONCILIADO (nota 2026-10-11)"
 
 
 def ends(lines):
@@ -105,10 +117,15 @@ def main(argv=None):
         wrong.append("a reader landing on the VISIBLE bullet sees no sign of the disagreement")
 
     if parsed.neg_arm:
-        mutant = text.replace("NAO RECONCILIADO (nota 2026-10-11)", "nota removida", 1)
-        if mutant == text:
-            say("NEG-ARM SETUP ERROR: the note marker did not match")
+        hits = text.count(MUTANT_ANCHOR)
+        if hits != 1:
+            say("NEG-ARM SETUP ERROR: the anchor %r appears %d time(s) in %s -- %s"
+                % (MUTANT_ANCHOR, hits, os.path.basename(AGENTS),
+                   "the oracle is stale" if hits == 0 else "the anchor is AMBIGUOUS"))
+            say("")
+            say("NEG-ARM FAIL -- a decorative mutant proves nothing; it was NOT counted")
             return 2
+        mutant = text.replace(MUTANT_ANCHOR, "nota removida", 1)
         mutated = check(mutant)
         say("  mutant: gate_end=%s visible_end=%s note_present=%s"
             % (str(mutated["gate_end"]).lower(), str(mutated["visible_end"]).lower(),
@@ -125,7 +142,11 @@ def main(argv=None):
         say("")
         say("NEG-ARM " + ("PASS" if not wrong else "FAIL")
             + ": removing the note must flip the end that carried it; flipped=" + str(flipped))
-        return 0 if not wrong else 1
+        # rc=1 BY DESIGN when it passes: the negative arm is SUPPOSED to find the
+        # defect, so "found it" is a non-zero exit -- the battery's :expectred
+        # recorder asks for exactly that. rc=0 means the mutant was NOT caught.
+        # rc=2 (above) is a setup error: the mutant could not be prepared.
+        return 1 if not wrong else 0
 
     say("")
     say("VERDICT: " + ("PASS" if not wrong else "FAIL")

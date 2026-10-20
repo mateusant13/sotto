@@ -1,6 +1,7 @@
 # ORACLE for docs/model-specs/README.md — re-runnable, exits 0 only if the shipped
 # worker config and the model's OWN genai_config.json agree on the two constants the
-# decoder depends on. Writes its verdict to a log (launched with pythonw: no console).
+# decoder depends on. Writes its verdict to a log (launched with pythonw: no console)
+# AND to stdout, so the battery's step log carries the verdict too.
 #
 # NEGATIVE ARM (2026-10-11 — closes audit row #56, which read "model-spec-oracle nao tem
 # braco negativo (detector de drift, nao oraculo)"). `--neg-arm` re-runs the SAME checks
@@ -8,6 +9,19 @@
 # requires the verdict to FLIP to MISMATCH — while the live control stays OK in the same
 # run. An instrument that cannot say NO cannot say YES either; the two mutants are one per
 # constant, so a check that silently stopped reading a field would be caught here.
+#
+# THE MUTANTS ARE TEXTUAL, ON A UNIQUE ANCHOR. The anchor is an EXACT string of the
+# model's genai_config.json; before it is used the oracle COUNTS it in the file. An anchor
+# that is missing (the model was re-exported and the oracle is now stale) or that appears
+# more than once (the mutation would hit the wrong field) is DECORATIVE: it proves
+# nothing, so the oracle refuses to count it, says so, and exits 2. A mutant that was
+# applied but did not flip the verdict is reported as SURVIVED — the gate is blind there.
+#
+# EXIT CODES
+#   normal run   0 = PASS ("VERDICT: PASS"), 1 = FAIL
+#   --neg-arm    1 = PASS BY DESIGN (the negative arm is SUPPOSED to find the drift; the
+#                     battery's :expectred recorder asks for exactly that), 0 = a mutant
+#                     was NOT caught, 2 = setup error (a decorative mutant).
 import json, os, sys, io
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -15,7 +29,27 @@ REPO = os.path.dirname(HERE)
 OUT = os.path.join(HERE, "model-spec-oracle.log")
 log = io.open(OUT, "w", encoding="utf-8")
 def p(*a):
-    log.write(" ".join(str(x) for x in a) + "\n"); log.flush()
+    line = " ".join(str(x) for x in a)
+    log.write(line + "\n"); log.flush()
+    try:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    except Exception:                                           # noqa: BLE001
+        pass
+
+EXIT_PASS = 0
+EXIT_FAIL = 1
+EXIT_SETUP = 2
+
+# THE MUTANTS: (label, the UNIQUE anchor in genai_config.json, its replacement).
+MUTANTS = [
+    ("chunk_samples", '    "chunk_samples": 8960,', '    "chunk_samples": 1234,'),
+    ("blank_id", '    "blank_id": 13087,', '    "blank_id": 1,'),
+]
+
+
+def live_model_dir(repo):
+    return json.load(io.open(os.path.join(repo, "worker", "config.json"), encoding="utf-8"))["model"]["dir"]
 
 
 def evaluate(repo, genai_path, emit):
@@ -57,48 +91,78 @@ def evaluate(repo, genai_path, emit):
     return (blank == 13087 and chunk == 8960)
 
 
-def _mutant(tmpdir, field, value):
-    """A copy of the LIVE genai_config.json with one field changed. Returns its path."""
-    live = json.load(io.open(os.path.join(REPO, "worker", "config.json"), encoding="utf-8"))["model"]["dir"]
+def _mutant_text(tmpdir, label, anchor, replacement):
+    """A copy of the LIVE genai_config.json with ONE anchored field changed.
+
+    Returns (path, reason). `reason` is None on success, or the reason the mutant is
+    DECORATIVE and must not be counted: the anchor is missing (stale oracle) or
+    ambiguous (it would hit the wrong field).
+    """
+    live = live_model_dir(REPO)
     src = os.path.join(REPO, "worker", live, "genai_config.json")
-    doc = json.load(io.open(src, encoding="utf-8"))
-    doc["model"][field] = value
-    dst = os.path.join(tmpdir, f"genai-{field}-{value}.json")
-    with io.open(dst, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh)
-    return dst
+    with io.open(src, "r", encoding="utf-8", newline="") as fh:
+        text = fh.read()
+    hits = text.count(anchor)
+    if hits != 1:
+        return None, ("ANCHOR %s (%d hit(s))" % ("MISSING" if hits == 0 else "AMBIGUOUS", hits))
+    mutated = text.replace(anchor, replacement, 1)
+    if mutated == text:
+        return None, "ANCHOR applied to NOTHING"
+    dst = os.path.join(tmpdir, "genai-%s.json" % label)
+    with io.open(dst, "w", encoding="utf-8", newline="") as fh:
+        fh.write(mutated)
+    return dst, None
 
 
 def neg_arm():
     import tempfile
 
     tmpdir = tempfile.mkdtemp(prefix="sotto-model-spec-neg-", dir=os.environ.get("TMPDIR") or None)
-    control_ok = evaluate(REPO, os.path.join(
-        REPO, "worker",
-        json.load(io.open(os.path.join(REPO, "worker", "config.json"), encoding="utf-8"))["model"]["dir"],
-        "genai_config.json"), p)
-    arms = [("chunk_samples", 1234, "chunk_samples"), ("blank_id", 1, "blank_id")]
-    results = []
-    for field, value, label in arms:
-        ok = evaluate(REPO, _mutant(tmpdir, field, value), lambda *a: None)
-        red = ok is False
-        results.append(red)
-        p(f"NEG-ARM M[{label}={value}] :", "MISMATCH (RED as required)" if red
-          else "OK -- THE ORACLE CANNOT SAY NO")
-    p("")
-    p("NEG-ARM control (live files) :", "OK (green, as required)" if control_ok
-      else "MISMATCH -- the control itself is broken")
-    p("VERDICT:", "NEG-ARM PASS" if (all(results) and control_ok) else "NEG-ARM FAIL")
-    return 0 if (all(results) and control_ok) else 1
+    try:
+        control_ok = evaluate(REPO, os.path.join(
+            REPO, "worker", live_model_dir(REPO), "genai_config.json"), p)
+        caught = 0
+        decorative = 0
+        for label, anchor, replacement in MUTANTS:
+            path, reason = _mutant_text(tmpdir, label, anchor, replacement)
+            if path is None:
+                decorative += 1
+                p("NEG-ARM M[%s] :" % label, "DECORATIVE -- %s; NOT counted" % reason)
+                continue
+            ok = evaluate(REPO, path, lambda *a: None)
+            red = ok is False
+            if red:
+                caught += 1
+            p(f"NEG-ARM M[{label}] :", "MISMATCH (RED as required)" if red
+              else "OK -- THE ORACLE CANNOT SAY NO")
+        p("")
+        p("NEG-ARM control (live files) :", "OK (green, as required)" if control_ok
+          else "MISMATCH -- the control itself is broken")
+        total = len(MUTANTS)
+        ok = (caught == total and control_ok and decorative == 0)
+        p("NEG-ARM " + ("PASS" if ok else "FAIL")
+          + f" -- mutants {caught}/{total} caught, {decorative} decorative")
+        if decorative:
+            # A decorative mutant is worse than no mutant at all: the oracle cannot
+            # say NO about a file whose anchor it did not find. Setup error.
+            return EXIT_SETUP
+        if not ok:
+            return EXIT_FAIL
+        # rc=1 BY DESIGN: the negative arm is SUPPOSED to find the drift, so "found it"
+        # is a non-zero exit -- the battery's :expectred recorder asks for exactly that.
+        return 1
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 if __name__ == "__main__":
     if "--neg-arm" in sys.argv:
         sys.exit(neg_arm())
 
-    _live_dir = json.load(io.open(os.path.join(REPO, "worker", "config.json"), encoding="utf-8"))["model"]["dir"]
+    _live_dir = live_model_dir(REPO)
     ok = evaluate(REPO, os.path.join(REPO, "worker", _live_dir, "genai_config.json"), p)
     p("")
-    p("VERDICT:", "OK" if ok else "MISMATCH — config and model spec disagree; fix before touching decode")
+    p("VERDICT:", "PASS" if ok else "FAIL — config and model spec disagree; fix before touching decode")
     log.close()
-    sys.exit(0 if ok else 1)
+    sys.exit(EXIT_PASS if ok else EXIT_FAIL)

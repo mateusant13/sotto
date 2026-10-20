@@ -25,6 +25,13 @@ NOT MEASURED HERE, and not claimable from a green run: whether a real
 process-loopback tap opens on this build inside the WORKER (the gate measured
 that outside it), whether two workers in one shell is the right topology
 (STEP 5), and whether the panel keys rows by (source, start) (STEP 4).
+
+EXIT CODES
+  normal run   0 = PASS ("VERDICT: PASS"), 1 = FAIL
+  --neg-arm    1 = PASS BY DESIGN (the negative arm is SUPPOSED to find the
+                 defect; the battery's :expectred recorder asks for exactly that),
+                 0 = a mutant was NOT caught, 2 = setup error (a decorative
+                 mutant: an anchor that is missing or ambiguous).
 """
 from __future__ import annotations
 
@@ -32,7 +39,9 @@ import argparse
 import hashlib
 import importlib.util
 import os
+import shutil
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER_DIR = os.path.join(ROOT, "worker")
@@ -122,8 +131,11 @@ def run_checks(mod, tag):
           str([e["final"] for e in wire]))
 
     # CHK-7 -- STATIC: the factory dispatches, the two open sites stamp the tap,
-    # the run loop hands it to the former.
-    with open(WORKER, "r", encoding="utf-8", newline="") as fh:
+    # the run loop hands it to the former. THE SOURCE READ IS THE ONE OF THE
+    # MODULE UNDER TEST -- a mutant copy is a real subject, so the static arms
+    # judge the mutant and not the live file behind it.
+    src_path = getattr(mod, "__file__", None) or WORKER
+    with open(src_path, "r", encoding="utf-8", newline="") as fh:
         text = fh.read()
     check("CHK-7 factory routes process_loopback", 'if device.get("process_loopback"):' in text)
     check("CHK-7 factory returns ProcessLoopbackTap", "return ProcessLoopbackTap(" in text)
@@ -175,64 +187,89 @@ def run_checks(mod, tag):
 
 
 def neg_arm():
-    """Two mutants, each expected to turn a NAMED check RED."""
-    print("== NEG-ARM")
-    with open(WORKER, "r", encoding="utf-8") as fh:
-        live_text = fh.read()          # universal newlines: guards match with \n
-    problems = []
+    """Two mutants, each expected to turn a NAMED check RED.
 
-    # MUTANT A -- the source key removed from the event.
-    if SOURCE_GUARD not in live_text:
-        problems.append("mutant A guard not found in the live file")
-    else:
-        path_a = os.path.join(WORKER_DIR, "_plp-neg-source-worker.py")
-        try:
-            with open(path_a, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(live_text.replace(SOURCE_GUARD, "**( {} ),"))
+    THE MUTANTS ARE TEXTUAL, ON A UNIQUE ANCHOR, in the file this oracle judges
+    (worker/sotto_worker.py). Before an anchor is used it is COUNTED in the live
+    file: an anchor that is missing (the oracle is stale) or that appears more
+    than once (the mutation would hit the wrong place) is DECORATIVE -- it
+    proves nothing, so the oracle refuses to count it, says so, and the arm
+    fails with a setup error. A mutant that was applied but did not turn a
+    named check RED is reported as SURVIVED: the gate is blind there.
+
+    THE COPIES LIVE IN TMPDIR, NEVER IN worker/: the product directory is not a
+    scratch space, and a file left behind there is a defect of its own.
+    """
+    print("== NEG-ARM")
+    with open(WORKER, "r", encoding="utf-8", newline="") as fh:
+        live_text = fh.read()          # the bytes as they are on disk (CRLF)
+    problems = []
+    decorative = 0
+    tmpdir = tempfile.mkdtemp(prefix="sotto-plp-neg-", dir=os.environ.get("TMPDIR") or None)
+    try:
+        # MUTANT A -- the source key removed from the event.
+        hits = live_text.count(SOURCE_GUARD)
+        if hits != 1:
+            decorative += 1
+            problems.append("mutant A anchor %s (%d hit(s)) -- DECORATIVE, not counted"
+                            % ("MISSING" if hits == 0 else "AMBIGUOUS", hits))
+            print("  FAIL mutant A anchor %s (%d hit(s)) -- DECORATIVE, not counted"
+                  % ("MISSING" if hits == 0 else "AMBIGUOUS", hits))
+        else:
+            path_a = os.path.join(tmpdir, "mutant-a-source-worker.py")
+            with open(path_a, "w", encoding="utf-8", newline="") as fh:
+                fh.write(live_text.replace(SOURCE_GUARD, "**( {} ),", 1))
             mod_a = load_module(path_a, "_plp_neg_source_worker")
             failed_a = run_checks(mod_a, "MUTANT A (source key removed)")
             want = [n for n in failed_a if n.startswith("CHK-4") or n.startswith("CHK-5")]
             ok = bool(want) and not any(n.startswith("CHK-1") for n in failed_a)
             print(("  PASS " if ok else "  FAIL ") + "mutant A went RED where it had to: " + str(want))
             if not ok:
-                problems.append("mutant A did not go RED on CHK-4/CHK-5: %s" % failed_a)
-        finally:
-            if os.path.exists(path_a):
-                os.remove(path_a)
+                problems.append("mutant A SURVIVED -- the gate is blind here: %s" % failed_a)
 
-    # MUTANT B -- the module-level ctypes import removed (today's real defect).
-    if CTYPES_GUARD not in live_text and CTYPES_GUARD_LF not in live_text:
-        problems.append("mutant B guard not found in the live file")
-    else:
-        path_b = os.path.join(WORKER_DIR, "_plp-neg-ctypes-worker.py")
-        try:
-            with open(path_b, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(live_text.replace(CTYPES_GUARD, "_PLP_DWORD = ctypes.c_ulong")
-                              .replace(CTYPES_GUARD_LF, "_PLP_DWORD = ctypes.c_ulong"))
+        # MUTANT B -- the module-level ctypes import removed (today's real defect).
+        # The anchor is the same text in either EOL: exactly ONE occurrence must
+        # be found across both spellings.
+        variants = [(CTYPES_GUARD, live_text.count(CTYPES_GUARD)),
+                    (CTYPES_GUARD_LF, live_text.count(CTYPES_GUARD_LF))]
+        total_hits = sum(h for _, h in variants)
+        if total_hits != 1:
+            decorative += 1
+            problems.append("mutant B anchor %s (%d hit(s)) -- DECORATIVE, not counted"
+                            % ("MISSING" if total_hits == 0 else "AMBIGUOUS", total_hits))
+            print("  FAIL mutant B anchor %s (%d hit(s)) -- DECORATIVE, not counted"
+                  % ("MISSING" if total_hits == 0 else "AMBIGUOUS", total_hits))
+        else:
+            anchor = next(a for a, h in variants if h == 1)
+            path_b = os.path.join(tmpdir, "mutant-b-ctypes-worker.py")
+            with open(path_b, "w", encoding="utf-8", newline="") as fh:
+                fh.write(live_text.replace(anchor, "_PLP_DWORD = ctypes.c_ulong", 1))
             try:
                 load_module(path_b, "_plp_neg_ctypes_worker")
                 ok = False
                 detail = "the mutant imported cleanly -- CHK-1 cannot say NO"
+                print("  FAIL mutant B RED as the live defect was: " + detail)
+                problems.append("mutant B SURVIVED -- the gate is blind here: " + detail)
             except NameError as exc:
                 ok = "ctypes" in str(exc)
                 detail = "NameError: %s" % exc
+                print(("  PASS " if ok else "  FAIL ") + "mutant B RED as the live defect was: " + detail)
+                if not ok:
+                    problems.append("mutant B did not reproduce the import death: " + detail)
             except Exception as exc:                       # noqa: BLE001 - report anything else
                 ok = False
                 detail = "%s: %s" % (type(exc).__name__, exc)
-            print(("  PASS " if ok else "  FAIL ") + "mutant B RED as the live defect was: " + detail)
-            if not ok:
+                print("  FAIL mutant B RED as the live defect was: " + detail)
                 problems.append("mutant B did not reproduce the import death: " + detail)
-        finally:
-            if os.path.exists(path_b):
-                os.remove(path_b)
-
-    print("  NEG-ARM: %s" % ("PASS -- both mutants RED" if not problems else "FAIL -- " + "; ".join(problems)))
-    return problems
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    return problems, decorative
 
 
 def main():
     ap = argparse.ArgumentParser(description="per-app source plumbing oracle (launch-free)")
-    ap.add_argument("--neg-arm", action="store_true", help="mutate copies beside the worker")
+    ap.add_argument("--neg-arm", action="store_true",
+                    help="mutate COPIES in TMPDIR (never inside worker/)")
     args = ap.parse_args()
 
     print("worker: %s" % WORKER)
@@ -245,12 +282,28 @@ def main():
         return 1
 
     failed = run_checks(mod, "LIVE (working tree)")
-    problems = neg_arm() if args.neg_arm else []
 
-    print("VERDICT: %s" % ("PASS" if not failed and not problems else "FAIL"))
+    if args.neg_arm:
+        problems, decorative = neg_arm()
+        ok = not failed and not problems
+        print("")
+        print("NEG-ARM " + ("PASS" if ok else "FAIL") + " -- "
+              + ("every declared mutant was applied and seen" if ok else "; ".join(problems)))
+        if decorative:
+            # A decorative mutant is worse than no mutant at all: the oracle cannot
+            # say NO about a file whose anchor it did not find. Setup error.
+            return 2
+        if not ok:
+            return 0
+        # rc=1 BY DESIGN: the negative arm is SUPPOSED to find the defect, so
+        # "found it" is a non-zero exit -- the battery's :expectred recorder asks
+        # for exactly that. rc=0 means a mutant was NOT caught.
+        return 1
+
+    print("VERDICT: %s" % ("PASS" if not failed else "FAIL"))
     if failed:
         print("  live failures: %s" % failed)
-    return 0 if not failed and not problems else 1
+    return 0 if not failed else 1
 
 
 if __name__ == "__main__":
