@@ -117,6 +117,36 @@ a cached track can never enter a commit -- which matters here: the repo was
 burned on 2026-10-19 by a `git add -A` that pulled runtime output in. The
 folder is created on demand and may be deleted at any time; the next poll
 just refetches (5 s, once).
+
+THE 1:1 RULE -- THE TRACK THE PLAYER PAINTS IS THE TRACK THE APP SERVES
+----------------------------------------------------------------------
+Owner, 2026-10-20, verbatim: *"eu quero a legenda 1:1 do video do youtube.
+eu mesmo vou comparar a nossa legenda em tempo real com a do youtube."*
+
+MEASURED 2026-10-20 on the real page (headless Edge, muted playback, the
+video the owner watches -- `cUeZMUGCxrw`):
+
+* THE PLAYER SAYS WHICH TRACK IT IS PAINTING. Its caption window carries the
+  language: `<div class="caption-window ytp-caption-window-bottom
+  ytp-caption-window-rollup" id="caption-window-1" dir="ltr" tabindex="0"
+  lang="pt" ...>` -- and the player painted Portuguese. That `lang` is the
+  player's own answer, and `player_track_signal()` reads it.
+
+* THE KEY THAT IS THAT TRACK is the `-orig` one, NOT the plain one. Read side
+  by side, the player's own request and yt-dlp's two keys:
+
+      the PLAYER (a.pt) -> ?v=..&caps=asr&kind=asr&lang=pt
+      yt-dlp  `pt-orig` -> ?v=..&caps=asr&kind=asr&lang=pt   -> 200, 679 cues
+      yt-dlp  `pt`      -> ?v=..&caps=asr&kind=asr&lang=ar&tlang=pt -> 429
+
+  The plain key is a DIFFERENT request -- the original track translated on
+  the fly -- which yt-dlp itself calls "damaged subtitles" and which YouTube
+  refuses. So `-orig` is the track the player shows, and it is served first.
+
+* THE FALLBACK IS A FALLBACK. Without the player's answer the language
+  preference decides, and the result says so (`player_known=0` plus the
+  reason) and the log says it too: a track chosen without knowing what the
+  player shows is never presented as the right one.
 """
 
 from __future__ import annotations
@@ -399,6 +429,39 @@ def _lang_keys(table, pref):
     return exact + prefixed
 
 
+def _auto_lang_keys(table, pref):
+    """The AUTOMATIC keys of one language, in the PLAYER's order.
+
+    MEASURED 2026-10-20 on the video the owner watches (`cUeZMUGCxrw`),
+    reading the real page's own `captionTracks` and the yt-dlp info dict of
+    the SAME video side by side:
+
+        the PLAYER's request for the track `a.pt`   ->  ?v=..&caps=asr&kind=asr&lang=pt
+        yt-dlp's key `pt-orig`                      ->  ?v=..&caps=asr&kind=asr&lang=pt
+        yt-dlp's key `pt`                           ->  ?v=..&caps=asr&kind=asr&lang=ar&tlang=pt
+
+    So the track the PLAYER PAINTS is yt-dlp's `pt-orig` -- the key whose
+    name ends in `-orig`, whose request carries NO `tlang`. The key `pt` is
+    a DIFFERENT request: the original track translated ON THE FLY, which
+    yt-dlp itself calls "damaged subtitles" ("Setting tlang=lang returns
+    damaged subtitles", yt-dlp/extractor/youtube/_video.py) and which
+    YouTube REFUSES -- MEASURED: HTTP 429 on every format, while
+    `pt-orig` answers 200 with 679 cues of Portuguese.
+
+    That is why `-orig` comes FIRST here: it is the track the player shows.
+    """
+    orig = pref + "-orig"
+    keys = []
+    if orig in table:
+        keys.append(orig)
+    if pref in table:
+        keys.append(pref)
+    for k in sorted(k for k in table
+                    if k.startswith(pref + "-") and k not in (orig, pref)):
+        keys.append(k)
+    return keys
+
+
 def _pick_entry(entries):
     """The best caption entry of one language, or None.
 
@@ -425,13 +488,23 @@ def _pick_entry(entries):
     return None
 
 
-def tracks_from_info(info, lang_prefs=("pt", "en")):
+def tracks_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
     """A yt-dlp info dict -> EVERY candidate track, in preference order.
+
+    THE PLAYER'S TRACK COMES FIRST. `player_lang` is the language code the
+    PLAYER says it is painting (`lang="pt"` on the player's own caption
+    window -- MEASURED 2026-10-20). The owner's rule, verbatim: *"eu quero
+    a legenda 1:1 do video do youtube ... o app só nao faz isso se nao tem a
+    legenda disponivel."* -- so the track the player shows is the one the
+    app serves, and the language preference is only the FALLBACK for when
+    the player says nothing.
 
     The LANGUAGE wins over the source: a video with a manual German track and
     an automatic English one gives the owner the English one, because the
     owner's language is the better caption. Within one language, a MANUAL
-    track wins over an automatic one.
+    track wins over an automatic one -- EXCEPT that the automatic `-orig`
+    track is the one the PLAYER paints when the video has no manual track
+    for that language.
 
     WHY A LIST AND NOT ONE TRACK. MEASURED 2026-10-20, in the owner's own
     running app, on the video he was actually watching:
@@ -452,6 +525,7 @@ def tracks_from_info(info, lang_prefs=("pt", "en")):
     manual, manual_case = _lower_table(info.get("subtitles") or {})
     auto, auto_case = _lower_table(info.get("automatic_captions") or {})
     prefs = [str(p).lower() for p in (lang_prefs or ()) if p]
+    plang = str(player_lang or "").lower().strip()
 
     def pick(table, case, source, key):
         entry = _pick_entry(table.get(key))
@@ -472,11 +546,24 @@ def tracks_from_info(info, lang_prefs=("pt", "en")):
         if found:
             ordered.append(found)
 
+    # 1. THE TRACK THE PLAYER IS PAINTING. The player's own order for one
+    #    language is: the MANUAL track when the video has one for that
+    #    language, then the automatic `-orig` (the request without `tlang`,
+    #    which is the player's request), and only then the translated one
+    #    (the `tlang` request, the one YouTube refuses).
+    if plang:
+        for key in _lang_keys(manual, plang):
+            take(manual, manual_case, "manual", key)
+        for key in _auto_lang_keys(auto, plang):
+            take(auto, auto_case, "auto", key)
+    # 2. THE FALLBACK: the language preference, the player's own order
+    #    inside one language (original first, translated second).
     for pref in prefs:
-        for table, case, source in ((manual, manual_case, "manual"),
-                                    (auto, auto_case, "auto")):
-            for key in _lang_keys(table, pref):
-                take(table, case, source, key)
+        for key in _lang_keys(manual, pref):
+            take(manual, manual_case, "manual", key)
+        for key in _auto_lang_keys(auto, pref):
+            take(auto, auto_case, "auto", key)
+    # 3. everything else, so a video is never left without a track.
     for table, case, source in ((manual, manual_case, "manual"),
                                 (auto, auto_case, "auto")):
         for key in sorted(table):
@@ -484,14 +571,14 @@ def tracks_from_info(info, lang_prefs=("pt", "en")):
     return ordered
 
 
-def track_from_info(info, lang_prefs=("pt", "en")):
+def track_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
     """A yt-dlp info dict -> the track to use, or None.
 
     The FIRST of `tracks_from_info` -- the same order, the same winner.
     `None` means THE VIDEO HAS NO TRACK AT ALL -- the one verdict that must
     never be confused with "has a track".
     """
-    ordered = tracks_from_info(info, lang_prefs)
+    ordered = tracks_from_info(info, lang_prefs, player_lang)
     return ordered[0] if ordered else None
 
 
@@ -502,7 +589,12 @@ def track_from_info(info, lang_prefs=("pt", "en")):
 #: knows ONE track, and the fallback cannot be done with it. MEASURED: the
 #: owner's own video (`cUeZMUGCxrw`) stayed "no-track" with the new code
 #: because the cache still held the old single-track entry.
-CACHE_SCHEMA = 2
+#:
+#: Bumped AGAIN on 2026-10-20, when the entry started to carry WHAT THE
+#: PLAYER SHOWS (`player_lang`): an entry written before that does not know
+#: which track the player is painting, and serving it would be serving the
+#: line the owner can see is WRONG.
+CACHE_SCHEMA = 3
 
 
 def _cache_path(video_id):
@@ -685,18 +777,26 @@ def _retry_payload(video_id, stale, timeout):
     return result
 
 
-def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
-    """The video's caption track.
+def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
+                player_lang=None):
+    """The video's caption track -- THE ONE THE PLAYER IS PAINTING.
 
     Returns a dict:
 
         {"state": "has-track", "cues": [{"start", "end", "text"}, ...],
-         "lang": "pt-BR", "source": "manual"|"auto", ...}
+         "lang": "pt-orig", "source": "auto", ...}
 
     or `{"state": "no-track", ...}` when the video has no caption track (or
     the track turned out to be empty). "no-track" is the caller's signal to
     KEEP THE ASR RUNNING. The extra keys (`reason`, `error`, `duration`,
     `cached`) say WHY, so a failure is never read as a verdict.
+
+    `player_lang` is the language code the PLAYER is painting. `None` means
+    "ask the player" (the live window is read); `""` means "the player said
+    nothing" and the language preference decides. The answer is kept in the
+    result (`player_lang`, `player_known`, `player_source`, `player_why`),
+    because a track chosen WITHOUT knowing what the player shows is a
+    FALLBACK, and the log has to say so.
 
     The first call for a video is a network call and takes ~5 s (MEASURED);
     every later call is a disk read. Call it OFF the UI thread.
@@ -707,24 +807,53 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
         "ext": None, "video_id": vid, "duration": None, "reason": None,
         "error": None, "cached": False, "fetched_at": 0.0,
         "schema": CACHE_SCHEMA,
+        # WHAT THE PLAYER SAID. `player_lang` is the language code the
+        # player is painting ("" when it said nothing) and `player_known`
+        # says whether it said anything at all. A fallback is a FALLBACK:
+        # the log says so, and never pretends the first track that
+        # answered is the one the player is showing.
+        "player_lang": "", "player_known": False, "player_source": "",
+        "player_why": "", "player_match": False,
     }
     if not _VIDEO_ID_RE.match(vid):
         result["reason"] = "invalid-video-id"
         result["error"] = "video id invalido: %r" % vid
         return result
+    plang, psig = _resolve_player_track(vid, player_lang)
+    result["player_lang"] = plang
+    result["player_known"] = bool(psig.get("known"))
+    result["player_source"] = psig.get("source") or ""
+    result["player_why"] = psig.get("why") or ""
     if use_cache:
         cached = _cache_read(vid)
         if cached is not None:
-            cached.pop("stale", None)
-            return cached
-        # A REFUSED payload is retried WITHOUT repeating the 5 s extract: the
-        # track and its signed URL are still in the cache, and only the few
-        # KB of the caption track have to be asked for again.
-        stale = _cache_read(vid, allow_stale=True)
-        if (stale and stale.get("reason") == "payload-failed"
-                and isinstance(stale.get("track"), dict)):
-            stale.pop("stale", None)
-            return _retry_payload(vid, stale, timeout)
+            cached_lang = str(cached.get("player_lang") or "")
+            if cached_lang == plang:
+                cached.pop("stale", None)
+                # WHAT THE PLAYER SAYS is knowledge of NOW, not of the
+                # payload: the cached cues are still the right ones, but the
+                # answer about the player is refreshed on every call.
+                cached["player_lang"] = plang
+                cached["player_known"] = bool(psig.get("known"))
+                cached["player_source"] = psig.get("source") or ""
+                cached["player_why"] = psig.get("why") or ""
+                cached["player_match"] = _player_match(plang, cached.get("lang"))
+                return cached
+            # THE PLAYER CHANGED THE TRACK. The cached one is the WRONG
+            # line for the owner, so it is not served: the candidates are
+            # asked again, with the player's own language first. This is
+            # not a verdict about the video -- it is a new question.
+            result["reason"] = "player-track-changed"
+        else:
+            # A REFUSED payload is retried WITHOUT repeating the 5 s extract:
+            # the track and its signed URL are still in the cache, and only
+            # the few KB of the caption track have to be asked for again.
+            stale = _cache_read(vid, allow_stale=True)
+            if (stale and stale.get("reason") == "payload-failed"
+                    and isinstance(stale.get("track"), dict)
+                    and str(stale.get("player_lang") or "") == plang):
+                stale.pop("stale", None)
+                return _retry_payload(vid, stale, timeout)
     info = _extract_info(vid, timeout)
     if info is None:
         # NOT cached: a failed extract is not a verdict about the video.
@@ -734,7 +863,7 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
     duration = info.get("duration")
     if isinstance(duration, (int, float)):
         result["duration"] = float(duration)
-    tracks = tracks_from_info(info, lang_prefs)
+    tracks = tracks_from_info(info, lang_prefs, plang)
     result["fetched_at"] = time.time()
     if not tracks:
         result["reason"] = "no-tracks-listed"
@@ -759,6 +888,8 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
             result["ext"] = track.get("ext")
             result["track"] = tried[-1]
             result["tracks"] = tried
+            result["player_match"] = _player_match(plang, result.get("lang"))
+            _log_player_track(psig, result["lang"], result["source"])
             _cache_write(vid, result)
             return result
         last_err = err
@@ -769,6 +900,7 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
     # A REFUSED payload is not a verdict about the video: it is cached only
     # for the short back-off, and it keeps the tracks so the retry does not
     # repeat the extract.
+    _log_player_track(psig, result.get("lang"), result.get("source"))
     _cache_write(vid, result)
     return result
 
@@ -1049,6 +1181,244 @@ def player_time(uia, UIA, hwnd, duration=None):
     detail = player_time_detail(uia, UIA, hwnd, duration=duration)
     t = detail.get("t")
     return None if t is None else float(t)
+
+
+# ── the player's track: WHICH track the player is painting ──────────────────
+
+#: The class of the PLAYER'S OWN caption window, and the attribute that
+#: carries the track it is painting.
+#:
+#: MEASURED 2026-10-20 on the real page (headless Edge, muted playback, the
+#: video the owner watches -- `cUeZMUGCxrw`):
+#:
+#:     <div class="caption-window ytp-caption-window-bottom
+#:          ytp-caption-window-rollup" id="caption-window-1" dir="ltr"
+#:          tabindex="0" lang="pt" draggable="true" style="...">
+#:
+#: and the player PAINTED Portuguese (">> Configurar leva 1 minuto.
+#: Conecte o Discord e é só mandar mensagem. [música]"). So the `lang`
+#: attribute is the player's own answer to "which track am I painting",
+#: and the answer is a YouTube language code.
+_CAPTION_WINDOW_CLASS = "ytp-caption-window"
+#: The container carries the same prefix and NO language: it must not win.
+_CAPTION_WINDOW_CONTAINER = "ytp-caption-window-container"
+
+#: UIA's language property. The comtypes typelib does not export the name.
+_UIA_LANGUAGE_ID = 30007
+
+#: Windows language id -> the language code YouTube writes in `lang=`.
+#: The player's own tag is BCP-47 ("pt"); the accessibility tree reports a
+#: Windows language id, so the id is mapped back to the code. The regions
+#: collapse onto their language ("pt-BR" and "pt-PT" are both "pt"), which
+#: is what the player's own `lang` says too.
+_LCID_LANG = {
+    1025: "ar", 1026: "bg", 1027: "ca", 1028: "zh", 1029: "cs", 1030: "da",
+    1031: "de", 1032: "el", 1033: "en", 1034: "es", 1035: "fi", 1036: "fr",
+    1037: "he", 1038: "hi", 1039: "hu", 1040: "it", 1041: "ja", 1042: "ko",
+    1043: "nl", 1044: "nb", 1045: "pl", 1046: "pt", 1048: "ro", 1049: "ru",
+    1050: "hr", 1051: "sk", 1052: "sq", 1053: "sl", 1054: "sr", 1055: "sv",
+    1057: "id", 1058: "uk", 1059: "be", 1060: "sl", 1061: "et", 1062: "lv",
+    1063: "lt", 1065: "ms", 1066: "my", 1068: "az", 1069: "eu", 1071: "mk",
+    1078: "af", 1079: "ka", 1080: "mn", 1081: "mr", 1084: "km", 1086: "ne",
+    1087: "fa", 1089: "am", 1091: "kk", 1093: "kn", 1095: "ps", 1097: "si",
+    1104: "km", 1110: "gl", 1140: "gom", 2052: "zh", 2057: "en", 2058: "es",
+    2070: "pt", 2074: "sr", 3076: "zh", 3081: "en", 3082: "es",
+}
+
+#: The last (player language, served track) pair that was logged. The line
+#: is written when the ANSWER CHANGES: a log that repeats the same state
+#: every 30 s is noise, and a state that is never written is a lie.
+_LAST_PLAYER_TRACK = [""]
+
+
+def _all_elements(uia, root):
+    """Every descendant of `root`, or None when the tree refuses."""
+    try:
+        return root.FindAll(0x4, uia.CreateTrueCondition())  # Descendants
+    except Exception:
+        return None
+
+
+def _language_of(el):
+    """The element's language as a YouTube code -> (code, source)."""
+    try:
+        raw = el.GetCurrentPropertyValue(_UIA_LANGUAGE_ID)
+    except Exception:
+        raw = None
+    if isinstance(raw, int) and raw > 0:
+        code = _LCID_LANG.get(raw)
+        if code:
+            return code, "uia-language-id:%d" % raw
+    return "", ""
+
+
+def player_caption_window(uia, UIA, root):
+    """The player's caption window element -> (element, code, source).
+
+    The element that carries the language is the one INSIDE the container
+    (`caption-window ytp-caption-window-bottom ...`); the container itself
+    (`ytp-caption-window-container`) has no language and must not win.
+    """
+    best = None
+    for el in _elements(_all_elements(uia, root)):
+        cls = _class_name(el).lower()
+        if _CAPTION_WINDOW_CLASS not in cls:
+            continue
+        if _CAPTION_WINDOW_CONTAINER in cls:
+            continue
+        code, source = _language_of(el)
+        if code:
+            return el, code, source
+        if best is None:
+            best = el
+    if best is None:
+        return None, "", ""
+    return best, "", ""
+
+
+def _external_subs():
+    """The sibling module, imported BY PATH.
+
+    The gates load this file by path (`importlib`), so its own directory is
+    not on `sys.path` and a plain `import external_subs` fails there. The
+    app imports both as siblings, so this is only a safety net -- but a
+    failed import must not look like "the player said nothing".
+    """
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    import external_subs
+    return external_subs
+
+
+def _window_video_id(hwnd, uia, UIA):
+    """The video id playing in this window, or "" when it cannot be read."""
+    try:
+        es = _external_subs()
+        for value in es.edit_values(hwnd, uia, UIA):
+            vid = video_id_from_url(value)
+            if vid:
+                return vid
+    except Exception:
+        return ""
+    return ""
+
+
+def player_track_signal(video_id=None, hwnd=None):
+    """WHAT THE PLAYER SAYS, read from the live window (READ-ONLY).
+
+    Returns a dict:
+
+        {"lang": "pt", "known": True, "source": "uia-language-id:1046",
+         "why": "", "painted": ">> Configurar leva 1 minuto..."}
+
+    `known` is False when the player did not say -- and `why` says why. A
+    player that says NOTHING is not a player that is showing nothing: the
+    caller falls back to the language preference AND says so in the log.
+
+    `SOTTO_YT_PLAYER_TRACK=0` turns the live read OFF (the escape hatch for
+    a gate that must not touch the owner's browser).
+    """
+    if str(os.environ.get("SOTTO_YT_PLAYER_TRACK") or "1").strip() in ("0", "off", "false"):
+        return {"lang": "", "known": False, "source": "disabled",
+                "why": "SOTTO_YT_PLAYER_TRACK=0", "painted": ""}
+    if not hwnd:
+        try:
+            es = _external_subs()
+            hwnd = es.find_player_window()
+        except Exception as exc:  # noqa: BLE001
+            return {"lang": "", "known": False, "source": "player-window-error",
+                    "why": repr(exc), "painted": ""}
+    if not hwnd:
+        return {"lang": "", "known": False, "source": "no-player-window",
+                "why": "janela do player nao encontrada", "painted": ""}
+    try:
+        UIA, uia = _uia()
+        root = uia.ElementFromHandle(hwnd)
+    except Exception as exc:  # noqa: BLE001
+        return {"lang": "", "known": False, "source": "uia-error",
+                "why": repr(exc), "painted": ""}
+    if root is None:
+        return {"lang": "", "known": False, "source": "no-uia-root",
+                "why": "a janela nao devolveu a raiz", "painted": ""}
+    # THE VIDEO. A player showing ANOTHER video says nothing about this one.
+    if video_id:
+        shown = _window_video_id(hwnd, uia, UIA)
+        if shown and shown != str(video_id):
+            return {"lang": "", "known": False, "source": "other-video",
+                    "why": "o player esta a mostrar %s" % shown, "painted": ""}
+    el, code, source = player_caption_window(uia, UIA, root)
+    painted = _name(el) if el is not None else ""
+    if not code:
+        return {"lang": "", "known": False,
+                "source": "no-caption-window-lang",
+                "why": "a janela de legenda do player nao disse a lingua",
+                "painted": painted}
+    return {"lang": code, "known": True, "source": source, "why": "",
+            "painted": painted}
+
+
+def _resolve_player_track(video_id=None, player_lang=None):
+    """(lang, signal) -- the player's track, and HOW it was known.
+
+    `player_lang=None` means "ask the player". `""` means "the player said
+    nothing" and the language preference decides.
+    """
+    if player_lang is not None:
+        code = str(player_lang or "").lower().strip()
+        if code:
+            return code, {"lang": code, "known": True, "source": "caller",
+                          "why": "", "painted": ""}
+        return "", {"lang": "", "known": False, "source": "caller",
+                    "why": "o player nao disse", "painted": ""}
+    sig = player_track_signal(video_id)
+    return str(sig.get("lang") or "").lower(), sig
+
+
+def _player_match(plang, served):
+    """Is the served track THE ONE the player is painting?
+
+    The player's track of the language `pt` is the yt-dlp key `pt` (a manual
+    track) or `pt-orig` (the automatic one, whose request carries no `tlang`
+    -- MEASURED 2026-10-20). Anything else is a FALLBACK, and the log says
+    so.
+    """
+    p = str(plang or "").lower().strip()
+    s = str(served or "").lower().strip()
+    if not p or not s:
+        return False
+    return s in (p, p + "-orig")
+
+
+def _log_player_track(signal, served_lang, served_source):
+    """THE LINE THAT SAYS WHETHER THE APP KNOWS THE PLAYER'S TRACK.
+
+    The repo's rule, and the owner's: a refused payload is a FALLBACK,
+    never a verdict. So when the player did not say which track it is
+    showing, the log says THAT -- with the reason -- instead of pretending
+    that the first track that answered is the right one.
+    """
+    known = bool(signal.get("known"))
+    lang = signal.get("lang") or ""
+    served = served_lang or "-"
+    sig = "%s|%s|%s" % (lang, served, "1" if known else "0")
+    if sig == _LAST_PLAYER_TRACK[0]:
+        return
+    _LAST_PLAYER_TRACK[0] = sig
+    # THE APP'S LOG. The shell prints every line to its own stdout (the
+    # `sotto: ` tag is what every consumer in this repo reads), so the line
+    # is written when the shell is the one running -- a gate reads the
+    # RETURNED DICT (`player_known`, `player_why`), which is the same
+    # information without the noise.
+    if "sotto_webview" not in sys.modules:
+        return
+    try:
+        print("sotto: YOUTUBE_PLAYER_TRACK known=%s lang=%s source=%s "
+              "served=%s served_source=%s why=%s"
+              % (1 if known else 0, lang or "-", signal.get("source") or "-",
+                 served, served_source or "-", signal.get("why") or "-"),
+              flush=True)
+    except Exception:  # noqa: BLE001 -- a log line must never break a read
+        pass
 
 
 # ── the probe ────────────────────────────────────────────────────────────────

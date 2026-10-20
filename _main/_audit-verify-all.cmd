@@ -289,6 +289,18 @@ if exist _main\youtube-captions-oracle.py (
   call :step youtube-captions 0 "_main\youtube-captions-oracle.py;app\webview\youtube_captions.py" "%OUT%\youtube-captions.log" python _main\youtube-captions-oracle.py
   call :record youtube-captions !STEP_RC!
 ) else ( call :record youtube-captions MISSING )
+
+REM `yt-player-track-oracle.py` judges the 1:1 RULE (owner, 2026-10-20,
+REM verbatim: *"eu quero a legenda 1:1 do video do youtube. eu mesmo vou
+REM comparar a nossa legenda em tempo real com a do youtube."*). The track
+REM the PLAYER paints is the track the app serves: the player's own caption
+REM window carries the `lang` it is showing, and the yt-dlp key whose
+REM request carries NO `tlang` is the one the player asks for. When the
+REM player says nothing, the fallback decides AND the log says so.
+if exist _main\yt-player-track-oracle.py (
+  call :step yt-player-track 0 "_main\yt-player-track-oracle.py;app\webview\youtube_captions.py" "%OUT%\yt-player-track.log" python _main\yt-player-track-oracle.py
+  call :record yt-player-track !STEP_RC!
+) else ( call :record yt-player-track MISSING )
 if exist _main\youtube-track-wiring-oracle.py (
   call :step youtube-track-wiring 0 "_main\youtube-track-wiring-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-track-wiring.log" python _main\youtube-track-wiring-oracle.py
   call :record youtube-track-wiring !STEP_RC!
