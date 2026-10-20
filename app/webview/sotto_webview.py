@@ -1639,6 +1639,120 @@ class VramGuard(threading.Thread):
                 f'resumed={self.resumed}')
 
 
+class YouTubeTrackThread(threading.Thread):
+    """The REAL caption track of the YouTube video being watched.
+
+    WHY A THREAD OF ITS OWN. `yt_dlp`'s metadata call for ONE video took
+    **5.0 s** (MEASURED 2026-10-19: `extract_info` with `skip_download`,
+    no media downloaded). The caption reader polls every 0.30 s, so blocking
+    it would freeze the reader for 5 s on every new video -- and the owner
+    would watch the last line repeat while the fetch ran.
+
+    WHAT IT ANSWERS. One question: "what is this video's own caption
+    track?". The answer is one of the four states of `youtube_captions`
+    (`has-track` / `no-track` / `no-cue-in-window` / `time-unknown`). It does
+    NOT decide what the caption box shows -- that is the watcher's job, and
+    the rule is the owner's: the track REPLACES the live caption while it
+    has something to say, and the live caption (the ASR) is the BASE and is
+    never stopped by the absence of a track.
+
+    THE RETRY. A failed extract is NOT a verdict about the video --
+    `youtube_captions.fetch_track` says so and does not cache it -- so it is
+    retried, but not every 300 ms: `REFRESH_S` between two attempts, and
+    the module decides for itself when a refused payload is worth
+    asking for again.
+    """
+
+    #: HOW OFTEN THE TRACK IS ASKED FOR AGAIN. `youtube_captions` caches a
+    #: REFUSED payload for `PAYLOAD_RETRY_TTL_S` (60 s -- MEASURED 2026-10-19:
+    #: YouTube answers HTTP 429 to the automatic track of the video the owner
+    #: was watching) and retries the payload WITHOUT repeating the 5 s
+    #: extract. That retry only fires if somebody calls `fetch_track` again
+    #: after the TTL, so the thread RE-ASKS every `REFRESH_S` (30 s). The
+    #: call itself is a disk read while the cache is warm.
+    REFRESH_S = 30.0
+    #: How often the thread looks for work.
+    POLL_S = 0.20
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-yt-track', daemon=True)
+        self.shell = shell
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.want = ''          # the video id we are asked about
+        self.inflight = ''      # the id being fetched right now
+        self.done_for = ''      # the id we last finished (ok or failed)
+        self.track = None       # the last result
+        self.track_for = ''     # the id `track` belongs to
+        self.next_fetch_at = 0.0
+        self.fetches = 0
+        self.failures = 0
+
+    def request(self, video_id):
+        """Ask for this video's track. Returns the track if it is already here."""
+        vid = str(video_id or '')
+        with self.lock:
+            if vid != self.track_for:
+                # A NEW video: ask for it NOW, not in up to `REFRESH_S`.
+                self.next_fetch_at = 0.0
+            self.want = vid
+            if self.track_for == vid:
+                return self.track
+        return None
+
+    def current(self, video_id):
+        """The track of this video, if it is the one we already have."""
+        with self.lock:
+            if self.track_for == str(video_id or ''):
+                return self.track
+        return None
+
+    def run(self):
+        while not self.stop_event.is_set():
+            with self.lock:
+                want = self.want
+                busy = self.inflight
+                due = time.monotonic() >= self.next_fetch_at
+            if want and want != busy and due:
+                self._fetch(want)
+            self.stop_event.wait(self.POLL_S)
+        log('YOUTUBE_TRACK_THREAD stopped=true fetches=%d failures=%d'
+            % (self.fetches, self.failures))
+
+    def _fetch(self, video_id):
+        with self.lock:
+            self.inflight = video_id
+        track = None
+        error = None
+        try:
+            import youtube_captions
+            track = youtube_captions.fetch_track(video_id)
+        except Exception as exc:  # noqa: BLE001
+            error = exc
+        with self.lock:
+            self.inflight = ''
+            self.done_for = video_id
+            self.track = track
+            self.track_for = video_id
+            self.fetches += 1
+            if track is None or track.get('reason') == 'extract-failed':
+                self.failures += 1
+            # The NEXT ask is `REFRESH_S` away, so the module's own retry of a
+            # refused payload (60 s) can happen.
+            self.next_fetch_at = time.monotonic() + self.REFRESH_S
+        if error is not None:
+            log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error={error!r}')
+            return
+        if track is None:
+            log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error=no-result')
+            return
+        log('YOUTUBE_TRACK_READY video_id=%s state=%s cues=%d lang=%s '
+            'source=%s reason=%s error=%s cached=%s'
+            % (video_id, track.get('state'), len(track.get('cues') or ()),
+               track.get('lang'), track.get('source'), track.get('reason'),
+               track.get('error'), bool(track.get('cached'))))
+
+
 class ExternalCaptionWatcher(threading.Thread):
     """READ THE CAPTIONS A PLAYER ALREADY SHOWS (owner, 2026-10-17).
 
@@ -1664,6 +1778,14 @@ class ExternalCaptionWatcher(threading.Thread):
     #: No caption for this long = the player stopped showing them; give the
     #: microphone back to the ASR engine.
     RELEASE_S = 1.8
+    #: THE SAME RULE FOR THE YOUTUBE REAL TRACK, AND MUCH LONGER. A caption
+    #: track has gaps between the cues, and the player's clock can be
+    #: unreadable for a while; a 1.8 s release would then cost a model load
+    #: (MEASURED 11.6 s, 1 218 MB resident) every few seconds. MEASURED
+    #: 2026-10-19: the real track's `RELEASE_S` is the gap between two cues
+    #: of the same video, and the owner must not see the microphone go and
+    #: come while the video plays.
+    YT_RELEASE_S = 30.0
 
     def __init__(self, shell):
         super().__init__(name='sotto-external-captions', daemon=True)
@@ -1680,6 +1802,11 @@ class ExternalCaptionWatcher(threading.Thread):
         #: Alt+C, Sotto becomes foreground and YouTube no longer is; keeping the
         #: handle lets us keep reading the player BEHIND the panel.
         self.target_hwnd = 0
+        #: THE YOUTUBE REAL TRACK (2026-10-19). The video we are watching, the
+        #: cue we last showed, and why we have nothing to show.
+        self.yt_video_id = ''
+        self.yt_cue = ''
+        self.yt_reason = ''
 
     def stop(self):
         self.stop_event.set()
@@ -1700,26 +1827,15 @@ class ExternalCaptionWatcher(threading.Thread):
         log('EXTERNAL_CAPTIONS_WATCH started=true interval_s=%.2f' % self.INTERVAL_S)
         while not self.stop_event.is_set():
             try:
-                got = external_subs.foreground_captions(uia, UIA)
+                got, yt_mode = self._read(uia, UIA)
                 self.reads += 1
-                if got:
-                    self.target_hwnd = int(
-                        ctypes.windll.user32.GetForegroundWindow() or 0)
-                elif self.target_hwnd and ctypes.windll.user32.IsWindow(
-                        wt.HWND(self.target_hwnd)):
-                    # Sotto is foreground now, or the player lost focus: keep
-                    # reading the remembered player window so the captions do
-                    # not vanish the moment Alt+C opens the panel.
-                    got = external_subs.caption_lines(self.target_hwnd, uia, UIA)
-                else:
-                    self.target_hwnd = 0
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_READ_FAILED error={exc!r}')
-                got = []
+                got, yt_mode = [], False
             try:
-                self._tick(got)
+                self._tick(got, yt_mode)
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
@@ -1729,7 +1845,171 @@ class ExternalCaptionWatcher(threading.Thread):
         log(f'EXTERNAL_CAPTIONS_WATCH stopped=true reads={self.reads} '
             f'failures={self.failures}')
 
-    def _tick(self, got):
+    def _read(self, uia, UIA):
+        """What the caption box should show, and whether it is the real track.
+
+        THE YOUTUBE BRANCH IS NOT THE PAGE. MEASURED 2026-10-19 in the
+        owner's own log (`_main/webview-run.log`, his session at 19:14): the
+        lines that reached the caption box from a YouTube page were
+        `Oferta sujeita aos termos. Cancele quando quiser.`, `há 4 sem.` and
+        `Thre's a small problem .` -- the PAGE's own text, not the video's
+        caption. The owner, verbatim: *"youtube ta mostrando texto burro da
+        pagina inves da porra da legenda/transcriptino de um video"*.
+
+        So for a YouTube window the page reader is NOT consulted, and the
+        video's OWN caption track is used instead. The page reader stays for
+        Stremio, where the player PAINTS the caption -- there the page IS
+        the caption.
+
+        RETURNS `(got, yt_mode)`.
+        """
+        import external_subs
+        hwnd = self._target_window(uia, UIA)
+        if not hwnd:
+            return [], False
+        try:
+            source = external_subs.player_source(hwnd, uia, UIA)
+        except Exception:
+            source = ''
+        if source == 'external:youtube':
+            lines, urgent = self._youtube(hwnd, uia, UIA)
+            if urgent:
+                # NO TRACK: the ASR is the base and it comes back NOW. The
+                # owner's rule, verbatim: *"se for um video sem legenda, vaio
+                # transcrever ao vivo igual."*
+                self._release('youtube-no-track')
+            return lines, True
+        return external_subs.caption_lines(hwnd, uia, UIA), False
+
+    def _target_window(self, uia, UIA):
+        """The window we read: the foreground player, or the one we had.
+
+        THE FOREGROUND WINDOW IS ONLY ADOPTED IF IT IS A PLAYER. A window
+        that is not a player must not steal the handle, or alt-tabbing to
+        the editor would drop the captions; the window we were reading is
+        remembered so the captions do not vanish the moment the owner
+        presses Alt+C (Sotto becomes foreground) or switches to another app.
+        """
+        import external_subs
+        fg = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+        if fg:
+            try:
+                title = str(external_subs._window_title(fg) or '').strip().lower()
+            except Exception:
+                title = ''
+            if not title.startswith('sotto'):
+                try:
+                    src = external_subs.player_source(fg, uia, UIA)
+                except Exception:
+                    src = ''
+                if src:
+                    self.target_hwnd = fg
+        if self.target_hwnd and ctypes.windll.user32.IsWindow(
+                wt.HWND(self.target_hwnd)):
+            return int(self.target_hwnd)
+        self.target_hwnd = 0
+        return 0
+
+    def _youtube(self, hwnd, uia, UIA):
+        """The YouTube video's OWN caption track, at this instant.
+
+        RETURNS `([(source, [line])], urgent)`:
+          * the first is the REAL caption -- one line -- or `[]`;
+          * `urgent` is True when the ASR must be given back NOW, because
+            the video has NO caption track.
+
+        THE THREE "NOTHING TO SHOW" CASES, AND WHAT EACH ONE MEANS:
+          * `no-video-id`   -- we cannot read which video this is. The page
+            text is not a caption, so the ASR keeps the box.
+          * `track-pending` -- the first fetch is a network call (MEASURED
+            5.0 s). Until it lands there is no caption, and the ASR keeps
+            the box.
+          * `no-cue`        -- a gap between the cues, or a clock we cannot
+            read. The player shows nothing here either. The ASR is only
+            given back after a LONG silence (`YT_RELEASE_S`): a caption
+            track blinks, and every blink would cost a model load
+            (MEASURED 11.6 s, 1 218 MB resident).
+        """
+        vid = self._youtube_video_id(hwnd, uia, UIA)
+        if not vid:
+            return [], self._yt_forget('no-video-id', urgent=False)
+        if vid != self.yt_video_id:
+            self.yt_video_id = vid
+            self.yt_cue = ''
+            log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
+        thread = getattr(self.shell, 'youtube_track_thread', None)
+        if thread is None:
+            return [], self._yt_forget('no-track-thread', urgent=False)
+        track = thread.current(vid)
+        if track is None:
+            thread.request(vid)
+            return [], self._yt_forget('track-pending', urgent=False)
+        if track.get('state') != 'has-track':
+            reason = track.get('reason') or track.get('state') or 'unknown'
+            return [], self._yt_forget('no-track:%s' % reason, urgent=True)
+        t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+        cue = None
+        if t is not None:
+            try:
+                import youtube_captions
+                cue = youtube_captions.cue_at(track.get('cues') or (), t)
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        text = str((cue or {}).get('text') or '').strip()
+        if not text:
+            return [], self._yt_forget('no-cue', urgent=False)
+        self.yt_cue = text
+        self.yt_reason = 'has-cue'
+        return [('external:youtube:track', [text])], False
+
+    def _yt_forget(self, reason, urgent=False):
+        """The real track has nothing for us right now."""
+        if reason != self.yt_reason:
+            self.yt_reason = reason
+            log(f'YOUTUBE_TRACK_STATE reason={reason} urgent={str(urgent).lower()}')
+        if self.yt_cue:
+            self.yt_cue = ''
+        return urgent
+
+    def _youtube_video_id(self, hwnd, uia, UIA):
+        """The 11-character id of the video playing in this window, or ""."""
+        if not hwnd:
+            return ''
+        try:
+            import external_subs
+            import youtube_captions
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_CAPTIONS_UNAVAILABLE error={exc!r}')
+            return ''
+        try:
+            values = external_subs.edit_values(hwnd, uia, UIA)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_EDIT_VALUES_FAILED error={exc!r}')
+            return ''
+        for value in values:
+            try:
+                vid = youtube_captions.video_id_from_url(value)
+            except Exception:
+                vid = None
+            if vid:
+                return vid
+        return ''
+
+    def _youtube_time(self, hwnd, uia, UIA, duration):
+        """Where the video is, in seconds -- or None when it is not known.
+
+        None is NOT "the video is paused": it is "we do not know", and the
+        caller keeps the ASR running.
+        """
+        try:
+            import youtube_captions
+            return youtube_captions.player_time(uia, UIA, hwnd,
+                                                duration=duration)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_TIME_FAILED error={exc!r}')
+            return None
+
+    def _tick(self, got, yt_mode=False):
         now = time.monotonic()
         if got:
             source, lines = got[0]
@@ -1750,7 +2030,11 @@ class ExternalCaptionWatcher(threading.Thread):
                     self.shell.external_caption(line, source, final=True)
                     self.finalized = True
                 return
-        if self.last_line and (now - self.last_seen) >= self.RELEASE_S:
+        # A CAPTION TRACK BLINKS. The cues have gaps, and a gap is not "the
+        # player stopped": the real track waits much longer before it gives
+        # the microphone back, because every release costs a model load.
+        threshold = self.YT_RELEASE_S if yt_mode else self.RELEASE_S
+        if self.last_line and (now - self.last_seen) >= threshold:
             self._release('no-caption')
 
     def _release(self, reason):
@@ -5128,6 +5412,10 @@ class SottoShell:
         self.external_captions_active = False
         self.external_captions_available = False
         self.external_caption_watcher = None
+        #: THE YOUTUBE REAL TRACK (2026-10-19). Its own thread, because
+        #: `yt_dlp`'s metadata call took 5.0 s (MEASURED) and the caption
+        #: reader polls every 0.30 s.
+        self.youtube_track_thread = None
         self._external_parked = False
         self._vram_parked = False
         self.external_suppressed = 0
@@ -8152,6 +8440,12 @@ class SottoShell:
             return False
         self.external_caption_watcher = ExternalCaptionWatcher(self)
         self.external_caption_watcher.start()
+        # THE REAL TRACK, ON ITS OWN THREAD. It answers one question -- what
+        # is this video's own caption track -- and the watcher decides what
+        # the caption box shows.
+        if self.youtube_track_thread is None:
+            self.youtube_track_thread = YouTubeTrackThread(self)
+            self.youtube_track_thread.start()
         return True
 
     def start_click_watcher(self) -> bool:

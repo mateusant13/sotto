@@ -478,22 +478,94 @@ def _bottom_run(kept, band, max_lines=_MAX_LINES):
     return sorted(out)  # top line first, so the caption reads in order
 
 
+def _is_browser(proc):
+    """Is this process name a browser with an address bar?"""
+    p = str(proc or "").lower()
+    return ("chrome" in p or "msedge" in p or "firefox" in p)
+
+
+def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
+    """Which player this window is -- or "" for a window that is not one.
+
+    THE SOURCE IS A PROPERTY OF THE WINDOW, not of the lines found in it.
+    `caption_lines` decides the source and then looks for captions, so a
+    YouTube page whose lower band holds nothing but chrome returns NO lines
+    and the caller never learns it was looking at YouTube. The real-track
+    path needs exactly that: the WINDOW, not its text.
+
+    THE FOUR STATES OF THE CALLER ARE NOT THIS FUNCTION's BUSINESS. This one
+    only says WHICH PLAYER it is; whether that player has a caption track,
+    and what the caption is at this instant, is `youtube_captions`' work.
+    """
+    title = _window_title(hwnd)
+    proc = _process_name(hwnd)
+    if url is None:
+        url = ""
+        if uia is not None and UIA is not None:
+            if root is None:
+                try:
+                    root = uia.ElementFromHandle(hwnd)
+                except Exception:
+                    root = None
+            if root is not None and _is_browser(proc):
+                url = _address_bar_url(uia, UIA, root)
+    if "youtube" in title.lower() or _URL.search(url or ""):
+        return "external:youtube"
+    if "stremio" in title.lower() or "stremio" in proc:
+        return "external:stremio"
+    return ""
+
+
+def edit_values(hwnd, uia, UIA):
+    """Every Edit control's value in this window, in tree order.
+
+    WHY A LIST AND NOT "THE ADDRESS BAR". A Chromium window has SEVERAL Edit
+    controls: the address bar, the YouTube page's own search box, and
+    whatever else the page put on screen. `_address_bar_url` takes the first
+    one whose accessible name mentions an address and falls back to "search"
+    -- and in a Portuguese Chrome the address bar is called *"Pesquisar ou
+    digitar URL"*, so that fallback can land on the YouTube SEARCH BOX
+    instead. A video id must come from the address bar, so the caller wants
+    to see every value and pick the one that parses.
+
+    This function does not change `_address_bar_url`: the source detection
+    in `caption_lines` keeps the behaviour it was measured with.
+    """
+    out = []
+    try:
+        root = uia.ElementFromHandle(hwnd)
+    except Exception:
+        return out
+    if root is None:
+        return out
+    try:
+        cond = uia.CreatePropertyCondition(
+            UIA.UIA_ControlTypePropertyId, UIA.UIA_EditControlTypeId)
+        edits = root.FindAll(UIA.TreeScope_Descendants, cond)
+        for i in range(edits.Length):
+            e = edits.GetElement(i)
+            try:
+                p = e.GetCurrentPattern(
+                    UIA.UIA_ValuePatternId).QueryInterface(
+                        UIA.IUIAutomationValuePattern)
+                value = str(p.CurrentValue or "").strip()
+            except Exception:
+                continue
+            if value:
+                out.append(value)
+    except Exception:
+        pass
+    return out
+
+
 def caption_lines(hwnd, uia, UIA, trace=None):
     """[(source, [line1, line2])] for the window, or []."""
     root = uia.ElementFromHandle(hwnd)
     if root is None:
         _reset(hwnd)
         return []
-    title = _window_title(hwnd)
-    proc = _process_name(hwnd)
-    url = _address_bar_url(uia, UIA, root) if ("chrome" in proc or "msedge" in proc
-                                               or "firefox" in proc) else ""
-    source = None
-    if "youtube" in title.lower() or _URL.search(url or ""):
-        source = "external:youtube"
-    elif "stremio" in title.lower() or "stremio" in proc:
-        source = "external:stremio"
-    else:
+    source = player_source(hwnd, uia, UIA, root=root)
+    if not source:
         # ONLY a recognised player. A generic browser window has arbitrary
         # text at the bottom (a stream overlay read "600200M" as a caption);
         # claiming it would replace real speech with UI noise.

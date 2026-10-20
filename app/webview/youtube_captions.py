@@ -1,0 +1,1040 @@
+"""YOUTUBE CAPTIONS -- the video's REAL caption track, and the video's time.
+
+Owner, 2026-10-19: *"faz a legenda do youtube mostrar na tela em tempo real. se
+precisar pegar o tempo do video, faça."* and, before that: *"youtube ta
+mostrando texto burro da pagina inves da porra da legenda/transcriptino de um
+video"* and *"e nao e pra tu parar de transcrever audio do chrome. é audio do
+youtube CASO tenha legenda do youtube. se for um video sem legenda, vaio
+transcrever ao vivo igual."*
+
+WHAT THE OLD PATH READ, MEASURED
+--------------------------------
+`app/webview/external_subs.py` reads the text the YouTube page is PAINTING, via
+UI Automation. What arrived in the caption box on 2026-10-19 19:14-19:21 (the
+owner's own log, `_main/webview-run.log`) was page chrome, not the video's
+caption: `Oferta sujeita aos termos. Cancele quando quiser.`, `há 4 sem.`,
+`Principais noticias. ... ROADMAP DE PROGRAMACAO GRINGO ...`.
+
+This module does the OTHER thing: it asks YOUTUBE for the video's own caption
+track and asks the player where it is in the video. The two together are what
+"real-time caption" means -- the caption text of the video, at the instant the
+video is at.
+
+THE FOUR STATES, AND THE ONE THAT MATTERS
+------------------------------------------
+`TRACK_STATES` is the whole contract with the caller:
+
+    "has-track"        a caption covers the current instant -> SHOW IT
+    "no-track"         the video has NO caption track    -> KEEP THE ASR RUNNING
+    "no-cue-in-window" the track exists but this instant has no cue -> KEEP ASR
+    "time-unknown"     the instant is not known           -> KEEP ASR
+
+"no-track" IS THE IMPORTANT ONE. The owner's rule, verbatim: *"se for um video
+sem legenda, vaio transcrever ao vivo igual."* So "no-track" must never be
+confused with "has-track" -- the oracle proves that with an EXECUTED mutant.
+A `None` time means "I DO NOT KNOW WHEN THE VIDEO IS"; it does NOT mean "the
+video is stopped". A paused video and an unreadable player are different
+things and this module never pretends to know which one it is.
+
+MEASURED 2026-10-19 on this box (the numbers the code below is built on):
+
+* `yt_dlp` 2026.08.19 is installed. `extract_info` on a public video took
+  **5.0 s** and downloaded **no** media (`skip_download`). That is why the
+  track is CACHED ON DISK: the reader polls at ~3 Hz and must never ask
+  YouTube twice for the same video.
+* `dQw4w9WgXcQ` (213 s) carries MANUAL subtitles in 5 languages -- `de-DE`,
+  `en`, `es-419`, `ja`, `pt-BR` -- each with `json3` and `vtt`; and 160
+  AUTOMATIC-caption languages. `pt-BR`/`en` are the manual ones.
+* The manual `json3` (pt-BR) has **60 events**, every one of them shaped
+  `('dDurationMs', 'segs', 'tStartMs')`, e.g.
+  `{"tStartMs": 18640, "dDurationMs": 3240, "segs": [{"utf8": "Não somos
+  estranhos ao amor"}]}`.
+* The AUTOMATIC `json3` (en) has **104 events in FOUR shapes**:
+  `('dDurationMs','segs','tStartMs','wWinId')` x52,
+  `('aAppend','dDurationMs','segs','tStartMs','wWinId')` x43,
+  `('aAppend','segs','tStartMs','wWinId')` x8, and
+  `('dDurationMs','id','tStartMs','wpWinPosId','wsWinStyleId')` x1.
+  The last two shapes are the player's CAPTION-WINDOW bookkeeping, not
+  captions. MEASURED: every one of those 51 events carries **ZERO
+  characters** (they are newline-only or have no `segs` at all), so dropping
+  them loses **0%** of the text. The auto track therefore parses into 52 cues.
+* Each `utf8` may hold a `"\n"`, and the auto track's segments carry their own
+  leading space (`" no"`, `" strangers"`). Joining with a space would give
+  `"We're  no  strangers"`, so the segments are joined as they come and the
+  whitespace is normalised afterwards.
+* The `vtt` entry of an AUTOMATIC track is `protocol: m3u8_native`: the URL
+  returns an HLS PLAYLIST (measured: 396 B starting `#EXTM3U`), NOT a WebVTT
+  document. Parsing it as VTT would yield an EMPTY track and look like "this
+  video has no captions". The playlist is refused, not parsed.
+* The timedtext API REFUSES some tracks with HTTP 429. MEASURED
+  2026-10-19: the AUTOMATIC track of `as11Bbmgl08` answered 429 on every
+  format (json3, vtt, srv3, srv1), on every User-Agent and on every retry,
+  while the MANUAL track of `dQw4w9WgXcQ` answered 200 on all four. A
+  refused payload is NOT a verdict about the video: it is cached only for a
+  short back-off (`PAYLOAD_RETRY_TTL_S`), the retry asks for the TRACK again
+  without repeating the 5 s extract, and the caller keeps the live
+  transcription -- which is exactly what the owner asked for.
+* The player on this box that was open while this was written (a jwplayer)
+  exposes its time as ONE Text element, name `06:13 of 24:43` -- current of
+  total. THAT is the shape `player_time` looks for first.
+
+THE PLAYER'S CLOCK, MEASURED 2026-10-19 20:1x on a REAL YouTube window
+-----------------------------------------------------------------------
+The owner's own Chrome, a 28:33 video (`as11Bbmgl08`), UI Automation:
+
+    SLIDER  name="Botão deslizante de busca"   class="ytp-progress-bar"
+            value=407.0  min=0.0  max=1713.0
+            aria-valuetext="Edição de vídeo 6 Minutos 47 Segundos de 28
+                            Minutos 33 Segundos"
+    SLIDER  name="Volume"                       class="ytp-volume-panel"
+            value=48.0   min=0.0  max=100.0     aria-valuetext="48% volume"
+
+So, measured and not assumed:
+
+  * the seek bar IS a UIA **Slider**, and its RangeValue is in SECONDS --
+    407.0 at 6:47 -- and its MAXIMUM IS THE DURATION (1713.0 s = 28:33);
+  * the `aria-valuetext` is LOCALISED PROSE ("6 Minutos 47 Segundos de 28
+    Minutos 33 Segundos"), not "6:47 of 28:33". It is not parsed: the
+    numeric path is already exact, and the words are localised;
+  * the VOLUME is a SECOND slider, on a 0..100 scale, and a percent scale
+    must never be read as an instant. The sliders are SCORED and the seek
+    bar -- the one whose maximum is the video's length -- wins;
+  * the same window also paints the page chrome the old path was reading
+    ("29,1 mil inscritos", "há 3 h", "513 mil", "21 mil"): the video's
+    caption is NOT among them. That is the whole reason this module asks
+    YouTube for the track instead of reading the page.
+
+A player that shows only the TOTAL duration is not used as the current
+time: a bare clock equal to the known duration is the total, not the
+instant. And when nothing can be read with confidence, the answer is None
+-- which is NOT the same as "the video is stopped".
+
+THE CACHE
+---------
+`H:\sotto\_cache\youtube-captions\<video_id>.jsonl`, one JSON object per
+file. The `.jsonl` extension is already covered by `.gitignore` (`*.jsonl`), so
+a cached track can never enter a commit -- which matters here: the repo was
+burned on 2026-10-19 by a `git add -A` that pulled runtime output in. The
+folder is created on demand and may be deleted at any time; the next poll
+just refetches (5 s, once).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+
+#: THE CONTRACT WITH THE CALLER. Four states, no more.
+TRACK_STATES = ("has-track", "no-track", "no-cue-in-window", "time-unknown")
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+#: `H:\sotto` -- the product root (this file is `<root>/app/webview/<file>`).
+_ROOT = os.path.dirname(os.path.dirname(_HERE))
+
+#: The on-disk caption cache. One file per video id.
+CACHE_DIR = os.environ.get("SOTTO_YT_CACHE_DIR") or os.path.join(
+    _ROOT, "_cache", "youtube-captions")
+#: A video's caption track does not change. A week is generous.
+TRACK_TTL_S = 7 * 24 * 3600
+#: A video with NO track is re-checked sooner: the owner can switch a video
+#: to another one, and the owner can turn captions on in the player.
+NO_TRACK_TTL_S = 3600
+#: A payload the API REFUSED is retried on this cadence. MEASURED 2026-10-19:
+#: the timedtext API answers HTTP 429 for the AUTOMATIC track of one video
+#: (on every format, on every User-Agent, on every retry) while the MANUAL
+#: track of another serves 200 on all four. A short back-off keeps a 3 Hz
+#: reader from hammering YouTube, and a real recovery is picked up within
+#: the minute.
+PAYLOAD_RETRY_TTL_S = 60
+
+#: A YouTube video id is 11 URL-safe characters.
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+_URL_PATTERNS = (
+    re.compile(r"[?&]v=([A-Za-z0-9_-]{11})"),
+    re.compile(r"youtu(?:be\.com|\.be)/([A-Za-z0-9_-]{11})"),
+    re.compile(r"/(?:shorts|embed|live|v)/([A-Za-z0-9_-]{11})"),
+)
+
+#: A YouTube URL is a YouTube URL because of its HOST. `watch?v=` alone is
+#: not enough: every site on earth has a `?v=` parameter, and a caption
+#: track must never be asked for a video that is not on YouTube.
+_YOUTUBE_HOST_RE = re.compile(
+    r"(?i)(?:^|[\./])(?:www\.|m\.|music\.)?"
+    r"(?:youtube\.com|youtube-nocookie\.com|youtu\.be)(?:[/:?#]|$)")
+
+#: The payload formats this module can parse, in order.
+_EXT_PREFERENCE = ("json3", "vtt")
+
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+
+
+# ── the pure parts ───────────────────────────────────────────────────────────
+
+def video_id_from_url(url):
+    """The 11-char video id in a YouTube URL, or None.
+
+    `youtube.com/watch?v=ID`, `youtu.be/ID`, and the `/shorts/`, `/embed/`,
+    `/live/` paths are the same id in a different place.
+    """
+    text = str(url or "")
+    if not text or not _YOUTUBE_HOST_RE.search(text):
+        return None
+    for pat in _URL_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _join_segs(segs):
+    """The `segs` of one json3 event -> one line of text.
+
+    MEASURED: the auto track's segments carry their OWN leading space
+    (`" no"`, `" strangers"`), so joining them with a space gives
+    `"We're  no  strangers"` (double spaces). They are joined as they come
+    and the whitespace is normalised at the end. A segment that brings no
+    space of its own gets one, so two words never fuse.
+    """
+    out = ""
+    for seg in segs or ():
+        if not isinstance(seg, dict):
+            continue
+        piece = str(seg.get("utf8") or "")
+        if not piece:
+            continue
+        if out and not piece[:1].isspace() and not out[-1:].isspace():
+            out += " "
+        out += piece
+    # The whitespace is normalised here: the auto track's segments carry
+    # their own leading space, and a segment may hold a "\n" (MEASURED:
+    # "Você conhece as regras,\ne eu também"), which becomes a space.
+    out = re.sub(r"\s+", " ", out).strip()
+    return out
+
+
+def parse_json3(text):
+    """A json3 caption document -> cues `[{start, end, text}]`, in seconds.
+
+    The PLAYER-WINDOW EVENTS ARE NOT CAPTIONS and are dropped: an event that
+    carries `wpWinPosId` positions the auto-caption window, and an event
+    that carries `aAppend` appends to it. MEASURED on the real auto track
+    (104 events): all 51 of those events carry ZERO characters, so dropping
+    them loses nothing -- and the `aAppend` rule is what keeps a window
+    bookkeeping event out of the caption box.
+
+    An event with no `segs`, or whose text is empty, is dropped too.
+    """
+    try:
+        doc = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(doc, dict):
+        return []
+    events = [ev for ev in (doc.get("events") or []) if isinstance(ev, dict)]
+    starts = []
+    for ev in events:
+        t = ev.get("tStartMs")
+        starts.append(float(t) / 1000.0 if isinstance(t, (int, float)) else None)
+    cues = []
+    for i, ev in enumerate(events):
+        if "wpWinPosId" in ev or ev.get("aAppend"):
+            continue  # the player's window bookkeeping, not a caption
+        start = starts[i]
+        if start is None:
+            continue
+        segs = ev.get("segs")
+        if not isinstance(segs, list) or not segs:
+            continue
+        body = _join_segs(segs)
+        if not body:
+            continue
+        dur = ev.get("dDurationMs")
+        if isinstance(dur, (int, float)):
+            end = start + float(dur) / 1000.0
+        else:
+            # No duration: the cue runs until the next event starts.
+            nxt = next((s for s in starts[i + 1:] if s is not None), None)
+            end = nxt if nxt is not None else start + 2.0
+        if end <= start:
+            end = start + 0.001
+        cues.append({"start": round(start, 3), "end": round(end, 3), "text": body})
+    cues.sort(key=lambda c: (c["start"], c["end"]))
+    return cues
+
+
+_VTT_CUE_RE = re.compile(
+    r"^\s*(?:(\d{1,3}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})\s*-->\s*"
+    r"(?:(\d{1,3}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})")
+_VTT_TAG_RE = re.compile(r"<[^>]*>")
+
+
+def _hms_to_s(hours, minutes, seconds, millis):
+    return (int(hours or 0) * 3600 + int(minutes or 0) * 60 + int(seconds)
+            + int(millis) / 1000.0)
+
+
+def parse_vtt(text):
+    """A WebVTT caption document -> cues `[{start, end, text}]`, in seconds.
+
+    The `WEBVTT` header and the `NOTE`/`STYLE`/`REGION` blocks are skipped
+    (their first line is not a timing line), and the inline markup
+    (`<c>`, `<00:00:01.234>`) is stripped.
+    """
+    raw = str(text or "")
+    if "WEBVTT" not in raw:
+        return []
+    blocks = []
+    cur = []
+    for line in raw.splitlines():
+        if line.strip() == "":
+            if cur:
+                blocks.append(cur)
+                cur = []
+        else:
+            cur.append(line)
+    if cur:
+        blocks.append(cur)
+    cues = []
+    for block in blocks:
+        timing = None
+        for idx, line in enumerate(block):
+            m = _VTT_CUE_RE.match(line.strip())
+            if m:
+                timing = (m, idx)
+                break
+        if timing is None:
+            continue
+        m, idx = timing
+        g = m.groups()
+        start = _hms_to_s(g[0], g[1], g[2], g[3])
+        end = _hms_to_s(g[4], g[5], g[6], g[7])
+        if end <= start:
+            end = start + 2.0
+        body = " ".join(_VTT_TAG_RE.sub("", ln) for ln in block[idx + 1:])
+        body = re.sub(r"\s+", " ", body).strip()
+        if not body:
+            continue
+        cues.append({"start": round(start, 3), "end": round(end, 3), "text": body})
+    cues.sort(key=lambda c: (c["start"], c["end"]))
+    return cues
+
+
+def cue_at(cues, t):
+    """The cue that covers the instant `t`, or None.
+
+    A cue covers `[start, end)`. When cues OVERLAP -- and the automatic
+    track's do, because its durations span whole phrases -- the one that
+    STARTED LAST wins: that is the rolling caption the player is showing,
+    not the phrase that started before it.
+    """
+    if t is None:
+        return None
+    try:
+        t = float(t)
+    except (TypeError, ValueError):
+        return None
+    best = None
+    for cue in cues or ():
+        if not isinstance(cue, dict):
+            continue
+        try:
+            start = float(cue.get("start"))
+            end = float(cue.get("end"))
+        except (TypeError, ValueError):
+            continue
+        if end <= start:
+            continue
+        if start <= t < end:
+            if best is None or start > float(best.get("start", -1)):
+                best = cue
+    return best
+
+
+def state_for(track, t):
+    """Which of the four states the caller is in.
+
+    * `no-track`         -- there is nothing to show; KEEP THE ASR RUNNING.
+    * `time-unknown`     -- the instant is not known; that is NOT "paused".
+    * `has-track`        -- a cue covers the instant; show it.
+    * `no-cue-in-window` -- the track exists but this instant has no cue.
+    """
+    if not isinstance(track, dict) or track.get("state") != "has-track":
+        return "no-track"
+    if t is None:
+        return "time-unknown"
+    if cue_at(track.get("cues") or (), t) is not None:
+        return "has-track"
+    return "no-cue-in-window"
+
+
+def _lower_table(raw):
+    """A yt-dlp language table -> (lowercased keys, original spelling).
+
+    The key is matched case-insensitively ("PT-br" and "pt-BR" are the same
+    language) but the ORIGINAL spelling is what the caller is told, because
+    that is the language code YouTube itself uses.
+    """
+    table = {}
+    case = {}
+    for key, entries in (raw or {}).items():
+        low = str(key).lower()
+        if low not in table:
+            table[low] = entries
+            case[low] = str(key)
+    return table, case
+
+
+def _lang_keys(table, pref):
+    """The keys of `table` that answer to `pref`, exact first."""
+    exact = [pref] if pref in table else []
+    prefixed = sorted(k for k in table
+                       if k != pref and k.startswith(pref + "-"))
+    return exact + prefixed
+
+
+def _pick_entry(entries):
+    """The best caption entry of one language, or None.
+
+    `json3` first, `vtt` second. The `vtt` entry of an AUTOMATIC track is
+    `protocol: m3u8_native` -- an HLS PLAYLIST, not a WebVTT document
+    (MEASURED: 396 B starting `#EXTM3U`). Parsing that as VTT would yield an
+    empty track and read as "this video has no captions", so it is refused.
+    """
+    by_ext = {}
+    for entry in entries or ():
+        if not isinstance(entry, dict):
+            continue
+        ext = str(entry.get("ext") or "").lower()
+        if not ext or not entry.get("url"):
+            continue
+        by_ext.setdefault(ext, entry)
+    for ext in _EXT_PREFERENCE:
+        entry = by_ext.get(ext)
+        if entry is None:
+            continue
+        if str(entry.get("protocol") or "").lower() == "m3u8_native":
+            continue
+        return entry
+    return None
+
+
+def track_from_info(info, lang_prefs=("pt", "en")):
+    """A yt-dlp info dict -> the track to use, or None.
+
+    The LANGUAGE wins over the source: a video with a manual German track and
+    an automatic English one gives the owner the English one, because the
+    owner's language is the better caption. Within one language, a MANUAL
+    track wins over an automatic one.
+
+    `None` means THE VIDEO HAS NO TRACK AT ALL -- the one verdict that must
+    never be confused with "has a track".
+    """
+    if not isinstance(info, dict):
+        return None
+    manual, manual_case = _lower_table(info.get("subtitles") or {})
+    auto, auto_case = _lower_table(info.get("automatic_captions") or {})
+    prefs = [str(p).lower() for p in (lang_prefs or ()) if p]
+
+    def pick(table, case, source, key):
+        entry = _pick_entry(table.get(key))
+        if entry is None:
+            return None
+        return {"lang": case.get(key, key), "source": source,
+                "ext": str(entry.get("ext") or "").lower(),
+                "url": entry.get("url"), "name": entry.get("name")}
+
+    for pref in prefs:
+        for table, case, source in ((manual, manual_case, "manual"),
+                                    (auto, auto_case, "auto")):
+            for key in _lang_keys(table, pref):
+                found = pick(table, case, source, key)
+                if found:
+                    return found
+    for table, case, source in ((manual, manual_case, "manual"),
+                                (auto, auto_case, "auto")):
+        for key in sorted(table):
+            found = pick(table, case, source, key)
+            if found:
+                return found
+    return None
+
+
+# ── the disk cache ───────────────────────────────────────────────────────────
+
+def _cache_path(video_id):
+    return os.path.join(CACHE_DIR, "%s.jsonl" % video_id)
+
+
+def _ttl_for(result):
+    """How long this verdict is good for."""
+    if result.get("state") == "has-track":
+        return TRACK_TTL_S
+    if result.get("reason") == "payload-failed":
+        return PAYLOAD_RETRY_TTL_S
+    return NO_TRACK_TTL_S
+
+
+def _cache_read(video_id, allow_stale=False):
+    """The cached track for this video, or None (miss / expired / broken).
+
+    `allow_stale` returns an EXPIRED entry too, marked with `stale`: that is
+    how a refused payload is retried without repeating the 5 s extract.
+    """
+    try:
+        with open(_cache_path(video_id), "r", encoding="utf-8") as fh:
+            doc = json.loads(fh.read().strip() or "{}")
+    except Exception:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    ttl = _ttl_for(doc)
+    try:
+        fetched = float(doc.get("fetched_at") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    age = time.time() - fetched
+    if age > ttl and not allow_stale:
+        return None
+    doc["cached"] = True
+    doc["stale"] = age > ttl
+    return doc
+
+
+def _cache_write(video_id, result):
+    """Write the track cache atomically. A failure here is not fatal."""
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        path = _cache_path(video_id)
+        payload = {k: v for k, v in result.items()
+                   if k not in ("cached", "stale")}
+        # The temporary name ends in `.jsonl` too, so a crash cannot leave an
+        # untracked file in the repository.
+        tmp = os.path.join(CACHE_DIR, "%s.tmp.jsonl" % video_id)
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+# ── the network ──────────────────────────────────────────────────────────────
+
+class _NullLogger(object):
+    """yt-dlp's logger, silenced. The shell must not get yt-dlp's chatter."""
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        pass
+
+
+def _extract_info(video_id, timeout):
+    """yt-dlp's info dict for this video, or None.
+
+    `skip_download` + `download=False`: NO media is fetched, ever. Measured
+    5.0 s for the metadata of a public video.
+    """
+    try:
+        import yt_dlp
+    except Exception:
+        return None
+    params = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "socket_timeout": timeout,
+        "extractor_retries": 1,
+        "logger": _NullLogger(),
+    }
+    url = "https://www.youtube.com/watch?v=" + video_id
+    try:
+        with yt_dlp.YoutubeDL(params) as ydl:
+            return ydl.extract_info(url, download=False)
+    except Exception:
+        return None
+
+
+def _http_get(url, timeout):
+    """A GET as a string, or None."""
+    if not url:
+        return None
+    req = urllib.request.Request(url, headers={
+        "User-Agent": _UA,
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as fh:
+            return fh.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+
+
+def _fetch_payload(track, timeout):
+    """The track's payload -> (cues, error)."""
+    url = track.get("url")
+    ext = str(track.get("ext") or "").lower()
+    body = _http_get(url, timeout)
+    if body is None:
+        return [], "payload unreachable"
+    if ext == "json3":
+        if not body.lstrip().startswith("{"):
+            return [], "payload is not json3"
+        return parse_json3(body), None
+    if ext == "vtt":
+        if "WEBVTT" not in body:
+            return [], "payload is not WebVTT"
+        return parse_vtt(body), None
+    return [], "unsupported format: %s" % ext
+
+
+def _retry_payload(video_id, stale, timeout):
+    """The payload the API REFUSED, asked for again -- without the extract.
+
+    The 5 s yt-dlp extract is the expensive half; the caption track is a
+    few KB. So a refused payload is retried on the track alone.
+    """
+    result = dict(stale)
+    track = result.get("track") or {}
+    cues, err = _fetch_payload(track, timeout)
+    result["cues"] = cues
+    result["error"] = err
+    result["fetched_at"] = time.time()
+    result["cached"] = False
+    if cues:
+        result["state"] = "has-track"
+        result["reason"] = "ok"
+    else:
+        result["state"] = "no-track"
+        result["reason"] = "payload-failed"
+    _cache_write(video_id, result)
+    return result
+
+
+def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
+    """The video's caption track.
+
+    Returns a dict:
+
+        {"state": "has-track", "cues": [{"start", "end", "text"}, ...],
+         "lang": "pt-BR", "source": "manual"|"auto", ...}
+
+    or `{"state": "no-track", ...}` when the video has no caption track (or
+    the track turned out to be empty). "no-track" is the caller's signal to
+    KEEP THE ASR RUNNING. The extra keys (`reason`, `error`, `duration`,
+    `cached`) say WHY, so a failure is never read as a verdict.
+
+    The first call for a video is a network call and takes ~5 s (MEASURED);
+    every later call is a disk read. Call it OFF the UI thread.
+    """
+    vid = str(video_id or "").strip()
+    result = {
+        "state": "no-track", "cues": [], "lang": None, "source": None,
+        "ext": None, "video_id": vid, "duration": None, "reason": None,
+        "error": None, "cached": False, "fetched_at": 0.0,
+    }
+    if not _VIDEO_ID_RE.match(vid):
+        result["reason"] = "invalid-video-id"
+        result["error"] = "video id invalido: %r" % vid
+        return result
+    if use_cache:
+        cached = _cache_read(vid)
+        if cached is not None:
+            cached.pop("stale", None)
+            return cached
+        # A REFUSED payload is retried WITHOUT repeating the 5 s extract: the
+        # track and its signed URL are still in the cache, and only the few
+        # KB of the caption track have to be asked for again.
+        stale = _cache_read(vid, allow_stale=True)
+        if (stale and stale.get("reason") == "payload-failed"
+                and isinstance(stale.get("track"), dict)):
+            stale.pop("stale", None)
+            return _retry_payload(vid, stale, timeout)
+    info = _extract_info(vid, timeout)
+    if info is None:
+        # NOT cached: a failed extract is not a verdict about the video.
+        result["reason"] = "extract-failed"
+        result["error"] = "yt-dlp nao extraiu o video"
+        return result
+    duration = info.get("duration")
+    if isinstance(duration, (int, float)):
+        result["duration"] = float(duration)
+    track = track_from_info(info, lang_prefs)
+    result["fetched_at"] = time.time()
+    if track is None:
+        result["reason"] = "no-tracks-listed"
+        _cache_write(vid, result)
+        return result
+    result["lang"] = track.get("lang")
+    result["source"] = track.get("source")
+    result["ext"] = track.get("ext")
+    cues, err = _fetch_payload(track, timeout)
+    result["error"] = err
+    if not cues:
+        result["reason"] = "payload-failed" if err else "empty-track"
+        result["track"] = {"lang": track.get("lang"),
+                            "source": track.get("source"),
+                            "ext": track.get("ext"), "url": track.get("url")}
+        if not err:
+            _cache_write(vid, result)  # an empty track is a verdict
+        else:
+            # A REFUSED payload is not a verdict about the video: it is
+            # cached only for the short back-off, and it keeps the track so
+            # the retry does not repeat the extract.
+            _cache_write(vid, result)
+        return result
+    result["state"] = "has-track"
+    result["reason"] = "ok"
+    result["cues"] = cues
+    _cache_write(vid, result)
+    return result
+
+
+# ── the player's clock ───────────────────────────────────────────────────────
+
+_CLOCK_RE = re.compile(r"^\s*(?:(\d{1,3}):)?(\d{1,2}):(\d{2})\s*$")
+
+
+def _parse_clock(text):
+    """'M:SS' or 'H:MM:SS' -> seconds, or None."""
+    m = _CLOCK_RE.match(str(text or ""))
+    if not m:
+        return None
+    minutes = int(m.group(2))
+    seconds = int(m.group(3))
+    if minutes > 59 or seconds > 59:
+        return None
+    return int(m.group(1) or 0) * 3600 + minutes * 60 + seconds
+
+
+def _parse_time_pair(text):
+    """'M:SS of M:SS' (or '/') -> (current, total) in seconds, or None."""
+    raw = str(text or "").strip()
+    for sep in (" of ", "/"):
+        if sep in raw:
+            left, _, right = raw.partition(sep)
+            a = _parse_clock(left)
+            b = _parse_clock(right)
+            if a is not None and b is not None:
+                return (a, b) if a <= b else (b, a)
+    return None
+
+
+def _uia():
+    """The UI Automation root, or an exception the caller reports once."""
+    import comtypes
+    import comtypes.client
+    comtypes.CoInitialize()
+    comtypes.client.GetModule("UIAutomationCore.dll")
+    from comtypes.gen import UIAutomationClient as UIA
+    return UIA, comtypes.client.CreateObject(UIA.CUIAutomation)
+
+
+def _name(el):
+    try:
+        return str(el.CurrentName or "")
+    except Exception:
+        return ""
+
+
+def _class_name(el):
+    try:
+        return str(el.CurrentClassName or "")
+    except Exception:
+        return ""
+
+
+def _control_type_id(UIA, name, fallback):
+    """The control-type id, from the typelib when it has it.
+
+    MEASURED 2026-10-19 on this box's `UIAutomationClient`: the Slider is
+    `UIA_SliderControlTypeId` = **50015**. 50013 is the RADIO BUTTON, and a
+    query written with the wrong number returns an empty collection instead
+    of raising -- which would have made the seek-bar path silently dead.
+    """
+    try:
+        return int(getattr(UIA, name))
+    except Exception:
+        return fallback
+
+
+def _find_by_type(uia, UIA, root, control_type):
+    """The descendants of `root` with this control type."""
+    try:
+        cond = uia.CreatePropertyCondition(UIA.UIA_ControlTypePropertyId,
+                                           control_type)
+        return root.FindAll(UIA.TreeScope_Descendants, cond)
+    except Exception:
+        return None
+
+
+def _elements(coll):
+    if coll is None:
+        return
+    try:
+        length = int(coll.Length)
+    except Exception:
+        return
+    for i in range(length):
+        try:
+            yield coll.GetElement(i)
+        except Exception:
+            continue
+
+
+def _range_value(el, UIA):
+    """(value, minimum, maximum) of a RangeValue element, or (None,)*3."""
+    try:
+        pattern = el.GetCurrentPattern(UIA.UIA_RangeValuePatternId)
+        rp = pattern.QueryInterface(UIA.IUIAutomationRangeValuePattern)
+        return float(rp.CurrentValue), float(rp.CurrentMinimum), float(rp.CurrentMaximum)
+    except Exception:
+        return None, None, None
+
+
+def _value_text(el, UIA):
+    """The element's `aria-valuetext` (Chrome exposes it as ValueValue)."""
+    try:
+        return str(el.GetCurrentPropertyValue(UIA.UIA_ValueValuePropertyId) or "")
+    except Exception:
+        return ""
+
+
+def _slider_seconds(value, vmin, vmax, duration):
+    """The seek bar's value -> seconds, or None when the unit is unknowable.
+
+    The unit is DECIDED, not assumed:
+
+    * a span of 1.0 is a FRACTION of the video -> `value * duration`;
+    * a span of 100.0 is a PERCENT of the video -> `value/100 * duration`
+      (and only when the video is longer than the span, otherwise a seconds
+      reading is just as plausible and the honest answer is None);
+    * any other span is a SECONDS scale -> the value itself.
+
+    A candidate that lands outside the video is rejected: a wrong instant is
+    worse than no instant.
+    """
+    if value is None or vmin is None or vmax is None:
+        return None
+    span = vmax - vmin
+    if span <= 0:
+        return None
+    candidates = []
+    if duration:
+        d = float(duration)
+        if abs(span - 1.0) < 1e-6:
+            candidates.append((value - vmin) * d)
+        if abs(span - 100.0) < 1e-6 and d > 100.0:
+            candidates.append((value - vmin) / 100.0 * d)
+        candidates.append(value - vmin)
+    else:
+        if abs(span - 1.0) < 1e-6:
+            return None  # a fraction with no duration is not an instant
+        candidates.append(value - vmin)
+    for t in candidates:
+        if t < 0:
+            continue
+        if duration and t > float(duration) * 1.05:
+            continue
+        return t
+    return None
+
+
+def _time_from_text(uia, UIA, root, duration):
+    """The player's own clock, read from the Text elements."""
+    best = None
+    text_type = _control_type_id(UIA, "UIA_TextControlTypeId", 50020)
+    for el in _elements(_find_by_type(uia, UIA, root, text_type)):
+        name = _name(el).strip()
+        if not name:
+            continue
+        cls = _class_name(el).lower()
+        pair = _parse_time_pair(name)
+        if pair is not None:
+            current, total = pair
+            return {"t": float(current), "source": "text", "raw": name,
+                    "total": float(total), "cls": cls}
+        one = _parse_clock(name)
+        if one is None:
+            continue
+        if "time" not in cls:
+            continue
+        # A BARE clock is the current time only if it is NOT the total
+        # duration: the modern YouTube player shows ONLY the duration
+        # ('ytp-time-duration'), and a bare clock equal to the duration is
+        # the total, not the instant.
+        if duration is None:
+            continue
+        if abs(one - float(duration)) < 1.0:
+            continue
+        return {"t": float(one), "source": "text", "raw": name, "cls": cls}
+    return best
+
+
+def _time_from_slider(uia, UIA, root, duration):
+    """The player's clock, read from the seek bar.
+
+    MEASURED 2026-10-19 on a real YouTube window (the owner's own, a
+    28:33 video): the seek bar is a UIA **Slider**, name "Botão deslizante de
+    busca", class `ytp-progress-bar`, `value=407.0`, `min=0.0`,
+    `max=1713.0` -- 1713 s IS the length of that video, so the RangeValue is
+    in SECONDS and its maximum is the duration.
+
+    The page has a SECOND slider -- the volume, class `ytp-volume-panel`,
+    `value=48.0`, `max=100.0` -- and a percent scale must never be read as
+    an instant. So the sliders are SCORED and the seek bar is the one whose
+    maximum IS the video's length.
+    """
+    slider_type = _control_type_id(UIA, "UIA_SliderControlTypeId", 50015)
+    best = None
+    for el in _elements(_find_by_type(uia, UIA, root, slider_type)):
+        value, vmin, vmax = _range_value(el, UIA)
+        valuetext = _value_text(el, UIA)
+        pair = _parse_time_pair(valuetext)
+        cls = _class_name(el).lower()
+        score = 0
+        if duration and vmax:
+            d = float(duration)
+            if abs(vmax - d) <= max(1.0, 0.02 * d):
+                score += 4  # the seek bar: its maximum IS the video's length
+        if "progress" in cls:
+            score += 2  # MEASURED: YouTube's seek bar is `ytp-progress-bar`
+        if vmax and vmax > 100.0:
+            score += 1  # a video's length; the volume slider stops at 100
+        if pair is not None:
+            score += 1
+        if best is not None and score <= best[0]:
+            continue
+        t = None
+        source = None
+        if pair is not None:
+            t, source = float(pair[0]), "valuetext"
+        else:
+            t = _slider_seconds(value, vmin, vmax, duration)
+            source = "slider"
+        if t is None:
+            continue
+        best = (score, {"t": t, "source": source, "raw": valuetext,
+                        "slider": [value, vmin, vmax]})
+    return best[1] if best else None
+
+
+def player_time_detail(uia, UIA, hwnd, duration=None):
+    """Where the video is, and how that was decided.
+
+    `duration` is the video's length in seconds (from `fetch_track`). It is
+    what turns a percentage into an instant, and it is what tells a bare
+    clock (the player's TOTAL duration) from the current time.
+
+    Returns `{"t": float|None, "source": ..., "why": ...}`. `t` is None when
+    the instant is not known -- which is NOT the same as "the video is
+    stopped".
+    """
+    out = {"t": None, "source": None, "why": "", "raw": None, "total": None,
+           "slider": None}
+    try:
+        root = uia.ElementFromHandle(hwnd)
+    except Exception as exc:
+        out["why"] = "no-root (%s)" % type(exc).__name__
+        return out
+    if root is None:
+        out["why"] = "no-root"
+        return out
+    text_hit = _time_from_text(uia, UIA, root, duration)
+    slider_hit = _time_from_slider(uia, UIA, root, duration)
+    if text_hit is not None:
+        out.update(text_hit)
+        if slider_hit is not None and slider_hit.get("t") is not None:
+            if abs(float(text_hit["t"]) - float(slider_hit["t"])) > 1.5:
+                out["why"] = ("text and slider disagree: text=%s slider=%s"
+                              % (text_hit["t"], slider_hit["t"]))
+            else:
+                out["why"] = "text (the slider agrees: %s)" % slider_hit["t"]
+        else:
+            out["why"] = "text"
+        return out
+    if slider_hit is not None and slider_hit.get("t") is not None:
+        out.update(slider_hit)
+        out["why"] = slider_hit.get("source") or "slider"
+        return out
+    out["why"] = "no clock found (text and seek bar unreadable)"
+    return out
+
+
+def player_time(uia, UIA, hwnd, duration=None):
+    """The video's current instant in seconds, or None when it is unknown."""
+    detail = player_time_detail(uia, UIA, hwnd, duration=duration)
+    t = detail.get("t")
+    return None if t is None else float(t)
+
+
+# ── the probe ────────────────────────────────────────────────────────────────
+
+def _foreground_hwnd():
+    import ctypes
+    return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+
+
+def probe(seconds=8.0, interval=0.4, duration=None):
+    """Print what the player's clock says, poll by poll. Launches nothing."""
+    UIA, uia = _uia()
+    hwnd = _foreground_hwnd()
+    print("PROBE hwnd=%d" % hwnd, flush=True)
+    started = time.monotonic()
+    while time.monotonic() - started < seconds:
+        detail = player_time_detail(uia, UIA, hwnd, duration=duration)
+        print("PROBE t=%-10s source=%-9s raw=%-22r why=%s"
+              % (detail.get("t"), detail.get("source"), detail.get("raw"),
+                 detail.get("why")), flush=True)
+        time.sleep(interval)
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="YouTube's real caption track")
+    ap.add_argument("--probe", action="store_true",
+                    help="print the player's clock, poll by poll")
+    ap.add_argument("--seconds", type=float, default=8.0)
+    ap.add_argument("--duration", type=float, default=None,
+                    help="the video's length in seconds (from fetch_track)")
+    ap.add_argument("--track", default=None,
+                    help="print the track of this video id")
+    ap.add_argument("--url", default=None, help="the video id from a URL")
+    args = ap.parse_args(argv)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    if args.track:
+        vid = args.track
+        if args.url:
+            vid = video_id_from_url(args.url) or vid
+        track = fetch_track(vid)
+        summary = {k: v for k, v in track.items() if k != "cues"}
+        summary["n_cues"] = len(track.get("cues") or ())
+        summary["first_cues"] = (track.get("cues") or ())[:3]
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
+    if args.probe:
+        return probe(seconds=args.seconds, duration=args.duration)
+    ap.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

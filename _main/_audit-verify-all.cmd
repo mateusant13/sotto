@@ -217,6 +217,45 @@ if exist _main\external-caption-chrome-census.py (
   call :record external-caption-chrome-census !ERRORLEVEL!
 ) else ( call :record external-caption-chrome-census MISSING )
 
+
+echo === the YOUTUBE REAL TRACK, the MUTE, and the rule that the ASR is the base ===
+
+REM Three instruments for the owner's order of 2026-10-19: *"faz a legenda do
+REM youtube mostrar na tela em tempo real"*, *"youtube ta mostrando texto burro
+REM da pagina inves da porra da legenda/transcriptino de um video"* and *"e nao
+REM e pra tu parar de transcrever audio do chrome. e audio do youtube CASO
+REM tenha legenda do youtube. se for um video sem legenda, vaio transcrever ao
+REM vivo igual."*
+REM
+REM `youtube-captions-oracle.py` judges the READER: the video's OWN caption
+REM track (yt-dlp), the four states (has-track / no-track / no-cue-in-window /
+REM time-unknown), and the player's clock read from the real seek bar.
+REM
+REM `youtube-track-wiring-oracle.py` judges the WIRING: that the PAGE's own text
+REM never reaches the caption box for a YouTube window, that only a REAL cue
+REM ever stops the live transcription, and that a video with no caption track
+REM gives the microphone back. It builds FIVE broken copies of the shell and
+REM requires each one to turn an arm RED.
+REM
+REM `mute-audio-oracle.py` is the MUTE (owner, 2026-10-19, verbatim: *"se tu
+REM vai usar audio padrao pra testar qualquer coisa, muta"*). It was OUTSIDE
+REM this battery until now -- which is exactly how a gate rots in silence: it
+REM kept passing and it stopped being asked. Its arms restore the original
+REM volume in a `finally`, so a failed arm cannot leave the owner's speakers
+REM muted.
+if exist _main\youtube-captions-oracle.py (
+  python _main\youtube-captions-oracle.py > "%OUT%\youtube-captions.log" 2>&1
+  call :record youtube-captions !ERRORLEVEL!
+) else ( call :record youtube-captions MISSING )
+if exist _main\youtube-track-wiring-oracle.py (
+  python _main\youtube-track-wiring-oracle.py > "%OUT%\youtube-track-wiring.log" 2>&1
+  call :record youtube-track-wiring !ERRORLEVEL!
+) else ( call :record youtube-track-wiring MISSING )
+if exist _main\mute-audio-oracle.py (
+  python _main\mute-audio-oracle.py > "%OUT%\mute-audio.log" 2>&1
+  call :record mute-audio !ERRORLEVEL!
+) else ( call :record mute-audio MISSING )
+
 echo === the adversary lane's probes (corrected: the filters it wrote were RED-forever) ===
 if exist _main\_review-f1f3.py (
   python _main\_review-f1f3.py > "%OUT%\review-f1f3.log" 2>&1
