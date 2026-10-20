@@ -367,10 +367,14 @@ def run_mutants(src, store):
             continue
         caught += 1
         ordered = list(reds)
-        if expected in reds:
-            ordered = [expected] + [r for r in reds if r != expected]
+        # The expected claim is a SUBSTRING of an arm name, so the test is
+        # containment, not equality -- an equality test here would claim a claim
+        # "stayed GREEN" while the log above it names it as the one that broke.
+        hit = [r for r in reds if expected in r]
+        if hit:
+            ordered = hit + [r for r in reds if r not in hit]
         note = ''
-        if expected not in reds:
+        if not hit:
             note = ' (NOTE: the expected claim %r stayed GREEN -- something else broke)' % expected
         print('  GREEN mutant %-46s the mutation WAS APPLIED and the gate SAW it: %s%s'
               % (label, '; '.join(ordered[:3]), note))
