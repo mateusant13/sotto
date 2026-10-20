@@ -361,9 +361,9 @@ if exist _main\_strip-surface-oracle.py (
   call :control strip-surface-oracle !STEP_RC! "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS"
 ) else ( call :control strip-surface-oracle MISSING "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS" )
 if exist _main\_strip-stats-log-probe.py (
-  call :step strip-stats-log-budget 0 "_main\_strip-stats-log-probe.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats-log.log" python _main\_strip-stats-log-probe.py
-  call :control strip-stats-log-budget !STEP_RC! "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS"
-) else ( call :control strip-stats-log-budget MISSING "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" )
+  call :step always strip-stats-log-budget 0 "_main\_strip-stats-log-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats-log.log" python _main\_strip-stats-log-probe.py
+  call :skipped strip-stats-log-budget !STEP_RC! "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" "STRIP-LOG CONTROL SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped strip-stats-log-budget MISSING "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" "STRIP-LOG CONTROL SKIPPED" "VERDICT: SKIPPED" )
 if exist _main\_strip-reload-probe.py (
   call :step strip-hot-reload 0 "_main\_strip-reload-probe.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-reload.log" python _main\_strip-reload-probe.py
   call :record strip-hot-reload !STEP_RC!
@@ -377,9 +377,19 @@ if exist _main\_strip-restore-probe.py (
   call :record strip-geometry-restore !STEP_RC!
 ) else ( call :record strip-geometry-restore MISSING )
 if exist _main\_strip-stats-probe.py (
-  call :step strip-stats-wave 0 "_main\_strip-stats-probe.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats.log" python _main\_strip-stats-probe.py
-  call :record strip-stats-wave !STEP_RC!
-) else ( call :record strip-stats-wave MISSING )
+  call :step always strip-stats-wave 0 "_main\_strip-stats-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats.log" python _main\_strip-stats-probe.py
+  call :skipped strip-stats-wave !STEP_RC! "%OUT%\strip-stats.log" "STRIP-STATS VERDICT: GREEN" "STRIP-STATS VERDICT: SKIPPED"
+) else ( call :skipped strip-stats-wave MISSING "%OUT%\strip-stats.log" "STRIP-STATS VERDICT: GREEN" "STRIP-STATS VERDICT: SKIPPED" )
+REM The oracle of the two steps above: it proves the LOAD HONESTY of the shared
+REM decision (a page that does not come up in time is a SKIP with the numbers,
+REM a low ratio with both arms live is still a RED) and it runs FOUR broken copies
+REM of that decision which must all go RED. It launches NO shell and touches no
+REM audio device, so it is a plain gate and the cache may serve it -- its deps
+REM carry every file it reads, including the two gates it checks the wiring of.
+if exist _main\_strip-stats-load-oracle.py (
+  call :step strip-stats-load-oracle 0 "_main\_strip-stats-load-oracle.py;_main\_strip_stats_load.py;_main\_strip-stats-log-probe.py;_main\_strip-stats-probe.py" "%OUT%\strip-stats-load-oracle.log" python _main\_strip-stats-load-oracle.py
+  call :record strip-stats-load-oracle !STEP_RC!
+) else ( call :record strip-stats-load-oracle MISSING )
 
 echo === Alt+C, the only control: registration table, delivery+fallback+mutex, autostart ===
 if exist _main\_audit-hotkey-probe.py (
