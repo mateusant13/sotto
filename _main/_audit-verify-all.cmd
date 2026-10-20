@@ -332,6 +332,24 @@ if exist _main\yt-mirror-align-oracle.py (
   call :step red-as-expected-yt-mirror-align 1 "_main\yt-mirror-align-oracle.py;app\webview\youtube_captions.py" "%OUT%\yt-mirror-align-neg.log" python _main\yt-mirror-align-oracle.py --neg-arm
   call :expectred red-as-expected-yt-mirror-align !STEP_RC! "%OUT%\yt-mirror-align-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-yt-mirror-align MISSING "%OUT%\yt-mirror-align-neg.log" "NEG-ARM PASS" )
+REM ---------------------------------------------------------------------------
+REM O DELTA DA LANE DE DESIGN: a lane re-renderizava TODOS os shots sempre
+REM (medido: 13 min para 100 jobs, para produzir as MESMAS imagens).
+REM `shots-delta.py` decide, POR JOB, se os bytes de entrada e o output
+REM sao os MESMOS de antes: so o que mudou e re-renderizado. O portao e
+REM PURO (ficheiros num temporario; sem browser, sem rede, sem app, sem audio)
+REM e tem 19 arms + 11 mutantes.
+REM ---------------------------------------------------------------------------
+if exist _main\shots-delta-oracle.py (
+  call :step shots-delta-oracle 0 "_main\shots-delta-oracle.py;_main\_design-lane\shots-delta.py;_main\_design-lane\intake-shots.py" "%OUT%\shots-delta-oracle.log" python _main\shots-delta-oracle.py
+  call :record shots-delta-oracle !STEP_RC!
+) else ( call :record shots-delta-oracle MISSING )
+REM O BRACO NEGATIVO: os mutantes tem de virar um braco VERMELHO. rc=1 POR
+REM DESENHO (o `--neg-arm` REPROVA de proposito).
+if exist _main\shots-delta-oracle.py (
+  call :step red-as-expected-shots-delta-oracle 1 "_main\shots-delta-oracle.py;_main\_design-lane\shots-delta.py;_main\_design-lane\intake-shots.py" "%OUT%\shots-delta-oracle-neg.log" python _main\shots-delta-oracle.py --neg-arm
+  call :expectred red-as-expected-shots-delta-oracle !STEP_RC! "%OUT%\shots-delta-oracle-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-shots-delta-oracle MISSING "%OUT%\shots-delta-oracle-neg.log" "NEG-ARM PASS" )
 if exist _main\youtube-track-wiring-oracle.py (
   call :step youtube-track-wiring 0 "_main\youtube-track-wiring-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-track-wiring.log" python _main\youtube-track-wiring-oracle.py
   call :record youtube-track-wiring !STEP_RC!
