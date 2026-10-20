@@ -53,6 +53,20 @@ EXPECTED_KINDS = (
     'caption-observed', 'status-observed', 'caption-applied', 'status-applied',
     'caption-cleared', 'renderer-ready', 'page-error', 'pointer', 'transparency',
     'sotto:transparency', 'setStripOffset', 'sotto:setStripOffset',
+    # MEASURED 2026-10-20: the shell shipped SIX more kinds and this pin was
+    # left behind, so the arm reported them as `extra` -- while `missing=[]`,
+    # i.e. the product had lost NOTHING and the LIST was behind. The three
+    # handlers (and their `sotto:` aliases) live in the dispatch table at
+    # app/webview/sotto_webview.py:5307-5316:
+    #   'beginWindowDrag' / 'sotto:beginWindowDrag' -> '_begin_window_drag'
+    #   'setLiveEnabled'  / 'sotto:setLiveEnabled'  -> '_set_live_enabled'
+    #   'pause'           / 'sotto:pause'           -> '_pause_shell'
+    # The drag became NATIVE to the OS (the JS is now the fallback) and the
+    # live/pause switches came with it -- both deliberate, both documented in
+    # the product's own comments.
+    'beginWindowDrag', 'sotto:beginWindowDrag',
+    'setLiveEnabled', 'sotto:setLiveEnabled',
+    'pause', 'sotto:pause',
     'history-append', 'history-tail', 'history-search', 'history-root',
     'history-reveal', 'hide', 'toggle', 'quit', 'revive', 'info',
     'panel-surface', 'stats', 'lazy-asset',

@@ -155,6 +155,23 @@ diz NAO ou nao — porque os dois rc's sao o mesmo numero. E' por isso que a lin
 | 6 | **`hotkey-cycle-oracle.py`: a forma exacta da re-ancoragem (3 mutantes) fica para a fase de correccao**, mas o ficheiro **tem de continuar na lista da bateria** — `_main/aceitacao-dono.md:15` (A1) e `:49` (D4) citam-no e `_main/aceitacao-gate.py` exige que o instrumento citado exista e esteja listado. Logo: re-ancorar, **nunca remover**. | restricao do `aceitacao-gate` |
 | 7 | **Nenhum produto foi corrigido** (`app/webview/`, `app/panel/`, `worker/` intactos). | (b) nao ha defeito de produto; e nao se mexe no produto sem o Lead |
 
+### 5.1 ACTUALIZACAO DO LEAD (2026-10-20, depois desta classificacao)
+
+O Lead **re-mediu** a 2a bateria (a que dava 122/145 failed=23) e aplicou TRES das correccoes.
+O numero actual da 2a bateria e' **123/145, failed=22** — porque o `panel-hidden-at-startup-oracle.py`
+(#11) ja esta VERDE desde `fe3ef4b`, e nao porque as outras 21 tenham sido corrigidas.
+
+| vermelho | o que o Lead fez | medido depois |
+|---|---|---|
+| **#2** `neg-arm-falsifiability` | **O INSTRUMENTO PEDIA CONFIRMACAO AO LEAD. A CONFIRMACAO FOI DADA E A CORRECCAO FOI APLICADA.** `_main/model-spec-oracle.py` passou a devolver **0** quando um mutante nao e' apanhado (cumprindo o contrato que ele proprio escreve nas linhas 20-24 e a convencao do AGENTS.md: rc=1 por desenho, rc=0 = mutante sobreviveu); e `_main/audit-rows-negative-arm-falsifiability.py:146` passou a ler a convencao actual. | **VIVO** rc=1 (`NEG-ARM PASS -- mutants 2/2 caught`); **CEGO** (a comparacao forcada a `return True`) rc=0 (`NEG-ARM FAIL -- mutants 0/2 caught`, `THE ORACLE CANNOT SAY NO`) — **os dois rc's sao DIFERENTES**, que e' o que o arm queria provar. O falsificador inteiro: `VERDICT: PASS`, rc=0. Antes: `VERDICT: FAIL (1/3 labels matched)`. |
+| **#8/#9** `handler-map` (+neg) | O pin `EXPECTED_KINDS` foi re-ancorado nas 6 entradas novas. | normal: `VERDICT: PASS -- 7 check(s), 0 fail` (`the shipped table holds the page vocabulary (31 kind(s)) -- exact`); neg-arm: `VERDICT: PASS -- 9 check(s), 0 fail` — **os 3 mutantes continuam a ir a RED**. |
+| **#11** `panel hide gate at startup` | Ja nao e' vermelho: `fe3ef4b` semeou as flags no fake. | `VERDICT: PASS` (medido na corrida de 08:23). |
+
+**As outras 21 correccoes (a) continuam NAO aplicadas** — a tabela do §3 tem o plano exacto de cada
+uma. E a bateria PRINCIPAL continua a ser a prova de referencia: **84 passos, gate=59, control=9,
+skipped=1, expect-red=15, missing=0, failed=0 -> GREEN WITH 1 SKIPPED**, rc=0.
+
+
 ---
 
 ## 6. REGISTO DAS MEDICOES

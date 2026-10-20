@@ -143,7 +143,12 @@ def arm_r56(ctx):
         'blinded_neg_arm_rc': blind['rc'],
         'blinded_log_tail': blind_tail,
         'blinding_applied': blind_applied,
-        'cannot_say_no': not (neg['rc'] == 0 and blind['rc'] != 0),
+        # THE CONVENTION IS THE ORACLE'S OWN (`model-spec-oracle.py:20-24`): the
+        # negative arm exits 1 BY DESIGN when it finds the drift and 0 when it does
+        # NOT. The old reading (`neg rc == 0`) is the pre-2026-10-11 one, and it
+        # could not tell the two apart -- which is the very thing this arm exists
+        # to detect. MEASURED 2026-10-20.
+        'cannot_say_no': not (neg['rc'] == 1 and blind['rc'] == 0),
     }
 
 

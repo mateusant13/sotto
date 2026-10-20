@@ -147,7 +147,14 @@ def neg_arm():
             # say NO about a file whose anchor it did not find. Setup error.
             return EXIT_SETUP
         if not ok:
-            return EXIT_FAIL
+            # rc=0 = "a mutant was NOT caught" -- the contract this file writes in
+            # its OWN header (lines 20-24) and the convention the AGENTS.md states.
+            # MEASURED 2026-10-20: this line returned EXIT_FAIL (=1), which is the
+            # SAME number the pass-by-design path returns below, so the instrument
+            # could not tell "found the drift" from "did not find it" -- and the
+            # battery's :expectred (which asks for exactly 1) therefore passed a
+            # BLIND gate. A gate that cannot say NO is decoration.
+            return EXIT_PASS
         # rc=1 BY DESIGN: the negative arm is SUPPOSED to find the drift, so "found it"
         # is a non-zero exit -- the battery's :expectred recorder asks for exactly that.
         return 1
