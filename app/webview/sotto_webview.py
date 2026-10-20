@@ -8906,9 +8906,41 @@ class SottoShell:
         log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
         return self.start_worker('external-end')
 
+    #: THE FLAGS THAT MAKE A RUN A MEASUREMENT. A measurement measures the
+    #: PANEL or the SHELL -- its geometry, its edit mode, its outside click.
+    #: It does NOT measure the player's captions, and `--no-hotkey` is the
+    #: shell's OWN name for it: the help says "for MEASUREMENT runs", and a
+    #: real run cannot work without Alt+C.
+    MEASUREMENT_FLAGS = ('dump_dom', 'selftest', 'memory', 'no_hotkey',
+                         'exit_after', 'probe_stats', 'probe_outside_click',
+                         'probe_edit_mode')
+
+    def _is_measurement_run(self, args=None):
+        """The measurement flag this run carries, or '' for a normal run."""
+        args = args if args is not None else getattr(self, 'args', None)
+        for name in self.MEASUREMENT_FLAGS:
+            if getattr(args, name, False):
+                return name
+        return ''
+
     def start_external_caption_watcher(self):
         """Start the UIA reader once per process (normal runs only)."""
         if self.external_caption_watcher is not None:
+            return False
+        # A MEDICAO NAO MEDE AS LEGENDAS DO PLAYER. MEASURED 2026-10-20: the
+        # arm D of `_main/_strip-surface-probe.py` launched the shell with
+        # `--probe-edit-mode --exit-after 25`; the reader adopted the OWNER's
+        # YouTube window, started painting the caption lines, and that work
+        # starved the UI thread -- the edit probe (a 2 s timer) NEVER RAN and
+        # the arm died on its 70 s timeout. The same arm with the reader off
+        # ran the whole sequence and exited clean (`SHELL_EXIT rc=0
+        # reason=probe-edit-mode`).
+        #
+        # It is not only the arm: a measurement shell has no business
+        # polling the owner's browser three times a second.
+        measurement = self._is_measurement_run()
+        if measurement:
+            log(f'EXTERNAL_CAPTIONS_SKIPPED reason=measurement-run({measurement})')
             return False
         # THE EXTERNAL READER IS NOT THE WORKER. MEASURED 2026-10-18: launched
         # with SOTTO_NO_WORKER=1 the log said
