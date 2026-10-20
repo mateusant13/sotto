@@ -526,6 +526,68 @@ if exist _main\historico-vs-redux-probe.js (
   call :expectred red-as-expected-historico-gate-off !STEP_RC! "%OUT%\control-historico-gate-off.log" "RESULT: RED" "FAIL] no provisional draft reaches the transcript"
 ) else ( call :expectred red-as-expected-historico-gate-off MISSING "%OUT%\control-historico-gate-off.log" "RESULT: RED" "FAIL] no provisional draft reaches the transcript" )
 
+REM ---------------------------------------------------------------------------
+REM THE HISTORY SEARCH (owner, 2026-10-18/19, prompt #29, verbatim: *"a busca tem
+REM de ser extremamente inteligente"*). Three gates that PROVE the three layers
+REM -- literal / phonetic soundex / fuzzy Levenshtein, bounded -- and NONE of them
+REM was in this battery: a gate that is not in the battery rots in silence, which
+REM is exactly how the first `head` arm died.
+REM
+REM   search-oracle.py             the LIVE shell's search predicate, EXTRACTED by
+REM                                 `ast` (never re-implemented, never imported) and
+REM                                 judged arm by arm: literal wins, accents fold,
+REM                                 the sound layer, the bounded fuzzy layer, the
+REM                                 all-words guard, the per-layer caps -- plus the
+REM                                 real history store.
+REM   search-twin-parity.py        the live Python search and its JavaScript twin
+REM                                 must AGREE on every (line, query) pair.
+REM   panel-search-keyboard-oracle.py
+REM                                 the audit row F9 ("o campo de busca do painel nao
+REM                                 pode receber teclado") and the invariant over the
+REM                                 real run log.
+REM
+REM EACH OF THE THREE ALSO HAS AN EXECUTED NEGATIVE ARM: `--neg-arm` runs ONLY
+REM the mutants / the control, and exits 1 BY DESIGN (the negative arm has to
+REM fail). Each one therefore gets an EXPECT-RED step here: rc=1 PLUS the log
+REM carrying `NEG-ARM PASS`. A mutant that does not apply -- a missing or ambiguous
+REM anchor -- or one the gate cannot SEE, makes that step RED. That is the whole
+REM point: a gate that only knows how to agree is not a gate.
+REM
+REM HONEST NOTE ABOUT THE CORPUS (and it is NOT a secret): `search-oracle.py` and
+REM `search-twin-parity.py` judge the REAL history of this machine (`history\`),
+REM which the owner transcribes into WHILE this battery runs. It is DADO VIVO,
+REM not source, so it is NOT one of the deps below -- deps are FILES, and a
+REM directory that grows is not a file, so a fingerprint over it would lie about
+REM what was judged. Each oracle PRINTS the corpus it judged (lines, bytes,
+REM sha256), so whoever reads the log -- cached or not -- sees WHICH corpus
+REM produced that verdict, and the beacon says "(cached)" when the step was
+REM reused instead of re-judged.
+REM ---------------------------------------------------------------------------
+if exist _main\search-oracle.py (
+  call :step search-oracle 0 "_main\search-oracle.py;app\webview\sotto_webview.py" "%OUT%\search-oracle.log" python _main\search-oracle.py
+  call :record search-oracle !STEP_RC!
+) else ( call :record search-oracle MISSING )
+if exist _main\search-oracle.py (
+  call :step red-as-expected-search-oracle 1 "_main\search-oracle.py;app\webview\sotto_webview.py" "%OUT%\search-oracle-neg.log" python _main\search-oracle.py --neg-arm
+  call :expectred red-as-expected-search-oracle !STEP_RC! "%OUT%\search-oracle-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-search-oracle MISSING "%OUT%\search-oracle-neg.log" "NEG-ARM PASS" )
+if exist _main\search-twin-parity.py (
+  call :step search-twin-parity 0 "_main\search-twin-parity.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\search-twin-parity.log" python _main\search-twin-parity.py
+  call :record search-twin-parity !STEP_RC!
+) else ( call :record search-twin-parity MISSING )
+if exist _main\search-twin-parity.py (
+  call :step red-as-expected-search-twin-parity 1 "_main\search-twin-parity.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\search-twin-parity-neg.log" python _main\search-twin-parity.py --neg-arm
+  call :expectred red-as-expected-search-twin-parity !STEP_RC! "%OUT%\search-twin-parity-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-search-twin-parity MISSING "%OUT%\search-twin-parity-neg.log" "NEG-ARM PASS" )
+if exist _main\panel-search-keyboard-oracle.py (
+  call :step panel-search-keyboard 0 "_main\panel-search-keyboard-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js;app\panel\panel.html" "%OUT%\panel-search-keyboard.log" python _main\panel-search-keyboard-oracle.py
+  call :record panel-search-keyboard !STEP_RC!
+) else ( call :record panel-search-keyboard MISSING )
+if exist _main\panel-search-keyboard-oracle.py (
+  call :step red-as-expected-panel-search-keyboard 1 "_main\panel-search-keyboard-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js;app\panel\panel.html" "%OUT%\panel-search-keyboard-neg.log" python _main\panel-search-keyboard-oracle.py --neg-arm
+  call :expectred red-as-expected-panel-search-keyboard !STEP_RC! "%OUT%\panel-search-keyboard-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-panel-search-keyboard MISSING "%OUT%\panel-search-keyboard-neg.log" "NEG-ARM PASS" )
+
 echo === the heavy one LAST: loads the int8 model, opens NO device ===
 if exist _main\_audit-fresh-processor-probe.py (
   call :step fresh-processor-probe 0 "_main\_audit-fresh-processor-probe.py;worker\config.json;worker\sotto_worker.py;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\.gitattributes;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\audio_processor_config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\decoder.onnx;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\decoder.onnx.data;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\encoder.onnx;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\encoder.onnx.data;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\joint.onnx;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\joint.onnx.data;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\model_config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\README.md;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\silero_vad.onnx;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\tokenizer_config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\tokenizer.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\vocab.txt" "%OUT%\fresh-processor.log" python _main\_audit-fresh-processor-probe.py

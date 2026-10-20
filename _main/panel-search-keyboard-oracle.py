@@ -27,13 +27,30 @@ THAT IS NOW FIXED, and this oracle measures the fix where it can:
   * UNMEASURED, and said so: that a CHARACTER actually lands in the field. Nothing here typed into it --
     that needs the launch the owner stop order forbids. The residual is a keystroke test, not a wiring gap.
 
+THE LOG IS LIVE DATA, AND THIS FILE SAYS SO OUT LOUD. `_main/webview-run.log` is written by the app itself
+while it runs, so it grows and changes between two runs of this oracle. It is DADO VIVO, not source: it is
+therefore NOT one of the battery's `deps` (deps are FILES, and a growing log is a file that changes on its
+own -- the fingerprint would be a lie about what was judged). Every run prints the log it judged: how many
+bytes, how many POINTER_INTERACTIVE lines, and the sha256 of exactly those bytes.
+
 ARM 4 is the control: one line of a COPY of the log is rewritten so noactivate contradicts active, and the
 invariant must catch it -- otherwise arm 2 would only be counting lines. The real log is never modified.
+
+NEGATIVE ARM (executed, not decorative)
+    `--neg-arm` runs ONLY that control, and only the control: it proves that the invariant reader can see
+    a contradiction instead of counting lines. It exits 1 BY DESIGN (the negative arm has to fail) and
+    prints `NEG-ARM PASS` when the control did its job. A control that cannot seed its violation, or one
+    whose violation slips through, is a FAILURE and says so.
+
+Usage:
+    python _main/panel-search-keyboard-oracle.py            # the arms, rc=0 on PASS
+    python _main/panel-search-keyboard-oracle.py --neg-arm  # the control alone, rc=1 BY DESIGN
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -47,6 +64,14 @@ PANEL_JS = os.path.join(ROOT, "app", "panel", "panel.js")
 PANEL_HTML = os.path.join(ROOT, "app", "panel", "panel.html")
 LOG = os.path.join(ROOT, "_main", "webview-run.log")
 LINE = re.compile(r"POINTER_INTERACTIVE active=(\w+) click_through=(\w+) noactivate=(\w+)")
+
+EXIT_PASS = 0
+EXIT_FAIL = 1
+
+#: The anchor of the control: the line that says "active, and therefore click-through
+#: off and noactivate off". It is rewritten into the contradictory form.
+ANCHOR = "POINTER_INTERACTIVE active=true click_through=false noactivate=false"
+CONTRADICTION = "POINTER_INTERACTIVE active=true click_through=true noactivate=true"
 
 
 def parse(path):
@@ -68,9 +93,49 @@ def violations(rows):
     return bad
 
 
+def control(say):
+    """The control: one line of a COPY of the log made contradictory.
+
+    Returns True when the invariant reader caught the contradiction (the control
+    did its job), False otherwise. The real log is never modified.
+    """
+    workdir = os.path.join(tempfile.gettempdir(), "f9-keyboard")
+    os.makedirs(workdir, exist_ok=True)
+    mutant = os.path.join(workdir, "log-mutant.txt")
+    shutil.copyfile(LOG, mutant)
+    with open(mutant, encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+    hits = text.count(ANCHOR)
+    mutated = text.replace(ANCHOR, CONTRADICTION, 1)
+    if mutated == text:
+        say("  arm 4  CONTROL: could not seed a violation (no active=true line to mutate)")
+        return False
+    # How far the copy differs from the original: exactly ONE line, so there is no
+    # doubt about WHICH line the control patched.
+    before_lines = text.splitlines()
+    after_lines = mutated.splitlines()
+    changed = sum(1 for a, b in zip(before_lines, after_lines) if a != b)
+    changed += abs(len(before_lines) - len(after_lines))
+    with open(mutant, "w", encoding="utf-8", newline="") as handle:
+        handle.write(mutated)
+    caught = violations(parse(mutant))
+    say("  arm 4  CONTROL (one line of a COPY made contradictory): anchor matched %d line(s), "
+        "patched line #1, the copy differs from the original in %d line(s); violations caught=%d "
+        "(the original had %d)" % (hits, changed, len(caught), len(violations(parse(LOG)))))
+    os.remove(mutant)
+    if changed != 1:
+        say("  arm 4  CONTROL: the patch was NOT surgical -- the control is not testing what it claims")
+        return False
+    if not caught:
+        return False
+    return True
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.parse_args(argv)
+    parser.add_argument("--neg-arm", action="store_true",
+                        help="run ONLY the control; rc=1 BY DESIGN")
+    args = parser.parse_args(argv)
     say = print
     wrong = []
     with open(SHELL, encoding="utf-8") as handle:
@@ -79,6 +144,22 @@ def main(argv=None):
         panel_js = handle.read()
     with open(PANEL_HTML, encoding="utf-8") as handle:
         panel_html = handle.read()
+    with open(LOG, "rb") as handle:
+        log_bytes = handle.read()
+    log_sha = hashlib.sha256(log_bytes).hexdigest()
+
+    if args.neg_arm:
+        say("panel-search-keyboard-oracle -- NEGATIVE ARM: the control alone\n")
+        say("  log       : %s (%d B, sha256 %s)" % (os.path.basename(LOG), len(log_bytes), log_sha))
+        say("  note      : LIVE DATA -- the app writes this log while it runs, so the digest")
+        say("              above says WHICH log this verdict was taken over.\n")
+        ok = control(say)
+        say("")
+        say("VERDICT: NEG-ARM %s  control %s"
+            % ("PASS" if ok else "FAIL", "caught the contradiction" if ok else "DID NOT catch it"))
+        say("(rc=1 por design: the negative arm has to fail)")
+        return EXIT_FAIL if ok else EXIT_PASS
+
     say("panel-search-keyboard-oracle -- row F9 (files + the run log; no launch)")
 
     chain = {
@@ -98,7 +179,8 @@ def main(argv=None):
     truthy = sum(1 for a, _c, _n in rows if a == "true")
     falsy = sum(1 for a, _c, _n in rows if a == "false")
     bad = violations(rows)
-    say("  arm 2  the run log: %d POINTER_INTERACTIVE line(s), active=true %d, active=false %d, invariant violations %d" % (len(rows), truthy, falsy, len(bad)))
+    say("  arm 2  the run log: %d POINTER_INTERACTIVE line(s), active=true %d, active=false %d, invariant violations %d (log %d B, sha256 %s)"
+        % (len(rows), truthy, falsy, len(bad), len(log_bytes), log_sha))
     if not rows:
         wrong.append("arm 2: the log carries no POINTER_INTERACTIVE line at all")
     if truthy == 0 or falsy == 0:
@@ -115,25 +197,8 @@ def main(argv=None):
     if not declared:
         wrong.append("arm 3: the declared reason the box is inert (no writer) disappeared")
 
-    workdir = os.path.join(tempfile.gettempdir(), "f9-keyboard")
-    os.makedirs(workdir, exist_ok=True)
-    mutant = os.path.join(workdir, "log-mutant.txt")
-    shutil.copyfile(LOG, mutant)
-    with open(mutant, encoding="utf-8", errors="replace") as handle:
-        text = handle.read()
-    mutated = text.replace("POINTER_INTERACTIVE active=true click_through=false noactivate=false",
-                           "POINTER_INTERACTIVE active=true click_through=true noactivate=true", 1)
-    if mutated == text:
-        say("  arm 4  CONTROL: could not seed a violation (no active=true line to mutate)")
-        wrong.append("arm 4: no active=true line exists to mutate")
-    else:
-        with open(mutant, "w", encoding="utf-8", newline="") as handle:
-            handle.write(mutated)
-        caught = violations(parse(mutant))
-        say("  arm 4  CONTROL (one line of a COPY made contradictory): violations caught=%d" % len(caught))
-        if not caught:
-            wrong.append("arm 4: a contradictory line slipped through -- arm 2 counts lines, it does not read them")
-        os.remove(mutant)
+    if not control(say):
+        wrong.append("arm 4: a contradictory line slipped through -- arm 2 counts lines, it does not read them")
 
     say("")
     detail = (" -- the row is REFUTED as of this revision: the panel DOES receive activation while the"
