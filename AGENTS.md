@@ -191,17 +191,34 @@ undone. Three rules, both earned today:
    `external_subs.py`. Two product files were MISTO and are now pure CRLF
    (`app/panel/zip-overlay.css`, `app/webview/run-cmd-log-append.py`). **Never hand-edit
    `.gitattributes`: regenerate and re-verify.**
-6. **THE CENSUS OF GATES OUTSIDE THE BATTERY (2026-10-20).** This file names **40 instruments as
-   the PROOF of its own claims**. Measured: **8 were in the battery and 32 were not** — and of the
-   32, **10 are PURE** (read files only) and 22 launch the shell/browser/audio (legitimately
-   outside). The 10 pure ones are now IN the battery, each with an **executed `--neg-arm`** (rc=1
-   by design, "NEG-ARM PASS" in the log — the `:expectred` contract; the `:record`/rc=0 form would
-   pass a SURVIVING mutant as green). Two of them were **dying in silence**: `lang-id-oracle.py` and
-   `word-split-oracle.py` pointed at `worker/models/nemotron-3.5-asr-streaming-0.6b-int8`, a
+6. **THE CENSUS OF GATES OUTSIDE THE BATTERY (2026-10-20).** This file names **42 instruments as
+   the PROOF of its own claims**. **RE-MEASURED after this day's registrations: 19 are IN the
+   battery and 23 are still out** — and of the 23, only **6 are in-process** (proved by the second
+   battery, `instruments-battery.mjs`, whose own header says *"Launches NOTHING"* and whose run
+   reports `launches=0`): `app-target-oracle.py`, `canonical-producer-oracle.py`,
+   `emit-queue-bound-oracle.py`, `panel-hidden-at-startup-oracle.py`, `panel-row-identity-oracle.js`,
+   `run-cmd-exit-oracle.py`. The other 17 create a process (shell, worker, browser or audio) and
+   stay out **by design** — and that is now written down here, so it stops looking like an
+   omission. Every gate that came in was born with its negative arm **already executed** (rc=1 by
+   design, `NEG-ARM PASS` in the log — the `:expectred` contract; the `:record`/rc=0 form would
+   pass a SURVIVING mutant as green). **Two of them were dying in silence**: `lang-id-oracle.py`
+   and `word-split-oracle.py` pointed at `worker/models/nemotron-3.5-asr-streaming-0.6b-int8`, a
    directory that **does not exist** (the live model is `nemotron-3.5-asr-ptbr-onnx-int4`); they now
    read the dir from `worker/config.json` and pass 12/12. **The rule that follows: a gate that
    judges FILES goes in the battery; a gate that LAUNCHES stays out, and says so here; and a new
-   gate is born with its negative arm already executed.** Receipt: `_main/receipt-20261020-portoes-fora-da-bateria.md`.
+   gate is born with its negative arm already executed.** Receipt:
+   `_main/receipt-20261020-portoes-fora-da-bateria.md`.
+7. **A RED GATE IS NOT A VERDICT ABOUT THE PRODUCT (2026-10-20).** The second battery
+   (`instruments-battery.mjs`) is **RED in 23 of 145**, and that number was hidden: its runner
+   treated **every** `rc != 0` as a failure, so the 11 negative arms that exit **rc=1 BY DESIGN**
+   were counted as false reds, and the false reds **covered the real ones**. The runner now
+   separates the two: a negative arm must exit rc=0 or rc=1 (rc>=2 = broken), a normal entry must
+   exit rc=0, and a crash or an arm that reports its own failure is broken too. Measured: 0 false
+   reds, and 3 real reds were **stale anchors** (the code moved; the instrument no longer proved
+   anything) — those were fixed. **A red gate has to be classified before it is believed**: a stale
+   anchor is repo hygiene, a red *claim* is a product defect, and the two look identical until you
+   read what the instrument printed. Receipt:
+   `_main/receipt-20261020-portoes-fora-da-bateria.md`.
 
 ## CORRECTIONS 2026-10-07 (lane/docs) — every claim below was re-measured; see `_main/AGENTS-AUDIT.md`
 

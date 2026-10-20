@@ -28,62 +28,72 @@ O censo é feito por código, não a olho:
 Data da medição: **2026-10-20**. Instrumento: leitura directa do `AGENTS.md`,
 do `.cmd` e dos instrumentos.
 
-## O resultado
+## O resultado (medido 2026-10-20, **re-medido** depois dos registos do dia)
+
+Primeira medição, de manhã:
 
     instrumentos nomeados pelo AGENTS.md que EXISTEM : 40
       dentro da bateria                                :  8
       FORA da bateria                                  : 32
 
-    dos 32 que faltam:
-      PUROS  (leem ficheiros; cabem na bateria)        : 10
-      LANCA  (abrem o shell/browser/audio)             : 22
+**Re-medição depois de 11 portões entrarem na bateria (regra 1 do AGENTS.md: um
+grep é uma afirmação com prazo de validade):**
 
-**Os 22 que lançam estão legitimamente fora**: a bateria não pode abrir o
-shell do dono nem renderizar áudio. O que falta é dizer isso — hoje não está
-dito em lado nenhum, e por isso parece uma omissão.
+    instrumentos nomeados pelo AGENTS.md que EXISTEM : 42
+      dentro da bateria                                : 19
+      FORA da batalha                                   : 23
 
-**Os 10 puros é que são a lacuna real.** Nove deles são portões (o décimo,
-`_main/mute-audio.py`, é a *biblioteca* — o portão é `mute-audio-oracle.py`, e
-esse já está na bateria):
+    dos 23 que faltam:
+      IN-PROCESS (corridos pela 2a bateria, que nao lanca nada) :  6
+      criam um processo (shell/worker/browser/audio)           : 17
 
-    _main/_pythonnet-show-shadow-test.py
-    _main/lang-id-oracle.py
-    _main/model-spec-oracle.py
-    _main/panel-flash-contradiction-oracle.py
-    _main/per-app-source-plumbing-oracle.py
-    _main/redux-live-contract-oracle.js
-    _main/scope-leak-oracle.js
-    _main/vad-option-probe.py
-    _main/word-split-oracle.py
+Os 6 in-process que faltam:
 
-O caso mais gritante é o `scope-leak-oracle.js`: o `AGENTS.md` (regra 10)
-chama-lhe **"Gate for the whole directory"** das folhas de tema — e não
-corria em nenhuma bateria. É o portão que apanhou o vazamento de `--font-serif`
-e `--w-op` para os temas 1/2/4/5.
+    _main/app-target-oracle.py
+    _main/canonical-producer-oracle.py
+    _main/emit-queue-bound-oracle.py
+    _main/panel-hidden-at-startup-oracle.py
+    _main/panel-row-identity-oracle.js
+    _main/run-cmd-exit-oracle.py
 
-## O que se fez
+**A prova de "in-process" e empirica, nao estatistica:** a segunda bateria
+(`_main/instruments-battery.mjs`) corre esses instrumentos dentro do processo e o
+seu proprio resumo diz `launches=0`. A lista completa da segunda bateria e o
+que separa "corre sem lancar nada" de "lanca o shell".
 
-A lane C (`_main/lang-id-oracle.py`, `_main/model-spec-oracle.py`,
-`_main/scope-leak-oracle.js`, `_main/panel-flash-contradiction-oracle.py`,
-`_main/per-app-source-plumbing-oracle.py`, `_main/redux-live-contract-oracle.js`,
-`_main/word-split-oracle.py`, `_main/vad-option-probe.py`) deu a cada um deles
-um `--neg-arm` **executado** — mutantes textuais de âncoras únicas, com o
-protocolo de honestidade: uma âncora que não existe ou que existe mais do que
-uma vez é **decorativa** e o portão recusa-se a contá-la; um mutante que
-carrega mas não muda nada é reportado como **SURVIVED**; o `--neg-arm` só dá
-PASS se *todos* os mutantes declarados foram aplicados **e** vistos.
+Os 17 restantes criam um processo e ficam fora **por desenho** — a bateria nao
+pode abrir o shell do dono nem renderizar audio. O que faltava era dizer isso —
+agora esta escrito no `AGENTS.md` (regra 6), para deixar de parecer uma omissao.
 
-O registo na bateria é do Lead, porque o `.cmd` é CRLF puro e é um ficheiro
+## A CORRECAO INICIAL (a lane C)
+
+A lane C deu a cada um dos 8 portoes puros um `--neg-arm` **executado** —
+mutantes textuais de ancoras unicas, com o protocolo de honestidade: uma ancora
+que nao existe ou que existe mais do que uma vez e **decorativa** e o portao
+recusa-se a conta-la; um mutante que carrega mas nao muda nada e reportado como
+**SURVIVED**; o `--neg-arm` so da PASS se *todos* os mutantes declarados foram
+aplicados **e** vistos.
+
+O registo na bateria e do Lead, porque o `.cmd` e CRLF puro e e um ficheiro
 com muitos escritores.
 
-## A regra que fica
+## A SEGUNDA BATERIA ESTAVA VERMELHA -- E O RUIMO TAPAVA O SINAL
 
-* Um portão que julga **ficheiros** entra na bateria.
-* Um portão que **lança** o shell, o browser ou o áudio, não entra — e passa a
-  estar nomeado no `AGENTS.md` como "fora da bateria, e porquê", para deixar
-  de parecer uma omissão.
-* Um portão fora da bateria **precisa de um `--neg-arm` executado** na mesma
-  altura em que é criado. É o que distingue um portão de uma decoração.
+`node _main/instruments-battery.mjs` dava **`SUMMARY: 122/145 ... failed=23`**.
+O runner (linha 227) tratava **qualquer** `rc != 0` como falha, e as **11**
+entradas com `--neg-arm` que saem **rc=1 POR DESENHO** (o braco negativo tem de
+falhar) eram contadas como vermelhas. Os falsos vermelhos **tapavam** os reais.
+
+Corrigido: um braco negativo tem de sair rc=0 ou rc=1 (rc>=2 = partido), uma
+entrada normal tem de sair rc=0, e um crash ou um braco que diz no proprio
+veredicto que esta partido tambem conta. Resultado medido: **0 falsos
+vermelhos**, e 3 dos reais eram **ancoras velhas** (o codigo moveu-se, o
+instrumento ja nao provava nada) — corrigidas.
+
+**A LECAO, e e a regra que fica:** *um portao vermelho tem de ser CLASSIFICADO
+antes de ser acreditado.* Uma ancora velha e higiene de repo; um *claim* rojo
+e um defeito do produto. As duas coisas sao iguais ate se ler o que o
+instrumento imprimiu.
 
 ## Verificação
 
