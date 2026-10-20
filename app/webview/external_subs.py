@@ -225,6 +225,29 @@ def _name(el):
         return ""
 
 
+def _class_name(el):
+    """The element's CSS class, as UI Automation reports it ("" when absent).
+
+    Chrome exposes the page's own class attribute. The video element is
+    `html5-video-player ytp-trans`. THE CLASS IS THE STABLE SIGNAL: the
+    element's NAME is the interface's translation of it ("Player de video do
+    YouTube" in pt-BR), and that changes with the language, while the class
+    is the player's own markup and does not.
+    """
+    try:
+        return str(el.CurrentClassName or "")
+    except Exception:
+        return ""
+
+
+def _descendants(uia, root):
+    """Every descendant element of `root`, or None when the tree refuses."""
+    try:
+        return root.FindAll(0x4, uia.CreateTrueCondition())  # Descendants
+    except Exception:
+        return None
+
+
 def _control_type(el):
     try:
         return int(el.CurrentControlType)
@@ -273,19 +296,95 @@ def _address_bar_url(uia, UIA, root):
     return ""
 
 
-def _player_rect(uia, root, window_rect):
-    """The biggest Group/Pane inside the window; the window itself if none.
+#: The class of the REAL video element on a YouTube page.
+#:
+#: MEASURED 2026-10-20 in the owner's own window (Chrome, hwnd 1710572,
+#: title "New top local AI image generator is here! - YouTube - Google
+#: Chrome"): the accessibility tree carries
+#:   class="html5-video-player ytp-trans"  name="Player de video do YouTube"
+#:   rect=(16, 189, 1354, 942)
+#: and beside it `html5-video-container` and `video-stream html5-main-vide`
+#: with the same rect.
+_VIDEO_CLASS = "html5-video-player"
+
+
+def _video_player_rect(uia, root, window_rect, all_el=None):
+    """The rect of the REAL video element, or None when the page has none.
+
+    WHY THIS EXISTS (MEASURED 2026-10-20). `_player_rect` used to answer
+    "the biggest element in the window", and on a YouTube page that answer
+    is the PAGE: the measured window (-8, -8, 1928, 1040) produced the rect
+    (0, 121, 1905, 4107) -- y=4107 is BELOW the window's own bottom edge
+    (1040), because the accessibility tree carries the whole scrolled
+    document, and the biggest element was `ytd-page-manager` (area
+    7 486 650). The caption band was then 121 + (4107-121)*0.62 = 2592.32,
+    which is inside the COMMENTS section, and the reader collected comments
+    and recommended-video titles instead of captions.
+
+    THE VIDEO ELEMENT IS IN THE SAME TREE, and it is where the captions
+    are: (16, 189, 1354, 942) gives the band 189 + (942-189)*0.62 = 655.86
+    .. 942, which is where YouTube PAINTS the caption.
+
+    None means "this page has no video element" -- Stremio, and any other
+    player -- and the caller falls back to the old heuristic.
+    """
+    if all_el is None:
+        all_el = _descendants(uia, root)
+    if all_el is None:
+        return None
+    wx0, wy0, wx1, wy1 = window_rect
+    best = None
+    best_area = 0
+    try:
+        for i in range(all_el.Length):
+            e = all_el.GetElement(i)
+            if _VIDEO_CLASS not in _class_name(e).lower():
+                continue
+            r = _rect(e)
+            if not r:
+                continue
+            w = r[2] - r[0]
+            h = r[3] - r[1]
+            if w < 40 or h < 40:
+                continue
+            # The element has to be ON the window: a video scrolled out of
+            # sight is not being watched.
+            if r[2] <= wx0 or r[0] >= wx1 or r[3] <= wy0 or r[1] >= wy1:
+                continue
+            area = w * h
+            if area > best_area:
+                best_area = area
+                best = r
+    except Exception:
+        return None
+    return best
+
+
+def _player_rect(uia, root, window_rect, all_el=None):
+    """The VIDEO's rect when the page has one; else the biggest Group/Pane.
 
     `uia` WAS NOT A PARAMETER until 2026-10-17: the name below resolved to a
     global that does not exist, so this raised NameError, the bare
     `except Exception` swallowed it, and every run fell through to the WINDOW
     rect. The x-bounds half of the player filter was therefore inert and the
     band ran to the bottom of the browser window, not the bottom of the video.
+
+    THE BIGGEST ELEMENT IS NOT THE PLAYER (MEASURED 2026-10-20). On the
+    owner's YouTube page the biggest element is the PAGE (`ytd-page-manager`,
+    area 7 486 650), and the band computed from it (2592.32) sits in the
+    COMMENTS. So the REAL video element wins when the page has one -- that
+    is what `_video_player_rect` is for -- and the old heuristic is kept for
+    the pages that have no video element at all (Stremio, and the rest).
     """
+    video = _video_player_rect(uia, root, window_rect, all_el)
+    if video:
+        return video
     best = None
     best_area = 0
+    all_el = all_el if all_el is not None else _descendants(uia, root)
+    if all_el is None:
+        return window_rect
     try:
-        all_el = root.FindAll(0x4, uia.CreateTrueCondition())  # Descendants
         for i in range(all_el.Length):
             e = all_el.GetElement(i)
             r = _rect(e)
@@ -478,6 +577,36 @@ def _bottom_run(kept, band, max_lines=_MAX_LINES):
     return sorted(out)  # top line first, so the caption reads in order
 
 
+def _visible_windows():
+    """[(hwnd, title, proc)] for every VISIBLE top-level window.
+
+    Split out of `find_player_window` so the choice of window can be TESTED
+    against a synthetic list of windows, on any machine, with no window
+    opened and nothing read off the owner's screen.
+    """
+    out = []
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return out
+    user32 = ctypes.windll.user32
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def _enum(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        h = int(hwnd)
+        out.append((h, _window_title(h), _process_name(h)))
+        return True
+
+    try:
+        user32.EnumWindows(_enum, 0)
+    except Exception:
+        return out
+    return out
+
+
 def find_player_window():
     """A PLAYER window among the OPEN ones, or 0.
 
@@ -491,46 +620,64 @@ def find_player_window():
     appeared after the owner CLICKED his browser, which is not a thing the
     product may ask of him.
 
-    THE TITLE IS THE TEST, and it is the same test `player_source` uses
-    ("youtube" / "stremio" in the title). The window must be VISIBLE: a
-    minimised window is not being watched.
+    THE WINDOW MUST BE A PLAYER, and "a window whose TITLE says youtube" is
+    NOT the same thing (MEASURED 2026-10-20, the census of 19 visible
+    windows): the owner's own File Explorer was titled
+    "kicktwitchyoutube_instagram - Explorador de Arquivos" -- the word
+    "youtube" was part of a FOLDER NAME -- and it was classified as a
+    YouTube player and returned by this function. Adopting it meant reading
+    the file list as if it were a caption, and the video id never came
+    (`edit_values` returned ['_tools', ..., 'Pasta de arquivos', ...]), so
+    the app LOST the real YouTube caption.
+
+    So the test is `_window_is_player` -- the same test `player_source`
+    uses -- and a window that is not a player is never returned, whatever
+    its title says. The first PLAYER wins (z-order), which is the behaviour
+    this function always had, with the false positives taken out.
 
     Returns the window handle, or 0.
     """
-    try:
-        import ctypes
-        from ctypes import wintypes
-    except Exception:
-        return 0
-    user32 = ctypes.windll.user32
-    found = []
-
-    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-    def _enum(hwnd, _lparam):
-        if not user32.IsWindowVisible(hwnd):
-            return True
-        buf = ctypes.create_unicode_buffer(512)
-        try:
-            user32.GetWindowTextW(hwnd, buf, 512)
-        except Exception:
-            return True
-        title = (buf.value or "").strip().lower()
-        if "youtube" in title or "stremio" in title:
-            found.append(int(hwnd))
-            return False
-        return True
-
-    try:
-        user32.EnumWindows(_enum, 0)
-    except Exception:
-        return 0
-    return found[0] if found else 0
+    for hwnd, title, proc in _visible_windows():
+        if _window_is_player(title, proc):
+            return int(hwnd)
+    return 0
 
 
 def _is_browser(proc):
     """Is this process name a browser with an address bar?"""
     p = str(proc or "").lower()
     return ("chrome" in p or "msedge" in p or "firefox" in p)
+
+
+def _window_is_player(title, proc, url=""):
+    """Which player this window is -- "" when it is not one.
+
+    A TITLE ALONE PROVES NOTHING (MEASURED 2026-10-20). The owner's own
+    File Explorer was titled "kicktwitchyoutube_instagram - Explorador de
+    Arquivos" -- "youtube" was a FOLDER NAME -- and the old title-only test
+    called it a YouTube player. The reader adopted it, read the file list
+    as if it were a caption, and the video id never came, so the app lost
+    the REAL YouTube caption.
+
+    A TITLE IS EVIDENCE ONLY IN A BROWSER: a player's title is the TAB's
+    title, and a tab only exists in a browser. The URL is the stronger
+    proof -- it names the video -- and it counts whatever the process is.
+
+    THE ORDER MATTERS: the URL first, because it is the strongest proof
+    and because a folder called "youtube" must never outvote it.
+    """
+    t = str(title or "").lower()
+    p = str(proc or "").lower()
+    if _URL.search(str(url or "")):
+        return "external:youtube"
+    if "youtube" in t and _is_browser(p):
+        return "external:youtube"
+    if "stremio" in p:
+        # The PROCESS is Stremio, whatever the window is called.
+        return "external:stremio"
+    if "stremio" in t and _is_browser(p):
+        return "external:stremio"
+    return ""
 
 
 def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
@@ -545,6 +692,10 @@ def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
     THE FOUR STATES OF THE CALLER ARE NOT THIS FUNCTION's BUSINESS. This one
     only says WHICH PLAYER it is; whether that player has a caption track,
     and what the caption is at this instant, is `youtube_captions`' work.
+
+    The test itself is `_window_is_player`, and it is the same test
+    `find_player_window` uses: a title proves a player only in a BROWSER,
+    and the URL proves it whatever the process is.
     """
     title = _window_title(hwnd)
     proc = _process_name(hwnd)
@@ -558,11 +709,7 @@ def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
                     root = None
             if root is not None and _is_browser(proc):
                 url = _address_bar_url(uia, UIA, root)
-    if "youtube" in title.lower() or _URL.search(url or ""):
-        return "external:youtube"
-    if "stremio" in title.lower() or "stremio" in proc:
-        return "external:stremio"
-    return ""
+    return _window_is_player(title, proc, url)
 
 
 def edit_values(hwnd, uia, UIA):
@@ -625,13 +772,12 @@ def caption_lines(hwnd, uia, UIA, trace=None):
     if wx1 <= wx0 or wy1 <= wy0:
         _reset(hwnd)
         return []
-    px0, py0, px1, py1 = _player_rect(uia, root, (wx0, wy0, wx1, wy1))
-    band_top = py0 + (py1 - py0) * 0.62
-    try:
-        all_el = root.FindAll(0x4, uia.CreateTrueCondition())
-    except Exception:
+    all_el = _descendants(uia, root)
+    if all_el is None:
         _reset(hwnd)
         return []
+    px0, py0, px1, py1 = _player_rect(uia, root, (wx0, wy0, wx1, wy1), all_el)
+    band_top = py0 + (py1 - py0) * 0.62
     band = _band_rows(all_el, px0, py0, px1, py1, band_top)
     cand = {}
     for key, row in band.items():
