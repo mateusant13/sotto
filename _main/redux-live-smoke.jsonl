@@ -1,0 +1,13 @@
+{"type": "status", "state": "boot", "engine": "onnx", "producer": "redux", "window_s": 5.0, "step_s": 1.0}
+{"type": "status", "state": "model-loading", "engine": "onnx", "model": "parakeet-redux-onnx-int4"}
+{"type": "status", "state": "model-loaded", "engine": "onnx", "model": "onnx-int4", "load_s": 1.47, "rss_mb": 502.9}
+{"type": "status", "state": "capture-started", "device": "file:pt-br-sample.wav", "api": null, "rung": "file", "rate": 16000, "block": 1600}
+{"model": "onnx-int4", "type": "caption", "text": "O rádio anunciou que a ponta", "start": 0.0, "end": 2.1, "final": false, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interdida.", "start": 0.0, "end": 4.5, "final": false, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.2, "final": false, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "O rádio anunciou que a ponte sobre o rio vai ser interditada na próxima segunda-feira.", "start": 0.0, "end": 8.2, "final": true, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "Os moradores precisam de um caminho alternativo para...", "start": 8.2, "end": 12.7, "final": false, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho. O rádio anunciou", "start": 8.2, "end": 16.1, "final": false, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "Os moradores precisam de um caminho alternativo para chegar ao trabalho. O rádio anunciou", "start": 8.2, "end": 16.1, "final": true, "producer": "redux"}
+{"model": "onnx-int4", "type": "caption", "text": "que a ponte sobre o rio vai ser interditada na praia.", "start": 16.1, "end": 20.5, "final": true, "producer": "redux"}
+{"type": "status", "state": "done", "engine": "onnx", "model": "onnx-int4", "verdict": "captions-emitted", "exit": 0, "captions": 8, "finals": 3, "lines": 3, "passes": 5, "overruns": 5, "mean_compute_s": 3.678, "max_compute_s": 4.465, "effective_step_s": 4.465, "audio_s": 20.5, "peak": 0.575854, "blocks": 244, "device": "file:pt-br-sample.wav", "ledger": [], "denials": [], "rss_mb": 608.5, "peak_rss_mb": 608.5, "worker_revision": {"module": "sotto_worker", "path": "H:\\sotto\\worker\\sotto_worker.py", "bytes": 237489, "sha256": "29e4cbfa71c1ac6de5fa1c051c0fffd63b1bc28e6ae214d52fc27aae56380ea9"}}

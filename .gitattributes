@@ -22,6 +22,7 @@
 # O default: o indice ja guarda LF para tudo (o autocrlf normaliza).
 * text=auto eol=lf
 
+.gitattributes                                             text eol=lf
 .gitignore                                                 text eol=lf
 /*.cmd                                                     text eol=crlf
 /*.js                                                      text eol=lf
@@ -63,6 +64,7 @@ _main/focus-timeline-D-title-summary.json                  text eol=lf
 _main/focus-timeline-E-reasons-summary.json                text eol=lf
 _main/focus-timeline-oracle.json                           text eol=lf
 _main/focus-title-oracle.json                              text eol=lf
+_main/*.jsonl                                              text eol=crlf
 _main/*.md                                                 text eol=lf
 _main/AGENTS-AUDIT.md                                      text eol=crlf
 _main/ALTC-DELIVERY.md                                     text eol=crlf

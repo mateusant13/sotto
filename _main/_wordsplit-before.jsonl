@@ -1,0 +1,24 @@
+{"type": "status", "state": "selftest-start", "audio": "pt-br-sample.wav", "audio_s": 15.0, "chunks": 26}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio", "start": 0.56, "end": 1.12, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou", "start": 0.56, "end": 1.68, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que", "start": 0.56, "end": 2.24, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre", "start": 0.56, "end": 2.8, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o", "start": 0.56, "end": 3.36, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai", "start": 0.56, "end": 3.92, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser", "start": 0.56, "end": 4.48, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada", "start": 0.56, "end": 5.04, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada na", "start": 0.56, "end": 5.6, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada na próx", "start": 0.56, "end": 6.16, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada na próx ima", "start": 0.56, "end": 6.72, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada na próx ima segunda-feira", "start": 0.56, "end": 7.28, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada na próx ima segunda-feira .  Os", "start": 0.56, "end": 8.96, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores", "start": 8.96, "end": 9.52, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "rádio anunciou que a ponte sobre o vai ser interditada na próx ima segunda-feira .  Os", "start": 0.56, "end": 8.96, "final": true}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci", "start": 8.96, "end": 10.08, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci m de", "start": 8.96, "end": 10.64, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci m de um caminho", "start": 8.96, "end": 11.2, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci m de um caminho alternativo", "start": 8.96, "end": 12.32, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci m de um caminho alternativo para chegar", "start": 8.96, "end": 13.44, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci m de um caminho alternativo para chegar ao trabalho", "start": 8.96, "end": 14.0, "final": false}
+{"model": "nemotron-3.5-asr-streaming-0.6b-int8", "type": "caption", "text": "moradores preci m de um caminho alternativo para chegar ao trabalho", "start": 8.96, "end": 14.0, "final": true}
+{"type": "status", "state": "selftest-done", "text": "rádio anunciou que a ponte sobre o vai ser interditada na próxima segunda-feira.  Os moradores precim de um caminho alternativo para chegar ao trabalho", "empty": false, "tokens": 70, "labels_pruned": 0, "text_chars": 151, "text_truncated": false, "audio_s": 14.56, "infer_wall_s": 12.696, "rtf": 0.872, "frames": 252, "blanks": 182, "blank_frac": 0.7222, "empty_chunks": 6, "vad_gated_chunks": 0, "music_gated_chunks": 0, "gate": "off", "peak_rss_mb": 2051.1}

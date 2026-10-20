@@ -40,6 +40,15 @@ history/
 *.stdout
 *.pid
 
+# The evidence FIXTURES of two gates are the exception: they are small
+# (12,6 KB no total) and they are INPUT, not a record of a run. A gate whose
+# fixture is not versioned fails on a fresh clone for a reason that has
+# nothing to do with the product -- and "a gate that is not in the battery
+# rots in silence" becomes "a gate whose fixture rots in silence".
+!_main/redux-live-smoke.jsonl
+!_main/_wordsplit-before.jsonl
+!_main/_wordsplit-after.jsonl
+
 # _main/ holds the oracles (tracked) AND their captures. Only the captures go.
 _main/*.txt
 _main/*.png

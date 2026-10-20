@@ -177,6 +177,31 @@ undone. Three rules, both earned today:
    painted; only `--dump-dom` answers where.** Its new `controls` key prints `viewport_w` beside every
    number so the two instruments can never be read as one. `--dump-dom` shows **no window** and starts
    **no worker**, so it is cheap to run.
+5. **THE EOL OF THE REPO IS A RULE NOW, NOT A WISH (2026-10-20).** Measured: the repo had
+   **no `.gitattributes`** and `core.autocrlf=true`, so a `git checkout` on this box delivered
+   **CRLF to EVERY text file** (9/9 representative files) — which destroys the convention this
+   file states (`_main/*.py` = LF) and moves the sha of everything byte-pinned. Census by bytes
+   over 2 296 tracked text files: **CRLF 712, LF 1510, MISTO 68**. `.gitattributes` now exists and
+   is **GENERATED from the measured state** (`_main/_make-gitattributes.py --write`), so a checkout
+   reproduces the working tree byte-for-byte instead of imposing a policy. **The gate is
+   `_main/_gitattributes-verify.py`** (in the battery): it materialises a REAL checkout and compares
+   every terminator — 2 228 identical, 68 MISTO normalised to the dominant (declared per file),
+   **0 divergent**, and `git status` identical. Rules are **anchored** (`/*.cmd`, `app/webview/*.py`)
+   because a pattern without a separator matches at every level — `*.py` would have put CRLF into
+   `external_subs.py`. Two product files were MISTO and are now pure CRLF
+   (`app/panel/zip-overlay.css`, `app/webview/run-cmd-log-append.py`). **Never hand-edit
+   `.gitattributes`: regenerate and re-verify.**
+6. **THE CENSUS OF GATES OUTSIDE THE BATTERY (2026-10-20).** This file names **40 instruments as
+   the PROOF of its own claims**. Measured: **8 were in the battery and 32 were not** — and of the
+   32, **10 are PURE** (read files only) and 22 launch the shell/browser/audio (legitimately
+   outside). The 10 pure ones are now IN the battery, each with an **executed `--neg-arm`** (rc=1
+   by design, "NEG-ARM PASS" in the log — the `:expectred` contract; the `:record`/rc=0 form would
+   pass a SURVIVING mutant as green). Two of them were **dying in silence**: `lang-id-oracle.py` and
+   `word-split-oracle.py` pointed at `worker/models/nemotron-3.5-asr-streaming-0.6b-int8`, a
+   directory that **does not exist** (the live model is `nemotron-3.5-asr-ptbr-onnx-int4`); they now
+   read the dir from `worker/config.json` and pass 12/12. **The rule that follows: a gate that
+   judges FILES goes in the battery; a gate that LAUNCHES stays out, and says so here; and a new
+   gate is born with its negative arm already executed.** Receipt: `_main/receipt-20261020-portoes-fora-da-bateria.md`.
 
 ## CORRECTIONS 2026-10-07 (lane/docs) — every claim below was re-measured; see `_main/AGENTS-AUDIT.md`
 
@@ -255,7 +280,7 @@ the byte counts that bullet quotes — `encoder-model.onnx` 343841943, `decoder_
 | claim in this file | measured 2026-10-07 |
 |---|---|
 | worker `173388 B`; shell `4326 lines` | worker **236802 B / 4511 lines**, shell **276894 B / 5679 lines** (`H:\sotto-wt\ArbV8`; product root 246517 B / 397180 B) |
-| `_audit-verify-all.cmd` "len=18595, 337 CRLF / 0 bare LF, sha256 `9DA38ECF…`" | **26692 B / 456 CRLF / 0 bare LF, sha `038B5167…`** (worktree); **32203 B / 538 CRLF / 0 bare LF, sha `EBF715E9…`** (`H:\sotto`); **RE-MEASURED 2026-10-12: 32637 B / 538 CRLF / 0 bare LF, sha `035CD13288966F5265CB0126F2544CE9D56099E1EA90466911D506E3BD9CA6AB`** — the Lead added one `REM` line and changed one command line in the battery that day (the autostart step), so size and hash moved while the CRLF property HELD; this correction was itself caught by `_main/agents-md-pins-oracle.py`, the gate that now re-measures both pins on every run |
+| `_audit-verify-all.cmd` "len=18595, 337 CRLF / 0 bare LF, sha256 `9DA38ECF…`" | **26692 B / 456 CRLF / 0 bare LF, sha `038B5167…`** (worktree); **32203 B / 538 CRLF / 0 bare LF, sha `EBF715E9…`** (`H:\sotto`); **RE-MEASURED 2026-10-12: 32637 B / 538 CRLF / 0 bare LF, sha `035CD13288966F5265CB0126F2544CE9D56099E1EA90466911D506E3BD9CA6AB`** — the Lead added one `REM` line and changed one command line in the battery that day (the autostart step), so size and hash moved while the CRLF property HELD; this correction was itself caught by `_main/agents-md-pins-oracle.py`, the gate that now re-measures both pins on every run; **RE-MEASURED 2026-10-20: 74953 B / 1024 CRLF / 0 bare LF, sha `D0CD9484B43887A4D31DDF1EC8D05149FA4BFC2B405208071B92D8468914D682`** — the battery grew by 486 B / 72 CRLF that day, and the CAUSE is worth keeping because it is the whole point of the pin: **11 steps were added, every one of them a gate that was OUTSIDE the battery** (3 search gates + their 3 expect-red arms, the design-lane delta gate, the `.gitattributes` gate, the pins gate itself, and 8 pure gates named by this file). The CRLF property HELD (1024 CRLF / 0 bare LF). And the pin was RED when it was measured — the doc carried the 2026-10-12 size while the file had moved twice since. That is the rot this bullet is about, caught by the gate that this file had claimed was in the battery for seven days **and was not** (see below) |
 | `app/panel/` module list | also holds `history-gallery.js`, `package.json`, `_fonts/`, `fonts/` |
 | `worker/models/…{int4,int8,fp16}/` "the three exports" | **9 dirs** in `H:\sotto`, incl. `fp32`, both parakeet dirs, and two `qwen*` dirs |
 
@@ -298,7 +323,7 @@ now **fails the build** unless the table owns it. Measured after the fix: unscop
 `display: inline` at equal specificity because `panel-designs.css` is the LAST stylesheet the panel loads,
 so the forming line's tail marker was hidden in themes 1/2/4/5. **Never hand-edit these files** — regenerate;
 and the generator was proven current first: a scratch run reproduced all 7 shipped outputs byte-for-byte, and
-re-running it changed 0 outputs. **Gate for the whole directory:** `node _main/scope-leak-oracle.js` (8
+re-running it changed 0 outputs. **Gate for the whole directory:** `node _main/scope-leak-oracle.js` (**9**
 stylesheets, every selector member rooted at a theme scope; `--neg-arm` = 4 mutants RED + control GREEN),
 because the two older gates cover `theme-{1..5}.css` ONLY — which is exactly how the leaking file stayed
 unguarded. Accept BOTH scope forms: `:root[data-theme='theme-3']` and `:root[data-theme^='cine-']` (a

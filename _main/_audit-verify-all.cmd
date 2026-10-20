@@ -363,6 +363,94 @@ if exist _main\_gitattributes-verify.py (
   call :step gitattributes-verify 0 "_main\_gitattributes-verify.py;_main\_make-gitattributes.py;.gitattributes" "%OUT%\gitattributes-verify.log" python _main\_gitattributes-verify.py
   call :record gitattributes-verify !STEP_RC!
 ) else ( call :record gitattributes-verify MISSING )
+REM ---------------------------------------------------------------------------
+REM O PORTAO DOS PINOS DO AGENTS.md. O proprio AGENTS.md diz (linha ~767):
+REM "It is now in the battery ... a gate that is not in the battery is a
+REM gate that rots in silence, and this one rotted in silence for seven
+REM days". MEDIDO 2026-10-20: era FALSO -- 0 ocorrencias do nome aqui.
+REM E o portao estava VERMELHO: o AGENTS.md carregava o tamanho antigo
+REM deste ficheiro. O portao mede o `run.cmd --help` (o pre-flight, que
+REM nao abre janela) e os bytes deste .cmd, e exige que o AGENTS.md os
+REM carregue. Um pin que parte porque o codigo cresceu e um pin A FAZER
+REM O SEU TRABALHO; um pin que parte porque ninguem correu o portao e
+REM podrao.
+REM ---------------------------------------------------------------------------
+if exist _main\agents-md-pins-oracle.py (
+  call :step agents-md-pins 0 "_main\agents-md-pins-oracle.py;app\webview\run.cmd;_main\_audit-verify-all.cmd;AGENTS.md" "%OUT%\agents-md-pins.log" python _main\agents-md-pins-oracle.py
+  call :record agents-md-pins !STEP_RC!
+) else ( call :record agents-md-pins MISSING )
+if exist _main\lang-id-oracle.py (
+  call :step lang-id-oracle 0 "_main\lang-id-oracle.py;worker\lang_prompt.py;worker\sotto_worker.py;worker\config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json;docs\model-specs\original\fp16\languages.json;worker\assets\sample1.flac" "%OUT%\lang-id-oracle.log" python _main\lang-id-oracle.py
+  call :record lang-id-oracle !STEP_RC!
+) else ( call :record lang-id-oracle MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\lang-id-oracle.py (
+  call :step red-as-expected-lang-id-oracle 1 "_main\lang-id-oracle.py;worker\lang_prompt.py;worker\sotto_worker.py;worker\config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json;docs\model-specs\original\fp16\languages.json;worker\assets\sample1.flac" "%OUT%\lang-id-oracle-neg.log" python _main\lang-id-oracle.py --neg-arm
+  call :expectred red-as-expected-lang-id-oracle !STEP_RC! "%OUT%\lang-id-oracle-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-lang-id-oracle MISSING "%OUT%\lang-id-oracle-neg.log" "NEG-ARM PASS" )
+if exist _main\model-spec-oracle.py (
+  call :step model-spec-oracle 0 "_main\model-spec-oracle.py;worker\config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json;docs\model-specs\original\fp16\languages.json" "%OUT%\model-spec-oracle.log" python _main\model-spec-oracle.py
+  call :record model-spec-oracle !STEP_RC!
+) else ( call :record model-spec-oracle MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\model-spec-oracle.py (
+  call :step red-as-expected-model-spec-oracle 1 "_main\model-spec-oracle.py;worker\config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json;docs\model-specs\original\fp16\languages.json" "%OUT%\model-spec-oracle-neg.log" python _main\model-spec-oracle.py --neg-arm
+  call :expectred red-as-expected-model-spec-oracle !STEP_RC! "%OUT%\model-spec-oracle-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-model-spec-oracle MISSING "%OUT%\model-spec-oracle-neg.log" "NEG-ARM PASS" )
+if exist _main\scope-leak-oracle.js (
+  call :step scope-leak 0 "_main\scope-leak-oracle.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\themes\fonts.css;app\panel\themes\cinematic.css" "%OUT%\scope-leak.log" node _main\scope-leak-oracle.js
+  call :record scope-leak !STEP_RC!
+) else ( call :record scope-leak MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\scope-leak-oracle.js (
+  call :step red-as-expected-scope-leak 1 "_main\scope-leak-oracle.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\themes\fonts.css;app\panel\themes\cinematic.css" "%OUT%\scope-leak-neg.log" node _main\scope-leak-oracle.js --neg-arm
+  call :expectred red-as-expected-scope-leak !STEP_RC! "%OUT%\scope-leak-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-scope-leak MISSING "%OUT%\scope-leak-neg.log" "NEG-ARM PASS" )
+if exist _main\panel-flash-contradiction-oracle.py (
+  call :step panel-flash-contradiction 0 "_main\panel-flash-contradiction-oracle.py;AGENTS.md" "%OUT%\panel-flash-contradiction.log" python _main\panel-flash-contradiction-oracle.py
+  call :record panel-flash-contradiction !STEP_RC!
+) else ( call :record panel-flash-contradiction MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\panel-flash-contradiction-oracle.py (
+  call :step red-as-expected-panel-flash-contradiction 1 "_main\panel-flash-contradiction-oracle.py;AGENTS.md" "%OUT%\panel-flash-contradiction-neg.log" python _main\panel-flash-contradiction-oracle.py --neg-arm
+  call :expectred red-as-expected-panel-flash-contradiction !STEP_RC! "%OUT%\panel-flash-contradiction-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-panel-flash-contradiction MISSING "%OUT%\panel-flash-contradiction-neg.log" "NEG-ARM PASS" )
+if exist _main\per-app-source-plumbing-oracle.py (
+  call :step per-app-source-plumbing 0 "_main\per-app-source-plumbing-oracle.py;worker\sotto_worker.py" "%OUT%\per-app-source-plumbing.log" python _main\per-app-source-plumbing-oracle.py
+  call :record per-app-source-plumbing !STEP_RC!
+) else ( call :record per-app-source-plumbing MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\per-app-source-plumbing-oracle.py (
+  call :step red-as-expected-per-app-source-plumbing 1 "_main\per-app-source-plumbing-oracle.py;worker\sotto_worker.py" "%OUT%\per-app-source-plumbing-neg.log" python _main\per-app-source-plumbing-oracle.py --neg-arm
+  call :expectred red-as-expected-per-app-source-plumbing !STEP_RC! "%OUT%\per-app-source-plumbing-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-per-app-source-plumbing MISSING "%OUT%\per-app-source-plumbing-neg.log" "NEG-ARM PASS" )
+if exist _main\redux-live-contract-oracle.js (
+  call :step redux-live-contract 0 "_main\redux-live-contract-oracle.js;app\panel\caption-formulation.js;app\panel\panel.js;_main\redux-live-smoke.jsonl" "%OUT%\redux-live-contract.log" node _main\redux-live-contract-oracle.js
+  call :record redux-live-contract !STEP_RC!
+) else ( call :record redux-live-contract MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\redux-live-contract-oracle.js (
+  call :step red-as-expected-redux-live-contract 1 "_main\redux-live-contract-oracle.js;app\panel\caption-formulation.js;app\panel\panel.js;_main\redux-live-smoke.jsonl" "%OUT%\redux-live-contract-neg.log" node _main\redux-live-contract-oracle.js --neg-arm
+  call :expectred red-as-expected-redux-live-contract !STEP_RC! "%OUT%\redux-live-contract-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-redux-live-contract MISSING "%OUT%\redux-live-contract-neg.log" "NEG-ARM PASS" )
+if exist _main\word-split-oracle.py (
+  call :step word-split-oracle 0 "_main\word-split-oracle.py;worker\sotto_worker.py;_main\word-split-trace.json;_main\_wordsplit-before.jsonl;_main\_wordsplit-after.jsonl;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\vocab.txt" "%OUT%\word-split-oracle.log" python _main\word-split-oracle.py
+  call :record word-split-oracle !STEP_RC!
+) else ( call :record word-split-oracle MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\word-split-oracle.py (
+  call :step red-as-expected-word-split-oracle 1 "_main\word-split-oracle.py;worker\sotto_worker.py;_main\word-split-trace.json;_main\_wordsplit-before.jsonl;_main\_wordsplit-after.jsonl;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\vocab.txt" "%OUT%\word-split-oracle-neg.log" python _main\word-split-oracle.py --neg-arm
+  call :expectred red-as-expected-word-split-oracle !STEP_RC! "%OUT%\word-split-oracle-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-word-split-oracle MISSING "%OUT%\word-split-oracle-neg.log" "NEG-ARM PASS" )
+if exist _main\vad-option-probe.py (
+  call :step vad-option-probe 0 "_main\vad-option-probe.py;worker\config.json;worker\sotto_worker.py;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json" "%OUT%\vad-option-probe.log" python _main\vad-option-probe.py
+  call :record vad-option-probe !STEP_RC!
+) else ( call :record vad-option-probe MISSING )
+REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+if exist _main\vad-option-probe.py (
+  call :step red-as-expected-vad-option-probe 1 "_main\vad-option-probe.py;worker\config.json;worker\sotto_worker.py;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json" "%OUT%\vad-option-probe-neg.log" python _main\vad-option-probe.py --neg-arm
+  call :expectred red-as-expected-vad-option-probe !STEP_RC! "%OUT%\vad-option-probe-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-vad-option-probe MISSING "%OUT%\vad-option-probe-neg.log" "NEG-ARM PASS" )
 if exist _main\youtube-track-wiring-oracle.py (
   call :step youtube-track-wiring 0 "_main\youtube-track-wiring-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-track-wiring.log" python _main\youtube-track-wiring-oracle.py
   call :record youtube-track-wiring !STEP_RC!

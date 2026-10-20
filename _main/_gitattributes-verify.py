@@ -93,7 +93,7 @@ def main() -> int:
     try:
         payload = '\0'.join(texto) + '\0'
         r = subprocess.run(['git', '-C', ROOT, 'checkout-index', '--stdin', '-z',
-                            '--prefix=' + tmp.replace('\\', '/') + '/'],
+                            '--force', '--prefix=' + tmp.replace('\\', '/') + '/'],
                            input=payload.encode('utf-8'),
                            capture_output=True)
         if r.returncode != 0:
