@@ -128,6 +128,12 @@ const dom = {
   // markup that may be older than it.
   stripControls: document.getElementById('strip-controls'),
   stripLiveButton: document.getElementById('strip-live-button'),
+  /* THE LIVE-CAPTION LAMP (owner, 2026-10-19). TWO COPIES, ONE FACT: the panel
+     surface's (inside `.panel__controls`, the far end from the pause button) and the
+     strip's (beside the LIVE switch). `paintLiveLamps` paints BOTH from the
+     shell's own account of the live caption. */
+  liveLamp: document.getElementById('live-lamp'),
+  stripLiveLamp: document.getElementById('strip-live-lamp'),
   stripLiveLabel: document.getElementById('strip-live-label'),
   stripPauseButtons: document.querySelectorAll('[data-pause-trigger]'),
   stripState: document.getElementById('strip-state'),
@@ -2404,12 +2410,53 @@ function watchCaptionWindowState() {
   if (typeof MutationObserver !== 'function') return false;
   new MutationObserver(() => {
     const up = captionOverlayIsUp();
+    // THE LAMP IS PAINTED HERE, FIRST, AND ON EVERY WRITE. The thing that changes
+    // in this callback is the SHELL'S OWN ACCOUNT (`data-caption-window`), so the
+    // readout of that account is painted FROM the account -- not from the button's
+    // state, and not only when the button's state happens to change. A readout
+    // painted by one of its two callers goes stale the day the other caller is the
+    // one that runs, and this one is the caller that runs when the owner presses
+    // Alt+C on the other surface.
+    paintLiveLamps(up);
     if (up !== liveEnabled) applyLiveEnabled(up);
   }).observe(document.documentElement, {
     attributes: true,
     attributeFilter: [CAPTION_WINDOW_ATTR],
   });
   return true;
+}
+
+/**
+ * THE LIVE-CAPTION LAMP (owner, 2026-10-19, verbatim: *"com um alt c so, com audio ou
+ * nao, tem que ter indicativo se a legenda ao vivo ativou ou nao. pode fazer isso com
+ * uma bolinha que acende vermelho ou verde."*).
+ *
+ * ONE FACT, AND IT IS THE SHELL'S. `on` is never a local wish: it is
+ * `captionOverlayIsUp()` -- the shell's `data-caption-window` attribute, which
+ * `sotto_webview.py::show_caption_window()` writes on every LIVE switch
+ * (`_set_live_enabled`, `sotto_webview.py:9525-9566`) and which this panel's own
+ * MutationObserver watches. RED = the live caption is OFF, GREEN = it is ON.
+ *
+ * IT IS A READOUT, NOT A CONTROL: no click, no focus, no pointer events (the CSS
+ * carries `pointer-events: none`). The owner asked for an INDICATOR, and an
+ * indicator that takes clicks is a second switch that can disagree with the first.
+ *
+ * WHY THERE IS NO `title` ON IT. A tooltip is painted by the browser for the
+ * element the pointer actually HIT, and `pointer-events: none` means the pointer
+ * never hits the lamp -- it hits the header behind it. A `title` here would be a
+ * promise the browser never keeps. The state is in `data-live` (the CSS reads it)
+ * and in `aria-label` (a screen reader reads it); both are updated here.
+ */
+function paintLiveLamps(on) {
+  const state = on ? 'on' : 'off';
+  const label = on
+    ? 'Live caption: ON — the live engine is on.'
+    : 'Live caption: OFF — press Alt+C to turn it on.';
+  for (const lamp of [dom.liveLamp, dom.stripLiveLamp]) {
+    if (!lamp) continue;
+    lamp.dataset.live = state;
+    lamp.setAttribute('aria-label', label);
+  }
 }
 
 /**
@@ -2443,6 +2490,13 @@ function applyLiveEnabled(enabled, options) {
   }
   if (dom.stripLiveButton && !liveEnabled) dom.stripLiveButton.dataset.state = 'off';
   else if (dom.stripLiveButton) delete dom.stripLiveButton.dataset.state;
+
+  // THE LAMP FOLLOWS THE SAME FACT AS THE BUTTON (see `paintLiveLamps`). This is
+  // the SECOND of its two painters: the observer in `watchCaptionWindowState`
+  // paints it from the shell's own write, and this one paints it whenever the
+  // page repaints the button -- so a shell that never writes the attribute (no
+  // caption window at all) still has a lamp that says something true.
+  paintLiveLamps(liveEnabled);
 
   // THE CAPTION ON SCREEN FOLLOWS THE REAL OVERLAY STATE. ONE FACT, NOT TWO: when the
   // shell's caption window is up, the caption is loose on the screen, and `applyFloat`

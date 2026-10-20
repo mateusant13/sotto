@@ -425,19 +425,30 @@ def _pick_entry(entries):
     return None
 
 
-def track_from_info(info, lang_prefs=("pt", "en")):
-    """A yt-dlp info dict -> the track to use, or None.
+def tracks_from_info(info, lang_prefs=("pt", "en")):
+    """A yt-dlp info dict -> EVERY candidate track, in preference order.
 
     The LANGUAGE wins over the source: a video with a manual German track and
     an automatic English one gives the owner the English one, because the
     owner's language is the better caption. Within one language, a MANUAL
     track wins over an automatic one.
 
-    `None` means THE VIDEO HAS NO TRACK AT ALL -- the one verdict that must
-    never be confused with "has a track".
+    WHY A LIST AND NOT ONE TRACK. MEASURED 2026-10-20, in the owner's own
+    running app, on the video he was actually watching:
+        YOUTUBE_TRACK_READY video_id=cUeZMUGCxrw state=no-track cues=0
+            lang=pt source=auto reason=payload-failed
+    The module had picked ONE track (the automatic one) and, when YouTube
+    refused that payload, it reported the video as having no captions. But
+    the MANUAL track of the SAME video answers 200 (MEASURED 2026-10-19:
+    the automatic track of that video is HTTP 429 from the timedtext API on
+    every format and user agent, and the manual one serves 200 on all
+    four). So the video HAD a caption track, and the panel was empty.
+
+    The list is tried in order until one yields cues, so a refused payload
+    is a FALLBACK and never a verdict about the video.
     """
     if not isinstance(info, dict):
-        return None
+        return []
     manual, manual_case = _lower_table(info.get("subtitles") or {})
     auto, auto_case = _lower_table(info.get("automatic_captions") or {})
     prefs = [str(p).lower() for p in (lang_prefs or ()) if p]
@@ -450,23 +461,49 @@ def track_from_info(info, lang_prefs=("pt", "en")):
                 "ext": str(entry.get("ext") or "").lower(),
                 "url": entry.get("url"), "name": entry.get("name")}
 
+    ordered = []
+    seen = set()
+
+    def take(table, case, source, key):
+        if (source, key) in seen:
+            return
+        seen.add((source, key))
+        found = pick(table, case, source, key)
+        if found:
+            ordered.append(found)
+
     for pref in prefs:
         for table, case, source in ((manual, manual_case, "manual"),
                                     (auto, auto_case, "auto")):
             for key in _lang_keys(table, pref):
-                found = pick(table, case, source, key)
-                if found:
-                    return found
+                take(table, case, source, key)
     for table, case, source in ((manual, manual_case, "manual"),
                                 (auto, auto_case, "auto")):
         for key in sorted(table):
-            found = pick(table, case, source, key)
-            if found:
-                return found
-    return None
+            take(table, case, source, key)
+    return ordered
+
+
+def track_from_info(info, lang_prefs=("pt", "en")):
+    """A yt-dlp info dict -> the track to use, or None.
+
+    The FIRST of `tracks_from_info` -- the same order, the same winner.
+    `None` means THE VIDEO HAS NO TRACK AT ALL -- the one verdict that must
+    never be confused with "has a track".
+    """
+    ordered = tracks_from_info(info, lang_prefs)
+    return ordered[0] if ordered else None
 
 
 # ── the disk cache ───────────────────────────────────────────────────────────
+
+#: THE FORMAT OF A CACHE ENTRY. Bumped on 2026-10-20, when the reader
+#: started trying EVERY candidate track: an entry written before that
+#: knows ONE track, and the fallback cannot be done with it. MEASURED: the
+#: owner's own video (`cUeZMUGCxrw`) stayed "no-track" with the new code
+#: because the cache still held the old single-track entry.
+CACHE_SCHEMA = 2
+
 
 def _cache_path(video_id):
     return os.path.join(CACHE_DIR, "%s.jsonl" % video_id)
@@ -491,6 +528,13 @@ def _cache_read(video_id, allow_stale=False):
         with open(_cache_path(video_id), "r", encoding="utf-8") as fh:
             doc = json.loads(fh.read().strip() or "{}")
     except Exception:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    if doc.get("schema") != CACHE_SCHEMA:
+        # AN ENTRY OF ANOTHER FORMAT. It is not a miss of the network: it is
+        # a document this reader cannot use, and the extract has to run once
+        # more to rebuild it in the current format.
         return None
     if not isinstance(doc, dict):
         return None
@@ -607,13 +651,28 @@ def _retry_payload(video_id, stale, timeout):
     """The payload the API REFUSED, asked for again -- without the extract.
 
     The 5 s yt-dlp extract is the expensive half; the caption track is a
-    few KB. So a refused payload is retried on the track alone.
+    few KB. So a refused payload is retried on the track alone -- and on
+    EVERY candidate, in the same order, because a refusal is a fallback
+    and not a verdict about the video.
     """
     result = dict(stale)
-    track = result.get("track") or {}
-    cues, err = _fetch_payload(track, timeout)
+    tracks = result.get("tracks")
+    if not isinstance(tracks, list) or not tracks:
+        one = result.get("track")
+        tracks = [one] if isinstance(one, dict) else []
+    last_err = None
+    cues = []
+    for track in tracks:
+        cues, err = _fetch_payload(track, timeout)
+        if cues:
+            result["lang"] = track.get("lang")
+            result["source"] = track.get("source")
+            result["ext"] = track.get("ext")
+            last_err = err
+            break
+        last_err = err
     result["cues"] = cues
-    result["error"] = err
+    result["error"] = last_err
     result["fetched_at"] = time.time()
     result["cached"] = False
     if cues:
@@ -647,6 +706,7 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
         "state": "no-track", "cues": [], "lang": None, "source": None,
         "ext": None, "video_id": vid, "duration": None, "reason": None,
         "error": None, "cached": False, "fetched_at": 0.0,
+        "schema": CACHE_SCHEMA,
     }
     if not _VIDEO_ID_RE.match(vid):
         result["reason"] = "invalid-video-id"
@@ -674,33 +734,41 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45):
     duration = info.get("duration")
     if isinstance(duration, (int, float)):
         result["duration"] = float(duration)
-    track = track_from_info(info, lang_prefs)
+    tracks = tracks_from_info(info, lang_prefs)
     result["fetched_at"] = time.time()
-    if track is None:
+    if not tracks:
         result["reason"] = "no-tracks-listed"
         _cache_write(vid, result)
         return result
-    result["lang"] = track.get("lang")
-    result["source"] = track.get("source")
-    result["ext"] = track.get("ext")
-    cues, err = _fetch_payload(track, timeout)
-    result["error"] = err
-    if not cues:
-        result["reason"] = "payload-failed" if err else "empty-track"
-        result["track"] = {"lang": track.get("lang"),
-                            "source": track.get("source"),
-                            "ext": track.get("ext"), "url": track.get("url")}
-        if not err:
-            _cache_write(vid, result)  # an empty track is a verdict
-        else:
-            # A REFUSED payload is not a verdict about the video: it is
-            # cached only for the short back-off, and it keeps the track so
-            # the retry does not repeat the extract.
+    # EVERY CANDIDATE IS TRIED, in order, until one yields cues. A refused
+    # payload is a FALLBACK, never a verdict about the video.
+    tried = []
+    last_err = None
+    for track in tracks:
+        cues, err = _fetch_payload(track, timeout)
+        tried.append({"lang": track.get("lang"), "source": track.get("source"),
+                      "ext": track.get("ext"), "url": track.get("url"),
+                      "error": err, "cues": len(cues)})
+        if cues:
+            result["state"] = "has-track"
+            result["reason"] = "ok"
+            result["error"] = None
+            result["cues"] = cues
+            result["lang"] = track.get("lang")
+            result["source"] = track.get("source")
+            result["ext"] = track.get("ext")
+            result["track"] = tried[-1]
+            result["tracks"] = tried
             _cache_write(vid, result)
-        return result
-    result["state"] = "has-track"
-    result["reason"] = "ok"
-    result["cues"] = cues
+            return result
+        last_err = err
+    result["error"] = last_err
+    result["reason"] = "payload-failed" if last_err else "empty-track"
+    result["track"] = tried[0] if tried else None
+    result["tracks"] = tried
+    # A REFUSED payload is not a verdict about the video: it is cached only
+    # for the short back-off, and it keeps the tracks so the retry does not
+    # repeat the extract.
     _cache_write(vid, result)
     return result
 

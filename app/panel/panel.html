@@ -230,9 +230,20 @@
           <span class="chrome__tc" data-chrome-tc>--:--:--:--</span>
         </div>
 
+        <!-- `rascunho live` IS GONE (owner, 2026-10-18: *"tirar rascunho live /
+             escrito ao ouvído"*). The `mano` header is now the wordmark and the page
+             number, two cells at the ends of one flex row — `justify-content:
+             space-between` in the generated theme carries them apart on its own, so
+             nothing was needed in its place.
+
+             It is not decoration being removed: the label claimed the forming line
+             is a DRAFT, which is the one thing this panel had stopped being. The
+             provenance is still recorded, but where it is true — `route=` in the
+             history file, and `provisional-draft` in the panel state — not as a
+             word on the design's forehead. The word survives only here, which is
+             what `panel-chrome-gate.py` ARM A requires. -->
         <div class="chrome chrome--mano" data-chrome="head">
           <span class="chrome__brand">sotto</span>
-          <span class="chrome__draft">rascunho live</span>
           <span class="chrome__page">pág. 1</span>
         </div>
 
@@ -281,10 +292,59 @@
              carries `-webkit-app-region: no-drag` from `panel.css`, so the drag
              region is the header AROUND them.
 
-             The cluster is never `display:none`d by a theme, and the strip
-             surface carries its own theme button below (`#strip-theme-button`),
-             which is the reachability half of the same rule. -->
+             The cluster is never `display:none`d by a theme, and it is this
+             cluster that carries the theme controls on BOTH surfaces: the strip
+             hides `.panel__header` outright (`panel.css`, `body[data-surface="strip"]
+             .panel__header`), so this is where the owner reaches them there too.
+
+             CORRECTED 2026-10-18. This comment used to say "the strip surface
+             carries its own theme button below (`#strip-theme-button`), which is
+             the reachability half of the same rule". There is no such button.
+             MEASURED: `id="strip-theme-button"` is absent from this document,
+             `grep -c strip-theme-button app/panel/panel.js` = 0 and every one of
+             its four occurrences in `panel.css` is a comment too -- the owner
+             deleted it from the markup, from the handler and from the styles on
+             2026-10-12, and the two comments that SAY SO are the ones below
+             (`:734` and `:743`). A comment that describes a removed control is
+             worse than no comment: it is the shape of thing another lane rebuilds
+             because it reads like an inventory. -->
         <div class="panel__controls">
+          <!-- THE LIVE-CAPTION LAMP (owner, 2026-10-19, verbatim: *"com um alt c so,
+               com audio ou nao, tem que ter indicativo se a legenda ao vivo ativou ou
+               nao. pode fazer isso com uma bolinha que acende vermelho ou verde."*).
+
+               WHY IT IS THE FIRST CHILD AND NOT NEXT TO THE PAUSE. The owner wrote
+               *"que botao que e so um circulo e esse ao lado do botao de pause? nao faz
+               sentido. se ele e indicativo de algo, e pra ser separado, longe, pra nao
+               se misturar"* — a bare circle next to Pause reads as a BUTTON, and the
+               owner asked for an INDICATOR that is far away from the controls.
+
+               MEASURED 2026-10-20 in the REAL 380 px panel (`sotto_webview.py
+               --dump-dom`, viewport 380x900, theme-1): cluster 102..366, this lamp
+               102..112, `tune-button` 116..144, `theme-button` 148..238,
+               `theme-chevron` 242..270, `font-scale-button` 274..302,
+               `panel-pause-button` 306..334, `hide-button` 338..366, the panel's
+               right edge 380. So the lamp's right edge is 194 px from the pause's
+               left edge, and the X is the rightmost control, 14 px from the edge.
+
+               IT IS NOT A BUTTON. It is a READOUT of the shell's own account of the
+               live caption: `data-caption-window`, which `sotto_webview.py::
+               show_caption_window()` writes on every LIVE switch (`_set_live_enabled`,
+               `sotto_webview.py:9525-9566`). RED = the live caption is OFF, GREEN = it
+               is ON. `panel.js::paintLiveLamps` paints it, from that attribute and
+               from nothing else; it never invents a state and it takes no click.
+
+               `role="img"` and NOT `role="button"`: a screen reader reads the state
+               as an image with a NAME, and the name says it in words, because a
+               red/green dot is invisible to a screen reader. It is a `<span>`, so it
+               takes no focus and no keyboard slot. -->
+          <span
+            class="live-lamp"
+            id="live-lamp"
+            role="img"
+            aria-label="Live caption: OFF — press Alt+C to turn it on."
+            data-live="off"
+          ></span>
           <!-- THE OWNER REMOVED TWO BUTTONS, and neither removal is silent.
 
                `#quit-button` is GONE because the capability is not lost: the tray
@@ -302,42 +362,41 @@
                survives is the natural line boundary: a `final:true` from the worker
                closes the line on its own. The owner was told this in the receipt
                 (`_main/receipt-panel-stale-oracles.md`, §11). -->
-          <!-- THE TRANSCRIPT FONT DIAL (owner, 2026-10-09, verbatim: *"bota um
-               botao de aumentar ou diminuir a fonte das transcricoes, tanto no
-               overlay abaixo, que vamos criar, tanto no painel da direita"*).
+          <!-- THE TRANSCRIPT FONT DIAL, NOW ONE BUTTON (owner, 2026-10-18:
+               *"1 botao de tamanho em vez de 2"*). It was a smaller/larger PAIR on
+               each of the two surfaces — four buttons driving one number.
 
-               Two controls, ONE number: they move `--caption-scale` in `:root`
-               (`panel.css`) and every caption / history size derives from it, so
-               the SAME dial is on this panel and on the strip below — the two
-               surfaces cannot disagree, and no theme can override the size.
+               WHY CYCLING AND NOT A TOGGLE. The dial has real travel, not two states:
+               `FONT_SCALE_MIN 0.8` → `FONT_SCALE_MAX 2.0` in steps of `0.1`, thirteen
+               stops (`panel.js:56-58`). Collapsing that to a two-state toggle would
+               throw away eleven sizes the owner can currently reach. One button that
+               goes UP one stop and wraps to the minimum does the same job in half the
+               chrome, and unlike the pair it can never sit disabled at an end of its
+               travel — a control that does nothing is not a control.
 
-               HIDE STAYS LAST (the owner's 2026-10-08 ruling), so these sit
-               BEFORE the pause button, not after hide. `panel.js` finds them by
-               id (`#font-smaller-button`, `#font-larger-button`) and persists the
-               value in localStorage, so the size survives a restart. -->
+               THE STATE IS STILL VISIBLE, NOT JUST THE GLYPH. The glyph is a single
+               `A`; the current size lives in `aria-label` and `title` as a
+               percentage, refreshed by `reportFontScaleState()`. It is deliberately
+               NOT painted inside the 28 px control row: `.panel__controls` was
+               measured at 250.41 px against a 350.00 px content box
+               (`panel.css:222-230`), and a number there buys nothing the click did
+               not already show. The strip's button has a real label line, so IT does
+               print the percentage.
+
+               ONE NUMBER STILL: both buttons set `--caption-scale` in `:root`
+               (`panel.css`), from which every caption, history and strip-caption size
+               derives, so the two surfaces cannot disagree and no theme can override
+               it. `panel.js` persists the value in localStorage, unchanged.
+
+               HIDE STAYS LAST (the owner's 2026-10-08 ruling), so this sits BEFORE the
+               pause button. -->
           <button
             type="button"
             class="icon-button"
-            id="font-smaller-button"
-            title="Smaller transcript text"
-            aria-label="Smaller transcript text"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <text
-                x="8"
-                y="12"
-                text-anchor="middle"
-                font-size="9"
-                fill="currentColor"
-              >A</text>
-            </svg>
-          </button>
-          <button
-            type="button"
-            class="icon-button"
-            id="font-larger-button"
-            title="Larger transcript text"
-            aria-label="Larger transcript text"
+            id="font-scale-button"
+            data-font-scale-role="cycle"
+            title="Caption size"
+            aria-label="Caption size"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <text
@@ -660,9 +719,16 @@
            `registerChevron` REFUSES one the strip bar ships, so it never gets a
            click listener. `panel.css` still carries a `display: none` as the
            second layer, and refuses the dropdown itself on this surface. Gate:
-           `_main/theme-preview-oracle.js` ARM 11/12. What stays in this row is the
+           `_main/theme-preview-oracle.js` ARM 11/12.
+
+           CORRECTED 2026-10-18. This used to end "What stays in this row is the
            ONE theme control the owner keeps: `#strip-theme-button`, which cycles
-           next/previous on click. -->
+           next/previous on click." There is no such button -- measured, zero
+           `id="strip-theme-button"` in this document and zero
+           `strip-theme-button` in `panel.js`; the next block says so and dates
+           the removal to 2026-10-12. What stays in this row is the open button
+           (`#strip-open-button`), which takes the owner to the panel where
+           `#theme-chevron` opens the full list. -->
       <section class="stripbar" id="strip-controls" aria-label="Caption controls">
         <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
              todos os temas"*, and the strip is one of the two surfaces). The strip
@@ -681,6 +747,23 @@
              pointerdowns that land on a control, so a drag started on a button is a
              press, and a drag started anywhere on the bar moves the window. -->
         <span class="stripbar__grip" id="strip-drag-handle" aria-hidden="true"></span>
+        <!-- THE SAME LAMP ON THE STRIP (owner, 2026-10-19). The strip hides
+             `.panel__header` outright, so the panel's lamp is not on screen here —
+             and the strip is what Alt+C opens, so the strip is where the owner's
+             "com um alt c so" actually has to be answered.
+
+             IT SITS IMMEDIATELY LEFT OF THE LIVE SWITCH, which is the control it
+             reads, and it is at the far other end from the strip's Pause (`order: 8`).
+             The order is the grip's (`order: 2`) and the markup is after the grip's,
+             so it paints between the two. ONE fact, TWO paints:
+             `panel.js::paintLiveLamps` writes both. -->
+        <span
+          class="live-lamp"
+          id="strip-live-lamp"
+          role="img"
+          aria-label="Live caption: OFF — press Alt+C to turn it on."
+          data-live="off"
+        ></span>
         <button
           type="button"
           class="strip-button strip-button--toggle"
@@ -803,30 +886,26 @@
              buttons were removed on 2026-10-12 as part of the bare-minimum
              trim; the owner now asks for them BY NAME, so they are back with
              the same ids `panel.js wireFontDial` already binds. One number,
-             `--caption-scale`, shared with the side panel. -->
+             `--caption-scale`, shared with the side panel.
+
+             2026-10-18: the PAIR is ONE button here too, same ruling as the panel's
+             (`#font-scale-button` above). It is the strip's one chance to SHOW the
+             number, because a `strip-button` has a real label line — so the label
+             prints the current percentage and `panel.js` rewrites it on every change.
+             On the panel the glyph alone has to do the job, which is why the number
+             lives in `aria-label`/`title` there. -->
         <button
           type="button"
           class="strip-button"
-          id="strip-font-smaller-button"
-          title="Smaller captions"
-          aria-label="Smaller captions"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <text x="8" y="12" text-anchor="middle" font-size="9" fill="currentColor">A</text>
-          </svg>
-          <span class="strip-button__label">Smaller</span>
-        </button>
-        <button
-          type="button"
-          class="strip-button"
-          id="strip-font-larger-button"
-          title="Larger captions"
-          aria-label="Larger captions"
+          id="strip-font-scale-button"
+          data-font-scale-role="cycle"
+          title="Caption size"
+          aria-label="Caption size"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <text x="8" y="12.5" text-anchor="middle" font-size="12" fill="currentColor">A</text>
           </svg>
-          <span class="strip-button__label">Larger</span>
+          <span class="strip-button__label" data-font-scale-readout>100%</span>
         </button>
 
         <!-- ── HIDE: the strip's own dismiss. It calls the SAME `bridge.hide()`
@@ -979,7 +1058,7 @@
              `_main/_panel-chrome-probe.js`, both re-baselined in the same pass
              to demand the labels be ABSENT. The OTHER directions keep their own
              footer chrome — `bcast`'s meter and LIVE/EM ESPERA, `mano`'s
-             "— escrito ao ouvido", `cine`'s "· · ·", `inst`'s meter and
+             "— escrito ao ouvído", `cine`'s "· · ·", `inst`'s meter and
              OUVINDO/EM ESPERA — because the owner named `em curso` and
              `historico` and nothing else. -->
 
@@ -992,8 +1071,18 @@
           </span>
         </span>
 
-        <span class="chrome chrome--mano" data-chrome="foot" data-slot="start">— escrito ao ouvido</span>
+        <!-- `— escrito ao ouvído` IS GONE, same order, same pass. The `mano` direction
+             now has NO footer block at all, exactly as `tele` has none: the
+             manuscript design put a phrase in the footer where the other four put
+             an instrument, and the phrase was decoration.
 
+             `panel-chrome-gate.py` ARM A is extended with both words so that
+             "removed" means *removed from live markup* rather than *renamed*, and
+             ARM B's table for `mano` is emptied — deliberately. That arm exists
+             because a gate which only checked removals would pass on a panel with
+             no footer chrome anywhere; emptying one row must not silence it for
+             the OTHER three, and it does not: `bcast`, `cine` and `inst` are still
+             demanded slot by slot. -->
         <span class="chrome chrome--cine" data-chrome="foot" data-slot="start">· · ·</span>
 
         <span class="chrome chrome--inst" data-chrome="foot" data-slot="start">

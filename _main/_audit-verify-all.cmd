@@ -251,6 +251,20 @@ if exist _main\youtube-track-wiring-oracle.py (
   python _main\youtube-track-wiring-oracle.py > "%OUT%\youtube-track-wiring.log" 2>&1
   call :record youtube-track-wiring !ERRORLEVEL!
 ) else ( call :record youtube-track-wiring MISSING )
+REM The FREEZE. Owner, 2026-10-20, verbatim: *"abrir ou fechar o sotto,
+REM principalemnte fechar, trava pra caralho meu pc. arruma."* -- and the
+REM owner's own log says why, with a number: 68 s from the spawn to the model
+REM (`BRIDGE_LOAD_MS ms=67969` with `worker_load_s=8.75`), of which ~59 s was
+REM the CAPTURE LADDER waiting on a Bluetooth headset whose open BLOCKS (it
+REM does not come back and it raises nothing), and at QUIT the caption
+REM reader's release path brought the worker BACK, 0.65 s before the shell
+REM exited -- an orphan, because `os._exit` does not kill a child.
+REM The gate judges the two fixes: the open has a DEADLINE, and the shell does
+REM not bring the worker back while it is dying.
+if exist _main\tap-open-timeout-oracle.py (
+  python _main\tap-open-timeout-oracle.py > "%OUT%\tap-open-timeout.log" 2>&1
+  call :record tap-open-timeout !ERRORLEVEL!
+) else ( call :record tap-open-timeout MISSING )
 if exist _main\mute-audio-oracle.py (
   python _main\mute-audio-oracle.py > "%OUT%\mute-audio.log" 2>&1
   call :record mute-audio !ERRORLEVEL!

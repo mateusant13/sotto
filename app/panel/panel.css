@@ -179,10 +179,21 @@ body {
     radial-gradient(100% 60% at 0% 100%, rgba(125, 211, 252, 0.1) 0%, transparent 55%),
     linear-gradient(180deg, rgba(17, 24, 35, 0.97) 0%, rgba(11, 15, 20, 0.98) 100%);
   /* An outer shadow is invisible here by construction: the window ends where
-     the slab ends, so it would be clipped to nothing. */
+     the slab ends, so it would be clipped to nothing.
+
+     THE 1px RING IS GONE, AND IT WAS THE OWNER'S OWN VERDICT. panel.css:169
+     records him, 2026-10-15, verbatim: *"em NENHUM design, eu quero moldura"*.
+     `border: 0` removed the CSS frame -- and left
+     `inset 0 0 0 1px rgba(0,0,0,0.35)` drawing THE SAME FRAME one pixel
+     further in. He reported the edge again on 2026-10-18 with the same words
+     ("ainda to vendo as bordas"), and by then it was dark rather than white,
+     which is why it looked like a different bug: it was the same one, wearing
+     the colour of the render protection instead of the compositor's white.
+
+     What stays is DEPTH, not framing: a 1px light line at the top edge and a
+     soft shade at the bottom, both inside the slab, neither closing a loop. */
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
     inset 0 -34px 54px -34px rgba(0, 0, 0, 0.6);
   overflow: hidden;
 }
@@ -315,8 +326,11 @@ body {
 .panel__controls #quit-button {
   order: 4;
 }
-.panel__controls #font-smaller-button,
-.panel__controls #font-larger-button {
+/* The font dial is ONE button since 2026-10-18 ("1 botao de tamanho em vez de 2"),
+   and it takes the SLOT the pair used to share: order 5, after the theme button's
+   four, before pause. It is deliberately NOT given two rules — the old pair had one
+   rule for two ids, and one button needs one. */
+.panel__controls #font-scale-button {
   order: 5;
 }
 .panel__controls #panel-pause-button,
@@ -547,6 +561,42 @@ body {
 
 .caption--provisional .caption__time {
   color: var(--time-live);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE VOICE DOT — ONE SMALL MARK, AND NOTHING ON ANY ROW THAT HAS NO VOICE
+   ═══════════════════════════════════════════════════════════════════════════
+   The element `applyVoice` inserts (`panel.js`) exists ONLY on a row whose
+   `source` ends in `/voice:speaker-<n>`. A run with no `--speakers` has no such
+   rows, so no element is created and this rule never fires: the DOM the owner
+   sees today is unchanged, byte for byte.
+
+   A DOT AND NOT A NAME, on purpose. The owner removed a visible ordinal twice
+   for the same element on every row ("nao e' pra ter mais ele", 2026-10-08), and
+   a name is a design decision he has not made. The dot says the whole thing the
+   feature has to say — these two rows are the same person, those two are not —
+   without putting one more string in front of a caption.
+
+   `--voice-hue` is set inline by `applyVoice` from the golden angle off the slot
+   number, so a voice keeps its colour for the whole call and two voices never
+   collide. `currentColor` is the fallback for a row painted before the inline
+   property lands, which keeps the dot visible instead of invisible.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.caption__voice {
+  display: inline-block;
+  inline-size: 0.5em;
+  block-size: 0.5em;
+  border-radius: 50%;
+  margin-inline-end: 0.45em;
+  vertical-align: 0.06em;
+  flex: none;
+  background: hsl(var(--voice-hue, 210) 72% 62%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.18);
+}
+
+/* The row is a flex line in the live design; the dot must not be squashed. */
+.caption:has(> .caption__voice) {
+  column-gap: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1112,7 +1162,9 @@ body[data-level="none"] .chrome__meter i {
   /* overflow-x CLIPS, it does not scroll. MEASURED WITH EYES 2026-10-15 on a fresh shot
      (theme-1, 380x900): a forming line ran off the right edge and the words were cut by
      the PANEL own overflow:hidden -- the row had no box of its own, so the `.caption__text`
-     `overflow-wrap: anywhere` had nothing to wrap INSIDE. This scroll container IS that
+     wrap mode (then `anywhere`, since changed to `break-word` + `hyphens: auto` on
+     2026-10-18 because it printed bare fragments like "communicatio") had nothing to wrap
+     INSIDE. This scroll container IS that
      box: clipping here keeps the cut at the rail edge, where a scrollbar and a rounded
      corner already say where the text ends, instead of letting words vanish into the
      window silhouette. */
@@ -1263,7 +1315,14 @@ body[data-level="none"] .chrome__meter i {
   /* DERIVED from `--caption-scale` — see `--caption-size` in `:root`. */
   font-size: calc(var(--caption-size) * var(--caption-scale));
   color: var(--text);
-  overflow-wrap: anywhere;
+  /* `break-word` + `hyphens`, NOT `anywhere` (owner, 2026-10-18, his own
+     screenshot read "Hierarchical / communicatio / n which allows"). `anywhere`
+     splits at the CHARACTER level and prints the bare fragment, which reads as
+     a typo rather than a line break. `hyphens: auto` puts a real hyphen at a
+     syllable boundary. Both keep the row from pushing sideways, which is the
+     only reason `anywhere` was ever chosen here. */
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
 /* D8 — the product IS text, so the text is copyable: a caption can be pasted
@@ -1561,8 +1620,12 @@ body[data-surface="strip"] .status__text {
 /* Body-appended popups are PANEL-only: both are created by JS on `document.body`
    (theme-switcher.js `ensurePicker`, theme-tune.js `ensureDialog`), OUTSIDE the
    `.panel__header`/`.history` subtrees the rules above hide — so without these
-   two rules they leak onto the strip. The strip keeps its own theme BUTTON
-   (`#strip-theme-button` still cycles next/previous on click); only the full
+   two rules they leak onto the strip. The strip keeps NO theme control of its
+   own: `#strip-theme-button` was deleted by the owner on 2026-10-12 and this
+   file carries zero rules for it (measured 2026-10-18: all four occurrences of
+   the name here are inside comments, none is a selector). The trigger is
+   `#theme-chevron` in the panel's own cluster, and `#strip-open-button` is one
+   click away on this bar. Only the full
    option LIST (the picker) and the tune dialog stay on the right panel. CSS owns
    the difference; no button is moved in JS. `!important` because the picker is
    shown by clearing `[hidden]` (`.theme-picker[hidden]{display:none}` below) and
@@ -1914,13 +1977,17 @@ body[data-surface="strip"][data-strip-moved] .panel {
  * the DOM and every button keeps (or has) a `title`, so the glyph's meaning is 
  * one hover away; this is a PAINT decision, not a reachability one.
  *
- * THE TWO EXCEPTIONS, both deliberate:
- *  1. `#strip-theme-button` keeps its label, because that label names the 
- *     template the owner is LOOKING AT — it is a readout, not an action verb. 
- *     It is also the button that stays in the same place while the template 
- *     changes, so the word that moves is the word that says which one is up.
- *  2. `#strip-live-label` keeps the word LIVE, in red, because the owner asked 
- *     for that word in that colour on its own and it is the one text on the bar 
+ * THE EXCEPTIONS, and the list shrank on 2026-10-18. There were TWO; one of
+ *  them is gone, because the control it excused is gone:
+ *  1. ~~`#strip-theme-button` keeps its label, because that label names the
+ *     template the owner is LOOKING AT~~ — RETRACTED. MEASURED 2026-10-18: no
+ *     `id="strip-theme-button"` in `panel.html`, zero occurrences in `panel.js`,
+ *     and all four of this file's are inside comments. The owner deleted it on
+ *     2026-10-12. An exception written for a deleted rule is a rule that reads
+ *     as existing to the next person, and `#strip-live-label` below is the one
+ *     that still is.
+ *  2. `#strip-live-label` keeps the word LIVE, in red, because the owner asked
+ *     for that word in that colour on its own and it is the one text on the bar
  *     with state semantics.
  *
  * The 26 px circle is the recipe the last design direction shipped (a 36 px 
@@ -2020,14 +2087,35 @@ body[data-surface="strip"] .strip-button--chevron {
    (2026-10-12): *"o botao de x pra dar hide introduzido em lugar aleatorio e
    estupido. bota ele na direita dos botoes."* Same fix as the right panel's
    `#hide-button` — the X is the rightmost CONTROL on the row; only the state
-   READOUT stands after it, because a readout is not a button. */
-body[data-surface="strip"] .stripbar__brand { order: 0; }
-body[data-surface="strip"] #strip-drag-handle { order: 1; }
-body[data-surface="strip"] #strip-live-button { order: 2; }
-body[data-surface="strip"] #strip-open-button { order: 3; }
-body[data-surface="strip"] #strip-pause-button { order: 4; }
-body[data-surface="strip"] #strip-hide-button { order: 5; }
-body[data-surface="strip"] #strip-state { order: 99; }
+   READOUT stands after it, because a readout is not a button.
+
+   THE OWNER SAID IT AGAIN ON 2026-10-19, verbatim: *"por que o botao de x dos
+   paineis ta no meio e nao na direita? arruma."* — and he was RIGHT, because
+   `button-contract.css` (the LAST sheet, every rule `!important`) pins this same
+   row with ITS OWN numbers, and in those numbers the X is `order: 7` while the
+   pause is `order: 8`: the X was painted BEFORE the pause, in the middle of the
+   row, which is exactly what the owner saw.
+
+   SO THE TWO NUMBERS THAT MATTER ARE PINNED HERE, WITH `!important` AND ONE
+   MORE CLASS THAN THE CONTRACT'S, so they win on specificity:
+     `html body[data-surface="strip"] .stripbar #strip-hide-button` is (1,2,2)
+     and `html body[data-surface="strip"] #strip-hide-button` is (1,1,2).
+   The rest of the list below is the BASE — what a panel without the contract
+   sheet would use — and it is written with the SAME numbers the contract uses,
+   so the two files agree about the shape of the row instead of disagreeing
+   about it in silence. */
+body[data-surface="strip"] .stripbar__brand { order: 1; }
+body[data-surface="strip"] #strip-drag-handle { order: 2; }
+body[data-surface="strip"] #strip-live-button { order: 3; }
+body[data-surface="strip"] #strip-open-button { order: 4; }
+body[data-surface="strip"] #strip-font-scale-button { order: 5; }
+body[data-surface="strip"] #strip-pause-button { order: 8; }
+/* THE X, AND THE READOUT AFTER IT. The numbers are 98/99 (not 7/8) so they sit
+   ABOVE the contract's pause (`order: 8`) whatever the contract does with its
+   own numbers: the X is the last CONTROL of the row, and the state readout —
+   which is not a control — is the last thing painted. */
+html body[data-surface="strip"] .stripbar #strip-hide-button { order: 98 !important; }
+html body[data-surface="strip"] .stripbar #strip-state { order: 99 !important; }
 /* ONE DECLARATION PER ID, AND THE SURVIVOR IS THE LIST ABOVE. `#strip-state`
    stays at 99 — the readout is not a control and always paints last. */
 
@@ -2387,12 +2475,37 @@ body[data-surface="strip"] #strip-live-button[aria-pressed="false"]:focus-visibl
 
 .tune-body {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* ONE COLUMN, CHOSEN BY THE WIDTH AND NOT DECLARED. This was `1fr 1fr`, and
+     that was right for a dialog with fifteen rows and wrong the moment the menu
+     became the owner's "simples" one: `theme-tune.js` `MENU_FIELDS` draws three
+     (`fontSans`, `weightCaption`, `accent`), and a two-column grid put the
+     third alone in a half-width cell with an empty cell beside it -- a hole in
+     the middle of the dialog, visible in `_main/tune-menu-shot.py`'s render.
+
+     `auto-fit` + `minmax(min(100%, 240px), 1fr)` asks the question the grid is
+     good at: inside the dialog's ~320 px of content, two 240 px columns plus the
+     gap do not fit, so there is one, and each control gets the full width --
+     which is also why the labels stopped breaking ("Tamanho — legenda ao
+     vivo" used to wrap in two lines at half width).
+
+     It is width-driven, not a count, so a theme that later brings rows back
+     lands on two columns again without anyone editing this rule. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 10px;
   padding: 12px 16px 4px;
-  /* F3 (HIGH) -- sem barra de scroll: os 17 knobs cabem em duas colunas
-     (9 linhas x ~44,8 px ≈ 403 px dentro do dialogo), por isso max-height e
-     overflow saem. `overscroll-behavior: contain` fica sem efeito mas sem dano. */
+  /* NO SCROLLBAR. The old note is CORRECTED, not retracted: it said "os 17 knobs
+     cabem em duas colunas (9 linhas x ~44,8 px ≈ 403 px dentro do dialogo)", and
+     SEVENTEEN was right. A first attempt at this edit claimed the number was
+     wrong ("there were 15 fields, not 17") on the strength of counting the rows
+     in a rendered PNG by eye -- 16, missing one. `FIELDS` holds 17 and still
+     does; `tune-simple-menu-oracle.js` arm A4 is now what holds that number,
+     which is the only thing that can hold it reliably.
+
+     What actually changed is how many are DRAWN: `MENU_FIELDS` draws three, in
+     one column now. The `max-height`/`overflow` the old note described stay
+     gone -- a stronger claim with three rows than with seventeen.
+     `overscroll-behavior: contain` is left in place and is a no-op on a box that
+     never scrolls; removing it would be a change with no reason behind it. */
   overscroll-behavior: contain;
 }
 .tune-body::-webkit-scrollbar {
@@ -2709,29 +2822,30 @@ body[data-state="no-audio"] .chrome__off {
 
 /* ------------------------------------------------------- the strip's theme key */
 
-/* `#strip-theme-button` — the theme control ON THE STRIP SURFACE. `.panel__header`
-   is `display: none` there and the header's theme button lives inside it, so
-   without this the owner could not change the theme on the surface the key opens
-   (the previous lane flagged the trap; this closes it). It is a `.strip-button`
-   like its three neighbours, with the theme's accent as its swatch. */
-.strip-button--theme {
-  padding-left: 6px;
-}
+/* DELETED 2026-10-18: `.strip-button--theme { padding-left: 6px }` and
+   `.strip-theme__swatch { width/height 9px; border-radius 99px;
+   background: var(--theme-swatch, var(--accent-from)) }`.
+   Two rules for a button that does not exist. MEASURED: `#strip-theme-button`
+   has no `id=` in `panel.html`, `grep -c strip-theme-button app/panel/panel.js`
+   = 0, and these two selectors appear nowhere else under `app/panel` — the only
+   other hits are a comment naming the deletion and a 2026-10-09 rect inventory
+   that measured the button LIVE at 85.2 x 26 px, which is what it was then.
 
-.strip-theme__swatch {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--theme-swatch, var(--accent-from));
-}
+   They were left behind by the owner's 2026-10-12 removal of the control. In
+   this repository an unread key is a DELETED defect (`docs/audit/config-inert-fixed.md`
+   is about exactly this shape on the config side), and the same rule applies
+   here: a stylesheet rule with no element is dead weight that reads as an
+   inventory of what the bar has. Deleting them changes nothing that paints —
+   proved by `_main/_strip-css-dead-oracle.js`. */
 
 /* ── THE THEME DROPDOWN IS PANEL-ONLY ───────────────────────────────────────
  * This file used to LAY OUT the dropdown for the strip window here — the strip
  * is ~100 px tall and ~1040 px wide, so the header's vertical list was restyled
  * as a wide row that fits. That whole block was deleted on the 2026-10-12
  * re-anchor: the trigger lives on the RIGHT panel now (`#theme-chevron` in
- * `.panel__controls`) and the strip carries only its cycling `#strip-theme-button`.
+ * `.panel__controls`) and the strip carries no theme control of its own —
+ * `#strip-theme-button` was deleted on 2026-10-12, and the CSS that styled it
+ * on 2026-10-18 (see the note above this section).
  *
  * WHY THIS IS A HIDE AND NOT JUST A DELETED LAYOUT. The dropdown is a BODY-level
  * popup (`.panel` is `overflow:hidden`, so the list cannot be nested), and the
@@ -3490,13 +3604,120 @@ html body[data-surface="panel"] {
 html:has(> body[data-surface="panel"]) {
   border-radius: 12px !important;
 }
+/* ── THE RING WAS HERE TWICE, AND THE SECOND COPY IS THE ONE YOU SEE ─────────────
+ * This rule is `!important` and `html body[data-surface="panel"] .panel` is
+ * specificity (0,1,3) against the base `.panel`'s (0,1,0). On 2026-10-15 the ring
+ * `inset 0 0 0 1px rgba(0,0,0,0.35)` was removed from the BASE rule (panel.css:195)
+ * and the lane recorded it as AO VIVO. That record was FALSE, and this comment is
+ * the correction: the ring lived on in THIS rule, which wins, so the live panel kept
+ * every pixel of it. The owner saw it again on 2026-10-18 -- *"ainda to vendo as
+ * bordas"* -- and then again with the exact detail that identifies this line and no
+ * other: *"a mesma borda. so que agora nao ta branca"*. It was never white here; the
+ * `rgba(0,0,0,0.35)` ring reads as a dark hairline over the slab's own dark edge, and
+ * against the earlier white compositor it looked like a different bug. Same frame,
+ * different paint.
+ *
+ * The mistake was MEASUREMENT BY GREP: a scan of the base rule found nothing and was
+ * reported as "no frame anywhere". `frame-hunt.js` walks every declaration in every
+ * stylesheet under app/panel and reports which SELECTOR owns each frame-capable
+ * property, which is how this line was finally found -- it also recurses into
+ * themes/ and skins/, where the non-recursive first version had never looked.
+ * Depth without !important stays: a top light line and a bottom shade, neither of
+ * which closes a loop. */
 html body[data-surface="panel"] .panel {
   border-radius: 12px !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
     inset 0 -34px 54px -34px rgba(0, 0, 0, 0.6) !important;
 }
 html body[data-surface="panel"] .panel::before {
   border-radius: 12px 12px 0 0 !important;
 }
+/* ============================================================================
+   THE LIVE-CAPTION LAMP (owner, 2026-10-19)
+   ============================================================================
+   *"com um alt c so, com audio ou nao, tem que ter indicativo se a legenda ao vivo
+   ativou ou nao. pode fazer isso com uma bolinha que acende vermelho ou verde."*
+
+   A RED/GREEN LAMP, AND THE COLOURS ARE LITERAL ON PURPOSE. A red that changes with
+   the theme is not an indicator -- 45 designs and 6 skins are shipping, and every one
+   of them has its own `--ok`/`--error` pair with its own hue. The lamp is the ONE
+   thing on this panel that must mean the same thing in all of them, so it carries
+   its own two colours and is the only control in this file that does.
+
+   IT IS A READOUT. `pointer-events: none` keeps it out of the way of the button next
+   to it, and it is a `<span>`, so it takes no focus and no keyboard slot.
+
+   THE OFF STATE IS NOT HIDDEN. The owner's complaint was an indicator that could not
+   be trusted ("ele nao ta pegnando"), so the lamp is NEVER absent and never neutral:
+   off is RED, on is GREEN, and the accessible name says which, in words, for the
+   screen reader that cannot see the colour. */
+.live-lamp {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  /* NO SIDE MARGIN. MEASURED 2026-10-20 in the real 380 px panel
+     (`sotto_webview.py --dump-dom`): the lamp occupies 102..112 and the first
+     BUTTON of the cluster starts at 116 — a 4 px gap, which is the cluster's own
+     `gap: 4px` (this file's F8 block, and `button-contract.css:75` pins the same
+     number with `!important`) and nothing else. The cluster's children carry
+     `margin: 0 !important` from `button-contract.css`, so the margin here is 0
+     whether or not this file says so; it says so, because a margin that a later
+     sheet would silently change is a margin that moves the lamp away from the
+     number measured above. */
+  margin: 0;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+  pointer-events: none;
+  transition: background-color 120ms linear, box-shadow 120ms linear;
+}
+.live-lamp[data-live="on"] {
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.22), 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* THE LAMP'S PLACE IN THE PANEL'S CLUSTER: THE FAR END FROM THE PAUSE.
+   The owner, 2026-10-19, verbatim: *"que botao que e so um circulo e esse ao lado
+   do botao de pause? nao faz sentido. se ele e indicativo de algo, e pra ser
+   separado, longe, pra nao se misturar."* So the lamp is `order: 0` — the FIRST
+   thing the cluster paints — and the pause is `order: 5` (the contract sheet),
+   with four controls between them.
+
+   MEASURED 2026-10-20 in the REAL 380 px panel (`sotto_webview.py --dump-dom`,
+   viewport 380x900, theme-1): cluster 102..366, lamp 102..112, `tune-button`
+   116..144, `theme-button` 148..238, `theme-chevron` 242..270,
+   `font-scale-button` 274..302, `panel-pause-button` 306..334, `hide-button`
+   338..366. So the lamp's right edge is 194 px from the pause's left edge, and
+   the panel's right edge is at 380. */
+html body[data-surface="panel"] .panel__controls .live-lamp { order: 0; }
+/* THE STRIP'S COPY sits immediately LEFT of the LIVE switch, which is the control
+   it reads: same order as the grip (`order: 2`) and later in the DOM than the
+   grip, so it is painted between the grip and the LIVE button. The strip's pause
+   is at the far other end (`order: 8`), so the two are ~200 px apart there too. */
+html body[data-surface="strip"] .stripbar #strip-live-lamp { order: 2; }
+
+/* ============================================================================
+   HIDE IS THE LAST CONTROL, ON EVERY SURFACE (owner, 2026-10-08, 2026-10-19)
+   ============================================================================
+   2026-10-08, verbatim: *"bota o botao de hide o sotto na direita, nao no meio dos
+   botoes, em q ele esta."* 2026-10-19, verbatim: *"por que o botao de x dos paineis
+   ta no meio e nao na direita? arruma."*
+
+   MEASURED 2026-10-20 in the REAL 380 px panel (`sotto_webview.py --dump-dom`,
+   viewport 380x900): `theme-button` 148..238, `theme-chevron` 242..270,
+   `font-scale-button` 274..302, `panel-pause-button` 306..334, `hide-button`
+   338..366, cluster 102..366, the panel's right edge 380. So on the PANEL
+   surface the X IS the rightmost control, 14 px from the edge — in the default
+   theme, and in every theme (all five right-anchor the cluster).
+
+   The order is PINNED here so it stays that way when a theme or a skin adds a
+   control: `button-contract.css` is linked AFTER this file (`panel.html:77`) and
+   pins the other four with `order: 1/2/3/5` and `!important`, so this rule is
+   `!important` too and carries one more class in the selector to outrank it. */
+html body[data-surface="panel"] .panel__controls #hide-button { order: 99 !important; }
+/* THE STRIP'S X is the last CONTROL of the strip's row, and the state readout —
+   which is not a control — is the last thing painted. Its pin lives with the
+   strip's own order list (the block that owns the strip's row), because the
+   contract sheet pins that row too and the two must not disagree about it. */

@@ -351,6 +351,18 @@ MAX_ROTATIONS_WITHOUT_SIGNAL = 8
 # nothing.
 TAP_IDLE_MAX_S = 300.0   # a live pump plus zero packets for this long: re-arm ONCE
 TAP_REOPEN_MAX = 20      # never open more than this many clients in one run
+#: THE OPEN HAS A DEADLINE. Owner, 2026-10-20, verbatim: *"abrir ou fechar o
+#: sotto, principalemnte fechar, trava pra caralho meu pc. arruma."*
+#: MEASURED 2026-10-20 on this box (`_main/probe-capture-open.py --timeout 3`,
+#: 12 candidates): opening "Headset (soundcore Space Q45)" in **MME** and in
+#: **Windows WASAPI** **BLOCKS** -- the open does not come back in 3.0 s and
+#: it does NOT raise, so the ladder, which opens the candidates IN A LINE,
+#: simply sat there. The opens that WORK take 0.19-0.22 s (same probe), so
+#: 4 s is more than ten times the slowest healthy open.
+#: The owner's own log puts the price on the blocked ones: `BRIDGE_LOAD_MS
+#: ms=67969` with `worker_load_s=8.75` -- 68 s from the spawn, 8.75 s of it
+#: the model, so ~59 s in the ladder.
+TAP_OPEN_TIMEOUT_S = 4.0
 TAP_REOPEN_MIN_S = 5.0   # and never faster than this, whatever the state says
 def tap_stall_reason(pump_exited, idle_s, reopens):
     """THE POLICY on a settled tap that stopped delivering blocks.
@@ -2719,6 +2731,85 @@ def tap_source(dev):
     if dev.get("file_tap"):
         return "file:%s" % os.path.basename(str(dev["file_tap"]))
     return "device:%s" % dev.get("name")
+
+
+def _close_tap_quiet(tap):
+    """The default closer: stop the stream, then close it.
+
+    The worker's own `close_tap` is a NESTED function inside `main()` (it is
+    the F4 rule and it logs), so a module-level helper cannot see it. That is
+    why `_open_tap_bounded` takes the closer as an argument: the call site
+    hands it the real one, and the default here is the same two calls
+    without the log.
+    """
+    try:
+        tap.stream.stop()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        tap.stream.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _open_tap_bounded(dev, on_block, block_ms=100, timeout_s=None, close=None):
+    """Open one candidate, and GIVE UP on it when the open blocks.
+
+    RETURNS `(tap, error)`: `error` is None on success.
+
+    WHY THIS EXISTS. A capture open can BLOCK -- not fail, BLOCK -- inside
+    the driver's own call. MEASURED 2026-10-20 on this box: opening
+    "Headset (soundcore Space Q45)" in MME and in Windows WASAPI does not
+    come back in 3.0 s, and it raises nothing, so the ladder had no way to
+    know it was waiting. The ladder opens the candidates IN A LINE, so one
+    blocked endpoint held the whole ladder: ~59 s, measured in the owner's
+    own log (`BRIDGE_LOAD_MS ms=67969`, `worker_load_s=8.75`).
+
+    THE THREAD IS THE BOUNDARY. The open runs in it and the ladder waits at
+    most `timeout_s` for it. The healthy opens take 0.19-0.22 s.
+
+    THE ABANDONED THREAD IS NOT FORGOTTEN. It is still blocked in the
+    driver; when it finally comes back it finds `abandoned` set and CLOSES
+    its own tap (the F4 rule: a tap the run is done with must not keep the
+    endpoint). Without that, the abandoned tap would hold the device for the
+    rest of the run.
+    """
+    box = {}
+    limit = TAP_OPEN_TIMEOUT_S if timeout_s is None else float(timeout_s)
+
+    def _work():
+        tap = None
+        try:
+            tap = LoopbackTap(dev, on_block, block_ms=block_ms)
+            tap.source = tap_source(dev)
+            tap.stream.start()
+        except Exception as exc:  # noqa: BLE001
+            box["error"] = exc
+            return
+        if box.get("abandoned"):
+            # THE LADDER MOVED ON WHILE WE WERE BLOCKED. Close the tap now:
+            # it must not keep the endpoint.
+            closer = close if callable(close) else _close_tap_quiet
+            try:
+                closer(tap)
+            except Exception as exc:  # noqa: BLE001
+                err("TAP_OPEN_ABANDONED_CLOSE_FAILED device=%r detail=%r"
+                    % (dev.get("name"), exc))
+            return
+        box["tap"] = tap
+
+    th = threading.Thread(target=_work, name="tap-open", daemon=True)
+    th.start()
+    th.join(limit)
+    if th.is_alive():
+        box["abandoned"] = True
+        err("TAP_OPEN_TIMEOUT device=%r api=%r in_s=%.2f (the open BLOCKED; the "
+            "ladder moved on without it)" % (dev.get("name"), dev.get("api"), limit))
+        return None, TimeoutError("the open blocked for more than %.2fs" % limit)
+    tap = box.get("tap")
+    if tap is not None:
+        return tap, None
+    return None, box.get("error") or RuntimeError("the open failed with no error")
 
 
 def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
@@ -6124,14 +6215,20 @@ def main():
                 if stop.is_set():
                     break
                 try:
-                    tap = LoopbackTap(dev, on_block, block_ms=block_ms)
+                    # THE OPEN IS BOUNDED (2026-10-20). A blocked open used
+                    # to hold the whole ladder: MEASURED ~59 s on the owner's
+                    # box, with the owner's Bluetooth headset as the blocker
+                    # (the open does not come back and it raises nothing).
+                    tap, open_error = _open_tap_bounded(dev, on_block,
+                                                        block_ms=block_ms,
+                                                        close=close_tap)
+                    if open_error is not None:
+                        raise open_error
                     # STEP 3: the tap carries the identity of the CANDIDATE it
                     # was opened from, so every event it feeds can name its
                     # source (`proc:<pid>` / `device:<name>` / `file:<name>`).
-                    tap.source = tap_source(dev)
                     tap_holder["tap"] = tap
                     tap_holder["gen"] += 1
-                    tap.stream.start()
                     open_error = None
                     break
                 except Exception as exc:

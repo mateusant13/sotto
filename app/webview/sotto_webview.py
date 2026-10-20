@@ -1612,7 +1612,27 @@ class VramGuard(threading.Thread):
                     bridge = getattr(self.shell, 'bridge', None)
                     running = (bridge is not None
                                and getattr(bridge, 'child', None) is not None)
-                    if running and free < self.LOW_MB:
+                    # A WORKER THAT IS STILL LOADING ITS OWN MODEL CANNOT BE
+                    # THE REASON THE VRAM IS LOW -- IT IS THE VRAM.
+                    # MEASURED 2026-10-20, on the owner's own box: the worker
+                    # started at 00:43:05 and the guard parked it 3 s later
+                    # with `free_mb=365`, because the model load itself had
+                    # taken the VRAM (this worker's steady footprint is
+                    # ~9.7 GB: MEASURED 16 303 MB total, 5 380 MB free with
+                    # the worker alive). The guard then resumed it, the new
+                    # worker loaded the model, the VRAM fell again, and the
+                    # treadmill repeated -- each turn a 9 s model load and a
+                    # 1.2 GB spike for the owner, and the last turn left the
+                    # worker DEAD (no resume), which is the empty panel.
+                    #
+                    # THE GUARD'S PURPOSE (owner, 2026-10-17, verbatim:
+                    # *"se tem qualquer processo que quer usar vram, deviamos
+                    # tirar os modelos da vram, tipo um jogo pesado"*) is
+                    # ANOTHER APP. A game that takes the VRAM during the
+                    # load is still served: the moment the model is up, the
+                    # free memory is low again and the guard parks the worker.
+                    loaded = bool(getattr(bridge, 'loaded', False))
+                    if running and loaded and free < self.LOW_MB:
                         self.low += 1
                         self.high = 0
                         if self.low >= self.STREAK:
@@ -1807,6 +1827,12 @@ class ExternalCaptionWatcher(threading.Thread):
         self.yt_video_id = ''
         self.yt_cue = ''
         self.yt_reason = ''
+        #: When the player's clock last could not be read (the player may be
+        #: gone). 0 = the clock is readable. MEASURED 2026-10-20: with the
+        #: video PAUSED the clock reads fine and the cue is there, so this
+        #: stays 0 and the worker is NOT released; a player that disappeared
+        #: is a different fact.
+        self.yt_no_clock_since = 0.0
 
     def stop(self):
         self.stop_event.set()
@@ -1904,6 +1930,21 @@ class ExternalCaptionWatcher(threading.Thread):
                     src = ''
                 if src:
                     self.target_hwnd = fg
+        if not self.target_hwnd or not ctypes.windll.user32.IsWindow(
+                wt.HWND(self.target_hwnd)):
+            # NO WINDOW IN THE FOREGROUND (or the one we had is gone). The
+            # video window may still be OPEN, just behind another one.
+            # MEASURED 2026-10-20: the owner's YouTube window was open and
+            # findable by title while the foreground was a different Chrome
+            # tab, and the caption only started after he clicked his
+            # browser. The reader looks for a player among the OPEN windows
+            # so the caption does not depend on where he is looking.
+            try:
+                found = external_subs.find_player_window()
+            except Exception:
+                found = 0
+            if found:
+                self.target_hwnd = int(found)
         if self.target_hwnd and ctypes.windll.user32.IsWindow(
                 wt.HWND(self.target_hwnd)):
             return int(self.target_hwnd)
@@ -1948,15 +1989,30 @@ class ExternalCaptionWatcher(threading.Thread):
             reason = track.get('reason') or track.get('state') or 'unknown'
             return [], self._yt_forget('no-track:%s' % reason, urgent=True)
         t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+        if t is None:
+            # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
+            # given back after a LONG silence, not immediately -- a page that
+            # is slow to answer the UIA is not a dead player. MEASURED
+            # 2026-10-20: the owner's video was PAUSED (`t=1241.0` fixed
+            # across three reads, the clock reading "20 Minutos 41 Segundos
+            # de 21 Minutos 55 Segundos"), the clock WAS readable, and the
+            # caption was on screen. A paused video is not a dead player.
+            now = time.monotonic()
+            if not self.yt_no_clock_since:
+                self.yt_no_clock_since = now
+            overdue = (now - self.yt_no_clock_since) >= self.YT_RELEASE_S
+            return [], self._yt_forget('clock-unreadable', urgent=overdue)
+        self.yt_no_clock_since = 0.0
         cue = None
-        if t is not None:
-            try:
-                import youtube_captions
-                cue = youtube_captions.cue_at(track.get('cues') or (), t)
-            except Exception as exc:  # noqa: BLE001
-                log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        try:
+            import youtube_captions
+            cue = youtube_captions.cue_at(track.get('cues') or (), t)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
         text = str((cue or {}).get('text') or '').strip()
         if not text:
+            # A GAP between the cues: the player shows nothing here either,
+            # and the ASR STAYS parked -- the track still owns the caption.
             return [], self._yt_forget('no-cue', urgent=False)
         self.yt_cue = text
         self.yt_reason = 'has-cue'
@@ -2030,11 +2086,16 @@ class ExternalCaptionWatcher(threading.Thread):
                     self.shell.external_caption(line, source, final=True)
                     self.finalized = True
                 return
-        # A CAPTION TRACK BLINKS. The cues have gaps, and a gap is not "the
-        # player stopped": the real track waits much longer before it gives
-        # the microphone back, because every release costs a model load.
-        threshold = self.YT_RELEASE_S if yt_mode else self.RELEASE_S
-        if self.last_line and (now - self.last_seen) >= threshold:
+        # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
+        # the player stopped only when the PAGE stops having text. The REAL
+        # TRACK knows better: the track is still valid, the clock is still
+        # readable, and the cue is there -- the video is PAUSED, and a paused
+        # video is not a dead player. MEASURED 2026-10-20: with the release
+        # on a timer, every 30 s of paused video cost the owner a 1.2 GB
+        # model load. On the real-track path the VALIDITY of the track
+        # decides, and the track's validity is judged in `_youtube`.
+        if (not yt_mode and self.last_line
+                and (now - self.last_seen) >= self.RELEASE_S):
             self._release('no-caption')
 
     def _release(self, reason):
@@ -8041,6 +8102,17 @@ class SottoShell:
             if self._revive_thread is not None:
                 log(f'REVIVE_REFUSED reason=already-in-flight caller={caller}')
                 return False
+            if self._external_parked:
+                # THE PLAYER IS SUPPLYING THE CAPTION. The worker is parked
+                # ON PURPOSE, so a repair would undo the parking and start a
+                # model load for a caption that already exists. MEASURED
+                # 2026-10-20: `REVIVE_REQUESTED caller=panel-status
+                # had_bridge=false` 47 s after `EXTERNAL_CAPTIONS_WORKER_
+                # PARKED source=external:youtube:track` -- and the cycle
+                # (load, park, load, park) started again.
+                log('REVIVE_REFUSED reason=player-supplies-caption '
+                    'caller=%s' % caller)
+                return False
             self._revive_thread = threading.Thread(
                 target=self._do_revive, args=(caller,),
                 name='sotto-revive', daemon=True)
@@ -8395,7 +8467,23 @@ class SottoShell:
         0.30 s and this fires whenever the player's caption node disappears for
         `RELEASE_S`. A player that blinks its caption layer therefore costs a
         full model load, and the cadence is the player's, not ours.
+
+        THE SHELL IS DYING: DO NOT BRING THE WORKER BACK. Owner, 2026-10-20,
+        verbatim: *"abrir ou fechar o sotto, principalemnte fechar, trava pra
+        caralho meu pc. arruma."* -- and the owner's own log says why, with a
+        number: at 20:50:50.070, 0.65 s before `SHELL_EXIT`, this very method
+        logged `EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped`. That
+        worker was an ORPHAN: `os._exit` does not kill a child process, so
+        after the app had closed a second worker loaded 1.2 GB of model and
+        ran the capture ladder -- which BLOCKS for ~59 s on the owner's
+        Bluetooth headset (MEASURED: `BRIDGE_LOAD_MS ms=67969` with
+        `worker_load_s=8.75`, i.e. 68 s from the spawn of which 8.75 s is the
+        model). The microphone does not come back because the app is gone; it
+        comes back because the app is still there.
         """
+        if self.exiting.is_set():
+            log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
+            return False
         if not self._external_parked:
             return False
         self._external_parked = False

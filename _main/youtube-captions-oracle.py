@@ -588,12 +588,17 @@ def battery(mod, path, workdir, source):
         mod.CACHE_DIR = cache
         try:
             calls = _fake_fetch(mod, FIXTURE_INFO, None)  # the payload fails
+            # ONE HTTP CALL PER CANDIDATE (2026-10-20): a refused payload is
+            # a FALLBACK, so every candidate is asked once, and the SECOND
+            # poll asks for NOTHING (the cache holds the refusal).
+            n_tracks = len(mod.tracks_from_info(FIXTURE_INFO))
             first = mod.fetch_track("dQw4w9WgXcQ")
             second = mod.fetch_track("dQw4w9WgXcQ")
             ok = (first["state"] == "no-track"
                   and first["reason"] == "payload-failed"
                   and second["state"] == "no-track"
-                  and calls["extract"] == 1 and calls["http"] == 1)
+                  and calls["extract"] == 1 and calls["http"] == n_tracks
+                  and n_tracks > 1)
             return ok, "1o=%r 2o=%r calls=%r" % (
                 {k: first.get(k) for k in ("state", "reason")},
                 {k: second.get(k) for k in ("state", "reason", "cached")},
@@ -622,13 +627,58 @@ def battery(mod, path, workdir, source):
             calls["http"] = 0
             calls["extract"] = 0
             again = mod.fetch_track("dQw4w9WgXcQ")
+            n_tracks = len(mod.tracks_from_info(FIXTURE_INFO))
             ok = (again["state"] == "no-track"
-                  and calls["extract"] == 0 and calls["http"] == 1)
+                  and calls["extract"] == 0 and calls["http"] == n_tracks)
             return ok, "state=%r calls=%r" % (again.get("state"), calls)
         finally:
             mod.CACHE_DIR = old
     attempt("a46 passado o back-off, so a FAIXA e pedida de novo -- o extract "
             "de 5 s nao se repete", a46)
+
+    def a47():
+        # THE FALLBACK (2026-10-20). MEASURED in the owner's own running app,
+        # on the video he was watching (`cUeZMUGCxrw`): the AUTOMATIC track's
+        # payload is refused by YouTube (HTTP 429 on the timedtext API) while
+        # the MANUAL track of the SAME video answers 200 (MEASURED 2026-10-19
+        # by the lane that built the reader).
+        #
+        # A module that tries ONE track and gives up when the payload is
+        # refused reports "this video has no captions" for a video that HAS
+        # them -- and the owner watches an empty panel. THIS ARM IS THE GATE
+        # OF THAT FIX: it fails on the old behaviour and passes on the new.
+        cache = os.path.join(workdir, "cache47")
+        old = mod.CACHE_DIR
+        mod.CACHE_DIR = cache
+        try:
+            calls = {"extract": 0, "http": 0}
+
+            def _extract(_vid, _timeout):
+                calls["extract"] += 1
+                return FIXTURE_INFO
+
+            def _http(url, _timeout):
+                calls["http"] += 1
+                # THE FIRST CANDIDATE IS REFUSED. The second one answers.
+                if "ptbr.json3" in str(url):
+                    return None
+                return FIXTURE_JSON3
+
+            mod._extract_info = _extract
+            mod._http_get = _http
+            got = mod.fetch_track("dQw4w9WgXcQ")
+            ok = (got["state"] == "has-track"
+                  and got["reason"] == "ok"
+                  and got.get("cues")
+                  and calls["extract"] == 1
+                  and calls["http"] == 2)
+            return ok, "state=%r source=%r cues=%d calls=%r" % (
+                got.get("state"), got.get("source"),
+                len(got.get("cues") or ()), calls)
+        finally:
+            mod.CACHE_DIR = old
+    attempt("a47 o payload recusado e um FALLBACK: a faixa seguinte responde e "
+            "o video TEM legenda", a47)
 
     # -- the player's clock ------------------------------------------------
     def a31():
@@ -800,18 +850,24 @@ MUTANTS = [
      '    for table, case, source in ((manual, manual_case, "manual"),\n'
      '                                (auto, auto_case, "auto")):\n'
      '        for key in sorted(table):\n'
-     '            found = pick(table, case, source, key)\n'
-     '            if found:\n'
-     '                return found\n'
-     '    return None',
+     '            take(table, case, source, key)\n'
+     '    return ordered',
      '    for table, case, source in ((manual, manual_case, "manual"),\n'
      '                                (auto, auto_case, "auto")):\n'
      '        for key in sorted(table):\n'
-     '            found = pick(table, case, source, key)\n'
-     '            if found:\n'
-     '                return found\n'
-     '    return {"lang": "xx", "source": "auto", "ext": "json3",\n'
-     '            "url": "https://example.invalid/fake.json3", "name": "fake"}'),
+     '            take(table, case, source, key)\n'
+     '    return ordered or [{"lang": "xx", "source": "auto", "ext": "json3",\n'
+     '                          "url": "https://example.invalid/fake.json3",\n'
+     '                          "name": "fake"}]'),
+    # THE FALLBACK IS NOT TRIED: only the first candidate is asked, so a
+    # refused payload ends the search and the video reads as "no captions".
+    ("the-fallback-is-not-tried",
+     '    for track in tracks:\n'
+     '        cues, err = _fetch_payload(track, timeout)\n'
+     '        tried.append({',
+     '    for track in tracks[:1]:\n'
+     '        cues, err = _fetch_payload(track, timeout)\n'
+     '        tried.append({'),
     # The HLS playlist is parsed as WebVTT: the track reads as EMPTY, and an
     # empty track reads as "this video has no legend".
     ("the-hls-playlist-is-accepted-as-vtt",

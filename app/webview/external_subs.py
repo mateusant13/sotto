@@ -478,6 +478,55 @@ def _bottom_run(kept, band, max_lines=_MAX_LINES):
     return sorted(out)  # top line first, so the caption reads in order
 
 
+def find_player_window():
+    """A PLAYER window among the OPEN ones, or 0.
+
+    WHY THIS EXISTS. The reader adopts the FOREGROUND window when that
+    window is a player, but on a fresh start nothing is in the foreground:
+    Sotto is (the owner pressed Alt+C, or the panel opened), and the video
+    window is BEHIND it. MEASURED 2026-10-20, in the owner's own running
+    app: the YouTube window was open and its title said so
+    ("New top local AI image generator is here! - YouTube - Google Chrome")
+    while the foreground was a different Chrome tab -- so the caption only
+    appeared after the owner CLICKED his browser, which is not a thing the
+    product may ask of him.
+
+    THE TITLE IS THE TEST, and it is the same test `player_source` uses
+    ("youtube" / "stremio" in the title). The window must be VISIBLE: a
+    minimised window is not being watched.
+
+    Returns the window handle, or 0.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return 0
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def _enum(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        buf = ctypes.create_unicode_buffer(512)
+        try:
+            user32.GetWindowTextW(hwnd, buf, 512)
+        except Exception:
+            return True
+        title = (buf.value or "").strip().lower()
+        if "youtube" in title or "stremio" in title:
+            found.append(int(hwnd))
+            return False
+        return True
+
+    try:
+        user32.EnumWindows(_enum, 0)
+    except Exception:
+        return 0
+    return found[0] if found else 0
+
+
 def _is_browser(proc):
     """Is this process name a browser with an address bar?"""
     p = str(proc or "").lower()

@@ -68,6 +68,7 @@ import io
 import os
 import sys
 import tempfile
+import threading
 import time
 import types
 
@@ -184,6 +185,12 @@ class FakeShell(object):
         self._bridge = FakeBridge()
         self.bridge = self._bridge
         self._reload_policy = FakePolicy()
+        #: THE SHELL'S "I AM DYING" FLAG. The real `on_external_captions_
+        #: released` reads it (2026-10-20: a worker spawned while the shell
+        #: was closing was an ORPHAN, because `os._exit` does not kill a
+        #: child). Without it the fake raised AttributeError and the arm
+        #: said nothing about why.
+        self.exiting = threading.Event()
         self.emitted = []
         self.window_lines = []
         self.releases = 0
@@ -342,6 +349,21 @@ def scenarios():
         expect_releases=0, expect_resumes=0, expect_page_reads=0,
         why="the player's clock cannot be read: nothing, the ASR keeps running"))
     out.append(Scenario(
+        "a12", _yt_window(),
+        [{"at": 1000.0, "t": T_IN, "track": TRACK_OK},
+         {"at": 1000.0 + 120.0, "t": T_IN, "track": TRACK_OK}],
+        # A PAUSED video: the clock is readable and the cue is there, so the
+        # caption stays and the ASR is NOT released -- not even after the
+        # 30 s grace. MEASURED 2026-10-20 on the owner's own video: `t=1241.0`
+        # fixed across three reads, and with the release on a timer every
+        # 30 s of paused video cost a 1.2 GB model load.
+        # THE LINE APPEARS TWICE: the caption channel emits a line OPEN
+        # (final=false) and then CLOSED (final=true), which is the contract.
+        expect_text=["Não somos estranhos ao amor", "Não somos estranhos ao amor"],
+        expect_parked=True,
+        expect_releases=0, expect_resumes=0, expect_page_reads=0,
+        why="a PAUSED video keeps the caption and does NOT release the ASR"))
+    out.append(Scenario(
         "a11", _yt_window(),
         [{"at": 1000.0, "t": T_IN, "track": TRACK_OK},
          {"at": 1005.0, "t": T_IN, "track": TRACK_NONE}],
@@ -482,8 +504,10 @@ MUTANTS = (
      "            return [], self._yt_forget('no-track:%s' % reason, urgent=True)",
      "            return [], self._yt_forget('no-track:%s' % reason, urgent=False)"),
     ("m3", "the real track releases the ASR as fast as the page reader",
-     "        threshold = self.YT_RELEASE_S if yt_mode else self.RELEASE_S",
-     "        threshold = self.RELEASE_S"),
+     "        if (not yt_mode and self.last_line\n"
+     "                and (now - self.last_seen) >= self.RELEASE_S):",
+     "        if (self.last_line\n"
+     "                and (now - self.last_seen) >= self.RELEASE_S):"),
     ("m4", "the real cue is never emitted",
      "        return [('external:youtube:track', [text])], False",
      "        return [], False"),
@@ -502,8 +526,15 @@ def load_module(path, name):
 
 
 def build_mutants():
-    """A copy of the shell per mutant, in a temp dir. Returns (name, mod)."""
-    with io.open(TARGET, "r", encoding="utf-8", newline="") as fh:
+    """A copy of the shell per mutant, in a temp dir. Returns (name, mod).
+
+    THE SHELL IS READ WITH UNIVERSAL NEWLINES. It is CRLF (a hard rule of
+    this repo), and an anchor written with "\\n" would never match a
+    "\\r\\n" in the file -- the mutant would then be reported as a missing
+    anchor and the gate would ABORT instead of testing it. The mutant copy
+    is written with LF, which Python does not care about.
+    """
+    with io.open(TARGET, "r", encoding="utf-8") as fh:
         source = fh.read()
     out = []
     tmpdir = tempfile.mkdtemp(prefix="yt-wiring-")
@@ -514,7 +545,7 @@ def build_mutants():
             return None
         mutated = source.replace(old, new)
         path = os.path.join(tmpdir, "sotto_webview_%s.py" % name)
-        with io.open(path, "w", encoding="utf-8", newline="") as fh:
+        with io.open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(mutated)
         out.append((name, load_module(path, "sotto_webview_mutant_%s" % name)))
     return out
