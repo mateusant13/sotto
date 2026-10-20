@@ -321,3 +321,18 @@ eccf66b 13:49 fix(gate): o orcamento do perf-probe era menor do que o probe
 ea73f3c 13:45 fix(portoes): D1/D1b/D2, o pin do AGENTS.md, o run.cmd em CRLF, e o portao que acusava o dono
 8639fef 01:11 feat(orador): cadeia de atribuicao de oradores em duas fases
 ```
+
+### 8.1 A ATRIBUICAO DOS PROCESSOS WebView2 (medida hoje)
+
+18 processos `msedgewebview2.exe`, em **6 arvores**, e cada raiz por nome:
+
+| raiz | quem e' | processos |
+|---|---|---|
+| 15856 | `SearchHost.exe` (a PESQUISA do Windows) | 1 (+5 filhos) |
+| 16064 | `WhatsApp.Root.exe` (o WhatsApp deambiente) | 1 (+5 filhos) |
+| 42860 | `pythonw.exe ... sotto_webview.py` — **o Sotto** | 1 (+5 filhos) |
+| 17884 / 2144 / 27696 | raizes de `msedgewebview2.exe` (as tres arvores acima) | 5 cada |
+
+Ou seja: a atribuicao afirmada ("os WebView2 sao do Windows Search e do
+WhatsApp") **confirma** — e hoje ha mais uma arvore, a **nossa**, porque a app
+esta aberta. Nenhum WebView2 esta orfao (todos tem pai vivo).
