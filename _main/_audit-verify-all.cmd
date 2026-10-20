@@ -193,6 +193,29 @@ if exist _main\panel-live-box-oracle.js (
   call :record panel-live-box-oracle !STEP_RC!
 ) else ( call :record panel-live-box-oracle MISSING )
 
+REM O CAMINHO DO Alt+C (o UNICO controlo do dono) tem de sobreviver a um
+REM atributo em falta. MEDIDO 2026-10-20: `show_panel`, `show_strip` e
+REM `show_side` liam `self.external_captions_active`,
+REM `self.external_captions_available` e `self._vram_parked` DIRECTAMENTE,
+REM ao lado de `getattr(self, '_paused', False)`. Com um atributo em falta,
+REM o caminho do Alt+C rebenta com AttributeError -- e o dono fica sem
+REM painel. A correcao leu os tres com `getattr(..., False)`: semantica
+REM IDENTICA, porque o `__init__` semeia os tres a False (:5710-5711, :5718).
+REM O PORTAO e PURO (o AST do shell + um FAKE; sem browser, sem app, sem
+REM audio, sem processo) e tem 7 arms + 3 mutantes no `--neg-arm`.
+REM MEDIDO: 1,97 s (normal) + 0,38 s (`--neg-arm`).
+REM ---------------------------------------------------------------------------
+if exist _main\panel-hidden-at-startup-oracle.py (
+  call :step panel-hidden-at-startup-oracle 0 "_main\panel-hidden-at-startup-oracle.py;app\webview\sotto_webview.py;app\webview\stage.html;app\panel\panel.html" "%OUT%\panel-hidden-at-startup.log" python _main\panel-hidden-at-startup-oracle.py
+  call :record panel-hidden-at-startup-oracle !STEP_RC!
+) else ( call :record panel-hidden-at-startup-oracle MISSING )
+REM O BRACO NEGATIVO: os mutantes tem de virar um braco VERMELHO. rc=1 POR
+REM DESENHO (o `--neg-arm` REPROVA de proposito).
+if exist _main\panel-hidden-at-startup-oracle.py (
+  call :step red-as-expected-panel-hidden-at-startup 1 "_main\panel-hidden-at-startup-oracle.py;app\webview\sotto_webview.py;app\webview\stage.html;app\panel\panel.html" "%OUT%\panel-hidden-at-startup-neg.log" python _main\panel-hidden-at-startup-oracle.py --neg-arm
+  call :expectred red-as-expected-panel-hidden-at-startup !STEP_RC! "%OUT%\panel-hidden-at-startup-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-panel-hidden-at-startup MISSING "%OUT%\panel-hidden-at-startup-neg.log" "NEG-ARM PASS" )
+
 echo === the wiring and the embedded JS (the two things the other gates cannot see) ===
 if exist _main\_audit-worker-start-wiring.py (
   call :step worker-start-wiring 0 "_main\_audit-worker-start-wiring.py;app\webview\sotto_webview.py" "%OUT%\wiring-worker-start.log" python _main\_audit-worker-start-wiring.py
