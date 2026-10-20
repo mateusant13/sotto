@@ -56,6 +56,35 @@ Os 6 in-process que faltam:
     _main/panel-row-identity-oracle.js
     _main/run-cmd-exit-oracle.py
 
+**RE-MEDIÇÃO 2026-10-20 08:0x (regra 1: um censo é uma afirmação com prazo de
+validade, e este tinha de ser re-medido):** o `panel-hidden-at-startup-oracle.py`
+deixou de ser um dos 6 e passou a correr **também na bateria PRINCIPAL**, em
+dois passos -- `panel-hidden-at-startup-oracle` (rc=0) e
+`red-as-expected-panel-hidden-at-startup` (rc=1, o braço negativo, POR DESENHO).
+A CAUSA: o `--neg-arm` desse gate tinha sido EXECUTADO (3/3 mutantes vistos) mas
+não estava registado em lado nenhum, e um braço negativo fora de uma bateria é
+um mutante a que ninguém volta a olhar. Commit `0466f1b`. Medido: a bateria
+inteira = **84 passos** (gate=59, control=9, skipped=1, expect-red=15,
+missing=0, failed=0), `BATTERY-VERDICT: GREEN WITH 1 SKIPPED`, rc=0; o gate
+custa 1,97 s + 0,38 s e é PURO (o AST do shell + um FAKE; sem browser, sem app,
+sem áudio, sem processo).
+
+    instrumentos nomeados pelo AGENTS.md que EXISTEM : 42
+      dentro da bateria                                : 20
+      FORA da batalha                                   : 22
+
+    dos 22 que faltam:
+      IN-PROCESS (corridos pela 2a bateria, que nao lanca nada) :  5
+      criam um processo (shell/worker/browser/audio)           : 17
+
+Os 5 in-process que faltam:
+
+    _main/app-target-oracle.py
+    _main/canonical-producer-oracle.py
+    _main/emit-queue-bound-oracle.py
+    _main/panel-row-identity-oracle.js
+    _main/run-cmd-exit-oracle.py
+
 **A prova de "in-process" e empirica, nao estatistica:** a segunda bateria
 (`_main/instruments-battery.mjs`) corre esses instrumentos dentro do processo e o
 seu proprio resumo diz `launches=0`. A lista completa da segunda bateria e o
