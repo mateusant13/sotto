@@ -92,9 +92,25 @@ truth do upstream, com o limiar **0,9** (o 0,5 do exemplo upstream daria **7**).
 
 Onde a premissa estava escrita: §8.2 e §8.3 de
 `_main/receipt-20261018-fase-a-multivoice.md` (agora marcadas como removidas
-da premissa) e na resposta ao dono. **Este ficheiro nunca a carregou** —
-verificado por grep com fronteiras de palavra (`\bDER\b`, "quem falava quando",
-"nome de voz"): **0 ocorrências**.
+da premissa) e na resposta ao dono. **Este ficheiro nunca a carregou como
+premissa** — verificado por grep com fronteiras de palavra (`\bDER\b`, "quem
+falava quando", "nome de voz"): **0 ocorrências** (medido em 2026-10-19).
+**RE-MEASURED 2026-10-20 08:4x: o mesmo grep dá agora 4 / 2 / 2, e TODAS as
+ocorrências estão DENTRO deste bloco de retracção** — a citação verbatim do
+dono (:78-79) e a correcção (:83-87). Nenhuma delas pede o que a premissa
+pedia. A contradição é bonito-cósmica: **a frase que afirmava "0 ocorrências"
+trazia os tokens dentro de si**, por isso desmentia-se a si mesma. É a regra 1
+aplicada a este próprio ficheiro: um grep de zero é uma afirmação com prazo
+de validade, e mexer no ficheiro invalida o número. **Duas armadilhas do
+próprio grep, ambas medidas:** (i) o token do meio está partido por uma quebra
+de linha na lista acima, por isso o grep não o vê — daí a contagem 2 e não 3;
+(ii) o token literal `\bDER\b` escrito na lista **não** casa com o padrão
+`\bDER\b`, porque o "b" antes do D é um caractere de palavra — a lista é
+invisível para o primeiro token e visível para os outros dois. **E, para o
+número continuar verdadeiro, este parágrafo não escreve os tokens**: se os
+escrevesse, o grep passaria a contá-los e o 4 / 2 / 2 deixaria de ser certo.
+O que conta é que a premissa **não está a ser pedida** em lado nenhum — está a
+ser **registada como removida**.
 
 ## ORDEM DO DONO — **LEVANTADA** 2026-10-12 04:2x -03:00 (o registo de 2026-10-11 fica abaixo, como história)
 

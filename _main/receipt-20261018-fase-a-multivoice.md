@@ -2022,7 +2022,19 @@ marcadas como removidas da premissa), a resposta ao dono
 (`_main/RESPOSTA-AO-DONO-20261019.md`) e o texto herdado dos comentários. O
 `AGENTS.md` **não** carregava a premissa — verificado por grep com fronteiras
 de palavra (`\bDER\b`, "quem falava quando", "nome de voz"): **0
-ocorrências**.
+ocorrências** (medido em 2026-10-19, antes de o bloco de retracção ser
+escrito no `AGENTS.md`). **RE-MEASURED 2026-10-20 08:4x: o mesmo grep dá
+agora 4 / 2 / 2, e TODAS as ocorrências estão dentro desse bloco de
+retracção** — a citação verbatim do dono (`AGENTS.md:78-79`) e a correcção
+(`:83-87`); nenhuma delas pede o que a premissa pedia. A contradição é
+bonito-cósmica: **a frase que afirmava "0 ocorrências" trazia os tokens
+dentro de si**, por isso desmentia-se a si mesma. Duas armadilhas do próprio
+grep, ambas medidas: o token do meio está partido por uma quebra de linha na
+lista do `AGENTS.md` (por isso o grep não o vê — daí 2 e não 3), e o token
+literal `\bDER\b` escrito na lista não casa com o padrão `\bDER\b`, porque o
+"b" antes do D é um caractere de palavra. Regra 1 do `AGENTS.md`: um grep de
+zero é uma afirmação com prazo de validade — e esta tinha de ser re-medida
+quando o ficheiro mudou.
 
 ### A demo: a legenda ao viva, com o pipeline inteiro
 
