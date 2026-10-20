@@ -307,6 +307,31 @@ if exist _main\tap-open-timeout-oracle.py (
   call :step tap-open-timeout 0 "_main\tap-open-timeout-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\tap-open-timeout.log" python _main\tap-open-timeout-oracle.py
   call :record tap-open-timeout !STEP_RC!
 ) else ( call :record tap-open-timeout MISSING )
+REM The SECOND freeze defect (owner, 2026-10-20, verbatim: *"abrir ou fechar o
+REM sotto, principalemnte fechar, trava pra caralho meu pc. arruma."*). The OPEN
+REM was fixed the same day (68 s -> 3,2 s); THIS is the other one, and the
+REM owner's own log says why, with a number: 93 `UI_THREAD_STALL begin-invoke
+REM not run in 10 s` and 68 `exec_js TIMEOUT after 10.0s`, ALL of them inside ONE
+REM 50 s window (01:55:30 -> 01:56:20) while a design lane was rendering 45
+REM themes with headless Edge. The load was the TRIGGER; the code was the
+REM FREEZE: the panel's 1/s `getStats()` pull went through a SYNCHRONOUS
+REM `exec_js` with a 10 s budget, and the thread it held was the PUMP thread --
+REM the one that carries the captions.
+REM
+REM `ui-stall-oracle.py` drives the REAL `app/webview/sotto_webview.py` in
+REM process, with a FAKE WinForms form whose UI thread NEVER DRAINS. It proves
+REM that (1) the stats reply does not hold its caller, (2) N replies leave at
+REM most ONE posted callable, (3) every id is still answered -- the panel's
+REM Promise resolves -- (4) a stall is DISTINGUISHABLE from a legitimate `None`
+REM and carries its reason and what was asked, (5) `emit_async`'s latch still
+REM holds, and (6) the panel-state DUMP (a diagnostic, every 2 s) neither
+REM blocks nor grows the WinForms queue. Its NEGATIVE ARM IS EXECUTED: FOUR
+REM broken copies of the shell, each of which has to turn RED on its OWN claim.
+REM No app, no window, no worker, no audio.
+if exist _main\ui-stall-oracle.py (
+  call :step ui-stall-oracle 0 "_main\ui-stall-oracle.py;app\webview\sotto_webview.py" "%OUT%\ui-stall-oracle.log" python _main\ui-stall-oracle.py
+  call :record ui-stall-oracle !STEP_RC!
+) else ( call :record ui-stall-oracle MISSING )
 if exist _main\mute-audio-oracle.py (
   call :step always mute-audio 0 "_main\mute-audio-oracle.py" "%OUT%\mute-audio.log" python _main\mute-audio-oracle.py
   call :record mute-audio !STEP_RC!
