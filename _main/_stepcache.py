@@ -218,6 +218,9 @@ def check(step: str, deps, expect_rc: int = 0, log=None, always: bool = False,
           state_path: str = DEFAULT_STATE) -> tuple:
     """(hit, rc, reason). The HONESTY RULE lives here and nowhere else."""
     if always:
+        # Never cached -- its truth is OUTSIDE the files (the registry, the
+        # machine's own state). It still gets a TIMESTAMP in the state, which
+        # is what the fast mode reads to decide it is too slow to run.
         return False, None, "always: this step is never cached"
     items = split_deps(deps)
     if not items:
@@ -253,9 +256,15 @@ def check(step: str, deps, expect_rc: int = 0, log=None, always: bool = False,
     return True, recorded_rc, "ok"
 
 def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
-           state_path: str = DEFAULT_STATE) -> tuple:
+           state_path: str = DEFAULT_STATE, t0=None) -> tuple:
     """(ok, reason). Records the step AS IT RAN. A step whose deps are missing
-    is NOT recorded: there would be nothing to invalidate it later."""
+    is NOT recorded: there would be nothing to invalidate it later.
+
+    `t0` is the MARKER FILE the battery writes right before the step runs; the
+    elapsed time is read from its mtime. A marker is a file write, not a
+    process: the battery starts a Python process for every step already, and
+    one more per step would be a tax on every run to serve one mode.
+    """
     items = split_deps(deps)
     if not items:
         return False, "no-deps: refusing to record a step with no deps"
@@ -279,6 +288,9 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
         "log": log_path,
         "log_sha256": log_sha,
     }
+    elapsed = elapsed_since(t0)
+    if elapsed is not None:
+        entry["elapsed_s"] = round(elapsed, 3)
     state.setdefault("steps", {})[step] = entry
     state["version"] = STATE_VERSION
     if not save_state(state, state_path):
@@ -291,6 +303,91 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
 def _deps_arg(value):
     """`--deps "a;b"` and `--deps a b` are the same list of files."""
     return split_deps(value)
+
+
+# ── THE TIMING, AND THE FAST MODE (owner, 2026-10-21) ────────────────────────
+#: THE OWNER, verbatim: *"a bateria deve ser rapida"* / *"e teus testes demoram
+#: muito e sao pesados. implementa caching e incremental test e etc."*
+#:
+#: THE CACHE AND THE INCREMENTAL PART WERE ALREADY THERE (a HIT reuses a step
+#: whose judged CONTENT did not change -- 79 of 89 steps in the run of
+#: 2026-10-21). What was MISSING is the other half: **nobody could say which
+#: step was slow**, because nothing measured the time. So:
+#:
+#:   * every step records how long it took (`elapsed_s`), and the summary
+#:     prints the slowest ones -- the table is the answer to "what is heavy";
+#:   * `SOTTO_BATTERY_FAST=1` SKIPS the steps that were slower than the
+#:     threshold in the last run, and the summary says which ones it skipped
+#:     and how long they had taken. A skipped step is NOT a gate that passed.
+#:
+#: The threshold is in the environment because the owner knows his machine and
+#: the battery does not.
+FAST_MODE_ENV = "SOTTO_BATTERY_FAST"
+FAST_THRESHOLD_ENV = "SOTTO_BATTERY_FAST_S"
+FAST_THRESHOLD_DEFAULT_S = 20.0
+
+
+def fast_mode() -> bool:
+    """Is the FAST MODE on? (the owner's env var, the only switch)."""
+    return str(os.environ.get(FAST_MODE_ENV) or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def fast_threshold_s() -> float:
+    """How slow is too slow for the fast mode (seconds)."""
+    raw = str(os.environ.get(FAST_THRESHOLD_ENV) or "").strip()
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return FAST_THRESHOLD_DEFAULT_S
+    return value if value > 0 else FAST_THRESHOLD_DEFAULT_S
+
+
+def elapsed_since(t0) -> float | None:
+    """Seconds since the marker file `t0` was written, or None."""
+    if not t0:
+        return None
+    try:
+        return max(0.0, time.time() - os.path.getmtime(str(t0)))
+    except OSError:
+        return None
+
+
+def elapsed_of(step: str, state_path: str = DEFAULT_STATE):
+    """The duration recorded for `step` in the last run that ran it, or None."""
+    state, err = load_state(state_path)
+    if err:
+        return None
+    entry = (state.get("steps") or {}).get(step)
+    if not isinstance(entry, dict):
+        return None
+    try:
+        return float(entry.get("elapsed_s"))
+    except (TypeError, ValueError):
+        return None
+
+
+def slowest(state_path: str = DEFAULT_STATE, top: int = 10):
+    """[(step, seconds), ...] -- the slowest steps of the last run, worst first.
+
+    Only the steps that RAN have a duration; a step reused from the cache
+    carries the duration of the run that produced its log, which is the number
+    that matters ("this step is heavy even when it is cached").
+    """
+    state, err = load_state(state_path)
+    if err:
+        return []
+    rows = []
+    for name, entry in (state.get("steps") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            seconds = float(entry.get("elapsed_s"))
+        except (TypeError, ValueError):
+            continue
+        rows.append((name, seconds))
+    rows.sort(key=lambda row: (-row[1], row[0]))
+    return rows[:max(1, int(top))]
 
 
 def main(argv=None) -> int:
@@ -324,10 +421,23 @@ def main(argv=None) -> int:
     p_rec.add_argument("--expect-rc", type=int, default=0,
                        help="the rc this step is supposed to produce (kept for "
                             "the reader; the check compares against it)")
+    # THE MARKER FILE (2026-10-21). `record` reads the elapsed time from the
+    # mtime of the marker the battery writes right before the step runs. The
+    # flag was MISSING here and the CLI's `record` died with
+    # `AttributeError: 'Namespace' object has no attribute 't0'` -- which is
+    # why the cache's own oracle arm (h) went RED: the arm that says "the CLI
+    # answers HIT/MISS as announced" was asking a CLI that could not record.
+    p_rec.add_argument("--t0", default=None,
+                       help="the marker file whose mtime is the step's start")
 
     p_status = sub.add_parser("status", help="what the cache knows")
     add_state(p_status)
     p_status.add_argument("--step", default=None)
+
+    p_slow = sub.add_parser("slowest",
+                             help="the slowest steps of the last run")
+    add_state(p_slow)
+    p_slow.add_argument("--top", type=int, default=10)
 
     args = parser.parse_args(argv)
     if args.verb is None:
@@ -338,16 +448,32 @@ def main(argv=None) -> int:
         hit, rc, reason = check(args.step, _deps_arg(args.deps),
                                 expect_rc=args.expect_rc, log=args.log,
                                 always=args.always, state_path=args.state)
+        elapsed = elapsed_of(args.step, args.state)
+        # THE FAST MODE. A step that was SLOWER than the threshold in the last
+        # run is skipped -- and the answer says so, with the number, so the
+        # battery's summary can name it instead of quietly dropping it.
+        if fast_mode() and elapsed is not None and elapsed > fast_threshold_s():
+            sys.stdout.write("SKIP-SLOW\nelapsed=%.3f\nthreshold=%.3f\n"
+                             % (elapsed, fast_threshold_s()))
+            return 2
         if hit:
-            sys.stdout.write("HIT\nrc=%s\n" % rc)
+            sys.stdout.write("HIT\nrc=%s\nelapsed=%s\n"
+                             % (rc, "" if elapsed is None else "%.3f" % elapsed))
             return 0
-        sys.stdout.write("MISS\nreason=%s\n" % reason)
+        sys.stdout.write("MISS\nreason=%s\nelapsed=%s\n"
+                         % (reason, "" if elapsed is None else "%.3f" % elapsed))
         return 1
+
+    if args.verb == "slowest":
+        rows = slowest(args.state, args.top)
+        for name, seconds in rows:
+            sys.stdout.write("%-44s %8.2f s\n" % (name, seconds))
+        return 0
 
     if args.verb == "record":
         ok, reason = record(args.step, _deps_arg(args.deps), args.rc,
                             log=args.log, expect_rc=args.expect_rc,
-                            state_path=args.state)
+                            state_path=args.state, t0=args.t0)
         if ok:
             sys.stdout.write("RECORDED %s rc=%s\n" % (args.step, args.rc))
             return 0

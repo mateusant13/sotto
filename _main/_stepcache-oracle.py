@@ -93,7 +93,7 @@ def sha256_file(path: str):
         return None
 
 
-def run_cli(engine_path: str, args, root: str, tag: str):
+def run_cli(engine_path: str, args, root: str, tag: str, env=None):
     """Run the engine's CLI. stdout/stderr go to FILES, never to a pipe: this
     sandbox denies CreatePipe (measured in `_main/_audit-embedded-js-check.py`)."""
     out = os.path.join(root, "%s.out" % tag)
@@ -102,6 +102,7 @@ def run_cli(engine_path: str, args, root: str, tag: str):
         proc = subprocess.run(
             [sys.executable, engine_path] + list(args),
             stdout=fo, stderr=fe,
+            env=env if env is not None else os.environ.copy(),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return proc.returncode, read_text(out), read_text(err)
 
@@ -208,9 +209,10 @@ def battery(engine, root: str, tag: str):
         "check", "--step", "s-h", "--deps", deps_h, "--log", fx_h.log,
         "--state", cli_state], root, tag + "-h-miss")
     cli_ok = (rc0 == 0 and rc1 == 0 and rc2 == 1
-              and out1 == "HIT\nrc=0\n"
+              and out1.startswith("HIT\nrc=0\n")
+              and out1.count("\n") == 3
               and out2.startswith("MISS\nreason=")
-              and out2.count("\n") == 2)
+              and out2.count("\n") == 3)
     add(cli_ok, "h a CLI responde HIT/MISS como anunciado",
         "record rc=%s | hit rc=%s out=%r | miss rc=%s out=%r"
         % (rc0, rc1, out1, rc2, out2.splitlines()[0] if out2 else ""))
@@ -248,6 +250,46 @@ def battery(engine, root: str, tag: str):
                                 0, log=fx.log, state_path=state)
     add(not hit, "l dep em falta -> MISS sem crash", "hit=%s (%s)" % (hit, why))
 
+    # (n) O TEMPO DO PASSO (owner, 2026-10-21: *"essa porra dessa bateria ai
+    # deve ta mal otimizada ou burra entao. arruma."*). O marker file que a
+    # bateria escreve ANTES do passo diz quando o passo comecou; o elapsed
+    # vive no estado e a CLI mostra-o. Sem isto ninguem sabe qual passo e
+    # lento, e o modo rapido nao tem o que saltar.
+    fx_n = Fix(root, tag + "-n")
+    deps_n = "%s;%s" % (fx_n.dep, fx_n.dep2)
+    marker = os.path.join(root, tag + "-n.marker")
+    Fix.write(marker, "x")
+    old = time.time() - 1.2
+    os.utime(marker, (old, old))
+    engine.record("s-n", deps_n, 0, log=fx_n.log, state_path=state, t0=marker)
+    elapsed = engine.elapsed_of("s-n", state)
+    rc_n, out_n, err_n = run_cli(engine_path, [
+        "check", "--step", "s-n", "--deps", deps_n, "--log", fx_n.log,
+        "--state", state], root, tag + "-n-hit")
+    ok_n = (elapsed is not None and 1.0 <= elapsed <= 6.0
+            and rc_n == 0 and "elapsed=" in out_n)
+    add(ok_n, "n o tempo do passo e medido (marker file)",
+        "elapsed=%s | cli rc=%s out=%r" % (elapsed, rc_n, out_n))
+
+    # (o) O MODO RAPIDO SALTA UM PASSO LENTO -- e DIZ que o saltou. Um passo
+    # saltado NAO e um portao que passou, e o sumario tem de o dizer.
+    env_fast = os.environ.copy()
+    env_fast["SOTTO_BATTERY_FAST"] = "1"
+    env_fast["SOTTO_BATTERY_FAST_S"] = "0.5"
+    rc_o, out_o, err_o = run_cli(engine_path, [
+        "check", "--step", "s-n", "--deps", deps_n, "--log", fx_n.log,
+        "--state", state], root, tag + "-o-slow", env=env_fast)
+    ok_o = (rc_o == 2 and out_o.startswith("SKIP-SLOW\n")
+            and "threshold=" in out_o)
+    add(ok_o, "o o modo rapido salta um passo lento e diz que o saltou",
+        "rc=%s out=%r" % (rc_o, out_o))
+
+    # (p) O VERBO `slowest` DIZ QUAIS PASSOS FORAM LENTOS.
+    slow_rows = engine.slowest(state, 10)
+    ok_p = any(name == "s-n" for name, _ in slow_rows)
+    add(ok_p, "p o verbo slowest lista os passos lentos",
+        "rows=%s" % (slow_rows[:4],))
+
     return rows
 
 
@@ -275,6 +317,17 @@ MUTANTS = [
      ["e log alterado -> MISS"],
      '    return bool(want_sha) and bool(got) and got == want_sha',
      '    return bool(got)'),
+    ("tempo-ignorado",
+     ["n o tempo do passo e medido (marker file)",
+      "o o modo rapido salta um passo lento e diz que o saltou"],
+     '    if elapsed is not None:\n'
+     '        entry["elapsed_s"] = round(elapsed, 3)',
+     '    if False:\n'
+     '        entry["elapsed_s"] = round(elapsed, 3)'),
+    ("modo-rapido-desligado",
+     ["o o modo rapido salta um passo lento e diz que o saltou"],
+     '        if fast_mode() and elapsed is not None and elapsed > fast_threshold_s():',
+     '        if False and elapsed is not None and elapsed > fast_threshold_s():'),
 ]
 
 

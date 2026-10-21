@@ -624,6 +624,23 @@ if exist _main\hotkey-triple-oracle.py (
   call :step hotkey-triple 0 "_main\hotkey-triple-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-triple.log" python _main\hotkey-triple-oracle.py
   call :record hotkey-triple !STEP_RC!
 ) else ( call :record hotkey-triple MISSING )
+REM THE OPEN/CLOSE STALL GATE (owner, 2026-10-21, the twentieth time: "eu, de
+REM novo, pela vigesima vez, vou mandar tu resolver os travamentos que
+REM acontecem quando fechamos o sotto ou abrimos o sotto"). It judges FILES:
+REM five structural facts, by AST -- never by substring, because a substring
+REM fact can be satisfied by a COMMENT and this gate's own first version was
+REM exactly that mistake (its mutants came back INERT). It launches NOTHING.
+REM The receipt is _main\receipt-20261021-open-close-stall.md.
+if exist _main\open-close-stall-oracle.py (
+  call :step open-close-stall 0 "_main\open-close-stall-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\open-close-stall.log" python _main\open-close-stall-oracle.py
+  call :record open-close-stall !STEP_RC!
+) else ( call :record open-close-stall MISSING )
+REM O BRACO NEGATIVO: cinco mutantes, cada um parte UMA vez. rc=1 POR DESENHO
+REM (o `--neg-arm` REPROVA de proposito).
+if exist _main\open-close-stall-oracle.py (
+  call :step red-as-expected-open-close-stall 1 "_main\open-close-stall-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\open-close-stall-neg.log" python _main\open-close-stall-oracle.py --neg-arm
+  call :expectred red-as-expected-open-close-stall !STEP_RC! "%OUT%\open-close-stall-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-open-close-stall MISSING "%OUT%\open-close-stall-neg.log" "NEG-ARM PASS" )
 REM The autostart check READS the registry (a read needs no elevation) and fails
 REM if the Run value points somewhere other than THIS checkout -- which is what a moved tree looks like from the login side. The step runs _main\autostart-status-check.py (2026-10-12) because the shell OWN exit code IS the status (0=on+matching, 1=off, 2=unreadable, 3=elsewhere): recording that rc as a plain gate painted a healthy OFF machine RED. The wrapper reads the registry itself, cross-checks the shell own answer, exits 0 for the two VALID states and 3 for another checkout. The REM line below keeps its original wording.
 REM moved tree looks like from the login side.
@@ -816,6 +833,13 @@ echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!
 echo cached   : !CACHEDN! step(s) were reused from the cache (their content and their logs were unchanged)
+REM THE SLOWEST STEPS (owner, 2026-10-21: *"a bateria deve ser rapida"*). Until
+REM this table existed nobody could say WHICH step was heavy -- and the fast
+REM mode reads the same numbers to decide what to skip.
+python _main\_stepcache.py slowest --state "%CACHE_STATE%" --top 8 > "%OUT%\_slowest.txt" 2>&1
+echo slowest  : the steps that took the longest last run
+type "%OUT%\_slowest.txt"
+if defined SOTTO_BATTERY_FAST echo fastmode : ON -- a step slower than the threshold was SKIPPED, not run, and is listed under skipped=
 echo per-step : !STEPLIST!
 echo controls : !CONTROLLIST!
 if "!FAILED!"=="" ( set "FAILEDTEXT=-none-" ) else ( set "FAILEDTEXT=!FAILED!" )
@@ -840,6 +864,8 @@ echo receipts in %OUT%
 >>"%OUT%\_battery-summary.txt" echo rcs: !STEPLIST!
 >>"%OUT%\_battery-summary.txt" echo controls: !CONTROLLIST!
 >>"%OUT%\_battery-summary.txt" echo skipped: !SKIPTEXT!
+>>"%OUT%\_battery-summary.txt" echo slowest:
+>>"%OUT%\_battery-summary.txt" type "%OUT%\_slowest.txt"
 >>"%OUT%\_battery-summary.txt" echo failed: !FAILEDTEXT!
 >>"%OUT%\_battery-summary.txt" echo exit-code: !BAD!
 >>"%OUT%\_battery-summary.txt" echo BATTERY-VERDICT: !VERDICT!
@@ -890,6 +916,7 @@ REM   which steps did not run.
 set "STEP_RC="
 set "STEP_CACHED=0"
 set "STEP_TAG="
+set "STEP_FASTSKIP="
 set "S_ALWAYS="
 if /i "%~1"=="always" goto step_take_always
 goto step_args
@@ -917,18 +944,44 @@ set "S_CMD=!S_CMD! "%~1""
 shift
 goto step_build
 :step_built
-if "!S_ALWAYS!"=="1" goto step_run
 set "S_HIT=0"
 set "S_CACHED_RC="
-for /f "tokens=1,* delims==" %%A in ('python _main\_stepcache.py check --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --log "!S_LOG!" --state "%CACHE_STATE%" 2^>nul') do (
+set "S_ELAPSED="
+set "S_THRESHOLD="
+set "S_FASTSKIP=0"
+set "S_ALWAYSFARG="
+if "!S_ALWAYS!"=="1" set "S_ALWAYSFARG=--always"
+REM THE ALWAYS STEPS ASK TOO. The check is cheap and it is the only thing that
+REM knows how long a step took -- and the FAST MODE reads that number. An
+REM always step is never CACHED, but it is still TIMED. `--always` keeps the
+REM check from answering HIT for it (its truth is outside the files).
+for /f "tokens=1,* delims==" %%A in ('python _main\_stepcache.py check --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --log "!S_LOG!" --state "%CACHE_STATE%" !S_ALWAYSFARG! 2^>nul') do (
   if /i "%%A"=="HIT" set "S_HIT=1"
   if /i "%%A"=="rc" set "S_CACHED_RC=%%B"
+  if /i "%%A"=="elapsed" set "S_ELAPSED=%%B"
+  if /i "%%A"=="threshold" set "S_THRESHOLD=%%B"
+  if /i "%%A"=="SKIP-SLOW" set "S_FASTSKIP=1"
 )
+if "!S_FASTSKIP!"=="1" goto step_fastskip
+if "!S_ALWAYS!"=="1" goto step_run
 if "!S_HIT!"=="1" goto step_hit
 :step_run
+REM THE CLOCK. A MARKER FILE, not another process: the battery already starts a
+REM python for every step, and one more per step would be a tax on every run
+REM to serve one mode.
+echo.>"%CACHE_STATE%.t0"
 !S_CMD! > "!S_LOG!" 2>&1
 set "STEP_RC=!ERRORLEVEL!"
-python _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" >nul 2>&1
+python _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" >nul 2>&1
+exit /b 0
+:step_fastskip
+REM THE FAST MODE (owner, 2026-10-21: *"a bateria deve ser rapida"*). This step
+REM was slower than the threshold in the last run, so it is NOT run now. It is
+REM NOT a gate that passed: the recorder counts it as SKIPPED and the summary
+REM names it, with the time it had taken.
+echo BATTERY-FAST-SKIP step=!S_NAME! last_s=!S_ELAPSED! threshold_s=!S_THRESHOLD!>"!S_LOG!"
+set "STEP_RC=0"
+set "STEP_FASTSKIP=1"
 exit /b 0
 :step_hit
 set "STEP_RC=!S_CACHED_RC!"
@@ -938,6 +991,7 @@ set /a CACHEDN+=1
 exit /b 0
 REM :record <name> <rc>          -- an ordinary gate: rc=0 is the only pass.
 :record
+if defined STEP_FASTSKIP goto fastskip
 set /a N+=1
 set /a GATES+=1
 set "STEPLIST=!STEPLIST! %~1=%~2"
@@ -975,6 +1029,15 @@ REM   A second skip text makes the skip claim stronger: for this probe both
 REM   `VERDICT: SKIPPED` AND `CANNOT claim` are required, so a stray mention of the
 REM   word in a verified run cannot be read as a skip.
 :skipped
+REM THE FAST MODE (owner, 2026-10-21: *"a bateria deve ser rapida"*). A step
+REM that was slower than the threshold was NOT RUN, and the battery's own marker
+REM says so in the log (`BATTERY-FAST-SKIP ...`). The instrument never spoke, so
+REM its own skip/verified literals are absent BY DESIGN -- reading them as "the
+REM instrument cannot say what it did" turned a skipped step into a FAILED one
+REM (measured 2026-10-21: the fast run reported 2 failures, both of them steps
+REM that were skipped on purpose). A step the BATTERY skipped is skipped, not
+REM failed -- and, like every other skip, it is NOT counted as a gate.
+if defined STEP_FASTSKIP goto fastskip
 set /a N+=1
 set "STEPLIST=!STEPLIST! %~1=%~2"
 set "WHY="
@@ -1012,6 +1075,20 @@ set /a GATES+=1
 echo [step] %~1 rc=0  [SKIP-CAPABLE, verified this run] %~4 - the skip verdict is absent, so this IS a gate!STEP_TAG!
 exit /b 0
 
+REM :fastskip -- the FAST MODE did not run this step (owner, 2026-10-21).
+REM   It did NOT verify anything, so it is NOT a gate that passed, NOT a
+REM   control that went RED and NOT an expect-red arm that failed: it is
+REM   counted in `skipped=`, NAMED in the summary, and the verdict says how
+REM   many steps did not verify. A step that cannot say what it did is never
+REM   rounded up to a pass.
+:fastskip
+set /a N+=1
+set /a SKIPN+=1
+set "STEPLIST=!STEPLIST! %~1=fast-skip"
+set "SKIPLIST=!SKIPLIST! %~1"
+echo [step] %~1 rc=0  [SKIPPED: fast mode] NOT RUN: slower than the threshold in the last run
+exit /b 0
+
 REM :control <name> <rc> <log> <required-text> [<required-text-2>]
 REM   A control PASSES only when the instrument exits 0 (its own "the copy went
 REM   RED" signal) AND its log carries the required verdict text. Anything else --
@@ -1020,6 +1097,7 @@ REM   The optional second text exists for a probe whose verdict can be unreachab
 REM   (rc=1 and a traceback instead of a verdict): it lets the step demand a second,
 REM   independent fact from the same run (e.g. that the mutant COPY was removed).
 :control
+if defined STEP_FASTSKIP goto fastskip
 set /a N+=1
 set /a CTRLS+=1
 set "STEPLIST=!STEPLIST! %~1=%~2"
@@ -1051,6 +1129,7 @@ REM   exit 1 -- the defect found -- and print the violation it found. rc=0 means
 REM   the deliberately-broken copy was NOT caught (the control did not go red),
 REM   and rc=2 is a setup error: both FAIL.
 :expectred
+if defined STEP_FASTSKIP goto fastskip
 set /a N+=1
 set /a REDS+=1
 set "STEPLIST=!STEPLIST! %~1=%~2"
