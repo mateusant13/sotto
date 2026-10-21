@@ -1,0 +1,462 @@
+{
+  "families": {
+    "Barlow Condensed": [
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "barlow-condensed-latin-400-normal.ttf",
+        "slug": "barlow-condensed"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "barlow-condensed-latin-500-normal.ttf",
+        "slug": "barlow-condensed"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "barlow-condensed-latin-600-normal.ttf",
+        "slug": "barlow-condensed"
+      },
+      {
+        "weight": 700,
+        "italic": false,
+        "file": "barlow-condensed-latin-700-normal.ttf",
+        "slug": "barlow-condensed"
+      }
+    ],
+    "Bricolage Grotesque": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "bricolage-grotesque-latin-300-normal.ttf",
+        "slug": "bricolage-grotesque"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "bricolage-grotesque-latin-400-normal.ttf",
+        "slug": "bricolage-grotesque"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "bricolage-grotesque-latin-500-normal.ttf",
+        "slug": "bricolage-grotesque"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "bricolage-grotesque-latin-600-normal.ttf",
+        "slug": "bricolage-grotesque"
+      },
+      {
+        "weight": 700,
+        "italic": false,
+        "file": "bricolage-grotesque-latin-700-normal.ttf",
+        "slug": "bricolage-grotesque"
+      },
+      {
+        "weight": 800,
+        "italic": false,
+        "file": "bricolage-grotesque-latin-800-normal.ttf",
+        "slug": "bricolage-grotesque"
+      }
+    ],
+    "Cormorant Garamond": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "cormorant-garamond-latin-300-normal.ttf",
+        "slug": "cormorant-garamond"
+      },
+      {
+        "weight": 300,
+        "italic": true,
+        "file": "cormorant-garamond-latin-300-italic.ttf",
+        "slug": "cormorant-garamond"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "cormorant-garamond-latin-400-normal.ttf",
+        "slug": "cormorant-garamond"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "cormorant-garamond-latin-400-italic.ttf",
+        "slug": "cormorant-garamond"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "cormorant-garamond-latin-500-normal.ttf",
+        "slug": "cormorant-garamond"
+      }
+    ],
+    "DM Mono": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "dm-mono-latin-300-normal.ttf",
+        "slug": "dm-mono"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "dm-mono-latin-400-normal.ttf",
+        "slug": "dm-mono"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "dm-mono-latin-400-italic.ttf",
+        "slug": "dm-mono"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "dm-mono-latin-500-normal.ttf",
+        "slug": "dm-mono"
+      }
+    ],
+    "Fraunces": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "fraunces-latin-300-normal.ttf",
+        "slug": "fraunces"
+      },
+      {
+        "weight": 300,
+        "italic": true,
+        "file": "fraunces-latin-300-italic.ttf",
+        "slug": "fraunces"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "fraunces-latin-400-normal.ttf",
+        "slug": "fraunces"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "fraunces-latin-400-italic.ttf",
+        "slug": "fraunces"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "fraunces-latin-500-normal.ttf",
+        "slug": "fraunces"
+      },
+      {
+        "weight": 500,
+        "italic": true,
+        "file": "fraunces-latin-500-italic.ttf",
+        "slug": "fraunces"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "fraunces-latin-600-normal.ttf",
+        "slug": "fraunces"
+      }
+    ],
+    "IBM Plex Mono": [
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "ibm-plex-mono-latin-400-normal.ttf",
+        "slug": "ibm-plex-mono"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "ibm-plex-mono-latin-400-italic.ttf",
+        "slug": "ibm-plex-mono"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "ibm-plex-mono-latin-500-normal.ttf",
+        "slug": "ibm-plex-mono"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "ibm-plex-mono-latin-600-normal.ttf",
+        "slug": "ibm-plex-mono"
+      },
+      {
+        "weight": 700,
+        "italic": false,
+        "file": "ibm-plex-mono-latin-700-normal.ttf",
+        "slug": "ibm-plex-mono"
+      }
+    ],
+    "Instrument Sans": [
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "instrument-sans-latin-400-normal.ttf",
+        "slug": "instrument-sans"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "instrument-sans-latin-400-italic.ttf",
+        "slug": "instrument-sans"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "instrument-sans-latin-500-normal.ttf",
+        "slug": "instrument-sans"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "instrument-sans-latin-600-normal.ttf",
+        "slug": "instrument-sans"
+      }
+    ],
+    "Instrument Serif": [
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "instrument-serif-latin-400-normal.ttf",
+        "slug": "instrument-serif"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "instrument-serif-latin-400-italic.ttf",
+        "slug": "instrument-serif"
+      }
+    ],
+    "Inter": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "inter-latin-300-normal.ttf",
+        "slug": "inter"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "inter-latin-400-normal.ttf",
+        "slug": "inter"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "inter-latin-500-normal.ttf",
+        "slug": "inter"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "inter-latin-600-normal.ttf",
+        "slug": "inter"
+      }
+    ],
+    "JetBrains Mono": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "jetbrains-mono-latin-300-normal.ttf",
+        "slug": "jetbrains-mono"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "jetbrains-mono-latin-400-normal.ttf",
+        "slug": "jetbrains-mono"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "jetbrains-mono-latin-500-normal.ttf",
+        "slug": "jetbrains-mono"
+      }
+    ],
+    "Jost": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "jost-latin-300-normal.ttf",
+        "slug": "jost"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "jost-latin-400-normal.ttf",
+        "slug": "jost"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "jost-latin-500-normal.ttf",
+        "slug": "jost"
+      }
+    ],
+    "Lora": [
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "lora-latin-400-normal.ttf",
+        "slug": "lora"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "lora-latin-400-italic.ttf",
+        "slug": "lora"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "lora-latin-500-normal.ttf",
+        "slug": "lora"
+      },
+      {
+        "weight": 500,
+        "italic": true,
+        "file": "lora-latin-500-italic.ttf",
+        "slug": "lora"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "lora-latin-600-normal.ttf",
+        "slug": "lora"
+      }
+    ],
+    "Manrope": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "manrope-latin-300-normal.ttf",
+        "slug": "manrope"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "manrope-latin-400-normal.ttf",
+        "slug": "manrope"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "manrope-latin-500-normal.ttf",
+        "slug": "manrope"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "manrope-latin-600-normal.ttf",
+        "slug": "manrope"
+      }
+    ],
+    "Newsreader": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "newsreader-latin-300-normal.ttf",
+        "slug": "newsreader"
+      },
+      {
+        "weight": 300,
+        "italic": true,
+        "file": "newsreader-latin-300-italic.ttf",
+        "slug": "newsreader"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "newsreader-latin-400-normal.ttf",
+        "slug": "newsreader"
+      },
+      {
+        "weight": 400,
+        "italic": true,
+        "file": "newsreader-latin-400-italic.ttf",
+        "slug": "newsreader"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "newsreader-latin-500-normal.ttf",
+        "slug": "newsreader"
+      },
+      {
+        "weight": 500,
+        "italic": true,
+        "file": "newsreader-latin-500-italic.ttf",
+        "slug": "newsreader"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "newsreader-latin-600-normal.ttf",
+        "slug": "newsreader"
+      }
+    ],
+    "Outfit": [
+      {
+        "weight": 300,
+        "italic": false,
+        "file": "outfit-latin-300-normal.ttf",
+        "slug": "outfit"
+      },
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "outfit-latin-400-normal.ttf",
+        "slug": "outfit"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "outfit-latin-500-normal.ttf",
+        "slug": "outfit"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "outfit-latin-600-normal.ttf",
+        "slug": "outfit"
+      }
+    ],
+    "Space Grotesk": [
+      {
+        "weight": 400,
+        "italic": false,
+        "file": "space-grotesk-latin-400-normal.ttf",
+        "slug": "space-grotesk"
+      },
+      {
+        "weight": 500,
+        "italic": false,
+        "file": "space-grotesk-latin-500-normal.ttf",
+        "slug": "space-grotesk"
+      },
+      {
+        "weight": 600,
+        "italic": false,
+        "file": "space-grotesk-latin-600-normal.ttf",
+        "slug": "space-grotesk"
+      },
+      {
+        "weight": 700,
+        "italic": false,
+        "file": "space-grotesk-latin-700-normal.ttf",
+        "slug": "space-grotesk"
+      }
+    ]
+  }
+}

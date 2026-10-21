@@ -4,6 +4,21 @@ node_modules/
 dist/
 target/
 
+# THE BATTERY'S CACHE STATE (2026-10-21). `_main/_stepcache.py` keeps the
+# fingerprint of every step it has already proven, so the next run does not
+# redo it. That is MACHINE STATE, not source: it says which files were
+# verified on THIS box, and it changes every time a step runs.
+_cache/
+
+# THE DESIGN AUDIT'S RENDERS (2026-10-21). Measured on disk: `demos/` is
+# 73.3 MB in 150 files, `rendered/` 15.0 MB in 29, and
+# `docs/design-audit-20261021/` 94.7 MB in 497. These are PICTURES of designs,
+# reproducible from the sources next to them; the git repo keeps the sources,
+# the texts and the measurements, not the pixels.
+docs/design-intake/demos/
+docs/design-intake/rendered/
+docs/design-audit-20261021/
+
 # Downloaded model weights. Sotto fetches these on first run, never bundled,
 # so they are reproducible state, not source.
 *.onnx

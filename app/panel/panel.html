@@ -69,7 +69,17 @@
          buttons — the owner's rule: *"eu quero que tudo seja traduzido pro tamanho
          atual, e com os botoes atuais. o resto, tem que ser igual."* -->
     <link rel="stylesheet" href="themes/zipc-panels.css" />
-    <link rel="stylesheet" href="zip-overlay.css" />
+    <!-- ZIP-OVERLAY.CSS IS RETIRED FROM THE PANEL (2026-10-21, owner: *"o painel
+         de baixo nao muda com o design"*). It was the old Zip-D caption language
+         and it won every fight because it loads AFTER the themes and carries
+         `!important`: it forced the strip slab to `rgba(11,15,20,.98)`, every
+         strip child to `#e8edf4`, the floated caption to a SERIF face, the LED
+         to green and the column to `text-align:left`. The result was the same
+         generic dark bar under all 45 designs, and a serif overlay under an
+         Inter/GlassCards panel. The design now comes from the theme (and from
+         `brand-bridge.js` for the native overlay), so the overrides are gone
+         from THIS document. `caption.html` still links it: that page is the
+         dead caption document and is not on the live path. -->
     <!-- THE BUTTON CONTRACT (owner, 2026-10-17: *"todos os botoes deviam estar
          no literalmente mesmo lugar, em todos os temas"*). It is the LAST sheet
          on purpose: every rule is !important and scoped to the surface, so it
@@ -144,35 +154,13 @@
     <main class="panel" id="panel">
       <header class="panel__header">
         <div class="wordmark">
-          <!-- The mark from brand/logo.svg: three audio bars and the panel slab,
-               in the same #7DD3FC -> #A78BFA gradient. -->
-          <svg class="wordmark__mark" viewBox="0 0 64 64" role="img" aria-label="Sotto">
-            <defs>
-              <linearGradient id="sotto-accent" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#7DD3FC" />
-                <stop offset="100%" stop-color="#A78BFA" />
-              </linearGradient>
-            </defs>
-            <rect
-              x="30"
-              y="6"
-              width="28"
-              height="52"
-              rx="6"
-              fill="#0B0F14"
-              stroke="url(#sotto-accent)"
-              stroke-width="2"
-            />
-            <rect x="35" y="14" width="18" height="3" rx="1.5" fill="url(#sotto-accent)" opacity="0.95" />
-            <rect x="35" y="22" width="13" height="3" rx="1.5" fill="#7DD3FC" opacity="0.45" />
-            <rect x="35" y="30" width="16" height="3" rx="1.5" fill="#A78BFA" opacity="0.55" />
-            <rect x="8" y="26" width="4" height="12" rx="2" fill="#7DD3FC" opacity="0.55" />
-            <rect x="15" y="18" width="4" height="28" rx="2" fill="url(#sotto-accent)" />
-            <rect x="22" y="23" width="4" height="18" rx="2" fill="#A78BFA" opacity="0.75" />
-          </svg>
+          <!-- THE APP ICON AND THE 'live captions' TAG ARE GONE (owner,
+               2026-10-21): *"retira o icone do app dos paineis. deixa só escrito
+               sotto, com os diversos designs desse texto."* and *"tambem retira
+               'live captions' do painel."* What remains is the one word, wearing
+               whatever type the active design gives `.wordmark__name`. -->
           <div class="wordmark__text">
             <h1 class="wordmark__name">sotto</h1>
-            <p class="wordmark__tag">live captions</p>
           </div>
         </div>
 
@@ -1267,5 +1255,27 @@
      piece of code that made the strip movable was dead in every launch. A blocked
      script throws nothing and logs nothing, which is why it went unnoticed for rounds. -->
     <script src="strip-drag.js"></script>
+    <!-- THE BRAND PROBE + BRIDGE (2026-10-21). The probe mirrors a real caption
+         row so the current theme's computed face/plate/rule can be measured
+         even when the transcript is empty; `brand-bridge.js` posts those tokens
+         to the shell, which hands them to the NATIVE overlay. Without this the
+         panel changes design and the caption the owner actually reads does not.
+         Off screen via `.brand-probe` in panel.css; never inside #caption-list,
+         so the list's own child selectors and counters do not see it. -->
+    <div class="brand-probe" id="brand-probe" aria-hidden="true">
+      <ol class="captions__list">
+        <li class="caption caption--provisional">
+          <span class="caption__led"></span>
+          <span class="caption__time">00:00</span>
+          <span class="caption__text">A legenda nasce aqui.</span>
+        </li>
+        <li class="caption caption--latest">
+          <span class="caption__led"></span>
+          <span class="caption__time">00:00</span>
+          <span class="caption__text">A linha anterior fica aqui.</span>
+        </li>
+      </ol>
+    </div>
+    <script src="brand-bridge.js"></script>
   </body>
 </html>

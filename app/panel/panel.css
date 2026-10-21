@@ -1337,6 +1337,26 @@ body[data-level="none"] .chrome__meter i {
   cursor: text;
 }
 
+/* THE BRAND PROBE (2026-10-21). `brand-bridge.js` measures this row to learn
+   what the current theme actually resolved to, then the native overlay wears
+   it. It MUST stay off screen with `opacity: 0`, not `visibility: hidden`:
+   visibility is inherited, and a hidden probe would report the LED as hidden
+   on every theme. It is outside `#caption-list` so the list's own
+   `:first-child`/`:last-child` and counters never see it. */
+.brand-probe {
+  position: fixed;
+  top: 0;
+  left: -12000px;
+  width: 380px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -2147483648;
+}
+
+.brand-probe .captions__list {
+  padding: 10px;
+}
+
 @keyframes caption-in {
   from {
     opacity: 0;
@@ -3735,3 +3755,58 @@ html body[data-surface="panel"] .panel__controls #hide-button { order: 99 !impor
    which is not a control — is the last thing painted. Its pin lives with the
    strip's own order list (the block that owns the strip's row), because the
    contract sheet pins that row too and the two must not disagree about it. */
+
+/* ══ THE STRIP WEARS THE SELECTED DESIGN (2026-10-21) ═══════════════════════
+ * THE DEFECT: `zip-overlay.css` forced `body[data-surface="strip"] .panel` to
+ * `rgba(11,15,20,.98) !important` and every child to `#e8edf4 !important`, so
+ * the bottom bar was the same dark slab under all 45 designs. Removing that
+ * sheet from `panel.html` lets the theme's own `.panel` rule apply, but the
+ * strip has a rule of its own (`panel.css:3129`) and some themes scope their
+ * slab to the PANEL surface. So the bridge measures the real slab in the panel
+ * surface and hands over the resolved `background` shorthand; this rule paints
+ * exactly that on the band. The band stays square and edge-to-edge: only the
+ * paint travels, not the geometry.
+ *
+ * The type follows the caption face because that is the face the owner reads
+ * across the room; the state word and the buttons move with it, so the bar and
+ * the overlay cannot disagree about which design is selected. */
+html[data-brand] body[data-surface="strip"] .panel {
+  background: var(--brand-panel, rgba(11, 15, 20, 0.98));
+  /* THE BAND STAYS A BAND (owner, 2026-10-13: *"mais uma faixa/linha reta"*).
+     The theme's `.panel` rule is (0,3,0) and the strip's own square rule is
+     (0,2,1), so the design's 22px slab radius was winning on the strip and
+     rounding the window's corners. This rule is (0,3,2): it carries the paint
+     and the square geometry together, so a future theme cannot round the bar
+     without editing this line. */
+  border-radius: 0;
+}
+
+/* A CINEMATIC SKIN PAINTS ITS OWN SURFACE, NOT THE STOCK PANEL'S SLAB.
+ * `skin-host.js` applies the design's 15 vars to <body>; `--surface` is the
+ * stage colour. The hidden stock panel's computed background is not the design
+ * the owner sees, so the strip takes the skin's surface instead. */
+html[data-brand] body[data-surface="strip"][data-skin="1"] .panel {
+  background: var(--surface, var(--brand-panel, rgba(11, 15, 20, 0.98)));
+}
+
+html[data-brand] body[data-surface="strip"] .stripbar__brand,
+html[data-brand] body[data-surface="strip"] .strip-button,
+html[data-brand] body[data-surface="strip"] .stripbar__state,
+html[data-brand] body[data-surface="strip"] .stripbar__word {
+  font-family: var(--brand-font, var(--font));
+}
+
+html[data-brand] body[data-surface="strip"] .stripbar__brand {
+  /* Lowercase in the markup, uppercase by the strip's own rule: keep the case,
+     take the design's ink. A pure `--text-faint` wordmark disappears on the
+     light end of a warm slab, so the live ink is the safer brand colour. */
+  color: var(--brand-live-color, var(--text-faint));
+}
+
+html[data-brand] body[data-surface="strip"] .stripbar__grip {
+  background-image: radial-gradient(
+    circle,
+    var(--brand-rule, var(--accent, #7dd3fc)) 1.15px,
+    transparent 1.4px
+  );
+}

@@ -266,3 +266,68 @@ body[data-surface="strip"] #caption-float[data-float="on"] {
   bottom: 0;
   height: auto;
 }
+
+/* ══ THE SELECTED DESIGN, ON THE FLOAT (2026-10-21) ══════════════════════════
+ * WHY THIS BLOCK EXISTS. The float used to be the Zip-D caption language for
+ * every design: `zip-overlay.css` forced a SERIF line, a green LED and a
+ * left-aligned column with `!important`, so the strip-float looked identical
+ * under GlassCards' Inter and under Ledger's DM Mono. The owner asked for each
+ * design to carry its own brand on every surface, and the native overlay
+ * (`caption_overlay.py`) already receives the measured tokens from
+ * `brand-bridge.js`. This block is the page's half of the same message: it
+ * consumes the tokens ONCE, so the float cannot drift from the overlay.
+ *
+ * THE TOKENS ARE ALREADY RESOLVED PX (the bridge multiplies the panel's own
+ * value for a 1040 px strip), so no `vw` ramp here: a ramp would undo the
+ * design's size at a different window width, which is exactly the class of bug
+ * that made the zip's 13 px panel line ship at 34 px.
+ *
+ * THE PLATE. The bridge sends the EFFECTIVE row colour (the design's translucent
+ * wash composited over the panel's slab) and its own opacity. A 7% warm wash is
+ * therefore a dark warm plate here too, not the bright tan slab a raw RGBA would
+ * have produced. `padding` is floored at 8-10 px, because a plate with the text
+ * on its first pixel is the owner's "comeca no primeiro pixel" defect. */
+html[data-brand] #caption-float .caption-float__col {
+  padding: var(--brand-pad-top, 10px) var(--brand-pad-right, 14px)
+    var(--brand-pad-bottom, 10px) var(--brand-pad-left, 14px);
+  border-radius: var(--brand-radius, 12px);
+  background: var(--brand-plate, transparent);
+  text-align: var(--brand-align, left);
+}
+
+html[data-brand] #caption-float .caption-float__line {
+  font-family: var(--brand-font, inherit);
+  font-size: var(--brand-live-size, 30px);
+  font-weight: var(--brand-live-weight, 500);
+  font-style: var(--brand-live-style, normal);
+  line-height: var(--brand-live-leading, 1.2);
+  letter-spacing: var(--brand-live-tracking, normal);
+  color: var(--brand-live-color, #fff);
+  text-transform: var(--brand-live-upper, none);
+  text-align: var(--brand-align, left);
+}
+
+html[data-brand] #caption-float .caption-float__prev {
+  font-family: var(--brand-font, inherit);
+  font-size: var(--brand-prev-size, 18px);
+  font-weight: var(--brand-prev-weight, 400);
+  font-style: var(--brand-prev-style, normal);
+  line-height: var(--brand-prev-leading, 1.3);
+  letter-spacing: var(--brand-prev-tracking, normal);
+  color: var(--brand-prev-color, rgba(255, 255, 255, 0.7));
+  text-transform: var(--brand-prev-upper, none);
+  text-align: var(--brand-align, left);
+}
+
+/* THE LEFT RULE IS THE DESIGN'S, not a fixed 4 px accent bar: its width and
+ * colour are the row's own computed border-left, doubled for the 1040 px strip.
+ * A design with no rule gets `0px`, which removes the bar instead of inventing
+ * one. */
+html[data-brand] #caption-float .caption-float__led {
+  width: var(--brand-rule-w, 0px);
+  min-width: var(--brand-rule-w, 0px);
+  background: var(--brand-rule, transparent);
+  border-radius: 99px;
+  animation: none;
+  opacity: 1;
+}

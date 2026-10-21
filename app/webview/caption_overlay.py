@@ -26,6 +26,8 @@ The window is:
 from __future__ import annotations
 
 import ctypes
+import json
+import os
 import threading
 from ctypes import wintypes as wt
 
@@ -126,7 +128,7 @@ class WNDCLASSEXW(ctypes.Structure):
                 ("hIconSm", wt.HICON)]
 
 
-def _measure(text, px, cache, family='Segoe UI', bold=True, italic=False):
+def _measure(text, px, cache, family='Segoe UI', weight=700, italic=False):
     """Width in px of `text` at `px`, measured by the renderer that draws it.
 
     `GraphicsPath.AddString` + `FillPath` is what paints the caption, so the width
@@ -151,20 +153,12 @@ def _measure(text, px, cache, family='Segoe UI', bold=True, italic=False):
     import clr
     clr.AddReference('System.Drawing')
     from System.Drawing import Bitmap, Graphics, Font, FontStyle, GraphicsUnit
-    key = (str(family), bool(bold), bool(italic), round(float(px), 2))
+    key = (str(family), int(weight), bool(italic), round(float(px), 2))
     hit = cache.get(key)
     if hit is None:
         bmp = Bitmap(8, 8)
         g = Graphics.FromImage(bmp)
-        style = FontStyle.Regular
-        if bold:
-            style = style | FontStyle.Bold
-        if italic:
-            style = style | FontStyle.Italic
-        try:
-            font = Font(str(family), key[3], style, GraphicsUnit.Pixel)
-        except Exception:
-            font = Font('Segoe UI', key[3], style, GraphicsUnit.Pixel)
+        font = _make_font(str(family), key[3], int(weight), bool(italic))
 
         def width_of(text, _g=g, _f=font):
             return 0.0 if not text else _g.MeasureString(text, _f).Width
@@ -283,6 +277,24 @@ def _rgba(value, default=None):
                 return (r, g, b, a)
             except ValueError:
                 return default
+    # CHROMIUM RESOLVES `color-mix()` AND `oklch()` TO `color(srgb …)`.
+    # MEASURED 2026-10-21 on GlassCards: the row's computed `border-left-color`
+    # arrived as `color(srgb 0.913725 0.658824 0.356863 / 0.3)`; an rgb()-only
+    # parser dropped it and the overlay lost the design's rail. The values are
+    # already sRGB components in 0..1.
+    m = __import__('re').match(r'color\(\s*srgb\s+([^)]*)\)', text)
+    if m:
+        parts = [p for p in __import__('re').split(r'[\s,/]+', m.group(1).strip()) if p]
+        try:
+            vals = [max(0.0, min(1.0, float(p))) for p in parts[:3]]
+            r, g, b = [int(round(v * 255)) for v in vals]
+            a = 255
+            if len(parts) > 3:
+                raw = max(0.0, min(1.0, float(parts[3])))
+                a = int(round(raw * 255))
+            return (r, g, b, a)
+        except (ValueError, IndexError):
+            return default
     m = __import__('re').match(r'rgba?\(([^)]*)\)', text)
     if m:
         parts = [p for p in __import__('re').split(r'[\s,/]+', m.group(1).strip()) if p]
@@ -306,6 +318,95 @@ def _colour(t, fallback=(255, 255, 255, 255)):
     from System.Drawing import Color
     r, g, b, a = t
     return Color.FromArgb(int(a), int(r), int(g), int(b))
+
+
+# ── THE FACES ────────────────────────────────────────────────────────────────
+# The panel's fonts are woff2; GDI+ cannot open them. `make-overlay-fonts.py`
+# converts them to TTF + `manifest.json` (the `@font-face` family, weight and
+# style of each file). This resolver is the ONLY place the overlay chooses a
+# face, so the measure and the draw can never pick different ones.
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fonts')
+_FONT_INDEX = None
+_FONT_FACES = {}
+
+
+def _font_index():
+    global _FONT_INDEX
+    if _FONT_INDEX is None:
+        index = {}
+        try:
+            with open(os.path.join(_FONT_DIR, 'manifest.json'),
+                      encoding='utf-8') as fh:
+                data = json.load(fh)
+            for family, faces in (data.get('families') or {}).items():
+                index[str(family).strip().lower()] = list(faces or [])
+        except Exception:
+            index = {}
+        _FONT_INDEX = index
+    return _FONT_INDEX
+
+
+def _face_for(family, weight, italic):
+    faces = _font_index().get(str(family or '').strip().lower())
+    if not faces:
+        return None
+    pool = [f for f in faces if bool(f.get('italic')) == bool(italic)]
+    if not pool:
+        pool = faces
+    weight = int(weight)
+    return min(pool, key=lambda f: (abs(int(f.get('weight', 400)) - weight),
+                                    0 if bool(f.get('italic')) == bool(italic) else 1))
+
+
+def _private_family(face):
+    key = str(face.get('file') or '')
+    hit = _FONT_FACES.get(key)
+    if hit is not None:
+        return hit
+    import clr
+    clr.AddReference('System.Drawing')
+    from System.Drawing.Text import PrivateFontCollection
+    pfc = PrivateFontCollection()
+    pfc.AddFontFile(os.path.join(_FONT_DIR, key))
+    family = pfc.Families[0]
+    # THE COLLECTION MUST OUTLIVE THE FAMILY. GDI+ returns a FontFamily owned by
+    # the collection; letting the collection go leaves the Font pointing at
+    # freed native memory -- the same lifetime trap `_measure` documents.
+    hit = (family, pfc, face)
+    _FONT_FACES[key] = hit
+    return hit
+
+
+def _make_font(family, px, weight, italic):
+    """The ONE face factory: private TTF first, installed family second."""
+    import clr
+    clr.AddReference('System.Drawing')
+    from System.Drawing import Font, FontStyle, GraphicsUnit
+    weight = int(weight)
+    face = _face_for(family, weight, italic)
+    if face:
+        try:
+            fam, _pfc, chosen = _private_family(face)
+            style = FontStyle.Regular
+            # The FILE is the weight. Asking GDI+ for Bold on a 700 file would
+            # embolden it a second time; asking for Bold on a 400 file is the
+            # only way to honour a design whose 700 face is not in the panel.
+            if weight >= 600 and int(chosen.get('weight', 400)) < 600:
+                style = style | FontStyle.Bold
+            if italic and not bool(chosen.get('italic')):
+                style = style | FontStyle.Italic
+            return Font(fam, px, style, GraphicsUnit.Pixel)
+        except Exception:
+            pass
+    style = FontStyle.Regular
+    if weight >= 600:
+        style = style | FontStyle.Bold
+    if italic:
+        style = style | FontStyle.Italic
+    try:
+        return Font(str(family), px, style, GraphicsUnit.Pixel)
+    except Exception:
+        return Font('Segoe UI', px, style, GraphicsUnit.Pixel)
 
 
 def _luminance(rgba):
@@ -334,7 +435,11 @@ def _normalise_theme(tokens):
         pl = max(6.0, _num(panel_live, 18.5))
         live = max(21.0, min(48.0, pl * 1.85))
         ratio = live / pl
-        prev = max(13.0, _num(src.get('panelPrevPx'), pl * 0.72) * ratio)
+        # THE PREVIOUS LINE IS AN ECHO, NOT A SECOND HEADLINE. Designs whose
+        # history and live line share a size (GlassCards 13/13) would otherwise
+        # draw the previous caption at the live size; cap it at 0.78.
+        prev = min(live * 0.78,
+                   max(13.0, _num(src.get('panelPrevPx'), pl * 0.72) * ratio))
         pad = src.get('panelPad') or [10, 12, 10, 12]
         pad = tuple(max(0.0, _num(v, 10.0) * ratio) for v in pad)
         rule = max(0.0, _num(src.get('panelRuleW'), 0.0) * ratio)
@@ -374,15 +479,32 @@ def _normalise_theme(tokens):
         out['prevColor'] = (prev[0], prev[1], prev[2],
                             max(prev[3], 150))
 
-    plate = _rgba(src.get('rowBg'))
+    # A second pass carries `plate` (a tuple), not `rowBg` (the CSS string).
+    plate = _rgba(src.get('rowBg')) or _rgba(src.get('plate'))
     if plate and plate[3] > 6 and str(src.get('rowBgImage') or 'none') == 'none':
-        out['plate'] = (plate[0], plate[1], plate[2], max(plate[3], 140))
+        # `rowBg` is the EFFECTIVE colour (the bridge composites the row's wash
+        # over the panel), so its own opacity is the overlay's opacity, not the
+        # design's 7%. Legacy payloads without `rowBgAlpha` keep their own alpha.
+        alpha = plate[3]
+        if src.get('rowBgAlpha') is not None:
+            alpha = int(round(max(0.0, min(1.0, _num(
+                src.get('rowBgAlpha'), plate[3] / 255.0))) * 255))
+        out['plate'] = (plate[0], plate[1], plate[2], max(alpha, 140))
+        # A PLATE WITH NO PADDING PUTS THE TEXT ON ITS FIRST PIXEL (owner's
+        # defect, measured in the first overlay stills: the row's own padding is
+        # 0 in several designs and the plate is the trigger). The floor only
+        # applies when a plate is actually drawn; a design with no plate keeps
+        # its own zero padding so the caption stays optically centred.
+        out['pad'] = tuple(max(10.0, v) for v in out['pad'])
     out['plateRadius'] = max(0.0, _num(src.get('rowRadius'), 10.0) *
                              (out['livePx'] / max(1.0, _num(panel_live, out['livePx']))))
 
     rule_col = _rgba(src.get('ruleColor'))
     if rule_col and rule_col[3] > 6 and out['ruleW'] > 0.2:
-        out['ruleColor'] = rule_col
+        # A 1-2 px rail at the design's own 30% is invisible over video. Keep
+        # the hue, raise the alpha to a readable rail.
+        out['ruleColor'] = (rule_col[0], rule_col[1], rule_col[2],
+                            max(rule_col[3], 160))
     else:
         out['ruleW'] = 0.0
         out['ruleColor'] = (0, 0, 0, 0)
@@ -404,10 +526,19 @@ def _normalise_theme(tokens):
                                                    out['livePx'] * 0.22)))
             out['ledH'] = max(4.0, min(18.0, _num(src.get('ledH'),
                                                    out['ledW'])))
+        else:
+            out['led'] = None
+            out['ledW'] = 0.0
+            out['ledH'] = 0.0
     else:
         out['led'] = None
         out['ledW'] = 0.0
         out['ledH'] = 0.0
+    # THE SECOND PASS CANNOT RECOVER THIS FROM `led is None` ALONE: a theme
+    # that HAD a dot and one that never did both normalise to None. The marker
+    # makes "off" explicit, so `_layout` and the bitmap keep agreeing after a
+    # theme has been normalised twice (the panel -> shell -> layout path does).
+    out['ledVisible'] = bool(out['led'])
 
     out['align'] = 'center' if str(src.get('textAlign') or '').startswith('center') else 'left'
     ink_final = out['liveColor']
@@ -545,7 +676,14 @@ def _layout(text, previous, scale, work_width, theme=None):
 
     widest = max([cur_w(l) for l in cur_lines] + ([prev_w(prev_line)] if prev_line else [0]))
     max_text = max(1.0, work_width - g['x_text'] - g['pad_r'])
-    width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'], max_text)))
+    # THE LAST GLYPH'S RIGHT SIDE. `MeasureString` and the `AddString`/`FillPath`
+    # pair disagree by a few pixels on the final advance, and the bitmap is sized
+    # from the measurement: the fresh 2026-10-21 GlassCards still read
+    # `...em formaca` with the `o.` outside the bitmap. A trailing safety margin
+    # is paid for in plate width, never in a lost word.
+    safety = max(18.0, cur_px * 0.9)
+    width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'] + safety,
+                                      max_text)))
     height = int(g['pad_t'] + g['pad_b'] + g['line_h'] * len(cur_lines)
                  + (g['prev_h'] if prev_line else 0))
     return cur_lines, prev_line, max(1, width), max(1, height), scrolled
@@ -578,19 +716,10 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
     g.SmoothingMode = SmoothingMode.AntiAlias
     g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit
 
-    def make_font(px, weight, italic):
-        style = FontStyle.Regular
-        if weight >= 600:
-            style = style | FontStyle.Bold
-        if italic:
-            style = style | FontStyle.Italic
-        try:
-            return Font(t['fontFamily'], px, style, GraphicsUnit.Pixel)
-        except Exception:
-            return Font('Segoe UI', px, style, GraphicsUnit.Pixel)
-
-    cur_font = make_font(geo['cur_px'], t['liveWeight'], t['liveItalic'])
-    prev_font = make_font(geo['prev_px'], t['prevWeight'], t['prevItalic'])
+    cur_font = _make_font(t['fontFamily'], geo['cur_px'], t['liveWeight'],
+                          t['liveItalic'])
+    prev_font = _make_font(t['fontFamily'], geo['prev_px'], t['prevWeight'],
+                           t['prevItalic'])
     fmt = StringFormat()
     fmt.Alignment = (StringAlignment.Center if t['align'] == 'center'
                      else StringAlignment.Near)
