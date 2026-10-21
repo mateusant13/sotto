@@ -330,6 +330,25 @@ PANEL_STATE_INTERVAL_S = 2.0
 # did not only delay the stats: it HELD the pump thread -- the one that
 # carries the captions -- for 10 s at a time, 93 times.
 UI_MARSHAL_TIMEOUT_S = 10.0      # the DEFAULT budget of `_ui` (unchanged)
+#: THE TRANSPARENCY HACK'S WAIT (2026-10-21). The hack marshals `form.Show()`
+#: onto the UI thread, and the caller is the HOTKEY thread -- the thread that
+#: owns the owner's ONLY control. `_ui`'s default budget is TEN SECONDS, so a
+#: busy UI thread turned an Alt+C into a ten-second wait for a window that was
+#: already on its way: the owner's *"abrir o sotto trava"*. A quarter of a
+#: second is enough when the UI thread is idle (the common case); when it is
+#: not, the hack is POSTED instead of waited for (see `transparency_hack`).
+TRANSPARENCY_HACK_WAIT_S = 0.25
+#: THE EXIT'S DESTROY WAIT (2026-10-21). The window destroy is COSMETIC: the
+#: shell calls `os._exit` right after, so the window dies either way. Waiting
+#: three seconds for it is three seconds the tray thread is not answering the
+#: owner -- the same *"fechar o sotto trava"*. A quarter of a second is enough
+#: to let the destroy start.
+QUIT_DESTROY_WAIT_S = 0.25
+#: HOW LONG AFTER THE APP'S START THE WORKER IS PRELOADED (2026-10-21). Long
+#: enough that the login's own paint and the shell's window are done, short
+#: enough that the model is ready before the owner reaches for Alt+C. The
+#: preload runs in the background at the worker's BELOW_NORMAL priority.
+WORKER_PRELOAD_DELAY_S = 20.0
 PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
 STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
 
@@ -1702,12 +1721,13 @@ class VramGuard(threading.Thread):
                     # MEASURED 2026-10-20, on the owner's own box: the worker
                     # started at 00:43:05 and the guard parked it 3 s later
                     # with `free_mb=365`, because the model load itself had
-                    # taken the VRAM (this worker's steady footprint is
-                    # ~9.7 GB: MEASURED 16 303 MB total, 5 380 MB free with
-                    # the worker alive). The guard then resumed it, the new
-                    # worker loaded the model, the VRAM fell again, and the
-                    # treadmill repeated -- each turn a 9 s model load and a
-                    # 1.2 GB spike for the owner, and the last turn left the
+                    # taken the VRAM (the worker's VRAM delta was MEASURED on
+                    # 2026-10-21 at **1175-1703 MiB** -- the "~9.7 GB" that this
+                    # comment used to claim was NOT reproduced and is not a
+                    # justification of anything). The guard then resumed it,
+                    # the new worker loaded the model, the VRAM fell again, and
+                    # the treadmill repeated -- each turn a model load and a
+                    # ~1.2 GB spike for the owner, and the last turn left the
                     # worker DEAD (no resume), which is the empty panel.
                     #
                     # THE GUARD'S PURPOSE (owner, 2026-10-17, verbatim:
@@ -2640,8 +2660,28 @@ def transparency_hack(shell) -> bool:
             # caller's thread and logged exactly that exception, so the hack
             # never ran and the panel stayed a solid block.
             ui = getattr(shell, '_ui', None)
+            post = getattr(shell, '_post', None)
             if ui is not None:
-                ui(form_show)
+                # THE WAIT IS SHORT AND THE FALLBACK IS A POST (2026-10-21).
+                # The caller here is the HOTKEY thread -- the thread that owns
+                # the owner's ONLY control -- and `_ui`'s default budget is
+                # TEN SECONDS (`UI_MARSHAL_TIMEOUT_S`). A busy UI thread
+                # therefore made an Alt+C wait ten seconds for a window that
+                # was already on its way: the owner's *"abrir o sotto trava"*.
+                # So: wait a quarter of a second for the composite, and if the
+                # UI thread did not take it, POST it (fire-and-forget, on the
+                # UI thread, where it has to run anyway) and return. The
+                # composite still happens; the control thread stops waiting.
+                answer = ui(form_show, TRANSPARENCY_HACK_WAIT_S)
+                if isinstance(answer, NoAnswer):
+                    if post is not None and post(form_show):
+                        log('FORM_SHOW_TRANSPARENCY_HACK posted '
+                            '(the UI thread was busy; the composite runs '
+                            'when it breathes) wait_s=%s'
+                            % TRANSPARENCY_HACK_WAIT_S)
+                    else:
+                        log('FORM_SHOW_TRANSPARENCY_HACK_DEFERRED '
+                            'wait_s=%s reason=no-post' % TRANSPARENCY_HACK_WAIT_S)
                 hacked = True
             else:
                 form_show()
@@ -5311,6 +5351,11 @@ class SottoHost:
             'caption-applied': ('host', '_caption_applied'),
             'status-applied': ('host', '_status_applied'),
             'caption-cleared': ('host', '_caption_cleared'),
+            # THE DESIGN THE PANEL IS WEARING, pushed by `brand-bridge.js` the
+            # moment the theme (or the caption scale, or a webfont) changes.
+            # WITHOUT THIS ENTRY the panel re-skins and the overlay keeps the
+            # default Segoe UI caption: two products on one screen.
+            'brand-tokens': ('host', '_brand_tokens'),
             'renderer-ready': ('host', '_renderer_ready'),
             'page-error': ('host', '_page_error'),
             'pointer': ('host', '_pointer'),
@@ -5492,6 +5537,32 @@ class SottoHost:
         remaining = (payload or {}).get('remaining', 0)
         self._shell.caption_log.clear()
         log(f'CAPTIONS_CLEARED remaining={remaining}')
+
+    def _brand_tokens(self, payload):
+        """Wear the panel's measured design on the NATIVE overlay.
+
+        The panel measures its own forming row and posts the resolved values
+        (`brand-bridge.js`). This receiver keeps the LAST payload so an overlay
+        created later than the first push -- the normal boot order -- still
+        starts branded instead of defaulting to Segoe UI until the next theme
+        change. A payload that is not a dict is treated as "no design", which
+        restores the pre-brand overlay rather than raising.
+        """
+        theme = payload if isinstance(payload, dict) else {}
+        self._brand_tokens_last = dict(theme)
+        overlay = getattr(self, 'caption_overlay', None)
+        if overlay is None:
+            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay '
+                'theme=%r' % (theme.get('theme') or '-'))
+            return
+        try:
+            applied = overlay.set_theme(theme)
+        except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+            log(f'CAPTION_OVERLAY_THEME_FAILED error={exc!r}')
+            return
+        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f'
+            % (applied.get('theme') or '-', applied.get('fontFamily'),
+               applied.get('livePx') or 0.0))
 
     def _renderer_ready(self, payload):
         payload = payload or {}
@@ -5928,6 +5999,9 @@ class SottoShell:
         # Win32 layered window with `UpdateLayeredWindow` is the supported
         # per-pixel-alpha path. The panel and strip stay WebView2/HTML/CSS.
         self.caption_overlay = None
+        # The last design the page measured, kept so the overlay can be created
+        # after the first push and still be branded on its first paint.
+        self._brand_tokens_last = getattr(self, '_brand_tokens_last', None)
         # THE OWNER'S SWITCH, AND IT IS NOT THE SAME FACT AS "A WINDOW IS UP".
         # Owner 2026-10-17, verbatim: *"ao clicar no botao de legenda, nao deve
         # abrir qualquer coisa. e pra ativar a legenda, na minha tela, sem
@@ -5946,6 +6020,13 @@ class SottoShell:
             self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
             self.caption_overlay.set_work_area(
                 wa, self.display.get('scaleFactor') or 1.0)
+            if self._brand_tokens_last:
+                try:
+                    self.caption_overlay.set_theme(self._brand_tokens_last)
+                    log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r'
+                        % (self._brand_tokens_last.get('theme') or '-'))
+                except Exception as exc:  # noqa: BLE001
+                    log(f'CAPTION_OVERLAY_THEME_REPLAY_FAILED error={exc!r}')
             log(f'CAPTION_OVERLAY_MODE native=true hwnd='
                 f'{self.caption_overlay.hwnd} work={wa["width"]}x{wa["height"]}')
         except Exception as exc:  # noqa: BLE001
@@ -6637,8 +6718,24 @@ class SottoShell:
                 if getattr(self, 'bridge', None) is not None:
                     log('WORKER_AUTOSTART=started reason=default by=startup-show')
                 else:
-                    log('WORKER_AUTOSTART=deferred reason=default '
-                        'start=first-panel-open')
+                    # THE PRELOAD (owner, 2026-10-21: *"abrir ou fechar o
+                    # sotto trava pra caralho meu pc"*). The worker used to
+                    # wait for the FIRST PANEL OPEN, which meant the model
+                    # loaded WHILE THE OWNER WAS WATCHING: MEASURED 36.9 s
+                    # from the spawn to the worker ready on the owner's own
+                    # log (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`),
+                    # so the panel he had just opened sat there with no
+                    # captions for the best part of a minute.
+                    #
+                    # THE PRELOAD MOVES THAT WAIT TO WHERE THE OWNER IS NOT
+                    # WAITING: the app's start, in the background, at the
+                    # worker's BELOW_NORMAL priority. The launch stays light
+                    # (the timer fires after a delay, not during the window
+                    # paint), and by the time he presses Alt+C the model is
+                    # there. `SOTTO_NO_PRELOAD=1` puts the old behaviour
+                    # back; a MEASUREMENT launch never preloads (those
+                    # reasons are not 'default' and they never reach here).
+                    self._schedule_preload_worker()
             else:
                 self.start_worker(worker_reason)
             # -- D3: no worker means the panel must say so ------------------
@@ -8326,7 +8423,12 @@ class SottoShell:
             closer = threading.Thread(target=_close, name='sotto-close',
                                       daemon=True)
             closer.start()
-            closer.join(3)
+            # THE WAIT IS SHORT (2026-10-21). The destroy is cosmetic -- the
+            # `os._exit` below kills the window anyway -- so three seconds of
+            # a frozen tray thread bought nothing and WAS the owner's
+            # *"fechar o sotto trava"*. A quarter of a second lets the destroy
+            # start and then the shell leaves.
+            closer.join(QUIT_DESTROY_WAIT_S)
         # The stats totals travel with the exit line: the push is logged at most
         # once per `STATS_LOG_INTERVAL_S`, so a short run's log would otherwise
         # never show how many samples the feed actually carried. One line, at the
@@ -8445,10 +8547,67 @@ class SottoShell:
                      # The deferred default's own reason: the first time the
                      # panel is actually on screen (2026-10-17).
                      'panel-open',
+                     # THE PRELOAD (2026-10-21): the app's start, in the
+                     # background, so the model is ready BEFORE the owner
+                     # presses Alt+C. See `_schedule_preload_worker`.
+                     'preload',
                      # The player stopped supplying its own captions.
                      'external-end',
                      # The GPU became free after a game/video demanded it.
                      'vram-resume')
+
+    def _schedule_preload_worker(self, delay_s=None):
+        """Load the model in the BACKGROUND, before the owner asks for it.
+
+        THE OWNER'S COMPLAINT, verbatim (2026-10-21, and this is the twentieth
+        time it is said): *"abrir ou fechar o sotto trava pra caralho meu pc"*.
+        THE MEASUREMENT BEHIND IT: the panel opens, the worker is spawned, and
+        the model takes 36.9 s to be ready (the owner's own log:
+        `BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`), so the panel he
+        just opened shows nothing for the best part of a minute -- and the
+        machine is busy the whole time.
+
+        THE FIX IS NOT A FASTER LOAD. The load's phases are timed now
+        (`load_phases_s`): the three ONNX sessions cost 1.74-2.09 s and the
+        whole load is 6.5-10.6 s on a quiet machine and 36-49 s on a busy one.
+        The cost is the machine, and the cure for "the machine is busy" is to
+        NOT ASK THE MACHINE AT THE MOMENT THE OWNER IS WATCHING.
+
+        SO: the app's start schedules the load, a delay later, in the
+        background, at the worker's BELOW_NORMAL priority. The launch stays
+        light (nothing happens during the window's first paint), the login
+        absorbs it, and the first Alt+C finds the model ready.
+
+        `SOTTO_NO_PRELOAD=1` puts the old behaviour back (the worker waits for
+        the first panel open), and a MEASUREMENT launch never preloads: those
+        reasons are not 'default' and they never reach this call.
+        """
+        if str(os.environ.get('SOTTO_NO_PRELOAD') or '').strip() == '1':
+            log('WORKER_PRELOAD declined reason=env SOTTO_NO_PRELOAD=1 '
+                'start=first-panel-open')
+            return False
+        if delay_s is None:
+            delay_s = WORKER_PRELOAD_DELAY_S
+        try:
+            delay_s = max(0.0, float(delay_s))
+        except (TypeError, ValueError):
+            delay_s = WORKER_PRELOAD_DELAY_S
+        timer = threading.Timer(delay_s, self._preload_worker)
+        timer.daemon = True
+        timer.name = 'sotto-worker-preload'
+        self._preload_timer = timer
+        timer.start()
+        log(f'WORKER_PRELOAD scheduled delay_s={delay_s}')
+        return True
+
+    def _preload_worker(self):
+        """The preload's body: start the worker, unless there is no reason to."""
+        if getattr(self, 'bridge', None) is not None:
+            log('WORKER_PRELOAD skipped reason=worker-already-running')
+            return False
+        started = self.start_worker('preload')
+        log(f'WORKER_PRELOAD done started={str(started).lower()}')
+        return bool(started)
 
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
@@ -8465,6 +8624,27 @@ class SottoShell:
             # call site on 2026-10-07. `_main/_audit-worker-start-wiring.py` now
             # gates precisely this pair.
             log(f'WORKER_AUTOSTART=declined reason={reason} by=start_worker')
+            return False
+        # ── THE ORPHAN GUARD (owner, 2026-10-21) ────────────────────────────
+        # `os._exit` does NOT kill a child process, so a worker spawned AFTER
+        # the shell decided to quit SURVIVES the app: it loads 1.2 GB of model
+        # and runs the capture ladder on a machine whose app is already closed.
+        # That is not a theory -- it is the owner's own log: at 20:50:50.070,
+        # 0.65 s before `SHELL_EXIT`, `EXTERNAL_CAPTIONS_WORKER_RESUMED
+        # reason=player-stopped` started a second worker, and the orphan's
+        # `BRIDGE_LOAD_MS ms=67969` (68 s from the spawn) is the machine the
+        # owner was complaining about. The owner, verbatim: *"abrir ou fechar o
+        # sotto, principalemnte fechar, trava pra caralho meu pc"*.
+        #
+        # THE FIX IS HERE, NOT IN THE CALLERS. One path (`on_external_captions_
+        # released`) learned this the hard way; the OTHER spawn paths -- the
+        # panel opening, the VRAM resume, the revive -- could still race the
+        # exit. A worker is a CHILD of this shell: if the shell is dying, no
+        # child may be born.
+        exiting = getattr(self, 'exiting', None)
+        if exiting is not None and exiting.is_set():
+            log(f'WORKER_AUTOSTART=declined reason={reason} '
+                'by=start_worker cause=shell-exiting')
             return False
         if self.bridge is not None:
             return False

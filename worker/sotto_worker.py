@@ -660,9 +660,36 @@ class StreamAsr:
             so.inter_op_num_threads = 1
         except Exception:
             pass
-        self.enc = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"), so, providers=providers)
-        self.dec = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"), so, providers=providers)
-        self.joint = ort.InferenceSession(os.path.join(model_dir, "joint.onnx"), so, providers=providers)
+        # THE OPTIONS GO WITH THE NAMES (see `provider_entries`): without them
+        # the GPU arena rounds every allocation up to the next power of two.
+        # MEASURED 2026-10-21 on the owner's box: the worker's VRAM delta is
+        # **1175-1703 MiB** (device peak 4344-4788 MiB) for a 747 MB model --
+        # the OLD "~9.7 GB" note in this file was NOT reproduced and is not
+        # used as a justification of anything.
+        entries = provider_entries(providers)
+        # THE LOAD'S PHASES, MEASURED (owner, 2026-10-21: *"abrir ou fechar o
+        # sotto trava pra caralho meu pc"*). The load is what the owner waits
+        # for when the panel opens -- MEASURED 7.9-49.2 s on this box on
+        # 2026-10-21, and 36.9 s on the owner's own log
+        # (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`). The DISK is not
+        # the cost: the model's 747 MB read at 1.9 GB/s in 0.39 s. So the time
+        # is in the SESSION CREATION, and until the phases were timed nobody
+        # could say WHICH part. The first session carries the CUDA context
+        # (the driver's first init on the box is the expensive one); the other
+        # two carry the graph's own setup.
+        _t_load = time.time()
+        self.enc = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"), so, providers=entries)
+        _t_enc = time.time()
+        self.dec = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"), so, providers=entries)
+        _t_dec = time.time()
+        self.joint = ort.InferenceSession(os.path.join(model_dir, "joint.onnx"), so, providers=entries)
+        _t_joint = time.time()
+        self.load_phases_s = {
+            'encoder': round(_t_enc - _t_load, 3),
+            'decoder': round(_t_dec - _t_enc, 3),
+            'joint': round(_t_joint - _t_dec, 3),
+            'sessions_total': round(_t_joint - _t_load, 3),
+        }
 
         self.providers = self.enc.get_providers()
 
@@ -2967,6 +2994,92 @@ def file_tap_candidate(path):
 
 
 # ── provider selection ────────────────────────────────────────────────────────
+#: THE CUDA EP'S OPTIONS -- THE STUTTER'S REAL COST (owner, 2026-10-21).
+#:
+#: The owner, verbatim, for the twentieth time: *"abrir ou fechar o sotto trava
+#: pra caralho meu pc"*. The worker was NOT started with provider OPTIONS, so
+#: onnxruntime's DEFAULTS applied, and two of those defaults are expensive:
+#:
+#:   * `arena_extend_strategy` defaults to `kNextPowerOfTwo`: every allocation
+#:     in the GPU arena is rounded UP to the next power of two. MEASURED on the
+#:     owner's own box on 2026-10-21: the worker's VRAM delta is **1175-1703
+#:     MiB** (the `nvidia-smi` device peak was 4344-4788 MiB) for a model whose
+#:     weights are 747 MB on disk. THE "~9.7 GB" THAT USED TO BE WRITTEN HERE
+#:     WAS NOT REPRODUCED -- it is refuted by the measurement above and is not
+#:     used as a justification of anything.
+#:   * `gpu_mem_limit` defaults to UNLIMITED, so nothing stops the arena.
+#:   * `cudnn_conv_algo_search` defaults to `EXHAUSTIVE`: the session creation
+#:     BENCHMARKS every convolution algorithm. MEASURED with the phases timed
+#:     (see `load_phases_s`): the three sessions cost **1.738 s with HEURISTIC
+#:     and 1.824 s with EXHAUSTIVE** -- the same, inside the noise. So the
+#:     search is NOT the load's cost and it STAYS AT THE DEFAULT; what the
+#:     owner actually waits for is the load as a whole, and the cure for THAT
+#:     is the preload (the worker is born 20 s after the app starts, not when
+#:     the owner opens the panel).
+#:
+#: The options below are the documented ONNX Runtime CUDA EP options
+#: (`arena_extend_strategy`, `gpu_mem_limit`, `cudnn_conv_algo_search`,
+#: `device_id`, `do_copy_in_default_stream`). The MEMORY CAP is a guardrail,
+#: not the main lever -- the main lever is `kSameAsRequested` (the arena grows
+#: by what is asked, not by the next power of two) -- and it is in the
+#: environment because the owner knows his card and this file does not.
+CUDA_MEM_LIMIT_MB_ENV = "SOTTO_CUDA_MEM_LIMIT_MB"
+CUDA_MEM_LIMIT_MB_DEFAULT = 4096
+CUDA_ARENA_ENV = "SOTTO_CUDA_ARENA"
+#: `cudnn_conv_algo_search` STAYS AT ITS DEFAULT, and that is a MEASUREMENT, not
+#: an oversight: with the phases timed (see `load_phases_s`) the three sessions
+#: cost 1.74-2.09 s with `HEURISTIC` and 1.82 s with `EXHAUSTIVE` -- the
+#: same, inside the noise. The search is not the load's cost, and switching it
+#: would trade an inference speed nobody has measured for a load time nobody
+#: can see. It is left in the environment so the question stays ANSWERABLE.
+CUDA_CUDNN_SEARCH_ENV = "SOTTO_CUDNN_ALGO_SEARCH"
+CUDA_CUDNN_SEARCH_DEFAULT = "EXHAUSTIVE"
+
+
+def cuda_provider_options():
+    """The CUDA EP's options, as ONNX Runtime documents them.
+
+    `gpu_mem_limit` is in BYTES and caps the arena; 0 means "no cap", which is
+    the DEFAULT we are fixing, so 0 is never passed unless the owner asks for
+    it explicitly.
+    """
+    try:
+        limit_mb = int(os.environ.get(CUDA_MEM_LIMIT_MB_ENV,
+                                       CUDA_MEM_LIMIT_MB_DEFAULT))
+    except (TypeError, ValueError):
+        limit_mb = CUDA_MEM_LIMIT_MB_DEFAULT
+    arena = (str(os.environ.get(CUDA_ARENA_ENV) or "").strip()
+             or "kSameAsRequested")
+    search = (str(os.environ.get(CUDA_CUDNN_SEARCH_ENV) or "").strip()
+              or CUDA_CUDNN_SEARCH_DEFAULT)
+    options = {
+        "device_id": 0,
+        "arena_extend_strategy": arena,
+        "cudnn_conv_algo_search": search,
+        "do_copy_in_default_stream": True,
+    }
+    if limit_mb > 0:
+        options["gpu_mem_limit"] = int(limit_mb) * 1024 * 1024
+    return options
+
+
+def provider_entries(names):
+    """The provider list for `InferenceSession`, WITH the CUDA options.
+
+    The names go in unchanged -- so `get_providers()` still answers
+    `['CUDAExecutionProvider', 'CPUExecutionProvider']` and every reader of
+    that list keeps working -- but the CUDA entry carries its options, which
+    is the only way to change the arena's appetite.
+    """
+    entries = []
+    for name in names:
+        if name == "CUDAExecutionProvider":
+            entries.append((name, cuda_provider_options()))
+        else:
+            entries.append(name)
+    return entries
+
+
 def choose_providers(requested, model_dir=None):
     """Return (providers, available, note, probed_model).
 
@@ -3025,7 +3138,9 @@ def choose_providers(requested, model_dir=None):
         try:
             so = ort.SessionOptions()
             so.log_severity_level = 4
-            probe = ort.InferenceSession(probed_model, so, providers=["CUDAExecutionProvider"])
+            probe = ort.InferenceSession(probed_model, so,
+                                         providers=provider_entries(
+                                             ["CUDAExecutionProvider"]))
             if "CUDAExecutionProvider" not in probe.get_providers():
                 order.remove("CUDAExecutionProvider")
                 note = "cuda-registered-but-not-loadable"
@@ -5147,6 +5262,14 @@ def main():
         model=asr.name,
         providers=asr.providers,
         load_s=round(asr.load_s, 2),
+        # THE LOAD'S PHASES (owner, 2026-10-21: *"abrir ou fechar o sotto trava
+        # pra caralho meu pc"*). The load is what the owner waits for when the
+        # panel opens -- MEASURED 7.9-49.2 s on this box on 2026-10-21, and
+        # 36.9 s on the owner's own log (`BRIDGE_LOAD_MS ms=36968 ...
+        # worker_load_s=32.59`). The DISK is not the cost (the model's 747 MB
+        # read at 1.9 GB/s in 0.39 s), so the time is in the SESSION CREATION
+        # -- and until the phases were timed nobody could say WHICH part.
+        load_phases_s=getattr(asr, 'load_phases_s', None),
         rss_mb=round(current_rss_mb(), 1),
         peak_rss_mb=round(peak_rss_mb(), 1),
         # Read back off the constructed session, not echoed from the request:
