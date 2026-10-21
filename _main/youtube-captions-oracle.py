@@ -203,21 +203,27 @@ FIXTURE_INFO_ENGLISH = {
 }
 
 #: A SPANISH original: the owner's rule excludes Spanish from the translation
-#: allowance ("ah, menos espanhol"), so the Spanish track is the one served.
+#: allowance ("ah, menos espanhol"), so the Spanish track is the one served --
+#: and the table ALSO carries English, so the arm can tell "Spanish first"
+#: from "English first" (that difference is what the mutant
+#: `the-spanish-exception-is-forgotten` makes, and an arm that cannot see the
+#: difference cannot catch it).
 FIXTURE_INFO_SPANISH = {
     "id": "SPANISHVIDEO",
     "language": "es-419",
     "duration": 213,
     "subtitles": {
         "es": [{"ext": "json3", "url": "https://example.invalid/es.json3"}],
+        "en": [{"ext": "json3", "url": "https://example.invalid/en_manual_es.json3"}],
         "pt": [{"ext": "json3", "url": "https://example.invalid/pt_manual_es.json3"}],
     },
     "automatic_captions": {},
 }
 
-#: A CHINESE original: here a TRANSLATION is allowed ("quando chines ou
-#: japones, ou qualquer outra, pode traduzir"), so the Portuguese track stays
-#: eligible -- and this arm exists so nobody "fixes" that later.
+#: A CHINESE original: here the caption is served in ENGLISH (the owner, verbatim
+#: 2026-10-21: *"o resto, traduza para ingles. qualquer outra lingua pra
+#: ingles."*), so the table carries the auto-translation into English -- the
+#: `-orig` key, which is the request WITHOUT `tlang`, the one that works.
 FIXTURE_INFO_CHINESE = {
     "id": "CHINESESEVIDEO",
     "language": "zh-Hans",
@@ -226,11 +232,40 @@ FIXTURE_INFO_CHINESE = {
         "pt": [{"ext": "json3", "url": "https://example.invalid/pt_manual_zh.json3"}],
     },
     "automatic_captions": {
+        "en-orig": [{"ext": "json3", "url": "https://example.invalid/en-orig_zh.json3"}],
         "zh-orig": [{"ext": "json3", "url": "https://example.invalid/zh-orig.json3"}],
     },
 }
 
-#: A PORTUGUESE original: the original language, served as the original.
+#: A CHINESE original with NO English track at all: the video's OWN language is
+#: then the honest answer (the last resort), and never a translation the owner
+#: did not ask for.
+FIXTURE_INFO_CHINESE_NO_EN = {
+    "id": "CHINESESEVIDEO-NO-EN",
+    "language": "zh-Hans",
+    "duration": 213,
+    "subtitles": {},
+    "automatic_captions": {
+        "zh-orig": [{"ext": "json3", "url": "https://example.invalid/zh-orig2.json3"}],
+    },
+}
+
+#: A SPANISH video with NO Spanish track: the caption must be ENGLISH and NEVER
+#: the Portuguese one -- "para de traduzir pra pt br do ... espanhol".
+FIXTURE_INFO_SPANISH_NO_ES = {
+    "id": "SPANISHVIDEO-NO-ES",
+    "language": "es-419",
+    "duration": 213,
+    "subtitles": {
+        "pt": [{"ext": "json3", "url": "https://example.invalid/pt_manual_es2.json3"}],
+    },
+    "automatic_captions": {
+        "en-orig": [{"ext": "json3", "url": "https://example.invalid/en-orig_es.json3"}],
+    },
+}
+
+#: A PORTUGUESE original: served in ENGLISH (the owner's rule), so the table
+#: carries both -- and the Portuguese one is there to be NOT chosen.
 FIXTURE_INFO_PORTUGUESE = {
     "id": "PORTUGUESEVIDEO",
     "language": "pt-BR",
@@ -590,17 +625,20 @@ def battery(mod, path, workdir, source):
             "(o 'menos espanhol' do dono)", a47)
 
     def a48():
+        # RE-ANCHORED 2026-10-21 (the owner's second word of the day): *"o
+        # resto, traduza para ingles. qualquer outra lingua pra ingles."* So a
+        # PORTUGUESE video is served in ENGLISH now -- the Portuguese track is
+        # in the table precisely to be NOT chosen.
         track = mod.track_from_info(FIXTURE_INFO_PORTUGUESE)
-        ok = track is not None and track["lang"] == "pt-BR"
+        ok = track is not None and track["lang"] == "en"
         return ok, "track=%r" % (track,)
-    attempt("a48 um video em PORTUGUES serve a legenda em PORTUGUES", a48)
+    attempt("a48 um video em PORTUGUES serve a legenda em INGLES", a48)
 
     def a49():
         track = mod.track_from_info(FIXTURE_INFO_CHINESE)
-        ok = track is not None and track["lang"] == "pt"
+        ok = track is not None and track["lang"] == "en-orig"
         return ok, "track=%r" % (track,)
-    attempt("a49 um video em CHINES pode servir a traducao (a regra permite)",
-            a49)
+    attempt("a49 um video em CHINES serve a legenda em INGLES (a traducao)", a49)
 
     def a50():
         track = mod.track_from_info(FIXTURE_INFO_ENGLISH, player_lang="en")
@@ -613,6 +651,45 @@ def battery(mod, path, workdir, source):
                                    "automatic_captions": {}})
         return got is None, "got %r" % (got,)
     attempt("a51 um video SEM faixas da None (nao-track, nao has-track)", a51)
+
+    def a52():
+        # A PLAYER that is showing a TRANSLATION does not win: the policy
+        # decides the language. (The owner's "1:1 com o video do youtube" is
+        # about the caption being the VIDEO'S OWN caption, not about following
+        # a translation the player happens to have switched on.)
+        track = mod.track_from_info(FIXTURE_INFO_ENGLISH, player_lang="pt")
+        ok = track is not None and track["lang"] in ("en", "en-orig")
+        return ok, "track=%r" % (track,)
+    attempt("a52 a faixa do PLAYER numa traducao NAO vence a politica", a52)
+
+    def a53():
+        track = mod.track_from_info(FIXTURE_INFO_CHINESE_NO_EN)
+        ok = track is not None and track["lang"] == "zh-orig"
+        return ok, "track=%r" % (track,)
+    attempt("a53 sem faixa em INGLES, a lingua do video e a ultima opcao", a53)
+
+    def a54():
+        # A SPANISH video with no Spanish track: ENGLISH, and NEVER the
+        # Portuguese one -- "para de traduzir pra pt br do ... espanhol".
+        track = mod.track_from_info(FIXTURE_INFO_SPANISH_NO_ES)
+        ok = track is not None and track["lang"] == "en-orig"
+        return ok, "track=%r" % (track,)
+    attempt("a54 um video ESPANHOL sem faixa em espanhol serve INGLES, nunca "
+            "portugues", a54)
+
+    def a55():
+        # A SPANISH video with no Spanish track and no English track either:
+        # NO TRACK, and never the Portuguese one. "no-track" keeps the live
+        # transcription running -- it is not a verdict about the video.
+        got = mod.track_from_info({
+            "language": "es-419",
+            "subtitles": {"pt": [{"ext": "json3",
+                                  "url": "https://example.invalid/pt_only_es.json3"}]},
+            "automatic_captions": {}})
+        ok = got is None
+        return ok, "got %r" % (got,)
+    attempt("a55 um video ESPANHOL sem faixa nenhuma da None (nunca a de "
+            "portugues)", a55)
 
     # -- the whole pipeline, with the network cut --------------------------
     def a27():
@@ -1010,15 +1087,19 @@ MUTANTS = [
      "            candidates.append((value - vmin) / 100.0 * d)",
      "        if False:\n"
      "            candidates.append((value - vmin) / 100.0 * d)"),
-    # THE POLICY (2026-10-21): the ORIGINAL language, never a translation.
-    # Each of these breaks ONE half of it, so the arms that name the other half
-    # have to go RED -- a policy that cannot be broken is a comment.
+    # THE POLICY (2026-10-21): the caption is ENGLISH for every video, and
+    # SPANISH for a Spanish one. Each of these breaks ONE half of it, so the
+    # arms that name the other half have to go RED -- a policy that cannot be
+    # broken is a comment.
     ("the-original-language-is-not-read",
      '    lang = str((info or {}).get(\'language\') or \'\').strip().lower()',
      '    lang = ""'),
-    ("the-policy-allows-every-language",
-     "ORIGINAL_ONLY_LANGS = ('en', 'pt', 'es')",
-     "ORIGINAL_ONLY_LANGS = ('xx',)"),
+    ("the-target-language-is-portuguese-again",
+     "TARGET_LANG = 'en'",
+     "TARGET_LANG = 'pt'"),
+    ("the-spanish-exception-is-forgotten",
+     "NEVER_TRANSLATED_LANGS = ('es',)",
+     "NEVER_TRANSLATED_LANGS = ()"),
 ]
 
 

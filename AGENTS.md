@@ -16,8 +16,21 @@ audio do meu pc. e legendas."*
 > quando ingles, e quando pt br. quando chines ou japones, ou qualquer outra, pode traduzir. ah, menos
 > espanhol."*
 
-**A REGRA:** original para **en, pt-BR, es**; tradução **permitida** para zh/ja/qualquer outra; **espanhol
-NUNCA traduzido.** O defeito vivia em `app/webview/youtube_captions.py` (`_auto_lang_keys`), que pedia
+**A REGRA EM VIGOR (revista pelo próprio dono mais tarde no MESMO dia 2026-10-21):**
+*"para de traduzir pra pt br do ingles e do espanhol. o resto, traduza para ingles. qualquer
+outra lingua pra ingles."* ⇒ **a legenda é INGLÊS para qualquer vídeo**, e **ESPANHOL** para um
+vídeo espanhol (o espanhol **nunca** é traduzido). Implementado em
+`app/webview/youtube_captions.py`: `TARGET_LANG = 'en'` (`:464`),
+`NEVER_TRANSLATED_LANGS = ('es',)` (`:469`), `_target_langs(orig)` (`:472` — vídeo es → es,en;
+vídeo en → en; qualquer outro → en, e a **própria língua** como último recurso, para um vídeo sem
+faixa de inglês) e `_original_language(info)` (`:500`, o campo `language`, base `en-US` → `en`).
+O portão tem **três** mutantes para a política (a língua original não lida, o destino em
+português outra vez, o esquecimento da excepção espanhola) ⇒ **uma política que não se pode
+quebrar é um comentário.**
+
+**A REGRA ANTERIOR (substituída — fica escrita para ninguém a "arrumar" de volta):** original para
+**en, pt-BR, es**; tradução **permitida** para zh/ja/qualquer outra; **espanhol NUNCA traduzido.**
+O defeito vivia em `app/webview/youtube_captions.py` (`_auto_lang_keys`), que pedia
 `pref` (traduzido, `tlang=`) antes de esgotar as chaves `-orig`.
 
 **MEDIDO 2026-10-21 (a chave do defeito):** no vídeo que o dono estava a ver
@@ -26,13 +39,10 @@ tabela tem **177 línguas**. A entrada portuguesa **não** é a original: é a
 **auto-tradução** do YouTube, e o URL dela **não traz `tlang`** — por isso "a chave
 que parece original" **não prova** a língua original. **O campo `language` é que
 prová.** O serviço servia a **tradução** de um vídeo inglês (e o dono reclamou
-exactamente disso). **A CORRECÇÃO (2026-10-21):** `ORIGINAL_ONLY_LANGS =
-('en','pt','es')` + `_original_language(info)` (o campo `language`, base `en-US` →
-`en`) → para essas originais só se procuram faixas **da própria língua**; a
-faixa do **player** só conta se for **da mesma língua** (o "1:1 com o vídeo" é
-sobre a legenda ser **do vídeo**, não sobre seguir uma tradução que o player
-ligou). Para **zh/ja/qualquer outra** a tradução continua permitida — e há um arm
-que o afirma, para ninguém "arrumar" isso depois. Portão:
+exactamente disso). **A CORRECÇÃO (2026-10-21):** `_original_language(info)` (o campo `language`,
+base `en-US` → `en`) + `_target_langs(orig)` (a política acima) → a faixa do **player** só conta
+se for **da língua que a política pede** (o "1:1 com o vídeo" é sobre a legenda ser **do vídeo**,
+não sobre seguir uma tradução que o player ligou). Portão:
 `_main/youtube-captions-oracle.py` → **53/53 arms, 13/13 mutantes** (dois novos: a
 língua original não lida, e a política a permitir tudo). **Re-medir antes de citar
 linha.**

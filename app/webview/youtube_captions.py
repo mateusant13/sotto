@@ -454,16 +454,47 @@ def _base_lang(lang):
     return str(lang or '').strip().lower().split('-')[0]
 
 
-#: The languages the owner reads IN THE VIDEO'S OWN LANGUAGE. The owner's rule,
-#: verbatim (2026-10-21): *"nao e pra traduzir. e pra ser lingua original.
-#: quando ingles, e quando pt br. quando chines ou japones, ou qualquer outra,
-#: pode traduzir. ah, menos espanhol."*
+#: THE TARGET LANGUAGE. The owner's rule, verbatim (2026-10-21, later the same
+#: day): *"para de traduzir pra pt br do ingles e do espanhol. o resto, traduza
+#: para ingles. qualquer outra lingua pra ingles."*
 #:
-#: So for an ENGLISH, PORTUGUESE or SPANISH original the video's own track is
-#: the ONLY acceptable caption -- and a translation is not even a fallback.
-#: For every OTHER original (zh, ja, ko, ru...) a translated pt-BR track is
-#: allowed, because that is the language the owner reads.
-ORIGINAL_ONLY_LANGS = ('en', 'pt', 'es')
+#: So the caption is served in **ENGLISH** for every video: the original when
+#: the video is English, the auto-translation into English when it is not. The
+#: one exception is Spanish (below).
+TARGET_LANG = 'en'
+
+#: The ONE language the owner never wants translated. Verbatim (2026-10-21):
+#: *"ah, menos espanhol"* and, later the same day, *"para de traduzir pra pt br
+#: do ingles e do espanhol"*. A Spanish video is served in SPANISH.
+NEVER_TRANSLATED_LANGS = ('es',)
+
+
+def _target_langs(orig):
+    """The languages this video's caption may be served in, in order.
+
+    THE OWNER, 2026-10-21 (later the same day), verbatim: *"para de traduzir
+    pra pt br do ingles e do espanhol. o resto, traduza para ingles. qualquer
+    outra lingua pra ingles."*
+
+    * a **Spanish** video: SPANISH, and then English. Spanish is the one the
+      owner never wants translated, and a Portuguese caption of a Spanish video
+      is not a fallback any more.
+    * an **English** video: ENGLISH (the original).
+    * **any other** video (Portuguese, Chinese, Japanese, ...): ENGLISH -- the
+      auto-translation into English -- and the video's OWN language as the last
+      resort, for a video with no English track at all.
+
+    `orig` empty means the original could not be read: the policy does not
+    apply and the caller's preference decides (that is the pre-policy
+    behaviour, kept for the case where nobody can tell what the video is).
+    """
+    if not orig:
+        return ()
+    if orig in NEVER_TRANSLATED_LANGS:
+        return (orig, TARGET_LANG)
+    if orig == TARGET_LANG:
+        return (orig,)
+    return (TARGET_LANG, orig)
 
 
 def _original_language(info):
@@ -605,38 +636,54 @@ def tracks_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
         if found:
             ordered.append(found)
 
-    # 0. THE POLICY (2026-10-21). The owner, verbatim: *"nao e pra traduzir. e
-    #    pra ser lingua original. quando ingles, e quando pt br. quando chines ou
-    #    japones, ou qualquer outra, pode traduzir. ah, menos espanhol."*
+    # 0. THE POLICY (2026-10-21). The owner, verbatim, later the same day:
+    #    *"para de traduzir pra pt br do ingles e do espanhol. o resto, traduza
+    #    para ingles. qualquer outra lingua pra ingles."* -- and, earlier:
+    #    *"nao e pra traduzir. e pra ser lingua original. ... ah, menos
+    #    espanhol."*
     #
-    #    So for an ENGLISH, PORTUGUESE or SPANISH original, the video's OWN
-    #    language is the only acceptable caption -- and a TRANSLATION is not even
-    #    a fallback. MEASURED on the video the owner was watching: `language` =
-    #    'en-US' (ENGLISH) and the table carries 177 languages, the Portuguese
-    #    one being an auto-translation WITHOUT a `tlang` parameter -- so the old
-    #    "prefer the key that looks original" rule served a TRANSLATION of an
-    #    English video, which is exactly what the owner reported.
+    #    THE SERVED LANGUAGE IS ENGLISH for every video, with ONE exception: a
+    #    SPANISH video is served in SPANISH. And "stop translating to pt-BR
+    #    from English and from Spanish" is ABSOLUTE: a Portuguese caption of an
+    #    English or a Spanish video is not a fallback any more.
     #
-    #    The player's own track counts HERE ONLY if it is in the same language:
-    #    the owner's "1:1 com o video do youtube" is about the caption being the
+    #    MEASURED on the video the owner was watching: `language` = 'en-US'
+    #    (ENGLISH) and the table carries 177 languages; the Portuguese entry
+    #    was an AUTO-TRANSLATION whose URL carries NO `tlang` -- so "the key
+    #    that looks original" is NOT proof of the original language. The
+    #    `language` FIELD is.
+    #
+    #    The player's own track counts HERE ONLY in an ALLOWED language: the
+    #    owner's "1:1 com o video do youtube" is about the caption being the
     #    VIDEO'S OWN caption and not a model transcription of its audio -- not
     #    about following a translation the player happens to have switched on.
     orig = _original_language(info)
-    if orig in ORIGINAL_ONLY_LANGS:
-        if plang and _base_lang(plang) == orig:
+    allowed = _target_langs(orig)
+    if allowed:
+        bases = set(_base_lang(x) for x in allowed)
+        if plang and _base_lang(plang) in bases:
             for key in _lang_keys(manual, plang):
                 take(manual, manual_case, "manual", key)
             for key in _auto_lang_keys(auto, plang):
                 take(auto, auto_case, "auto", key)
+        for lang in allowed:
+            for key in _lang_keys(manual, lang):
+                take(manual, manual_case, "manual", key)
+            for key in _auto_lang_keys(auto, lang):
+                take(auto, auto_case, "auto", key)
+        if ordered:
+            return ordered
+        # THE POLICY FOUND NOTHING: the video has no track in any allowed
+        # language. Its OWN language is then the honest answer -- and for a
+        # KNOWN original the preference below does NOT apply: a Portuguese
+        # translation of a Spanish video is exactly what the owner forbade,
+        # and "no track" is not a verdict about the video -- it keeps the live
+        # transcription running (the caller's contract).
         for key in _lang_keys(manual, orig):
             take(manual, manual_case, "manual", key)
         for key in _auto_lang_keys(auto, orig):
             take(auto, auto_case, "auto", key)
-        if ordered:
-            return ordered
-        # NO track in the video's own language at all: the preference below
-        # still applies, because a missing ORIGINAL is a FALLBACK and not a
-        # verdict about the video.
+        return ordered
     # 1. THE TRACK THE PLAYER IS PAINTING. The player's own order for one
     #    language is: the MANUAL track when the video has one for that
     #    language, then the automatic `-orig` (the request without `tlang`,
