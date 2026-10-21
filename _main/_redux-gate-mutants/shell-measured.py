@@ -42,7 +42,9 @@ import ctypes
 import ctypes.wintypes as wt
 import hashlib
 import json
+import math          # search: edit budgets are ceil(ratio * len)
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -50,6 +52,8 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata  # search: folding the diacritics off
+from datetime import datetime
 
 import hot_reload
 import panel_state
@@ -59,9 +63,44 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 #: and they are the contract, not ours to change.
 PANEL_DIR = os.path.normpath(os.path.join(HERE, os.pardir, 'panel'))
 PANEL_HTML = os.path.join(PANEL_DIR, 'panel.html')
+#: A LEGENDA TEM PAGINA PROPRIA. Ver o cabecalho de `caption.html` -- a legenda era
+#: empilhada dentro da janela da barra, e uma janela partilhada nao consegue pousa-la no
+#: fundo da TELA. Esta pagina e carregada por uma SEGUNDA janela pywebview.
+CAPTION_HTML = os.path.join(PANEL_DIR, 'caption.html')
 #: An empty page the shell opens FIRST, so the preload is registered before the
 #: panel is ever parsed. See stage.html for why the ordering needs buying.
 STAGE_HTML = os.path.join(HERE, 'stage.html')
+#: WHICH TRANSCRIBER THE APP RUNS. ** THIS IS STILL `sotto_worker.py`, AND ON
+#: 2026-10-18 I CHANGED IT TO `redux_live.py` AND REVERTED IT WITHIN MINUTES. **
+#:
+#: The revert is the finding, so it is written down rather than edited away.
+#: `redux_live.py` speaks the same wire contract and is 586 MB against 1 988 MB,
+#: so on the contract alone it looked like a safe default. It is not: the shell
+#: builds the worker's command line from the worker's OWN flags, and the two
+#: parsers are not the same. Measured, diffing every `add_argument`:
+#:
+#:     shared (5):   config device max-seconds stats-interval threads
+#:     worker-only (24): --target-pid --selftest --tap-peak-floor --tap-window
+#:                        --lang-id --panel-visibility --meter-hz --max-chunks
+#:                        --redux-live --redux-live-engine --redux-live-threads
+#:                        --redux-live-keep --redux-live-min-audio
+#:                        --redux-live-deadline --redux-batch --redux-when-hidden
+#:                        --redux-min-free-mb --redux-runner-timeout ... and more
+#:
+#: Pointing the default at `redux_live.py` would have handed that program a
+#: `--target-pid` it does not define, and argparse exits 2 on an unknown flag:
+#: no captions at all, on the per-app capture path, on the selftest path, and
+#: on every tuning flag the shell forwards. **A smaller model is not a drop-in
+#: replacement for the process.**
+#:
+#: THE REAL ANSWER, which is in the 24: `sotto_worker.py` ALREADY HOSTS THE
+#: PARAKEEP. `--redux-live` and `--redux-live-engine` are the worker's own
+#: switches for it. So the owner's real question -- *"por que tu nao
+#: simplesmente swapa as legendas pelas mais precisas, sem o usuario nem
+#: notar?"* -- has an answer that does not touch this constant at all: the
+#: ENGINE changes, the PROCESS does not.
+#:
+#: HOW TO GO BACK: `SOTTO_WORKER=sotto_worker.py`, or `--worker <path>`.
 DEFAULT_WORKER_PATH = os.path.normpath(
     os.path.join(HERE, os.pardir, os.pardir, 'worker', 'sotto_worker.py')
 )
@@ -85,8 +124,183 @@ def file_url(path):
 PANEL_WIDTH = 380
 PANEL_HEIGHT = 900
 PANEL_MARGIN = 12
+#: The strip's own bottom gap. 12 px glued the bar to the taskbar and the owner
+#: reported it "spawnando muito abaixo"; 44 px leaves air under the caption bar.
+STRIP_MARGIN = 44
 PANEL_MAX_WORK_FRACTION = 0.34
 MAX_CAPTIONS = 200
+
+# --- the deferred-asset gate -----------------------------------------------
+# Owner's order, 2026-10-12, verbatim: "o sotto nao deve carregar tudo de uma vez,
+# apenas o essential". These five resources are NOT on the critical path of the
+# first caption, so the shell answers each with an EMPTY body until the page asks
+# for the real bytes over the bridge (`lazy-asset`). The loader that asks is
+# app/panel/lazy-assets.js, appended to BOOTSTRAP_JS below, which reads the SAME
+# three theme sources theme-switcher.js reads (localStorage, then the document's
+# own data-theme, then the manifest fallback) — because the WebView2 user-data-dir
+# is persistent, a theme picked in an earlier session can be the theme of this one.
+#
+# WHY EACH IS SAFE TO DEFER (scopes measured on disk, not assumed):
+#   themes/cinematic.css    312 230 B  every rule scoped :root[data-theme^='cine-']
+#   themes/panel-designs.css 128 716 B  every rule scoped :root[data-theme='pd-*']
+#   skins/skins.js           812 978 B  window.SOTTO_SKINS, read ONCE at parse time
+#                                       by skin-host.js -> the pair is deferred
+#                                       together, in this order, never reversed.
+#   skin-host.js              22 712 B  every panel.js call site is guarded by
+#                                       window.SottoSkin && .active.
+#   skin-layout.css           11 210 B  rules gated on body[data-skin].
+# Deferred total: 1 287 846 B of the 1 821 083 B asset payload (70.7 %).
+LAZY_ASSETS = (
+    'themes/cinematic.css',
+    'themes/panel-designs.css',
+    'skins/skins.js',
+    'skin-host.js',
+    'skin-layout.css',
+)
+LAZY_LOADER_JS = os.path.join(PANEL_DIR, 'lazy-assets.js')
+
+
+def _lazy_asset_path(rel):
+    return os.path.join(PANEL_DIR, rel.replace('/', os.sep))
+
+
+def _lazy_asset_url(rel):
+    return file_url(_lazy_asset_path(rel))
+
+
+class LazyAssetGate(object):
+    """Serve an EMPTY body for a deferred URL until the page asks for the real one.
+
+    The gate is a SET, not a flag: each URL is allowed independently, because a
+    `cine-*` theme needs `themes/cinematic.css` and the skin pair but NOT
+    `themes/panel-designs.css`, and a `pd-*` theme needs only the last of the
+    three. The page's `lazy-asset` message is the only writer; the resource
+    handler is the only reader, and it never lets an un-asked request through to
+    the disk.
+    """
+
+    def __init__(self, core, enabled=True):
+        from Microsoft.Web.WebView2.Core import (
+            CoreWebView2WebResourceContext,
+            CoreWebView2WebResourceRequestedEventArgs,
+        )
+        self._core = core
+        self._enabled = bool(enabled)
+        self._allowed = set()
+        self._urls = set(_lazy_asset_url(r) for r in LAZY_ASSETS)
+        self._ctx = CoreWebView2WebResourceContext.All
+        self._args_type = CoreWebView2WebResourceRequestedEventArgs
+        self.registered = 0
+        if self._enabled:
+            self._register()
+
+    def _register(self):
+        for rel in LAZY_ASSETS:
+            try:
+                self._core.AddWebResourceRequestedFilter(
+                    _lazy_asset_url(rel), self._ctx)
+                self.registered += 1
+            except Exception as exc:
+                log(f'PANEL_LAZY_FILTER_FAILED url={rel} error={exc!r}')
+
+    def on_resource_requested(self, sender, args):
+        """The WebResourceRequested handler. Runs on the UI thread."""
+        if not self._enabled:
+            return
+        try:
+            uri = args.Request.Uri
+        except Exception:
+            return
+        if uri not in self._urls:
+            return
+        if uri in self._allowed:
+            return  # the page has asked: let it reach the disk
+        response = self._make_empty_response(uri)
+        if response is None:
+            # FAIL OPEN, AND THIS IS THE IMPORTANT HALF. A gate that cannot
+            # serve its empty body must NEVER block the asset: the owner's
+            # panel is worth more than the deferred bytes, and an interception
+            # that cannot answer is a broken panel waiting to happen.
+            self._allowed.add(uri)
+            log(f'PANEL_LAZY_FAIL_OPEN url={uri} why=no-response')
+            return
+        try:
+            args.Response = response
+            log(f'PANEL_LAZY_EMPTY url={uri}')
+        except Exception as exc:
+            self._allowed.add(uri)
+            log(f'PANEL_LAZY_FAIL_OPEN url={uri} why=assign error={exc!r}')
+
+    def _make_empty_response(self, uri):
+        """An empty 200 for `uri`, or `None` when this WebView2 cannot build one.
+
+        MEASURED FAILURE THIS EXISTS FOR, on the owner's own box: EVERY one of
+        the 116 gate firings in `_main/webview-run.log` logged
+
+            PANEL_LAZY_EMPTY_FAILED url=.../themes/panel-designs.css
+            error=AttributeError("'CoreWebView2' object has no attribute
+            'CreateWebResourceResponse'")
+
+        so the gate never served a single empty body. `CreateWebResourceResponse`
+        is a method of `CoreWebView2Environment`, not of `CoreWebView2`; the
+        property that reaches it from the CoreWebView2 is `Environment`. The old
+        call is kept as a second candidate so a host where the first name is
+        absent still works, and `None` is a real answer the caller acts on.
+        """
+        from System.IO import MemoryStream
+        headers = ('Content-Type: ' + _lazy_mime(uri) + '\r\n'
+                   'Content-Length: 0\r\n')
+        candidates = []
+        env = getattr(self._core, 'Environment', None)
+        if env is not None:
+            candidates.append((env, 'core.Environment'))
+        candidates.append((self._core, 'core'))
+        why = 'no candidate'
+        for obj, how in candidates:
+            maker = getattr(obj, 'CreateWebResourceResponse', None)
+            if maker is None:
+                why = f'{how} has no CreateWebResourceResponse'
+                continue
+            try:
+                return maker(MemoryStream(), 200, 'OK', headers)
+            except Exception as exc:  # noqa: BLE001
+                why = f'{how} raised {exc!r}'
+        log(f'PANEL_LAZY_RESPONSE_UNAVAILABLE url={uri} why={why}')
+        return None
+
+    def allow(self, url):
+        """Mark one deferred URL as wanted by the page. Idempotent."""
+        if not self._enabled:
+            return False
+        if not isinstance(url, str):
+            return False
+        # Accept both the bare relative path and the full file:// URL.
+        rel = url.replace('\\', '/')
+        if rel.startswith('file:///'):
+            rel = rel[len('file:///'):].replace('/', os.sep)
+            if os.path.isabs(rel):
+                rel = os.path.relpath(rel, PANEL_DIR)
+        rel = rel.replace(os.sep, '/')
+        if rel not in LAZY_ASSETS:
+            return False
+        full = _lazy_asset_url(rel)
+        if full in self._allowed:
+            return False
+        self._allowed.add(full)
+        log(f'PANEL_LAZY_ALLOW url={rel}')
+        return True
+
+    def close(self):
+        self._allowed.clear()
+
+
+def _lazy_mime(uri):
+    if uri.endswith('.css'):
+        return 'text/css'
+    if uri.endswith('.js'):
+        return 'text/javascript'
+    return 'application/octet-stream'
+
 
 # --- the panel AS TEXT: one JSON dump a reader opens with `read` ------------
 # Owner's order, 2026-10-06, verbatim: "faz uma versao do sotto ou painel que tu
@@ -102,6 +316,71 @@ PANEL_STATE_PATH = os.path.join(REPO_ROOT, '_main', 'panel-state.json')
 #: (`py app/webview/panel_state.py --request`).
 PANEL_STATE_REQUEST = PANEL_STATE_PATH + '.request'
 PANEL_STATE_INTERVAL_S = 2.0
+
+# --- THE UI MARSHALLING BOUNDS (2026-10-20) --------------------------------
+# MEASURED 2026-10-20 on the OWNER'S OWN log (`I:\cc-tmp\sotto-012524.log`,
+# the app launched at 01:25:24): 93 `UI_THREAD_STALL begin-invoke not run in
+# 10 s` and 68 `exec_js TIMEOUT after 10.0s` -- ALL of them inside ONE 50 s
+# window (01:55:30 -> 01:56:20), while a design lane was rendering 45 themes
+# with headless Edge. The LOAD is the TRIGGER; the CODE is the FREEZE.
+#
+# THE CHAIN, read in the code: `panel.js` pulls `getStats()` every 1000 ms ->
+# `_stats()` -> `reply_stats()` -> `exec_js()` (SYNCHRONOUS, 10 s budget) ->
+# `_ui()` -> `form.BeginInvoke` + `done.wait(10)`. A busy UI thread therefore
+# did not only delay the stats: it HELD the pump thread -- the one that
+# carries the captions -- for 10 s at a time, 93 times.
+UI_MARSHAL_TIMEOUT_S = 10.0      # the DEFAULT budget of `_ui` (unchanged)
+#: THE TRANSPARENCY HACK'S WAIT (2026-10-21). The hack marshals `form.Show()`
+#: onto the UI thread, and the caller is the HOTKEY thread -- the thread that
+#: owns the owner's ONLY control. `_ui`'s default budget is TEN SECONDS, so a
+#: busy UI thread turned an Alt+C into a ten-second wait for a window that was
+#: already on its way: the owner's *"abrir o sotto trava"*. A quarter of a
+#: second is enough when the UI thread is idle (the common case); when it is
+#: not, the hack is POSTED instead of waited for (see `transparency_hack`).
+TRANSPARENCY_HACK_WAIT_S = 0.25
+#: THE EXIT'S DESTROY WAIT (2026-10-21). The window destroy is COSMETIC: the
+#: shell calls `os._exit` right after, so the window dies either way. Waiting
+#: three seconds for it is three seconds the tray thread is not answering the
+#: owner -- the same *"fechar o sotto trava"*. A quarter of a second is enough
+#: to let the destroy start.
+QUIT_DESTROY_WAIT_S = 0.25
+#: HOW LONG AFTER THE APP'S START THE WORKER IS PRELOADED (2026-10-21). Long
+#: enough that the login's own paint and the shell's window are done, short
+#: enough that the model is ready before the owner reaches for Alt+C. The
+#: preload runs in the background at the worker's BELOW_NORMAL priority.
+WORKER_PRELOAD_DELAY_S = 20.0
+PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
+STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
+
+
+class NoAnswer(dict):
+    """`exec_js`/`_ui` did NOT get an answer -- and it says WHY.
+
+    A `dict`, so `json.dumps` of it WORKS (the probes log the value as JSON
+    and a plain object would raise), and FALSY, so every `if value:` check in
+    the shell behaves exactly as it did when the answer was a bare `None`.
+
+    It is NOT `None`, and that is the whole point. Measured 2026-10-20: 93
+    `UI_THREAD_STALL` warnings inside a 50 s window, and every reader
+    downstream saw a bare `None` -- the probe logged `PANEL_STATS_PROBE null`
+    with no reason, so "the panel answered null" and "the panel never
+    answered" were the SAME observation. This says which one it was.
+
+    Keys: `reason`, `requested`, `timeout`, `detail`.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, reason, requested=None, timeout=None, detail=None):
+        super().__init__(reason=reason, requested=requested,
+                         timeout=timeout, detail=detail)
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return '<no-answer reason=%s requested=%r timeout=%s>' % (
+            self.get('reason'), self.get('requested'), self.get('timeout'))
 
 # --- THE PANEL'S VISIBILITY, as a file the WORKER can poll -------------------
 # THE STACK LAW (owner, 2026-10-07, verbatim): *"o nvidia é pro ao vivo, o
@@ -175,6 +454,184 @@ HISTORY_ROUTES = ('final', 'provisional-draft')
 #: written with NO `src=` marker at all: provenance thinner than the decision that
 #: produced it. The list must equal the declared set, in both twins.
 HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback')
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEARCH. The owner asked, 2026-10-18: make the history search FIND things --
+# *"quando eu procurar uma coisa no historico, eu quero que ele ache"*.
+#
+# WHAT IT WAS, and why that is not search but string equality:
+#     needle = str(query or '').strip().lower()
+#     if needle in entry['text'].lower():
+# One `in`, byte for byte, no accents, no typos, no sounds. Measured on this box's
+# own store (211 341 B over 11 files, 2 days): typing `maca` cannot find `maçã`,
+# `cabeleireiro` cannot find `cabeleireira`, and `fales` cannot find `falés`. The
+# owner does not type the way a machine compares.
+#
+# THREE LAYERS, IN THIS ORDER, AND THE ORDER IS THE PRODUCT:
+#   0  LITERAL   the query, accents folded, is a substring. Ranked first, always,
+#                and it is the ONLY layer that can return the whole query as a
+#                phrase. A fix that demoted this would be a regression wearing a
+#                feature's clothes.
+#   1  PHONETIC  every query word has a SOUNDEX twin somewhere in the entry. This
+#                is the layer that finds the word the owner MEANT.
+#   2  FUZZY     every query word is within a bounded edit distance of some word in
+#                the entry -- typos, one letter dropped, one doubled.
+#
+# EVERY LAYER AFTER 0 IS ALL-WORDS, NOT ANY-WORD. That is the difference between a
+# search and a slot machine: with any-word semantics, the query `o preco do acucar`
+# would return every entry containing `o`, which on a two-day store is nearly all of
+# them. All-words makes the later layers able to SAY NO, and a layer that cannot say
+# no is not a ranking, it is noise with a rank attached.
+#
+# EDIT DISTANCE IS PER WORD, NEVER OVER THE WHOLE SENTENCE. Over the sentence the
+# threshold would have to grow with the sentence, so a 90-character line would
+# tolerate ~30 edits and match everything; over a word the threshold stays at
+# 0.34 x len and a 5-letter word tolerates 2.
+#
+# The pt-BR fold is not a nicety, it is the bug: the store is Portuguese and the
+# keyboard often is not, so `maçã` has to be reachable from `maca`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+#: The share of a word's length that may be wrong and still count as the same word.
+#: 0.34 is the ratio used throughout this repo's fuzz gates. A 3-letter word gets
+#: ceil(1.02) = 2 -- which is too generous, so words shorter than 4 are excluded
+#: from layer 2 entirely rather than half-matched (see `_FUZZY_MIN_WORD`).
+SEARCH_FUZZ_RATIO = 0.34
+#: Below this length an edit budget of 1 makes almost every short word match every
+#: other short word, so short words are LITERAL-ONLY.
+FUZZY_MIN_WORD = 4
+#: Hard ceiling, whatever the ratio asks for: no word is ever allowed more than
+#: this many edits. `ceil(0.34 * 9) = 4` on a long word is already four typos.
+SEARCH_MAX_EDITS = 2
+
+
+def search_fold(text):
+    """Lowercase and strip diacritics: `Maçã`/`MACA`/`maçá` all fold to `maca`.
+
+    NFD splits the base letter from its combining mark, and combining marks are
+    dropped. `ç` and `ã` and `õ` all become their base letter, which is what a
+    pt-BR search wants: the owner does not type tildes.
+    """
+    decomposed = unicodedata.normalize('NFD', str(text or ''))
+    stripped = ''.join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return stripped.lower()
+
+
+#: Soundex, folded to ASCII by `search_fold` first. Standard grouping:
+#: bfpv->1  cgjkqsxz->2  dt->3  l->4  mn->5  r->6, vowels and h/w do not code.
+SEARCH_SOUNDEX = {
+    **{c: '1' for c in 'bfpv'},
+    **{c: '2' for c in 'cgjkqsxz'},
+    **{c: '3' for c in 'dt'},
+    'l': '4',
+    **{c: '5' for c in 'mn'},
+    'r': '6',
+}
+
+
+def search_soundex(word):
+    """A 4-character sound key for `word`, or `''` if it has no letters.
+
+    Collisions are expected and fine: this is layer 1 of 3, it only ADDS candidates
+    after the literal layer has already failed, and every candidate it adds must
+    still satisfy all-words. A pt-BR owner searching `casa`/`casso`/`caza` landing
+    in the same bucket is the feature, not a bug -- what would be a bug is the
+    bucket being allowed to ANSWER, which only layer 0 does.
+    """
+    letters = ''.join(ch for ch in search_fold(word) if ch.isalpha() and ch.isascii())
+    if not letters:
+        return ''
+    first = letters[0]
+    codes = []
+    previous = SEARCH_SOUNDEX.get(first, '')
+    for ch in letters[1:]:
+        code = SEARCH_SOUNDEX.get(ch, '')
+        if code and code != previous:
+            codes.append(code)
+        if ch not in 'hw':          # h and w are transparent, they do not reset
+            previous = code
+    return (first.upper() + ''.join(codes) + '000')[:4]
+
+
+def search_edits(word):
+    """The edit budget for `word`: `ceil(ratio * len)`, capped twice.
+
+    Capped at `FUZZY_MIN_WORD - 1` for short words and at `SEARCH_MAX_EDITS`
+    always. Returns 0 for anything shorter than `FUZZY_MIN_WORD`, which sends it
+    to the literal layer and out of the fuzzy one.
+    """
+    n = len(word)
+    if n < FUZZY_MIN_WORD:
+        return 0
+    return min(SEARCH_MAX_EDITS, int(math.ceil(SEARCH_FUZZ_RATIO * n)))
+
+
+def bounded_levenshtein(a, b, cap):
+    """Edit distance between `a` and `b`, or None if it exceeds `cap`.
+
+    Two-row DP with a row minimum early exit: the moment a whole row costs more than
+    `cap` no later row can come back under it, so the scan stops. Without that, a
+    mistyped 40-character query against a short entry costs the full table.
+    """
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) > cap:
+        return None
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost))
+        # The early exit must read the row's MINIMUM, not its label. Seeding
+        # `row_min = i` and never updating it made the scan give up on the third
+        # row for any word of 7+ letters, so `mercado`/`merdado` -- one substitution,
+        # distance 1 -- came back as None and the fuzzy layer was dead on exactly
+        # the long words it exists for. The rule still holds: the minimum of a row
+        # is a lower bound on the distance of every later row.
+        if min(current) > cap:
+            return None
+        previous = current
+    return previous[-1] if previous[-1] <= cap else None
+
+
+def search_match_rank(text, folded_query, query_words):
+    """Which layer, if any, `text` matches. 0/1/2, or -1 for no match.
+
+    Layer 0 short-circuits on the folded substring. Layers 1 and 2 both require
+    EVERY query word to be accounted for by SOME word of the entry, which is what
+    makes them able to reject.
+
+    Note the shape of the phonetic test: `all(search_soundex(w) == key for w in
+    query_words)` would demand that every query word sound like every OTHER one --
+    correct only for a single-word query, and silently wrong for anything longer.
+    The test that is actually meant is `each query word's key is present among the
+    entry's keys`.
+    """
+    folded_text = search_fold(text)
+    if not folded_query:
+        return -1                    # an empty query matches nothing, not everything
+    if folded_query in folded_text:
+        return 0
+    words = folded_text.split()
+    if not words:
+        return -1
+    query_keys = [search_soundex(w) for w in query_words]
+    entry_keys = {search_soundex(x) for x in words}
+    # Layer 1 — every query word's SOUND is somewhere in the entry.
+    if query_keys and all(k and k in entry_keys for k in query_keys):
+        return 1
+    # Layer 2 — every query word is a bounded typo of some entry word.
+    for qw in query_words:
+        budget = search_edits(qw)
+        if budget <= 0:
+            if qw not in words:
+                return -1
+            continue
+        if not any(bounded_levenshtein(qw, w, budget) is not None for w in words):
+            return -1
+    return 2
+
 #: `explorer` for "show in folder" must never open a console window.
 CREATE_NO_WINDOW = 0x08000000
 
@@ -289,6 +746,27 @@ WORKER_STATS_INTERVAL_S = 10.0
 #: `_main/restart-30s-oracle.py` asserts the relation mechanically against
 #: `worker/sotto_worker.py`, because the two numbers live in two files.
 WORKER_SILENCE_MS = 30000
+#: THE FIRST WINDOW IS A DIFFERENT WINDOW (S7). `WORKER_SILENCE_MS` is the
+#: no-progress window of a worker that has FINISHED warming up, and it is armed
+#: from the moment of the spawn - so on a cold boot it expires in the middle of
+#: the model load, kills a healthy worker, and the automatic restart pays the
+#: whole load again. MEASURED on the owner's own 2026-10-12 logon
+#: (`_main/webview-run.log`): `BRIDGE_SILENT ms=30000 pid=34980` fired between
+#: `STATUS_APPLIED text="model-loading"` and `model-loaded`, and the worker it
+#: killed was still alive - its own `model-loaded` line arrived after the kill.
+#: Silence before `model-loaded` is now `BRIDGE_SILENT_LOADING`: it is the
+#: DEFINITION of loading, not a jam, and the watchdog re-arms instead of
+#: killing. The ceiling is still enforced, so a load that never finishes is
+#: still restarted (see `_on_silence`).
+#:
+#: 180 s is the OWNER'S OWN bound, not a number this lane invented: "faz o
+#: model sair de load apos 3 minutos" (verbatim, docs/audit/load-churn.md, where
+#: the same 180 s became the reload floor). It is ~40x a measured warm load
+#: (3.41 s / 4.42 s / 4.66 s / 5.16 s - `worker/runs/verdict-order-{blue,green,
+#: red}.jsonl` and `worker/runs/selftest_gpu.log`, the `model-loaded` line) and
+#: ~6x the worst cold load this box has shown (>30 s, the lower bound the
+#: defect itself measured). A load that has not finished in 180 s is wedged.
+WORKER_LOAD_SILENCE_MS = 180000
 
 
 def parse_worker_stats(line):
@@ -339,6 +817,19 @@ STATUS_BODY_FIELDS = ('stage', 'detail', 'verdict', 'device', 'api', 'peak',
                       'chunks', 'rotations', 'reason', 'rate')
 STATUS_BODY_MAX = 400
 
+def _reap_child(child):
+    """Wait for a killed worker OFF the caller's thread, then discard it.
+
+    Used by `WorkerBridge.stop`. The wait is what reaps the OS process handle;
+    doing it on the shell's UI or tray thread is what made quitting take up to
+    five seconds against a 2 GB child.
+    """
+    try:
+        child.wait(timeout=5)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def file_sha256(path):
     """First 16 hex chars of a file's SHA-256, or None if it cannot be read.
 
@@ -365,13 +856,45 @@ SHELL_SHA256_AT_IMPORT = file_sha256(SHELL_PATH)
 
 
 def worker_status_kind(state, message):
-    """'error' | 'busy' for ONE worker status line, by the reference arm's rule.
+    """'error' | 'no-audio' | 'busy' for ONE worker status line.
+
+    By the reference arm's rule, plus the calm state (owner, 2026-10-14): a
+    no-audio verdict is its OWN kind and the test for it comes FIRST, because
+    WORKER_NO_AUDIO_STATES overlaps WORKER_ERROR_STATES and the error test would
+    otherwise swallow it back into red.
 
     Either test alone gets a real case wrong — the state is what this worker
     names itself, and the verdict is the only thing that can tell a `done` that
     produced speech from a `done` that produced nothing.
     """
     state = str(state or '')
+    # ── THE NO-AUDIO VERDICT IS NOT A FAULT (owner, 2026-10-14) ─────────────
+    # CHECKED FIRST, and that order is load-bearing: the no-audio states are a
+    # SUBSET of WORKER_ERROR_STATES (the worker's own terminal vocabulary), so
+    # testing the error set first would swallow them back into red -- measured
+    # in this lane's own oracle run, where the calm branch sat behind it and
+    # `silent-device` still painted 'error'.
+    # The routing law of this file says it in as many words: "a live run that
+    # reads silence is usually CORRECT BEHAVIOUR, not a regression" -- with
+    # nothing routed into a virtual cable EVERY loopback reads digital silence
+    # (measured: peak=0.000000 over three 6 s captures, the idle-floor probe's
+    # own output file). The worker's own verdict for that case is
+    # `silent-device` / `device-exhausted` / a `done` carrying one of
+    # WORKER_NO_AUDIO_VERDICTS, and painting it the same RED as a model-load
+    # failure or a device that would not OPEN is what put "Silent audio
+    # device" in front of the owner on every cold start with a quiet desktop
+    # and had him reading it as "coisa nao carregada" -- he complained,
+    # verbatim (2026-10-14): "sotto ta reclamando de coisa nao carregada, com
+    # erro vermelho". Nothing is hidden by this: the worker's OWN sentence
+    # (device, api, peak, floor) still travels, the state still HOLDS across
+    # the automatic restart, and a caption still clears it. What changes is
+    # only the colour of a fact that is not a fault. The 2026-10-06 decision
+    # that painted these RED was right about the swallow it fixed (a death
+    # must never look like warm-up) and wrong about the colour it chose for
+    # the no-audio half: on this host the no-audio verdict is the NORMAL
+    # answer of a working app to a quiet machine.
+    if state in WORKER_NO_AUDIO_STATES:
+        return 'no-audio'
     if state in WORKER_ERROR_STATES:
         return 'error'
     if state == 'done':
@@ -384,9 +907,62 @@ def worker_status_kind(state, message):
         # verdict that SAYS captions came out is benign; an UNKNOWN word and an
         # ABSENT word are both "this worker did not tell us it worked".
         verdict = str((message or {}).get('verdict') or '').strip()
+        # The SAME split, carried by the run's `done` line: a no-audio verdict
+        # is the worker reporting a quiet endpoint, not a broken worker. An
+        # ABSENT or UNKNOWN verdict is still an error -- "this worker did not
+        # tell us it worked" is a failure, and that half of the contract is
+        # untouched.
+        if verdict in WORKER_NO_AUDIO_VERDICTS:
+            return 'no-audio'
         if verdict not in HEALTHY_DONE_VERDICTS:
             return 'error'
     return 'error' if FAILURE_WORDS_RE.search(state) else 'busy'
+
+
+#: OS CODIGOS DE AUDIO DO WINDOWS QUE O DONO JA VIU NA TELA, TRADUZIDOS.
+#:
+#: Ele, verbatim 2026-10-15: *"que nojeira e essa mano? ate quando tu vai fazer essas coisas?"*,
+#: sobre a linha que o painel pintava:
+#:
+#:     Worker error at open-stream - WasapiError: Initialize(SHARED|LOOPBACK) failed:
+#:     <no description> (0x8889000A)
+#:
+#: **Um codigo hexadecimal na tela do dono nao e um diagnostico, e um segredo.** Ele ja tinha
+#: mandado arrumar isto em 2026-10-14: *"sotto ta reclamando de coisa nao carregada, com erro
+#: vermelho. arruma"*. A causa por tras do `0x8889000A` e conhecida e tem UMA acao que resolve:
+#: o dispositivo esta ocupado. Dizer isso, e dizer o que fazer, e o minimo.
+#:
+#: O detalhe CRU continua a ir para o LOG -- `BRIDGE_STATUS_ERROR` guarda-o inteiro -- portanto
+#: nada se perde para quem estiver a diagnosticar. O que muda e o que o dono LE.
+HRESULT_AUDIO_READINGS = {
+    '0x88890001': 'The audio device was not initialised. Press Alt+C to try again.',
+    '0x88890004': ('The audio device disappeared (unplugged or disabled). '
+                   'Choose another device and press Alt+C.'),
+    '0x88890008': ('That audio device does not support the format Sotto needs. '
+                   'Choose another device and press Alt+C.'),
+    '0x8889000A': ('The audio device is already in use by another program, so Sotto '
+                   'could not open it. Close whatever is holding it -- or choose '
+                   'another device -- and press Alt+C.'),
+    '0x8889000B': 'That audio buffer size is not supported by this device.',
+    '0x88890010': ('No audio device is available at all. Check that an output is '
+                   'enabled in Windows sound settings, then press Alt+C.'),
+}
+
+
+def human_audio_error(detail):
+    """A frase humana para um erro de audio do Windows, ou None se nao o conhecermos.
+
+    Procura o codigo em hexadecimal no detalhe CRU e devolve a leitura da tabela. Devolver
+    None e deliberado: um erro que nao esta na tabela continua a ser mostrado como veio,
+    porque inventar uma explicacao para um codigo desconhecido e pior do que o codigo.
+    """
+    if not detail:
+        return None
+    texto = str(detail).upper()
+    for codigo, leitura in HRESULT_AUDIO_READINGS.items():
+        if codigo.upper() in texto:
+            return leitura
+    return None
 
 
 def worker_status_text(state, message, readable):
@@ -399,7 +975,12 @@ def worker_status_text(state, message, readable):
     """
     message = message or {}
     if state == 'done':
-        if worker_status_kind(state, message) == 'error':
+        # BOTH non-healthy kinds carry the verdict WORD: an error because that is
+        # the worker's own cause, and a no-audio verdict for exactly the same
+        # reason -- the calm state must still say what the worker concluded
+        # ("Worker finished on silent-device"), not a bare 'done'. Only the
+        # HEALTHY finish (or a `busy` kind) gets the neutral readable line.
+        if worker_status_kind(state, message) in ('error', 'no-audio'):
             verdict = str(message.get('verdict') or '').strip()
             if not verdict:
                 # An absent verdict must not be rendered as the f-string of a
@@ -411,6 +992,18 @@ def worker_status_text(state, message, readable):
             return f'Worker finished on {verdict}'
         return readable
     if state not in WORKER_ERROR_STATES:
+        # A ESCADA GASTA E UMA ESPERA, NAO UMA FALHA (dono, 2026-10-17, verbatim:
+        # *"o painel ta com erro vermelho. ta falando que 'audio device is in use'
+        # sendo q nao e pra acontecer nunca e nem depender disso"*).
+        #
+        # O worker emite este estado quando percorreu a escada inteira e nenhum
+        # endpoint estava livre AGORA. A app esta de pe, o shell relanca o worker e
+        # a escada recomeca: e a app a ESPERAR. O `detail` ja vem neutro do worker
+        # (ver o comentario do lado do `emit`), portanto nao ha HRESULT para
+        # traduzir, mas mesmo que houvesse esta linha e a ultima: `human_audio_error`
+        # nao deve conseguir transformar uma espera na frase que o dono mandou tirar.
+        if state == 'audio-endpoint-unavailable':
+            return ('No audio endpoint was free - Sotto keeps looking')
         return readable
     device = str(message.get('device') or '').strip()
     api = str(message.get('api') or '').strip()
@@ -426,8 +1019,21 @@ def worker_status_text(state, message, readable):
     if state == 'device-exhausted':
         return ('Audio tap carried no signal - every candidate device was flat')
     if stage and detail:
+        # A TRADUCAO, ANTES DA LINHA CRUA. Ver `HRESULT_AUDIO_READINGS`: o dono ja viu
+        # `WasapiError ... (0x8889000A)` na tela e chamou-lhe *"nojeira"*. Um codigo de erro
+        # do Windows nao lhe diz nada, e a acao que resolve -- fechar quem segura o
+        # dispositivo -- nao esta escrita em lado nenhum do hexadecimal.
+        legivel = human_audio_error(detail)
+        if legivel:
+            return f'Sotto could not start listening - {legivel}'
         return f'Worker error at {stage} - {detail}'
     if detail:
+        # F6 -- o mesmo orfao do corpo, no rodape: um codigo DESCONHECIDO continua a passar
+        # cru de proposito (nao se inventa explicacao), mas um codigo CONHECIDO que chegue
+        # por este caminho tambem tem de ser lido. */
+        legivel = human_audio_error(detail)
+        if legivel:
+            return f'Sotto could not start listening - {legivel}'
         return f'Worker error - {detail}'
     if stage:
         return f'Worker error at {stage}'
@@ -447,6 +1053,20 @@ def worker_status_body(state, message):
         value = message.get(key)
         if value is None or value == '':
             continue
+        # F6 -- A TRADUCAO VALE AQUI TAMBEM, e nao valia. MEDIDO pelo audit dos dialogos
+        # (2026-10-15), com a captura na mao: o CORPO do placeholder pintava
+        #
+        #     stage=capture-open detail=WasapiError: AUDCLNT_E_DEVICE_IN_USE (0x8889000A)
+        #     device=Alto-falantes api=MME peak=0.000122
+        #
+        # -- **o hexadecimal CRU, na tela do dono.** A tabela `HRESULT_AUDIO_READINGS` so
+        # estava ligada ao RODAPE (`worker_status_text`), e este irmao ao lado junta os campos
+        # como vieram. Era isto o *"que nojeira e essa mano"* que ele fotografou.
+        if key == 'detail':
+            legivel = human_audio_error(value)
+            if legivel:
+                parts.append(f'{key}={legivel}')
+                continue
         parts.append(f'{key}={value}')
     return ' '.join(parts)[:STATUS_BODY_MAX]
 
@@ -456,13 +1076,137 @@ def worker_status_body(state, message):
 
 _LOG_LOCK = threading.Lock()
 _LOG_FILE = None
+_LOG_QUEUE = None      # the mirror lines, one per log() call
+_LOG_WRITER = None     # the ONE thread that owns the file
+
 
 
 def _open_log(path):
-    global _LOG_FILE
+    global _LOG_FILE, _LOG_QUEUE, _LOG_WRITER
     if path:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        # THE LOG GREW WITHOUT BOUND. MEASURED 2026-10-13: _main/webview-run.log reached
+        # **727.5 MB**, and simply READING it to check the app's own state blew a 300 s
+        # deadline -- the instrument for the app became the slowest thing about it, and
+        # every launch appended to it for ever.
+        #
+        # This runs BEFORE the append open, because on Windows the app holds the file and
+        # it cannot be rotated from outside while the shell is alive.
+        #
+        # IT KEEPS THE TAIL AND DISCARDS THE REST, and the first version of this comment
+        # claimed the opposite -- it said the remainder was "moved aside to <log>.1 rather
+        # than discarded, so a user who wants the history still has it". THE CODE DOES NOT
+        # DO THAT: it writes the TAIL into `<log>.1` and then `os.replace`s it onto the
+        # log, so the OLD content is gone and no `.1` survives. MEASURED IN PRODUCTION
+        # 2026-10-13 14:46: `LOG_ROTATED from=847859845 B kept=16777081 B cap=64 MB`, and
+        # `_main/webview-run.log.1` does not exist.
+        #
+        # The BEHAVIOUR is the one intended -- bounded file, newest lines kept -- but the
+        # claim was false and is corrected here rather than left to be quoted.
+        #
+        # A failure here is swallowed on purpose -- a log that cannot be rotated must never
+        # stop the app from starting, and the append below still works either way.
+        try:
+            cap_mb = int(os.environ.get('SOTTO_LOG_CAP_MB', '64'))
+            keep_mb = int(os.environ.get('SOTTO_LOG_KEEP_MB', '16'))
+            if cap_mb > 0 and os.path.getsize(path) > cap_mb * 1024 * 1024:
+                keep = max(1, keep_mb) * 1024 * 1024
+                with open(path, 'rb') as fh:
+                    fh.seek(0, os.SEEK_END)
+                    size = fh.tell()
+                    fh.seek(max(0, size - keep), os.SEEK_SET)
+                    tail = fh.read()
+                # start on a line boundary, so the kept file does not open mid-line
+                cut = tail.find(b'\n')
+                if 0 <= cut < len(tail) - 1:
+                    tail = tail[cut + 1:]
+                with open(path + '.1', 'wb') as fh:
+                    fh.write(tail)
+                os.replace(path + '.1', path)
+                with open(path, 'a', encoding='utf-8') as fh:
+                    fh.write('sotto: LOG_ROTATED from=%d B kept=%d B cap=%d MB\n'
+                             % (size, len(tail), cap_mb))
+        except Exception:
+            pass
         _LOG_FILE = open(path, 'a', encoding='utf-8', buffering=1)
+        # THE FROZEN MIRROR GETS ITS OWN THREAD -- this is the freeze fix.
+        # `log()` used to write AND flush the file inline, on whatever thread
+        # called it. For the WH_MOUSE_LL click hook that thread is WINDOWS' OWN
+        # MOUSE INPUT PATH: measured by _main/hook-cost-oracle.py, one click
+        # costs mean 3.31 ms, p99 38.29 ms, worst 768 ms with the mirror inline
+        # against 0.005 / 0.018 / 0.736 ms without it, at the measured cadence
+        # of 11.82 clicks a minute. The pointer for the whole desktop waits for
+        # that write. So the caller queues the line and never waits for a disk.
+        _LOG_QUEUE = queue.SimpleQueue()
+        _LOG_WRITER = threading.Thread(target=_log_writer, name='sotto-log',
+                                       daemon=True)
+        _LOG_WRITER.start()
+
+
+def _log_writer():
+    """The ONE thread that owns the --log file. Nobody else writes it.
+
+    The file and the queue are bound HERE, at thread start, and never re-read
+    from the module globals: a writer that re-read them each iteration can
+    observe a reset (or a None mid-teardown) and die, and a dead writer makes
+    the WHOLE --log mirror disappear with no other symptom -- lines still get
+    queued, nothing gets written, the run log simply stops. Same reason the
+    loop is wrapped whole: an exception in the write path must not take the
+    thread down with it.
+    """
+    q = _LOG_QUEUE
+    fh = _LOG_FILE
+    while True:
+        try:
+            line = q.get()
+            if line is None:
+                return
+            fh.write(line + '\n')
+            fh.flush()
+        except Exception:  # noqa: BLE001 -- a dead mirror must not kill the app
+            try:
+                print(f'{_stamp()} sotto: LOG_MIRROR_DIED {type(line).__name__}',
+                      flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+            return
+
+
+def _log_drain(timeout_s=2.0):
+    """Stop the writer, giving the ALREADY queued lines their disk time.
+
+    Called on the exit path: `os._exit` does not wait for a daemon thread, and
+    a SHELL_EXIT line that never lands would take its own evidence with it.
+    """
+    if _LOG_QUEUE is None:
+        return
+    _LOG_QUEUE.put(None)
+    if _LOG_WRITER is not None:
+        _LOG_WRITER.join(timeout_s)
+
+
+def _stamp() -> str:
+    """The hour a `sotto: ` line now carries: `2026-10-12 12:26:03.123`.
+
+    THE DEFECT THIS CLOSES. Every `sotto:` line was untimed, so the log could say
+    what happened and never when. The cold-boot model load this front was opened
+    for was invisible in the one artefact that records it: `model-loading` and the
+    `BRIDGE_SILENT ms=30000` that followed it carried no distance, so "how long
+    does the load take" had no answer in the log at all, and the stutter the
+    owner reports at startup could not be attributed to a phase.
+
+    LEADING, not trailing, for two reasons. A log line reads time-first, which
+    is what makes the file comparable with every other clock on this box
+    (`Get-Process .StartTime`, the Task Scheduler history, the Event Log): the
+    measurement this front needs is the distance between a shell line and a
+    worker line taken tens of seconds apart. And the `sotto: ` tag keeps its
+    exact position and spelling - every consumer of these lines in this repo
+    reads them by substring or by `split('sotto: ', 1)[-1]` (measured across
+    `_main/`, `app/`, `worker/`: 7 such consumers, 0 regex anchors on the tag),
+    so the tag keeps matching while the hour is added in front of it.
+    """
+    now = datetime.now()
+    return now.strftime('%Y-%m-%d %H:%M:%S.') + f'{now.microsecond // 1000:03d}'
 
 
 def log(message: str) -> None:
@@ -470,13 +1214,14 @@ def log(message: str) -> None:
 
     The Electron arm logs the same way (main.js:56), so the two run logs read
     alike and a claim in the receipt can be checked without watching the screen.
+    The stamp is prepended by `_stamp` rather than here, so `warn()` and every
+    other caller inherits it without a second code path.
     """
-    line = f'sotto: {message}'
+    line = f'{_stamp()} sotto: {message}'
     with _LOG_LOCK:
         print(line, flush=True)
         if _LOG_FILE is not None:
-            _LOG_FILE.write(line + '\n')
-            _LOG_FILE.flush()
+            _LOG_QUEUE.put(line)
 
 
 def warn(message: str) -> None:
@@ -554,7 +1299,22 @@ def dock_right(work, width=PANEL_WIDTH, height=PANEL_HEIGHT,
     panel_height = min(want_height, max(0, h - 2 * m))
 
     x = work['x'] + w - panel_width - m
-    y = work['y'] + round((h - panel_height) / 2)
+    # TOP-DOCKED, NOT VERTICALLY CENTRED (owner, 2026-10-17: *"o painel de baixo
+    # esta muito embaixo, tem que ser mais pra cima"*). The old line was
+    #     y = work['y'] + round((h - panel_height) / 2)
+    # which, with `panel_height = min(900, h - 2*m)`, left the panel's top edge
+    # half a screen below the top of the work area -- which is what the owner
+    # means by "too low".
+    #
+    # THE NEW FORMULA, exactly:  y = work['y'] + m
+    # -- the SAME `m` the right edge already uses (`max(0, min(margin, w/8, h/8))`,
+    # :1008), so the panel hangs PANEL_MARGIN (12) from the top and from the right
+    # and nothing else about the width changes. Containment is arithmetic, not a
+    # hope: `panel_height` is clamped to `h - 2*m` (:1011), so
+    # `work['y'] + m + panel_height <= work['y'] + h - m`, and both clamps below
+    # (`max(work['y'], ...)`, then `min(..., work['y'] + h - height)`) still run, so
+    # a short or offset monitor can never push the panel out of its work area.
+    y = work['y'] + m
 
     geometry = {
         'workX': work['x'],
@@ -618,26 +1378,94 @@ SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
 
-#: Double-press window for Alt+C: two presses within this many ms open the
-#: RIGHT side panel; a single press toggles the bottom strip. Timestamp is
-#: taken in the hotkey handler (`SottoShell.hotkey_pressed`) with
-#: `time.monotonic()`, so wall-clock jumps cannot mis-split a double.
+#: THE GESTURE WINDOW -- it separates THREE gestures, not two. Owner, verbatim,
+#: 2026-10-18:
 #:
-#: 400 ms was too tight to be a usable control. The owner measured it himself:
-#: he reports that he cannot open the side panel reliably, and asks for 1.5 s
-#: (2026-10-09, verbatim: *"aumenta a janela de tempo do double tap do alt c pra
-#: 1 sec e meio"*). 1500 ms is roughly a comfortable human double-click - it is
-#: the same order as Windows' own double-click time - while staying far below
-#: the interval at which "two presses" would read as "wants the strip twice",
-#: which the owner would notice as the strip flickering instead of the panel
-#: opening.
+#:     *"pra habilitar a legenda: primeiro alt c. pra ir pro priemiro painel:
+#:       double alt c. caso double alt c, a legenda nao habilita"*
+#:     *"triple alt c é pra mostrar o painel da direita"*
 #:
-#: The trade is explicit and accepted by the owner: the FIRST press now shows the
-#: strip immediately (it always did), so a 1.5 s window means the strip is on
-#: screen for that long before the second press converts it to the side panel.
-#: If that reads as wrong, the fix is not a smaller window - it is to stop
-#: mapping on the first press, which changes what one Alt+C does at all.
-HOTKEY_DOUBLE_MS = 1500
+#:     ONE press    -> the caption on/off
+#:     TWO presses  -> the FIRST panel (the bottom strip)
+#:     THREE        -> the RIGHT panel
+#:
+#: IT WAS HERE AND WAS DELETED ON PURPOSE. `HOTKEY_DOUBLE_MS` stood here from
+#: 2026-10-09 at 1500 ms and classified each press by speed; the owner killed it
+#: on 2026-10-13, verbatim: *"o alt c ta meio ruim..."* -- because WHAT A PRESS
+#: DOES had been made a function of the WINDOW STATE and the interval, and a
+#: slow presser could never reach the panel he wanted.
+#:
+#: IT COMES BACK FOR A JOB THAT IS NOT THAT ONE. It no longer decides WHICH PANEL
+#: is up -- `hotkey_pressed` still reads the live window for that. It decides
+#: only WHETHER A PRESS IS A GESTURE OR PART OF A BIGGER ONE, because the owner
+#: has now given a press three different meanings and "the double must not enable
+#: the caption" cannot be honoured any other way.
+#:
+#: AND SINCE THE TRIPLE, NEITHER CAN A PANEL. A double used to raise the strip on
+#: the instant it was recognised, which is correct for two presses and wrong for
+#: three: the strip would go up at press two and be replaced at press three, so
+#: the owner would see the panel he did NOT ask for for as long as his finger
+#: stayed down. Both panel gestures are therefore deferred, and each panel
+#: appears once, when the gesture is resolved.
+#:
+#: TWO CLOCKS, NOT ONE (2026-10-21). One constant was doing two jobs and the
+#: SHORTER one broke the other. `HOTKEY_DOUBLE_MS = 250` governed BOTH how long a
+#: LONE press waits before the caption appears AND how long a press still counts
+#: as part of the same gesture. A deliberate human double press measures 300-500
+#: ms -- OUTSIDE 250 -- so at human speed the two presses were two separate
+#: gestures: the caption toggled ON and then OFF and the panel never opened.
+#: MEASURED on the owner's own running app (2026-10-21, real `WM_HOTKEY` posted
+#: to the shell's hotkey thread, the technique `_main/_audit-hotkey-delivery.py`
+#: uses): two presses 400 ms apart -> "caption on, caption off", NOTHING ELSE;
+#: three presses 400 ms apart -> the WRONG action. His report, verbatim: *"alt c
+#: nao ta funcionando direito pra abrir o painel"*. The two questions are
+#: different and now have different numbers:
+#:
+#:     HOTKEY_CAPTION_DEFER_MS  how long a LONE press waits for the caption.
+#:                              UNCHANGED at 250: a lone press must not look slow,
+#:                              and a FAST double must not flash the caption.
+#:     HOTKEY_GESTURE_MS        how long a press still belongs to the SAME
+#:                              gesture. 700 is a HUMAN number, not a machine one:
+#:                              a deliberate human double press measures 300-500
+#:                              ms, so 700 recognises it while still not
+#:                              swallowing the next deliberate press.
+#:
+#: AND THE PANEL WAITS THE GESTURE WINDOW, not the caption's deferral. A panel
+#: appears ONCE, when the gesture has resolved -- a press must never raise a
+#: window twice for one gesture -- and a gesture only resolves
+#: `HOTKEY_GESTURE_MS` after its last press. While both numbers were the same
+#: (250) that guarantee came for free; split, the panel must follow the LONGER
+#: one or a human triple (0/400/800) would flash the strip at press two and
+#: replace it at press three -- the panel the owner did NOT ask for.
+#:
+#: THE CAPTION IS PUT BACK when the gesture turns out to be a panel. Because the
+#: caption's deferral (250) is shorter than the gesture window (700), a press
+#: that is really the FIRST of a double can already have turned the caption on
+#: when the second arrives; the owner's rule *"caso double alt c, a legenda nao
+#: habilita"* then demands it be undone. It is undone AT THE SECOND PRESS -- the
+#: earliest moment the gesture is known not to be lone -- so the flash is as
+#: short as it can be, and the gesture that applied it is recorded
+#: (`_caption_gesture_id`) so an older gesture can never undo a newer one's
+#: caption. The whole undo is `HOTKEY_CAPTION_UNDONE`.
+#:
+#: 250 ms for the caption, NOT 1500. This is the cost, stated rather than hidden:
+#: a caption cannot appear faster than `HOTKEY_CAPTION_DEFER_MS` after the press.
+#: 1500 ms is the delay the owner called bad. 250 ms reads as confirmation rather
+#: than as lag, and it is the number to change if he says it still feels slow.
+#:
+#: THE WINDOW IS PER PRESS, NOT PER GESTURE: press n+1 starts its own window from
+#: press n. Three presses 240 ms apart are a triple; three presses a second apart
+#: are three captions, which is the right reading -- a man pressing Alt+C slowly
+#: three times wants three captions, not a panel.
+HOTKEY_CAPTION_DEFER_MS = 250
+HOTKEY_GESTURE_MS = 700
+
+#: Minimum seconds between two `external-end` resumes of the worker. Measured
+#: 2026-10-18: two full model loads 2 min 52 s apart, with 1 245 MB resident, each
+#: followed by the device ladder. 45 s is long enough that a player blinking its
+#: caption layer cannot drive a load, and short enough that when the owner stops
+#: watching captions the microphone comes back while he is still waiting for it.
+EXTERNAL_RESUME_MIN_S = 45.0
 
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
@@ -650,7 +1478,14 @@ STRIP_WIDTH_MAX = 1040
 STRIP_WIDTH_MIN = 480
 STRIP_WIDTH_FRACTION = 0.62
 #: The CSS custom property that IS the strip's height (`panel.css:52`).
+#: Told to the page the moment the SHELL moves the strip window. panel.html:1093
+#: has the page stop applying its own CSS transform once this is set, because a
+#: page transform plus a window move would add up to twice the drag.
+STRIP_MOVED_JS = ("(function () { if (document.body) {"
+                  " document.body.setAttribute('data-strip-moved', '1'); }"
+                  " return true; })()")
 STRIP_HEIGHT_CSS_VAR = '--strip-height'
+FLOAT_HEIGHT_CSS_VAR = '--float-height'   # the floated caption's window height
 STRIP_BOTTOM_MARGIN = 48
 #: THE LOG BUDGET OF THE STATS FEED. `on_worker_stats` fires once per worker
 #: `WORKER_STATS` line, and that line is a METER sample — the worker may publish
@@ -721,15 +1556,40 @@ def dpi_scale() -> float:
     return (dpi / 96.0) if dpi else 1.0
 
 
-def primary_display() -> dict:
-    """Primary display bounds + work area, in DIP, the shape Electron reports."""
+MONITOR_DEFAULTTONEAREST = 0x00000002
+
+
+def _monitor_scale(handle) -> float:
+    """Per-monitor DPI, falling back to the process DPI when shcore refuses.
+
+    `dpi_scale()` is the SYSTEM DPI (GetDpiForSystem). On a two-monitor desk
+    with different scaling that number is right for exactly one of them, so a
+    window docked to the other monitor lands at the wrong physical size. The
+    owner's report (2026-10-17) is that every panel spawns in the wrong place
+    and "em diferentes monitores faria pior ainda"; this is that defect.
+    """
+    try:
+        shcore = ctypes.WinDLL('shcore', use_last_error=True)
+        shcore.GetDpiForMonitor.argtypes = [
+            ctypes.c_void_p, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+        shcore.GetDpiForMonitor.restype = ctypes.c_long
+        dx = ctypes.c_uint(0)
+        dy = ctypes.c_uint(0)
+        if shcore.GetDpiForMonitor(handle, 0, ctypes.byref(dx),
+                                   ctypes.byref(dy)) == 0 and dx.value:
+            return dx.value / 96.0
+    except Exception:  # noqa: BLE001
+        pass
+    return dpi_scale()
+
+
+def _display_for_monitor(handle) -> dict:
     mi = MONITORINFO()
     mi.cbSize = ctypes.sizeof(MONITORINFO)
-    handle = user32.MonitorFromPoint(POINT(0, 0), MONITOR_DEFAULTTOPRIMARY)
     if not user32.GetMonitorInfoW(handle, ctypes.byref(mi)):
         raise ctypes.WinError(ctypes.get_last_error())
-
-    scale = dpi_scale()
+    scale = _monitor_scale(handle)
 
     def as_rect(r):
         return {
@@ -747,12 +1607,842 @@ def primary_display() -> dict:
     }
 
 
+def primary_display() -> dict:
+    """Primary display bounds + work area, in DIP, the shape Electron reports."""
+    handle = user32.MonitorFromPoint(POINT(0, 0), MONITOR_DEFAULTTOPRIMARY)
+    return _display_for_monitor(handle)
+
+
+def target_display() -> dict:
+    """The monitor the OWNER is looking at: the one under the mouse pointer.
+
+    Alt+C is pressed while looking at a screen, and the panel belongs on THAT
+    screen. The old code always used `MonitorFromPoint(POINT(0,0))`, i.e. the
+    primary monitor, so on a multi-monitor desk every panel opened on the
+    primary no matter where the owner was.
+    """
+    # First the monitor of the FOREGROUND window: Alt+C is pressed while the
+    # owner is watching/using another app, and that app's screen is the target.
+    # When Sotto itself is foreground, fall back to the mouse, then primary.
+    try:
+        user32.GetForegroundWindow.restype = wt.HWND
+        user32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
+        user32.MonitorFromWindow.restype = ctypes.c_void_p
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        fg = user32.GetForegroundWindow()
+        if fg:
+            b = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(fg, b, 256)
+            if not b.value.strip().lower().startswith('sotto'):
+                handle = user32.MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
+                if handle:
+                    return _display_for_monitor(handle)
+    except Exception:  # noqa: BLE001
+        pass
+    pt = POINT()
+    try:
+        if user32.GetCursorPos(ctypes.byref(pt)):
+            handle = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+            return _display_for_monitor(handle)
+    except Exception:  # noqa: BLE001
+        pass
+    return primary_display()
+
+
 def set_ex_style(hwnd, add=0, remove=0) -> int:
     """Toggle extended styles on the panel HWND and return the new value."""
     current = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     updated = (current | add) & ~remove
     user32.SetWindowLongW(hwnd, GWL_EXSTYLE, updated)
     return updated
+
+
+class VramGuard(threading.Thread):
+    """PARK THE WORKER WHEN ANOTHER APP NEEDS THE GPU (owner, 2026-10-17).
+
+    Owner, verbatim: *"se tem qualquer processo que quer usar vram, deviamos
+    tirar os modelos da vram, tipo um jogo pesado... nem q fazer o modelo ser
+    descarregado da vram"*.
+
+    The worker owns a CUDA context and ~1.8 GB of VRAM. A game that wants most
+    of the 16 GB cannot get it while that context lives, and "paused but still
+    loaded" does NOT release it. This thread samples NVML's device free memory;
+    when it stays below LOW_MB it kills the worker (TerminateProcess releases
+    the CUDA context with the process), and when free memory stays above
+    RESUME_MB it starts it again. Killing rather than a soft pause is deliberate:
+    a soft pause keeps the allocation, which is the thing the game needs.
+    """
+
+    INTERVAL_S = 3.0
+    LOW_MB = 1200.0
+    RESUME_MB = 2400.0
+    STREAK = 2
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-vram-guard', daemon=True)
+        self.shell = shell
+        self.stop_event = threading.Event()
+        self.low = 0
+        self.high = 0
+        self.parked = 0
+        self.resumed = 0
+
+    def stop(self):
+        self.stop_event.set()
+
+    def run(self):
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+        except Exception as exc:  # noqa: BLE001
+            log(f'VRAM_GUARD_UNAVAILABLE error={exc!r}')
+            return
+        log(f'VRAM_GUARD started=true interval_s={self.INTERVAL_S} '
+            f'low_mb={self.LOW_MB} resume_mb={self.RESUME_MB}')
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    free = min(
+                        pynvml.nvmlDeviceGetMemoryInfo(
+                            pynvml.nvmlDeviceGetHandleByIndex(i)).free / (1024.0 * 1024.0)
+                        for i in range(pynvml.nvmlDeviceGetCount()))
+                except Exception as exc:  # noqa: BLE001
+                    if self.low == 0:
+                        log(f'VRAM_GUARD_READ_FAILED error={exc!r}')
+                    free = None
+                if free is not None:
+                    bridge = getattr(self.shell, 'bridge', None)
+                    running = (bridge is not None
+                               and getattr(bridge, 'child', None) is not None)
+                    # A WORKER THAT IS STILL LOADING ITS OWN MODEL CANNOT BE
+                    # THE REASON THE VRAM IS LOW -- IT IS THE VRAM.
+                    # MEASURED 2026-10-20, on the owner's own box: the worker
+                    # started at 00:43:05 and the guard parked it 3 s later
+                    # with `free_mb=365`, because the model load itself had
+                    # taken the VRAM (this worker's steady footprint is
+                    # ~9.7 GB: MEASURED 16 303 MB total, 5 380 MB free with
+                    # the worker alive). The guard then resumed it, the new
+                    # worker loaded the model, the VRAM fell again, and the
+                    # treadmill repeated -- each turn a 9 s model load and a
+                    # 1.2 GB spike for the owner, and the last turn left the
+                    # worker DEAD (no resume), which is the empty panel.
+                    #
+                    # THE GUARD'S PURPOSE (owner, 2026-10-17, verbatim:
+                    # *"se tem qualquer processo que quer usar vram, deviamos
+                    # tirar os modelos da vram, tipo um jogo pesado"*) is
+                    # ANOTHER APP. A game that takes the VRAM during the
+                    # load is still served: the moment the model is up, the
+                    # free memory is low again and the guard parks the worker.
+                    loaded = bool(getattr(bridge, 'loaded', False))
+                    if running and loaded and free < self.LOW_MB:
+                        self.low += 1
+                        self.high = 0
+                        if self.low >= self.STREAK:
+                            self.low = 0
+                            if self.shell.park_worker_for_vram(free):
+                                self.parked += 1
+                    elif self.shell._vram_parked and free >= self.RESUME_MB:
+                        self.high += 1
+                        self.low = 0
+                        if self.high >= self.STREAK:
+                            self.high = 0
+                            if self.shell.resume_after_vram(free):
+                                self.resumed += 1
+                    else:
+                        self.low = 0
+                        self.high = 0
+                self.stop_event.wait(self.INTERVAL_S)
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            log(f'VRAM_GUARD stopped=true parked={self.parked} '
+                f'resumed={self.resumed}')
+
+
+class YouTubeTrackThread(threading.Thread):
+    """The REAL caption track of the YouTube video being watched.
+
+    WHY A THREAD OF ITS OWN. `yt_dlp`'s metadata call for ONE video took
+    **5.0 s** (MEASURED 2026-10-19: `extract_info` with `skip_download`,
+    no media downloaded). The caption reader polls every 0.30 s, so blocking
+    it would freeze the reader for 5 s on every new video -- and the owner
+    would watch the last line repeat while the fetch ran.
+
+    WHAT IT ANSWERS. One question: "what is this video's own caption
+    track?". The answer is one of the four states of `youtube_captions`
+    (`has-track` / `no-track` / `no-cue-in-window` / `time-unknown`). It does
+    NOT decide what the caption box shows -- that is the watcher's job, and
+    the rule is the owner's: the track REPLACES the live caption while it
+    has something to say, and the live caption (the ASR) is the BASE and is
+    never stopped by the absence of a track.
+
+    THE RETRY. A failed extract is NOT a verdict about the video --
+    `youtube_captions.fetch_track` says so and does not cache it -- so it is
+    retried, but not every 300 ms: `REFRESH_S` between two attempts, and
+    the module decides for itself when a refused payload is worth
+    asking for again.
+    """
+
+    #: HOW OFTEN THE TRACK IS ASKED FOR AGAIN. `youtube_captions` caches a
+    #: REFUSED payload for `PAYLOAD_RETRY_TTL_S` (60 s -- MEASURED 2026-10-19:
+    #: YouTube answers HTTP 429 to the automatic track of the video the owner
+    #: was watching) and retries the payload WITHOUT repeating the 5 s
+    #: extract. That retry only fires if somebody calls `fetch_track` again
+    #: after the TTL, so the thread RE-ASKS every `REFRESH_S` (30 s). The
+    #: call itself is a disk read while the cache is warm.
+    REFRESH_S = 30.0
+    #: How often the thread looks for work.
+    POLL_S = 0.20
+    #: HOW OFTEN the track is searched AGAIN by the painted words. The
+    #: search costs an extract (MEASURED 5.0 s), and a video can carry a
+    #: hundred automatic translations; so after a search that found nothing
+    #: the next one waits this long. MEASURED 2026-10-20: the owner's own
+    #: video was found on the FIRST search (the third candidate), and the
+    #: state "the paint does not match the served track" is SHORT -- it is
+    #: a video changing, or the player changing its own caption language.
+    #: While it lasts the app shows nothing, so the wait is 20 s and not
+    #: 300 s.
+    PAINT_SEARCH_RETRY_S = 20.0
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-yt-track', daemon=True)
+        self.shell = shell
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.want = ''          # the video id we are asked about
+        self.inflight = ''      # the id being fetched right now
+        self.done_for = ''      # the id we last finished (ok or failed)
+        self.track = None       # the last result
+        self.track_for = ''     # the id `track` belongs to
+        self.next_fetch_at = 0.0
+        self.fetches = 0
+        self.failures = 0
+        #: The words the player is painting RIGHT NOW, and the video they
+        #: belong to. They are the QUESTION that decides the track.
+        self.painted = None
+        self.painted_for = ''
+        #: The video we last searched BY PAINT, and when.
+        self.paint_search_for = ''
+        self.paint_search_at = 0.0
+
+    def request(self, video_id, painted=None):
+        """Ask for this video's track. Returns the track if it is already here.
+
+        `painted` is the list of words the player is painting RIGHT NOW. It
+        is the QUESTION that decides the track: the track the player shows
+        is the one whose cues HOLD those words. MEASURED 2026-10-20 on the
+        owner's own video: the player painted `en-orig` while the language
+        preference would have served `pt-orig` -- Portuguese against
+        English, in the owner's own comparison.
+        """
+        vid = str(video_id or '')
+        with self.lock:
+            if vid != self.track_for:
+                # A NEW video: ask for it NOW, not in up to `REFRESH_S`.
+                self.next_fetch_at = 0.0
+            self.want = vid
+            if painted:
+                self.painted = list(painted)
+                self.painted_for = vid
+                now = time.monotonic()
+                if (self.paint_search_for != vid
+                        or (now - self.paint_search_at)
+                        > self.PAINT_SEARCH_RETRY_S):
+                    # A NEW QUESTION for the track: the player is painting
+                    # words the track we have does not hold, so the track we
+                    # have is the WRONG one. Ask again NOW -- and not more
+                    # than once every `PAINT_SEARCH_RETRY_S`.
+                    self.paint_search_for = vid
+                    self.paint_search_at = now
+                    self.next_fetch_at = 0.0
+            if self.track_for == vid:
+                return self.track
+        return None
+
+    def current(self, video_id):
+        """The track of this video, if it is the one we already have."""
+        with self.lock:
+            if self.track_for == str(video_id or ''):
+                return self.track
+        return None
+
+    def run(self):
+        while not self.stop_event.is_set():
+            with self.lock:
+                want = self.want
+                busy = self.inflight
+                due = time.monotonic() >= self.next_fetch_at
+            if want and want != busy and due:
+                self._fetch(want)
+            self.stop_event.wait(self.POLL_S)
+        log('YOUTUBE_TRACK_THREAD stopped=true fetches=%d failures=%d'
+            % (self.fetches, self.failures))
+
+    def _fetch(self, video_id):
+        with self.lock:
+            self.inflight = video_id
+            paint = self.painted if self.painted_for == video_id else None
+        track = None
+        error = None
+        try:
+            import youtube_captions
+            track = youtube_captions.fetch_track(video_id, painted=paint)
+        except Exception as exc:  # noqa: BLE001
+            error = exc
+        with self.lock:
+            self.inflight = ''
+            self.done_for = video_id
+            self.track = track
+            self.track_for = video_id
+            self.fetches += 1
+            if track is None or track.get('reason') == 'extract-failed':
+                self.failures += 1
+            # The NEXT ask is `REFRESH_S` away, so the module's own retry of a
+            # refused payload (60 s) can happen.
+            self.next_fetch_at = time.monotonic() + self.REFRESH_S
+        if error is not None:
+            log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error={error!r}')
+            return
+        if track is None:
+            log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error=no-result')
+            return
+        log('YOUTUBE_TRACK_READY video_id=%s state=%s cues=%d lang=%s '
+            'source=%s reason=%s error=%s cached=%s'
+            % (video_id, track.get('state'), len(track.get('cues') or ()),
+               track.get('lang'), track.get('source'), track.get('reason'),
+               track.get('error'), bool(track.get('cached'))))
+        # HOW THE TRACK WAS CHOSEN. `painted` means the player's own words
+        # are IN it; `painted-no-match` means no candidate held them and
+        # this one is a FALLBACK. Neither is ever silent.
+        log('YOUTUBE_TRACK_PAINT video_id=%s source=%s cue=%s match=%s '
+            'painted_words=%s'
+            % (video_id, track.get('player_source') or '-',
+               (track.get('paint_cue')
+                if track.get('paint_cue') is not None else '-'),
+               '1' if track.get('player_match') else '0',
+               len(paint) if paint else 0))
+
+
+class ExternalCaptionWatcher(threading.Thread):
+    """READ THE CAPTIONS A PLAYER ALREADY SHOWS (owner, 2026-10-17).
+
+    YouTube and Stremio (Electron) render their subtitles as UI Automation Text
+    elements at the bottom of their player. Those captions are already
+    synchronised by the player itself, so this thread does not download,
+    parse or clock anything: it reads the line the player is painting and hands
+    it to the panel as a caption event.
+
+    MEASURED 2026-10-17: a YouTube video in Chrome exposed `'>> So'`, `' the'`,
+    `' Akali'`, ... at y=942..1001 inside a 1920x1080 player, and the address
+    bar's ValuePattern was `youtube.com/watch?v=...`.
+
+    It is OPTIONAL and fail-open: no comtypes/UIA, a non-video foreground
+    window, or a read error simply produces nothing, and the ASR engine is
+    untouched.
+    """
+
+    INTERVAL_S = 0.30
+    #: A line that has not changed for this long is closed even if the player
+    #: has not moved on yet (the panel's own hold timer is the fallback).
+    STABLE_FINAL_S = 1.6
+    #: No caption for this long = the player stopped showing them; give the
+    #: microphone back to the ASR engine.
+    RELEASE_S = 1.8
+    #: THE SAME RULE FOR THE YOUTUBE REAL TRACK, AND MUCH LONGER. A caption
+    #: track has gaps between the cues, and the player's clock can be
+    #: unreadable for a while; a 1.8 s release would then cost a model load
+    #: (MEASURED 11.6 s, 1 218 MB resident) every few seconds. MEASURED
+    #: 2026-10-19: the real track's `RELEASE_S` is the gap between two cues
+    #: of the same video, and the owner must not see the microphone go and
+    #: come while the video plays.
+    YT_RELEASE_S = 30.0
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-external-captions', daemon=True)
+        self.shell = shell
+        self.stop_event = threading.Event()
+        self.last_line = ''
+        self.last_source = ''
+        self.last_change = 0.0
+        self.last_seen = 0.0
+        self.finalized = False
+        self.failures = 0
+        self.reads = 0
+        #: The video window we last read captions from. When the owner presses
+        #: Alt+C, Sotto becomes foreground and YouTube no longer is; keeping the
+        #: handle lets us keep reading the player BEHIND the panel.
+        self.target_hwnd = 0
+        #: THE YOUTUBE REAL TRACK (2026-10-19). The video we are watching, the
+        #: cue we last showed, and why we have nothing to show.
+        self.yt_video_id = ''
+        self.yt_cue = ''
+        self.yt_reason = ''
+        #: When the player's clock last could not be read (the player may be
+        #: gone). 0 = the clock is readable. MEASURED 2026-10-20: with the
+        #: video PAUSED the clock reads fine and the cue is there, so this
+        #: stays 0 and the worker is NOT released; a player that disappeared
+        #: is a different fact.
+        self.yt_no_clock_since = 0.0
+        #: THE LAST ALIGNMENT between the player's painted words and the
+        #: served track. It is the app's knowledge of WHERE THE VIDEO IS,
+        #: and it is what tells a FROZEN clock from a real one.
+        self.yt_hit = None
+        #: Why the last read of the painted caption ended the way it did. The
+        #: log line is written when it CHANGES, so a state that is never
+        #: written is not a state that never happened.
+        self.yt_paint_why = ''
+        #: The last line we wrote to the log. THE DECISION IS WRITTEN ONCE
+        #: PER CHANGE, not once per poll: a line per poll is noise, and a
+        #: decision that is never written is a decision nobody can check.
+        self.yt_caption_logged = ''
+
+    def stop(self):
+        self.stop_event.set()
+
+    def replay(self):
+        """Emit the CURRENT player line again (a panel just became visible)."""
+        self.last_line = ''
+        self.finalized = False
+        self.last_change = 0.0
+
+    def run(self):
+        try:
+            import external_subs
+            UIA, uia = external_subs._uia()
+        except Exception as exc:  # noqa: BLE001
+            log(f'EXTERNAL_CAPTIONS_UNAVAILABLE error={exc!r}')
+            return
+        log('EXTERNAL_CAPTIONS_WATCH started=true interval_s=%.2f' % self.INTERVAL_S)
+        while not self.stop_event.is_set():
+            try:
+                got, yt_mode = self._read(uia, UIA)
+                self.reads += 1
+            except Exception as exc:  # noqa: BLE001
+                self.failures += 1
+                if self.failures <= 3:
+                    log(f'EXTERNAL_CAPTIONS_READ_FAILED error={exc!r}')
+                got, yt_mode = [], False
+            try:
+                self._tick(got, yt_mode)
+            except Exception as exc:  # noqa: BLE001
+                self.failures += 1
+                if self.failures <= 3:
+                    log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
+            self.stop_event.wait(self.INTERVAL_S)
+        self._release('stopped')
+        log(f'EXTERNAL_CAPTIONS_WATCH stopped=true reads={self.reads} '
+            f'failures={self.failures}')
+
+    def _read(self, uia, UIA):
+        """What the caption box should show, and whether it is the real track.
+
+        THE YOUTUBE BRANCH IS NOT THE PAGE. MEASURED 2026-10-19 in the
+        owner's own log (`_main/webview-run.log`, his session at 19:14): the
+        lines that reached the caption box from a YouTube page were
+        `Oferta sujeita aos termos. Cancele quando quiser.`, `há 4 sem.` and
+        `Thre's a small problem .` -- the PAGE's own text, not the video's
+        caption. The owner, verbatim: *"youtube ta mostrando texto burro da
+        pagina inves da porra da legenda/transcriptino de um video"*.
+
+        So for a YouTube window the page reader is NOT consulted, and the
+        video's OWN caption track is used instead. The page reader stays for
+        Stremio, where the player PAINTS the caption -- there the page IS
+        the caption.
+
+        RETURNS `(got, yt_mode)`.
+        """
+        import external_subs
+        hwnd = self._target_window(uia, UIA)
+        if not hwnd:
+            return [], False
+        try:
+            source = external_subs.player_source(hwnd, uia, UIA)
+        except Exception:
+            source = ''
+        if source == 'external:youtube':
+            lines, urgent = self._youtube(hwnd, uia, UIA)
+            if urgent:
+                # NO TRACK: the ASR is the base and it comes back NOW. The
+                # owner's rule, verbatim: *"se for um video sem legenda, vaio
+                # transcrever ao vivo igual."*
+                self._release('youtube-no-track')
+            return lines, True
+        return external_subs.caption_lines(hwnd, uia, UIA), False
+
+    def _target_window(self, uia, UIA):
+        """The window we read: the foreground player, or the one we had.
+
+        THE FOREGROUND WINDOW IS ONLY ADOPTED IF IT IS A PLAYER. A window
+        that is not a player must not steal the handle, or alt-tabbing to
+        the editor would drop the captions; the window we were reading is
+        remembered so the captions do not vanish the moment the owner
+        presses Alt+C (Sotto becomes foreground) or switches to another app.
+        """
+        import external_subs
+        fg = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+        if fg:
+            try:
+                title = str(external_subs._window_title(fg) or '').strip().lower()
+            except Exception:
+                title = ''
+            if not title.startswith('sotto'):
+                try:
+                    src = external_subs.player_source(fg, uia, UIA)
+                except Exception:
+                    src = ''
+                if src:
+                    self.target_hwnd = fg
+        if not self.target_hwnd or not ctypes.windll.user32.IsWindow(
+                wt.HWND(self.target_hwnd)):
+            # NO WINDOW IN THE FOREGROUND (or the one we had is gone). The
+            # video window may still be OPEN, just behind another one.
+            # MEASURED 2026-10-20: the owner's YouTube window was open and
+            # findable by title while the foreground was a different Chrome
+            # tab, and the caption only started after he clicked his
+            # browser. The reader looks for a player among the OPEN windows
+            # so the caption does not depend on where he is looking.
+            try:
+                found = external_subs.find_player_window()
+            except Exception:
+                found = 0
+            if found:
+                self.target_hwnd = int(found)
+        if self.target_hwnd and ctypes.windll.user32.IsWindow(
+                wt.HWND(self.target_hwnd)):
+            return int(self.target_hwnd)
+        self.target_hwnd = 0
+        return 0
+
+    def _youtube_painted(self, hwnd, uia, UIA):
+        """The words the player is painting RIGHT NOW -> [] when there are none.
+
+        READ-ONLY: it opens nothing, clicks nothing, moves nothing.
+
+        The reason is logged when it CHANGES, so "the captions are off" is
+        never confused with "the player is between cues".
+        """
+        try:
+            import youtube_captions
+            got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_READ_FAILED error={exc!r}')
+            return []
+        words = got.get('words') or []
+        why = str(got.get('why') or '')
+        if why != self.yt_paint_why:
+            self.yt_paint_why = why
+            log(f'YOUTUBE_PAINT_STATE why={why} words={len(words)}')
+        return words
+
+    def _yt_clock_agrees(self, t):
+        """Is the clock INSIDE the cue the player was painting?
+
+        MEASURED 2026-10-20 on the owner's own Chrome: the seek bar's
+        RangeValue AND the player's own clock text are FROZEN -- +0.00 s in
+        8.35 s of wall clock, while the painted line advanced +8.96 s in the
+        track. The clock read t=2.0 while the video was at t=530.
+
+        So the clock is only TRUSTED when the last alignment says the video
+        IS there. A line from another minute is worse than no line. With no
+        alignment yet there is nothing to compare with, and the clock is
+        used -- it is all there is.
+        """
+        hit = self.yt_hit
+        if not hit:
+            return True
+        cue = hit.get('cue') or {}
+        try:
+            start = float(cue.get('start'))
+            end = float(cue.get('end'))
+        except (TypeError, ValueError):
+            return True
+        return (start - 2.0) <= float(t) <= (end + 2.0)
+
+    def _youtube(self, hwnd, uia, UIA):
+        """The YouTube video's OWN caption track, AT THE INSTANT THE PLAYER
+        IS SHOWING IT.
+
+        RETURNS `([(source, [line])], urgent)`:
+          * the first is the REAL caption -- one line -- or `[]`;
+          * `urgent` is True when the ASR must be given back NOW, because the
+            video has NO caption track.
+
+        THE SOURCE IS THE PLAYER'S OWN PAINTED LINE. MEASURED 2026-10-20 on
+        the owner's own Chrome, on the video he was watching: the player's
+        caption window holds the words it is painting, one UIA child per
+        word, and those words CHANGE while the video plays. The two things
+        the app used to ask the UIA for were BOTH wrong there:
+
+          * the SEEK BAR AND THE PLAYER'S CLOCK TEXT ARE FROZEN: +0.00 s in
+            8.35 s of wall clock, while the painted line advanced +8.96 s in
+            the track. The clock the app read (t=2.0) was eight minutes away
+            from the truth (t=530);
+          * the caption window exposes NO language (0 of 448 elements have
+            UIA 30007), so the app fell back to the language preference and
+            served `pt-orig` while the player painted `en-orig` -- the owner
+            would have compared Portuguese against English.
+
+        So the line is the painted one, and the track is the one that HOLDS
+        it (`youtube_captions.align_painted`). The clock is then not read at
+        all on that path, and the poll gets CHEAPER: 106.5 ms of clock
+        against 92.7 ms of paint (MEASURED).
+
+        THE "NOTHING TO SHOW" CASES, AND WHAT EACH ONE MEANS:
+          * `no-video-id`   -- we cannot read which video this is. The page
+            text is not a caption, so the ASR keeps the box.
+          * `track-pending` -- the first fetch is a network call (MEASURED
+            5.0 s). Until it lands there is no caption, and the ASR keeps
+            the box.
+          * `painted-other-track` -- the player is painting words that are
+            not in the track we have, so the track we have is the WRONG one.
+            The search is asked again WITH those words; until it lands the
+            ASR stays parked (the video HAS captions).
+          * `clock-stale`   -- the clock does not agree with the line the
+            player was painting, so it is frozen: no line is shown rather
+            than a line from another minute.
+          * `no-cue`        -- a gap between the cues, or a clock we cannot
+            read. The player shows nothing here either. The ASR is only
+            given back after a LONG silence (`YT_RELEASE_S`): a caption
+            track blinks, and every blink would cost a model load
+            (MEASURED 11.6 s, 1 218 MB resident).
+        """
+        vid = self._youtube_video_id(hwnd, uia, UIA)
+        if not vid:
+            return [], self._yt_forget('no-video-id', urgent=False)
+        if vid != self.yt_video_id:
+            self.yt_video_id = vid
+            self.yt_cue = ''
+            # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
+            # the line of this one, and it is what the clock is compared
+            # with, so it goes with the video.
+            self.yt_hit = None
+            log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
+        thread = getattr(self.shell, 'youtube_track_thread', None)
+        if thread is None:
+            return [], self._yt_forget('no-track-thread', urgent=False)
+        # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
+        painted = self._youtube_painted(hwnd, uia, UIA)
+        # THE THREAD IS TOLD WHAT IS BEING PAINTED, EVERY TIME. MEASURED
+        # 2026-10-20: the thread's own log said `cue=126` for a minute while
+        # the player was already painting another cue -- the paint it had
+        # was the one from the last REQUEST, and the request only happened
+        # when the alignment failed.
+        thread.request(vid, painted=painted)
+        track = thread.current(vid)
+        if track is None:
+            return [], self._yt_forget('track-pending', urgent=False)
+        if track.get('state') != 'has-track':
+            reason = track.get('reason') or track.get('state') or 'unknown'
+            return [], self._yt_forget('no-track:%s' % reason, urgent=True)
+        if painted:
+            hit = None
+            try:
+                import youtube_captions
+                hit = youtube_captions.align_painted(track.get('cues') or (),
+                                                      painted)
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
+            if hit:
+                text = str(hit.get('text') or '').strip()
+                if text:
+                    self.yt_hit = hit
+                    self.yt_cue = text
+                    self.yt_reason = 'painted'
+                    # THE DECISION, WRITTEN. This is the line the owner can
+                    # compare with the screen: the cue of the track the
+                    # player is painting, at the instant it is painting it.
+                    if text != self.yt_caption_logged:
+                        self.yt_caption_logged = text
+                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s '
+                            'track=%s words=%s text=%r'
+                            % (vid, hit.get('index'),
+                               hit.get('cue', {}).get('start'),
+                               track.get('lang') or '-', hit.get('exact'),
+                               text[:90]))
+                    return [('external:youtube:track', [text])], False
+            # THE PLAYER IS PAINTING ANOTHER TRACK: the words it paints are
+            # IN that track and nowhere else, so that is the question to ask
+            # (the thread already has the words; the request above did it).
+            return [], self._yt_forget('painted-other-track', urgent=False)
+        # NO PAINTED LINE: the captions are off, or the player is between
+        # cues. Then the clock is the only clock there is -- but it is only
+        # trusted when the last alignment agrees with it.
+        t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+        if t is None:
+            # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
+            # given back after a LONG silence, not immediately -- a page that
+            # is slow to answer the UIA is not a dead player. MEASURED
+            # 2026-10-20: the owner's video was PAUSED (`t=1241.0` fixed
+            # across three reads, the clock reading "20 Minutos 41 Segundos
+            # de 21 Minutos 55 Segundos"), the clock WAS readable, and the
+            # caption was on screen. A paused video is not a dead player.
+            now = time.monotonic()
+            if not self.yt_no_clock_since:
+                self.yt_no_clock_since = now
+            overdue = (now - self.yt_no_clock_since) >= self.YT_RELEASE_S
+            return [], self._yt_forget('clock-unreadable', urgent=overdue)
+        if not self._yt_clock_agrees(t):
+            # THE CLOCK IS FROZEN. MEASURED 2026-10-20: it read t=2.0 for
+            # eight minutes while the video was at t=530. A line from
+            # another minute is worse than no line at all -- so the LAST
+            # line the player was painting is shown instead: that is the
+            # app's best knowledge of where the video is.
+            stale = str((self.yt_hit or {}).get('text') or '').strip()
+            if stale:
+                self.yt_cue = stale
+                self.yt_reason = 'clock-stale-last-cue'
+                return [('external:youtube:track', [stale])], False
+            return [], self._yt_forget('clock-stale', urgent=False)
+        self.yt_no_clock_since = 0.0
+        cue = None
+        try:
+            import youtube_captions
+            cue = youtube_captions.cue_at(track.get('cues') or (), t)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        text = str((cue or {}).get('text') or '').strip()
+        if not text:
+            # A GAP between the cues: the player shows nothing here either,
+            # and the ASR STAYS parked -- the track still owns the caption.
+            return [], self._yt_forget('no-cue', urgent=False)
+        self.yt_cue = text
+        self.yt_reason = 'has-cue'
+        return [('external:youtube:track', [text])], False
+
+    def _yt_forget(self, reason, urgent=False):
+        """The real track has nothing for us right now."""
+        if reason != self.yt_reason:
+            self.yt_reason = reason
+            log(f'YOUTUBE_TRACK_STATE reason={reason} urgent={str(urgent).lower()}')
+        if self.yt_cue:
+            self.yt_cue = ''
+        return urgent
+
+    def _youtube_video_id(self, hwnd, uia, UIA):
+        """The 11-character id of the video playing in this window, or ""."""
+        if not hwnd:
+            return ''
+        try:
+            import external_subs
+            import youtube_captions
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_CAPTIONS_UNAVAILABLE error={exc!r}')
+            return ''
+        try:
+            values = external_subs.edit_values(hwnd, uia, UIA)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_EDIT_VALUES_FAILED error={exc!r}')
+            return ''
+        for value in values:
+            try:
+                vid = youtube_captions.video_id_from_url(value)
+            except Exception:
+                vid = None
+            if vid:
+                return vid
+        return ''
+
+    def _youtube_time(self, hwnd, uia, UIA, duration):
+        """Where the video is, in seconds -- or None when it is not known.
+
+        None is NOT "the video is paused": it is "we do not know", and the
+        caller keeps the ASR running.
+        """
+        try:
+            import youtube_captions
+            return youtube_captions.player_time(uia, UIA, hwnd,
+                                                duration=duration)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_TIME_FAILED error={exc!r}')
+            return None
+
+    def _tick(self, got, yt_mode=False):
+        now = time.monotonic()
+        if got:
+            source, lines = got[0]
+            line = lines[-1] if lines else ''
+            if line:
+                self.last_seen = now
+                self.shell.external_captions_available = True
+                if line != self.last_line:
+                    if self.last_line and not self.finalized:
+                        self.shell.external_caption(self.last_line, self.last_source,
+                                                    final=True)
+                    self.last_line = line
+                    self.last_source = source
+                    self.last_change = now
+                    self.finalized = False
+                    self.shell.external_caption(line, source, final=False)
+                elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
+                    self.shell.external_caption(line, source, final=True)
+                    self.finalized = True
+                return
+        # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
+        # the player stopped only when the PAGE stops having text. The REAL
+        # TRACK knows better: the track is still valid, the clock is still
+        # readable, and the cue is there -- the video is PAUSED, and a paused
+        # video is not a dead player. MEASURED 2026-10-20: with the release
+        # on a timer, every 30 s of paused video cost the owner a 1.2 GB
+        # model load. On the real-track path the VALIDITY of the track
+        # decides, and the track's validity is judged in `_youtube`.
+        if (not yt_mode and self.last_line
+                and (now - self.last_seen) >= self.RELEASE_S):
+            self._release('no-caption')
+
+    def _release(self, reason):
+        if self.last_line:
+            if not self.finalized:
+                self.shell.external_caption(self.last_line, self.last_source, final=True)
+            log(f'EXTERNAL_CAPTIONS_RELEASED reason={reason}')
+            self.last_line = ''
+            self.last_source = ''
+            self.finalized = False
+        self.shell.external_captions_active = False
+        self.shell.external_captions_available = False
+        try:
+            self.shell.on_external_captions_released()
+        except Exception as exc:  # noqa: BLE001
+            log(f'EXTERNAL_CAPTIONS_RESUME_FAILED error={exc!r}')
+
+
+#: `SetLayeredWindowAttributes` flags. LWA_COLORKEY makes ONE RGB value fully
+#: transparent; LWA_ALPHA would make the whole window translucent, which is a
+#: different effect and would dim the caption text too.
+LWA_COLORKEY = 0x00000001
+
+
+def set_layered_color_key(hwnd, colorref: int) -> bool:
+    """Make `colorref` (0x00BBGGRR) fully transparent on a LAYERED window.
+
+    WHY THIS EXISTS AND NOT JUST `form.TransparencyKey`: WinForms applies the
+    key only to a window that already carries `WS_EX_LAYERED`, and the caption
+    WebView2
+    caption window was created without that style -- the layered bit was added
+    later, only after the key had already been set. The
+    result on the owner's screen (2026-10-17: *"qualquer tentativa de deixar um
+    background transparente simplesmente deixa tudo rosa"*) is the page's own
+    `#ff00ff` key colour painted as a solid PINK slab: the key existed on the
+    form before the layered bit did, and the composition never had a reason to
+    punch it out.
+
+    Calling the Win32 primitive directly, AFTER `WS_EX_LAYERED` is in place, is
+    deterministic: the colour key is matched against the composited window,
+    which is exactly the surface WebView2 paints into.
+    """
+    try:
+        user32.SetLayeredWindowAttributes.argtypes = [
+            wt.HWND, ctypes.c_uint32, ctypes.c_ubyte, ctypes.c_uint32]
+        user32.SetLayeredWindowAttributes.restype = ctypes.c_bool
+        ok = user32.SetLayeredWindowAttributes(
+            hwnd, ctypes.c_uint32(colorref), ctypes.c_ubyte(0),
+            ctypes.c_uint32(LWA_COLORKEY))
+        return bool(ok)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def make_click_through(hwnd, enabled: bool) -> int:
@@ -969,8 +2659,28 @@ def transparency_hack(shell) -> bool:
             # caller's thread and logged exactly that exception, so the hack
             # never ran and the panel stayed a solid block.
             ui = getattr(shell, '_ui', None)
+            post = getattr(shell, '_post', None)
             if ui is not None:
-                ui(form_show)
+                # THE WAIT IS SHORT AND THE FALLBACK IS A POST (2026-10-21).
+                # The caller here is the HOTKEY thread -- the thread that owns
+                # the owner's ONLY control -- and `_ui`'s default budget is
+                # TEN SECONDS (`UI_MARSHAL_TIMEOUT_S`). A busy UI thread
+                # therefore made an Alt+C wait ten seconds for a window that
+                # was already on its way: the owner's *"abrir o sotto trava"*.
+                # So: wait a quarter of a second for the composite, and if the
+                # UI thread did not take it, POST it (fire-and-forget, on the
+                # UI thread, where it has to run anyway) and return. The
+                # composite still happens; the control thread stops waiting.
+                answer = ui(form_show, TRANSPARENCY_HACK_WAIT_S)
+                if isinstance(answer, NoAnswer):
+                    if post is not None and post(form_show):
+                        log('FORM_SHOW_TRANSPARENCY_HACK posted '
+                            '(the UI thread was busy; the composite runs '
+                            'when it breathes) wait_s=%s'
+                            % TRANSPARENCY_HACK_WAIT_S)
+                    else:
+                        log('FORM_SHOW_TRANSPARENCY_HACK_DEFERRED '
+                            'wait_s=%s reason=no-post' % TRANSPARENCY_HACK_WAIT_S)
                 hacked = True
             else:
                 form_show()
@@ -1045,6 +2755,12 @@ user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
 user32.GetForegroundWindow.restype = wt.HWND
 user32.SetForegroundWindow.restype = wt.BOOL
 user32.SetForegroundWindow.argtypes = [wt.HWND]
+user32.AttachThreadInput.restype = wt.BOOL
+user32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
+user32.BringWindowToTop.restype = wt.BOOL
+user32.BringWindowToTop.argtypes = [wt.HWND]
+user32.GetWindowThreadProcessId.restype = wt.DWORD
+user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
 
 
 def foreground_window() -> int:
@@ -1096,6 +2812,20 @@ def selftest_broken(reading: dict) -> tuple[bool, str]:
         return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
                       'SW_SHOWNOACTIVATE is the contract and this is it being broken'
                       % (reading.get('focus_before'), reading.get('focus_after')))
+    # -- THE 2026-10-18 CONTRACT: one press is the CAPTION, two fast presses are
+    # the FIRST PANEL. Checked ONLY when the reading carries the key, so the older
+    # synthetic readings the focus oracle builds keep meaning what they meant --
+    # a reading without these keys is not evidence about these clauses, and
+    # treating its absence as failure would make that oracle lie.
+    if 'single_flipped_caption' in reading and not reading['single_flipped_caption']:
+        return True, ('ONE Alt+C press did not flip the caption: the deferred '
+                      'single never fired, or fired twice')
+    if 'single_left_panel_down' in reading and not reading['single_left_panel_down']:
+        return True, ('ONE Alt+C press RAISED the panel. A single press is the '
+                      'caption and must leave the panel down.')
+    if 'double_left_caption' in reading and not reading['double_left_caption']:
+        return True, ('the DOUBLE moved the caption. The owner''s rule is '
+                      'verbatim: "caso double alt c, a legenda nao habilita".')
     return False, ''
 
 
@@ -1104,6 +2834,43 @@ def selftest_broken(reading: dict) -> tuple[bool, str]:
 #: for geometry moves that must NOT change the Z slot.
 HWND_TOP = 0
 SWP_SHOWWINDOW = 0x0040
+
+
+def _foreground_steal_attached(hwnd) -> bool:
+    """Rouba o primeiro plano com a fila de input LIGADA a do dono atual.
+
+    O `SetForegroundWindow` e RECUSADO quando quem chama nao e o processo em primeiro
+    plano -- medido nesta maquina: `PANEL_FOREGROUND_UNLOCK ok=false` quatro vezes
+    seguidas (05:57:04/05:57:07/05:57:11), com o painel a aparecer ATRAS da janela em
+    uso. E o comportamento documentado do Windows, nao um bug do Sotto.
+
+    A saida documentada e `AttachThreadInput`: enquanto as duas filas estao ligadas, o
+    Windows trata os dois threads como um so para efeitos de primeiro plano, e a chamada
+    passa. Desligar no `finally` e obrigatorio -- deixar as filas ligadas prende o input
+    dos dois processos um ao outro.
+    """
+    try:
+        fg = int(user32.GetForegroundWindow() or 0)
+        if not fg:
+            return False
+        owner = wt.DWORD(0)
+        t_fg = int(user32.GetWindowThreadProcessId(wt.HWND(fg), ctypes.byref(owner)) or 0)
+        t_me = int(kernel32.GetCurrentThreadId())
+        attached = False
+        try:
+            if t_fg and t_fg != t_me:
+                attached = bool(user32.AttachThreadInput(wt.DWORD(t_me), wt.DWORD(t_fg), True))
+            user32.BringWindowToTop(wt.HWND(hwnd))
+            ok = bool(user32.SetForegroundWindow(wt.HWND(hwnd)))
+            log('PANEL_FOREGROUND_ATTACH ok=%s fg_thread=%s me_thread=%s attached=%s'
+                % (str(ok).lower(), t_fg, t_me, str(attached).lower()))
+            return ok
+        finally:
+            if attached:
+                user32.AttachThreadInput(wt.DWORD(t_me), wt.DWORD(t_fg), False)
+    except Exception as exc:  # noqa: BLE001 -- nunca matar a hotkey
+        log(f'PANEL_FOREGROUND_ATTACH_FAILED error={exc!r}')
+        return False
 
 
 def foreground_unlock(hwnd) -> bool:
@@ -1127,6 +2894,9 @@ def foreground_unlock(hwnd) -> bool:
         user32.ShowWindow(hwnd, SW_RESTORE)
         user32.ShowWindow(hwnd, SW_SHOW)
         ok = bool(user32.SetForegroundWindow(hwnd))
+        # E SE O WINDOWS RECUSAR, INSISTE PELA FILA LIGADA. Ver o helper.
+        if not ok:
+            ok = _foreground_steal_attached(hwnd)
     except Exception as exc:  # noqa: BLE001 -- report, never kill the hotkey
         log(f'PANEL_FOREGROUND_UNLOCK_FAILED error={exc!r}')
         return False
@@ -1196,6 +2966,67 @@ def clamp_geometry(rect, work):
              or want_width != int(rect.get('width') or want_width)
              or want_height != int(rect.get('height') or want_height))
     return clamped, moved
+#: THE PLAYER'S OWN LEADING MARKERS. MEASURED 2026-10-18 on this box's own
+#: log: 25 of the 219 `EXTERNAL_CAPTION_SENT` lines began with `>>`, and 31 of the
+#: 9 937 painted captions carried it -- `">> That's all that."`, `">> Oh, oh my"`.
+#: Two chevrons read as a doubled mark, which is the stray "2" the owner reported
+#: verbatim ("ainda ta aparecendo um '2' do nada na legenda").
+#:
+#: Everything here is stripped from the FRONT of a line and only there. A
+#: chevron inside a sentence is a real character and stays; `>` is not decoration.
+LEAD_MARKER_RE = re.compile(
+    r"^\s*(?:[>\u00bb\u203a]+\s*|\[\s*(?:music|aplausos?|risos?|riso|"
+    r"s(?:om|ound)\s*effects?|sil(?:e|\u00e7ncia|encio)\s*)\]\s*|"
+    r"[-\u2013\u2014]\s+)+")
+
+
+def clean_external_text(text):
+    """One player cue, with its leading marker removed. Never raises.
+
+    A line that is ONLY a marker becomes the empty string, and `external_caption`
+    drops it: a caption window that paints nothing is correct, a caption window
+    that paints `">>"` is the bug.
+    """
+    try:
+        raw = str(text or '')
+    except Exception:  # noqa: BLE001
+        return ''
+    if not raw.strip():
+        return ''
+    try:
+        return LEAD_MARKER_RE.sub('', raw).strip()
+    except Exception:  # noqa: BLE001
+        return raw.strip()
+
+
+def extends_previous(old, new):
+    """Is `new` the same sentence as `old`, with more words?
+
+    THE PLAYER'S CUE IS CUMULATIVE, and that is the whole finding. Consecutive
+    `EXTERNAL_CAPTION_SENT` lines from one video:
+
+        "So, with the eyes of a nation"
+        "So, with the eyes of a nation on them,"
+        "FURIA seized their moment."
+        "FURIA seized their moment. They run"
+
+    Each cue repeats the previous one and adds a few words. Case is ignored
+    because the player's own capitalisation drifts mid-sentence, and the
+    comparison is on WORDS, so a trailing full stop or a missing space does not
+    read as a new sentence.
+    """
+    try:
+        o = str(old or '').split()
+        n = str(new or '').split()
+    except Exception:  # noqa: BLE001
+        return False
+    if not o or not n:
+        return False
+    if len(n) < len(o):
+        return False
+    return [w.lower() for w in o] == [w.lower() for w in n[:len(o)]]
+
+
 #: The surfaces the ONE document can wear. The names are `app/panel/surface.js`'s
 #: (`SURFACES`), and this shell refuses anything else instead of guessing.
 SURFACE_NAMES = ('strip', 'panel')
@@ -1212,7 +3043,7 @@ def normalise_surface_name(name):
     value = re.sub(r'^surface-+', '', value)
     return value if value in SURFACE_NAMES else None
 def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
-               margin=PANEL_MARGIN):
+               margin=STRIP_MARGIN):
     """Dock a wide short strip to the bottom centre of `work`.
 
     The twin of `dock_right`: same pure-function contract (output contained
@@ -1578,6 +3409,14 @@ class HotkeyThread(threading.Thread):
                 break
             if msg.message == WM_HOTKEY:
                 self.pressed += 1
+                # CK -- O CONTADOR QUE NUNCA FOI ESCRITO. O subagente do diagnostico do Alt+C
+                # (2026-10-16) mediu isto: o thread da hotkey corre, o registo intacto, ZERO
+                # linhas de erro no log inteiro -- e as pressoes do dono NAO aparecem. A pergunta
+                # que ficou foi: a tecla CHEGOU ao shell e foi ignorada, ou NAO CHEGOU? O
+                # `self.pressed` conta-as. Medido: ele existe desde sempre e NUNCA foi escrito
+                # numa linha. Esta linha e essa pergunta respondida, para cada pressao, daqui
+                # para a frente.
+                self.log_fn(f'HOTKEY_PRESSED count={self.pressed} thread={self.thread_id}')
                 try:
                     self.on_hotkey()
                 except Exception as exc:  # a toggle must never kill the pump
@@ -1957,14 +3796,41 @@ class OutsideClickWatcher(threading.Thread):
         return True
 
     def _record(self, x, y, source, reason, closed):
+        # O RING EM MEMORIA E SEMPRE. O LOG NAO.
+        #
+        # MEDIDO 2026-10-17: esta linha escrevia no ficheiro de log **toda** vez
+        # que `reason is not None`, e `reason` e tambem 'panel-not-visible' e
+        # 'inside' -- ou seja, UM CLIQUE EM QUALQUER SITIO DO TEU ECRÃ, com o
+        # painel escondido, escrevia uma linha. O ficheiro carries:
+        #
+        #     73 420 linhas OUTSIDE_CLICK
+        #     crescimento medido: 3 185 B em 5 s = ~640 B/s = ~55 MB/dia
+        #
+        # E ISTO E UM INSTRUMENTO QUEIMADO, nao so um ficheiro grande: este log e
+        # onde se mede `LIVE_ENABLED`, `STRIP_HEIGHT` e `PANEL_SURFACE`, ou seja as
+        # provas de que o botao da legenda nao abre nada. Enterrar a evidencia
+        # num ruido de 640 B/s para o painel ja estar escondido nao tem razao de
+        # ser: 'o painel nao estava avel' NAO E UMA DECISAO, e a ausencia de uma.
+        #
+        # A REGRA: o log regista DECISOES (`closed=true`, ou uma janela que estava
+        # mesmo avel e o clique caiu fora dela). O resto conta-se e viaja na
+        # proxima linha real -- o numero nao se perde, so nao ocupa o ficheiro a
+        # 640 B/s.
+        self._idle_clicks = getattr(self, '_idle_clicks', 0) + 1
         entry = {'x': x, 'y': y, 'source': source, 'decision': reason,
                  'closed': closed}
         self.decisions.append(entry)
         del self.decisions[:-20]
+        visible = bool(self.shell.hwnd and window_visible(self.shell.hwnd))
+        idle = self._idle_clicks
+        self._idle_clicks = 0
+        if not closed and not self.armed and not visible:
+            return          # nada a decidir, nada a escrever
         log(f'OUTSIDE_CLICK source={source} point=({x},{y}) '
             f'decision={reason} closed={str(closed).lower()} '
             f'armed={str(self.armed).lower()} '
-            f'visible={str(bool(self.shell.hwnd and window_visible(self.shell.hwnd))).lower()}')
+            f'visible={str(visible).lower()}'
+            + (f' ignored_since_last={idle}' if idle else ''))
 
 def _unpack_point(packed):
     """One integer carries both coordinates: x in the low 16 bits, y above."""
@@ -2100,8 +3966,10 @@ class TrayIcon:
         self.menu = None
         self._thread = None
         self._ready = threading.Event()
+        self._added = False
         self._wndproc = None
         self._failed = None
+        self._taskbar_created_msg = None
 
     # -- lifecycle ---------------------------------------------------------
     def start(self, timeout=5.0) -> bool:
@@ -2109,7 +3977,10 @@ class TrayIcon:
                                         daemon=True)
         self._thread.start()
         self._ready.wait(timeout)
-        return self.hwnd is not None
+        # The window existing is NOT proof the icon was added: `_run` returns
+        # early when `_add` fails, leaving `hwnd` set but `_ready` unset. Report
+        # the truth (icon added), not the window handle.
+        return bool(self._ready.is_set() and self._added and self.hwnd)
 
     def stop(self, reason='stop'):
         if self.hwnd:
@@ -2144,9 +4015,18 @@ class TrayIcon:
     def _add(self):
         nid = self._nid()
         ok = bool(shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid)))
+        err = ctypes.get_last_error()
         self.log(f'TRAY_ICON_ADD ok={str(ok).lower()} uid={TRAY_ID} '
                  f'cbSize={nid.cbSize} hicon={self.hicon} '
-                 f'icon={self.icon_path}')
+                 f'icon={self.icon_path} winerror={err}')
+        return ok
+
+    def _modify(self):
+        nid = self._nid()
+        ok = bool(shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid)))
+        err = ctypes.get_last_error()
+        self.log(f'TRAY_ICON_MODIFY ok={str(ok).lower()} uid={TRAY_ID} '
+                 f'winerror={err}')
         return ok
 
     def _delete(self):
@@ -2161,8 +4041,26 @@ class TrayIcon:
             self._create_window()
             if not self._load_icon():
                 return
-            if not self._add():
+            added = self._add()
+            if not added:
+                # A stale icon from a dead instance (or a transient explorer
+                # hiccup) can make NIM_ADD fail even though the (hwnd, uid) is
+                # ours. Clear any stale entry, then re-add; fall back to MODIFY
+                # if the icon is already present. This is what makes the icon
+                # appear even when a previous run did not clean up.
+                self._delete()
+                time.sleep(0.3)
+                added = self._add()
+            if not added:
+                added = self._modify()
+            if not added:
+                self._failed = 'Shell_NotifyIcon ADD/MODIFY failed'
+                self.warn(f'TRAY_UNAVAILABLE the notification-area icon did not '
+                          f'come up (add+modify both failed); the app keeps '
+                          f'running and Alt+C still works, but the Quit has no '
+                          f'home (error={self._failed})')
                 return
+            self._added = True
             # The menu is BUILT AND LOGGED at startup, so its Quit item (id and
             # text) is on the record without anyone having to right-click. It is
             # destroyed here and rebuilt when it is actually drawn.
@@ -2213,10 +4111,28 @@ class TrayIcon:
         if not hwnd:
             raise OSError(ctypes.get_last_error(), 'CreateWindowExW')
         self.hwnd = int(hwnd)
+        try:
+            user32.RegisterWindowMessageW.restype = wt.UINT
+            user32.RegisterWindowMessageW.argtypes = [wt.LPCWSTR]
+            self._taskbar_created_msg = int(user32.RegisterWindowMessageW(
+                'TaskbarCreated'))
+        except Exception:  # noqa: BLE001
+            self._taskbar_created_msg = 0
         self.log(f'TRAY_WINDOW created=true hwnd={self.hwnd} '
-                 f'class={TRAY_WINDOW_CLASS} message_only=true')
+                 f'class={TRAY_WINDOW_CLASS} message_only=true '
+                 f'taskbar_created_msg={self._taskbar_created_msg}')
 
     def _on_message(self, hwnd, msg, wparam, lparam):
+        if (getattr(self, '_taskbar_created_msg', 0)
+                and msg == self._taskbar_created_msg):
+            try:
+                self._delete()
+                if not self._add():
+                    self._modify()
+                self.log('TRAY_READDED reason=taskbar-created')
+            except Exception as exc:  # noqa: BLE001
+                self.warn(f'TRAY_READD_FAILED {type(exc).__name__}: {exc}')
+            return 0
         if msg == WM_TRAY_CALLBACK:
             if lparam in (WM_RBUTTONUP, WM_LBUTTONUP):
                 self._show_menu()
@@ -2465,7 +4381,7 @@ BOOTSTRAP_JS = r"""
   'use strict';
   if (window.sotto) return;   // a second injection must not replace a live bridge
 
-  var subs = { caption: [], status: [], geometry: [], stats: [] };
+  var subs = { caption: [], 'external-caption': [], status: [], geometry: [], stats: [] };
   var queue = [];
   var infoSeq = 0;
   var infoPending = {};
@@ -2644,6 +4560,9 @@ BOOTSTRAP_JS = r"""
     },
 
     onCaption: function (cb) { return subscribe('caption', cb); },
+    // THE PLAYER'S OWN CAPTIONS (YouTube/Stremio). A separate channel because
+    // each line REPLACES the live box instead of joining the ASR hypothesis.
+    onExternalCaption: function (cb) { return subscribe('external-caption', cb); },
     onStatus: function (cb) { return subscribe('status', cb); },
     onGeometry: function (cb) { return subscribe('geometry', cb); },
     onStats: function (cb) { return subscribe('stats', cb); },
@@ -2669,6 +4588,76 @@ BOOTSTRAP_JS = r"""
     // with `{ on: bool }`. No-op honest when the shell has no window yet.
     setTransparency: function (on) {
       post('transparency', { on: Boolean(on) });
+    },
+
+    // THE MISSING CHANNEL, AND IT IS WHY THE DEFERRED ASSETS NEVER LOADED.
+    //
+    // MEASURED 2026-10-13. `lazy-assets.js:144` asks for a deferred asset with
+    //     if (s && typeof s.dispatch === 'function') { s.dispatch('lazy-asset', ...); return; }
+    //     if (window.pywebview && window.pywebview.api && window.pywebview.api.dispatch) { ... }
+    // and `window.sotto.dispatch` DID NOT EXIST -- grep over this file returned ZERO.
+    // So the loader fell through to `window.pywebview.api.dispatch`, which is NOT the
+    // channel this shell listens on: `post()` (:2805-2808) publishes on
+    // `window.chrome.webview.postMessage`. RESULT, measured on a `cine-cellar` theme:
+    //     PANEL_LAZY_ALLOW 0    the page NEVER asked
+    //     PANEL_LAZY_EMPTY 4    the gate answered 4 requests with EMPTY 200s
+    // so `cinematic.css`, `panel-designs.css`, `skins/skins.js`, `skin-host.js` and
+    // `skin-layout.css` loaded as EMPTY BODIES. The designs and their fonts never
+    // arrived, which is the owner's *"pouquissimas fontes"* and *"varios designs
+    // estao bugados"* -- measured, not guessed.
+    //
+    // ONE LINE, and it is the same class of defect as `setStripOffset` below: this
+    // object is hand-written, not generated from the Python API, so a method the page
+    // probes for has to be declared here or the probe is false and the caller skips it
+    // in silence.
+    dispatch: function (kind, payload) {
+      post(String(kind == null ? '' : kind), payload == null ? null : payload);
+      return true;
+    },
+
+    // THE OWNER'S STRIP DRAG (panel.html:1087). `window.sotto` is THIS object,
+    // hand-written here and not generated from the Python API, so without this
+    // entry the page's `typeof bridge.setStripOffset === 'function'` probe is
+    // FALSE and the whole shell half is skipped in silence -- the bar then moves
+    // only INSIDE the window, which after the content-width fix is exactly the
+    // pill, so it cannot move at all. `x`/`y` are CUMULATIVE DIP from the dock,
+    // not deltas; `phase` is `"move"` during the drag and `"end"` on release.
+    setStripOffset: function (x, y, phase) {
+      post('setStripOffset', {
+        x: Number(x) || 0,
+        y: Number(y) || 0,
+        phase: String(phase == null ? 'move' : phase),
+      });
+    },
+
+    // THE NATIVE WINDOW DRAG (2026-10-17). ONE call per drag: the shell enters
+    // Windows' own modal move loop (`ReleaseCapture` + `WM_NCLBUTTONDOWN` /
+    // `HTCAPTION`) and persists the final rect when the owner releases the
+    // mouse. There is no per-move message and no per-move `SetWindowPos`, which
+    // is what the old JS drag was made of -- see `strip-drag.js`.
+    beginWindowDrag: function (surface) {
+      post('beginWindowDrag', { surface: surface == null ? '' : String(surface) });
+    },
+
+    // THE LIVE PILL (2026-10-17). It existed in the page but the shell had no
+    // method, so `applyLiveEnabled` painted it `aria-disabled` and its own
+    // title said the switch could not reach the engine. The shell now owns the
+    // second window: `true` shows the independent caption overlay, `false`
+    // hides it. Resolved synchronously because the visibility change is local.
+    setLiveEnabled: function (on) {
+      var want = !!on;
+      post('setLiveEnabled', { on: want });
+      return Promise.resolve({ liveEnabled: want });
+    },
+
+    // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
+    // always called `bridge.pause()`; the shell never had it, so the dialog
+    // said "este shell ainda não consegue pausar". The shell now stops the
+    // worker (which releases the CUDA context and its VRAM) and keeps the
+    // process paused until the owner revives it.
+    pause: function (payload) {
+      post('pause', payload || {});
+      return Promise.resolve({ paused: true, text: 'Paused - engines unloaded' });
     },
 
     // preload.js resolves a Promise here (ipcRenderer.invoke). The WebView2
@@ -2790,6 +4779,24 @@ BOOTSTRAP_JS = r"""
 })();
 """
 
+
+def _bootstrap_js():
+    """BOOTSTRAP_JS + the deferred-asset loader, read from disk at import time.
+
+    The loader is a SEPARATE FILE (app/panel/lazy-assets.js) so the panel's own
+    directory stays the single source of truth for it and it can be linted and
+    measured without editing this shell. It is appended, never inlined: the
+    loader must run in the SAME world as the preload, before any page script.
+    """
+    try:
+        with open(LAZY_LOADER_JS, 'r', encoding='utf-8') as fh:
+            loader = fh.read()
+    except OSError as exc:
+        log(f'PANEL_LAZY_LOADER_READ_FAILED error={exc!r}')
+        return BOOTSTRAP_JS
+    return BOOTSTRAP_JS + "\n" + loader
+
+
 #: The `--dump-dom` probe. This is main.js:273-290 VERBATIM, so the two arms
 #: print the same keys in the same order and the lines diff directly.
 DUMP_DOM_PROBE = r"""
@@ -2830,6 +4837,55 @@ DUMP_DOM_PROBE = r"""
                    // so the two arms still diff on the keys they already shared.
                    bgc: cs.backgroundColor, bgi: cs.backgroundImage.slice(0, 160) };
   }
+  /* THE CONTROL CLUSTER AGAINST THE PANEL'S OWN RIGHT EDGE. Added 2026-10-18.
+   *
+   * WHY IT IS HERE AND NOT IN A PROBE SCRIPT. Every measurement of "does the
+   * header fit" taken outside this shell has been wrong on this box: headless
+   * Edge clamps the layout viewport to 492px in BOTH --screenshot and --dump-dom
+   * (measured 2026-10-18: `--headless=new` and `--headless=old` produce
+   * BYTE-IDENTICAL 62 570-byte PNGs at `--window-size=380,900`, and the outline
+   * probe reports `header r=478` in a 380-wide PNG, i.e. the 492 layout cropped
+   * to 380). `shot.py`'s docstring claims --screenshot is exempt; on this
+   * machine it is not. Only the WebView2 window the shell actually creates has
+   * the owner's 380px, and this is the only place that asks.
+   *
+   * WHAT IT ANSWERS. One number per control: how far its RIGHT edge is past the
+   * panel's right edge. `.panel__controls` is `flex: 0 1 auto` and the cluster
+   * is 250px of six fixed-width buttons inside a 352px header row, so whether
+   * the last ones are reachable is a fact, not a style opinion -- and on
+   * 2026-10-18 the answer was that Hide, Pause and the caption-size button were
+   * past the edge, which is three controls the owner cannot click.
+   *
+   * ADDITIVE, like `bgc` above: no key above is removed, so the two arms still
+   * diff on the keys they already shared. */
+  out.controls = (function () {
+    const panel = document.querySelector('main.panel');
+    const right = panel ? panel.getBoundingClientRect().right : innerWidth;
+    const ctl = document.querySelector('.panel__controls');
+    const list = [];
+    const btns = document.querySelectorAll('.panel__controls button');
+    for (let i = 0; i < btns.length; i += 1) {
+      const b = btns[i];
+      const r = b.getBoundingClientRect();
+      const cs = getComputedStyle(b);
+      list.push({ id: b.id || null,
+                  left: Math.round(r.left), right: Math.round(r.right),
+                  w: Math.round(r.width),
+                  past_by: Math.round(Math.max(0, r.right - right)),
+                  onscreen: r.right <= right + 0.5 && r.left >= -0.5,
+                  display: cs.display, visibility: cs.visibility });
+    }
+    return { panel_right: Math.round(right), viewport_w: innerWidth,
+             cluster: ctl ? (function () {
+               const r = ctl.getBoundingClientRect();
+               const cs = getComputedStyle(ctl);
+               return { left: Math.round(r.left), right: Math.round(r.right),
+                        w: Math.round(r.width), computed_w: cs.width,
+                        flex: cs.flex, min_width: cs.minWidth,
+                        justify_self: cs.justifySelf };
+             })() : null,
+             buttons: list };
+  })();
   return out;
 })()
 """
@@ -2849,9 +4905,14 @@ BRIDGE_PROBE = r"""
     title: document.title,
     readyState: document.readyState,
     hasPanelElement: !!document.getElementById('panel'),
-    methods: ['pushCaption', 'setStatus', 'onCaption', 'onStatus', 'onGeometry',
+    // `setStripOffset` is in the list because the page's drag probes for it with
+    // `typeof bridge.setStripOffset === 'function'` and SILENTLY skips the shell
+    // half when it is absent (panel.html:1126). A probe that does not name the
+    // method cannot report it missing, so the count is the live receipt.
+    methods: ['pushCaption', 'setStatus', 'onCaption', 'onExternalCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
-              'captionApplied', 'statusApplied', 'ready', 'clearApplied']
+              'captionApplied', 'statusApplied', 'ready', 'clearApplied',
+              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,
@@ -2870,7 +4931,8 @@ BRIDGE_PROBE = r"""
       return { text: (document.getElementById('status-text') || {}).textContent || '',
                className: s ? String(s.className) : null,
                error: !!(s && s.classList.contains('status--error')),
-               live: !!(s && s.classList.contains('status--live')) };
+               live: !!(s && s.classList.contains('status--live')),
+               noAudio: !!(s && s.classList.contains('status--noaudio')) };
     })(),
     placeholder: (() => {
       const ph = document.getElementById('placeholder');
@@ -3186,8 +5248,17 @@ class PanelVisibilityWriter:
             panel_state.write_atomic(self.path, payload)
         except Exception as exc:
             self.errors += 1
-            self.log(f'PANEL_VISIBILITY_WRITE_FAILED path={self.path} '
-                     f'error={exc!r}')
+            # RATE LIMITED, AND IT IS THE FLOOD FIX. MEASURED 2026-10-13: this single
+            # line fired **1 145 063 times** -- 197.7 MB of an 808.6 MB log, 62-83% of
+            # the failures inside the surface loop and only 1-2 an hour outside it.
+            # The COUNT was already kept in `self.errors`; what was unbounded was the
+            # LOGGING. The first few are logged in full because they are the ones that
+            # diagnose a cold start, and after that one line per 500 carries the running
+            # total -- so a reader still sees that it is failing, and how often, without
+            # the file growing by a megabyte a minute to say so.
+            if self.errors <= 3 or self.errors % 500 == 0:
+                self.log(f'PANEL_VISIBILITY_WRITE_FAILED path={self.path} '
+                         f'errors={self.errors} error={exc!r}')
             return False
         self.writes += 1
         return True
@@ -3239,36 +5310,125 @@ class SottoHost:
 
         kind = message.get('kind')
         payload = message.get('payload')
-        handler = {
-            'caption-observed': self._caption_observed,
-            'status-observed': self._status_observed,
-            'caption-applied': self._caption_applied,
-            'status-applied': self._status_applied,
-            'caption-cleared': self._caption_cleared,
-            'renderer-ready': self._renderer_ready,
-            'page-error': self._page_error,
-            'pointer': self._pointer,
-            'transparency': self._transparency,
-            'sotto:transparency': self._transparency,
-            'history-append': self._history_append,
-            'history-tail': self._history_tail,
-            'history-search': self._history_search,
-            'history-root': self._history_root,
-            'history-reveal': self._history_reveal,
-            'hide': lambda p: self._shell.hide_panel('page'),
-            'toggle': lambda p: self._shell.toggle_panel('page'),
-            'quit': lambda p: self._shell.quit('page'),
+        # ONE BAD ENTRY COSTS ONLY ITS OWN KIND, and that is a REWRITE, not the
+        # guard that stood here before. MEASURED 2026-10-13: this map was a bare
+        # dict literal, and a dict literal evaluates EVERY value, so ONE entry
+        # naming a method this class does not have (`self._set_strip_offset` -- a
+        # SottoShell method at :7005, not a SottoHost one) raised AttributeError
+        # while BUILDING the map, BEFORE `.get(kind)` ran, and `dispatch` died for
+        # EVERY kind: the deferred-asset ask (PANEL_LAZY_ALLOW 0), the panel's own
+        # `ready()` (RECEIVER_READY 0) and every probe kind. Two and a half hours
+        # of a dead page->shell channel, invisible because the exception went to
+        # pywebview's own logger instead of this shell's log.
+        #
+        # THE TABLE HOLDS NAMES, NOT VALUES, and that is the fix: a STRING cannot
+        # fail to evaluate. Every entry is resolved on its own, with `getattr`, one
+        # by one, in `_resolve_handler_map`, so an entry that does not resolve is
+        # SKIPPED, NAMES ITSELF and leaves every other kind working:
+        #     BRIDGE_HANDLER_MAP_FAILED kind='...' name='...' error=...
+        # One bad entry therefore costs exactly its own kind. A kind whose entry
+        # failed still lands in BRIDGE_UNKNOWN_KIND one line later -- the page's
+        # own view, unchanged from before, with the reason right above it.
+        #
+        # The three entries that CANNOT be a name on this class -- `hide`, `toggle`
+        # and `quit` call `self._shell.<method>('page')` and DROP the page's payload
+        # -- carry ('shell-call', method, reason); the two `setStripOffset` entries
+        # carry ('shell', method), because the receiver is the SHELL and getting
+        # that wrong is the entry that killed the channel.
+        #
+        # THE try/except BELOW IS THE LAST-RESORT NET, NOT THE FIX, said because
+        # the first version of this guard claimed the opposite. If someone writes
+        # an ATTRIBUTE ACCESS in this table again, the whole table fails to build
+        # and the net is loud about it (BRIDGE_HANDLER_MAP_FAILED with NO kind=,
+        # empty map: every kind dead, LOUDLY). The per-kind isolation is the loop
+        # in `_resolve_handler_map`, and it is what the gate's isolation arm
+        # proves: the bad entry is NAMED, and the good kinds still dispatch.
+        try:
+            table = {
+            'caption-observed': ('host', '_caption_observed'),
+            'status-observed': ('host', '_status_observed'),
+            'caption-applied': ('host', '_caption_applied'),
+            'status-applied': ('host', '_status_applied'),
+            'caption-cleared': ('host', '_caption_cleared'),
+            # THE DESIGN THE PANEL IS WEARING, pushed by `brand-bridge.js` the
+            # moment the theme (or the caption scale, or a webfont) changes.
+            # WITHOUT THIS ENTRY the panel re-skins and the overlay keeps the
+            # default Segoe UI caption: two products on one screen.
+            'brand-tokens': ('host', '_brand_tokens'),
+            'renderer-ready': ('host', '_renderer_ready'),
+            'page-error': ('host', '_page_error'),
+            'pointer': ('host', '_pointer'),
+            'transparency': ('host', '_transparency'),
+            'sotto:transparency': ('host', '_transparency'),
+            # The owner's strip drag (panel.html:1087). Without this entry the
+            # page's `bridge.setStripOffset(...)` is `undefined`, the typeof probe
+            # skips it, and the bar can only ever move INSIDE the window -- which
+            # after the content-width fix is exactly the pill, so it cannot move
+            # at all. The shell half is what puts it on the screen.
+            # THE RECEIVER IS THE SHELL, AND GETTING IT WRONG KILLED EVERY
+            # MESSAGE OF EVERY KIND. MEASURED 2026-10-13: this entry read
+            # `self._set_strip_offset`, which is a SottoShell method (:7005) and
+            # NOT a member of this class -- and a dict LITERAL evaluates every
+            # value, so the AttributeError fired while BUILDING the map, before
+            # `.get(kind)` ran. `SottoHost.dispatch` therefore died for EVERY
+            # page->shell message: the deferred-asset ask (PANEL_LAZY_ALLOW 0),
+            # panel.js's `ready()` (RECEIVER_READY 0, 298 of them in the log all
+            # from BEFORE the commit that introduced this line) and every probe
+            # kind. It surfaced ONLY in pywebview's own logger (`[pywebview]
+            # Traceback ... AttributeError: 'SottoHost' object has no attribute
+            # '_set_strip_offset'`, 35 of them in one 16 s probe arm) -- the
+            # shell's own log stayed silent and looked healthy. Introduced by
+            # 7fcd97e (2026-10-12 22:26); the last RECEIVER_READY on disk is
+            # 2026-10-12 22:12:54. It is a ('shell', ...) entry for that reason:
+            # the name is resolved against `self._shell`, and if it ever stops
+            # resolving, THESE two kinds die and say so BY NAME.
+            'setStripOffset': ('shell', '_set_strip_offset'),
+            'sotto:setStripOffset': ('shell', '_set_strip_offset'),
+            # THE NATIVE DRAG (2026-10-17). The page sends ONE of these per
+            # gesture; the shell blocks in Windows' move loop and persists the
+            # result. Entry shape is a name on the SHELL, like the one above.
+            'beginWindowDrag': ('shell', '_begin_window_drag'),
+            'sotto:beginWindowDrag': ('shell', '_begin_window_drag'),
+            # THE LIVE PILL's own switch. The page's `applyLiveEnabled` probes
+            # for `bridge.setLiveEnabled` to decide whether the control is real;
+            # before this entry it was not, so the button said so in its title.
+            'setLiveEnabled': ('shell', '_set_live_enabled'),
+            'sotto:setLiveEnabled': ('shell', '_set_live_enabled'),
+            # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
+            'pause': ('shell', '_pause_shell'),
+            'sotto:pause': ('shell', '_pause_shell'),
+            'history-append': ('host', '_history_append'),
+            'history-tail': ('host', '_history_tail'),
+            'history-search': ('host', '_history_search'),
+            'history-root': ('host', '_history_root'),
+            'history-reveal': ('host', '_history_reveal'),
+            # These three were lambdas (`lambda p: self._shell.x('page')`). They
+            # cannot be a name on this class, so they carry the method AND the
+            # fixed reason: the page's payload is dropped, exactly as the lambda
+            # dropped it, and the shell method is resolved HERE -- so a missing
+            # one is a named, isolated entry instead of a call-time surprise.
+            'hide': ('shell-call', 'hide_panel', 'page'),
+            'toggle': ('shell-call', 'toggle_panel', 'page'),
+            'quit': ('shell-call', 'quit', 'page'),
             # The panel's repair control (panel.js:2045). Without this entry
             # the page's post('revive', ...) landed in BRIDGE_UNKNOWN_KIND and
             # the click died there.
-            'revive': self._revive,
-            'info': self._info,
-            'panel-surface': self._panel_surface,
+            'revive': ('host', '_revive'),
+            'info': ('host', '_info'),
+            'panel-surface': ('host', '_panel_surface'),
             # The pull half of the stats channel: without this entry the
             # page's `post('stats', ...)` lands in BRIDGE_UNKNOWN_KIND and the
             # Promise never resolves.
-            'stats': self._stats,
-        }.get(kind)
+            'stats': ('host', '_stats'),
+            # The deferred-asset loader's only channel: it asks for the real
+            # bytes of one deferred URL, and the shell lets that one through.
+            'lazy-asset': ('host', '_lazy_asset'),
+            }
+        except Exception as exc:  # noqa: BLE001 -- a map that cannot build
+            log(f'BRIDGE_HANDLER_MAP_FAILED error={exc!r} -- EVERY page->shell '
+                'message is dead until this is fixed')
+            table = {}
+        handler = self._resolve_handler_map(table).get(kind)
         if handler is None:
             log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')
             return
@@ -3276,6 +5436,52 @@ class SottoHost:
             handler(payload)
         except Exception as exc:  # a page callback must not kill the host
             log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')
+
+    def _resolve_handler_map(self, table):
+        """Resolve the NAME -> NAME table, ONE ENTRY AT A TIME.
+
+        THIS is the per-kind isolation. MEASURED 2026-10-13: the map was a dict
+        literal of VALUES, so one entry naming a method this class does not have
+        raised while the map was being BUILT and `dispatch` died for EVERY kind
+        for two and a half hours. Each entry here gets its own try/except: the
+        bad one is skipped, NAMES ITSELF in this shell's own log, and every
+        other kind keeps dispatching.
+        """
+        resolved = {}
+        for kind, spec in table.items():
+            name = spec[1] if isinstance(spec, tuple) and len(spec) > 1 else spec
+            try:
+                resolved[kind] = self._resolve_handler(spec)
+            except Exception as exc:  # noqa: BLE001 -- one dead kind, not all
+                log(f'BRIDGE_HANDLER_MAP_FAILED kind={kind!r} name={name!r} '
+                    f'error={exc!r} -- THIS kind is dead; every other kind is not')
+        return resolved
+
+    def _resolve_handler(self, spec):
+        """ONE table entry -> callable: ('host'|'shell', name), or
+        ('shell-call', name, fixed_reason) for the three that call the shell.
+
+        The name is looked up with `getattr(..., None)` and the CALLABLE test is
+        what refuses it, so a missing name raises HERE -- inside the caller's
+        per-entry try/except -- and never escapes into `dispatch`'s map build.
+        """
+        where, name = spec[0], spec[1]
+        if where == 'host':
+            owner = self
+        elif where in ('shell', 'shell-call'):
+            owner = self._shell
+        else:
+            raise ValueError(f'unknown handler source {where!r}')
+        target = getattr(owner, name, None)
+        if not callable(target):
+            raise AttributeError(f'{type(owner).__name__}.{name} is not callable')
+        if where == 'shell-call':
+            # The three that used to be `lambda p: self._shell.<method>('page')`:
+            # the shell method takes the FIXED reason and the page's payload is
+            # dropped, exactly as the lambda dropped it.
+            reason = spec[2]
+            return lambda payload, _target=target, _reason=reason: _target(_reason)
+        return target
 
     # -- receipts ----------------------------------------------------------
     def _caption_observed(self, payload):
@@ -3331,6 +5537,32 @@ class SottoHost:
         self._shell.caption_log.clear()
         log(f'CAPTIONS_CLEARED remaining={remaining}')
 
+    def _brand_tokens(self, payload):
+        """Wear the panel's measured design on the NATIVE overlay.
+
+        The panel measures its own forming row and posts the resolved values
+        (`brand-bridge.js`). This receiver keeps the LAST payload so an overlay
+        created later than the first push -- the normal boot order -- still
+        starts branded instead of defaulting to Segoe UI until the next theme
+        change. A payload that is not a dict is treated as "no design", which
+        restores the pre-brand overlay rather than raising.
+        """
+        theme = payload if isinstance(payload, dict) else {}
+        self._brand_tokens_last = dict(theme)
+        overlay = getattr(self, 'caption_overlay', None)
+        if overlay is None:
+            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay '
+                'theme=%r' % (theme.get('theme') or '-'))
+            return
+        try:
+            applied = overlay.set_theme(theme)
+        except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+            log(f'CAPTION_OVERLAY_THEME_FAILED error={exc!r}')
+            return
+        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f'
+            % (applied.get('theme') or '-', applied.get('fontFamily'),
+               applied.get('livePx') or 0.0))
+
     def _renderer_ready(self, payload):
         payload = payload or {}
         placeholder = re.sub(r'\s+', ' ', str(payload.get('placeholder', ''))).strip()
@@ -3351,14 +5583,28 @@ class SottoHost:
     def _panel_surface(self, payload):
         """`bridge.setPanelSurface(surface, reason)` — the member this shell owed.
 
-        `panel.js:1239-1243` is the ONLY caller, and it calls it for exactly one
-        thing: opening the FULL panel from the strip. The shell must switch the
-        document surface AND resize the window, which is why this is a shell
-        member and not a page-side attribute write.
+        (CHAMADORES: `panel.js:1239-1243` para abrir o painel cheio a partir do strip,
+        E `caption-float.js:243` para o estado do overlay. A versao anterior deste
+        docstring dizia que o `panel.js` era o UNICO, e era falso.)
         """
+        # ESTE DOCSTRING ESTAVA VELHO e fica corrigido: ele diz que o `panel.js:1239-1243`
+        # e o UNICO chamador, e `caption-float.js:243` tambem chama -- e chama com a razao
+        # que interessa aqui.
         payload = payload or {}
-        self._shell.set_panel_surface(payload.get('surface'),
-                                      payload.get('reason') or 'page')
+        reason = payload.get('reason') or 'page'
+        # A JANELA DA LEGENDA TEM UMA PORTA E SO UMA: `_set_live_enabled`, o botao LIVE.
+        #
+        # Aqui havia, ate 2026-10-17, uma SEGUNDA porta --
+        # `if reason in ('float-on', 'float-off'): show_caption_window(...)` -- que
+        # levantava a janela da legenda a partir de uma mudanca de SUPERFICIE. Ela
+        # existia porque `caption-float.js:243` mandava `setPanelSurface('strip',
+        # 'float-on')` ao proprio `setFloat`, e o objectivo pedia *"ligar/desligar
+        # pelo botao live"*. As DUAS portas foram cortadas no mesmo dia, pelo
+        # mesmo dono e a mesma medicao (a janela a crescer 40 -> 220 px num clique,
+        # log de 2026-10-17). Hoje `grep -rn 'float-on' app/` so encontra isto e
+        # comentarios: nenhuma linha viva manda a razao. Fica a porta unica, e uma
+        # superficie ja nao decide se ha legenda no ecra -- o dono decide.
+        self._shell.set_panel_surface(payload.get('surface'), reason)
 
     def _stats(self, payload):
         '''The panel's own `getStats()` pull, answered on the same id
@@ -3367,6 +5613,34 @@ class SottoHost:
         '''
         stats_id = (payload or {}).get('id', '')
         self._shell.reply_stats(stats_id, self._shell.stats())
+
+    def _lazy_asset(self, payload):
+        """The deferred-asset loader's ask: let ONE URL reach the disk.
+
+        lazy-assets.js calls this the moment it decides a theme needs a resource
+        the shell is holding back. The gate is a SET, so a second ask for the same
+        URL is a no-op and an ask for a URL outside LAZY_ASSETS is refused (the
+        page cannot widen its own allowance). The reply is synchronous and carries
+        no data: the page's own <script>/<link> element is what waits for the
+        bytes, so there is nothing to return.
+        """
+        url = (payload or {}).get('url')
+        # THE GATE LIVES ON THE SHELL, AND THE ASK WAS LOOKING FOR IT HERE.
+        # MEASURED 2026-10-13 on a fixed channel: the ask ARRIVES (four
+        # `PANEL_LAZY_ASK_REFUSED reason=no-gate` lines) and is refused because
+        # `_lazy_gate` is set by `SottoShell._arm_lazy_gate` (:4462/:4465/:4473)
+        # and never existed on `SottoHost` -- `getattr(self, ...)` here could
+        # only ever return None. This is the SECOND defect on the same path: the
+        # first (`'setStripOffset': self._set_strip_offset`, fixed the same day)
+        # killed every page->shell message at the dispatch map, so this one was
+        # unobservable -- `PANEL_LAZY_ASK_REFUSED` read 0, not because the ask was
+        # refused, but because it never got this far.
+        gate = getattr(self._shell, '_lazy_gate', None)
+        if gate is None:
+            log(f'PANEL_LAZY_ASK_REFUSED reason=no-gate url={url!r}')
+            return
+        if not gate.allow(url):
+            log(f'PANEL_LAZY_ASK_REFUSED reason=not-deferred url={url!r}')
 
     # -- history (the "redux" store) ---------------------------------------
     def _history_reply(self, payload, result):
@@ -3402,6 +5676,42 @@ class SottoHost:
 # ===========================================================================
 
 
+#: How many hits each layer may contribute, as a fraction of `limit`.
+#:
+#: NOT EQUAL ON PURPOSE, and the numbers come from a measurement rather than a taste.
+#: On this box's own store -- 2 077 lines over 11 files -- the phonetic layer returns
+#: 172 candidates for `maca`, 94 for `audio`, 72 for `preco`. That is not a bug in
+#: Soundex; it is Soundex colliding with Portuguese: `maca`, `mais`, `faca` and `massa`
+#: are all M200, and "mais" is the most common word in the language. The layer is
+#: correct -- those words DO sound alike -- but a layer that can contribute 185 of a
+#: 2077-line result is a layer that drowns the answer if it is given the same budget as
+#: the literal one. So the loose layers get a fraction, and the fraction is the
+#: product decision: literal answers the question, phonetic suggests, fuzzy stumbles.
+SEARCH_LAYER_CAPS = (1.0, 0.25, 0.05)
+#: A loose layer may never be floored into uselessness: below these, the fractions
+#: above would return nothing and the layers would be dead code.
+SEARCH_LAYER_MIN = (1, 8, 4)
+
+
+def search_layer_cap(rank, limit):
+    """The cap for layer `rank` at `limit`. Integer, never below `SEARCH_LAYER_MIN`.
+
+    MODULE LEVEL, and that is load-bearing. An earlier draft of this session put it
+    inside `class SottoShell`, immediately above `history_search`, and re-indented
+    that method back to four spaces -- which made Python read it as a NESTED `def`
+    inside `search_layer_cap`, so every remaining method of the class (`reply_history`
+    through `_do_worker_restart`) silently became part of that one function body.
+    The module still PARSED -- nothing about that is a syntax error -- and the shell
+    died at startup with `AttributeError: 'SottoShell' object has no attribute
+    '_do_worker_restart'`, which names a symptom four thousand lines away from the
+    mistake. `_class-map.py` below is the instrument that found it: it reports each
+    top-level node's line span, and `search_layer_cap 6461..9497` is not a span any
+    author would have written.
+    """
+    fraction, floor = SEARCH_LAYER_CAPS[rank], SEARCH_LAYER_MIN[rank]
+    return max(floor, int(math.floor(limit * fraction)))
+
+
 class SottoShell:
     def __init__(self, args):
         self.args = args
@@ -3414,6 +5724,9 @@ class SottoShell:
         self.geometry = None
         self.display = None
         self.visible = False
+        #: The owner explicitly paused and unloaded the engines. Opening the
+        #: panel again must NOT silently reload them; the status click revives.
+        self._paused = False
         # True once the "hide unless the owner asked" guard is subscribed to the
         # control's NavigationStarting. It is the precondition of the panel being
         # hidden at startup, and it is armed in `_on_before_show` — see
@@ -3426,11 +5739,11 @@ class SottoShell:
         self.panel_show_refused = 0
         self.pointer_interactive = False
         self.transparent = False   # panel-requested click-through (captions stay)
-        #: Last Alt+C stamp (`time.monotonic()`): a second press within
-        #: `HOTKEY_DOUBLE_MS` opens the RIGHT side panel instead of the strip.
-        self._last_hotkey_press = 0.0
         #: Where the panel lives when shown: 'strip' (bottom, the default) or
-        #: 'side' (right, after a double-press). Single Alt+C toggles the strip.
+        #: 'side' (the right panel). THIS IS THE ONLY INPUT the Alt+C cycle needs
+        #: besides whether the window is up: hidden -> strip -> side -> hidden.
+        #: `_last_hotkey_press` used to live next to it, as the double-press
+        #: stamp; it is deleted with the window it fed (owner, 2026-10-13).
         self.panel_mode = 'strip'
         self.caption_log = []
         #: The strip's height is the STYLESHEET's (`panel.css:52`
@@ -3442,6 +5755,18 @@ class SottoShell:
         self.strip_height_css = None
         self.strip_height_extra = 0
         self.strip_height = STRIP_HEIGHT_FALLBACK
+        #: The strip's CONTENT width, measured in the page (the pill's own
+        #: rendered box). `None` until read, and `None` on purpose while the
+        #: caption is floated. See `strip_width_from_dom()` for the defect this
+        #: exists to kill: `STRIP_WIDTH = 1040` fixed the WINDOW while the pill
+        #: inside was `max-content`, and the form paints every pixel the page
+        #: does not with opaque `#0B0F14` -- the owner's solid slab.
+        self.strip_width_dom = None
+        #: Where the strip was DOCKED before the owner dragged it, in DIP. The
+        #: page reports a CUMULATIVE offset from the dock (panel.html:1083), so
+        #: the shell needs the base it is cumulative FROM. Recorded on every
+        #: strip application, never by the drag itself.
+        self._strip_dock_base = None
         # ── THE TWO SURFACES (owner, 2026-10-08) ─────────────────────────────
         #: The surface the owner's control opens. `'strip'` — the SHORT caption
         #: band at the bottom, horizontally centred — because
@@ -3487,6 +5812,23 @@ class SottoShell:
         self.tray = None
         self.click_watcher = None
         self.hot_reload = None       # hot_reload.HotReload
+        #: THE PLAYER'S OWN CAPTIONS (2026-10-17): YouTube/Stremio already paint
+        #: their subtitles, so the shell reads them through UI Automation. While
+        #: this is true the ASR captions are suppressed and the worker is parked
+        #: (its VRAM is not needed for captions that already exist).
+        self.external_captions_active = False
+        self.external_captions_available = False
+        self.external_caption_watcher = None
+        #: THE YOUTUBE REAL TRACK (2026-10-19). Its own thread, because
+        #: `yt_dlp`'s metadata call took 5.0 s (MEASURED) and the caption
+        #: reader polls every 0.30 s.
+        self.youtube_track_thread = None
+        self._external_parked = False
+        self._vram_parked = False
+        self.external_suppressed = 0
+        self.external_lines = 0
+        self._overlay_pushes = 0
+        self.vram_guard = None
         #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
         #: until the panel's first load, which is when the DOM can be read.
         self.panel_state = None
@@ -3519,6 +5861,22 @@ class SottoShell:
         #: is the LATEST, which is all the panel reads (see `emit_async`).
         self._emit_lock = threading.Lock()
         self._emit_pending = {}
+        # THE STATS-REPLY CHANNEL (2026-10-20): the ids waiting for the UI
+        # thread, the ones pushed out of the way, and whether a post is
+        # already pending. The REPLY is a POST -- see `reply_stats`.
+        self._stats_reply_lock = threading.Lock()
+        self._stats_reply_pending = []
+        self._stats_reply_evicted = []
+        self._stats_reply_posted = False
+        self._stats_reply_payload = '""'
+        # THE PANEL-STATE DOM READ (2026-10-20): the last value, its age, and
+        # whether a newer read is on the way. AT MOST ONE read outstanding.
+        self._panel_dom_lock = threading.Lock()
+        self._panel_dom_value = None
+        self._panel_dom_at = 0.0
+        self._panel_dom_pending = False
+        self._panel_dom_reason = ''
+        self._panel_dom_detail = None
         self.startup_done = False    # startup actions run once per process
         self.startup_visible = None  # None until the window is measured
         self._exit_code = 0
@@ -3566,6 +5924,19 @@ class SottoShell:
             js_api=SottoHost(self),
             width=geometry['width'],
             height=geometry['height'],
+            # THE MINIMUM, ON PURPOSE. pywebview's own default is
+            # `min_size = (200, 100)` (webview/window.py:92), applied as
+            # `form.MinimumSize` (webview/platforms/winforms.py:210-212),
+            # and the shell resizes THIS SAME window to 380x40 when the
+            # caption floats out of the strip (measured in the log:
+            # "PANEL_SURFACE surface=strip reason=float-off window=380x40").
+            # With the default minimum that resize was clamped to 380x100 --
+            # a window 60 px taller than the shell asked for. MEASURED in a
+            # bare hidden WinForms form: min(200,100) -> 380x100;
+            # min(0,0) -> 380x40; min(200,40) -> 380x40.
+            # 40 is the height the shell itself uses for the floated
+            # caption; 200 is below the narrowest geometry in use.
+            min_size=(200, 40),
             # CREATED AT ITS REAL GEOMETRY. An off-screen creation
             # (`x=OFFSCREEN, y=OFFSCREEN`, OFFSCREEN=-32000) was tried
             # 2026-10-06 as the flash cure and MEASURED BROKEN: WebView2 does
@@ -3590,6 +5961,80 @@ class SottoShell:
             **({} if self.args.opaque else {'background_color': '#0b0f14'}),
             text_select=False,
         )
+        # ══════════════════════════════════════════════════════════════════════════════
+        # A SEGUNDA JANELA: A LEGENDA. Owner, 2026-10-15, verbatim -- *"a porra da
+        # legenda, e pra ser independente do painel, nao acoplado"* e *"essa legenda ao
+        # vivo deveria aparecer no MEIO EM BAIXO da minha tela, igual eu ja falei DEZENAS
+        # DE VEZES nessa sessao"*. O pedido de origem, [860]: *"the live subtitles in the
+        # BOTTOM AND MIDDLE of the screen"*.
+        #
+        # PORQUE UMA JANELA E NAO CSS: a legenda vivia DENTRO desta janela, empilhada
+        # debaixo da barra (`panel.css`: "The two overlays share one window, so they are
+        # STACKED"). Um caixote partilhado nao consegue pousar a legenda no fundo da TELA
+        # e ao mesmo tempo ter a barra no topo dele -- e era por isso que o print do dono
+        # mostrava o painel E a legenda, o *"duas coisa sobrepostas"* que ele descreveu.
+        # Duas janelas nao se podem sobrepor uma a outra; o problema deixa de existir por
+        # construcao, nao por regra de CSS.
+        #
+        # ONDE: no fundo-centro do WORKAREA -- o retangulo que exclui a barra de tarefas,
+        # para ela nao ficar por baixo. Larga (ate 900) e baixa, porque o zip poe a
+        # legenda numa faixa larga por cima do video, nao numa coluna.
+        #
+        # SO A LEGENDA: `caption.html` e a pagina propria; nada do painel entra aqui.
+        # Sem fundo (transparent), sem moldura, sem scrollbar.
+        #
+        # ESCONDIDA A NASCENCA e mostrada pelo botao live. `on_top` para ficar por cima do
+        # que estiver em ecra; o `hidden=True` e o que impede o flash no arranque.
+        # ══════════════════════════════════════════════════════════════════════════════
+        wa = self.display.get('workArea') or self.display.get('bounds')
+        cap_w = max(360, min(900, int(wa['width']) - 80))
+        cap_h = 170
+        cap_x = int(wa['x']) + (int(wa['width']) - cap_w) // 2
+        cap_y = int(wa['y']) + int(wa['height']) - cap_h - 48
+        # THE FLOATING CAPTION IS A NATIVE LAYERED WINDOW, NOT A WEBVIEW2.
+        # WebView2 is an opaque child inside pywebview's WinForms host; no
+        # parent colour key can key its pixels (WebView2Feedback #118), and
+        # pywebview documents `transparent` as unsupported on Windows. A
+        # Win32 layered window with `UpdateLayeredWindow` is the supported
+        # per-pixel-alpha path. The panel and strip stay WebView2/HTML/CSS.
+        self.caption_overlay = None
+        # The last design the page measured, kept so the overlay can be created
+        # after the first push and still be branded on its first paint.
+        self._brand_tokens_last = getattr(self, '_brand_tokens_last', None)
+        # THE OWNER'S SWITCH, AND IT IS NOT THE SAME FACT AS "A WINDOW IS UP".
+        # Owner 2026-10-17, verbatim: *"ao clicar no botao de legenda, nao deve
+        # abrir qualquer coisa. e pra ativar a legenda, na minha tela, sem
+        # background, sem estar conectada a qualquer painel."* So the caption is
+        # OFF until he turns it on: before this flag, every caption line pushed the
+        # window up by itself (`push_caption_to_window`, measured live as
+        # `CAPTION_OVERLAY_PUSH count=1 visible=true hwnd=1775132` with no click
+        # anywhere in the log) and the button was decoration. The page paints its
+        # own `aria-pressed` from this flag, so the switch and the words cannot
+        # disagree. `_caption_window_shown` stays the OTHER fact — whether pixels
+        # are on screen right now — because silence must be able to blank the
+        # overlay without switching the owner off.
+        self._caption_wanted = False
+        try:
+            import caption_overlay
+            self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
+            self.caption_overlay.set_work_area(
+                wa, self.display.get('scaleFactor') or 1.0)
+            if self._brand_tokens_last:
+                try:
+                    self.caption_overlay.set_theme(self._brand_tokens_last)
+                    log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r'
+                        % (self._brand_tokens_last.get('theme') or '-'))
+                except Exception as exc:  # noqa: BLE001
+                    log(f'CAPTION_OVERLAY_THEME_REPLAY_FAILED error={exc!r}')
+            log(f'CAPTION_OVERLAY_MODE native=true hwnd='
+                f'{self.caption_overlay.hwnd} work={wa["width"]}x{wa["height"]}')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_OVERLAY_MODE_FAILED error={exc!r}')
+
+        self._caption_window_w = cap_w
+        self._caption_window_h = cap_h
+        self._caption_window_x = cap_x
+        self._caption_window_y = cap_y
         # DO NOT clear `self.window.transparent` here. Tried 2026-10-06 and
         # MEASURED WRONG: pywebview's navigation `Show()` (edgechromium.py:347,
         # gated by `transparent`) is what makes a transparent WebView2 actually
@@ -3648,12 +6093,28 @@ class SottoShell:
         # and it is not decoration: it is the colour of the thing the owner sees
         # when the WebView2 does not paint. When the page paints, the WebView2
         # covers the form completely and this value is never seen.
+        # CORRECTED 2026-10-12, owner verbatim: *"eu to vendo div com cor solida
+        # inves de invisivel"*. The dark slab above is STILL A SLAB. It was the
+        # lesser of two evils against .NET's white `SystemColors.Control`, but
+        # the owner asked for NEITHER: the caption overlay is meant to float over
+        # whatever is on screen with nothing behind it. pywebview already sets
+        # `SupportsTransparentBackColor` on this form (platforms/winforms.py:289),
+        # so `Color.Transparent` is legal here and every pixel the page does not
+        # paint shows the DESKTOP instead of a colour.
+        #
+        # The failure mode is now "you see through the window", which is the
+        # correct failure mode for an overlay and strictly better than a slab in
+        # the wrong colour. `--opaque` still gets the dark slab, because that flag
+        # exists to give up transparency on purpose.
         try:
             from System.Drawing import Color as _DrawColor  # noqa: F401
-            form.BackColor = _DrawColor.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
-            log('FORM_BACKCOLOR set=#0B0F14 (the slab colour, the failure-mode '
-                'colour a transparent form would otherwise leave at '
-                'SystemColors.Control)')
+            if self.args.opaque:
+                form.BackColor = _DrawColor.FromArgb(0xFF, 0x0B, 0x0F, 0x14)
+                log('FORM_BACKCOLOR set=#0B0F14 reason=--opaque')
+            else:
+                form.BackColor = _DrawColor.Transparent
+                log('FORM_BACKCOLOR set=transparent reason=overlay-not-a-slab '
+                    'cure=SupportsTransparentBackColor')
         except Exception as exc:  # noqa: BLE001
             log(f'FORM_BACKCOLOR_FAILED error={exc!r}')
 
@@ -3716,7 +6177,7 @@ class SottoShell:
             styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT
             if str(os.environ.get('SOTTO_LAYERED') or '').strip().lower() \
                     in ('1', 'true', 'yes', 'on'):
-                styles |= WS_EX_LAYERED
+                cap_styles |= WS_EX_LAYERED
                 log('panel WS_EX_LAYERED kept by SOTTO_LAYERED=1 '
                     '(measured harmful: strip composites white)')
             set_ex_style(hwnd, add=styles)
@@ -3987,6 +6448,7 @@ class SottoShell:
             return
         self.core = sender.CoreWebView2
         self._install_bootstrap('initialization-completed')
+        self._arm_lazy_gate()
 
     def _install_bootstrap(self, where):
         """Register the preload on the CoreWebView2, on the UI thread.
@@ -4007,9 +6469,51 @@ class SottoShell:
 
         def _add():
             self.core.AddScriptToExecuteOnDocumentCreatedAsync(
-                BOOTSTRAP_JS).ContinueWith(Action[Task[String]](_done))
+                _bootstrap_js()).ContinueWith(Action[Task[String]](_done))
 
         self._ui(_add)
+
+    def _arm_lazy_gate(self):
+        """Register the deferred-asset gate, on the UI thread.
+
+        The gate is what makes `defer` possible AT ALL on a `file://` document.
+        panel.html is served byte-for-byte by Chromium's file loader (see
+        `file_url`), there is no HTTP server to hold an asset back, and the panel's
+        CSP (`script-src 'self'` with `'unsafe-inline'` granted to style ONLY)
+        forbids the blob:/data: script injection a loader could otherwise use. So
+        the shell intercepts the five deferred subresource requests itself and
+        answers each with an EMPTY body until the page's own loader has asked for
+        the real bytes over the bridge.
+
+        `--no-lazy` is the CONTROL ARM: with it the gate registers nothing and
+        every deferred URL reaches the disk, which is exactly today's behaviour.
+        The measurement harness runs both arms; if the before/after bytes do not
+        move, the gate is vacuous and the harness must say so.
+
+        The handler is subscribed to the CoreWebView2's `WebResourceRequested`,
+        so it runs on the UI thread and MUST NOT call `_ui` (that would deadlock:
+        the delegate it posts can only run after this handler returns). It touches
+        only an in-memory set and a MemoryStream, so it is safe there.
+        """
+        if getattr(self, '_lazy_gate', None) is not None:
+            return
+        if self.core is None:
+            log('PANEL_LAZY_GATE_SKIPPED reason=no-core')
+            return
+        if self.args.no_lazy:
+            log('PANEL_LAZY_GATE_DISABLED reason=--no-lazy')
+            self._lazy_gate = LazyAssetGate(self.core, enabled=False)
+            return
+        gate = LazyAssetGate(self.core, enabled=True)
+        self._lazy_gate = gate
+        if gate.registered != len(LAZY_ASSETS):
+            log(f'PANEL_LAZY_GATE_PARTIAL registered={gate.registered} want={len(LAZY_ASSETS)}')
+        try:
+            self.core.WebResourceRequested += gate.on_resource_requested
+            log(f'PANEL_LAZY_GATE_ARMED registered={gate.registered} urls={len(LAZY_ASSETS)}')
+        except Exception as exc:
+            log(f'PANEL_LAZY_GATE_ARM_FAILED error={exc!r}')
+            self._lazy_gate = None
 
     def _current_document(self):
         """WHAT document the WebView2 is actually showing, or None if unknown.
@@ -4040,7 +6544,12 @@ class SottoShell:
                         self.webview2.CoreWebView2 is not None:
                     return self.webview2.CoreWebView2
                 return None
-            self.core = self._ui(_grab)
+            grabbed = self._ui(_grab)
+            # A STALL IS NOT A CORE (2026-10-20): `_ui` answers a stall with
+            # a `NoAnswer`, and that must not become `self.core` -- the next
+            # `ExecuteScriptAsync` would raise on a dict instead of on a
+            # missing core.
+            self.core = None if isinstance(grabbed, NoAnswer) else grabbed
 
         # ── THE BOUNCE IS DECIDED BY THE DOCUMENT, NOT BY A FLAG ───────────────
         # `stage.html` is empty, so landing on it and stopping is the white
@@ -4119,7 +6628,9 @@ class SottoShell:
             self.startup_done = True
             self.send_geometry()
             if self.surface_applied == 'strip':
-                if self.refresh_strip_height('hot-reload'):
+                h_moved = self.refresh_strip_height('hot-reload')
+                w_moved = self.refresh_strip_width('hot-reload')
+                if h_moved or w_moved:
                     self._apply_window_geometry(self.geometry_for('strip'),
                                                 reason='strip-height-hot-reload')
             # The panel AS TEXT. Armed here — once the panel document (not the
@@ -4130,6 +6641,15 @@ class SottoShell:
             # this same block, so a worker spawned on this launch always finds
             # the file. The order is the point: see `self.panel_visibility`.
             self.start_panel_visibility()
+            # THE PLAYER'S OWN CAPTIONS (YouTube/Stremio), normal runs only.
+            self.start_external_caption_watcher()
+            # FREE THE GPU WHEN ANOTHER APP NEEDS IT (normal runs only).
+            try:
+                if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
+                    self.vram_guard = VramGuard(self)
+                    self.vram_guard.start()
+            except Exception as exc:  # noqa: BLE001
+                log(f'VRAM_GUARD_START_FAILED error={exc!r}')
             if self.args.show:
                 self.show_panel('startup', surface='panel')
             self._measure_on_screen_visibility('startup')
@@ -4183,7 +6703,40 @@ class SottoShell:
             # does and no reader has to learn a second shape. `start_worker`
             # declines by itself when a bridge already exists, and nothing
             # added here takes `self._lock`.
-            self.start_worker(worker_reason)
+            #
+            # THE DEFAULT IS NOW DEFERRED (owner, 2026-10-17: *"abrir ou fechar
+            # o sotto causa um travamento muito forte no meu pc"*). Spawning the
+            # worker here means the app's own launch pays a ~750 MB weight read
+            # plus a CUDA context and ~2 GB of RSS before the desktop settles.
+            # Nothing is being transcribed before the panel is opened, so the
+            # load now happens on FIRST OPEN (see `show_panel`), at below-normal
+            # priority, with lazy CUDA kernels. Explicit/measurement paths are
+            # untouched: `--with-worker` still starts here, and a measurement
+            # flag still declines.
+            if worker_reason == 'default':
+                if getattr(self, 'bridge', None) is not None:
+                    log('WORKER_AUTOSTART=started reason=default by=startup-show')
+                else:
+                    # THE PRELOAD (owner, 2026-10-21: *"abrir ou fechar o
+                    # sotto trava pra caralho meu pc"*). The worker used to
+                    # wait for the FIRST PANEL OPEN, which meant the model
+                    # loaded WHILE THE OWNER WAS WATCHING: MEASURED 36.9 s
+                    # from the spawn to the worker ready on the owner's own
+                    # log (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`),
+                    # so the panel he had just opened sat there with no
+                    # captions for the best part of a minute.
+                    #
+                    # THE PRELOAD MOVES THAT WAIT TO WHERE THE OWNER IS NOT
+                    # WAITING: the app's start, in the background, at the
+                    # worker's BELOW_NORMAL priority. The launch stays light
+                    # (the timer fires after a delay, not during the window
+                    # paint), and by the time he presses Alt+C the model is
+                    # there. `SOTTO_NO_PRELOAD=1` puts the old behaviour
+                    # back; a MEASUREMENT launch never preloads (those
+                    # reasons are not 'default' and they never reach here).
+                    self._schedule_preload_worker()
+            else:
+                self.start_worker(worker_reason)
             # -- D3: no worker means the panel must say so ------------------
             # The panel's shipped footer says "Idle · no audio source", which
             # claims the machine has no audio -- measured false (there IS audio;
@@ -4287,16 +6840,41 @@ class SottoShell:
             self.bridge.stop('closing')
         if self.hotkey is not None:
             self.hotkey.stop()
+        if self.external_caption_watcher is not None:
+            self.external_caption_watcher.stop()
+        if self.vram_guard is not None:
+            self.vram_guard.stop()
+        if getattr(self, 'caption_overlay', None) is not None:
+            try:
+                self.caption_overlay.destroy()
+            except Exception:  # noqa: BLE001
+                pass
         self.stop_hot_reload('closing')
+        # The diarizer dies with the SHELL, not with the worker. The worker is
+        # restarted constantly by its own ladder (measured: 88 deaths in 17
+        # minutes); killing a 277 MB model on every restart would be the exact
+        # churn the owner complained about, and the payload the worker reads is
+        # only 30 s fresh anyway, so a diarizer that outlives one restart costs
+        # nothing and a diarizer that dies with it costs a reload.
+        _sidecar = getattr(self, '_speaker_sidecar', None)
+        if _sidecar is not None:
+            _sidecar.stop('shell-closing')
+        _watch = getattr(self, '_multivoice_watch', None)
+        if _watch is not None:
+            _watch.stop('shell-closing')
         log('SHELL_CLOSING')
 
     # -- UI thread marshalling --------------------------------------------
-    def _ui(self, fn):
+    def _ui(self, fn, timeout=UI_MARSHAL_TIMEOUT_S):
         """Run `fn` on the thread that owns the WebView2 control.
 
         CoreWebView2 members must be called from the UI thread; the worker
         reader thread and the hotkey thread are not it. pywebview marshals only
         its own form operations, so the host does it for itself.
+
+        `timeout` is the budget for the marshalling wait, and it is the SAME
+        clock the caller asked for (2026-10-20) -- see `exec_js`. A stall
+        returns a `NoAnswer`, never a silent `None`.
         """
         from System import Func, Type  # pythonnet, loaded by pywebview
 
@@ -4316,15 +6894,27 @@ class SottoShell:
                     done.set()
 
             form.BeginInvoke(Func[Type](run))
-            # A SILENT `return None` here is how a stalled UI thread became a
-            # VACUOUS result in the instruments: `exec_js` then sees None, the
-            # probe logs `PANEL_STATS_PROBE null`, and the check that read the
-            # value fails with no reason attached to it. Measured 2026-10-11:
-            # a worker publishing 43 stats pushes/s left the posted callable
-            # unrun for the whole 10 s and NOTHING in the log said so.
-            if not done.wait(10):
-                warn('UI_THREAD_STALL begin-invoke not run in 10 s fn='
-                     + str(getattr(fn, '__name__', fn)))
+            # THE BUDGET IS A PARAMETER (2026-10-20). It used to be a hard-coded
+            # 10 s INSIDE this method, so a caller that asked `exec_js` for 5 s
+            # waited 10 s HERE and then another 5 s THERE -- 15 s to learn that
+            # a 5 s question had timed out. The caller and this method now
+            # share ONE clock.
+            if not done.wait(timeout):
+                name = str(getattr(fn, '__name__', fn))
+                warn('UI_THREAD_STALL begin-invoke not run in %gs fn=%s'
+                     % (timeout, name))
+                # THE STALL IS A VALUE, NOT A SILENT `None`. A SILENT `return
+                # None` here is how a stalled UI thread became a VACUOUS
+                # result in the instruments: `exec_js` then sees None, the
+                # probe logs `PANEL_STATS_PROBE null`, and the check that read
+                # the value fails with no reason attached to it. Measured
+                # 2026-10-11: a worker publishing 43 stats pushes/s left the
+                # posted callable unrun for the whole 10 s and NOTHING in the
+                # log said so. Measured 2026-10-20 on the owner's own log: 93
+                # of these inside ONE 50 s window, and every reader
+                # downstream STILL could not tell "answered null" from
+                # "never answered".
+                return NoAnswer('ui-thread-stall', name, timeout)
             if 'error' in box:
                 raise box['error']
             return box.get('value')
@@ -4373,6 +6963,15 @@ class SottoShell:
         control's `Invoke` so it runs on the UI thread, and completion arrives
         on a `ContinueWith(Action[Task[String]])`. `.Completed` does not exist
         on a `Task[String]` in this binding.
+
+        NO ANSWER IS NOT `None` (2026-10-20). Every way this can fail to get
+        an answer -- the UI thread never ran the callable, the task did not
+        finish, the task faulted -- returns a `NoAnswer`: FALSY (so `if value:`
+        is unchanged) and JSON-serialisable (so a probe can log it), and it
+        carries the REASON and WHAT WAS ASKED. Measured on the owner's own log
+        (2026-10-20): 68 `exec_js TIMEOUT after 10.0s` and 93
+        `UI_THREAD_STALL` inside one 50 s window, and the reader could not
+        tell a null answer from no answer.
         """
         from System import Action, Func, Object, String
         from System.Threading.Tasks import Task
@@ -4396,18 +6995,35 @@ class SottoShell:
                 lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
                     Action[Task[String]](_complete))))
 
+        # ONE BUDGET, NOT TWO (2026-10-20). The marshalling wait (`_ui`) and
+        # the task wait were TWO separate waits, each up to `timeout`: a
+        # question that timed out held the caller for 2x `timeout` -- 20 s for
+        # the 10 s default `reply_stats` used, on the pump thread. The
+        # deadline is computed ONCE and the two waits SHARE it.
+        deadline = time.monotonic() + float(timeout)
+        marshalled = None
         try:
-            self._ui(_run)
+            marshalled = self._ui(_run, timeout=timeout)
         except Exception as exc:
             box['error'] = repr(exc)
             done.set()
 
-        if not done.wait(timeout):
+        if isinstance(marshalled, NoAnswer):
+            # THE UI THREAD NEVER RAN IT. The script is still QUEUED on the
+            # form, so the answer may arrive later -- but the caller is NOT
+            # going to wait for it, and the REASON is on the record.
+            warn(f'exec_js STALL reason=ui-thread-stall timeout={timeout}s '
+                 f'script={script[:90]!r}')
+            return marshalled
+
+        left = deadline - time.monotonic()
+        if left <= 0 or not done.wait(left):
             warn(f'exec_js TIMEOUT after {timeout}s script={script[:90]!r}')
-            return None
+            return NoAnswer('exec-js-timeout', script[:90], timeout)
+
         if 'error' in box:
             warn(f'exec_js failed: {box["error"]}')
-            return None
+            return NoAnswer('exec-js-error', script[:90], timeout, box['error'])
         try:
             return json.loads(box.get('json', 'null'))
         except ValueError:
@@ -4471,7 +7087,8 @@ class SottoShell:
             '  if (b && body) b.textContent = body;'
             "  const s = document.getElementById('status');"
             "  if (s) { s.classList.toggle('status--live', kind === 'live');"
-            "           s.classList.toggle('status--error', kind === 'error'); }"
+            "           s.classList.toggle('status--error', kind === 'error');"
+            "           s.classList.toggle('status--noaudio', kind === 'no-audio'); }"
             "  return t ? t.textContent : '';"
             '})()')
         if shown:
@@ -4495,15 +7112,60 @@ class SottoShell:
         is the bridge's own already-held state. Nothing here starts a process or
         a window, and nothing here changes what the owner sees.
         """
-        dom = None
+        # THE DOM READ IS A POST, NOT A ROUND TRIP (2026-10-20). It used to
+        # be `exec_js(PANEL_STATE_PROBE, timeout=5.0)`, and `exec_js` waits on
+        # the UI thread: a busy UI thread held the WRITER for 5 s there and
+        # another 10 s inside `_ui` (two waits, one budget -- the bug fixed
+        # above), and the callable it posted stayed QUEUED on the form, so a
+        # dump every 2 s grew the WinForms queue for as long as the UI thread
+        # was busy.
+        #
+        # Now the read is a POST with AT MOST ONE outstanding: while a read is
+        # in flight the next dump does not post another one, and the dump
+        # reports the LAST value it has, with its age and whether a newer one
+        # is on the way. The FILE keeps being written every 2 s -- the dump is
+        # not sacrificed, it stops being able to TRAVA.
         if self.core is not None:
-            dom = self.exec_js(PANEL_STATE_PROBE, timeout=5.0)
+            self._request_panel_dom()
+        lock = getattr(self, '_panel_dom_lock', None)
+        if lock is None:
+            lock = self._panel_dom_lock = threading.Lock()
+        with lock:
+            dom = getattr(self, '_panel_dom_value', None)
+            dom_at = getattr(self, '_panel_dom_at', 0.0)
+            dom_pending = getattr(self, '_panel_dom_pending', False)
+            dom_reason = getattr(self, '_panel_dom_reason', '')
+            dom_detail = getattr(self, '_panel_dom_detail', None)
+        dom_age = (time.monotonic() - dom_at) if dom_at else None
         bridge = self.bridge
         worker = bridge.snapshot() if bridge is not None else None
-        panel_status = ((dom or {}).get('status') or {}).get('text')
+        # THE STATUS OBJECT, not just its text. `panel.js:2896-2903` blanks
+        # `#status-text` for every state that is not an error (the owner ruled
+        # 2026-10-08, verbatim: "tira o 'receiving captions'. deixa so um icone
+        # dinamico"), so on the live path the text is '' and the ONLY signal that
+        # captions are arriving is the `status--live` class on `#status` --
+        # which the probe already reports as `kind` and which this line used to
+        # throw away. Reading the text alone made the literal
+        # 'Receiving captions' test below DEAD on the live path, so the
+        # precedence fell through to the worker's no-audio latch and the panel
+        # named itself `no-audio` while captions were demonstrably flowing
+        # (measured live 2026-10-12: namedState="no-audio" in the same write as
+        # panel.live.count=201 and panel.status={"kind":"live","text":""}).
+        panel_status_obj = (dom or {}).get('status') or {}
+        panel_status = panel_status_obj.get('text')
+        panel_kind = panel_status_obj.get('kind')
         return {
-            'namedState': self._named_panel_state(worker, panel_status),
+            'namedState': self._named_panel_state(worker, panel_status, panel_kind),
             'panel': dom,
+            # WHY the DOM half is what it is: its age, whether a newer read is
+            # on the way, and the reason of the last failure. A dump that
+            # cannot say this is a dump that lies about being fresh.
+            'panelDom': {
+                'ageSeconds': round(dom_age, 3) if dom_age is not None else None,
+                'pending': dom_pending,
+                'reason': dom_reason,
+                'detail': dom_detail,
+            },
             'shell': {
                 'visible': self.visible,
                 'hotkey': self.args.hotkey,
@@ -4530,8 +7192,77 @@ class SottoShell:
             'worker': worker,
         }
 
+    def _request_panel_dom(self):
+        """Ask the page for the panel's DOM -- WITHOUT waiting for it.
+
+        Returns True when a read was POSTED, False when one is already in
+        flight (or the form is gone). AT MOST ONE read is outstanding, ever:
+        that is the bound the DIAGNOSTIC channel needs, and the product does
+        not.
+        """
+        lock = getattr(self, '_panel_dom_lock', None)
+        if lock is None:
+            lock = self._panel_dom_lock = threading.Lock()
+        with lock:
+            if getattr(self, '_panel_dom_pending', False):
+                return False
+            self._panel_dom_pending = True
+        try:
+            queued = self._post(self._read_panel_dom)
+        except BaseException:
+            with lock:
+                self._panel_dom_pending = False
+            raise
+        if queued is False:
+            with lock:
+                self._panel_dom_pending = False
+            return False
+        return True
+
+    def _read_panel_dom(self):
+        """Read the panel's DOM ON THE UI THREAD, and keep the result."""
+        from System import Action, Func, Object, String
+        from System.Threading.Tasks import Task
+
+        def _complete(task):
+            value = None
+            reason = ''
+            detail = None
+            try:
+                if task.IsFaulted:
+                    reason = 'exec-js-error'
+                    detail = repr(task.Exception)
+                else:
+                    value = json.loads(task.Result)
+            except Exception as exc:  # noqa: BLE001
+                reason = 'exec-js-error'
+                detail = repr(exc)
+            lock = getattr(self, '_panel_dom_lock', None)
+            if lock is None:
+                lock = self._panel_dom_lock = threading.Lock()
+            with lock:
+                self._panel_dom_value = value
+                self._panel_dom_at = time.monotonic()
+                self._panel_dom_pending = False
+                self._panel_dom_reason = reason
+                self._panel_dom_detail = detail
+
+        try:
+            self.webview2.Invoke(Func[Object](
+                lambda: self.core.ExecuteScriptAsync(PANEL_STATE_PROBE).ContinueWith(
+                    Action[Task[String]](_complete))))
+        except Exception as exc:  # noqa: BLE001
+            lock = getattr(self, '_panel_dom_lock', None)
+            if lock is None:
+                lock = self._panel_dom_lock = threading.Lock()
+            with lock:
+                self._panel_dom_pending = False
+                self._panel_dom_reason = 'exec-js-error'
+                self._panel_dom_detail = repr(exc)
+            warn(f'PANEL_STATE_DOM_FAILED error={exc!r}')
+
     @staticmethod
-    def _named_panel_state(worker, panel_status):
+    def _named_panel_state(worker, panel_status, panel_kind=None):
         """One name for "what is the panel showing", by a STATED precedence.
 
         The panel's OWN footer wins while it is live — `panel.js` writes
@@ -4541,7 +7272,16 @@ class SottoShell:
         an empty string: a panel with no bridge is not the same panel as one
         holding a quiet worker.
         """
-        if panel_status == 'Receiving captions':
+        # TWO LIVE SIGNALS, because the sentence is no longer one of
+        # them. `panel.js:2896-2903` writes
+        # `setStatus('Receiving captions', 'live')` and then BLANKS
+        # `#status-text`, because the healthy state is an ICON and not a
+        # phrase (owner, 2026-10-08). So the literal comparison below is kept
+        # for a panel that still paints the phrase, and `kind == 'live'` is
+        # the one that actually fires: it is the `status--live` class
+        # `panel.js:2907` puts on `#status` the instant a caption commits,
+        # and it is what `PANEL_STATE_PROBE` already reports.
+        if panel_status == 'Receiving captions' or panel_kind == 'live':
             return 'receiving'
         if worker is None:
             return 'no-worker'
@@ -4778,14 +7518,52 @@ class SottoShell:
         return {'entries': entries, 'root': HISTORY_ROOT}
 
     def history_search(self, query, limit=200):
-        needle = str(query or '').strip().lower()
-        hits = []
-        if needle:
+        """THE SEARCH. Owner, 2026-10-18: *"eu quero que ele ache"*.
+
+        WAS, in full:
+            needle = str(query or '').strip().lower()
+            if needle in entry['text'].lower():
+
+        That is byte equality with a fold the pt-BR keyboard does not perform, and
+        it is why the owner had stopped trusting the box. The three layers live at
+        module scope above (`search_match_rank`), so an oracle can call the
+        predicate without standing up the whole shell.
+
+        RANKING IS THE FEATURE. Three buckets, filled in ONE pass over the stream,
+        then concatenated: literal, then phonetic, then fuzzy. Within a bucket the
+        newest-first order of `_history_entries()` is preserved, so a typo'd query
+        does not bury the newest true match under the oldest.
+
+        EACH BUCKET IS CAPPED SEPARATELY, AND NOT AT THE SAME NUMBER. See
+        `SEARCH_LAYER_CAPS`: the phonetic layer returns 172 candidates for `maca` on
+        this box's own 2 077-line store, because `mais`/`faca`/`massa` are all M200
+        next to `maca`. Capping the merged list at `limit` (as an earlier draft did)
+        let that flood push the literal hits off the end -- a search that hides its
+        own best answer once the store gets noisy. Caps are per layer, applied in
+        stream order, so the newest `limit` literals always survive and the loose
+        layers can only ever add a bounded tail.
+
+        `match` is carried on each hit so the UI can say WHY a line matched instead
+        of presenting a fuzzy guess with the same confidence as an exact phrase.
+        """
+        folded_query = search_fold(query).strip()
+        query_words = folded_query.split()
+        cap = max(1, int(limit))
+        caps = [search_layer_cap(r, cap) for r in (0, 1, 2)]
+        buckets = ([], [], [])     # 0 literal, 1 phonetic, 2 fuzzy
+        if query_words:
             for entry in self._history_entries():
-                if needle in entry['text'].lower():
-                    hits.append(entry)
-                    if len(hits) >= max(1, int(limit)):
-                        break
+                rank = search_match_rank(entry['text'], folded_query, query_words)
+                if rank < 0:
+                    continue
+                bucket = buckets[rank]
+                if len(bucket) < caps[rank]:
+                    bucket.append(dict(entry, match=('literal', 'phonetic', 'fuzzy')[rank]))
+                if all(len(b) >= c for b, c in zip(buckets, caps)):
+                    # Every bucket is at its own cap: no later entry can enter the
+                    # result set at ANY rank, because buckets fill in stream order.
+                    break
+        hits = buckets[0] + buckets[1] + buckets[2]
         return {'query': query, 'hits': hits, 'root': HISTORY_ROOT}
 
     def reply_history(self, history_id, payload):
@@ -4950,12 +7728,71 @@ class SottoShell:
         # would otherwise catch it up to `interval_s` later.
         self.publish_panel_visibility('reassert-hidden')
 
+    def _start_deferred_worker(self, source):
+        """Start the worker the FIRST time any panel is actually on screen.
+
+        THE ALT+C PATH DOES NOT CALL `show_panel`: `hotkey_pressed` cycles
+        through `show_strip` -> `show_side` -> `hide_panel`, and each of those
+        maps the window itself. A start hook placed only in `show_panel` was
+        therefore never reached by the owner's key -- MEASURED 2026-10-17:
+        `HOTKEY_PRESSED count=4` and `PANEL_SHOWN` in the log, and ZERO
+        `WORKER_AUTOSTART`. This one helper is called by all three show paths.
+
+        It starts ONLY for reason `default`: `--with-worker` already spawned
+        at load, and a measurement flag must stay worker-free.
+        """
+        if getattr(self, 'bridge', None) is not None:
+            return False
+        # THE SHOW PATH MUST NOT DIE ON A MISSING FLAG. Alt+C is the owner's
+        # ONLY control, and these three flags are read in the SAME `if` as the
+        # defensive `getattr(self, '_paused', False)` that was already there.
+        # Read them the same way: a flag that is not there is False, never an
+        # AttributeError on the one key the owner presses.
+        _ext_active = getattr(self, 'external_captions_active', False)
+        if (getattr(self, '_paused', False) or _ext_active
+                or getattr(self, 'external_captions_available', False)
+                or getattr(self, '_vram_parked', False)):
+            log(f'WORKER_PANEL_START_SKIPPED source={source} '
+                f'paused={str(getattr(self, "_paused", False)).lower()} '
+                f'external={str(_ext_active).lower()}')
+            return False
+        try:
+            reason = self._worker_autostart_reason(self.args)
+        except Exception as exc:  # noqa: BLE001
+            log(f'WORKER_PANEL_START_FAILED source={source} error={exc!r}')
+            return False
+        log(f'WORKER_PANEL_START source={source} reason={reason}')
+        if reason != 'default':
+            return False
+        try:
+            return self.start_worker('panel-open')
+        except Exception as exc:  # noqa: BLE001
+            log(f'WORKER_PANEL_START_FAILED source={source} error={exc!r}')
+            return False
+
     def show_panel(self, reason, surface=None):
         if self.hwnd is None:
             return False
+        # O ALT+C VOLTA A TENTAR -- ver `no_audio_restart_cap`. O shell para de reiniciar
+        # um worker que morre por SILENCIO, porque recarregar 1 GB de modelo nao arranja
+        # uma rotagem. Sem este reset o dono ficava sem caminho de volta; com ele, mostrar
+        # o painel e a forma de dizer "tenta outra vez".
+        try:
+            if getattr(self, 'bridge', None) is not None:
+                self.bridge.no_audio_restarts = 0
+        except Exception as exc:  # noqa: BLE001
+            # O RESET QUE ABRE A VOLTA AO DONO. O Alt+C existe para dar
+            # caminho de volta a um worker que morreu em silencio; engolida a
+            # falha, o Alt+C deixa de fazer isso e ninguem diz porquê.
+            log(f'BRIDGE_NO_AUDIO_RESET_FAILED error={exc!r}')
         want = surface or self.surface
         if want != self.surface_applied:
             self.set_panel_surface(want, reason)
+        # The same `panel_mode` bookkeeping the hotkey paths do, for the shows
+        # that arrive another way (`--show`, the tray, `toggle_panel` from the
+        # page): the cycle reads this field on the next Alt+C whatever brought
+        # the panel up.
+        self.panel_mode = 'strip' if want == 'strip' else 'side'
         set_topmost(self.hwnd)
         # ── THE P0 ORDER: children FIRST, then the map ──────────────────────
         # The owner, verbatim: he pressed Alt+C, saw a solid-colour strip for
@@ -4979,6 +7816,15 @@ class SottoShell:
         # navigation-time `form.Show()`.
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        # THE DEFERRED DEFAULT WORKER STARTS HERE (2026-10-17). The launch is
+        # light on purpose; the first time the panel is actually on screen is
+        # the first moment a caption can be seen, so it is the honest moment to
+        # pay the model load. `start_worker` refuses when a bridge already
+        # exists, so every later Alt+C is a no-op here.
+        self._start_deferred_worker('show-panel')
+        if (getattr(self, 'external_captions_available', False)
+                and self.external_caption_watcher is not None):
+            self.external_caption_watcher.replay()
         # ARMED HERE, and only here: the watcher can close the panel from now on,
         # which is what keeps the two startup navigations from closing anything
         # (the panel is hidden then, so the visible-guard already refuses, and
@@ -5004,6 +7850,15 @@ class SottoShell:
         log(f'PANEL_HIDDEN reason={reason} '
             f'visible={str(self.visible).lower()}')
         self.publish_panel_visibility(reason)
+        # ESCONDER O PAINEL JA NAO DESLIGA A LEGENDA. A frase do dono que esta linha
+        # executava -- *"quando eu quero ou nao"* -- e' a do interruptor, nao a do painel:
+        # em 2026-10-17 ele sharpenou-a, verbatim, *"sem estar conectada a qualquer
+        # painel. ela e' livre na minha tela, um overlay"*. Esconder o painel e' uma
+        # accao sobre o painel; matar a legenda com ela era a legenda a estar LIGADA ao
+        # painel, que e' exactamente o que ele proibiu. O que se tira sao os PIXELS
+        # (`_blank_caption_window`, que nao escreve `data-caption-window`), e a legenda
+        # volta a aparecer na proxima linha sem ninguem tocar em nada.
+        self._blank_caption_window('panel-hidden')
         return True
 
     def toggle_panel(self, reason):
@@ -5026,70 +7881,233 @@ class SottoShell:
         return (self.hide_panel(reason) if live else self.show_panel(
             reason, surface='strip' if reason == 'hotkey' else None))
 
-    # -- Alt+C: strip toggle, double-press side panel, mouse unlock ---------
+    # -- Alt+C: caption / first panel / right panel ------------------------
     def hotkey_pressed(self):
-        """Alt+C: a single press toggles the bottom STRIP; a double toggles SIDE.
+        """Alt+C: ONE = the CAPTION. TWO = the FIRST panel. THREE = the RIGHT.
 
-        The timestamp is `time.monotonic()`, so a wall-clock jump cannot
-        mis-split a double. A second press within `HOTKEY_DOUBLE_MS` (1500 ms) is
-        the gesture that asks for the RIGHT side panel; anything later is a new
-        single press and toggles the strip. Runs on the hotkey thread — every
-        window call below is thread-safe (`SetWindowPos`/`ShowWindow`/
-        `SetForegroundWindow` on the hwnd, `_ui` for the .NET form members).
+        THE OWNER'S CONTRACT, verbatim (2026-10-18): *"pra habilitar a legenda:
+        primeiro alt c. pra ir pro priemiro painel: double alt c. caso double alt
+        c, a legenda nao habilita"*, and, adding the step the old branch could not
+        reach, the same day: *"triple alt c é pra mostrar o painel da direita"*.
 
-        THREE DEFECTS THIS FIXES, all measured on the owner's machine
-        (2026-10-09) by reading the PANEL_* sequence in the log, all in the
-        double branch:
+            ONE press    -> the caption on/off
+            TWO presses  -> the FIRST panel (the bottom strip)
+            THREE        -> the RIGHT panel
 
-        1. **The double never hid anything.** It called `show_side`
-           unconditionally, so a panel already up on SIDE was MAPped again —
-           `PANEL_SHOWN reason=hotkey-double` twice in a row with no
-           `PANEL_HIDDEN` between them — and Alt+C stopped being a way out.
-        2. **The pair was not consumed.** `_last_hotkey_press` was left at
-           `now`, so the NEXT press was read as another double and re-fired
-           SIDE; pressing Alt+C repeatedly pinned the panel open.
-        3. **A double on a HIDDEN panel surfaced it.** After fix 1 the double
-           still opened SIDE from hidden, and because a consumed pair always
-           alternates single/double, mashing Alt+C oscillated
-           hide → side → hide → side and could END VISIBLE — the owner's
-           exact report, *"se eu uso mais alt c, o painel nao some"*.
+        THE THIRD STEP WAS UNREACHABLE, and that is the whole bug. The old double
+        branch ended the gesture with `self._last_hotkey_press = 0.0  # a third
+        press begins a new gesture`, so a third press started a fresh single and
+        the panel that came up was always the strip. `show_side` -- the right
+        panel, surface `'panel'`, `dock_right` -- was left as a live method with
+        no caller on this path, the same shape as the 2026-10-14 defect recorded
+        in `show_strip`, where every press after the second painted the side
+        panel AGAIN instead of advancing.
 
-        THE RULE NOW, so that every press is predictable in both directions:
-        a double acts ONLY on a panel that is already up, and it always moves
-        toward OFF — already on SIDE hides it, on the STRIP it switches to SIDE.
-        A double with the panel DOWN is IGNORED, because the first press of that
-        same pair already did the toggling. Consequence, verified by test: from
-        ANY starting state, mashing Alt+C ENDS HIDDEN (6 presses, tested).
+        BOTH PANEL GESTURES ARE DEFERRED, and that is the part that changed rather
+        than merely grew. The double used to run the instant it was recognised,
+        which is right for two presses and wrong for three: presses at 0/120/240
+        ms would map the strip at 120 ms and replace it at 240 ms, so pressing
+        three times on purpose would flash the panel the owner did NOT ask for.
+        Deferring each panel by `HOTKEY_GESTURE_MS` means each panel appears once,
+        when the gesture resolves. The cost is stated at the constants.
 
-        The live window state is read ONCE, before either branch, so the two
-        branches cannot disagree inside one call.
+        TWO CLOCKS SINCE 2026-10-21, and the caption is put back when the gesture
+        becomes a panel. The caption waits `HOTKEY_CAPTION_DEFER_MS` (250); the
+        gesture window is `HOTKEY_GESTURE_MS` (700). Because the first is shorter
+        than the second, the first press of a HUMAN double can already have
+        applied the caption when the second arrives -- so `count >= 2` calls
+        `_undo_gesture_caption`, which restores the pre-gesture state and is
+        guarded by the gesture id. That is what makes the owner's rule *"caso
+        double alt c, a legenda nao habilita"* hold at human speed as well as at
+        machine speed.
+
+        THIS REPLACES the three-state cycle (2026-10-13: HIDDEN -> STRIP -> SIDE
+        -> HIDDEN, one press one step, no clock). That contract is retired
+        because the owner gave one press a meaning of its own -- the caption --
+        and panel navigation moved to the double. The cycle is not lost, it is
+        reachable again: `show_strip`/`show_side` still exist and `place_panel`
+        still owns which panel is where.
+
+        WHAT IS DELIBERATELY GONE WITH IT: *"independente do tempo"*. One press
+        no longer means one state transition regardless of speed, because now
+        it can mean three different things and only the interval tells them
+        apart. That reversal is recorded at the constants, with the reason it was
+        first deleted and why the caption comes back at 250 ms and not 1500.
+
+        EVERY PRESS RETIRES THE PENDING HANDLERS by bumping the token, and every
+        deferred handler compares it at RUN time rather than trying to cancel a
+        `threading.Timer` that may already be inside the window calls. That is
+        the owner's rule *"caso double alt c, a legenda nao habilita"*, and one
+        counter now keeps it true for the caption AND for the first panel when a
+        third press arrives.
+
+        Runs on the hotkey thread -- every window call below is thread-safe
+        (`SetWindowPos`/`ShowWindow`/`SetForegroundWindow` on the hwnd, `_ui`
+        for the .NET form members).
         """
-        now = time.monotonic()
-        prev = self._last_hotkey_press
-        self._last_hotkey_press = now
         live = window_visible(self.hwnd) if self.hwnd else False
-
-        if prev and (now - prev) <= (HOTKEY_DOUBLE_MS / 1000.0):
-            # Consume the pair — see defect 2 above.
+        self.visible = live
+        now = time.monotonic()
+        prev = getattr(self, '_last_hotkey_press', 0.0)
+        count = getattr(self, '_hotkey_press_count', 0)
+        # A press that is not inside the GESTURE window starts a NEW gesture
+        # whatever the count was, which is what makes a FOURTH press a caption
+        # rather than a fourth step. The gesture is given a NEW ID here, so a
+        # caption THIS gesture turns on can never be undone by a later, unrelated
+        # one -- `_undo_gesture_caption` refuses an id that is not the live one.
+        if not (prev and (now - prev) * 1000.0 <= HOTKEY_GESTURE_MS):
+            prev, count = 0.0, 0
+            self._hotkey_gesture_id = getattr(self, '_hotkey_gesture_id', 0) + 1
+        count += 1
+        self._last_hotkey_press = now
+        self._hotkey_press_count = count
+        # The token bump is what makes a pending handler abort when its timer
+        # fires; the timer itself cannot be cancelled here because it lives in
+        # `threading`, so the decision is made at RUN time, which is the same
+        # trick the caption push queue uses. ONE counter retires the pending
+        # caption AND the pending first panel when a third press arrives.
+        #
+        # AND IT IS BUMPED ONLY WHEN THE GESTURE GROWS -- `count >= 2` -- which
+        # `_main/hotkey-triple-oracle.py` forced. Bumping on every press made two
+        # presses 900 ms apart cancel each other out and leave the caption where
+        # it started: the second press retired the first press's already-due
+        # handler, so the owner pressed Alt+C twice and the caption toggled once.
+        # On a toggle that is the difference between "I turned it off" and
+        # "nothing happened".
+        #
+        # NOT BUMPING ON A LONE PRESS IS SAFE, and the argument is short: a press
+        # more than `HOTKEY_CAPTION_DEFER_MS` after the previous one arrives
+        # strictly after that gesture's caption timer was armed to fire
+        # (`first_press + HOTKEY_CAPTION_DEFER_MS`), so nothing is pending and
+        # nothing can be resurrected. Only a press INSIDE the deferral shares a
+        # pending timer, and that is exactly `count >= 2`.
+        if count >= 2:
+            # THE GESTURE IS NO LONGER A LONE PRESS, so if it already turned the
+            # caption on, put it back -- the owner's rule verbatim: *"caso double
+            # alt c, a legenda nao habilita"*. The caption's deferral (250) is
+            # shorter than the gesture window (700), so a press that is really the
+            # first of a double can already have applied the caption when the
+            # second arrives; undoing it HERE, at the earliest moment the gesture
+            # is known not to be lone, keeps the flash as short as it can be.
+            self._undo_gesture_caption()
+            self._hotkey_single_token = getattr(self, '_hotkey_single_token', 0) + 1
+        token = getattr(self, '_hotkey_single_token', 0)
+        if count >= 3:
+            # TRIPLE -- the RIGHT panel, immediately and finally. The gesture is
+            # closed here, so a fourth press begins a new one. The caption was
+            # already undone by the `count >= 2` branch above (the undo is
+            # idempotent and id-guarded, so this is only a belt-and-braces call
+            # for the impossible case of a gesture that jumps straight to three).
+            self._hotkey_press_count = 0
             self._last_hotkey_press = 0.0
-            dt_ms = round((now - prev) * 1000)
-            if not live:
-                # Defect 3: never surface the panel on a double. The single
-                # press that started this pair already toggled it.
-                log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                    f'mode=side action=ignore reason=panel-hidden')
-                return False
-            if self.panel_mode == 'side':
-                log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                    f'mode=side action=hide reason=already-side')
-                return self.hide_panel('hotkey-double')
-            log(f'HOTKEY_DOUBLE dt_ms={dt_ms} window_ms={HOTKEY_DOUBLE_MS} '
-                f'mode=side action=switch reason=was-strip')
-            return self.show_side('hotkey-double')
+            self._undo_gesture_caption()
+            return self.show_side('hotkey-triple')
+        # ONE arms the caption, TWO arms the FIRST panel: same token, but NOT the
+        # same deferral. The caption waits `HOTKEY_CAPTION_DEFER_MS`; the panel
+        # waits `HOTKEY_GESTURE_MS`, because a panel must not go on screen until
+        # the gesture has resolved -- the strip must never flash on the way to a
+        # triple the owner did not ask for.
+        if count == 1:
+            handler, defer_ms = self._hotkey_single, HOTKEY_CAPTION_DEFER_MS
+        else:
+            handler, defer_ms = self._hotkey_double, HOTKEY_GESTURE_MS
+        t = threading.Timer(defer_ms / 1000.0, lambda: handler(token))
+        t.daemon = True
+        t.start()
+        return None
 
-        if live:
-            return self.hide_panel('hotkey')
-        return self.show_strip('hotkey')
+    def _undo_gesture_caption(self):
+        """Put the caption back if THIS gesture is the one that turned it on.
+
+        The owner's rule, verbatim (2026-10-18): *"caso double alt c, a legenda
+        nao habilita"*. With the caption deferred by 250 ms and the gesture
+        window at 700 ms, the FIRST press of a human-speed double can already
+        have applied the caption before the second arrives -- so when the gesture
+        turns out to be a panel, the caption has to be UNDONE, not merely left
+        un-applied.
+
+        IT IS ID-GUARDED. `_hotkey_single` records the gesture id that applied
+        the caption and the state it had BEFORE, and this refuses to act unless
+        that id is still the live one. So a caption a LONE press turned on is
+        never undone by a LATER, unrelated double -- two presses 900 ms apart are
+        two gestures, and the first one's caption belongs to the first one.
+
+        IDEMPOTENT: it clears `_caption_gesture_id` as it acts, so the triple can
+        call it after the second press already did without touching the caption
+        twice. Never raises: a failed restore is a log line and False.
+        """
+        gid = getattr(self, '_hotkey_gesture_id', 0)
+        if getattr(self, '_caption_gesture_id', None) != gid:
+            return False
+        restore = bool(getattr(self, '_caption_restore', False))
+        self._caption_gesture_id = None
+        if bool(getattr(self, '_caption_wanted', False)) == restore:
+            return False
+        log(f'HOTKEY_CAPTION_UNDONE caption_on={str(restore).lower()} '
+            'reason=gesture-is-a-panel')
+        return self._set_live_enabled({'on': restore})
+
+    def _hotkey_double(self, token):
+        """Alt+C TWICE: the FIRST panel, the bottom strip.
+
+        DEFERRED BY `HOTKEY_GESTURE_MS`, for the reason in `hotkey_pressed`: the
+        strip must not go on screen only to be replaced by the right panel when a
+        third press arrives. The cost is stated at the constant -- up to 700 ms
+        after the second press, which is how long the gesture takes to resolve.
+
+        IT DOES NOT TOUCH THE CAPTION -- and since 2026-10-21 that is enforced
+        EARLIER, at the second press: `hotkey_pressed`'s `count >= 2` branch calls
+        `_undo_gesture_caption` before this method is ever armed. That is the
+        owner's rule verbatim -- *"caso double alt c, a legenda nao habilita"* --
+        and it now holds at HUMAN speed too, where the caption's 250 ms deferral
+        has already fired by the time the second press lands.
+
+        CANCELLED AT RUN TIME, not by cancelling the timer, exactly like
+        `_hotkey_single`: a Timer may already be inside `show_strip` when the
+        third press arrives, and a brief flash of the strip is precisely the
+        thing this deferral exists to prevent.
+        """
+        if token != getattr(self, '_hotkey_single_token', 0):
+            log('HOTKEY_DOUBLE_SWALLOWED double=discarded '
+                f'window_ms={HOTKEY_GESTURE_MS}')
+            return None
+        log(f'HOTKEY_DOUBLE panel=strip after_ms={HOTKEY_GESTURE_MS}')
+        return self.show_strip('hotkey-double')
+
+    def _hotkey_single(self, token):
+        """Alt+C ONCE: the caption on/off. The other half of the gesture.
+
+        DEFERRED BY `HOTKEY_CAPTION_DEFER_MS`, because the owner gave one press
+        two meanings and "the double must not enable the caption" cannot be
+        honoured without waiting to find out whether it is a double. The cost is
+        that the caption appears up to 250 ms after the key; that cost is stated
+        at the constant rather than hidden.
+
+        CANCELLED AT RUN TIME, not by cancelling the timer: a Timer may already
+        be inside `_set_live_enabled` when a second press arrives, so the token
+        is checked here and the work is skipped. Acting early instead would flash
+        the caption on and then have to switch it off, which is exactly the
+        flicker the owner is asking to remove.
+
+        IT ALSO ARMS THE UNDO. It records which gesture applied the caption and
+        what the caption was BEFORE, so `_undo_gesture_caption` can put it back
+        when the gesture turns out to be a panel -- the case that exists now that
+        the caption's deferral (250) is shorter than the gesture window (700).
+        """
+        if token != getattr(self, '_hotkey_single_token', 0):
+            log('HOTKEY_DOUBLE_SWALLOWED single=discarded '
+                f'window_ms={HOTKEY_CAPTION_DEFER_MS}')
+            return None
+        on = not getattr(self, '_caption_wanted', False)
+        # REMEMBER WHICH GESTURE TURNED IT ON, AND WHAT IT WAS BEFORE, so that
+        # `_undo_gesture_caption` can put it back if this gesture turns out to be
+        # a panel -- and so an OLDER gesture can never undo a NEWER one's caption
+        # (the id is compared). See the constant block and the undo method.
+        self._caption_gesture_id = getattr(self, '_hotkey_gesture_id', 0)
+        self._caption_restore = bool(getattr(self, '_caption_wanted', False))
+        log(f'HOTKEY_SINGLE caption_on={str(on).lower()} '
+            f'after_ms={HOTKEY_CAPTION_DEFER_MS}')
+        return self._set_live_enabled({'on': on})
 
     def place_panel(self, mode):
         """Move/resize the panel window to `mode` geometry ('strip'|'side').
@@ -5113,7 +8131,7 @@ class SottoShell:
         order in `show_strip`.
         """
         try:
-            self.display = primary_display()
+            self.display = target_display()
         except Exception as exc:  # noqa: BLE001 -- stale cache beats no window
             warn(f'PANEL_PLACE_DISPLAY_FAILED mode={mode} error={exc!r}')
         if not self.display:
@@ -5126,7 +8144,9 @@ class SottoShell:
         # place the panel before the bridge has answered.
         if self.renderer_ready.is_set():
             self.refresh_strip_height('place-' + str(mode))
-        geometry = (dock_strip(work, height=self.strip_height)
+            self.refresh_strip_width('place-' + str(mode))
+        geometry = (dock_strip(work, width=self.strip_width_live(),
+                               height=self.strip_height)
                     if mode == 'strip' else dock_right(work))
         self.geometry = geometry
         self.panel_mode = mode
@@ -5167,6 +8187,23 @@ class SottoShell:
             return False
         # Geometry only — `place_panel` no longer maps the window (P0).
         self.set_panel_surface('strip', reason)
+        # AND SAY WHICH PANEL IS UP. `hotkey_pressed` is a three-state cycle
+        # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, and
+        # the 2026-10-09 P0 refactor removed its last writer: `place_panel` is
+        # the only assignment of `panel_mode` and NOTHING calls `place_panel`
+        # any more (measured: `grep -n place_panel` on the live shell returns
+        # the definition, two comments and a docstring -- ZERO call sites). So
+        # the SECOND Alt+C painted the side panel and every press after it
+        # painted the side panel AGAIN instead of hiding: `panel_mode` still
+        # said 'strip', so the `panel_mode == 'side'` arm of the cycle was
+        # unreachable. The owner measured it on his own keyboard -- ten presses
+        # in three seconds (2026-10-14 20:18:01.297 .. 20:18:04.605) each
+        # logging `PANEL_SHOWN reason=hotkey mode=side`, and exactly ONE
+        # `PANEL_HIDDEN` in the whole 114 394-line log (reason=page) -- and
+        # reported "alt c nao aperta direito em diversos caso". The window
+        # state is still read from `window_visible` below; this line only
+        # records WHICH surface is up, on the show itself.
+        self.panel_mode = 'strip'
         # Children FIRST, so the first frame the owner sees is already the
         # panel: `foreground_unlock` maps the FORM NOW, and the first frame of
         # a mapped form is the FORM's own background. Measured 2026-10-09 by
@@ -5182,6 +8219,10 @@ class SottoShell:
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        self._start_deferred_worker('show-strip')
+        if (getattr(self, 'external_captions_available', False)
+                and self.external_caption_watcher is not None):
+            self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=strip '
             f'visible={str(self.visible).lower()} '
             'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
@@ -5189,17 +8230,37 @@ class SottoShell:
         return True
 
     def show_side(self, reason):
-        """Show the RIGHT side panel AND take foreground (double-press path).
+        """Show the RIGHT side panel AND take foreground (the cycle's 2nd step).
 
         Same activation contract as `show_strip` — the only difference is the
         geometry: `dock_right` instead of `dock_strip`. Kept as its own method
         (not a `show_panel(mode)` flag) so the `mode=` field in the log tells
         which geometry the owner is looking at.
+
+        IT IS NO LONGER "THE DOUBLE-PRESS PATH" (2026-10-13): the double-press
+        window is deleted and this is simply what the SECOND Alt+C does, from the
+        strip, at any speed. See `hotkey_pressed`.
         """
         if self.hwnd is None:
             return False
         # Geometry only — `place_panel` no longer maps the window (P0).
-        self.set_panel_surface('side', reason)
+        #
+        # CORRECTED 2026-10-12, AND THIS IS THE OWNER'S Alt+C BUG. This line
+        # passed the literal `'side'`, and `'side'` IS NOT A SURFACE NAME:
+        # `SURFACE_NAMES = ('strip', 'panel')` (:1479) and `normalise_surface_name`
+        # (:1480) returns None for anything else BY DESIGN. So every double-press
+        # logged `WARN PANEL_SURFACE_REFUSED surface="side" reason="hotkey-double"`
+        # and returned False BEFORE computing any geometry: the window was mapped
+        # with the STRIP's rect and the STRIP's document surface. That is exactly
+        # the owner's report -- two presses showed the strip and never the right
+        # panel -- and the `if not live` guard fixed earlier was necessary but not
+        # sufficient. The surface the right panel wears is `'panel'`.
+        self.set_panel_surface('panel', reason)
+        # WHICH PANEL IS UP — see `show_strip` for the measured defect. The
+        # cycle's third arm is `panel_mode == 'side'`, and that word is what
+        # makes the next Alt+C HIDE. Without it the side panel is where the
+        # cycle stops.
+        self.panel_mode = 'side'
         # Children FIRST — same P0 reason as `show_panel` and `show_strip`: a
         # raw user32 show of the FORM leaves `Chrome_WidgetWin_0` hidden and the
         # panel a flat colour for one frame. Measured 2026-10-09.
@@ -5210,6 +8271,10 @@ class SottoShell:
         foreground_unlock(self.hwnd)
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
+        self._start_deferred_worker('show-side')
+        if (getattr(self, 'external_captions_available', False)
+                and self.external_caption_watcher is not None):
+            self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=side '
             f'visible={str(self.visible).lower()} '
             'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
@@ -5322,6 +8387,12 @@ class SottoShell:
             self.tray.stop('exit')
         if self.bridge is not None:
             self.bridge.stop('exit')
+        _sidecar_exit = getattr(self, '_speaker_sidecar', None)
+        if _sidecar_exit is not None:
+            _sidecar_exit.stop('shell-exit')
+        _watch_exit = getattr(self, '_multivoice_watch', None)
+        if _watch_exit is not None:
+            _watch_exit.stop('shell-exit')
         if self.hotkey is not None:
             self.hotkey.stop()
         if self.panel_state is not None:
@@ -5351,7 +8422,12 @@ class SottoShell:
             closer = threading.Thread(target=_close, name='sotto-close',
                                       daemon=True)
             closer.start()
-            closer.join(3)
+            # THE WAIT IS SHORT (2026-10-21). The destroy is cosmetic -- the
+            # `os._exit` below kills the window anyway -- so three seconds of
+            # a frozen tray thread bought nothing and WAS the owner's
+            # *"fechar o sotto trava"*. A quarter of a second lets the destroy
+            # start and then the shell leaves.
+            closer.join(QUIT_DESTROY_WAIT_S)
         # The stats totals travel with the exit line: the push is logged at most
         # once per `STATS_LOG_INTERVAL_S`, so a short run's log would otherwise
         # never show how many samples the feed actually carried. One line, at the
@@ -5361,8 +8437,7 @@ class SottoShell:
             f'statsPushes={self.stats_pushes} statsReplies={self.stats_replies} '
             f'meterPushes={self.meter_pushes}')
         sys.stdout.flush()
-        if _LOG_FILE is not None:
-            _LOG_FILE.flush()
+        _log_drain()          # the queued mirror lines land before we go
         os._exit(code)
 
     # -- worker ------------------------------------------------------------
@@ -5467,7 +8542,71 @@ class SottoShell:
     #: `_worker_autostart_reason`, which NAMES why; this tuple is what makes the
     #: name binding. `hot-reload` is here because a file change must restart the
     #: worker it already had (the reload policy decides WHEN, not whether).
-    START_REASONS = ('default', 'with-worker', 'hot-reload', 'revive')
+    START_REASONS = ('default', 'with-worker', 'hot-reload', 'revive',
+                     # The deferred default's own reason: the first time the
+                     # panel is actually on screen (2026-10-17).
+                     'panel-open',
+                     # THE PRELOAD (2026-10-21): the app's start, in the
+                     # background, so the model is ready BEFORE the owner
+                     # presses Alt+C. See `_schedule_preload_worker`.
+                     'preload',
+                     # The player stopped supplying its own captions.
+                     'external-end',
+                     # The GPU became free after a game/video demanded it.
+                     'vram-resume')
+
+    def _schedule_preload_worker(self, delay_s=None):
+        """Load the model in the BACKGROUND, before the owner asks for it.
+
+        THE OWNER'S COMPLAINT, verbatim (2026-10-21, and this is the twentieth
+        time it is said): *"abrir ou fechar o sotto trava pra caralho meu pc"*.
+        THE MEASUREMENT BEHIND IT: the panel opens, the worker is spawned, and
+        the model takes 36.9 s to be ready (the owner's own log:
+        `BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`), so the panel he
+        just opened shows nothing for the best part of a minute -- and the
+        machine is busy the whole time.
+
+        THE FIX IS NOT A FASTER LOAD. The load's phases are timed now
+        (`load_phases_s`): the three ONNX sessions cost 1.74-2.09 s and the
+        whole load is 6.5-10.6 s on a quiet machine and 36-49 s on a busy one.
+        The cost is the machine, and the cure for "the machine is busy" is to
+        NOT ASK THE MACHINE AT THE MOMENT THE OWNER IS WATCHING.
+
+        SO: the app's start schedules the load, a delay later, in the
+        background, at the worker's BELOW_NORMAL priority. The launch stays
+        light (nothing happens during the window's first paint), the login
+        absorbs it, and the first Alt+C finds the model ready.
+
+        `SOTTO_NO_PRELOAD=1` puts the old behaviour back (the worker waits for
+        the first panel open), and a MEASUREMENT launch never preloads: those
+        reasons are not 'default' and they never reach this call.
+        """
+        if str(os.environ.get('SOTTO_NO_PRELOAD') or '').strip() == '1':
+            log('WORKER_PRELOAD declined reason=env SOTTO_NO_PRELOAD=1 '
+                'start=first-panel-open')
+            return False
+        if delay_s is None:
+            delay_s = WORKER_PRELOAD_DELAY_S
+        try:
+            delay_s = max(0.0, float(delay_s))
+        except (TypeError, ValueError):
+            delay_s = WORKER_PRELOAD_DELAY_S
+        timer = threading.Timer(delay_s, self._preload_worker)
+        timer.daemon = True
+        timer.name = 'sotto-worker-preload'
+        self._preload_timer = timer
+        timer.start()
+        log(f'WORKER_PRELOAD scheduled delay_s={delay_s}')
+        return True
+
+    def _preload_worker(self):
+        """The preload's body: start the worker, unless there is no reason to."""
+        if getattr(self, 'bridge', None) is not None:
+            log('WORKER_PRELOAD skipped reason=worker-already-running')
+            return False
+        started = self.start_worker('preload')
+        log(f'WORKER_PRELOAD done started={str(started).lower()}')
+        return bool(started)
 
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
@@ -5484,6 +8623,27 @@ class SottoShell:
             # call site on 2026-10-07. `_main/_audit-worker-start-wiring.py` now
             # gates precisely this pair.
             log(f'WORKER_AUTOSTART=declined reason={reason} by=start_worker')
+            return False
+        # ── THE ORPHAN GUARD (owner, 2026-10-21) ────────────────────────────
+        # `os._exit` does NOT kill a child process, so a worker spawned AFTER
+        # the shell decided to quit SURVIVES the app: it loads 1.2 GB of model
+        # and runs the capture ladder on a machine whose app is already closed.
+        # That is not a theory -- it is the owner's own log: at 20:50:50.070,
+        # 0.65 s before `SHELL_EXIT`, `EXTERNAL_CAPTIONS_WORKER_RESUMED
+        # reason=player-stopped` started a second worker, and the orphan's
+        # `BRIDGE_LOAD_MS ms=67969` (68 s from the spawn) is the machine the
+        # owner was complaining about. The owner, verbatim: *"abrir ou fechar o
+        # sotto, principalemnte fechar, trava pra caralho meu pc"*.
+        #
+        # THE FIX IS HERE, NOT IN THE CALLERS. One path (`on_external_captions_
+        # released`) learned this the hard way; the OTHER spawn paths -- the
+        # panel opening, the VRAM resume, the revive -- could still race the
+        # exit. A worker is a CHILD of this shell: if the shell is dying, no
+        # child may be born.
+        exiting = getattr(self, 'exiting', None)
+        if exiting is not None and exiting.is_set():
+            log(f'WORKER_AUTOSTART=declined reason={reason} '
+                'by=start_worker cause=shell-exiting')
             return False
         if self.bridge is not None:
             return False
@@ -5532,6 +8692,13 @@ class SottoShell:
             on_stats=self.on_worker_stats,
             on_meter=self.on_worker_meter,
             target_pid=target_pid,
+            # MEASURED: este parametro faltava. O --speakers chegava
+            # ao SIDECAR mas nunca ao WORKER, que e' quem o consome -- e o
+            # _main/sidecar-wiring-oracle.py arm 2 foi a RED exactamente por
+            # isso. Um diarizador a correr e a bridge sem o flag que consome o
+            # seu ficheiro e' o peor dos dois mundos: 207 MB e zero atribuicao.
+            extra_args=(['--speakers'] if getattr(self.args, 'speakers', False)
+                         else None),
         )
         log(f'WORKER_PATH {self.args.worker}')
         log(f'WORKER_COMMAND {self.args.python}')
@@ -5540,7 +8707,65 @@ class SottoShell:
             f'reason={reason}')
         if started:
             self.code_state_log(f'worker-started-{reason}')
+            # THE SIDECAR RIDES THE WORKER'S LIFETIME, AND ONLY WHEN THE WORKER
+            # ACTUALLY STARTED. Starting it on a declined worker would leave a
+            # 277 MB diarizer running against nobody, which is the failure the
+            # `WORKER_AUTOSTART=declined` path exists to prevent.
+            if getattr(self.args, 'speakers', False) \
+                    or getattr(self.args, 'speakers_cheap', False):
+                sidecar = self.speaker_sidecar()
+                if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
+                        and not getattr(self.args, 'speakers', False):
+                    # Only when the sidecar ACTUALLY started: a reader polling a
+                    # file nobody writes is a thread that reports "quiet" forever,
+                    # which reads exactly like "the detector ran and saw nothing".
+                    self.multivoice_watch().start(reason)
         return started
+
+    def speaker_sidecar(self):
+        """The one sidecar object, created on first use.
+
+        Lazy so that a shell that never asks for voices never constructs it,
+        and so `stop` sites can call this without a None check.
+        """
+        sidecar = getattr(self, '_speaker_sidecar', None)
+        if sidecar is None:
+            # FASE A vs FASE B. `--speakers` is the full attribution and keeps
+            # a byte-identical argv; `--speakers-cheap` only answers "were two
+            # voices talking at the same time?" and pays 90,3 MB instead of
+            # 135,4 MB. If BOTH are asked for, the full attribution wins: it
+            # already contains the segmentation model, so the cheap watch would
+            # be a second model doing a subset of its work.
+            tail = []
+            if not getattr(self.args, 'speakers', False) \
+                    and getattr(self.args, 'speakers_cheap', False):
+                tail = ['--watch-only']
+                save = getattr(self.args, 'save_voice_clips', '') or ''
+                if save:
+                    # ONLY reachable with the cheap arm. Writing the owner's own
+                    # call audio to disk is not a default anybody should inherit
+                    # by accident, so it is empty unless asked for BY NAME.
+                    tail += ['--watch-save', save]
+            sidecar = SpeakerSidecar(
+                command=getattr(self.args, 'python', None),
+                log=log,
+                extra_args=tail)
+            self._speaker_sidecar = sidecar
+            # FASE A's CONSUMER. Without this the watch payload would be written
+            # by nobody's reader, and a detection nobody reads decides nothing.
+            # Only for the cheap arm: `--speakers` is the full attribution and
+            # has its own path for everything it knows.
+            if tail:
+                self._multivoice_watch = MultiVoiceWatch(log=log)
+        return sidecar
+
+    def multivoice_watch(self):
+        """The Fase A reader, created on first use, never None."""
+        watch = getattr(self, '_multivoice_watch', None)
+        if watch is None:
+            watch = MultiVoiceWatch(log=log)
+            self._multivoice_watch = watch
+        return watch
 
     #: The exact sentence the panel is painted with while a revive runs.
     #: ARM S of _main/revive-pipeline-oracle.py compares it literally.
@@ -5577,6 +8802,17 @@ class SottoShell:
             if self._revive_thread is not None:
                 log(f'REVIVE_REFUSED reason=already-in-flight caller={caller}')
                 return False
+            if self._external_parked:
+                # THE PLAYER IS SUPPLYING THE CAPTION. The worker is parked
+                # ON PURPOSE, so a repair would undo the parking and start a
+                # model load for a caption that already exists. MEASURED
+                # 2026-10-20: `REVIVE_REQUESTED caller=panel-status
+                # had_bridge=false` 47 s after `EXTERNAL_CAPTIONS_WORKER_
+                # PARKED source=external:youtube:track` -- and the cycle
+                # (load, park, load, park) started again.
+                log('REVIVE_REFUSED reason=player-supplies-caption '
+                    'caller=%s' % caller)
+                return False
             self._revive_thread = threading.Thread(
                 target=self._do_revive, args=(caller,),
                 name='sotto-revive', daemon=True)
@@ -5595,6 +8831,9 @@ class SottoShell:
             log(f'REVIVE_REQUESTED caller={caller} '
                 f'had_bridge={str(bridge is not None).lower()} pid={pid}')
             self._reload_policy.stop()
+            self._paused = False
+            self._external_parked = False
+            self._vram_parked = False
             if bridge is not None:
                 bridge.stop('revive')
                 bridge.pending_error = None
@@ -5613,14 +8852,421 @@ class SottoShell:
             with self._revive_lock:
                 self._revive_thread = None
 
+    #: SEGUNDOS SEM LEGENDA NOVA ANTES DE A JANELA SUMIR SOZINHA. O dono: a legenda
+    #: fica o tempo inteiro. Cada push rearma; sem fala nova, esconde.
+    CAPTION_IDLE_HIDE_S = 6.0
+
+    def _arm_caption_idle_hide(self):
+        """Rearma o temporizador que esconde a legenda sem fala nova.
+
+        Cada legenda empurrada rearma; se NENHUMA chegar em CAPTION_IDLE_HIDE_S, a
+        janela esconde e o painel volta a mostrar a legenda dele (via show(False), que
+        escreve data-caption-window=off). A sequencia impede que um temporizador
+        velho esconda uma legenda nova.
+        """
+        import threading as _threading
+        try:
+            prev = getattr(self, '_caption_idle_timer', None)
+            if prev is not None:
+                try:
+                    prev.cancel()
+                except Exception:
+                    pass
+            seq = int(getattr(self, '_caption_idle_seq', 0) or 0) + 1
+            self._caption_idle_seq = seq
+            timer = _threading.Timer(float(self.CAPTION_IDLE_HIDE_S), self._caption_idle_hide, args=(seq,))
+            timer.daemon = True
+            self._caption_idle_timer = timer
+            timer.start()
+        except Exception as exc:  # noqa: BLE001
+            try:
+                log(f'CAPTION_IDLE_ARM_FAILED error={exc!r}')
+            except Exception:
+                pass
+
+    def _blank_caption_window(self, reason):
+        """TIRA OS PIXELS sem desligar o interruptor do dono.
+
+        MEDIDO 2026-10-17, o defeito que isto corrige, no log:
+            21:43:36.719  PANEL_SURFACE surface=strip reason=float-on window=380x220@(770,812)
+            21:43:51.360  CAPTION_WINDOW_IDLE_HIDDEN after_s=6.0 reason=no-caption
+            21:43:51.362  STRIP_HEIGHT from=220 to=40 reason=surface-strip-float-off
+            21:43:51.376  PANEL_SURFACE surface=strip reason=float-off window=380x40@(770,992)
+
+        Seis segundos sem legenda e o botao DESLIGAVA-SE SOZINHO: o
+        `_caption_idle_hide` chamava `show_caption_window(False)`, que escreve
+        `data-caption-window="off"`, e a pagina -- que pinta o `aria-pressed` a
+        partir desse atributo -- voltava a off. O dono nunca tinha tocado no botao
+        e mesmo assim a barra cresce e caia sozinha.
+
+        Sao DOIS factos e nao um: o interruptor e dele, a janela e um pixel. O
+        silencio limpa o pixel; a proxima legenda volta a escreve-lo sem tocar em
+        nada. E `hide_panel` usa a MESMA funcao: esconder o painel ja nao pode
+        matar a legenda, porque uma legenda "conectada a um painel" era
+        exactamente o que ele proibiu.
+
+        NAO escreve `data-caption-window`, e por isso o botao fica como o dono o
+        deixou."""
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return False
+        self._caption_window_shown = False
+        try:
+            self._post(lambda: ov.show(False))
+        except Exception:  # noqa: BLE001
+            pass
+        log(f'CAPTION_WINDOW_BLANKED reason={reason} wanted='
+            f'{str(bool(getattr(self, "_caption_wanted", False))).lower()}')
+        return True
+
+    def _caption_idle_hide(self, seq):
+        """Esconde a janela se NENHUMA legenda chegou depois de armar (stale-safe)."""
+        try:
+            if int(getattr(self, '_caption_idle_seq', 0) or 0) != int(seq):
+                return
+            if not getattr(self, '_caption_window_shown', False):
+                return
+            self._blank_caption_window('no-caption-for-%ss' % (self.CAPTION_IDLE_HIDE_S,))
+        except Exception as exc:  # noqa: BLE001
+            try:
+                log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
+            except Exception:
+                pass
+
+    def push_caption_to_window(self, text, previous=None, credits=None):
+        """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return False
+        # O INTERRUPTOR DO DONO E A CONDICAO. Sem isto cada linha levantava a
+        # janela sozinha -- medido no log de 2026-10-17: `CAPTION_OVERLAY_PUSH
+        # count=1 visible=true hwnd=1775132` sem nenhum clique no botao -- e o
+        # proprio texto capturado chegava ("15 mil ha 8 h", o contador de
+        # visualizacoes do YouTube), que nao e legenda nenhuma. Ele pediu que o
+        # botao seja o que liga isto; enquanto ele nao ligar, a janela nao existe.
+        if not getattr(self, '_caption_wanted', False):
+            return False
+        self._caption_window_shown = True
+        dbg = self._overlay_pushes < 3
+
+        def _apply():
+            # ON THE UI THREAD, via `_post`. `ShowWindow`/`SetWindowPos` on a
+            # native window owned by the UI thread BLOCK the calling thread
+            # until the owner pumps, and the watcher thread held the GIL while
+            # waiting -> the caption window never showed (measured 2026-10-17:
+            # `CAPTION_OVERLAY_PUSH_AFTER_SET` then silence).
+            try:
+                ov.set_work_area(self.work_area(),
+                                 (self.display or {}).get('scaleFactor') or 1.0)
+                ov.set_text(text or '', previous or '')
+                ov.show(True)
+                self._overlay_pushes += 1
+                if self._overlay_pushes in (1, 50, 500):
+                    log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
+                        f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
+                        f'text={json.dumps((text or "")[:60])}')
+            except Exception as exc:  # noqa: BLE001
+                log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
+
+        if dbg:
+            log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} post=ui')
+        try:
+            self._post(_apply)
+        except Exception:  # noqa: BLE001
+            _apply()
+        self._arm_caption_idle_hide()
+        return True
+
+    def _fit_caption_window(self, needed):
+        """Obsolete: the native overlay sizes itself to the text it renders."""
+        return False
+
+    def show_caption_window(self, on):
+        """Mostra ou esconde a janela da legenda, e diz o estado a pagina."""
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return False
+        try:
+            if on:
+                self._caption_window_shown = True
+
+                def _show():
+                    ov.set_work_area(self.work_area(),
+                                     (self.display or {}).get('scaleFactor') or 1.0)
+                    ov.show(True)
+
+                self._post(_show)
+            else:
+                self._caption_window_shown = False
+                self._post(lambda: ov.show(False))
+            # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
+            # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
+            # e sem isto as duas apareciam ao mesmo tempo. Ao mesmo tempo, isto e a REDE:
+            # enquanto a janela nova nao estiver confirmada por ele, o `data-caption-window`
+            # so e escrito DEPOIS de o `show()` ter corrido, portanto se a janela falhar a
+            # legenda do painel fica onde estava -- ele nunca fica sem legenda nenhuma.
+            #
+            # UM `exec_js` POR TRANSICAO, nao por legenda: o atributo vive no documento do
+            # painel e a folha que o le e a `zip-overlay.css`, que e a ultima a carregar.
+            try:
+                self.window.evaluate_js(
+                    'document.documentElement.setAttribute('
+                    '"data-caption-window", %s)' % ('"on"' if on else '"off"'))
+            except Exception as exc2:  # noqa: BLE001
+                log(f'CAPTION_WINDOW_PANEL_MARK_FAILED on={on} error={exc2!r}')
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WINDOW_SHOW_FAILED on={on} error={exc!r}')
+            return False
+
     def on_worker_caption(self, text, meta):
+        # THE PLAYER'S OWN CAPTIONS WIN WHILE THEY EXIST (owner, 2026-10-17).
+        # A YouTube/Stremio line is already synchronised by the player; mixing
+        # the ASR hypothesis into the same row would produce two half-lines.
+        source = ''
+        if isinstance(meta, dict):
+            source = str(meta.get('source') or '')
+        if self.external_captions_active and not source.startswith('external:'):
+            self.external_suppressed += 1
+            if self.external_suppressed in (1, 100, 1000):
+                log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
+            return
         self.emit('caption', {'text': text, 'meta': meta})
         log(f'BRIDGE_CAPTION_SENT delivered=true text={json.dumps(text)}')
+        # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
+        # deveria aparecer no MEIO EM BAIXO da minha tela"*. Uma janela propria e a unica
+        # forma de ela pousar no fundo da TELA sem a barra no topo do mesmo caixote.
+        self.push_caption_to_window(text)
         # A CLOSED line is the boundary a held reload waits for: the worker has
         # just committed a sentence, so restarting here does not cut the caption
         # the owner is reading. final is the worker's own word for a closed line.
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
+
+    def external_caption(self, text, source, final=False):
+        """One line read from the PLAYER's own captions (YouTube/Stremio).
+
+        THE OWNER'S TWO COMPLAINTS, 2026-10-18, both fixed HERE because this is
+        the one place every external line passes through: the panel and the
+        caption's own window are both fed from the line below, so a fix in the
+        reader or in the page would fix only half of what he sees.
+
+        THE STRAY "2" -- *"ainda ta aparecendo um '2' do nada na legenda"*. It is
+        the PLAYER's own `>>`, measured: 25 of 219 sent lines and 31 of 9 937
+        painted captions carried it. `clean_external_text` removes a leading
+        marker and nothing else.
+
+        THE FRAGMENTATION -- *"a legenda que passa do youtube pro sotto ... nao ta
+        funcionando"*. It is not that the player sends fragments; the player's cue
+        is CUMULATIVE, each one repeating the last and adding a few words, and
+        every one of them arrived `final=true` (213 of 219). Closing each one as a
+        sentence is what produced `"Responsible for the most ridiculous."` -- a
+        capital and a full stop in the middle of a clause. So `final` is now
+        DECIDED FROM THE TEXT: a cue that extends the previous one is a FORMING
+        line whatever the player claims, and only a cue that does not extend it
+        closes the line. That is the same split the ASR path already has.
+        """
+        text = clean_external_text(text)
+        if not text:
+            return False
+        prev = str(getattr(self, '_external_last_text', '') or '')
+        if extends_previous(prev, text):
+            final = False
+        self._external_last_text = text
+        # Only when the owner is actually looking at Sotto. While the panel is
+        # hidden there is nothing to replace, and painting a second subtitle
+        # over YouTube would be worse than doing nothing.
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        self.external_lines += 1
+        if self.external_lines in (1, 50, 500) or final:
+            log(f'EXTERNAL_CAPTION_SENT count={self.external_lines} '
+                f'source={source} final={str(bool(final)).lower()} '
+                f'text={json.dumps(text[:60])}')
+        if not self.external_captions_active:
+            self.external_captions_active = True
+            self._park_worker_for_external(source)
+        now = time.monotonic()
+        meta = {
+            'start': round(now, 2),
+            'end': round(now + 0.01, 2),
+            'chunk_start': round(now, 2),
+            'chunks': [[round(now, 2), round(now + 0.01, 2), text]],
+            'final': bool(final),
+            'source': str(source or 'external:player'),
+        }
+        # A DEDICATED CHANNEL: the player's line must REPLACE the live box, not
+        # be joined to the previous hypothesis. The panel handles this kind by
+        # resetting the engine for that source, ingesting exactly one line and,
+        # on `final`, committing it. MEASURED 2026-10-17: feeding it through
+        # the ASR `caption` kind produced "previous. previous. current." in the
+        # history, because the engine appends a new partial before its hold
+        # timer commits the previous one.
+        self.emit('external-caption', {'text': text, 'meta': meta})
+        self.push_caption_to_window(text)
+        if final:
+            self._reload_policy.boundary(closed=True, why='external-line')
+        return True
+
+    def _park_worker_for_external(self, source):
+        """Free the worker (and its VRAM) while the player supplies captions."""
+        if self._paused or self._external_parked:
+            return False
+        bridge = getattr(self, 'bridge', None)
+        if bridge is None or getattr(bridge, 'child', None) is None:
+            return False
+        log(f'EXTERNAL_CAPTIONS_WORKER_PARKED source={source} '
+            f'pid={getattr(bridge.child, "pid", None)}')
+        bridge.stop('external-captions')
+        self.bridge = None
+        self._external_parked = True
+        return True
+
+    def park_worker_for_vram(self, free_mb):
+        """Free the worker's CUDA context because another app needs the GPU."""
+        if self._paused or self._external_parked or self._vram_parked:
+            return False
+        bridge = getattr(self, 'bridge', None)
+        if bridge is None or getattr(bridge, 'child', None) is None:
+            return False
+        pid = getattr(bridge.child, 'pid', None)
+        log(f'VRAM_GUARD_PARKING free_mb={free_mb:.0f} pid={pid}')
+        bridge.stop('vram-pressure')
+        self.bridge = None
+        self._vram_parked = True
+        self.apply_panel_state(
+            'Paused - GPU in use by another app', 'idle',
+            {'title': 'GPU busy',
+             'body': 'Another application needs the GPU, so the transcription '
+                     'engines were unloaded to free their VRAM. They reload when '
+                     'the GPU is free again.'})
+        return True
+
+    def resume_after_vram(self, free_mb):
+        """The GPU is free again: reload the engines if a panel is on screen."""
+        if not self._vram_parked or self._paused:
+            return False
+        self._vram_parked = False
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f}')
+        return self.start_worker('vram-resume')
+
+    def on_external_captions_released(self):
+        """The player stopped showing captions: give the microphone back.
+
+        THIS PATH WAS THE TREADMILL. MEASURED 2026-10-18, in the owner's own
+        log: `WORKER_AUTOSTART=started reason=external-end` at 01:18:23 and again
+        at 01:21:15 -- two fresh model loads three minutes apart, 1 245 MB
+        resident, each followed by the device ladder spinning. `start_worker` is
+        a DIRECT spawn, so calling it from here bypassed `WorkerReloadPolicy`
+        entirely, and with it the `no_audio_backoff` (15 s base, doubling, 5 min
+        ceiling) that exists for precisely the "there is no audio" case.
+
+        The trigger is a UI element, not audio: the external reader polls every
+        0.30 s and this fires whenever the player's caption node disappears for
+        `RELEASE_S`. A player that blinks its caption layer therefore costs a
+        full model load, and the cadence is the player's, not ours.
+
+        THE SHELL IS DYING: DO NOT BRING THE WORKER BACK. Owner, 2026-10-20,
+        verbatim: *"abrir ou fechar o sotto, principalemnte fechar, trava pra
+        caralho meu pc. arruma."* -- and the owner's own log says why, with a
+        number: at 20:50:50.070, 0.65 s before `SHELL_EXIT`, this very method
+        logged `EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped`. That
+        worker was an ORPHAN: `os._exit` does not kill a child process, so
+        after the app had closed a second worker loaded 1.2 GB of model and
+        ran the capture ladder -- which BLOCKS for ~59 s on the owner's
+        Bluetooth headset (MEASURED: `BRIDGE_LOAD_MS ms=67969` with
+        `worker_load_s=8.75`, i.e. 68 s from the spawn of which 8.75 s is the
+        model). The microphone does not come back because the app is gone; it
+        comes back because the app is still there.
+        """
+        if self.exiting.is_set():
+            log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
+            return False
+        if not self._external_parked:
+            return False
+        self._external_parked = False
+        if self._paused:
+            return False
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        now = time.monotonic()
+        last = getattr(self, '_last_external_resume', 0.0)
+        waited = now - last
+        if last and waited < EXTERNAL_RESUME_MIN_S:
+            # DEFERRED, NOT DROPPED. The worker is wanted; it is simply not
+            # wanted `waited` seconds after the last time we loaded it. Saying so
+            # is the whole point -- a silent skip here is what made this
+            # invisible for as long as it was running.
+            log(f'EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED since_s={waited:.1f} '
+                f'min_s={EXTERNAL_RESUME_MIN_S}')
+            return False
+        self._last_external_resume = now
+        log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
+        return self.start_worker('external-end')
+
+    #: THE FLAGS THAT MAKE A RUN A MEASUREMENT. A measurement measures the
+    #: PANEL or the SHELL -- its geometry, its edit mode, its outside click.
+    #: It does NOT measure the player's captions, and `--no-hotkey` is the
+    #: shell's OWN name for it: the help says "for MEASUREMENT runs", and a
+    #: real run cannot work without Alt+C.
+    MEASUREMENT_FLAGS = ('dump_dom', 'selftest', 'memory', 'no_hotkey',
+                         'exit_after', 'probe_stats', 'probe_outside_click',
+                         'probe_edit_mode')
+
+    def _is_measurement_run(self, args=None):
+        """The measurement flag this run carries, or '' for a normal run."""
+        args = args if args is not None else getattr(self, 'args', None)
+        for name in self.MEASUREMENT_FLAGS:
+            if getattr(args, name, False):
+                return name
+        return ''
+
+    def start_external_caption_watcher(self):
+        """Start the UIA reader once per process (normal runs only)."""
+        if self.external_caption_watcher is not None:
+            return False
+        # A MEDICAO NAO MEDE AS LEGENDAS DO PLAYER. MEASURED 2026-10-20: the
+        # arm D of `_main/_strip-surface-probe.py` launched the shell with
+        # `--probe-edit-mode --exit-after 25`; the reader adopted the OWNER's
+        # YouTube window, started painting the caption lines, and that work
+        # starved the UI thread -- the edit probe (a 2 s timer) NEVER RAN and
+        # the arm died on its 70 s timeout. The same arm with the reader off
+        # ran the whole sequence and exited clean (`SHELL_EXIT rc=0
+        # reason=probe-edit-mode`).
+        #
+        # It is not only the arm: a measurement shell has no business
+        # polling the owner's browser three times a second.
+        measurement = self._is_measurement_run()
+        if measurement:
+            log(f'EXTERNAL_CAPTIONS_SKIPPED reason=measurement-run({measurement})')
+            return False
+        # THE EXTERNAL READER IS NOT THE WORKER. MEASURED 2026-10-18: launched
+        # with SOTTO_NO_WORKER=1 the log said
+        #   `EXTERNAL_CAPTIONS_SKIPPED reason=env`
+        # because this gate used to ask the WORKER's autostart reason. Reading the
+        # captions a player already shows costs NO model, NO audio device and NO
+        # VRAM -- it is one UIA query every 300 ms against a window that is
+        # already on screen. Tying it to the worker therefore switched OFF the
+        # one caption path that still works with no worker at all, which is the
+        # path the owner was testing (YouTube) when this was found.
+        #
+        # Its own switch is SOTTO_NO_EXTERNAL=1 and nothing else. If you ever want
+        # it back under the worker flag, the reason must be the OTHER way round:
+        # `--no-worker` must never imply "no captions at all".
+        if os.environ.get('SOTTO_NO_EXTERNAL') == '1':
+            log('EXTERNAL_CAPTIONS_SKIPPED reason=SOTTO_NO_EXTERNAL=1')
+            return False
+        self.external_caption_watcher = ExternalCaptionWatcher(self)
+        self.external_caption_watcher.start()
+        # THE REAL TRACK, ON ITS OWN THREAD. It answers one question -- what
+        # is this video's own caption track -- and the watcher decides what
+        # the caption box shows.
+        if self.youtube_track_thread is None:
+            self.youtube_track_thread = YouTubeTrackThread(self)
+            self.youtube_track_thread.start()
+        return True
 
     def start_click_watcher(self) -> bool:
         """Arm the outside-click watcher (see `OutsideClickWatcher`)."""
@@ -5752,6 +9398,27 @@ class SottoShell:
                 f'geometry={self.saved_geometry} click_through=true '
                 'noactivate=true')
         return True
+    def _drag_refused(self, why, x, y):
+        """DIZ PORQUE E QUE UM ARRASTO NAO SE MOVEU -- e nao o diz mil vezes por segundo.
+
+        O dono, 2026-10-15: *"a porra de arrastar a janela e completamente travado"*. Os
+        tres caminhos de recusa do `edit_drag_to` eram `return False` MUDOS: nenhum escrevia
+        no log, portanto "esta travado" nao deixava rasto nenhum para se ler. Um caminho que
+        falha em silencio e um caminho que nao se pode diagnosticar.
+
+        Rate-limited a UMA linha por segundo: isto corre a 20 amostras por segundo, e uma
+        linha por amostra afogaria o log que se quer ler. A primeira recusa escreve SEMPRE,
+        porque a primeira e a que explica o que se passou.
+        """
+        now = time.monotonic()
+        last = getattr(self, '_last_drag_refusal', None)
+        if last is not None and (now - last[1]) < 1.0 and why == last[0]:
+            return
+        self._last_drag_refusal = (why, now)
+        log(f'PANEL_EDIT_DRAG_REFUSED why={why} point=({int(x)},{int(y)}) '
+            f'edit_mode={str(self.edit_mode).lower()} '
+            f'moves={getattr(self, "edit_moves", 0)}')
+
     def edit_drag_to(self, x, y, persist=False):
         """One drag sample, applied at a LOW frequency (see the watcher).
 
@@ -5763,11 +9430,13 @@ class SottoShell:
         and the file write happens only when the drag ENDS.
         """
         if not self.edit_mode:
+            self._drag_refused('not-edit-mode', x, y)
             return False
         geometry = dict(self.geometry or {})
         width = int(geometry.get('width') or 0)
         height = int(geometry.get('height') or 0)
         if width <= 0 or height <= 0:
+            self._drag_refused('geometry-has-no-size w=%d h=%d' % (width, height), x, y)
             return False
         grab = self.edit_grab or (0, 0)
         work = self.work_area()
@@ -5952,7 +9621,19 @@ class SottoShell:
         # 'stats' is the fallback for a line that declares no tag at all.
         payload['tag'] = (fields.get('tag') if isinstance(fields, dict) else None) or 'stats'
         if isinstance(fields, dict):
-            for key in ('peak', 'blocks'):
+            # `queue_drops` IS WHITELISTED HERE, and it is a MEASUREMENT, not an invention.
+            # MEASURED 2026-10-13 by the trade-off audit: worker/sotto_worker.py:4949 prints
+            # `queue_drops=` on EVERY WORKER_STATS line, and `parse_worker_stats` keeps EVERY
+            # `key=value` token in `fields`. The shell was already HOLDING this number and
+            # filtering it out -- which is why the panel's "behind" chip (panel.js) has a
+            # branch that has NEVER been able to fire: it was waiting on a field this file
+            # was dropping.
+            #
+            # `rate` STAYS OUT, and that is not the same kind of omission: nothing here
+            # computes a rate, and the comment above is right that inventing one would
+            # light a chip about a lag nobody measured. A dropped-by-the-worker key stays
+            # ABSENT (never zero) so the panel keeps treating absent as "no measurement".
+            for key in ('peak', 'blocks', 'queue_drops'):
                 value = fields.get(key)
                 if value is None:
                     continue
@@ -5962,6 +9643,37 @@ class SottoShell:
                     continue
         return payload
     def reply_stats(self, stats_id, payload):
+        """The panel's `getStats()` pull, ANSWERED -- without holding the caller.
+
+        MEASURED 2026-10-20 (the owner's own log, `I:\cc-tmp\sotto-012524.log`):
+        93 `UI_THREAD_STALL begin-invoke not run in 10 s` and 68 `exec_js
+        TIMEOUT after 10.0s`, ALL of them inside ONE 50 s window. The chain was
+        `panel.js` -> `_stats()` -> `reply_stats()` -> `exec_js()` (SYNCHRONOUS,
+        10 s budget) -> `_ui()` -> `form.BeginInvoke` + `done.wait(10)`. Every
+        pull was a SYNCHRONOUS round trip through the UI thread, and the thread
+        that made it is the PUMP thread -- the one that carries the captions. A
+        busy UI thread therefore delayed the CAPTIONS, 93 times.
+
+        THE FIX IS THE ONE `emit_async` ALREADY HOLDS (2026-10-11): the reply
+        is a POST, not a round trip, and the number of POSTED callables is
+        BOUNDED at ONE per channel whatever the pull rate is.
+
+        BUT A REPLY IS NOT A PUSH, AND THAT IS THE WHOLE DIFFERENCE. `emit_async`
+        may REPLACE the pending payload, because its payload is a whole state
+        and the panel is a pure function of the last one it saw. A REPLY is the
+        ANSWER to an id: every id asked a question, and a question that is not
+        answered leaves the panel's Promise pending FOREVER (`statsPending[id]`
+        in the shell's own injected JS, `__sotto_stats` resolves ONE id). So
+        the pending slot here is a LIST of ids, and the ids ACCUMULATE while
+        the CALLABLES do not.
+
+        THE BOUND: `STATS_REPLY_MAX_PENDING` ids wait for the UI thread. Past
+        that, the OLDEST id is moved aside -- and it is still ANSWERED, with
+        the NEWEST payload: the payload is a whole state, so the newest state
+        is a TRUE answer to an older question. An id that is never answered
+        leaks one entry in the page's `statsPending` map, and the page is not
+        mine to fix.
+        """
         # LOGGED, not silent: the panel's own poll (`panel.js:1722`, every 1000 ms)
         # is the only way to tell "the member exists" from "the member is ANSWERED".
         # The first reply and then every 60th — one line a minute at the panel's
@@ -5970,8 +9682,93 @@ class SottoShell:
         if self.stats_replies == 1 or self.stats_replies % 60 == 0:
             log(f'BRIDGE_STATS_REPLY id={stats_id} count={self.stats_replies} '
                 f'payload={json.dumps(payload, separators=(",", ":"))}')
-        self.exec_js(f'window.__sotto_stats({json.dumps(stats_id)}, '
-                     f'{json.dumps(json.dumps(payload))})')
+
+        payload_json = json.dumps(json.dumps(payload))
+        lock = getattr(self, '_stats_reply_lock', None)
+        if lock is None:
+            lock = self._stats_reply_lock = threading.Lock()
+        with lock:
+            pending = getattr(self, '_stats_reply_pending', None)
+            if pending is None:
+                pending = self._stats_reply_pending = []
+            evicted = getattr(self, '_stats_reply_evicted', None)
+            if evicted is None:
+                evicted = self._stats_reply_evicted = []
+            if len(pending) >= STATS_REPLY_MAX_PENDING:
+                oldest = pending.pop(0)
+                evicted.append(oldest)
+                if len(evicted) > STATS_REPLY_MAX_PENDING:
+                    dropped = evicted.pop(0)
+                    log(f'STATS_REPLY_DROPPED id={dropped} '
+                        f'reason=reply-queue-overflow pending={len(pending)} '
+                        f'evicted={len(evicted)}')
+            pending.append(stats_id)
+            self._stats_reply_payload = payload_json
+            already = getattr(self, '_stats_reply_posted', False)
+            self._stats_reply_posted = True
+
+        if already:
+            # A POST IS ALREADY PENDING and it will carry this id too. Nothing
+            # new is posted: THAT is the bound.
+            return True
+
+        try:
+            queued = self._post(self._drain_stats_replies)
+        except BaseException:
+            with lock:
+                self._stats_reply_posted = False
+            raise
+        if queued is False:
+            # `_post` DROPS the callable when the form does not exist yet. The
+            # slot must not stick on that answer -- a stats channel that goes
+            # permanently silent is a worse failure than the queue this bound
+            # exists to fix.
+            with lock:
+                self._stats_reply_posted = False
+                pending.clear()
+                evicted.clear()
+            return False
+        return True
+
+    def _drain_stats_replies(self):
+        """Deliver the pending replies. Runs ON THE UI THREAD.
+
+        EVERY id is answered, with the NEWEST payload: the payload is a whole
+        state, so the newest state answers an older question truthfully, and
+        the panel's Promise resolves either way.
+        """
+        from System import Action, Func, Object, String
+        from System.Threading.Tasks import Task
+
+        def _complete(task):
+            try:
+                if task.IsFaulted:
+                    warn(f'stats reply failed: {task.Exception!r}')
+            except Exception as exc:  # noqa: BLE001
+                warn(f'stats reply failed: {exc!r}')
+
+        lock = getattr(self, '_stats_reply_lock', None)
+        if lock is None:
+            return
+        with lock:
+            pending = getattr(self, '_stats_reply_pending', [])
+            evicted = getattr(self, '_stats_reply_evicted', [])
+            ids = list(pending) + list(evicted)
+            pending.clear()
+            evicted.clear()
+            self._stats_reply_posted = False
+            payload_json = getattr(self, '_stats_reply_payload', '""')
+        if not ids:
+            return
+        for stats_id in ids:
+            script = ('window.__sotto_stats(' + json.dumps(stats_id) + ','
+                      + payload_json + ')')
+            try:
+                self.webview2.Invoke(Func[Object](
+                    lambda s=script: self.core.ExecuteScriptAsync(s).ContinueWith(
+                        Action[Task[String]](_complete))))
+            except Exception as exc:  # noqa: BLE001
+                warn(f'STATS_REPLY_FAILED id={stats_id} error={exc!r}')
     def on_worker_stats(self, parsed):
         """PUSH half of the stats channel: the worker just published counters.
 
@@ -6124,7 +9921,14 @@ class SottoShell:
         the multi-monitor case is disclosed as unmeasured in
         `_main/receipt-strip-surface.md`.
         """
-        display = self.display or primary_display()
+        # RE-READ THE MONITOR ON EVERY LAYOUT, not once at startup: the owner
+        # may move the mouse to another screen between two Alt+C presses, and
+        # the panel must follow. `target_display` is the mouse's monitor;
+        # fallback keeps a stale cache rather than refusing to lay out.
+        try:
+            display = target_display()
+        except Exception:  # noqa: BLE001
+            display = self.display or primary_display()
         self.display = display
         return display['workArea']
     def geometry_for(self, surface):
@@ -6137,6 +9941,54 @@ class SottoShell:
         """
         work = self.work_area()
         saved = self.saved_geometry
+        # A SAVED STRIP RECT KEEPS THE OWNER'S PLACEMENT, NEVER ITS HEIGHT.
+        # Measured: the saved rect in _main/panel-visibility.json (geometry.surface=strip,
+        # 1040x100) beat the stylesheet's own --strip-height/--float-height, so the floated
+        # caption the owner asked for could never reach 220px. The stylesheet is the single
+        # source of truth for this number (strip_height_from_css :6495); a saved rect is a
+        # placement, and a placement cannot outlive a resize of the thing it places.
+        if (surface == 'strip' and isinstance(saved, dict)
+                and saved.get('surface') == 'strip'):
+            live = self.strip_height
+            if int(saved.get('height') or 0) != int(live):
+                bottom = int(saved.get('workY') or 0) + int(saved.get('workHeight') or 0)
+                saved = dict(saved)
+                saved['height'] = int(live)
+                saved['y'] = bottom - int(live)
+                saved['docked'] = 'bottom-strip'
+                log('STRIP_RECT_HEIGHT from_saved=%s to_css=%s reason=%s'
+                    % (saved.get('height'), int(live), 'geometry-strip-live'))
+        # THE SAME RULE FOR THE WIDTH, AND IT IS THE OWNER'S SOLID SLAB.
+        # The saved strip rect is 1040 wide (STRIP_WIDTH) while
+        # `body[data-surface="strip"] .panel` is `max-content` -- a small pill --
+        # and the form paints every pixel the page does not with opaque #0B0F14.
+        # The width is the CONTENT's now, exactly as the height already was.
+        if surface == 'strip':
+            live_w = self.strip_width_live()
+            if live_w is not None:
+                want_w = int(live_w)
+                old_w = int(saved.get('width') or 0) if isinstance(saved, dict) else 0
+                if old_w != want_w:
+                    saved = dict(saved) if isinstance(saved, dict) else {}
+                    saved['width'] = want_w
+                    work_w = int(work.get('width') or 0)
+                    work_x = int(work.get('x') or 0)
+                    # A SLAB IS RE-CENTRED; A PLACEMENT THE OWNER MADE IS KEPT.
+                    slab = (old_w <= 0 or old_w == STRIP_WIDTH
+                            or old_w >= int(work_w * 0.9))
+                    if slab:
+                        saved['x'] = work_x + round((work_w - want_w) / 2)
+                    else:
+                        saved['x'] = max(work_x, min(int(saved.get('x') or 0),
+                                                     work_x + work_w - want_w))
+                    saved['docked'] = 'bottom-strip'
+                    saved.setdefault('surface', 'strip')
+                    saved.setdefault('height', int(self.strip_height))
+                    saved.setdefault('y', int(work.get('y') or 0)
+                                     + int(work.get('height') or 0)
+                                     - int(self.strip_height))
+                    log(f'STRIP_RECT_WIDTH from_saved={old_w} to_content={want_w} '
+                        f'recentred={bool(slab)}')
         if isinstance(saved, dict) and saved.get('surface') == surface:
             geometry, moved = clamp_geometry(saved, work)
             if moved:
@@ -6150,7 +10002,8 @@ class SottoShell:
                     f'@({geometry["workX"]},{geometry["workY"]})')
             return geometry
         if surface == 'strip':
-            return dock_strip(work, height=self.strip_height)
+            return dock_strip(work, width=self.strip_width_live(),
+                              height=self.strip_height)
         return dock_right(work)
     def strip_height_from_css(self):
         """The strip's height, READ OUT OF THE STYLESHEET. `None` if unavailable.
@@ -6163,9 +10016,23 @@ class SottoShell:
         positive finite pixel value answers `None` and the caller falls back, with
         the fallback logged.
         """
+        # THE SCRIPT WAS SYNTACTICALLY BROKEN, AND I BROKE IT. Measured
+        # 2026-10-12: `STRIP_HEIGHT source=fallback value=148 ... why=css-unavailable`
+        # on EVERY surface application, i.e. the window was sized by
+        # STRIP_HEIGHT_FALLBACK and never by the stylesheet. The cause was this
+        # string: the `flo` line was spliced BETWEEN `const v =
+        # getComputedStyle(document.documentElement)` and its `.getPropertyValue`,
+        # producing `const v = getComputedStyle(...)const flo = ...` -- a
+        # SyntaxError -- plus a second `const v` and a stray `})()`. A script that
+        # cannot parse returns nothing, so the read "failed" quietly every time and
+        # the strip stayed 148 px while `panel.css` says `--strip-height: 40px`.
+        # Built as ONE valid statement chain now, and the probe measures it.
         script = ("(() => {"
-                  "const v = getComputedStyle(document.documentElement)"
-                  f".getPropertyValue('{STRIP_HEIGHT_CSS_VAR}');"
+                  "const de = document.documentElement;"
+                  "if (!de) return null;"
+                  "const flo = de.getAttribute('data-float') === 'on';"
+                  "const v = getComputedStyle(de)"
+                  f".getPropertyValue(flo ? '{FLOAT_HEIGHT_CSS_VAR}' : '{STRIP_HEIGHT_CSS_VAR}');"
                   "return v === null || v === undefined ? null : String(v).trim();"
                   "})()")
         try:
@@ -6187,6 +10054,84 @@ class SottoShell:
             log(f'STRIP_HEIGHT_CSS_UNUSABLE raw={json.dumps(raw)}')
             return None
         return value
+    def strip_width_from_dom(self):
+        """The strip's CONTENT width, measured in the page. `None` if unavailable.
+
+        THE SOLID SLAB, AND WHY THIS EXISTS. Measured 2026-10-12, owner verbatim:
+        *"eu to vendo div com cor solida inves de invisivel"*. The strip WINDOW was
+        `STRIP_WIDTH = 1040` wide while `body[data-surface="strip"] .panel` is
+        `width: max-content` -- a small pill -- and the shell paints every pixel the
+        page does not with the form's opaque `#0B0F14` (:3929). A 1040-wide window
+        holding a ~400px pill IS a solid colour slab, with the real bottom panel
+        sitting in the middle of it: exactly what the owner described.
+
+        So the width is read from the thing that HAS it: the pill's own rendered
+        box. `max-content` is INTRINSIC, so the measurement does not depend on the
+        window's width and cannot feed back into it.
+
+        While the caption is floated (`data-float="on"`) this answers `None` ON
+        PURPOSE: the floated caption is `left:0; right:0` inside the window and
+        needs the room, so the caller keeps the wide dock. It also answers `None`
+        before the page has laid out, so a cold read never collapses the window.
+        """
+        script = ("(() => {"
+                  "const de = document.documentElement;"
+                  "if (!de) return null;"
+                  "if (de.getAttribute('data-float') === 'on') return null;"
+                  "const el = document.querySelector('.panel');"
+                  "if (!el || !el.getBoundingClientRect) return null;"
+                  "const r = el.getBoundingClientRect();"
+                  "if (!r || !(r.width > 0)) return null;"
+                  "return String(Math.ceil(r.width));"
+                  "})()")
+        try:
+            raw = self.exec_js(script)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_WIDTH_DOM_FAILED error={exc!r}')
+            return None
+        if not isinstance(raw, str) or not raw:
+            return None
+        text = raw.strip().lower()
+        if text.endswith('px'):
+            text = text[:-2].strip()
+        try:
+            value = float(text)
+        except ValueError:
+            log(f'STRIP_WIDTH_DOM_UNPARSED raw={json.dumps(raw)}')
+            return None
+        if not (value > 0) or value != value or value > 20000:
+            log(f'STRIP_WIDTH_DOM_UNUSABLE raw={json.dumps(raw)}')
+            return None
+        return value
+
+    def strip_width_live(self):
+        """The cached live content width, or `None`. See `strip_width_from_dom`."""
+        value = self.strip_width_dom
+        if not isinstance(value, (int, float)) or not (value > 0):
+            return None
+        return int(round(value))
+
+    def refresh_strip_width(self, reason='surface-strip'):
+        """Re-measure the pill and adopt it, once per real change.
+
+        The twin of `refresh_strip_height`: the reading is cached, so the
+        geometry path never calls into the page, and a theme change (which moves
+        the pill's width) is adopted on the next strip application. Returns True
+        when the number moved.
+        """
+        value = self.strip_width_from_dom()
+        if value is None:
+            if self.strip_width_dom is None:
+                log(f'STRIP_WIDTH source=fallback value={STRIP_WIDTH} '
+                    f'reason={reason} why=content-unavailable')
+            return False
+        value = int(round(value))
+        if value == self.strip_width_dom:
+            return False
+        was = self.strip_width_dom
+        self.strip_width_dom = value
+        log(f'STRIP_WIDTH from={was} to={value} source=content reason={reason}')
+        return True
     def set_strip_height(self, height, reason='runtime'):
         """Change the strip's height AT RUNTIME and re-derive the window.
 
@@ -6232,18 +10177,58 @@ class SottoShell:
             warn(f'PANEL_SURFACE_REFUSED surface={json.dumps(str(surface))} '
                  f'reason={reason}')
             return False
+        # THE SECOND HALF OF THE LOOP, AND IT BELONGS HERE AS WELL AS IN THE PAGE.
+        #
+        # MEASURED 2026-10-13 by the shell audit: in the log tail, 30 647 applications
+        # carried reason strip-float-off against FIVE real hotkey transitions -- 6129 to 1
+        # repeated work over real transitions. The surface path is 78.5% of the log BYTES,
+        # 98.2% counting the write failures, and the whole rest of the app -- worker,
+        # captions, tray, autostart -- is 1.85%.
+        #
+        # `panel.js:1913` got its guard today, which closes the loop from the page side.
+        # This is the SHELL side, on purpose: if the page guard were the only thing
+        # between this app and that loop, the next regression would be worse than the one
+        # just fixed -- and today's bounded retry in write_atomic measures 482 ms per
+        # failed write, which at the loop's own rate would be ~15 s of sleep per second.
+        #
+        # IDEMPOTENT ON (name, reason): a repeated call that asks for the surface the
+        # window is ALREADY on, for the SAME reason, does nothing and says so by
+        # returning True. A genuine transition changes the name; a genuine re-apply
+        # (hotkey, --show, hot-reload, navigation) changes the reason. Neither is
+        # suppressed. The first call of a run has no previous reason, so it always runs.
+        prev = (self.surface, getattr(self, '_surface_reason', None))
         self.surface = name
+        self._surface_reason = reason
+        if prev[0] == name and prev[1] == reason:
+            return True
+        self.surface_applied = name
         if name == 'strip':
             # THE STYLESHEET DECIDES THE HEIGHT (`panel.css:52`), and this is the
             # moment it matters: the page is loaded by the time a surface is
             # applied, so the read answers with the real number instead of a copy
             # kept in this file.
             self.refresh_strip_height(f'surface-{reason}')
+            self.refresh_strip_width(f'surface-{reason}')
         script = ('(function () { if (window.SottoSurfaces) { '
                   'window.SottoSurfaces.set(' + json.dumps(name) + '); '
                   'return window.SottoSurfaces.current(); } return null; })()')
         applied = self.exec_js(script)
         geometry = self.geometry_for(name)
+        if name == 'strip':
+            # THE DOCK BASE, AND THE OWNER'S DRAG RESTORED FROM THE PAGE.
+            # The page paints the saved offset as a CSS transform, but it cannot
+            # move the WINDOW, so without this the bar would be pushed out of a
+            # window that is now exactly the pill. The offset is read from the
+            # page (its localStorage is the record) and the shell moves the
+            # window, then tells the page to stop transforming so the two do not
+            # add up.
+            self._strip_dock_base = (int(geometry['x']), int(geometry['y']))
+            offset = self._strip_offset_from_page()
+            if offset != (0, 0):
+                geometry = self._strip_offset_geometry(geometry, offset)
+                self.exec_js(STRIP_MOVED_JS)
+                log(f'STRIP_DRAG_RESTORED offset={offset} '
+                    f'to=({geometry["x"]},{geometry["y"]})')
         self._apply_window_geometry(geometry, reason=f'surface-{name}')
         self.surface_applied = name
         log(f'PANEL_SURFACE surface={name} reason={reason} '
@@ -6254,6 +10239,278 @@ class SottoShell:
             f'edit_mode={str(self.edit_mode).lower()}')
         self.publish_panel_visibility(f'surface-{name}')
         return True
+    def _strip_offset_from_page(self):
+        """The owner's strip drag offset, READ OUT OF THE PAGE. `(0, 0)` if none.
+
+        `localStorage['sotto:strip-offset']` is `{"x": int, "y": int, "v": 1}`
+        (panel.html:1083): the CUMULATIVE offset in DIP from the docked position.
+        The page owns the record and the shell reads it, so there is exactly one
+        copy of the number. Anything unparsable answers `(0, 0)` -- a bar at the
+        dock is the honest fallback for a record that cannot be read."""
+        script = ("(() => { try {"
+                  "const raw = window.localStorage.getItem('sotto:strip-offset');"
+                  "if (!raw) return null;"
+                  "const v = JSON.parse(raw);"
+                  "if (!v || typeof v !== 'object') return null;"
+                  "return String(Math.round(Number(v.x) || 0)) + ','"
+                  "     + String(Math.round(Number(v.y) || 0));"
+                  "} catch (err) { return null; } })()")
+        try:
+            raw = self.exec_js(script)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_OFFSET_READ_FAILED error={exc!r}')
+            return (0, 0)
+        if not isinstance(raw, str) or ',' not in raw:
+            return (0, 0)
+        a, _, b = raw.partition(',')
+        try:
+            return (int(float(a)), int(float(b)))
+        except ValueError:
+            log(f'STRIP_OFFSET_UNPARSED raw={json.dumps(raw)}')
+            return (0, 0)
+
+    def _strip_offset_geometry(self, geometry, offset):
+        """`geometry` shifted by `offset` and CLAMPED into the work area."""
+        work = self.work_area()
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        g = dict(geometry)
+        g['x'] = max(work['x'], min(int(geometry.get('x') or 0) + int(offset[0]),
+                                    work['x'] + work['width'] - width))
+        g['y'] = max(work['y'], min(int(geometry.get('y') or 0) + int(offset[1]),
+                                    work['y'] + work['height'] - height))
+        g['docked'] = 'strip-dragged'
+        return g
+
+    def _set_strip_offset(self, payload):
+        """The page's strip drag: move the WINDOW by the offset it reports.
+
+        The offset is CUMULATIVE from the dock, so this never accumulates a
+        delta -- `_strip_dock_base` is the fixed origin. The move is a bare
+        `SetWindowPos` with `SWP_NOSIZE`, the same shape as `edit_drag_to`, and
+        the geometry is persisted only when the drag ENDS."""
+        payload = payload or {}
+        try:
+            dx = int(round(float(payload.get('x') or 0)))
+            dy = int(round(float(payload.get('y') or 0)))
+        except (TypeError, ValueError):
+            log(f'STRIP_DRAG_REFUSED why=unparsable payload={payload!r}')
+            return
+        phase = str(payload.get('phase') or 'move')
+        if self.hwnd is None:
+            return
+        if self.surface_applied != 'strip':
+            log(f'STRIP_DRAG_REFUSED why=not-strip surface={self.surface_applied}')
+            return
+        base = self._strip_dock_base
+        if base is None:
+            geometry = dict(self.geometry or {})
+            base = (int(geometry.get('x') or 0), int(geometry.get('y') or 0))
+            self._strip_dock_base = base
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            return
+        work = self.work_area()
+        nx = max(work['x'], min(base[0] + dx, work['x'] + work['width'] - width))
+        ny = max(work['y'], min(base[1] + dy, work['y'] + work['height'] - height))
+        geometry['x'] = nx
+        geometry['y'] = ny
+        geometry['docked'] = 'strip-dragged'
+        self.geometry = geometry
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        try:
+            user32.SetWindowPos(self.hwnd, HWND_TOPMOST,
+                                int(nx * scale), int(ny * scale), 0, 0,
+                                SWP_NOSIZE | SWP_NOACTIVATE)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_DRAG_MOVE_FAILED error={exc!r}')
+            return
+        # The page stops transforming once the WINDOW moves, or the two add up.
+        #
+        # ONCE PER DRAG, NOT ONCE PER MOVE. MEASURED 2026-10-13 by the audit lane: one
+        # real drag produced 277 moves in 1.86 s -- about 149 a second -- and this was a
+        # SYNCHRONOUS `ExecuteScriptAsync` round trip on every one of them. The script it
+        # runs only sets `data-strip-moved` to '1', which is IDEMPOTENT: after the first
+        # call it can change nothing. The sibling path `edit_drag_to` refuses to call
+        # `exec_js` at all, in its own words "so the loop stays responsive".
+        #
+        # It is NOT removed, because the comment above is a real reason: the page must
+        # stop transforming once the window moves. It is sent on the FIRST move of a drag
+        # and the flag is cleared on `end`, so the next drag gets it again. The flag is
+        # read with getattr so this needs no init site and cannot break an older object.
+        if not getattr(self, '_strip_moved_sent', False):
+            self.exec_js(STRIP_MOVED_JS)
+            self._strip_moved_sent = True
+        if phase == 'end':
+            self._strip_moved_sent = False
+            self.saved_geometry = self.geometry_snapshot()
+            self.publish_panel_visibility('strip-drag')
+        log(f'STRIP_DRAG phase={phase} offset=({dx},{dy}) to=({nx},{ny}) '
+            f'base={base} work={work["width"]}x{work["height"]}')
+
+    #: Windows' "start a caption drag" message pair. `WM_NCLBUTTONDOWN` with
+    #: `HTCAPTION` puts the window manager in its OWN modal move loop: the mouse
+    #: is tracked by Windows, not by the page, so there is no per-move bridge
+    #: message and no per-move `SetWindowPos`.
+    WM_NCLBUTTONDOWN = 0x00A1
+    HTCAPTION = 2
+
+    def _begin_window_drag(self, payload):
+        """ONE native drag for the panel header or the bottom strip.
+
+        Owner, 2026-10-17: *"mover os paineis e extremamente ruim e nao
+        otimizado, parece q foi implementado completamente errado."* The old
+        path moved the window from a JS `pointermove` at up to ~150 samples a
+        second, every one of them a bridge hop plus a `SetWindowPos` plus a log
+        line. This enters `DefWindowProc`'s move loop instead: `SendMessageW`
+        blocks until the owner releases the mouse, and the window follows the
+        cursor at compositor speed with zero page involvement.
+
+        The final rect is read after the loop returns, clamped into the work
+        area, and persisted exactly once -- the same `geometry`/_main/
+        panel-visibility.json contract the edit-mode drag uses.
+        """
+        payload = payload or {}
+        surface = str(payload.get('surface') or self.surface_applied or 'panel')
+        if surface not in ('panel', 'strip'):
+            surface = self.surface_applied or 'panel'
+        hwnd = self.hwnd
+        if not hwnd:
+            log(f'WINDOW_DRAG_REFUSED why=no-hwnd surface={surface}')
+            return
+        log(f'WINDOW_DRAG_BEGIN surface={surface} hwnd={hwnd}')
+        try:
+            user32.ReleaseCapture()
+            # The return value is 0 for this message (DefWindowProc), so it is
+            # deliberately not tested: the observable result is the rect below.
+            user32.SendMessageW(hwnd, self.WM_NCLBUTTONDOWN, self.HTCAPTION, 0)
+        except Exception as exc:  # noqa: BLE001
+            log(f'WINDOW_DRAG_FAILED surface={surface} error={exc!r}')
+            return
+        self._persist_dragged_geometry(hwnd, surface)
+
+    def _persist_dragged_geometry(self, hwnd, surface):
+        """Read the rect the native loop left, clamp it, and persist it ONCE."""
+        rect = RECT()
+        try:
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                log(f'WINDOW_DRAG_RECT_FAILED surface={surface} '
+                    f'last_error={ctypes.get_last_error()}')
+                return
+        except Exception as exc:  # noqa: BLE001
+            log(f'WINDOW_DRAG_RECT_FAILED surface={surface} error={exc!r}')
+            return
+        # The drop may be on another monitor: refresh the target (and therefore
+        # its scale factor) BEFORE converting the physical rect to DIP.
+        work = self.work_area()
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        width = max(0, int(round((rect.right - rect.left) / scale)))
+        height = max(0, int(round((rect.bottom - rect.top) / scale)))
+        if width <= 0 or height <= 0:
+            log(f'WINDOW_DRAG_RECT_EMPTY surface={surface} '
+                f'rect=({rect.left},{rect.top},{rect.right},{rect.bottom})')
+            return
+        x = int(round(rect.left / scale))
+        y = int(round(rect.top / scale))
+        clamped_x = max(work['x'], min(x, work['x'] + work['width'] - width))
+        clamped_y = max(work['y'], min(y, work['y'] + work['height'] - height))
+        # A drag that ran past an edge is pulled back, so the window can never
+        # be left unreachable. One `SetWindowPos`, only when the clamp moved it.
+        if (clamped_x, clamped_y) != (x, y):
+            try:
+                user32.SetWindowPos(hwnd, HWND_TOPMOST,
+                                    int(clamped_x * scale), int(clamped_y * scale),
+                                    0, 0, SWP_NOSIZE | SWP_NOACTIVATE)
+            except Exception as exc:  # noqa: BLE001
+                log(f'WINDOW_DRAG_CLAMP_FAILED surface={surface} error={exc!r}')
+        geometry = dict(self.geometry or {})
+        geometry.update({
+            'surface': self.surface_applied,
+            'x': clamped_x,
+            'y': clamped_y,
+            'width': width,
+            'height': height,
+            'docked': 'window-drag',
+            'workWidth': work['width'],
+            'workHeight': work['height'],
+        })
+        self.geometry = geometry
+        self.saved_geometry = self.geometry_snapshot()
+        self.publish_panel_visibility('window-drag')
+        log(f'WINDOW_DRAG_DONE surface={surface} to=({clamped_x},{clamped_y}) '
+            f'size={width}x{height} from=({x},{y})')
+
+    def _set_live_enabled(self, payload):
+        """O interruptor do botao LIVE: mostra/esconde a janela da legenda.
+
+        ISTO E UM INTERRUPTOR DO DONO, NAO UM IMPULSO. `_caption_wanted` fica
+        True ate ele voltar a clicar; e `push_caption_to_window` so escreve na
+        janela quando a flag esta ligada. Antes, cada linha de legenda levantava a
+        janela por si (sem clique nenhum no log) e o botao so pintava.
+
+        `show_caption_window(on)` continua a ser quem mostra/esconde e quem escreve
+        `data-caption-window` -- a pagina pinta o botao a partir desse atributo.
+
+        O PANEL NAO SE FECHA. A regra de 2026-10-17 ("ligar a legenda esconde o
+        painel") foi TROCADA pelo dono a 2026-10-19, verbatim: *"clicar pra
+        ligar a legenda pelo painel do alt c nao deve fechar o painel. com o painel
+        aberto, usar alt c uma vez nao deve fechar o painel. deve ligar ou desligar
+        a legenda mesmo com qualquer dos paineis abertos."*
+
+        O QUE SE VIA, e porque o dono escrevia que o Alt+C "nao ta ligando ou
+        desligando bem": um Alt+C com o painel aberto LIGAVA a legenda E FECHAVA
+        o painel. Duas accoes num gesto, e a segunda apagava a prova da primeira.
+        O interruptor e um interruptor: liga, desliga, e nao mexe no painel.
+
+        `show_caption_window(on)` continua a ser quem mostra/esconde a janela
+        NATIVA da legenda e quem escreve `data-caption-window` -- a pagina pinta o
+        botao e o indicador a partir desse atributo. O que mudou foi so o
+        `hide_panel('caption-on')` que accompanyava, que nao existe mais.
+
+        A JANELA NATIVA E SEPARADA DO PAINEL, e por isso os dois podem estar
+        visiveis ao mesmo tempo: a legenda e um overlay livre na tela do dono
+        ("sem estar conectada a qualquer painel", owner, 2026-10-17), e o painel
+        e onde se liga e desliga. Fechar um por causa do outro era o defeito."""
+        on = bool((payload or {}).get('on'))
+        try:
+            self._caption_wanted = on
+            # O PANEL NAO SE FECHA -- ver a docstring: a ordem de 2026-10-19
+            # trocou a de 2026-10-17, e o `hide_panel('caption-on')` que vivia
+            # aqui era a causa do "o alt c nao ta ligando ou desligando bem".
+            self.show_caption_window(on)
+            log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()} '
+                f'panel_closed=false')
+        except Exception as exc:  # noqa: BLE001
+            log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
+
+    def _pause_shell(self, payload):
+        """PAUSE = UNLOAD the worker, freeing its CUDA context and VRAM."""
+        reason = str((payload or {}).get('reason') or 'panel')
+        bridge = getattr(self, 'bridge', None)
+        if bridge is None or getattr(bridge, 'child', None) is None:
+            self._paused = True
+            log(f'WORKER_PAUSED reason={reason} already=true')
+            self.apply_panel_state(
+                'Paused - engines unloaded', 'idle',
+                {'title': 'Paused',
+                 'body': 'The live and background engines are unloaded. Click the '
+                         'status to reload them.'})
+            return {'paused': True, 'text': 'Paused - engines unloaded'}
+        pid = getattr(bridge.child, 'pid', None)
+        bridge.stop('pause')
+        self.bridge = None
+        self._paused = True
+        self._external_parked = False
+        log(f'WORKER_PAUSED reason={reason} pid={pid}')
+        self.apply_panel_state(
+            'Paused - engines unloaded', 'idle',
+            {'title': 'Paused',
+             'body': 'The live and background engines are unloaded, so their VRAM '
+                     'is free. Click the status to reload them.'})
+        return {'paused': True, 'text': 'Paused - engines unloaded'}
+
     def _apply_window_geometry(self, geometry, reason='surface'):
         """Move/resize the NATIVE window, then pin the client area to it.
 
@@ -6507,10 +10764,19 @@ class SottoShell:
             log(f'HOT_RELOAD_WORKER_SKIPPED files={json.dumps(files)} '
                 'reason=no-worker-running')
             return False
+        # THE FIRST DOOR: do not even QUEUE it. Policy, debounce, idle timers and
+        # the boundary all run before the last door, and each of them costs the
+        # owner a log line and a timer for something that is now refused.
+        if not worker_restart_allowed(files):
+            return False
         return self._reload_policy.request(files)
 
     def _do_worker_restart(self, files):
         """The one place a hot reload actually stops and restarts the worker."""
+        # THE LAST DOOR. Everything upstream can be edited by accident; this
+        # cannot be argued with. Default OFF — see `worker_restart_allowed`.
+        if not worker_restart_allowed(files):
+            return False
         if self.bridge is None:
             return False
         self.bridge.stop('hot-reload')
@@ -6536,8 +10802,11 @@ class SottoShell:
         needs a drawable surface).
         """
         dump = self.exec_js(DUMP_DOM_PROBE)
-        if dump is None:
-            log('DOMDUMP failed: probe returned nothing')
+        if not dump:
+            # THE REASON, NOT A BARE "nothing" (2026-10-20): a `NoAnswer`
+            # says WHICH kind of nothing it was.
+            reason = dump.get('reason') if isinstance(dump, NoAnswer) else 'empty'
+            log(f'DOMDUMP failed: probe returned nothing reason={reason}')
             self.request_exit(3, reason='dump-dom-failed')
             return
         log('DOMDUMP ' + json.dumps(dump, separators=(',', ':')))
@@ -6711,25 +10980,30 @@ class SottoShell:
         return report
 
     def run_selftest(self):
-        """Prove the hotkey registers and toggles, without a human at a keyboard.
+        """Prove the hotkey registers and DISAMBIGUATES, without a human at a keyboard.
 
         The press is a real WM_HOTKEY posted to the registering thread's own
         queue, so the delivery path under test is the one the OS writes to.
-        The two presses land ~800 ms apart. That distance is MEANINGFUL ONLY
-        against `HOTKEY_DOUBLE_MS`, and the owner moved the goalposts on
-        2026-10-09 (400 ms -> 1500 ms, verbatim *"aumenta a janela de tempo do
-        double tap do alt c pra 1 sec e meio"*). At 400 ms these two presses
-        were OUTSIDE the window and therefore two SINGLE presses: press 1 SHOWS
-        the strip, press 2 hides it. At 1500 ms they are INSIDE it, so this
-        same sequence now reads as a DOUBLE - press 1 shows the strip and press
-        2 converts it to the RIGHT side panel - which is a DIFFERENT assertion.
 
-        So the interval is stated against the constant and asserted, not
-        assumed: the probe derives `WANT_DOUBLE = 800 < HOTKEY_DOUBLE_MS` from
-        the live value and checks the outcome it implies (the strip toggles
-        twice, or opens the side panel). A hardcoded "each is a single press"
-        would be a sentence that quietly becomes false the next time the
-        constant moves - which is exactly what happened here.
+        IT NOW TESTS THE 2026-10-18 CONTRACT, NOT THE 2026-10-13 ONE. This arm
+        used to press twice ~800 ms apart and assert the PANEL was up, because
+        that contract said the interval decided nothing. Under the contract the
+        owner set today -- one press is the caption, two fast presses are the
+        first panel -- 800 ms apart is past the `HOTKEY_GESTURE_MS` (700) window,
+        so it is TWO SINGLES: the panel must stay DOWN and the caption must have
+        toggled twice. A self-test that still asserted the old answer would have
+        gone red for a correct build.
+
+            arm 1  one press, then wait past the caption's deferral
+                   -> caption flipped ONCE, panel still DOWN
+            arm 2  two presses 120 ms apart (inside the gesture window)
+                   -> panel UP on the FIRST panel, caption UNCHANGED
+
+        Arm 2 is the one that can fail for the reason that matters: if the
+        deferred single is not cancelled, the caption goes on inside the double
+        and the owner's *"caso double alt c, a legenda nao habilita"* is broken.
+        Arm 2's wait is now `HOTKEY_GESTURE_MS`, because the panel waits the
+        gesture window and not the caption's 250 ms deferral (2026-10-21).
         """
         rc = 0
         if self.hotkey is None:
@@ -6747,18 +11021,32 @@ class SottoShell:
                 f'accelerator={self.hotkey.accelerator}')
             before = foreground_window()
             self.hide_panel('selftest-baseline')
-            log(f'SELFTEST state=hidden visible={str(self.visible).lower()}')
+            caption_start = bool(getattr(self, '_caption_wanted', False))
+            log(f'SELFTEST state=hidden visible={str(self.visible).lower()} '
+                f'caption={str(caption_start).lower()}')
+            # ARM 1 -- ONE PRESS IS THE CAPTION, and the panel stays DOWN.
             pressed = self.hotkey.simulate_press()
-            time.sleep(0.8)
-            log(f'SELFTEST state=after-hotkey-1 '
-                f'visible={str(self.visible).lower()} '
-                f'press_delivered={str(pressed).lower()} '
-                f'presses={self.hotkey.pressed}')
+            time.sleep(HOTKEY_CAPTION_DEFER_MS / 1000.0 + 0.55)
+            arm1_caption = bool(getattr(self, '_caption_wanted', False))
+            arm1_visible = bool(self.visible)
+            log(f'SELFTEST arm=single visible={str(arm1_visible).lower()} '
+                f'caption={str(arm1_caption).lower()} '
+                f'caption_flipped={str(arm1_caption != caption_start).lower()}')
+            # Put it back so arm 2 starts from a known state.
+            if arm1_caption != caption_start:
+                self._set_live_enabled({'on': caption_start})
+                time.sleep(0.2)
+            # ARM 2 -- A DOUBLE IS THE FIRST PANEL, AND THE CAPTION DOES NOT MOVE.
+            caption_before_double = bool(getattr(self, '_caption_wanted', False))
             self.hotkey.simulate_press()
-            time.sleep(0.8)
-            log(f'SELFTEST state=after-hotkey-2 '
-                f'visible={str(self.visible).lower()} '
-                f'presses={self.hotkey.pressed}')
+            time.sleep(0.12)          # inside HOTKEY_GESTURE_MS on purpose
+            self.hotkey.simulate_press()
+            time.sleep(HOTKEY_GESTURE_MS / 1000.0 + 0.55)
+            arm2_caption = bool(getattr(self, '_caption_wanted', False))
+            arm2_visible = bool(self.visible)
+            log(f'SELFTEST arm=double visible={str(arm2_visible).lower()} '
+                f'caption={str(arm2_caption).lower()} '
+                f'caption_moved={str(arm2_caption != caption_before_double).lower()}')
             after = foreground_window()
             after_pid = window_pid(after)
             focus_stolen = before != after
@@ -6766,21 +11054,16 @@ class SottoShell:
             log(f'SELFTEST focus_before={before} focus_after={after} '
                 f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
                 f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
-            # WHAT THE SECOND PRESS MEANS depends on `HOTKEY_DOUBLE_MS`, so the
-            # expectation has to be DERIVED from it rather than typed. The two
-            # simulated presses land ~800 ms apart, so with a window of 400 ms
-            # they were two SINGLE presses (press 2 hides the strip) and with the
-            # owner's 1500 ms they are a DOUBLE (press 2 opens the RIGHT side
-            # panel). The old test hardcoded the first reading and went RED the
-            # moment the constant moved - a sentence that quietly became false,
-            # which is the same failure mode this repo has already been bitten by.
-            presses_are_double = 0.8 < (HOTKEY_DOUBLE_MS / 1000.0)
-            # `want_visible` is what the window SHOULD read after both presses.
-            want_visible = presses_are_double
+            # A SINGLE must flip the caption and leave the panel DOWN; a DOUBLE
+            # must raise the FIRST panel and leave the caption where it was.
+            want_visible = True
             reading = {
                 'registered': bool(self.hotkey.registered), 'pressed': bool(pressed),
-                'presses': self.hotkey.pressed, 'visible': bool(self.visible),
+                'presses': self.hotkey.pressed, 'visible': arm2_visible,
                 'want_visible': bool(want_visible),
+                'single_flipped_caption': bool(arm1_caption != caption_start),
+                'single_left_panel_down': not arm1_visible,
+                'double_left_caption': arm2_caption == caption_before_double,
                 'focus_stolen_by_own_window': stolen_by_us,
                 'focus_before': before, 'focus_after': after,
             }
@@ -6790,12 +11073,10 @@ class SottoShell:
             else:
                 log('SELFTEST broken=false focus_attributed='
                     f'{str(stolen_by_us).lower()}')
-            log('SELFTEST expectation=%s(%.0fms %s %.0fms) '
+            log('SELFTEST expectation=cycle(%.0fms apart, no window) '
                 'want_visible=%s got_visible=%s presses=%d registered=%s '
                 'delivered=%s'
-                % ('double' if presses_are_double else 'singles', 800.0,
-                   '>' if presses_are_double else '<', HOTKEY_DOUBLE_MS,
-                   str(want_visible).lower(), str(self.visible).lower(),
+                % (800.0, str(want_visible).lower(), str(self.visible).lower(),
                    self.hotkey.pressed, str(self.hotkey.registered).lower(),
                    str(pressed).lower()))
             rc = 3 if broken else 0
@@ -6818,9 +11099,17 @@ class WorkerReloadPolicy:
 
       1. DEBOUNCE -- a trailing window (WORKER_RELOAD_DEBOUNCE_MS) coalesces a
          burst of saves from several lanes into ONE request.
-      2. GUARD -- a worker that is mid-stream is never restarted under the
-         owner's feet. is_capturing() is the state the owner is watching, so a
-         reload requested while it is true is HELD. It lands at the next
+      2. GUARD -- a worker that is TRANSCRIBING is never restarted under the
+         owner's feet. `is_capturing()` alone was ONE flag for TWO different
+         workers -- one mid-sentence, and one merely holding a stream open -- and
+         on a host with nothing routed into the cable the second is the NORMAL
+         state. So the guard held a worker the owner was not watching, and the
+         ceiling then forced the reload anyway: MEASURED in the owner's own log,
+         max_defer_ms=25000 but waited_ms=32046, i.e. the deferral bought nothing
+         and cost a 32 s stall plus a warm-up. The state the owner is watching is
+         a CAPTION IN FLIGHT: the guard holds while last_caption_at is younger
+         than max_defer_ms, and a worker with nothing in flight is applied at once
+         (HOT_RELOAD_WORKER_IDLE_APPLIED). A held reload lands at the next
          boundary: either a natural respawn already re-read the file, or the
          reload is applied here.
       3. FLOOR -- the model may not be reloaded more often than
@@ -6838,8 +11127,11 @@ class WorkerReloadPolicy:
         signal that passes the capture guard while capture stays open. It is
         raised by on_worker_caption on a final:true caption.
       * WORKER_RELOAD_MAX_DEFER_MS -- the fallback for a stretch that closes no
-        line at all. After this long the reload is FORCED even with no boundary,
-        because a stale running worker is worse than one warm-up.
+          line at all. After this long the reload is FORCED even with no boundary,
+          because a stale running worker is worse than one warm-up. The deferral
+          re-arms with the REMAINDER when that is shorter than the re-check, so
+          this ceiling is a DEADLINE and not a hint: it used to be observed one
+          whole re-check late, which is how 25000 really meant 32046.
 
     The FLOOR applies AFTER both: it bounds the RATE of reloads, which is the
     owner's rule, and it is never a reason to wait for one. So the decision
@@ -6985,6 +11277,49 @@ class WorkerReloadPolicy:
             self.log(f'HOT_RELOAD_WORKER_SKIPPED files={len(files)} '
                      'reason=no-worker-running')
             return
+
+        # ── THE ANSWER THE POLICY WAS ALREADY COMPUTING AND IGNORING ────────
+        # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2
+        # minutos inteiros? ... faz guard pra essa merda NUNCA MAIS ACONTECER"*, e
+        # depois *"vai no disco e o watcher e entenda por que ele nao impediu essa
+        # caga gigante e arruma ELE"*.
+        #
+        # ESTA É A PROVA, E ESTÁ NO LOG DELE, ÀS 22:35:25:
+        #
+        #   HOT_RELOAD_WORKER_IDLE_APPLIED files=1 reason=no-caption-in-25000ms
+        #   code_is_stale=False
+        #   sha256_disk=582b860b3ffe61c4 sha256_at_spawn=582b860b3ffe61c4
+        #   cost=one-model-warm-up
+        #
+        # **OS DOIS DIGESTS SÃO IDÊNTICOS.** O worker já corria exactamente os
+        # bytes que estavam no disco. A política PERGUNTOU se o código estava
+        # velho — `code_is_stale` — recebeu `False` — e reiniciou na mesma, e
+        # pagou um warm-up de ~2 GB na GPU do dono por bytes que já eram os
+        # dele.
+        #
+        # Não foi o watcher. O watcher (`hot_reload.py`) só decide QUANDO um
+        # estouro de edições assentou, e fez isso bem. Não foi o tecto, nem o
+        # debounce, nem o floor. Foi esta política, que tem o campo
+        # `code_is_stale` em todas as suas linhas de log — o que prova que alguém
+        # o calculava — e o tratava como um facto a reportar, nunca como uma
+        # condição a respeitar. Um digest que se imprime e não se obedece não é
+        # um digest; é decoração.
+        #
+        # AGORA É UMA CONDIÇÃO. E é a primeira de todas, porque é a mais barata
+        # e a mais verdadeira: não há nada a aplicar.
+        disk_digest, loaded_digest = self._digests(bridge)
+        if disk_digest and loaded_digest and disk_digest == loaded_digest:
+            self.pending = None
+            self._boundary_hit = False
+            self.log(
+                f'HOT_RELOAD_WORKER_SKIPPED files={len(files)} '
+                f'reason=code-not-stale code_is_stale=False '
+                f'sha256_disk={disk_digest} sha256_at_spawn={loaded_digest} '
+                f'waited_ms={int((time.monotonic() - self.pending_since) * 1000)} '
+                '-- o worker ja corre estes bytes; nao ha nada a aplicar, e '
+                'aplicar nada nao custa 2 GB')
+            return
+
         waited_ms = int((time.monotonic() - self.pending_since) * 1000)
         capturing = bool(bridge.is_capturing())
         # RULE 2 and its ceiling. boundary was raised by a closed line; forced
@@ -6992,8 +11327,35 @@ class WorkerReloadPolicy:
         # on both paths because the useful question is never "did it restart"
         # but "was the running code stale when it did".
         boundary = self._boundary_hit
+        # -- THE SECOND FACT (added 2026-10-12) ------------------------------
+        # `is_capturing()` is ONE flag for TWO different workers: one that is
+        # TRANSCRIBING, and one that merely has a stream OPEN. The guard exists
+        # to avoid cutting the caption the owner is READING, so only the first
+        # is under his feet -- and on this box the second is the measured
+        # normal (a tap that is open and delivering nothing, because nothing is
+        # routed into it). MEASURED in the owner's own log, this revision:
+        # pid 11584, 4 940 captions, then a worker-file edit -- the guard
+        # DEFERRED at every check and the ceiling FORCED the reload anyway,
+        # `max_defer_ms=25000` but `waited_ms=32046`. The deferral bought
+        # NOTHING and cost a 32 s stall of the capture pipeline plus a model
+        # warm-up. A worker that has produced no caption within the ceiling has
+        # NOTHING in flight, so there is no boundary worth waiting for: an idle
+        # endpoint will never produce one. Hold only while a caption is RECENT.
+        last_caption_at = getattr(bridge, 'last_caption_at', None)
+        now_s = time.monotonic()
+        if last_caption_at is None:
+            # A bridge that cannot report the second fact is assumed to be in the
+            # PROTECTED state: the guard's failure mode must always be "do NOT
+            # restart". (The shell's own StandInBridge is exactly such a bridge,
+            # and its guard arm asserts this hold without carrying a clock.)
+            transcribing = True
+        else:
+            last_caption_at = float(last_caption_at)
+            transcribing = bool(
+                last_caption_at > 0.0
+                and (now_s - last_caption_at) * 1000.0 < self.max_defer_ms)
         forced = capturing and not boundary and waited_ms >= self.max_defer_ms
-        if capturing and not boundary and not forced:
+        if capturing and not boundary and not forced and transcribing:
             now = time.monotonic()
             if now - self._defer_logged_at >= WORKER_RELOAD_DEFER_LOG_MS / 1000.0:
                 self._defer_logged_at = now
@@ -7005,18 +11367,75 @@ class WorkerReloadPolicy:
                     f'code_is_stale={bool(disk and loaded and disk != loaded)} '
                     f'sha256_disk={disk} sha256_at_spawn={loaded} '
                     'applies_at=next-closed-line-or-ceiling')
-            self._arm(self.defer_recheck_ms)
+            # THE CEILING IS A DEADLINE, NOT A HINT. This check only runs when
+            # the timer fires, so arming a FULL re-check past the ceiling made
+            # `max_defer_ms=25000` really mean 32 046 ms (measured). Arm the
+            # REMAINDER whenever it is shorter than the re-check.
+            self._arm(min(self.defer_recheck_ms,
+                          max(0, self.max_defer_ms - waited_ms)))
+            return
+        if capturing and not boundary and not forced and not transcribing:
+            # ── THIS USED TO RESTART THE WORKER. IT NO LONGER DOES. ──────────
+            # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar
+            # por 2 minutos inteiros? ... faz guard pra essa merda NUNCA MAIS
+            # ACONTECER na tua vida"* e depois *"vai no disco e o watcher e
+            # entenda por que ele nao impediu essa caga gigante. e arruma ELE.
+            # e faz ele funcionar"*.
+            #
+            # PORQUÊ O WATCHER NÃO IMPEDIU NADA, E A RESPOSTA É ESTA LINHA.
+            # O watcher (`hot_reload.py`) só decide QUANDO um estouro de
+            # edições assentou. Quem decidia SE esse estouro podia gastar um
+            # reinício era `WorkerReloadPolicy` — e a política foi escrita com a
+            # convicção, na sua própria docstring, de que
+            #     "a stale running worker is worse than one warm-up"
+            # ou seja: reiniciar logo, sem perguntar a ninguém. Foi exactamente o
+            # que aconteceu, DUAS VEZES, e o próprio log guardou o preço:
+            #     22:30:11  HOT_RELOAD_WORKER_RESTART  after_idle_ms=35000
+            #     22:35:25  HOT_RELOAD_WORKER_IDLE_APPLIED cost=one-model-warm-up
+            #
+            # Um guard a jusante (o `worker_restart_allowed`) chega para o
+            # reinício não acontecer, mas NÃO chega para o estrago parar de
+            # acontecer: a política continuava a percorrer o debounce, o
+            # boundary, o ceiling e o floor — temporizadores, linhas de log e
+            # decisões — para ir fazer algo que ia ser recusado. E, pior, o
+            # `FORCED` de baixo era um tecto que **forçava** o reinício ao fim de
+            # 25 s sem fronteira, ou seja, precisamente quando a máquina está
+            # quieta. A máquina quieta é quando se pode estragar a máquina.
+            #
+            # A CORRECÇÃO É DA POLÍTICA, E É: **não existe caminho de "um ficheiro
+            # mudou" para "reiniciar o worker".** Este ramo passa a ser um
+            # RELATÓRIO e acaba aqui. O código fica desatualizado à espera de
+            # uma PESSOA — que é quem paga a warm-up.
+            disk, loaded = self._digests(bridge)
+            idle_ms = (int((now_s - last_caption_at) * 1000)
+                       if last_caption_at > 0.0 else None)
+            self.log(
+                f'HOT_RELOAD_WORKER_REPORTED files={len(files)} '
+                f'reason=code-changed-not-applied '
+                f'waited_ms={waited_ms} idle_ms={idle_ms} '
+                f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                'action=none -- o worker continua a correr; aplicar o codigo '
+                'novo custa ~2 GB na GPU e e uma decisao de quem esta a usar a '
+                'maquina, nao de um ficheiro que mudou')
+            self.pending = None
+            self._boundary_hit = False
             return
         if forced:
+            # O TETO QUE FORÇAVA. Nao força mais nada.
             disk, loaded = self._digests(bridge)
             self.log(
-                f'HOT_RELOAD_WORKER_FORCED files={len(files)} '
-                f'reason=no-boundary-in-{self.max_defer_ms}ms '
+                f'HOT_RELOAD_WORKER_REPORTED files={len(files)} '
+                f'reason=ceiling-reached-nothing-forced '
                 f'waited_ms={waited_ms} '
                 f'code_is_stale={bool(disk and loaded and disk != loaded)} '
                 f'sha256_disk={disk} sha256_at_spawn={loaded} '
-                'cost=one-model-warm-up')
-        elif boundary and capturing:
+                'action=none -- ha 25 s que este ceiling "forçava" o reinicio, '
+                'ou seja, no momento em que a maquina esta mais quieta')
+            self.pending = None
+            self._boundary_hit = False
+            return
+        if boundary and capturing:
             self.log(f'HOT_RELOAD_WORKER_BOUNDARY_APPLIED files={len(files)} '
                      f'reason=closed-line waited_ms={waited_ms}')
         # A respawn that happened AFTER this request was queued already re-read
@@ -7054,10 +11473,51 @@ class WorkerReloadPolicy:
             return
         self.pending = None
         self._boundary_hit = False
+        # O ULTIMO CAMINHO. Fechei-o tambem, e nao por excesso de zelo: era o
+        # unico que restava, e era o que disparou as 22:30:11
+        # (`after_idle_ms=35000`), quando uma legenda fechou e o floor ja tinha
+        # passado. Uma legenda a fechar e' o MOMENTO EM QUE O DONO ESTA A LER. E'
+        # precisamente ai que nao se pode ir buscar 2 GB ao GPU.
+        disk, loaded = self._digests(bridge)
         self._last_applied_at = time.monotonic()
-        self.log(f'HOT_RELOAD_WORKER_RESTART files={len(files)} '
-                 f'after_idle_ms={waited_ms} waited_ms={waited_ms}')
-        self.restart(files)
+        self.log(f'HOT_RELOAD_WORKER_REPORTED files={len(files)} '
+                 f'reason=boundary-reached-not-applied '
+                 f'after_idle_ms={waited_ms} waited_ms={waited_ms} '
+                 f'code_is_stale={bool(disk and loaded and disk != loaded)} '
+                 f'sha256_disk={disk} sha256_at_spawn={loaded} '
+                 'action=none -- uma legenda fechou, ou seja, o dono esta a ler; '
+                 'ir buscar ~2 GB ao GPU aqui e' ' o que lhe aconteceu a ele')
+        self._arm(self.min_interval_ms)
+
+    # ── THE GUARD: A WORKER RESTART LOADS ~2 GB ONTO THE OWNER'S GPU ────────
+    #
+    # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2
+    # minutos inteiros?"*. SIM. E não foi um teste: foi ESTA linha. Medido no
+    # log, duas vezes, seis minutos apartadas:
+    #
+    #   22:30:11.891  HOT_RELOAD_WORKER_RESTART files=1 after_idle_ms=35000
+    #   22:30:11.901  WORKER_AUTOSTART=started reason=hot-reload
+    #   22:35:25.683  HOT_RELOAD_WORKER_IDLE_APPLIED ... cost=one-model-warm-up
+    #   22:35:25.699  HOT_RELOAD_WORKER_RESTART files=["redux_live.py"]
+    #
+    # A causa foi uma gravação de ficheiro em `worker/` por um agente, com a app
+    # do dono a correr com `--hot-reload`: o watcher viu a mudança e foi buscar um
+    # NEMOTRON NOVO. O proprio log diz o preco: `cost=one-model-warm-up`. Duas
+    # instâncias de 1 245 MB ficaram vivas e o PC ficou a 100% de CPU e GPU.
+    #
+    # **O GUARD É DE PRODUTO E NÃO É UMA PROMESSA.** Um aviso numa lista de
+    # regras não impede ninguém: o mesmo estrago acontece a qualquer agente, a
+    # qualquer IDE, e a qualquer `git checkout`. Por isso o reinicio do worker
+    # deixou de ser automatico. Para acontecer, alguem tem de o PEDIR:
+    #
+    #     SOTTO_HOT_RELOAD_WORKER=1
+    #
+    # Sem isso, o watcher continua a detectar e a registar — o registo e o
+    # diagnostico, e nao o disparo — e o worker que esta a correr fica como
+    # esta. Uma mudanca no codigo passa a custar um F5, nao dois minutos de
+    # maquina a qualquer.
+    def _worker_restart_allowed(self, files):
+        return worker_restart_allowed(files)
 
     @staticmethod
     def _digests(bridge):
@@ -7066,6 +11526,333 @@ class WorkerReloadPolicy:
         disk = file_sha256(path) if path else None
         loaded = getattr(bridge, 'loaded_sha256', None)
         return disk, loaded
+
+
+def worker_restart_allowed(files=None):
+    """MAY A WORKER HOT-RELOAD ACTUALLY RESPAWN THE WORKER? DEFAULT: NO.
+
+    O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar por 2
+    minutos inteiros?"*. SIM. E não foi um teste: foi esta decisão. Medido no
+    log, duas vezes, seis minutos apartadas:
+
+      22:30:11.891  HOT_RELOAD_WORKER_RESTART files=1 after_idle_ms=35000
+      22:30:11.901  WORKER_AUTOSTART=started reason=hot-reload
+      22:35:25.683  HOT_RELOAD_WORKER_IDLE_APPLIED ... cost=one-model-warm-up
+      22:35:25.699  HOT_RELOAD_WORKER_RESTART files=["redux_live.py"]
+
+    A causa foi UMA GRAVAÇÃO de ficheiro em `worker/` por um agente, com a app do
+    dono a correr com `--hot-reload`: o watcher viu a mudança e foi buscar um
+    NEMOTRON NOVO. O próprio log diz o preço — `cost=one-model-warm-up`. Duas
+    instâncias de 1 245 MB ficaram vivas, o PC foi a 100% de CPU e GPU, e matar o
+    processo não resolveu porque o watcher o voltava a lançar.
+
+    **O GUARD É DE PRODUTO E NÃO É UMA PROMESSA.** Uma regra numa lista não
+    impede ninguém: o mesmo estrago acontece a qualquer agente, a qualquer IDE e
+    a qualquer `git checkout`. Por isso o reinício deixou de ser automático. Para
+    acontecer, alguém tem de o PEDIR:
+
+        SOTTO_HOT_RELOAD_WORKER=1
+
+    Sem isso o watcher continua a DETECTAR e a REGISTAR — o registo é o
+    diagnóstico, não o disparo — e o worker que está a correr fica como está. Uma
+    mudança no código passa a custar um reinício pedido, não dois minutos de
+    máquina a qualquer.
+    """
+    want = os.environ.get('SOTTO_HOT_RELOAD_WORKER', '').strip().lower()
+    if want in ('1', 'true', 'yes', 'on'):
+        return True
+    log('HOT_RELOAD_WORKER_REFUSED files=%s gate=SOTTO_HOT_RELOAD_WORKER '
+        'cost=one-model-warm-up (~2 GB on the GPU on this host) '
+        'set=SOTTO_HOT_RELOAD_WORKER=1 to allow it -- the running worker is left '
+        'alone' % (json.dumps(files) if files is not None else '[]'))
+    return False
+
+
+class SpeakerSidecar:
+    """The diarizer, as its OWN process, beside the worker.
+
+    WHY A SEPARATE PROCESS AND NOT PART OF THE WORKER. The worker already loads
+    1.2-2 GB of ASR; the diarizer is another 277 MB and ~1,4x realtime of CPU on
+    this box. The worker's own `--speakers` (added 2026-10-18) reads
+    `_main/diar-live.json` through `speaker_bridge.py` and REFUSES a payload that
+    is absent, stale past 30 s, partial or unreadable. So the attribution can go
+    quiet without taking transcription with it -- which is the fail-safe the
+    whole chain is built on, and it only holds if the two lifetimes are
+    separate.
+
+    WHAT IT MAY NOT DO, and both are this repo's standing rules:
+
+      * OPEN A CONSOLE WINDOW. `CREATE_NO_WINDOW`, always. The owner has been
+        shown a stray console by this house more than once.
+      * LIFT THE WORKER OFF THE FLOOR. `BELOW_NORMAL_PRIORITY_CLASS`, like the
+        worker itself: the owner has said *"PARA DE FAZER MEU PC TRAVAR"*.
+
+    IT TOUCHES NOTHING OF THE WORKER'S. No env key, no argv, no restart ladder.
+    `_main/app-target-oracle.py` ARM e holds the worker's env contract and this
+    class exists so that adding a feature does not have to break it.
+    """
+
+    def __init__(self, command=None, sidecar_path=None, log=log, extra_args=None):
+        self.command = command or default_python()
+        self.sidecar_path = sidecar_path or default_speaker_sidecar_path()
+        self.log = log
+        #: ARGV TAIL FOR THE SIDECAR. Empty list means byte-identical argv to
+        #: what shipped, which is what the `--speakers` path must keep doing.
+        #: Only the FASE A path sets it, to `['--watch-only']`.
+        self.extra_args = list(extra_args or [])
+        self.child = None
+        self.reason = None
+
+    @property
+    def running(self):
+        return self.child is not None and self.child.poll() is None
+
+    def start(self, reason):
+        if self.child is not None:
+            return False
+        if not os.path.isfile(self.sidecar_path):
+            # LOUDLY, and without taking the worker down with it: captions with
+            # no voices are the designed fail-safe, a dead app is not.
+            self.log(f'SIDECAR_MISSING path={self.sidecar_path} '
+                     f'reason={reason} by=SpeakerSidecar.start')
+            return False
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
+            if os.name == 'nt' else 0
+        if os.name == 'nt':
+            flags |= 0x00004000          # BELOW_NORMAL_PRIORITY_CLASS
+        try:
+            argv = [self.command, self.sidecar_path] + list(self.extra_args)
+            self.child = subprocess.Popen(
+                argv,
+                cwd=os.path.dirname(self.sidecar_path) or os.getcwd(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                bufsize=1,
+                creationflags=flags,
+            )
+        except Exception as exc:                                   # noqa: BLE001
+            self.child = None
+            self.log(f'SIDECAR_SPAWN_FAILED error={exc!r} reason={reason}')
+            return False
+        self.reason = reason
+        self.log(f'SIDECAR_SPAWNED pid={self.child.pid} '
+                 f'path={self.sidecar_path} reason={reason} '
+                 f'argv={json.dumps([self.command, self.sidecar_path] + list(self.extra_args))}')
+        # O pipe so deixa de encher se alguem o le. Sem isto o sidecar
+        # trava a meio de uma call (medido: ~10 min) e a atribuicao
+        # desliga sem alarme.
+        self._start_drain(self.child)
+        return True
+
+    def _start_drain(self, child):
+        """LER o que o sidecar diz, ou o pipe enche e o sidecar trava.
+
+        MEDIDO 2026-10-19, e nao suspeitado. `start` faz `stdout=PIPE`
+        sem ligar leitor nenhum; o `WorkerBridge` liga um por stream em 11006
+        desde sempre. O grep na shell confirma: entre 10313 e 10440, `stdout`
+        so aparecia no `PIPE` e no `STDOUT`.
+
+        O CUSTO MEDIDO, com a configuracao exacta deste `Popen` e NINGUEM a
+        ler: o filho escreve **3480 B** e trava. O sidecar escreve uma linha
+        de 58 B por tick de 10 s (`DEFAULT_EVERY_S`), 5,8 B/s -- 3480/5,8 sao
+        **~10 minutos de call**. Passados 10 min o sidecar bloqueava a
+        escrever, deixava de publicar, e a ponte via o payload envelhecer e
+        devolvia `None`: a atribuicao desligava SO, sem erro e sem alarme.
+        Nenhum portao o apanhou, porque todos correm `watch_tick` no
+        processo -- nunca atraves do pipe.
+
+        VAO TUDO PARA O LOG, e nao se deita nada fora. O log nao e' consola:
+        `run.cmd` lanca com `pythonw.exe --log`, e o `print()` do `log()` e'
+        no-op sem stdout. 3600 linhas/hora sao ~200 KB num ficheiro. Um dreno
+        que engolisse o diagnostico do sidecar seria a mesma mentira que uma
+        excepcao engolida, so que mais lenta.
+
+        O filho e' passado EXPLICITAMENTE, e nao lido de `self.child` dentro
+        da thread: um sidecar morto pode ainda estar a drenar enquanto
+        `self.child` ja aponta para o substituto, e uma linha com o pid
+        ERRADO e' um numero sem dono.
+        """
+        # `getattr`, e nao `child.stdout`: um filho que NAO tem atributo
+        # `stdout` levantava AttributeError AQUI, dentro de start() -- e
+        # um dreno nunca pode ser a raza de o sidecar nao arrancar.
+        # MEDIDO 2026-10-19: `sidecar-wiring-oracle` rebentou com
+        # traceback exacto por isto (`AttributeError: '_FakePopen' object
+        # has no attribute 'stdout'`), que e' o portao a fazer o que
+        # existe para fazer. Este ramo tambem nao e' silencioso: diz no
+        # log que nao ha nada para drenar, em vez de fingir que drenou.
+        stream = getattr(child, 'stdout', None)
+        if stream is None:
+            self.log('SIDECAR_DRAIN_SKIPPED reason=filho-sem-stdout-legivel'
+                     ' pid=%s' % getattr(child, 'pid', '?'))
+            return False
+
+        def drain():
+            try:
+                for line in iter(stream.readline, ''):
+                    self.log('SIDECAR %s' % line.rstrip('\r\n'))
+            except Exception as exc:                                   # noqa: BLE001
+                self.log(f'SIDECAR_DRAIN_FAILED error={exc!r}')
+            finally:
+                try:
+                    stream.close()
+                except Exception:                                       # noqa: BLE001
+                    pass
+
+        threading.Thread(target=drain, name='speaker-sidecar-drain',
+                         daemon=True).start()
+        return True
+
+    def stop(self, reason):
+        """Terminate the child, naming it. NEVER a bare kill on a generic word:
+        the AGENTS.md rule about kill filters is the same rule -- this names the
+        PROCESS OBJECT, which is the safe form of the same thing."""
+        child, self.child = self.child, None
+        if child is None:
+            return False
+        try:
+            child.terminate()
+            try:
+                child.wait(timeout=5)
+            except Exception:                                       # noqa: BLE001
+                child.kill()
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f'SIDECAR_STOP_FAILED error={exc!r} reason={reason}')
+            return False
+        self.log(f'SIDECAR_STOPPED pid={child.pid} reason={reason}')
+        return True
+
+
+def _evicted_note(payload):
+    """O que a fila FIFO perdeu de audio do dono, em uma frase -- ou nada.
+
+    Este e' o UNICO sitio onde o dono fica a saber. O payload traz o numero
+    desde que a retencao passou a contar o que apaga; se o watcher o ignora,
+    o audio continua a desaparecer em silencio -- agora com um campo
+    correcto num ficheiro que ninguem le.
+
+    Devolve a string VAZIA e nao '0 apagados': uma janela sem eviccao e' o
+    caso normal e nao merece uma linha mais longa do que ja e'.
+    """
+    try:
+        lost = int(payload.get("clips_evicted") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return ""
+    if lost <= 0:
+        return ""
+    kept = int(payload.get("clips_saved") or 0)
+    return (" AUDIO_PERDIDO=%d (a fila encheu: %d apagado(s),"
+            " %d guardado(s) nesta janela)"
+            % (lost, lost, kept))
+
+
+class MultiVoiceWatch:
+    """FASE A: o que o sidecar `--watch-only` viu, lido aqui e registado.
+
+    PORQUE ISTO EXISTE
+    ------------------
+    Sem este leitor, `--speakers-cheap` escrevia `_main/diar-watch.json` e nao
+    acontecia mais nada: um sinal sem consumidor nao decide nada, e o dono pediu
+    exactamente uma DETECCAO que lhe permitisse decidir mais tarde. Este e' o
+    consumidor, e ele e' deliberadamente pequeno: **regista**, nao decide.
+
+    O QUE ELE NAO FAZ
+    ------------------
+    Nao escreve no painel. Nao acrescenta um numero a lado da legenda -- o dono
+    tirou um numero visivel duas vezes, e `_main/panel-voice-dot-oracle.js` e' o
+    portao que garante que o painel nao ganha texto. Nao lanca a separacao de
+    vozes: QUANDO isso e' seguro para o PC do dono e' uma politica dele, e
+    adivinha-la aqui seria a forma mais rapida de voltar a fazer-lhe o PC heavier
+    sem ele pedir.
+
+    O QUE ELE LE
+    -------------
+    `speaker_bridge.watch_payload_if_fresh`, que exige a chave `multivoice` e
+    RECUSA um payload que traga `segments`. Um ficheiro trocado por engano, ou um
+    payload de fala no sitio errado, da `None` -- e `None` significa "nada a
+    dizer", nunca "zero vozes".
+    """
+
+    #: HOW OFTEN. The sidecar publishes a window every 10 s, so a 4 s poll sees
+    #: every window and costs a stat() four times a second.
+    POLL_S = 4.0
+
+    def __init__(self, path=None, poll_s=None, log=log):
+        self.path = path or speaker_watch_payload_path()
+        self.poll_s = float(poll_s or self.POLL_S)
+        self.log = log
+        self.thread = None
+        self._stop = threading.Event()
+        self._last_key = None
+
+    def poll_once(self):
+        """One read. Returns the short form, or None when there is nothing new.
+
+        Returning only on CHANGE is what keeps a 4-hour call from producing
+        3600 identical log lines.
+        """
+        try:
+            bridge = _speaker_bridge()
+            payload = bridge.watch_payload_if_fresh(self.path)
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f'WATCH_READ_FAILED error={exc!r}')
+            return None
+        if payload is None:
+            return None
+        state = bridge.multivoice(payload)
+        key = (state.get("written_at"), state.get("n_spans"),
+               state.get("multivoice_s"))
+        if key == self._last_key:
+            return None
+        first = self._last_key is None
+        self._last_key = key
+        if not state.get("multivoice"):
+            # MEASURED BUG, found by `_main/speaker-watch-oracle.py`: this used to
+            # log on ANY change, so a quiet window that followed a busy one was
+            # recorded as `WATCH_MULTIVOICE spans=0` -- a loud line for a window
+            # in which nothing overlapped. A log that cries wolf on quiet is
+            # worse than no log, because the reader stops believing it.
+            if first:
+                # The first read after start-up says "the detector is alive and
+                # has not seen two voices yet". That is worth one line: it
+                # separates "running and quiet" from "never ran".
+                self.log('WATCH_ALIVE multivoice_s=0.0')
+            return state
+        self.log('WATCH_MULTIVOICE spans=%s seconds=%.2f%s'
+                 % (state.get("n_spans"), state.get("multivoice_s", 0.0),
+                    _evicted_note(payload)))
+        return state
+
+    def start(self, reason):
+        if self.thread is not None:
+            return False
+        self._stop.clear()
+
+        def loop():
+            while not self._stop.is_set():
+                try:
+                    self.poll_once()
+                except Exception as exc:                           # noqa: BLE001
+                    self.log(f'WATCH_LOOP_FAILED error={exc!r}')
+                self._stop.wait(self.poll_s)
+
+        self.thread = threading.Thread(target=loop, name='multivoice-watch',
+                                       daemon=True)
+        self.thread.start()
+        self.log(f'WATCH_STARTED path={self.path} every={self.poll_s:.0f}s '
+                 f'reason={reason}')
+        return True
+
+    def stop(self, reason):
+        thread, self.thread = self.thread, None
+        self._stop.set()
+        if thread is not None:
+            thread.join(timeout=2.0)
+        self.log(f'WATCH_STOPPED reason={reason}')
+        return True
 
 
 class WorkerBridge:
@@ -7086,10 +11873,35 @@ class WorkerBridge:
                  on_caption=None, on_status=None, on_stats=None,
                  on_meter=None,
                  silence_ms=WORKER_SILENCE_MS,
+                 load_silence_ms=WORKER_LOAD_SILENCE_MS,
                  backoff_base=1000, backoff_max=30000,
-                 target_pid=None):
+                 no_audio_backoff_base=15000,
+                 no_audio_backoff_max=300000,
+   no_audio_restart_cap=3,
+        #: O TECTO. O dono, verbatim (AGENTS.md): *"o worker morre e recarrega ~1 GB de
+        #: modelo 88 vezes em 17 minutos (exit 3 a cada 2,5 min). arruma"*. NUNCA FOI
+        #: ARRUMADO: medido 2026-10-15 no log dele, `deaths=6 spawns=7` e cada arranque
+        #: custa `BRIDGE_LOAD_MS ms=36547` -- 36 SEGUNDOS a ler ~1 GB de disco. A escada
+        #: de espera ja existia (15 s a 300 s), mas por muito que espere ela NUNCA PARA:
+        #: ao fim de cada espera volta a carregar o modelo inteiro, para sempre, porque
+        #: um veredicto `silent-device` diz que a ROTAGEM esta errada e recarregar um
+        #: modelo nao arranja rotagem nenhuma. **Esse churn e o stutter do dono.**
+        #:
+        #: Depois de tantas mortes seguidas por silencio, o shell PARA e diz o que fazer.
+        #: O Alt+C volta a tentar (ver `show_panel`), portanto nao ha beco sem saida.
+                 target_pid=None, extra_args=None):
         self.command = command or default_python()
         self.worker_path = worker_path
+        #: ARGV TAIL. The per-voice attribution is `--speakers`, and it reaches
+        #: the worker in ARGV and NOT in the environment -- deliberately:
+        #: `_main/app-target-oracle.py` ARM e holds the env contract ("os.environ
+        #: + SOTTO_CAPTURE_MODE, nothing else"), and adding a key there turns that
+        #: arm RED, which is the gate being right. The worker's `--speakers` is a
+        #: real flag it already declares; the shell's job is to pass it.
+        #:
+        #: Empty tuple by default, so every bridge built without this parameter
+        #: spawns the EXACT argv it always did: `[command, worker_path]`.
+        self.extra_args = tuple(extra_args or ())
         self.device = device if isinstance(device, str) and device.strip() else None
         self.capture_mode = capture_mode
         #: THE PER-APP TAP, opt-in: the pid of the ONE app whose process tree the
@@ -7111,14 +11923,50 @@ class WorkerBridge:
         #: without it (a probe, the electron-era arm) behaves as before.
         self.on_meter = on_meter or (lambda sample: None)
         self.silence_ms = silence_ms
+        #: THE LOAD WINDOW, and the answer to "may I kill a silent child yet?".
+        #: While `loaded` is False the watchdog owes the child this much quiet,
+        #: measured from the spawn (see `WORKER_LOAD_SILENCE_MS`).
+        self.load_silence_ms = load_silence_ms
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
+        # A NO-AUDIO DEATH IS NOT A FAILURE AND MUST NOT BE TIME-PRICED LIKE ONE.
+        # MEASURED 2026-10-14 on the owner log: 88 deaths and 88 model reloads in 17
+        # minutes -- one every ~12 s -- each reload pulling ~1 GB back into memory,
+        # while the worker was doing exactly what it was built to do: it opened a
+        # device and heard digital silence, which this repo own routing law says is
+        # the CORRECT answer of a working app on an idle desktop. This program is
+        # going to be used by thousands of people and the default state of nearly
+        # all of them is NOTHING ROUTED YET. A hot loop that reloads a gigabyte for
+        # every one of them is a broken program, not a working one.
+        #
+        # So a no-audio death gets its own much slower ladder -- 15 s growing to
+        # 5 min -- and its own counter that a REAL failure does not touch. A user who
+        # routes audio later is transcribed the moment the slow ladder comes round,
+        # and until then the machine is quiet instead of thrashing.
+        self.no_audio_backoff_base = no_audio_backoff_base
+        self.no_audio_backoff_max = no_audio_backoff_max
+        self.no_audio_restart_cap = no_audio_restart_cap
+        self.no_audio_restarts = 0
 
         self.child = None
         self.state = 'idle'
+        #: True once THIS child has published `model-loaded`. THE GATE the silence
+        #: watchdog reads: before it, a silent worker is a LOADING worker, and
+        #: killing it is the S7 defect (see `WORKER_LOAD_SILENCE_MS`). Per child,
+        #: so a restart's warm-up is judged on its own evidence.
+        self.loaded = False
+        #: The shell's own measurement of the load - spawn to `model-loaded`, in
+        #: ms - logged as `BRIDGE_LOAD_MS` so a boot's load phase is readable
+        #: from the log alone. Zero until the child publishes the state.
+        self.load_ms = 0.0
         self.restarts = 0
         self.spawns = 0
         self.captions = 0
+        # WHEN the last caption arrived, not just how many. The reload guard
+        # holds a worker that is TRANSCRIBING; without a clock it could only ask
+        # whether a stream was open, which is a different question (see
+        # WorkerReloadPolicy._fire).
+        self.last_caption_at = 0.0
         self.statuses = 0
         self.malformed = 0
         self.stopped = False
@@ -7139,6 +11987,12 @@ class WorkerBridge:
         # non-zero exit and cleared only by a CAPTION: a restart that has
         # produced no caption has proved nothing, so it must not clear it.
         self.last_error = None
+        #: The last NO-AUDIO verdict this worker reported (the calm twin of
+        #: `last_error`). The two are mutually exclusive -- each is cleared
+        #: when the other is written -- so "the most recent verdict" is a
+        #: one-field answer and `_wait` cannot read a stale red over a fresh
+        #: no-audio (or the reverse).
+        self.last_no_audio = None
         self.pending_error = None
         #: True once THIS child has published its own verdict that the audio it
         #: opened carries nothing to transcribe (see WORKER_NO_AUDIO_STATES /
@@ -7336,6 +12190,12 @@ class WorkerBridge:
         byte-identical environment it produced before the parameter existed.
         """
         env = dict(os.environ)
+        # THE FREEZE CURES LIVE IN THE WORKER, NOT HERE (2026-10-17). Its own
+        # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS=4` defaults are set at
+        # module scope before onnxruntime is imported, so they apply to every
+        # way the worker can be launched. `_main/app-target-oracle.py` pins this
+        # dict to `os.environ + SOTTO_CAPTURE_MODE` (+ the target pid), and that
+        # contract is worth keeping.
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
@@ -7378,9 +12238,22 @@ class WorkerBridge:
         # device` is evidence about the OLD process, and letting it survive the
         # respawn would blind the watchdog for the new one.
         self.no_audio = False
+        # The two verdict slots go with it. They are what `_wait` reads to
+        # choose the colour of THIS child's death, so a stale one would paint a
+        # fresh unexplained crash in the colour of the child before it -- and the
+        # dangerous direction is the calm slot: a crash with no verdict left MUST
+        # be red. `pending_error` (the hold) is NOT reset here: it is cleared
+        # only by a caption, by design.
+        self.last_error = None
+        self.last_no_audio = None
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
         #: instead of being presented as a current measurement. Zero = never set.
+        # The new child has not loaded anything yet: the load window is armed from
+        # the spawn, and a `loaded`/`load_ms` left over from the dead child would
+        # tell the watchdog the load it is watching has already happened.
+        self.loaded = False
+        self.load_ms = 0.0
         # Reset WITH the evidence it ages: an age measured from the dead child
         # would age the new child's silence from the old process's clock.
         self.no_audio_evidence_at = 0.0
@@ -7397,10 +12270,20 @@ class WorkerBridge:
 
         creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
             if os.name == 'nt' else 0
+        if os.name == 'nt':
+            # BELOW_NORMAL_PRIORITY_CLASS. The worker is a background
+            # transcriber; it must never outrank the desktop while it reads a
+            # gigabyte of weights or runs a burst of inference. MEASURED
+            # 2026-10-17: the cold start is ~4.6 s and the process peaks at
+            # ~2 GB RSS, which is exactly the window the owner reported as a
+            # freeze. Below-normal keeps the shell, the browser and Explorer
+            # responsive through it.
+            creationflags |= 0x00004000
 
         try:
+            argv = [self.command, self.worker_path] + list(self.extra_args)
             self.child = subprocess.Popen(
-                [self.command, self.worker_path],
+                argv,
                 cwd=os.path.dirname(self.worker_path) or os.getcwd(),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -7425,7 +12308,7 @@ class WorkerBridge:
             return
 
         self.log(f'BRIDGE_SPAWNED pid={self.child.pid} '
-                 f'argv={json.dumps([self.command, self.worker_path])} '
+                 f'argv={json.dumps([self.command, self.worker_path] + list(self.extra_args))} '
                  f'SOTTO_CAPTURE_MODE={self.capture_mode} '
                  'SOTTO_AUDIO_DEVICE=' +
                  (self.device if self.device is not None else '(unset)'))
@@ -7461,14 +12344,35 @@ class WorkerBridge:
             self.capturing = False
         if child is not None:
             self.log(f'BRIDGE_STOP reason={reason} pid={child.pid}')
+            # NEVER BLOCK THE CALLER ON A DYING WORKER. `terminate()` on Windows
+            # is `TerminateProcess`, but the old `wait(timeout=5)` then made the
+            # shell's UI/tray thread sit for up to five seconds while a 2 GB
+            # process was torn down -- the "fechar o sotto trava o PC" the owner
+            # reported on 2026-10-17. Kill it, reap in a daemon thread, and let
+            # the caller return immediately.
             try:
-                child.terminate()
-                child.wait(timeout=5)
-            except Exception:
+                child.kill()
+            except Exception as exc:  # noqa: BLE001
                 try:
-                    child.kill()
-                except Exception:
-                    pass
+                    child.terminate()
+                except Exception as exc2:  # noqa: BLE001
+                    # A WORKER THAT SURVIVES THE KILL IS A CAPTURE THAT
+                    # CONTINUES. `stop()` answers True ("parou") while a 2 GB
+                    # process may still be holding the device and writing
+                    # captions. SAY SO: a falha silenciosa aqui e' o "fechei o
+                    # Sotto e o worker continuou a correr" que ninguem consegue
+                    # diagnosticar de fora.
+                    self.log(f'BRIDGE_KILL_FAILED pid={child.pid} '
+                             f'kill={exc!r} terminate={exc2!r}')
+            try:
+                reaper = threading.Thread(
+                    target=lambda c=child: _reap_child(c),
+                    name='sotto-worker-reap', daemon=True)
+                reaper.start()
+            except Exception as exc:  # noqa: BLE001
+                # O processo ja morreu; ninguem o vai recolher. E' um handle
+                # vazado, e um vazamento que pertence ao log.
+                self.log(f'BRIDGE_REAPER_FAILED pid={child.pid} error={exc!r}')
             return True
         # SAYS SO (row #42, 2026-10-11): returning False silently left whatever the
         # panel was showing standing -- symmetric with `start()`, which always tells
@@ -7529,10 +12433,14 @@ class WorkerBridge:
                             # worker publishes never reached the watchdog.
                             self._note_progress(parsed)
                     continue
-                self._arm_silence()
                 text = line.strip()
                 if text:
                     self._consume(text, child)
+                # AFTER the consume, not before (S7): the window is a function of
+                # the phase the line just PUBLISHED. `model-loaded` turns the
+                # watchdog back to `WORKER_SILENCE_MS`, and re-arming first would
+                # leave the child on the remainder of its load ceiling.
+                self._arm_silence()
         except Exception as exc:
             self.log(f'BRIDGE_PUMP_DIED stream={name} error={exc!r}')
         finally:
@@ -7623,6 +12531,7 @@ class WorkerBridge:
             meta = {k: v for k, v in message.items()
                     if k not in ('type', 'text')}
             self.captions += 1
+            self.last_caption_at = time.monotonic()
             # A caption is the ONLY proof that the current worker is really
             # transcribing, so it is the only thing allowed to lift a death the
             # panel is showing. Anything else (a restart's warm-up status) has
@@ -7638,6 +12547,20 @@ class WorkerBridge:
             state = str(message.get('state') or '')
             if state:
                 self.state = state
+            if state == 'model-loaded':
+                # THE LOAD IS OVER, and this shell now says how long it took.
+                # `load_s` is the WORKER's own measurement of the same span
+                # (`worker/sotto_worker.py`, `StreamAsr.load_s`); `BRIDGE_LOAD_MS`
+                # is the shell's, from the spawn, so one boot log carries both
+                # and the two can be compared instead of assumed equal. This is
+                # also the line that turns the watchdog's window back to
+                # `WORKER_SILENCE_MS` (`_silence_window`).
+                self.loaded = True
+                self.load_ms = (time.monotonic() - self.spawned_at) * 1000.0
+                if self.child is not None:
+                    self.log(f'BRIDGE_LOAD_MS ms={round(self.load_ms)} '
+                             f'pid={self.child.pid} '
+                             f'worker_load_s={message.get("load_s")}')
             if message.get('device'):
                 # Remember WHICH endpoint this child is on. `device` names the
                 # first candidate (with the full `candidates` list); a rotation
@@ -7682,10 +12605,24 @@ class WorkerBridge:
             if severity == 'error':
                 # Remembered, so the automatic restart that follows cannot paint
                 # its warm-up over a death the owner has not been shown yet.
+                # ONE verdict slot: a no-audio verdict that arrives later
+                # REPLACES the failure, and vice versa, so `_wait` reads the
+                # worker's most recent word rather than a stale colour.
                 self.last_error = {'state': state, 'text': text,
                                    'body': body or worker_status_body(state, message)}
+                self.last_no_audio = None
                 self.log(f'BRIDGE_STATUS_ERROR state={json.dumps(state)} '
                          f'kind={severity} text={json.dumps(text)}')
+            elif severity == 'no-audio':
+                # The calm twin: the worker's OWN no-audio verdict, kept the
+                # same way (state, sentence, body) so the restart that follows
+                # cannot warm its way over it, and logged with its own line
+                # name so a reader never mistakes it for a fault.
+                self.last_no_audio = {'state': state, 'text': text,
+                                      'body': body or worker_status_body(state, message)}
+                self.last_error = None
+                self.log(f'BRIDGE_STATUS_NOAUDIO state={json.dumps(state)} '
+                         f'kind=no-audio text={json.dumps(text)}')
             elif self.pending_error is not None and state in WORKER_WARMUP_STATES:
                 # A restart re-emits model-loading/model-loaded/capture-started
                 # every cycle. Painting those over a pending death is how the
@@ -7699,6 +12636,14 @@ class WorkerBridge:
                     body = (self.last_error or {}).get('body') or ''
                 if not title:
                     title = 'Not transcribing'
+            elif severity == 'no-audio':
+                # The calm headline, the worker's own cause under it. NOT
+                # 'Not transcribing': that title is the red one's, and this
+                # state is the healthy-app/no-audio answer.
+                if not body:
+                    body = (self.last_no_audio or {}).get('body') or ''
+                if not title:
+                    title = 'No audio to transcribe'
             self._status(text, severity, {'title': title, 'body': body})
         else:
             self.malformed += 1
@@ -7735,10 +12680,30 @@ class WorkerBridge:
             return
         if self._silence_timer is not None:
             self._silence_timer.cancel()
-        timer = threading.Timer(self.silence_ms / 1000.0, self._on_silence)
+        timer = threading.Timer(self._silence_window(), self._on_silence)
         timer.daemon = True
         self._silence_timer = timer
         timer.start()
+
+    def _silence_window(self) -> float:
+        """The no-output window for the child's CURRENT phase, in seconds.
+
+        TWO WINDOWS, because a silent worker and a LOADING worker are different
+        facts. Before `model-loaded` the worker is obliged to be quiet - the load
+        reads a gigabyte of weights and copies them to the VRAM and says nothing
+        while it does - so the window it gets is the load ceiling, measured from
+        the spawn and shrinking as the load runs. After `model-loaded` the worker
+        is obliged to be WORKING, and a worker that goes mute has stopped
+        transcribing, so it gets `WORKER_SILENCE_MS`.
+
+        A single longer window for both phases would either kill the cold boot or
+        let a jammed worker keep its caption channel for five minutes; the phase
+        is the only thing that tells the two apart.
+        """
+        if self.loaded or not self.spawned_at:
+            return self.silence_ms / 1000.0
+        elapsed_ms = (time.monotonic() - self.spawned_at) * 1000.0
+        return max(1.0, (self.load_silence_ms - elapsed_ms) / 1000.0)
 
     def _note_progress(self, stats):
         """The worker's own heartbeat counts as PROGRESS; re-arm the watchdog.
@@ -7866,6 +12831,42 @@ class WorkerBridge:
                          f'behind={json.dumps(self.pending_error["state"])}')
             self._arm_silence()
             return
+        # -- THE LOAD WINDOW (S7) ---------------------------------------------
+        # Silence while `model-loaded` has not arrived is the load, not a jam.
+        # The cold boot is exactly this case and it is not rare: the Windows
+        # autostart task puts the app's load on the worst minute of the day, with
+        # a cold file cache, a Defender pass over the same gigabyte and
+        # Chromium's own GPU process starting next door - so the load that takes
+        # 3.4 s warm outlives the 30 s window cold. Killing it there is what
+        # cost the owner ~1 minute of transcription on EVERY boot and made the
+        # app load the model twice in the first minute.
+        #
+        # Nothing is killed and nothing is painted: the panel is already showing
+        # `model-loading`, which is the truth. The watchdog RE-ARMS, so a child
+        # that loads in 45 s is never touched - and the ceiling above is still
+        # enforced, because a worker that hangs inside its load is the one jam
+        # this watchdog exists for.
+        if not self.loaded:
+            elapsed_ms = ((time.monotonic() - self.spawned_at) * 1000.0
+                          if self.spawned_at else 0.0)
+            if elapsed_ms < self.load_silence_ms:
+                self.log(f'BRIDGE_SILENT_LOADING ms={round(elapsed_ms)} '
+                         f'pid={self.child.pid} '
+                         f'window_ms={self.load_silence_ms} '
+                         'because=model-not-loaded')
+                self._arm_silence()
+                return
+            self.log(f'BRIDGE_SILENT_LOAD_TIMEOUT ms={round(elapsed_ms)} '
+                     f'pid={self.child.pid} window_ms={self.load_silence_ms} '
+                     'because=model-never-loaded')
+            self._status('Worker is still loading the model', 'error',
+                         {'title': 'Model load timeout',
+                          'body': f'The worker did not report `model-loaded` '
+                                  f'within the load window of '
+                                  f'{round(self.load_silence_ms / 1000)} s.'})
+            self._kill_and_restart('load-timeout')
+            return
+        # -- END THE LOAD WINDOW (S7) -----------------------------------------
         # ANOMALOUS. The tap was open (or had declared itself) and then went
         # mute WITHOUT the worker ever saying what the audio was: that is the
         # jam this watchdog exists for, and it still restarts.
@@ -7900,40 +12901,95 @@ class WorkerBridge:
             # keep saying so through the automatic restart, because the restart's
             # warm-up statuses say nothing about whether the death will repeat.
             self.deaths += 1
-            self.pending_error = self.last_error or {
+            # WHICH death the worker reported, not what the exit code suggests:
+            # the verdict ladder makes exit 3 the no-audio conclusion
+            # (`done.verdict == "silent-device"` iff `exit == 3`), so a run that
+            # ended on the worker's own no-audio word paints the CALM state and
+            # the worker's sentence -- the owner read the red exit line as the
+            # app being broken when the machine was simply quiet. A crash with
+            # NO verdict still paints red: the slot below is only calm when the
+            # worker said so itself.
+            self.pending_error = self.last_error or self.last_no_audio or {
                 'state': 'exit', 'text': f'worker exit {rc}', 'body': ''}
+            # CALM only when the WORKER SAID SO ITSELF: the no-audio slot set
+            # and no error slot set. A crash that published NO verdict at all
+            # (the fallback dict above) is RED -- "the worker did not tell us
+            # what happened" is a failure, and it must never borrow the calm
+            # colour of the verdict before it.
+            death_kind = ('no-audio'
+                          if (self.last_error is None
+                              and self.last_no_audio is not None)
+                          else 'error')
             text = f'Worker stopped (exit {rc}) - {self.pending_error["text"]}'
         else:
             self.pending_error = None
+            death_kind = 'error'
             text = f'Worker stopped (exit {rc})'
         if self.pending_error is not None:
             self.log(f'BRIDGE_DEATH rc={rc} deaths={self.deaths} '
+                     f'kind={death_kind} '
                      f'last={json.dumps(self.pending_error["text"])} '
                      f'stderr_tail={json.dumps(self.stderr_tail[-2:])}')
-        self._status(text, 'error',
-                     {'title': 'Worker stopped',
+        self._status(text, death_kind,
+                     {'title': ('Worker stopped' if death_kind == 'error'
+                                else 'No audio to transcribe'),
                       'body': ' '.join(x for x in (
-                          (self.last_error or {}).get('body') if rc != 0 else '',
+                          ((self.last_error or {}).get('body')
+                           or (self.last_no_audio or {}).get('body'))
+                          if rc != 0 else '',
                           stderr_note,
                           'A restart is scheduled. Captions stay off until the '
                           'worker reports a caption.') if x)})
-        self._schedule_restart('exit')
+        self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'))
 
     def _kill_and_restart(self, reason):
         child, self.child = self.child, None
         if child is not None:
             try:
                 child.terminate()
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # UM WORKER QUE SOBREVIVE AO TERMINATE E' UM SEGUNDO
+                # TRABALHADOR A CAPTAR: o restart agenda-se a seguir, e dois
+                # captadores no mesmo dispositivo ao mesmo tempo e' a falha
+                # mais difícil de ver que existe.
+                self.log(f'BRIDGE_TERMINATE_FAILED pid={child.pid} error={exc!r}')
         self._schedule_restart(reason)
 
-    def _schedule_restart(self, reason):
+    def _schedule_restart(self, reason, no_audio=False):
         if self.stopped:
             return
-        delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
-        self.restarts += 1
-        self.log(f'BRIDGE_RESTART reason={reason} in_ms={delay} '
+        # The two ladders. A REAL failure prices itself in seconds and doubles every
+        # time; a no-audio death -- the worker doing its job on a machine with nothing
+        # routed yet -- prices itself in minutes and has its own counter, so a genuine
+        # break is still answered fast and an unrouted desktop is answered slowly.
+            # O TECTO. Ver `no_audio_restart_cap`: depois de tantas mortes seguidas por
+            # silencio, REINICIAR NAO PODE ARRANJAR NADA -- um veredicto de dispositivo
+            # silencioso diz que a ROTAGEM esta errada, e recarregar 1 GB de modelo nao
+            # mexe numa rotagem. So custa 36 s de disco, RAM e GPU a cada volta. Para.
+            if self.no_audio_restarts >= self.no_audio_restart_cap:
+                self.log(f'BRIDGE_RESTART_SUPPRESSED reason={reason} ladder=no-audio '
+                         f'no_audio_restarts={self.no_audio_restarts} '
+                         f'cap={self.no_audio_restart_cap} '
+                         'why=restarting-cannot-fix-a-routing-problem '
+                         'resume=press-Alt+C')
+                self.pending_error = {
+                    'state': NO_AUDIO_STATE,
+                    'text': ('Nada foi roteado para o Sotto, e o Sotto parou de '
+                             'recarregar o modelo para nao queimar o PC. Confere a '
+                             'rotagem (VoiceMeeter / som do Windows) e aperta Alt+C, '
+                             'que ele tenta de novo.'),
+                }
+                return
+        if no_audio:
+            delay = min(self.no_audio_backoff_max,
+                        self.no_audio_backoff_base * (2 ** self.no_audio_restarts))
+            self.no_audio_restarts += 1
+            ladder = 'no-audio'
+        else:
+            delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
+            self.restarts += 1
+            ladder = 'retry'
+        self.log(f'BRIDGE_RESTART reason={reason} ladder={ladder} in_ms={delay} '
                  f'restart={self.restarts}')
         timer = threading.Timer(delay / 1000.0, self._restart)
         timer.daemon = True
@@ -7944,8 +13000,12 @@ class WorkerBridge:
         if self._restart_timer is not None:
             try:
                 self._restart_timer.cancel()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # O TIMER ANTIGO PODE SOBREVIVER AO CANCELAMENTO -- e um timer
+                # armado e inalcancavel e' EXACTAMENTE o bug que a row #15
+                # (2026-10-11) removeu: dois reinicios para uma morte. O
+                # cancelamento e' o cure; engoli-lo devolve o bug calado.
+                self.log(f'BRIDGE_RESTART_TIMER_CANCEL_FAILED error={exc!r}')
         self._restart_timer = timer
         timer.start()
 
@@ -7969,6 +13029,58 @@ def default_python() -> str:
     rather than failing with an ENOENT the owner then has to decode.
     """
     return shutil.which('python') or sys.executable
+
+
+def default_speaker_sidecar_path():
+    """`worker/speaker_sidecar.py`, next to the worker, resolved from THIS file.
+
+    The shell lives at `app/webview/`; the worker at `worker/`. Resolving from
+    `__file__` rather than the CWD means a `start`-detached launch -- whose CWD
+    is wherever the double-click happened -- still finds it. That is not
+    hypothetical: `run.cmd` does `cd /d "%~dp0"` before `start`, and the Windows
+    autostart task (2026-10-12) does not.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, 'worker', 'speaker_sidecar.py'))
+
+
+def speaker_watch_payload_path():
+    """`_main/diar-watch.json`, resolved the SAME way, from `__file__`.
+
+    A different file from `_main/diar-live.json` on purpose. The two are written
+    by the two arms of the sidecar and read by two different readers with two
+    different required keys; sharing one path would make "which model ran?" a
+    question the reader could not answer.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, '_main', 'diar-watch.json'))
+
+
+def _speaker_bridge():
+    """`worker/speaker_bridge.py`, imported the first time Fase A needs it.
+
+    LAZY on purpose. The bridge is a worker-side module, and the shell runs on a
+    machine that is already loading a ~2,4 GB ASR model; pulling `worker/` onto
+    `sys.path` at import time would change start-up for every run, including the
+    ones that never ask for voices. A shell that never enables Fase A never pays
+    for it.
+    """
+    global _SPEAKER_BRIDGE
+    if _SPEAKER_BRIDGE is not None:
+        return _SPEAKER_BRIDGE
+    here = os.path.dirname(os.path.abspath(__file__))
+    worker = os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, 'worker'))
+    if worker not in sys.path:
+        sys.path.insert(0, worker)
+    import speaker_bridge                                           # noqa: PLC0415
+    _SPEAKER_BRIDGE = speaker_bridge
+    return _SPEAKER_BRIDGE
+
+
+_SPEAKER_BRIDGE = None
 
 
 # ===========================================================================
@@ -8278,6 +13390,76 @@ def parse_args(argv):
                              'already starts by default (F1), so this flag now '
                              'only FORCES the worker where an automatic '
                              'opt-out would decline it -- see --no-worker')
+    #: PER-VOICE ATTRIBUTION. Off by default, because it costs a second model
+    #: (277 MB) and ~1,4x realtime of CPU on this box -- a cost nobody should
+    #: pay for a feature they did not ask for. What it does, end to end:
+    #: this shell ALSO starts `worker/speaker_sidecar.py`, which taps the same
+    #: WASAPI loopback, diarizes into `_main/diar-live.json`, and the worker
+    #: reads that file per caption (`speaker_bridge.py`) and stamps ONE `source`
+    #: PER VOICE on each line. The panel already renders one forming row per
+    #: `source` and paints a coloured dot per voice (`panel.js` `applyVoice`), so
+    #: nothing else in the app changes shape.
+    #:
+    #: WHY IT IS A SHELL FLAG AND NOT A WORKER-ONLY ONE: the worker alone would
+    #: read a file nobody writes. Measured end to end on the owner's own Discord
+    #: call (`_main/_sidecar-replay-real.py`): the real chain over 60 s of real
+    #: audio gives 2 global voice slots, which is the 2 people who were talking.
+    parser.add_argument('--speakers', action='store_true',
+                        help='ATTRIBUTE EACH LINE TO ITS SPEAKER. Also starts '
+                             'the diarizer sidecar (a second model). WITHOUT IT '
+                             'every line carries the device source and the rows '
+                             'are not separated by voice. NOTE the ~277 MB here '
+                             'is `speaker_bridge.py:12`, a figure measured on the '
+                             'STANDALONE diarizer process; two 2026-10-18 runs on '
+                             'the same box, different processes, measured '
+                             '207 MB for the real sidecar and 135,4 MB for a '
+                             'minimal child that loads the same two models '
+                             '(`_main/_watch-rss-probe.py`). None of the three '
+                             'is this process, so none of them is quoted here. '
+                             '--speakers-cheap quotes its own, and that one IS '
+                             'measured for what it starts.')
+    #: FASE A. Answers ONE question -- "were two voices talking at the same
+    #: time?" -- and nothing else. It starts the SAME sidecar process with
+    #: `--watch-only`, which loads the 5,7 MB segmentation model and NOT the
+    #: 37,8 MB embeddings one, so it can stay on when the full attribution must
+    #: not. MEASURED on this box (`_main/multivoice-oracle.py` 13/13,
+    #: `_main/_watch-rss-probe.py`): RTF 0,0097 vs 0,503 of the full pipeline
+    #: (52x cheaper), RSS 90,3 MB vs 135,4 MB, F1 0,932 on a 100 % overlap
+    #: built from known offsets with zero false alarm on the same voice doubled.
+    #:
+    #: IT GIVES NO NAMES AND NO `source`. It writes `_main/diar-watch.json`,
+    #: which has NO `segments` key, and `speaker_bridge.payload_if_fresh`
+    #: returns `None` for such a payload -- so the caption path cannot mistake
+    #: "nao medido" for "medido: zero vozes". That property is a check, not a
+    #: comment: `_main/speaker-watch-oracle.py` (22/22).
+    #:
+    #: WHY IT IS A SEPARATE FLAG AND NOT A MODE OF `--speakers`: the owner's ask
+    #: (2026-10-18) was to keep DETECTING while separating LATER. If the cheap
+    #: watch only existed as a mode of the expensive flag, it could not be on
+    #: when the expensive one is off, which is the whole point.
+    parser.add_argument('--speakers-cheap', action='store_true',
+                        help='only DETECT that several voices were talking at '
+                             'once (Fase A, ~90 MB). Does not name voices and '
+                             'does not stamp them on the lines; that is '
+                             '--speakers. Keep this on and use --speakers when '
+                             'it is safe to separate them')
+    #: Keeps the FLAGGED audio, which is the only way "process the voices later"
+    #: can mean anything. MEASURED: the sidecar's RingBuffer is in memory and
+    #: slides -- a window is freed 10 s after it is seen, so the detection
+    #: survives and the audio does not (`_main/_phase-a-retention-probe.py`).
+    #: One 16 kHz mono WAV per flagged span (2-7 s each, 2 s of context), named
+    #: with the absolute instant, FIFO-capped at 256 MB. Then
+    #: `_main/multivoice-offline.py` separates the voices on those clips.
+    #:
+    #: EMPTY BY DEFAULT, on purpose. This writes the owner's own call audio to
+    #: disk, and that is not something an app should start doing because nobody
+    #: thought to type a flag.
+    parser.add_argument('--save-voice-clips', default='', metavar='DIR',
+                        help='with --speakers-cheap: keep the audio where two '
+                             'voices overlapped, so the voices can be '
+                             'separated LATER (needs '
+                             '_main/multivoice-offline.py). Empty = keep '
+                             'nothing')
     parser.add_argument('--dump-dom', action='store_true',
                         help="measure the panel with the Electron arm's probe "
                              'and exit')
@@ -8317,7 +13499,17 @@ def parse_args(argv):
     parser.add_argument('--exit-after', type=float, default=0.0,
                         help='quit on a wall clock, so an acceptance run ends '
                              'by itself')
-    parser.add_argument('--no-hot-reload', action='store_true',                        help='do not watch panel assets / worker sources')
+    parser.add_argument('--no-hot-reload', action='store_true',
+                        help='do not watch panel assets / worker sources (this is the default)')
+    parser.add_argument('--hot-reload', action='store_true',
+                        help='watch panel assets / worker sources and reload in place; a DEVELOPMENT feature, OFF by default because each reload re-parses the panel and re-creates the renderer on the machine the owner is using')
+    #: The deferred-asset gate's CONTROL ARM. With it the shell registers no
+    #: WebResourceRequested filter and every deferred URL reaches the disk, which
+    #: is byte-for-byte today's behaviour. The measurement harness runs the gate
+    #: arm and this arm and diffs the two; if they do not differ, the gate is
+    #: VACUOUS and the harness must report that instead of a saving.
+    parser.add_argument('--no-lazy', action='store_true',
+                        help='serve every panel asset normally (no deferral)')
     parser.add_argument('--probe-reload', action='store_true',
                         help='prove the worker hot-reload guard: touch the '
                              'worker file while a capture is open and print '
@@ -8705,6 +13897,18 @@ def main(argv=None):
         log(f'PANEL_MISSING path={PANEL_HTML}')
         return 3
 
+    # ── A SILENT DEATH IS UNFALSIFIABLE (measured 2026-10-14) ────────────────
+    # A second launch (pid 18772, 20:16:36.257) logged its banner and the
+    # APP_USER_MODEL_ID line and then NOTHING, ever: no SINGLE_INSTANCE line,
+    # no window, no hotkey, no worker, gone by the next process census. Every
+    # step in this stretch logs its own failure EXCEPT an exception, and under
+    # pythonw.exe an exception has nowhere to print. The owner's "abrir o sotto
+    # causa travamento" needs the receipt, not a guess: name the stage reached,
+    # and catch the exception so the next occurrence exits 3 WITH a log line
+    # instead of vanishing between two lines.
+    log(f'SHELL_STARTUP_STAGE pid={os.getpid()} stage=pre-lock '
+        f'python={args.python or default_python()} '
+        f'panel={str(os.path.exists(PANEL_HTML)).lower()}')
     args.python = args.python or default_python()
 
     # ── the three autostart modes print and exit: no window, no worker ───────
@@ -8803,13 +14007,34 @@ def main(argv=None):
         # and no message is indistinguishable from a broken app.
         shell.hotkey = arm_hotkey(shell, args.hotkey)
 
-    # Hot reload is armed AFTER the hotkey, so a watcher that cannot start can
-    # never cost the one feature the panel cannot live without. `--no-hot-reload`
-    # is checked before anything is armed, exactly like the Electron arm's.
-    if args.no_hot_reload:
+    # HOT RELOAD IS OFF BY DEFAULT, AND IT WAS ON -- WHICH IS THE FREEZE. MEASURED
+    # 2026-10-15 on the owner own log: `HOT_RELOAD_EVENT kind=panel file=panel.css`
+    # -> `HOT_RELOAD_FLUSH` -> `HOT_RELOAD_PANEL_DONE reload=10` -> `HOT_RELOAD_APPLIED`,
+    # five times in seven minutes, each one at the exact second a panel asset was
+    # written. And the reload is not cheap: the panel re-parses thirteen scripts,
+    # re-builds its DOM and re-creates the WebView2 renderer, ON THE MACHINE THE OWNER
+    # IS USING. He said it six ways over three days -- *"quando sotto abre ou fecha, o
+    # pc trava"*, *"abrir ou fechar o sotto causa travamento no meu pc"*, *"por que
+    # fechar o sotto ainda trava meu sistema?"* -- and the steady state was never the
+    # problem: measured the same day, the whole app is 266 MB and 4.2 percent of one
+    # core, with the worker transcribing. The spike is the RELOAD.
+    #
+    # THIS IS A DEVELOPMENT FEATURE AND IT WAS ARMED IN PRODUCTION. `run.cmd` passes no
+    # flag, so every edit to `panel.html`, `panel.css` or `panel.js` -- by a lane, by a
+    # generator run, by anyone -- reached into the owner running app and reloaded his
+    # panel. A user of this program has no editor open on it and will never want that.
+    #
+    # SO THE DEFAULT FLIPS: `--hot-reload` opts IN, and `--no-hot-reload` still works so
+    # every existing script and oracle that passes it keeps its meaning. The banner line
+    # names the reason either way, so the log still says which it was.
+    if args.hot_reload:
+        if not shell.start_hot_reload():
+            warn('hot reload could not arm its watchers; the app still runs')
+    elif args.no_hot_reload:
         log('HOT_RELOAD_DISABLED reason=--no-hot-reload')
-    elif not shell.start_hot_reload():
-        warn('hot reload could not arm its watchers; the app still runs')
+    else:
+        log('HOT_RELOAD_DISABLED reason=off-by-default (a development feature; pass '
+            '--hot-reload to arm it)')
 
     # THE TRAY. Last of the three, for the same reason as the others: it must not
     # be able to cost the app its start, and it is the only home the Quit has.

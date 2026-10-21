@@ -124,11 +124,16 @@ MUTANTS = [
      "            return self.show_side('hotkey-triple')\r\n",
      "            return self.show_strip('hotkey-triple')  # MUTANT M2\r\n",
      None, None),
+    # RE-ANCHORED 2026-10-21: the `count >= 2` branch grew a COMMENT BLOCK and a
+    # line (the caption is put back when the gesture turns out to be a panel),
+    # so the old two-line anchor no longer matched and the mutant was DEAD --
+    # "CONTROL IS DEAD (anchor count=0)". The anchor is now the ONE line the
+    # mutant removes (the token bump), which is unique in the file, and the
+    # mutant's INTENT is unchanged: drop the bump, so the pending caption is
+    # not retired.
     ('M3 the pending caption is not retired',
-     "        if count >= 2:\r\n"
      "            self._hotkey_single_token = getattr(self, '_hotkey_single_token', 0) + 1\r\n",
-     "        if count >= 2:  # MUTANT M3: the pending caption is NOT retired\r\n"
-     "            pass\r\n",
+     "            pass  # MUTANT M3: the pending caption is NOT retired\r\n",
      None, None),
 ]
 

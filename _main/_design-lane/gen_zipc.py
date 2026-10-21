@@ -388,22 +388,30 @@ def emit_legacy():
 # dialog owns (live = the forming line, closed = every committed row), the
 # zip's caption-stage leading/weight/tracking, the panel background pair, and
 # the motion duration.
+# THE `live_*` VALUES COME FROM EACH PANEL'S OWN FORMING LINE, NOT FROM THE
+# CAPTION STAGE (re-measured 2026-10-21 in PanelSetA/B.tsx). The first version
+# of this table read `scenes.ts`'s caption-stage size -- 24 to 36 px -- and
+# pasted it into the 380 px panel column, so designs the zip itself draws at
+# 11.5-13.5 px shipped at two to three times their own size and every long
+# sentence wrapped into a wall or clipped. The audio stage is a different
+# surface with a different reading distance; it is not the panel. Each comment
+# below now names the JSX line the number was read from.
 STRUCT = {
-    # zip: scenes.ts:106-115 + PanelSetA.tsx:22-141
-    "GlassCards": dict(live_size=34, live_leading="1.34", live_weight=400,
-                       live_tracking="-0.012em", upper="none",
+    # zip: PanelSetA.tsx:22-141 -- `mt-1 text-[13px] leading-relaxed`
+    "GlassCards": dict(live_size=13, live_leading="1.625", live_weight=400,
+                       live_tracking="normal", upper="none",
                        closed_size=13, closed_leading="1.625", closed_weight=400,
                        provisional="#FCEDD8", bg_slab="rgba(16,11,8,0.72)",
                        motion="180ms", scheme="dark"),
-    # zip: scenes.ts:174-183 + PanelSetA.tsx:143-247
-    "Hairline": dict(live_size=28, live_leading="1.5", live_weight=300,
-                     live_tracking="-0.02em", upper="none",
+    # zip: PanelSetA.tsx:143-247 -- `text-[13px] font-light leading-[1.65]`
+    "Hairline": dict(live_size=13, live_leading="1.65", live_weight=300,
+                     live_tracking="normal", upper="none",
                      closed_size=13, closed_leading="1.65", closed_weight=300,
                      provisional="#E8F1F7", bg_slab="rgba(6,10,14,0.52)",
                      motion="260ms", scheme="dark"),
-    # zip: scenes.ts:242-251 + PanelSetA.tsx:249-355
-    "Paper": dict(live_size=33, live_leading="1.42", live_weight=400,
-                  live_tracking="-0.008em", upper="none",
+    # zip: PanelSetA.tsx:249-355 -- `text-[12.5px] leading-[27px]`
+    "Paper": dict(live_size=12.5, live_leading="2.16", live_weight=400,
+                  live_tracking="normal", upper="none",
                   closed_size=12.5, closed_leading="2.16", closed_weight=400,
                   # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco").
                   # This row is where `--bg-slab`, the provisional ink and `color-scheme`
@@ -411,46 +419,46 @@ STRUCT = {
                   # in `DESIGNS` above. Both are inverted: dark warm linen, dark scheme.
                   provisional="#F6E7D4", bg_slab="rgba(26,18,13,0.96)",
                   motion="160ms", scheme="dark"),
-    # zip: scenes.ts:310-319 + PanelSetA.tsx:357-458
-    "Quotes": dict(live_size=36, live_leading="1.3", live_weight=400,
-                   live_tracking="-0.01em", upper="none",
+    # zip: PanelSetA.tsx:357-458 -- `text-[13.5px] leading-[1.6]`
+    "Quotes": dict(live_size=13.5, live_leading="1.6", live_weight=400,
+                   live_tracking="normal", upper="none",
                    closed_size=13.5, closed_leading="1.6", closed_weight=400,
                    provisional="#FFF2E0", bg_slab="rgba(20,13,9,0.74)",
                    motion="200ms", scheme="dark"),
-    # zip: scenes.ts:377-386 + PanelSetA.tsx:460-545
-    "Ledger": dict(live_size=31, live_leading="1.38", live_weight=400,
-                   live_tracking="-0.01em", upper="none",
-                   closed_size=12.5, closed_leading="1.625", closed_weight=400,
+    # zip: PanelSetA.tsx:460-545 -- `text-[12.5px] font-light leading-relaxed`
+    "Ledger": dict(live_size=12.5, live_leading="1.625", live_weight=300,
+                   live_tracking="normal", upper="none",
+                   closed_size=12.5, closed_leading="1.625", closed_weight=300,
                    provisional="#F2EDDD", bg_slab="rgba(11,14,10,0.78)",
                    motion="140ms", scheme="dark"),
-    # zip: scenes.ts:444-453 + PanelSetB.tsx:18-135
-    "Feed": dict(live_size=24, live_leading="1.6", live_weight=400,
-                 live_tracking="-0.01em", upper="lowercase",
+    # zip: PanelSetB.tsx:18-135 -- scroller `text-[11.5px] leading-[1.75]`
+    "Feed": dict(live_size=11.5, live_leading="1.75", live_weight=400,
+                 live_tracking="normal", upper="lowercase",
                  closed_size=11.5, closed_leading="1.75", closed_weight=400,
                  provisional="#D9DEF0", bg_slab="rgba(7,7,13,0.86)",
                  motion="700ms", scheme="dark"),
-    # zip: scenes.ts:511-520 + PanelSetB.tsx:137-270
-    "Bubbles": dict(live_size=30, live_leading="1.42", live_weight=400,
-                    live_tracking="-0.008em", upper="none",
+    # zip: PanelSetB.tsx:137-270 -- `text-[12.5px] leading-[1.6]`
+    "Bubbles": dict(live_size=12.5, live_leading="1.6", live_weight=400,
+                    live_tracking="normal", upper="none",
                     closed_size=12.5, closed_leading="1.6", closed_weight=400,
                     provisional="#F3E9F4", bg_slab="rgba(19,15,28,0.76)",
                     motion="220ms", scheme="dark"),
-    # zip: scenes.ts:578-587 + PanelSetB.tsx:272-395
-    "Timeline": dict(live_size=32, live_leading="1.4", live_weight=300,
-                     live_tracking="-0.014em", upper="none",
+    # zip: PanelSetB.tsx:272-395 -- `text-[12.5px] font-light leading-[1.65]`
+    "Timeline": dict(live_size=12.5, live_leading="1.65", live_weight=300,
+                     live_tracking="normal", upper="none",
                      closed_size=12.5, closed_leading="1.65", closed_weight=300,
                      provisional="#E7EFF3", bg_slab="rgba(8,12,15,0.72)",
                      motion="500ms", scheme="dark"),
-    # zip: scenes.ts:645-654 + PanelSetB.tsx:397-505
-    "Chips": dict(live_size=32, live_leading="1.38", live_weight=400,
-                  live_tracking="-0.01em", upper="none",
+    # zip: PanelSetB.tsx:397-505 -- `text-[12.5px] leading-[1.6]`
+    "Chips": dict(live_size=12.5, live_leading="1.6", live_weight=400,
+                  live_tracking="normal", upper="none",
                   closed_size=12.5, closed_leading="1.6", closed_weight=400,
                   provisional="#FFE4CE", bg_slab="rgba(16,9,7,0.82)",
                   motion="500ms", scheme="dark"),
-    # zip: scenes.ts:712-721 + PanelSetB.tsx:507-571
-    "Gutter": dict(live_size=27, live_leading="1.52", live_weight=300,
-                   live_tracking="-0.018em", upper="none",
-                   closed_size=13.5, closed_leading="1.62", closed_weight=300,
+    # zip: PanelSetB.tsx:507-571 -- `text-[13.5px] leading-[1.62]`
+    "Gutter": dict(live_size=13.5, live_leading="1.62", live_weight=400,
+                   live_tracking="normal", upper="none",
+                   closed_size=13.5, closed_leading="1.62", closed_weight=400,
                    # NO LIGHT SLAB (owner, 2026-10-14: *"e nao e pra ter tema branco").
                    # Same three fields, same inversion: a deep slate sheet and a dark scheme.
                    provisional="#E2EBEF", bg_slab="rgba(20,28,30,0.96)",
@@ -539,7 +547,13 @@ def shared_type(d):
         ("color", "var(--text-secondary)"),
         ("text-transform", "var(--caption-upper)"),
     ]))
-    out.append((s + " .caption--latest .caption__text,\n" + s + " .caption--provisional .caption__text", [
+    # ONLY THE FORMING LINE IS LIVE. `--latest` is the last SETTLED row; giving
+    # it the live size made the previous line shout and the live one whisper,
+    # which is the opposite of every zip panel (re-measured 2026-10-21 on the
+    # fresh Chips/Gutter shots: the accent sat on 10:24:04, one line ABOVE the
+    # forming line). Type and emphasis now target `--provisional`; a design that
+    # also wants to mark the last settled row does it in its own rule below.
+    out.append((s + " .caption--provisional .caption__text", [
         ("font-size", "calc(var(--size-caption) * var(--caption-scale))"),
         ("line-height", "var(--leading-caption)"),
         ("font-weight", "var(--weight-caption)"),
@@ -672,28 +686,20 @@ def design_glasscards(d):
         ("backdrop-filter", "blur(20px)"),
         ("-webkit-backdrop-filter", "blur(20px)"),
     ]))
-    # THE AVATAR CLUSTER: 'flex -space-x-2' of 'h-6 w-6 rounded-full' over a
-    # 'border-t' rule (PanelSetA.tsx:66-79).
-    out.append((s + " .captions__bar::before", [
-        ("content", '""'),
-        ("flex", "none"),
-        ("width", "46px"),
-        ("height", "22px"),
-        ("margin-right", "8px"),
-        ("background-image",
-         "radial-gradient(circle at 11px 11px, var(--accent-soft) 0 7.5px, var(--accent) 7.5px 9px, transparent 9px),\n"
-         "    radial-gradient(circle at 23px 11px, var(--accent-soft) 0 7.5px, var(--line-strong) 7.5px 9px, transparent 9px),\n"
-         "    radial-gradient(circle at 35px 11px, var(--accent-soft) 0 7.5px, var(--line-strong) 7.5px 9px, transparent 9px)"),
-        ("background-repeat", "no-repeat"),
-    ]))
+    # THE AVATAR CLUSTER AND THE 28px AVATAR ARE GONE, AND THE 'photo' WITH THEM
+    # (owner, 2026-10-21): *"tem design com uma bola a esquerda das transcricoes
+    # como se a bola fosse de uma foto de um personagem. completamente ridiculo."*
+    # The mockup's header carried `flex -space-x-2` circles and every card an
+    # initials avatar ('grid h-7 w-7 rounded-full'); OURS carries neither, so the
+    # slot painted as one empty disc beside every line -- a profile photo of
+    # nobody. A card is a card; a person is not a record in a one-stream panel.
     out.append((s + " .captions__list", [("gap", "10px")]))
-    # ONE CARD PER SEGMENT: 'anim-seg flex gap-3 p-3' + blur + a 28px avatar
-    # column ('grid h-7 w-7 shrink-0 place-items-center rounded-full').
+    # ONE CARD PER SEGMENT, full width. The mockup's grid was the avatar column
+    # (`28px 1fr`); with no avatar the text owns the whole card.
     out.append((s + " .caption", [
         ("display", "grid"),
-        ("grid-template-columns", "28px 1fr"),
+        ("grid-template-columns", "1fr"),
         ("grid-template-rows", "auto auto"),
-        ("column-gap", "12px"),
         ("row-gap", "3px"),
         ("padding", "12px"),
         ("border", "1px solid var(--line)"),
@@ -702,19 +708,11 @@ def design_glasscards(d):
         ("backdrop-filter", "blur(20px)"),
         ("-webkit-backdrop-filter", "blur(20px)"),
     ]))
-    out.append((s + " .caption::before", [
-        ("content", '""'),
-        ("grid-area", "1 / 1 / span 2 / span 1"),
-        ("width", "28px"),
-        ("height", "28px"),
-        ("border-radius", "50%"),
-        ("background", "color-mix(in srgb, var(--accent) 13%, transparent)"),
-        ("box-shadow", "inset 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent)"),
-    ]))
-    out.append((s + " .caption__time", [("grid-area", "1 / 2"), ("padding-top", "0")]))
-    out.append((s + " .caption__text", [("grid-area", "2 / 2")]))
-    # the newest card takes the accent edge (PanelSetA.tsx:95-100, 'isLast')
-    out.append((s + " .caption--latest", [
+    out.append((s + " .caption__time", [("grid-area", "1 / 1"), ("padding-top", "0")]))
+    out.append((s + " .caption__text", [("grid-area", "2 / 1")]))
+    # the newest card takes the accent edge (PanelSetA.tsx:95-100, 'isLast'),
+    # and so does the forming card -- the zip draws both with the edge.
+    out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [
         ("border-color", "color-mix(in srgb, var(--accent) 30%, transparent)"),
         ("border-radius", "max(12px, calc(var(--radius-lg) - 6px))"),
     ]))
@@ -782,18 +780,10 @@ def design_hairline(d):
     out.append((s + " .caption:hover", [
         ("background", "color-mix(in srgb, var(--text-primary) 4%, transparent)"),
     ]))
-    # THE 4px SPEAKER DOT: 'h-[4px] w-[4px] rounded-full' before the name
-    # (PanelSetA.tsx:213-218).
-    out.append((s + " .caption__text::before", [
-        ("content", '""'),
-        ("display", "inline-block"),
-        ("width", "4px"),
-        ("height", "4px"),
-        ("margin-right", "6px"),
-        ("border-radius", "50%"),
-        ("background", "var(--accent)"),
-        ("vertical-align", "middle"),
-    ]))
+    # THE 4px SPEAKER DOT IS GONE (owner, 2026-10-21): the mockup marked the
+    # speaker before every name ('h-[4px] w-[4px] rounded-full',
+    # PanelSetA.tsx:213-218). A dot before a line says "someone is talking", and
+    # a one-stream panel has no one to point at. The line is the line.
     out.append((s + " .caption--latest", [("border-left-width", "0px")]))
     out.append((s + " .panel__controls", [("justify-content", "flex-start"), ("order", "0")]))
     return out
@@ -823,18 +813,11 @@ def design_paper(d):
         ("border-radius", "calc(var(--radius-lg) - 3px)"),
         ("box-shadow", "none"),
     ]))
-    # THE MARGIN RULE: 'absolute inset-y-0 left-[52px] w-[1.5px]' in the accent
-    # at 35% (PanelSetA.tsx:262-264).
-    out.append((s + " .captions__body::before", [
-        ("content", '""'),
-        ("position", "absolute"),
-        ("left", "52px"),
-        ("top", "0"),
-        ("bottom", "0"),
-        ("width", "1.5px"),
-        ("background", "color-mix(in srgb, var(--accent) 35%, transparent)"),
-        ("pointer-events", "none"),
-    ]))
+    # THE MARGIN RULE IS GONE (owner, 2026-10-21): *"tem uma linha esquisita que
+    # nao faz sentido, mal design"*. It was the mockup's notebook margin
+    # ('absolute inset-y-0 left-[52px] w-[1.5px]'), an absolute layer inside
+    # `.captions__body`; with our rows in place it painted one accent hairline
+    # down an otherwise empty panel and read as a rendering fault, not as paper.
     out.append((s + " .captions__list", [("gap", "0"), ("padding", "10px 12px")]))
     out.append((s + " .caption", [
         ("display", "grid"),
@@ -846,25 +829,12 @@ def design_paper(d):
         ("background", "transparent"),
     ]))
     out.append((s + " .caption__time", [("text-align", "right"), ("padding-top", "3px")]))
-    # THE 'filed' STAMP on the last committed row (PanelSetA.tsx:305-311).
-    out.append((s + " .caption--latest .caption__text::after", [
-        ("content", '"filed"'),
-        ("margin-left", "8px"),
-        ("font-size", "9px"),
-        ("letter-spacing", "0.2em"),
-        ("text-transform", "uppercase"),
-        ("color", "var(--accent)"),
-    ]))
-    # THE PAGE SIGN-OFF, centred in italics at the foot of the scroll
-    # (PanelSetA.tsx:333-335).
-    out.append((s + " .captions__list::after", [
-        ("content", '"\\2014 continued, please don\'t brake on the gravel \\2014"'),
-        ("padding", "16px 0"),
-        ("text-align", "center"),
-        ("font-size", "10px"),
-        ("font-style", "italic"),
-        ("color", "var(--text-muted)"),
-    ]))
+    # THE 'filed' STAMP AND THE 'continued...' SIGN-OFF ARE GONE (owner,
+    # 2026-10-21): the panel printed *"filed"* after the newest line and the
+    # mockup's *"— continued, please don't brake on the gravel —"* at the foot.
+    # Both are the DEMO's own paper annotations (PanelSetA.tsx:305-335), true of
+    # a fictional road log and of nothing this panel measured. Generated content
+    # cannot be silenced by the skin host, so the generator stops emitting it.
     out.append((s + " .panel__controls", [("justify-content", "flex-end"), ("order", "2")]))
     return out
 
@@ -928,7 +898,7 @@ def design_quotes(d):
         ("background", "var(--accent)"),
         ("opacity", "0.6"),
     ]))
-    out.append((s + " .caption--latest", [
+    out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [
         ("background", "color-mix(in srgb, var(--accent) 8%, transparent)"),
         ("border-color", "color-mix(in srgb, var(--accent) 20%, transparent)"),
         ("border-left-color", "var(--accent)"),
@@ -956,29 +926,16 @@ def design_ledger(d):
         ("border-radius", "var(--radius-md)"),
         ("box-shadow", "none"),
     ]))
-    # THE COLUMN BAND: 'grid-cols-[46px_58px_1fr] border-y px-3 py-2 text-[9px]
-    # uppercase tracking-[0.2em]' reading time / voice / transcript
-    # (PanelSetA.tsx:484-488).
-    out.append((s + " .captions__bar", [("flex-wrap", "wrap")]))
-    out.append((s + " .captions__bar::before", [
-        ("content", '"time\u00a0\u00a0\u00a0\u00a0voice\u00a0\u00a0\u00a0\u00a0transcript"'),
-        ("flex", "1 1 100%"),
-        ("order", "-1"),
-        ("padding", "8px 12px"),
-        ("border-top", "1px solid var(--line)"),
-        ("border-bottom", "1px solid var(--line)"),
-        ("font-size", "9px"),
-        ("letter-spacing", "0.2em"),
-        ("text-transform", "uppercase"),
-        ("color", "var(--text-muted)"),
-        ("font-family", "var(--font-sans)"),
-    ]))
+    # THE 'time / voice / transcript' BAND IS GONE (owner, 2026-10-21). The
+    # mockup headed its ledger with three columns (PanelSetA.tsx:484-488) because
+    # its rows came from several voices. Ours do not, so the band was a header
+    # row naming a column that contains nothing but a dot.
     out.append((s + " .captions__list", [("gap", "0"), ("padding", "0")]))
-    # ONE LEDGER ENTRY: 'grid grid-cols-[46px_58px_1fr] items-baseline gap-2
-    # border-b px-3 py-2.5' (PanelSetA.tsx:494-497).
+    # ONE LEDGER ENTRY: time then transcript. The mockup's third column was the
+    # speaker (`46px 58px 1fr`); with no speaker the text simply takes the rest.
     out.append((s + " .caption", [
         ("display", "grid"),
-        ("grid-template-columns", "46px 58px 1fr"),
+        ("grid-template-columns", "46px 1fr"),
         ("column-gap", "8px"),
         ("align-items", "baseline"),
         ("padding", "10px 12px"),
@@ -991,21 +948,13 @@ def design_ledger(d):
     out.append((s + " .caption:nth-child(even)", [
         ("background", "color-mix(in srgb, var(--accent) 6%, transparent)"),
     ]))
-    # THE 'voice' COLUMN is built from the element panel.css hides: a real
-    # element, put back in the flow and given the column.
-    out.append((s + " .caption__led", [
-        ("display", "block"),
-        ("position", "static"),
-        ("grid-area", "1 / 2"),
-        ("align-self", "center"),
-        ("width", "8px"),
-        ("height", "8px"),
-        ("border-radius", "50%"),
-        ("background", "var(--accent)"),
-    ]))
+    # THE VOICE COLUMN IS GONE (owner, 2026-10-21). The mockup kept the speaker
+    # as an 8px accent disc in its own column (`panel.css` hides `.caption__led`;
+    # this design put it back in the flow). A second coloured dot per row is the
+    # two-voice metaphor again; the line keeps only its time.
     out.append((s + " .caption__time", [("grid-area", "1 / 1")]))
-    out.append((s + " .caption__text", [("grid-area", "1 / 3")]))
-    out.append((s + " .caption--latest", [("border-bottom-color", "var(--accent)")]))
+    out.append((s + " .caption__text", [("grid-area", "1 / 2")]))
+    out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [("border-bottom-color", "var(--accent)")]))
     out.append((s + " .panel__controls", [("justify-content", "flex-end"), ("order", "2")]))
     return out
 
@@ -1105,54 +1054,43 @@ def design_bubbles(d):
         ("border-radius", "var(--radius-md)"),
         ("box-shadow", "none"),
     ]))
-    # THE SPEAKER CHIPS: 'inline-flex items-center gap-1.5 rounded-full
-    # px-2.5 py-[3px]' with a 5px dot (PanelSetB.tsx:168-178).
-    out.append((s + " .captions__bar::before", [
-        ("content", '""'),
-        ("flex", "none"),
-        ("width", "76px"),
-        ("height", "19px"),
-        ("margin-right", "8px"),
-        ("border", "1px solid var(--line)"),
-        ("border-radius", "999px"),
-        ("background-color", "var(--accent-soft)"),
-        ("background-image", "radial-gradient(circle at 11px 50%, var(--accent) 0 2.5px, transparent 2.5px)"),
-        ("background-repeat", "no-repeat"),
-    ]))
+    # THE SPEAKER CHIPS ARE GONE (owner, 2026-10-21): *"a gente nao ta fazendo
+    # conversacao entre duas pessoas, ou simulando um bate papo."* The mockup
+    # header carried two pill chips, one per voice, with a 5px dot in each
+    # (PanelSetB.tsx:168-178); with one stream there is no one to chip.
     out.append((s + " .captions__list", [("gap", "10px")]))
-    # ONE BUBBLE: 'max-w-[86%] px-3.5 py-2.5', radius 16 with ONE 5px tail
-    # corner (PanelSetB.tsx:198-210).
+    # ONE BUBBLE, ONE SIDE. The mockup alternated voices: the second was right
+    # aligned and its bubble carried a 5px tail (`borderBottomRightRadius: 5`,
+    # PanelSetB.tsx:190-210). Left/right bubbles ARE a conversation, so the row
+    # is now one left-aligned card with an even radius and the full width.
     out.append((s + " .caption", [
         ("display", "block"),
-        ("max-width", "86%"),
-        ("align-self", "flex-start"),
+        ("align-self", "stretch"),
         ("padding", "10px 14px"),
         ("border", "1px solid var(--line)"),
-        ("border-radius", "16px 16px 16px 5px"),
+        ("border-radius", "16px"),
         ("background", "var(--accent-soft)"),
         ("backdrop-filter", "blur(18px)"),
         ("-webkit-backdrop-filter", "blur(18px)"),
     ]))
-    # THE OTHER VOICE: 'justify-end' + 'borderBottomRightRadius: 5'
-    # (PanelSetB.tsx:190-196).
-    out.append((s + " .caption:nth-child(even)", [
-        ("align-self", "flex-end"),
-        ("border-radius", "16px 16px 5px 16px"),
-        ("background", "color-mix(in srgb, var(--accent) 10%, transparent)"),
-        ("border-color", "color-mix(in srgb, var(--accent) 18%, transparent)"),
+    # THE SPEAKER CHIP SITS ABOVE THE MESSAGE, ON ITS OWN LINE. The zip stacks
+    # it over the bubble body (PanelSetB.tsx:168-178, 198-210), but `display:
+    # block` on the bubble left the time and the text as two inline runs: the
+    # fresh 2026-10-21 shot read `**10:23:58O som chega...` with the dots and the
+    # timestamp on top of the first words. A block time restores the stack; the
+    # text is forced to block so it cannot rejoin the chip line.
+    out.append((s + " .caption__time", [
+        ("display", "block"),
+        ("margin", "0 0 4px"),
+        ("font-size", "10px"),
+        ("line-height", "1.2"),
+        ("letter-spacing", "0.04em"),
+        ("text-align", "left"),
     ]))
-    # THE SPEAKING DOTS: three 3px dots (PanelSetB.tsx:243-249).
-    out.append((s + " .caption__time::before", [
-        ("content", '""'),
-        ("display", "inline-block"),
-        ("width", "3px"),
-        ("height", "3px"),
-        ("margin-right", "6px"),
-        ("border-radius", "50%"),
-        ("background", "var(--accent)"),
-        ("box-shadow", "5px 0 0 var(--accent), 10px 0 0 var(--accent)"),
-        ("vertical-align", "middle"),
-    ]))
+    out.append((s + " .caption__text", [("display", "block")]))
+    # THE 'SPEAKING' DOTS ARE GONE (owner, 2026-10-21). Three 3px dots before the
+    # time are the mockup's typing indicator (PanelSetB.tsx:243-249) -- the
+    # "someone is typing / is speaking" beat of a messenger, not of a caption.
     out.append((s + " .caption--provisional", [
         ("border-color", "color-mix(in srgb, var(--accent) 20%, transparent)"),
     ]))
@@ -1216,12 +1154,15 @@ def design_timeline(d):
         ("background", "var(--bg-slab)"),
         ("box-shadow", "0 0 0 2px var(--line)"),
     ]))
-    out.append((s + " .caption--latest::before", [
+    # THE DOT MARKS WHAT IS BEING SAID. It used to be on `--latest`, which put
+    # the filled dot on the settled line and left the forming line hollow --
+    # visible in the fresh 2026-10-21 shot.
+    out.append((s + " .caption--provisional::before", [
         ("background", "var(--accent)"),
         ("box-shadow", "0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent)"),
     ]))
     out.append((s + " .caption__time", [("text-align", "right"), ("padding-top", "1px")]))
-    out.append((s + " .caption--latest", [("border-radius", "0"), ("border-left-width", "0px")]))
+    out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [("border-radius", "0"), ("border-left-width", "0px")]))
     out.append((s + " .panel__controls", [("justify-content", "flex-end"), ("order", "2")]))
     return out
 
@@ -1249,23 +1190,9 @@ def design_chips(d):
         ("box-shadow", "none"),
     ]))
     out.append((s + " .captions__bar", [("flex-wrap", "wrap")]))
-    # THE SEARCH FIELD: 'flex items-center gap-2 rounded-full px-3 py-1.5' with
-    # the magnifier and 'search this session...' (PanelSetB.tsx:457-467).
-    out.append((s + " .captions__bar::after", [
-        ("content", '"search this session\\2026"'),
-        ("flex", "1 1 100%"),
-        ("order", "99"),
-        ("margin-top", "8px"),
-        ("padding", "6px 12px"),
-        ("border", "1px solid var(--line)"),
-        ("border-radius", "999px"),
-        ("background", "var(--accent-soft)"),
-        ("color", "var(--text-muted)"),
-        ("font-size", "10.5px"),
-        ("font-family", "var(--font-sans)"),
-    ]))
-    # THE CHAPTER COUNTER: 'Math.floor(i / 4)' labels each band 'chapter NN'
-    # (PanelSetB.tsx:402-408). CSS counters do it without a new element.
+    # THE SEARCH PILL IS GONE (owner, 2026-10-21). It was not an input: it was a
+    # CSS `content: "search this session…"` fake field (PanelSetB.tsx:457-467),
+    # and the owner has asked for the search box to leave the panel entirely.
     out.append((s + " .captions__list", [
         ("gap", "6px"),
         ("counter-reset", "zipc-chapter"),
@@ -1307,7 +1234,7 @@ def design_chips(d):
         ("white-space", "nowrap"),
     ]))
     out.append((s + " .caption__text", [("grid-area", "2 / 2")]))
-    out.append((s + " .caption--latest", [
+    out.append((s + " .caption--provisional", [
         ("border-color", "var(--line)"),
         ("border-left", "2px solid var(--accent)"),
         ("background", "color-mix(in srgb, var(--accent) 7%, transparent)"),
@@ -1336,23 +1263,9 @@ def design_gutter(d):
         ("border-radius", "var(--radius-md)"),
         ("box-shadow", "none"),
     ]))
-    # THE REC PILL: 'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1'
-    # (PanelSetB.tsx:534-537).
-    out.append((s + " .captions__bar", [("align-items", "center")]))
-    out.append((s + " .captions__bar::after", [
-        ("content", '"rec"'),
-        ("flex", "none"),
-        ("order", "99"),
-        ("margin-left", "auto"),
-        ("padding", "4px 10px"),
-        ("border-radius", "999px"),
-        ("background", "var(--accent-soft)"),
-        ("color", "var(--accent)"),
-        ("font-size", "9.5px"),
-        ("letter-spacing", "0.14em"),
-        ("text-transform", "uppercase"),
-        ("font-family", "var(--font-mono)"),
-    ]))
+    # THE 'rec' PILL IS GONE (owner, 2026-10-21). It was the mockup's own status
+    # chip (`PanelSetB.tsx:534-537`); the panel's state is the one small ball,
+    # and a generated word cannot be that.
     out.append((s + " .captions__list", [("gap", "0"), ("padding", "10px 4px")]))
     # ONE NOTE: 'grid grid-cols-[54px_1fr] gap-4 rounded-xl px-1 py-3' with a
     # 'borderBottom' hairline (PanelSetB.tsx:539-544).
@@ -1368,20 +1281,15 @@ def design_gutter(d):
         ("border-radius", "0"),
         ("background", "transparent"),
     ]))
-    # THE AVATAR IN THE GUTTER, under the time: 'grid h-6 w-6 place-items-center
-    # rounded-full' (PanelSetB.tsx:548-556).
-    out.append((s + " .caption::before", [
-        ("content", '""'),
-        ("grid-area", "2 / 1"),
-        ("width", "24px"),
-        ("height", "24px"),
-        ("border-radius", "50%"),
-        ("background", "color-mix(in srgb, var(--accent) 13%, transparent)"),
-        ("box-shadow", "inset 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent)"),
-    ]))
+    # THE GUTTER AVATAR IS GONE, AND THE 'photo' WITH IT (owner, 2026-10-21):
+    # *"tem design com uma bola a esquerda das transcricoes como se a bola fosse
+    # de uma foto de um personagem. completamente ridiculo."* The mockup stacked a
+    # 24px initials avatar under the time (PanelSetB.tsx:548-556); with one stream
+    # it was an empty disc -- a person who is not there. The gutter keeps the
+    # TIME, which is the design.
     out.append((s + " .caption__time", [("grid-area", "1 / 1")]))
     out.append((s + " .caption__text", [("grid-area", "1 / 2 / span 2 / span 1")]))
-    out.append((s + " .caption--latest", [
+    out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [
         ("background", "color-mix(in srgb, var(--accent) 7%, transparent)"),
         ("border-left-width", "0px"),
     ]))
@@ -1438,8 +1346,9 @@ DESIGNS_HEADER = [
     " *                                        Paper(249) Quotes(357) Ledger(460)",
     " *   src/components/panels/PanelSetB.tsx  Feed(18) Bubbles(137) Timeline(272)",
     " *                                        Chips(397) Gutter(507)",
-    " *   src/data/scenes.ts                   the ten palettes + the caption",
-    " *                                        stage size/leading/weight/tracking",
+    " *   src/data/scenes.ts                   the ten palettes",
+    " *   (the live/history TYPE comes from the panel's own JSX, never from the",
+    " *    caption stage: the stage is another surface at another distance)",
     " *",
     " * WHAT A THEME IS ALLOWED TO USE HERE. The panel's own document is not part",
     " * of this lane's write scope, so no element is added: every structure below",

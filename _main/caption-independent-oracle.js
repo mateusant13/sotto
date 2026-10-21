@@ -564,6 +564,17 @@ async function runChecks(dir) {
   await p2.tick();
   check('A13e and the shell own write paints the button OFF again',
     [btn.getAttribute('aria-pressed'), p2.display(floatEl2)], ['false', 'none']);
+  /* A22 -- ADDED 2026-10-20. THE STRIP MUST NOT RESERVE A HEIGHT FOR A CAPTION
+     THAT IS NOT PAINTED.
+     `documentElement[data-float]` is what the SHELL reads to size the strip
+     (sotto_webview.py:6527 and :6579). The page's overlay is not painted in this
+     document -- the shell owns the caption window (`data-caption-window` is
+     present), so the overlay stays hidden -- and therefore the strip must be told
+     "off", or the window grows a strip for a caption that is not there.
+     The attribute follows WHAT IS PAINTED (`want`), not the module's own switch
+     (`on`). N11 puts the switch back and this arm must go RED. */
+  check('A22 the strip is NOT told to reserve a height for a caption this document does not paint',
+    [doc2.documentElement.getAttribute('data-float'), p2.display(floatEl2)], ['off', 'none']);
 
   /* THE FALLBACK HOST. A shell with NO caption window of its own -- a browser
      probe (`_main/panel-caption-button-probe.mjs`) -- does not ship
@@ -583,6 +594,25 @@ async function runChecks(dir) {
   check('A21b THE FALLBACK host: clicking live ON paints the PAGE own overlay',
     [btn3.getAttribute('aria-pressed'), doc3.body.getAttribute('data-float'), p3.display(floatEl3)],
     ['true', 'on', 'block']);
+  /* A23 -- ADDED 2026-10-20. THE ATTRIBUTE FOLLOWS WHAT IS PAINTED, NOT THE SWITCH.
+     This is the state where the two DIFFER, and it is reachable: the fallback
+     host with the FULL PANEL surface. The module's switch is ON (`on === true`,
+     the button is pressed and `body[data-float]` is "on"), but the overlay must
+     NOT paint -- the panel surface already shows the same words, so a second copy
+     would be painted on top of them.
+     `documentElement[data-float]` is what the SHELL reads to size the strip
+     (sotto_webview.py:6527 and :6579), so it must say what is ON THE SCREEN.
+     Before this rule it followed the module's own switch, and the strip was told
+     to reserve a height for a caption that was not painted.
+     N11 puts the switch back and this arm must go RED. */
+  doc3.body.setAttribute('data-surface', 'panel');
+  await p3.tick();
+  check('A23 the strip is NOT told to reserve a height for a caption this document does not paint',
+    [doc3.documentElement.getAttribute('data-float'), p3.display(floatEl3)], ['off', 'none']);
+  doc3.body.setAttribute('data-surface', 'strip');
+  await p3.tick();
+  check('A23b and back on the strip surface the overlay paints again',
+    [doc3.documentElement.getAttribute('data-float'), p3.display(floatEl3)], ['on', 'block']);
 
   /* ── B. NOTHING PAINTS ───────────────────────────────────────────────────── */
   arm = 'B';
@@ -790,9 +820,26 @@ async function negArm() {
     { tag: 'N5 the overlay can no longer build itself (the shipped coupling) (caption-float.js)',
       file: 'caption-float.js',
       apply: function (t) { return t.replace('      d.body.appendChild(host);', '      return false;'); } },
+    /* N6 -- RE-ANCHORED 2026-10-20 (lane caption). The anchor said
+       `on ? 'on' : 'off'`, and the shipped line says `want ? 'on' : 'off'`: the
+       attribute now follows WHAT IS PAINTED (`want`), not the module's own
+       switch (`on`) -- because the SHELL reads `documentElement[data-float]` to
+       size the strip (sotto_webview.py:6527 and :6579), and a strip must not
+       reserve a height for a caption this document does not paint. The old
+       anchor was ABSENT, so the negative arm died with "SETUP ERROR: mutant
+       anchor absent" (rc=2) -- a broken instrument, not a red one. The MUTATION
+       is the same defect the old one described (the shell cannot see the float
+       state) and A11 must still go RED. */
     { tag: 'N6 the shell cannot see the float state on <html> (caption-float.js)',
       file: 'caption-float.js',
-      apply: function (t) { return t.replace("      d.documentElement.setAttribute('data-float', on ? 'on' : 'off');", '      void 0;'); } },
+      apply: function (t) { return t.replace("      d.documentElement.setAttribute('data-float', want ? 'on' : 'off');", '      void 0;'); } },
+    /* N11 -- 2026-10-20. THE ATTRIBUTE FOLLOWS THE SWITCH AGAIN. This is the
+       defect the new rule exists to prevent: the strip is told "on" for a caption
+       the page does not paint, so the shell reserves a height for a caption that
+       is not there. A22 must go RED. */
+    { tag: 'N11 the strip is told to reserve a height for a caption the page does not paint (caption-float.js)',
+      file: 'caption-float.js',
+      apply: function (t) { return t.replace("      d.documentElement.setAttribute('data-float', want ? 'on' : 'off');", "      d.documentElement.setAttribute('data-float', on ? 'on' : 'off');"); } },
     /* N7/N8 ARE THE CONTROLS THE 2026-10-13 RE-BASELINE NEEDED, and they break the
        NEW contract. N7 deletes the ONE call that makes live-on mean caption-on-screen,
        so A13b/A13c and the panel-surface arms must go RED. N8 restores the interim

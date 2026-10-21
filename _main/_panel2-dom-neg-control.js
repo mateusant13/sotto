@@ -17,6 +17,12 @@
  *      pause button IS the confirmation" must fail;
  *   3. the panel stops asking the shell to switch surface -> ARM O's "the
  *      panel asks the SHELL to switch surface" must fail.
+ *   4. the lamp paints a state of its own -> ARM L's "the lamp starts RED"
+ *      must fail (a lamp that cannot be wrong is not an indicator);
+ *   5. the X stops being the last control -> ARM L's "the X is the LAST
+ *      control the panel cluster PAINTS" must fail;
+ *   6. the caption switch closes the panel again -> ARM L's "a click on the
+ *      caption switch does NOT close the panel" must fail.
  *
  * Exit codes: 0 every mutant went RED as it must | 1 a mutant still passed
  * (the arm cannot fail) | 2 setup error.
@@ -53,6 +59,27 @@ const MUTANTS = [
     from: "    bridge.setPanelSurface('panel', reason);",
     to: '    // MUTANT: the page switches itself instead of asking the shell.',
     arm: 'with the shell call present, the panel asks the SHELL to switch surface',
+  },
+  {
+    name: 'the lamp paints a state of its own',
+    file: 'panel.js',
+    from: '  paintLiveLamps(liveEnabled);',
+    to: '  paintLiveLamps(true); // MUTANT: the lamp believes what it wants.',
+    arm: 'the lamp starts RED: the live caption is off',
+  },
+  {
+    name: 'the X stops being the last control',
+    file: 'panel.css',
+    from: 'html body[data-surface="panel"] .panel__controls #hide-button { order: 99 !important; }',
+    to: 'html body[data-surface="panel"] .panel__controls #hide-button { order: 1 !important; }',
+    arm: 'the X is the LAST control the panel cluster PAINTS',
+  },
+  {
+    name: 'the caption switch closes the panel again',
+    file: 'panel.js',
+    from: '      requestCaptionOverlay(!liveEnabled);',
+    to: '      requestCaptionOverlay(!liveEnabled);\n      if (bridge && typeof bridge.hide === \'function\') bridge.hide(\'caption-on\');',
+    arm: 'a click on the caption switch does NOT close the panel and does NOT move it',
   },
 ];
 

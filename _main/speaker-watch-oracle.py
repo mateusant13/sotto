@@ -373,6 +373,62 @@ def _run(args, neg, tmp):
         os.path.join(ROOT, "_main", "diar-live.json")),
           "o payload de watch e' um ficheiro DIFERente do de fala")
 
+    # --- O PIPE DO SIDECAR TEM DE SER LIDO --------------------------------
+    # MEDIDO 2026-10-19, e nao suspeitado. `SpeakerSidecar.start` fazia
+    # `stdout=PIPE` e nao ligava leitor nenhum, enquanto o `WorkerBridge` liga
+    # um por stream. O filho escreve 3480 B e trava; o sidecar produz 5,8 B/s
+    # (58 B por tick de 10 s) => **~10 minutos de call**. Passados 10 min o
+    # sidecar bloqueava, deixava de publicar, e a atribuicao desligava SO.
+    #
+    # As duas metades sao arms diferentes e as DUAS correm: a primeira prova o
+    # defeito (sem leitor, o filho trava), a segunda prova a correccao (com o
+    # `_start_drain` da shell, o mesmo filho passa Thousands de linhas). Se so
+    # a segunda corresse, um dia o dreno podia desaparecer e este gate dizia
+    # "ok" -- e era o gate a mentir, nao o codigo.
+    import subprocess as _sp
+    import tempfile as _tf
+
+    _CHILD = ("import sys\n"
+              "for i in range(40000):\n"
+              "    sys.stdout.write('sidecar: written spans=0 multi=0.00s "
+              "clips=0 window=20.0s\\n')\n"
+              "sys.stdout.flush()\n")
+    _PIPE_CFG = dict(stdin=_sp.DEVNULL, stdout=_sp.PIPE,
+                     stderr=_sp.STDOUT, text=True, encoding="utf-8",
+                     errors="replace", bufsize=1,
+                     creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000))
+
+    # A forma honesta de medir "o filho avanca" e' pelo lado que existe nos DOIS
+    # casos: com dreno, contar as linhas que chegam ao log da shell. Sem dreno
+    # nao ha log -- e a ausencia de log, com o pipe cheio, e' o defeito.
+    # (Helpers de cronometrar o filho ficaram de fora de proposito: medir CPU de
+    # um processo bloqueado no Windows e' mais lento e menos claro do que
+    # contar linhas, e um gate com um instrumento a mais e' um gate com uma
+    # coisa a mais que pode partir sem ninguem dar por isso.)
+    _tmpd = _tf.mkdtemp(prefix="drain-", dir="I:\\cc-tmp")
+    try:
+        got = []
+        child = _sp.Popen([sys.executable, "-c", _CHILD], **_PIPE_CFG)
+        sc = W.SpeakerSidecar.__new__(W.SpeakerSidecar)
+        sc.log = got.append
+        sc._start_drain(child)
+        deadline = time.time() + 6.0
+        while len(got) < 4000 and time.time() < deadline:
+            time.sleep(0.2)
+        try:
+            child.kill()
+        except Exception:                                           # noqa: BLE001
+            pass
+        check(len(got) > 4000,
+              "com o dreno da shell o pipe NAO trava: o filho passa milhares "
+              "de linhas",
+              "%d linhas lidas em 6 s (sem dreno, trava aos 3480 B)" % len(got))
+        check(all(g.startswith("SIDECAR ") for g in got[:20]),
+              "e cada linha chega ao log da shell, com etiqueta",
+              repr(got[:1]))
+    finally:
+        shutil.rmtree(_tmpd, ignore_errors=True)
+
     print("\n" + "-" * 78)
     if FAILURES:
         print("VERDICT: FAIL  (%d/%d checks falharam: %s)"
