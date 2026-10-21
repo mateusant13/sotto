@@ -73,10 +73,26 @@ fechar.
 ### 4. Os testes são lentos e pesados: caching e incremental
 > *"e teus testes demoram muito e sao pesados. implementa caching e incremental test e etc."*
 
-O cache de conteúdo existe (`_main/_stepcache.py`) e serve ~75 de 85 passos. Falta: **instrumentar o
-tempo** (ninguém sabe qual passo é lento), um **modo rápido** (saltar passos pesados: o
-`fresh-processor-probe` carrega o modelo int8, ~1,2 GB) e um **modo incremental** (só passos cujo conteúdo
-mudou). O `.cmd` da bateria é FRÁGIL (ver §A bateria).
+**FEITO (2026-10-21, medido).** O cache de conteúdo (`_main/_stepcache.py`) guarda por passo o
+**conteúdo** (não o mtime) do que julga, o rc, e o sha256 do log ⇒ um passo cujo conteúdo não mudou
+**não volta a correr**. O **tempo** de cada passo é medido (o `.cmd` escreve um ficheiro-marcador
+antes do passo; o `elapsed_s` vive no estado e a CLI mostra-o), e o sumário da bateria diz **quais
+passos foram os lentos**. O **modo rápido** (`SOTTO_BATTERY_FAST=1`, limiar `SOTTO_BATTERY_FAST_S`,
+20 s por omissão) **salta** os passos que foram lentos na corrida anterior e **diz que os saltou**
+— um passo saltado **não** é um portão que passou, e sai no `skipped=` do sumário. O **modo
+incremental** é o próprio cache: só os passos cujo conteúdo mudou correm.
+
+**MEDIDO 2026-10-21 18:4x (esta máquina, bateria sozinha):** corrida com cache frio
+(campainha) **399,8 s**; corrida seguinte **130,2 s** (76 de 91 passos em cache) e **VERDE**
+(rc=0); corrida em **modo rápido** **27,7 s** (80 de 91 em cache, 5 passos lentos saltados) e
+**VERDE** (rc=0). Os passos mais lentos são os que **lançam a app**:
+`strip-stats-log-budget` 57-61 s, `strip-surface-runtime` 44 s, `tap-open-timeout` 34 s,
+`strip-geometry-restore` 30 s, `strip-stats-wave` 26-27 s, `strip-surface-oracle` 21 s.
+
+**O portão do cache** é `_main/_stepcache-oracle.py` (16 braços / 6 mutantes). Dois defeitos
+encontrados por ele: a CLI's `record` **não tinha** `--t0` (o `AttributeError` matava o `record`
+inteiro ⇒ o cache nunca via a CLI) e o formato da CLI mudou (`elapsed=`). O `.cmd` da bateria é
+ainda FRÁGIL (ver §A bateria).
 
 ## A LEI DA STACK (decidida pelo dono)
 **nemotron streaming = motor AO VIVO, só com o painel aberto. Parakeet Redux = motor GERAL/de fundo**
@@ -158,10 +174,13 @@ só separar audio pra transcrever cada falante?"*
 | `docs/shell-contract.md` | contrato do shell (strip, SetWindowPos, hot reload, meter). |
 | `docs/AGENTS-archive-20261021.md` | o histórico completo deste ficheiro. |
 
-**PIN do `run.cmd --help` (medido 2026-10-21 01:5x):** re-measured 2026-10-21 the output is **6934 B**,
-**107 lines**, **107 CRLF** / **0 bare LF**, **rc 0**, sha256
+**PIN do `run.cmd --help` (medido 2026-10-21 01:5x):** re-measured 2026-10-21 the output is 6934 B,
+107 lines, 107 CRLF / 0 bare LF, rc 0, sha256
 `51B52939F76C4AA5A35D7D865ED7C6B38C01ACFAD829F36C7A6032C337E01B47`. O portão do pin é
 `_main/agents-md-pins-oracle.py`: se o `--help` mudar, este número muda, e o gate obriga a re-medir **aqui**.
+(O número vai **sem asteriscos**: o braço negativo do portão muta o número com um padrão que exige
+`the output is ` seguido dos dígitos — com o `**` do markdown o padrão não pega e o portão perde o
+seu braço negativo.)
 
 ## ANTES DE TOCAR EM `worker/`
 Ler **`docs/model-specs/README.md`** — parâmetros normativos (`blank_id: 13087`,
@@ -266,6 +285,37 @@ inventar uma convenção de decode** — esse erro já foi cometido uma vez.
   Uso e armadilhas em `docs/tools/consultgpt.md`.
 - **`_main/*fake*.py` são 5 ficheiros e nenhum é o transcritor real** (ex.: `_armE-fake-worker.py`,
   `_tap-restart-fake-worker.py`). O real mede `peak=0.44`. Citar um fake pelo nome do ficheiro.
+- **O TRAVAMENTO DE ABRIR/FECHAR: as quatro causas medidas (2026-10-21, recibo
+  `_main/receipt-20261021-open-close-stall.md`).** O dono pediu isto pela vigésima vez.
+  (1) **O painel ficava morto 36,9 s** — o worker nascia no momento do painel e o modelo só ficava
+  pronto depois (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`, log do dono). **Cura: o PRELOAD** —
+  o worker nasce 20 s depois do arranque da app, em background, na prioridade BELOW_NORMAL do worker
+  (`WORKER_PRELOAD scheduled delay_s=20.0` → `BRIDGE_SPAWNED` 20,0 s depois → `BRIDGE_LOAD_MS
+  ms=10657` ⇒ **modelo pronto 30 s depois do arranque, sem o dono tocar em nada**). Opt-out:
+  `SOTTO_NO_PRELOAD=1`; uma launch de MEDIÇÃO nunca faz preload. (2) **O Alt+C podia esperar 10 s** —
+  `transparency_hack` chamava `ui(form_show)` e `_ui` tem um orçamento de **DEZ SEGUNDOS**
+  (`UI_MARSHAL_TIMEOUT_S`), e quem chama é a thread do hotkey ⇒ espera agora limitada
+  (`TRANSPARENCY_HACK_WAIT_S=0.25`) **com POST** como alternativa; medido: `HOTKEY_DOUBLE` → `PANEL_SHOWN`
+  em **1 ms**. (3) **O fecho gelava a thread do tray 3 s** (`closer.join(3)` para um `destroy`
+  cosmético) ⇒ `QUIT_DESTROY_WAIT_S=0.25`; medido: `BRIDGE_STOP` → `SHELL_EXIT` = **0,262 s**.
+  (4) **Um worker ÓRFÃO sobrevivia à app** — `os._exit` não mata o filho, e o guard só existia num
+  caminho de spawn ⇒ o guard é agora **central** (`start_worker` recusa se a shell está a morrer);
+  medido: **zero órfãos**.
+- **O LOAD DO MODELO: onde estão os segundos (medido, com fases).** As três sessões do ONNX custam
+  **1,74-2,09 s** (encoder 1,56-1,62 s / decoder 0,10-0,31 s / joint 0,07-0,16 s) — o `load_phases_s`
+  agora vai no `model-loaded`. O **disco não é o custo** (747 MB a 1,9 GB/s = 0,39 s). O load total
+  varia **4,1 s a 49,2 s** conforme a máquina. ⇒ **O A/B das opções do EP CUDA é CONFUNDIDO pela
+  ordem**: medido nos dois sentidos, o primeiro braço paga sempre a cache fria (defaults 49,21 s vs
+  options 15,02 s; invertido: options 11,43 s vs defaults 7,89 s). Com as fases: 1,738 s (HEURISTIC)
+  vs 1,824 s (EXHAUSTIVE) ⇒ **dentro do ruído**. Logo: `cudnn_conv_algo_search` fica no **default do
+  ORT**; `arena_extend_strategy=kSameAsRequested` + `gpu_mem_limit` ficam como **guardas**, sem claim de
+  velocidade. **A figura de 9,7 GB de VRAM do worker NÃO foi reproduzida** (medido: delta de
+  **1175-1703 MiB**) — não a usar como justificação de nada.
+- **A MÁQUINA DO DONO ESTÁ DEGRADADA (medido 2026-10-21 18:0x).** I: com **0,4 % livre** (13,8 GB de
+  3726 GB), D: 2,1 %, E: 2,3 %, F: 7,4 %, C: 14,6 %, H: 12 %, G: 18,7 %; **722 processos** vivos; RAM
+  47,7 GB com 14,4 GB livres (a pressão de memória **não** é o problema). Um arranque de `python` custa
+  53-127 ms ⇒ o "o start do que quer que seja dá stutter" tem uma componente de MÁQUINA que o Sotto não
+  controla. **Aviso ao dono, não acção**: ele decide o que limpar.
 
 ## OUTPUT GRANDE — TRUNCAMENTO E O BYPASS DELIBERADO (2026-10-21)
 
@@ -296,10 +346,10 @@ rebenta. **Muda a config/plugin ⇒ reiniciar o serviço** (o `Config` é cachea
 
 - Duas: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-battery.mjs`** (segunda; o header
   diz `Launches NOTHING`).
-- **PIN do ficheiro (medido 2026-10-21 01:5x):** `_main\_audit-verify-all.cmd` = **80120 B**,
-  **1086 CRLF** / 0 bare LF, sha256 `B0A96769D80C3FC3A791979C00E773D5C3828AB90B52020443021C4076372182`.
-  (Era 78075 B / 1059 CRLF; cresceu com os **três portões do hotkey** e o do
-  *wrap* nativo que entraram na bateria em 2026-10-21.) O portão do pin é
+- **PIN do ficheiro (medido 2026-10-21 18:4x):** `_main\_audit-verify-all.cmd` = **84979 B**,
+  **1165 CRLF** / 0 bare LF, sha256 `713F1BE8D066B2DC9FF188ABA0AE96B174D58B1C96E2E4C7377B63F65F1B48F4`.
+  (Era 84305 B / 1156 CRLF; cresceu com o **portão do open/close**, com o
+  **modo rápido/incremental** e com o **`fast-skip` nos passos skip-capable**.) O portão do pin é
   `_main/agents-md-pins-oracle.py` — se o `.cmd` mudar, o número muda, e o gate
   obriga a re-medir **aqui** em vez de deixar um número velho.
 - **O exit code É o veredicto.** Três tipos de passo: `:record` (o portão), `:control` (só passa se o
@@ -310,13 +360,24 @@ rebenta. **Muda a config/plugin ⇒ reiniciar o serviço** (o `Config` é cachea
   faz a lista correr DUAS VEZES, e uma edição do próprio `.cmd` a meio da corrida faz o mesmo com CRLF (uma
   corrida cujo sha256 muda a meio é SUJA: dizer e repetir). **O `write` emite LF** — nunca escrever este
   ficheiro com ele; usar `edit` (preserva CRLF) ou converter.
-- Estado medido 2026-10-21: `steps 85, gate=60, control=9, skipped=1, expect-red=15, missing=0, cached=75`
-  — **VERMELHA em 2** (`lane2-reset-probe`, `youtube-captions`), ambas âncoras gastas e re-ancoradas;
-  `hotkey-delivery` SKIPPED (o app do dono detém o Alt+C, e o instrumento di-lo alto, como deve).
+- Estado medido **2026-10-21 18:4x**: `steps 91, gate=65, control=9, skipped=1, expect-red=16, missing=0,
+  cached=76` — **VERDE, rc=0** (o `hotkey-delivery` SKIPPED: o app do dono detém o Alt+C, e o
+  instrumento di-lo alto, como deve). A corrida com cache frio foi **399,8 s**; a seguinte
+  **130,2 s**; a de **modo rápido** (`SOTTO_BATTERY_FAST=1`) **27,7 s** com `steps 91, gate=60,
+  control=9, skipped=6, cached=80` (5 saltos **contados como skipped**, não como gates).
+  **Um passo saltado não é um gate que passou** — o `skipped=` do sumário é a prova.
+  (As âncoras gastas desta vez: `panel2-dom-probe` contava as linhas no **documento inteiro** e
+  a **sonda do brand** (`panel.html:1288`) traz uma linha `caption--provisional` — re-ancorado ao
+  **listo do strip**; e `stepcache-oracle` apanhou que a CLI's `record` não tinha `--t0`.)
 - **Os três portões do hotkey ESTÃO na bateria desde 2026-10-21** — `hotkey-cycle`,
   `hotkey-gesture`, `hotkey-triple` (eram os que **não** estavam, e é assim que um portão apodrece em
   silêncio). Entraram com a ORDEM n.º 2 fechada. Entrou também o do **wrap nativo**
   (`caption-native-wrap`), que julga a legenda que o dono VÊ (a nativa, não o `caption.html`).
+- **O portão do OPEN/CLOSE entrou em 2026-10-21** — `open-close-stall` + o braço
+  `red-as-expected-open-close-stall` (5 mutantes, rc=1 por desenho). Julga **FICHEIROS** (5 factos
+  estruturais, por AST ⇒ nada de launches ⇒ entra na bateria). **Os DOIS PROBES que lançam processos
+  ficam FORA da bateria** (`_main/_cuda-vram-footprint-probe.py` e `_main/_exit-latency-probe.py`) e é
+  dito aqui: medem a VRAM/o load e a latência da saída.
 
 ## POR MEDIR / NÃO ATRIBUÍDO (declarado, não esquecido)
 

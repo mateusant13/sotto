@@ -37,6 +37,12 @@
  *      button disabled with an honest sentence instead of pretending.
  *   O  Open panel: through `bridge.setPanelSurface('panel', reason)` when the
  *      shell has it, and by switching the document itself when it does not.
+ *   L  THE LIVE-CAPTION LAMP and the X on the RIGHT (owner, 2026-10-19):
+ *      a red/green ball that reads the SHELL's own `data-caption-window`
+ *      (never a local wish), the X is the LAST control the cluster PAINTS
+ *      -- the `order` property, which is what a flex row obeys, NOT the
+ *      DOM order -- the lamp is at the opposite end of the pill from the
+ *      pause button, and a click on the caption switch closes NOTHING.
  *   H  The strip's HEIGHT cannot be measured here (the sandbox has no layout
  *      engine), so what this arm decides is that the CSS that makes it short is
  *      present and in force, and that the harness file a HUMAN opens was built
@@ -115,13 +121,20 @@ function scriptSources(html) {
 
 /** A bridge stub with the surface the real shell installs, plus what it recorded. */
 function bridgeStub(window, options) {
-  const audit = { live: [], pause: [], surfaces: [], revealed: [], statsCalls: [] };
+  const audit = { live: [], pause: [], surfaces: [], revealed: [], statsCalls: [],
+    // THE PANEL'S OWN HIDE/TOGGLE CALLS ARE RECORDED (owner, 2026-10-19:
+    // *"clicar pra ligar a legenda pelo painel do alt c nao deve fechar o
+    // painel"*). The stub used to swallow them, so no arm could say whether a
+    // click closed anything.
+    hidden: [], toggled: [] };
   const subs = { caption: [], status: [] };
   const bridge = {
     onCaption: (cb) => subs.caption.push(cb),
     onStatus: (cb) => subs.status.push(cb),
     onGeometry: () => {},
-    hide: () => {}, toggle: () => {}, quit: () => {}, setPointerInteractive: () => {},
+    hide: (reason) => audit.hidden.push(String(reason || '')),
+    toggle: () => audit.toggled.push(1),
+    quit: () => {}, setPointerInteractive: () => {},
     captionApplied: () => {}, statusApplied: () => {}, ready: () => {}, clearApplied: () => {},
     getInfo: () => Promise.resolve({ hotkey: 'Alt+C', versions: { shell: 'probe' } }),
     HOTKEY: 'Alt+C',
@@ -327,7 +340,12 @@ async function main() {
       squeeze(strip.document.querySelector('.caption__confirmed').textContent),
       squeeze(strip.document.querySelector('.caption__provisional').textContent),
       squeeze((strip.document.querySelector('.caption__mark') || {}).textContent || '')],
-    [1, 'O rato roeu a rolha da garrafa do rei da Russia.', 'a prova dos nove', '▍'],
+    /* THE FORMING TEXT IS THE TAIL MINUS THE GROWING WORD (2026-10-20). The
+       tail's last word is the one the model is still deciding, and it waits
+       until two consecutive hypotheses agree on it -- so 'nove' is not on the
+       screen yet, and the marker ('▍') stays because the line IS still
+       forming. The owner's own words: "pode somente palavras inteiras". */
+    [1, 'O rato roeu a rolha da garrafa do rei da Russia.', 'a prova dos', '▍'],
     [0, '', '', '']);
   // A STATUS CHANGE is the panel's own sentence boundary (`engine.flush`), and it
   // is the path that turns the open row into a CLOSED one. The worker-closed text
@@ -336,10 +354,20 @@ async function main() {
   strip.status('model-loading', 'busy');
   strip.caption('e mais uma linha', 3.2, 4.0, false);
   arm('a status change CLOSES the open line into its own row, and the next partial opens a new one',
+    // RE-ANCHORED 2026-10-21: every row this arm reads is read from the STRIP's
+    // OWN list. The document holds a SECOND `.captions__list` -- the brand
+    // probe's mirror row (`panel.html:1288`, `#brand-probe`, added 2026-10-21
+    // with the brand bridge) -- and it carries a `caption--provisional` class
+    // too, so a DOCUMENT-WIDE count returned 2 for a behaviour that is right:
+    // one forming row in each list. The claim was always about the strip's
+    // rows ("the next partial opens a NEW one", in the list the owner reads),
+    // and the product does not query document-wide `.caption` selectors at all
+    // (checked: `app/panel/*.js` has none; `brand-bridge.js` queries only its
+    // OWN probe). Scoping the arm makes the claim exact instead of accidental.
     [strip.id('caption-list').childElementCount,
-      squeeze(strip.document.querySelectorAll('.caption')[0].textContent).includes('roeu a rolha'),
-      strip.document.querySelectorAll('.caption')[0].className.includes('provisional'),
-      strip.document.querySelectorAll('.caption--provisional').length],
+      squeeze(strip.id('caption-list').querySelectorAll('.caption')[0].textContent).includes('roeu a rolha'),
+      strip.id('caption-list').querySelectorAll('.caption')[0].className.includes('provisional'),
+      strip.id('caption-list').querySelectorAll('.caption--provisional').length],
     [2, true, false, 1]);
   arm('the strip carries its 4 controls: live toggle, pause, open panel, status',
     ['strip-live-button', 'strip-pause-button', 'strip-open-button', 'strip-state'].filter((n) => !!strip.id(n)),
@@ -571,6 +599,83 @@ async function main() {
   // RE-BASELINED 2026-10-13: one click from OFF leaves it ON, shell or no shell.
   arm('and it still reports the state it is showing',
     unwiredT.id('strip-live-button').getAttribute('aria-pressed'), 'true');
+
+  // ------------------------------------------------------------------ ARM L
+  currentArm = 'L';
+  console.log('\n=== ARM L \u2014 the LIVE-CAPTION LAMP, and the X on the RIGHT ===');
+  // THE OWNER, 2026-10-19, verbatim: *"com um alt c so, com audio ou nao, tem que
+  // ter indicativo se a legenda ao vivo ativou ou nao. pode fazer isso com uma
+  // bolinha que acende vermelho ou verde."* \u2014 and *"por que o botao de x dos
+  // paineis ta no meio e nao na direita? arruma."*
+  //
+  // THE VISUAL ORDER OF A FLEX ROW IS THE `order` PROPERTY, NOT THE DOM ORDER.
+  // `button-contract.css` pins four of the panel cluster's controls with
+  // `order: 1/2/3/5` and `!important`, and `panel.css` pins the strip's, so the
+  // assertions below sort by the COMPUTED order \u2014 the order the browser
+  // paints. A DOM-order assertion would pass on a panel that paints wrong.
+  const visualOrder = (p, selector) => [...p.document.querySelectorAll(selector)]
+    .map((el) => ({
+      id: el.id || el.className,
+      order: parseInt(p.window.getComputedStyle(el).order, 10) || 0,
+      button: el.tagName === 'BUTTON',
+    }))
+    .sort((a, b) => a.order - b.order);
+  const panelL = await panel({ url: `${fileUrl(PANEL_HTML)}#panel`, wired: true });
+  const stripL = await panel({ url: `${fileUrl(PANEL_HTML)}#strip`, wired: true });
+  const clusterL = visualOrder(panelL, '.panel__controls > *');
+  const stripRowL = visualOrder(stripL, '#strip-controls > *');
+  const lampIdx = clusterL.findIndex((c) => c.id === 'live-lamp');
+  const pauseIdx = clusterL.findIndex((c) => c.id === 'panel-pause-button');
+
+  // (1) THE X IS THE RIGHTMOST CONTROL, IN THE ORDER THE BROWSER PAINTS.
+  arm('the X is the LAST control the panel cluster PAINTS',
+    clusterL[clusterL.length - 1].id, 'hide-button');
+  arm('and the X is the last CHILD of the cluster in the DOM too',
+    panelL.document.querySelector('.panel__controls').lastElementChild.id, 'hide-button');
+  arm('and on the STRIP the X is the last BUTTON the row paints',
+    stripRowL.filter((c) => c.button).pop().id, 'strip-hide-button');
+
+  // (2) THE LAMP IS AT THE OPPOSITE END OF THE PILL FROM THE PAUSE. The owner:
+  // *"se ele e indicativo de algo, e pra ser separado, longe, pra nao se misturar"*.
+  arm('the lamp is the FIRST thing the cluster paints, and the pause is not beside it',
+    [lampIdx, pauseIdx > lampIdx + 1], [0, true]);
+
+  // (3) THE LAMP READS THE SHELL'S FACT, NOT A LOCAL WISH.
+  arm('the lamp starts RED: the live caption is off',
+    [panelL.id('live-lamp').dataset.live, stripL.id('strip-live-lamp').dataset.live],
+    ['off', 'off']);
+  panelL.document.documentElement.setAttribute('data-caption-window', 'on');
+  stripL.document.documentElement.setAttribute('data-caption-window', 'on');
+  await tick();
+  arm("the shell's OWN write turns BOTH lamps GREEN",
+    [panelL.id('live-lamp').dataset.live, stripL.id('strip-live-lamp').dataset.live],
+    ['on', 'on']);
+  arm('and the accessible name says which, in words',
+    [panelL.id('live-lamp').getAttribute('aria-label').startsWith('Live caption: ON'),
+      stripL.id('strip-live-lamp').getAttribute('aria-label').startsWith('Live caption: ON')],
+    [true, true]);
+  panelL.document.documentElement.setAttribute('data-caption-window', 'off');
+  stripL.document.documentElement.setAttribute('data-caption-window', 'off');
+  await tick();
+  arm("and the shell's own 'off' turns them back RED",
+    [panelL.id('live-lamp').dataset.live, stripL.id('strip-live-lamp').dataset.live],
+    ['off', 'off']);
+
+  // (4) A CLICK ON THE CAPTION SWITCH CLOSES NOTHING. The owner, 2026-10-19:
+  // *"clicar pra ligar a legenda pelo painel do alt c nao deve fechar o painel.
+  // com o painel aberto, usar alt c uma vez nao deve fechar o painel."*
+  // The SHELL's half is the shell's (`_set_live_enabled` no longer calls
+  // `hide_panel`); the PANEL's half is here: the click asks the shell for the
+  // new state and touches NOTHING that shows or hides.
+  const stripL2 = await panel({ url: `${fileUrl(PANEL_HTML)}#strip`, wired: true });
+  stripL2.id('strip-live-button').click();
+  await tick();
+  arm('a click on the caption switch does NOT close the panel and does NOT move it',
+    [stripL2.audit.hidden.length, stripL2.audit.toggled.length, stripL2.audit.surfaces.length,
+      stripL2.document.body.getAttribute('data-surface')],
+    [0, 0, 0, 'strip']);
+  arm('and it only ASKED the shell for the new state',
+    stripL2.audit.live, [true]);
 
   // ------------------------------------------------------------------ ARM D
   currentArm = 'D';
@@ -904,80 +1009,87 @@ async function main() {
       /\.gallery__btn\s*\{/s.test(css), /\.gallery__btn\.is-active\s*\{/s.test(css)],
     [true, true, true, true]);
 
-  // ------------------------------------------- THE TYPING REVEAL (2026-10-08)
-  // The owner's brief: *"TYPING letter-by-letter on the live line"*. The reveal
-  // lives in `panel.css` + `paintChars`, and it shipped with TWO defects that no
-  // arm of this probe was aimed at — both were caught by ARM S above, which is
-  // luck, not an instrument. These arms are aimed at it, and each one is
-  // TWO-SIDED: the typing word and every OTHER word are measured in the same
-  // breath, so a dead reveal and a reveal that leaked into committed text are
-  // both RED. No hand-written control: each side is the other's evidence.
+  // --------------------------------------- THE WORD REVEAL (2026-10-20)
+  // The owner's order, verbatim: *"o jeito que as letras ou palavras aparecem
+  // na tela ta bem ruim. fica aparecendo como se fosse 'tokens' e nao palavras
+  // inteiras. pode somente palavras inteiras."*
+  //
+  // THE TYPEWRITER IS RETIRED. The newest word of the forming line used to be
+  // one `<span class="caption__ch">` per CHARACTER and the CSS revealed them
+  // one at a time; the owner read a half-word on the screen and called it
+  // tokens. The word is now ONE text node and appears whole.
+  //
+  // AND THE GROWING WORD IS HELD BACK. The tail's last word is the one the
+  // model is still deciding ("cre" -> "create"), and it waits until two
+  // consecutive hypotheses agree on it -- LocalAgreement-2, which is what the
+  // CONFIRMED span holds. MEASURED on the line below:
+  //
+  //   'o rato roeu a rolh'        -> the line shows "o rato roeu a"
+  //   'o rato roeu a rolha'       -> the line shows "o rato roeu a"  ('rolha' waits)
+  //   'o rato roeu a rolha agora' -> the line shows "o rato roeu a rolha"
+  //
+  // So the word appears WHEN IT IS WHOLE, and it appears WHOLE.
+  //
+  // THE CLAIM OF THE OLD ARMS IS KEPT AND THE MECHANISM CHANGED: a word is
+  // never made of pieces, and a word written onto a span that held other text
+  // is never concatenated with it (the "anove" defect, caught by ARM S).
   {
     const tp = await panel({});
-    // EVERY READER BELOW IS TOTAL ON PURPOSE. The first revision of these arms
-    // dereferenced `querySelector('.caption__word[data-typing]')` directly, and the
-    // mutant with the reveal DELETED did not go RED — it threw
-    // `TypeError: Cannot read properties of null` and killed the whole probe
-    // before a single verdict line was printed. An instrument that answers a
-    // broken panel with a stack trace is not saying NO, it is failing to speak:
-    // the battery step saw `rc=1` with no arm name and no `real`/`want` pair. A
-    // missing typing word is now a VALUE (`null`, `-1`, `[]`) that the assertion
-    // can be wrong about, out loud.
-    const chOf = (word) => (word ? [...word.querySelectorAll('.caption__ch')] : []);
+    // EVERY READER BELOW IS TOTAL ON PURPOSE: a missing typing word is a VALUE
+    // (`null`, `-1`, `[]`) that the assertion can be wrong about, out loud. An
+    // instrument that answers a broken panel with a stack trace is not saying
+    // NO, it is failing to speak.
     const typingWord = (p) => p.querySelector('.caption__word[data-typing]');
     const typingText = (p) => { const w = typingWord(p); return w ? w.textContent : null; };
-    const otherCharSpans = (p) => [...p.querySelectorAll('.caption__word:not([data-typing]) .caption__ch')];
-    const byText = (p, text) => [...p.querySelectorAll('.caption__word')].find((w) => w.textContent === text) || null;
-    const charIdx = (word) => chOf(word).map((c) => c.style.getPropertyValue('--c-i')).join(',');
     const kids = (word) => (word ? word.childNodes : []);
+    const byText = (p, text) => [...p.querySelectorAll('.caption__word')].find((w) => w.textContent === text) || null;
+    const markOf = (p) => {
+      const row = p ? p.closest('.caption') : null;
+      const m = row ? row.querySelector('.caption__mark') : null;
+      return m ? m.textContent : null;
+    };
     tp.status('Receiving captions', 'live');
 
-    // A GROWING word: `rolh` -> `rolha`, the same line, the same audio start.
+    // A GROWING word: `rolh` -> `rolha` -> `rolha agora`, the same line, the
+    // same audio start.
     tp.caption('o rato roeu a rolh', 0, 1.0, false);
     const prov = tp.document.querySelector('.caption__provisional');
-    const grownFrom = chOf(typingWord(prov));
     tp.caption('o rato roeu a rolha', 0, 1.4, false);
-    const grownTo = chOf(typingWord(prov));
-    arm('the typing reveal is ONE word of character spans, and no other word has any',
-      [typingText(prov), grownTo.length, otherCharSpans(prov).length, charIdx(typingWord(prov))],
-      ['rolha', 5, 0, '0,1,2,3,4']);
-    // THE POINT OF THE DESIGN, and the reason it is not `textContent = word`: the
-    // four letters already on screen keep their finished animation. If the word
-    // were rebuilt on every fragment it would retype itself forever, which is
-    // worse than no reveal at all — so the claim is NODE IDENTITY, not equality.
-    arm('GROWTH keeps the letters already on screen: the same nodes, one new one',
-      [grownFrom.length, grownFrom.every((n, i) => n === grownTo[i]), (grownTo[4] || {}).textContent || null],
-      [4, true, 'a']);
-
-    // AND IT IS BOUNDED: once the word is no longer the newest, its spans collapse
-    // back to a single text node. This is what keeps the extra elements bounded by
-    // the longest word instead of by the transcript.
+    arm('a GROWING word is HELD BACK: the line shows the last WHOLE word, and the mark stays',
+      [squeeze(prov.textContent), typingText(prov), markOf(prov),
+        prov.textContent.indexOf('rolha') >= 0],
+      ['o rato roeu a', 'a', '▍', false]);
+    arm('the word on the forming line is WHOLE: ONE text node, and no character spans',
+      [typingText(prov), kids(typingWord(prov)).length,
+        kids(typingWord(prov))[0] ? kids(typingWord(prov))[0].nodeType : -1,
+        prov.querySelectorAll('.caption__ch').length],
+      ['a', 1, 3, 0]);
     tp.caption('o rato roeu a rolha agora', 0, 1.8, false);
     const prov2 = tp.document.querySelector('.caption__provisional');
     const rolha = byText(prov2, 'rolha');
-    const rolhaKids = kids(rolha);
-    arm('a word that stops being the newest collapses back to ONE text node',
-      [typingText(prov2), chOf(rolha).length, rolha ? rolhaKids.length : -1,
-        rolhaKids[0] ? rolhaKids[0].nodeType : -1],
-      ['agora', 0, 1, 3]);
+    arm('the word that STOPPED growing is shown WHOLE, and it is one text node',
+      [squeeze(prov2.textContent), typingText(prov2), kids(rolha).length,
+        kids(rolha)[0] ? kids(rolha)[0].nodeType : -1,
+        prov2.querySelectorAll('.caption__ch').length],
+      ['o rato roeu a rolha', 'rolha', 1, 3, 0]);
 
-    // THE SHIFT: a span that held a PLAIN TEXT NODE becomes the word being typed.
-    // This is the shape the `"anove"` defect needed, and the first three arms above
-    // did NOT catch it — measured: with the stale-node filter deleted from
-    // `paintChars`, they stayed GREEN while ARM S went RED. The reason is that
-    // `rolh` -> `rolha` only ever grows a word that was ALREADY made of character
-    // spans, so the filter is a no-op there. Here the span at index 0 held the
-    // plain text `"o"` of a three-word line and is then repainted with `"roeu"` as
-    // the newest word: without the filter the two render as **`"oroeu"`**.
+    // THE "ANOVE" DEFECT, STILL GUARDED. The old arm needed a span that held
+    // PLAIN TEXT to be repainted as the typing word; with the growing word held
+    // back, the ASR's own fragments no longer make that shape, so the guard is
+    // now the STRUCTURE: every word in the document is ONE text node, and that
+    // node's data IS the word the engine gave it. A concatenation ("a" +
+    // "nove" = "anove") would show up here as a child count of 2, or as a data
+    // that is not the word.
     const tp2 = await panel({});
     tp2.status('Receiving captions', 'live');
     tp2.caption('o rato roeu', 0, 1.0, false);
     tp2.caption('roeu', 0, 1.4, false);
-    const prov3 = tp2.document.querySelector('.caption__provisional');
-    const shifted = typingWord(prov3);
-    arm('a word typed onto a span that held PLAIN TEXT is not concatenated with it',
-      [typingText(prov3), chOf(shifted).length, shifted ? shifted.childNodes.length : -1],
-      ['roeu', 4, 4]);
+    const allWords = [...tp.document.querySelectorAll('.caption__word')];
+    arm('no word is ever made of pieces: every word is ONE text node whose data IS the word',
+      [allWords.length ? allWords.every((w) => w.childNodes.length === 1
+        && w.childNodes[0].nodeType === 3 && w.childNodes[0].data === w.dataset.w) : null,
+        tp.document.querySelectorAll('.caption__ch').length],
+      [true, 0]);
   }
 
   for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, wiredD2, cancelD, unwiredD, openWired, openUnwired, gal]) {
