@@ -168,6 +168,12 @@ const dom = {
   pauseShellNote: document.getElementById('pause-dialog-shell'),
   pauseButtons: document.querySelectorAll('[data-pause-trigger]'),
   panelPauseButton: document.getElementById('panel-pause-button'),
+  // THE 3-DOT MENU (owner, 2026-10-21): the trigger, the popover, the translation
+  // selector and the slot that carries the worker's cause.
+  menuButton: document.getElementById('menu-button'),
+  panelMenu: document.getElementById('panel-menu'),
+  translationSelect: document.getElementById('translation-select'),
+  menuCause: document.getElementById('panel-menu-cause'),
 };
 
 const bridge = window.sotto;
@@ -316,6 +322,55 @@ let transparencyOn = false;
  */
 let captionScale = FONT_SCALE_DEFAULT;
 let pauseSupported = false;
+
+/**
+ * THE TRANSLATION SELECTOR'S TABLE -- DECLARED **ABOVE** THE PANEL'S INIT
+ * (2026-10-21).
+ *
+ * `wireStripControls()` calls `wireMenu()`, and `wireMenu()` fills the
+ * selector from this table. The table was declared BELOW that call, and a
+ * `const` read before its declaration is a **TDZ error**: the panel threw
+ * "Cannot access 'TRANSLATION_LANGS' before initialization" at load, and
+ * every probe that boots the real panel reported SETUP ERROR. The
+ * AGENTS.md rule says it: *"tudo o que o bloco de init de `panel.js` pode
+ * tocar e declarado ACIMA dele"*.
+ */
+
+/** The languages the translation selector offers. `en`/`pt`/`es` are first --
+ *  the owner asked that they be selectable even though the default policy never
+ *  translates among them. */
+const TRANSLATION_LANGS = [
+  ['', 'Auto (recommended)'],
+  ['en', 'English'],
+  ['pt', 'Português (BR)'],
+  ['es', 'Español'],
+  ['fr', 'Français'],
+  ['de', 'Deutsch'],
+  ['it', 'Italiano'],
+  ['nl', 'Nederlands'],
+  ['pl', 'Polski'],
+  ['ru', 'Русский'],
+  ['uk', 'Українська'],
+  ['tr', 'Türkçe'],
+  ['ar', 'العربية'],
+  ['hi', 'हिन्दी'],
+  ['id', 'Bahasa Indonesia'],
+  ['vi', 'Tiếng Việt'],
+  ['th', 'ไทย'],
+  ['ko', '한국어'],
+  ['ja', '日本語'],
+  ['zh', '中文'],
+  ['he', 'עברית'],
+  ['el', 'Ελληνικά'],
+  ['cs', 'Čeština'],
+  ['sv', 'Svenska'],
+  ['da', 'Dansk'],
+  ['fi', 'Suomi'],
+  ['no', 'Norsk'],
+  ['ro', 'Română'],
+  ['hu', 'Magyar'],
+];
+const TRANSLATION_KEY = 'sotto.translationTarget';
 let liveSupported = false;
 let statusSnapshot = { text: '', kind: null };
 
@@ -2219,6 +2274,7 @@ function applySurface() {
 }
 
 /** The strip's three controls. Live toggle, Pause, Open panel — and no more. */
+
 function wireStripControls() {
   if (dom.stripLiveButton) {
     /* THE OWNER'S BUTTON (2026-10-17): it is a switch for the caption window that
@@ -2260,6 +2316,91 @@ function wireStripControls() {
   // The font dial is wired from the STRIP side too, so the strip's pair and the
   // panel's pair reach the same apply function. See `wireFontDial`.
   wireFontDial();
+  // THE 3-DOT MENU (font dial + Pause inside it, the translation selector and the
+  // worker cause). See `wireMenu`.
+  wireMenu();
+}
+
+/**
+ * THE 3-DOT MENU (owner, 2026-10-21).
+ *
+ * The owner moved the caption-size dial and Pause OFF the top row and into this
+ * menu, and asked for a TRANSLATION selector and for the worker's cause to live
+ * here too -- so the panel itself never shows an error or a stop. Verbatim:
+ * *"quero na direita o botao de fechar/hide, e na esquerda dele um botao de 3
+ * pontos pra abrir mais opcoes/botoes"*, and, on what goes inside,
+ * *"fonte + pausa + traducao + causa"*.
+ *
+ * The two moved controls keep their ids, so `wireFontDial` and `wirePause` above
+ * find them exactly as before; this function owns ONLY the popover, the
+ * translation selector and the cause slot.
+ */
+
+
+
+function currentTranslationTarget() {
+  try {
+    return window.localStorage.getItem(TRANSLATION_KEY) || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function wireMenu() {
+  const button = dom.menuButton;
+  const menu = dom.panelMenu;
+  if (!button || !menu) return;
+  const close = () => {
+    menu.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    menu.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+  };
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (menu.hidden) open(); else close();
+  });
+  // A click anywhere else, or Escape, closes it -- a popover that outlives its
+  // trigger is the "button that changes and nothing else" the owner named.
+  document.addEventListener('click', (event) => {
+    if (menu.hidden) return;
+    if (menu.contains(event.target) || button.contains(event.target)) return;
+    close();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !menu.hidden) close();
+  });
+
+  // THE TRANSLATION SELECTOR. Persisted in localStorage and handed to the shell
+  // through `bridge.setTranslationTarget` when that method exists; the shell owns
+  // which track is fetched, so an explicit choice overrides the default policy
+  // (English for every video, Spanish stays Spanish) for EVERY video.
+  const select = dom.translationSelect;
+  if (select) {
+    for (const [code, label] of TRANSLATION_LANGS) {
+      const option = document.createElement('option');
+      option.value = code;
+      option.textContent = label;
+      select.appendChild(option);
+    }
+    select.value = currentTranslationTarget();
+    select.addEventListener('change', () => {
+      const value = select.value || '';
+      try {
+        window.localStorage.setItem(TRANSLATION_KEY, value);
+      } catch (_) {
+        // A storage-less harness must not take the selector down with it.
+      }
+      if (bridge && typeof bridge.setTranslationTarget === 'function') {
+        bridge.setTranslationTarget(value);
+      }
+    });
+    if (bridge && typeof bridge.setTranslationTarget === 'function') {
+      bridge.setTranslationTarget(select.value || '');
+    }
+  }
 }
 
 /**
@@ -3507,16 +3648,20 @@ function showReadiness(readiness, isError) {
   // decides WHICH message, the theme decides the VOICE. Error keeps the shell's
   // own sentence: an error must name its cause, never wear a costume.
   const theme = (document.documentElement.dataset && document.documentElement.dataset.theme) || 'theme-1';
+  // THE WORDS ARE `ready` / `not ready` (owner, 2026-10-21): *"e para de falar
+  // 'speak and the line flows' como se fosse uma frase de efeito. é simples:
+  // ready, not ready."* The design keeps its own TYPE for these two words; it no
+  // longer writes a sentence of its own.
   const voices = {
-    'theme-1': { warming: 'Warming up the teleprompter', ready: 'Ready — speak and the line flows' },
-    'theme-2': { warming: 'STBY — warming up', ready: '● CAPTANDO — awaiting speech' },
-    'theme-3': { warming: 'Preparing the draft', ready: 'Blank page — the draft begins as you speak' },
-    'theme-4': { warming: 'Dimming the house', ready: '· · · awaiting the first line' },
-    'theme-5': { warming: 'Powering the instrument', ready: 'ON — listening' },
+    'theme-1': { warming: 'not ready', ready: 'ready' },
+    'theme-2': { warming: 'not ready', ready: 'ready' },
+    'theme-3': { warming: 'not ready', ready: 'ready' },
+    'theme-4': { warming: 'not ready', ready: 'ready' },
+    'theme-5': { warming: 'not ready', ready: 'ready' },
   };
   const voice = voices[theme] || voices['theme-1'];
-  if (title) title.textContent = isError ? readiness.title : (readiness.state === 'warming' ? voice.warming : voice.ready);
-  if (body) body.textContent = readiness.body;
+  if (title) title.textContent = readiness.state === 'warming' ? voice.warming : voice.ready;
+  if (body) body.textContent = '';
   dom.placeholder.classList.toggle('captions__placeholder--warming', !isError);
   if (dom.list && !dom.list.childElementCount) dom.placeholder.hidden = false;
 }
@@ -3533,14 +3678,11 @@ function showReadiness(readiness, isError) {
  * @param {'live'|'error'|''} state
  */
 function skinStateWord(state) {
-  if (state === 'live') return 'listening';
-  if (state === 'error') return 'error';
-  // The calm state's word. Not 'error' (it is not one) and not 'listening'
-  // (nothing is being heard): the app is on, the endpoint is quiet.
-  if (state === 'no-audio') return 'idle';
-  if (paused) return 'paused';
-  if (!liveEnabled) return 'off';
-  return 'idle';
+  // THE BADGE SAYS `ready` / `not ready` (owner, 2026-10-21). The mockup's own
+  // vocabulary (`listening` / `paused` / `error`) is a costume the owner asked
+  // off: *"é simples: ready, not ready"* and *"para de mostrar erro no painel"*.
+  if (state === 'live') return 'ready';
+  return 'not ready';
 }
 
 /** @param {'live'|'error'|''} state */
@@ -3562,14 +3704,23 @@ function setStatus(text, state) {
   // so the icon is not red — but the sentence IS the report ("Silent audio
   // device - <device> [MME] peaked 9.2e-05 < floor 0.002"), and an icon cannot
   // say that. Same access rule as the error path: never off screen.
-  const paintsText = state === 'error' || state === 'no-audio';
+  // ── THE PANEL SHOWS ONLY `ready` / `not ready` (owner, 2026-10-21) ─────────
+  // Verbatim: *"é simples: ready, not ready. e para de mostrar erro no painel. ou
+  // que algo parou."* The worker's own cause is NOT deleted -- it is MOVED into the
+  // 3-dot menu (`#panel-menu-cause`), which the owner chose, so the panel stays
+  // calm and the device/death is still one click away and still on the record
+  // (`_main/panel-exit3-oracle.py` was re-baselined to read it there).
+  const word = state === 'live' ? 'ready' : 'not ready';
   if (dom.statusText) {
-    dom.statusText.textContent = paintsText ? text : '';
-    // VISUALLY hidden, not `hidden`: the sentence is the only accessible name of
-    // this state, and `hidden` would take it out of the accessibility tree too. The
-    // clip rule in `panel.css` costs no layout and keeps a screen reader able to
-    // read what the icon means.
-    dom.statusText.classList.toggle('status__text--offscreen', !paintsText);
+    dom.statusText.textContent = word;
+    dom.statusText.classList.remove('status__text--offscreen');
+  }
+  const cause = (state === 'error' || state === 'no-audio') ? String(text || '') : '';
+  document.documentElement.dataset.workerCause = cause;
+  const causeEl = document.getElementById('panel-menu-cause');
+  if (causeEl) {
+    causeEl.textContent = cause;
+    causeEl.hidden = !cause;
   }
   if (dom.statusDot) dom.statusDot.dataset.state = state || '';
   if (dom.status) {
