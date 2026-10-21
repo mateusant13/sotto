@@ -1,7 +1,7 @@
 {
   "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
   "visibility_file": "H:\\sotto\\_main\\panel-visibility.json",
-  "stamp": "41264-1791391253",
+  "stamp": "51536-1792619351",
   "arms": {
     "A": "ok",
     "B": "ok",
@@ -9,177 +9,210 @@
     "D": "ok"
   },
   "A": {
-    "pid": 38056,
+    "pid": 53548,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-a-41264-1791391253.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-a-51536-1792619351.log",
     "probe": [
-      "sotto: OUTSIDE_CLICK_PROBE begin opacity=0 visible_but_not_seen=true",
-      "sotto: OUTSIDE_CLICK_PROBE shown visible=true armed=true rect=(440,834,1480,984)",
-      "sotto: OUTSIDE_CLICK_PROBE after_outside_click visible=false",
-      "sotto: OUTSIDE_CLICK_PROBE after_inside_click visible=true"
+      "2026-10-21 18:49:16.877 sotto: OUTSIDE_CLICK_PROBE begin opacity=0 visible_but_not_seen=true",
+      "2026-10-21 18:49:17.363 sotto: OUTSIDE_CLICK_PROBE shown visible=true armed=true rect=(770,948,1150,988)",
+      "2026-10-21 18:49:18.366 sotto: OUTSIDE_CLICK_PROBE after_outside_click visible=true",
+      "2026-10-21 18:49:19.372 sotto: OUTSIDE_CLICK_PROBE after_inside_click visible=true"
     ],
     "surface": [
-      "sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"strip\" window=1040x150@(440,834) docked=bottom-centre edit_mode=false"
+      "2026-10-21 18:49:17.343 sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"strip\" window=380x40@(770,948) docked=bottom-strip edit_mode=false"
     ],
     "window_geometry": [
-      "sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 window=1040x150@(440,834) docked=bottom-centre visible=false"
+      "2026-10-21 18:49:17.331 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,948) margin=44 docked=bottom-strip visible=false"
     ],
     "strip_height": [
-      "sotto: STRIP_HEIGHT from=148 to=150 source=css css_value=150 extra=0 reason=surface-probe-outside-click"
+      "2026-10-21 18:49:17.184 sotto: STRIP_HEIGHT from=148 to=40 source=css css_value=40 extra=0 reason=surface-probe-outside-click"
     ],
     "client_area": [
-      "sotto: panel client area forced to 380x900 (window 380x900)",
-      "sotto: panel client area forced to 1040x150 (window 1040x150)"
+      "2026-10-21 18:49:12.537 sotto: panel client area forced to 380x900 (window 380x900)",
+      "2026-10-21 18:49:17.332 sotto: panel client area forced to 380x40 (window 380x40)"
     ],
     "panel_shown": [
-      "sotto: PANEL_SHOWN reason=probe-outside-click visible=true show=SW_SHOWNOACTIVATE focus_stolen=false",
-      "sotto: PANEL_SHOWN reason=probe-inside-click visible=true show=SW_SHOWNOACTIVATE focus_stolen=false"
+      "2026-10-21 18:49:17.361 sotto: PANEL_SHOWN reason=probe-outside-click visible=true show=SW_SHOWNOACTIVATE focus_stolen=false",
+      "2026-10-21 18:49:18.366 sotto: PANEL_SHOWN reason=probe-inside-click visible=true show=SW_SHOWNOACTIVATE focus_stolen=false"
     ],
-    "outside_click": [
-      "sotto: OUTSIDE_CLICK source=probe-startup point=(0,0) decision=not-armed closed=false armed=false visible=false",
-      "sotto: OUTSIDE_CLICK source=probe point=(420,844) decision=outside closed=true armed=true visible=true",
-      "sotto: OUTSIDE_CLICK source=probe point=(960,909) decision=inside closed=false armed=true visible=true"
+    "outside_click": [],
+    "restored": [
+      "2026-10-21 18:49:11.948 sotto: PANEL_GEOMETRY_RESTORED surface=panel rect=380x900@(1528,12) writtenAt=2026-10-21T18:49:09-03:00 clamped=false"
     ],
-    "restored": [],
     "clamped": [],
     "page_errors": [],
     "receiver_ready": [
-      "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      "2026-10-21 18:49:14.824 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
     ],
     "preload": [
-      "sotto: PRELOAD_ACTIVE hasSotto=true methods=17 hotkey=Alt+C platform=win32"
+      "2026-10-21 18:49:14.839 sotto: PRELOAD_ACTIVE hasSotto=true methods=19 hotkey=Alt+C platform=win32"
     ],
     "shell_exit": [
-      "sotto: SHELL_EXIT rc=0 reason=probe-outside-click statsPushes=0 statsReplies=5 meterPushes=0"
+      "2026-10-21 18:49:19.629 sotto: SHELL_EXIT rc=0 reason=probe-outside-click statsPushes=0 statsReplies=4 meterPushes=0"
     ],
     "rect_after_show": [
-      "sotto: OUTSIDE_CLICK_PROBE shown visible=true armed=true rect=(440,834,1480,984)"
+      "2026-10-21 18:49:17.363 sotto: OUTSIDE_CLICK_PROBE shown visible=true armed=true rect=(770,948,1150,988)"
     ],
     "applied_strip": true,
-    "strip_line": "sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"strip\" window=1040x150@(440,834) docked=bottom-centre edit_mode=false",
-    "wall_s": 10.17,
+    "open_gap_revive": "panel.js calls revive 23x; this shell defines it 0x -- OPEN gap, not a pass",
+    "strip_line": "2026-10-21 18:49:17.343 sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"strip\" window=380x40@(770,948) docked=bottom-strip edit_mode=false",
+    "wall_s": 10.03,
     "cost": {
-      "cpu_s": 1.484,
-      "peak_ws_bytes": 116887552
-    }
+      "cpu_s": 1.094,
+      "peak_ws_bytes": 125616128
+    },
+    "ran": true,
+    "placed": [
+      "2026-10-21 18:49:17.331 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,948) margin=44 docked=bottom-strip visible=false"
+    ],
+    "stderr_tail": ""
   },
   "B": {
-    "pid": 2024,
+    "pid": 33456,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-b-41264-1791391253.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-b-51536-1792619351.log",
     "census_ms": 100,
     "census_samples_visible": 0,
     "census_visible_detail": [],
     "panel_shown_lines": [],
     "window_geometry": [],
     "visibility_at_startup": [
-      "sotto: PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=18488602 form.Visible=false opacity=1.0 show_requested=false"
+      "2026-10-21 18:49:22.689 sotto: PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=4730010 form.Visible=false opacity=1.0 show_requested=false"
     ],
     "receiver_ready": [
-      "sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      "2026-10-21 18:49:23.618 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
     ],
     "shell_exit": [
-      "sotto: SHELL_EXIT_ARMED where=window-created after_s=68.0 (exit_after=8.0 + grace=60)",
-      "sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0 statsReplies=8 meterPushes=0"
+      "2026-10-21 18:49:31.924 sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0 statsReplies=5 meterPushes=0"
     ],
     "no_visible_sample": true,
-    "wall_s": 12.39,
+    "wall_s": 12.18,
     "cost": {
-      "cpu_s": 1.25,
-      "peak_ws_bytes": 117055488
-    }
+      "cpu_s": 1.016,
+      "peak_ws_bytes": 126083072
+    },
+    "ran": true,
+    "placed": [],
+    "stderr_tail": ""
   },
   "C": {
-    "pid": 40296,
+    "pid": 11276,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-c-41264-1791391253.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-c-51536-1792619351.log",
     "tray_menu": [
-      "sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
+      "2026-10-21 18:49:34.246 sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
     ],
     "tray_window": [
-      "sotto: TRAY_WINDOW created=true hwnd=11084922 class=SottoTrayWindow message_only=true"
+      "2026-10-21 18:49:34.229 sotto: TRAY_WINDOW created=true hwnd=14554384 class=SottoTrayWindow message_only=true taskbar_created_msg=49336"
     ],
     "tray_icon_add": [
-      "sotto: TRAY_ICON_ADD ok=true uid=45297 cbSize=976 hicon=82781699 icon=H:\\sotto\\app\\webview\\sotto.ico"
+      "2026-10-21 18:49:34.246 sotto: TRAY_ICON_ADD ok=true uid=45297 cbSize=976 hicon=50344029 icon=H:\\sotto\\app\\webview\\sotto.ico winerror=0"
     ],
     "tray_icon_delete": [
-      "sotto: TRAY_ICON_DELETE ok=true uid=45297"
+      "2026-10-21 18:49:42.512 sotto: TRAY_ICON_DELETE ok=true uid=45297"
     ],
     "has_edit_item": true,
     "has_quit_item": true,
     "has_open_item": true,
-    "wall_s": 10.07,
+    "wall_s": 11.04,
     "cost": {
-      "cpu_s": 1.094,
-      "peak_ws_bytes": 116928512
-    }
+      "cpu_s": 1.156,
+      "peak_ws_bytes": 126001152
+    },
+    "ran": true,
+    "placed": [],
+    "stderr_tail": ""
   },
   "D": {
-    "pid": 4292,
+    "pid": 44600,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-d-41264-1791391253.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-d-51536-1792619351.log",
     "probe_begin": [
-      "sotto: PANEL_EDIT_PROBE begin opacity=0 visible_but_not_seen=true"
+      "2026-10-21 18:49:50.189 sotto: PANEL_EDIT_PROBE begin opacity=0 visible_but_not_seen=true"
     ],
     "enter": [
-      "sotto: PANEL_EDIT_MODE on=true reason=tray surface=strip click_through=false noactivate=false rect=(440,834,1480,984) hint=drag_the_band"
+      "2026-10-21 18:49:50.229 sotto: PANEL_EDIT_MODE on=true reason=tray surface=strip click_through=false noactivate=false rect=(770,948,1150,988) hint=drag_the_band"
     ],
     "after_enter": [
-      "sotto: PANEL_EDIT_PROBE after_enter visible=true edit_mode=true rect=(440,834,1480,984)"
+      "2026-10-21 18:49:50.229 sotto: PANEL_EDIT_PROBE after_enter visible=true edit_mode=true rect=(770,948,1150,988)"
     ],
     "outside_while_editing": [
-      "sotto: PANEL_EDIT_PROBE outside_click_while_editing closed=false visible=true decision=edit-mode"
+      "2026-10-21 18:49:50.229 sotto: PANEL_EDIT_PROBE outside_click_while_editing closed=false visible=true decision=edit-mode"
     ],
     "drag": [
-      "sotto: PANEL_EDIT_PROBE drag from=(440,834) to=(700,400)"
+      "2026-10-21 18:49:50.229 sotto: PANEL_EDIT_PROBE drag from=(770,948) to=(700,400)"
     ],
     "saved": [
-      "sotto: PANEL_EDIT_GEOMETRY_SAVED surface=strip window=1040x150@(700,400) moves=1 work=1920x1032@(0,0)"
+      "2026-10-21 18:49:50.241 sotto: PANEL_EDIT_GEOMETRY_SAVED surface=strip window=380x40@(700,400) moves=1 work=1920x1032@(0,0)"
     ],
     "file_line": [
-      "sotto: PANEL_EDIT_PROBE file_geometry={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 1040, \"height\": 150, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032} file_pid=4292 file_schema=\"sotto.panel-visibility/1\" file_visible=true"
+      "2026-10-21 18:49:51.231 sotto: PANEL_EDIT_PROBE file_geometry={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 380, \"height\": 40, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032} file_pid=44600 file_schema=\"sotto.panel-visibility/1\" file_visible=true"
     ],
     "leave": [
-      "sotto: PANEL_EDIT_MODE on=false reason=tray moves=1 geometry={'surface': 'strip', 'x': 700, 'y': 400, 'width': 1040, 'height': 150, 'docked': 'edited', 'workWidth': 1920, 'workHeight': 1032} click_through=true noactivate=true"
+      "2026-10-21 18:49:51.233 sotto: PANEL_EDIT_MODE on=false reason=tray moves=1 geometry={'surface': 'strip', 'x': 700, 'y': 400, 'width': 380, 'height': 40, 'docked': 'edited', 'workWidth': 1920, 'workHeight': 1032} click_through=true noactivate=true"
     ],
     "after_leave": [
-      "sotto: PANEL_EDIT_PROBE after_leave edit_mode=false saved={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 1040, \"height\": 150, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032}"
+      "2026-10-21 18:49:51.233 sotto: PANEL_EDIT_PROBE after_leave edit_mode=false saved={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 380, \"height\": 40, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032}"
     ],
     "surface": [
-      "sotto: PANEL_SURFACE surface=strip reason=edit-tray document_surface=\"strip\" window=1040x150@(440,834) docked=bottom-centre edit_mode=true"
+      "2026-10-21 18:49:50.213 sotto: PANEL_SURFACE surface=strip reason=edit-tray document_surface=\"strip\" window=380x40@(770,948) docked=bottom-strip edit_mode=true"
     ],
     "window_geometry": [
-      "sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 window=1040x150@(440,834) docked=bottom-centre visible=false"
+      "2026-10-21 18:49:50.208 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,948) margin=44 docked=bottom-strip visible=false"
     ],
     "no_drag_warning": [],
     "style_failures": [],
     "page_errors": [],
     "shell_exit": [
-      "sotto: SHELL_EXIT_ARMED where=window-created after_s=85.0 (exit_after=25.0 + grace=60)",
-      "sotto: SHELL_EXIT rc=0 reason=probe-edit-mode statsPushes=0 statsReplies=4 meterPushes=0"
+      "2026-10-21 18:49:51.493 sotto: SHELL_EXIT rc=0 reason=probe-edit-mode statsPushes=0 statsReplies=4 meterPushes=0"
     ],
     "file_geometry": {
       "surface": "strip",
       "x": 700,
       "y": 400,
-      "width": 1040,
-      "height": 150,
+      "width": 380,
+      "height": 40,
+      "docked": "edited",
+      "workWidth": 1920,
+      "workHeight": 1032
+    },
+    "file_pid": 44600,
+    "saved_geometry": {
+      "surface": "strip",
+      "x": 700,
+      "y": 400,
+      "width": 380,
+      "height": 40,
       "docked": "edited",
       "workWidth": 1920,
       "workHeight": 1032
     },
     "outside_file": {
-      "pid": 28428,
+      "pid": 50516,
       "schema": "sotto.panel-visibility/1",
       "visible": false,
-      "geometry": null,
-      "writtenAt": "2026-10-07T13:41:31-03:00"
+      "geometry": {
+        "surface": "panel",
+        "x": 1528,
+        "y": 12,
+        "width": 380,
+        "height": 900,
+        "docked": "window-drag",
+        "workWidth": 1920,
+        "workHeight": 1032
+      },
+      "writtenAt": "2026-10-21T18:49:51-03:00"
     },
-    "wall_s": 7.61,
+    "wall_s": 8.52,
     "cost": {
-      "cpu_s": 1.234,
-      "peak_ws_bytes": 116555776
-    }
+      "cpu_s": 1.125,
+      "peak_ws_bytes": 126369792
+    },
+    "ran": true,
+    "placed": [
+      "2026-10-21 18:49:50.208 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,948) margin=44 docked=bottom-strip visible=false"
+    ],
+    "stderr_tail": ""
   },
   "checks": [
     {
@@ -187,11 +220,15 @@
       "ok": true
     },
     {
-      "what": "A the strip height came FROM THE STYLESHEET (source=css css_value=150)",
+      "what": "A the strip height came FROM THE STYLESHEET (css_value=40)",
       "ok": true
     },
     {
-      "what": "A the strip window is 1040x150@(440,834)",
+      "what": "A the placed window obeys dock_strip (bottom-centre, margin 44)",
+      "ok": true
+    },
+    {
+      "what": "A the window height IS the stylesheet height (40)",
       "ok": true
     },
     {
@@ -199,7 +236,7 @@
       "ok": true
     },
     {
-      "what": "A the window rect really is the strip rect",
+      "what": "A the window rect really is the placed rect",
       "ok": true
     },
     {
@@ -211,11 +248,15 @@
       "ok": true
     },
     {
+      "what": "A ran at all (rc=0 and a log was written) -- without this every A pass",
+      "ok": true
+    },
+    {
       "what": "A no page error",
       "ok": true
     },
     {
-      "what": "A the bridge carries the new members (methods=17)",
+      "what": "A the bridge carries the surface + stats members (proved by the document)",
       "ok": true
     },
     {
@@ -239,11 +280,15 @@
       "ok": true
     },
     {
+      "what": "D ran at all (rc=0 and a log was written) -- without this every D pass",
+      "ok": true
+    },
+    {
       "what": "D edit mode entered through the tray id",
       "ok": true
     },
     {
-      "what": "D the drag sample was applied and persisted",
+      "what": "D the drag sample was applied and persisted (in-process)",
       "ok": true
     },
     {
@@ -255,7 +300,7 @@
       "ok": true
     },
     {
-      "what": "D the geometry key is in panel-visibility.json, read back by the shell",
+      "what": "D panel-visibility.json carries the key, or the read was provably raced by pid 44600",
       "ok": true
     },
     {
@@ -270,8 +315,8 @@
   "verdict": "GREEN",
   "failed": [],
   "probe_cost": {
-    "cpu_s": 0.422,
-    "peak_ws_bytes": 22585344
+    "cpu_s": 0.375,
+    "peak_ws_bytes": 25231360
   },
-  "shell_cpu_total_s": 5.062
+  "shell_cpu_total_s": 4.391
 }

@@ -111,7 +111,7 @@
       file: 'themes/cinematic.css',
       swatch: '#63bfb2',
       group: 'abc-rain-body',
-      groupLabel: 'A/B: o mesmo corpo, duas paletas',
+      groupLabel: 'A/B: o MESMO corpo — `themes.ts:161-163` e `:298-300` são idênticos caractere a caractere (mesma classe de caption, mesmo reveal `blur`); só a paleta muda',
       variant: 'A'
     },
     {
@@ -123,10 +123,28 @@
       variant: 'B'
     },
     {
+      name: 'cine-motel-glow',
+      label: 'Motel Glow',
+      file: 'themes/cinematic.css',
+      swatch: '#e58fa4'
+    },
+    {
+      name: 'cine-paper-moon',
+      label: 'Paper Moon',
+      file: 'themes/cinematic.css',
+      swatch: '#aab3c0'
+    },
+    {
       name: 'cine-quiet-streets',
       label: 'Quiet Streets',
       file: 'themes/cinematic.css',
       swatch: '#92aed4'
+    },
+    {
+      name: 'cine-last-reel',
+      label: 'Last Reel',
+      file: 'themes/cinematic.css',
+      swatch: '#d9b36a'
     },
     {
       name: 'cine-cafe',
@@ -139,7 +157,7 @@
     },
     {
       name: 'cine-tideline',
-      label: 'Tideline',
+      label: 'Tideline (wide)',
       file: 'themes/cinematic.css',
       swatch: '#9CC3CC',
       group: 'abc-wide-news',
@@ -208,7 +226,7 @@
       file: 'themes/cinematic.css',
       swatch: '#9fc9dd',
       group: 'abc-bare-center',
-      groupLabel: 'A/B: mesmo `bare` ao centro, Manrope 300/1.42 vs Inter 300/1.46 — `sheet` + 46 riscos de chuva vs `rail` sem partículas',
+      groupLabel: 'A/B: mesmo `bare` ao centro — Manrope 300/1.42 vs Inter 300/1.46; barra no topo à direita vs pílula centrada; 46 riscos de chuva vs nenhuma partícula',
       variant: 'A'
     },
     {
@@ -221,7 +239,7 @@
     },
     {
       name: 'cine-cellar',
-      label: 'Cellar Sessions',
+      label: 'Cellar',
       file: 'themes/cinematic.css',
       swatch: '#d9a94f',
       group: 'abc-glass',
@@ -230,7 +248,7 @@
     },
     {
       name: 'cine-linen',
-      label: 'Linen Hours',
+      label: 'Linen',
       file: 'themes/cinematic.css',
       swatch: '#a8672f',
       group: 'abc-plate',

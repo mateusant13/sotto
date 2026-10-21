@@ -1,0 +1,1 @@
+{"segments": [{"start": 1700000167.017219, "end": 1700000167.6078439, "speaker": 6, "local_speaker": 0}, {"start": 1700000169.4134693, "end": 1700000171.3540945, "speaker": 5, "local_speaker": 1}], "window_start_abs": 1700000160.0, "written_at": 1792371297.255388, "speaker_slots": {"0": 6, "1": 5}, "window_s": 20.0, "n_segments": 2}

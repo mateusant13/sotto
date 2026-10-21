@@ -1,7 +1,7 @@
 {
   "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
   "visibility_file": "H:\\sotto\\_main\\panel-visibility.json",
-  "stamp": "7736-1791391293",
+  "stamp": "39748-1792619393",
   "cases": {
     "in-bounds": {
       "expected_clamped": false,
@@ -15,18 +15,18 @@
       ],
       "attempt": 1,
       "seeded": true,
-      "seed_note": "seeded over pid=28428",
+      "seed_note": "seeded over pid=50516",
       "tag": "in-bounds-a1",
       "rc": 0,
-      "log": "H:\\sotto\\_main\\_strip-restore-in-bounds-a1-7736-1791391293.log",
+      "log": "H:\\sotto\\_main\\_strip-restore-in-bounds-a1-39748-1792619393.log",
       "reseeded": false,
-      "wall_s": 13.35,
+      "wall_s": 14.03,
       "cost": {
-        "cpu_s": 1.141,
-        "peak_ws_bytes": 116740096
+        "cpu_s": 0.984,
+        "peak_ws_bytes": 126169088
       },
       "restored": [
-        "sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(700,400) writtenAt=2026-10-07T13:41:34-03:00 clamped=false"
+        "2026-10-21 18:49:54.563 sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(700,400) writtenAt=2026-10-21T18:49:54-03:00 clamped=false"
       ],
       "clamped": [],
       "refused": [],
@@ -34,7 +34,7 @@
       "window_geometry": [],
       "panel_shown": [],
       "visibility": [
-        "sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1791391296216"
+        "2026-10-21 18:49:57.914 sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1792619397914"
       ]
     },
     "off-screen": {
@@ -49,32 +49,32 @@
       ],
       "attempt": 1,
       "seeded": true,
-      "seed_note": "seeded over pid=28428",
+      "seed_note": "seeded over pid=50516",
       "tag": "off-screen-a1",
       "rc": 0,
-      "log": "H:\\sotto\\_main\\_strip-restore-off-screen-a1-7736-1791391293.log",
+      "log": "H:\\sotto\\_main\\_strip-restore-off-screen-a1-39748-1792619393.log",
       "reseeded": false,
-      "wall_s": 15.41,
+      "wall_s": 13.28,
       "cost": {
-        "cpu_s": 1.328,
-        "peak_ws_bytes": 116887552
+        "cpu_s": 0.953,
+        "peak_ws_bytes": 125898752
       },
       "restored": [
-        "sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(880,884) writtenAt=2026-10-07T13:41:49-03:00 clamped=true"
+        "2026-10-21 18:50:09.692 sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(880,884) writtenAt=2026-10-21T18:50:09-03:00 clamped=true"
       ],
       "clamped": [
-        "sotto: PANEL_GEOMETRY_CLAMPED surface=strip was=1040x148@(5000,5000) now=1040x148@(880,884) work=1920x1032@(0,0)"
+        "2026-10-21 18:50:09.693 sotto: PANEL_GEOMETRY_CLAMPED surface=strip was=1040x148@(5000,5000) now=1040x148@(880,884) work=1920x1032@(0,0)"
       ],
       "refused": [],
       "failed": [],
       "window_geometry": [],
       "panel_shown": [],
       "visibility": [
-        "sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1791391313720"
+        "2026-10-21 18:50:12.222 sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1792619412222"
       ]
     }
   },
-  "original_len": 425,
+  "original_len": 615,
   "file_restored": true,
   "checks": [
     {
@@ -106,6 +106,6 @@
   "failed": [],
   "probe_cost": {
     "cpu_s": 0.062,
-    "peak_ws_bytes": 20840448
+    "peak_ws_bytes": 21192704
   }
 }

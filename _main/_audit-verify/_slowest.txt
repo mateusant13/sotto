@@ -1,0 +1,8 @@
+strip-stats-log-budget                          61.96 s
+strip-surface-runtime                           41.98 s
+tap-open-timeout                                33.78 s
+strip-geometry-restore                          29.01 s
+strip-stats-wave                                26.19 s
+strip-surface-oracle                            19.37 s
+red-as-expected-lang-id-oracle                  16.38 s
+lang-id-oracle                                  15.20 s

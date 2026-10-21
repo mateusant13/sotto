@@ -50,7 +50,7 @@
         "panel.height": 900,
         "panel.pos": [
           1528,
-          66
+          12
         ],
         "clamp.moved": true,
         "clamp.x": 0,
@@ -88,9 +88,53 @@
               "peak": 0.5,
               "blocks": 12.0
             }
+          ],
+          [
+            "_set_strip_offset",
+            {
+              "dx": 12
+            }
+          ],
+          [
+            "_begin_window_drag",
+            {
+              "x": 5,
+              "y": 7
+            }
+          ],
+          [
+            "_set_live_enabled",
+            {
+              "on": true
+            }
+          ],
+          [
+            "_pause_shell",
+            {
+              "reason": "strip"
+            }
+          ],
+          [
+            "hide_panel",
+            "page"
+          ],
+          [
+            "toggle_panel",
+            "page"
+          ],
+          [
+            "quit",
+            "page"
           ]
         ],
-        "dispatch.source_tail": "..)` lands in BRIDGE_UNKNOWN_KIND and the\n            # Promise never resolves.\n            'stats': self._stats,\n        }.get(kind)\n        if handler is None:\n            log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')\n            return\n        try:\n            handler(payload)\n        except Exception as exc:  # a page callback must not kill the host\n            log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')\n",
+        "dispatch.source_tail": "           'message is dead until this is fixed')\n            table = {}\n        handler = self._resolve_handler_map(table).get(kind)\n        if handler is None:\n            log(f'BRIDGE_UNKNOWN_KIND kind={kind!r}')\n            return\n        try:\n            handler(payload)\n        except Exception as exc:  # a page callback must not kill the host\n            log(f'BRIDGE_HANDLER_FAILED kind={kind} error={exc!r}')\n",
+        "dispatch.setStripOffset": true,
+        "dispatch.beginWindowDrag": true,
+        "dispatch.setLiveEnabled": true,
+        "dispatch.pause": true,
+        "dispatch.hide": true,
+        "dispatch.toggle": true,
+        "dispatch.quit": true,
         "host._panel_surface": true,
         "host._stats": true,
         "shell.set_panel_surface": true,
@@ -124,7 +168,8 @@
         "stats.payload": {
           "tag": "stats",
           "peak": 0.443448,
-          "blocks": 812.0
+          "blocks": 812.0,
+          "queue_drops": 0.0
         },
         "stats.empty": {
           "tag": "stats"
@@ -141,12 +186,12 @@
         ],
         "geometry_for.default": [
           440,
-          872,
+          840,
           1040,
           148
         ],
         "geometry_for.default.docked": "bottom-strip",
-        "geometry_for.default.margin": 12,
+        "geometry_for.default.margin": 44,
         "geometry_for.default.surface": "strip",
         "geometry_snapshot.surface": "panel",
         "show_call": true,
@@ -217,28 +262,33 @@
           "deferred_while_capturing": {
             "restarts": 0,
             "deferred": [
-              "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=adff42133c3aeeb0 sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
+              "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=16 max_defer_ms=600000 code_is_stale=True sha256_disk=42b5405fdd57c578 sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
             ],
             "pending": true
           },
           "closed_line": {
-            "restarts": 1,
+            "restarts": 0,
             "lines": [
-              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=780",
-              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=780"
+              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=766",
+              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=766"
+            ],
+            "reported": [
+              "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=766 waited_ms=766 code_is_stale=True sha256_disk=42b5405fdd57c578 sha256_at_spawn=deadbeefdeadbeef action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
             ]
           },
           "ceiling": {
-            "restarts": 1,
-            "forced": [
-              "HOT_RELOAD_WORKER_FORCED files=1 reason=no-boundary-in-250ms waited_ms=250 code_is_stale=True sha256_disk=adff42133c3aeeb0 sha256_at_spawn=deadbeefdeadbeef cost=one-model-warm-up"
+            "restarts": 0,
+            "forced": [],
+            "reported": [
+              "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=250 code_is_stale=True sha256_disk=42b5405fdd57c578 sha256_at_spawn=deadbeefdeadbeef action=none -- ha 25 s que este ceiling \"forçava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
             ],
             "pending": false
           },
           "floor": {
             "restarts": 0,
             "cooldown": [
-              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59813 min_interval_ms=60000 waited_ms=187 code_is_stale=True sha256_disk=adff42133c3aeeb0 sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
+              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59938 min_interval_ms=60000 waited_ms=62 code_is_stale=True sha256_disk=42b5405fdd57c578 sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses",
+              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59938 min_interval_ms=60000 waited_ms=62 code_is_stale=True sha256_disk=42b5405fdd57c578 sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
             ],
             "pending": true
           }
@@ -247,13 +297,15 @@
         "reload.capture-guard.visible": 1,
         "reload.capture-guard.deferral-is-bounded-and-named": true,
         "reload.status-line-is-not-a-boundary-while-capturing": 0,
-        "reload.closed-line-applies-while-capturing": 1,
         "reload.closed-line-is-named": true,
-        "reload.ceiling-applies-with-no-boundary": 1,
+        "reload.closed-line-does-not-restart": 0,
+        "reload.closed-line-reports-instead": true,
+        "reload.ceiling-does-not-force": 0,
         "reload.ceiling-says-so": true,
         "reload.ceiling-leaves-nothing-pending": null,
         "reload.floor-bounds-the-rate": 0,
         "reload.floor-keeps-the-request": true,
+        "reload.floor-is-named": true,
         "reload.clock-equal-is-not-a-respawn": false,
         "meter": {
           "samples": 500,
@@ -336,8 +388,19 @@
       "control_failures": [
         "stats.log.500-samples-1-line: got 500, expected 1"
       ]
+    },
+    "mutant5": {
+      "failures": [
+        "reload.ceiling-does-not-force: got 1, expected 0",
+        "reload.ceiling-says-so: got False, expected True"
+      ],
+      "red_on_the_reload_contract": true,
+      "control_failures": [
+        "reload.ceiling-does-not-force: got 1, expected 0",
+        "reload.ceiling-says-so: got False, expected True"
+      ]
     }
   },
   "verdict": "GREEN",
-  "reason": "the real shell passes every arm; the member-removed COPY goes RED on the member it is missing, the routing-removed COPY goes RED on the driven dispatch arm, the CSS-blind COPY goes RED on the stylesheet height, and the per-sample-log COPY goes RED on the log budget"
+  "reason": "the real shell passes every arm; the member-removed COPY goes RED on the member it is missing, the routing-removed COPY goes RED on the driven dispatch arm, the CSS-blind COPY goes RED on the stylesheet height, the per-sample-log COPY goes RED on the log budget, and the ceiling-forces-restart COPY goes RED on the reload contract"
 }
