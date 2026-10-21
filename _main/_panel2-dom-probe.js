@@ -448,17 +448,29 @@ async function main() {
   // would remove it from the accessibility tree), and the footer carries the LIVE
   // class the icon is drawn from. Without the last two, "the text is empty" would
   // also be true of a panel that had lost its whole status block.
-  arm('the panel paints NO healthy sentence, and the icon carries the state',
-    [squeeze(full.id('status-text').textContent),
-      full.id('status-text').className.includes('status__text--offscreen'),
+  arm('the panel paints the SHORT WORD, never the sentence, and the icon carries the state',
+    // RE-ANCHORED 2026-10-21: the 3-dot menu took the worker's CAUSE (and with it
+    // the long sentence) into `#panel-menu-cause` -- the owner, verbatim:
+    // *"fonte + pausa + traducao + causa"*. The panel's own status text therefore
+    // carries the SHORT WORD and never the sentence. The claim is the SAME one the
+    // old arm made (the panel does not paint the sentence) and it is now STRONGER:
+    // the word IS painted (a panel that had lost its whole status block would fail
+    // this) AND the painted text is not the sentence.
+    [squeeze(full.id('status-text').textContent) !== 'Receiving captions',
+      squeeze(full.id('status-text').textContent).length > 0,
       full.id('status').className.includes('status--live'),
       full.id('status-dot').getAttribute('data-state')],
-    ['', true, true, 'live']);
-  arm('an ERROR still paints its sentence — the device must be nameable',
+    [true, true, true, 'live']);
+  arm('an ERROR still names the device - the cause is in the menu, and it is readable',
     await (async () => {
       full.status('Silent audio device - Mapeador de som da Microsoft - Input [MME]', 'error');
       await tick();
-      return [squeeze(full.id('status-text').textContent).startsWith('Silent audio device'),
+      // RE-ANCHORED 2026-10-21: the sentence moved to the menu's cause slot (the
+      // owner's *"fonte + pausa + traducao + causa"*), so the device is named THERE.
+      // The claim did not change: the device must be NAMEABLE. Asserting only the
+      // state class would pass on a panel that had swallowed the reason.
+      const cause = full.id('panel-menu-cause');
+      return [squeeze(cause ? cause.textContent : '').startsWith('Silent audio device'),
         full.id('status').className.includes('status--error'),
         full.id('status-dot').getAttribute('data-state')];
     })(),
@@ -638,7 +650,13 @@ async function main() {
   // (2) THE LAMP IS AT THE OPPOSITE END OF THE PILL FROM THE PAUSE. The owner:
   // *"se ele e indicativo de algo, e pra ser separado, longe, pra nao se misturar"*.
   arm('the lamp is the FIRST thing the cluster paints, and the pause is not beside it',
-    [lampIdx, pauseIdx > lampIdx + 1], [0, true]);
+    // RE-ANCHORED 2026-10-21: the owner moved the Pause INTO the 3-dot menu
+    // (*"fonte + pausa + traducao + causa"*), so `#panel-pause-button` is no
+    // longer a child of the top row AT ALL (`-1`). The claim is unchanged -- the
+    // pause must not sit NEXT TO the lamp -- and it still has teeth: a pause
+    // that came back into the row, right after the lamp, puts `pauseIdx` at 1
+    // and this arm goes RED.
+    [lampIdx, pauseIdx], [0, -1]);
 
   // (3) THE LAMP READS THE SHELL'S FACT, NOT A LOCAL WISH.
   arm('the lamp starts RED: the live caption is off',
