@@ -1,0 +1,350 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", "Instrument Sans", sans-serif;
+  --font-body: "Instrument Sans", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+  --font-cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-cinema: "Fraunces", Georgia, serif;
+  --font-instr: "Space Grotesk", "Instrument Sans", sans-serif;
+
+  --color-ink: #0b0d10;
+  --color-coal: #12151b;
+  --color-paper: #eae7e0;
+  --color-accent: #e8574f;
+  --color-amberx: #e0a63c;
+  --color-moss: #7fa86b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(232, 87, 79, 0.35);
+}
+
+/* ---------- ambient layers ---------- */
+
+.noise {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  z-index: 70;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+.glow-red {
+  background: radial-gradient(
+    60% 45% at 12% 0%,
+    rgba(232, 87, 79, 0.09),
+    transparent 70%
+  );
+}
+
+.glow-cold {
+  background: radial-gradient(
+    55% 50% at 95% 100%,
+    rgba(96, 130, 180, 0.07),
+    transparent 70%
+  );
+}
+
+/* ---------- entrance ---------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise {
+  animation: rise 0.55s cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.8s ease both;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.panel-in {
+  animation: panelIn 0.38s cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+
+@keyframes lineIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.line-in {
+  animation: lineIn 0.34s ease-out both;
+}
+
+/* ---------- stage ---------- */
+
+@keyframes kenburns {
+  from {
+    transform: scale(1.04);
+  }
+  to {
+    transform: scale(1.15) translate(-1.2%, -0.9%);
+  }
+}
+
+.stage-kb {
+  animation: kenburns 58s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes filmProgress {
+  from {
+    width: 4%;
+  }
+  to {
+    width: 97%;
+  }
+}
+
+.film-progress {
+  animation: filmProgress 150s linear infinite;
+}
+
+/* ---------- shared panel bits ---------- */
+
+.mask-fade-top {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 120px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 120px);
+}
+
+@keyframes blinkCaret {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.caret {
+  animation: blinkCaret 1.05s steps(1) infinite;
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+.pulse-dot {
+  animation: pulseDot 1.5s ease-in-out infinite;
+}
+
+@keyframes softBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.soft-blink {
+  animation: softBlink 1.4s ease-in-out infinite;
+}
+
+/* ---------- 01 teleprompter ---------- */
+
+@keyframes breatheGlow {
+  from {
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.16),
+      0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+  to {
+    text-shadow: 0 0 26px rgba(255, 255, 255, 0.42),
+      0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+}
+
+.tp-active {
+  animation: breatheGlow 2.4s ease-in-out infinite alternate;
+}
+
+/* ---------- 03 manuscrito ---------- */
+
+@keyframes settle {
+  from {
+    opacity: 0.35;
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.settle-word {
+  animation: settle 1s ease-out both;
+}
+
+/* ---------- 05 instrumento ---------- */
+
+@keyframes eqA {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  28% {
+    transform: scaleY(1);
+  }
+  56% {
+    transform: scaleY(0.5);
+  }
+  80% {
+    transform: scaleY(0.85);
+  }
+}
+
+@keyframes eqB {
+  0%,
+  100% {
+    transform: scaleY(0.55);
+  }
+  35% {
+    transform: scaleY(0.95);
+  }
+  62% {
+    transform: scaleY(0.35);
+  }
+  85% {
+    transform: scaleY(0.75);
+  }
+}
+
+@keyframes eqC {
+  0%,
+  100% {
+    transform: scaleY(0.42);
+  }
+  30% {
+    transform: scaleY(0.7);
+  }
+  58% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+}
+
+.eq-bar.eq-1 {
+  animation: eqA 0.9s ease-in-out infinite;
+}
+
+.eq-bar.eq-2 {
+  animation: eqB 1.18s ease-in-out infinite;
+}
+
+.eq-bar.eq-3 {
+  animation: eqC 0.76s ease-in-out infinite;
+}
+
+@keyframes indicatorPulse {
+  from {
+    opacity: 0.65;
+    transform: scaleY(0.94);
+    box-shadow: 0 0 10px rgba(232, 87, 79, 0.35);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+    box-shadow: 0 0 18px rgba(232, 87, 79, 0.7);
+  }
+}
+
+.indicator-pulse {
+  animation: indicatorPulse 1.7s ease-in-out infinite alternate;
+}
+
+/* ---------- keycaps ---------- */
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom-width: 2px;
+  background: #1a1e25;
+  color: rgba(234, 231, 224, 0.75);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* ---------- scrollbar ---------- */
+
+.rail-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rail-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.rail-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,310 @@
+{
+  "viewport": [
+    380,
+    900
+  ],
+  "theme": "theme-2",
+  "surface": "panel",
+  "panel": {
+    "x": 0,
+    "y": 0,
+    "w": 380,
+    "h": 900,
+    "right": 380,
+    "bottom": 900
+  },
+  "captions": [
+    {
+      "cls": "caption",
+      "text": "O som chega antes da imagem.",
+      "row": {
+        "x": 24,
+        "y": 611.61,
+        "w": 332,
+        "h": 30.27,
+        "right": 356,
+        "bottom": 641.88
+      },
+      "textBox": {
+        "x": 91.2,
+        "y": 618.61,
+        "w": 252.8,
+        "h": 16.27,
+        "right": 344,
+        "bottom": 634.88
+      },
+      "timeBox": {
+        "x": 38,
+        "y": 618.61,
+        "w": 43.2,
+        "h": 16.27,
+        "right": 81.2,
+        "bottom": 634.88
+      },
+      "fontSize": "10.5px",
+      "lineHeight": "16.275px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 253,
+      "scrollW": 253,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 1,
+      "textH": 16.27,
+      "timeFontSize": "9px",
+      "timeW": 43.2
+    },
+    {
+      "cls": "caption",
+      "text": "Antes da primeira cena, ja existe um rumor de sala.",
+      "row": {
+        "x": 24,
+        "y": 649.88,
+        "w": 332,
+        "h": 46.53,
+        "right": 356,
+        "bottom": 696.41
+      },
+      "textBox": {
+        "x": 91.2,
+        "y": 656.88,
+        "w": 252.8,
+        "h": 32.53,
+        "right": 344,
+        "bottom": 689.41
+      },
+      "timeBox": {
+        "x": 38,
+        "y": 656.88,
+        "w": 43.2,
+        "h": 32.53,
+        "right": 81.2,
+        "bottom": 689.41
+      },
+      "fontSize": "10.5px",
+      "lineHeight": "16.275px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 253,
+      "scrollW": 253,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 2,
+      "textH": 32.53,
+      "timeFontSize": "9px",
+      "timeW": 43.2
+    },
+    {
+      "cls": "caption caption--latest",
+      "text": "Quando a frase fecha, ela ganha peso - e fica.",
+      "row": {
+        "x": 24,
+        "y": 704.41,
+        "w": 332,
+        "h": 46.53,
+        "right": 356,
+        "bottom": 750.94
+      },
+      "textBox": {
+        "x": 89.2,
+        "y": 711.41,
+        "w": 254.8,
+        "h": 32.53,
+        "right": 344,
+        "bottom": 743.94
+      },
+      "timeBox": {
+        "x": 36,
+        "y": 711.41,
+        "w": 43.2,
+        "h": 32.53,
+        "right": 79.2,
+        "bottom": 743.94
+      },
+      "fontSize": "10.5px",
+      "lineHeight": "16.275px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 255,
+      "scrollW": 255,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 2,
+      "textH": 32.53,
+      "timeFontSize": "9px",
+      "timeW": 43.2
+    },
+    {
+      "cls": "caption caption--provisional",
+      "text": "A legenda nasce enquanto a frase ainda esta em formacao.",
+      "row": {
+        "x": 24,
+        "y": 758.94,
+        "w": 332,
+        "h": 89.56,
+        "right": 356,
+        "bottom": 848.5
+      },
+      "textBox": {
+        "x": 77.2,
+        "y": 765.94,
+        "w": 266.8,
+        "h": 75.56,
+        "right": 344,
+        "bottom": 841.5
+      },
+      "timeBox": {
+        "x": 24,
+        "y": 765.94,
+        "w": 43.2,
+        "h": 75.56,
+        "right": 67.2,
+        "bottom": 841.5
+      },
+      "fontSize": "18px",
+      "lineHeight": "25.2px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "fontWeight": "500",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 267,
+      "scrollW": 267,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 3,
+      "textH": 75.56,
+      "timeFontSize": "9px",
+      "timeW": 43.2
+    }
+  ],
+  "rail": {
+    "rect": {
+      "x": 14,
+      "y": 135.25,
+      "w": 352,
+      "h": 723.25,
+      "right": 366,
+      "bottom": 858.5
+    },
+    "clientW": 352,
+    "scrollW": 352,
+    "overflowX": 0,
+    "clientH": 723,
+    "scrollH": 723,
+    "overflowY": 0
+  },
+  "list": {
+    "rect": {
+      "x": 14,
+      "y": 135.25,
+      "w": 352,
+      "h": 723.25,
+      "right": 366,
+      "bottom": 858.5
+    },
+    "clientW": 352,
+    "scrollW": 352,
+    "overflowX": 0
+  },
+  "header": {
+    "rect": {
+      "x": 14,
+      "y": 14,
+      "w": 352,
+      "h": 71.25,
+      "right": 366,
+      "bottom": 85.25
+    },
+    "clientW": 352,
+    "scrollW": 352,
+    "overflowX": 0
+  },
+  "controls": {
+    "panel_right": 380,
+    "viewport_w": 380,
+    "buttons": [
+      {
+        "id": "theme-button",
+        "label": "Broadcast",
+        "left": 148,
+        "right": 238,
+        "w": 90,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "theme-chevron",
+        "label": "",
+        "left": 242,
+        "right": 270,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "font-scale-button",
+        "label": "A",
+        "left": 274,
+        "right": 302,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "tune-button",
+        "label": "",
+        "left": 116,
+        "right": 144,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "panel-pause-button",
+        "label": "",
+        "left": 306,
+        "right": 334,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "hide-button",
+        "label": "",
+        "left": 338,
+        "right": 366,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      }
+    ]
+  },
+  "overflowing": [],
+  "overflowingBottom": [],
+  "railVsContent": {
+    "railBottom": 858.5,
+    "listBottom": 858.5,
+    "past_by": 0,
+    "railClientH": 723,
+    "railScrollH": 723
+  },
+  "skin": null
+}

@@ -1,0 +1,360 @@
+{
+  "viewport": [
+    380,
+    900
+  ],
+  "theme": "cine-linen",
+  "surface": "panel",
+  "panel": {
+    "x": 0,
+    "y": 0,
+    "w": 380,
+    "h": 900,
+    "right": 380,
+    "bottom": 900
+  },
+  "captions": [
+    {
+      "cls": "caption",
+      "text": "O som chega antes da imagem.",
+      "row": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "textBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "timeBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "fontSize": "13px",
+      "lineHeight": "17.94px",
+      "letterSpacing": "normal",
+      "fontFamily": "Newsreader, Georgia, serif",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 0,
+      "scrollW": 0,
+      "overflowX": 0,
+      "lineBoxes": 0,
+      "wrappedLines": 0,
+      "textH": 0,
+      "timeFontSize": "9.9px",
+      "timeW": 0
+    },
+    {
+      "cls": "caption",
+      "text": "Antes da primeira cena, ja existe um rumor de sala.",
+      "row": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "textBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "timeBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "fontSize": "13px",
+      "lineHeight": "17.94px",
+      "letterSpacing": "normal",
+      "fontFamily": "Newsreader, Georgia, serif",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 0,
+      "scrollW": 0,
+      "overflowX": 0,
+      "lineBoxes": 0,
+      "wrappedLines": 0,
+      "textH": 0,
+      "timeFontSize": "9.9px",
+      "timeW": 0
+    },
+    {
+      "cls": "caption caption--latest",
+      "text": "Quando a frase fecha, ela ganha peso - e fica.",
+      "row": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "textBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "timeBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "fontSize": "13px",
+      "lineHeight": "17.94px",
+      "letterSpacing": "normal",
+      "fontFamily": "Newsreader, Georgia, serif",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 0,
+      "scrollW": 0,
+      "overflowX": 0,
+      "lineBoxes": 0,
+      "wrappedLines": 0,
+      "textH": 0,
+      "timeFontSize": "9.9px",
+      "timeW": 0
+    },
+    {
+      "cls": "caption caption--provisional",
+      "text": "A legenda nasce enquanto a frase ainda esta em formacao.",
+      "row": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "textBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "timeBox": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "fontSize": "17px",
+      "lineHeight": "23.46px",
+      "letterSpacing": "normal",
+      "fontFamily": "Newsreader, Georgia, serif",
+      "fontWeight": "400",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 0,
+      "scrollW": 0,
+      "overflowX": 0,
+      "lineBoxes": 0,
+      "wrappedLines": 0,
+      "textH": 0,
+      "timeFontSize": "9.9px",
+      "timeW": 0
+    }
+  ],
+  "rail": {
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "clientW": 0,
+    "scrollW": 0,
+    "overflowX": 0,
+    "clientH": 0,
+    "scrollH": 0,
+    "overflowY": 0
+  },
+  "list": {
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "clientW": 0,
+    "scrollW": 0,
+    "overflowX": 0
+  },
+  "header": {
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "w": 380,
+      "h": 56,
+      "right": 380,
+      "bottom": 56
+    },
+    "clientW": 380,
+    "scrollW": 380,
+    "overflowX": 0
+  },
+  "controls": {
+    "panel_right": 380,
+    "viewport_w": 380,
+    "buttons": [
+      {
+        "id": "theme-button",
+        "label": "Linen",
+        "left": 148,
+        "right": 238,
+        "w": 90,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "theme-chevron",
+        "label": "",
+        "left": 242,
+        "right": 270,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "font-scale-button",
+        "label": "A",
+        "left": 274,
+        "right": 302,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "tune-button",
+        "label": "",
+        "left": 116,
+        "right": 144,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "panel-pause-button",
+        "label": "",
+        "left": 306,
+        "right": 334,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "hide-button",
+        "label": "",
+        "left": 338,
+        "right": 366,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      }
+    ]
+  },
+  "overflowing": [],
+  "overflowingBottom": [],
+  "railVsContent": {
+    "railBottom": 0,
+    "listBottom": 0,
+    "past_by": 0,
+    "railClientH": 0,
+    "railScrollH": 0
+  },
+  "skin": {
+    "mounted": true,
+    "bodySkin": "1",
+    "panel": {
+      "x": 0,
+      "y": 0,
+      "w": 380,
+      "h": 900,
+      "right": 380,
+      "bottom": 900
+    },
+    "caption": {
+      "x": 0,
+      "y": 900,
+      "w": 380,
+      "h": 0,
+      "right": 380,
+      "bottom": 900
+    },
+    "live": {
+      "fontSize": "23.25px",
+      "lineHeight": "32.085px",
+      "fontFamily": "Newsreader",
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "textTransform": "none",
+      "whiteSpace": "normal",
+      "overflowWrap": "normal",
+      "rect": {
+        "x": 18.75,
+        "y": 764.88,
+        "w": 342.5,
+        "h": 52.63,
+        "right": 361.25,
+        "bottom": 817.5
+      },
+      "clientW": 341,
+      "scrollW": 341,
+      "overflowX": 0
+    },
+    "words": {
+      "count": 0,
+      "widest": 0,
+      "perWord": [],
+      "whiteSpace": null
+    },
+    "captionColumn": {
+      "w": 380,
+      "maxWidth": "666.188px"
+    }
+  }
+}

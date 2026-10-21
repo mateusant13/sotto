@@ -37,19 +37,49 @@ So the presets reproduce the shell's own windows:
              does it sit on the desktop" - its type scale is NOT the app's (reason
              2 above), so it is named *-context-* and is never the proof of a size.
 
-THE 492 px WIDTH CLAMP IS ALSO MEASURED, AND IT DOES NOT APPLY HERE. The old
-docstring said a 380 px-wide PNG was unobtainable because headless Edge clamps the
-layout viewport to 492 px. That clamp was measured with --dump-dom; re-measured
-2026-10-09 with --screenshot, --window-size=380,900 -> PNG 380x900, 380x150 ->
-380x150, even 150x400 -> 150x400. There is no clamp to escape, so the old
-"screenshot it is not obtainable" is FALSE and the dock-only framing it justified
-is retired as the default.
+THE 492 px WIDTH CLAMP IS REAL, AND IT APPLIES TO --screenshot TOO. The old
+docstring here claimed otherwise: that the clamp was "measured with --dump-dom",
+that re-measuring with --screenshot on 2026-10-09 proved --window-size=380,900
+gives a 380x900 PNG, and that the app's own window is therefore obtainable.
+THE PNG IS 380x900. THE LAYOUT INSIDE IT IS NOT.
+
+MEASURED 2026-10-18, and it cost a near-miss. An outline probe over the shipped
+panel printed `header r=478` and control right edges up to 478 inside a 380-wide
+PNG -- 492 - 14, the geometry of the 492px layout, cropped. Every control past
+the panel's edge said Hide, Pause and the caption-size button were 34-98px off
+the owner's window, and the obvious next move was to fix a header overflow in
+the product.
+
+IT IS NOT A DEFECT. Asked in the only place with the owner's real viewport --
+`sotto_webview.py --dump-dom`, the WebView2 window the shell actually creates,
+which has no clamp -- the same six controls measure (theme-1, panel surface)
+cluster [116..366], every button onscreen, past_by=0. The 492 is a headless
+artefact, and every coordinate read from a screenshot here describes a panel the
+owner does not have.
+
+Two agreeing runs were not agreement: `--headless=new` and `--headless=old`
+produced BYTE-IDENTICAL 62570-byte PNGs on the same input, and forcing
+`html{width:380px}` moved the body and the header while the control boxes stayed
+on the 492 geometry. `--user-data-dir` is now set per run for the same reason:
+without it a browser already running swallows the request, and the flags in the
+command line were never that process's own arguments.
+
+THE RULE. A PNG from this module proves COLOUR, SHAPE, TYPE, and what is or is
+not painted. It does not prove a coordinate, and a right edge read from it is
+not evidence about the owner's screen. For geometry ask
+`sotto_webview.py --dump-dom`, whose `controls` key (added 2026-10-18) reports
+`viewport_w` next to every number so the two instruments cannot be confused.
 
 WHY HEADLESS EDGE, NOT THE APP:
   1. the engine. The app is WebView2, which IS Chromium; --headless=new on Edge is
      the same engine class without the HWND.
   2. geometry. --window-size is the viewport, so the two surfaces are shot in
      exactly the windows the shell creates for them.
+     ^^ FALSE ON THIS MACHINE, and it is the sentence that produced the near-miss
+     in the clamp note above: the LAYOUT viewport is clamped to 492 whatever is
+     asked for, so the picture is a 380px CROP of a 492px panel. --window-size
+     sets the OUTPUT box. Pictures are why this module exists; coordinates are
+     not its job.
   3. no window on the owner's screen. Headless Chromium draws nothing.
 
 WHAT IS COPIED, AND WHAT IS REWRITTEN. A COPY of app/panel/ in a scratch dir (the

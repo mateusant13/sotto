@@ -1,0 +1,1906 @@
+[
+ {
+  "name": "zip1-directions-01-teleprompter",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "1"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-01-teleprompter.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-01-teleprompter.json"
+ },
+ {
+  "name": "zip1-directions-01-teleprompter-panel",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "1"
+  ],
+  "clip": ".sotto-panel",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-01-teleprompter-panel.png"
+ },
+ {
+  "name": "zip1-directions-02-broadcast",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "2"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-02-broadcast.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-02-broadcast.json"
+ },
+ {
+  "name": "zip1-directions-02-broadcast-panel",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "2"
+  ],
+  "clip": ".sotto-panel",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-02-broadcast-panel.png"
+ },
+ {
+  "name": "zip1-directions-03-manuscrito",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "3"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-03-manuscrito.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-03-manuscrito.json"
+ },
+ {
+  "name": "zip1-directions-03-manuscrito-panel",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "3"
+  ],
+  "clip": ".sotto-panel",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-03-manuscrito-panel.png"
+ },
+ {
+  "name": "zip1-directions-04-cartao-de-cinema",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "4"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-04-cartao-de-cinema.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-04-cartao-de-cinema.json"
+ },
+ {
+  "name": "zip1-directions-04-cartao-de-cinema-panel",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "4"
+  ],
+  "clip": ".sotto-panel",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-04-cartao-de-cinema-panel.png"
+ },
+ {
+  "name": "zip1-directions-05-instrumento",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "5"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-05-instrumento.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-05-instrumento.json"
+ },
+ {
+  "name": "zip1-directions-05-instrumento-panel",
+  "set": "zipA",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 2600,
+  "keys": [
+   "5"
+  ],
+  "clip": ".sotto-panel",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-05-instrumento-panel.png"
+ },
+ {
+  "name": "zip2-panels-01-teleprompter",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "1"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-01-teleprompter.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-01-teleprompter.json"
+ },
+ {
+  "name": "zip2-panels-01-teleprompter-panel",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "1"
+  ],
+  "clip": ".panel-in",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-01-teleprompter-panel.png"
+ },
+ {
+  "name": "zip2-panels-02-broadcast",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "2"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-02-broadcast.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-02-broadcast.json"
+ },
+ {
+  "name": "zip2-panels-02-broadcast-panel",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "2"
+  ],
+  "clip": ".panel-in",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-02-broadcast-panel.png"
+ },
+ {
+  "name": "zip2-panels-03-manuscrito",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "3"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-03-manuscrito.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-03-manuscrito.json"
+ },
+ {
+  "name": "zip2-panels-03-manuscrito-panel",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "3"
+  ],
+  "clip": ".panel-in",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-03-manuscrito-panel.png"
+ },
+ {
+  "name": "zip2-panels-04-cartao-de-cinema",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "4"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-04-cartao-de-cinema.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-04-cartao-de-cinema.json"
+ },
+ {
+  "name": "zip2-panels-04-cartao-de-cinema-panel",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "4"
+  ],
+  "clip": ".panel-in",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-04-cartao-de-cinema-panel.png"
+ },
+ {
+  "name": "zip2-panels-05-instrumento",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "5"
+  ],
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-05-instrumento.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-05-instrumento.json"
+ },
+ {
+  "name": "zip2-panels-05-instrumento-panel",
+  "set": "zipB",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+  "w": 1600,
+  "h": 1800,
+  "wait": 2600,
+  "keys": [
+   "5"
+  ],
+  "clip": ".panel-in",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-05-instrumento-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-01-rainline",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-01-rainline.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-01-rainline.json"
+ },
+ {
+  "name": "zip5-cinematic-2-01-rainline-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-01-rainline-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-02-blue-plate",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-02-blue-plate.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-02-blue-plate.json"
+ },
+ {
+  "name": "zip5-cinematic-2-02-blue-plate-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-02-blue-plate-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-03-cellar",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-03-cellar.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-03-cellar.json"
+ },
+ {
+  "name": "zip5-cinematic-2-03-cellar-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-03-cellar-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-04-linen",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-04-linen.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-04-linen.json"
+ },
+ {
+  "name": "zip5-cinematic-2-04-linen-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-04-linen-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-05-side-b",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-05-side-b.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-05-side-b.json"
+ },
+ {
+  "name": "zip5-cinematic-2-05-side-b-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-05-side-b-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-06-north-window",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-06-north-window.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-06-north-window.json"
+ },
+ {
+  "name": "zip5-cinematic-2-06-north-window-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-06-north-window-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-07-adobe",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-07-adobe.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-07-adobe.json"
+ },
+ {
+  "name": "zip5-cinematic-2-07-adobe-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-07-adobe-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-08-glasshouse",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-08-glasshouse.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-08-glasshouse.json"
+ },
+ {
+  "name": "zip5-cinematic-2-08-glasshouse-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-08-glasshouse-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-09-film-club",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-09-film-club.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-09-film-club.json"
+ },
+ {
+  "name": "zip5-cinematic-2-09-film-club-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-09-film-club-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-10-nightswim",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-10-nightswim.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-10-nightswim.json"
+ },
+ {
+  "name": "zip5-cinematic-2-10-nightswim-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-10-nightswim-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-11-reading-hour",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-11-reading-hour.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-11-reading-hour.json"
+ },
+ {
+  "name": "zip5-cinematic-2-11-reading-hour-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-11-reading-hour-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-12-snowline",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-12-snowline.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-12-snowline.json"
+ },
+ {
+  "name": "zip5-cinematic-2-12-snowline-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-12-snowline-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-13-last-train",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-13-last-train.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-13-last-train.json"
+ },
+ {
+  "name": "zip5-cinematic-2-13-last-train-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-13-last-train-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-14-dusk-highway",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-14-dusk-highway.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-14-dusk-highway.json"
+ },
+ {
+  "name": "zip5-cinematic-2-14-dusk-highway-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-14-dusk-highway-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-15-harbor",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-15-harbor.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-15-harbor.json"
+ },
+ {
+  "name": "zip5-cinematic-2-15-harbor-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-15-harbor-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-16-fireside",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-16-fireside.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-16-fireside.json"
+ },
+ {
+  "name": "zip5-cinematic-2-16-fireside-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-16-fireside-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-17-blue-hour",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-17-blue-hour.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-17-blue-hour.json"
+ },
+ {
+  "name": "zip5-cinematic-2-17-blue-hour-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-17-blue-hour-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-18-paper-rain",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-18-paper-rain.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-18-paper-rain.json"
+ },
+ {
+  "name": "zip5-cinematic-2-18-paper-rain-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-18-paper-rain-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-19-terrace",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-19-terrace.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-19-terrace.json"
+ },
+ {
+  "name": "zip5-cinematic-2-19-terrace-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-19-terrace-panel.png"
+ },
+ {
+  "name": "zip5-cinematic-2-20-quiet-marina",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-20-quiet-marina.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-20-quiet-marina.json"
+ },
+ {
+  "name": "zip5-cinematic-2-20-quiet-marina-panel",
+  "set": "zipC2",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-20-quiet-marina-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-01-midnight-rain",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-01-midnight-rain.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-01-midnight-rain.json"
+ },
+ {
+  "name": "zip3-cinematic-01-midnight-rain-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-01-midnight-rain-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-02-warm-hour",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-02-warm-hour.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-02-warm-hour.json"
+ },
+ {
+  "name": "zip3-cinematic-02-warm-hour-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-02-warm-hour-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-03-velvet-dusk",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-03-velvet-dusk.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-03-velvet-dusk.json"
+ },
+ {
+  "name": "zip3-cinematic-03-velvet-dusk-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-03-velvet-dusk-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-04-study-light",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-04-study-light.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-04-study-light.json"
+ },
+ {
+  "name": "zip3-cinematic-04-study-light-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-04-study-light-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-05-tideline",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-05-tideline.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-05-tideline.json"
+ },
+ {
+  "name": "zip3-cinematic-05-tideline-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-05-tideline-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-06-motel-glow",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-06-motel-glow.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-06-motel-glow.json"
+ },
+ {
+  "name": "zip3-cinematic-06-motel-glow-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-06-motel-glow-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-07-paper-moon",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-07-paper-moon.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-07-paper-moon.json"
+ },
+ {
+  "name": "zip3-cinematic-07-paper-moon-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-07-paper-moon-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-08-quiet-streets",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-08-quiet-streets.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-08-quiet-streets.json"
+ },
+ {
+  "name": "zip3-cinematic-08-quiet-streets-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-08-quiet-streets-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-09-last-reel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-09-last-reel.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-09-last-reel.json"
+ },
+ {
+  "name": "zip3-cinematic-09-last-reel-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-09-last-reel-panel.png"
+ },
+ {
+  "name": "zip3-cinematic-10-north-fog",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-10-north-fog.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-10-north-fog.json"
+ },
+ {
+  "name": "zip3-cinematic-10-north-fog-panel",
+  "set": "zipC",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-10-north-fog-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-01-glass-cards",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-01-glass-cards.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-01-glass-cards.json"
+ },
+ {
+  "name": "zip4-cinematic-1-01-glass-cards-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-01-glass-cards-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-02-hairline",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-02-hairline.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-02-hairline.json"
+ },
+ {
+  "name": "zip4-cinematic-1-02-hairline-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-02-hairline-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-03-paper",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-03-paper.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-03-paper.json"
+ },
+ {
+  "name": "zip4-cinematic-1-03-paper-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-03-paper-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-04-quotes",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-04-quotes.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-04-quotes.json"
+ },
+ {
+  "name": "zip4-cinematic-1-04-quotes-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-04-quotes-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-05-ledger",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-05-ledger.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-05-ledger.json"
+ },
+ {
+  "name": "zip4-cinematic-1-05-ledger-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-05-ledger-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-06-feed",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-06-feed.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-06-feed.json"
+ },
+ {
+  "name": "zip4-cinematic-1-06-feed-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-06-feed-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-07-bubbles",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-07-bubbles.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-07-bubbles.json"
+ },
+ {
+  "name": "zip4-cinematic-1-07-bubbles-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-07-bubbles-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-08-timeline",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-08-timeline.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-08-timeline.json"
+ },
+ {
+  "name": "zip4-cinematic-1-08-timeline-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-08-timeline-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-09-chips",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-09-chips.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-09-chips.json"
+ },
+ {
+  "name": "zip4-cinematic-1-09-chips-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-09-chips-panel.png"
+ },
+ {
+  "name": "zip4-cinematic-1-10-gutter",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-10-gutter.png",
+  "eval": "H:\\sotto\\_main\\_design-lane\\probe-demo.js",
+  "outJson": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-10-gutter.json"
+ },
+ {
+  "name": "zip4-cinematic-1-10-gutter-panel",
+  "set": "zipC1",
+  "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+  "w": 1600,
+  "h": 1000,
+  "wait": 3000,
+  "keys": [
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight",
+   "ArrowRight"
+  ],
+  "after": 900,
+  "clip": "aside",
+  "out": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-10-gutter-panel.png"
+ }
+]

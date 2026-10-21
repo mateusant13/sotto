@@ -1,0 +1,3888 @@
+{
+  "jobs": [
+    {
+      "name": "zip1-directions-01-teleprompter",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 3774
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 304,
+          "cssHeight": 720,
+          "onScreen": {
+            "w": 304,
+            "h": 720,
+            "x": 1256,
+            "y": 140
+          },
+          "scale": 1,
+          "cls": "sotto-panel"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "font-tele text-[12px] font-semibold tracking-[0.42em] text-paper/60",
+            "text": "SOTTO",
+            "fontSize": 12,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "600",
+            "letterSpacing": "5.04px",
+            "textTransform": "none",
+            "lineHeight": "18px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 52.19,
+            "h": 18,
+            "scrollW": 52,
+            "clientW": 52,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "flex items-center gap-1.5 font-tele text-[10px] tracking-[0.28em] text",
+            "text": "LENDO",
+            "fontSize": 10,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "400",
+            "letterSpacing": "2.8px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 48.72,
+            "h": 15,
+            "scrollW": 49,
+            "clientW": 49,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in font-tele text-[16.5px] font-semibold leading-[1.22] text-whit",
+            "text": "O som chega antes da imagem.",
+            "fontSize": 16.5,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "600",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "20.13px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 20.13,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in font-tele text-[16.5px] font-semibold leading-[1.22] text-whit",
+            "text": "Antes da primeira cena, já existe um rumor de sala.",
+            "fontSize": 16.5,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "600",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "20.13px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 40.25,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in font-tele text-[16.5px] font-semibold leading-[1.22] text-whit",
+            "text": "A legenda nasce enquanto a frase ainda está em formação.",
+            "fontSize": 16.5,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "600",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "20.13px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 40.25,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "glow-live pt-1 font-tele text-[18.5px] font-bold leading-[1.2] text-pa",
+            "text": "Cada palavra provisória carrega uma pequena dúvida.",
+            "fontSize": 18.5,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "700",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "22.2px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 48.38,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "w-tele",
+            "text": "Cada palavra provisória carrega uma pequena dúvida.",
+            "fontSize": 18.5,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "700",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "22.2px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 248.61,
+            "h": 45.19,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 2
+          },
+          {
+            "tag": "SPAN",
+            "cls": "",
+            "text": "HISTÓRICO",
+            "fontSize": 10,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "400",
+            "letterSpacing": "3px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 62.72,
+            "h": 15,
+            "scrollW": 63,
+            "clientW": 63,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-paper/50",
+            "text": "▲ EM CURSO",
+            "fontSize": 10,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "400",
+            "letterSpacing": "3px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 76.28,
+            "h": 15,
+            "scrollW": 76,
+            "clientW": 76,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 48.72,
+          "maxTextW": 270
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-01-teleprompter.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-01-teleprompter.png"
+    },
+    {
+      "name": "zip1-directions-01-teleprompter-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".sotto-panel",
+        "box": {
+          "x": 1256,
+          "y": 140,
+          "width": 304,
+          "height": 720,
+          "vx": 1256,
+          "vy": 140,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-01-teleprompter-panel.png"
+    },
+    {
+      "name": "zip1-directions-02-broadcast",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 3774
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 304,
+          "cssHeight": 720,
+          "onScreen": {
+            "w": 304,
+            "h": 720,
+            "x": 1256,
+            "y": 140
+          },
+          "scale": 1,
+          "cls": "sotto-panel"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "font-semibold text-signal",
+            "text": "REC",
+            "fontSize": 9.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "600",
+            "letterSpacing": "1.71px",
+            "textTransform": "none",
+            "lineHeight": "14.25px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 22.23,
+            "h": 14.25,
+            "scrollW": 22,
+            "clientW": 22,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "ml-auto text-white/55",
+            "text": "00:00:03:17",
+            "fontSize": 9.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.71px",
+            "textTransform": "none",
+            "lineHeight": "14.25px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 81.52,
+            "h": 14.25,
+            "scrollW": 82,
+            "clientW": 82,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/30",
+            "text": "CH·01",
+            "fontSize": 9.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.71px",
+            "textTransform": "none",
+            "lineHeight": "14.25px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 37.06,
+            "h": 14.25,
+            "scrollW": 37,
+            "clientW": 37,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/25",
+            "text": "001",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 24,
+            "h": 16.27,
+            "scrollW": 24,
+            "clientW": 24,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/40",
+            "text": "00:01",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 38,
+            "h": 16.27,
+            "scrollW": 38,
+            "clientW": 38,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/60",
+            "text": "O som chega antes da imagem.",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 192,
+            "h": 16.27,
+            "scrollW": 192,
+            "clientW": 192,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/25",
+            "text": "002",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 24,
+            "h": 32.53,
+            "scrollW": 24,
+            "clientW": 24,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/40",
+            "text": "00:02",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 38,
+            "h": 32.53,
+            "scrollW": 38,
+            "clientW": 38,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/60",
+            "text": "Antes da primeira cena, já existe um rumor de sala.",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 192,
+            "h": 32.53,
+            "scrollW": 192,
+            "clientW": 192,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/25",
+            "text": "003",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 24,
+            "h": 32.53,
+            "scrollW": 24,
+            "clientW": 24,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/40",
+            "text": "00:03",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 38,
+            "h": 32.53,
+            "scrollW": 38,
+            "clientW": 38,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/60",
+            "text": "A legenda nasce enquanto a frase ainda está em formação.",
+            "fontSize": 10.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.275px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 192,
+            "h": 32.53,
+            "scrollW": 192,
+            "clientW": 192,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "",
+            "text": "PT-BR",
+            "fontSize": 9,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.26px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 33.31,
+            "h": 13.5,
+            "scrollW": 33,
+            "clientW": 33,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/20",
+            "text": "·",
+            "fontSize": 9,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.26px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 6.67,
+            "h": 13.5,
+            "scrollW": 7,
+            "clientW": 7,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "",
+            "text": "48K",
+            "fontSize": 9,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.26px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 19.98,
+            "h": 13.5,
+            "scrollW": 20,
+            "clientW": 20,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "ml-auto text-amberlite",
+            "text": "CONF 0.92",
+            "fontSize": 9,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.26px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 59.95,
+            "h": 13.5,
+            "scrollW": 60,
+            "clientW": 60,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 6.67,
+          "maxTextW": 192
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-02-broadcast.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-02-broadcast.png"
+    },
+    {
+      "name": "zip1-directions-02-broadcast-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".sotto-panel",
+        "box": {
+          "x": 1256,
+          "y": 140,
+          "width": 304,
+          "height": 720,
+          "vx": 1256,
+          "vy": 140,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-02-broadcast-panel.png"
+    },
+    {
+      "name": "zip1-directions-03-manuscrito",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 3774
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 304,
+          "cssHeight": 720,
+          "onScreen": {
+            "w": 304,
+            "h": 720,
+            "x": 1256,
+            "y": 140
+          },
+          "scale": 1,
+          "cls": "sotto-panel"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "font-mano text-[12.5px] italic text-bone/55",
+            "text": "rascunho ao vivo",
+            "fontSize": 12.5,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18.75px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 92.45,
+            "h": 18.75,
+            "scrollW": 92,
+            "clientW": 92,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "font-mano text-[11px] text-bone/35",
+            "text": "pág. 1",
+            "fontSize": 11,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 30.42,
+            "h": 16.5,
+            "scrollW": 30,
+            "clientW": 30,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in mb-3 font-mano text-[14px] leading-[1.8] text-bone/80",
+            "text": "O som chega antes da imagem.",
+            "fontSize": 14,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "25.2px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 25.19,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in mb-3 font-mano text-[14px] leading-[1.8] text-bone/80",
+            "text": "Antes da primeira cena, já existe um rumor de sala.",
+            "fontSize": 14,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "25.2px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 50.38,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in mb-3 font-mano text-[14px] leading-[1.8] text-bone/80",
+            "text": "A legenda nasce enquanto a frase ainda está em formação.",
+            "fontSize": 14,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "25.2px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 50.38,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "border-b border-bone/30 pb-1 font-mano text-[14.5px] leading-[1.8] tex",
+            "text": "Cada palavra provisória carrega uma pequena dúvida.",
+            "fontSize": 14.5,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "26.1px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 57.19,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "w-mano",
+            "text": "Cada palavra provisória carrega uma pequena dúvida.",
+            "fontSize": 14.5,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "26.1px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 231.06,
+            "h": 41.09,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 2
+          },
+          {
+            "tag": "SPAN",
+            "cls": "font-mano text-[11px] italic text-bone/40",
+            "text": "— escrito ao ouvido",
+            "fontSize": 11,
+            "fontFamily": "Newsreader",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 94.34,
+            "h": 11,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 30.42,
+          "maxTextW": 270
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-03-manuscrito.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-03-manuscrito.png"
+    },
+    {
+      "name": "zip1-directions-03-manuscrito-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".sotto-panel",
+        "box": {
+          "x": 1256,
+          "y": 140,
+          "width": 304,
+          "height": 720,
+          "vx": 1256,
+          "vy": 140,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-03-manuscrito-panel.png"
+    },
+    {
+      "name": "zip1-directions-04-cartao-de-cinema",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 3774
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 304,
+          "cssHeight": 720,
+          "onScreen": {
+            "w": 304,
+            "h": 720,
+            "x": 1256,
+            "y": 140
+          },
+          "scale": 1,
+          "cls": "sotto-panel"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "font-cine text-[11px] font-medium tracking-[0.34em] text-gold/75",
+            "text": "SOTTO",
+            "fontSize": 11,
+            "fontFamily": "Fraunces",
+            "fontWeight": "500",
+            "letterSpacing": "3.74px",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 57.95,
+            "h": 16.5,
+            "scrollW": 58,
+            "clientW": 58,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "font-cine text-[11px] italic text-bone/40",
+            "text": "· ao vivo ·",
+            "fontSize": 11,
+            "fontFamily": "Fraunces",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 44.44,
+            "h": 16.5,
+            "scrollW": 44,
+            "clientW": 44,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in mb-3.5 font-cine text-[15px] font-light leading-[1.9] text-whi",
+            "text": "O som chega antes da imagem.",
+            "fontSize": 15,
+            "fontFamily": "Fraunces",
+            "fontWeight": "300",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 28.5,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in mb-3.5 font-cine text-[15px] font-light leading-[1.9] text-whi",
+            "text": "Antes da primeira cena, já existe um rumor de sala.",
+            "fontSize": 15,
+            "fontFamily": "Fraunces",
+            "fontWeight": "300",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 57,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in mb-3.5 font-cine text-[15px] font-light leading-[1.9] text-whi",
+            "text": "A legenda nasce enquanto a frase ainda está em formação.",
+            "fontSize": 15,
+            "fontFamily": "Fraunces",
+            "fontWeight": "300",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 270,
+            "h": 57,
+            "scrollW": 270,
+            "clientW": 270,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "font-cine text-[12px] tracking-[0.5em] text-gold/40",
+            "text": "· · ·",
+            "fontSize": 12,
+            "fontFamily": "Fraunces",
+            "fontWeight": "400",
+            "letterSpacing": "6px",
+            "textTransform": "none",
+            "lineHeight": "18px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 44.16,
+            "h": 15,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 44.16,
+          "maxTextW": 270
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-04-cartao-de-cinema.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-04-cartao-de-cinema.png"
+    },
+    {
+      "name": "zip1-directions-04-cartao-de-cinema-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".sotto-panel",
+        "box": {
+          "x": 1256,
+          "y": 140,
+          "width": 304,
+          "height": 720,
+          "vx": 1256,
+          "vy": 140,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-04-cartao-de-cinema-panel.png"
+    },
+    {
+      "name": "zip1-directions-05-instrumento",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 3774
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 304,
+          "cssHeight": 720,
+          "onScreen": {
+            "w": 304,
+            "h": 720,
+            "x": 1256,
+            "y": 140
+          },
+          "scale": 1,
+          "cls": "sotto-panel"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "font-inst text-[11px] font-bold tracking-[0.3em] text-white/85",
+            "text": "ON",
+            "fontSize": 11,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "700",
+            "letterSpacing": "3.3px",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 21.41,
+            "h": 16.5,
+            "scrollW": 21,
+            "clientW": 21,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "ml-auto font-inst text-[9px] tracking-[0.22em] text-white/35",
+            "text": "ALT+C",
+            "fontSize": 9,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "1.98px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 36.34,
+            "h": 13.5,
+            "scrollW": 36,
+            "clientW": 36,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "font-inst text-[13.5px] font-medium leading-[1.45] text-white/60",
+            "text": "O som chega antes da imagem.",
+            "fontSize": 13.5,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "19.575px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 201.61,
+            "h": 19.56,
+            "scrollW": 202,
+            "clientW": 202,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "font-inst text-[13.5px] font-medium leading-[1.45] text-white/60",
+            "text": "Antes da primeira cena, já existe um rumor de sala.",
+            "fontSize": 13.5,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "19.575px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 255,
+            "h": 39.13,
+            "scrollW": 255,
+            "clientW": 255,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "font-inst text-[13.5px] font-medium leading-[1.45] text-white/90",
+            "text": "A legenda nasce enquanto a frase ainda está em formação.",
+            "fontSize": 13.5,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "19.575px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 255,
+            "h": 39.13,
+            "scrollW": 255,
+            "clientW": 255,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "",
+            "text": "OUVINDO",
+            "fontSize": 9,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "1.98px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 51.61,
+            "h": 13.5,
+            "scrollW": 52,
+            "clientW": 52,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "ml-auto text-white/30",
+            "text": "380×900",
+            "fontSize": 9,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "1.98px",
+            "textTransform": "none",
+            "lineHeight": "13.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 53.31,
+            "h": 13.5,
+            "scrollW": 53,
+            "clientW": 53,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 21.41,
+          "maxTextW": 255
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-05-instrumento.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-05-instrumento.png"
+    },
+    {
+      "name": "zip1-directions-05-instrumento-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-A-directions.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".sotto-panel",
+        "box": {
+          "x": 1256,
+          "y": 140,
+          "width": 304,
+          "height": 720,
+          "vx": 1256,
+          "vy": 140,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip1-directions-05-instrumento-panel.png"
+    },
+    {
+      "name": "zip2-panels-01-teleprompter",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+        "viewport": [
+          1600,
+          1800
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1800
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 380,
+          "cssHeight": 900,
+          "onScreen": {
+            "w": 380,
+            "h": 900,
+            "x": 1204,
+            "y": 28
+          },
+          "scale": 1,
+          "cls": "panel-in relative"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "text-[11px] font-body font-semibold uppercase tracking-[0.34em] text-w",
+            "text": "sotto",
+            "fontSize": 11,
+            "fontFamily": "Instrument Sans",
+            "fontWeight": "600",
+            "letterSpacing": "3.74px",
+            "textTransform": "uppercase",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 56.64,
+            "h": 16.5,
+            "scrollW": 57,
+            "clientW": 57,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in text-[25px] leading-[1.12] font-medium text-white",
+            "text": "O problema não é o dinheiro.",
+            "fontSize": 25,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 324,
+            "h": 28,
+            "scrollW": 324,
+            "clientW": 324,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "tp-active ml-[7px] text-[32px] leading-[1.1] font-semibold text-white",
+            "text": "É a confiança que você",
+            "fontSize": 32,
+            "fontFamily": "Barlow Condensed",
+            "fontWeight": "600",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "35.2px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 317,
+            "h": 35.19,
+            "scrollW": 317,
+            "clientW": 317,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 56.64,
+          "maxTextW": 324
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-01-teleprompter.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-01-teleprompter.png"
+    },
+    {
+      "name": "zip2-panels-01-teleprompter-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".panel-in",
+        "box": {
+          "x": 1180,
+          "y": 28,
+          "width": 380,
+          "height": 900,
+          "vx": 1180,
+          "vy": 28,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-01-teleprompter-panel.png"
+    },
+    {
+      "name": "zip2-panels-02-broadcast",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+        "viewport": [
+          1600,
+          1800
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1800
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 380,
+          "cssHeight": 900,
+          "onScreen": {
+            "w": 380,
+            "h": 900,
+            "x": 1204,
+            "y": 28
+          },
+          "scale": 1,
+          "cls": "panel-in relative"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "text-[10px] font-semibold tracking-[0.18em] text-accent",
+            "text": "REC",
+            "fontSize": 10,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "600",
+            "letterSpacing": "1.8px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 23.41,
+            "h": 15,
+            "scrollW": 23,
+            "clientW": 23,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[10px] tracking-[0.18em] text-white/50",
+            "text": "SOTTO / MONITOR 01",
+            "fontSize": 10,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.8px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 140.41,
+            "h": 15,
+            "scrollW": 140,
+            "clientW": 140,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[12px] font-medium text-white/85 tabular-nums",
+            "text": "00:00:03",
+            "fontSize": 12,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 57.61,
+            "h": 18,
+            "scrollW": 58,
+            "clientW": 58,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in text-[13.5px] leading-snug",
+            "text": "[00:00:02]O problema não é o dinheiro.",
+            "fontSize": 13.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18.5625px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 346,
+            "h": 18.56,
+            "scrollW": 346,
+            "clientW": 346,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "mr-2 text-white/25 tabular-nums",
+            "text": "[00:00:02]",
+            "fontSize": 13.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18.5625px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 81.03,
+            "h": 18,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-white/55",
+            "text": "O problema não é o dinheiro.",
+            "fontSize": 13.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18.5625px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 226.81,
+            "h": 18,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[8.5px] font-semibold tracking-[0.22em] text-accent",
+            "text": "AO VIVO",
+            "fontSize": 8.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "600",
+            "letterSpacing": "1.87px",
+            "textTransform": "none",
+            "lineHeight": "12.75px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 48.8,
+            "h": 12.75,
+            "scrollW": 49,
+            "clientW": 49,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "text-[13.5px] leading-snug text-white",
+            "text": "É a confiança que você▍",
+            "fontSize": 13.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18.5625px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 324,
+            "h": 18.56,
+            "scrollW": 324,
+            "clientW": 324,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "caret ml-0.5 text-accent",
+            "text": "▍",
+            "fontSize": 13.5,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18.5625px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 13.5,
+            "h": 18,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "font-semibold tracking-[0.16em] text-accent",
+            "text": "● CAPTANDO",
+            "fontSize": 10,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "600",
+            "letterSpacing": "1.6px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 75.5,
+            "h": 15,
+            "scrollW": 76,
+            "clientW": 76,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "tracking-[0.12em] text-white/45",
+            "text": "ALT+C OCULTA",
+            "fontSize": 10,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "1.2px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 86.41,
+            "h": 15,
+            "scrollW": 86,
+            "clientW": 86,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 13.5,
+          "maxTextW": 346
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-02-broadcast.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-02-broadcast.png"
+    },
+    {
+      "name": "zip2-panels-02-broadcast-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".panel-in",
+        "box": {
+          "x": 1180,
+          "y": 28,
+          "width": 380,
+          "height": 900,
+          "vx": 1180,
+          "vy": 28,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-02-broadcast-panel.png"
+    },
+    {
+      "name": "zip2-panels-03-manuscrito",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+        "viewport": [
+          1600,
+          1800
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1800
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 380,
+          "cssHeight": 900,
+          "onScreen": {
+            "w": 380,
+            "h": 900,
+            "x": 1204,
+            "y": 28
+          },
+          "scale": 1,
+          "cls": "panel-in relative"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "text-[10px] font-semibold uppercase tracking-[0.3em] text-white/28",
+            "text": "sotto",
+            "fontSize": 10,
+            "fontFamily": "Instrument Sans",
+            "fontWeight": "600",
+            "letterSpacing": "3px",
+            "textTransform": "uppercase",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 49.5,
+            "h": 15,
+            "scrollW": 50,
+            "clientW": 50,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[10px] italic text-white/20",
+            "text": "registro contínuo",
+            "fontSize": 10,
+            "fontFamily": "Instrument Sans",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 78.56,
+            "h": 15,
+            "scrollW": 79,
+            "clientW": 79,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in font-body text-[18px] leading-[1.6] font-[450] text-[rgba(235,",
+            "text": "O problema não é o dinheiro.",
+            "fontSize": 18,
+            "fontFamily": "Instrument Sans",
+            "fontWeight": "450",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.8px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 300,
+            "h": 28.8,
+            "scrollW": 300,
+            "clientW": 300,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "font-body text-[18px] leading-[1.6] italic text-[rgba(235,232,225,0.52",
+            "text": "É a confiança que você▍",
+            "fontSize": 18,
+            "fontFamily": "Instrument Sans",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.8px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 300,
+            "h": 28.8,
+            "scrollW": 300,
+            "clientW": 300,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "caret not-italic",
+            "text": "▍",
+            "fontSize": 18,
+            "fontFamily": "Instrument Sans",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.8px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 18,
+            "h": 22,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 18,
+          "maxTextW": 300
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-03-manuscrito.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-03-manuscrito.png"
+    },
+    {
+      "name": "zip2-panels-03-manuscrito-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".panel-in",
+        "box": {
+          "x": 1180,
+          "y": 28,
+          "width": 380,
+          "height": 900,
+          "vx": 1180,
+          "vy": 28,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-03-manuscrito-panel.png"
+    },
+    {
+      "name": "zip2-panels-04-cartao-de-cinema",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+        "viewport": [
+          1600,
+          1800
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1800
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 380,
+          "cssHeight": 900,
+          "onScreen": {
+            "w": 380,
+            "h": 900,
+            "x": 1204,
+            "y": 28
+          },
+          "scale": 1,
+          "cls": "panel-in relative"
+        },
+        "texts": [
+          {
+            "tag": "P",
+            "cls": "line-in font-cinema text-[21px] leading-[1.55] font-medium text-[#f1ec",
+            "text": "—O problema não é o dinheiro.",
+            "fontSize": 21,
+            "fontFamily": "Fraunces",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "32.55px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 308,
+            "h": 65.09,
+            "scrollW": 308,
+            "clientW": 308,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "mr-2.5 text-white/25",
+            "text": "—",
+            "fontSize": 21,
+            "fontFamily": "Fraunces",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "32.55px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 17.34,
+            "h": 26,
+            "scrollW": 0,
+            "clientW": 0,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "border-l border-white/25 pl-4 font-cinema text-[21px] leading-[1.55] f",
+            "text": "É a confiança que você",
+            "fontSize": 21,
+            "fontFamily": "Fraunces",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "32.55px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 308,
+            "h": 32.55,
+            "scrollW": 307,
+            "clientW": 307,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "absolute bottom-7 right-9 font-cinema text-[13px] italic text-white/25",
+            "text": "sotto",
+            "fontSize": 13,
+            "fontFamily": "Fraunces",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "19.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 28.61,
+            "h": 19.5,
+            "scrollW": 29,
+            "clientW": 29,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 17.34,
+          "maxTextW": 308
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-04-cartao-de-cinema.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-04-cartao-de-cinema.png"
+    },
+    {
+      "name": "zip2-panels-04-cartao-de-cinema-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".panel-in",
+        "box": {
+          "x": 1180,
+          "y": 28,
+          "width": 380,
+          "height": 900,
+          "vx": 1180,
+          "vy": 28,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-04-cartao-de-cinema-panel.png"
+    },
+    {
+      "name": "zip2-panels-05-instrumento",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+        "viewport": [
+          1600,
+          1800
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1800
+        },
+        "hasRoot": true,
+        "panel": {
+          "cssWidth": 380,
+          "cssHeight": 900,
+          "onScreen": {
+            "w": 380,
+            "h": 900,
+            "x": 1204,
+            "y": 28
+          },
+          "scale": 1,
+          "cls": "panel-in relative"
+        },
+        "texts": [
+          {
+            "tag": "SPAN",
+            "cls": "text-[11px] font-medium tracking-[0.24em] text-white/70",
+            "text": "CAPTANDO",
+            "fontSize": 11,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "500",
+            "letterSpacing": "2.64px",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 76.39,
+            "h": 16.5,
+            "scrollW": 76,
+            "clientW": 76,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[12px] text-white/40 tabular-nums",
+            "text": "00:00:03",
+            "fontSize": 12,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "18px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 50.72,
+            "h": 18,
+            "scrollW": 51,
+            "clientW": 51,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "line-in ml-[16px] text-[18px] leading-[1.3] font-medium text-white",
+            "text": "O problema não é o dinheiro.",
+            "fontSize": 18,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "500",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "23.4px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 322,
+            "h": 23.39,
+            "scrollW": 322,
+            "clientW": 322,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "P",
+            "cls": "text-[23px] leading-[1.22] font-bold text-white",
+            "text": "É a confiança que você quebro",
+            "fontSize": 23,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "700",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "28.06px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 322,
+            "h": 56.09,
+            "scrollW": 322,
+            "clientW": 322,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "keycap",
+            "text": "Alt",
+            "fontSize": 10,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "10px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 32,
+            "h": 20,
+            "scrollW": 30,
+            "clientW": 30,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[10px] text-white/30",
+            "text": "+",
+            "fontSize": 10,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 6.2,
+            "h": 15,
+            "scrollW": 6,
+            "clientW": 6,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "keycap",
+            "text": "C",
+            "fontSize": 10,
+            "fontFamily": "IBM Plex Mono",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "10px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 22,
+            "h": 20,
+            "scrollW": 20,
+            "clientW": 20,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "ml-2 text-[11px] text-white/40",
+            "text": "ocultar painel",
+            "fontSize": 11,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "normal",
+            "textTransform": "none",
+            "lineHeight": "16.5px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 73.19,
+            "h": 16.5,
+            "scrollW": 73,
+            "clientW": 73,
+            "lineBoxes": 1
+          },
+          {
+            "tag": "SPAN",
+            "cls": "text-[10px] tracking-[0.14em] text-white/30",
+            "text": "PT-BR · 48 kHz",
+            "fontSize": 10,
+            "fontFamily": "Space Grotesk",
+            "fontWeight": "400",
+            "letterSpacing": "1.4px",
+            "textTransform": "none",
+            "lineHeight": "15px",
+            "whiteSpace": "normal",
+            "overflowWrap": "normal",
+            "w": 87.31,
+            "h": 15,
+            "scrollW": 87,
+            "clientW": 87,
+            "lineBoxes": 1
+          }
+        ],
+        "column": {
+          "minTextW": 6.2,
+          "maxTextW": 322
+        }
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-05-instrumento.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-05-instrumento.png"
+    },
+    {
+      "name": "zip2-panels-05-instrumento-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-E-panels.html",
+      "viewport": [
+        1600,
+        1800
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": ".panel-in",
+        "box": {
+          "x": 1180,
+          "y": 28,
+          "width": 380,
+          "height": 900,
+          "vx": 1180,
+          "vy": 28,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip2-panels-05-instrumento-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-01-rainline",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-01-rainline.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-01-rainline.png"
+    },
+    {
+      "name": "zip5-cinematic-2-01-rainline-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1216,
+          "y": 0,
+          "width": 384,
+          "height": 1000,
+          "vx": 1216,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-01-rainline-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-02-blue-plate",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-02-blue-plate.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-02-blue-plate.png"
+    },
+    {
+      "name": "zip5-cinematic-2-02-blue-plate-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1208,
+          "y": 0,
+          "width": 392,
+          "height": 1000,
+          "vx": 1208,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-02-blue-plate-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-03-cellar",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-03-cellar.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-03-cellar.png"
+    },
+    {
+      "name": "zip5-cinematic-2-03-cellar-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1220,
+          "y": 12,
+          "width": 368,
+          "height": 976,
+          "vx": 1220,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-03-cellar-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-04-linen",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-04-linen.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-04-linen.png"
+    },
+    {
+      "name": "zip5-cinematic-2-04-linen-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1220,
+          "y": 0,
+          "width": 380,
+          "height": 1000,
+          "vx": 1220,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-04-linen-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-05-side-b",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-05-side-b.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-05-side-b.png"
+    },
+    {
+      "name": "zip5-cinematic-2-05-side-b-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1224,
+          "y": 0,
+          "width": 376,
+          "height": 1000,
+          "vx": 1224,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-05-side-b-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-06-north-window",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-06-north-window.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-06-north-window.png"
+    },
+    {
+      "name": "zip5-cinematic-2-06-north-window-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1216,
+          "y": 12,
+          "width": 372,
+          "height": 976,
+          "vx": 1216,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-06-north-window-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-07-adobe",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-07-adobe.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-07-adobe.png"
+    },
+    {
+      "name": "zip5-cinematic-2-07-adobe-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1204,
+          "y": 12,
+          "width": 384,
+          "height": 976,
+          "vx": 1204,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-07-adobe-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-08-glasshouse",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-08-glasshouse.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-08-glasshouse.png"
+    },
+    {
+      "name": "zip5-cinematic-2-08-glasshouse-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-08-glasshouse-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-09-film-club",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-09-film-club.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-09-film-club.png"
+    },
+    {
+      "name": "zip5-cinematic-2-09-film-club-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1228,
+          "y": 0,
+          "width": 372,
+          "height": 1000,
+          "vx": 1228,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-09-film-club-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-10-nightswim",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-10-nightswim.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-10-nightswim.png"
+    },
+    {
+      "name": "zip5-cinematic-2-10-nightswim-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1232,
+          "y": 12,
+          "width": 356,
+          "height": 976,
+          "vx": 1232,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-10-nightswim-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-11-reading-hour",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-11-reading-hour.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-11-reading-hour.png"
+    },
+    {
+      "name": "zip5-cinematic-2-11-reading-hour-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1216,
+          "y": 12,
+          "width": 372,
+          "height": 976,
+          "vx": 1216,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-11-reading-hour-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-12-snowline",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-12-snowline.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-12-snowline.png"
+    },
+    {
+      "name": "zip5-cinematic-2-12-snowline-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1216,
+          "y": 12,
+          "width": 372,
+          "height": 976,
+          "vx": 1216,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-12-snowline-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-13-last-train",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-13-last-train.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-13-last-train.png"
+    },
+    {
+      "name": "zip5-cinematic-2-13-last-train-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1220,
+          "y": 12,
+          "width": 368,
+          "height": 976,
+          "vx": 1220,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-13-last-train-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-14-dusk-highway",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-14-dusk-highway.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-14-dusk-highway.png"
+    },
+    {
+      "name": "zip5-cinematic-2-14-dusk-highway-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1228,
+          "y": 0,
+          "width": 372,
+          "height": 1000,
+          "vx": 1228,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-14-dusk-highway-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-15-harbor",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-15-harbor.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-15-harbor.png"
+    },
+    {
+      "name": "zip5-cinematic-2-15-harbor-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1212,
+          "y": 0,
+          "width": 388,
+          "height": 1000,
+          "vx": 1212,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-15-harbor-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-16-fireside",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-16-fireside.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-16-fireside.png"
+    },
+    {
+      "name": "zip5-cinematic-2-16-fireside-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1216,
+          "y": 12,
+          "width": 372,
+          "height": 976,
+          "vx": 1216,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-16-fireside-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-17-blue-hour",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-17-blue-hour.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-17-blue-hour.png"
+    },
+    {
+      "name": "zip5-cinematic-2-17-blue-hour-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1224,
+          "y": 12,
+          "width": 364,
+          "height": 976,
+          "vx": 1224,
+          "vy": 12,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-17-blue-hour-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-18-paper-rain",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-18-paper-rain.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-18-paper-rain.png"
+    },
+    {
+      "name": "zip5-cinematic-2-18-paper-rain-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1220,
+          "y": 0,
+          "width": 380,
+          "height": 1000,
+          "vx": 1220,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-18-paper-rain-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-19-terrace",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-19-terrace.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-19-terrace.png"
+    },
+    {
+      "name": "zip5-cinematic-2-19-terrace-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1236,
+          "y": 0,
+          "width": 364,
+          "height": 1000,
+          "vx": 1236,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-19-terrace-panel.png"
+    },
+    {
+      "name": "zip5-cinematic-2-20-quiet-marina",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-20-quiet-marina.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-20-quiet-marina.png"
+    },
+    {
+      "name": "zip5-cinematic-2-20-quiet-marina-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-D-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1216,
+          "y": 0,
+          "width": 384,
+          "height": 1000,
+          "vx": 1216,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip5-cinematic-2-20-quiet-marina-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-01-midnight-rain",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-01-midnight-rain.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-01-midnight-rain.png"
+    },
+    {
+      "name": "zip3-cinematic-01-midnight-rain-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-01-midnight-rain-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-02-warm-hour",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-02-warm-hour.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-02-warm-hour.png"
+    },
+    {
+      "name": "zip3-cinematic-02-warm-hour-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-02-warm-hour-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-03-velvet-dusk",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-03-velvet-dusk.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-03-velvet-dusk.png"
+    },
+    {
+      "name": "zip3-cinematic-03-velvet-dusk-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-03-velvet-dusk-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-04-study-light",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-04-study-light.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-04-study-light.png"
+    },
+    {
+      "name": "zip3-cinematic-04-study-light-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-04-study-light-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-05-tideline",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-05-tideline.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-05-tideline.png"
+    },
+    {
+      "name": "zip3-cinematic-05-tideline-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-05-tideline-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-06-motel-glow",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-06-motel-glow.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-06-motel-glow.png"
+    },
+    {
+      "name": "zip3-cinematic-06-motel-glow-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-06-motel-glow-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-07-paper-moon",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-07-paper-moon.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-07-paper-moon.png"
+    },
+    {
+      "name": "zip3-cinematic-07-paper-moon-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-07-paper-moon-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-08-quiet-streets",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-08-quiet-streets.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-08-quiet-streets.png"
+    },
+    {
+      "name": "zip3-cinematic-08-quiet-streets-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-08-quiet-streets-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-09-last-reel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-09-last-reel.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-09-last-reel.png"
+    },
+    {
+      "name": "zip3-cinematic-09-last-reel-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-09-last-reel-panel.png"
+    },
+    {
+      "name": "zip3-cinematic-10-north-fog",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-10-north-fog.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-10-north-fog.png"
+    },
+    {
+      "name": "zip3-cinematic-10-north-fog-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-B-themes.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1240,
+          "y": 0,
+          "width": 360,
+          "height": 1000,
+          "vx": 1240,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip3-cinematic-10-north-fog-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-01-glass-cards",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-01-glass-cards.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-01-glass-cards.png"
+    },
+    {
+      "name": "zip4-cinematic-1-01-glass-cards-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1160,
+          "y": 0,
+          "width": 440,
+          "height": 1000,
+          "vx": 1160,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-01-glass-cards-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-02-hairline",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-02-hairline.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-02-hairline.png"
+    },
+    {
+      "name": "zip4-cinematic-1-02-hairline-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1196,
+          "y": 0,
+          "width": 404,
+          "height": 1000,
+          "vx": 1196,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-02-hairline-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-03-paper",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-03-paper.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-03-paper.png"
+    },
+    {
+      "name": "zip4-cinematic-1-03-paper-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1176,
+          "y": 0,
+          "width": 424,
+          "height": 1000,
+          "vx": 1176,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-03-paper-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-04-quotes",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-04-quotes.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-04-quotes.png"
+    },
+    {
+      "name": "zip4-cinematic-1-04-quotes-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1170,
+          "y": 0,
+          "width": 430,
+          "height": 1000,
+          "vx": 1170,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-04-quotes-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-05-ledger",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-05-ledger.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-05-ledger.png"
+    },
+    {
+      "name": "zip4-cinematic-1-05-ledger-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1148,
+          "y": 0,
+          "width": 452,
+          "height": 1000,
+          "vx": 1148,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-05-ledger-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-06-feed",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-06-feed.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-06-feed.png"
+    },
+    {
+      "name": "zip4-cinematic-1-06-feed-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1164,
+          "y": 0,
+          "width": 436,
+          "height": 1000,
+          "vx": 1164,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-06-feed-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-07-bubbles",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-07-bubbles.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-07-bubbles.png"
+    },
+    {
+      "name": "zip4-cinematic-1-07-bubbles-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1182,
+          "y": 0,
+          "width": 418,
+          "height": 1000,
+          "vx": 1182,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-07-bubbles-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-08-timeline",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-08-timeline.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-08-timeline.png"
+    },
+    {
+      "name": "zip4-cinematic-1-08-timeline-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1198,
+          "y": 0,
+          "width": 402,
+          "height": 1000,
+          "vx": 1198,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-08-timeline-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-09-chips",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-09-chips.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-09-chips.png"
+    },
+    {
+      "name": "zip4-cinematic-1-09-chips-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1152,
+          "y": 0,
+          "width": 448,
+          "height": 1000,
+          "vx": 1152,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-09-chips-panel.png"
+    },
+    {
+      "name": "zip4-cinematic-1-10-gutter",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "result": {
+        "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+        "viewport": [
+          1600,
+          1000
+        ],
+        "doc": {
+          "scrollW": 1600,
+          "scrollH": 1000
+        },
+        "hasRoot": false
+      },
+      "json": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-10-gutter.json",
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-10-gutter.png"
+    },
+    {
+      "name": "zip4-cinematic-1-10-gutter-panel",
+      "url": "file:///H:/sotto/_main/zip-mockups/zip-C-panels.html",
+      "viewport": [
+        1600,
+        1000
+      ],
+      "dsf": 1,
+      "clip": {
+        "selector": "aside",
+        "box": {
+          "x": 1134,
+          "y": 0,
+          "width": 466,
+          "height": 1000,
+          "vx": 1134,
+          "vy": 0,
+          "sx": 0,
+          "sy": 0
+        }
+      },
+      "shot": "H:\\sotto\\docs\\design-intake\\demos\\zip4-cinematic-1-10-gutter-panel.png"
+    }
+  ]
+}

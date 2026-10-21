@@ -107,7 +107,8 @@ _MONO = _G.FAMILIES['mono']
 
 # ── the caption size, and the two relations built on it ──────────────────────────
 _SIZE_CAPTION = '17px'   # decision 1 in the header
-_PREV_SIZE = 'max(13px, calc(var(--size-caption) * 0.66))'   # `stack`'s own 0.66
+_PREV_SIZE = ('max(13px * var(--caption-scale), '
+              'calc(var(--size-caption) * 0.66 * var(--caption-scale)))')  # `stack`'s own 0.66
 _PREV_OPACITY = '0.94'
 
 # ── the two derivations the zip does not state as tokens ─────────────────────────
@@ -410,19 +411,33 @@ def _css(d):
 
     # ── the words ───────────────────────────────────────────────────────────────
     w('/* THE TEXT — the design\'s own `--cap-text`, weight, leading, tracking and the')
-    w(' * variant\'s alignment. `overflow-wrap: anywhere` because a 380px column must')
-    w(' * break a long word rather than push the row sideways. */')
+    w(' * variant\'s alignment.')
+    w(' *')
+    w(' * `break-word`, NOT `anywhere`, and this was measured. This line said')
+    w(' * `anywhere` because "a 380px column must break a long word rather than')
+    w(' * push the row sideways" -- which is true, and the cure is wrong in a way')
+    w(' * the owner found with his own eyes: verbatim, from his screenshot,')
+    w(' * "Hierarchical / communicatio / n", which is what `anywhere` does. It')
+    w(' * breaks a word at ANY point with no hyphen, so the reader gets a syllable')
+    w(' * fragment. `break-word` only breaks where the word does not fit and, with')
+    w(' * `hyphens: auto` below, the break carries a REAL hyphen.')
+    w(' *')
+    w(' * AND THE CURE BELONGS HERE, NOT IN THE GENERATED FILE. It was applied by')
+    w(' * hand to `cinematic.css` once and regenerating silently undid it -- the')
+    w(' * whole failure class `AGENTS.md` opens with. This generator is the only')
+    w(' * place that may say it. */')
     w('@S@ .caption__text {')
     w('  color: var(--text-confirmed);')
     w('  font-family: var(--font-caption);')
-    w('  font-size: var(--size-caption);')
+    w('  font-size: calc(var(--size-caption) * var(--caption-scale));')
     w('  font-weight: var(--weight-caption);')
     w('  line-height: var(--leading-caption);')
     w('  letter-spacing: var(--tracking-caption);')
     w('  text-transform: none;')
     w('  font-style: %s;' % ('italic' if d['italic'] else 'normal'))
     w('  text-align: %s;' % d['align'])
-    w('  overflow-wrap: anywhere;')
+    w('  overflow-wrap: break-word;')
+    w('  hyphens: auto;')
     w('  /* THE SHADOW IS THE DESIGN\'S OWN AND IT IS NOT OPTIONAL: every design in')
     w('     this zip is type over a photograph, `bare` states one literal shadow for')
     w('     the whole set, and the pane variants keep it because the pane is')

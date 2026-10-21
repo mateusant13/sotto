@@ -1,0 +1,310 @@
+{
+  "viewport": [
+    380,
+    900
+  ],
+  "theme": "theme-1",
+  "surface": "panel",
+  "panel": {
+    "x": 0,
+    "y": 0,
+    "w": 380,
+    "h": 900,
+    "right": 380,
+    "bottom": 900
+  },
+  "captions": [
+    {
+      "cls": "caption",
+      "text": "O som chega antes da imagem.",
+      "row": {
+        "x": 24,
+        "y": 539.19,
+        "w": 332,
+        "h": 34.13,
+        "right": 356,
+        "bottom": 573.31
+      },
+      "textBox": {
+        "x": 96,
+        "y": 546.19,
+        "w": 248,
+        "h": 20.13,
+        "right": 344,
+        "bottom": 566.31
+      },
+      "timeBox": {
+        "x": 38,
+        "y": 546.19,
+        "w": 48,
+        "h": 20.13,
+        "right": 86,
+        "bottom": 566.31
+      },
+      "fontSize": "16.5px",
+      "lineHeight": "20.13px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"Barlow Condensed\", ui-sans-serif, sans-serif",
+      "fontWeight": "600",
+      "textTransform": "uppercase",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 248,
+      "scrollW": 248,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 1,
+      "textH": 20.13,
+      "timeFontSize": "10px",
+      "timeW": 48
+    },
+    {
+      "cls": "caption",
+      "text": "Antes da primeira cena, ja existe um rumor de sala.",
+      "row": {
+        "x": 24,
+        "y": 581.31,
+        "w": 332,
+        "h": 54.25,
+        "right": 356,
+        "bottom": 635.56
+      },
+      "textBox": {
+        "x": 96,
+        "y": 588.31,
+        "w": 248,
+        "h": 40.25,
+        "right": 344,
+        "bottom": 628.56
+      },
+      "timeBox": {
+        "x": 38,
+        "y": 588.31,
+        "w": 48,
+        "h": 40.25,
+        "right": 86,
+        "bottom": 628.56
+      },
+      "fontSize": "16.5px",
+      "lineHeight": "20.13px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"Barlow Condensed\", ui-sans-serif, sans-serif",
+      "fontWeight": "600",
+      "textTransform": "uppercase",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 248,
+      "scrollW": 248,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 2,
+      "textH": 40.25,
+      "timeFontSize": "10px",
+      "timeW": 48
+    },
+    {
+      "cls": "caption caption--latest",
+      "text": "Quando a frase fecha, ela ganha peso - e fica.",
+      "row": {
+        "x": 24,
+        "y": 643.56,
+        "w": 332,
+        "h": 54.25,
+        "right": 356,
+        "bottom": 697.81
+      },
+      "textBox": {
+        "x": 94,
+        "y": 650.56,
+        "w": 250,
+        "h": 40.25,
+        "right": 344,
+        "bottom": 690.81
+      },
+      "timeBox": {
+        "x": 36,
+        "y": 650.56,
+        "w": 48,
+        "h": 40.25,
+        "right": 84,
+        "bottom": 690.81
+      },
+      "fontSize": "16.5px",
+      "lineHeight": "20.13px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"Barlow Condensed\", ui-sans-serif, sans-serif",
+      "fontWeight": "600",
+      "textTransform": "uppercase",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 250,
+      "scrollW": 250,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 2,
+      "textH": 40.25,
+      "timeFontSize": "10px",
+      "timeW": 48
+    },
+    {
+      "cls": "caption caption--provisional",
+      "text": "A legenda nasce enquanto a frase ainda esta em formacao.",
+      "row": {
+        "x": 24,
+        "y": 705.81,
+        "w": 332,
+        "h": 141.19,
+        "right": 356,
+        "bottom": 847
+      },
+      "textBox": {
+        "x": 82,
+        "y": 712.81,
+        "w": 262,
+        "h": 127.19,
+        "right": 344,
+        "bottom": 840
+      },
+      "timeBox": {
+        "x": 24,
+        "y": 712.81,
+        "w": 48,
+        "h": 127.19,
+        "right": 72,
+        "bottom": 840
+      },
+      "fontSize": "30px",
+      "lineHeight": "31.8px",
+      "letterSpacing": "normal",
+      "fontFamily": "\"Barlow Condensed\", ui-sans-serif, sans-serif",
+      "fontWeight": "700",
+      "textTransform": "uppercase",
+      "whiteSpace": "normal",
+      "overflowWrap": "break-word",
+      "hyphens": "auto",
+      "clientW": 262,
+      "scrollW": 262,
+      "overflowX": 0,
+      "lineBoxes": 1,
+      "wrappedLines": 4,
+      "textH": 127.19,
+      "timeFontSize": "10px",
+      "timeW": 48
+    }
+  ],
+  "rail": {
+    "rect": {
+      "x": 14,
+      "y": 120,
+      "w": 352,
+      "h": 737,
+      "right": 366,
+      "bottom": 857
+    },
+    "clientW": 352,
+    "scrollW": 352,
+    "overflowX": 0,
+    "clientH": 737,
+    "scrollH": 737,
+    "overflowY": 0
+  },
+  "list": {
+    "rect": {
+      "x": 14,
+      "y": 120,
+      "w": 352,
+      "h": 737,
+      "right": 366,
+      "bottom": 857
+    },
+    "clientW": 352,
+    "scrollW": 352,
+    "overflowX": 0
+  },
+  "header": {
+    "rect": {
+      "x": 14,
+      "y": 14,
+      "w": 352,
+      "h": 56,
+      "right": 366,
+      "bottom": 70
+    },
+    "clientW": 352,
+    "scrollW": 352,
+    "overflowX": 0
+  },
+  "controls": {
+    "panel_right": 380,
+    "viewport_w": 380,
+    "buttons": [
+      {
+        "id": "theme-button",
+        "label": "Teleprompter",
+        "left": 148,
+        "right": 238,
+        "w": 90,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "theme-chevron",
+        "label": "",
+        "left": 242,
+        "right": 270,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "font-scale-button",
+        "label": "A",
+        "left": 274,
+        "right": 302,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "tune-button",
+        "label": "",
+        "left": 116,
+        "right": 144,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "panel-pause-button",
+        "label": "",
+        "left": 306,
+        "right": 334,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      },
+      {
+        "id": "hide-button",
+        "label": "",
+        "left": 338,
+        "right": 366,
+        "w": 28,
+        "past_by": 0,
+        "onscreen": true
+      }
+    ]
+  },
+  "overflowing": [],
+  "overflowingBottom": [],
+  "railVsContent": {
+    "railBottom": 857,
+    "listBottom": 857,
+    "past_by": 0,
+    "railClientH": 737,
+    "railScrollH": 737
+  },
+  "skin": null
+}
