@@ -257,10 +257,26 @@ SHAPE = {
 # declarations, 0 `var()`). Each family now declares what ITS OWN zip states for the
 # line that is no longer live. `None` means "follow this theme's own caption token",
 # which is what the design itself does by inheritance.
+# THE FLOOR IS THE OWNER'S TOO. This was
+#   'max(13px, calc(var(--size-caption) * 0.66))'
+# and it is the zip's own ratio -- the previous line is 0.66 of the live one --
+# which is kept. What was missing is that NEITHER TERM CARRIED THE DIAL. The
+# 13px floor is a hard minimum, so the owner's size button could not take a
+# caption below it: `--caption-scale` 0.8 would ask for 0.66 x size x 0.8 and the
+# `max` would hand back 13px regardless. That is a second, invisible size dial
+# fighting the visible one -- and it is the "inconsistent size" the owner reports.
+#
+# Both terms now carry it, which keeps the PROPORTION (0.66) and its floor and
+# makes the whole line shrink and grow as one. Measured with
+# `_main/caption-dial-effect.py`.
 CLOSED = {
     # family: (size, leading, weight, motion)
-    'cinematic-1': ('max(13px, calc(var(--size-caption) * 0.66))', '1.45', None, '320ms'),
-    'cinematic-2': ('max(13px, calc(var(--size-caption) * 0.66))', None, None, '300ms'),
+    'cinematic-1': ('max(13px * var(--caption-scale), '
+                    'calc(var(--size-caption) * 0.66 * var(--caption-scale)))',
+                    '1.45', None, '320ms'),
+    'cinematic-2': ('max(13px * var(--caption-scale), '
+                    'calc(var(--size-caption) * 0.66 * var(--caption-scale)))',
+                    None, None, '300ms'),
 }
 
 # What each family's closed-line values were read from, so the emitted comment names
@@ -889,6 +905,20 @@ def theme_css(d, toks, backdrop_note):
     a('}')
     a('%s .caption__text {' % S)
     a('  color: var(--text-confirmed);')
+    # NEVER BREAK MID-WORD, and this line WAS MISSING, so the file generated
+    # without it. MEASURED 2026-10-18: `git show HEAD:app/panel/themes/cinematic.css`
+    # has ZERO `break-word` and ZERO `hyphens`, which is why
+    # `_main/caption-wrap-nobreak-oracle.py` went RED when this generator ran --
+    # the cure had been applied by hand to the GENERATED file on 2026-10-17 and
+    # regenerating silently undid it. Editing generated CSS is the failure class
+    # `AGENTS.md` opens with; the generator is the only place that may say it.
+    #
+    # `break-word`, never `anywhere`: the owner's own screenshot read
+    # "Hierarchical / communicatio / n", which is `anywhere` breaking a word
+    # with no hyphen. `break-word` only breaks where the word does not fit, and
+    # `hyphens: auto` makes the break carry a real one.
+    a('  overflow-wrap: break-word;')
+    a('  hyphens: auto;')
     # THE DESIGN'S OWN TYPE, AS THE FALLBACK OF THE TOKEN THE EDITOR WRITES.
     # `theme-tune.js` writes `--font-caption` / `--size-caption` / `--leading-caption` /
     # `--weight-caption` / `--tracking-caption` as INLINE custom properties on <html>
@@ -900,7 +930,8 @@ def theme_css(d, toks, backdrop_note):
     # across these ten themes — which is the whole difference between ten designs and
     # one skin over ten palettes.
     a('  font-family: var(--font-caption, %s);' % toks['__family'])
-    a('  font-size: var(--size-caption, %s);' % toks['__size_clamp'])
+    a('  font-size: calc(var(--size-caption, %s) * var(--caption-scale));'
+      % toks['__size_clamp'])
     a('  font-weight: var(--weight-caption, %s);%s'
       % (toks['__weight'], '\n  font-style: italic;' if toks['__italic'] else ''))
     a('  line-height: var(--leading-caption, %s);' % toks['__leading'])
@@ -921,7 +952,11 @@ def theme_css(d, toks, backdrop_note):
     a(' * the design. The opacity below is the panel\'s own recede (DECISION 2). */')
     a('%s .caption:not(.caption--latest) .caption__text {' % S)
     a('  color: var(--text-secondary);')
-    a('  font-size: var(--size-closed, calc(var(--size-caption) * 0.72));')
+    # `* var(--caption-scale)` on both the fallback and inside it: without the
+    # dial the closed line kept its own size while the live line moved, which
+    # is exactly the pair that reads as "the size is inconsistent".
+    a('  font-size: var(--size-closed, '
+      'calc(var(--size-caption) * 0.72 * var(--caption-scale)));')
     a('  line-height: var(--leading-closed, 1.375);')
     a('  font-weight: var(--weight-closed, 300);')
     a('}')
@@ -1000,21 +1035,25 @@ def theme_css(d, toks, backdrop_note):
         a('  color: var(--accent);   /* the newest word, the zip\'s `--caption-accent` role */')
         a('  animation: %s %s %s both;' % (kf, dur, ease))
         a('}')
-        a('/* The per-character reveal is switched OFF for this theme: two animations on')
-        a(' * one character\'s opacity multiply, and the design moves the WORD here. */')
-        a('%s .caption--provisional .caption__word[data-typing] .caption__ch {' % S)
-        a('  animation: none;')
-        a('}')
+        a('/* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).')
+        a(' * This theme used to switch the character reveal OFF with a rule for')
+        a(' * `.caption__ch` -- a class the panel no longer creates: the word is')
+        a(' * ONE text node now, so there is no character span to switch anything')
+        a(' * off. A rule for a class the document cannot carry is a rule for')
+        a(' * nothing, and `_main/cine-themes-oracle.py` arm D1 (every class')
+        a(' * selector matches a class the document can carry) says so out loud. */')
     else:  # char
         a('%s .caption--provisional .caption__word[data-typing] {' % S)
         a('  color: var(--accent);')
-        a('}')
-        a('/* The character reveal, with this theme\'s own keyframe instead of the')
-        a(' * opacity pop: the delay is still `--c-i * --type-step`. */')
-        a('%s .caption--provisional .caption__word[data-typing] .caption__ch {' % S)
         a('  animation: %s %s %s both;' % (kf, dur, ease))
-        a('  animation-delay: calc(var(--c-i) * var(--type-step));')
         a('}')
+        a('/* THE CHARACTER REVEAL, RETARGETED AT THE WORD (2026-10-20). The design')
+        a(' * asked for one CHARACTER at a time, with the delay `--c-i *')
+        a(' * --type-step`; the panel writes the word as ONE text node, so there is')
+        a(' * no character index to multiply and no character span to animate. The')
+        a(' * theme\'s own keyframe now plays on the WORD, whole and once -- the')
+        a(' * owner asked for it verbatim: *"fica aparecendo como se fosse')
+        a(' * \'tokens\' e nao palavras inteiras. pode somente palavras inteiras."* */')
     a('')
     return '\n'.join(lines)
 

@@ -400,7 +400,10 @@ def dim_in(cls, util, src):
 # --------------------------------------------------------------------------- #
 SPEC = {
     'tele': dict(
-        caption_live=(DIR_CAPTION, 'glow-live text-left font-tele', 1),
+        # THE PANEL'S OWN LIVE LINE, not the central stage's (owner, 2026-10-21:
+        # "varios designs ... truncam"). Panel.tsx:113 is `text-[18.5px]`; the
+        # stage's Caption.tsx clamp(30px,4.6vw,54px) is a 1280 px caption.
+        caption_live=(DIR_PANEL, 'glow-live pt-1 font-tele text-[18.5px] font-bold leading-[1.2] text-paper', 1),
         caption_words=(DIR_CAPTION, '"w-tele " + (i === forming.length', 1),
         surface=(DIR_PANEL, 'bg-[#0b0c0f]/55 border-white/10', 1),
         header=(DIR_PANEL, 'font-tele text-[12px] font-semibold tracking-[0.42em]', 1),
@@ -411,7 +414,12 @@ SPEC = {
         rail=None, wordmark='SOTTO',
     ),
     'bcast': dict(
-        caption_live=(DIR_CAPTION, 'text-left font-bcast text-[clamp(18px,2.3vw,28px)]', 1),
+        caption_live=(DIR_PANEL, 'grid grid-cols-[24px_38px_1fr] gap-2 font-bcast text-[10.5px] leading-[1.55]', 1),
+        # The size and the leading are on the row; the INK is on the word span
+        # (Panel.tsx:135), because the newest word may be amber. Read that span
+        # on its own rather than widening the row's window (which would catch the
+        # time's amber/60 first).
+        live_ink=(DIR_PANEL, 'text-white/85', 1),
         caption_words=(DIR_CAPTION, '"w-bcast " + (i === forming.length', 1),
         surface=(DIR_PANEL, 'bg-[#090d10]/70 border-white/12', 1),
         header=(DIR_PANEL, 'border-b border-white/10 px-3.5 py-2.5 font-bcast', 1),
@@ -424,7 +432,7 @@ SPEC = {
         rail=None, wordmark='REC',
     ),
     'mano': dict(
-        caption_live=(DIR_CAPTION, 'text-left font-mano text-[clamp(21px,2.7vw,33px)]', 1),
+        caption_live=(DIR_PANEL, 'border-b border-bone/30 pb-1 font-mano text-[14.5px] leading-[1.8] text-bone', 1),
         caption_words=(DIR_CAPTION, '"--ink-op": 0.45 + 0.55', 1),
         surface=(DIR_PANEL, 'bg-paper/[0.06] border-white/14', 1),
         header=(DIR_PANEL, 'font-mano text-[12.5px] italic text-bone/55', 1),
@@ -435,7 +443,7 @@ SPEC = {
         rail=None, wordmark='rascunho ao vivo',
     ),
     'cine': dict(
-        caption_live=(DIR_CAPTION, 'font-cine text-[clamp(24px,3vw,42px)]', 2),
+        caption_live=(DIR_PANEL, 'border-l border-gold/50 pl-3 font-cine text-[15px] font-light italic leading-[1.9] text-white/45', 1),
         caption_words=(DIR_CAPTION, '"w-cine"', 1),
         surface=(DIR_PANEL, 'bg-[#0d0c09]/60 border-gold/15', 1),
         header=(DIR_PANEL, 'font-cine text-[11px] font-medium tracking-[0.34em]', 1),
@@ -446,7 +454,7 @@ SPEC = {
         rail=(DIR_PANEL, 'border-l border-gold/50 pl-3', 1), wordmark='SOTTO',
     ),
     'inst': dict(
-        caption_live=(DIR_CAPTION, 'text-left font-inst text-[clamp(24px,3.1vw,42px)]', 1),
+        caption_live=(DIR_PANEL, 'font-inst text-[14.5px] font-bold leading-[1.4] text-white', 1),
         caption_words=(DIR_CAPTION, '"w-inst"', 1),
         surface=(DIR_PANEL, 'bg-[#090f0d]/65 border-led/15', 1),
         header=(DIR_PANEL, 'font-inst text-[11px] font-bold tracking-[0.3em]', 1),
@@ -664,7 +672,16 @@ SIG = {
    so "being said" and "was said" are told apart by HUE alone -- the zip gives
    this direction NO rule on the live line, and the theme declares that. */
 @S@ .caption--provisional .caption__text{
-  font-size: var(--size-caption);
+  /* `* var(--caption-scale)` IS NOT OPTIONAL AND WAS MISSING HERE (measured
+     2026-10-18). The owner's one size button writes `--caption-scale`, and
+     `panel.css:1280` consumes it -- but this rule has specificity (0,1,1) and
+     arrives last, so it WON, and the caption was sized from `--size-caption`
+     with the dial nowhere in the expression. `_main/caption-dial-effect.py`
+     measured it: theme-1..5 printed 16.5px at scales 0.8, 1.0, 1.5 AND 2.0 --
+     a button that changes nothing, in the very theme `panel.html` ships as its
+     fallback. `--size-caption` stays the DESIGN's size; the dial is the owner's,
+     and the two multiply. */
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
 }
 @S@ .caption__mark{
@@ -828,7 +845,11 @@ def build_direction_theme(n, d, pal, psrc, fonts, fsrc, ideas):
     t.put('tracking_caption', u_tracking(live, live_src, '0'), live_src)
     t.put('caption_upper', 'uppercase' if u_has(live, 'uppercase') else 'none', live_src)
     t.put('cap_align', 'center' if u_has(live, 'text-center') else 'left', live_src)
-    line_colour = colour_in(live, pal, live_src)
+    if spec.get('live_ink'):
+        ink_src = class_block(spec['live_ink'])
+        line_colour = colour_in(ink_src[0], pal, ink_src[1])
+    else:
+        line_colour = colour_in(live, pal, live_src)
 
     # THE WORD TERNARY, in the design's own order: the FIRST colour is the word
     # still being formed, the SECOND is a word already confirmed. Where the zip
@@ -926,9 +947,29 @@ def build_direction_theme(n, d, pal, psrc, fonts, fsrc, ideas):
     t.put('tracking_brand', u_tracking(head, head_src, '0'), head_src)
     t.put('weight_brand', u_weight(head, head_src, '400'), head_src)
     t.put('size_chrome', u_size(head, head_src), head_src)
-    t.put('brand_upper', 'uppercase' if spec['wordmark'].isupper() else 'none',
-          "%s (the zip writes the wordmark %r; Sotto's own markup is lowercase)"
-          % (head_src, spec['wordmark']))
+    # `--brand-upper` IS ALWAYS `none` (owner, 2026-10-15, verbatim: *"bota o nome
+    # 'sotto' em todos os temas"*, and the standing item is the wordmark FIXED across
+    # themes). This USED to be derived from how the source zip spells its own
+    # wordmark -- `'uppercase' if spec['wordmark'].isupper() else 'none'` -- and the
+    # line's own note admitted the tension: *"the zip writes the wordmark 'SOTTO';
+    # Sotto's own markup is lowercase"*.
+    #
+    # MEASURED, on the shipped files, before this change:
+    #     theme-1  theme-2  theme-4  theme-5  cinematic.css   -> --brand-upper: uppercase
+    #     theme-3  panel-designs (4 of 5 scopes)             -> --brand-upper: none
+    # and `.wordmark__name` consumes the token (`gen_themes.py:1076`). The shared
+    # wordmark is hidden in theme-2..5 and in all five `pd-*` designs and those show
+    # their own `.chrome__brand`, which `panel.css:281` pins to `text-transform: none`
+    # -- so the shout was landing on the SHARED wordmark, and theme-1/tele, the one
+    # base theme that actually shows it, rendered the name as `SOTTO` while the other
+    # four rendered `sotto`. That is the inconsistency, measured, not argued.
+    #
+    # The zips are still the source for SIZE, WEIGHT and TRACKING (the three lines
+    # above). Only the CASE stops being copied, because the owner's spelling is the
+    # one the product has to show.
+    t.put('brand_upper', 'none',
+          "%s (OWNER 2026-10-15: the product's name is lowercase `sotto` in EVERY "
+          "theme; the zip's own casing is not copied)" % head_src)
 
     hist, hist_src = class_block(spec['history'])
     t.put('size_closed', u_size(hist, hist_src), hist_src)
@@ -1204,7 +1245,14 @@ SKIN = """
 {B} .caption__text{{
   color: var(--text-secondary);
   font-family: {cap_family};
-  font-size: var(--size-caption);
+  /* THE DIAL, multiplied in. Same measurement and same verdict as the
+     provisional rule above: `_main/caption-dial-effect.py` read 16.5px at every
+     one of 0.8 / 1.0 / 1.5 / 2.0 on theme-1..5. THIS is the rule that lost --
+     `{B}` is (0,2,1) against `panel.css:1280`'s (0,0,1), so the theme's literal
+     size is what the browser used, and the button was decorative in the five
+     themes the owner actually lives in. `--size-caption` remains the DIRECTION's
+     chosen size; this line is the owner's dial applied to it. */
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -1230,7 +1278,22 @@ SKIN = """
 /* a CLOSED line: settled, quieter, one size down, never shouting */
 {B} .caption:not(.caption--provisional) .caption__text{{
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  /* THE DIAL AGAIN, AND THIS IS THE ONE THAT MADE THE COMPLAINT. The
+     provisional rule above and this one are the PAIR the owner sees at the same
+     time -- the line just said, and the line being said. Sizing only the
+     second one leaves the first frozen while the second grows, which is the
+     reading "o tamanho de letra e inconsistente", and it is a defect of
+     coherence rather than a taste question.
+
+     MEASURED 2026-10-18 (`_main/caption-dial-effect.py`), and the first run of
+     that instrument got this wrong in the instructive way: it read
+     `querySelector('.caption__text')`, which is the FIRST caption in the
+     document -- a settled one -- so it was reading THIS rule and reporting the
+     dial as dead when the live rule was already fixed. The probe now reads
+     `.caption--provisional .caption__text` and the settled row separately. The
+     live half really was dead too (16.5px at 0.8 / 1.0 / 1.5 / 2.0 before any of
+     this), so both were fixed and both are now measured. */
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   /* The history is FLAT. Declared, not inherited, so a theme that gives its live
@@ -1541,15 +1604,21 @@ SKIN = """
   transition-duration: var(--motion-in);
 }}
 @media (prefers-reduced-motion: reduce){{
-  /* IMPORTANT, and the reason is measured rather than theoretical. `.caption__ch`
-     is the TYPING REVEAL's own character span, declared in `panel.css`. This
-     block used to silence it with a plain `{S} *` — and on the owner's machine
-     Windows reports client-area animations OFF, so Chromium answers
-     `prefers-reduced-motion: reduce` and the reveal was disabled by the very
-     query written to honour the setting. The exclusion below is what keeps the
-     reveal alive; the reveal's own off switch is the token `--type-step: 0ms`.
-     Do not re-widen this selector to `{S} *`. */
-  {S} *:not(.caption__ch),
+  /* IMPORTANT, and the reason is measured rather than theoretical. This block
+     used to exclude `.caption__ch` -- the TYPING REVEAL's own character span,
+     declared in `panel.css`. It used to silence everything else with a plain
+     `{S} *` -- and on the owner's machine Windows reports client-area
+     animations OFF, so Chromium answers `prefers-reduced-motion: reduce` and the
+     reveal was disabled by the very query written to honour the setting. The
+     exclusion below is what keeps the reveal alive; the reveal's own off switch
+     is the token `--type-step: 0ms`. Do not re-widen this selector to `{S} *`.
+     RE-ANCHORED 2026-10-20: the character spans are GONE (the word is ONE text
+     node now), so the reveal lives on the newest WORD --
+     `.caption__word[data-typing]` -- and THAT is what this exclusion has to
+     protect. Excluding the dead `.caption__ch` would have left the word reveal
+     silenced on the owner's own machine, which is the very bug this block was
+     written to avoid. */
+  {S} *:not(.caption__word[data-typing]),
   {B} .caption,
   {B} .caption__text,
   {B} .caption__confirmed,
@@ -1644,6 +1713,23 @@ HEAD = """/* Sotto — theme {n}: {name}.
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: {accent};
+
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: {accent};
+  --ls-accent-b: {accent_soft};
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -2590,16 +2676,31 @@ def scope(block, n):
 #                 `var(--w-op, 1)`, so 1 IS the value they paint with before the
 #                 stamp lands; declaring it here moves no pixel, and the inline
 #                 stamp still wins on every span that gets one.
+#   --caption-scale  The OWNER'S ONE SIZE DIAL. `panel.js` writes it as an INLINE
+#                 style on `document.documentElement` (`applyCaptionScale`,
+#                 `panel.js:2198`), so it beats anything a stylesheet states --
+#                 this declaration at `:root[data-theme=...]` is (0,2,0) and an
+#                 inline style is the highest specificity there is. Declaring
+#                 `1` moves no pixel: it is the same value `panel.css:94`
+#                 already gives `:root`, so the theme resolves its own `var()`
+#                 instead of inheriting.
 #
-# `resolve_consumed()` FAILS THE BUILD on any consumed token that is not in this
-# table, so the next one is a decision somebody makes, never another silent
-# `inherit`.
-# --------------------------------------------------------------------------- #
+#                 WHY THE THEME NEEDS IT AT ALL. The caption rules in this
+#                 generator now multiply by it -- `calc(var(--size-caption) *
+#                 var(--caption-scale))` -- because MEASURED 2026-10-18
+#                 (`_main/caption-dial-effect.py`) theme-1..5 printed 16.5px at
+#                 scales 0.8, 1.0, 1.5 AND 2.0: the size button was decorative
+#                 in the five themes the owner lives in, including the one
+#                 `panel.html` ships as its fallback. `panel.css:1280` consumed
+#                 the dial, but this file's rule has specificity (0,1,1) and
+#                 arrives last, so the theme's literal size won.
 CONSUMED_NOT_OWNED = {
     '--font-serif': ('var(--font-sans)',
                      "the mano chrome's brand face, which inherited --font-sans"),
     '--w-op': ('1',
                "the value panel.js paintWords stamps over, and the consumers' own fallback"),
+    '--caption-scale': ('1',
+                        "the owner's dial; panel.js writes it inline, which wins over this"),
 }
 
 
@@ -3227,13 +3328,23 @@ def build_panel_theme(i, pal, psrc, fonts, fsrc, first, dirs):
     t.put('weight_brand', pd_weight(brand, brand_src, '400'), brand_src)
     braw, braw_src = raw_block(spec['brand'])
     caps = re.search(r'>\s*([A-Z][A-Z0-9 /\u00b7.\-]{2,})\s*<', braw)
-    if u_has(brand, 'uppercase'):
-        t.put('brand_upper', 'uppercase', '%s (uppercase)' % brand_src)
-    elif caps:
-        t.put('brand_upper', 'uppercase',
-              '%s (the zip writes its own mark in caps: %s)' % (braw_src, caps.group(1).strip()))
-    else:
-        t.put('brand_upper', 'none', brand_src)
+    # THE SECOND SITE, and it OVERWROTE the first one. The five base themes take
+    # `--brand-upper` from `t.put('brand_upper', 'none', ...)` at :949; this block
+    # is the `pd-*` lane's own assignment for the SAME token on the SAME `t`, so
+    # whichever ran last won. Fixing only :949 regenerated five correct themes and
+    # left pd-tele / pd-bcast / pd-mano shouting -- measured after that run, not
+    # assumed: pd-tele uppercase, pd-bcast uppercase, pd-mano uppercase,
+    # pd-cine none, pd-instr none.
+    #
+    # Same ruling as :949, for the same reason (owner, 2026-10-15: "bota o nome
+    # 'sotto' em todos os temas"). The zips still supply the brand's SIZE, WEIGHT
+    # and TRACKING in the three lines above; only the CASE stops being copied. The
+    # zip writing its own mark in caps is a fact about the ZIP, not an instruction
+    # about the product.
+    t.put('brand_upper', 'none',
+          '%s (OWNER 2026-10-15: the product shows lowercase `sotto` in EVERY theme;%s)'
+          % (brand_src, (' the zip writes its own mark in caps: %s' % caps.group(1).strip())
+             if caps else ''))
     t.put('size_meta', u_size(meta, meta_src), meta_src)
     t.put('size_small', u_size(meta, meta_src), meta_src)
     t.put('size_time', u_size(clock, clock_src), clock_src)

@@ -307,9 +307,18 @@ if (list) {
     const li = doc.createElement("li");
     li.className = cls;
     li.setAttribute("data-source", "proc:1");
+    // RE-ANCHORED 2026-10-21: this fake DOM carried the OLD markup --
+    // a `.caption__ch` character span inside the word. The panel retired the
+    // per-character reveal on 2026-10-20 (the owner, verbatim: *"fica
+    // aparecendo como se fosse 'tokens' e nao palavras inteiras. pode somente
+    // palavras inteiras."*): `paintChars` now writes the word as ONE text node
+    // and marks the newest word with `data-typing="1"`. So the fake DOM is the
+    // markup the panel REALLY builds -- otherwise this arm calls a LIVE rule
+    // dead, which is how a gate stops meaning anything.
     li.innerHTML = '<span class="caption__led"></span><span class="caption__time">00:00</span>' +
       '<span class="caption__text"><span class="caption__confirmed">' +
-      '<span class="caption__word"><span class="caption__ch">o</span></span></span>' +
+      '<span class="caption__word">o</span>' +
+      '<span class="caption__word" data-typing="1">agora</span></span>' +
       '<span class="caption__provisional"></span><span class="caption__mark">&#9611;</span></span>';
     return li;
   };

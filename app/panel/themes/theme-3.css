@@ -81,6 +81,23 @@
      declared in exactly one place. */
   --theme-swatch: #A9C1D9;
 
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: #A9C1D9;
+  --ls-accent-b: rgba(169, 193, 217, 0.14);
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
+
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
      colour behind it (`--color-amberlite` / `--color-amberx`) is the FRESHEST
@@ -121,8 +138,8 @@
      in every zip (the settled rows are the live line one size down, never another
      face). Two names for one value and no reader is dead weight; the design's
      family is still declared once, in `--font-sans`. */
-  --size-caption: clamp(21px,2.7vw,33px);
-  --leading-caption: 1.55;
+  --size-caption: 14.5px;
+  --leading-caption: 1.8;
   --weight-caption: 400;
   --tracking-caption: 0;
   --tracking-brand: 0;
@@ -244,7 +261,7 @@
 :root[data-theme='theme-3'] body .caption__text {
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--size-caption);
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -254,7 +271,7 @@
 }
 :root[data-theme='theme-3'] body .caption:not(.caption--provisional) .caption__text {
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   text-shadow: none;
@@ -597,7 +614,7 @@
   transition-duration: var(--motion-in);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='theme-3'] body *:not(.caption__ch),
+  :root[data-theme='theme-3'] body *:not(.caption__word[data-typing]),
   :root[data-theme='theme-3'] body .caption,
   :root[data-theme='theme-3'] body .caption__text,
   :root[data-theme='theme-3'] body .caption__confirmed,
@@ -716,10 +733,12 @@
    and the property then silently falls back to `inherit`. Each value below
    is the one this file was ALREADY rendering with, so nothing on screen
    moves:
+   --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
    --font-serif: the mano chrome's brand face, which inherited --font-sans
    --w-op:       the value panel.js paintWords stamps over, and the consumers' own fallback
    ------------------------------------------------------------------------ */
 :root[data-theme='theme-3']{
+  --caption-scale: 1;
   --font-serif: var(--font-sans);
   --w-op: 1;
 }

@@ -192,6 +192,30 @@
 
   function shouldPaint() {
     if (!on) return false;
+    /* THE SHELL OWNS THE CAPTION (2026-10-20, the owner's own words).
+     *
+     *   "ao clicar no botao de legenda, nao deve abrir qualquer coisa. e pra
+     *    ativar a legenda, na minha tela, sem background, sem estar conectada a
+     *    qualquer painel. ela e livre na minha tela, um overlay"
+     *
+     * The caption is a FREE overlay on the screen -- it is the native window
+     * (`NativeCaptionOverlay`), not a card inside the panel. The shell writes
+     * `data-caption-window` on this document on EVERY LIVE switch, with "on"
+     * and with "off", so the PRESENCE of that attribute is the shell saying
+     * "I am the one showing the caption". The page's own overlay is the
+     * FALLBACK for a host with no caption window at all, and only there.
+     *
+     * BEFORE (2026-10-20): the rule was the SURFACE -- the overlay painted in
+     * every surface but "panel". MEASURED, that let the caption card be
+     * painted INSIDE the panel in the `cine-*` designs, whose strip surface is
+     * a full transcript window: the owner's own screenshot, verbatim -- "olha
+     * como ele tem uma parte de legenda ao vivo no lugar errado, DENTRO do
+     * painel. isso e ridiculo". */
+    var d0 = doc();
+    if (d0 && d0.documentElement && d0.documentElement.hasAttribute
+        && d0.documentElement.hasAttribute('data-caption-window')) {
+      return false;
+    }
     if (!panelMounted()) return true;
     return surface() !== 'panel';
   }
@@ -199,7 +223,11 @@
   function paint() {
     if (!nodes()) return false;
     var want = shouldPaint();
-    host.setAttribute('data-float', on ? 'on' : 'off');
+    /* `data-float` FOLLOWS `want`, NOT `on` (2026-10-20). The shell reads
+       `documentElement[data-float]` to size the strip (sotto_webview.py:6527
+       and :6579): if the caption is not painted in this document, the strip
+       must not reserve a height for it. */
+    host.setAttribute('data-float', want ? 'on' : 'off');
     host.style.display = want ? 'block' : 'none';
     host.setAttribute('aria-hidden', want ? 'false' : 'true');
     /* THE SHELL READS IT HERE. sotto_webview.py:6527 (strip width) and :6579
@@ -208,7 +236,7 @@
        floated. One writer for this attribute: this module. */
     var d = doc();
     if (d && d.documentElement && d.documentElement.setAttribute) {
-      d.documentElement.setAttribute('data-float', on ? 'on' : 'off');
+      d.documentElement.setAttribute('data-float', want ? 'on' : 'off');
     }
     return want;
   }

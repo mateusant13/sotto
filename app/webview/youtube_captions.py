@@ -242,10 +242,25 @@ def _join_segs(segs):
         if out and not piece[:1].isspace() and not out[-1:].isspace():
             out += " "
         out += piece
-    # The whitespace is normalised here: the auto track's segments carry
-    # their own leading space, and a segment may hold a "\n" (MEASURED:
-    # "Você conhece as regras,\ne eu também"), which becomes a space.
-    out = re.sub(r"\s+", " ", out).strip()
+    # THE WHITESPACE IS NORMALISED HERE, BUT THE LINE BREAK IS NOT (2026-10-20).
+    # The auto track's segments carry their own leading space, and a segment may
+    # hold a "\n" -- MEASURED on the owner's own video (2BXktpaCEN4, the
+    # "How I Build AI Teammates" one): 706 of the 1414 raw json3 events carry a
+    # "\n" in their own text. The old `re.sub(r"\s+", " ", out)` destroyed every
+    # one of them, so the cue YouTube draws on TWO lines arrived here as ONE
+    # line and our caption broke wherever the browser wanted. The owner, about
+    # the caption: *"voce nao ta fazendo a legenda parecendo com como o youtube
+    # da DISPLAY e quebra as linhas e etc."*
+    # So: spaces and tabs collapse to one space; a "\n" STAYS a "\n"; three or
+    # more newlines become two (a cue never draws more than two lines).
+    out = re.sub(r"[ \t\r\f\v]+", " ", out)
+    out = re.sub(r" *\n *", "\n", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    out = out.strip()
+    # A cue that is ONLY a line break is a window-positioning event, not a
+    # caption: it must not become a caption of its own.
+    if not out.strip():
+        return ""
     return out
 
 
@@ -429,6 +444,50 @@ def _lang_keys(table, pref):
     return exact + prefixed
 
 
+def _base_lang(lang):
+    """A language code's BASE ('en-US' -> 'en', 'pt-BR' -> 'pt', 'es-419' -> 'es').
+
+    MEASURED 2026-10-21: the languages YouTube publishes are region-qualified
+    ('en-US', 'pt-BR', 'es-419') and the owner's rule is about the LANGUAGE, not
+    about the region, so the comparison is made on the base.
+    """
+    return str(lang or '').strip().lower().split('-')[0]
+
+
+#: The languages the owner reads IN THE VIDEO'S OWN LANGUAGE. The owner's rule,
+#: verbatim (2026-10-21): *"nao e pra traduzir. e pra ser lingua original.
+#: quando ingles, e quando pt br. quando chines ou japones, ou qualquer outra,
+#: pode traduzir. ah, menos espanhol."*
+#:
+#: So for an ENGLISH, PORTUGUESE or SPANISH original the video's own track is
+#: the ONLY acceptable caption -- and a translation is not even a fallback.
+#: For every OTHER original (zh, ja, ko, ru...) a translated pt-BR track is
+#: allowed, because that is the language the owner reads.
+ORIGINAL_ONLY_LANGS = ('en', 'pt', 'es')
+
+
+def _original_language(info):
+    """The video's OWN language, as a base code ('' when unknown).
+
+    **THE `language` FIELD, NOT THE KEY THAT LOOKS ORIGINAL.** MEASURED
+    2026-10-21 on the video the owner was watching (`-LODwSuymII`): yt-dlp says
+    `language = 'en-US'` -- the video is ENGLISH -- and the table carries **177**
+    languages. The Portuguese entry among them is an **AUTO-TRANSLATION**, and
+    its URL carries **no `tlang`**, so "the key whose request has no tlang" is
+    NOT proof of the original language. The field is.
+
+    Before this was measured, the module served `pt-orig` for that English video
+    and the owner saw Portuguese words on an English video -- verbatim: *"to
+    vendo que o transcript atual ta sendo traduzido. nao e pra traduzir. e pra
+    ser lingua original."*
+    """
+    lang = str((info or {}).get('language') or '').strip().lower()
+    if not lang:
+        return ''
+    base = lang.split('-')[0]
+    return base if base else ''
+
+
 def _auto_lang_keys(table, pref):
     """The AUTOMATIC keys of one language, in the PLAYER's order.
 
@@ -546,6 +605,38 @@ def tracks_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
         if found:
             ordered.append(found)
 
+    # 0. THE POLICY (2026-10-21). The owner, verbatim: *"nao e pra traduzir. e
+    #    pra ser lingua original. quando ingles, e quando pt br. quando chines ou
+    #    japones, ou qualquer outra, pode traduzir. ah, menos espanhol."*
+    #
+    #    So for an ENGLISH, PORTUGUESE or SPANISH original, the video's OWN
+    #    language is the only acceptable caption -- and a TRANSLATION is not even
+    #    a fallback. MEASURED on the video the owner was watching: `language` =
+    #    'en-US' (ENGLISH) and the table carries 177 languages, the Portuguese
+    #    one being an auto-translation WITHOUT a `tlang` parameter -- so the old
+    #    "prefer the key that looks original" rule served a TRANSLATION of an
+    #    English video, which is exactly what the owner reported.
+    #
+    #    The player's own track counts HERE ONLY if it is in the same language:
+    #    the owner's "1:1 com o video do youtube" is about the caption being the
+    #    VIDEO'S OWN caption and not a model transcription of its audio -- not
+    #    about following a translation the player happens to have switched on.
+    orig = _original_language(info)
+    if orig in ORIGINAL_ONLY_LANGS:
+        if plang and _base_lang(plang) == orig:
+            for key in _lang_keys(manual, plang):
+                take(manual, manual_case, "manual", key)
+            for key in _auto_lang_keys(auto, plang):
+                take(auto, auto_case, "auto", key)
+        for key in _lang_keys(manual, orig):
+            take(manual, manual_case, "manual", key)
+        for key in _auto_lang_keys(auto, orig):
+            take(auto, auto_case, "auto", key)
+        if ordered:
+            return ordered
+        # NO track in the video's own language at all: the preference below
+        # still applies, because a missing ORIGINAL is a FALLBACK and not a
+        # verdict about the video.
     # 1. THE TRACK THE PLAYER IS PAINTING. The player's own order for one
     #    language is: the MANUAL track when the video has one for that
     #    language, then the automatic `-orig` (the request without `tlang`,

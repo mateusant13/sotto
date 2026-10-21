@@ -426,7 +426,7 @@ body .panel .captions__body::-webkit-scrollbar {
  * shell (`show_caption_window`) SO DEPOIS de o `show()` da janela ter corrido, portanto
  * isto nao esconde a legenda do painel se a nova falhar -- e a diferenca entre tirar a
  * antiga e tira-la apenas quando a nova esta mesmo no ecra. */
-html[data-caption-window="on"]:not([data-caption-doc]) #caption-float {
+html[data-caption-window]:not([data-caption-doc]) #caption-float {
   display: none !important;
 }
 

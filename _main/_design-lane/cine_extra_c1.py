@@ -114,7 +114,8 @@ _SIZE_CAPTION = '17px'
 # `--text-secondary` and calls it "Cor — texto confirmado") and because `c.dim` is
 # 0.28-0.34 alpha, i.e. ~3:1 over the plate: fine for the single decorative ghost
 # line a mockup draws above a photo, not for the transcript the owner reads back.
-_PREV_SIZE = 'max(13px, calc(var(--size-caption) * 0.66))'
+_PREV_SIZE = ('max(13px * var(--caption-scale), '
+              'calc(var(--size-caption) * 0.66 * var(--caption-scale)))')
 _PREV_OPACITY = '0.94'         # PanelSetA.tsx:92 `opacity: 0.94`
 
 
@@ -390,7 +391,7 @@ def _css(d):
     w('@S@ .caption__text {')
     w('  color: var(--text-confirmed);')
     w('  font-family: var(--font-caption);')
-    w('  font-size: var(--size-caption);')
+    w('  font-size: calc(var(--size-caption) * var(--caption-scale));')
     w('  font-weight: var(--weight-caption);')
     w('  line-height: var(--leading-caption);')
     w('  letter-spacing: var(--tracking-caption);')
@@ -473,9 +474,10 @@ def _css(d):
     w('     The accent\'s only job on the live line is the caret. */')
     w('  animation: %s;' % d['reveal_anim'])
     w('}')
-    w('@S@ .caption--provisional .caption__word[data-typing] .caption__ch {')
-    w('  animation: none;')
-    w('}')
+    # THE PER-CHARACTER OFF-SWITCH IS GONE WITH THE CHARACTER SPANS (2026-10-20).
+    # The panel writes the word as ONE text node, so there is no character span to
+    # switch off -- a rule for a class the document cannot carry is a rule for
+    # nothing, and `_main/cine-themes-oracle.py` arm D1 says so out loud.
     if d['caret']:
         w('/* THE CARET — `StreamText`: a `0.5ch x 1em` block in `caretColor = c.accent`,')
         w(' * `border-radius: 2`, `-mb-[0.1em]`, blinking `1.15s steps(1, end)` with its')

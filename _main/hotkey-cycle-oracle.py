@@ -155,7 +155,15 @@ EXPECTED = {
     'quad': [('surface', 'panel', 'hotkey-triple'), ('caption', True, None)],
     'slow': [('caption', True, None), ('caption', False, None)],
 }
-EXPECTED_WIDE = [('caption', True, None), ('caption', False, None)]
+# RE-ANCHORED 2026-10-21. Two presses OUTSIDE_MS (400) apart used to be TWO
+# gestures -- the caption toggled on and off and NOTHING else happened, which is
+# what the owner reported: *"alt c nao ta funcionando direito pra abrir o
+# painel"*. A human double press measures 300-500 ms, so 400 ms is a DOUBLE, and
+# the expectation is now the double's: the FIRST panel, and the caption NOT
+# moved (the owner's rule, *"caso double alt c, a legenda nao habilita"*).
+# FAR_MS (900) is still TWO gestures -- past `HOTKEY_GESTURE_MS` (700) -- and
+# that is the `slow` scenario, which keeps its own expectation.
+EXPECTED_WIDE = [('surface', 'strip', 'hotkey-double')]
 
 
 class FakeGeneric(object):
@@ -449,7 +457,7 @@ def ast_facts(mod):
                                 and inner.func.attr == 'monotonic'):
                             clock = True
                         if (isinstance(inner, ast.Name)
-                                and inner.id == 'HOTKEY_DOUBLE_MS'):
+                                and inner.id == 'HOTKEY_GESTURE_MS'):
                             window = True
                     return (clock, window, None)
     return (False, False, 'SottoShell has no hotkey_pressed() method')
@@ -477,13 +485,36 @@ def arm_window(mod):
     constant that does not exist.
     """
     fails = []
-    win_ms = getattr(mod, 'HOTKEY_DOUBLE_MS', None)
+    # RE-ANCHORED 2026-10-21: one constant became two. `HOTKEY_DOUBLE_MS` (250)
+    # governed BOTH the caption's deferral AND the gesture's window, and the
+    # SHORTER of the two broke the other: a human double press measures 300-500
+    # ms, so at 400 ms the two presses were TWO gestures -- the caption toggled
+    # on and off and the PANEL NEVER OPENED (measured on the owner's own running
+    # app, 2026-10-21, with real WM_HOTKEY messages). The contract is now:
+    #     HOTKEY_CAPTION_DEFER_MS -- how long a LONE press waits (250: a lone
+    #                               press must not look slow, a fast double must
+    #                               not flash the caption)
+    #     HOTKEY_GESTURE_MS       -- how long a press still belongs to the SAME
+    #                               gesture (700: a HUMAN number)
+    defer_ms = getattr(mod, 'HOTKEY_CAPTION_DEFER_MS', None)
+    win_ms = getattr(mod, 'HOTKEY_GESTURE_MS', None)
+    if not isinstance(defer_ms, int):
+        fails.append('HOTKEY_CAPTION_DEFER_MS is %r, not an int' % (defer_ms,))
+    elif not (WINDOW_MIN_MS <= defer_ms <= WINDOW_MAX_MS):
+        fails.append('HOTKEY_CAPTION_DEFER_MS is %d ms, outside %d..%d -- a '
+                     "caption that long is lag, not a keypress"
+                     % (defer_ms, WINDOW_MIN_MS, WINDOW_MAX_MS))
     if not isinstance(win_ms, int):
-        fails.append('HOTKEY_DOUBLE_MS is %r, not an int' % (win_ms,))
-    elif not (WINDOW_MIN_MS <= win_ms <= WINDOW_MAX_MS):
-        fails.append('HOTKEY_DOUBLE_MS is %d ms, outside %d..%d -- a window that '
-                     'long is lag, not a double-click'
-                     % (win_ms, WINDOW_MIN_MS, WINDOW_MAX_MS))
+        fails.append('HOTKEY_GESTURE_MS is %r, not an int' % (win_ms,))
+    elif win_ms < 500:
+        fails.append('HOTKEY_GESTURE_MS is %d ms -- a human double press '
+                     'measures 300-500 ms, so a window under 500 does not '
+                     'recognise one' % (win_ms,))
+    elif isinstance(defer_ms, int) and win_ms < defer_ms:
+        fails.append('HOTKEY_GESTURE_MS (%d) is SHORTER than the caption\'s '
+                     'deferral (%d) -- the window must not be the shorter of the '
+                     'two, that is what broke the double press'
+                     % (win_ms, defer_ms))
     clock, window, why = ast_facts(mod)
     if why:
         fails.append(why)
@@ -492,14 +523,15 @@ def arm_window(mod):
                      'not time-bounded')
     if not window:
         fails.append('hotkey_pressed() does not compare against '
-                     'HOTKEY_DOUBLE_MS -- the window is not the contract')
+                     'HOTKEY_GESTURE_MS -- the window is not the contract')
     got = measure(mod)
     if got['double'] != EXPECTED['double']:
         fails.append('two presses %d ms apart are not ONE gesture: %r'
                      % (INSIDE_MS, got['double']))
     if got['wide'] != EXPECTED_WIDE:
-        fails.append('two presses %d ms apart are still ONE gesture: %r -- the '
-                     'window is wider than %d ms'
+        fails.append('two presses %d ms apart are not ONE gesture (the first '
+                     'panel, and the caption NOT moved): %r -- a human double '
+                     'press measures 300-500 ms, so %d ms must be a double'
                      % (OUTSIDE_MS, got['wide'], OUTSIDE_MS))
     if got['slow'] != EXPECTED['slow']:
         fails.append('two presses %d ms apart are not two captions: %r'

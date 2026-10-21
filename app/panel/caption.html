@@ -32,10 +32,65 @@
     background: transparent !important; overflow: hidden !important;
     -webkit-user-select: none; user-select: none; }
   .caption-float { position: fixed !important; inset: 0 !important; display: block !important; }
-  .caption-float__stage { position: absolute; left: 0; right: 0; bottom: 0;
-    margin: 0 auto !important; max-width: 900px !important; padding: 0 24px 10px !important; }
+  /* THE STAGE IS THE WINDOW, AND THE WORDS ARE CENTRED IN IT.
+     The text column is the stage's ONLY item now, so `justify-content:
+     center` (panel.css) puts it on the exact centre of the page, for every
+     width: measured, the text block's centre is 450.0px in a 900px window
+     and the worst glyph line is 0.00px off it. */
+  .caption-float__stage { --cap-bar-gap: 16px; --cap-dot-w: 6px;
+    position: absolute !important; left: 0; right: 0; bottom: 0;
+    margin: 0 auto !important; max-width: 900px !important;
+    padding: 0 24px 14px !important;
+    gap: var(--cap-bar-gap) !important; }
+  /* THE DOT LEANS ON THE WORDS. `zip-overlay.css:260-263` turns the 4px bar
+     into a 6px green DOT (the zip's own design), and the dot belongs NEXT TO
+     THE TEXT. In the flex row it ended up 105px away from the words, out at
+     the far edge of the window: the words are centred now, and the COLUMN is
+     as wide as the WINDOW (852px), not as wide as the widest line. So this
+     rule only puts the dot in the column's corner and the page's own script
+     (`captionPlaceDot`) MEASURES the rendered line and moves the dot to its
+     left edge, 16px away, centred on the live line -- exactly what the
+     native overlay's LED does (`caption_overlay.py:303-309`). */
+  .caption-float__col { position: relative !important; }
+  .caption-float__led {
+    position: absolute !important;
+    left: calc(-1 * (var(--cap-bar-gap) + var(--cap-dot-w))) !important;
+    top: 0 !important;
+  }
   * { scrollbar-width: none !important; }
   *::-webkit-scrollbar { display: none !important; width: 0 !important; }
+
+  /* ── THE YOUTUBE DISPLAY: THE FIVE PROPERTIES zip-overlay.css FORCES ──────
+     `zip-overlay.css` is the LAST stylesheet this page loads, and it carries
+     `!important` rules for the OVERLAY's type: a serif face at 1.45em with
+     1.28 leading and 0.005em tracking (zip-overlay.css:359-364), and
+     `text-align: left` on the column and on both lines (:285-292). Those
+     rules are for the zip's own card, which is what the PANEL shows, and
+     they are exactly what the owner does NOT want on the free overlay: he
+     asked for the YouTube display, verbatim, on 2026-10-20 ("faca a legenda
+     parecer com como o youtube da DISPLAY e quebra as linhas e etc").
+     A sheet that loads EARLIER cannot beat an `!important` from a sheet
+     that loads later -- only a LATER declaration of the same property can.
+     So THESE FIVE live here, and every OTHER property of the caption's look
+     (the colour, the outline, the weight, the balancing, the breaking) is
+     decided ONCE, in `caption-float.css`.
+     THE VALUES ARE THE TOKENS FROM caption-float.css, so the two files
+     cannot disagree about a number: the face, the size, the weight, the
+     leading and the outline are declared once, there, and read here. */
+  html[data-caption-doc] body[data-float="on"] .caption-float__line {
+    font-family: var(--caption-face) !important;
+    font-size: calc(var(--caption-size) * var(--caption-scale)) !important;
+    line-height: var(--caption-leading) !important;
+    letter-spacing: 0 !important;
+    text-align: center !important;
+  }
+  html[data-caption-doc] body[data-float="on"] .caption-float__prev {
+    font-family: var(--caption-face) !important;
+    text-align: center !important;
+  }
+  html[data-caption-doc] body[data-float="on"] .caption-float__col {
+    text-align: center !important;
+  }
 </style>
 </head>
 <!-- data-caption-doc IS NOT DECORATION (2026-10-20): it is the marker that
@@ -52,8 +107,12 @@
 <body data-surface="strip" data-float="on">
   <div id="caption-float" class="caption-float" data-float="on" aria-hidden="false">
     <div class="caption-float__stage">
-      <span class="caption-float__led" aria-hidden="true"></span>
       <div class="caption-float__col">
+        <!-- THE DOT IS INSIDE THE COLUMN, so it can lean on the words: the
+             column is exactly as wide as the widest line, and the dot is
+             positioned against its left edge. In the flex row it sat out at
+             the far edge of the window, 60px away from the words. -->
+        <span class="caption-float__led" aria-hidden="true"></span>
         <p class="caption-float__prev" id="caption-float-prev" aria-hidden="true"></p>
         <p class="caption-float__line" id="caption-float-line"></p>
         <div class="caption-float__meter" id="caption-float-meter" aria-hidden="true">
@@ -77,14 +136,105 @@
     var r = stage.getBoundingClientRect();
     return (r && r.height) ? Math.ceil(r.height) + 8 : 0;
   };
+  /* AT MOST TWO LINES, AND NOT ONE WORD LOST IN THE MIDDLE.
+     Owner, 2026-10-20: *"faca a legenda parecer com como o youtube da DISPLAY
+     e quebra as linhas e etc"*. YouTube's caption window is TWO lines tall and
+     the cue scrolls through it; Sotto's caption is a LIVE line, so what stays
+     on screen is the NEWEST words -- the same sliding window the native
+     overlay uses (`caption_wrap.wrap_tail`, `MAX_LINES = 2`).
+     THE BREAK IS THE BROWSER'S OWN. This only decides HOW MANY WORDS are
+     left, and it leaves them at word boundaries, so a word is never split by
+     the break: `overflow-wrap: normal` + `hyphens: none` (caption-float.css)
+     mean the browser may only break at a space. */
+  var CAPTION_MAX_LINES = 2;
+  function captionLineCount(el) {
+    var r = document.createRange();
+    r.selectNodeContents(el);
+    var rects = r.getClientRects();
+    var tops = {};
+    for (var i = 0; i < rects.length; i++) { tops[Math.round(rects[i].top)] = 1; }
+    return Object.keys(tops).length;
+  }
+  function captionFitLines(el, text) {
+    var words = String(text || '').split(/\s+/);
+    var clean = [];
+    for (var i = 0; i < words.length; i++) { if (words[i]) { clean.push(words[i]); } }
+    if (!clean.length) { el.textContent = ''; return ''; }
+    el.textContent = clean.join(' ');
+    if (captionLineCount(el) <= CAPTION_MAX_LINES) { return el.textContent; }
+    /* THE LARGEST SUFFIX THAT STILL FITS IN TWO LINES. "Fits" is monotone in
+       the number of words, so a binary search finds it in ~log2(n) layouts
+       instead of one layout per word. */
+    var lo = 1, hi = clean.length, best = clean[clean.length - 1];
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      var cand = clean.slice(clean.length - mid).join(' ');
+      el.textContent = cand;
+      if (captionLineCount(el) <= CAPTION_MAX_LINES) { best = cand; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    el.textContent = best;
+    return best;
+  }
+  var captionLastFull = null;
+  /* THE DOT LEANS ON THE WORDS. The zip's own design ("the words lean on the
+     bar") and what the native overlay does: `caption_overlay.py:303-305`
+     draws the LED "beside the FIRST line of the caption". In CSS the text
+     is centred inside the column, and the column is as wide as the WINDOW
+     (900 px), so a dot that sits at the column's left edge ends up 105 px
+     away from the words -- out at the edge of the screen, looking like an
+     artefact. The native overlay's window is sized to the text, so its LED
+     is always next to the words; this window is not, so the dot's position
+     has to be MEASURED: the leftmost edge of the rendered line, minus the
+     gap, minus the dot. One measurement per update, and the line boxes are
+     already measured by `captionFitLines`. */
+  function captionPlaceDot() {
+    if (!led) return;
+    var col = document.querySelector('.caption-float__col');
+    var line = document.getElementById('caption-float-line');
+    if (!col || !line || !line.firstChild) { led.style.left = ''; return; }
+    var range = document.createRange();
+    range.selectNodeContents(line);
+    var rects = range.getClientRects();
+    var left = null;
+    var first = null;
+    for (var i = 0; i < rects.length; i++) {
+      if (rects[i].width <= 0) { continue; }
+      if (left === null || rects[i].left < left) { left = rects[i].left; }
+      if (first === null) { first = rects[i]; }
+    }
+    if (left === null) { led.style.left = ''; return; }
+    var colRect = col.getBoundingClientRect();
+    var dotW = led.offsetWidth || 6;
+    var dotH = led.offsetHeight || 6;
+    /* `setProperty(..., 'important')`: the stylesheet's own `left` carries
+       `!important` (it has to beat zip-overlay.css), and an inline style
+       WITHOUT `!important` loses to it -- the dot would never move. */
+    led.style.setProperty('left',
+      Math.round(left - colRect.left - 16 - dotW) + 'px', 'important');
+    /* AND IT IS CENTRED ON THE LIVE LINE, like the native overlay's LED
+       ("beside the FIRST line of the caption", `caption_overlay.py:305-309`,
+       `cy = pad + h / 2`): the dot belongs to the words the owner is reading
+       now, not to the faded line above them. */
+    if (first) {
+      led.style.setProperty('top',
+        Math.round(first.top - colRect.top + (first.height - dotH) / 2) + 'px',
+        'important');
+    }
+  }
   window.SottoCaption = {
     set: function (text, previous) {
       var t = (text === null || text === undefined) ? '' : String(text);
-      if (line.textContent !== t) line.textContent = t;
+      if (t !== captionLastFull) {
+        captionLastFull = t;
+        captionFitLines(line, t);
+      }
       var p = (previous === null || previous === undefined) ? '' : String(previous);
       if (prev.textContent !== p) prev.textContent = p;
       prev.hidden = (p === '');
       line.classList.toggle('is-empty', t === '');
+      captionPlaceDot();
+      captionWatchFonts();
       return window.SottoCaption_neededHeight();
     },
     /* A ALTURA QUE O CONTEUDO PEDE, em px. O shell le isto do valor de retorno do
@@ -110,6 +260,27 @@
       led.classList.toggle('is-on', !!on);
     }
   };
+  /* THE FACE ARRIVES AFTER `load`. The `load` event does NOT wait for the
+     webfont, and `font-display: swap` paints the caption in the FALLBACK
+     face first: the first measurement of the lines (and of the dot's place)
+     is therefore taken with the wrong metrics. MEASURED: the dot measured
+     with the fallback face sat at x=48; with Inter loaded it belongs at
+     x=85. So the layout is measured AGAIN when the fonts are ready -- the
+     caption is re-fitted to two lines and the dot is placed again.
+     THE WATCH IS ARMED BY THE FIRST `set()`, NOT BY THE PARSER: at parse
+     time no font is pending, `document.fonts.ready` is ALREADY resolved,
+     and its callback would run as a microtask -- before the `load` event,
+     before there is any text to measure, and never again. */
+  var captionFontsWatched = false;
+  function captionWatchFonts() {
+    if (captionFontsWatched) { return; }
+    if (!document.fonts || !document.fonts.ready) { return; }
+    captionFontsWatched = true;
+    document.fonts.ready.then(function () {
+      if (captionLastFull) { captionFitLines(line, captionLastFull); }
+      captionPlaceDot();
+    });
+  }
 })();
 </script>
 </body>

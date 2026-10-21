@@ -608,27 +608,37 @@ function paintWords(host, words, offset, total, totalChanged, typingIndex) {
 }
 
 /**
- * The typing reveal's DOM: ONE `<span class="caption__ch">` PER CHARACTER, with
- * `--c-i` (its index in the word) stamped through CSSOM — never a `style=`
- * attribute, because `panel.html`'s CSP is `style-src 'self'` and a markup style
- * attribute is refused by it (measured; see the cost receipt §10).
+ * The newest word of the forming line, painted WHOLE.
  *
- * EVERY OTHER WORD AND EVERY COMMITTED WORD IS A PLAIN TEXT NODE. `typing` is
- * true for at most one word in the document — the newest word of the forming
- * line — so the extra elements are bounded by the longest word, not by the
- * transcript.
+ * WHAT IT USED TO BE (2026-10-20): ONE `<span class="caption__ch">` PER
+ * CHARACTER, with `--c-i` (its index in the word) stamped through CSSOM, and
+ * the CSS revealing them one at a time. That is a TYPEWRITER, and the owner
+ * read it as tokens: *"fica aparecendo como se fosse 'tokens' e nao palavras
+ * inteiras. pode somente palavras inteiras."*
+ *
+ * WHAT IT IS NOW: the word is ONE text node and appears whole. The `data-typing`
+ * marker stays, so the word-level rule in `panel.css`
+ * (`.caption--provisional .caption__word[data-typing]`) can still mark the
+ * newest word, and the CSS that animated the characters has nothing to animate.
+ *
+ * NEVER A `style=` ATTRIBUTE: `panel.html`'s CSP is `style-src 'self'` and a
+ * markup style attribute is refused by it (measured; see the cost receipt §10).
+ *
+ * EVERY WORD IS A PLAIN TEXT NODE NOW, so `textContent` reads exactly as it
+ * did when the line was one string, and the extra elements are gone: the
+ * forming line's DOM no longer grows with the length of the longest word.
  *
  * THE THREE CASES THAT MATTER, and the reason this is not a one-line
  * `textContent =`:
  *   * GROWTH (`"casa"` → `"casas"`): the word gets LONGER as the model firms it
- *     up, and that is the common case. Only the NEW characters are appended, so
- *     the letters already on screen keep their finished animation instead of
- *     retyping themselves — a word that blinked and retyped on every fragment
- *     would be worse than no reveal at all.
- *   * REWRITE (`"casa"` → `"caso"`): the same length, so the characters are
- *     updated IN PLACE. The reveal does not restart; the letter simply changes.
- *   * NO LONGER THE NEWEST WORD (or a committed line): the spans are collapsed
- *     back to one text node, which renders identically to what was there.
+ *     up. The text node is REPLACED, so the word is whole at every step. The
+ *     growing word is not painted at all while it grows (the engine holds the
+ *     forming tail's last word back until it is committed), so this case is
+ *     rare and, when it happens, the word simply changes.
+ *   * REWRITE (`"casa"` → `"caso"`): the text node is replaced with the new
+ *     word. The word stays whole; only its letters change.
+ *   * NO LONGER THE NEWEST WORD (or a committed line): the `data-typing`
+ *     marker is taken off, and the word is written exactly as it was.
  */
 function paintChars(span, word, typing) {
   if (!typing) {
@@ -644,32 +654,28 @@ function paintChars(span, word, typing) {
     return;
   }
   span.dataset.typing = '1';
-  // ANY CHILD THAT IS NOT ALREADY A CHARACTER SPAN IS A STALE TEXT NODE FROM A
-  // DIFFERENT WORD, and dropping it is load-bearing — this is the second bug this
-  // function shipped with, and it was measured, not guessed: `paintWords` reuses
-  // the word spans BY INDEX, so when the engine commits a prefix and the forming
-  // tail shifts left, the span at index `i` is repainted with a word it never
-  // held. The write that used to clear that was `span.textContent = word`, which
-  // replaces ALL children; the character spans do not, so `"a"` (left in the span
-  // from `"O rato roeu a …"`) + `"nove"` rendered as **`"anove"`** — caught by
-  // ARM S of `_panel2-dom-probe.js`, not by me.
-  for (const node of [...span.childNodes]) {
-    if (node.nodeType !== 1 || node.className !== 'caption__ch') span.removeChild(node);
-  }
-  const chars = Array.from(word);
-  while (span.children.length > chars.length) {
-    span.removeChild(span.lastElementChild);
-  }
-  for (let i = 0; i < chars.length; i += 1) {
-    let ch = span.children[i];
-    if (!ch) {
-      ch = document.createElement('span');
-      ch.className = 'caption__ch';
-      ch.style.setProperty('--c-i', String(i));
-      span.append(ch);
-    }
-    if (ch.textContent !== chars[i]) ch.textContent = chars[i];
-  }
+  // THE WORD IS WRITTEN WHOLE (2026-10-20, the owner's "so palavras inteiras").
+  //
+  // The owner, verbatim, about the live caption: *"o jeito que as letras ou
+  // palavras aparecem na tela ta bem ruim. fica aparecendo como se fosse
+  // 'tokens' e nao palavras inteiras. pode somente palavras inteiras."*
+  //
+  // This function used to give the newest word one `<span class="caption__ch">`
+  // per CHARACTER and let the CSS reveal them one at a time (`--type-step`).
+  // That is a TYPEWRITER: the owner saw a half-word on the screen and read it
+  // as tokens. A word is now written as ONE text node and appears whole.
+  //
+  // The per-character spans are gone, so the CSS that animated them
+  // (`panel.css`, and the per-theme overrides) has nothing to animate: the
+  // word-level rule that replaced it is on `.caption__word[data-typing]`.
+  //
+  // The write is the SAME one the non-typing branch does, and it is the one
+  // that keeps the old bug away: `replaceChildren` clears EVERYTHING, so a
+  // stale text node from another word can never fuse onto this one (the
+  // "anove" bug of ARM S of `_main/_panel2-dom-probe.js`).
+  const kids = span.childNodes;
+  if (kids.length === 1 && kids[0].nodeType === 3 && kids[0].data === word) return;
+  span.replaceChildren(document.createTextNode(word));
 }
 
 /* THE CAPTION WINDOW'S ATTRIBUTE NAME, DECLARED HERE FOR THE SAME REASON THE AUDIO
@@ -955,7 +961,46 @@ function renderProvisional(committed, provisional, source) {
   const key = source === null || source === undefined ? null : String(source);
   const confWords = Array.isArray(committed) ? committed.map(t => t.w) : [];
   const provWords = Array.isArray(provisional) ? provisional.map(t => t.w) : [];
-  const total = confWords.length + provWords.length;
+  // THE GROWING WORD IS HELD BACK (2026-10-20, the owner's "so palavras
+  // inteiras"). The tail's LAST word is the one the model is still deciding
+  // ("cre" -> "create"), and a half-word on the screen is exactly what the
+  // owner called "tokens": *"fica aparecendo como se fosse 'tokens' e nao
+  // palavras inteiras. pode somente palavras inteiras."*
+  //
+  // LocalAgreement-2 already knows the answer: a word is whole when two
+  // consecutive hypotheses agree on it, and that is what the CONFIRMED span
+  // holds. So the tail's last word waits for the commit.
+  //
+  // THE PLAYER'S WORDS ARE WHOLE BY CONSTRUCTION: the cue comes from YouTube's
+  // own track and the shell serves it verbatim (`youtube_captions.align_painted`
+  // hands back the cue's FULL text), so its last word IS a whole word and is
+  // NOT held back -- the owner compares that caption against the screen, word
+  // by word, in real time.
+  //
+  // THE WORD IS NOT LOST: it is in the engine's buffer and `commit` hands the
+  // whole line to the transcript. Only the PAINTING waits.
+  // A CLOSED LINE'S WORDS ARE WHOLE (2026-10-20). The worker closes a line
+  // with `meta.final === true` -- its SECOND pass over the whole segment
+  // (`redux`) -- and that text is final: its last word will never change.
+  // Holding it back showed the owner a sentence missing its last word.
+  // MEASURED, `_main/caption-independent-oracle.js` ARM A18 (shipped
+  // bytes): real="quixotescamente uma" want="quixotescamente uma linha".
+  //
+  // THE ENGINE IS THE ONE THAT KNOWS: it saw the fragment's `meta.final`.
+  // `state()` is its public, DOM-free window, so the renderer READS the
+  // answer there instead of guessing from the source name.
+  const engine = engines.get(key);
+  const tailClosed = !!(engine && typeof engine.state === 'function'
+    && engine.state().tailClosed);
+  // THE PLAYER'S WORDS ARE WHOLE BY CONSTRUCTION: the cue comes from
+  // YouTube's own track and the shell serves it verbatim
+  // (`youtube_captions.align_painted` hands back the cue's FULL text), so
+  // its last word IS a whole word and is NOT held back -- the owner
+  // compares that caption against the screen, word by word, in real time.
+  const wordsAreWhole = tailClosed
+    || (key !== null && key.indexOf('external:') === 0);
+  const shownProv = wordsAreWhole ? provWords : provWords.slice(0, -1);
+  const total = confWords.length + shownProv.length;
 
   // Find or create the line that holds THIS source's provisional hypothesis. An
   // entry whose node left the document (MAX_CAPTIONS trimmed it) is dropped,
@@ -1030,22 +1075,24 @@ function renderProvisional(committed, provisional, source) {
   const paintedWords = paintedWordsBySource.get(key) || { confirmed: [], provisional: [], total: 0 };
   const totalChanged = total !== paintedWords.total;
   paintWords(line.querySelector('.caption__confirmed'), confWords, 0, total, totalChanged);
-  // AND THE TYPING REVEAL, on the newest word of the forming line — see
-  // `paintChars`. `provWords.length - 1` is `-1` for an empty tail, which is
+  // AND THE WORD REVEAL, on the newest word of the forming line — see
+  // `paintChars`. `shownProv.length - 1` is `-1` for an empty tail, which is
   // exactly "nothing types": a line whose words have all settled is text the
   // model has stopped reconsidering, and retyping it would be a lie about what
   // just arrived.
-  paintWords(line.querySelector('.caption__provisional'), provWords,
-    confWords.length, total, totalChanged, provWords.length - 1);
+  paintWords(line.querySelector('.caption__provisional'), shownProv,
+    confWords.length, total, totalChanged, shownProv.length - 1);
   const mark = line.querySelector('.caption__mark');
+  // THE MARK FOLLOWS THE UNTRIMMED TAIL: the line IS still forming even while
+  // its growing word is held back, and the marker is how the owner knows that.
   if (mark) mark.textContent = provWords.length ? '▍' : '';
-  paintedWordsBySource.set(key, { confirmed: confWords, provisional: provWords, total });
+  paintedWordsBySource.set(key, { confirmed: confWords, provisional: shownProv, total });
   // The forming line, whole. The floated caption shows the same sentence the panel
   // is forming — provisional words included, because that is what the owner is
   // watching. `meta` is null here: a provisional has no producer yet, and the
   // overlay keeps the last credits it was given rather than erasing them.
   if (window.SottoCaptionFloat) {
-    window.SottoCaptionFloat.push((confWords.join(' ') + ' ' + provWords.join(' ')).trim(), null);
+    window.SottoCaptionFloat.push((confWords.join(' ') + ' ' + shownProv.join(' ')).trim(), null);
   }
   // AND FOLLOW, because this is a GROWTH, not an append: the line gets taller
   // while the sentence is still being formed — the exact moment the owner is

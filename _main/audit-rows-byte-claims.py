@@ -32,6 +32,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 CONFIG = os.path.join(ROOT, 'worker', 'config.json')
 AGENTS = os.path.join(ROOT, 'AGENTS.md')
+#: RE-ANCHORED 2026-10-21: AGENTS.md was CONDENSED and its history moved here -- the
+#: doc's own header says the archive is where the provenance of an old number
+#: is looked up. The historical rows are judged here.
+HISTORY = os.path.join(ROOT, 'docs', 'AGENTS-archive-20261021.md')
 WORKER_README = os.path.join(ROOT, 'worker', 'README.md')
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
 BRIDGE_JS = os.path.join(ROOT, 'app', '_legacy-electron', 'worker-bridge.js')
@@ -126,9 +130,9 @@ def build_mutants(work):
     write(MUTANTS['shell_stale_comment_restored'],
           shell.replace(RESTORE_AFTER,
                         RESTORE_AFTER + _nl + '        # The ' + STALE_OFFSCREEN, 1))
-    agents = read(AGENTS)
+    agents = read(HISTORY)
     MUTANTS['agents_old_citation'] = os.path.join(
-        work, 'AGENTS-with-old-citation.md')
+        work, 'HISTORY-with-old-citation.md')
     write(MUTANTS['agents_old_citation'],
           agents.replace(BRIDGE_CITE, 'worker-bridge.js:**133**'))
     if agents.count(CLAIM_ZERO_OF_41) != 1:
@@ -136,7 +140,7 @@ def build_mutants(work):
             + str(agents.count(CLAIM_ZERO_OF_41)) + ' time(s)')
         raise SystemExit(2)
     MUTANTS['agents_one_claim_removed'] = os.path.join(
-        work, 'AGENTS-one-flash-claim-removed.md')
+        work, 'HISTORY-one-flash-claim-removed.md')
     write(MUTANTS['agents_one_claim_removed'],
           agents.replace(CLAIM_ZERO_OF_41, 'arm P was sampled'))
     return agents.count(BRIDGE_CITE)
@@ -194,7 +198,12 @@ def arm_r33(ctx):
 
 
 def arm_r48(ctx):
-    agents = read(ctx['agents'])
+    # RE-ANCHORED 2026-10-21: AGENTS.md was CONDENSED and the history moved to
+    # `docs/AGENTS-archive-20261021.md` -- the doc's own header says the archive
+    # is where the provenance of an old number is looked up. The row's subject
+    # is the HISTORICAL citation of the legacy worker's STATE_MAP, so it is
+    # judged where it now lives.
+    agents = read(ctx['history'])
     bridge_lines = read(BRIDGE_JS).split('\n')
     declared = [index + 1 for index, line in enumerate(bridge_lines)
                 if 'STATE_MAP = {' in line]
@@ -209,19 +218,27 @@ def arm_r48(ctx):
         'agents_sentence': (agents.split('\n')[cite_line - 1][:200]
                             if cite_line else ''),
         # The row's DEFECT is a WRONG citation, so the key is the negation: a
-        # correct AGENTS.md reads False here, and the mutant that restores the
+        # correct doc reads False here, and the mutant that restores the
         # old :133 citation reads True.
         'citation_wrong': not bool(cite_line and declared and declared[0] == 114),
     }
 
 
 def arm_r46(ctx):
-    """#46: the two contradictory flash claims in AGENTS.md, located by content."""
-    agents = read(ctx['agents'])
+    """#46: the two contradictory flash claims, located by content.
+
+    RE-ANCHORED 2026-10-21: AGENTS.md was condensed and the HISTORY moved to
+    `docs/AGENTS-archive-20261021.md`; these two claims are part of that
+    history, so they are located in the file that now holds them. (The LIVE
+    doc's own version of the same disagreement is judged by
+    `_main/panel-flash-contradiction-oracle.py`, which is the gate that says the
+    contradiction must still be declared at both ends.)
+    """
+    agents = read(ctx['history'])
     zero = line_of(agents, CLAIM_ZERO_OF_41)
     visible = line_of(agents, CLAIM_VISIBLE_7S)
     return {
-        'agents': ctx['agents'],
+        'agents': ctx['history'],
         'claim_zero_of_41_line': zero,
         'claim_visible_7s_line': visible,
         'contradiction_present': bool(zero and visible),
@@ -280,8 +297,12 @@ def main(argv=None):
     say('note       : the AGENTS.md citation ' + BRIDGE_CITE + ' occurs '
         + str(cites) + ' time(s) in the live file; the mutant reverts it')
 
-    def context(config, shell, agents):
-        return {'config': config, 'shell': shell, 'agents': agents}
+    def context(config, shell, agents, history=None):
+        # RE-ANCHORED 2026-10-21: the historical rows (#46's two flash claims
+        # and #48's STATE_MAP citation) are judged against the ARCHIVE, which is
+        # where AGENTS.md's history lives since the condensation.
+        return {'config': config, 'shell': shell, 'agents': agents,
+                'history': history or HISTORY}
 
     def measure(ctx):
         results = {}
@@ -333,13 +354,13 @@ def main(argv=None):
                 {'r54': True, 'r33': True, 'r48': False, 'r46': True})
     verdicts.append(('m-no-stale-comment', ok))
 
-    results = measure(context(CONFIG, SHELL, MUTANTS['agents_old_citation']))
+    results = measure(context(CONFIG, SHELL, AGENTS, MUTANTS['agents_old_citation']))
     ok = report('MUTANT AGENTS.md with the old citation restored -- the r48 '
                 'reading must FLIP to the DEFECT', results,
                 {'r54': True, 'r33': False, 'r48': True, 'r46': True})
     verdicts.append(('m-old-citation', ok))
 
-    results = measure(context(CONFIG, SHELL,
+    results = measure(context(CONFIG, SHELL, AGENTS,
                               MUTANTS['agents_one_claim_removed']))
     ok = report('MUTANT AGENTS.md with one flash claim removed -- the r46 '
                 'reading must FLIP', results,

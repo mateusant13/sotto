@@ -482,6 +482,17 @@ function createEngine(options) {
   let bufferFinal = false;
   /** True when ANY fragment of the buffer carried a boolean `final` vote. */
   let bufferSawFinal = false;
+  /**
+   * TRUE when the fragment that produced the hypothesis ON SCREEN NOW
+   * CLOSED the line (`meta.final === true`).
+   *
+   * NOT the sticky `bufferFinal` (that one survives until the buffer is
+   * drained, and it answers a different question: what route a COMMIT
+   * takes). This one answers: "is the tail's LAST word still growing?"
+   * The renderer needs exactly that, because the owner asked for whole
+   * words only -- and a CLOSED line's words are whole by construction.
+   */
+  let tailClosed = false;
   /** The audio START of the buffer on screen; the worker's line identity. */
   let lineStart = null;
 
@@ -674,6 +685,7 @@ function createEngine(options) {
     // next one: a `final:true` line must not stamp the line that follows it.
     bufferFinal = false;
     bufferSawFinal = false;
+    tailClosed = false;
     lineStart = null;
     // Same law for the producer tag: a `redux` batch line must not lend its tag
     // to the live line that follows it in the same buffer slot.
@@ -924,7 +936,28 @@ function createEngine(options) {
     // clock in here can only mis-split a live burst. The deadline is owned by
     // the caller's timer — see `expireHold`.
     if (end !== null) lastAudioEnd = end;
+    // THE FRAGMENT ON SCREEN CLOSED THE LINE (2026-10-20). The renderer's
+    // hold-back asks one question -- "is the tail's last word still
+    // growing?" -- and this is the answer, from the fragment itself.
+    tailClosed = !!(meta && meta.final === true);
 
+    // THE WHOLE TAIL GOES OUT, UNTRIMMED (2026-10-20).
+    //
+    // The owner wants whole words on the screen: *"fica aparecendo como se
+    // fosse 'tokens' e nao palavras inteiras. pode somente palavras
+    // inteiras."* The word that is still GROWING is the tail's LAST word, and
+    // the engine knows which one it is: LocalAgreement-2 only COMMITS a word
+    // when two consecutive hypotheses agree on it.
+    //
+    // BUT THE HOLD-BACK IS NOT HERE. It is in the panel (`renderProvisional`),
+    // because the panel is what knows the SOURCE: the PLAYER's words are whole
+    // by construction (the cue comes from YouTube's own track and is served
+    // verbatim) and the ASR's are not. And the panel is what paints the tail
+    // marker, so the marker has to be painted by the same code that decides
+    // what the tail shows.
+    //
+    // The tail is NOT lost either way: `provisional` keeps every word and
+    // `commit` hands the whole buffer to the line.
     onProvisional(committed, provisional);
   }
 
@@ -976,6 +1009,7 @@ function createEngine(options) {
     lineStart = null;
     bufferFinal = false;
     bufferSawFinal = false;
+    tailClosed = false;
     bufferProducer = null;
     bufferSawProducer = false;
     bufferProducerConflict = false;
@@ -993,6 +1027,10 @@ function createEngine(options) {
       committed: committed.map((t) => t.w),
       provisional: provisional.map((t) => t.w),
       lastAudioEnd,
+      // IS THE TAIL STILL GROWING? (2026-10-20) The panel reads this to
+      // decide whether the tail's LAST word may be shown: a GROWING
+      // line's last word can still change, a CLOSED line's cannot.
+      tailClosed,
     }),
 };
 }

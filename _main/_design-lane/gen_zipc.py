@@ -532,7 +532,7 @@ def shared_type(d):
     out = []
     out.append((s + " .caption__text", [
         ("font-family", "var(--font-sans)"),
-        ("font-size", "var(--size-closed)"),
+        ("font-size", "calc(var(--size-closed) * var(--caption-scale))"),
         ("line-height", "var(--leading-closed)"),
         ("font-weight", "var(--weight-closed)"),
         ("letter-spacing", "var(--tracking-caption)"),
@@ -540,7 +540,7 @@ def shared_type(d):
         ("text-transform", "var(--caption-upper)"),
     ]))
     out.append((s + " .caption--latest .caption__text,\n" + s + " .caption--provisional .caption__text", [
-        ("font-size", "var(--size-caption)"),
+        ("font-size", "calc(var(--size-caption) * var(--caption-scale))"),
         ("line-height", "var(--leading-caption)"),
         ("font-weight", "var(--weight-caption)"),
         ("color", "var(--text-primary)"),
@@ -549,8 +549,20 @@ def shared_type(d):
         ("color", "var(--text-provisional)"),
         ("font-style", "normal"),
     ]))
-    out.append((s + " .caption__ch", [
-        ("animation-delay", "calc(var(--c-i) * var(--type-step))"),
+    # THE PER-CHARACTER DELAY IS GONE WITH THE CHARACTER SPANS (2026-10-20).
+    # The panel writes the word as ONE text node, so there is no `.caption__ch`
+    # to delay and no `--c-i` index to multiply -- a rule for a class the
+    # document cannot carry is a rule for nothing, and
+    # `_main/cine-themes-oracle.py` arm D1 says so out loud.
+    #
+    # THE TOKEN SURVIVES, with the SAME MEANING one step up: `--type-step` is
+    # "the reveal's speed" (`panel.css` says so), and what these designs reveal
+    # is a WORD at a time. So the delay moves to the newest WORD -- the one the
+    # panel marks `data-typing` -- and the design's own token keeps driving
+    # the reveal. The panel's own rule is the weaker selector, so the design
+    # wins, and a direction can still tune the step from the tune dialog.
+    out.append((s + " .caption--provisional .caption__word[data-typing]", [
+        ("animation-delay", "var(--type-step)"),
     ]))
     return out
 
@@ -1050,7 +1062,7 @@ def design_feed(d):
         ("border-radius", "0"),
         ("background", "transparent"),
         ("font-family", "var(--font-mono)"),
-        ("font-size", "var(--size-closed)"),
+        ("font-size", "calc(var(--size-closed) * var(--caption-scale))"),
         ("line-height", "var(--leading-closed)"),
     ]))
     out.append((s + " .caption__time", [("order", "0"), ("color", "var(--accent)")]))

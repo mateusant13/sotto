@@ -1386,21 +1386,60 @@ SWP_NOACTIVATE = 0x0010
 #: the instant it was recognised, which is correct for two presses and wrong for
 #: three: the strip would go up at press two and be replaced at press three, so
 #: the owner would see the panel he did NOT ask for for as long as his finger
-#: stayed down. Both panel gestures are therefore deferred by this same window,
-#: and each panel appears once, when the gesture is resolved.
+#: stayed down. Both panel gestures are therefore deferred, and each panel
+#: appears once, when the gesture is resolved.
 #:
-#: 250 ms, NOT 1500. This is the whole cost, stated rather than hidden: a caption
-#: cannot appear faster than the window that proves it is not part of a larger
-#: gesture -- and neither can a panel, for the same reason and with the same
-#: deferral. 1500 ms is the delay the owner called bad. 250 ms reads as
-#: confirmation rather than as lag, and it is the number to change if he says it
-#: still feels slow.
+#: TWO CLOCKS, NOT ONE (2026-10-21). One constant was doing two jobs and the
+#: SHORTER one broke the other. `HOTKEY_DOUBLE_MS = 250` governed BOTH how long a
+#: LONE press waits before the caption appears AND how long a press still counts
+#: as part of the same gesture. A deliberate human double press measures 300-500
+#: ms -- OUTSIDE 250 -- so at human speed the two presses were two separate
+#: gestures: the caption toggled ON and then OFF and the panel never opened.
+#: MEASURED on the owner's own running app (2026-10-21, real `WM_HOTKEY` posted
+#: to the shell's hotkey thread, the technique `_main/_audit-hotkey-delivery.py`
+#: uses): two presses 400 ms apart -> "caption on, caption off", NOTHING ELSE;
+#: three presses 400 ms apart -> the WRONG action. His report, verbatim: *"alt c
+#: nao ta funcionando direito pra abrir o painel"*. The two questions are
+#: different and now have different numbers:
+#:
+#:     HOTKEY_CAPTION_DEFER_MS  how long a LONE press waits for the caption.
+#:                              UNCHANGED at 250: a lone press must not look slow,
+#:                              and a FAST double must not flash the caption.
+#:     HOTKEY_GESTURE_MS        how long a press still belongs to the SAME
+#:                              gesture. 700 is a HUMAN number, not a machine one:
+#:                              a deliberate human double press measures 300-500
+#:                              ms, so 700 recognises it while still not
+#:                              swallowing the next deliberate press.
+#:
+#: AND THE PANEL WAITS THE GESTURE WINDOW, not the caption's deferral. A panel
+#: appears ONCE, when the gesture has resolved -- a press must never raise a
+#: window twice for one gesture -- and a gesture only resolves
+#: `HOTKEY_GESTURE_MS` after its last press. While both numbers were the same
+#: (250) that guarantee came for free; split, the panel must follow the LONGER
+#: one or a human triple (0/400/800) would flash the strip at press two and
+#: replace it at press three -- the panel the owner did NOT ask for.
+#:
+#: THE CAPTION IS PUT BACK when the gesture turns out to be a panel. Because the
+#: caption's deferral (250) is shorter than the gesture window (700), a press
+#: that is really the FIRST of a double can already have turned the caption on
+#: when the second arrives; the owner's rule *"caso double alt c, a legenda nao
+#: habilita"* then demands it be undone. It is undone AT THE SECOND PRESS -- the
+#: earliest moment the gesture is known not to be lone -- so the flash is as
+#: short as it can be, and the gesture that applied it is recorded
+#: (`_caption_gesture_id`) so an older gesture can never undo a newer one's
+#: caption. The whole undo is `HOTKEY_CAPTION_UNDONE`.
+#:
+#: 250 ms for the caption, NOT 1500. This is the cost, stated rather than hidden:
+#: a caption cannot appear faster than `HOTKEY_CAPTION_DEFER_MS` after the press.
+#: 1500 ms is the delay the owner called bad. 250 ms reads as confirmation rather
+#: than as lag, and it is the number to change if he says it still feels slow.
 #:
 #: THE WINDOW IS PER PRESS, NOT PER GESTURE: press n+1 starts its own window from
 #: press n. Three presses 240 ms apart are a triple; three presses a second apart
 #: are three captions, which is the right reading -- a man pressing Alt+C slowly
 #: three times wants three captions, not a panel.
-HOTKEY_DOUBLE_MS = 250
+HOTKEY_CAPTION_DEFER_MS = 250
+HOTKEY_GESTURE_MS = 700
 
 #: Minimum seconds between two `external-end` resumes of the worker. Measured
 #: 2026-10-18: two full model loads 2 min 52 s apart, with 1 245 MB resident, each
@@ -7773,9 +7812,18 @@ class SottoShell:
         which is right for two presses and wrong for three: presses at 0/120/240
         ms would map the strip at 120 ms and replace it at 240 ms, so pressing
         three times on purpose would flash the panel the owner did NOT ask for.
-        Deferring by the same `HOTKEY_DOUBLE_MS` the caption already pays means
-        each panel appears once, when the gesture resolves. The cost is stated at
-        the constant.
+        Deferring each panel by `HOTKEY_GESTURE_MS` means each panel appears once,
+        when the gesture resolves. The cost is stated at the constants.
+
+        TWO CLOCKS SINCE 2026-10-21, and the caption is put back when the gesture
+        becomes a panel. The caption waits `HOTKEY_CAPTION_DEFER_MS` (250); the
+        gesture window is `HOTKEY_GESTURE_MS` (700). Because the first is shorter
+        than the second, the first press of a HUMAN double can already have
+        applied the caption when the second arrives -- so `count >= 2` calls
+        `_undo_gesture_caption`, which restores the pre-gesture state and is
+        guarded by the gesture id. That is what makes the owner's rule *"caso
+        double alt c, a legenda nao habilita"* hold at human speed as well as at
+        machine speed.
 
         THIS REPLACES the three-state cycle (2026-10-13: HIDDEN -> STRIP -> SIDE
         -> HIDDEN, one press one step, no clock). That contract is retired
@@ -7787,8 +7835,8 @@ class SottoShell:
         WHAT IS DELIBERATELY GONE WITH IT: *"independente do tempo"*. One press
         no longer means one state transition regardless of speed, because now
         it can mean three different things and only the interval tells them
-        apart. That reversal is recorded at `HOTKEY_DOUBLE_MS`, with the reason
-        it was first deleted and why it returns at 250 ms and not 1500.
+        apart. That reversal is recorded at the constants, with the reason it was
+        first deleted and why the caption comes back at 250 ms and not 1500.
 
         EVERY PRESS RETIRES THE PENDING HANDLERS by bumping the token, and every
         deferred handler compares it at RUN time rather than trying to cancel a
@@ -7806,11 +7854,14 @@ class SottoShell:
         now = time.monotonic()
         prev = getattr(self, '_last_hotkey_press', 0.0)
         count = getattr(self, '_hotkey_press_count', 0)
-        # A press that is not inside the window starts a NEW gesture whatever the
-        # count was, which is what makes a FOURTH press a caption rather than a
-        # fourth step.
-        if not (prev and (now - prev) * 1000.0 <= HOTKEY_DOUBLE_MS):
+        # A press that is not inside the GESTURE window starts a NEW gesture
+        # whatever the count was, which is what makes a FOURTH press a caption
+        # rather than a fourth step. The gesture is given a NEW ID here, so a
+        # caption THIS gesture turns on can never be undone by a later, unrelated
+        # one -- `_undo_gesture_caption` refuses an id that is not the live one.
+        if not (prev and (now - prev) * 1000.0 <= HOTKEY_GESTURE_MS):
             prev, count = 0.0, 0
+            self._hotkey_gesture_id = getattr(self, '_hotkey_gesture_id', 0) + 1
         count += 1
         self._last_hotkey_press = now
         self._hotkey_press_count = count
@@ -7829,77 +7880,137 @@ class SottoShell:
         # "nothing happened".
         #
         # NOT BUMPING ON A LONE PRESS IS SAFE, and the argument is short: a press
-        # more than `HOTKEY_DOUBLE_MS` after the previous one arrives strictly
-        # after that gesture's timer was armed to fire
-        # (`first_press + HOTKEY_DOUBLE_MS`), so nothing is pending and nothing
-        # can be resurrected. Only a press INSIDE the window shares a pending
-        # timer, and that is exactly `count >= 2`.
+        # more than `HOTKEY_CAPTION_DEFER_MS` after the previous one arrives
+        # strictly after that gesture's caption timer was armed to fire
+        # (`first_press + HOTKEY_CAPTION_DEFER_MS`), so nothing is pending and
+        # nothing can be resurrected. Only a press INSIDE the deferral shares a
+        # pending timer, and that is exactly `count >= 2`.
         if count >= 2:
+            # THE GESTURE IS NO LONGER A LONE PRESS, so if it already turned the
+            # caption on, put it back -- the owner's rule verbatim: *"caso double
+            # alt c, a legenda nao habilita"*. The caption's deferral (250) is
+            # shorter than the gesture window (700), so a press that is really the
+            # first of a double can already have applied the caption when the
+            # second arrives; undoing it HERE, at the earliest moment the gesture
+            # is known not to be lone, keeps the flash as short as it can be.
+            self._undo_gesture_caption()
             self._hotkey_single_token = getattr(self, '_hotkey_single_token', 0) + 1
         token = getattr(self, '_hotkey_single_token', 0)
         if count >= 3:
             # TRIPLE -- the RIGHT panel, immediately and finally. The gesture is
-            # closed here, so a fourth press begins a new one.
+            # closed here, so a fourth press begins a new one. The caption was
+            # already undone by the `count >= 2` branch above (the undo is
+            # idempotent and id-guarded, so this is only a belt-and-braces call
+            # for the impossible case of a gesture that jumps straight to three).
             self._hotkey_press_count = 0
             self._last_hotkey_press = 0.0
+            self._undo_gesture_caption()
             return self.show_side('hotkey-triple')
-        # ONE arms the caption, TWO arms the FIRST panel: same window, same
-        # token, same deferral, because the strip must not go on screen only to
-        # be replaced when the third press arrives.
-        handler = self._hotkey_single if count == 1 else self._hotkey_double
-        t = threading.Timer(HOTKEY_DOUBLE_MS / 1000.0, lambda: handler(token))
+        # ONE arms the caption, TWO arms the FIRST panel: same token, but NOT the
+        # same deferral. The caption waits `HOTKEY_CAPTION_DEFER_MS`; the panel
+        # waits `HOTKEY_GESTURE_MS`, because a panel must not go on screen until
+        # the gesture has resolved -- the strip must never flash on the way to a
+        # triple the owner did not ask for.
+        if count == 1:
+            handler, defer_ms = self._hotkey_single, HOTKEY_CAPTION_DEFER_MS
+        else:
+            handler, defer_ms = self._hotkey_double, HOTKEY_GESTURE_MS
+        t = threading.Timer(defer_ms / 1000.0, lambda: handler(token))
         t.daemon = True
         t.start()
         return None
 
+    def _undo_gesture_caption(self):
+        """Put the caption back if THIS gesture is the one that turned it on.
+
+        The owner's rule, verbatim (2026-10-18): *"caso double alt c, a legenda
+        nao habilita"*. With the caption deferred by 250 ms and the gesture
+        window at 700 ms, the FIRST press of a human-speed double can already
+        have applied the caption before the second arrives -- so when the gesture
+        turns out to be a panel, the caption has to be UNDONE, not merely left
+        un-applied.
+
+        IT IS ID-GUARDED. `_hotkey_single` records the gesture id that applied
+        the caption and the state it had BEFORE, and this refuses to act unless
+        that id is still the live one. So a caption a LONE press turned on is
+        never undone by a LATER, unrelated double -- two presses 900 ms apart are
+        two gestures, and the first one's caption belongs to the first one.
+
+        IDEMPOTENT: it clears `_caption_gesture_id` as it acts, so the triple can
+        call it after the second press already did without touching the caption
+        twice. Never raises: a failed restore is a log line and False.
+        """
+        gid = getattr(self, '_hotkey_gesture_id', 0)
+        if getattr(self, '_caption_gesture_id', None) != gid:
+            return False
+        restore = bool(getattr(self, '_caption_restore', False))
+        self._caption_gesture_id = None
+        if bool(getattr(self, '_caption_wanted', False)) == restore:
+            return False
+        log(f'HOTKEY_CAPTION_UNDONE caption_on={str(restore).lower()} '
+            'reason=gesture-is-a-panel')
+        return self._set_live_enabled({'on': restore})
+
     def _hotkey_double(self, token):
         """Alt+C TWICE: the FIRST panel, the bottom strip.
 
-        DEFERRED BY `HOTKEY_DOUBLE_MS`, for the reason in `hotkey_pressed`: the
+        DEFERRED BY `HOTKEY_GESTURE_MS`, for the reason in `hotkey_pressed`: the
         strip must not go on screen only to be replaced by the right panel when a
-        third press arrives. The cost is stated at the constant -- up to 250 ms
-        after the press that started the gesture -- and it is the same cost the
-        caption has already paid and the owner has already accepted.
+        third press arrives. The cost is stated at the constant -- up to 700 ms
+        after the second press, which is how long the gesture takes to resolve.
+
+        IT DOES NOT TOUCH THE CAPTION -- and since 2026-10-21 that is enforced
+        EARLIER, at the second press: `hotkey_pressed`'s `count >= 2` branch calls
+        `_undo_gesture_caption` before this method is ever armed. That is the
+        owner's rule verbatim -- *"caso double alt c, a legenda nao habilita"* --
+        and it now holds at HUMAN speed too, where the caption's 250 ms deferral
+        has already fired by the time the second press lands.
 
         CANCELLED AT RUN TIME, not by cancelling the timer, exactly like
         `_hotkey_single`: a Timer may already be inside `show_strip` when the
         third press arrives, and a brief flash of the strip is precisely the
         thing this deferral exists to prevent.
-
-        IT DOES NOT TOUCH THE CAPTION. That is the owner's rule verbatim --
-        *"caso double alt c, a legenda nao habilita"* -- and it holds here for
-        the same reason it holds for the single: the second press bumped the
-        token before this method was ever armed.
         """
         if token != getattr(self, '_hotkey_single_token', 0):
             log('HOTKEY_DOUBLE_SWALLOWED double=discarded '
-                f'window_ms={HOTKEY_DOUBLE_MS}')
+                f'window_ms={HOTKEY_GESTURE_MS}')
             return None
-        log(f'HOTKEY_DOUBLE panel=strip after_ms={HOTKEY_DOUBLE_MS}')
+        log(f'HOTKEY_DOUBLE panel=strip after_ms={HOTKEY_GESTURE_MS}')
         return self.show_strip('hotkey-double')
 
     def _hotkey_single(self, token):
         """Alt+C ONCE: the caption on/off. The other half of the gesture.
 
-        DEFERRED BY `HOTKEY_DOUBLE_MS`, because the owner gave one press two
-        meanings and "the double must not enable the caption" cannot be honoured
-        without waiting to find out whether it is a double. The cost is that the
-        caption appears up to 250 ms after the key; that cost is stated at the
-        constant rather than hidden.
+        DEFERRED BY `HOTKEY_CAPTION_DEFER_MS`, because the owner gave one press
+        two meanings and "the double must not enable the caption" cannot be
+        honoured without waiting to find out whether it is a double. The cost is
+        that the caption appears up to 250 ms after the key; that cost is stated
+        at the constant rather than hidden.
 
         CANCELLED AT RUN TIME, not by cancelling the timer: a Timer may already
         be inside `_set_live_enabled` when a second press arrives, so the token
         is checked here and the work is skipped. Acting early instead would flash
         the caption on and then have to switch it off, which is exactly the
         flicker the owner is asking to remove.
+
+        IT ALSO ARMS THE UNDO. It records which gesture applied the caption and
+        what the caption was BEFORE, so `_undo_gesture_caption` can put it back
+        when the gesture turns out to be a panel -- the case that exists now that
+        the caption's deferral (250) is shorter than the gesture window (700).
         """
         if token != getattr(self, '_hotkey_single_token', 0):
             log('HOTKEY_DOUBLE_SWALLOWED single=discarded '
-                f'window_ms={HOTKEY_DOUBLE_MS}')
+                f'window_ms={HOTKEY_CAPTION_DEFER_MS}')
             return None
         on = not getattr(self, '_caption_wanted', False)
+        # REMEMBER WHICH GESTURE TURNED IT ON, AND WHAT IT WAS BEFORE, so that
+        # `_undo_gesture_caption` can put it back if this gesture turns out to be
+        # a panel -- and so an OLDER gesture can never undo a NEWER one's caption
+        # (the id is compared). See the constant block and the undo method.
+        self._caption_gesture_id = getattr(self, '_hotkey_gesture_id', 0)
+        self._caption_restore = bool(getattr(self, '_caption_wanted', False))
         log(f'HOTKEY_SINGLE caption_on={str(on).lower()} '
-            f'after_ms={HOTKEY_DOUBLE_MS}')
+            f'after_ms={HOTKEY_CAPTION_DEFER_MS}')
         return self._set_live_enabled({'on': on})
 
     def place_panel(self, mode):
@@ -10699,18 +10810,21 @@ class SottoShell:
         used to press twice ~800 ms apart and assert the PANEL was up, because
         that contract said the interval decided nothing. Under the contract the
         owner set today -- one press is the caption, two fast presses are the
-        first panel -- 800 ms apart is TWO SINGLES, so the panel must stay
-        DOWN and the caption must have toggled twice. A self-test that still
-        asserted the old answer would have gone red for a correct build.
+        first panel -- 800 ms apart is past the `HOTKEY_GESTURE_MS` (700) window,
+        so it is TWO SINGLES: the panel must stay DOWN and the caption must have
+        toggled twice. A self-test that still asserted the old answer would have
+        gone red for a correct build.
 
-            arm 1  one press, then wait past the window
+            arm 1  one press, then wait past the caption's deferral
                    -> caption flipped ONCE, panel still DOWN
-            arm 2  two presses 120 ms apart
+            arm 2  two presses 120 ms apart (inside the gesture window)
                    -> panel UP on the FIRST panel, caption UNCHANGED
 
         Arm 2 is the one that can fail for the reason that matters: if the
         deferred single is not cancelled, the caption goes on inside the double
         and the owner's *"caso double alt c, a legenda nao habilita"* is broken.
+        Arm 2's wait is now `HOTKEY_GESTURE_MS`, because the panel waits the
+        gesture window and not the caption's 250 ms deferral (2026-10-21).
         """
         rc = 0
         if self.hotkey is None:
@@ -10733,7 +10847,7 @@ class SottoShell:
                 f'caption={str(caption_start).lower()}')
             # ARM 1 -- ONE PRESS IS THE CAPTION, and the panel stays DOWN.
             pressed = self.hotkey.simulate_press()
-            time.sleep(HOTKEY_DOUBLE_MS / 1000.0 + 0.55)
+            time.sleep(HOTKEY_CAPTION_DEFER_MS / 1000.0 + 0.55)
             arm1_caption = bool(getattr(self, '_caption_wanted', False))
             arm1_visible = bool(self.visible)
             log(f'SELFTEST arm=single visible={str(arm1_visible).lower()} '
@@ -10746,9 +10860,9 @@ class SottoShell:
             # ARM 2 -- A DOUBLE IS THE FIRST PANEL, AND THE CAPTION DOES NOT MOVE.
             caption_before_double = bool(getattr(self, '_caption_wanted', False))
             self.hotkey.simulate_press()
-            time.sleep(0.12)                      # inside HOTKEY_DOUBLE_MS on purpose
+            time.sleep(0.12)          # inside HOTKEY_GESTURE_MS on purpose
             self.hotkey.simulate_press()
-            time.sleep(HOTKEY_DOUBLE_MS / 1000.0 + 0.55)
+            time.sleep(HOTKEY_GESTURE_MS / 1000.0 + 0.55)
             arm2_caption = bool(getattr(self, '_caption_wanted', False))
             arm2_visible = bool(self.visible)
             log(f'SELFTEST arm=double visible={str(arm2_visible).lower()} '

@@ -69,6 +69,23 @@
      declared in exactly one place. */
   --theme-swatch: #E8574F;
 
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: #E8574F;
+  --ls-accent-b: rgba(232, 87, 79, 0.12);
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
+
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
      colour behind it (`--color-amberlite` / `--color-amberx`) is the FRESHEST
@@ -114,7 +131,7 @@
   --weight-caption: 600;
   --tracking-caption: 0;
   --tracking-brand: 0.34em;
-  --brand-upper: uppercase;
+  --brand-upper: none;
   --caption-upper: none;
   --size-time: 11px;
   --size-closed: 25px;
@@ -232,7 +249,7 @@
 :root[data-theme='pd-tele'] body .caption__text {
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--size-caption);
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -242,7 +259,7 @@
 }
 :root[data-theme='pd-tele'] body .caption:not(.caption--provisional) .caption__text {
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   text-shadow: none;
@@ -585,7 +602,7 @@
   transition-duration: var(--motion-in);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-tele'] body *:not(.caption__ch),
+  :root[data-theme='pd-tele'] body *:not(.caption__word[data-typing]),
   :root[data-theme='pd-tele'] body .caption,
   :root[data-theme='pd-tele'] body .caption__text,
   :root[data-theme='pd-tele'] body .caption__confirmed,
@@ -693,6 +710,17 @@
     transition: none !important;
   }
 }
+/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
+   Declared here so every `var()` in this file RESOLVES. A `var()` with no
+   declaration anywhere and no fallback is invalid at computed-value time,
+   and the property then silently falls back to `inherit`. Each value below
+   is the one this file was ALREADY rendering with, so nothing on screen
+   moves:
+   --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
+   ------------------------------------------------------------------------ */
+:root[data-theme='pd-tele']{
+  --caption-scale: 1;
+}
 
 /* Sotto -- Broadcast (pd-bcast).
  *
@@ -765,6 +793,23 @@
      declared in exactly one place. */
   --theme-swatch: #E8574F;
 
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: #E8574F;
+  --ls-accent-b: rgba(232, 87, 79, 0.1);
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
+
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
      colour behind it (`--color-amberlite` / `--color-amberx`) is the FRESHEST
@@ -810,7 +855,7 @@
   --weight-caption: 400;
   --tracking-caption: 0;
   --tracking-brand: 0.18em;
-  --brand-upper: uppercase;
+  --brand-upper: none;
   --caption-upper: none;
   --size-time: 12px;
   --size-closed: 13.5px;
@@ -928,7 +973,7 @@
 :root[data-theme='pd-bcast'] body .caption__text {
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--size-caption);
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -938,7 +983,7 @@
 }
 :root[data-theme='pd-bcast'] body .caption:not(.caption--provisional) .caption__text {
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   text-shadow: none;
@@ -1281,7 +1326,7 @@
   transition-duration: var(--motion-in);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-bcast'] body *:not(.caption__ch),
+  :root[data-theme='pd-bcast'] body *:not(.caption__word[data-typing]),
   :root[data-theme='pd-bcast'] body .caption,
   :root[data-theme='pd-bcast'] body .caption__text,
   :root[data-theme='pd-bcast'] body .caption__confirmed,
@@ -1454,6 +1499,17 @@
     transition: none !important;
   }
 }
+/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
+   Declared here so every `var()` in this file RESOLVES. A `var()` with no
+   declaration anywhere and no fallback is invalid at computed-value time,
+   and the property then silently falls back to `inherit`. Each value below
+   is the one this file was ALREADY rendering with, so nothing on screen
+   moves:
+   --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
+   ------------------------------------------------------------------------ */
+:root[data-theme='pd-bcast']{
+  --caption-scale: 1;
+}
 
 /* Sotto -- Manuscrito (pd-mano).
  *
@@ -1526,6 +1582,23 @@
      declared in exactly one place. */
   --theme-swatch: #E0A63C;
 
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: #E0A63C;
+  --ls-accent-b: rgba(232, 87, 79, 0.12);
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
+
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
      colour behind it (`--color-amberlite` / `--color-amberx`) is the FRESHEST
@@ -1571,7 +1644,7 @@
   --weight-caption: 400;
   --tracking-caption: 0;
   --tracking-brand: 0.3em;
-  --brand-upper: uppercase;
+  --brand-upper: none;
   --caption-upper: none;
   --size-time: 10px;
   --size-closed: 18px;
@@ -1689,7 +1762,7 @@
 :root[data-theme='pd-mano'] body .caption__text {
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--size-caption);
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -1699,7 +1772,7 @@
 }
 :root[data-theme='pd-mano'] body .caption:not(.caption--provisional) .caption__text {
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   text-shadow: none;
@@ -2047,7 +2120,7 @@
   transition-duration: var(--motion-in);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-mano'] body *:not(.caption__ch),
+  :root[data-theme='pd-mano'] body *:not(.caption__word[data-typing]),
   :root[data-theme='pd-mano'] body .caption,
   :root[data-theme='pd-mano'] body .caption__text,
   :root[data-theme='pd-mano'] body .caption__confirmed,
@@ -2173,10 +2246,12 @@
    and the property then silently falls back to `inherit`. Each value below
    is the one this file was ALREADY rendering with, so nothing on screen
    moves:
+   --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
    --font-serif: the mano chrome's brand face, which inherited --font-sans
    --w-op:       the value panel.js paintWords stamps over, and the consumers' own fallback
    ------------------------------------------------------------------------ */
 :root[data-theme='pd-mano']{
+  --caption-scale: 1;
   --font-serif: var(--font-sans);
   --w-op: 1;
 }
@@ -2251,6 +2326,23 @@
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #F1ECE2;
+
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: #F1ECE2;
+  --ls-accent-b: rgba(232, 87, 79, 0.12);
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -2415,7 +2507,7 @@
 :root[data-theme='pd-cine'] body .caption__text {
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--size-caption);
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -2425,7 +2517,7 @@
 }
 :root[data-theme='pd-cine'] body .caption:not(.caption--provisional) .caption__text {
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   text-shadow: none;
@@ -2770,7 +2862,7 @@
   transition-duration: var(--motion-in);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-cine'] body *:not(.caption__ch),
+  :root[data-theme='pd-cine'] body *:not(.caption__word[data-typing]),
   :root[data-theme='pd-cine'] body .caption,
   :root[data-theme='pd-cine'] body .caption__text,
   :root[data-theme='pd-cine'] body .caption__confirmed,
@@ -2899,6 +2991,17 @@
     transition: none !important;
   }
 }
+/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
+   Declared here so every `var()` in this file RESOLVES. A `var()` with no
+   declaration anywhere and no fallback is invalid at computed-value time,
+   and the property then silently falls back to `inherit`. Each value below
+   is the one this file was ALREADY rendering with, so nothing on screen
+   moves:
+   --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
+   ------------------------------------------------------------------------ */
+:root[data-theme='pd-cine']{
+  --caption-scale: 1;
+}
 
 /* Sotto -- Instrumento (pd-instr).
  *
@@ -2970,6 +3073,23 @@
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #E8574F;
+
+  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
+     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
+     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
+     byte-for-byte the one that shipped before the glitch existed: opacity and
+     transform only, every colour falling back to `transparent`.
+
+     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
+     animacao hacker. mas tem que combinar com cada tema"*. These four are
+     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
+     themes get a swap in their own colours without a single hand adjustment --
+     and a design that wants it stronger or quieter overrides `--ls-glitch`
+     alone, because it is declared in exactly one place per theme. */
+  --ls-accent-a: #E8574F;
+  --ls-accent-b: rgba(232, 87, 79, 0.08);
+  --ls-split: 2px;
+  --ls-glitch: 0.45;
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -3134,7 +3254,7 @@
 :root[data-theme='pd-instr'] body .caption__text {
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--size-caption);
+  font-size: calc(var(--size-caption) * var(--caption-scale));
   line-height: var(--leading-caption);
   font-weight: var(--weight-caption);
   letter-spacing: var(--tracking-caption);
@@ -3144,7 +3264,7 @@
 }
 :root[data-theme='pd-instr'] body .caption:not(.caption--provisional) .caption__text {
   color: var(--text-secondary);
-  font-size: var(--size-closed);
+  font-size: calc(var(--size-closed) * var(--caption-scale));
   line-height: var(--leading-closed);
   font-weight: var(--weight-closed);
   text-shadow: none;
@@ -3487,7 +3607,7 @@
   transition-duration: var(--motion-in);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-instr'] body *:not(.caption__ch),
+  :root[data-theme='pd-instr'] body *:not(.caption__word[data-typing]),
   :root[data-theme='pd-instr'] body .caption,
   :root[data-theme='pd-instr'] body .caption__text,
   :root[data-theme='pd-instr'] body .caption__confirmed,
@@ -3709,4 +3829,15 @@
     animation: none !important;
     transition: none !important;
   }
+}
+/* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
+   Declared here so every `var()` in this file RESOLVES. A `var()` with no
+   declaration anywhere and no fallback is invalid at computed-value time,
+   and the property then silently falls back to `inherit`. Each value below
+   is the one this file was ALREADY rendering with, so nothing on screen
+   moves:
+   --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
+   ------------------------------------------------------------------------ */
+:root[data-theme='pd-instr']{
+  --caption-scale: 1;
 }

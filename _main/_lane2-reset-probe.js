@@ -80,10 +80,16 @@ const META = { start: 1, end: 2 };
 // ── ARM 1 ────────────────────────────────────────────────────────────────────
 const commitsA = [];
 const a = newEngine(commitsA);
+// RE-ANCHORED 2026-10-21: the engine's state() also carries `tailClosed`
+// (the field that tells the panel whether the tail's last word may still
+// change -- added the same day, caption-formulation.js:1033). The CONTRACT
+// is unchanged: a fresh engine holds nothing. Only the expected shape
+// grew, and `tailClosed:false` is itself part of "holds nothing".
 arm('ARM 1 a fresh engine holds nothing', a.state(), {
   committed: [],
   provisional: [],
   lastAudioEnd: null,
+  tailClosed: false,
 });
 
 // ── ARM 2 ────────────────────────────────────────────────────────────────────
@@ -159,7 +165,11 @@ arm('ARM 6 createEngine still returns ingest/flush/expireHold/visible/state/rese
   typeof a.ingest, typeof a.flush, typeof a.expireHold, typeof a.visible,
   typeof a.state, typeof a.reset,
 ], ['function', 'function', 'function', 'function', 'function', 'function']);
-arm('ARM 6b reset() is idempotent and returns nothing', a.reset() === undefined && JSON.stringify(a.state()) === JSON.stringify({ committed: [], provisional: [], lastAudioEnd: null }), true);
+// RE-ANCHORED 2026-10-21: `tailClosed` joined the state() shape
+// (caption-formulation.js:1033). The arm still checks BOTH halves -- that
+// reset() returns nothing AND that the engine is empty afterwards -- so the
+// teeth are unchanged; only the expected shape grew.
+arm('ARM 6b reset() is idempotent and returns nothing', a.reset() === undefined && JSON.stringify(a.state()) === JSON.stringify({ committed: [], provisional: [], lastAudioEnd: null, tailClosed: false }), true);
 
 // ARM 6c is a CHANGE DETECTOR over the module's top-level surface. The
 // EXPECTED list below is the REAL surface, measured 2026-10-19 against

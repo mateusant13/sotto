@@ -2745,47 +2745,61 @@ body[data-state="no-audio"] .chrome__off {
   display: inline;
 }
 
-/* ------------------------------------------------- THE TYPING REVEAL (2026-10-08)
+/* ------------------------------------------------- THE TYPING REVEAL (2026-10-08) — REMOVED 2026-10-20
 
-   The owner's first line in the brief: *"TYPING letter-by-letter on the live
-   line"*. What types is the NEWEST WORD of the forming line, and nothing else —
-   `paintWords` gives that one word one `<span class="caption__ch">` per
-   CHARACTER and stamps `--c-i` (its index) on each through CSSOM. Every other
-   word, and every committed line, keeps the single text node it always had.
+   IT WAS HERE AND WAS DELETED ON PURPOSE. The owner, verbatim, about the live
+   caption: *"fica aparecendo como se fosse 'tokens' e nao palavras inteiras.
+   pode somente palavras inteiras."* The reveal typed the newest word one
+   `<span class="caption__ch">` per CHARACTER, and those character spans are
+   GONE: `paintChars` writes the word as ONE text node now, and the WORD reveal
+   below replaces this one.
 
-   WHY THE NEWEST WORD AND NOT THE WHOLE LINE: a fragment arrives with whole
-   words in it, so a per-line reveal would have to spread its delay across a
-   sentence that is still growing, and the tail would lag seconds behind the
-   worker. One word is bounded by the longest word in the language, so the
-   reveal always finishes before the next fragment can arrive.
+   The two rules that stood here therefore targeted a class the document can no
+   longer carry — and that rot was CAUGHT, not shipped: `_main/cine-themes-oracle.py`
+   arm D1 ("every class selector matches a class the document can carry") went
+   RED the moment the typewriter was retired, because the GENERATED theme sheets
+   still carried the same dead selector. The class `caption__ch` is not in the
+   panel's DOM any more, so a rule for it is a rule for nothing.
 
-   WHY `animation` AND NOT A TRANSITION: the reveal must be DISCRETE — a letter
-   is absent, then it is present. A transition would FADE each letter, which is
-   a different (and softer) thing than typing. `1ms` + `forwards` flips the
-   character at its own delay and holds it.
+   `--type-step` still means the reveal's speed — the word reveal below uses it,
+   and a direction that wants no reveal at all still sets `--type-step: 0ms`. */
 
-   THE ONLY ANIMATED PROPERTY IS `opacity`, on an inline span, so the compositor
-   owns it and no frame pays for a relayout — the rule the whole panel is held
-   to, and the reason this feature is measurable with
-   `_main/_panel-anim-cost.js` instead of argued about.
+/* ------------------------------------------------- THE WORD REVEAL (2026-10-20)
 
-   `--type-step` lives in `:root` (45ms) so the knob is REAL: a direction that wants
-   its own typing speed sets the var and this rule follows, and a direction that
-   wants no typing at all sets `--type-step: 0ms`. Deleting this whole block is a
-   complete revert of the feature. The reveal is fail-VISIBLE by construction: the
-    char's BASE opacity is 1 and the fill mode is `both`, so the backwards fill
-    holds 0 during the per-char delay and the forwards fill holds 1 after — and
-    if anything ever suppresses the animation, the word stays READABLE instead
-    of blank (2026-10-08 full audit). `opacity: 0` as the base plus a removable
-    fill is the fail-BLANK form and is forbidden here. */
-.caption__ch {
-  display: inline;
+   THE PER-CHARACTER REVEAL IS RETIRED. The owner, verbatim, about the live
+   caption: *"o jeito que as letras ou palavras aparecem na tela ta bem ruim.
+   fica aparecendo como se fosse 'tokens' e nao palavras inteiras. pode somente
+   palavras inteiras."* The typewriter wrote the newest word one
+   `<span class="caption__ch">` per CHARACTER and the CSS revealed them one at
+   a time; the owner read a half-word on the screen and called it tokens.
+
+   `panel.js`'s `paintChars` now writes the word as ONE text node, so there is
+   no character span to animate. The newest word of the forming line is still
+   MARKED (`data-typing`), and this rule gives that word a reveal of its own:
+   a short fade of the WHOLE word.
+
+   THE ONLY ANIMATED PROPERTY IS `opacity`, on an inline span, so the
+   compositor owns it and no frame pays for a relayout -- the rule the whole
+   panel is held to (and the reason this is measurable with
+   `_main/_panel-anim-cost.js` instead of argued about).
+
+   FAIL-VISIBLE BY CONSTRUCTION: the base is `opacity: 1` and the fill mode is
+   `both`, so if anything ever suppresses the animation the word stays
+   READABLE instead of blank. `opacity: 0` as the base plus a removable fill is
+   the fail-BLANK form and is forbidden here.
+
+   `--type-step` still lives in `:root` and still means "the reveal's speed":
+   it is the delay of the word's fade, so a direction that wants no reveal at
+   all still sets `--type-step: 0ms` and gets a word that simply appears. */
+.caption--provisional .caption__word[data-typing] {
+  opacity: 1;
+  animation: sotto-word-in 140ms ease-out both;
+  animation-delay: calc(var(--type-step) * 0ms);
 }
 
-.caption--provisional .caption__word[data-typing] .caption__ch {
-  opacity: 1;
-  animation: sotto-type-in 1ms linear both;
-  animation-delay: calc(var(--c-i) * var(--type-step));
+@keyframes sotto-word-in {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
 }
 
 @keyframes sotto-type-in {

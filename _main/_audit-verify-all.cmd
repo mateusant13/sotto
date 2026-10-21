@@ -324,6 +324,15 @@ if exist _main\youtube-captions-oracle.py (
   call :step youtube-captions 0 "_main\youtube-captions-oracle.py;app\webview\youtube_captions.py" "%OUT%\youtube-captions.log" python _main\youtube-captions-oracle.py
   call :record youtube-captions !STEP_RC!
 ) else ( call :record youtube-captions MISSING )
+REM THE NATIVE CAPTION'S LINE BREAKING (owner, 2026-10-21): the caption the
+REM owner SEES is drawn by the native renderer (caption_overlay.py +
+REM caption_wrap.py) -- `caption.html` is loaded by no window at all -- so the
+REM YouTube-style breaking and the "só palavras inteiras" rule are judged
+REM THERE. Pure: GDI+ into a MEMORY bitmap, no window, no app, no audio.
+if exist _main\caption-native-wrap-oracle.py (
+  call :step caption-native-wrap 0 "_main\caption-native-wrap-oracle.py;app\webview\caption_wrap.py;app\webview\caption_overlay.py" "%OUT%\caption-native-wrap.log" python _main\caption-native-wrap-oracle.py
+  call :record caption-native-wrap !STEP_RC!
+) else ( call :record caption-native-wrap MISSING )
 
 REM `yt-player-track-oracle.py` judges the 1:1 RULE (owner, 2026-10-20,
 REM verbatim: *"eu quero a legenda 1:1 do video do youtube. eu mesmo vou
@@ -597,6 +606,24 @@ if exist _main\_audit-hotkey-delivery.py (
   call :step always hotkey-delivery 0 "_main\_audit-hotkey-delivery.py;app\webview\sotto_webview.py" "%OUT%\hotkey-delivery.log" python _main\_audit-hotkey-delivery.py
   call :skipped hotkey-delivery !STEP_RC! "%OUT%\hotkey-delivery.log" "VERDICT: GREEN" "VERDICT: SKIPPED" "CANNOT claim"
 ) else ( call :skipped hotkey-delivery MISSING "%OUT%\hotkey-delivery.log" "VERDICT: GREEN" "VERDICT: SKIPPED" "CANNOT claim" )
+REM THE THREE HOTKEY GATES (owner, 2026-10-21). They judge the GESTURE: the
+REM 1/2/3 contract, the gesture WINDOW and the caption's UNDO -- the fix for
+REM "alt c nao ta funcionando direito pra abrir o painel" (a human double press
+REM measures 300-500 ms and the window was 250). Until 2026-10-21 they were NOT
+REM in this battery, which is exactly how a gate rots in silence (AGENTS.md
+REM rule 6). They are PURE: no app, no window, no audio, no browser.
+if exist _main\hotkey-cycle-oracle.py (
+  call :step hotkey-cycle 0 "_main\hotkey-cycle-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-cycle.log" python _main\hotkey-cycle-oracle.py
+  call :record hotkey-cycle !STEP_RC!
+) else ( call :record hotkey-cycle MISSING )
+if exist _main\hotkey-gesture-oracle.py (
+  call :step hotkey-gesture 0 "_main\hotkey-gesture-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-gesture.log" python _main\hotkey-gesture-oracle.py
+  call :record hotkey-gesture !STEP_RC!
+) else ( call :record hotkey-gesture MISSING )
+if exist _main\hotkey-triple-oracle.py (
+  call :step hotkey-triple 0 "_main\hotkey-triple-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-triple.log" python _main\hotkey-triple-oracle.py
+  call :record hotkey-triple !STEP_RC!
+) else ( call :record hotkey-triple MISSING )
 REM The autostart check READS the registry (a read needs no elevation) and fails
 REM if the Run value points somewhere other than THIS checkout -- which is what a moved tree looks like from the login side. The step runs _main\autostart-status-check.py (2026-10-12) because the shell OWN exit code IS the status (0=on+matching, 1=off, 2=unreadable, 3=elsewhere): recording that rc as a plain gate painted a healthy OFF machine RED. The wrapper reads the registry itself, cross-checks the shell own answer, exits 0 for the two VALID states and 3 for another checkout. The REM line below keeps its original wording.
 REM moved tree looks like from the login side.

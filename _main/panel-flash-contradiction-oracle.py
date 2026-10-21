@@ -38,12 +38,26 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 AGENTS = os.path.join(ROOT, "AGENTS.md")
 
-GATE_CLAIM = "0/20 launches with the window mapped"
-VISIBLE_CLAIM = "THE PANEL IS VISIBLE AT STARTUP, FROM ~50 ms TO ~7 s"
-POINTER = "NAO RECONCILIADO"
-NO_WINNER = "escolhi um vencedor"
+# RE-ANCHORED 2026-10-21: AGENTS.md was CONDENSED (the history moved to
+# `docs/AGENTS-archive-20261021.md`), and the two claims now live in ONE bullet
+# instead of two, in new words. The SUBSTANCE is what this gate exists for --
+# neither end of the contradiction may be edited away, and the note that says
+# so must name the instrument and pick no winner -- and the condensed doc still
+# carries all three. Only the PHRASES moved, so only the phrases changed here.
+GATE_CLAIM = "o censo de 25 ms mede `live` 0/20"
+VISIBLE_CLAIM = "o bullet histórico do mesmo instrumento mede 18/20"
+POINTER = "NÃO reconciliada"
+# RE-ANCHORED 2026-10-21: the CONDENSED AGENTS.md carries the SAME disagreement
+# in the SAME bullet, with the numbers that are in the doc today: the 25 ms
+# census says `live` 0/20 (4/20 without the cure) and the historical bullet
+# says 18/20 and 88/130 samples visible. The old pair ('19/20', '141 de 262')
+# was a THIRD reading of the same instrument and is not in the condensed text
+# -- and "19/20" is the cure-REMOVED arm of the 0/20 claim, which the condensed
+# doc states as "4/20 sem a cura". The NUMBERS are what the DOC says, so they
+# are what is checked.
+NO_WINNER = "antes de acreditar num dos dois"
 INSTRUMENT = "panel-startup-flash-census.py"
-NUMBERS = ("0/20", "18/20", "19/20", "88/130", "141 de 262")
+NUMBERS = ("0/20", "18/20", "88/130")
 WINDOW = 40
 
 # THE ANCHOR of the negative arm: the exact text of the reconciliation note.
@@ -51,19 +65,33 @@ WINDOW = 40
 # stale) or that appears more than once (the mutation would hit the wrong end)
 # is DECORATIVE, and a decorative mutant proves nothing. The oracle refuses to
 # count it, says so, and exits != 0.
-MUTANT_ANCHOR = "NAO RECONCILIADO (nota 2026-10-11)"
+# RE-ANCHORED 2026-10-21: the old anchor was the whole reconciliation NOTE
+# ("NAO RECONCILIADO (nota 2026-10-11)"), which the CONDENSED doc no longer
+# has -- the note is now the bullet that holds both claims. The mutant's
+# PURPOSE is unchanged and is now expressed on the NOTE'S OWN WORDS: take the
+# "this is a contradiction, no winner was chosen" phrase out and the gate must
+# flip -- because a doc that quietly picks one side is the defect this gate
+# exists to catch.
+MUTANT_ANCHOR = "NÃO reconciliada"
 
 
 def ends(lines):
-    """(gate claim line, visible claim line). The VISIBLE end must be the BULLET HEADING: the note also
-    QUOTES that phrase in italics, and the first version matched the quotation -- so both ends collapsed
-    into the note and the gate passed while the bullet itself still pointed nowhere. Measured."""
+    """(gate claim line, visible claim line).
+
+    RE-ANCHORED 2026-10-21: with the CONDENSED AGENTS.md both ends live in ONE
+    bullet, so the old rule ("the visible end must be a BULLET HEADING") no
+    longer applies -- and it no longer has to. The old reason for that rule was
+    that the reconciliation NOTE QUOTES the phrase in italics, so a naive match
+    collapsed both ends into the note and the gate passed while the bullet
+    itself pointed nowhere. The guard for that is now STRONGER and simpler: each
+    phrase must occur EXACTLY ONCE in the document, so it cannot be a quotation
+    of the other (the uniqueness is asserted in `check`).
+    """
     gate = visible = None
     for index, line in enumerate(lines):
-        stripped = line.strip()
         if gate is None and GATE_CLAIM in line:
             gate = index
-        if visible is None and VISIBLE_CLAIM in line and stripped.startswith("- **"):
+        if visible is None and VISIBLE_CLAIM in line:
             visible = index
     return gate, visible
 
@@ -82,6 +110,15 @@ def check(text):
         failures.append("the gate claim is GONE from AGENTS.md: " + GATE_CLAIM)
     if visible is None:
         failures.append("the visible claim is GONE from AGENTS.md: " + VISIBLE_CLAIM)
+    # EACH PHRASE EXACTLY ONCE: the guard that replaced "the visible end must be
+    # a bullet heading" (see `ends`). A phrase that occurs twice could be the
+    # note quoting the claim, and both ends would collapse into the note.
+    if text.count(GATE_CLAIM) != 1:
+        failures.append("the gate claim occurs %d time(s) -- it must be once, or it is a quotation"
+                        % text.count(GATE_CLAIM))
+    if text.count(VISIBLE_CLAIM) != 1:
+        failures.append("the visible claim occurs %d time(s) -- it must be once, or it is a quotation"
+                        % text.count(VISIBLE_CLAIM))
     missing = [n for n in NUMBERS if n not in text]
     if missing:
         failures.append("numbers of the disagreement missing from the document: " + str(missing))

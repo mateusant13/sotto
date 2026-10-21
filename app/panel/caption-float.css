@@ -120,14 +120,109 @@ body[data-surface="panel"] #caption-float {
    2026-10-15 on a fresh shot: the live line ran past the right edge and the words
    were cut by the WINDOW silhouette instead of by the overlay own box -- so a
    reader sees a sentence that simply stops, with no rail or radius to say where
-   the text ends. `overflow-wrap: anywhere` alone does not do it: it breaks a long
-   WORD, and a long SENTENCE of ordinary words still lays out wider than the box
-   until something constrains it. This is that constraint, on the element that
-   actually holds the line. */
-#caption-float .caption-float__line {
+   the text ends. THE CONSTRAINT IS `max-width`, NOT THE WRAP MODE: the wrap mode
+   only decides what happens to a word that is too long, and a long SENTENCE of
+   ordinary words lays out wider than the box regardless. That is why the
+   measurement below kept `anywhere` and only added the box, and why changing
+   the mode here does not undo that fix. */
+/* ── 4. THE YOUTUBE DISPLAY (owner, 2026-10-20) ──────────────────────────── */
+
+/* The owner, verbatim: *"voce nao ta fazendo a legenda parecendo com como o
+ * youtube da DISPLAY e quebra as linhas e etc. é pra tu fazer isso. faça."*
+ *
+ * YouTube's own on-screen caption is: a large SANS face (Roboto, medium),
+ * WHITE, with a heavy BLACK OUTLINE around the glyphs, sitting directly on the
+ * picture with NO plate behind it, CENTRED, in AT MOST TWO lines, and the break
+ * between the two lines falls on a WORD BOUNDARY -- never inside a word.
+ *
+ * THE FACE. Roboto is not bundled. Inter IS (fonts/inter-latin-{300,400,500,
+ * 600}) and is its metric cousin: the same neo-grotesque skeleton, the same
+ * x-height, the same 500 "medium" that YouTube's caption uses. The fallback
+ * chain keeps the caption in a humanist sans if the webfont is missing.
+ *
+ * THE SIZE. 36 px is YouTube's caption size at 1080p. It is NOT a vw ramp:
+ * the caption's window is 900 px wide (`sotto_webview.py:5881`), so a vw ramp
+ * would size the words against the BOX instead of against the SCREEN the
+ * owner is watching. `--caption-scale` is the owner's own dial and still
+ * multiplies the size, exactly as it does everywhere else.
+ *
+ * THE OUTLINE. `-webkit-text-stroke` CENTRES the stroke on the glyph edge, so
+ * a 6 px stroke is 3 px of black OUTSIDE the letter and 3 px inside it --
+ * and `paint-order: stroke fill` paints the white fill ON TOP of that inner
+ * half, so the letter keeps its full shape and only the outside is black.
+ * 6 px is the same pen the native overlay uses (`caption_overlay.py:287`,
+ * `max(2.0, 6.0 * scale)`), so the two renderers agree.
+ *
+ * THE BREAKING. `overflow-wrap: normal` + `hyphens: none` is the rule that
+ * makes "the text is never split mid-word" TRUE instead of a hope: with both
+ * off, the browser may only break at a space (or after an explicit hyphen in
+ * the text). `break-word` (what this file carried before) breaks a word that
+ * does not fit on a line of its own, and `hyphens: auto` breaks it at a
+ * syllable -- both of them split a word, and the owner's own screenshot read
+ * "communicatio / n".
+ *
+ * `text-wrap: balance` is what makes the TWO lines BALANCED: without it the
+ * first line takes everything that fits and the second carries the remainder,
+ * which is the ragged look the owner is complaining about. Chromium supports
+ * it since 114 and this box runs Edge 155.
+ *
+ * ── WHERE EACH PROPERTY IS DECIDED, AND WHY IT IS NOT ALL HERE ────────────
+ * `zip-overlay.css` is the LAST sheet the caption page loads and it carries
+ * `!important` rules for the OVERLAY's type: a serif face at 1.45em with
+ * 1.28 leading and 0.005em tracking (zip-overlay.css:359-364), and
+ * `text-align: left` on the column and on both lines (:285-292). Those rules
+ * are for the zip's own card, which is what the PANEL shows.
+ *
+ * A sheet that loads EARLIER cannot beat an `!important` from a sheet that
+ * loads later -- only a LATER declaration of the same property can. So the
+ * five properties zip-overlay.css forces (font-family, font-size, line-height,
+ * letter-spacing, text-align) are decided in `caption.html`, whose <style>
+ * block loads after every sheet. EVERY OTHER PROPERTY of the caption's look
+ * is decided HERE, once.
+ *
+ * THE NUMBERS ARE TOKENS, so that the two files cannot disagree about a
+ * value: the face, the size, the weight, the leading and the outline are
+ * declared ONCE, here, and `caption.html` reads the same tokens.
+ *
+ * The rules are scoped to `html[data-caption-doc]` -- the marker only
+ * `caption.html` carries -- so the PANEL's overlay (the zip's serif card) is
+ * not touched by this lane.
+ */
+:root {
+  --caption-face: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --caption-size: 36px;
+  --caption-weight: 500;
+  --caption-leading: 1.2;
+  --caption-outline: 6px;
+  --caption-prev-size: 26px;
+  --caption-prev-outline: 4px;
+}
+
+html[data-caption-doc] #caption-float .caption-float__line {
   max-width: 100%;
-  overflow-wrap: anywhere;
+  color: #fff;
+  -webkit-text-stroke: var(--caption-outline) #000;
+  paint-order: stroke fill;
+  font-weight: var(--caption-weight);
+  text-wrap: balance;
+  overflow-wrap: normal;
+  hyphens: none;
   overflow-x: hidden;
+}
+
+/* THE PREVIOUS LINE: the settled cue, one size down and dimmer -- Sotto's own
+ * "the live line reads as LIVE" affordance. It gets the same face and the
+ * same outline (2 px of visible black), because over a video a dimmed word
+ * with no outline is a word the owner cannot read. */
+html[data-caption-doc] #caption-float .caption-float__prev {
+  font-size: calc(var(--caption-prev-size) * var(--caption-scale));
+  color: rgba(255, 255, 255, 0.82);
+  -webkit-text-stroke: var(--caption-prev-outline) #000;
+  paint-order: stroke fill;
+  font-weight: var(--caption-weight);
+  text-wrap: balance;
+  overflow-wrap: normal;
+  hyphens: none;
 }
 
 /* THE METER WAS THE OTHER PLATE. panel.css:2911 gave .caption-float__meter a

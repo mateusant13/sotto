@@ -181,6 +181,68 @@ FIXTURE_INFO_PLAYLIST_ONLY = {
 }
 
 
+#: The info dict of a video whose ORIGINAL language is ENGLISH, shaped like the
+#: MEASURED one (2026-10-21, the video the owner was watching):
+#: `language` = 'en-US' and the table carries 177 languages -- the Portuguese
+#: entry among them being an AUTO-TRANSLATION whose URL carries **no** `tlang`.
+#: That is why "the key that looks original" is not proof of the original
+#: language, and why the `language` FIELD is what the policy reads.
+FIXTURE_INFO_ENGLISH = {
+    "id": "ENGLISHVIDEO",
+    "language": "en-US",
+    "duration": 213,
+    "subtitles": {
+        "en": [{"ext": "json3", "url": "https://example.invalid/en.json3"}],
+        "pt": [{"ext": "json3", "url": "https://example.invalid/pt_manual.json3"}],
+    },
+    "automatic_captions": {
+        "en-orig": [{"ext": "json3", "url": "https://example.invalid/en-orig.json3"}],
+        "pt-orig": [{"ext": "json3", "url": "https://example.invalid/pt-orig.json3"}],
+        "pt": [{"ext": "json3", "url": "https://example.invalid/pt-tlang.json3"}],
+    },
+}
+
+#: A SPANISH original: the owner's rule excludes Spanish from the translation
+#: allowance ("ah, menos espanhol"), so the Spanish track is the one served.
+FIXTURE_INFO_SPANISH = {
+    "id": "SPANISHVIDEO",
+    "language": "es-419",
+    "duration": 213,
+    "subtitles": {
+        "es": [{"ext": "json3", "url": "https://example.invalid/es.json3"}],
+        "pt": [{"ext": "json3", "url": "https://example.invalid/pt_manual_es.json3"}],
+    },
+    "automatic_captions": {},
+}
+
+#: A CHINESE original: here a TRANSLATION is allowed ("quando chines ou
+#: japones, ou qualquer outra, pode traduzir"), so the Portuguese track stays
+#: eligible -- and this arm exists so nobody "fixes" that later.
+FIXTURE_INFO_CHINESE = {
+    "id": "CHINESESEVIDEO",
+    "language": "zh-Hans",
+    "duration": 213,
+    "subtitles": {
+        "pt": [{"ext": "json3", "url": "https://example.invalid/pt_manual_zh.json3"}],
+    },
+    "automatic_captions": {
+        "zh-orig": [{"ext": "json3", "url": "https://example.invalid/zh-orig.json3"}],
+    },
+}
+
+#: A PORTUGUESE original: the original language, served as the original.
+FIXTURE_INFO_PORTUGUESE = {
+    "id": "PORTUGUESEVIDEO",
+    "language": "pt-BR",
+    "duration": 213,
+    "subtitles": {
+        "pt-BR": [{"ext": "json3", "url": "https://example.invalid/ptbr.json3"}],
+        "en": [{"ext": "json3", "url": "https://example.invalid/en_manual_pt.json3"}],
+    },
+    "automatic_captions": {},
+}
+
+
 # ── a fake UI Automation tree ────────────────────────────────────────────────
 # The player's clock is measured through this, so the gate does not depend on
 # a YouTube window being open (it was NOT open on this box on 2026-10-19, and
@@ -329,8 +391,11 @@ def battery(mod, path, workdir, source):
     def a04():
         cues = mod.parse_json3(FIXTURE_JSON3)
         texts = [c["text"] for c in cues]
+        # RE-ANCHORED 2026-10-21: the cue's OWN line break is now PRESERVED
+        # (that is what makes the caption break like YouTube's), so the second
+        # cue carries the break instead of a space.
         ok = texts == ["We're no strangers",
-                       "Você conhece as regras, e eu também"]
+                       "Você conhece as regras,\ne eu também"]
         return ok, "cues=%r" % (texts,)
     attempt("a04 parse_json3 tira os cues REAIS e nada mais", a04)
 
@@ -358,12 +423,17 @@ def battery(mod, path, workdir, source):
     attempt("a07 parse_json3 converte tStartMs/dDurationMs em segundos", a07)
 
     def a08():
+        # RE-ANCHORED 2026-10-21: the contract INVERTED. The OLD arm asserted
+        # the cue's line break was DESTROYED (`"\n" not in text`); the product
+        # now KEEPS it -- that is the YouTube line break the owner asked for --
+        # and still collapses the horizontal whitespace (no double space).
         cues = mod.parse_json3(FIXTURE_JSON3)
         cue = [c for c in cues if "regras" in c["text"]]
         ok = bool(cue) and "  " not in cue[0]["text"] \
-            and "\n" not in cue[0]["text"]
+            and cue[0]["text"] == "Você conhece as regras,\ne eu também"
         return ok, "cue=%r" % (cue,)
-    attempt("a08 parse_json3 junta os segmentos sem espaco duplo", a08)
+    attempt("a08 parse_json3 junta os segmentos sem espaco duplo e GUARDA a "
+            "quebra de linha do cue", a08)
 
     def a09():
         cues = mod.parse_json3("not json at all")
@@ -500,6 +570,49 @@ def battery(mod, path, workdir, source):
         return ok, "track=%r" % (track,)
     attempt("a26 track_from_info prefere a LINGUAGEM a fonte "
             "(en automatico, nao de manual)", a26)
+
+    # -- THE POLICY (2026-10-21): the ORIGINAL language, never a translation.
+    # The owner, verbatim: *"nao e pra traduzir. e pra ser lingua original.
+    # quando ingles, e quando pt br. quando chines ou japones, ou qualquer
+    # outra, pode traduzir. ah, menos espanhol."*
+    def a46():
+        track = mod.track_from_info(FIXTURE_INFO_ENGLISH)
+        ok = track is not None and track["lang"] in ("en", "en-orig") \
+            and track["source"] == "manual"
+        return ok, "track=%r" % (track,)
+    attempt("a46 um video INGLES serve a legenda INGLES, nunca a traducao", a46)
+
+    def a47():
+        track = mod.track_from_info(FIXTURE_INFO_SPANISH)
+        ok = track is not None and track["lang"] == "es"
+        return ok, "track=%r" % (track,)
+    attempt("a47 um video ESPANHOL serve a legenda ESPANHOLA "
+            "(o 'menos espanhol' do dono)", a47)
+
+    def a48():
+        track = mod.track_from_info(FIXTURE_INFO_PORTUGUESE)
+        ok = track is not None and track["lang"] == "pt-BR"
+        return ok, "track=%r" % (track,)
+    attempt("a48 um video em PORTUGUES serve a legenda em PORTUGUES", a48)
+
+    def a49():
+        track = mod.track_from_info(FIXTURE_INFO_CHINESE)
+        ok = track is not None and track["lang"] == "pt"
+        return ok, "track=%r" % (track,)
+    attempt("a49 um video em CHINES pode servir a traducao (a regra permite)",
+            a49)
+
+    def a50():
+        track = mod.track_from_info(FIXTURE_INFO_ENGLISH, player_lang="en")
+        ok = track is not None and track["lang"] == "en"
+        return ok, "track=%r" % (track,)
+    attempt("a50 a faixa do PLAYER ainda manda, se for da MESMA lingua", a50)
+
+    def a51():
+        got = mod.track_from_info({"language": "en-US", "subtitles": {},
+                                   "automatic_captions": {}})
+        return got is None, "got %r" % (got,)
+    attempt("a51 um video SEM faixas da None (nao-track, nao has-track)", a51)
 
     # -- the whole pipeline, with the network cut --------------------------
     def a27():
@@ -882,15 +995,30 @@ MUTANTS = [
      '                best = cue'),
     # The line break inside a segment reaches the caption box: the caption
     # shows a hard newline instead of a space.
-    ("the-newline-inside-a-segment-is-kept",
-     '    out = re.sub(r"\\s+", " ", out).strip()',
-     '    out = re.sub(r" +", " ", out).strip()'),
+    # RE-ANCHORED 2026-10-21: the contract INVERTED. The cue's OWN line break is
+    # now PRESERVED -- that is what makes the caption break like YouTube's -- so
+    # the mutant is the opposite defect: a copy that DESTROYS the break. The
+    # old mutant ("the newline is kept", patching `re.sub(r"\s+", " ", out)`)
+    # had NO ANCHOR any more: the module no longer collapses `\s`, it collapses
+    # the HORIZONTAL whitespace and then tidies the newlines.
+    ("the-newline-inside-a-segment-is-lost",
+     '    out = re.sub(r" *\\n *", "\\n", out)',
+     '    out = re.sub(r" *\\n *", " ", out)'),
     # The percent scale is read as seconds: the caption is 56 seconds late.
     ("the-percent-scale-is-read-as-seconds",
      "        if abs(span - 100.0) < 1e-6 and d > 100.0:\n"
      "            candidates.append((value - vmin) / 100.0 * d)",
      "        if False:\n"
      "            candidates.append((value - vmin) / 100.0 * d)"),
+    # THE POLICY (2026-10-21): the ORIGINAL language, never a translation.
+    # Each of these breaks ONE half of it, so the arms that name the other half
+    # have to go RED -- a policy that cannot be broken is a comment.
+    ("the-original-language-is-not-read",
+     '    lang = str((info or {}).get(\'language\') or \'\').strip().lower()',
+     '    lang = ""'),
+    ("the-policy-allows-every-language",
+     "ORIGINAL_ONLY_LANGS = ('en', 'pt', 'es')",
+     "ORIGINAL_ONLY_LANGS = ('xx',)"),
 ]
 
 

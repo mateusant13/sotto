@@ -350,15 +350,25 @@ function checkC(h) {
 }
 
 function checkD(h) {
-  h.feed('epsilon alpha', { start: 40, end: 41, final: false, source: 'proc:111' });
+  // RE-ANCHORED 2026-10-21. The fixture used to feed BOTH sources the same
+  // first word ('epsilon alpha' / 'epsilon beta') and then assert that B's row
+  // carried 'beta'. Since the panel's HOLD-BACK (the owner's "só palavras
+  // inteiras": the last word of a GROWING line is withheld until two
+  // hypotheses agree on it) the two rows could both show "epsilon <marker>" --
+  // the rows were indistinguishable BY TEXT, so the assertion could not be
+  // satisfied without weakening it. The FIXTURE now gives each source its own
+  // FIRST word, which the hold-back never withholds, so the check keeps its
+  // teeth (A's partial must not rewrite B's row) and the product contract is
+  // unchanged: the row identity, not the text, is what is under test.
+  h.feed('alfa epsilon', { start: 40, end: 41, final: false, source: 'proc:111' });
   const step1 = h.rows().filter((r) => r.provisional);
   const rowA = step1.filter((r) => r.source === 'proc:111');
-  h.feed('epsilon beta', { start: 40, end: 41, final: false, source: 'proc:222' });
+  h.feed('beta gamma', { start: 40, end: 41, final: false, source: 'proc:222' });
   const step2 = h.rows().filter((r) => r.provisional);
   const a2 = step2.filter((r) => r.source === 'proc:111');
   const b2 = step2.filter((r) => r.source === 'proc:222');
   const aTextAfterB = a2.length === 1 ? a2[0].text : '';
-  h.feed('epsilon alpha extended', { start: 40, end: 42, final: false, source: 'proc:111' });
+  h.feed('alfa epsilon extended', { start: 40, end: 42, final: false, source: 'proc:111' });
   const step3 = h.rows().filter((r) => r.provisional);
   const a3 = step3.filter((r) => r.source === 'proc:111');
   const b3 = step3.filter((r) => r.source === 'proc:222');
