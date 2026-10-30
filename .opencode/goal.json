@@ -1,0 +1,21 @@
+{
+  "goal": "YouTube subtitles appear on the owner's screen in the Sotto app and are synced almost 1:1 with YouTube: words, line breaks, line timing and word-by-word reveal all match the player's own payload. Continue from _main/receipt-20261026-youtube-1to1-check.md (measured 2026-10-26: words/linebreaks/timing GREEN, the only RED is word-reveal-1to1 -- tOffsetMs present in 69 payload segments, 0 offsets in the served cues) and from _main/youtube-paint-first-oracle.py (the caption must appear WITH the page). Bend duty (owner, 2026-10-29): read docs/bend/README.md first; claims in LAWS.bend, proofs in PROOF.bend, gate 'bend PROOF.bend --verdict' in WSL ubuntu-bend, one negative control per law, a mirror that binds each law to the real production function, and a MEASURED falsifier for the timing budget -- a law never proves a millisecond.",
+  "done_when": [
+    "python H:\\sotto\\_main\\youtube-1to1-oracle.py",
+    "python H:\\sotto\\_main\\youtube-paint-first-oracle.py",
+    "python H:\\sotto\\_main\\youtube-reveal-oracle.py",
+    "bash tools/bend_verify.sh",
+    "python tools/bend_proof_ledger.py"
+  ],
+  "status": "active",
+  "max": 8,
+  "count": 0,
+  "done": false,
+  "evidence": [
+    "2026-10-30: youtube-1to1-oracle GREEN (7 elements, 0 red); paint-first PASS; reveal-oracle GREEN (15/15)",
+    "2026-10-30: tools/bend_verify.sh green -- 14 laws, 14 controls each naming its law, inventory pinned, tamper probes A+B detected",
+    "2026-10-30: tools/bend_proof_ledger.py green rc=0 judge=bend 2.0.39 laws=14"
+  ],
+  "created": "2026-10-29T00:00:00Z",
+  "updated": "2026-10-30T17:25:00Z"
+}
