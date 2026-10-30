@@ -7,15 +7,20 @@
     "bash tools/bend_verify.sh",
     "python tools/bend_proof_ledger.py"
   ],
-  "status": "active",
+  "status": "completed",
   "max": 8,
-  "count": 0,
-  "done": false,
+  "count": 6,
+  "done": true,
   "evidence": [
     "2026-10-30: youtube-1to1-oracle GREEN (7 elements, 0 red); paint-first PASS; reveal-oracle GREEN (15/15)",
     "2026-10-30: tools/bend_verify.sh green -- 14 laws, 14 controls each naming its law, inventory pinned, tamper probes A+B detected",
-    "2026-10-30: tools/bend_proof_ledger.py green rc=0 judge=bend 2.0.39 laws=14"
+    "2026-10-30: tools/bend_proof_ledger.py green rc=0 judge=bend 2.0.39 laws=14",
+    "2026-10-30 (independent re-run, this lane): _main/youtube-1to1-oracle.py rc=0 GREEN -- elementos=7 vermelhos=0, 677 samples with no drawing divergence",
+    "2026-10-30 (independent re-run): _main/youtube-paint-first-oracle.py VERDICT: PASS (line emitted before track-pending, painted-untracked route)",
+    "2026-10-30 (independent re-run): _main/youtube-reveal-oracle.py rc=0 -- reveal-matches-the-player GREEN 15/15 lines equal, coverage 15/16 (one sample had no 3-word alignment)",
+    "2026-10-30 (independent re-run): bash tools/bend_verify.sh == gate green == rc=0 (14 laws, 14 controls each naming its law, inventory pinned, tamper probes A+B)",
+    "2026-10-30 (independent re-run): py -3 tools/bend_proof_ledger.py ledger green rc=0 laws=14"
   ],
   "created": "2026-10-29T00:00:00Z",
-  "updated": "2026-10-30T17:25:00Z"
+  "updated": "2026-10-30T18:05:00Z"
 }
