@@ -622,13 +622,11 @@ def _layout(text, previous, scale, work_width, theme=None):
     """
     g = _geom(scale, theme)
     t = g['t']
-    cur_px = g['cur_px']
-    prev_px = g['prev_px']
+    cur_px, prev_px = g['cur_px'], g['prev_px']
     text = _case(text, t['liveUpper'])
     previous = _case(previous, t['prevUpper'])
     cur_family = t['fontFamily']
-    cur_bold = t['liveWeight'] >= 600
-    prev_bold = t['prevWeight'] >= 600
+    cur_bold, prev_bold = t['liveWeight'] >= 600, t['prevWeight'] >= 600
 
     # `_measure` RETURNS A MEASURING FUNCTION (see its docstring: the closure
     # pins the GDI+ objects), so the call is two steps. Calling it once and
@@ -657,10 +655,10 @@ def _layout(text, previous, scale, work_width, theme=None):
     # owner asked for by name (*"verificar online como quebrar de um jeito bom.
     # ou como o youtube faz"*) -- and makes the two lines the LAST two, so the
     # newest words are the ones on screen and no word is ever simply lost.
-    if _cw:
+    if _cw and '\n' not in text:
         cur_lines, scrolled = _cw.wrap_tail(text or '', cur_w, budget)
     else:
-        cur_lines = [text] if text else []
+        cur_lines = text.splitlines() if '\n' in text else ([text] if text else [])
         scrolled = ''
     if not cur_lines:
         cur_lines = ['']
@@ -669,10 +667,8 @@ def _layout(text, previous, scale, work_width, theme=None):
     # so it can never be the wide one.
     prev_line = ''
     if previous:
-        if _cw:
-            prev_line = _cw.wrap(previous, prev_w, int(budget * 0.8))[0][0]
-        else:
-            prev_line = previous
+        prev_line = (_cw.wrap(previous, prev_w, int(budget * 0.8))[0][0]
+                     if _cw else previous)
 
     widest = max([cur_w(l) for l in cur_lines] + ([prev_w(prev_line)] if prev_line else [0]))
     max_text = max(1.0, work_width - g['x_text'] - g['pad_r'])
@@ -682,10 +678,8 @@ def _layout(text, previous, scale, work_width, theme=None):
     # `...em formaca` with the `o.` outside the bitmap. A trailing safety margin
     # is paid for in plate width, never in a lost word.
     safety = max(18.0, cur_px * 0.9)
-    width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'] + safety,
-                                      max_text)))
-    height = int(g['pad_t'] + g['pad_b'] + g['line_h'] * len(cur_lines)
-                 + (g['prev_h'] if prev_line else 0))
+    width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'] + safety, max_text)))
+    height = int(g['pad_t'] + g['pad_b'] + g['line_h'] * len(cur_lines) + (g['prev_h'] if prev_line else 0))
     return cur_lines, prev_line, max(1, width), max(1, height), scrolled
 
 
@@ -1078,8 +1072,8 @@ class NativeCaptionOverlay:
     # ── THE SPROUT ITSELF ───────────────────────────────────────────────────
     def _display_text(self):
         """What is actually drawn: the first `_shown` words of the line."""
-        words = (self.text or "").split()
-        return " ".join(words[:max(0, min(self._shown, len(words)))])
+        return self.text if self._shown >= self._n else " ".join(
+            (self.text or "").split()[:max(0, self._shown)])
 
     def _arm_reveal(self):
         """(Re)arm one tick. No-op when the whole line is already out."""

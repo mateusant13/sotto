@@ -1,4 +1,20 @@
 # Sotto — contexto do repo para todo agente e subagente
+## Bend 2 — MANDATORY reference bundle, read before any load-bearing claim (owner, 2026-10-29)
+`docs/bend/README.md` is the entry point (ported from consultgpt 2026-10-29, byte-identical copies,
+sha256 in that file). Read it, then `docs/bend/BEND_PROOFS_REFERENCE.md`, then
+`docs/bend/BEND_LAW_GUIDE.md`. The contract in one line: claims in `LAWS.bend`, proofs in
+`PROOF.bend`, gate `bend PROOF.bend --verdict` in WSL `ubuntu-bend` (never `--check-only`), every
+law with a negative control that must fail, every law mirrored to the real production function.
+A **latency/sync budget is never a law** — it needs a measured falsifier; a law proves only the
+ordering underneath it. The goal this bundle serves here: YouTube subtitles on screen, synced
+≈1:1 with YouTube — `drift_ms` measured, never a boolean.
+## Browser: agent-browser default.
+Owner browser: authorized for task-needed authentication; follow this project's access scope.
+## Herdr panes (mandatory)
+Cap: one visible pane per canonical project across workspaces/worktrees. Create via `python I:/!manager/tools/herdr-visible-pane-budget.py workspace --cwd <root> --label <id>` only; unknown/already-present projects refuse. Reuse main pane; extra workers headless; no raw create/focus/move/close.
+
+## Mandatory task-resolver and model routing
+Use `.agents/skills/task-resolver/SKILL.md` for every non-trivial software task. At invocation, classify acceptance rows as mechanical or judgment-based and immediately implement/wire any missing task-relevant deterministic gate before dependent product edits. Follow `.agents/skills/task-resolver/references/model-routing.md`; model quota never idles or blocks a lane.
 
 Transcrição em tempo real de QUALQUER áudio deste PC, mostrada como legendas num overlay global **Alt+C**.
 Aceitação do dono, verbatim: *"e eu quero que o alt c mostre as transcricoes em tempo real, de qualquer
@@ -9,100 +25,72 @@ audio do meu pc. e legendas."*
 > número antigo, não aqui. Em conflito, vale o arquivo **mais** a re-medição; este ficheiro carrega as
 > REGRAS, não a história.
 
+
+## ONDE ESTA O RESTO (este ficheiro e o indice; o detalhe vive em `docs/`)
+
+| precisa de | le |
+|---|---|
+| `politica-youtube` | `docs/politica-youtube.md` |
+| `hotkey-gestos` | `docs/hotkey-gestos.md` |
+| `worker-lifecycle` | `docs/worker-lifecycle.md` |
+| `bateria-e-portoes` | `docs/bateria-e-portoes.md` |
+| `custo-medido` | `docs/custo-medido.md` |
+| `mouse-e-input` | `docs/mouse-e-input.md` |
+| `bug-hunt` | `docs/bug-hunt.md` |
+| `factos-medidos` | `docs/factos-medidos.md` |
+| `layout` | `docs/layout.md` |
+| `output-grande` | `docs/output-grande.md` |
+| `por-medir` | `docs/por-medir.md` |
+| `regras-do-arquivo` | `docs/regras-do-arquivo.md` |
+| `modelo-e-decode` | `docs/modelo-e-decode.md` |
+| `protocolos-observabilidade` | `docs/protocolos-observabilidade.md` |
+| `roadmap-observability` | `docs/roadmap-observability.md` |
+| `deepinfer-o-que-transfere` | `docs/deepinfer-o-que-transfere.md` |
+
+
+
 ## ORDENS EM VIGOR — 2026-10-21 (quatro, do dono)
 
-### 1. O track da YouTube tem de ser a LÍNGUA ORIGINAL
-> *"to vendo que o transcript atual ta sendo traduzido. nao e pra traduzir. e pra ser lingua original.
-> quando ingles, e quando pt br. quando chines ou japones, ou qualquer outra, pode traduzir. ah, menos
-> espanhol."*
+O detalhe medido de cada ordem vive nos docs. **Uma linha por ordem, e é isto que ninguém quebra:**
 
-**A REGRA EM VIGOR (revista pelo próprio dono mais tarde no MESMO dia 2026-10-21):**
-*"para de traduzir pra pt br do ingles e do espanhol. o resto, traduza para ingles. qualquer
-outra lingua pra ingles."* ⇒ **a legenda é INGLÊS para qualquer vídeo**, e **ESPANHOL** para um
-vídeo espanhol (o espanhol **nunca** é traduzido). Implementado em
-`app/webview/youtube_captions.py`: `TARGET_LANG = 'en'` (`:464`),
-`NEVER_TRANSLATED_LANGS = ('es',)` (`:469`), `_target_langs(orig)` (`:472` — vídeo es → es,en;
-vídeo en → en; qualquer outro → en, e a **própria língua** como último recurso, para um vídeo sem
-faixa de inglês) e `_original_language(info)` (`:500`, o campo `language`, base `en-US` → `en`).
-O portão tem **três** mutantes para a política (a língua original não lida, o destino em
-português outra vez, o esquecimento da excepção espanhola) ⇒ **uma política que não se pode
-quebrar é um comentário.**
+| # | a ordem | o que é lei | detalhe |
+|---|---|---|---|
+| 1 | track do YouTube na língua original | inglês → inglês; espanhol → **nunca traduzido**; qualquer outra → inglês | `docs/politica-youtube.md` |
+| 2 | Alt+C à velocidade humana | 1 pressão = legenda on/off · 2 = painel de baixo · 3 = painel da direita; o gesto **desfaz** a legenda | `docs/hotkey-gestos.md` |
+| 3 | Parakeet é o segundo pass | ao vivo = nemotron só com painel aberto; fundo = Parakeet; retoma atrás de 4 guardas + piso de 45 s | `docs/worker-lifecycle.md` |
+| 4 | testes lentos e pesados | cache por **conteúdo**, classe `heavy` nunca corre sem opt-in, **um passo saltado não é um portão que passou** | `docs/bateria-e-portoes.md` |
+| 4-ter | o custo do Sotto | 10 processos, pico 1801 MB, worker 104 % de CPU com dois loads; parte do stutter **não** é do Sotto | `docs/custo-medido.md` |
+| 5 | o rato não passa pelo Sotto | um hook global só existe com painel visível ou edit mode, e mede-se **pela ausência** | `docs/mouse-e-input.md` |
 
-**A REGRA ANTERIOR (substituída — fica escrita para ninguém a "arrumar" de volta):** original para
-**en, pt-BR, es**; tradução **permitida** para zh/ja/qualquer outra; **espanhol NUNCA traduzido.**
-O defeito vivia em `app/webview/youtube_captions.py` (`_auto_lang_keys`), que pedia
-`pref` (traduzido, `tlang=`) antes de esgotar as chaves `-orig`.
+## MODO BUG-HUNT - OBRIGATORIO PARA QUALQUER DEFEITO REPORTADO (2026-10-23)
 
-**MEDIDO 2026-10-21 (a chave do defeito):** no vídeo que o dono estava a ver
-(`-LODwSuymII`), `yt-dlp` diz **`language = 'en-US'`** — o vídeo é **INGLÊS** — e a
-tabela tem **177 línguas**. A entrada portuguesa **não** é a original: é a
-**auto-tradução** do YouTube, e o URL dela **não traz `tlang`** — por isso "a chave
-que parece original" **não prova** a língua original. **O campo `language` é que
-prová.** O serviço servia a **tradução** de um vídeo inglês (e o dono reclamou
-exactamente disso). **A CORRECÇÃO (2026-10-21):** `_original_language(info)` (o campo `language`,
-base `en-US` → `en`) + `_target_langs(orig)` (a política acima) → a faixa do **player** só conta
-se for **da língua que a política pede** (o "1:1 com o vídeo" é sobre a legenda ser **do vídeo**,
-não sobre seguir uma tradução que o player ligou). Portão:
-`_main/youtube-captions-oracle.py` → **53/53 arms, 13/13 mutantes** (dois novos: a
-língua original não lida, e a política a permitir tudo). **Re-medir antes de citar
-linha.**
+Quando o dono reporta um defeito, o trabalho **e** bug-hunt. Protocolo completo (11 passos, contados em
+2026-10-25 no `docs/bug-hunt.md`,
+cada um com o portao que o recusa) em **`docs/bug-hunt.md`**. O resumo que basta para nao errar:
 
-### 2. O gesto do Alt+C tem de funcionar à velocidade humana
-> *"alt c nao ta funcionando direito pra abrir o painel e etc. um alt c: ativa ou desativa legenda ao
-> vivo. dois: abre o painel de baixo. tres: abre o painel da direita."*
+1. nomear o cluster e o impacto; 2. observado vs esperado, palavras dele verbatim; 3. reproduzir e
+guardar a evidencia em FICHEIRO; 4. **uma hipotese + o que a refutaria**; 5. minimizar; 6. corrigir a
+CLASSE e varrer os irmaos com a mesma sonda; 7. regressao no estilo certo; 8. provar o detector
+(negativo derruba AQUELE braco); 9. cobertura por invocador; 10. replay + verificador != autor;
+11. capsula de incidente + `recurrence-watch` com instrumento e janela.
 
-Contrato: **1** pressão → legenda ao vivo on/off; **2** → painel de baixo (`show_strip`); **3** → painel
-da direita (`show_side`). Defeito medido (2026-10-21, `WM_HOTKEY` reais na fila da thread do hotkey, técnica
-de `_main/_audit-hotkey-delivery.py`): a 120 ms os gestos 2 e 3 acertam; a **400 ms e 700 ms não fazem
-nada** (ou fazem a acção errada). Causa: `HOTKEY_DOUBLE_MS = 250` (`sotto_webview.py` ~`:1403`) governa
-DUAS coisas — o atraso da legenda **e** a janela do gesto — e um duplo-clique humano é 300-500 ms.
-Correcção: separar `HOTKEY_CAPTION_DEFER_MS` (250) de `HOTKEY_GESTURE_MS` (700) e **DESFAZER** a legenda
-quando o gesto se revela um painel (a regra do dono é *"caso double alt c, a legenda nao habilita"*).
+**`reported` e `fixed` nunca se apresentam como `verified`.**
 
-**FEITO E MEDIDO (2026-10-21 01:21, shell novo, pid 19624):** os dois relógios estão no
-`sotto_webview.py:1441-1442`, o desfazer em `_undo_gesture_caption` (`:7923`), o gesto em `hotkey_pressed`
-(`:7789`). **Depois**, no app do dono a correr: 2 pressões a **400 ms** → `HOTKEY_CAPTION_UNDONE` +
-`PANEL_SHOWN mode=strip`; 3 pressões a **400 ms** → `HOTKEY_CAPTION_UNDONE` + `PANEL_SHOWN mode=side`.
-**Antes** (o mesmo instrumento, o mesmo app): 400 ms → legenda on/off e **nada**; 700 ms → o mesmo.
-Recibo: `_main/receipt-20261021-hotkey-gesture.md`. Portões: `hotkey-gesture-oracle.py` 14/14,
-`hotkey-cycle-oracle.py` PASS, `hotkey-triple-oracle.py` 30/30 com **9/9 mutantes apanhados** — os três
-tinham âncoras gastas pela renomeação da constante (e o do triplo **partia-se** com `IndentationError`),
-**re-ancoradas, não afrouxadas**.
+### MECANICA OBRIGATORIA PARA DEFEITO NAO-TRIVIAL (2026-10-24)
 
-### 3. O Parakeet é o segundo pass, com lifecycle inteligente
-> *"legenda ao vivo, com o modelo nemotron... qualquer legenda que ja passou (nao é mais ao vivo) tem que
-> ser processada tambem pelo parakeet, ou imediatamente, ou com delay, ou quando seguro de fazer isso...
-> se minha legenda ao vivo ta desativada e eu nao to usando, é só o parakeet que comanda."*
+Para defeito **nao-trivial** (o sintoma nao aponta para a linha, ou a correccao pode esconder outra):
+carregar a skill **`bug-hunt-sotto`** (`.opencode/skills/bug-hunt-sotto/SKILL.md`), que roteia ao
+protocolo de **11 passos** (`docs/bug-hunt.md`, contados em 2026-10-25) e ao exemplo a copiar, `_main/caption-dup-repro.py`;
+a mecanica de verificacao — **sete passos**: repro no invocador real, 3 a 5 hipoteses falsificaveis
+antes das sondas, uma variavel por sonda, minimizar, replay diferencial, mutacao focal, um registo
+unico — vive em `.opencode/skills/postmortem-sotto/SKILL.md` §Mecanica, com o que recusa cada um. Proporcional: para um typo, um numero ou uma linha, nada disto.
 
-O mecanismo existe (`worker/redux_batch.py`, `worker/redux_live.py`, flag `--redux-when-hidden`,
-`SOTTO_REDUX_LIVE=1` em `app/webview/run.cmd`). **Buraco medido:** `on_external_captions_released()` não
-traz o worker de volta (de propósito — abrir/fechar o Sotto trava o PC do dono), logo **depois** de uma
-legenda externa não há nem legenda do YouTube nem transcrição do modelo. É isso que esta ordem manda
-fechar.
+## DEPOIS DO INCIDENTE: POSTMORTEM — 2026-10-24
 
-### 4. Os testes são lentos e pesados: caching e incremental
-> *"e teus testes demoram muito e sao pesados. implementa caching e incremental test e etc."*
-
-**FEITO (2026-10-21, medido).** O cache de conteúdo (`_main/_stepcache.py`) guarda por passo o
-**conteúdo** (não o mtime) do que julga, o rc, e o sha256 do log ⇒ um passo cujo conteúdo não mudou
-**não volta a correr**. O **tempo** de cada passo é medido (o `.cmd` escreve um ficheiro-marcador
-antes do passo; o `elapsed_s` vive no estado e a CLI mostra-o), e o sumário da bateria diz **quais
-passos foram os lentos**. O **modo rápido** (`SOTTO_BATTERY_FAST=1`, limiar `SOTTO_BATTERY_FAST_S`,
-20 s por omissão) **salta** os passos que foram lentos na corrida anterior e **diz que os saltou**
-— um passo saltado **não** é um portão que passou, e sai no `skipped=` do sumário. O **modo
-incremental** é o próprio cache: só os passos cujo conteúdo mudou correm.
-
-**MEDIDO 2026-10-21 18:4x (esta máquina, bateria sozinha):** corrida com cache frio
-(campainha) **399,8 s**; corrida seguinte **130,2 s** (76 de 91 passos em cache) e **VERDE**
-(rc=0); corrida em **modo rápido** **27,7 s** (80 de 91 em cache, 5 passos lentos saltados) e
-**VERDE** (rc=0). Os passos mais lentos são os que **lançam a app**:
-`strip-stats-log-budget` 57-61 s, `strip-surface-runtime` 44 s, `tap-open-timeout` 34 s,
-`strip-geometry-restore` 30 s, `strip-stats-wave` 26-27 s, `strip-surface-oracle` 21 s.
-
-**O portão do cache** é `_main/_stepcache-oracle.py` (16 braços / 6 mutantes). Dois defeitos
-encontrados por ele: a CLI's `record` **não tinha** `--t0` (o `AttributeError` matava o `record`
-inteiro ⇒ o cache nunca via a CLI) e o formato da CLI mudou (`elapsed=`). O `.cmd` da bateria é
-ainda FRÁGIL (ver §A bateria).
+**Invocar `.opencode/skills/postmortem-sotto` (camada deste repo; metodo na canonica
+`I:\!manager\.agents\skills\postmortem\SKILL.md`) quando o incidente estiver contido/resolvido, ou
+depois de um quase-acidente apanhado.** Com o bug **ACTIVO** nao ha postmortem: fica-se no MODO
+BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na skill — nao se repetem aqui.
 
 ## A LEI DA STACK (decidida pelo dono)
 **nemotron streaming = motor AO VIVO, só com o painel aberto. Parakeet Redux = motor GERAL/de fundo**
@@ -118,9 +106,53 @@ só separar audio pra transcrever cada falante?"*
 
 ## HARD RULES para qualquer lane
 
-- **Só o LEAD lança, relança ou mata a app/worker** (instância única, `Local\SottoShell`; o dono está a
-  usá-la). Subagente pede o comando exacto no recibo; o Lead executa. Medições que só precisam do shell
-  estático usam `--dump-dom` (não mostra janela, não arranca worker).
+- **A TELA DO DONO NAO E O MEU BANCO DE ENSAIO (2026-10-23; ordem verbatim, dada DUAS vezes).**
+  `SOTTO_NEVER_ON_OWNER_SCREEN`. Ele disse: *"para de abrir essa merda na minha tela. tu vai
+  resolver no teu ambiente ai sem encher o meu saco"*, e quando lhe mostrei que a app tem seams
+  proprios, *"entao nunca mais faz isso. faz gates ou agents.md"*. Lei: **nenhuma lane lança a app
+  de modo a que ela apareça no ecra dele** — nem com `--show`, nem por um harness que a passe por
+  ele. Um painel visível é dele: espera pela palavra dele **naquela** sessão. E **nenhum evento
+  sintético é evidência sobre a app**: `keybd_event`/`SendInput` medem o Windows — medido
+  2026-10-23, os quatro `err=0` do pressionador e **zero** linhas no log do Sotto. O caminho de uma
+  lane é o da app: `SOTTO_LANE_LAUNCH=1` + `_main/keepalive.py` (arranca **escondida**, é o estado
+  em que ela escreve o `panel-state.json` e o log) e a leitura por
+  `app/webview/panel_state.py --read` + `_main/webview-run.log`. Portão:
+  `_main/lane-screen-gate.py` na bateria (+ braço negativo); a dívida anterior à regra — 13
+  instrumentos com input sintético e 2 harnesses com `--show` — está **congelada** em
+  `_main/lane-screen-baseline.json` e **não pode crescer**.
+
+- **UMA LANE PODE LANÇAR A APP — MAS NÃO DESTA PANE (medido 2026-10-23, QUATRO mecanismos).**
+  *(A regra acima passou a proibir a largada visível. O que segue não é permissão: é a medição de
+  por que a largada DESTA pane falha, e ela continua toda verdadeira.)*
+  O dono retirou a regra ("só o LEAD lança"), e a razão dela não era autoridade: era **medição**. Hoje
+  voltei a medir e **corrigi duas conclusões minhas**, as duas por o instrumento estar errado:
+  `IsInRole(Administrator) = True` **não** mede elevação (um admin com UAC dividido também dá `True`), e
+  o WebView2 **não** falha "por o processo estar elevado". O que está medido, com o instrumento ao lado:
+  1. **Integridade lida do SID** (`TokenIntegrityLevel`, não do texto do `whoami`): **pane = `medium`**;
+     **os dois `explorer.exe` do dono = `high`** (pids 13692 e 48852). O desktop é `high`, a pane é `medium`.
+  2. **Lançamento directo da pane** (filho `medium`, `Popen` com as flags do repo): arranca,
+     `SINGLE_INSTANCE already_running=false`, `HOTKEY_REGISTERED=true` — e **`TRAY_ICON_ADD ok=false
+     winerror=5`** + **`WEBVIEW2_INIT_FAILED 0x80010108 RPC_E_DISCONNECTED`**. Determinístico (três
+     medições). É **UIPI**: um processo `medium` não fala com a taskbar/`high`.
+  3. **`schtasks /it`:** `TRAY_ICON_ADD ok=true` (é só um ícone — **não é sinal de saúde**) e a app fica
+     **SURDA**: o dono pressionou Alt+C e o log não teve **uma linha** de hotkey.
+  4. **Token emprestado do Explorer** (`_main/launch-unelevated.py`): o filho **é** `high`, mas **nunca
+     executa código** — `pythonw -c "open(...,'w').write(...)"` não escreveu ficheiro nenhum e o processo
+     fica com **1 thread / 2 MB**. O `--selftest` da ferramenta passou a exigir **execução**, não só
+     integridade, precisamente por causa disto.
+  **O QUE ISSO MANDA FAZER:** o dono abre a app (duplo-clique) ou o autostart abre-a no logon. Uma lane
+  **não** deixa uma instância partida a deter `Local\SottoShell`: uma instância velha faz as largadas
+  seguintes morrerem em silêncio entre `SHELL_STARTUP_STAGE stage=pre-lock` e `SINGLE_INSTANCE` (medido:
+  pids 53136 e 63392, zero linhas, porque `pythonw` não tem stderr), e **um filtro de kill nomeia o
+  ARTEFACTO** — o `CommandLine` de um processo alheio vem **vazio**, logo a identidade prova-se pelo
+  `pid=` do log + a hora de arranque, nunca pelo `CommandLine`.
+- **O TRABALHO PESADO PEDE LICENCA A FROTA (2026-10-24).** Antes de um build, de uma bateria
+  completa, de indexacao, de benchmark ou de campanha de mutacao: consultar o estado do gate central
+  **`I:\!manager\tools\performance-gate.py`** e obter o **lease `heavy` exclusivo** dele. Com o gate
+  **RED** (hoje: pressao de commit **92,5 %**) esses comandos **nao se largam** — continua-se por
+  inspeccao de codigo, edicao de docs e diff estatico, que e onde este repo se resolve. Os
+  governadores locais (Watcher, bateria) sao sinal **extra** e **nunca** autorizam trabalho pesado
+  concorrente por fora do gate central. `unknown` tambem nao e `green`, e um skip nao e aprovacao.
 - **Nunca deixar janela de consola visível.** Lançar python com `pythonw.exe` ou
   `creationflags 0x08000000|0x00000008`. Um censo de janelas corre a cada 60 s e loga `ALERTA-JANELA` com
   o pid. O painel também tem de ficar fora do ecrã sem Alt+C/`--show`.
@@ -140,49 +172,15 @@ só separar audio pra transcrever cada falante?"*
 - **UI em movimento (scroll, render provisório) não se toca sem instrumento:** `PANEL_STATE_PROBE`
   publica `live.scroll` porque `count` não prova posição.
 
-## REGRAS PARA MANTER ESTE FICHEIRO VERDADEIRO (todas custaram trabalho refeito)
+## REGRAS PARA MANTER O ARQUIVO VERDADEIRO
 
-1. **"O grep deu ZERO" é uma afirmação com prazo de validade.** Re-correr antes de repetir, e colar os
-   números de HOJE.
-2. **Nomear a revisão ao citar uma linha.** As lanes editam `worker/sotto_worker.py`,
-   `app/webview/sotto_webview.py` e `run.cmd` em paralelo. Dar tamanho, mtime e/ou sha256; tratar toda a
-   `file:line` como HINT e re-grep antes de agir.
-3. **Ausência precisa de instrumento, não de impressão.** Nomear o instrumento, a cadência e a contagem.
-4. **Uma screenshot prova COR, não COORDENADAS.** O Edge headless desta máquina fixa o layout viewport em
-   **492 px** em `--screenshot` E `--dump-dom`. Só `sotto_webview.py --dump-dom` (WebView2 real) responde
-   "onde"; o seu key `controls` imprime `viewport_w` ao lado de cada número.
-5. **O EOL do repo é REGRA, não desejo.** `.gitattributes` é **GERADO** por
-   `_main/_make-gitattributes.py --write` a partir do estado medido (CRLF 712 / LF 1510 / MISTO 68 numa
-   amostra de 2 296 ficheiros de texto) e verificado por `_main/_gitattributes-verify.py`. **Nunca editar
-   à mão: regenerar e re-verificar.**
-6. **Um portão que julga FICHEIROS entra na bateria; um portão que LANÇA fica fora e di-lo-á aqui.** Um
-   portão novo nasce com o braço negativo **já executado** (`NEG-ARM PASS`, rc=1 por desenho). Um braço
-   negativo que não está na bateria é um mutante a que ninguém volta a olhar.
-7. **Um portão VERMELHO não é veredicto sobre o produto.** Classificar primeiro: âncora gasta (higiene) vs
-   afirmação vermelha (defeito). O runner da segunda bateria separa arms negativos (rc 0/1 por desenho) de
-   falhas reais (rc≥2 ou crash).
-8. **Uma regra fora da população do instrumento não pode ser apanhada por ele.** O `render protection` do
-   painel esteve MORTO no produto com todos os portões verdes, porque (i) o harness jsdom não carregava
-   `zip-overlay.css` e (ii) o censo saltava selectores que mencionassem `data-caption-window` — a regra
-   errada. A cura: o documento de legenda tem marcador próprio **`data-caption-doc="1"`**. Escrever o que
-   o instrumento NÃO carrega e justificar cada selector que ele escusa.
+As oito regras (cada uma custou trabalho refeito) estao em **`docs/regras-do-arquivo.md`**.
+A primeira e a que mais se esquece: **"o grep deu ZERO" e uma afirmacao com prazo de
+validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 ## LAYOUT
 
-| path | o que é |
-|---|---|
-| `app/webview/run.cmd` | **A APP.** Arranca escondida, **arranca o WORKER**, espera Alt+C. `--no-worker` = só shell, `--show` = painel já, `--with-worker` = alias. `%*` passa intacto; a pré-flight `--check-args` recusa flags inválidas com rc≠0 sem lançar nada. |
-| `app/webview/sotto_webview.py` | o shell: WebView2 + pywebview. Auto-start do worker decidido por `_worker_autostart_reason` (5 razões; só `default` arranca). |
-| `worker/sotto_worker.py` | captura → chunk → encode → RNNT greedy decode → JSONL no stdout. |
-| `worker/config.json` | fonte do `model.dir`, `lang_id`, `use_vad`, providers (todas lidas). |
-| `worker/models/` | pesos (git-ignored, só em `H:\sotto`). |
-| `app/panel/` | **O PAINEL** (`panel.{html,css,js}` + módulos carregados pelo documento). CSS de temas é **GERADO** — nunca editar à mão. |
-| `app/webview/hot_reload.py` | watcher de assets do painel/worker com debounce; recarrega o painel em sítio. |
-| `app/_legacy-electron/` | **MORTO.** Não é fallback. |
-| `docs/model-specs/` | docs do próprio modelo, verbatim + índice normativo. |
-| `_main/` | sondas, oráculos e logs. |
-| `docs/shell-contract.md` | contrato do shell (strip, SetWindowPos, hot reload, meter). |
-| `docs/AGENTS-archive-20261021.md` | o histórico completo deste ficheiro. |
+A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
 **PIN do `run.cmd --help` (medido 2026-10-21 01:5x):** re-measured 2026-10-21 the output is 6934 B,
 107 lines, 107 CRLF / 0 bare LF, rc 0, sha256
@@ -192,216 +190,150 @@ só separar audio pra transcrever cada falante?"*
 `the output is ` seguido dos dígitos — com o `**` do markdown o padrão não pega e o portão perde o
 seu braço negativo.)
 
+
 ## ANTES DE TOCAR EM `worker/`
 Ler **`docs/model-specs/README.md`** — parâmetros normativos (`blank_id: 13087`,
 `max_symbols_per_step: 10`, `chunk_samples: 8960`), contrato de decode, tabela de lang-ids, VAD. **Não
 inventar uma convenção de decode** — esse erro já foi cometido uma vez.
 
-## DESVIOS CONHECIDOS DO SPEC (todos corrigidos — ficam como regra)
+## DESVIOS CONHECIDOS DO SPEC
 
-| o que o modelo diz | o que o código faz hoje |
-|---|---|
-| lang id fixo | `model.lang_id` = **`"auto"`** (101). `"os"` é aceite mas perigoso (destruiu uma língua em cada direcção). Precedência `--lang-id` > `SOTTO_LANG_ID` > config; id não declarado **recusa ruidosamente (exit 2)**, nunca é clampado. |
-| VAD opcional | `use_vad: true` está LIGADO e não é inerte: um chunk de silêncio faz `process()` devolver `None` (10 de 12 chunks gated). |
-| int4 no config | config selecciona `...-int8` (`left_context: 70`); custo medido vs int4 = +268 MB RSS. |
-| um device que abre e não ouve nada sai 0 | agora `state="silent-device"`, verdict próprio, **exit 3**; e `ran_but_silent` é testado PRIMEIRO, logo `done.verdict == "silent-device"` iff `exit == 3`. |
-| `--audio` precisa de `--selftest` | **falso hoje**: `--audio X` sozinho transcreve X. |
+Todos corrigidos; ficam como regra. Tabela completa em **`docs/modelo-e-decode.md`**.
 
-## FACTOS MEDIDOS QUE NÃO SE RE-LITIGAM
+## FACTOS MEDIDOS - ANTES DE AFIRMAR UM NUMERO, LE `docs/factos-medidos.md`
 
-- **A legenda que o dono VÊ é a NATIVA, não o `caption.html`.** `sotto_webview.py:69` define
-  `CAPTION_HTML` e há **uma** ocorrência — a definição; o único `webview.create_window` é o do
-  painel; `sotto_webview.py:5885` diz *"THE FLOATING CAPTION IS A NATIVE LAYERED WINDOW, NOT A
-  WEBVIEW2"*. Quem desenha é `app/webview/caption_overlay.py` + `caption_wrap.py`: **qualquer
-  correcção de CSS em `app/panel/` NÃO chega ao ecrã nesta via.** O *wrap* nativo equilibra as
-  duas linhas (o pior desequilíbrio do corpus passou de **0,382** — o exemplo do dono — para
-  **0,118**) e **nunca parte uma palavra**: portão `_main/caption-native-wrap-oracle.py`
-  (GDI+ numa bitmap de memória, 4/4, e **2 mutantes** apanhados). Recibo:
-  `_main/receipt-20261021-caption-native-wrap.md`.
-- **A transcrição carrega SÓ a linha que o WORKER fechou (`route=final`).** Um `provisional-draft` é a
-  legenda ao vivo: a caixa pode mostrá-lo, o histórico NÃO. Guardas em `panel.js recordHistory`,
-  `history-store.js append`, `sotto_webview.py history_append`. A palavra `redux` nomeia o HISTORY STORE
-  (`panel.html:109` "History · Redux"), não um segundo pass de ASR.
-- **O segundo pass M1-M3 (rerun) está presente e ligado na via viva**: `drain` → `finalise` → `rerun`.
-- **A caixa ao vivo SUBSTITUI, não faz append**: hipótese cumulativa (`start` fixo, `end` a crescer), um
-  `<li>` reescrito em sítio. Ordem mais antigo no topo; o painel SEGUE a linha nova por omissão
-  (`stickToNewest`), pára quando o dono rola para cima e retoma no fundo. A regra antiga
-  (`scrollHeight - scrollTop - clientHeight < 48`) nunca podia COMEÇAR.
-- **Palavras partidas em fronteiras de chunk**: RESOLVIDO (`chunk_is_continuation` lê a continuação dos
-  TOKENS, `join_fragments` decide o separador; `detok` intacto). Portão `_main/word-split-oracle.py`.
-- **`PAGE_ERROR` é o canal que nomeia um painel partido** (o `evaluate_js` só reporta a chamada do shell).
-  Regra derivada: **tudo o que o bloco de init de `panel.js` pode tocar é declarado ACIMA dele** (um `let`
-  em TDZ matou o painel em todos os arranques durante um dia).
-- **Alt+C é o ÚNICO controlo da app**: regista-se em thread própria com `MOD_NOREPEAT`, tem cadeia de
-  fallback (`Alt+Shift+C`, `Ctrl+Alt+C`, `Ctrl+Shift+C`), falha com um diálogo, e `toggle_panel` decide por
-  `IsWindowVisible` (um cache velho fazia o primeiro Alt+C ser um no-op). O Sotto regista **um** acelerador;
-  o **Shift+C é do AutoClicker do dono**, não é defeito nosso.
-- **Instância única**: `Local\SottoShell` (mutex). Um launch de MEDIÇÃO toma um lock **derivado**
-  (`Local\SottoShell.m.<flags>`), logo o app continua single-instance e duas medições com as mesmas flags
-  não coexistem. O **hotkey** é a única coisa que uma medição dispensa.
-- **Um launch de medição passa `--no-hotkey`** e `CREATE_NO_WINDOW`/`pythonw.exe`; senão responde ao Alt+C
-  do dono com o seu próprio painel.
-- **A app arranca com o Windows** (`HKCU\...\Run\Sotto` = `pythonw.exe ... sotto_webview.py --log ...`,
-  nunca `run.cmd`, que faria flash de consola). Gerir com `run.cmd --install-autostart /
-  --autostart-status / --uninstall-autostart`.
-- **Flash do painel no arranque**: a cura é `_gate_form_show` (sombra o `Show()` do pywebview enquanto
-  ninguém pediu o painel). `hidden=True` **não** basta: o pywebview mostra a form transparente em cada
-  navigation start. Criar a janela `offscreen` ou pôr `transparent=False` **parte o loading** — proibido.
-  **Contradição declarada e NÃO reconciliada:** o censo de 25 ms mede `live` 0/20 (4/20 sem a cura),
-  o bullet histórico do mesmo instrumento mede 18/20 e 88/130 amostras visíveis. Quem reabrir isto corre
-  `_main/panel-startup-flash-census.py` nesta revisão antes de acreditar num dos dois.
-- **O worker não pode morrer num endpoint que outro processo detém** (o detentor é normalmente o seu
-  predecessor): o open é em `start()`/`_open()` e um endpoint ocupado é **esperado e tentado 2×** (1,5 s)
-  antes de a escada rodar.
-- **`run.cmd` já respondeu 0 a tudo**: pré-flight `--check-args` (parser do próprio shell, sem segunda
-  tabela de flags) recusa com o rc do filho e regista `sotto: ARGS_REJECTED`. `--help` é byte-idêntico
-  antes/depois (a afirmação é a COMPARAÇÃO, medida por `_main/run-cmd-exit-oracle.py`).
-- **`CUDAExecutionProvider` funciona** (o "não carregável" era falso): um único DLL faltava
-  (`cublasLt64_13.dll`), curado por `_add_cuda_dll_dirs()` em `sotto_worker.py`. E a receita do pip tem uma
-  falha silenciosa: `onnxruntime-genai` instala o `onnxruntime` plain POR CIMA do gpu → reparar com
-  `pip install --force-reinstall --no-deps onnxruntime-gpu==<v>`. Três perguntas distintas:
-  `get_available_providers()` (pacote), `session.get_providers()` (sessão), profiler (o que EXECUTA).
-- **O motor ao vivo é HÍBRIDO, não "ORT-GenAI"**: `og.Model` cobre só a janela mel cache-aware e o VAD
-  Silero; encoder/decoder/joint são `InferenceSession` plain e o laço RNNT é Python. `onnxruntime-genai`
-  aqui é CPU-only (`og.is_cuda_available()` → False).
-- **`run.cmd` NÃO é a causa de nenhum flash de painel**, e o path `pythonw su shell` está exonerado
-  (`--direct` mediu o mesmo). Um censo que re-percorre a tabela de processos NÃO vê uma app `start`-detached
-  cujo cmd.exe pai já morreu: semear o conjunto pelo `pid=` do log da app.
-- **O histórico canónico aceita `meta.producer === 'redux'`** (`history-source.js`), fail-closed. O worker
-  estampa `REDUX_PRODUCER` em `_run_runner`. `src=worker-stamped` é OUTRO campo (client-side) — não ler um
-  como o outro. Em aberto: a tag `redux` nomeia o MODELO; se o finisher mudar de modelo, ou se mantém o
-  literal (a tag só é verdadeira enquanto o finisher É o Redux) ou se renomeia em todos os sítios no mesmo
-  edit.
-- **O feed de histórico é alimentado por linhas fechadas, e um oráculo que se auto-estampa não prova nada.**
-  `_main/live-vs-history-source-oracle.js` injeta `CANONICAL_PRODUCER` no seu próprio arm "canonical path is
-  open" — ler o verde como evidência é um erro.
-- **`app/package.json` anuncia uma toolchain MORTA** (`electron`, `vite`, `svelte`, `tauri`). O produto não
-  tem build nem npm na via viva: `run.cmd` → `sotto_webview.py` → pywebview/WebView2 serve `app/panel/*`
-  tal como está. Não correr npm aqui.
-- **Não há C++ neste produto**; os 28 fontes nativos estão todos em `_moved/aireplay/` (parked). O único
-  statement de compilador é o desse tree: mingw-w64 g++ 15.2.0 em `H:\msys64\mingw64\bin\g++.exe` (sem
-  MSVC, sem CUDA toolkit).
-- **`app/panel/history-store.js` NÃO está na página servida** — é lido só por oráculos. O escritor real é
-  `sotto_webview.py history_append` → `_history_provenance` com a sua própria tupla `HISTORY_ROUTE_SOURCES`
-  (gémea da `ROUTE_SOURCES` JS). As duas listas têm de andar juntas.
-- **A LEI DO ROUTING desta caixa** (medida, não re-litigar): o loopback é **assimétrico entre APIs** — render
-  no `CABLE Input` (MME) + captura no `CABLE Output` (DirectSound) entrega o tom a peak 0.4999; DirectSound→
-  DirectSound **não** faz loopback. Sem nada a tocar, TODOS os loopbacks leem silêncio digital, portanto
-  **uma corrida ao vivo silenciosa é normalmente comportamento CORRECTO**, e o fix é routing no
-  VoiceMeeter/Windows. O worker tem de o dizer alto (exit 3), não sair 0.
-- **Há um ChatGPT no terminal e o dono pediu que se use**: `gpt` = `consultgpt`
-  (`C:\Program Files\Python311\Scripts\gpt.exe`, browser real, sem API key) —
-  `gpt --no-code --session <nome> --prompt-file _main\<p>.txt > _main\<r>.txt 2>&1`, em background (30-60 s).
-  Uso e armadilhas em `docs/tools/consultgpt.md`.
-- **`_main/*fake*.py` são 5 ficheiros e nenhum é o transcritor real** (ex.: `_armE-fake-worker.py`,
-  `_tap-restart-fake-worker.py`). O real mede `peak=0.44`. Citar um fake pelo nome do ficheiro.
-- **O TRAVAMENTO DE ABRIR/FECHAR: as quatro causas medidas (2026-10-21, recibo
-  `_main/receipt-20261021-open-close-stall.md`).** O dono pediu isto pela vigésima vez.
-  (1) **O painel ficava morto 36,9 s** — o worker nascia no momento do painel e o modelo só ficava
-  pronto depois (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`, log do dono). **Cura: o PRELOAD** —
-  o worker nasce 20 s depois do arranque da app, em background, na prioridade BELOW_NORMAL do worker
-  (`WORKER_PRELOAD scheduled delay_s=20.0` → `BRIDGE_SPAWNED` 20,0 s depois → `BRIDGE_LOAD_MS
-  ms=10657` ⇒ **modelo pronto 30 s depois do arranque, sem o dono tocar em nada**). Opt-out:
-  `SOTTO_NO_PRELOAD=1`; uma launch de MEDIÇÃO nunca faz preload. (2) **O Alt+C podia esperar 10 s** —
-  `transparency_hack` chamava `ui(form_show)` e `_ui` tem um orçamento de **DEZ SEGUNDOS**
-  (`UI_MARSHAL_TIMEOUT_S`), e quem chama é a thread do hotkey ⇒ espera agora limitada
-  (`TRANSPARENCY_HACK_WAIT_S=0.25`) **com POST** como alternativa; medido: `HOTKEY_DOUBLE` → `PANEL_SHOWN`
-  em **1 ms**. (3) **O fecho gelava a thread do tray 3 s** (`closer.join(3)` para um `destroy`
-  cosmético) ⇒ `QUIT_DESTROY_WAIT_S=0.25`; medido: `BRIDGE_STOP` → `SHELL_EXIT` = **0,262 s**.
-  (4) **Um worker ÓRFÃO sobrevivia à app** — `os._exit` não mata o filho, e o guard só existia num
-  caminho de spawn ⇒ o guard é agora **central** (`start_worker` recusa se a shell está a morrer);
-  medido: **zero órfãos**.
-- **O LOAD DO MODELO: onde estão os segundos (medido, com fases).** As três sessões do ONNX custam
-  **1,74-2,09 s** (encoder 1,56-1,62 s / decoder 0,10-0,31 s / joint 0,07-0,16 s) — o `load_phases_s`
-  agora vai no `model-loaded`. O **disco não é o custo** (747 MB a 1,9 GB/s = 0,39 s). O load total
-  varia **4,1 s a 49,2 s** conforme a máquina. ⇒ **O A/B das opções do EP CUDA é CONFUNDIDO pela
-  ordem**: medido nos dois sentidos, o primeiro braço paga sempre a cache fria (defaults 49,21 s vs
-  options 15,02 s; invertido: options 11,43 s vs defaults 7,89 s). Com as fases: 1,738 s (HEURISTIC)
-  vs 1,824 s (EXHAUSTIVE) ⇒ **dentro do ruído**. Logo: `cudnn_conv_algo_search` fica no **default do
-  ORT**; `arena_extend_strategy=kSameAsRequested` + `gpu_mem_limit` ficam como **guardas**, sem claim de
-  velocidade. **A figura de 9,7 GB de VRAM do worker NÃO foi reproduzida** (medido: delta de
-  **1175-1703 MiB**) — não a usar como justificação de nada.
-- **A MÁQUINA DO DONO ESTÁ DEGRADADA (medido 2026-10-21 18:0x).** I: com **0,4 % livre** (13,8 GB de
-  3726 GB), D: 2,1 %, E: 2,3 %, F: 7,4 %, C: 14,6 %, H: 12 %, G: 18,7 %; **722 processos** vivos; RAM
-  47,7 GB com 14,4 GB livres (a pressão de memória **não** é o problema). Um arranque de `python` custa
-  53-127 ms ⇒ o "o start do que quer que seja dá stutter" tem uma componente de MÁQUINA que o Sotto não
-  controla. **Aviso ao dono, não acção**: ele decide o que limpar.
+120 linhas nao vazias de medicoes com instrumento e data (contadas em 2026-10-25; o ficheiro tem
+123 linhas, as outras sao vazias. Eram 119 quando este numero nasceu). As que mais custam quando esquecidas:
 
-## OUTPUT GRANDE — TRUNCAMENTO E O BYPASS DELIBERADO (2026-10-21)
+- **O painel no arranque esta numa CONTRADICAO que ninguem resolveu** (reposta 2026-10-24: a
+  condensagem de 748 -> 205 linhas de 2026-10-21 apagou esta nota e o portao
+  `panel-flash-contradiction-oracle.py` ficou vermelho, como devia). Dois lados do mesmo instrumento:
+  o censo de 25 ms mede `live` 0/20 com a janela mapeada (4/20 sem a cura).
+  o bullet histórico do mesmo instrumento mede 18/20 e 88/130 amostras visiveis.
+  É **NÃO reconciliada** -- e ninguem escolhe um lado antes de acreditar num dos dois. Instrumento:
+  `_main/panel-startup-flash-census.py`. (`run.cmd` cita ainda um terceiro numero do mesmo
+  instrumento, 11 de 20, tambem por reconciliar -- esta e a razao de a nota viver no AGENTS.md e nao
+  so em `docs/`.)
 
-O output de uma tool call é cortado antes de entrar no contexto. O limite vem de `tool_output` na config
-activa (`G:\env-data\opencode-go-pool.json`): **`max_lines: 600`, `max_bytes: 24576`** (24 KB) — o
-mecanismo é nativo (`packages/opencode/src/tool/truncate.ts`, lido por `shell`, `read`, `grep` e tools de
-plugin) e não há flag por chamada.
+- **A legenda que o dono VE e a NATIVA** (`caption_overlay.py`), nao o `caption.html`: corrigir CSS
+  em `app/panel/` **nao chega ao ecra** nessa via.
+- **A transicao carrega so a linha que o worker FECHOU** (`route=final`); `provisional-draft` e a
+  legenda ao vivo e NAO entra no historico.
+- **`app/panel/history-store.js` nao esta na pagina servida**; o escritor real e
+  `sotto_webview.py history_append` com a sua propria tupla de rotas.
+- **A maquina do dono esta degradada** (I: 0,4 % livre, 722 processos): um arranque custa 53-127 ms.
+  Parte do stutter nao e do Sotto.
+- **A duplicacao no historico dele, medida 2026-10-24** com `_main/caption-dup-repro.py` (10 ficheiros,
+  2077 linhas): **79 iguais consecutivas**, **0** de crescimento por prefixo, **6** de sobreposicao
+  (janela deslizante). O numero antigo "517 de 2077" **nao se reproduz** com nenhuma destas tres
+  relacoes e fica retirado. Re-mede-se com um comando, nao com uma citacao.
+- **`app/_legacy-electron/` e MORTO**, e `app/package.json` anuncia uma toolchain morta (npm aqui nao).
 
-**Três formas de não perder o que interessa:**
+## OUTPUT GRANDE
 
-1. **Nativo, sempre ligado:** o output completo é escrito em disco e o texto cortado traz
-   `Full output saved to: <ficheiro>`. Lê-se com `read` (`offset`/`limit`) ou `grep` sobre esse ficheiro.
-   **Preferir isto** para um dump grande de que só se querem umas linhas.
-2. **Bypass pedido, por chamada:** o token **`__notrunc__`** em qualquer parte dos argumentos (na prática,
-   um comentário na linha de comando: `... | Select-Object -First 40  # __notrunc__`) faz o plugin
-   re-expandir o output completo.
-3. **Bypass global:** `OPENCODE_NO_TRUNCATE=1` no ambiente do servidor vale para todas as chamadas.
-
-O tecto da re-expansão é **512 KB** (`OPENCODE_NO_TRUNCATE_MAX`), e acima disso o corte fica com uma nota a
-dizer onde está o ficheiro: um bypass que anula o limite por completo é a mesma avaria que o limite existe
-para evitar. O plugin é `~/.config/opencode/plugins/no-truncate.ts`, composto com o ECC em `index.ts`
-(um entrypoint por plugin ⇒ o `default` encadeia os dois hooks `tool.execute.after`). Verificado por seis
-braços em `I:\cc-tmp\no-truncate-check.ts`: sem marcador nada muda, com marcador e com env re-expande,
-output não truncado é intocado, tecto excedido mantém o corte e nomeia o ficheiro, ficheiro ilegível não
-rebenta. **Muda a config/plugin ⇒ reiniciar o serviço** (o `Config` é cacheado com `Duration.infinity`).
+Limite `max_lines: 600` / `max_bytes: 24576`; o bypass `__notrunc__`; o tecto de 512 KB.
+Detalhe completo em **`docs/output-grande.md`**.
 
 ## A BATERIA
 
-- Duas: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-battery.mjs`** (segunda; o header
-  diz `Launches NOTHING`).
-- **PIN do ficheiro (medido 2026-10-21 18:4x):** `_main\_audit-verify-all.cmd` = **84979 B**,
-  **1165 CRLF** / 0 bare LF, sha256 `713F1BE8D066B2DC9FF188ABA0AE96B174D58B1C96E2E4C7377B63F65F1B48F4`.
-  (Era 84305 B / 1156 CRLF; cresceu com o **portão do open/close**, com o
-  **modo rápido/incremental** e com o **`fast-skip` nos passos skip-capable**.) O portão do pin é
-  `_main/agents-md-pins-oracle.py` — se o `.cmd` mudar, o número muda, e o gate
+Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-battery.mjs`**
+(segunda; o header diz `Launches NOTHING`). Como correr, o que cada classe significa
+(`record`/`control`/`expect-red`), o cache por conteudo, a classe `heavy` e o veredicto:
+**`docs/bateria-e-portoes.md`**.
+
+**O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
+ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
+
+- **PIN do ficheiro (medido 2026-10-30 08:1x):** `_main\_audit-verify-all.cmd` = **135712 B**,
+  **1777 CRLF** / 0 bare LF, sha256 `F05027472377B036C1F7281216B38DC3589125E9CC653733DE5D32848D33289A`.
+  (Era 133826 B / 1753 CRLF antes dos dois passos do `youtube-sotto-drift` —
+  o NOSSO overlay contra o PLAYER, em `drift_ms`: `drift_sotto_ms` = -125.0 ms
+  (mediana -74.0), `drift_player_ms` = +125.0 ms.)
+  (Era 133171 B / 1746 CRLF antes do passo `red-as-expected-incomplete-word` — o braco
+  negativo que DESLIGA a regra no ficheiro vivo e tem de dar RED.)
+  (Era 132069 B / 1728 CRLF antes do passo `incomplete-word` — a palavra que ainda nao esta
+  provada nao vai para o ecra, owner 2026-10-30: *"faz sotto identificar palavras que ainda nao
+  estao completas e nao dar display ... 'so' sem esperar virar 'sou'. em qualquer lingua"*.)
+  (Era 130522 B / 1713 CRLF antes dos dois passos do `bend-laws-model` + `red-as-expected-bend-laws-model` —
+  o modelo Python das leis, que e uma AMOSTRA e nao uma prova, e por isso traz o seu braco negativo.)
+  (Era 130522 B / 1713 CRLF antes dos quatro passos do YouTube 1:1 — `youtube-reveal`,
+  `red-as-expected-youtube-reveal`, `youtube-rows`, `red-as-expected-youtube-rows`, `youtube-drift`,
+  `red-as-expected-youtube-drift` e `bend-laws` — e antes de as dependencias do passo `bend-laws`
+  passarem a nomear os onze `NEGATIVE_*.bend`: uma dependencia que nao os nomeia deixaria o passo
+  em cache a descrever um conjunto de controlos que ja mudou.)
+  (Era 122461 B / 1611 CRLF antes dos dois passos do `receipt-provenance` — o portao da proveniencia
+  de ROTA: um recibo declara a rota que **correu**, medida por `providerID=` + `session=ses_...`, e nao
+  a rota que a politica sonda primeiro. Nascido do defeito medido 2026-10-26: o recibo do lane dizia
+  `OpenCode Go 1` e o processo que o escreveu corria em `opencode-go-3`.)
+  (Era 120706 B / 1593 CRLF antes de as dependencias do passo `youtube-1to1` passarem a incluir
+  `app\webview\sotto_webview.py`: a arm `reveal-wired` le o caminho vivo desse ficheiro, e uma
+  dependencia que nao o nomeia deixaria a arm em cache a descrever um shell que ja mudou.)
+  (Era 120510 B / 1591 CRLF antes de o comentario do passo `youtube-1to1` deixar de dizer que o
+  positivo era vermelho por desenho: em 2026-10-26 o cue passou a carregar o `tOffsetMs` do
+  payload e o prefixo revelado bate em 677/677 amostras — palavras, quebras e timing ja batiam.
+  Era 118761 B / 1574 CRLF antes do check do 1:1 — `_main/youtube-1to1-oracle.py` e o seu braco
+  negativo `red-as-expected-youtube-1to1`: 9 linhas de comentario e 8 de passo, os dois `always`
+  porque leem o payload em `_main\fixtures` e a cache em `_cache`, e o passo POSITIVO esteve
+  vermelho por desenho ate essa correcao (`word-reveal-1to1`: 69 segmentos com `tOffsetMs` no
+  payload, 0 offsets nos cues servidos) — o vermelho era o defeito do dono, nao uma regressao.
+  Era 116990 B / 1558 CRLF antes do P3.2 `_main\complaints-reconcile-gate.py`, a reconciliacao das
+  duas listas de reclamacoes do dono, e o seu braco negativo `red-as-expected-complaints-reconcile`:
+  7 linhas de comentario e 6 de passo, os dois `always` porque a populacao inclui o corpus em
+  `I:\!manager\...`, que o `_stepcache` nao consegue fingerprintar por viver fora do repo — um
+  resultado em cache descreveria um corpus que ja mudou. O pin anterior era 116990 B / 1558 CRLF,
+  antes do P3.1 — `_main\battery-wiring-oracle.py`, o ratchet do wiring, e o
+  seu braço negativo `red-as-expected-battery-wiring`: 7 linhas de comentário e 6 de passo. O baseline
+  tem tecto **124** pinado no código e a população usa os **mesmos cinco globs** do
+  `tooling-intent-oracle.py`, para não haver duas definições de "oráculo de enforcement"; o *wiring* é
+  lido das linhas `call :step` da própria `.cmd`. O pin anterior era 115613 B / 1544 CRLF, antes do
+  P0.2 — `_main\sotto-state-page.py`, a página de estado gerada, e o
+  seu braço negativo `red-as-expected-state-page`: 8 linhas de comentário e 6 de passo. Os dois passos
+  são `always` **de propósito**: as verificações leem a evidência viva (`_cache\battery-steps.json` e
+  `_main\_audit-verify\*.log`), e um resultado em cache descreveria um estado que já não existe; custo
+  medido 2026-10-25, 3,49 s. O pin anterior era 114291 B / 1530 CRLF, antes dos dois portões de
+  2026-10-25 07:04 — `task-resolver-gate` e `claims-date`,
+  cada um com o seu `red-as-expected-*`: 31 linhas (15 de comentário e 16 de passo) e dois portões que
+  provam, um, que o mandato do task-resolver é mecanismo, e o outro, que nenhuma afirmação numérica
+  deste ficheiro vive sem data. O pin anterior era
+  110748 B / 1491 CRLF antes do passo `caption-dup-repro` — o laco do B5: 4 linhas de comentario
+  e 4 de passo, e a prova do detector vive **dentro** do passo (fase 4), por isso nao ha um
+  `red-as-expected-*` separado. Era 108675 B / 1464 CRLF antes do portão `lane-screen-gate` e do seu braço negativo
+  `red-as-expected-lane-screen-gate` — a lei `SOTTO_NEVER_ON_OWNER_SCREEN`: 14 linhas de comentário
+  e 8 de passo, e o detector lê **código** e não comentários, para não castigar quem documenta a
+  regra; era 106254 B / 1435 CRLF antes dos portões `external-resume` e `code-health` e dos seus braços
+  negativos; era 104966 B / 1420 CRLF antes do `tooling-intent`; era 102238 B / 1388 CRLF antes dos
+  portões `seam-coverage` e `bug-ledger`; era 100866 B / 1373 CRLF antes do `exception-hygiene`; era
+  99622 B / 1358 CRLF antes do `input-path`. Ver §5, §5-bis, MODO BUG-HUNT e `docs/quality-protocol.md`.)
+  (Era 98209 B / 1343 CRLF antes do portão `youtube-foreign-paint` e do seu braço negativo
+  `red-as-expected-youtube-foreign-paint` — 15 linhas de comentário + 8 de passo, e o
+  comentário do opt-in que diz por que a linha lê o VALOR e não a existência —
+  `if not "%SOTTO_BATTERY_HEAVY%"=="1"` — e a linha `heavymode:` do sumário, que passou a
+  ler o valor pela mesma razão: com `defined`, um `SOTTO_BATTERY_HEAVY=0` (o que o censo põe)
+  anunciava `heavymode: ON` e corria os pesados. O mutante **M5** do portão existe
+  exactamente para essa linha não voltar.) O `.cmd` tinha 95344 B / 1310 CRLF antes do
+  **portão do open/close**, do **modo rápido/incremental**, do **`fast-skip` nos passos
+  skip-capable**, do **portão das bordas** (`border-radius-gate` + o seu braço negativo
+  `red-as-expected-border-radius-gate`) e da **CLASSE PESADA + a PRIORIDADE
+  `BelowNormal`** (ver §4-bis) e o portão dela (`battery-heavy-gate` +
+  `red-as-expected-battery-heavy-gate`). O portão do pin é
+  `_main/agents-md-pins-oracle.py` - se o `.cmd` mudar, o número muda, e o gate
   obriga a re-medir **aqui** em vez de deixar um número velho.
-- **O exit code É o veredicto.** Três tipos de passo: `:record` (o portão), `:control` (só passa se o
-  instrumento ficou RED na cópia partida e imprimiu o seu veredicto de controlo), `:expectred` (rc tem de
-  ser exactamente 1 com o texto da violação). Instrumento em falta = FALHA. Ler **`BATTERY-VERDICT` + exit
-  code**, nunca o `rc` de um passo nem a última linha, e confirmar que só há UM `steps=`.
-- **CRLF é obrigatório e não chega.** O `cmd.exe` procura os labels por **offset de byte**: um ficheiro LF
-  faz a lista correr DUAS VEZES, e uma edição do próprio `.cmd` a meio da corrida faz o mesmo com CRLF (uma
-  corrida cujo sha256 muda a meio é SUJA: dizer e repetir). **O `write` emite LF** — nunca escrever este
-  ficheiro com ele; usar `edit` (preserva CRLF) ou converter.
-- Estado medido **2026-10-21 18:4x**: `steps 91, gate=65, control=9, skipped=1, expect-red=16, missing=0,
-  cached=76` — **VERDE, rc=0** (o `hotkey-delivery` SKIPPED: o app do dono detém o Alt+C, e o
-  instrumento di-lo alto, como deve). A corrida com cache frio foi **399,8 s**; a seguinte
-  **130,2 s**; a de **modo rápido** (`SOTTO_BATTERY_FAST=1`) **27,7 s** com `steps 91, gate=60,
-  control=9, skipped=6, cached=80` (5 saltos **contados como skipped**, não como gates).
-  **Um passo saltado não é um gate que passou** — o `skipped=` do sumário é a prova.
-  (As âncoras gastas desta vez: `panel2-dom-probe` contava as linhas no **documento inteiro** e
-  a **sonda do brand** (`panel.html:1288`) traz uma linha `caption--provisional` — re-ancorado ao
-  **listo do strip**; e `stepcache-oracle` apanhou que a CLI's `record` não tinha `--t0`.)
-- **Os três portões do hotkey ESTÃO na bateria desde 2026-10-21** — `hotkey-cycle`,
-  `hotkey-gesture`, `hotkey-triple` (eram os que **não** estavam, e é assim que um portão apodrece em
-  silêncio). Entraram com a ORDEM n.º 2 fechada. Entrou também o do **wrap nativo**
-  (`caption-native-wrap`), que julga a legenda que o dono VÊ (a nativa, não o `caption.html`).
-- **O portão do OPEN/CLOSE entrou em 2026-10-21** — `open-close-stall` + o braço
-  `red-as-expected-open-close-stall` (5 mutantes, rc=1 por desenho). Julga **FICHEIROS** (5 factos
-  estruturais, por AST ⇒ nada de launches ⇒ entra na bateria). **Os DOIS PROBES que lançam processos
-  ficam FORA da bateria** (`_main/_cuda-vram-footprint-probe.py` e `_main/_exit-latency-probe.py`) e é
-  dito aqui: medem a VRAM/o load e a latência da saída.
 
-## POR MEDIR / NÃO ATRIBUÍDO (declarado, não esquecido)
+## POR MEDIR / NAO ATRIBUIdo
 
-- Que o mute tape *todos* os caminhos até aos ouvidos: o recibo de 2026-10-07 mediu som real na sala
-  (mic 0,24–0,77) por um caminho não identificado. Medir isso exige renderizar áudio.
-- Se o `emit_async` (um post pendente por canal) impede um freeze a sério: nenhum lançamento foi permitido
-  na altura, e a profundidade da fila nunca foi instrumentada. A causa do freeze continua **não atribuída**.
-- Que o hot reload do painel (staging bounce) funcione: o mecanismo está lido e verificado por leitura, a
-  prova de máquina (`panel.url = file://…/panel.html` + `live.count >= 0`) não foi corrida desde a cura.
-- O que o WebView2 real pinta de `source=proc:<pid>` ponta-a-ponta; e DUAS apps ao mesmo tempo são
-  impossíveis por construção (um bridge, um worker, um valor de `--app-target`).
-- A contradição do flash de painel no arranque (§Factos).
+O que esta declarado e nao medido (e por isso nao se afirma): **`docs/por-medir.md`**.
+**`verified` continua impossivel de uma lane** - sem verificador independente e sem corrida real
+da app; o ledger imprime `FIXED, NOT VERIFIED`.
 
 ## COMO APROFUNDAR
 `docs/AGENTS-archive-20261021.md` (a história completa, com os números verbatim) ·
 `docs/shell-contract.md` · `docs/model-specs/README.md` · `docs/audit/` · `_main/receipt-*.md`
 (cada correcção traz o seu recibo: instrumento, braço negativo, pin).
+
+## Owner amendment — worker model routing (2026-10-25)
+
+Agent/reviewer fallback (mandatory): free routes first; then DeepSeek V4.1 Flash through OpenCode Go 1–6 in order, then MiniMax M3.1 through provider `minimax` only. Group similar review tickets; after free reviewers exhaust, use one paid reviewer per distinct subject. Model quota never leaves a lane idle or blocked; reroute and keep other work moving. Full rules: `.agents/skills/task-resolver/references/model-routing.md`.
+
+## Owner amendment — paid worker time budgets (2026-10-25)
+
+Paid DeepSeek and MiniMax lanes use task-sized ceilings, not work quotas: allow at least 300 seconds to first output and 1,800 seconds wall time by default, longer for broader tasks. The live performance lease must outlast the wall ceiling plus cancellation/cleanup margin. If a heavy-process lease cannot cover a task, split the heavy work and continue non-heavy/independent items; never idle or mark the lane blocked for model/lease exhaustion. A timeout triggers route/liveness diagnosis and retry; it does not erase work or prove provider failure.

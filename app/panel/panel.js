@@ -107,10 +107,10 @@ const dom = {
   historyStatus: document.getElementById('history-status'),
   historyGallery: document.getElementById('history-gallery'),
   revealButton: document.getElementById('reveal-button'),
-  searchForm: document.getElementById('search-form'),
-  searchInput: document.getElementById('search-input'),
-  searchButton: document.getElementById('search-button'),
-  searchClear: document.getElementById('search-clear'),
+  // THE SEARCH BOX IS GONE (owner, 2026-10-21 21:24: *"tira a caixa de procurar
+  // texto"*), so these four lookups went with it. Every use of them below was
+  // already null-guarded, which is why deleting the nodes left the panel working --
+  // and why the guards stay: they are what made the removal safe.
   // footer
   status: document.getElementById('status'),
   statusText: document.getElementById('status-text'),
@@ -388,7 +388,7 @@ let transcriptExpanded = null;
 // it on every status — and anything the init block can reach is declared above
 // it (the rule the 2026-10-07 TDZ bug bought, see AGENTS.md).
 const REVIVE_HINT = 'click to restart the pipeline (reloads the live engine)';
-const REVIVE_TITLE = 'Restart the pipeline — reloads the live engine';
+const REVIVE_TITLE = 'Restart the pipeline · reloads the live engine';
 //: True between asking the shell for a revive and giving up on an answer. The
 //: SHELL also refuses a second respawn (`REVIVE_REFUSED`); this flag is what
 //: lets the panel say so without a round trip it does not have.
@@ -807,7 +807,7 @@ let lastLevelPaint = 0;
 if (!bridge) {
   if (dom.status) dom.status.classList.add('status--error');
   document.body.dataset.state = 'error';
-  if (dom.statusText) dom.statusText.textContent = 'Preload bridge missing — captions are impossible';
+  if (dom.statusText) dom.statusText.textContent = 'Preload bridge missing · captions are impossible';
   if (dom.placeholder) {
     const noBridgeTitle = dom.placeholder.querySelector('.captions__placeholder-title');
     const noBridgeBody = dom.placeholder.querySelector('.captions__placeholder-body');
@@ -1054,7 +1054,20 @@ function renderProvisional(committed, provisional, source) {
   // compares that caption against the screen, word by word, in real time.
   const wordsAreWhole = tailClosed
     || (key !== null && key.indexOf('external:') === 0);
-  const shownProv = wordsAreWhole ? provWords : provWords.slice(0, -1);
+  // O TRABALHADOR JA PROVOU A PALAVRA (owner, 2026-10-30: *"faz sotto
+  // identificar palavras que ainda nao estao completas e nao dar display"*).
+  // O `worker/sotto_worker.py` segura a ultima palavra enquanto ela nao esta
+  // provada e marca o evento com `stable: true` quando ja esta. Sem este
+  // sinal, as DUAS camadas segurariam uma palavra cada e o dono perderia DUAS
+  // palavras do ecra -- o dobro do que pediu.
+  //
+  // O sinal e lido do ULTIMO evento recebido (o motor guarda o `meta` do
+  // fragmento), e so o trabalho (`proc:`/`device:`/`file:`) o traz: o
+  // YouTube (`external:`) ja e tratado pelas linhas de cima.
+  const workerStable = !!(engine && typeof engine.state === 'function'
+    && engine.state().wordsStable);
+  const shownProv = (wordsAreWhole || workerStable)
+    ? provWords : provWords.slice(0, -1);
   const total = confWords.length + shownProv.length;
 
   // Find or create the line that holds THIS source's provisional hypothesis. An
@@ -1229,6 +1242,14 @@ function wireExternalCaptions() {
     const engine = engineFor(source);
     engine.reset();
     engine.ingest(text, meta);
+    // THE HOLD DEADLINE IS A PROPERTY OF THE LINE, NOT OF THE CHANNEL. The
+    // timer was armed by the WORKER's channel only, so a line that came from
+    // the PLAYER while the worker was quiet never got a deadline of its own --
+    // and since the worker's status change no longer closes the player's line
+    // (see `wireStatus`), the deadline is what keeps that line from being
+    // stranded as a forming row. The timer walks EVERY engine
+    // (`armHoldTimer`), so arming it here is enough.
+    armHoldTimer();
     if (meta.final === true) engine.flush('external-final');
   });
 }
@@ -1557,19 +1578,6 @@ function wireHistory() {
   if (dom.historyRoot) dom.historyRoot.addEventListener('click', () => revealPath(null));
   markRevealState();
 
-  if (dom.searchForm) {
-    dom.searchForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      runSearch(dom.searchInput ? dom.searchInput.value : '');
-    });
-  }
-  if (dom.searchClear) {
-    dom.searchClear.addEventListener('click', () => {
-      if (dom.searchInput) dom.searchInput.value = '';
-      runSearch('');
-    });
-  }
-
   // THE GALLERY — ONE delegated listener, because the buttons are rebuilt on every
   // render and per-button listeners would leak with them. A press reads the spec
   // off the button's own `dataset`, which is the same data the render wrote, so
@@ -1676,21 +1684,7 @@ function applyTranscriptMode() {
   }
 
   const searchable = Boolean(canonicalProducer);
-  if (dom.searchInput) {
-    dom.searchInput.disabled = !searchable;
-    dom.searchInput.placeholder = searchable ? 'Search transcript…' : 'No transcript writer yet';
-    dom.searchInput.title = searchable
-      ? `Search the canonical transcript (written by ${canonicalProducer})`
-      : 'Search is off: nothing writes the transcript yet, so a search here can never match';
-  }
-  if (dom.searchButton) {
-    // Deliberately NOT disabled: a disabled control explains nothing, and this
-    // one carries the reason in its title and, on a click, in the note.
-    dom.searchButton.title = searchable
-      ? 'Search the transcript'
-      : 'Search is off — no writer produces the transcript yet';
-  }
-  if (dom.searchClear && !searchable) dom.searchClear.hidden = true;
+  void searchable;
 
 }
 
@@ -1742,7 +1736,7 @@ function markRevealState() {
     ? `Show ${selectedEntry.path} in the OS file manager`
     : has
       ? 'Show the transcript folder in the OS file manager'
-      : 'Select a transcript line first — this button opens the selected line';
+      : 'Select a transcript line first · this button opens the selected line';
 }
 
 /** Ask the shell for the newest entries and paint the feed. */
@@ -2559,7 +2553,7 @@ function applyTransparency(on) {
   if (dom.stripTransparencyButton) {
     dom.stripTransparencyButton.setAttribute('aria-pressed', transparencyOn ? 'true' : 'false');
     dom.stripTransparencyButton.title = transparencyOn
-      ? 'Chrome hidden — captions only. Press again (or use the shell) to bring the controls back.'
+      ? 'Chrome hidden · captions only. Press again (or use the shell) to bring the controls back.'
       : 'Transparency: hide the strip chrome and keep only the captions';
   }
   if (bridge && typeof bridge.setTransparency === 'function') {
@@ -2680,8 +2674,8 @@ function watchCaptionWindowState() {
 function paintLiveLamps(on) {
   const state = on ? 'on' : 'off';
   const label = on
-    ? 'Live caption: ON — the live engine is on.'
-    : 'Live caption: OFF — press Alt+C to turn it on.';
+    ? 'Live caption: ON · the live engine is on.'
+    : 'Live caption: OFF · press Alt+C to turn it on.';
   for (const lamp of [dom.liveLamp, dom.stripLiveLamp]) {
     if (!lamp) continue;
     lamp.dataset.live = state;
@@ -2706,11 +2700,11 @@ function applyLiveEnabled(enabled, options) {
     dom.stripLiveButton.dataset.wired = wired ? 'true' : 'false';
     dom.stripLiveButton.title = liveEnabled
       ? (wired
-        ? 'live — the captions are ON SCREEN and the live engine is on. Click to take them off the screen.'
-        : 'live — the captions are ON SCREEN. This shell does not implement setLiveEnabled() yet, so this switch cannot reach the engine.')
+        ? 'live · the captions are ON SCREEN and the live engine is on. Click to take them off the screen.'
+        : 'live · the captions are ON SCREEN. This shell does not implement setLiveEnabled() yet, so this switch cannot reach the engine.')
       : (wired
-        ? 'live is off — the captions are off the screen and the live engine is stopped. Click to bring them back.'
-        : 'live is off — the captions are off the screen. Click to put them ON SCREEN, loose like the .zip demos.');
+        ? 'live is off · the captions are off the screen and the live engine is stopped. Click to bring them back.'
+        : 'live is off · the captions are off the screen. Click to put them ON SCREEN, loose like the .zip demos.');
   }
   if (dom.stripLiveLabel) {
     // The word is the control's NAME, not its state: it stays "LIVE" (painted
@@ -2788,8 +2782,8 @@ function updateStripState() {
   // status and would otherwise erase the one place the strip says that it is
   // clickable.
   dom.stripState.title = (paused
-    ? 'Paused — the engines are unloaded until you resume'
-    : statusSnapshot.text || 'Sotto is starting') + ' — ' + REVIVE_HINT;
+    ? 'Paused · the engines are unloaded until you resume'
+    : statusSnapshot.text || 'Sotto is starting') + ' · ' + REVIVE_HINT;
 }
 
 /** Open the FULL panel. `bridge.setPanelSurface('panel')` resizes in the shell. */
@@ -2971,11 +2965,11 @@ function applyPauseAvailability() {
     // is the honest announcement without making it unreachable.
     button.setAttribute('aria-disabled', wired ? 'false' : 'true');
     button.title = wired
-      ? 'Pause — unload the live and background engines (asks first)'
-      : 'Pause — este shell ainda não consegue pausar';
+      ? 'Pause · unload the live and background engines (asks first)'
+      : 'Pause · este shell ainda não consegue pausar';
   }
   if (dom.pauseConfirmButton) {
-    const label = wired ? 'Pause and unload' : 'Pause — not available in this shell yet';
+    const label = wired ? 'Pause and unload' : 'Pause · not available in this shell yet';
     dom.pauseConfirmButton.textContent = label;
     dom.pauseConfirmButton.disabled = !wired;
     dom.pauseConfirmButton.title = wired
@@ -2985,7 +2979,7 @@ function applyPauseAvailability() {
   if (dom.pauseShellNote) {
     const note = wired
       ? ''
-      : 'Este shell ainda não consegue pausar — nada será descarregado.';
+      : 'Este shell ainda não consegue pausar · nada será descarregado.';
     dom.pauseShellNote.textContent = note;
     dom.pauseShellNote.hidden = note === '';
   }
@@ -3094,7 +3088,7 @@ function wireRevive() {
     el.setAttribute('tabindex', '0');
     // The footer's title is nobody else's (the strip's is written by
     // `updateStripState`, which appends this same hint).
-    el.title = wired ? REVIVE_TITLE : REVIVE_TITLE + ' — not in this shell yet';
+    el.title = wired ? REVIVE_TITLE : REVIVE_TITLE + ' · not in this shell yet';
     el.addEventListener('click', () => revivePipeline());
     el.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
@@ -3171,7 +3165,7 @@ function confirmPause() {
     // Reached only if the button was activated programmatically; the button is
     // disabled in this state and its label already says why.
     if (dom.pauseShellNote) {
-      dom.pauseShellNote.textContent = 'Este shell ainda não consegue pausar — nada será descarregado.';
+      dom.pauseShellNote.textContent = 'Este shell ainda não consegue pausar · nada será descarregado.';
       dom.pauseShellNote.hidden = false;
     }
     return;
@@ -3210,7 +3204,7 @@ function setPaused(value, text) {
   if (dom.panel) dom.panel.classList.toggle('is-paused', paused);
   // The paused state is reported by the strip's one word. `setStatus` below
   // carries it into the snapshot that word reads, so one repaint is enough.
-  if (paused) setStatus(text || 'Paused — engines unloaded', '');
+  if (paused) setStatus(text || 'Paused · engines unloaded', '');
   updateStripState();
 }
 
@@ -3245,7 +3239,7 @@ async function runSearch(rawQuery) {
     // D1 — the box is disabled for this reason, and a programmatic submit
     // (a probe, or a click on the Search button) gets the same sentence instead
     // of an empty result set that looks like "no matches".
-    setHistoryNote('Search is off — nothing writes the transcript yet.');
+    setHistoryNote('Search is off · nothing writes the transcript yet.');
     return;
   }
   searchQuery = query;
@@ -3355,9 +3349,33 @@ function wireStatus() {
 
     // A status change is a natural sentence boundary: close the held tail so
     // the last words are not stranded when the worker pauses mid-thought.
-    // EVERY source's engine (STEP 4), or one app's tail is stranded while the
+    // EVERY WORKER's engine (STEP 4), or one app's tail is stranded while the
     // other's is closed.
-    for (const engine of engines.values()) engine.flush('status-change');
+    //
+    // AND NOT THE PLAYER'S. THE OWNER'S OWN LOG, 2026-10-21 18:26 (his
+    // session, `_main/webview-run.log`), the same sentence painted twice:
+    //     18:26:13.632  CAPTION_APPLIED "Estamos aqui já, já fiz o login e ele já." count=6
+    //     18:26:13.640  STATUS_APPLIED  "device-rotated (flat)"
+    //     18:26:19.967  CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s
+    //     18:26:21.665  CAPTION_APPLIED "Estamos aqui já, já fiz o login e ele já." count=7
+    //     18:26:21.667  STATUS_APPLIED  "capture-started"
+    // The worker's status is the SHELL'S word about the WORKER, and this machine
+    // restarts the worker constantly (`device-rotated`, `capture-started`), so
+    // every one of those restarts closed the PLAYER's line too -- and the close
+    // PAINTED it again, eight seconds later, AFTER the caption window had
+    // already blanked itself for six seconds of silence. The sentence came back
+    // out of nowhere, which is what the owner reported.
+    //
+    // The player's line has its own boundary and it is the PLAYER's: the shell
+    // sends `final:true` for a closed cue (`sotto_webview.py:9144`), and the
+    // panel's `wireExternalCaptions` closes it with `flush('external-final')`.
+    // Nothing is stranded by leaving it alone -- and the `external:` prefix is
+    // the codebase's own convention for "these words are the PLAYER's"
+    // (`panel.js:1056`).
+    for (const [key, engine] of engines.entries()) {
+      if (key !== null && key.indexOf('external:') === 0) continue;
+      engine.flush('status-change');
+    }
 
     const state = statusKind(kind);
     // ONE place records what the shell said, so the strip's single word is

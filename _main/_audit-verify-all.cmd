@@ -45,6 +45,25 @@ REM  `skipped=` column is the part of the green that is NOT CLAIMED. When the ow
 REM  closes the app, that arm stops being skipped and moves from `skipped=` to
 REM  `gate=` in the same line -- the transition is visible, never silent.
 REM
+REM  A FIFTH MARK, NOT A FIFTH KIND: `heavy`. A heavy step is not a different
+REM  verdict -- it is the same gate, with a DECLARATION that it opens the owner's
+REM  world: the app shell (and with it the WebView2 runtime -- 38
+REM  msedgewebview2.exe and a saturated VRAM, measured 2026-10-21 and written down
+REM  in _main/_strip-stats-log-probe.py), the real output device, or the GPU.
+REM  The owner, 2026-10-21, verbatim: *"tu ta fazendo algo que faz meu pc
+REM  travar/stutter?"* and *"tu vai garantir que minha reclamacao nunca mais
+REM  aconteca"*. So a heavy step does NOT run unless the owner asks for it
+REM  (SOTTO_BATTERY_HEAVY=1). It is then counted in `skipped=`, NAMED in the
+REM  summary under `heavy:`, and NEVER counted in `gate=`. A CACHED heavy step is
+REM  free -- no process is started -- and keeps its gate. The class is a
+REM  DECLARATION the owner can audit in one place (the `call :step ... heavy`
+REM  lines) and the portão `_main/battery-heavy-gate.py` checks that the
+REM  declaration and the instruments agree.
+REM
+REM  THE BATTERY'S OWN PRIORITY is BELOW NORMAL (see the block near the top):
+REM  the machine starts any process with a 53-127 ms stutter (measured
+REM  2026-10-21), so the battery yields the CPU and the disk queue to the owner.
+REM
 REM  THE SKIP GUARD closes the other direction: after every step has written its log,
 REM  one sweep fails the run if any STEP log carries `VERDICT: SKIPPED` while its step
 REM  is not declared skip-capable. An instrument that skips an arm and still exits 0
@@ -76,6 +95,41 @@ set "OUT=%ROOT%\_main\_audit-verify"
 if not exist "%OUT%" mkdir "%OUT%"
 set "CACHE_STATE=%ROOT%\_cache\battery-steps.json"
 
+REM ===========================================================================
+REM  THE BATTERY'S OWN PRIORITY -- BELOW NORMAL.
+REM  The owner, 2026-10-21 (verbatim): *"tu ta fazendo algo que faz meu pc
+REM  travar/stutter?"* and *"entendo por que a bateria trava e da stutter. e por
+REM  que o start do que quer que seja, da stutter no meu computador"*. MEASURED
+REM  2026-10-21 on this machine: starting ANY process costs the owner a 53-127
+REM  ms stutter, because the disks are nearly full and a start is a disk read.
+REM  So the battery puts ITSELF below normal: the owner's foreground work wins
+REM  the CPU and the disk queue, and the battery's children INHERIT the class
+REM  (CreateProcess inherits the parent's priority class) -- the python that
+REM  checks the cache, the instrument, and the app shell the heavy steps start.
+REM  This is the second half of the guarantee: the first half is that the heavy
+REM  steps do not run at all unless the owner asks (see :step_heavyskip).
+REM  The .ps1 is written as a FILE on purpose: the AGENTS' own measured lesson
+REM  (`_main/_audit-hotkey-delivery.py`) is that the inline `powershell -Command`
+REM  form of a CIM query returns EMPTY stdout here, so this uses the file form.
+REM  If PowerShell is missing the battery says so and runs at normal priority:
+REM  a missing priority is not a failed run.
+set "BATTERY_PRIO_PS1=%TEMP%\sotto-battery-priority.ps1"
+set "BATTERY_PRIO_REPORT=%OUT%\_battery-priority.txt"
+set "BATTERY_PRIORITY_LINE="
+if exist "%BATTERY_PRIO_PS1%" del /q "%BATTERY_PRIO_PS1%" 2>nul
+> "%BATTERY_PRIO_PS1%" echo $ErrorActionPreference='SilentlyContinue'
+>>"%BATTERY_PRIO_PS1%" echo $me=Get-CimInstance Win32_Process -Filter "ProcessId=$PID"
+>>"%BATTERY_PRIO_PS1%" echo $parent=$me.ParentProcessId
+>>"%BATTERY_PRIO_PS1%" echo $p=Get-Process -Id $parent -ErrorAction SilentlyContinue
+>>"%BATTERY_PRIO_PS1%" echo $p.PriorityClass='BelowNormal'
+>>"%BATTERY_PRIO_PS1%" echo $report="BATTERY-PRIORITY " + $p.PriorityClass + " pid=" + $parent
+>>"%BATTERY_PRIO_PS1%" echo Set-Content -Path $args[0] -Value $report
+>>"%BATTERY_PRIO_PS1%" echo Write-Output "BATTERY-PRIORITY-OK"
+for /f "usebackq tokens=1" %%P in (`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%BATTERY_PRIO_PS1%" "%BATTERY_PRIO_REPORT%" 2^>nul`) do set "BATTERY_PRIORITY_VERDICT=%%P"
+if exist "%BATTERY_PRIO_REPORT%" ( set /p BATTERY_PRIORITY_LINE=<"%BATTERY_PRIO_REPORT%" )
+if not defined BATTERY_PRIORITY_LINE set "BATTERY_PRIORITY_LINE=NOT-SET (PowerShell unavailable or denied) -- the battery runs at normal priority"
+del /q "%BATTERY_PRIO_PS1%" 2>nul
+
 set "N=0"
 set "GATES=0"
 set "CTRLS=0"
@@ -84,6 +138,8 @@ set "REDS=0"
 set "MISSINGN=0"
 set "BAD=0"
 set "CACHEDN=0"
+set "HEAVYN=0"
+set "HEAVYLIST="
 set "STEPLIST="
 set "FAILED="
 set "CONTROLLIST="
@@ -192,6 +248,458 @@ if exist _main\panel-live-box-oracle.js (
   call :step panel-live-box-oracle 0 "_main\panel-live-box-oracle.js;app\panel\panel.html;app\panel\panel.css;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\surface.js;app\panel\theme-switcher.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js" "%OUT%\panel-live-box-oracle.log" node _main\panel-live-box-oracle.js
   call :record panel-live-box-oracle !STEP_RC!
 ) else ( call :record panel-live-box-oracle MISSING )
+
+REM AS BORDAS DO PAINEL (owner, 2026-10-21, verbatim: "as bordas de cada design
+REM nao tao transparentes, tao cinzas/pretas. assim, nao ficam arredondadas pelo
+REM design"). DUAS CAUSAS INDEPENDENTES, ambas em `app/panel/panel.css`: (1) a
+REM base pintava no ROOT e uma background no root PROPAGA PARA O CANVAS, sem
+REM ser cortada pelo border-radius -- os quatro cantos eram uma placa quadrada
+REM cinza/preta por cima da qual o arredondamento do design era desenhado; (2) o
+REM piso era o LITERAL `12px !important`, que esmagava o raio proprio de cada
+REM design (GlassCards declara 22px, Bubbles 20px, Quotes 18px). O piso passou a
+REM `max(var(--radius, 14px), 12px)`.
+REM ESTE PORTAO JULGA FICHEIROS (AGENTS regra 6: um portao que julga ficheiros
+REM entra na bateria) e LANCA NADA. A metade RENDERIZADA e medida por
+REM `_main/_border-radius-probe.py` (Chromium de verdade, 45 designs), que
+REM LANCA um browser e por isso fica FORA da bateria -- declarado aqui.
+REM O BRACO NEGATIVO: os tres mutantes tem de virar um braco VERMELHO. rc=1 POR
+REM DESENHO (o `--neg-arm` REPROVA de proposito).
+if exist _main\border-radius-gate.py (
+  call :step border-radius-gate 0 "_main\border-radius-gate.py;app\panel\panel.css" "%OUT%\border-radius-gate.log" python _main\border-radius-gate.py
+  call :record border-radius-gate !STEP_RC!
+) else ( call :record border-radius-gate MISSING )
+if exist _main\border-radius-gate.py (
+  call :step red-as-expected-border-radius-gate 1 "_main\border-radius-gate.py;app\panel\panel.css" "%OUT%\border-radius-gate-neg.log" python _main\border-radius-gate.py --neg-arm
+  call :expectred red-as-expected-border-radius-gate !STEP_RC! "%OUT%\border-radius-gate-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-border-radius-gate MISSING "%OUT%\border-radius-gate-neg.log" "NEG-ARM PASS" )
+REM
+REM A TELA DO DONO (2026-10-23). A ordem, verbatim, e ele deu-a DUAS vezes:
+REM "para de abrir essa merda na minha tela. tu vai resolver no teu ambiente ai
+REM sem encher o meu saco", e depois "faz gates ou agents.md". O portao julga
+REM FICHEIROS e LANCA NADA: (1) nenhum instrumento de nivel 1 de `_main`
+REM ADICIONA `keybd_event`/`SendInput`/`mouse_event`/`SendKeys`/`BlockInput` --
+REM um evento sintetico mede o WINDOWS, nao a app (medido 2026-10-23: quatro
+REM `err=0` no pressionador e ZERO linhas no log do Sotto); (2) nenhum harness
+REM de lane pede `--show`, que e a bandeira que faz o painel nascer no ecra
+REM dele; (3) `AGENTS.md` tem de conter o marcador SOTTO_NEVER_ON_OWNER_SCREEN,
+REM porque uma lei que so vive na cabeca de quem a aprendeu desaparece no fim
+REM do contexto. A divida ANTERIOR a regra (13 instrumentos com input sintetico,
+REM 2 harnesses com --show) esta CONGELADA em `_main\lane-screen-baseline.json`
+REM e NAO pode crescer -- o detector le CODIGO, nao comentarios, para nao
+REM castigar quem documenta a regra.
+REM O BRACO NEGATIVO: quatro mutantes (input sintetico novo, --show novo,
+REM marcador apagado, ficheiro do baseline a CRESCER) tem de virar vermelho.
+REM rc=1 POR DESENHO (o `--neg-arm` REPROVA de proposito) e o texto
+REM `NEG-ARM PASS` tem de aparecer.
+if exist _main\lane-screen-gate.py (
+  call :step lane-screen-gate 0 "_main\lane-screen-gate.py;_main\lane-screen-baseline.json;AGENTS.md" "%OUT%\lane-screen-gate.log" python _main\lane-screen-gate.py
+  call :record lane-screen-gate !STEP_RC!
+) else ( call :record lane-screen-gate MISSING )
+if exist _main\lane-screen-gate.py (
+  call :step red-as-expected-lane-screen-gate 1 "_main\lane-screen-gate.py;_main\lane-screen-baseline.json" "%OUT%\lane-screen-gate-neg.log" python _main\lane-screen-gate.py --neg-arm
+  call :expectred red-as-expected-lane-screen-gate !STEP_RC! "%OUT%\lane-screen-gate-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-lane-screen-gate MISSING "%OUT%\lane-screen-gate-neg.log" "NEG-ARM PASS" )
+REM -- caption-dup-repro: o laco do B5 (a legenda duplicada). A prova do detector vive DENTRO do
+REM passo -- a fase 4 tira a guarda ao `history_append` e exige que o replay fique VERMELHO -- por
+REM isso nao ha um `red-as-expected-*` separado: se o detector ficar cego, e ESTE passo que fica
+REM vermelho. Ele tambem mede o historico real (fase 1) e minimiza um par real (fase 2).
+if exist _main\caption-dup-repro.py (
+  call :step caption-dup-repro 0 "_main\caption-dup-repro.py;app\webview\sotto_webview.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\caption-dup-repro.log" python _main\caption-dup-repro.py
+  call :record caption-dup-repro !STEP_RC!
+) else ( call :record caption-dup-repro MISSING )
+REM
+REM -- O FECHO DAS RECLAMACOES (2026-10-22) --------------------------------
+REM `complaints-closure-gate.py` le o corpus do dono (148 mensagens para H:\sotto),
+REM separa as 81 reclamacoes por uma lista de padroes DECLARADA, e exige uma seccao
+REM por id em `.opencode/complaints-closure.md` com `evidence:` executada (rc=0 e
+REM bloco de saida) e `status: closed`. Julga FICHEIROS: nao lanca nada.
+REM O BRACO NEGATIVO tira a evidencia de uma seccao e inventa um id: rc=1 POR
+REM DESENHO, e o texto `NEG-ARM PASS` tem de aparecer.
+if exist _main\complaints-closure-gate.py (
+  call :step complaints-closure 0 "_main\complaints-closure-gate.py;.opencode\complaints-closure.md;_main\complaints_canon.py;_main\complaints-closure-build.py" "%OUT%\complaints-closure.log" python _main\complaints-closure-gate.py
+  call :record complaints-closure !STEP_RC!
+) else ( call :record complaints-closure MISSING )
+if exist _main\complaints-closure-gate.py (
+  call :step red-as-expected-complaints-closure 1 "_main\complaints-closure-gate.py;.opencode\complaints-closure.md" "%OUT%\complaints-closure-neg.log" python _main\complaints-closure-gate.py --neg-arm
+  call :expectred red-as-expected-complaints-closure !STEP_RC! "%OUT%\complaints-closure-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-complaints-closure MISSING "%OUT%\complaints-closure-neg.log" "NEG-ARM PASS" )
+REM
+REM `youtube-paint-first-oracle.py` julga a correcao do dono de 2026-10-22 09:35
+REM (*"tu so viu carregar a pagina depois de varios segundos de ja ter carregado?
+REM arruma isso"*): a legenda passa a mostrar as palavras que o player JA pinta em
+REM vez de ficar vazia a espera do track. Duas armas + um mutante que apaga a chamada.
+if exist _main\youtube-paint-first-oracle.py (
+  call :step youtube-paint-first 0 "_main\youtube-paint-first-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\youtube-paint-first.log" python _main\youtube-paint-first-oracle.py
+  call :record youtube-paint-first !STEP_RC!
+) else ( call :record youtube-paint-first MISSING )
+if exist _main\youtube-paint-first-oracle.py (
+  call :step red-as-expected-youtube-paint-first 1 "_main\youtube-paint-first-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-paint-first-neg.log" python _main\youtube-paint-first-oracle.py --neg-arm
+  call :expectred red-as-expected-youtube-paint-first !STEP_RC! "%OUT%\youtube-paint-first-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-paint-first MISSING "%OUT%\youtube-paint-first-neg.log" "NEG-ARM PASS" )
+REM
+REM `youtube-foreign-paint-oracle.py` julga o defeito medido em 2026-10-23 com
+REM `_main\yt-1to1-live-compare.py`: o player PINTA a traducao (`lang=pt`) enquanto a
+REM politica serve `en-orig`, o alinhamento por texto nao tem o que alinhar e a app
+REM devolvia `painted-other-track` PARA SEMPRE -- o dono ficou sem legenda do YouTube e o
+REM ASR tomou o lugar. A cura: o RELOGIO do player escolhe a cue da faixa SERVIDA, e so
+REM enquanto ANDA (o congelado e medido). Quatro bracos, tres mutantes, neg-arm executado.
+if exist _main\youtube-foreign-paint-oracle.py (
+  call :step youtube-foreign-paint 0 "_main\youtube-foreign-paint-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_captions.py" "%OUT%\youtube-foreign-paint.log" python _main\youtube-foreign-paint-oracle.py
+  call :record youtube-foreign-paint !STEP_RC!
+) else ( call :record youtube-foreign-paint MISSING )
+if exist _main\youtube-foreign-paint-oracle.py (
+  call :step red-as-expected-youtube-foreign-paint 1 "_main\youtube-foreign-paint-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-foreign-paint-neg.log" python _main\youtube-foreign-paint-oracle.py --neg-arm
+  call :expectred red-as-expected-youtube-foreign-paint !STEP_RC! "%OUT%\youtube-foreign-paint-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-foreign-paint MISSING "%OUT%\youtube-foreign-paint-neg.log" "NEG-ARM PASS" )
+REM `input-path-oracle.py` julga o defeito de 2026-10-23, medido no log do dono:
+REM `OUTSIDE_CLICK_HOOK installed=true type=WH_MOUSE_LL` 22 ms depois do arranque
+REM com o painel NUNCA mostrado -- um hook global poe TODOS os eventos do rato a
+REM passar por um callback Python, e o cursor soluça enquanto o resto do sistema
+REM nao (e fica bom sob Ctrl+Alt+Del, que nao entrega hooks de utilizador). O
+REM portao julga FICHEIROS + o estado de um objecto: NAO instala hook, NAO cria
+REM janela, NAO lanca nada. Seis bracos, quatro mutantes, neg-arm executado.
+if exist _main\input-path-oracle.py (
+  call :step input-path 0 "_main\input-path-oracle.py;app\webview\sotto_webview.py" "%OUT%\input-path.log" python _main\input-path-oracle.py
+  call :record input-path !STEP_RC!
+) else ( call :record input-path MISSING )
+if exist _main\input-path-oracle.py (
+  call :step red-as-expected-input-path 1 "_main\input-path-oracle.py;app\webview\sotto_webview.py" "%OUT%\input-path-neg.log" python _main\input-path-oracle.py --neg-arm
+  call :expectred red-as-expected-input-path !STEP_RC! "%OUT%\input-path-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-input-path MISSING "%OUT%\input-path-neg.log" "NEG-ARM PASS" )
+REM `exception-hygiene-oracle.py` e a lei do "fix on sight" (consultgpt,
+REM `.cursor/rules/fix-on-sight.mdc`) mecanizada como CATRACA: 40 `except
+REM Exception: pass` sem razao escrita no produto (medido 2026-10-23, 11
+REM ficheiros) nao podem AUMENTAR. Mudar 40 tipos num turno parte o produto; a
+REM catraca impede o proximo em silencio e obriga a baixar o numero quando a
+REM divida encolhe. AST, nao substring; a isencao e o COMENTARIO e o braco C3
+REM prova-o no sentido negativo. Quatro mutantes, neg-arm executado.
+if exist _main\exception-hygiene-oracle.py (
+  call :step exception-hygiene 0 "_main\exception-hygiene-oracle.py;_main\exception-baseline.json;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\exception-hygiene.log" python _main\exception-hygiene-oracle.py
+  call :record exception-hygiene !STEP_RC!
+) else ( call :record exception-hygiene MISSING )
+if exist _main\exception-hygiene-oracle.py (
+  call :step red-as-expected-exception-hygiene 1 "_main\exception-hygiene-oracle.py;_main\exception-baseline.json" "%OUT%\exception-hygiene-neg.log" python _main\exception-hygiene-oracle.py --neg-arm
+  call :expectred red-as-expected-exception-hygiene !STEP_RC! "%OUT%\exception-hygiene-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-exception-hygiene MISSING "%OUT%\exception-hygiene-neg.log" "NEG-ARM PASS" )
+REM `seam-coverage-oracle.py` e a lei mais forte da nota de 2026-10-23 do
+REM Superharness (`runs/workflow-quality-loop-findings.md`, §"The missing
+REM control"): a cobertura que conta e INVCADORES ENUMERADOS com controlo
+REM positivo a passar e NEGATIVO a falhar NO INVOCADOR REAL, sobre o total. Um
+REM mutante qualquer a deixar o portao vermelho nao diz QUAL invocador ficou
+REM desprotegido -- e a primeira passagem deste trabalho deixava tres sem
+REM controlo (encerramento, canal entre threads, segundo tipo de hook). Nove
+REM invocadores no inventario, cada um com o seu braco e o seu mutante.
+REM Nao lanca nada: importa a shell em processo, sem janela e sem hook.
+if exist _main\seam-coverage-oracle.py (
+  call :step seam-coverage 0 "_main\seam-coverage-oracle.py;_main\seam-inventory.json;_main\input-path-oracle.py;app\webview\sotto_webview.py" "%OUT%\seam-coverage.log" python _main\seam-coverage-oracle.py
+  call :record seam-coverage !STEP_RC!
+) else ( call :record seam-coverage MISSING )
+if exist _main\seam-coverage-oracle.py (
+  call :step red-as-expected-seam-coverage 1 "_main\seam-coverage-oracle.py;_main\seam-inventory.json" "%OUT%\seam-coverage-neg.log" python _main\seam-coverage-oracle.py --neg-arm
+  call :expectred red-as-expected-seam-coverage !STEP_RC! "%OUT%\seam-coverage-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-seam-coverage MISSING "%OUT%\seam-coverage-neg.log" "NEG-ARM PASS" )
+REM `bug-ledger-oracle.py` e a maquina de estados da nota do manager
+REM (`state/research/bug-hunt-workflow-approaches.md`, 2026-10-23): reported ->
+REM reproduced -> cause-isolated -> fixed -> verified -> recurrence-watch, e
+REM "fixed" NUNCA pode ser apresentado como "verified". O portao exige que
+REM `fixed` cite um passo DA BATERIA e o seu braco negativo, e que `verified`
+REM tenha um verificador que nao seja o autor. Hoje os dois bugs estao FIXED,
+REM NOT VERIFIED -- e o portao di-lo em letras grandes.
+if exist _main\bug-ledger-oracle.py (
+  call :step bug-ledger 0 "_main\bug-ledger-oracle.py;_main\bug-ledger.json;_main\incidents\INC-20261023-01-mouse-hook.md;_main\receipt-20261021-open-close-stall.md" "%OUT%\bug-ledger.log" python _main\bug-ledger-oracle.py
+  call :record bug-ledger !STEP_RC!
+) else ( call :record bug-ledger MISSING )
+if exist _main\bug-ledger-oracle.py (
+  call :step red-as-expected-bug-ledger 1 "_main\bug-ledger-oracle.py;_main\bug-ledger.json" "%OUT%\bug-ledger-neg.log" python _main\bug-ledger-oracle.py --neg-arm
+  call :expectred red-as-expected-bug-ledger !STEP_RC! "%OUT%\bug-ledger-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-bug-ledger MISSING "%OUT%\bug-ledger-neg.log" "NEG-ARM PASS" )
+REM `tooling-intent-oracle.py` fecha o buraco que a nota do manager chama de
+REM `blocked_bug_ids`/`evidence_unblocked`: uma ferramenta de enforcement so e
+REM elegivel se disser que bug desbloqueia (`# BLOCKS: BUG-...`) ou se declarar
+REM trabalho de capacidade (`# NO-BUG: razao`). Um id tem de existir no ledger.
+REM A divida antiga (160 ficheiros sem declaracao) esta no baseline e NAO pode
+REM crescer: e um ratchet, nao uma amnistia. Ha ~165 ferramentas em _main e
+REM nenhuma dizia para que existia.
+if exist _main\tooling-intent-oracle.py (
+  call :step tooling-intent 0 "_main\tooling-intent-oracle.py;_main\tooling-intent-baseline.json;_main\bug-ledger.json" "%OUT%\tooling-intent.log" python _main\tooling-intent-oracle.py
+  call :record tooling-intent !STEP_RC!
+) else ( call :record tooling-intent MISSING )
+if exist _main\tooling-intent-oracle.py (
+  call :step red-as-expected-tooling-intent 1 "_main\tooling-intent-oracle.py;_main\tooling-intent-baseline.json" "%OUT%\tooling-intent-neg.log" python _main\tooling-intent-oracle.py --neg-arm
+  call :expectred red-as-expected-tooling-intent !STEP_RC! "%OUT%\tooling-intent-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-tooling-intent MISSING "%OUT%\tooling-intent-neg.log" "NEG-ARM PASS" )
+REM `external-resume-oracle.py` fecha a ORDEM 3 do dono. O `AGENTS.md` dizia que
+REM `on_external_captions_released()` NAO trazia o worker de volta; re-medido em
+REM 2026-10-23 ele traz, atras de quatro guardas e de um piso de 45 s -- mas nada
+REM o provava, e um comportamento certo sem controlo volta a partir-se em
+REM silencio. Oito bracos (exiting, park, pausa, escondido, legenda visivel,
+REM piso, caminho feliz, depois do piso) e oito mutantes, cada um a derrubar O
+REM SEU braco. Nao lanca nada: importa a shell e usa um `self` falso.
+if exist _main\external-resume-oracle.py (
+  call :step external-resume 0 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume.log" python _main\external-resume-oracle.py
+  call :record external-resume !STEP_RC!
+) else ( call :record external-resume MISSING )
+if exist _main\external-resume-oracle.py (
+  call :step red-as-expected-external-resume 1 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-neg.log" python _main\external-resume-oracle.py --neg-arm
+  call :expectred red-as-expected-external-resume !STEP_RC! "%OUT%\external-resume-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-external-resume MISSING "%OUT%\external-resume-neg.log" "NEG-ARM PASS" )
+REM `code-health-oracle.py` e o RATCHET do "horrivel" medido: 758 679 B / 13 273
+REM linhas num modulo, uma funcao `main` de 2 297 linhas, 82 `except: pass`. Nao
+REM preme por um big-bang (as notas dizem `smaller batches`); mede sete factos por
+REM ficheiro e falha em QUALQUER piora. `always` de proposito: a populacao e um
+REM DIRECTORIO, logo uma lista de deps nunca estaria completa -- e um passo em
+REM cache com uma populacao que mudou e um falso verde.
+if exist _main\code-health-oracle.py (
+  call :step always code-health 0 "_main\code-health-oracle.py" "%OUT%\code-health.log" python _main\code-health-oracle.py
+  call :record code-health !STEP_RC!
+) else ( call :record code-health MISSING )
+if exist _main\code-health-oracle.py (
+  call :step always red-as-expected-code-health 1 "_main\code-health-oracle.py" "%OUT%\code-health-neg.log" python _main\code-health-oracle.py --neg-arm
+  call :expectred red-as-expected-code-health !STEP_RC! "%OUT%\code-health-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-code-health MISSING "%OUT%\code-health-neg.log" "NEG-ARM PASS" )
+REM A BATTERIA QUE NAO ABRE O MUNDO DO DONO (owner, 2026-10-21, verbatim:
+REM *"tu ta fazendo algo que faz meu pc travar/stutter?"* e *"tu vai garantir que
+REM minha reclamacao nunca mais aconteca"*). O portão julga FICHEIROS e corre as
+REM ETIQUETAS DA PROPRIA BATERIA sobre um passo falso -- e o passo pesado e o
+REM opt-in, entao o portão nao abre a app do dono. O braco negativo rc=1 POR
+REM DESENHO.
+if exist _main\battery-heavy-gate.py (
+  call :step battery-heavy-gate 0 "_main\battery-heavy-gate.py;_main\_audit-verify-all.cmd;_main\_strip-surface-probe.py;_main\_strip-stats-log-probe.py;_main\_strip-restore-probe.py;_main\_strip-stats-probe.py;_main\panel-exit3-oracle.py;_main\mute-audio-oracle.py" "%OUT%\battery-heavy-gate.log" python _main\battery-heavy-gate.py
+  call :record battery-heavy-gate !STEP_RC!
+) else ( call :record battery-heavy-gate MISSING )
+if exist _main\battery-heavy-gate.py (
+  call :step red-as-expected-battery-heavy-gate 1 "_main\battery-heavy-gate.py;_main\_audit-verify-all.cmd;_main\_strip-surface-probe.py;_main\_strip-stats-log-probe.py;_main\_strip-restore-probe.py;_main\_strip-stats-probe.py;_main\panel-exit3-oracle.py;_main\mute-audio-oracle.py" "%OUT%\battery-heavy-gate-neg.log" python _main\battery-heavy-gate.py --neg-arm
+  call :expectred red-as-expected-battery-heavy-gate !STEP_RC! "%OUT%\battery-heavy-gate-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-battery-heavy-gate MISSING "%OUT%\battery-heavy-gate-neg.log" "NEG-ARM PASS" )
+REM `scripts\task-resolver-gate.py` e o MANDATO do task-resolver como MECANISMO. O
+REM `AGENTS.md` manda usar a skill em todo o trabalho nao-trivial, e a skill manda
+REM construir o portao ANTES da edicao dependente -- e nada o provava. O
+REM `check-bug-hunt-wiring.py` fecha a mesma classe para o bug-hunt e o task-resolver
+REM ficou de fora. Seis checks: o mandato no AGENTS.md, a versao, o sha256 da copia do
+REM repo contra o canonico (uma copia divergente e uma segunda fonte de verdade), a lei
+REM do bootstrap, o vocabulario de evidencia, e -- o que fecha o circuito -- os DOIS
+REM portoes deste mandato a serem CORRIDOS por esta bateria, cada um com o seu braco
+REM negativo. Nao lanca nada: le tres ficheiros.
+if exist scripts\task-resolver-gate.py (
+  call :step task-resolver-gate 0 "scripts\task-resolver-gate.py;AGENTS.md;.agents\skills\task-resolver\SKILL.md;_main\_audit-verify-all.cmd" "%OUT%\task-resolver-gate.log" python scripts\task-resolver-gate.py
+  call :record task-resolver-gate !STEP_RC!
+) else ( call :record task-resolver-gate MISSING )
+if exist scripts\task-resolver-gate.py (
+  call :step red-as-expected-task-resolver-gate 1 "scripts\task-resolver-gate.py;AGENTS.md;.agents\skills\task-resolver\SKILL.md;_main\_audit-verify-all.cmd" "%OUT%\task-resolver-gate-neg.log" python scripts\task-resolver-gate.py --neg-arm
+  call :expectred red-as-expected-task-resolver-gate !STEP_RC! "%OUT%\task-resolver-gate-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-task-resolver-gate MISSING "%OUT%\task-resolver-gate-neg.log" "NEG-ARM PASS" )
+REM `_main\claims-date-oracle.py` e o P0.3 do roadmap de observabilidade de 2026-10-23:
+REM "uma afirmacao numerica no AGENTS.md sem data/medicao ao lado e vermelha; baseline
+REM ratchet". A unidade e o BLOCO e nao a linha -- medido 2026-10-25, a leitura
+REM linha-a-linha acusava 23 sitios e quase todos eram a continuacao de uma frase cuja
+REM cabeca carrega a data. Quatro checks e seis mutantes; o baseline (4 entradas) so pode
+REM encolher, e o tecto vive no CODIGO para o JSON nao poder levantar o seu proprio.
+if exist _main\claims-date-oracle.py (
+  call :step claims-date 0 "_main\claims-date-oracle.py;_main\claims-date-baseline.json;AGENTS.md" "%OUT%\claims-date.log" python _main\claims-date-oracle.py
+  call :record claims-date !STEP_RC!
+) else ( call :record claims-date MISSING )
+if exist _main\claims-date-oracle.py (
+  call :step red-as-expected-claims-date 1 "_main\claims-date-oracle.py;_main\claims-date-baseline.json;AGENTS.md" "%OUT%\claims-date-neg.log" python _main\claims-date-oracle.py --neg-arm
+  call :expectred red-as-expected-claims-date !STEP_RC! "%OUT%\claims-date-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-claims-date MISSING "%OUT%\claims-date-neg.log" "NEG-ARM PASS" )
+
+REM `_main\receipt-provenance-oracle.py` fecha a classe que este repo pagou em 2026-10-26: o recibo
+REM de um lane declarava `route: OpenCode Go 1` e o processo que o produziu corria em `opencode-go-3`.
+REM A rota declarada era a que a politica SONDA primeiro (model-routing.md: `opencode-go-1` primeiro),
+REM nao a que serviu o trabalho -- uma intencao escrita no lugar de um facto medido. Uma declaracao de
+REM rota no cabecalho tem de trazer a MEDICAO (`providerID=` + `session=ses_...`) e o INSTRUMENTO que a
+REM produziu; uma declaracao que difere da medicao so passa se se declarar SUBSTITUIDA e nomear a
+REM medicao no mesmo cabecalho. Quatro checks e quatro bracos nomeados.
+REM `always` de proposito: a populacao e `state\work\**\receipt*.md`, que muda sempre que um lane
+REM escreve um recibo -- um resultado em cache descreveria recibos que ja nao existem.
+if exist _main\receipt-provenance-oracle.py (
+  call :step always receipt-provenance 0 "_main\receipt-provenance-oracle.py" "%OUT%\receipt-provenance.log" python _main\receipt-provenance-oracle.py
+  call :record receipt-provenance !STEP_RC!
+) else ( call :record receipt-provenance MISSING )
+if exist _main\receipt-provenance-oracle.py (
+  call :step always red-as-expected-receipt-provenance 1 "_main\receipt-provenance-oracle.py" "%OUT%\receipt-provenance-neg.log" python _main\receipt-provenance-oracle.py --neg-arm
+  call :expectred red-as-expected-receipt-provenance !STEP_RC! "%OUT%\receipt-provenance-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-receipt-provenance MISSING "%OUT%\receipt-provenance-neg.log" "NEG-ARM PASS" )
+
+REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de
+REM estado (docs\state-generated.md) e GERADA das saidas dos oraculos e recusa-se a inventar -- um
+REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): as seis verificacoes
+REM leem a evidencia VIVA (`_cache\battery-steps.json` + `_main\_audit-verify\*.log`) e um resultado
+REM em cache descreveria um estado que ja nao existe. Custo medido 2026-10-25: 3,49 s.
+if exist _main\sotto-state-page.py (
+  call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
+  call :record state-page !STEP_RC!
+) else ( call :record state-page MISSING )
+if exist _main\sotto-state-page.py (
+  call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
+  call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-state-page MISSING "%OUT%\state-page-neg.log" "NEG-ARM PASS" )
+
+REM `_main\battery-wiring-oracle.py` e o P3.1 do roadmap de observabilidade de 2026-10-23: nenhum
+REM oraculo de enforcement novo sem um passo que o corra, e o baseline so pode ENCOLHER. A populacao
+REM usa os MESMOS cinco globs do `tooling-intent-oracle.py`; o *wiring* e lido das linhas `call :step`
+REM desta propria `.cmd`. Medido 2026-10-25: populacao 170, ligados 48, sem passo 122 (eram 124
+REM antes de este par entrar), e o baseline tem tecto 124 pinado no codigo. Nao lanca nada: le bytes.
+if exist _main\battery-wiring-oracle.py (
+  call :step battery-wiring 0 "_main\battery-wiring-oracle.py;_main\battery-wiring-baseline.json;_main\_audit-verify-all.cmd;_main\tooling-intent-oracle.py" "%OUT%\battery-wiring.log" python _main\battery-wiring-oracle.py
+  call :record battery-wiring !STEP_RC!
+) else ( call :record battery-wiring MISSING )
+if exist _main\battery-wiring-oracle.py (
+  call :step red-as-expected-battery-wiring 1 "_main\battery-wiring-oracle.py;_main\battery-wiring-baseline.json;_main\_audit-verify-all.cmd;_main\tooling-intent-oracle.py" "%OUT%\battery-wiring-neg.log" python _main\battery-wiring-oracle.py --neg-arm
+  call :expectred red-as-expected-battery-wiring !STEP_RC! "%OUT%\battery-wiring-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-battery-wiring MISSING "%OUT%\battery-wiring-neg.log" "NEG-ARM PASS" )
+
+REM `_main\complaints-reconcile-gate.py` e o P3.2 do roadmap de observabilidade de 2026-10-23: as
+REM DUAS listas do dono (o backlog de 2026-10-22 com 10 ABERTO e o documento de fecho com 31/31)
+REM davam veredictos opostos sobre as mesmas mensagens e nada as juntava. Uma linha por reclamacao,
+REM e a contradicao calculada -- 13 hoje -- tem de trazer `gap` a dizer o que a evidencia do fecho
+REM NAO mede. CORRE SEMPRE (`always`): a populacao inclui o corpus em `I:\!manager\...`, que o
+REM `_stepcache` nao consegue fingerprintar por viver fora do repo -- um resultado em cache
+REM descreveria um corpus que ja mudou. Custo: leitura de texto, sem subprocessos.
+if exist _main\complaints-reconcile-gate.py (
+  call :step always complaints-reconcile 0 "_main\complaints-reconcile-gate.py;_main\complaints-reconcile.json;_main\closure-evidence-policy.json;.opencode\complaints-closure.md;runs\TC-20261022-sotto-backlog.md;_main\complaints_canon.py" "%OUT%\complaints-reconcile.log" python _main\complaints-reconcile-gate.py
+  call :record complaints-reconcile !STEP_RC!
+) else ( call :record complaints-reconcile MISSING )
+if exist _main\complaints-reconcile-gate.py (
+  call :step always red-as-expected-complaints-reconcile 1 "_main\complaints-reconcile-gate.py;_main\complaints-reconcile.json;_main\closure-evidence-policy.json;.opencode\complaints-closure.md;runs\TC-20261022-sotto-backlog.md;_main\complaints_canon.py" "%OUT%\complaints-reconcile-neg.log" python _main\complaints-reconcile-gate.py --neg-arm
+  call :expectred red-as-expected-complaints-reconcile !STEP_RC! "%OUT%\complaints-reconcile-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-complaints-reconcile MISSING "%OUT%\complaints-reconcile-neg.log" "NEG-ARM PASS" )
+REM `_main\youtube-1to1-oracle.py` e o check 1:1 do dono (2026-10-26, verbatim: *"tem que
+REM bater timing, linha/quebra de linha e etc, 1:1"*): palavras, quebras, timing e revelacao
+REM palavra-a-palavra contra o PAYLOAD do proprio YouTube, no mesmo instante, com as duas
+REM pontas guardadas (payload em `_main\fixtures`, cues servidos em `_cache`). A janela do
+REM YouTube vem do `rcRows` do payload e a do Sotto e OUTRA coisa de proposito -- se as duas
+REM lessem o mesmo numero, o mutante da janela nao podia ser apanhado.
+REM ESTE PASSO ESTEVE VERMELHO ATE 2026-10-26 E PASSOU A VERDE NO MESMO DIA: `word-reveal-1to1`
+REM media 69 segmentos com `tOffsetMs` no payload e 0 offsets nos cues servidos, e o prefixo
+REM revelado divergia em 388/677 amostras. Agora o cue carrega o relogio do proprio YouTube e o
+REM prefixo bate em 677/677. O `red-as-expected` ao lado e o que impede este verde de ser um
+REM selo: 8 mutantes, cada um tem de ser recusado pela arm que lhe compete.
+if exist _main\youtube-1to1-oracle.py (
+call :step always youtube-1to1 0 "_main\youtube-1to1-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_cache\youtube-captions\WdaHAGRBB6s.jsonl;app\webview\youtube_captions.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\youtube-1to1.log" python _main\youtube-1to1-oracle.py
+call :record youtube-1to1 !STEP_RC!
+) else ( call :record youtube-1to1 MISSING )
+if exist _main\youtube-1to1-oracle.py (
+call :step always red-as-expected-youtube-1to1 1 "_main\youtube-1to1-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_cache\youtube-captions\WdaHAGRBB6s.jsonl;app\webview\youtube_captions.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\youtube-1to1-neg.log" python _main\youtube-1to1-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-1to1 !STEP_RC! "%OUT%\youtube-1to1-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-1to1 MISSING "%OUT%\youtube-1to1-neg.log" "NEG-ARM PASS" )
+
+REM ---------------------------------------------------------------------------
+REM A REVELACAO PALAVRA-A-PALAVRA NO CAMINHO VIVO (2026-10-29). O
+REM `youtube-1to1-oracle.py` acima compara o PAYLOAD com os cues servidos: e um
+REM check ESTATICO, e nao ve o caminho vivo. MEDIDO 2026-10-29: o ramo `painted`
+REM de `sotto_webview._youtube` montava a janela com o INICIO DO CUE
+REM (`hit.cue.start + 0.001`), e `revealed_lines` corta a linha pelos relogios
+REM das palavras -- logo SO a primeira palavra passava e a linha NUNCA crescia
+REM no ecra. O `revealed_lines` era chamada (o `reveal-wired` do 1to1 via), e
+REM mesmo assim o defeito era invisivel para esse check.
+REM ESTE PASSO mede a JANELA DE PRODUCAO (`youtube_reveal.window_by_paint`)
+REM contra as linhas que o PROPRIO player pintou, gravadas em
+REM `_main\fixtures\yt-WdaHAGRBB6s.break-position-20261026.json`. MEDIDO
+REM 2026-10-29: 15/15 linhas iguais.
+REM O ORACULO chama o `align_painted` DE PRODUCAO (nao uma reconstrucao): com
+REM o `hit` reconstruido a mao (sem `from_index`) a linha que rola para fora
+REM nunca aparecia, e o instrumento media uma coisa que a producao nao faz.
+REM O `red-as-expected` ao lado atrasa a pintura de uma palavra: tem de dar
+REM RED, senao o verde nao mede nada.
+if exist _main\youtube-reveal-oracle.py (
+call :step always youtube-reveal 0 "_main\youtube-reveal-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.break-position-20261026.json;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_reveal.py;app\webview\youtube_captions.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\youtube-reveal.log" python _main\youtube-reveal-oracle.py
+call :record youtube-reveal !STEP_RC!
+) else ( call :record youtube-reveal MISSING )
+if exist _main\youtube-reveal-oracle.py (
+call :step always red-as-expected-youtube-reveal 1 "_main\youtube-reveal-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.break-position-20261026.json;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_reveal.py;app\webview\youtube_captions.py" "%OUT%\youtube-reveal-neg.log" python _main\youtube-reveal-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-reveal !STEP_RC! "%OUT%\youtube-reveal-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-reveal MISSING "%OUT%\youtube-reveal-neg.log" "NEG-ARM PASS" )
+
+REM AS LINHAS DO PLAYER E AS QUEBRAS DE LINHA (2026-10-29). O `youtube-1to1`
+REM compara o texto JUNTO; este compara a JANELA DE LINHAS e a POSICAO DA
+REM QUEBRA. MEDIDO 2026-10-26: a posicao da quebra divergia em 12/16 amostras
+REM -- o `caption_wrap.wrap` divide por espaco e DESTRUI o `\n` do YouTube, e a
+REM nossa largura (714,0 px) nao e a do YouTube, logo nunca podem concordar.
+REM A CORRECAO (2026-10-29): as linhas do player atravessam o caminho inteiro
+REM com a quebra intacta (`rows_text` -> `push_caption_to_window` -> o `\n`
+REM que o `caption_overlay._layout` respeita sem re-quebrar). MEDIDO
+REM 2026-10-29: 16/16 linhas, 16/16 quebras, `clipped=0`.
+if exist _main\youtube-rows-oracle.py (
+call :step always youtube-rows 0 "_main\youtube-rows-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_reveal.py;app\webview\youtube_captions.py;app\webview\caption_overlay.py;app\webview\sotto_webview.py" "%OUT%\youtube-rows.log" python _main\youtube-rows-oracle.py
+call :record youtube-rows !STEP_RC!
+) else ( call :record youtube-rows MISSING )
+if exist _main\youtube-rows-oracle.py (
+call :step always red-as-expected-youtube-rows 1 "_main\youtube-rows-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_reveal.py;app\webview\youtube_captions.py;app\webview\caption_overlay.py" "%OUT%\youtube-rows-neg.log" python _main\youtube-rows-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-rows !STEP_RC! "%OUT%\youtube-rows-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-rows MISSING "%OUT%\youtube-rows-neg.log" "NEG-ARM PASS" )
+
+REM O ORCAMENTO DE TEMPO (2026-10-29) -- o "quase 1:1" do dono. ESTE PASSO NAO
+REM DIZ "SINCRONIZADO": uma lei prova uma ORDEM, nunca um milissegundo, e o
+REM dono pediu o comportamento, nao um booleano. O `youtube-drift-oracle.py`
+REM imprime o `drift_ms` de CADA linha contra a linha do tempo do proprio
+REM YouTube (o payload) e da o observado (o clock do player). MEDIDO
+REM 2026-10-29: 16 linhas, min +23 ms, max +704 ms, mediana +107,2 ms -- e o
+REM max e LIMITADO pela amostragem (a grelha de amostras vai de 637 a 849 ms, e
+REM 12 das 19 linhas do payload ficam fora da janela capturada). O valor e
+REM publicado como numero, com o sinal, e nunca como veredicto booleano.
+REM O `red-as-expected` injeta +250 ms na referencia: tem de dar RED, senao o
+REM instrumento nao deteta um atraso que ele diz detectar.
+if exist _main\youtube-drift-oracle.py (
+call :step always youtube-drift 0 "_main\youtube-drift-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-drift.log" python _main\youtube-drift-oracle.py
+call :record youtube-drift !STEP_RC!
+) else ( call :record youtube-drift MISSING )
+if exist _main\youtube-drift-oracle.py (
+call :step always red-as-expected-youtube-drift 1 "_main\youtube-drift-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-drift-neg.log" python _main\youtube-drift-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-drift !STEP_RC! "%OUT%\youtube-drift-neg.log" "NEG-ARM"
+) else ( call :expectred red-as-expected-youtube-drift MISSING "%OUT%\youtube-drift-neg.log" "NEG-ARM" )
+
+REM ---------------------------------------------------------------------------
+REM AS LEIS DO CAMINHO 1:1 (2026-10-29). O DONO, 2026-10-29, verbatim:
+REM *"le a bend/README.md primeiro -- LAWS.bend e PROOF.bend para as decisoes
+REM puras, mais um falsificador medido para o orcamento de tempo"*.
+REM
+REM O QUE ESTE PORTAO E, e o que ele NAO e:
+REM   PROVA: as AFIRMACOES de `bend_core\LAWS.bend` sobre o modelo puro do
+REM   caminho 1:1 -- a revelacao palavra-a-palavra, a vitalidade de uma linha, o
+REM   tecto da janela. O kernel (Lean 4.34 via BendTT) prova cada lei para
+REM   TODAS as entradas do dominio, e um def por lei e o que a preenche.
+REM   NAO PROVA: o ORCAMENTO DE TEMPO. Uma lei prova uma ORDEM, nunca um
+REM   milissegundo -- o `drift_ms` e do `youtube-drift-oracle.py` acima.
+REM   NAO PROVA: o que o dono VE no ecra. Isso e dos mirrors
+REM   (`youtube-reveal-oracle.py`, `youtube-rows-oracle.py`).
+REM
+REM O `--verdict` E O UNICO MODO USADO COMO PORTAO: o `--check-only` nao corre
+REM prova nenhuma e imprime `ALL PROOFS CHECK` num ficheiro que o kernel
+REM recusa (upstream #1897, #1896).
+REM
+REM AS SEIS SAIDAS TIPADAS (POL-6), porque um portao que responde 0 ou 1
+REM confunde "a lei e falsa" com "o portao nao correu":
+REM   0 todas as leis verificam e todos os controlos falham pelo motivo certo
+REM   2 uma lei NAO verificou         3 um controlo negativo fez o que nao devia
+REM   4 INFRAESTRUTURA (nunca "a lei e falsa")
+REM   5 o inventario de leis divergiu   6 uma sonda de TAMPER nao se comportou
+REM
+REM O PASSO E `always` (nunca em cache): o portao le o estado VIVO das provas e
+REM dos ficheiros, e um resultado em cache descreveria um estado que ja nao
+REM existe. O `red-as-expected` ao lado nao se aplica -- o portao ja inclui os
+REM controlos negativos E as sondas de tamper, e um `--neg-arm` seria uma
+REM segunda copia do mesmo mecanismo.
+REM ---------------------------------------------------------------------------
+if exist _main\bend-laws-gate.py (
+call :step always bend-laws 0 "_main\bend-laws-gate.py;bend_core\LAWS.bend;bend_core\PROOF.bend;bend_core\NEGATIVE_revealed_flag.bend;bend_core\NEGATIVE_of_bool_agrees.bend;bend_core\NEGATIVE_live_flag.bend;bend_core\NEGATIVE_live_flag_before.bend;bend_core\NEGATIVE_window_rows_min.bend;bend_core\NEGATIVE_window_rows_capacity.bend;bend_core\NEGATIVE_window_rows_live.bend;bend_core\NEGATIVE_count_due_only.bend;bend_core\NEGATIVE_count_due_monotone.bend;bend_core\NEGATIVE_count_due_empty.bend;bend_core\NEGATIVE_count_due_one_word.bend" "%OUT%\bend-laws.log" python _main\bend-laws-gate.py
+call :record bend-laws !STEP_RC!
+) else ( call :record bend-laws MISSING )
+
+REM O MODELO EM PYTHON (2026-10-29). `bend_core\model.py` e a MESMA amostra do
+REM modelo, em Python, para um host sem o toolchain do Bend. NAO E O PORTAO: o
+REM portao e o `bend-laws` acima, que prova para TODAS as entradas. Este passo
+REM e uma LEITURA -- e o que permite a um leitor conferir o numero que a lei
+REM restringe sem instalar nada. O `red-as-expected` troca o modelo por um
+REM quebrado e tem de dar RED: um verificador que so diz "ok" nao e verificador.
+if exist bend_core\model.py (
+call :step always bend-laws-model 0 "bend_core\model.py" "%OUT%\bend-laws-model.log" python bend_core\model.py
+call :record bend-laws-model !STEP_RC!
+) else ( call :record bend-laws-model MISSING )
+if exist bend_core\model.py (
+call :step always red-as-expected-bend-laws-model 1 "bend_core\model.py" "%OUT%\bend-laws-model-neg.log" python bend_core\model.py --neg-arm
+call :expectred red-as-expected-bend-laws-model !STEP_RC! "%OUT%\bend-laws-model-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-bend-laws-model MISSING "%OUT%\bend-laws-model-neg.log" "NEG-ARM PASS" )
 
 REM O CAMINHO DO Alt+C (o UNICO controlo do dono) tem de sobreviver a um
 REM atributo em falta. MEDIDO 2026-10-20: `show_panel`, `show_strip` e
@@ -539,7 +1047,7 @@ if exist _main\ui-stall-oracle.py (
   call :record ui-stall-oracle !STEP_RC!
 ) else ( call :record ui-stall-oracle MISSING )
 if exist _main\mute-audio-oracle.py (
-  call :step always mute-audio 0 "_main\mute-audio-oracle.py" "%OUT%\mute-audio.log" python _main\mute-audio-oracle.py
+  call :step always heavy mute-audio 0 "_main\mute-audio-oracle.py" "%OUT%\mute-audio.log" python _main\mute-audio-oracle.py
   call :record mute-audio !STEP_RC!
 ) else ( call :record mute-audio MISSING )
 
@@ -567,7 +1075,7 @@ if exist _main\_strip-surface-oracle.py (
   call :control strip-surface-oracle !STEP_RC! "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS"
 ) else ( call :control strip-surface-oracle MISSING "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS" )
 if exist _main\_strip-stats-log-probe.py (
-  call :step always strip-stats-log-budget 0 "_main\_strip-stats-log-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats-log.log" python _main\_strip-stats-log-probe.py
+  call :step always heavy strip-stats-log-budget 0 "_main\_strip-stats-log-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats-log.log" python _main\_strip-stats-log-probe.py
   call :skipped strip-stats-log-budget !STEP_RC! "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" "STRIP-LOG CONTROL SKIPPED" "VERDICT: SKIPPED"
 ) else ( call :skipped strip-stats-log-budget MISSING "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" "STRIP-LOG CONTROL SKIPPED" "VERDICT: SKIPPED" )
 if exist _main\_strip-reload-probe.py (
@@ -575,15 +1083,15 @@ if exist _main\_strip-reload-probe.py (
   call :record strip-hot-reload !STEP_RC!
 ) else ( call :record strip-hot-reload MISSING )
 if exist _main\_strip-surface-probe.py (
-  call :step strip-surface-runtime 0 "_main\_strip-surface-probe.py;app\webview\sotto_webview.py;app\panel\panel.css" "%OUT%\strip-surface.log" python _main\_strip-surface-probe.py
+  call :step heavy strip-surface-runtime 0 "_main\_strip-surface-probe.py;app\webview\sotto_webview.py;app\panel\panel.css" "%OUT%\strip-surface.log" python _main\_strip-surface-probe.py
   call :record strip-surface-runtime !STEP_RC!
 ) else ( call :record strip-surface-runtime MISSING )
 if exist _main\_strip-restore-probe.py (
-  call :step strip-geometry-restore 0 "_main\_strip-restore-probe.py;app\webview\sotto_webview.py" "%OUT%\strip-restore.log" python _main\_strip-restore-probe.py
+  call :step heavy strip-geometry-restore 0 "_main\_strip-restore-probe.py;app\webview\sotto_webview.py" "%OUT%\strip-restore.log" python _main\_strip-restore-probe.py
   call :record strip-geometry-restore !STEP_RC!
 ) else ( call :record strip-geometry-restore MISSING )
 if exist _main\_strip-stats-probe.py (
-  call :step always strip-stats-wave 0 "_main\_strip-stats-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats.log" python _main\_strip-stats-probe.py
+  call :step always heavy strip-stats-wave 0 "_main\_strip-stats-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats.log" python _main\_strip-stats-probe.py
   call :skipped strip-stats-wave !STEP_RC! "%OUT%\strip-stats.log" "STRIP-STATS VERDICT: GREEN" "STRIP-STATS VERDICT: SKIPPED"
 ) else ( call :skipped strip-stats-wave MISSING "%OUT%\strip-stats.log" "STRIP-STATS VERDICT: GREEN" "STRIP-STATS VERDICT: SKIPPED" )
 REM The oracle of the two steps above: it proves the LOAD HONESTY of the shared
@@ -683,7 +1191,7 @@ REM mapping and the recovery arm, plus two reverted COPIES of today's shell that
 REM must go RED. rc=0 requires every one of those; the JSON keys `neg_arm` /
 REM `neg_arm_e` prove the control halves actually ran rather than being skipped.
 if exist _main\panel-exit3-oracle.py (
-  call :step control-panel-exit3-neg-arm 0 "_main\panel-exit3-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\control-panel-exit3-neg-arm.log" python _main\panel-exit3-oracle.py --unit --neg-arm
+  call :step heavy control-panel-exit3-neg-arm 0 "_main\panel-exit3-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\control-panel-exit3-neg-arm.log" python _main\panel-exit3-oracle.py --unit --neg-arm
   call :control control-panel-exit3-neg-arm !STEP_RC! "%OUT%\control-panel-exit3-neg-arm.log" "neg_arm_e"
 ) else ( call :control control-panel-exit3-neg-arm MISSING "%OUT%\control-panel-exit3-neg-arm.log" "neg_arm_e" )
 REM `wasapi-com-init-oracle.py` with NO flag is already both colours in one
@@ -839,7 +1347,12 @@ REM mode reads the same numbers to decide what to skip.
 python _main\_stepcache.py slowest --state "%CACHE_STATE%" --top 8 > "%OUT%\_slowest.txt" 2>&1
 echo slowest  : the steps that took the longest last run
 type "%OUT%\_slowest.txt"
+if "!HEAVYLIST!"=="" ( set "HEAVYTEXT=-none-" ) else ( set "HEAVYTEXT=!HEAVYLIST!" )
+echo heavy    : !HEAVYTEXT!
+echo             (the HEAVY class opens the owner's screen, his audio device or his GPU -- these did NOT run; set SOTTO_BATTERY_HEAVY=1 to run them)
+echo priority : !BATTERY_PRIORITY_LINE!
 if defined SOTTO_BATTERY_FAST echo fastmode : ON -- a step slower than the threshold was SKIPPED, not run, and is listed under skipped=
+if "%SOTTO_BATTERY_HEAVY%"=="1" echo heavymode: ON -- the heavy steps RAN: they opened the owner's screen, his audio device or his GPU
 echo per-step : !STEPLIST!
 echo controls : !CONTROLLIST!
 if "!FAILED!"=="" ( set "FAILEDTEXT=-none-" ) else ( set "FAILEDTEXT=!FAILED!" )
@@ -851,6 +1364,9 @@ if "!BAD!"=="0" (
 )
 if "!BAD!"=="0" if not "!SKIPN!"=="0" (
   set "VERDICT=GREEN WITH !SKIPN! SKIPPED - !SKIPN! step(s) did NOT verify this run and are NOT counted as gates: !SKIPTEXT!"
+)
+if "!BAD!"=="0" if not "!HEAVYN!"=="0" (
+  set "VERDICT=!VERDICT! - !HEAVYN! of them are the HEAVY class (they open the owner's screen, his audio device or his GPU and did NOT run: !HEAVYTEXT!)"
 )
 if "!BAD!"=="0" if not "!CACHEDN!"=="0" (
   set "VERDICT=!VERDICT! - !CACHEDN! step(s) were reused from the cache: their files did not change and their logs are still the ones that were verified"
@@ -864,6 +1380,8 @@ echo receipts in %OUT%
 >>"%OUT%\_battery-summary.txt" echo rcs: !STEPLIST!
 >>"%OUT%\_battery-summary.txt" echo controls: !CONTROLLIST!
 >>"%OUT%\_battery-summary.txt" echo skipped: !SKIPTEXT!
+>>"%OUT%\_battery-summary.txt" echo heavy: !HEAVYTEXT!
+>>"%OUT%\_battery-summary.txt" echo priority: !BATTERY_PRIORITY_LINE!
 >>"%OUT%\_battery-summary.txt" echo slowest:
 >>"%OUT%\_battery-summary.txt" type "%OUT%\_slowest.txt"
 >>"%OUT%\_battery-summary.txt" echo failed: !FAILEDTEXT!
@@ -917,11 +1435,19 @@ set "STEP_RC="
 set "STEP_CACHED=0"
 set "STEP_TAG="
 set "STEP_FASTSKIP="
+set "STEP_HEAVYSKIP="
 set "S_ALWAYS="
+set "S_HEAVY="
 if /i "%~1"=="always" goto step_take_always
+if /i "%~1"=="heavy" goto step_take_heavy
 goto step_args
 :step_take_always
 set "S_ALWAYS=1"
+shift
+if /i "%~1"=="heavy" goto step_take_heavy
+goto step_args
+:step_take_heavy
+set "S_HEAVY=1"
 shift
 :step_args
 set "S_NAME=%~1"
@@ -963,6 +1489,19 @@ for /f "tokens=1,* delims==" %%A in ('python _main\_stepcache.py check --step "!
   if /i "%%A"=="SKIP-SLOW" set "S_FASTSKIP=1"
 )
 if "!S_FASTSKIP!"=="1" goto step_fastskip
+REM THE HEAVY CLASS (owner, 2026-10-21, verbatim: *"tu ta fazendo algo que faz meu
+REM pc travar/stutter?"* and *"tu vai garantir que minha reclamacao nunca mais
+REM aconteca"*). A heavy step opens the owner's SCREEN, his AUDIO DEVICE or his GPU:
+REM it starts the app shell -- and with it the WebView2 runtime, 38
+REM msedgewebview2.exe and a saturated VRAM (measured 2026-10-21, written down in
+REM _main/_strip-stats-log-probe.py) -- or it touches the real output device.
+REM The machine starts ANY process with a 53-127 ms stutter (measured 2026-10-21),
+REM so these are the steps the owner FELT. They do NOT run unless the owner asks
+REM for them: SOTTO_BATTERY_HEAVY=1.
+REM A CACHED heavy step is FREE (no process is started) and keeps its gate. A heavy
+REM step that would have to RUN is skipped, counted as SKIPPED, and NAMED in the
+REM summary -- never rounded up to a pass.
+if "!S_HEAVY!"=="1" if not "%SOTTO_BATTERY_HEAVY%"=="1" if not "!S_HIT!"=="1" goto step_heavyskip
 if "!S_ALWAYS!"=="1" goto step_run
 if "!S_HIT!"=="1" goto step_hit
 :step_run
@@ -982,6 +1521,22 @@ REM names it, with the time it had taken.
 echo BATTERY-FAST-SKIP step=!S_NAME! last_s=!S_ELAPSED! threshold_s=!S_THRESHOLD!>"!S_LOG!"
 set "STEP_RC=0"
 set "STEP_FASTSKIP=1"
+exit /b 0
+:step_heavyskip
+REM THE HEAVY CLASS DID NOT RUN. It is NOT a gate that passed and NOT a failure:
+REM the battery was told not to open the owner's screen, his audio device or his
+REM GPU, so the step that does that did not run. It is counted in `skipped=`, it is
+REM NAMED in the summary, and the summary says how many steps did NOT verify.
+REM The log carries the BATTERY's marker, not the instrument's words: the
+REM instrument never spoke, so nothing in it can be read as a verdict.
+REM (The opt-in is the VALUE "1", not the mere EXISTENCE of the variable: a
+REM caller that sets SOTTO_BATTERY_HEAVY=0 means OFF, and a check of `defined`
+REM would run the heavy steps for it. Measured 2026-10-22 by the very census
+REM instrument that caught it.)
+echo BATTERY-HEAVY-SKIP step=!S_NAME! reason=opens-the-owner-screen-or-audio-device opt-in=SOTTO_BATTERY_HEAVY>"!S_LOG!"
+set "STEP_RC=0"
+set "STEP_FASTSKIP=1"
+set "STEP_HEAVYSKIP=1"
 exit /b 0
 :step_hit
 set "STEP_RC=!S_CACHED_RC!"
@@ -1084,6 +1639,14 @@ REM   rounded up to a pass.
 :fastskip
 set /a N+=1
 set /a SKIPN+=1
+if defined STEP_HEAVYSKIP (
+  set "STEPLIST=!STEPLIST! %~1=heavy-skip"
+  set "SKIPLIST=!SKIPLIST! %~1"
+  set "HEAVYLIST=!HEAVYLIST! %~1"
+  set /a HEAVYN+=1
+  echo [step] %~1 rc=0  [SKIPPED: heavy class] NOT RUN: it opens the owner's screen, his audio device or his GPU -- set SOTTO_BATTERY_HEAVY=1 to run it
+  exit /b 0
+)
 set "STEPLIST=!STEPLIST! %~1=fast-skip"
 set "SKIPLIST=!SKIPLIST! %~1"
 echo [step] %~1 rc=0  [SKIPPED: fast mode] NOT RUN: slower than the threshold in the last run

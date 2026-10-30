@@ -349,6 +349,18 @@ QUIT_DESTROY_WAIT_S = 0.25
 #: enough that the model is ready before the owner reaches for Alt+C. The
 #: preload runs in the background at the worker's BELOW_NORMAL priority.
 WORKER_PRELOAD_DELAY_S = 20.0
+#: O PRELOAD ESPERA O DONO FICAR QUIETO (2026-10-23). O dono, verbatim, depois de
+#: a pausa ser levantada: *"para tudo e unshittified o start do sotto. abrir ou
+#: fechar ele faz meu pc travar PRA CARALHO"*. O atraso fixo de 20 s punha os
+#: 16-25 s de carga do modelo (1,2 GB lidos + as sessoes CUDA) exactamente em cima
+#: do momento em que ele estava a usar o PC -- e a maquina tem 857 processos e o
+#: disco a 12 % livre. Agora o preload so comeca quando o ULTIMO INPUT (rato ou
+#: teclado) tem mais de `WORKER_PRELOAD_IDLE_S`, e ha um tecto: se ele nunca parar,
+#: o modelo tem de estar pronto quando ele pedir, logo arranca a mesma ao fim de
+#: `WORKER_PRELOAD_MAX_WAIT_S`.
+WORKER_PRELOAD_IDLE_S = 6.0
+WORKER_PRELOAD_MAX_WAIT_S = 120.0
+WORKER_PRELOAD_POLL_S = 2.0
 PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
 STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
 
@@ -1967,6 +1979,7 @@ class ExternalCaptionWatcher(threading.Thread):
         self.shell = shell
         self.stop_event = threading.Event()
         self.last_line = ''
+        self.last_rows = []
         self.last_source = ''
         self.last_change = 0.0
         self.last_seen = 0.0
@@ -1996,6 +2009,12 @@ class ExternalCaptionWatcher(threading.Thread):
         #: log line is written when it CHANGES, so a state that is never
         #: written is not a state that never happened.
         self.yt_paint_why = ''
+        #: O ULTIMO INSTANTE usado quando o player pinta OUTRA faixa (uma traducao), e a
+        #: chave das palavras que ele pintava nesse instante. E o que separa um relogio que
+        #: anda de um relogio congelado: com a pintura a mudar e o relogio parado, o relogio
+        #: esta congelado e nada e mostrado. MEDIDO 2026-10-23 (ver `painted-other-track`).
+        self.yt_foreign_t = None
+        self.yt_foreign_key = ''
         #: The last line we wrote to the log. THE DECISION IS WRITTEN ONCE
         #: PER CHANGE, not once per poll: a line per poll is noise, and a
         #: decision that is never written is a decision nobody can check.
@@ -2007,6 +2026,7 @@ class ExternalCaptionWatcher(threading.Thread):
     def replay(self):
         """Emit the CURRENT player line again (a panel just became visible)."""
         self.last_line = ''
+        self.last_rows = []
         self.finalized = False
         self.last_change = 0.0
 
@@ -2235,6 +2255,25 @@ class ExternalCaptionWatcher(threading.Thread):
         thread.request(vid, painted=painted)
         track = thread.current(vid)
         if track is None:
+            # AS PALAVRAS DO PLAYER ANTES DO TRACK. OWNER, 2026-10-22 09:35,
+            # verbatim: *"tu so viu carregar a pagina depois de varios segundos de ja
+            # ter carregado? arruma isso."* A causa era de DESENHO, nao de velocidade:
+            # a leitura das palavras pintadas (UI Automation) e barata e ja estava feita
+            # aqui em cima, mas a linha so era emitida depois de o track chegar -- e o
+            # extract mede segundos. Estas palavras SAO o texto que o YouTube esta a
+            # desenhar, logo sao 1:1 por construcao; o track substitui-as quando chega,
+            # com a janela de duas linhas e o timing. Sem palavras, nada e inventado:
+            # a linha fica vazia e o motivo continua `track-pending`.
+            try:
+                import youtube_window
+                paint_text = youtube_window.paint_line(painted)
+            except Exception as exc:  # noqa: BLE001
+                log(f"YOUTUBE_PAINT_LINE_FAILED error={exc!r}")
+                paint_text = ""
+            if paint_text:
+                self.yt_reason = "painted-untracked"
+                self.yt_cue = paint_text
+                return [("external:youtube:track", [paint_text])], False
             return [], self._yt_forget('track-pending', urgent=False)
         if track.get('state') != 'has-track':
             reason = track.get('reason') or track.get('state') or 'unknown'
@@ -2251,6 +2290,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 text = str(hit.get('text') or '').strip()
                 if text:
                     self.yt_hit = hit
+                    self.yt_foreign_t = None
                     self.yt_cue = text
                     self.yt_reason = 'painted'
                     # THE DECISION, WRITTEN. This is the line the owner can
@@ -2264,10 +2304,61 @@ class ExternalCaptionWatcher(threading.Thread):
                                hit.get('cue', {}).get('start'),
                                track.get('lang') or '-', hit.get('exact'),
                                text[:90]))
-                    return [('external:youtube:track', [text])], False
-            # THE PLAYER IS PAINTING ANOTHER TRACK: the words it paints are
-            # IN that track and nowhere else, so that is the question to ask
-            # (the thread already has the words; the request above did it).
+                    # A JANELA REVELADA PELAS PALAVRAS QUE O PLAYER PINTOU
+                    # (2026-10-29). MEDIDO: este ramo montava a janela com o
+                    # INICIO DO CUE (`hit.cue.start + 0.001`), e `revealed_lines`
+                    # corta a linha pelos relogios das palavras -- logo SO a
+                    # primeira palavra passava, e a linha NUNCA crescia no ecra.
+                    # O relogio certo aqui sao as PALAVRAS QUE O PLAYER JA
+                    # PINTOU: elas sao o prefixo revelado do cue, palavra a
+                    # palavra, 1:1 por construcao. Ver `youtube_reveal.py`.
+                    lines = []
+                    try:
+                        import youtube_reveal
+                        lines = youtube_reveal.window_by_paint(
+                            track.get('cues') or (), hit)
+                    except Exception as exc:  # noqa: BLE001
+                        log(f'YOUTUBE_PAINT_WINDOW_FAILED error={exc!r}')
+                    return [('external:youtube:track', lines or [text])], False
+            # THE PLAYER IS PAINTING ANOTHER TRACK -- AND THE OWNER WAS LEFT WITH NOTHING.
+            #
+            # MEDIDO 2026-10-23 (`_main/yt-1to1-live-compare.py`, Edge proprio, video
+            # WdaHAGRBB6s): o player pinta `pt`, a TRADUCAO automatica, enquanto a politica
+            # serve `en-orig`. As palavras pintadas nunca estao na faixa servida, logo o
+            # `align_painted` nao tem o que alinhar -- e a app devolvia NADA, para sempre.
+            # Nao era lentidao: era um beco sem saida, e o ASR tomava o lugar do YouTube (é
+            # isso que o dono chamou *"a legenda do youtube ta completamente bugada"*).
+            #
+            # A SAIDA NAO E SEGUIR A TRADUCAO (proibido: *"para de traduzir pra pt br do
+            # ingles e do espanhol"*). E o RELOGIO do player dizer onde o video esta e
+            # desenhar-se a cue da faixa SERVIDA nesse instante. O relogio so e usado
+            # enquanto ANDA: o congelado e medido (lia t=2.0 com o video a 530), e a prova
+            # do congelamento e uma PINTURA QUE MUDA COM O RELOGIO PARADO.
+            now_t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+            key = ' '.join(str(w) for w in painted)[:120]
+            moved = (now_t is not None
+                     and (self.yt_foreign_t is None
+                          or abs(float(now_t) - float(self.yt_foreign_t)) > 0.05))
+            if now_t is not None and (moved or key == self.yt_foreign_key):
+                self.yt_foreign_t, self.yt_foreign_key = float(now_t), key
+                cue = None
+                try:
+                    import youtube_captions
+                    cue = youtube_captions.cue_at(track.get('cues') or (), now_t)
+                except Exception as exc:  # noqa: BLE001
+                    log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+                text = str((cue or {}).get('text') or '').strip()
+                if text:
+                    self.yt_cue = text
+                    self.yt_reason = 'painted-other-track:clock'
+                    if text != self.yt_caption_logged:
+                        self.yt_caption_logged = text
+                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s track=%s '
+                            'text=%r why=painted-other-track'
+                            % (vid, (cue or {}).get('start'), round(now_t, 2),
+                               track.get('lang') or '-', text[:90]))
+                    return [('external:youtube:track',
+                             self._yt_lines(track, now_t) or [text])], False
             return [], self._yt_forget('painted-other-track', urgent=False)
         # NO PAINTED LINE: the captions are off, or the player is between
         # cues. Then the clock is the only clock there is -- but it is only
@@ -2312,7 +2403,43 @@ class ExternalCaptionWatcher(threading.Thread):
             return [], self._yt_forget('no-cue', urgent=False)
         self.yt_cue = text
         self.yt_reason = 'has-cue'
-        return [('external:youtube:track', [text])], False
+        return [('external:youtube:track',
+                 self._yt_lines(track, t) or [text])], False
+
+    def _yt_lines(self, track, t):
+        """As linhas que o YouTube desenha em `t` -- DUAS, nao uma.
+
+        O DONO, 2026-10-22: *"e tambem ter o display 1:1 … igual o youtube"*.
+        O payload do YouTube declara a janela em `wpWinPositions[1]`
+        (`rcRows: 2`, `ccCols: 40`) e mediu-se duas linhas vivas ao mesmo tempo em
+        **94 %** de um video de 33,8 s. O caminho vivo devolvia `[text]`, um cue so,
+        e por isso o ecra do Sotto nunca podia igualar o do YouTube mesmo com a
+        tabela certa. `youtube_window.live_lines` e a regra; `cue_at` fica como
+        ultimo recurso para uma track sem cues sobrepostos.
+        """
+        cues = track.get('cues') or ()
+        try:
+            import youtube_window
+            # A REVELACAO PALAVRA-A-PALAVRA (2026-10-26). `revealed_lines` e a MESMA
+            # janela de `live_lines`, com cada linha cortada no relogio do proprio
+            # YouTube (`tOffsetMs` no cue). O dono, verbatim: *"e pra surgir palavras,
+            # quebrar linhas, usar o timing de nova linha ou nao, igual o youtube."*
+            # Cue sem relogio devolve o texto inteiro -- nunca uma revelacao inventada.
+            lines = youtube_window.revealed_lines(cues, t, 2)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_WINDOW_FAILED error={exc!r}')
+            lines = []
+        if lines:
+            # B5 (dono: *"coisa duplicada"*): a regra e os casos medidos vivem em
+            # `youtube_window.collapse_growth`, onde sao testaveis sem a app.
+            return youtube_window.collapse_growth(lines)
+        try:
+            import youtube_captions
+            one = youtube_captions.cue_at(cues, t)
+        except Exception:  # noqa: BLE001
+            one = None
+        text = str((one or {}).get('text') or '').strip()
+        return [text] if text else []
 
     def _yt_forget(self, reason, urgent=False):
         """The real track has nothing for us right now."""
@@ -2366,20 +2493,29 @@ class ExternalCaptionWatcher(threading.Thread):
         if got:
             source, lines = got[0]
             line = lines[-1] if lines else ''
+            # THE PLAYER'S WINDOW IS ROWS, NOT ONE LINE (2026-10-29). `lines`
+            # is one cue per row (youtube_reveal.window_by_paint); taking only
+            # `lines[-1]` was the measured reason a row YouTube draws never
+            # reached the overlay. Non-YouTube readers keep the single line.
+            rows = list(lines) if (yt_mode and lines) else None
             if line:
                 self.last_seen = now
                 self.shell.external_captions_available = True
-                if line != self.last_line:
+                if line != self.last_line or (rows or []) != self.last_rows:
                     if self.last_line and not self.finalized:
                         self.shell.external_caption(self.last_line, self.last_source,
-                                                    final=True)
+                                                    final=True, instant=bool(yt_mode),
+                                                    rows=self.last_rows)
                     self.last_line = line
                     self.last_source = source
+                    self.last_rows = rows or []
                     self.last_change = now
                     self.finalized = False
-                    self.shell.external_caption(line, source, final=False)
+                    self.shell.external_caption(line, source, final=False,
+                                               instant=bool(yt_mode), rows=rows)
                 elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
-                    self.shell.external_caption(line, source, final=True)
+                    self.shell.external_caption(line, source, final=True,
+                                               instant=bool(yt_mode), rows=rows)
                     self.finalized = True
                 return
         # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
@@ -2400,6 +2536,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 self.shell.external_caption(self.last_line, self.last_source, final=True)
             log(f'EXTERNAL_CAPTIONS_RELEASED reason={reason}')
             self.last_line = ''
+            self.last_rows = []
             self.last_source = ''
             self.finalized = False
         self.shell.external_captions_active = False
@@ -3577,6 +3714,15 @@ WM_PROBE_CLICK = WM_APP + 9
 #: `SetWindowPos` happens in the message loop, which is also where the rate is
 #: bounded (`EDIT_DRAG_MIN_INTERVAL_MS`).
 WM_EDIT_DRAG = WM_APP + 10
+#: A thread do hook instala e remove o `WH_MOUSE_LL` AQUI, no seu proprio loop.
+#: Instalar fora desta thread e um erro do Win32; e instalar cedo demais (com o
+#: painel escondido) e o que travava o rato do dono -- ver `_wants_hook`.
+WM_HOOK_SYNC = WM_APP + 11
+#: O auto-cura do hook: a propria thread do hook re-le a regra de 5 em 5 s (ver
+#: `run`). Um id fixo para o `KillTimer` poder ser exacto.
+WM_TIMER = 0x0113
+_HOOK_WATCHDOG_TIMER_ID = 1
+_HOOK_WATCHDOG_MS = 5000
 
 #: A few pixels of slack on the rect test: a click on the panel's own edge is
 #: still a click on the panel, and the owner cannot aim to the pixel.
@@ -3620,33 +3766,126 @@ class OutsideClickWatcher(threading.Thread):
         super().__init__(name='sotto-outside-click', daemon=True)
         self.shell = shell
         self.hook = None
-        self.armed = False
         self.thread_id = None
         self._ready = threading.Event()
         self._proc = None
         self.decisions = []
-        # ── EDIT MODE, on THIS thread ────────────────────────────────────────
-        # The drag is carried by the thread that already exists and already owns
-        # a `WH_MOUSE_LL` hook and a message loop, so the edit mode adds NO
-        # thread to the process. `edit_mode` is written by the UI thread (the
-        # tray command) and read here; a plain bool is enough for that.
-        self.edit_mode = False
+        # ── O HOOK E PREGUICOSO (2026-10-23) ─────────────────────────────────
+        # O dono, verbatim: *"MEU MOUSE TA TRAVANDO DEMAIS. O RESTO DO SISTEMA
+        # NAO"* e *"MEU MOUSE VOLTA AO NORMAL QUANDO EU ENTRO NO CONTROL ALT DEL,
+        # MAS VOLTA A TRAVAR DEPOIS Q EU SAIO"*.
+        #
+        # O QUE ESTAVA MEDIDO E ERRADO: `start_click_watcher` corria no arranque
+        # e instalava um `WH_MOUSE_LL` 22 ms depois da app nascer -- com o painel
+        # NUNCA mostrado (o log do dono, 2026-10-23: `PANEL_VISIBILITY_ON_SCREEN
+        # visible=false ... panel_shown=false` na linha anterior, e
+        # `OUTSIDE_CLICK_HOOK installed=true` na seguinte). Um hook de baixa
+        # prioridade poe **todos** os eventos do rato (1000/s num rato de
+        # 1000 Hz) a passar pelo callback PYTHON desta thread antes de chegarem
+        # a quem quer que seja. O rato fica aos soluços; o resto do sistema, que
+        # nao espera por este callback, fica bom. E sob Ctrl+Alt+Del o Windows
+        # **nao chama hooks de utilizador** (o secure desktop nao os entrega),
+        # por isso o cursor fica bom la dentro e volta a travar ao sair.
+        #
+        # A REGRA: o hook so existe enquanto pode fazer falta -- painel visivel
+        # (`armed`) ou edit mode. Escondido, ele nao existe, e o rato e do dono.
+        self._armed = False
+        self._edit_mode = False
         self._dragging = False
         self._last_drag_post = 0.0
         self.drag_samples = 0
 
+    # `armed`/`edit_mode` sao PROPRIEDADES, nao campos: quem os escreve (o
+    # `show_panel` e o item de tray do edit mode) nao precisa de saber que a
+    # escrita tem de mexer no hook. Um campo simples deixaria o hook instalado
+    # para sempre, que e exactamente o defeito que isto cura.
+    @property
+    def armed(self):
+        return self._armed
+
+    @armed.setter
+    def armed(self, value):
+        self._armed = bool(value)
+        self._sync_hook()
+
+    @property
+    def edit_mode(self):
+        return self._edit_mode
+
+    @edit_mode.setter
+    def edit_mode(self, value):
+        self._edit_mode = bool(value)
+        self._sync_hook()
+
+    def _wants_hook(self):
+        """O hook so serve para fechar o painel ou para arrastar a faixa."""
+        return bool(self._armed or self._edit_mode)
+
+    def _sync_hook(self):
+        """Pede a thread do loop (a dona do hook) para instalar/remover."""
+        if not self.thread_id:
+            return False
+        try:
+            user32.PostThreadMessageW(self.thread_id, WM_HOOK_SYNC, 0, 0)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _install_hook(self):
+        if self.hook:
+            return True
+        try:
+            self.hook = user32.SetWindowsHookExW(
+                WH_MOUSE_LL, ctypes.cast(self._proc, ctypes.c_void_p), None, 0)
+        except Exception as exc:  # noqa: BLE001
+            warn(f'OUTSIDE_CLICK_HOOK_FAILED {type(exc).__name__}: {exc}')
+            self.hook = None
+        if not self.hook:
+            warn(f'OUTSIDE_CLICK_HOOK_FAILED SetWindowsHookExW '
+                 f'winerror={ctypes.get_last_error()}')
+        log(f'OUTSIDE_CLICK_HOOK installed={str(bool(self.hook)).lower()} '
+            f'hook={self.hook} thread={self.thread_id} type=WH_MOUSE_LL '
+            f'consumes_click=false reason='
+            f'{"edit-mode" if self._edit_mode else "armed"}')
+        return bool(self.hook)
+
+    def _uninstall_hook(self, reason):
+        if not self.hook:
+            return False
+        try:
+            user32.UnhookWindowsHookEx(self.hook)
+        except Exception as exc:  # noqa: BLE001
+            log('MOUSE_HOOK_UNHOOK_FAILED error=%r' % (exc,))
+        self.hook = None
+        log(f'OUTSIDE_CLICK_HOOK uninstalled reason={reason} '
+            f'pointer_back_to_owner=true')
+        return True
+
+    def _sync_hook_now(self):
+        """Corre NA thread do hook: e ela que o instala e o remove."""
+        if self._wants_hook():
+            return self._install_hook()
+        return self._uninstall_hook('not-armed')
+
     def start(self, timeout=5.0) -> bool:
         super().start()
         self._ready.wait(timeout)
-        return self.hook is not None
+        # O QUE ESTE `True` QUER DIZER AGORA: a thread do loop esta viva e pode
+        # instalar o hook quando o painel aparecer. NAO quer dizer "o hook esta
+        # instalado" -- de proposito, porque instala-lo agora e o defeito.
+        return self.is_alive()
 
     def stop(self, reason='stop'):
-        if self.hook:
+        # `stop` e um caminho de encerramento: nao vale a pena pedir ao loop que
+        # se sincronize -- a thread vai sair. Desarma e remove o hook aqui.
+        self._armed = False
+        self._edit_mode = False
+        if self.thread_id:
             try:
-                user32.UnhookWindowsHookEx(self.hook)
+                user32.KillTimer(None, _HOOK_WATCHDOG_TIMER_ID)
             except Exception:  # noqa: BLE001
                 pass
-            self.hook = None
+        self._uninstall_hook(reason)
         if self.thread_id:
             try:
                 user32.PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0)
@@ -3669,18 +3908,32 @@ class OutsideClickWatcher(threading.Thread):
             self._proc = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int,
                                             ctypes.c_size_t,
                                             ctypes.c_ssize_t)(self._on_mouse)
-            self.hook = user32.SetWindowsHookExW(
-                WH_MOUSE_LL, ctypes.cast(self._proc, ctypes.c_void_p), None, 0)
-            if not self.hook:
-                warn(f'OUTSIDE_CLICK_HOOK_FAILED SetWindowsHookExW '
-                     f'winerror={ctypes.get_last_error()}')
-            log(f'OUTSIDE_CLICK_HOOK installed={str(bool(self.hook)).lower()} '
-                f'hook={self.hook} thread={self.thread_id} type=WH_MOUSE_LL '
-                f'consumes_click=false')
+            # NAO INSTALA AQUI O HOOK. Instala quando -- e se -- o painel
+            # aparecer. Ver a nota grande em `__init__`: um `WH_MOUSE_LL` vivo
+            # sem painel poe o rato do dono a depender desta thread.
+            if self._wants_hook():
+                self._install_hook()
+            else:
+                log('OUTSIDE_CLICK_HOOK deferred reason=panel-hidden '
+                    f'thread={self.thread_id} type=WH_MOUSE_LL')
             self._ready.set()
+            # ── O AUTO-CURA (2026-10-23) ────────────────────────────────────
+            # `_sync_hook` so corre quando alguem muda `armed`/`edit_mode`. Se um
+            # caminho de excepcao deixar o estado "armado" com o painel ja
+            # escondido, o hook ficaria vivo e o rato do dono voltaria a travar.
+            # Um `WM_TIMER` de 5 s NESTA thread (a dona do hook) re-avalia a
+            # regra e remove-o sozinho. Nao ha thread nova e nao ha caminho que
+            # escape: a regra e re-lida, nao lembrada.
+            user32.SetTimer(None, _HOOK_WATCHDOG_TIMER_ID, _HOOK_WATCHDOG_MS, None)
             msg = MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                if msg.message == WM_PROBE_CLICK:
+                if msg.message == WM_HOOK_SYNC:
+                    # `armed`/`edit_mode` mudaram noutra thread; o hook muda
+                    # aqui, que e a thread que o possui.
+                    self._sync_hook_now()
+                elif msg.message == WM_TIMER:
+                    self._sync_hook_now()
+                elif msg.message == WM_PROBE_CLICK:
                     # The MEASUREMENT path: the same decision function the hook
                     # calls, on the same thread, reached through this thread's
                     # real message loop. What is NOT exercised is the OS
@@ -3858,6 +4111,7 @@ def _point_in_window(hwnd, x, y) -> bool:
 
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x01, 0x02, 0x04
+NIF_INFO = 0x10                  # balloon tip: informs without blocking
 MF_STRING, MF_SEPARATOR = 0x0000, 0x0800
 TPM_RIGHTBUTTON, TPM_RETURNCMD = 0x0002, 0x0100
 HWND_MESSAGE = -3
@@ -4034,6 +4288,31 @@ class TrayIcon:
         nid = self._nid()
         ok = bool(shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(nid)))
         self.log(f'TRAY_ICON_DELETE ok={str(ok).lower()} uid={TRAY_ID}')
+        return ok
+
+    def balloon(self, title, text, info_flags=0x1):
+        """A NON-MODAL notice, in the notification area.
+
+        OWNER, 2026-10-22 09:17, verbatim: *"para de mostrar erro. e gritar."*
+        A modal `MessageBoxW` is the loudest thing Windows can put on his screen and
+        it BLOCKS until dismissed, so it is exactly what that order forbids. The tray
+        balloon says the same thing, is dismissed by itself and steals no focus (this
+        shell never takes focus by design). The caller keeps the full text in the log,
+        so nothing becomes unfalsifiable.
+
+        `info_flags` defaults to NIIF_INFO (0x1). NIIF_ERROR is deliberately NOT used:
+        an unavailable hotkey is not an error to shout about.
+        """
+        if not (self._added and self.hwnd):
+            return False
+        nid = self._nid()
+        nid.uFlags = NIF_INFO
+        nid.szInfoTitle = (title or '')[:63]
+        nid.szInfo = (text or '')[:255]
+        nid.dwInfoFlags = info_flags
+        ok = bool(shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid)))
+        self.log(f'TRAY_BALLOON ok={str(ok).lower()} uid={TRAY_ID} '
+                 f'winerror={ctypes.get_last_error()}')
         return ok
 
     # -- the thread --------------------------------------------------------
@@ -4214,41 +4493,42 @@ def menu_items(menu) -> list:
     return items
 
 
-def warn_hotkey_unavailable(requested: str, tried) -> None:
-    """The app's ONLY control could not be registered: say it ON SCREEN, once.
+def warn_hotkey_unavailable(requested: str, tried, tray=None) -> None:
+    """The app's ONLY control could not be registered: say it QUIETLY, once.
 
-    The panel cannot be the messenger — by definition nothing can open it — so a
-    modal dialog is the last channel. It runs on a DAEMON thread, so it blocks
-    neither the UI loop nor the worker: the app keeps transcribing while the
-    dialog waits to be dismissed. `MB_TOPMOST` because nothing in this shell ever
-    takes focus, and the text names every key that was tried plus the one-line
-    fix, because "the app is running but you cannot open it" is otherwise
-    unfalsifiable from the owner's side.
+    THE HISTORY MATTERS, because this function has now been decided TWICE and the
+    second decision is the one that stands:
+
+      2026-10-07 -- the shipped behaviour was one log line and nothing on screen, so
+                    an app whose hotkey was taken stayed running, hidden, with its
+                    only control dead. The cure was a modal `MessageBoxW`.
+      2026-10-22 09:17 -- the owner, verbatim: *"para de mostrar erro. e gritar."*
+                    A modal error box is the loudest thing this shell can put on his
+                    screen and it blocks until dismissed. So the modal is GONE and the
+                    channel is a tray balloon (`TrayIcon.balloon`): it informs, it
+                    dismisses itself, it steals no focus.
+
+    What does NOT come back is the original defect: the message is still SHOWN (as a
+    balloon) and the full text is still in the log (`HOTKEY_UNAVAILABLE`), so "the app
+    is running and I cannot open it" remains falsifiable from the owner's side. When
+    there is no tray to speak through, the log is the only channel and it says so
+    (`HOTKEY_ALERT_SHOWN shown=false channel=log-only`).
     """
-    lines = ',\n'.join(f'    {a}  (winerror={err})' for a, err in tried) or f'    {requested}'
-
-    def _show():
-        text = ('Sotto could not register its global hotkey, so the caption '
-                'panel cannot be opened with the keyboard.\n\n'
-                'Every accelerator below is already owned by another program:\n'
-                f'{lines}\n\n'
-                'Sotto is still running and still transcribing. To get the panel, '
-                'either close the other program that owns the key, or start Sotto '
-                'with a free one:\n\n'
-                '    run.cmd --hotkey Alt+Shift+C\n\n'
-                '(This message is shown once per launch; nothing is on screen '
-                'otherwise.)')
+    lines = ', '.join(f'{a} (winerror={err})' for a, err in tried) or f'{requested}'
+    title = 'Sotto - key already taken'
+    text = ('Alt+C is owned by another program, so the panel cannot be opened with '
+            f'the keyboard. Sotto is still running and transcribing. Keys tried: '
+            f'{lines}. Fix: close the other program, or start with run.cmd '
+            '--hotkey Alt+Shift+C')
+    log('HOTKEY_UNAVAILABLE alert=balloon tried=' + json.dumps([a for a, _ in tried]))
+    shown = False
+    if tray is not None:
         try:
-            user32.MessageBoxW(None, text, 'Sotto — hotkey unavailable',
-                               MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND)
+            shown = bool(tray.balloon(title, text))
         except Exception as exc:  # noqa: BLE001 -- a warning must not kill a run
             log(f'HOTKEY_ALERT_FAILED error={exc!r}')
-
-    log('HOTKEY_UNAVAILABLE alert=messagebox tried=' + json.dumps(
-        [a for a, _ in tried]))
-    threading.Thread(target=_show, name='sotto-hotkey-alert', daemon=True).start()
-
-
+    log('HOTKEY_ALERT_SHOWN shown=%s channel=%s'
+        % (str(shown).lower(), 'balloon' if shown else 'log-only'))
 def arm_hotkey(shell, requested: str):
     """Register `requested`, then the fallbacks; return the live thread or None.
 
@@ -4273,7 +4553,7 @@ def arm_hotkey(shell, requested: str):
         tried.append((accelerator, thread.register_error))
         log(f'HOTKEY_TRY_FAILED accelerator={accelerator} '
             f'winerror={thread.register_error}')
-    warn_hotkey_unavailable(requested, tried)
+    warn_hotkey_unavailable(requested, tried, getattr(shell, 'tray', None))
     return None
 
 
@@ -4651,6 +4931,16 @@ BOOTSTRAP_JS = r"""
       return Promise.resolve({ liveEnabled: want });
     },
 
+    // THE TRANSLATION TARGET (owner, 2026-10-21). The 3-dot menu's selector sends
+    // the chosen language here; `''` means the DEFAULT POLICY (English for every
+    // video, Spanish stays Spanish). A non-empty code forces that target for
+    // EVERY video. The shell stores it and the caption fetcher reads it.
+    setTranslationTarget: function (lang) {
+      var want = String(lang == null ? '' : lang);
+      post('translation-target', { lang: want });
+      return Promise.resolve({ lang: want });
+    },
+
     // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
     // always called `bridge.pause()`; the shell never had it, so the dialog
     // said "este shell ainda não consegue pausar". The shell now stops the
@@ -4930,6 +5220,14 @@ BRIDGE_PROBE = r"""
     status: (() => {
       const s = document.getElementById('status');
       return { text: (document.getElementById('status-text') || {}).textContent || '',
+               // THE WORKER'S OWN CAUSE (owner, 2026-10-21). The panel shows only
+               // `ready` / `not ready`; the cause moved into the 3-dot menu
+               // (`#panel-menu-cause`, mirrored on `documentElement.dataset.workerCause`).
+               // A dump that reads only `text` above can no longer see the device,
+               // so the cause is published HERE too.
+               cause: (document.getElementById('panel-menu-cause') || {}).textContent
+                      || (document.documentElement.dataset ? document.documentElement.dataset.workerCause : '')
+                      || '',
                className: s ? String(s.className) : null,
                error: !!(s && s.classList.contains('status--error')),
                live: !!(s && s.classList.contains('status--live')),
@@ -5395,6 +5693,8 @@ class SottoHost:
             # before this entry it was not, so the button said so in its title.
             'setLiveEnabled': ('shell', '_set_live_enabled'),
             'sotto:setLiveEnabled': ('shell', '_set_live_enabled'),
+            # THE TRANSLATION TARGET (owner, 2026-10-21): the 3-dot menu's selector.
+            'translation-target': ('host', '_translation_target'),
             # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
             'pause': ('shell', '_pause_shell'),
             'sotto:pause': ('shell', '_pause_shell'),
@@ -5532,6 +5832,24 @@ class SottoHost:
     def _status_applied(self, payload):
         text = (payload or {}).get('text', '')
         log(f'STATUS_APPLIED text={json.dumps(text)}')
+
+    def _translation_target(self, payload):
+        """The 3-dot menu's translation choice reached the shell.
+
+        `lang == ''` restores the DEFAULT POLICY (English for every video,
+        Spanish stays Spanish); a base code forces that target for every video.
+        The chosen code is stored on the `youtube_captions` module, which the
+        caption fetcher reads when it picks a track -- so the override is one
+        fact, not a second table.
+        """
+        code = str((payload or {}).get('lang') or '').strip().lower()
+        try:
+            import youtube_captions
+            applied = youtube_captions.set_target_language(code)
+        except Exception as exc:  # noqa: BLE001
+            log(f'TRANSLATION_TARGET_FAILED code={json.dumps(code)} error={exc!r}')
+            return
+        log(f'TRANSLATION_TARGET code={json.dumps(code)} applied={json.dumps(applied)}')
 
     def _caption_cleared(self, payload):
         remaining = (payload or {}).get('remaining', 0)
@@ -6057,6 +6375,114 @@ class SottoShell:
         self.window.events.closing += self._on_closing
         return self.window
 
+    # ── O CAO-DE-GUARDA DA THREAD DE UI (2026-10-23) ──────────────────────────
+    # O dono, verbatim: *"o sotto travou. nao deve travar nunca. faça isso
+    # acontecer. a ui dele tambem, a legenda e o painel de baixo, tao congelados
+    # na minha tela enchendo o saco"*.
+    #
+    # MEDIDO na sessao das 22:32 (pid 68572): a app estava a mostrar legendas
+    # (`CAPTION_APPLIED text="We explain everything there."`) e, depois do
+    # `FORM_SHOW_TRANSPARENCY_HACK ... on the UI thread`, o log PAROU em
+    # 22:32:56.566 e as DUAS janelas -- `class=SottoNativeCaption` e
+    # `class=WindowsForms10.Window...` -- ficaram congeladas no ecra ate o
+    # processo ser morto a mao. A causa e uma so: a thread de UI parou, e o
+    # painel, a legenda (`CAPTION_OVERLAY_PUSH ... post=ui`) e os escritores de
+    # estado dependem todos dela.
+    #
+    # Este cao-de-guarda NAO depende de o codigo da app cooperar. `SendMessage`
+    # com `SMTO_ABORTIFHUNG` e a definicao do Windows de "esta janela responde?";
+    # quando dois pedidos seguidos nao voltam, a UI esta presa de facto. Antes de
+    # sair, DESPEJA A PILHA DE TODAS AS THREADS -- e a unica prova que diz a
+    # LINHA do bloqueio em vez de "travou". Sair e deliberado e e a garantia que
+    # o dono pediu: uma app congelada nunca fica no ecra.
+    #
+    # NAO conta golpes antes da primeira resposta: um arranque em que a UI ainda
+    # nao bombeou (WebView2 a inicializar) nao e um congelamento, e matar a app
+    # por isso seria trocar um defeito por outro.
+    UI_WATCHDOG_POLL_S = 5.0
+    UI_WATCHDOG_TIMEOUT_MS = 4000
+    UI_WATCHDOG_STRIKES = 2
+
+    def _dump_thread_stacks(self, reason):
+        """A pilha de cada thread, uma linha por frame: a prova do bloqueio."""
+        import traceback
+        frames = sys._current_frames()
+        log('UI_HUNG reason=%s threads=%d' % (reason, threading.active_count()))
+        for thread in threading.enumerate():
+            frame = frames.get(thread.ident)
+            log('UI_HUNG_THREAD name=%s ident=%s daemon=%s'
+                % (thread.name, thread.ident, thread.daemon))
+            if frame is None:
+                log('UI_HUNG_FRAME <sem frame>')
+                continue
+            stack = traceback.format_stack(frame)[-14:]
+            for chunk in stack:
+                for line in chunk.rstrip().splitlines():
+                    log('UI_HUNG_FRAME ' + line.strip()[:160])
+
+    def _start_ui_watchdog(self):
+        if getattr(self, '_ui_watchdog_started', False):
+            return
+        hwnd = self.hwnd
+        if not hwnd:
+            log('UI_WATCHDOG_SKIPPED reason=no-hwnd')
+            return
+        self._ui_watchdog_started = True
+        log('UI_WATCHDOG_STARTED hwnd=%s poll_s=%s timeout_ms=%s strikes=%s'
+            % (hwnd, self.UI_WATCHDOG_POLL_S, self.UI_WATCHDOG_TIMEOUT_MS,
+               self.UI_WATCHDOG_STRIKES))
+        send = user32.SendMessageTimeoutW
+        send.restype = ctypes.c_size_t
+        send.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t,
+                         ctypes.c_ssize_t, ctypes.c_uint, ctypes.c_uint,
+                         ctypes.POINTER(ctypes.c_size_t)]
+        SMTO_ABORTIFHUNG = 0x0002
+        WM_NULL = 0x0000
+
+        def loop():
+            answered_once = False
+            strikes = 0
+            while True:
+                time.sleep(self.UI_WATCHDOG_POLL_S)
+                result = ctypes.c_size_t(0)
+                try:
+                    got = send(ctypes.c_void_p(hwnd), WM_NULL, 0, 0,
+                               SMTO_ABORTIFHUNG, self.UI_WATCHDOG_TIMEOUT_MS,
+                               ctypes.byref(result))
+                except Exception as exc:  # noqa: BLE001
+                    log('UI_WATCHDOG_ERROR error=%r' % (exc,))
+                    continue
+                if got:
+                    answered_once = True
+                    if strikes:
+                        log('UI_WATCHDOG_RECOVERED strikes=%d' % strikes)
+                    strikes = 0
+                    continue
+                if not answered_once:
+                    log('UI_WATCHDOG_NOANSWER_BEFORE_FIRST reason=startup')
+                    continue
+                strikes += 1
+                log('UI_WATCHDOG_STRIKE strike=%d hwnd=%s err=%s'
+                    % (strikes, hwnd, ctypes.get_last_error()))
+                if strikes < self.UI_WATCHDOG_STRIKES:
+                    continue
+                # A UI esta presa de facto: dizer ONDE, e sair para nao deixar
+                # uma janela congelada no ecra do dono.
+                self._dump_thread_stacks('ui-thread-not-responding')
+                log('UI_WATCHDOG_EXIT code=9 -- a UI estava presa; a sair para '
+                    'nao deixar janelas congeladas no ecra')
+                try:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                except Exception as exc:  # noqa: BLE001
+                    log('UI_WATCHDOG_FLUSH_FAILED error=%r' % (exc,))
+                time.sleep(0.3)
+                os._exit(9)
+
+        self._ui_watchdog = threading.Thread(target=loop, name='sotto-ui-watchdog',
+                                             daemon=True)
+        self._ui_watchdog.start()
+
     def _form(self):
         return getattr(self.window, 'native', None)
 
@@ -6072,6 +6498,9 @@ class SottoShell:
         except Exception:
             self.hwnd = None
         self.webview2 = form.webview
+        # O cao-de-guarda da thread de UI: começa aqui porque e aqui que o
+        # painel passa a ter HWND. Ver `_start_ui_watchdog`.
+        self._start_ui_watchdog()
 
         # ── THE FORM'S OWN BACKGROUND IS THE FAILURE-MODE COLOUR ──────────────
         # The panel is a transparent WinForms form: pywebview sets
@@ -7432,6 +7861,28 @@ class SottoShell:
             parts.append(f'reason={reason}')
         return ' <!-- ' + ' '.join(parts) + ' -->'
 
+    @staticmethod
+    def _history_last_body(path):
+        """O `text` da ULTIMA linha do ficheiro, sem hora e sem proveniencia.
+
+        A linha gravada e `- [HH:MM:SS] frase <!-- route=... -->` (ver
+        `_history_provenance`). Para comparar frases, e preciso tirar as duas
+        pontas -- senao duas linhas iguais nunca seriam iguais.
+        """
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                last = None
+                for line in handle:
+                    if line.strip():
+                        last = line.rstrip('\r\n')
+        except OSError:
+            return None
+        if not last:
+            return None
+        body = re.sub(r'\s*<!--.*?-->\s*$', '', last)
+        match = re.match(r'^- \[\d{2}:\d{2}:\d{2}\] (.*)$', body)
+        return (match.group(1) if match else body).strip()
+
     def history_append(self, text, options=None):
         """Append ONE committed caption. Returns the entry as written, or None."""
         body = re.sub(r'\s+', ' ', str(text or '')).strip()
@@ -7447,6 +7898,15 @@ class SottoShell:
             return None
         now = time.localtime()
         path = self._history_path_for(now)
+        # B5 (dono, verbatim: *"coisa duplicada"*): a MESMA linha nao entra duas
+        # vezes seguidas. Medido no painel de 2026-10-23: `live.count=2` com duas
+        # `[committed]` identicas -- `'Seems more expensive than using Opus 55.'`.
+        # Compara-se so com a ULTIMA linha do ficheiro: uma frase repetida horas
+        # depois e outra frase, e continua a entrar.
+        if self._history_last_body(path) == body:
+            log('HISTORY_DUPLICATE_SKIPPED time=%s bytes=%d'
+                % (time.strftime('%H:%M:%S'), len(body.encode('utf-8'))))
+            return None
         entry = {
             'date': time.strftime('%Y-%m-%d', now),
             'hour': time.strftime('%H', now),
@@ -7847,6 +8307,11 @@ class SottoShell:
         if self.hwnd is None:
             return False
         hide_window(self.hwnd)
+        # O HOOK SAI COM O PAINEL (2026-10-23). Enquanto o painel esta escondido
+        # nao ha nada para "fechar com um clique fora", logo nao ha razao nenhuma
+        # para o rato do dono passar por um callback Python. Ver `__init__`.
+        if self.click_watcher is not None:
+            self.click_watcher.armed = False
         self.visible = window_visible(self.hwnd)
         log(f'PANEL_HIDDEN reason={reason} '
             f'visible={str(self.visible).lower()}')
@@ -8592,13 +9057,68 @@ class SottoShell:
             delay_s = max(0.0, float(delay_s))
         except (TypeError, ValueError):
             delay_s = WORKER_PRELOAD_DELAY_S
-        timer = threading.Timer(delay_s, self._preload_worker)
-        timer.daemon = True
-        timer.name = 'sotto-worker-preload'
-        self._preload_timer = timer
-        timer.start()
-        log(f'WORKER_PRELOAD scheduled delay_s={delay_s}')
+        # UM WATCHER, NAO UM TIMER (2026-10-23). Um `Timer` dispara ao segundo 20 e
+        # nao sabe o que o dono esta a fazer; o watcher espera que ele pare. O
+        # `_preload_timer` fica com a thread para o caso de alguem a querer cancelar.
+        watcher = threading.Thread(target=self._preload_when_idle, args=(delay_s,),
+                                   name='sotto-worker-preload', daemon=True)
+        self._preload_timer = watcher
+        watcher.start()
+        log(f'WORKER_PRELOAD scheduled delay_s={delay_s} idle_s={WORKER_PRELOAD_IDLE_S} '
+            f'ceiling_s={WORKER_PRELOAD_MAX_WAIT_S}')
         return True
+
+    def _owner_idle_s(self):
+        """Segundos desde o ultimo input do dono (rato/teclado), ou None.
+
+        `GetLastInputInfo` e a fonte do Windows para "ha quanto tempo o utilizador
+        nao mexe em nada" -- e e a unica que responde a pergunta certa: o preload
+        nao pode competir com o dono. Devolve None quando nao se consegue ler (a
+        chamada seguinte trata None como "nao sei" e usa o tecto).
+        """
+        if os.name != 'nt':
+            return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class LASTINPUTINFO(ctypes.Structure):
+                _fields_ = [('cbSize', wintypes.UINT), ('dwTime', wintypes.DWORD)]
+
+            info = LASTINPUTINFO()
+            info.cbSize = ctypes.sizeof(LASTINPUTINFO)
+            if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+                return None
+            now = ctypes.windll.kernel32.GetTickCount()
+            # Os dois sao DWORD e dao a volta a cada 49,7 dias: a mascara faz a
+            # diferenca certa tambem quando o contador passa por zero.
+            return max(0.0, ((int(now) - int(info.dwTime)) & 0xFFFFFFFF) / 1000.0)
+        except Exception as exc:  # noqa: BLE001
+            log(f'WORKER_PRELOAD idle-read-failed error={exc!r}')
+            return None
+
+    def _preload_when_idle(self, delay_s):
+        """O corpo do agendamento: esperar pelo dono quieto, com tecto."""
+        t0 = time.time()
+        try:
+            base = max(0.0, float(delay_s))
+        except (TypeError, ValueError):
+            base = WORKER_PRELOAD_DELAY_S
+        ceiling = t0 + base + WORKER_PRELOAD_MAX_WAIT_S
+        while time.time() < ceiling:
+            if getattr(self, 'bridge', None) is not None:
+                log('WORKER_PRELOAD skipped reason=worker-already-running')
+                return False
+            waited = time.time() - t0
+            idle = self._owner_idle_s()
+            if waited >= base and (idle is None or idle >= WORKER_PRELOAD_IDLE_S):
+                log('WORKER_PRELOAD start waited_s=%.1f owner_idle_s=%s'
+                    % (waited, 'unknown' if idle is None else '%.1f' % idle))
+                return self._preload_worker()
+            time.sleep(WORKER_PRELOAD_POLL_S)
+        log('WORKER_PRELOAD start waited_s=%.1f reason=idle-ceiling'
+            % (time.time() - t0,))
+        return self._preload_worker()
 
     def _preload_worker(self):
         """The preload's body: start the worker, unless there is no reason to."""
@@ -8934,11 +9454,24 @@ class SottoShell:
             except Exception:
                 pass
 
-    def push_caption_to_window(self, text, previous=None, credits=None):
+    def push_caption_to_window(self, text, previous=None, credits=None, instant=False,
+                               rows=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
             return False
+        # THE PLAYER'S ROWS TRAVEL AS ONE TEXT, ONE PER LINE (2026-10-29).
+        # `caption_overlay._layout` sees the '\n' and draws them AS GIVEN --
+        # it never calls `caption_wrap` on this channel. The trailing
+        # terminator marks even a ONE-row window as pre-broken, so a lone
+        # long row cannot be re-wrapped at a word YouTube did not break at.
+        if rows:
+            import youtube_reveal
+            text = youtube_reveal.rows_text(rows)
+            # A rows window is ALREADY the player's painted frame: it must
+            # never sprout again (`set_text(instant=False)` would flatten it
+            # to the first word and re-reveal with spaces).
+            instant = True
         # O INTERRUPTOR DO DONO E A CONDICAO. Sem isto cada linha levantava a
         # janela sozinha -- medido no log de 2026-10-17: `CAPTION_OVERLAY_PUSH
         # count=1 visible=true hwnd=1775132` sem nenhum clique no botao -- e o
@@ -8948,33 +9481,83 @@ class SottoShell:
         if not getattr(self, '_caption_wanted', False):
             return False
         self._caption_window_shown = True
+        # ── A LEGENDA NAO ESPERA NA FILA DA UI (2026-10-23) ────────────────
+        # O dono, verbatim: *"mas ta ate fora de sync, porra"*.
+        #
+        # MEDIDO na sessao das 22:32 (pid 68572): dois
+        # `CAPTION_OVERLAY_PUSH_ENTER ... post=ui` (22:32:46.109 e
+        # 22:32:47.484) NUNCA tiveram o `CAPTION_OVERLAY_PUSH` correspondente --
+        # o texto entrou na fila da thread de UI e nao foi pintado, enquanto o
+        # player continuava a andar. A fila E o atraso: cada item leva o texto
+        # do instante em que foi ENFILEIRADO, e a UI pinta-os por ordem.
+        #
+        # Cura: UM so slot. O push novo SOBRESCREVE o que ainda nao foi pintado
+        # e a thread de UI pinta sempre o MAIS RECENTE -- nunca um texto velho.
+        # Fica um unico `_post` em voo; os seguintes so substituem o slot.
+        # A idade vai para o log (`CAPTION_OVERLAY_LAG age_ms=`), para o desvio
+        # deixar de ser impressao e passar a ser numero.
+        #
+        # A trava do `_post` em voo TEM VALIDADE (`2 s`): se um post se perder,
+        # sem isto a legenda nunca mais voltava a ser pintada -- trocava-se um
+        # atraso por um silencio.
+        now = time.time()
+        self._caption_pending = (now, text or '', previous or '')
         dbg = self._overlay_pushes < 3
 
-        def _apply():
-            # ON THE UI THREAD, via `_post`. `ShowWindow`/`SetWindowPos` on a
-            # native window owned by the UI thread BLOCK the calling thread
-            # until the owner pumps, and the watcher thread held the GIL while
-            # waiting -> the caption window never showed (measured 2026-10-17:
-            # `CAPTION_OVERLAY_PUSH_AFTER_SET` then silence).
+        def _drain():
+            self._caption_drain_posted = False
+            pending = getattr(self, '_caption_pending', None)
+            if pending is None:
+                return
+            enqueued, new_text, new_prev = pending
+            self._caption_pending = None
+            age_ms = int((time.time() - enqueued) * 1000)
             try:
                 ov.set_work_area(self.work_area(),
                                  (self.display or {}).get('scaleFactor') or 1.0)
-                ov.set_text(text or '', previous or '')
+                ov.set_text(new_text, new_prev, instant)
                 ov.show(True)
                 self._overlay_pushes += 1
+                # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
+                # "Alt+C -> legenda no ecra em 1,5 s" nao tinha instrumento: a PRESSao
+                # esta no log desde sempre (`HOTKEY_PRESSED`, com o carimbo de tempo de
+                # `log()`), mas a PINTURA so aparecia em `count=1/50/500` e nas linhas
+                # `CAPTION_OVERLAY_LAG` -- logo a segunda legenda da sessao nao deixava
+                # rasto nenhum, e nao havia como medir diferenca nenhuma. Esta linha sai
+                # UMA vez por legenda que NASCE (texto vazio -> texto), que e exactamente
+                # o evento que o dono ve, com o `instant` do caminho (o YouTube entrega o
+                # prefixo ja revelado) e o hwnd. Nao muda o desenho: escreve no log.
+                was_blank = not (getattr(self, '_caption_painted', '') or '').strip()
+                self._caption_painted = new_text or ''
+                if was_blank and (new_text or '').strip():
+                    log(f'CAPTION_PAINT instant={str(bool(instant)).lower()} '
+                        f'hwnd={ov.hwnd} text={json.dumps(new_text[:60])}')
+                if age_ms >= 100:
+                    log(f'CAPTION_OVERLAY_LAG age_ms={age_ms} '
+                        f'count={self._overlay_pushes} '
+                        f'text={json.dumps(new_text[:60])}')
                 if self._overlay_pushes in (1, 50, 500):
                     log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
                         f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
-                        f'text={json.dumps((text or "")[:60])}')
+                        f'text={json.dumps(new_text[:60])}')
             except Exception as exc:  # noqa: BLE001
                 log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
 
         if dbg:
             log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} post=ui')
+        in_flight = (getattr(self, '_caption_drain_posted', False)
+                     and (now - getattr(self, '_caption_drain_posted_at', 0.0)) < 2.0)
+        if in_flight:
+            # Ja ha um push em voo: o slot foi substituido e a UI vai pintar o
+            # texto NOVO quando chegar. Nao se enfileira mais nada.
+            self._arm_caption_idle_hide()
+            return True
+        self._caption_drain_posted = True
+        self._caption_drain_posted_at = now
         try:
-            self._post(_apply)
+            self._post(_drain)
         except Exception:  # noqa: BLE001
-            _apply()
+            _drain()
         self._arm_caption_idle_hide()
         return True
 
@@ -9044,7 +9627,7 @@ class SottoShell:
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
 
-    def external_caption(self, text, source, final=False):
+    def external_caption(self, text, source, final=False, instant=False, rows=None):
         """One line read from the PLAYER's own captions (YouTube/Stremio).
 
         THE OWNER'S TWO COMPLAINTS, 2026-10-18, both fixed HERE because this is
@@ -9070,6 +9653,13 @@ class SottoShell:
         text = clean_external_text(text)
         if not text:
             return False
+        # EACH ROW IS CLEANED LIKE A LINE, not only the first: the `>>` marker
+        # is per cue (measured on the 16 recorded samples: cue 1..N each carry
+        # it), and `clean_external_text` only strips at the FRONT of what it
+        # is given. The panel still gets the last line; the native overlay
+        # gets the whole window.
+        if rows:
+            rows = [row for row in (clean_external_text(x) for x in rows) if row]
         prev = str(getattr(self, '_external_last_text', '') or '')
         if extends_previous(prev, text):
             final = False
@@ -9104,7 +9694,7 @@ class SottoShell:
         # history, because the engine appends a new partial before its hold
         # timer commits the previous one.
         self.emit('external-caption', {'text': text, 'meta': meta})
-        self.push_caption_to_window(text)
+        self.push_caption_to_window(text, instant=instant, rows=rows)
         if final:
             self._reload_policy.boundary(closed=True, why='external-line')
         return True
@@ -9270,12 +9860,18 @@ class SottoShell:
         return True
 
     def start_click_watcher(self) -> bool:
-        """Arm the outside-click watcher (see `OutsideClickWatcher`)."""
+        """Arm the outside-click watcher (see `OutsideClickWatcher`).
+
+        O QUE `True` SIGNIFICA AQUI (mudou em 2026-10-23): a THREAD do loop esta
+        viva. O `WH_MOUSE_LL` instala-se na primeira vez que o painel aparecer
+        (`armed`), e sai quando ele se esconde. O aviso de falha fala da thread,
+        nao do hook, porque e isso que este passo pode verificar.
+        """
         self.click_watcher = OutsideClickWatcher(self)
         ok = self.click_watcher.start()
         if not ok:
-            warn('OUTSIDE_CLICK_UNAVAILABLE the low-level mouse watcher did not '
-                 'install; the panel still opens and closes with Alt+C')
+            warn('OUTSIDE_CLICK_UNAVAILABLE the watcher thread did not start; '
+                 'the panel still opens and closes with Alt+C')
         return ok
 
     def run_outside_click_probe(self):
@@ -12963,24 +13559,24 @@ class WorkerBridge:
         # time; a no-audio death -- the worker doing its job on a machine with nothing
         # routed yet -- prices itself in minutes and has its own counter, so a genuine
         # break is still answered fast and an unrouted desktop is answered slowly.
-            # O TECTO. Ver `no_audio_restart_cap`: depois de tantas mortes seguidas por
-            # silencio, REINICIAR NAO PODE ARRANJAR NADA -- um veredicto de dispositivo
-            # silencioso diz que a ROTAGEM esta errada, e recarregar 1 GB de modelo nao
-            # mexe numa rotagem. So custa 36 s de disco, RAM e GPU a cada volta. Para.
-            if self.no_audio_restarts >= self.no_audio_restart_cap:
-                self.log(f'BRIDGE_RESTART_SUPPRESSED reason={reason} ladder=no-audio '
-                         f'no_audio_restarts={self.no_audio_restarts} '
-                         f'cap={self.no_audio_restart_cap} '
-                         'why=restarting-cannot-fix-a-routing-problem '
-                         'resume=press-Alt+C')
-                self.pending_error = {
-                    'state': NO_AUDIO_STATE,
-                    'text': ('Nada foi roteado para o Sotto, e o Sotto parou de '
-                             'recarregar o modelo para nao queimar o PC. Confere a '
-                             'rotagem (VoiceMeeter / som do Windows) e aperta Alt+C, '
-                             'que ele tenta de novo.'),
-                }
-                return
+        # O TECTO. Ver `no_audio_restart_cap`: depois de tantas mortes seguidas por
+        # silencio, REINICIAR NAO PODE ARRANJAR NADA -- um veredicto de dispositivo
+        # silencioso diz que a ROTAGEM esta errada, e recarregar 1 GB de modelo nao
+        # mexe numa rotagem. So custa 36 s de disco, RAM e GPU a cada volta. Para.
+        if self.no_audio_restarts >= self.no_audio_restart_cap:
+            self.log(f'BRIDGE_RESTART_SUPPRESSED reason={reason} ladder=no-audio '
+                     f'no_audio_restarts={self.no_audio_restarts} '
+                     f'cap={self.no_audio_restart_cap} '
+                     'why=restarting-cannot-fix-a-routing-problem '
+                     'resume=press-Alt+C')
+            self.pending_error = {
+                'state': NO_AUDIO_STATE,
+                'text': ('Nada foi roteado para o Sotto, e o Sotto parou de '
+                         'recarregar o modelo para nao queimar o PC. Confere a '
+                         'rotagem (VoiceMeeter / som do Windows) e aperta Alt+C, '
+                         'que ele tenta de novo.'),
+            }
+            return
         if no_audio:
             delay = min(self.no_audio_backoff_max,
                         self.no_audio_backoff_base * (2 ** self.no_audio_restarts))

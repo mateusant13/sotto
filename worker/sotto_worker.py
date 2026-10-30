@@ -655,6 +655,23 @@ class StreamAsr:
 
         so = ort.SessionOptions()
         so.log_severity_level = 3
+        # ── A/B DE LOAD, MEDIDO 2026-10-23 ──────────────────────────────────
+        # O proprio worker reporta `load_phases_s`: **encoder 19.013 s** de 22.8 s
+        # (decoder 0.209, joint 0.116), com `cuda_dirs_ms=1824` e
+        # `provider_probe_ms=343`. Ou seja: o custo do arranque nao esta no disco,
+        # nem no decoder, nem no joint -- esta na sessao do ENCODER.
+        # `SOTTO_LOAD_AB` existe para medir UM travao de cada vez sem tocar no
+        # caminho por omissao (o produto fica igual ate a medicao decidir):
+        #   bytes -> os pesos vao do ficheiro directo para a sessao (menos copia)
+        #   basic -> optimizacao de grafo BASIC (menos trabalho no load)
+        _ab = os.environ.get('SOTTO_LOAD_AB', '').strip().lower()
+        if 'bytes' in _ab:
+            try:
+                so.add_session_config_entry('session.use_ort_model_bytes_directly', '1')
+            except Exception:
+                pass
+        if 'basic' in _ab:
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
         try:
             so.intra_op_num_threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
             so.inter_op_num_threads = 1
@@ -3215,6 +3232,56 @@ def chunk_is_continuation(vocab, ids) -> bool:
     return False
 
 
+#: A COMMA FOLLOWED BY A TERMINAL IS NEVER SOMETHING THE OWNER MEANT TO READ.
+#: Owner, 2026-10-21, verbatim: *"legenda que termina em vírgula"* and, from the
+#: live box, `… enfim,.`. The model emits the comma as the LAST token of a chunk
+#: when it is still unsure whether the sentence continues; the line then closes on
+#: the cap, on a silence, or on the model's own period that lands in the NEXT
+#: chunk, and the seam is published with both marks. Nothing here rewrites a word:
+#: it removes a separator that is already contradicted by the mark beside it.
+LINE_TIDY_FIX = {
+    ",.": ".",
+    ",!": "!",
+    ",?": "?",
+    ",;": ";",
+    ",:": ":",
+}
+
+#: A FINAL line never ends on these. A partial may -- a growing sentence really is
+#: mid-clause -- but a line the worker has CLOSED is a finished sentence, and the
+#: owner reads it in the transcript. Measured complaint: *"legenda que termina em
+#: vírgula"*.
+LINE_TRAILING_JUNK = ",;:"
+
+
+def tidy_line(text):
+    """Collapse a separator the adjacent mark has already overruled.
+
+    Deliberately NOT a punctuation rewriter:
+      * a lone comma is left alone (the sentence may continue);
+      * `...` and `…` are left alone (an ellipsis is three dots on purpose);
+      * no character is ever ADDED -- this only ever removes a comma that sits
+        directly before a stronger mark, or a doubled comma.
+    """
+    if not text:
+        return text
+    out = text
+    for bad, good in LINE_TIDY_FIX.items():
+        while bad in out:
+            out = out.replace(bad, good)
+    while ",," in out:
+        out = out.replace(",,", ",")
+    return out
+
+
+def tidy_final(text):
+    """`tidy_line` plus: a CLOSED line does not end on a comma, semicolon or colon."""
+    out = tidy_line(text)
+    while out and out[-1] in LINE_TRAILING_JUNK:
+        out = out[:-1].rstrip()
+    return out
+
+
 def join_fragments(frags) -> str:
     """Join `(text, continues)` pairs: a CHUNK boundary is NOT a word boundary.
 
@@ -3241,6 +3308,67 @@ def join_fragments(frags) -> str:
         else:
             out += " " + text
     return out.strip()
+
+
+def stable_text(frags) -> str:
+    """O texto da linha SEM a ultima palavra, enquanto essa palavra nao estiver
+    provada.
+
+    O DONO, 2026-10-30, verbatim: *"faz sotto identificar palavras que ainda nao
+    estao completas e nao dar display. nunca vai dar display por exemplo em 'so'
+    sem esperar virar 'sou'. em qualquer lingua"*.
+
+    O PROBLEMA. A ultima palavra de um PARCIAL nunca esta provada: o modelo
+    pode ter cortado a palavra a meio (`próx` | `ima`), e o parcial ja foi
+    para o ecra. O dono le "so" quando a palavra completa e "sou" (ou "sozinho",
+    ou "sofá"), e a correcao chega um instante depois -- o que faz a legenda
+    tremer e, pior, ENSINA o dono a ler palavras erradas.
+
+    A REGRA. Uma palavra so e MOSTRADA quando a proxima evidencia prova que
+    acabou:
+      * o fragmento seguinte NAO continua a palavra (o veredicto do tokenizer,
+        `chunk_is_continuation`), ou
+      * a linha fechou (o fim do audio e a prova definitiva).
+
+    Como o veredicto do tokenizer so chega no fragmento SEGUINTE, a palavra
+    final de um parcial e, por construcao, sospeitosa -- e e exatamente essa
+    palavra que fica de fora ate que a prova chegue. O texto que o dono ve e
+    o texto que ja NAO pode mudar.
+
+    ISTO E INDEPENDENTE DA LINGUA. A regra nao conhece palavras, dicionarios
+    nem linguas: ela usa o facto do TOKENIZADOR (o marcador `▁` do SentencePiece,
+    que so aparece no inicio de uma palavra), e o tokenizer e o mesmo para
+    qualquer lingua. `so`/`sou` e `próx`/`próximo` seguem a MESMA regra, porque
+    a regra nao le a palavra -- le a MARCA.
+
+    A EXCEPCAO -- a palavra final que ja nao pode crescer. Se o fragmento
+    TERMINA em pontuacao (`.`, `?`, `!`, `,`, `;`, `:`), a palavra antes dela
+    esta provada: nenhum token de continuacao pode vir depois de um ponto.
+    Sem esta excepcao, um "sim." no fim de um chunk ficaria sem a ultima
+    palavra ate o proximo chunk -- e uma linha terminada ficaria truncada.
+
+    O QUE ESTA FUNCAO NAO FAZ: nao apaga palavras do texto FINAL. A linha
+    fechada e a que entra no historico, e ela sai com a palavra toda -- o
+    dono le a frase completa no historico, e le o parcial sem a palavra
+    suspeita. A razao de a diferenca ser desejada esta no §"O QUE ESTA
+    FUNCAO NAO FAZ" do modulo: uma palavra e MOSTRADA quando se sabe que e a
+    palavra, e escondida enquanto nao se sabe.
+    """
+    text = join_fragments(frags)
+    if not text:
+        return ""
+    # A ultima palavra esta provada quando o texto TERMINA em pontuacao: um
+    # token de continuacao nao pode vir depois de um ponto final.
+    if text[-1] in ".?!,;:":
+        return text
+    # O texto pode ter varias linhas (o `rows_text` do canal do YouTube usa
+    # `\n`), mas o `LineFormer` nunca produz um -- a regra opera na ultima
+    # palavra do texto inteiro.
+    corte = text.rfind(" ")
+    if corte <= 0:
+        # Ha SO uma palavra: nada de estavel ainda, porque ela e a ultima.
+        return ""
+    return text[:corte].rstrip()
 
 
 class LineFormer:
@@ -3355,12 +3483,12 @@ class LineFormer:
         self.source = source or None
 
     def line(self):
-        return join_fragments(self._words)
+        return tidy_line(join_fragments(self._words))
 
     def _worthy(self, text):
         return len(text.strip()) >= self.min_chars
 
-    def _event(self, text, final=False, closed=False):
+    def _event(self, text, final=False, closed=False, stable=False):
         event = {
             "type": "caption",
             "text": text,
@@ -3398,6 +3526,24 @@ class LineFormer:
             # `line_events()` can normalise both channels through one shape.
             "final": bool(final),
             "closed": bool(closed),
+            # A PALAVRA JA ESTA PROVADA (owner, 2026-10-30: *"faz sotto
+            # identificar palavras que ainda nao estao completas e nao dar
+            # display"*). O texto deste evento ja nao tem palavra suspecta: a
+            # ultima palavra foi provada pelo veredicto do tokenizer ou pelo
+            # fim da linha.
+            #
+            # O PAINEL TAMBEM SEGURA A ULTIMA PALAVRA da cauda (o hold-back do
+            # LocalAgreement-2, `panel.js renderProvisional`). Sem este sinal,
+            # as DUAS camadas segurariam uma palavra cada e o dono perderia
+            # DUAS palavras do ecra -- o dobro do que pediu. Com ele, o painel
+            # sabe que o texto que recebeu ja esta estavel e nao segura mais
+            # nada.
+            #
+            # A chave e ADICIONADA, nunca renomeada: `final`/`closed`/`source`
+            # mantem os seus meanings exactos, e um consumidor que a ignore
+            # (o `panel.js` antigo, o history store) ve o mesmo evento de
+            # sempre.
+            "stable": bool(stable),
             # STEP 3 -- WHERE THIS AUDIO CAME FROM. Present ONLY when the former
             # was given a source (every live tap has one; `--selftest` and the
             # file arm have none, so their events stay byte-identical to before
@@ -3527,7 +3673,10 @@ class LineFormer:
         return event
 
     def _close(self):
-        text = self.line()
+        # A CLOSED line does not end on a comma (owner: *"legenda que termina em
+        # vírgula"*). `tidy_final` also collapses `,.` -- the seam the live box
+        # showed him -- so the closed line and the partial above it agree.
+        text = tidy_final(self.line())
         out = []
         if text and self._worthy(text):
             # THE CLOSE GOES OUT OF BAND (M2), once, and it is the only event
@@ -3543,13 +3692,13 @@ class LineFormer:
             # (arms 6/8/9/10 of `_main/caption-lines-oracle.py`) and publishing
             # the close on its own channel fixes that without moving the events
             # the renderer sees.
-            self._closed.append(self._event(text, final=True, closed=True))
+            self._closed.append(self._event(text, final=True, closed=True, stable=True))
             if text != self._shown:
                 # `emit_partial=False`: the closed line was never shown, so this
                 # IS its publication. It stays a PARTIAL on the wire — `final` is
                 # the out-of-band channel's mark — and the live path still
                 # publishes the transcript's copy from the second pass.
-                out.append(self._event(text))
+                out.append(self._event(text, stable=True))
         self._words, self._start, self._end, self._shown = [], None, None, None
         self._chunk_start = None
         self._chunks = []
@@ -3611,8 +3760,33 @@ class LineFormer:
         if line and line[-1] in LINE_TERMINAL:
             out += self._close()
         elif self.emit_partial and self._worthy(line):
-            self._shown = line
-            out.append(self._event(line))
+            # A PALAVRA FINAL DE UM PARCIAL NAO ESTA PROVADA (owner, 2026-10-30:
+            # *"faz sotto identificar palavras que ainda nao estao completas e nao
+            # dar display ... 'so' sem esperar virar 'sou'"*). O parcial mostra
+            # o texto ESTAVEL -- tudo menos a ultima palavra, que ainda pode
+            # crescer quando o proximo fragmento continuar.
+            #
+            # A PALAVRA JA PROVADA pelo fragmento seguinte volta no partial
+            # SEGUINTE: `stable_text` volta a inclui-la, porque o veredicto do
+            # tokenizer (`continues`) ja a fixou. O que o dono ve e sempre o
+            # texto que ja nao pode mudar.
+            estavel = stable_text(self._words)
+            if self._worthy(estavel) and estavel != self._shown:
+                # O texto estavel so vai para o ecra quando MUDA. Um parcial
+                # identico ao anterior e uma reescrita do mesmo texto: o dono
+                # veria a legenda "piscar" sem mudar de conteudo, e o painel
+                # gastaria uma repintura para nada.
+                self._shown = estavel
+                out.append(self._event(estavel, stable=True))
+            # A linha so tem a palavra suspeita: NAO ha nada estavel para
+            # mostrar, e o dono pediu exatamente isso ("nao dar display").
+            #
+            # E `self._shown` NAO e posto aqui. `_shown` e o texto que o dono
+            # JA VIU, e ele nao viu este: o `_close` compara o texto fechado
+            # com `_shown` para nao reenviar o que ja foi mostrado, e um
+            # `_shown` posto aqui faria o `_close` calar a linha que o dono
+            # NUNCA viu. Uma linha de uma palavra so ("so") ficaria sem
+            # aparecer no historico.
         return out
 
     def flush(self):
@@ -4801,6 +4975,59 @@ def _lower_process_priority():
         return 'failed:%r' % (exc,)
 
 
+#: Os valores do Windows para o modo de fundo (`SetPriorityClass`). NAO sao
+#: prioridades: `..._BEGIN` poe CPU a IDLE, **I/O a Very Low** e **memoria ao
+#: degrau mais baixo** enquanto durar; `..._END` devolve a classe anterior.
+PROCESS_MODE_BACKGROUND_BEGIN = 0x00100000
+PROCESS_MODE_BACKGROUND_END = 0x00200000
+
+
+def _set_priority_class(value):
+    """`SetPriorityClass` -> 'ok' ou o motivo, sem rebentar."""
+    if os.name != 'nt':
+        return 'not-windows'
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_bool
+        ok = kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), value)
+        return 'ok' if ok else 'failed'
+    except Exception as exc:  # noqa: BLE001
+        return 'failed:%r' % (exc,)
+
+
+def _enter_load_background_mode():
+    """O CARREGAMENTO DO MODELO ENTRA EM MODO DE FUNDO DO WINDOWS (2026-10-23).
+
+    O dono, verbatim, e a segunda vez que ele o diz com esta forca: *"abrir ou
+    fechar ele faz meu pc travar PRA CARALHO"*.
+
+    `BELOW_NORMAL` (a funcao acima) baixa a prioridade de **CPU** e mais nada. O
+    que trava o rato e o resto: o worker le 1,2 GB de pesos e toca em ~2 GB de
+    memoria, e a prioridade de **I/O** e a de **memoria** continuam as de um
+    processo normal -- ele compete com o Explorer, com o compositor e com o
+    cursor. `PROCESS_MODE_BACKGROUND_BEGIN` e o mecanismo do Windows para
+    exactamente isto, e nao inventamos nada: baixa CPU a IDLE, I/O a Very Low e
+    memoria ao degrau mais baixo **so enquanto durar a carga**; `_END` devolve o
+    processo a BELOW_NORMAL, porque a inferencia ao vivo nao pode ficar a IDLE.
+
+    Devolve o que aconteceu, para o log o poder provar.
+    """
+    got = _set_priority_class(PROCESS_MODE_BACKGROUND_BEGIN)
+    return 'background' if got == 'ok' else 'no-background(%s)' % got
+
+
+def _leave_load_background_mode(entered):
+    """Sai do modo de fundo e volta a BELOW_NORMAL (a classe de trabalho)."""
+    if entered != 'background':
+        return entered
+    _set_priority_class(PROCESS_MODE_BACKGROUND_END)
+    back = _set_priority_class(0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
+    return 'background' if back == 'ok' else 'background(end=%s)' % back
+
+
 def main():
     _lower_process_priority()
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
@@ -5244,6 +5471,17 @@ def main():
 
     emit(type="status", state="model-loading", model=os.path.basename(model_dir))
     t0 = time.time()
+    # ── O CARREGAMENTO EM MODO DE FUNDO (2026-10-23) ─────────────────────────
+    # O dono, verbatim: *"abrir ou fechar ele faz meu pc travar PRA CARALHO"* e
+    # *"sotto e pra usuarios ate com pc fraco"*. A carga le 1,2 GB de pesos e
+    # toca em ~2 GB de memoria; a BELOW_NORMAL do `main` baixa a CPU e mais nada,
+    # portanto o I/O e a memoria continuavam a competir com o Explorer e com o
+    # compositor. `PROCESS_MODE_BACKGROUND_BEGIN` poe os tres no degrau mais
+    # baixo SO durante a carga; `_END` devolve a BELOW_NORMAL, porque a
+    # inferencia ao vivo nao pode ficar a IDLE. O log diz o que aconteceu.
+    load_mode = _enter_load_background_mode()
+    emit(type="status", state="model-loading", stage="priority",
+         load_priority=load_mode)
     try:
         asr = StreamAsr(model_dir, providers=providers, use_vad=use_vad, lang_id=lang_id)
     except Exception as exc:
@@ -5255,6 +5493,9 @@ def main():
             peak_rss_mb=round(peak_rss_mb(), 1),
         )
         return 2
+    finally:
+        # Caminho feliz E caminho de erro: a prioridade volta sempre.
+        _leave_load_background_mode(load_mode)
     asr.load_s = time.time() - t0
     emit(
         type="status",

@@ -223,6 +223,17 @@ def video_id_from_url(url):
     return None
 
 
+#: Um segmento que COMECA por um destes NAO leva espaco antes dele. O json3 parte a
+#: linha em segmentos e um `?` ou um `.` vem como segmento proprio; a regra antiga
+#: ("um segmento sem espaco proprio ganha um") punha `alguem ?` e `Nao .` no ecra,
+#: que e exactamente o que o YouTube NAO desenha. MEDIDO 2026-10-23 contra a janela
+#: do player no Edge (`_main/yt-1to1-live-compare.py`): o YouTube pinta
+#: `Você já teve que matar alguém?` e `>> Não.`.
+_NO_SPACE_BEFORE = ".,;:!?…)]}»›%"
+#: E um segmento DEPOIS destes tambem nao: um parentese ou aspas abertas nao separam.
+_NO_SPACE_AFTER = "([{¿¡«“‘"
+
+
 def _join_segs(segs):
     """The `segs` of one json3 event -> one line of text.
 
@@ -230,7 +241,9 @@ def _join_segs(segs):
     (`" no"`, `" strangers"`), so joining them with a space gives
     `"We're  no  strangers"` (double spaces). They are joined as they come
     and the whitespace is normalised at the end. A segment that brings no
-    space of its own gets one, so two words never fuse.
+    space of its own gets one, so two words never fuse -- EXCEPT before
+    punctuation, which is where the old rule glued a space the player never
+    draws (`alguem ?` instead of `alguem?`; see `_NO_SPACE_BEFORE`).
     """
     out = ""
     for seg in segs or ():
@@ -240,7 +253,12 @@ def _join_segs(segs):
         if not piece:
             continue
         if out and not piece[:1].isspace() and not out[-1:].isspace():
-            out += " "
+            first = piece[:1]
+            last = out[-1:]
+            attached = (first in _NO_SPACE_BEFORE or last in _NO_SPACE_AFTER
+                        or (first in "'’" and last.isalnum()))
+            if not attached:
+                out += " "
         out += piece
     # THE WHITESPACE IS NORMALISED HERE, BUT THE LINE BREAK IS NOT (2026-10-20).
     # The auto track's segments carry their own leading space, and a segment may
@@ -261,6 +279,98 @@ def _join_segs(segs):
     # caption: it must not become a caption of its own.
     if not out.strip():
         return ""
+    return out
+
+
+def _segs_words(segs, start=0.0):
+    """As palavras de um evento, cada uma com o instante ABSOLUTO dela.
+
+    `tOffsetMs` e o relogio do proprio player: o YouTube revela a linha PALAVRA A
+    PALAVRA. MEDIDO 2026-10-26 no payload de `WdaHAGRBB6s` (o das reclamacoes do
+    dono): 69 dos 106 segmentos trazem `tOffsetMs`, e o primeiro evento revela
+    `Have` em 0, ` you` em 240 ms, ` ever` em 400 ms. O dono pediu isso com todas as
+    letras: *"e pra surgir palavras, quebrar linhas, usar o timing de nova linha ou
+    nao, igual o youtube."* Sem offsets nos cues nada pode ser exacto -- o Sotto
+    pintava a linha inteira de uma vez.
+
+    A regra de juncao e a MESMA de `_join_segs` (mesmas condicoes, mesma ordem), e o
+    chamador CONFERE o resultado contra ele ao caractere. Quando as duas pontas nao
+    batem, o cue fica sem palavras: uma revelacao inventada seria pior do que
+    revelacao nenhuma.
+
+    Um segmento sem `tOffsetMs` nao comeca palavra nova -- e a continuacao da
+    anterior (o track automatico parte `palavra` de ` pontuacao`), por isso entra no
+    texto da palavra que ja esta aberta. A PRIMEIRA palavra comeca com a LINHA: o
+    YouTube desenha-a no instante do evento, mesmo quando o payload lhe da um offset
+    positivo.
+    """
+    out = ""
+    words = []
+    for seg in segs or ():
+        if not isinstance(seg, dict):
+            continue
+        piece = str(seg.get("utf8") or "")
+        if not piece:
+            continue
+        if out and not piece[:1].isspace() and not out[-1:].isspace():
+            first = piece[:1]
+            last = out[-1:]
+            attached = (first in _NO_SPACE_BEFORE or last in _NO_SPACE_AFTER
+                        or (first in "'’" and last.isalnum()))
+            if not attached:
+                piece = " " + piece
+        out += piece
+        off = seg.get("tOffsetMs")
+        if isinstance(off, (int, float)):
+            words.append({"start": round(float(start) + float(off) / 1000.0, 3),
+                          "text": piece})
+        elif words:
+            words[-1]["text"] += piece
+        else:
+            words.append({"start": round(float(start), 3), "text": piece})
+    if not words:
+        return []
+    words[0]["start"] = round(float(start), 3)
+    return words
+
+
+#: Um evento cujo texto e so pontuacao nao e uma linha: e o resto da linha anterior.
+_ONLY_PUNCT_RE = re.compile(r"^[.,;:!?…]+$")
+
+
+def _absorb_punct(cues):
+    """Junta a pontuacao solta a linha que ela continua.
+
+    MEDIDO 2026-10-23, na faixa automatica `pt` do video `WdaHAGRBB6s`: o evento das
+    16,26 s (`dDurationMs` 1060) tem um unico segmento `"."` e cai DENTRO da linha que
+    comecou as 14,08 s e acaba as 17,26 s. O YouTube desenha `...crianças.` numa linha;
+    o parser fazia dela DUAS -- uma delas um ponto sozinho, que e exactamente o tipo de
+    lixo que o dono viu no painel (`"a legenda do youtube ta completamente bugada"`).
+    A regra: pontuacao que comeca antes de a linha anterior acabar junta-se a ela e
+    estende-a. Pontuacao que ja esta la nao se repete.
+    """
+    out = []
+    for cue in cues or ():
+        text = str(cue.get("text") or "").strip()
+        if out and _ONLY_PUNCT_RE.match(text):
+            prev = out[-1]
+            try:
+                inside = float(cue["start"]) <= float(prev["end"]) + 0.35
+            except (KeyError, TypeError, ValueError):
+                inside = False
+            body = str(prev.get("text") or "").rstrip()
+            if inside and body and not body.endswith(text):
+                prev["text"] = body + text
+                prev["end"] = max(float(prev["end"]), float(cue["end"]))
+                # A revelacao acompanha a juncao: sem isto o ponto que se colou a linha
+                # sumia do prefixo revelado (a palavra ficava a meio ate ao fim do cue).
+                if prev.get("words"):
+                    add = list(cue.get("words") or [])
+                    if not add:
+                        add = [{"start": round(float(cue["start"]), 3), "text": text}]
+                    prev["words"] = list(prev["words"]) + add
+                continue
+        out.append(cue)
     return out
 
 
@@ -300,6 +410,12 @@ def parse_json3(text):
         body = _join_segs(segs)
         if not body:
             continue
+        # O RELOGIO DA REVELACAO (2026-10-26). O cue leva as palavras com o instante
+        # ABSOLUTO de cada uma, tirado do `tOffsetMs` do payload; o chamador confere a
+        # concatenacao contra `body` e, se nao bater, o cue fica sem palavras.
+        words = _segs_words(segs, start)
+        if words and "".join(w["text"] for w in words).strip() != body:
+            words = []
         dur = ev.get("dDurationMs")
         if isinstance(dur, (int, float)):
             end = start + float(dur) / 1000.0
@@ -309,9 +425,14 @@ def parse_json3(text):
             end = nxt if nxt is not None else start + 2.0
         if end <= start:
             end = start + 0.001
-        cues.append({"start": round(start, 3), "end": round(end, 3), "text": body})
+        cue = {"start": round(start, 3), "end": round(end, 3), "text": body}
+        if words:
+            # So entra quando o payload DECLARA o relogio: um cue sem `tOffsetMs` nao
+            # ganha uma lista vazia, para a forma antiga continuar igual.
+            cue["words"] = words
+        cues.append(cue)
     cues.sort(key=lambda c: (c["start"], c["end"]))
-    return cues
+    return _absorb_punct(cues)
 
 
 _VTT_CUE_RE = re.compile(
@@ -469,6 +590,27 @@ TARGET_LANG = 'en'
 NEVER_TRANSLATED_LANGS = ('es',)
 
 
+#: THE OWNER'S EXPLICIT TRANSLATION CHOICE (owner, 2026-10-21). `''` means the
+#: POLICY above. A non-empty base code FORCES that target for EVERY video -- the
+#: owner asked that the selector list every language, "inclusive as que acabei de
+#: falar pra nao tocar", and that an explicit pick override the never-translate
+#: rule. `set_target_language` is the ONE writer; the shell calls it from the
+#: 3-dot menu's selector.
+TARGET_OVERRIDE = ''
+
+
+def set_target_language(code):
+    """Set the explicit target, returning the base code that was applied.
+
+    `''`/None clears it (back to the policy). The value is normalised to a BASE
+    code (`pt-BR` -> `pt`) for the same reason `_base_lang` exists: the rule is
+    about the language, not the region.
+    """
+    global TARGET_OVERRIDE
+    TARGET_OVERRIDE = _base_lang(code) if code else ''
+    return TARGET_OVERRIDE
+
+
 def _target_langs(orig):
     """The languages this video's caption may be served in, in order.
 
@@ -488,6 +630,15 @@ def _target_langs(orig):
     apply and the caller's preference decides (that is the pre-policy
     behaviour, kept for the case where nobody can tell what the video is).
     """
+    if TARGET_OVERRIDE:
+        # THE OWNER'S EXPLICIT CHOICE WINS OVER EVERYTHING (owner, 2026-10-21):
+        # *"da uma opcao de escolher a traducao ... inclusive da opcao pra todas
+        # essas linguas inclusive as q acabei de falar pra nao tocar."* A video
+        # whose own language IS the chosen target is served in that language; any
+        # other video is TRANSLATED into it, Spanish included.
+        if not orig or _base_lang(orig) == TARGET_OVERRIDE:
+            return (TARGET_OVERRIDE,)
+        return (TARGET_OVERRIDE, orig)
     if not orig:
         return ()
     if orig in NEVER_TRANSLATED_LANGS:
@@ -1743,6 +1894,34 @@ def _painted_children(el, uia):
     return out
 
 
+def _rendered(el):
+    """Is this element actually being DRAWN, or is it a leftover in the tree?
+
+    MEASURED (2026-10-22, the owner's own tab): the browser painted NOT ONE caption
+    line for 30.5 s of playback -- 400 samples of the caption window, all empty --
+    and `painted_words` still returned EIGHT words. Eight is exactly
+    `"Have you ever had to kill a man?"`, the line that had been painted before the
+    captions were turned off: the element stays in the accessibility tree once it
+    stops being drawn, and `_painted_children` reads its children happily.
+
+    That ghost is the desync: the app believed YouTube was painting a line, aligned
+    it to a cue, and showed it -- at the wrong second, over and over. So an element
+    counts only when the OS says it is on-screen AND it has a real rectangle.
+    """
+    try:
+        if bool(el.CurrentIsOffscreen):
+            return False
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        rect = el.CurrentBoundingRectangle
+        if int(rect.right) - int(rect.left) <= 0 or int(rect.bottom) - int(rect.top) <= 0:
+            return False
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
 def painted_words(uia, UIA, hwnd=None, root=None):
     """The words the player is painting NOW -> {"words": [...], "why": ...}.
 
@@ -1767,6 +1946,11 @@ def painted_words(uia, UIA, hwnd=None, root=None):
     for el in _elements(_all_elements(uia, root)):
         cls = _class_name(el).lower()
         if _CAPTION_WINDOW_WORDS not in cls:
+            continue
+        # A CAPTION WINDOW THAT IS NOT ON SCREEN IS NOT A CAPTION (2026-10-22).
+        # Without this, the window that stopped being drawn keeps handing over its
+        # last line, and the app shows it as if the player were painting it now.
+        if not _rendered(el):
             continue
         words = _painted_children(el, uia)
         if len(words) > len(best):
@@ -1825,8 +2009,8 @@ def _align_from(cue_words, low, j0, off0):
         off = 0
     if pos != n or cur is None:
         return None
-    return {"index": cur, "painted_from": cur_start, "aligned": pos,
-            "exact": exact, "partial": partial}
+    return {"index": cur, "from_index": j0, "painted_from": cur_start,
+            "aligned": pos, "exact": exact, "partial": partial}
 
 
 def align_painted(cues, painted):
@@ -1842,10 +2026,14 @@ def align_painted(cues, painted):
     the painted words from ANY point of any cue.
 
     Returns:
-        `{"index", "cue", "text", "exact", "aligned", "partial"}` -- `text`
-        is the FULL text of the cue being painted (the app shows the whole
-        line; the player shows it a word at a time), or None when no cue
-        matches (the paint belongs to ANOTHER track, or is empty).
+        `{"index", "from_index", "painted_from", "cue", "text", "exact",
+        "aligned", "partial"}` -- `text` is the FULL text of the cue being
+        painted (the app shows the whole line; the player shows it a word at
+        a time), or None when no cue matches (the paint belongs to ANOTHER
+        track, or is empty). `from_index` is the FIRST cue of the matched
+        run and `painted_from` is the word offset of the last chunk inside
+        `index`, so `aligned - painted_from` is how many words of `index`
+        the player has already painted. The rollup window is that run.
     """
     if isinstance(painted, str):
         painted = painted.split()
@@ -1873,6 +2061,7 @@ def align_painted(cues, painted):
     return {"index": best["index"], "cue": cue,
             "text": str((cue or {}).get("text") or "").strip(),
             "exact": best["exact"], "aligned": best["aligned"],
+            "from_index": best["from_index"], "painted_from": best["painted_from"],
             "partial": best["partial"]}
 
 
