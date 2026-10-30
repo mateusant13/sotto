@@ -223,3 +223,4 @@ _main/_*mutant.py
 # What is claimed is the only thing that was measured: the explicit glob below
 # excludes them, and "git add -A" afterwards stages none.
 **/node_modules/
+.bend-ledger/
