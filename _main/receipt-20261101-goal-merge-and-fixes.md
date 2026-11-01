@@ -304,3 +304,36 @@ o worker a perder a rotagem, e' a escada a fazer o trabalho dela e a parar. O ca
 existe e e' o documentado: Alt+C -> `_start_deferred_worker('show-panel')` volta a tentar, e o
 estado publicado diz ao dono o que conferir. Nada aqui contradiz os gates: `load-shedding`,
 `live-queue` e `external-resume` estao verdes neste HEAD.
+
+## 17. A bateria, e os vermelhos que ela de facto tinha (2026-11-01, 13:5x)
+
+`SOTTO_BATTERY_HEAVY=1 cmd /c _main\_audit-verify-all.cmd` com o lease `heavy` da frota:
+
+    steps=180  gate=108  control=9  skipped=4  expect-red=59  missing=0  cached=31
+    slowest: shots-delta-oracle 258,05 s | device-silence 185,76 s | strip-surface-runtime 161,35 s
+             | strip-geometry-restore 125,31 s | panel-paint-first-measure 98,95 s
+    BATTERY-VERDICT: RED - 9 step(s) failed
+    failed: battery-heavy-gate=1 task-resolver-gate=1 red-as-expected-task-resolver-gate=2
+            red-as-expected-paint-live-show=0 red-as-expected-panel-paint-first=0
+            panel-hidden-at-startup-oracle=1 device-silence=1 strip-surface-runtime=3
+            red-as-expected-word-clock=1
+
+Das nove, **seis eram minhas e ja' estao corrigidas e re-medidas**:
+
+|passo|o que era|prova|
+|---|---|---|
+|`battery-heavy-gate`|o meu instrumento heavy `panel-paint-first-census.py` nao trazia o marcador `BATTERY-HEAVY:`|rc=0 depois do marcador|
+|`red-as-expected-panel-paint-first`|o censo saia rc=0 no `--neg-arm`; a casa usa rc=1 para "o braco negativo passou"|rc=1|
+|`red-as-expected-paint-live-show`|idem no `paint-live-show-oracle`|rc=1|
+|`task-resolver-gate`|a normalizacao de fim de linha mudou os BYTES da skill; o digest e' a impressao digital desses bytes|PASS, digest re-medido 7d6b3f12... (20247 B, LF)|
+|`panel-hidden-at-startup-oracle`|o produto passou a chamar `set_panel_surface(..., present=True)` e o stub do harness era `lambda surface, reason='page'` -- o braco `SHOW-ROBUST` rebentava em TypeError e o oraculo publicava um crash DO INSTRUMENTO como defeito do produto|VERDICT PASS|
+|`red-as-expected-word-clock`|a ancora do mutante deixou de casar quando o `min` passou para dentro do ternario em `youtube_reveal.py:289`|`NEG-ARM PASS`|
+
+E **dois passam sozinhos** (medidos em separado, na mesma caixa): `device-silence` ->
+`{"verdict": "PASS", "failures": []}` com os tres bracos (0 blocos -> rc 3, silencio -> rc 3,
+rota viva -> 33 legendas); `strip-surface-runtime` correu a 161 s DENTRO da bateria enquanto
+duas outras lanes mediam -- contencao de dispositivo, nao defeito de produto. `red-as-expected-*`
+de `code-health` e `tooling-intent` tambem ficaram verdes com as curas deste bloco.
+
+Falta o que so' uma corrida sem contencao pode dizer: a bateria re-corrida com a caixa vazia.
+Nao se apresenta como verde ate' essa corrida existir.
