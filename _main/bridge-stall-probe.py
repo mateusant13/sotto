@@ -160,6 +160,54 @@ def burn(count):
     return procs
 
 
+def tree_artifacts(tree, mutex):
+    """Os ficheiros da ARVORE que uma instancia de medicao escreve dela propria.
+
+    MEDIDO 2026-11-01: um run deixou `_main/panel-visibility.json` modificado
+    (o `PanelVisibilityWriter` escreve-o no repo, nao ao lado da mutex) e dois
+    `_main/panel-state.<mutex>.json` novos. Um instrumento que deixa o repo sujo
+    faz o proximo leitor achar que o produto mudou. Devolve o que e' preciso para
+    repor: o conteudo anterior do ficheiro de visibilidade (ou None) e a lista de
+    ficheiros de estado a apagar.
+    """
+    path = os.path.join(tree, '_main', 'panel-visibility.json')
+    try:
+        with open(path, 'rb') as fh:
+            before = fh.read()
+    except OSError:
+        before = None
+    return {'visibility': path, 'before': before,
+            'state': os.path.join(tree, '_main', 'panel-state.%s.json' % mutex)}
+
+
+def restore_tree_artifacts(snap):
+    """Repoe o que `tree_artifacts` fotografou. Nunca lanca."""
+    out = {'visibility': 'absent', 'state': 'absent'}
+    try:
+        if snap['before'] is None:
+            if os.path.exists(snap['visibility']):
+                os.remove(snap['visibility'])
+                out['visibility'] = 'removed'
+        else:
+            with open(snap['visibility'], 'rb') as fh:
+                same = fh.read() == snap['before']
+            if not same:
+                with open(snap['visibility'], 'wb') as fh:
+                    fh.write(snap['before'])
+                out['visibility'] = 'restored'
+            else:
+                out['visibility'] = 'unchanged'
+    except OSError as exc:
+        out['visibility'] = 'failed: %r' % (exc,)
+    try:
+        if os.path.exists(snap['state']):
+            os.remove(snap['state'])
+            out['state'] = 'removed'
+    except OSError as exc:
+        out['state'] = 'failed: %r' % (exc,)
+    return out
+
+
 def reap(mutex):
     """Mata as instancias MEDIDAS que sobreviveram -- pela mutex privada.
 
@@ -296,6 +344,7 @@ def main(argv=None):
         raise SystemExit('sem feeder em %s' % feeder)
     print('LAUNCH tree=%s log=%s mutex=%s census=%s seconds=%g burn=%d'
           % (tree, p['log'], p['mutex'], args.census, args.seconds, args.burn))
+    snap = tree_artifacts(tree, p['mutex'])
     print('LAUNCH_OUT %s' % launch(tree, p, args.seconds, args.census, feeder))
     burners = burn(args.burn) if args.burn else []
     if burners:
@@ -314,6 +363,7 @@ def main(argv=None):
     blocks = census_blocks(text)
     if not args.keep:
         s['reaped'] = reap(p['mutex'])
+    s['tree_artifacts'] = restore_tree_artifacts(snap)
     s['done'] = done
     s['log_bytes'] = len(text)
     s['census_blocks'] = len(blocks)
@@ -323,7 +373,7 @@ def main(argv=None):
         print('DONE=%s log_bytes=%d' % (done, len(text)))
         for k in ('exec_js_timeout', 'exec_js_stall', 'ui_thread_stall',
                   'census', 'census_on', 'census_failed', 'captions',
-                  'stats_pushes', 'reaped'):
+                  'stats_pushes', 'reaped', 'tree_artifacts'):
             print('  %-16s %s' % (k, s.get(k)))
         for script in s['timeout_scripts']:
             print('  TIMEOUT_SCRIPT %s' % script)

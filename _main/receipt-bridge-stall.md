@@ -232,3 +232,13 @@ python _main/bridge-stall-probe.py --run --seconds 600 --tag after600
 # a instancia e' privada e morre no fim; se sobreviver, o probe mata-a pela
 # identidade do `--mutex-name` (nunca por nome de processo)
 ```
+
+O probe repoe o que a instancia escreve NA ARVORE (`_main/panel-visibility.json`
+e `_main/panel-state.<mutex>.json`): medido 2026-11-01, um run deixou o repo
+sujo, e um instrumento que suja o repo faz o proximo leitor achar que o produto
+mudou. Imprime `tree_artifacts={'visibility': 'restored'|'unchanged', ...}`.
+
+`--burn N` existe para o braco de CARGA (N processos a CPU, prioridade
+BELOW_NORMAL, filhos do probe, mortos com ele). Nao foi preciso: os 42 estouros
+do braco "antes" sairam sem carga nenhuma, na instancia privada, com a pagina
+carregada e o painel escondido -- que e' o estado de producao do dono.
