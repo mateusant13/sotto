@@ -8161,13 +8161,36 @@ class SottoShell:
             'errors': writer.errors,
         }
 
+    def isolated_state_path(self, path):
+        """`path` with the process's private mutex in it, for MEASUREMENT runs.
+
+        MEDIDO 2026-11-01: uma instância largada com `--mutex-name SottoPovSelftest`
+        (o caminho sancionado para medir o POV sem tocar na app do dono) escreveu
+        `PANEL_STATE_WRITER path=H:\\sotto\\_main\\panel-state.json` e publicou
+        `producerPid=46144` no MESMO ficheiro que a instância dele usa. Uma
+        medição nao pode sobrescrever o estado vivo da app -- o dono lê esse
+        ficheiro e o worker decide por ele. O lock privado já isola o processo;
+        o estado agora isola-se com ele, no mesmo nome, e o log diz `isolated=true`
+        para o leitor saber qual dos dois ficheiros está a ler.
+
+        A instância normal (mutex por omissão) devolve o caminho de sempre,
+        byte a byte: nenhum instrumento existente muda de sítio.
+        """
+        mutex = str(getattr(self.args, 'mutex_name', '') or '')
+        if not mutex or mutex == DEFAULT_MUTEX_NAME:
+            return path
+        stem, ext = os.path.splitext(path)
+        safe = re.sub(r'[^A-Za-z0-9_.-]', '_', mutex)
+        return '%s.%s%s' % (stem, safe, ext)
+
     def start_panel_state(self):
         """Arm the periodic + on-request dump. Idempotent per process."""
         if self.panel_state is not None:
             return False
+        path = self.isolated_state_path(PANEL_STATE_PATH)
         self.panel_state = panel_state.PanelStateWriter(
-            path=PANEL_STATE_PATH,
-            request_path=PANEL_STATE_REQUEST,
+            path=path,
+            request_path=path + '.request',
             snapshot=self.panel_state_snapshot,
             log=log,
             interval_s=PANEL_STATE_INTERVAL_S,

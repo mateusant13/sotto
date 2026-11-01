@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sotto · banco de ensaio do painel (1:1)</title>
+<style>
+  :root { --ink:#e9eef5; --muted:#8fa0b4; --line:#26313d; --bg:#0b0f14; --accent:#4ea1ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:13px/1.5 "Segoe UI",system-ui,sans-serif; display:flex; height:100vh; }
+  #deck { width:360px; flex:0 0 360px; border-right:1px solid var(--line);
+          padding:14px; overflow:auto; }
+  #stage { flex:1; background:#121820; display:flex; align-items:stretch;
+           justify-content:center; padding:18px; gap:14px; }
+  h1 { font-size:13px; letter-spacing:.14em; text-transform:uppercase;
+       color:var(--muted); margin:0 0 12px; font-weight:600; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; }
+  button { background:#1b232d; color:var(--ink); border:1px solid var(--line);
+           border-radius:6px; padding:6px 9px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:#12324f; border-color:#20507d; }
+  input, textarea { width:100%; background:#121820; color:var(--ink);
+                    border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+                    font:inherit; }
+  label { display:block; color:var(--muted); font-size:11px; margin:8px 0 3px;
+          text-transform:uppercase; letter-spacing:.08em; }
+  #log { font:11px/1.45 ui-monospace,Consolas,monospace; background:#0e141b;
+         border:1px solid var(--line); border-radius:6px; padding:8px;
+         height:240px; overflow:auto; white-space:pre-wrap; color:#a9bccd; }
+  #frames { display:flex; gap:10px; flex-wrap:wrap; }
+  .panelbox { background:#0e141b; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .panelbox > header { font-size:11px; color:var(--muted); padding:5px 8px;
+                       border-bottom:1px solid var(--line); letter-spacing:.08em;
+                       text-transform:uppercase; }
+  iframe { display:block; border:0; background:transparent; }
+  #stripFrame { width:1040px; height:150px; }
+  #panelFrame { width:380px; height:900px; }
+  .tag { color:var(--accent); }
+</style>
+</head>
+<body>
+<div id="deck">
+  <h1>Banco de ensaio · painel 1:1</h1>
+  <p style="color:var(--muted);margin:0 0 12px">
+    A pagina de dentro e' <span class="tag">app/panel/panel.html</span> servida do disco, com o
+    <span class="tag">BOOTSTRAP_JS</span> real e um hospedeiro falso. Tudo entra por
+    <span class="tag">__sotto_emit</span>, o mesmo global que o shell chama.
+  </p>
+
+  <label>Superficie</label>
+  <div class="row">
+    <button data-surface="strip">faixa (baixo)</button>
+    <button data-surface="panel">painel (direita)</button>
+    <button data-surface="hidden">escondido</button>
+  </div>
+
+  <label>Estado / rodape</label>
+  <div class="row">
+    <button id="st-status">status: ouvindo</button>
+    <button id="st-busy">status: carregando</button>
+    <button id="st-idle">status: ocioso</button>
+  </div>
+
+  <label>Legenda ao vivo (texto livre)</label>
+  <input id="capText" value="e a legenda aparece na hora, com a legenda do sotto ativa">
+  <div class="row" style="margin-top:6px">
+    <button id="cap-once" class="primary">emitir linha fechada</button>
+    <button id="cap-reveal">revelar palavra a palavra</button>
+  </div>
+
+  <label>Alt+C a spam (com Alt em baixo)</label>
+  <div class="row">
+    <button id="spam">20 pressoes &rarr; alternar</button>
+    <button id="reset">limpar</button>
+  </div>
+
+  <label>Medicao</label>
+  <div id="measure" style="font:11px ui-monospace,Consolas,monospace;color:#a9bccd">
+    sem amostras
+  </div>
+
+  <label>Mensagens que o painel enviou ao hospedeiro</label>
+  <div id="log">(vazio)</div>
+</div>
+
+<div id="stage">
+  <div class="panelbox">
+    <header>faixa (1040x150)</header>
+    <iframe id="stripFrame" src="/panel.html"></iframe>
+  </div>
+  <div class="panelbox">
+    <header>painel (380x900)</header>
+    <iframe id="panelFrame" src="/panel.html"></iframe>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const frames = { strip: document.getElementById('stripFrame'),
+                   panel: document.getElementById('panelFrame') };
+  const log = document.getElementById('log');
+  const measure = document.getElementById('measure');
+
+  function write(line) {
+    log.textContent = (line + '\n' + log.textContent).slice(0, 12000);
+  }
+
+  function each(fn) { Object.values(frames).forEach(f => { try { fn(f); } catch (e) {} }); }
+
+  function emit(kind, payload) {
+    each(f => {
+      const w = f.contentWindow;
+      if (w && typeof w.__sotto_emit === 'function') {
+        w.__sotto_emit(kind, JSON.stringify(payload));
+      }
+    });
+  }
+
+  function surface(name) {
+    each(f => {
+      const d = f.contentDocument;
+      if (!d || !d.body) return;
+      d.body.dataset.surface = name;
+      d.body.style.visibility = (name === 'hidden') ? 'hidden' : '';
+    });
+    write('surface=' + name);
+  }
+
+  document.querySelectorAll('[data-surface]').forEach(b => {
+    b.addEventListener('click', () => surface(b.dataset.surface));
+  });
+
+  document.getElementById('st-status').addEventListener('click', () =>
+    emit('status', { text: 'Ouvindo o que toca', kind: 'live' }));
+  document.getElementById('st-busy').addEventListener('click', () =>
+    emit('status', { text: 'Carregando o modelo', kind: 'busy' }));
+  document.getElementById('st-idle').addEventListener('click', () =>
+    emit('status', { text: 'Ocioso', kind: 'idle' }));
+
+  document.getElementById('cap-once').addEventListener('click', () => {
+    const text = document.getElementById('capText').value;
+    emit('caption', { text, meta: { route: 'final', ts: Date.now() } });
+    write('caption: ' + text);
+  });
+
+  document.getElementById('cap-reveal').addEventListener('click', () => {
+    const words = document.getElementById('capText').value.split(/\s+/);
+    let i = 0;
+    const t0 = performance.now();
+    const step = () => {
+      i += 1;
+      const partial = words.slice(0, i).join(' ');
+      emit('caption', { text: partial,
+                        meta: { route: 'provisional-draft', ts: Date.now() } });
+      if (i < words.length) setTimeout(step, 130);
+      else write('reveal: ' + words.length + ' palavras em ' +
+                 Math.round(performance.now() - t0) + ' ms');
+    };
+    step();
+  });
+
+  document.getElementById('spam').addEventListener('click', () => {
+    const order = ['strip', 'hidden', 'panel', 'hidden'];
+    const t0 = performance.now();
+    let k = 0;
+    const stop = performance.now() + 4000;
+    const tick = () => {
+      surface(order[k % order.length]);
+      k += 1;
+      if (k < 20 && performance.now() < stop) setTimeout(tick, 120);
+      else measure.textContent = '20 pressoes em ' + Math.round(performance.now() - t0) +
+        ' ms; ultima superficie=' + order[(k - 1) % order.length];
+    };
+    tick();
+  });
+
+  document.getElementById('reset').addEventListener('click', () => {
+    log.textContent = '(vazio)'; measure.textContent = 'sem amostras';
+  });
+
+  // O REGISTO DE MENSAGENS: cada iframe tem o seu proprio `window.__sim`.
+  setInterval(() => {
+    const sent = [];
+    Object.values(frames).forEach(f => {
+      const s = f.contentWindow && f.contentWindow.__sim;
+      if (s && s.sent.length) sent.push(...s.sent.splice(0));
+    });
+    sent.forEach(e => write(e.kind + ' ' + JSON.stringify(e.args).slice(0, 200)));
+  }, 400);
+})();
+</script>
+</body>
+</html>

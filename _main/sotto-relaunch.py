@@ -77,6 +77,8 @@ k32 = ctypes.WinDLL('kernel32', use_last_error=True)
 k32.OpenProcess.restype = wt.HANDLE
 k32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
 k32.CloseHandle.argtypes = [wt.HANDLE]
+k32.GetProcessTimes.restype = wt.BOOL
+k32.GetProcessTimes.argtypes = [wt.HANDLE] + [ctypes.POINTER(wt.FILETIME)] * 4
 k32.CreateMutexW.restype = wt.HANDLE
 k32.CreateMutexW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.LPCWSTR]
 ERROR_ALREADY_EXISTS = 183
@@ -117,9 +119,57 @@ def live_shell_pid(text=None):
         pid = int(pid)
         if pid == os.getpid():
             continue
-        if alive(pid):
+        if alive(pid) and created_near(pid, _stamp_before_pid(text, pid)):
             return pid
     return None
+
+
+def _stamp_before_pid(text, pid):
+    """The log time of the `SHELL_STARTUP_STAGE pid=<pid>` line, as epoch seconds."""
+    rx = re.compile(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+) sotto: SHELL_STARTUP_STAGE pid=%d\b'
+                    % pid, re.M)
+    found = None
+    for m in rx.finditer(text):
+        found = m.group(1)
+    if not found:
+        return None
+    try:
+        return time.mktime(time.strptime(found[:19], '%Y-%m-%d %H:%M:%S'))
+    except ValueError:
+        return None
+
+
+def created_near(pid, when, tolerance_s=300.0):
+    """Is `pid` the process that wrote that log line, or a REUSED pid?
+
+    PORQUE EXISTE (medido 2026-11-01). `--check` respondeu `instancia viva : 43304`
+    com `mutex livre : True` -- duas respostas que se contradizem. O pid vinha do
+    log (o ultimo arranque que GANHOU a mutex, 09:51:35) e estava mesmo vivo: era um
+    `chrome.exe --type=crashpad-handler` nascido as 10:02, onze minutos depois. O
+    Windows reutiliza pids, e `alive()` sozinho responde a pergunta errada. Nada de
+    nome nem de `CommandLine` (que vem VAZIO para processos alheios, e por isso um
+    filtro de nome ja matou dois processos inocentes): a identidade prova-se pela
+    HORA DE CRIACAO do processo, que `GetProcessTimes` da' com o direito
+    `PROCESS_QUERY_LIMITED_INFORMATION` que `alive()` ja abre.
+    """
+    if when is None:
+        return False
+    handle = k32.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return False
+    try:
+        created = wt.FILETIME()
+        exit_t = wt.FILETIME()
+        kern = wt.FILETIME()
+        user = wt.FILETIME()
+        if not k32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exit_t),
+                                   ctypes.byref(kern), ctypes.byref(user)):
+            return False
+        ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime
+        epoch = ticks / 1e7 - 11644473600.0
+        return abs(epoch - when) <= tolerance_s
+    finally:
+        k32.CloseHandle(handle)
 
 
 def alive(pid):
