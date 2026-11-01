@@ -79,6 +79,21 @@ def relaunch_if_needed(script, argv, *, attempts=3, retry_sleep_s=1.5,
     """Ver o docstring do modulo. `None` = "ja' es' `HIGH`: mede tu"."""
     module = _load()
     this = integrity()
+    if os.environ.get(TOKEN_ENV) == '1':
+        # O FILHO ESCREVE O QUE O PAI VAI IMPRIMIR. Medido 2026-11-01 na bateria:
+        # o filho criado por `CreateProcessAsUser` NAO herda o `stdout` que a
+        # bateria redireccionou para `%OUT%\strip-stats.log`, logo a linha
+        # `STRIP-STATS VERDICT: GREEN` que o passo procura nunca chegava ao
+        # registo -- o passo publicava `failed=0` sem uma palavra do veredicto.
+        # O canal passa a ser um FICHEIRO declarado, e o pai imprime-o.
+        for arg in argv:
+            if arg.startswith('--child-out='):
+                out = arg.split('=', 1)[1]
+                fh = open(out, 'w', encoding='utf-8', buffering=1)
+                sys.stdout = fh
+                sys.stderr = fh
+                break
+        return None
     if this['name'] == 'HIGH':
         return None
     source = None
@@ -96,8 +111,13 @@ def relaunch_if_needed(script, argv, *, attempts=3, retry_sleep_s=1.5,
               'chamar-lhe-ia veredicto do produto.' % attempts, flush=True)
         return 3
     os.environ[TOKEN_ENV] = '1'
+    import tempfile
+    child_out = os.path.join(tempfile.gettempdir(),
+                             'high-relaunch-%d-%d.out' % (os.getpid(),
+                                                          int(time.time())))
     ok, err, child = module.launch(
-        source, sys.executable, [os.path.abspath(script)] + list(argv),
+        source, sys.executable,
+        [os.path.abspath(script)] + list(argv) + ['--child-out=' + child_out],
         cwd=HERE)
     if not ok:
         print('RE-LARGADA FALHOU: CreateProcessAsUser err=%d (fonte pid=%d)'
@@ -116,6 +136,18 @@ def relaunch_if_needed(script, argv, *, attempts=3, retry_sleep_s=1.5,
     code = wt.DWORD()
     ok_code = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
     kernel32.CloseHandle(handle)
+    try:
+        with open(child_out, encoding='utf-8', errors='replace') as fh:
+            relayed = fh.read()
+    except OSError:
+        relayed = ''
+    if relayed:
+        sys.stdout.write(relayed if relayed.endswith('\n') else relayed + '\n')
+        sys.stdout.flush()
+    try:
+        os.remove(child_out)
+    except OSError:
+        pass
     print('medido pelo filho pid=%d (fonte pid=%d, %s): rc=%s'
           % (child, source,
              module.integrity_name(module.integrity_of(source)),
