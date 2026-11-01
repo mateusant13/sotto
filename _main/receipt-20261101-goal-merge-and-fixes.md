@@ -234,3 +234,27 @@ Ou seja: a regra que o AGENTS.md cita (*"o worker morre e recarrega ~1 GB de mod
 17 minutos"*) esta' de facto fechada -- tres recargas com escada 15/30/60 s e depois o shell
 PARA e diz ao dono o que conferir. O par de 2 s que existe no log e' de 10:50, o laco de
 `NameError: REDUX_LIVE_DEFAULT` de ANTES da cura, nao do codigo de hoje.
+
+## 14. Disco: o que o goal ocupou, e o que sobrava de OUTRAS sessoes (2026-11-01 12:0x)
+
+Antes -> depois, medido com `df -h`:
+
+    I:  3.7T  3.6T  45G  99%   ->  60G livre   (+15.3 GiB)
+    H:  517G  482G  36G  94%   ->  36G livre   (worktrees do goal removidos: 538 MB)
+    G:  239G  182G  57G  77%
+
+O que saiu:
+- `H:/sotto-wt/{goal-ratchet,goal-bridge,goal-bridge-before,goal-shellsplit}` -- worktrees
+  DESTE goal, ja' fundidos, removidos com `git worktree remove --force` + `prune` (os dois
+  ainda vivos, `goal-battery` e `goal-noblank` com as lanes a correr, ficam ate' elas fecharem);
+- `I:/cc-tmp/aud.csv` **9.1 GiB** -- um dump de eventos (ETW/WPR) de 2026-10-15, com uma
+  cabeca `Event Name,Type,Event ID,...`: um artefacto de analise, nao uma fonte;
+- `I:/cc-tmp/runtime-state-copy.sqlite` 3.1 GiB e `I:/cc-tmp/rs-liveness.sqlite` 3.1 GiB --
+  copias derivadas de 2026-10-07, com 25 dias.
+Ficaram por tocar `I:/cc-tmp/rea-lane` (8.1 GiB) e `I:/cc-tmp/cronfix2` (3.2 GiB): nao sao do
+Sotto e nao sei o que sao -- um `rm -rf` de uma arvore alheia nao se faz por conveniencia.
+
+O `.git` do Sotto mede 8.0 GB (pack 4.66 GiB) e NAO cresceu com este goal: `git log --diff-filter=A
+-- '.codeintel/*'` da' **0**, e os maiores blobs da historia sao `app/panel/skins/cinematic-2/img/
+38663879.png` (2.5 MB) e `_moved/aireplay/_main/_nv-cdx-inventory.txt` (2.3 MB) -- nenhuma arvore
+de GB entrou.
