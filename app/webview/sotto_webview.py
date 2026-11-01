@@ -57,6 +57,7 @@ from datetime import datetime
 import hot_reload
 import panel_focus as _panel_focus
 import bridge_census as _bridge_census_mod
+from code_identity import code_identity as _code_identity
 import panel_state
 
 
@@ -1330,66 +1331,15 @@ def _stamp() -> str:
 #: causa de um ficheiro que o processo nem carrega, e um numero que muda por
 #: engano treina quem o le a ignora-lo. Cada um destes e' carregado ao vivo no
 #: caminho que o dono usa (o painel, a legenda, o YouTube, o gesto).
-_CODE_ID_FILES = (
-    'sotto_webview.py',
-    'hotkey_gesture.py',
-    'caption_overlay.py',
-    'caption_wrap.py',
-    'youtube_captions.py',
-    'youtube_reveal.py',
-    'youtube_window.py',
-)
-#: A PAGINA tambem e' codigo, e ate' 2026-11-01 nao entrava na etiqueta. Medido: a cura do
-#: custo de animacao mudou `app/panel/panel.css` e `panel.js` (push 3,83 -> 0,72 ms, LoAF
-#: 186,7 -> 0) e a `SHELL_CODE_ID` do processo continuou `A21E04974C7F` -- ou seja o dono
-#: podia estar a olhar para a UI antiga com o portao da frescura a dizer `FRESH`. As imagens
-#: ficam de fora: elas nao decidem comportamento, e somam dezenas de MB.
-_CODE_ID_GLOBS = ('../panel/*.js', '../panel/*.css', '../panel/*.html',
-                  '../panel/themes/*.css')
+#: Os ficheiros que a etiqueta cobre vivem em `code_identity` (uma definicao so'); o shell
+#: re-exporta-os porque o `_main/live-code-freshness-oracle.py` os le' daqui.
+from code_identity import _CODE_ID_FILES, _CODE_ID_GLOBS  # noqa: F401
 
 
 def code_identity():
-    """`sha256=<12 hex> files=<n> ...` -- o codigo que ESTE processo carregou.
+    """`sha256=<12 hex> files=<n> ...` -- o codigo que ESTE processo carregou."""
+    return _code_identity(os.path.dirname(os.path.abspath(__file__)))
 
-    Nasceu de um erro medido, nao de estetica. O dono carregou Alt+C numa
-    instancia de 01:12:39 e reclamou que a legenda ligava e desligava; o gesto
-    novo (1 toque = painel de baixo, 2 = direita, HOLD = legenda) ja' estava no
-    disco. O log da instancia provava-o -- escrevia `HOTKEY_SINGLE`, uma
-    etiqueta que o fonte ja' nao sabe escrever -- mas so' quem compara etiquetas
-    a mao o via. Quatro oraculos verdes julgavam FICHEIROS; ele carregava num
-    PROCESSO.
-
-    Um unico fio fecha a classe: o processo diz, ao arrancar, o sha256 do que
-    carregou, e `_main/live-code-freshness-oracle.py` compara-o com o do disco.
-
-    Nunca lanca: uma shell que nao arranca por causa de um numero de diagnostico
-    e' pior do que uma shell sem numero.
-    """
-    import hashlib
-    h = hashlib.sha256()
-    here = os.path.dirname(os.path.abspath(__file__))
-    missing = []
-    names = list(_CODE_ID_FILES)
-    # Os ficheiros da PAGINA entram pela mesma porta, e ORDENADOS: um glob cuja ordem
-    # dependesse do sistema de ficheiros daria uma etiqueta que muda sem ninguem mexer.
-    page = set()
-    for pattern in _CODE_ID_GLOBS:
-        try:
-            for pth in __import__('glob').glob(os.path.join(here, pattern),
-                                               recursive=True):
-                page.add(os.path.relpath(pth, here))   # `themes/theme-1.css` inteiro
-        except Exception:  # noqa: BLE001 -- um diagnostico nunca derruba o arranque
-            missing.append(pattern)
-    names.extend(sorted(page))
-    for name in names:
-        try:
-            with open(os.path.join(here, name), 'rb') as fh:
-                h.update(fh.read())
-        except OSError:
-            missing.append(name)
-    return 'sha256=%s files=%d%s' % (
-        h.hexdigest()[:12].upper(), len(names) - len(missing),
-        (' missing=' + ','.join(missing)) if missing else '')
 
 def log(message: str) -> None:
     """One `sotto: ` prefixed line on stdout, mirrored to --log when asked.

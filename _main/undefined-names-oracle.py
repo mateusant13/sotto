@@ -47,6 +47,7 @@ POPULATION = (
     'app/webview/caption_overlay.py',
     'app/webview/overlay_paint.py',
     'app/webview/bridge_census.py',
+    'app/webview/code_identity.py',
     'app/webview/panel_focus.py',
     'app/webview/selftest_instrument.py',
     'app/webview/win32_types.py',

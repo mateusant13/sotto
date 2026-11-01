@@ -200,7 +200,7 @@ def summarise(log):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--run', action='store_true')
-    ap.add_argument('--wait', type=float, default=60.0)
+    ap.add_argument('--wait', type=float, default=200.0)
     ap.add_argument('--exit-after', type=float, default=45.0)
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args(argv)
