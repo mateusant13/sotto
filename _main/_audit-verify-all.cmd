@@ -538,6 +538,20 @@ REM oraculo diz `VERDICT: SKIPPED` e o passo skip-capable conta-o como SKIPPED -
 REM como um portao que passou. As tres mutacoes do `--neg-arm` mordem uma cauda sintetica
 REM limpa e tem de sair todas RED (medido: cases=3 caught=3).
 
+REM O CARREGAR DO MODELO NAO ENGASGA O ECRA (ordem do dono: nada de stutter): as janelas
+REM de carga da sessao viva (`BRIDGE_SPAWN` -> `BRIDGE_LOAD_MS`) nao podem ter um unico
+REM `UI_THREAD_STALL` ou `exec_js TIMEOUT` dentro. Medido 2026-11-01 13:5x na sessao dele:
+REM 4 janelas (23 s, 23 s, 27 s, 28 s), estalos=0 em todas. Sem janela na sessao, SKIPPED.
+REM O terceiro braco do `--neg-arm` e' de ESPECIFICIDADE: um estalo FORA da janela nao pode
+REM ser contado -- sem ele o verde nao vale nada.
+if exist _main\stall-under-load-oracle.py (
+call :step always stall-under-load 0 "_main\stall-under-load-oracle.py;app\webview\sotto_webview.py" "%OUT%\stall-under-load.log" python _main\stall-under-load-oracle.py
+call :skipped stall-under-load !STEP_RC! "%OUT%\stall-under-load.log" "STALL-UNDER-LOAD VERDICT: GREEN" "STALL-UNDER-LOAD VERDICT: SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped stall-under-load MISSING "%OUT%\stall-under-load.log" "STALL-UNDER-LOAD VERDICT: GREEN" "STALL-UNDER-LOAD VERDICT: SKIPPED" "VERDICT: SKIPPED" )
+if exist _main\stall-under-load-oracle.py (
+call :step always red-as-expected-stall-under-load 1 "_main\stall-under-load-oracle.py" "%OUT%\stall-under-load-neg.log" python _main\stall-under-load-oracle.py --neg-arm
+call :expectred red-as-expected-stall-under-load !STEP_RC! "%OUT%\stall-under-load-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-stall-under-load MISSING "%OUT%\stall-under-load-neg.log" "NEG-ARM PASS" )
 if exist _main\paint-live-show-oracle.py (
 call :step always paint-live-show 0 "_main\paint-live-show-oracle.py;app\webview\sotto_webview.py" "%OUT%\paint-live-show.log" python _main\paint-live-show-oracle.py
 call :skipped paint-live-show !STEP_RC! "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED"

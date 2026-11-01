@@ -276,8 +276,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 13:0x):** `_main\_audit-verify-all.cmd` = **152130 B**,
-  **1971 CRLF** / 0 bare LF, sha256 `AA06ED3DBB41FC7B58F60B4A5F5930EA3E521B2386E4026E64883FCCA761C63F`.
+- **PIN do ficheiro (medido 2026-11-01, 14:0x):** `_main\_audit-verify-all.cmd` = **153624 B**,
+  **1985 CRLF** / 0 bare LF, sha256 `9296FE33B793BA61049600142A438E5042E30FB2C2E78F47A98A2D80C5038D8B`.
+  (Este pin substitui o de 13:0x, 152130 B / 1971 CRLF, DEPOIS dos dois passos do
+  `stall-under-load`: o oraculo que julga as janelas de carga da sessao VIVA
+  (`BRIDGE_SPAWN` -> `BRIDGE_LOAD_MS`) e recusa um unico `UI_THREAD_STALL` dentro delas.
+  Medido na sessao de 13:5x: 4 janelas, 0 estalos. O terceiro braco do `--neg-arm` e' de
+  ESPECIFICIDADE -- um estalo FORA da janela nao pode ser contado.)
   (Este pin substitui o de 12:5x, 150261 B / 1950 CRLF, DEPOIS do merge da lane do
   dispositivo/silencio -- dois passos novos, `device-silence` e o seu negativo, que julgam o
   endpoint que ABRE e nao entrega um bloco: o worker saia rc=0 e agora sai 3 com
