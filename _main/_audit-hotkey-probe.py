@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import importlib.util
 import os
 import sys
 import time
@@ -81,55 +82,66 @@ def describe(err: int) -> str:
     return f'error {err}'
 
 
-APP_LOG = os.path.join(HERE, 'webview-run.log')
-MUTEX_NAME = 'Local\\SottoShell'
+#: O acelerador que a app transporta. A pergunta deste instrumento e' sobre ELE.
+SHIPPED_ACCEL = 'Alt+C'
+SELECTOR = os.path.join(HERE, 'load-shedding-oracle.py')
+
+
+def selector():
+    """O escolhedor da instancia VIVA -- UM so' nesta casa, e nao um segundo.
+
+    Vive em `_main/load-shedding-oracle.py` (`find_live_instance`, assente em
+    `newest_shell_segment`): recusa marcadores de medicao, largadas que perderam a
+    mutex (`already_running=true`) e pids mortos, e diz no stdout qual escolheu.
+    """
+    if SELECTOR in sys.modules:
+        return sys.modules[SELECTOR]
+    spec = importlib.util.spec_from_file_location(SELECTOR, SELECTOR)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[SELECTOR] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def live_sotto():
-    """O pid da instancia VIVA do Sotto, lido do log que ela propria escreve.
+    """`(pid, sha, segmento)` da instancia VIVA, ou `(None, None, '')`.
 
-    Devolve `(pid, sha)` ou `(None, None)`. `SHELL_STARTUP_STAGE pid=` e' a linha que a
-    propria app escreve ANTES de tomar a mutex, por isso ela nomeia quem esta' a arrancar;
-    a prova de que e' a viva e' o pid responder no processo.
+    A VERSAO ANTERIOR lia o ficheiro INTEIRO linha a linha e ficava com o ULTIMO
+    `SHELL_STARTUP_STAGE pid=` e o ULTIMO `SHELL_CODE_ID` -- que podem ser de
+    largadas DIFERENTES, e tipicamente sao de uma medicao. Medido 2026-11-01 11:16
+    (bateria): com a app do dono viva e a deter o Alt+C, a sonda escolheu o pid
+    40064 de uma largada de medicao que ja' nao existia e acusou a app de nao ter
+    registado a tecla. O pid, o codigo e o segmento passam a vir da MESMA largada.
     """
-    pid = None
-    sha = None
-    if not os.path.exists(APP_LOG):
-        return None, None
-    with open(APP_LOG, 'r', encoding='utf-8', errors='replace') as fh:
-        for line in fh:
-            if 'SHELL_STARTUP_STAGE' in line and 'pid=' in line:
-                for token in line.split():
-                    if token.startswith('pid='):
-                        try:
-                            pid = int(token[4:])
-                        except ValueError:
-                            pid = None
-            elif 'SHELL_CODE_ID' in line and 'sha256=' in line:
-                for token in line.split():
-                    if token.startswith('sha256='):
-                        sha = token[7:]
+    log, pid, seg = selector().find_live_instance()
     if pid is None:
-        return None, None
-    import ctypes.wintypes as _wt
-    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
-    handle = k32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
-    if not handle:
-        return None, sha
-    k32.CloseHandle(handle)
-    return pid, sha
+        return None, None, ''
+    pid = int(pid)
+    sha = None
+    for line in seg.splitlines():
+        if 'SHELL_CODE_ID' in line and 'sha256=' in line:
+            for token in line.split():
+                if token.startswith('sha256='):
+                    sha = token[7:]
+            break
+    print(f'  instancia viva: log={log} pid={pid} sha={sha}')
+    return pid, sha, seg
 
 
-def last_registration():
-    """A ultima linha `HOTKEY_REGISTERED` do log, e se ela diz `register=true`."""
-    if not os.path.exists(APP_LOG):
-        return None
+def last_registration(segment):
+    """A ultima linha de hotkey DESTA instancia (o segmento dela, nao o ficheiro).
+
+    E a linha do acelerador que a app transporta -- nao "a ultima linha de hotkey
+    do ficheiro", que era `role=live accelerator=Ctrl+Space` e por isso respondia
+    `Alt+C` ausente com o Alt+C registado quatro linhas acima.
+    """
     last = None
-    with open(APP_LOG, 'r', encoding='utf-8', errors='replace') as fh:
-        for line in fh:
-            if 'HOTKEY_REGISTERED' in line or 'HOTKEY_REGISTER_FAILED' in line:
-                last = line.rstrip()
+    for line in segment.splitlines():
+        if ('HOTKEY_REGISTERED' in line or 'HOTKEY_REGISTER_FAILED' in line) \
+                and f'accelerator={SHIPPED_ACCEL}' in line:
+            last = line.rstrip()
     return last
+
 
 
 def main() -> int:
@@ -166,13 +178,19 @@ def main() -> int:
         say('  PANEL_VISIBILITY_* to see whether the window is ever MAPPED.')
     else:
         free = [k for k, v in results.items() if v and 'SHIPPED' not in k]
-        holder, sha = live_sotto()
-        reg = last_registration() or ''
+        holder, sha, segment = live_sotto()
+        reg = last_registration(segment) or ''
         # A ARMADILHA QUE ISTO CORRIGE (medido 2026-10-30): com a app VIVA, o Alt+C esta'
         # tomado -- PELA PROPRIA APP. A sonda lia "outro programa tomou-o" e o passo da
         # bateria ficava vermelho para sempre, a acusar um defeito que nao existe. Quem
         # distingue e' o log: a instancia viva registou-o, e o pid esta' vivo.
-        if holder and 'register=true' in reg and 'Alt+C' in reg:
+        #
+        # E A SEGUNDA ARMADILHA (medido 2026-11-01 11:16): a linha de registo tem de
+        # ser do ACELERADOR DA APP e do SEGMENTO DESSA INSTANCIA. A versao anterior
+        # procurava a ultima linha de hotkey do ficheiro inteiro -- que e'
+        # `role=live accelerator=Ctrl+Space` -- e respondia "a app nao registou o Alt+C"
+        # com o Alt+C registado quatro linhas acima.
+        if holder and 'register=true' in reg:
             say('VERDICT: Alt+C IS HELD BY THE LIVE SOTTO ITSELF (pid=%d, code=%s).' % (holder, sha))
             say('  This probe registered nothing because the app in front of it owns the key.')
             say('  That is the NORMAL state with the app running -- not a defect, and not')
@@ -187,8 +205,12 @@ def main() -> int:
         say('  owner is shown no message at all (the panel is hidden by design).')
         say(f'  Free alternatives measured just now: {free if free else "(none)"}')
         if holder:
-            say('  (a Sotto pid=%d esta viva mas o log nao diz register=true -- ver %s)'
-                % (holder, APP_LOG))
+            say('  (a Sotto pid=%d esta viva mas o SEGMENTO DELA nao diz'
+                ' accelerator=%s register=true -- ultima linha de hotkey dessa'
+                ' instancia: %r)' % (holder, SHIPPED_ACCEL, reg[-120:] or None))
+        else:
+            say('  (nenhuma largada nos logs candidatos e\' a instancia viva:'
+                ' nem pid, nem mutex, nem ausencia de marcador de medicao)')
         return 1
 
 

@@ -48,17 +48,25 @@ SEM MEDICAO NAO E' UM VEREDITO: sem pressao, sem accao, ou sem uma sessao de
 shell para as separar, sai 2 e diz o que falta. Um passo saltado nunca conta como
 portao que passou.
 
-    python _main\\altc-first-caption-oracle.py                  # a ultima sessao com pressao
-    python _main\\altc-first-caption-oracle.py --all            # todas as sessoes
+**E O PASSO NAO ESPERA PELO GESTO DE NINGUEM**: sem `--log` ele CORRE a medicao
+(`_main/pov-selftest.py --run`, tag privada) e julga o log que ESSA medicao
+escreveu. Ate' 2026-11-01 ele lia `_main/webview-run.log` -- o ficheiro da
+instancia do dono, que atravessa dias -- e respondia `NO-MEASURE` sempre que o
+build no disco era mais novo do que a ultima sessao: um portao cujo estado de
+repouso era "nao medido".
+
+    python _main\\altc-first-caption-oracle.py                  # MEDE agora e julga
+    python _main\\altc-first-caption-oracle.py --all            # todas as sessoes da medicao
     python _main\\altc-first-caption-oracle.py --budget-ms 1500 # o orcamento do dono
-    python _main\\altc-first-caption-oracle.py --log <ficheiro> # outro log
+    python _main\\altc-first-caption-oracle.py --log <ficheiro> # julga um log ja' escrito
     python _main\\altc-first-caption-oracle.py --neg-arm        # rc=1 POR DESENHO
 
 Exit: 0 dentro do orcamento, 1 fora do orcamento, 2 medicao ausente.
 """
-# BATTERY-HEAVY: owner-hand -- este instrumento mede um GESTO DO DONO (a pressao
-# de Alt+C numa sessao viva, do build que esta' no disco). Nenhum passo a pode
-# produzir por si: sem ela o oraculo responde NO-MEASURE, nunca um verde.
+# BATTERY-HEAVY: app-window -- este instrumento LARGA a app (segunda instancia,
+# mutex privada, teclas livres, token `high`; nunca na tela do dono) para medir o
+# gesto no build que esta' no disco. A classe pesada da bateria so' corre com
+# `SOTTO_BATTERY_HEAVY=1`.
 
 # NO-BUG: instrumento da linha de aceitacao Alt+C -> a ACCAO do Alt+C <= 1,5 s.
 # A primeira versao media pressao -> pintura de TEXTO e emparelhava atraves de um
@@ -72,15 +80,15 @@ import io
 import os
 import importlib.util
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_LOG = os.path.join(HERE, "webview-run.log")
 DEFAULT_BUDGET_MS = 1500.0
 
 STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})")
 SHELL_START = re.compile(r"SHELL_STARTUP_STAGE pid=(\d+)")
-PRESS = re.compile(r"HOTKEY_PRESSED(?: role=(\w+))? count=(\d+)")
+PRESS = re.compile(r"HOTKEY_PRESSED(?: role=([\w-]+))? count=(\d+)")
 TOGGLE = re.compile(r"HOTKEY_TOGGLE step=(\w+) surface=(\S+)")
 LIVE_STEP = re.compile(r"HOTKEY_LIVE_STEP caption_on=(\w+)")
 LIVE = re.compile(r"LIVE_ENABLED on=(\w+)")
@@ -262,9 +270,13 @@ def measure_one(session, press):
     """
     when_press = press_when(press)
     role = (press.get("role") or "") if isinstance(press, dict) else ""
-    if role == "panels":
+    # O PAPEL E' LIDO PELA FAMILIA, nao por igualdade: uma medicao que arma as
+    # threads do proprio selftest publica `role=panels-probe`/`live-probe`
+    # (`selftest_instrument.run_selftest`), e exigir a palavra exacta deixava a
+    # pressao sem accao -- ausencia de medicao inventada pelo parser.
+    if role.startswith("panels"):
         allowed = ("PANEL_SHOWN", "HOTKEY_TOGGLE")
-    elif role == "live":
+    elif role.startswith("live"):
         allowed = ("LIVE_ENABLED", "HOTKEY_LIVE_STEP")
     else:
         # Log anterior ao `role=`: nao se sabe que tecla foi, por isso vale
@@ -450,10 +462,55 @@ def neg_arm(budget_ms):
     return 1
 
 
+def drive(tag=None):
+    """CORRE a medicao agora, no build que esta' no disco, e devolve o log DELE.
+
+    PORQUE E' QUE O PASSO SE MEDE A SI MESMO (medido 2026-11-01). O passo lia
+    `_main/webview-run.log` -- o ficheiro que a instancia do DONO escreve e que
+    atravessa dias e dezenas de arranques. Numa bateria a seguir a uma mudanca de
+    codigo ele respondia `MEDICAO AUSENTE: nenhuma sessao com pressao nasceu do
+    build que esta' no disco` (rc=2): nao havia nada a medir, e o passo ficava
+    vermelho a espera de um gesto que ninguem fez. Um `NO-MEASURE` nao pode ser o
+    estado de repouso de um portao.
+
+    `_main/pov-selftest.py --run` (o instrumento do dono, 2026-11-01) arranca uma
+    SEGUNDA instancia com mutex privada, teclas livres e o token de um processo
+    `high`, e o proprio selftest entrega Alt+C e Ctrl+Space pelo caminho real
+    (`simulate_press` -> `WM_HOTKEY` -> `HOTKEY_PRESSED`). E' essa a medicao que
+    este oraculo julga: o mesmo log traz `SHELL_STARTUP_STAGE`, `SHELL_CODE_ID` e
+    as accoes.
+
+    A TAG E' PRIVADA por run (`altc-first-caption-<pid>`), porque a tag separa
+    log, runner E mutex: duas medicoes com a mesma tag matam uma a outra.
+    """
+    tag = tag or os.environ.get("SOTTO_POV_TAG") or "altc-first-caption-%d" % os.getpid()
+    tmp = os.environ.get("SOTTO_TMP") or r"I:\cc-tmp"
+    log = os.path.join(tmp, "pov-selftest-%s.log" % tag)
+    driver = os.path.join(HERE, "pov-selftest.py")
+    print("a medir: python _main/pov-selftest.py --run (tag=%s)" % tag)
+    env = dict(os.environ, SOTTO_POV_TAG=tag)
+    try:
+        proc = subprocess.run([sys.executable, driver, "--run"], env=env,
+                              capture_output=True, text=True, timeout=420)
+    except Exception as exc:                                    # noqa: BLE001
+        print("MEDICAO AUSENTE: o motor da medicao nao correu: %r" % (exc,))
+        return log
+    tail = [ln for ln in (proc.stdout or "").strip().splitlines() if ln.strip()][-6:]
+    print("motor rc=%d" % proc.returncode)
+    for ln in tail:
+        print("  " + ln[:160])
+    if proc.returncode != 0:
+        print("  stderr: %s" % (proc.stderr or "").strip()[-400:])
+    if not os.path.isfile(log):
+        print("MEDICAO AUSENTE: o motor nao escreveu %s" % log)
+    return log
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Alt+C -> a accao do Alt+C: o delta medido")
-    ap.add_argument("--log", default=DEFAULT_LOG)
+    ap.add_argument("--log", default=None,
+                    help="julga ESTE log; sem ele o passo MEDE agora (ver `drive`)")
     ap.add_argument("--budget-ms", type=float, default=DEFAULT_BUDGET_MS)
     ap.add_argument("--all", action="store_true", help="todas as sessoes, nao so a ultima")
     ap.add_argument("--neg-arm", action="store_true", help="muta o aritmetico; rc=1 POR DESENHO")
@@ -468,6 +525,9 @@ def main(argv=None):
     if args.neg_arm:
         return neg_arm(args.budget_ms)
 
+    # SEM `--log` O PASSO NAO LE UM FICHEIRO QUE OUTRA SESSAO DEIXOU: mede agora.
+    if args.log is None:
+        args.log = drive()
     if not os.path.isfile(args.log):
         print("MEDICAO AUSENTE: log nao existe: %s" % args.log)
         print("ALTC-FIRST-CAPTION VERDICT NO-MEASURE (rc=2) -- ausencia de medicao nao e veredicto")
