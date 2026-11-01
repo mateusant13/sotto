@@ -276,8 +276,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 11:0x):** `_main\_audit-verify-all.cmd` = **146485 B**,
-  **1910 CRLF** / 0 bare LF, sha256 `52d9d6eefc6f089f454f049e78e12bb04419a353c895a3361d72baa8cbffe611`.
+- **PIN do ficheiro (medido 2026-11-01, 12:2x):** `_main\_audit-verify-all.cmd` = **148354 B**,
+  **1931 CRLF** / 0 bare LF, sha256 `23626cf40ced2dc8af69b0249581ec73b16a3330a61909a0bdb7e7fb4c758369`.
+  (Este pin substitui o de 2026-11-01 11:0x, 146485 B / 1910 CRLF, sha256 `52D9D6EE...FFE611`,
+  DEPOIS de dois passos do contrato dispositivo/silencio: `device-silence` e
+  `red-as-expected-device-silence` (21 linhas: 15 de comentario e 6 de passo). O passo nasceu de
+  um defeito medido ao vivo: um endpoint que ABRE e nao entrega um unico bloco de callback saia
+  com rc=0 (`worker/sotto_worker.py` `return 3 if ran_but_silent else 0`), o unico word que todo
+  o chamador le' como sucesso; agora sai 3 com o veredicto `no-callback-blocks`, e o mesmo ficheiro
+  exige a shell a pintar `no-audio` — medido nos tres bracos e no `--neg-arm`.)
   (Este pin substitui o de 2026-10-30 12:5x, 145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`,
   DEPOIS dos dois passos do portao novo `undefined-names` (+ `red-as-expected-undefined-names`,
   16 linhas: 9 de comentario e 7 de passo). O portao nasceu de um defeito medido duas vezes
