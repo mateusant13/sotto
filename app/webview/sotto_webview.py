@@ -405,6 +405,12 @@ WORKER_PRELOAD_MAX_WAIT_S = 120.0
 WORKER_PRELOAD_POLL_S = 2.0
 PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
 STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
+#: O TETO DE UMA NOTIFICACAO (2026-11-01). Ver `emit`: as tres chamadas de
+#: `emit` do produto sao NOTIFICACOES (ninguem le o valor), e todas corriam pelo
+#: `exec_js` SINCRONO com o orcamento por omissao de 10 s. Um post nao tem
+#: orcamento nenhum: ou entra na fila do UI thread ou nao entra, e as duas coisas
+#: ficam escritas no log.
+BRIDGE_NOTIFY_POSTED = True
 
 
 def _bridge_census():
@@ -8040,10 +8046,47 @@ class SottoShell:
         except ValueError:
             return box.get('json')
 
-    def emit(self, kind, payload):
-        """main -> page: the WebView2 spelling of preload's `emit(kind, payload)`."""
-        self.exec_js('window.__sotto_emit(' +
-                     json.dumps(kind) + ',' + json.dumps(json.dumps(payload)) + ')')
+    def emit(self, kind, payload) -> bool:
+        """main -> page: `emit(kind, payload)` -- POSTED, so it never waits.
+
+        ── O QUE ESTAVA MEDIDO, e e' o defeito ────────────────────────────────
+        Isto era `self.exec_js(...)`: um round trip SINCRONO com o orcamento por
+        omissao de 10,0 s. As TRES chamadas de `emit` do produto -- `status`
+        (`send_status`), `geometry` (`send_geometry`) e `external-caption` --
+        descartam o valor de retorno: sao NOTIFICACOES. Nenhuma delas tem uma
+        resposta que use, e todas correm em threads que o dono sente:
+
+          * `status` sai do pump do worker, a MESMA thread que carrega as
+            legendas (`on_worker_status` -> `_status` -> `apply_panel_state`);
+          * `geometry` sai da thread da hotkey, no Alt+C;
+          * `external-caption` sai da thread da faixa do YouTube.
+
+        Medido no log vivo (`_main/webview-run.log`): **515**
+        `WARN exec_js TIMEOUT after 10.0s` (`grep -c`), e nos dois ultimos
+        2026-11-01 10:33:17 / 10:35:05 o script que estourou e'
+        `window.__sotto_emit("status", ...)`. Em cada um desses, a thread
+        chamadora ficou PRESA 10 s para entregar uma frase ao painel -- e a
+        linha seguinte do log (`STATUS_APPLIED`) so' aparece 10 s depois. O
+        painel nao congelava: quem congelava era o emissor.
+
+        PORQUE UM POST NAO TEM ORCAMENTO. `_post` e' `BeginInvoke`: ou entra na
+        fila do UI thread, ou nao entra -- e as duas coisas ficam escritas. A
+        ORDEM em relacao aos outros scripts postados mantem-se (mesma fila), e
+        a ordem entre duas notificacoes diferentes nunca foi garantida
+        (`emit_async` ja' o documenta); o painel e' funcao pura do ultimo
+        estado que viu.
+
+        DEVOLVE `False` quando o form ainda nao existe. Isso NAO e' silencio:
+        e' a linha `EMIT_DROPPED` abaixo, que e' o que o pedido desta lane
+        exige -- uma legenda/status perdido e' uma linha de log, nunca um
+        bloqueio.
+        """
+        posted = self.emit_nowait(kind, payload)
+        if not posted:
+            warn(f'EMIT_DROPPED kind={json.dumps(str(kind))} '
+                 f'reason=no-form posted=false '
+                 f'payload={json.dumps(payload, separators=(",", ":"))[:120]!r}')
+        return posted
 
     def exec_js_post(self, script) -> bool:
         """Run `script` in the page and return IMMEDIATELY -- fire and forget.
@@ -8188,10 +8231,12 @@ class SottoShell:
         # re-classify the sentence with a regex.
         self.send_status(line, kind)
         info = info or {}
-        shown = self.exec_js(
+        title = str(info.get('title') or '')
+        body = str(info.get('body') or '')
+        script = (
             '(() => {'
-            '  const title = ' + json.dumps(info.get('title') or '') + ';'
-            '  const body = ' + json.dumps(info.get('body') or '') + ';'
+            '  const title = ' + json.dumps(title) + ';'
+            '  const body = ' + json.dumps(body) + ';'
             '  const kind = ' + json.dumps(kind) + ';'
             "  const t = document.querySelector('.captions__placeholder-title');"
             "  const b = document.querySelector('.captions__placeholder-body');"
@@ -8203,8 +8248,21 @@ class SottoShell:
             "           s.classList.toggle('status--noaudio', kind === 'no-audio'); }"
             "  return t ? t.textContent : '';"
             '})()')
-        if shown:
-            log(f'PLACEHOLDER_APPLIED title={json.dumps(str(shown))}')
+        # POSTED, NOT AWAITED (2026-11-01). Esta era a SEGUNDA metade do mesmo
+        # defeito: `apply_panel_state` fazia `send_status` (`emit`, sincrono) e
+        # DEPOIS este `exec_js`, sincrono, com 10 s cada -- ate' 20 s de pump do
+        # worker por um status. O valor lido era usado para UMA linha de log
+        # (`PLACEHOLDER_APPLIED title=`), e' o que a medição mostrou: 29
+        # `exec_js TIMEOUT` com o script `const title = ""; const body = ""` no
+        # log do dono. Uma escrita que compra uma linha de log nao pode custar
+        # 10 s da thread que carrega as legendas -- a linha passa a dizer o que
+        # se ESCREVEU (`posted=true`), que e' um facto do mesmo tamanho.
+        posted = self.exec_js_post(script)
+        if posted:
+            if title:
+                log(f'PLACEHOLDER_APPLIED title={json.dumps(title)} posted=true')
+        else:
+            warn(f'PLACEHOLDER_DROPPED title={json.dumps(title)} reason=no-form')
         return True
 
     def note_caption_observed(self, payload):
