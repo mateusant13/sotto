@@ -1,61 +1,73 @@
 #!/usr/bin/env python
-# NO-BUG: instrumento da ordem do dono de 2026-10-30 -- o gesto do Alt+C
-# (1 toque = painel de baixo, 2 toques = da direita, HOLD = legenda) medido no
-# codigo que corre; nao corrige nenhum defeito, impede que o contrato volte a
-# ser contado por presses em vez de medido por duracao.
-"""ORACLE: O GESTO DO ALT+C -- 1 toque = painel de baixo, 2 = da direita, HOLD = legenda.
+# NO-BUG: instrumento da ordem do dono de 2026-11-01 -- as duas hotkeys do Sotto
+# (Alt+C = um passo do ciclo dos paineis, Ctrl+Space = a legenda ao vivo) medidas
+# no codigo que corre. Nao corrige defeito nenhum: impede que o contrato volte a
+# ser contado por janelas de toques ou por duracao de segurada.
+"""ORACLE: AS DUAS HOTKEYS -- Alt+C alterna os paineis, Ctrl+Space a legenda.
 
-ORDEM DO DONO, verbatim (2026-10-30):
+ORDEM DO DONO, verbatim (2026-11-01):
 
-    *"1 tap = painel de baixo, 2 taps = painel da direita,
-      HOLD = legenda ao vivo on/off"*
+    *"modifica a legenda ao vivo hotkey. bota o padrao como control espaco. e os
+    painels deixa alt c. faz os paineis alternarem mesmo se eu deixar alt
+    apertado o tempo inteiro e spammando c. alterna entre show e hide."*
 
-A QUEIXA QUE ISTO FECHA, verbatim (2026-10-30): *"o alt c nao ta dando display em
-qualquer painel"*. O contrato anterior (2026-10-18) dava a UM toque a legenda e
-so' um SEGUNDO toque dentro de 700 ms subia o primeiro painel -- por isso um
-toque isolado **nunca** mostrava painel nenhum, e um Alt+C segurado caia em
-"triplo" e mostrava o painel errado.
+O CONTRATO ANTERIOR (2026-10-30) decidia por TEMPO: 1 toque contra 2 toques
+dentro de 400 ms, e uma segurada >= 200 ms como legenda ao vivo. Media a duracao
+com `GetAsyncKeyState` em cada volta de um pump de 10 ms. Com o Alt fisicamente
+em baixo e o C martelado, as duas coisas partiam o gesto ao meio -- e nao ha
+nada disso que ele tenha pedido.
 
-O QUE E' VERIFICADO, E COMO. Os corpos de `hotkey_pressed`, `_hotkey_resolve`,
-`hotkey_hold`, `HotkeyThread._on_press` e `HotkeyThread.measure_hold` sao
-EXTRAIDOS DO FICHEIRO QUE VAI CORRER com `ast` e exec'd, contra um shell falso e
-um relogio falso. Nenhuma janela e' aberta, nenhum ctypes e' tocado, nada e'
-posto no ecra do dono. Um oraculo que reescrevesse a logica mediria a
-transcricao, nao o produto.
+OS BRACOS (a lista e' impressa no arranque, e cada um diz o que julga):
 
-O NUMERO DO GESTO TEM UM SO' DONO: `app/webview/hotkey_gesture.py`. Se alguem o
-voltar a escrever em `sotto_webview.py` -- a segunda verdade que este repo ja
-pagou uma vez -- a arm 2 fica vermelha.
+  (a) 10 pressoes de Alt+C -> EXACTAMENTE 10 mudancas de visibilidade, com os
+      shows a alternar strip,panel,strip,panel,strip;
+  (b) duas pressoes separadas por 10 s de relogio -> DUAS mudancas;
+  (c) uma pressao com 300 ms de relogio -> UMA mudanca, e NENHUM toggle de legenda;
+  (d) Ctrl+Space -> a legenda comuta uma vez por pressao, e nao toca em painel;
+  (e) o braco VERMELHO: reinstalar o adiamento de 400 ms (ou o limiar de HOLD)
+      tem de derrubar o oraculo -- corrido, com o resultado mostrado.
+
+COMO. Os corpos de `hotkey_pressed`, `hotkey_live`, `_hotkey_resolve` e
+`_on_press` sao EXTRAIDOS DO FICHEIRO QUE VAI CORRER com `ast` e exec'd contra um
+shell falso, um relogio-ESPIAO (qualquer leitura de tempo reprova o braco) e um
+`threading`-espiao (um Timer significa adiamento). Nenhuma janela e' aberta,
+nenhum ctypes e' tocado, nada e' posto no ecra do dono.
 
 Uso:
     python _main/altc-gesture-oracle.py            -> rc 0 GREEN / rc 1 RED
     python _main/altc-gesture-oracle.py --neg-arm  -> muta uma COPIA e exige RED
+    SOTTO_ROOT=<arvore> ...                       -> julga outra arvore
 """
 from __future__ import annotations
 
 import ast
 import importlib.util as _ilu
-import io
+import json
 import os
 import re
 import shutil
-import sys
 import tempfile
+import textwrap
+import time as real_time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("SOTTO_ROOT") or r"H:\sotto").resolve()
+HERE = Path(__file__).resolve().parent
+ROOT = Path(os.environ.get("SOTTO_ROOT") or HERE.parent).resolve()
 SHELL = ROOT / "app" / "webview" / "sotto_webview.py"
 GESTURE = ROOT / "app" / "webview" / "hotkey_gesture.py"
+SETTINGS = ROOT / "app" / "webview" / "hotkey_settings.py"
+LIVE_FILE = ROOT / "_main" / "hotkey-settings.json"
 EXIT_PASS, EXIT_FAIL = 0, 1
 
 rows: list[tuple[bool, str, str]] = []
 
-
-#: As DURACOES medidas na mao do dono (2026-10-30, 21 pressoes, `held_ms` lidos
-#: pelo `HotkeyThread`). O limiar do HOLD tem de cair no vazio entre as duas:
-#:   93 110 187 204 438 468 [ele quer o painel] | 531 578 641 || 1187 ... 3047 [legenda]
-_TAP_LENTO_MS = 641.0
-_SEGURA_RAPIDA_MS = 1187.0
+ARM_LIST = (
+    "(a) 10 pressoes de Alt+C -> 10 mudancas, shows strip,panel,strip,panel,strip",
+    "(b) duas pressoes a 10 s -> duas mudancas",
+    "(c) uma pressao com 300 ms -> uma mudanca (e nenhuma legenda)",
+    "(d) Ctrl+Space comuta a legenda uma vez por pressao",
+    "(e) --neg-arm: adiamento de 400 ms / limiar de HOLD reinstalados -> RED",
+)
 
 
 def add(ok: bool, name: str, detail: str = "") -> bool:
@@ -64,11 +76,35 @@ def add(ok: bool, name: str, detail: str = "") -> bool:
     return bool(ok)
 
 
-def load_gesture(path: Path):
-    spec = _ilu.spec_from_file_location("hotkey_gesture_probe", str(path))
-    mod = _ilu.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def load_module(name: str, path: Path):
+    spec = _ilu.spec_from_file_location(name, str(path))
+    module = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# ---------------------------------------------------------------------------
+# Extracao do proprio ficheiro (o que corre, e nao a minha transcricao)
+# ---------------------------------------------------------------------------
+def class_methods(source: str, cls_name: str, names) -> dict:
+    """`{nome: fonte}` dos metodos pedidos, lidos do ficheiro com `ast`."""
+    tree = ast.parse(source)
+    cls = next((n for n in tree.body
+                if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
+    if cls is None:
+        return {}
+    out = {}
+    for node in cls.body:
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            out[node.name] = ast.get_source_segment(source, node) or ""
+    return out
+
+
+def class_names(source: str, cls_name: str) -> set:
+    tree = ast.parse(source)
+    cls = next((n for n in tree.body
+                if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
+    return {n.name for n in (cls.body if cls else []) if isinstance(n, ast.FunctionDef)}
 
 
 def code_only(source: str, cls_name: str, name: str) -> str:
@@ -90,72 +126,76 @@ def code_only(source: str, cls_name: str, name: str) -> str:
     return ""
 
 
-def js_code(text: str) -> str:
-    """O JavaScript SEM comentarios -- o que corre, nao o que explica.
-
-    Ingénuo de proposito: tira os blocos `/* */` e as linhas que COMECAM por
-    `//`. Nao tenta perceber strings, porque a unica pergunta que se lhe faz e'
-    "este ficheiro tem uma COPIA da lista de escolhas", e uma string com
-    `//` num URL nao pode fabricar uma lista de numeros.
-    """
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return "\n".join(line for line in text.splitlines()
-                     if not line.lstrip().startswith("//"))
-
-
-def class_methods(source: str, cls_name: str, names) -> dict:
+def def_body(source: str, name: str) -> str:
+    """O corpo imediato de uma funcao de modulo (sem docstring)."""
     tree = ast.parse(source)
-    cls = next((n for n in tree.body
-                if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
-    if cls is None:
-        return {}
-    out = {}
-    for node in cls.body:
-        if isinstance(node, ast.FunctionDef) and node.name in names:
-            out[node.name] = ast.get_source_segment(source, node) or ""
-    return out
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            body = list(node.body)
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                body = body[1:] or [ast.Pass()]
+            return "\n".join(ast.unparse(n) for n in body)
+    return ""
 
 
 # ---------------------------------------------------------------------------
-# Um relogio e um Timer que se controlam (nada de `sleep` num oraculo).
+# Espioes: tempo lido e trabalho adiado sao REPROVADOS, nao apenas comentados
 # ---------------------------------------------------------------------------
-class FakeClock:
+class SpyTime:
+    """Qualquer leitura de relogio fica registada -- o gesto nao pode ler tempo."""
+
     def __init__(self):
         self.now = 1000.0
+        self.reads: list[str] = []
 
-    def monotonic(self):
-        return self.now
-
-    def advance_ms(self, ms):
-        self.now += float(ms) / 1000.0
-
-
-class FakeTimer:
-    """O que `hotkey_pressed` usa de `threading.Timer`: agenda um callback."""
-
-    pending: list = []
-
-    def __init__(self, delay_s, fn):
-        self.delay_s = float(delay_s)
-        self.fn = fn
-        self.daemon = False
-        FakeTimer.pending.append(self)
-
-    def start(self):
-        return None
-
-    def cancel(self):
-        if self in FakeTimer.pending:
-            FakeTimer.pending.remove(self)
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
+        self.reads.append(name)
+        if name == 'monotonic':
+            return lambda: self.now
+        if name == 'perf_counter':
+            return lambda: self.now
+        return lambda *a, **k: None
 
 
-class FakeThreading:
-    Timer = FakeTimer
+class SpyThreading:
+    """Um `Timer` aqui e' um ADIAMENTO, e o braco (a) tem de o ver."""
+
+    class Event:
+        def __init__(self):
+            self.flag = False
+
+        def set(self):
+            self.flag = True
+
+        def is_set(self):
+            return self.flag
+
+        def wait(self, timeout=None):
+            return self.flag
+
+    def __init__(self):
+        self.timers: list = []
+        self.threads: list = []
+
+    def Timer(self, delay, fn):  # noqa: N802 -- nome do stdlib, de proposito
+        self.timers.append((float(delay), fn))
+        return type('T', (), {'daemon': False, 'start': lambda s: None,
+                              'cancel': lambda s: None})()
+
+    def Thread(self, target=None, **kwargs):  # noqa: N802
+        self.threads.append(target)
+        return type('T', (), {'daemon': False,
+                              'start': lambda s: target and target(),
+                              'is_alive': lambda s: False})()
 
 
 class FakeLog:
     def __init__(self):
-        self.lines = []
+        self.lines: list[str] = []
 
     def __call__(self, message, *a, **k):
         self.lines.append(str(message))
@@ -164,168 +204,88 @@ class FakeLog:
         return any(needle in line for line in self.lines)
 
 
+#: O que `window_visible` devolve. O shell falso escreve aqui, e a funcao do
+#: namespace le' daqui -- e' o mesmo caminho do shell real (medir a janela).
+SCREEN = {'visible': False}
+
+
 def build_shell(source: str, gesture):
     """Os metodos do shell, exec'd contra um `self` falso."""
-    # `_hotkey_forget` entrou a 2026-10-30: com a accao a ser imediata, o Timer
-    # deixou de adiar o painel e passou a REARMAR a contagem. O corpo tem de vir
-    # do ficheiro que corre -- um `lambda` aqui mediria a minha copia.
-    bodies = class_methods(source, "SottoShell",
-                           ("hotkey_pressed", "_hotkey_resolve", "hotkey_hold",
-                            "_hotkey_forget"))
-    if len(bodies) != 4:
+    wanted = ("hotkey_pressed", "hotkey_live", "_hotkey_resolve")
+    bodies = class_methods(source, "SottoShell", wanted)
+    if len(bodies) != len(wanted):
         return None
-    clock = FakeClock()
+    spies = {'time': SpyTime(), 'threading': SpyThreading(), 'log': FakeLog()}
     namespace = {
-        "time": clock,
-        "threading": FakeThreading,
-        "log": FakeLog(),
+        "time": spies['time'],
+        "threading": spies['threading'],
+        "log": spies['log'],
         "hotkey_numbers": lambda: gesture,
+        "window_visible": lambda hwnd: bool(SCREEN['visible']),
+        "_spies": spies,
     }
-    module = ast.Module(body=[ast.parse(b).body[0] for b in bodies.values()],
+    module = ast.Module(body=[ast.parse(bodies[name]).body[0] for name in wanted],
                         type_ignores=[])
     exec(compile(module, "<sotto-shell-hotkey>", "exec"), namespace)
-    # Os metodos ficam no namespace do exec; o `self` falso tem de os ver pelo
-    # nome que o Timer usa (`self._hotkey_resolve`).
-    namespace["_bind"] = (namespace["hotkey_pressed"],
-                          namespace["_hotkey_resolve"],
-                          namespace["hotkey_hold"],
-                          namespace["_hotkey_forget"])
     return namespace
 
 
 class FakeShell:
-    """So' o que os tres metodos tocam. Nenhuma chamada Win32."""
+    """So' o que os tres metodos tocam. Nenhuma chamada Win32.
 
-    def __init__(self, caption_on=False, bound=None, visible=False, surface=None):
-        self.shown = []
-        self.live_calls = []
-        self.hidden = []
-        # O QUE O WINDOW VESTE. `_hotkey_resolve` decide o toggle por isto e nao
-        # por uma intencao; sem estes dois campos o braco do toggle nao tinha
-        # como descrever um painel ja' no ecra.
+    `hide_panel` NAO limpa `surface_applied`, de proposito: o ciclo de
+    `hotkey_gesture.next_surface` depende dessa memoria para alternar o show
+    seguinte, e o shell real tambem nao a limpa (braco estrutural separado).
+    """
+
+    def __init__(self, ns, visible=False, surface='panel', caption=False):
+        self.hwnd = 4242
         self.visible = bool(visible)
-        self.surface_applied = surface or ("strip" if visible else "")
-        self._caption_wanted = bool(caption_on)
-        # O DESPACHO. Em producao `hotkey_pressed` poem o token numa FILA e um
-        # worker executa; a fila e' stdlib e nao tem regra nenhuma dentro, por
-        # isso o oraculo liga o despacho DIRECTO -- o que se mede aqui e' a
-        # decisao e o INSTANTE dela, nao o `queue.Queue`.
-        if bound is not None:
-            self._hotkey_resolve = lambda token: bound[1](self, token)
-            self._hotkey_dispatch = lambda token: bound[1](self, token)
-            self._hotkey_forget = lambda token: bound[3](self, token)
+        self.surface_applied = surface
+        self._caption_wanted = bool(caption)
+        self.events: list[tuple] = []
+        self.live_calls: list[bool] = []
+        SCREEN['visible'] = bool(visible)
+        # O DESPACHO. Em producao `hotkey_pressed` poem o passo numa FILA e um
+        # worker executa; a fila e' stdlib e nao tem regra nenhuma dentro (o braco
+        # estrutural prova que ele so' poem), por isso aqui liga-se DIRECTO -- o
+        # que se mede e' a decisao e o INSTANTE dela.
+        self._hotkey_dispatch = lambda kind: ns['_hotkey_resolve'](self, kind)
+
+    def _shown(self, surface):
+        self.visible = True
+        self.surface_applied = surface
+        SCREEN['visible'] = True
+        self.events.append(('show', surface))
 
     def show_strip(self, reason):
-        self.shown.append(("strip", reason))
-        self.visible = True
-        self.surface_applied = "strip"
-        return "strip"
+        self._shown('strip')
+        return 'strip'
 
     def show_side(self, reason):
-        self.shown.append(("side", reason))
-        self.visible = True
-        self.surface_applied = "side"
-        return "side"
+        self._shown('panel')
+        return 'panel'
 
     def hide_panel(self, reason):
-        self.hidden.append(reason)
-        self.shown = [row for row in self.shown]
         self.visible = False
-        self.surface_applied = ""
+        SCREEN['visible'] = False
+        self.events.append(('hide', self.surface_applied))
         return True
 
     def _set_live_enabled(self, payload):
-        self.live_calls.append(dict(payload))
-        self._caption_wanted = bool(payload.get("on"))
-        return "enabled"
+        on = bool(payload.get('on'))
+        self.live_calls.append(on)
+        self._caption_wanted = on
+        return 'enabled'
 
 
-def drive(ns, shell, taps, gap_ms):
-    """Toca `taps` vezes separadas por `gap_ms`, e fecha o gesto."""
-    clock = ns["time"]
-    for i in range(taps):
-        if i:
-            clock.advance_ms(gap_ms)
-        ns["hotkey_pressed"](shell)
-    # o ultimo toque fecha `window` ms depois
-    clock.advance_ms(ns["hotkey_numbers"]().HOTKEY_TAP_WINDOW_MS + 1)
-    fired = list(FakeTimer.pending)
-    FakeTimer.pending.clear()
-    for timer in fired:
-        timer.fn()
-    return fired
+def visibility_changes(events):
+    return len(events)
 
 
-def build_thread(source: str, gesture):
-    """`_on_press` + `measure_hold` + `_deliver_hold`, exec'd sobre uma classe falsa.
-
-    `_deliver_hold` entrou na lista a 2026-10-30, no mesmo dia em que o HOLD
-    passou a disparar ao CRUZAR o limiar (ordem do dono: *"assim que o alt c é
-    segurado suficiente, da display ou tira display da legenda. nao é pra
-    esperar o release da tecla"*). O `_on_press` deixou de chamar o callback
-    directamente -- passou a chamar `_deliver_hold`, que marca `_hold_fired`
-    antes de o entregar. Sem este metodo aqui, o braco falhava com
-    `HOTKEY_HANDLER_FAILED` e lia `holds=0 taps=0`: o extractor tinha ficado
-    para tras do codigo, que e' a forma mais barata de um oraculo mentir.
-    """
-    bodies = class_methods(
-        source, "HotkeyThread",
-        ("_on_press", "_tick", "_finish_measure", "_deliver_hold", "_threshold"))
-    if len(bodies) != 5:
-        return None
-    # O LIMIAR EM VIGOR e' mutavel de proposito: e' o que o dono escolhe no
-    # painel da direita, e a arm que prova que a thread o respeita tem de poder
-    # muda-lo sem reiniciar nada.
-    box = {"hold_ms": float(gesture.HOTKEY_HOLD_MS)}
-    namespace = {
-        "time": FakeClock(),
-        "log": FakeLog(),
-        "hotkey_numbers": lambda: gesture,
-        "hotkey_threshold": lambda: box["hold_ms"],
-        "_thresholdbox": box,
-    }
-    module = ast.Module(body=[ast.parse(b).body[0] for b in bodies.values()],
-                        type_ignores=[])
-    exec(compile(module, "<sotto-hotkey-thread>", "exec"), namespace)
-    namespace["_bind"] = (namespace["_on_press"], namespace["_tick"],
-                          namespace["_finish_measure"], namespace["_deliver_hold"],
-                          namespace["_threshold"])
-    return namespace
-
-
-class FakeHotkeyThread:
-    def __init__(self):
-        self.pressed = 0
-        self.thread_id = 4242
-        self.fake_hold_ms = None
-        self.taps = 0
-        self.holds = 0
-        self._hold_fired = False
-        # A medicao vive no pump (`_tick`), por isso o falso precisa dos dois
-        # campos de estado que `hotkey_pressed` inicializa no shell real.
-        self._measuring = False
-        self._hold_started = 0.0
-        self.lines = []
-
-    def log_fn(self, message):
-        self.lines.append(str(message))
-
-    def on_hotkey(self):
-        self.taps += 1
-
-    def on_hold(self):
-        self.holds += 1
-
-    #: A tecla, como um teclado real: liga-se e desliga-se pelo braco.
-    down = False
-
-    def _alt_is_down(self):
-        return bool(self.down)
-
-    def measure_hold(self):  # substituido pelo corpo real quando ha namespace
-        return 0.0
-
-
+# ---------------------------------------------------------------------------
+# Veredicto
+# ---------------------------------------------------------------------------
 def verdict(name: str) -> int:
     passed = sum(1 for ok, _, _ in rows if ok)
     total = len(rows)
@@ -334,465 +294,316 @@ def verdict(name: str) -> int:
         if not ok:
             print(f"FALHA: {label}" + (f"  -- {detail}" if detail else ""))
     print(f"\n{name} {'GREEN' if not failed else 'VERMELHO'} -- "
-          f"arms={total} pass={passed} fail={failed} (rc={EXIT_PASS if not failed else EXIT_FAIL})")
+          f"arms={total} pass={passed} fail={failed} "
+          f"(rc={EXIT_PASS if not failed else EXIT_FAIL})")
     return EXIT_PASS if not failed else EXIT_FAIL
 
 
-def run(gesture_path: Path, shell_path: Path) -> int:
-    for path in (gesture_path, shell_path):
+def run(gesture_path: Path, shell_path: Path, settings_path: Path,
+        live_file: Path) -> int:
+    for path in (gesture_path, shell_path, settings_path):
         if not path.exists():
             print(f"VERDICT: FAIL -- {path} ausente")
             return EXIT_FAIL
-    gesture = load_gesture(gesture_path)
-    # `hotkey_settings` AO LADO do gesto (2026-10-30): o numero de fabrica e a
-    # lista que o painel oferece tem de ser lidos do MESMO sitio que a app le',
-    # senao um braco aqui pode concordar com um ficheiro que o shell ignora.
-    if str(gesture_path.parent) not in sys.path:
-        sys.path.insert(0, str(gesture_path.parent))
-    import hotkey_settings
+    print("BRACOS JULGADOS:")
+    for line in ARM_LIST:
+        print(f"  {line}")
+    # CADA CORRIDA COMEÇA COM A LISTA VAZIA. Sem isto o `--neg-arm` somava as
+    # linhas do primeiro mutante ao veredicto do segundo, e o segundo aparecia
+    # vermelho por culpa do irmao -- evidencia falsa nos dois sentidos.
+    rows.clear()
+
+    gesture = load_module("hotkey_gesture_probe", gesture_path)
+    if str(gesture_path.parent) not in os.sys.path:
+        os.sys.path.insert(0, str(gesture_path.parent))
+    settings = load_module("hotkey_settings_probe", settings_path)
     source = shell_path.read_text(encoding="utf-8")
+    shell_methods = class_names(source, "SottoShell")
+    thread_methods = class_names(source, "HotkeyThread")
 
-    # -- estrutura ---------------------------------------------------------
-    print("ARM 1 -- estrutura: a maquina dos dois relogios NAO voltou")
-    tree = ast.parse(source)
-    cls = next((n for n in tree.body
-                if isinstance(n, ast.ClassDef) and n.name == "SottoShell"), None)
-    names = {n.name for n in (cls.body if cls else []) if isinstance(n, ast.FunctionDef)}
-    add("hotkey_pressed" in names and "hotkey_hold" in names,
-        "o shell tem hotkey_pressed E hotkey_hold")
-    for dead in ("_hotkey_single", "_hotkey_double", "_undo_gesture_caption"):
-        add(dead not in names, f"{dead} (o contrato de 2026-10-18) foi REMOVIDO")
-    # Atribuicao e nao substring: os nomes aparecem nos comentarios que explicam
-    # porque sairam, e um oraculo que se deixa enganar por um comentario nao ve
-    # codigo nenhum.
-    live_assign = re.findall(
-        r"^(HOTKEY_CAPTION_DEFER_MS|HOTKEY_GESTURE_MS)\s*=", source, re.M)
-    add(not live_assign,
-        "o shell ja' nao DEFINE HOTKEY_CAPTION_DEFER_MS nem HOTKEY_GESTURE_MS",
-        str(live_assign) or "nenhuma atribuicao")
+    # -- ARM 1 -----------------------------------------------------------------
+    print("\nARM 1 -- o contrato APOSENTADO saiu do codigo (nao so' do comentario)")
+    add({"hotkey_pressed", "hotkey_live", "_hotkey_resolve"} <= shell_methods,
+        "o shell tem hotkey_pressed, hotkey_live e _hotkey_resolve",
+        str(sorted(n for n in ("hotkey_pressed", "hotkey_live", "_hotkey_resolve")
+                   if n in shell_methods)))
+    for dead in ("hotkey_hold", "_hotkey_forget", "_get_hotkey_hold",
+                 "_set_hotkey_hold"):
+        add(dead not in shell_methods, f"o shell JA' NAO tem {dead}")
+    for dead in ("_tick", "_finish_measure", "_deliver_hold", "_threshold",
+                 "_alt_is_down"):
+        add(dead not in thread_methods, f"o HotkeyThread JA' NAO tem {dead}")
+    add("_on_press" in thread_methods and "stop" in thread_methods,
+        "o HotkeyThread ainda tem _on_press e stop")
+    for gone in ("HOTKEY_HOLD_MS", "HOTKEY_TAP_WINDOW_MS", "HOLD_CEILING_MS"):
+        add(not hasattr(gesture, gone), f"hotkey_gesture JA' NAO define {gone}")
+    for gone in ("is_hold", "resolve_taps", "surface_for"):
+        add(not hasattr(gesture, gone), f"hotkey_gesture JA' NAO tem {gone}")
+    for gone in ("hold_ms", "clamp_hold_ms", "HOTKEY_HOLD_MS_CHOICES"):
+        add(not hasattr(settings, gone), f"hotkey_settings JA' NAO tem {gone}")
+    assigned = re.findall(
+        r"^(HOTKEY_HOLD_MS|HOTKEY_TAP_WINDOW_MS|HOLD_CEILING_MS|"
+        r"HOTKEY_LIVE_FALLBACKS|hotkey_threshold|VK_MENU)\s*=", source, re.M)
+    add(not assigned, "o shell nao DEFINE nenhuma constante/limiar do contrato antigo",
+        str(assigned) or "nenhuma atribuicao")
+    add("def hotkey_threshold" not in source, "hotkey_threshold foi REMOVIDO")
+    stray_state = re.findall(
+        r"self\.(_hotkey_tap_count|_hotkey_tap_token|_hotkey_last_tap|"
+        r"_measuring|_hold_fired|fake_hold_ms)\s*=", source)
+    add(not stray_state, "o shell nao guarda estado de toques/medicao",
+        str(sorted(set(stray_state))) or "nenhum")
+    def names_used(fragment: str, name: str) -> bool:
+        """O NOME aparece no CODIGO? (docstring e comentario nao contam.)"""
+        try:
+            fragment_tree = ast.parse(textwrap.dedent(fragment))
+        except SyntaxError:
+            return True
+        for node in ast.walk(fragment_tree):
+            if isinstance(node, ast.Attribute) and node.attr == name:
+                return True
+            if isinstance(node, ast.Name) and node.id == name:
+                return True
+        return False
 
-    # -- um so' dono para os numeros --------------------------------------
-    print("\nARM 2 -- o numero do gesto vive em hotkey_gesture.py e em mais lado nenhum")
-    # O NUMERO DE FABRICA NAO SE RE-PINA (2026-10-30, SEGUNDA VEZ NO MESMO DIA).
-    # Este braco exigia `HOTKEY_HOLD_MS == 500`, e 500 era o defeito: medido na
-    # mao do dono (21 pressoes), 531/578/641 ms viravam HOLD e comutavam a
-    # legenda quando ele queria o painel. O vazio entre o toque mais lento (641)
-    # e a segura mais rapida (1187) e' onde o limiar tem de viver; o valor passou
-    # a 900. O que este braco guarda agora e' a PROPRIEDADE, nao o numero:
-    # o limiar tem de estar ACIMA do toque mais lento medido e ABAIXO da segura
-    # mais rapida medida. Um re-pin de 500 para 900 (ou de 900 para o que venha)
-    # passaria a esconder exactamente o erro que ele apanhou.
-    # 2026-10-30, TERCEIRA vez no mesmo dia: o dono ESCOLHEU o numero, por ordem
-    # directa -- *"a porra do alt c, bota 200ms"*. Uma escolha dele SUBSTITUI a
-    # medicao: o vazio 641..1187 deixou de ser a regra, e exigir esse vazio era
-    # re-pinar contra o dono. O que continua a valer, e por isso e' o que estes
-    # bracos guardam: (a) o numero vive NUM sitio e a lista do painel concorda com
-    # ele; (b) pedir exactamente esse valor nao e' aproximado para outro; (c) a
-    # CONSEQUENCIA esta' medida -- com 200 ms o toque mais lento que ele deu
-    # (641 ms) PASSA a ser HOLD.
-    add(gesture.HOTKEY_HOLD_MS in hotkey_settings.HOTKEY_HOLD_MS_CHOICES,
-        "o valor de fabrica esta' na lista que o painel oferece",
-        f"{gesture.HOTKEY_HOLD_MS} em {hotkey_settings.HOTKEY_HOLD_MS_CHOICES}")
-    add(hotkey_settings.clamp_hold_ms(gesture.HOTKEY_HOLD_MS) == gesture.HOTKEY_HOLD_MS,
-        "pedir exactamente esse valor nao e' aproximado para outro",
-        f"clamp={hotkey_settings.clamp_hold_ms(gesture.HOTKEY_HOLD_MS)}")
-    add(gesture.is_hold(_TAP_LENTO_MS) is True,
-        "com o limiar ESCOLHIDO o toque mais lento medido dele ja' e' HOLD",
-        "hold=%.0f toque_lento=%.0f" % (gesture.HOTKEY_HOLD_MS, _TAP_LENTO_MS))
-    add(gesture.HOTKEY_TAP_WINDOW_MS == 400.0, "HOTKEY_TAP_WINDOW_MS = 400",
-        f"{gesture.HOTKEY_TAP_WINDOW_MS}")
-    add(gesture.HOLD_CEILING_MS >= gesture.HOTKEY_HOLD_MS,
-        "o tecto da medicao nao e' menor que o limiar do HOLD",
-        f"ceiling={gesture.HOLD_CEILING_MS} hold={gesture.HOTKEY_HOLD_MS}")
-    helper = "def hotkey_numbers()" in source and "hotkey_gesture" in source
-    add(helper, "o shell le os numeros por hotkey_numbers() e nao os redefine")
-    add(not any(f"HOTKEY_HOLD_MS = {int(gesture.HOTKEY_HOLD_MS)}" in source
-                for _ in [0]),
-        "o shell NAO tem uma segunda copia de HOTKEY_HOLD_MS")
+    thread_src = next((ast.get_source_segment(source, n) or "")
+                      for n in ast.walk(ast.parse(source))
+                      if isinstance(n, ast.ClassDef) and n.name == "HotkeyThread")
+    hotkey_methods = class_methods(
+        source, "SottoShell", ("hotkey_pressed", "hotkey_live", "_hotkey_resolve"))
+    reads_keyboard = [name for name, body in hotkey_methods.items()
+                      if names_used(body, "GetAsyncKeyState")]
+    add(not names_used(thread_src, "GetAsyncKeyState") and not reads_keyboard,
+        "NINGUEM le' o teclado no caminho da hotkey (GetAsyncKeyState saiu de la)",
+        str(reads_keyboard) or "nenhum leitor")
 
-    # -- a regra pura ------------------------------------------------------
-    print("\nARM 3 -- a regra pura")
-    add(gesture.resolve_taps(1) == "strip", "1 toque -> strip")
-    add(gesture.resolve_taps(2) == "side", "2 toques -> side")
-    add(gesture.resolve_taps(3) == "side", "3 toques -> side (sem quarto estado inventado)")
-    # RE-ANCORADO 2026-10-30 (a ordem de 200 ms): o braco guarda a FRONTEIRA, nao
-    # um gosto -- abaixo do numero em vigor e' toque, a partir dele e' HOLD.
-    add(gesture.is_hold(gesture.HOTKEY_HOLD_MS - 1) is False,
-        "abaixo do limiar em vigor e' TOQUE", f"{gesture.HOTKEY_HOLD_MS - 1} ms")
-    add(gesture.is_hold(gesture.HOTKEY_HOLD_MS) is True,
-        "exactamente no limiar ja' e' HOLD", f"{gesture.HOTKEY_HOLD_MS} ms")
-    add(gesture.is_hold(_TAP_LENTO_MS) is True,
-        "o toque mais lento MEDIDO (641 ms) cai acima do limiar escolhido",
-        f"{_TAP_LENTO_MS} ms")
-    add(gesture.is_hold(_SEGURA_RAPIDA_MS) is True,
-        "a segura mais rapida MEDIDA e' HOLD", f"{_SEGURA_RAPIDA_MS} ms")
-    add(gesture.is_hold(gesture.HOTKEY_HOLD_MS) is True,
-        "o proprio limiar ja' e' HOLD (a comparacao e' >=, nao >)",
-        f"{gesture.HOTKEY_HOLD_MS}")
-    add(gesture.is_hold(None) is False, "duracao desconhecida NAO vira HOLD")
+    # -- ARM 2 -----------------------------------------------------------------
+    print("\nARM 2 -- as duas teclas: um so' dono, e ele e' gesto puro")
+    add(gesture.PANELS_ACCELERATOR == "Alt+C",
+        "a tecla dos paineis e' Alt+C", gesture.PANELS_ACCELERATOR)
+    add(gesture.LIVE_ACCELERATOR == "Ctrl+Space",
+        "a tecla da legenda ao vivo e' Ctrl+Space", gesture.LIVE_ACCELERATOR)
+    add(gesture.parse_accelerator("Alt+C") == (('alt',), ord('C')),
+        "Alt+C -> (('alt',), ord('C'))", str(gesture.parse_accelerator("Alt+C")))
+    add(gesture.parse_accelerator("Ctrl+Space") == (('ctrl',), 0x20),
+        "Ctrl+Space -> (('ctrl',), 0x20) -- o VK da barra de espaco",
+        str(gesture.parse_accelerator("Ctrl+Space")))
+    add(gesture.normalise_accelerator("control+space") == "Ctrl+Space",
+        "o texto canonico e' Ctrl+Space", gesture.normalise_accelerator("control+space"))
+    try:
+        gesture.parse_accelerator("Space")
+        bare = True
+    except ValueError:
+        bare = False
+    add(bare is False, "uma tecla sem modificador e' RECUSADA (escreveria na app do dono)")
+    add(settings.DEFAULTS == {"panels": gesture.PANELS_ACCELERATOR,
+                              "live": gesture.LIVE_ACCELERATOR},
+        "a fabrica das duas teclas vem de hotkey_gesture (uma vez)",
+        str(settings.DEFAULTS))
+    add("def hotkey_numbers()" in source and "hotkey_gesture" in source,
+        "o shell le' as teclas por hotkey_numbers()")
+    parse_body = def_body(source, "parse_accelerator")
+    add("hotkey_numbers" in parse_body and "'F1'" not in parse_body,
+        "parse_accelerator do shell DELEGA no gesto (sem segunda tabela de teclas)",
+        parse_body.splitlines()[-1:] or "")
+    arm_body = def_body(source, "arm_hotkey")
+    add("accelerators" in arm_body and "'live'" in arm_body,
+        "arm_hotkey arma a legenda com a tecla do FICHEIRO do dono")
 
-    # -- o CICLO dos paineis (ordem do dono, 2026-10-30) -------------------
-    print("\nARM 3-bis -- o ciclo nada -> primeiro -> segundo -> nada")
-    add(gesture.next_surface(False, "") == "strip",
-        "nada no ecra -> painel de BAIXO", str(gesture.next_surface(False, "")))
-    add(gesture.next_surface(True, "strip") == "panel",
-        "painel de baixo -> painel da DIREITA", str(gesture.next_surface(True, "strip")))
+    # -- ARM 3 -----------------------------------------------------------------
+    print("\nARM 3 -- a regra pura: um passo por pressao, sem relogio")
+    add(gesture.next_surface(False, "panel") == "strip",
+        "escondido (ultimo show: painel) -> faixa de BAIXO",
+        str(gesture.next_surface(False, "panel")))
+    add(gesture.next_surface(True, "strip") is None,
+        "faixa de baixo no ecra -> ESCONDE", str(gesture.next_surface(True, "strip")))
+    add(gesture.next_surface(False, "strip") == "panel",
+        "escondido (ultimo show: faixa) -> painel da DIREITA",
+        str(gesture.next_surface(False, "strip")))
     add(gesture.next_surface(True, "panel") is None,
-        "painel da direita -> FECHA (None)", str(gesture.next_surface(True, "panel")))
-    # Superficie DESCONHECIDA com a janela visivel avanca para o FECHO: adivinhar
-    # "painel de baixo" ali deixaria o dono a olhar para o mesmo painel com a
-    # tecla a nao fazer nada, que e' a queixa que este ciclo veio resolver.
-    add(gesture.next_surface(True, "") is None,
-        "janela visivel com superficie desconhecida -> FECHA",
-        str(gesture.next_surface(True, "")))
-    add(len({gesture.next_surface(False, ""), gesture.next_surface(True, "strip"),
-             gesture.next_surface(True, "panel")}) == 3,
-        "os tres estados do ciclo sao DISTINTOS (nao ha dois iguais)")
-    # A regra tem de ser a UNICA fonte: o `resolve_taps` antigo devolve
-    # 'side' para 2+ e nao conhece o fecho; se o resolver do shell voltasse a
-    # chama-lo, o ciclo acima nao seria usado por ninguem.
-    src_resolver = source[source.find("def _hotkey_resolve"):] if "_hotkey_resolve" in source else ""
-    src_resolver = src_resolver[:src_resolver.find("\n    def ", 10)] if src_resolver else ""
-    add("next_surface" in src_resolver and "resolve_taps" not in src_resolver,
-        "o resolver do shell chama next_surface e JA' NAO chama resolve_taps",
-        f"next_surface={'next_surface' in src_resolver} "
-        f"resolve_taps={'resolve_taps' in src_resolver}")
+        "painel da direita no ecra -> ESCONDE", str(gesture.next_surface(True, "panel")))
+    add(gesture.next_surface.__code__.co_argcount == 2,
+        "a regra so' olha para a JANELA (visible, surface) -- nenhum tempo",
+        str(gesture.next_surface.__code__.co_varnames[:2]))
+    visible, surface = False, "panel"
+    seq = []
+    for _ in range(10):
+        nxt = gesture.next_surface(visible, surface)
+        seq.append(nxt or "hide")
+        if nxt is None:
+            visible = False
+        else:
+            visible, surface = True, nxt
+    add(seq == ["strip", "hide", "panel", "hide", "strip", "hide", "panel", "hide",
+                "strip", "hide"],
+        "10 pressoes na regra pura: 10 mudancas, shows strip,panel,strip,panel,strip",
+        str(seq))
 
-    # -- o despacho do shell ----------------------------------------------
-    print("\nARM 4 -- o despacho, executado do proprio ficheiro")
+    # -- ARM 4 -----------------------------------------------------------------
+    print("\nARM 4 -- o shell EXECUTADO: estados, nao intencoes")
     ns = build_shell(source, gesture)
     if ns is None:
-        add(False, "os tres metodos do shell foram extraidos")
+        add(False, "hotkey_pressed/hotkey_live/_hotkey_resolve extraidos do ficheiro")
         return verdict("ALTC-GESTURE")
-    add(True, "os tres metodos do shell foram extraidos")
+    add(True, "hotkey_pressed/hotkey_live/_hotkey_resolve extraidos do ficheiro")
+    spies = ns['_spies']
 
-    # 4.1 -- UM toque mostra o painel de BAIXO e nao toca na legenda.
-    shell = FakeShell(bound=ns['_bind'])
-    FakeTimer.pending.clear()
-    drive(ns, shell, taps=1, gap_ms=0)
-    # CONTRATO DE 2026-10-30 (ordem do dono, verbatim: *"alt segurado e c
-    # multiplas vezes devem continuar mostrando os paineis e alternando entra
-    # mostrar nada, mostrar o primeiro, mostrar o segundo"*): cada pressao
-    # AVANCA um estado do ciclo. A razxao mudou com a regra (`hotkey-cycle-*`).
-    add(shell.shown == [("strip", "hotkey-cycle-strip")],
-        "UM toque (nada no ecra) -> painel de baixo", str(shell.shown))
-    add(shell.live_calls == [], "UM toque NAO mexe na legenda", str(shell.live_calls))
+    # (a) DEZ pressoes -> DEZ mudancas.
+    host = FakeShell(ns, visible=False, surface='panel')
+    t0 = real_time.perf_counter()
+    for _ in range(10):
+        ns['hotkey_pressed'](host)
+    elapsed_ms = (real_time.perf_counter() - t0) * 1000.0
+    events = host.events
+    shows = [surface for kind, surface in events if kind == 'show']
+    add(visibility_changes(events) == 10,
+        "(a) 10 pressoes -> EXACTAMENTE 10 mudancas de visibilidade", str(events))
+    add(shows == ["strip", "panel", "strip", "panel", "strip"],
+        "(a) os shows alternam strip,panel,strip,panel,strip", str(shows))
+    add([kind for kind, _ in events] == ["show", "hide"] * 5,
+        "(a) cada pressao muda o ecra (show,hide,show,hide,...)",
+        str([kind for kind, _ in events]))
+    add(host.live_calls == [], "(a) nenhuma das 10 pressoes de Alt+C mexe na legenda",
+        str(host.live_calls))
+    add(spies['time'].reads == [],
+        "(a) o caminho da pressao NAO LE' RELOGIO nenhum",
+        str(spies['time'].reads) or "zero leituras")
+    add(spies['threading'].timers == [],
+        "(a) nenhum Timer armado: nao ha adiamento nenhum",
+        str(spies['threading'].timers) or "zero timers")
+    per_press = elapsed_ms / 10.0
+    add(per_press < 50.0,
+        "(a) pressao -> mudanca de estado MEDIDA no processo",
+        f"{elapsed_ms:.3f} ms / 10 pressoes = {per_press:.3f} ms por pressao")
 
-    # 4.2 -- DOIS toques dentro da janela: UM painel so', o da DIREITA.
-    shell = FakeShell(bound=ns['_bind'])
-    FakeTimer.pending.clear()
-    drive(ns, shell, taps=2, gap_ms=120)
-    # CONTRATO NOVO (ordem do dono, 2026-10-30: *"tem um delay DO CARALHO pra
-    # aparecer os painels ao apertar alt c"*). O PRIMEIRO toque age no acto, e o
-    # segundo PROMOVE a mesma janela. A faixa por 120 ms e' o preco; antes o
-    # preco era 400 ms de nada e o painel so' no fim. Re-pinar `[("side", ...)]`
-    # aqui voltaria a exigir o adiamento que ele mandou tirar.
-    # DOIS toques = DOIS passos do ciclo: nada -> baixo -> direita. Coincide com
-    # o contrato antigo (2 toques = direita) por construcao, nao por sorte.
-    add(shell.shown == [("strip", "hotkey-cycle-strip"), ("side", "hotkey-cycle-side")],
-        "DOIS toques -> baixo e depois direita (dois passos do ciclo)", str(shell.shown))
-    add(shell.live_calls == [], "DOIS toques NAO mexem na legenda", str(shell.live_calls))
+    # (b) duas pressoes separadas por 10 s de relogio: DUAS mudancas.
+    host = FakeShell(ns, visible=False, surface='panel')
+    ns['hotkey_pressed'](host)
+    spies['time'].now += 10.0           # o dono demora 10 s a carregar outra vez
+    ns['hotkey_pressed'](host)
+    add(visibility_changes(host.events) == 2,
+        "(b) duas pressoes a 10 s -> DUAS mudancas (nao e' um gesto duplo)",
+        str(host.events))
+    add(spies['time'].reads == [],
+        "(b) os 10 s nao mudam nada porque o codigo nao os le'",
+        str(spies['time'].reads) or "zero leituras")
 
-    # 4.3 -- DOIS toques FORA da janela sao dois gestos: dois paineis de baixo.
-    shell = FakeShell(bound=ns['_bind'])
-    FakeTimer.pending.clear()
-    for press in range(2):
-        ns["hotkey_pressed"](shell)
-        ns["time"].advance_ms(gesture.HOTKEY_TAP_WINDOW_MS + 50)
-        for timer in list(FakeTimer.pending):
-            FakeTimer.pending.remove(timer)
-            timer.fn()
-    # CONTRATO NOVO: o SEGUNDO gesto de um toque encontra a faixa no ecra, e um
-    # toque no MESMO painel FECHA (queixa de 2026-10-30). Antes este braco exigia
-    # dois `show_strip`; isso so' passava porque nada fechava nunca.
-    # FORA da janela continua a ser dois gestos, mas o ciclo nao reinicia: o
-    # segundo encontra a faixa no ecra e avanca para a DIREITA. Fechar no segundo
-    # toque era o contrato antigo ("o mesmo painel fecha") e contradizia o de
-    # hoje: com ele, `nada -> baixo -> nada -> baixo` e o painel da direita so'
-    # aparecia por acidente.
-    add(shell.shown == [("strip", "hotkey-cycle-strip"), ("side", "hotkey-cycle-side")]
-        and shell.hidden == [], "dois toques separados: baixo e depois direita",
-        f"shown={shell.shown} hidden={shell.hidden}")
+    # (c) uma pressao com 300 ms de relogio: UMA mudanca, nenhuma legenda.
+    host = FakeShell(ns, visible=False, surface='panel')
+    ns['hotkey_pressed'](host)
+    spies['time'].now += 0.3            # a tecla ficou 300 ms em baixo
+    for delay, fn in list(spies['threading'].timers):
+        fn()                            # se algum timer existisse, disparava aqui
+    add(visibility_changes(host.events) == 1,
+        "(c) uma pressao de 300 ms -> UMA mudanca (nao e' um HOLD)", str(host.events))
+    add(host.live_calls == [],
+        "(c) os 300 ms NAO comutam a legenda", str(host.live_calls))
+    add("_tick" not in thread_methods and not re.search(
+            r"self\._measuring\s*=", source),
+        "(c) nao existe onde 300 ms signifiquem alguma coisa (_tick/_measuring fora)")
 
-    # 4.3-bis -- O TOQUE NAO ESPERA NADA. Medido 2026-10-30 no log do dono:
-    # pressao -> `PANEL_SHOWN` = 460 ms, dos quais 8 ms de trabalho real; o resto
-    # era `HOTKEY_TAP_WINDOW_MS`. Este braco exige que a accao ja' tenha
-    # acontecido SAINDO de `hotkey_pressed`, sem avançar o relogio e sem correr
-    # um unico Timer: e' a unica forma de provar que o adiamento morreu.
-    shell = FakeShell(bound=ns['_bind'])
-    FakeTimer.pending.clear()
-    ns["hotkey_pressed"](shell)
-    add(shell.shown == [("strip", "hotkey-cycle-strip")],
-        "o primeiro toque mostra o painel SEM esperar a janela", str(shell.shown))
-    add(len(FakeTimer.pending) >= 1,
-        "a janela continua a ser REARMADA por um timer (para a contagem nao somar)")
-    for timer in list(FakeTimer.pending):
-        FakeTimer.pending.remove(timer)
-        timer.fn()
-    fresh = FakeShell(bound=ns['_bind'])
-    ns["hotkey_pressed"](fresh)
-    # Se o `_hotkey_forget` nao tivesse corrido, a contagem seria 2 e este toque
-    # abriria o painel da DIREITA. A faixa e' portanto a prova do rearme.
-    # O `fresh` nasce SEM estado de ecra (o fake nao herda o `surface_applied` do
-    # anterior), logo o ciclo parte de NADA e o passo e' a faixa. O caso "a faixa
-    # ja' esta' e o passo e' a direita" tem o seu proprio braco em 4.5.
-    add(fresh.shown == [("strip", "hotkey-cycle-strip")],
-        "passada a janela, o toque seguinte e' OUTRO gesto que comeca do NADA",
-        str(fresh.shown))
+    # (d) Ctrl+Space: a legenda comuta uma vez por pressao, e nao toca em painel.
+    host = FakeShell(ns, visible=False, surface='panel', caption=False)
+    ns['hotkey_live'](host)
+    ns['hotkey_live'](host)
+    add(host.live_calls == [True, False],
+        "(d) Ctrl+Space: liga, desliga -- uma vez por pressao", str(host.live_calls))
+    add(host.events == [], "(d) Ctrl+Space NAO toca nos paineis", str(host.events))
 
-    # 4.4 -- HOLD: a legenda liga, e NENHUM painel aparece.
-    shell = FakeShell(caption_on=False, bound=ns['_bind'])
-    FakeTimer.pending.clear()
-    ns["hotkey_hold"](shell)
-    add(shell.live_calls == [{"on": True}], "HOLD liga a legenda", str(shell.live_calls))
-    add(shell.shown == [], "HOLD NAO mostra painel nenhum", str(shell.shown))
-    ns["hotkey_hold"](shell)
-    add(shell.live_calls[-1] == {"on": False}, "HOLD outra vez desliga a legenda",
-        str(shell.live_calls))
+    # O ciclo continua a ler o que a JANELA mede.
+    resolve_code = code_only(source, "SottoShell", "_hotkey_resolve")
+    add("window_visible" in resolve_code,
+        "o passo dos paineis mede a JANELA (window_visible), nao uma cache")
+    add("surface_applied" in resolve_code,
+        "o passo dos paineis le' a superficie aplicada (a memoria do ciclo)")
+    hide_code = code_only(source, "SottoShell", "hide_panel")
+    add("surface_applied" not in hide_code,
+        "hide_panel NAO limpa surface_applied (e' o que faz o show seguinte alternar)")
 
-    # 4.5 -- ALT+C DE NOVO FECHA (queixa dele, verbatim: *"POR QUE APERTAR ALT C
-    # DE NOVO NAO FECHA O PAINEL ATUAL?"*). O mesmo painel no ecra -> esconde.
-    shell = FakeShell(bound=ns['_bind'], visible=True, surface='strip')
-    FakeTimer.pending.clear()
-    drive(ns, shell, taps=1, gap_ms=0)
-    add(shell.hidden == [] and shell.shown == [("side", "hotkey-cycle-side")],
-        "toque com a faixa no ecra -> proximo passo: painel da DIREITA",
-        f"hidden={shell.hidden} shown={shell.shown}")
+    # -- ARM 5 -----------------------------------------------------------------
+    print("\nARM 5 -- a thread: UM WM_HOTKEY = UM passo, e o pump nao trabalha")
+    press_src = class_methods(source, "HotkeyThread", ("_on_press",)).get("_on_press", "")
+    add(bool(press_src), "_on_press extraido do ficheiro")
+    if press_src:
+        class FakeThread:
+            def __init__(self):
+                self.pressed = 0
+                self.role = 'panels'
+                self.accelerator = 'Alt+C'
+                self.thread_id = 4242
+                self.lines = []
+                self.calls = 0
 
-    # 4.6 -- ... mas o painel da DIREITA pedido por um toque TROCA para a faixa
-    # em vez de fechar: fechar e reabrir seria um piscar que ele nao pediu.
-    shell = FakeShell(bound=ns['_bind'], visible=True, surface='side')
-    FakeTimer.pending.clear()
-    drive(ns, shell, taps=1, gap_ms=0)
-    add(shell.hidden == ['hotkey-toggle'] and shell.shown == [],
-        "toque com o painel da DIREITA no ecra -> fecha (o ciclo volta a NADA)",
-        f"hidden={shell.hidden} shown={shell.shown}")
+            def log_fn(self, message):
+                self.lines.append(str(message))
 
-    # -- o thread da hotkey ------------------------------------------------
-    print("\nARM 5 -- o thread: a DURACAO decide o gesto (nao o contador de presses)")
-    tns = build_thread(source, gesture)
-    if tns is None:
-        add(False, "_on_press, _tick e _finish_measure extraidos")
-        return verdict("ALTC-GESTURE")
-    add(True, "_on_press, _tick e _finish_measure extraidos")
+            def on_hotkey(self):
+                self.calls += 1
 
-    def bound(thread):
-        thread._tick = lambda: tns["_tick"](thread)
-        thread._finish_measure = lambda held, reason='release': tns[
-            "_finish_measure"](thread, held, reason)
-        thread._deliver_hold = lambda: tns["_deliver_hold"](thread)
-        thread._threshold = lambda: tns["_threshold"](thread)
-        return thread
+        thread = FakeThread()
+        lns = {}
+        exec(compile(ast.Module(body=[ast.parse(press_src).body[0]], type_ignores=[]),
+                     "<on-press>", "exec"), lns)
+        lns["_on_press"](thread)
+        lns["_on_press"](thread)
+        add(thread.calls == 2,
+            "duas entregas -> dois callbacks (nem mais, nem menos)", str(thread.calls))
+        add(any("HOTKEY_PRESSED" in line and "role=panels" in line
+                and "count=2" in line for line in thread.lines),
+            "o log conta a entrega com papel e tecla", str(thread.lines[-1:]))
+        body = code_only(source, "HotkeyThread", "_on_press")
+        add("while" not in body and "for " not in body and "sleep" not in body
+            and "time." not in body,
+            "_on_press nao tem laco, nao dorme e nao le' relogio")
+    run_code = code_only(source, "HotkeyThread", "run")
+    add("RegisterHotKey" in run_code and "MOD_NOREPEAT" in run_code,
+        "run regista com MOD_NOREPEAT (um WM_HOTKEY por pressao)")
+    add("WaitMessage" in run_code and "sleep" not in run_code,
+        "ocioso dorme em WaitMessage (sem sonda periodica)", "sleep=" +
+        str("sleep" in run_code))
+    add("UnregisterHotKey" in run_code,
+        "o unregister corre no thread que registou (antes nao desligava nada)")
+    stop_code = code_only(source, "HotkeyThread", "stop")
+    add("WM_APP" in stop_code and "PostThreadMessageW" in stop_code,
+        "stop ACORDA o WaitMessage com WM_APP")
 
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 900.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (1, 0), "900 ms -> on_hold e nao on_hotkey",
-        f"holds={thread.holds} taps={thread.taps}")
-    add(any("held_ms=900" in line for line in thread.lines),
-        "o log carrega held_ms (auditavel no log do dono)", str(thread.lines[-1:]))
-
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 0.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (0, 1), "0 ms -> on_hotkey e nao on_hold",
-        f"holds={thread.holds} taps={thread.taps}")
-
-    # RE-ANCORADO 2026-10-30: com 200 ms em vigor, 499 ms e' HOLD e nao toque. O
-    # braco mede a MESMA propriedade (o seam entrega o gesto pelo numero em vigor)
-    # e passa a testar os dois lados da fronteira nova.
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 199.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (0, 1), "199 ms e' um TOQUE (abaixo dos 200)",
-        f"holds={thread.holds} taps={thread.taps}")
-
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 499.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (1, 0),
-        "499 ms e' HOLD ao limiar escolhido, nao toque",
-        f"holds={thread.holds} taps={thread.taps}")
-
-    # -- 2026-10-30: um HOLD NAO ENG OLE a pressao SEGUINTE -------------------
-    # Ordem do dono, verbatim: *"alt segurado e c multiplas vezes devem continuar
-    # mostrando os paineis"*. O `_hold_fired` que sobrava de um HOLD entregue tem
-    # de ser limpo na pressao seguinte, senao a segunda pressao cai no `return`
-    # do `_finish_measure` e o dono carrega em Alt+C sem nada acontecer.
-    print("\nARM 5-ter -- a pressao a seguir a um HOLD continua a contar")
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 499.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    thread.fake_hold_ms = 0.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (1, 1),
-        "HOLD e depois um toque -> um de cada (a pressao nao foi engolida)",
-        f"holds={thread.holds} taps={thread.taps}")
-
-    # -- 2026-10-30: um `new-press` NAO pode inventar um HOLD --------------
-    # Medido no log do dono: quatro toques seguidos, e o release perdido de um deles
-    # fazia o intervalo PRESS-AO-PRESS (1,2 s) passar por uma segurada -- a legenda
-    # comutava sozinha. O HOLD so' o `_tick` pode entregar, ao cruzar o limiar.
-    print("\nARM 5-quater -- o release perdido conta como TOQUE, nunca como HOLD")
-    thread = bound(FakeHotkeyThread())
-    tns["_finish_measure"].__get__(thread, FakeHotkeyThread)(2000.0, 'new-press')
-    add((thread.holds, thread.taps) == (0, 1),
-        "2000 ms fechados por new-press -> TOQUE (o HOLD so' nasce no tick)",
-        f"holds={thread.holds} taps={thread.taps}")
-    add(any('HOTKEY_SWALLOWED_HOLD' in line for line in thread.lines),
-        "o caso fica escrito no log (nao se perde em silencio)",
-        str(thread.lines[-1:]))
-    thread = bound(FakeHotkeyThread())
-    tns["_finish_measure"].__get__(thread, FakeHotkeyThread)(2000.0, 'release')
-    add((thread.holds, thread.taps) == (1, 0),
-        "2000 ms fechados por release -> HOLD (o caminho legitimo continua)",
-        f"holds={thread.holds} taps={thread.taps}")
-
-    # -- 2026-10-30: o gesto acaba quando QUALQUER tecla sobe ---------------
-    print("\nARM 5-quinquies -- a medicao le' o Alt E a tecla do hotkey")
-    body = tns['source'] if 'source' in tns else None
-    text = None
-    import ast as _ast, inspect as _inspect
+    # -- ARM 6 -----------------------------------------------------------------
+    print("\nARM 6 -- o ficheiro do dono (persistencia, com recusa explicita)")
+    live_file_ok = live_file.exists()
+    add(live_file_ok, f"{live_file.name} existe", str(live_file))
+    if live_file_ok:
+        payload = json.loads(live_file.read_text(encoding="utf-8"))
+        add(payload.get("live") == gesture.LIVE_ACCELERATOR,
+            "o ficheiro vivo diz Ctrl+Space", str(payload))
+        add(payload.get("panels") == gesture.PANELS_ACCELERATOR,
+            "o ficheiro vivo diz Alt+C", str(payload))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="altc-cfg-"))
+    tmp_file = tmp_dir / "hotkey-settings.json"
     try:
-        tree = _ast.parse(open(os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py'),
-                               encoding='utf-8').read())
-        for node in _ast.walk(tree):
-            if isinstance(node, _ast.FunctionDef) and node.name == '_alt_is_down':
-                text = _ast.get_source_segment(
-                    open(os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py'),
-                         encoding='utf-8').read(), node)
-    except Exception as exc:
-        add(False, "o corpo de `_alt_is_down` foi lido", repr(exc))
-    if text:
-        add('VK_MENU' in text and 'self.vk' in text,
-            "`_alt_is_down` exige as DUAS teclas (ler so' o Alt deixava um toque virar HOLD)",
-            text.splitlines()[-4:])
-
-    # -- ORDEM DO DONO (2026-10-30): o HOLD dispara AO CRUZAR o limiar ------
-    # Palavras dele, verbatim: *"assim que o alt c é segurado suficiente, da
-    # display ou tira display da legenda. nao é pra esperar o release da tecla"*.
-    print("\nARM 5-bis -- o HOLD entrega no LIMIAR, com a tecla AINDA em baixo")
-    clock = tns["time"]
-    box = tns["_thresholdbox"]
-    box["hold_ms"] = 300.0
-    thread = bound(FakeHotkeyThread())
-    thread.down = True
-    clock.now = 1000.0
-    tns["_on_press"](thread)
-    add((thread.holds, thread.taps) == (0, 0),
-        "a pressao so' ABRE a medicao -- nao entrega nada", f"holds={thread.holds}")
-    clock.advance_ms(290)
-    tns["_tick"](thread)
-    add(thread.holds == 0, "290 ms < 300 ms: ainda nada", f"holds={thread.holds}")
-    clock.advance_ms(20)
-    tns["_tick"](thread)
-    add(thread.holds == 1 and thread.taps == 0,
-        "310 ms >= 300 ms: o HOLD disparou SEM release",
-        f"holds={thread.holds} taps={thread.taps}")
-    add(any("key_still_down=true" in line for line in thread.lines),
-        "o log prova que a tecla estava em baixo no disparo", str(thread.lines[-2:]))
-    # ... e o RELEASE que vem depois NAO e' um segundo gesto.
-    thread.down = False
-    clock.advance_ms(10)
-    tns["_tick"](thread)
-    add(thread.taps == 0,
-        "o release DEPOIS do hold nao vira toque (o mesmo Alt+C nao e' legenda E painel)",
-        f"taps={thread.taps}")
-    add(any("reason=release" in line for line in thread.lines),
-        "o release fica registado com a duracao", str(thread.lines[-1:]))
-
-    # -- ORDEM DO DONO (2026-10-30): segurar NAO bloqueia os comandos ------
-    # Palavras dele, verbatim: *"eu apertar alt c e nao deixar alt c ir embora
-    # (manter apertado) deve mexer normalmente nos comandos, inves de impedir
-    # proximos comandos"*. A medicao antiga vivia dentro de `_on_press`, num
-    # `while` que prendia o pump ate' 5 s: nenhum `WM_HOTKEY` novo era entregue
-    # nesse tempo. ESTRUTURA e nao comportamento: nenhum dos corpos pode ter um
-    # laco, nem dormir.
-    print("\nARM 5-ter -- a medicao nao tem laco nenhum (o pump nunca fica preso)")
-    for name in ("_on_press", "_tick", "_finish_measure"):
-        body = class_methods(source, "HotkeyThread", (name,)).get(name) or ""
-        tree_b = ast.parse(body).body[0]
-        loops = [n for n in ast.walk(tree_b) if isinstance(n, (ast.While, ast.For))]
-        add(not loops, name + " nao tem 'While' nem 'For' (um laco aqui prende o pump)")
-        calls = [n.func.id for n in ast.walk(tree_b)
-                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
-        add("sleep" not in calls, f"{name} nao dorme")
-
-    # -- o limiar configuravel (F2) ----------------------------------------
-    print("\nARM 6 -- o limiar do HOLD e' do DONO, e a thread respeita-o")
-    box = tns["_thresholdbox"]
-    box["hold_ms"] = 700.0
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 600.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (0, 1),
-        "limiar 700 ms: 600 ms ainda e' TOQUE", f"holds={thread.holds} taps={thread.taps}")
-    box["hold_ms"] = 300.0
-    thread = bound(FakeHotkeyThread())
-    thread.fake_hold_ms = 600.0
-    tns["_on_press"].__get__(thread, FakeHotkeyThread)()
-    add((thread.holds, thread.taps) == (1, 0),
-        "limiar 300 ms: os MESMOS 600 ms ja' sao HOLD", f"holds={thread.holds} taps={thread.taps}")
-
-    # A escolha tem de SOBREVIVER a um restart: vive em disco, nao em memoria.
-    settings_path = ROOT / "app" / "webview" / "hotkey_settings.py"
-    add(settings_path.exists(), "hotkey_settings.py existe (o limiar vive em disco)")
-    if settings_path.exists():
-        spec = _ilu.spec_from_file_location(
-            "hotkey_settings_probe", str(settings_path))
-        sys.path.insert(0, str(ROOT / "app" / "webview"))
-        settings = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(settings)
-        tmp_file = Path(tempfile.mkdtemp(prefix="altc-cfg-")) / "hotkey-settings.json"
-        add(settings.hold_ms(tmp_file) == float(gesture.HOTKEY_HOLD_MS),
-            "sem ficheiro o limiar e' o de FABRICA", f"{settings.hold_ms(tmp_file)}")
-        add(settings.write({"holdMs": 900}, tmp_file).get("ok") is True,
-            "a escolha grava-se")
-        add(settings.hold_ms(tmp_file) == 900.0,
-            "a escolha le'-se de volta", f"{settings.hold_ms(tmp_file)}")
-        add(settings.write({"holdMs": "lixo"}, tmp_file).get("ok") is False,
-            "um valor que nao e' numero e' RECUSADO")
-        add(settings.hold_ms(tmp_file) == 900.0,
-            "a recusa NAO apaga a escolha anterior", f"{settings.hold_ms(tmp_file)}")
-        add(settings.clamp_hold_ms(620) == 700,
-            "620 ms cai na escolha mais proxima", f"{settings.clamp_hold_ms(620)}")
-        add(settings.clamp_hold_ms(None) is None, "None nao vira escolha")
+        add(settings.accelerators(tmp_file) == settings.DEFAULTS,
+            "sem ficheiro as teclas sao as de FABRICA", str(settings.accelerators(tmp_file)))
+        written = settings.write({"live": "ctrl+space"}, tmp_file)
+        add(written.get("ok") is True and written.get("live") == "Ctrl+Space",
+            "a escolha grava-se (e normaliza)", str(written))
+        add(settings.accelerators(tmp_file)["live"] == "Ctrl+Space",
+            "a escolha le'-se de volta", str(settings.accelerators(tmp_file)))
+        refused = settings.write({"live": "Nope+Zzz"}, tmp_file)
+        add(refused.get("ok") is False, "uma tecla invalida e' RECUSADA", str(refused))
+        add(settings.accelerators(tmp_file)["live"] == "Ctrl+Space",
+            "a recusa NAO apaga a escolha anterior",
+            str(settings.accelerators(tmp_file)))
+        add(settings.write({"panels": "alt+c"}, tmp_file).get("ok") is True,
+            "a tecla dos paineis tambem grava (a ordem e' uma so')")
         tmp_file.write_text("{ nao e' json", encoding="utf-8")
-        add(settings.hold_ms(tmp_file) == float(gesture.HOTKEY_HOLD_MS),
-            "um ficheiro estragado volta a FABRICA (o Alt+C nao fica surdo)",
-            f"{settings.hold_ms(tmp_file)}")
-        shutil.rmtree(tmp_file.parent, ignore_errors=True)
+        add(settings.accelerators(tmp_file) == settings.DEFAULTS,
+            "um ficheiro estragado volta a FABRICA (a app nao fica sem tecla)",
+            str(settings.accelerators(tmp_file)))
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    # A pagina pergunta a LISTA e nao a inventa.
-    add("_get_hotkey_hold" in names and "_set_hotkey_hold" in names,
-        "o shell expoe get/set do limiar ao painel")
-    add("'setHotkeyHold'" in source and "'getHotkeyHold'" in source,
-        "as duas entradas estao na tabela da API do pywebview")
-    page = js_code((ROOT / "app" / "panel" / "panel.js").read_text(encoding="utf-8"))
-    add("bridge.getHotkeyHold" in page,
-        "panel.js PERGUNTA a lista ao shell (nao tem copia de HOTKEY_HOLD_MS_CHOICES)")
-    add("HOTKEY_HOLD_MS_CHOICES" not in page,
-        "panel.js nao carrega a lista de escolhas")
-
-    # -- a legenda e SO' DISPLAY -------------------------------------------
-    print("\nARM 6 -- a legenda desligada e' so' DISPLAY (ordem do dono)")
-    # CODIGO e nao texto: a docstring de `hotkey_hold` NOMEIA `_pause_shell` so'
-    # para dizer que nao lhe toca, e um oraculo que leia comentarios castiga quem
-    # documenta a regra.
-    hold_src = code_only(source, "SottoShell", "hotkey_hold")
-    for forbidden in ("_pause_shell", "_resume_shell", "reload", "restart",
-                      "show_strip", "show_side", "show_panel", "hide_panel"):
-        add(forbidden not in hold_src,
-            f"hotkey_hold NAO chama {forbidden} (nao descarrega motor nem mexe em painel)")
-
-    # -- F3: desligar a legenda e' SO' DISPLAY, provado a CORRER ------------
-    print("\nARM 7 -- `_set_live_enabled` executado: a UNICA saida e' a janela")
+    # -- ARM 7 -----------------------------------------------------------------
+    print("\nARM 7 -- a legenda desligada e' so' DISPLAY (executado da fonte)")
     live_src = class_methods(source, "SottoShell", ("_set_live_enabled",)).get(
         "_set_live_enabled", "")
-    # A varredura dos nomes proibidos le' CODIGO: a docstring desta funcao conta
-    # a historia do `hide_panel` que saiu, e castigar essa historia seria castigar
-    # a unica prova de porque a linha nao esta' la'.
-    live_code = code_only(source, "SottoShell", "_set_live_enabled")
     add(bool(live_src), "_set_live_enabled extraido do ficheiro")
     if live_src:
         lns = {"log": FakeLog()}
@@ -800,8 +611,6 @@ def run(gesture_path: Path, shell_path: Path) -> int:
                      "<set-live>", "exec"), lns)
 
         class WatchedShell:
-            """Qualquer atributo tocado fora da lista e' registado e REPROVADO."""
-
             ALLOWED = {"_caption_wanted", "show_caption_window"}
 
             def __init__(self):
@@ -824,59 +633,104 @@ def run(gesture_path: Path, shell_path: Path) -> int:
         add(watched.touched == ["show_caption_window(False)"],
             "desligar a legenda toca SO' na janela da legenda", str(watched.touched))
         add(watched._caption_wanted is False, "a flag `_caption_wanted` fica em False")
+        live_code = code_only(source, "SottoShell", "_set_live_enabled")
         for forbidden in ("_pause_shell", "_reload_worker", "_restart_worker",
                           "hide_panel", "show_panel", "worker", "history"):
-            add(forbidden not in live_code,
-                f"_set_live_enabled NAO nomeia {forbidden}")
+            add(forbidden not in live_code, f"_set_live_enabled NAO nomeia {forbidden}")
 
     return verdict("ALTC-GESTURE")
 
 
-def neg_arm() -> int:
-    """Muta uma COPIA do gesto e exige que o oraculo fique VERMELHO.
+# ---------------------------------------------------------------------------
+# O BRACO VERMELHO
+# ---------------------------------------------------------------------------
+SHELL_DEFER_PATCH = (
+    "        return self._hotkey_dispatch('panels')",
+    "        t = threading.Timer(0.4, lambda: self._hotkey_dispatch('panels'))\n"
+    "        t.daemon = True\n"
+    "        t.start()\n"
+    "        return None",
+)
 
-    A mutacao e' a REGRESSAO que o dono reportou: `resolve_taps` a devolver
-    sempre `'strip'`, ou seja, DOIS toques a darem o painel de baixo -- o
-    painel da direita nunca aparece.
+
+def _copy_tree(tmp: Path) -> Path:
+    webview = tmp / "app" / "webview"
+    webview.mkdir(parents=True)
+    for name in ("hotkey_gesture.py", "hotkey_settings.py", "sotto_webview.py",
+                 "panel_state.py"):
+        shutil.copy2(ROOT / "app" / "webview" / name, webview / name)
+    (tmp / "_main").mkdir()
+    shutil.copy2(LIVE_FILE, tmp / "_main" / LIVE_FILE.name)
+    return webview
+
+
+def neg_arm() -> int:
+    """Muta uma COPIA e exige RED -- duas regressoes, uma de cada lado.
+
+    MUTANTE 1: o ADIAMENTO de 400 ms volta a `hotkey_pressed` (o gesto que o dono
+    mandou tirar em 2026-10-30: *"tem um delay DO CARALHO pra aparecer os
+    painels"*). MUTANTE 2: o LIMIAR de HOLD volta ao modulo do gesto (a duracao
+    da segurada volta a decidir, que e' o que ele mandou tirar hoje).
     """
-    tmp = Path(tempfile.mkdtemp(prefix="altc-neg-"))
-    try:
-        copy = tmp / "app" / "webview"
-        copy.mkdir(parents=True)
-        shutil.copy2(GESTURE, copy / "hotkey_gesture.py")
-        shutil.copy2(SHELL, copy / "sotto_webview.py")
-        # O UTFIMO QUE LE' O NUMERO (2026-10-30): sem esta copia o braco 2 importa
-        # o `hotkey_settings` da ARVORE VIVA e mede outro ficheiro que nao o mutado.
-        shutil.copy2(GESTURE.parent / "hotkey_settings.py", copy / "hotkey_settings.py")
-        target = copy / "hotkey_gesture.py"
-        text = target.read_text(encoding="utf-8")
-        mutant = text.replace("return 'side' if n >= 2 else 'strip'",
-                              "return 'strip'")
-        if mutant == text:
-            print("NEG-ARM: nao consegui mutar o alvo (o texto mudou)")
-            return EXIT_FAIL
-        target.write_text(mutant, encoding="utf-8")
-        print("NEG-ARM: resolve_taps sempre 'strip' (o painel da direita nunca aparece)")
-        rc = run(copy / "hotkey_gesture.py", copy / "sotto_webview.py")
-        # O `:expectred` da bateria exige rc != 0 no passo negativo e a string
-        # `NEG-ARM PASS` no log -- as duas coisas. Devolver 0 aqui fez o passo
-        # `red-as-expected-altc-gesture` ficar VERMELHO na primeira corrida
-        # (medido 2026-10-30, bateria `steps=148`), por o oraculo certo estar a
-        # dizer o resultado pelo codigo errado.
-        if rc == EXIT_FAIL:
-            print("\nNEG-ARM PASS -- RED as designed: o mutante derruba o oraculo")
-            return EXIT_FAIL
-        print("\nNEG-ARM FAIL -- o oraculo NAO ve a regressao")
+    failures = 0
+    for name, mutate in (("defer-400ms", _mutate_shell_defer),
+                         ("hold-threshold", _mutate_gesture_hold)):
+        tmp = Path(tempfile.mkdtemp(prefix="altc-neg-"))
+        try:
+            webview = _copy_tree(tmp)
+            note = mutate(webview)
+            if note is None:
+                print(f"NEG-ARM: nao consegui mutar {name} (o texto mudou)")
+                failures += 1
+                continue
+            print(f"\n=== NEG-ARM {name}: {note}")
+            rc = run(webview / "hotkey_gesture.py", webview / "sotto_webview.py",
+                     webview / "hotkey_settings.py",
+                     tmp / "_main" / LIVE_FILE.name)
+            if rc == EXIT_FAIL:
+                print(f"NEG-ARM {name} PASS -- RED as designed")
+            else:
+                print(f"NEG-ARM {name} FAIL -- o oraculo NAO ve a regressao")
+                failures += 1
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    if failures:
+        print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    print("\nNEG-ARM PASS -- RED as designed: as duas regressoes derrubam o oraculo")
+    return EXIT_FAIL
+
+
+def _mutate_shell_defer(webview: Path):
+    target = webview / "sotto_webview.py"
+    text = target.read_text(encoding="utf-8")
+    if SHELL_DEFER_PATCH[0] not in text:
+        return None
+    target.write_text(text.replace(*SHELL_DEFER_PATCH), encoding="utf-8")
+    return "adiamento de 400 ms reinstalado em hotkey_pressed"
+
+
+def _mutate_gesture_hold(webview: Path):
+    target = webview / "hotkey_gesture.py"
+    text = target.read_text(encoding="utf-8")
+    marker = "#: A tecla dos PAINEIS."
+    if marker not in text:
+        return None
+    text = text.replace(
+        marker,
+        "HOTKEY_HOLD_MS = 200.0\n\n\ndef is_hold(held_ms, hold_ms=HOTKEY_HOLD_MS):\n"
+        "    return held_ms is not None and float(held_ms) >= float(hold_ms)\n\n\n"
+        + marker, 1)
+    target.write_text(text, encoding="utf-8")
+    return "limiar de HOLD reinstalado no modulo do gesto"
 
 
 def main(argv) -> int:
     if "--neg-arm" in argv:
         return neg_arm()
-    return run(GESTURE, SHELL)
+    return run(GESTURE, SHELL, SETTINGS, LIVE_FILE)
 
 
 if __name__ == "__main__":
+    import sys
     sys.exit(main(sys.argv[1:]))
