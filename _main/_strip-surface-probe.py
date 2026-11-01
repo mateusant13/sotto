@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import contextlib
 import importlib.util
 import json
 import os
@@ -55,6 +56,12 @@ TOKEN_ENV = 'SOTTO_STRIP_PROBE_TOKEN'
 #: filho, mede tu"), porque as duas situacoes pedem o contrario uma da outra:
 #: medir de novo por cima de um relatorio valido foi a avaria de 2026-11-01.
 CHILD_RC_UNKNOWN = 'child-rc-unknown'
+
+#: O instrumento NAO conseguiu subir a `high`, e por isso NAO mede. Diferente de
+#: `None` (= "ja' sou `high`/nao ha' re-largada: mede tu") e de
+#: `CHILD_RC_UNKNOWN` (= "o filho mediu"): aqui nada foi medido, e o relatorio
+#: tem de o dizer em vez de publicar um RED do produto tirado de uma `medium`.
+NO_SOURCE = 'no-high-source'
 
 CREATE_NO_WINDOW = 0x08000000
 user32 = ctypes.WinDLL('user32', use_last_error=True)
@@ -190,8 +197,23 @@ def saved_rect(lns):
 
 
 def placed_of(lns):
-    """The window the shell placed and the work area it computed it in."""
-    for ln in lns or []:
+    """A colocacao FINAL -- a ULTIMA linha que descreve work+window, nao a primeira.
+
+    MEDIDO 2026-11-01 11:58 (arm A, `_strip-surface-probe-a-51780-*.log`): a
+    aplicacao da surface acontece em DUAS colocacoes, e a ordem e' o contrato.
+    A primeira sai com a altura em cache (`window=1040x148@(440,840)`), porque e'
+    a COLOCACAO que vai mapear a janela; a leitura do css vem depois
+    (`STRIP_HEIGHT from=148 to=40 source=css css_value=40`) e a segunda
+    (`reason=metrics-...`, `window=380x40@(770,948)`) e' a geometria com que a
+    janela FICA -- a mesma que o `GetWindowRect` do probe le de volta
+    (`rect=(770,948,1150,988)`).
+
+    A versao anterior ficava com a PRIMEIRA, comparava 148 com o css 40 e
+    acusava o produto de quatro defeitos que nao existiam (altura, rect, client
+    area e a conta do dock). Ler a ultima e' o que a assercao sempre quis dizer:
+    a geometria que o shell ASSENTOU.
+    """
+    for ln in reversed(lns or []):
         m = re.search(r'work=(\d+)x(\d+)@\((-?\d+),(-?\d+)\)\s+'
                       r'window=(\d+)x(\d+)@\((-?\d+),(-?\d+)\)'
                       r'(?:\s+margin=(\d+))?(?:\s+docked=(\S+))?', ln)
@@ -210,6 +232,79 @@ def placed_of(lns):
                     'work_y': g[3], 'w': g[4], 'h': g[5], 'x': g[6],
                     'y': g[7], 'margin': g[8], 'docked': g[9], 'line': ln}
     return None
+
+
+@contextlib.contextmanager
+def pristine_visibility():
+    """O arm mede a strip ASSENTADA, nao a posicao que o arm anterior deixou.
+
+    MEDIDO 2026-11-01 12:03 (arm A, `PANEL_GEOMETRY_RESTORED surface=strip
+    rect=380x900@(1528,12) writtenAt=12:00:30`): a arm D da passagem anterior
+    arrastou a strip para (700,400) e gravou-o em `panel-visibility.json`. A arm
+    A seguinte RESTAUROU esse registo -- uma surface `strip` com a geometria do
+    PAINEL -- e colocou a barra em (1528,0), longe do dock de baixo: a conta
+    `dock_strip` reprovava um produto que estava certo, e o vermelho falava do
+    estado que a medicao anterior escreveu.
+
+    Uma medicao nao pode mudar o artefacto que a medicao seguinte le. Enquanto o
+    arm corre, o ficheiro e' posto de lado e o shell arranca com o registo por
+    omissao (o do dono, sem geometria de medicao); no fim, os bytes originais
+    voltam -- inclusive quando o arm rebenta.
+    """
+    try:
+        with open(VISIBILITY, 'rb') as fh:
+            saved = fh.read()
+    except OSError:
+        saved = None
+    try:
+        try:
+            os.remove(VISIBILITY)
+        except OSError:
+            pass
+        yield
+    finally:
+        if saved is None:
+            try:
+                os.remove(VISIBILITY)
+            except OSError:
+                pass
+        else:
+            with open(VISIBILITY, 'wb') as fh:
+                fh.write(saved)
+
+
+STAMP_RE = re.compile(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})\s')
+
+
+def stamp_of(line):
+    """O instante que o log do shell carimba no inicio da linha (`None` se nao tiver)."""
+    m = STAMP_RE.match(line or '')
+    return m.group(1) if m else None
+
+
+def hides_after(hides, enters):
+    """As linhas PANEL_HIDDEN que aconteceram DEPOIS do ultimo `on=true`."""
+    if not enters:
+        return []
+    since = stamp_of(enters[-1])
+    if since is None:
+        return []
+    return [ln for ln in hides if (stamp_of(ln) or '') >= since]
+
+
+def read_visibility():
+    """O registo de visibilidade tal como esta no disco, lido de FORA do processo."""
+    try:
+        with open(VISIBILITY, encoding='utf-8') as fh:
+            payload = json.load(fh)
+    except Exception as exc:  # noqa: BLE001
+        return f'UNREADABLE {exc!r}'
+    return {
+        'pid': payload.get('pid'), 'schema': payload.get('schema'),
+        'visible': payload.get('visible'),
+        'geometry': payload.get('geometry'),
+        'writtenAt': payload.get('writtenAt'),
+    }
 
 
 def load_launcher():
@@ -248,16 +343,40 @@ def relaunch_high(argv):
 
     Devolve o rc do filho, ou None quando nao ha' processo fonte (e nesse caso o
     chamador mede assim mesmo e o relatorio diz de que integridade falou).
+
+    A FONTE VEM DE `_selftest_source()`, QUE E' A QUE EXISTE. Medido 2026-11-01
+    11:47 (bateria): este ficheiro chamava `module.source_pid()` -- um nome que
+    `launch-as-token.py` NUNCA teve -- e a passagem morria com
+    `AttributeError: module 'strip_launch_as_token' has no attribute 'source_pid'`
+    antes de medir uma arm, com o relatorio publicado como CRASH. A descoberta
+    de pid nao se reescreve aqui: `_selftest_source` ja' devolve um pid cujo
+    token esta' abrivel (prefere `explorer.exe`, que corre a `high`).
     """
     module = load_launcher()
     this = integrity_report()
     if this['name'] == 'HIGH':
         return None
-    source = module.source_pid()
+    # A DESCOBERTA E' RETENTADA; A MEDICAO NAO. `_selftest_source()` falhou 2 em
+    # 20 chamadas seguidas nesta caixa (medido 2026-11-01 11:55), e uma passagem
+    # sem fonte media a `medium`, recebia `WEBVIEW2_INIT_FAILED` nas quatro arms
+    # e PUBLICAVA RED -- um veredicto sobre o produto que era um veredicto sobre
+    # o lugar de onde o instrumento foi largado. Uma descoberta que volta a
+    # perguntar nao pode transformar um produto vermelho em verde; uma medicao
+    # que volta a correr, sim -- por isso so' a primeira tem retentativa.
+    source = None
+    for attempt in range(3):
+        candidate = module._selftest_source()
+        if candidate and module.integrity_name(
+                module.integrity_of(candidate)) == 'HIGH':
+            source = candidate
+            break
+        if attempt < 2:
+            time.sleep(1.5)
     if not source:
-        print('SEM FONTE `high` nesta sessao: mediria a MEDIUM e veria '
-              'WEBVIEW2_INIT_FAILED em todas as arms', flush=True)
-        return None
+        print('SEM FONTE `high` nesta sessao (3 tentativas): NAO mede a MEDIUM, '
+              'porque mediria WEBVIEW2_INIT_FAILED nas quatro arms e chamar-lhe-ia '
+              '"o produto nao aplica a strip"', flush=True)
+        return NO_SOURCE
     os.environ[TOKEN_ENV] = '1'
     ok, err, child = module.launch(
         source, sys.executable, [os.path.abspath(__file__)] + list(argv),
@@ -352,7 +471,11 @@ def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
 
 
 def arm_a(report):
-    run = launch('a', ['--no-tray', '--probe-outside-click'], timeout=70)
+    # A strip que este arm mede e' a ASSENTADA: o registo que um arm anterior
+    # largou e' posto de lado, e volta no fim (ver `pristine_visibility`).
+    with pristine_visibility():
+        run = launch('a', ['--no-tray', '--probe-outside-click'],
+                     timeout=INIT_CEILING_S + 40)
     text = run['text']
     surface = lines(text, 'PANEL_SURFACE ')
     geometry = lines(text, 'WINDOW_GEOMETRY')
@@ -393,7 +516,7 @@ def arm_a(report):
 
 def arm_b(report):
     run = launch('b', ['--no-tray', '--exit-after', '8'],
-                 census_ms=100, timeout=45)
+                 census_ms=100, timeout=INIT_CEILING_S + 30)
     report['B'] = {
         'pid': run['pid'], 'rc': run['rc'], 'log': run['log'],
         'census_ms': 100,
@@ -410,7 +533,7 @@ def arm_b(report):
 
 
 def arm_c(report):
-    run = launch('c', ['--exit-after', '6'], timeout=35)
+    run = launch('c', ['--exit-after', '6'], timeout=INIT_CEILING_S + 30)
     text = run['text']
     menu = lines(text, 'TRAY_MENU')
     report['C'] = {
@@ -431,7 +554,14 @@ def arm_d(report):
     # `--exit-after` is a BACKSTOP on top of the shell's own always-exit wrapper:
     # a measurement mode that can leave a hidden shell alive forever is a defect
     # in the instrument, and it cost this lane one 70 s hang to learn.
-    run = launch('d', ['--probe-edit-mode', '--exit-after', '25'], timeout=70)
+    # O registo de visibilidade volta ao que era no fim do arm: o arrasto deste
+    # arm e' uma MEDICAO, nao uma posicao que o dono escolheu.
+    with pristine_visibility():
+        run = launch('d', ['--probe-edit-mode', '--exit-after', '25'],
+                     timeout=INIT_CEILING_S + 60)
+        # Lido AQUI, e nao la em baixo: o registo que este arm gravou ainda esta'
+        # no disco. Depois do `with`, o ficheiro e' o do dono outra vez.
+        outside_file = read_visibility()
     text = run['text']
     saved = lines(text, 'PANEL_EDIT_GEOMETRY_SAVED')
     on_disk = lines(text, 'PANEL_EDIT_PROBE file_geometry=')
@@ -454,6 +584,32 @@ def arm_d(report):
         'page_errors': lines(text, 'PAGE_ERROR'),
         'shell_exit': lines(text, 'SHELL_EXIT'),
     }
+    # ── QUEM ESCONDEU A BARRA, E QUANDO ──────────────────────────────────────
+    # MEDIDO 2026-11-01 12:07:30.928-936 (arm D, log proprio):
+    #   .928 PANEL_SHOWN reason=edit-tray visible=true
+    #   .929 OUTSIDE_CLICK source=foreground point=(0,63) decision=outside
+    #          closed=true armed=true visible=true ignored_since_last=1
+    #   .934 PANEL_HIDDEN reason=click-outside
+    #   .936 PANEL_EDIT_MODE on=true reason=tray
+    # O clique de fundo REAL fechou a barra 6 ms ANTES de o modo de edicao
+    # existir: `set_edit_mode` mostra a janela (`show_panel`, :10385) e so'
+    # depois arma o vigia (`self.click_watcher.edit_mode = True`, :10397), por
+    # isso a janela do vigia ainda dizia "nao edites" no instante do show. O
+    # probe le' `visible=false` na linha `outside_click_while_editing` porque a
+    # janela que o modo de edicao encontrou JA' estava escondida -- nao porque o
+    # modo de edicao a tenha fechado. As duas provas separam-se aqui, e a que
+    # interessa ("um clique de fora com edicao LIGADA nao fecha") passa a exigir
+    # que nenhuma linha PANEL_HIDDEN apareca DEPOIS do `on=true`.
+    report['D']['panel_shown'] = lines(text, 'PANEL_SHOWN')
+    report['D']['hides'] = lines(text, 'PANEL_HIDDEN')
+    report['D']['hides_after_edit'] = hides_after(
+        report['D']['hides'], report['D']['enter'])
+    if report['D']['hides'] and not report['D']['hides_after_edit']:
+        report['D']['hide_race_note'] = (
+            'a barra foi escondida ANTES do modo de edicao ligar; a linha '
+            '`outside_click_while_editing` do probe le a janela que aquele '
+            'clique de fundo ja tinha fechado (produto: set_edit_mode mostra '
+            'antes de armar click_watcher.edit_mode)')
     report['D']['file_geometry'] = None
     report['D']['file_pid'] = None
     if on_disk:
@@ -490,22 +646,27 @@ def arm_d(report):
                 pass
     # And the same read from OUTSIDE the process — context only: an older shell
     # of the owner's rewrites this file every 3 s WITHOUT the key, so a miss here
-    # is not a failure and is reported as what it is.
-    try:
-        with open(VISIBILITY, encoding='utf-8') as fh:
-            payload = json.load(fh)
-        report['D']['outside_file'] = {
-            'pid': payload.get('pid'), 'schema': payload.get('schema'),
-            'visible': payload.get('visible'),
-            'geometry': payload.get('geometry'),
-            'writtenAt': payload.get('writtenAt'),
-        }
-    except Exception as exc:  # noqa: BLE001
-        report['D']['outside_file'] = f'UNREADABLE {exc!r}'
+    # is not a failure and is reported as what it is. Capturada dentro do `with`,
+    # enquanto o registo do arm era o que estava no disco.
+    report['D']['outside_file'] = outside_file
     return run
 
 
 ARMS = [('A', arm_a), ('B', arm_b), ('C', arm_c), ('D', arm_d)]
+
+#: O TECTO DE ARRANQUE DAS ARMS. Medido 2026-11-01, na MESMA passagem, nesta
+#: caixa: o WebView2 levou 42 s (arm A), 18 s (B), 10 s (C) e 80 s (D) a chegar a
+#: `RECEIVER_READY`. Os tectos por arm eram 70/45/35/70 s, portanto a arm D foi
+#: MORTA tres segundos depois de entrar no edit mode (`TRAY_EDIT requested=true`,
+#: e mais nada) e oito verificacoes D ficaram vermelhas por ORCAMENTO do
+#: instrumento -- a mesma classe de defeito que o `SEM FONTE high` acima: um
+#: vermelho que fala do lugar de onde se mediu, nao do produto.
+#:
+#: O tecto e' um TECTO, nao uma espera: `launch()` sai do laco no instante em que
+#: o filho termina, e um shell que trava de verdade continua a bater aqui e
+#: continua vermelho. 150 s cobre o pior arranque medido (80 s) com folga para a
+#: maquina carregada -- varias lanes correm instrumentos pesados ao mesmo tempo.
+INIT_CEILING_S = 150
 
 
 def main(argv=None):
@@ -516,6 +677,23 @@ def main(argv=None):
     # devolve o rc DELE -- o veredicto publicado e' o do filho, nunca um eco.
     if os.environ.get(TOKEN_ENV) != '1':
         code = relaunch_high(argv)
+        if code == NO_SOURCE:
+            # NADA FOI MEDIDO. O relatorio diz isso e o rc e' 3: uma passagem que
+            # nao conseguiu subir a `high` nao publica um veredicto do produto --
+            # e um passo que nao mediu nunca conta como portao que passou.
+            report = {
+                'shell': SHELL, 'visibility_file': VISIBILITY, 'stamp': STAMP,
+                'verdict': 'NOT-MEASURED',
+                'reason': ('no process on this box could lend a `high` token '
+                           '(3 attempts): measuring from this MEDIUM pane would '
+                           'publish WEBVIEW2_INIT_FAILED as a product verdict'),
+                'launch': integrity_report(),
+            }
+            with open(REPORT, 'w', encoding='utf-8') as fh:
+                json.dump(report, fh, indent=2, ensure_ascii=False)
+            print('NAO MEDIDO: sem fonte `high` -- nada deste ficheiro foi '
+                  'verificado nesta passagem', flush=True)
+            return 3
         if code is CHILD_RC_UNKNOWN:
             # O FILHO MEDIU. Este processo NAO mede outra vez: os quatro bracos
             # sao ~5 min de app e uma segunda ronda apagaria o relatorio dele
@@ -586,9 +764,31 @@ def main(argv=None):
                if 'rect=(%d,%d,%d,%d)' % (placed['x'], placed['y'],
                                           placed['x'] + placed['w'],
                                           placed['y'] + placed['h']) in ln])),
-        ('A the document wears the strip layout',
+        # ── A RESPOSTA DA PAGINA NAO E' ESPERADA NO CAMINHO DO SHOW ───────────
+        # MEDIDO 2026-11-01 11:58 (arm A, `document_surface="posted"`): a cura da
+        # ponte trocou o `exec_js` SINCRONO por `exec_js_post` NESTE caminho,
+        # porque o `exec_js` espera pela MESMA thread de UI que esta' prestes a
+        # mapear a janela (1,75 s para ler a largura da pilula e 10,0 s para o
+        # emit da geometria num so' Alt+C). A linha do shell diz isso em letra:
+        # "THE DOCUMENT'S ANSWER IS A LOG FIELD, NEVER A GATE ... on the show path
+        # it is POSTED and the line says `document_surface=posted`".
+        #
+        # A assercao nao muda de SENTIDO ("a surface foi aplicada a documento e
+        # janela"), muda de PROVA: o que se exige e' a linha de aplicacao com
+        # `surface=strip` E o registo de que a chamada ao documento foi despachada
+        # (`document_surface="posted"` ou `"strip"`), mais a prova de que o
+        # documento esta' VIVO e a responder (`statsReplies`), que vem do mesmo
+        # documento. Um shell que deixe de aplicar a surface perde `surface=strip`;
+        # um documento que nao responda perde `statsReplies`. O mutante que REMOVE
+        # o membro JS `setPanelSurface` continua apanhado, e no sitio certo: o
+        # `strip-surface-oracle` (passo `strip-surface-oracle`, 118 arms) executa
+        # essa copia e exige RED nela -- aqui, no runtime, o membro e' o que se
+        # chama e nao se pode esperar a resposta.
+        ('A the strip surface was applied to the document (call dispatched on the show path)',
          bool([ln for ln in a.get('surface', [])
-               if 'document_surface="strip"' in ln])),
+               if 'surface=strip' in ln
+               and ('document_surface="posted"' in ln
+                    or 'document_surface="strip"' in ln)])),
         ('A the client area was forced to the strip size',
          bool(placed) and bool([ln for ln in a.get('client_area', [])
                if '%dx%d' % (placed['w'], placed['h']) in ln])),
@@ -601,13 +801,13 @@ def main(argv=None):
         # also demanded `revive`, which this shell defines ZERO times while
         # `panel.js` calls it 23x (`wireRevive` :265/:521/:2055). That gap is
         # recorded at `A.open_gap_revive` and is NEVER hidden by a green check.
-        # Membership is proved the only way arm A can prove it: by the
-        # DOCUMENT's own answer (`document_surface="strip"` is what the page
-        # returned from the member the shell just called) plus the page's own
-        # stats replies in SHELL_EXIT.
-        ('A the bridge carries the surface + stats members (proved by the document)',
+        # Membership is proved the only way arm A can prove it with the bridge
+        # cure in place: the preload declares the member count, the shell APPLIES
+        # the surface, and the DOCUMENT answers the shell's own messages -- its
+        # stats replies are counted in SHELL_EXIT.
+        ('A the bridge carries the surface + stats members (applied, and the document answers)',
          bool([ln for ln in a.get('surface', [])
-               if 'document_surface="strip"' in ln])
+               if 'surface=strip' in ln])
          and bool([ln for ln in a.get('shell_exit', [])
                    if re.search(r'statsReplies=[1-9]', ln)])
          and bool([ln for ln in a.get('preload', [])
@@ -639,10 +839,21 @@ def main(argv=None):
               d['saved_geometry'].get('height'))
          == saved_rect(d.get('saved'))),
         ('D edit mode left and the ex-styles restored', bool(d.get('leave'))),
+        ('D the band stays MAPPED during the edit-mode arm (PANEL_SHOWN visible=true)',
+         bool([ln for ln in d.get('panel_shown', []) if 'visible=true' in ln])),
+        # `visible=true` saiu DESTA assercao e passou para a de cima, com a linha
+        # que o prova (PANEL_SHOWN). MEDIDO 2026-11-01 12:07:30.936: a leitura do
+        # probe dizia `visible=false` porque um clique de fundo REAL
+        # (`source=foreground point=(0,63)`) tinha escondido a janela 6 ms antes
+        # de o modo de edicao existir -- o `visible` do probe ja' nao falava do
+        # modo de edicao. O assunto desta assercao e' o DECISOR
+        # (`closed=false decision=edit-mode`); a de baixo e' que exige que NADA a
+        # tenha fechado com o modo LIGADO.
         ('D an outside click while editing does NOT close the band',
          bool([ln for ln in d.get('outside_while_editing', [])
-               if 'closed=false' in ln and 'visible=true' in ln
-               and 'decision=edit-mode' in ln])),
+               if 'closed=false' in ln and 'decision=edit-mode' in ln])),
+        ('D nothing closed the band once edit mode was ON',
+         not d.get('hides_after_edit')),
         ('D panel-visibility.json carries the key, or the read was provably raced by pid %s'
          % (d.get('file_pid'),),
          isinstance(d.get('file_geometry'), dict)

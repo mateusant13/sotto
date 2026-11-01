@@ -154,11 +154,6 @@
    "date": "2026-10-25"
   },
   {
-   "file": "device-silence-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
    "file": "emit-queue-bound-oracle.py",
    "reason": "REASON-MISSING preencher a mao",
    "date": "2026-10-25"

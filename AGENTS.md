@@ -276,8 +276,12 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 12:5x):** `_main\_audit-verify-all.cmd` = **150261 B**,
-  **1950 CRLF** / 0 bare LF, sha256 `623C4120D77A9EE43F6FE89C0FB7D50AB77E50E6F243EFB10DEC596135325643`.
+- **PIN do ficheiro (medido 2026-11-01, 13:0x):** `_main\_audit-verify-all.cmd` = **152130 B**,
+  **1971 CRLF** / 0 bare LF, sha256 `AA06ED3DBB41FC7B58F60B4A5F5930EA3E521B2386E4026E64883FCCA761C63F`.
+  (Este pin substitui o de 12:5x, 150261 B / 1950 CRLF, DEPOIS do merge da lane do
+  dispositivo/silencio -- dois passos novos, `device-silence` e o seu negativo, que julgam o
+  endpoint que ABRE e nao entrega um bloco: o worker saia rc=0 e agora sai 3 com
+  `no-callback-blocks`.)
   (Este pin substitui o de 12:4x, 148889 B / 1936 CRLF, DEPOIS dos dois passos do
   `paint-live-show` -- o oraculo que le o log da instancia VIVA do dono e exige `paint_ack=true`
   e `wait_ms<=400` em cada `PANEL_SHOWN`; sem show desde o arranque ele diz `VERDICT: SKIPPED`
@@ -293,7 +297,13 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   / controles `54` e `0`; `--neg-arm` deu `NEG-ARM cases=4 caught=4`.
   O pin anterior era o de 2026-11-01 11:0x, 146485 B / 1910 CRLF, sha256 `52d9d6ee...ffe611`,
   DEPOIS dos dois passos do portao `undefined-names`; e o de 2026-10-30 12:5x era
-  145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`,
+  145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`.)
+  (O pin de 2026-11-01 12:2x, 148354 B / 1931 CRLF, sha256 `23626cf4...58369`, foi o de dois
+  passos do contrato dispositivo/silencio: `device-silence` e `red-as-expected-device-silence`
+  (21 linhas: 15 de comentario e 6 de passo). Nasceu de um defeito medido ao vivo: um endpoint
+  que ABRE e nao entrega um unico bloco de callback saia com rc=0 -- o unico valor que todo
+  chamador le' como sucesso; agora sai 3 com `no-callback-blocks`, e o mesmo ficheiro exige a
+  shell a pintar `no-audio`.)
   DEPOIS dos dois passos do portao novo `undefined-names` (+ `red-as-expected-undefined-names`,
   16 linhas: 9 de comentario e 7 de passo). O portao nasceu de um defeito medido duas vezes
   no mesmo dia em producao: o worker morreu no arranque com `NameError: name

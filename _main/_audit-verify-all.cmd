@@ -1110,6 +1110,27 @@ if exist _main\mute-audio-oracle.py (
   call :step always heavy mute-audio 0 "_main\mute-audio-oracle.py" "%OUT%\mute-audio.log" python _main\mute-audio-oracle.py
   call :record mute-audio !STEP_RC!
 ) else ( call :record mute-audio MISSING )
+REM `device-silence-oracle.py` e' o CONTRATO do dispositivo que nao entrega nada,
+REM medido com o worker REAL em tres bracos (sem shell, sem janela): (1) um
+REM endpoint que ABRE e nao entrega um unico bloco de callback -- MEDIDO
+REM 2026-11-01 neste caixa, `Mixagem estereo (Realtek HD Audio Stereo input)`,
+REM 0 blocos em 4 s ao lado de 39 no cabo -- que ate' aqui saia com o veredicto
+REM `no-callback-blocks` e **rc=0**, o word que todo o chamador le' como sucesso;
+REM (2) um endpoint que entrega blocos TODOS abaixo do piso (`silent-device`,
+REM caminho provado e intocado); (3) fala renderizada no cabo e capturada, que
+REM tem de sair rc=0 com legendas. Cada braco exige o SEU rc e o SEU veredicto, e
+REM o MESMO ficheiro importa a shell de producao e exige que um `done` com estes
+REM veredictos pinte `no-audio` -- worker, oraculo e shell concordam por MEDICAO,
+REM nao por copia. O `--neg-arm` repoe a linha antiga numa COPIA do worker e
+REM exige rc=0 nela (rc=1 por desenho).
+if exist _main\device-silence-oracle.py (
+  call :step always heavy device-silence 0 "_main\device-silence-oracle.py;worker\sotto_worker.py;worker\wasapi_loopback.py;app\webview\sotto_webview.py;worker\assets\sample1.flac" "%OUT%\device-silence.log" python _main\device-silence-oracle.py
+  call :record device-silence !STEP_RC!
+) else ( call :record device-silence MISSING )
+if exist _main\device-silence-oracle.py (
+  call :step always heavy red-as-expected-device-silence 1 "_main\device-silence-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\device-silence-neg.log" python _main\device-silence-oracle.py --neg-arm
+  call :expectred red-as-expected-device-silence !STEP_RC! "%OUT%\device-silence-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-device-silence MISSING "%OUT%\device-silence-neg.log" "NEG-ARM PASS" )
 
 echo === the adversary lane's probes (corrected: the filters it wrote were RED-forever) ===
 if exist _main\_review-f1f3.py (

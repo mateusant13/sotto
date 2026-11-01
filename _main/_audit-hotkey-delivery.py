@@ -46,7 +46,7 @@ reported UNVERIFIED. A SKIP is never a pass:
     the one claim this run could NOT make;
   * the LIVE INSTANCE and its own words must BOTH corroborate. The instance comes
     from the one selector this repo has (`_main/load-shedding-oracle.py`,
-    `find_live_instance`: alive, won the mutex, not a measurement launch), and its
+    `newest_shell_segment`: alive, won the mutex, not a measurement launch), and its
     OWN segment of the log must say `HOTKEY_REGISTERED accelerator=Alt+C
     register=true`. Holding alone is not enough, so a stranger holding Alt+C can
     never be excused — and a MEASUREMENT launch that happens to be last in the log
@@ -111,8 +111,8 @@ def skip(name: str, why: str) -> None:
 # WHO holds the key — the distinction this instrument was missing
 # ---------------------------------------------------------------------------
 # A IDENTIDADE DA INSTANCIA VIVA NAO SE ESCREVE OUTRA VEZ AQUI. Ela vive em
-# `_main/load-shedding-oracle.py` (`find_live_instance`, assente em
-# `newest_shell_segment`): recusa marcadores de medicao (`--selftest`,
+# `_main/load-shedding-oracle.py` (`newest_shell_segment`, o nome que ele exporta;
+# `find_live_instance` nunca existiu): recusa marcadores de medicao (`--selftest`,
 # `--mutex-name`, `--no-worker`), recusa a largada que PERDEU a mutex
 # (`SINGLE_INSTANCE already_running=true`) e recusa pids mortos; escolhe entre o
 # log deste repo e o do checkout principal, porque a app do dono arranca de la'.
@@ -128,7 +128,14 @@ SELECTOR = os.path.join(HERE, 'load-shedding-oracle.py')
 
 
 def selector():
-    """O escolhedor unico da instancia viva (`load-shedding-oracle.py`)."""
+    """O escolhedor unico da instancia viva (`load-shedding-oracle.py`).
+
+    O nome que ele EXPORTA e' `newest_shell_segment(log_path)`. MEDIDO 2026-11-01
+    11:47: este ficheiro chamava `selector().find_live_instance()`, que nunca
+    existiu naquele modulo -- `AttributeError`, capturado pelo `except` do braco,
+    e o braco concluia "nada corrobora o detentor" com a app do dono a registrar
+    Alt+C no log ao lado. `live_instance()` aplica a regra que existe.
+    """
     if SELECTOR in sys.modules:
         return sys.modules[SELECTOR]
     import importlib.util
@@ -138,6 +145,41 @@ def selector():
     sys.modules[SELECTOR] = module
     spec.loader.exec_module(module)
     return module
+
+
+def candidate_logs():
+    """Os logs onde a instancia do DONO pode estar -- o desta arvore e o do repo principal.
+
+    MEDIDO 2026-11-01 11:47 nesta worktree: o log dela nao tem uma unica largada, e
+    a instancia viva (pid 55448, `HOTKEY_REGISTERED role=panels accelerator=Alt+C
+    register=true`) so' aparece no log de `H:/sotto`, de onde a app arranca.
+    """
+    root = str(selector().ROOT)
+    logs = [os.path.join(root, '_main', 'webview-run.log')]
+    try:
+        import subprocess
+
+        common = subprocess.run(
+            ['git', '-C', root, 'rev-parse', '--git-common-dir'],
+            capture_output=True, text=True)
+        if common.returncode == 0 and common.stdout.strip():
+            gitdir = os.path.abspath(os.path.join(root, common.stdout.strip()))
+            main_log = os.path.join(os.path.dirname(gitdir), '_main',
+                                    'webview-run.log')
+            if main_log not in logs:
+                logs.append(main_log)
+    except OSError:
+        pass
+    return logs
+
+
+def live_instance():
+    """`(log, pid, segmento)` da instancia viva, ou `(None, None, '')`."""
+    for log in candidate_logs():
+        pid, seg = selector().newest_shell_segment(log)
+        if pid is not None:
+            return log, pid, seg
+    return None, None, ''
 
 
 
@@ -227,8 +269,8 @@ def who_holds_alt_c(shell_mod, accelerator: str) -> dict:
 
     Both halves are required before a shell gets the blame or the credit:
       * the OS must report the shell's id as HOLDING the key, and
-      * the LIVE instance — the one `selector().find_live_instance()` picks: alive,
-        holding the mutex, not a measurement launch — must say, in ITS OWN segment
+      * the LIVE instance — the one `live_instance()` picks: alive, holding the
+        mutex, not a measurement launch — must say, in ITS OWN segment
         of the log, that it registered THAT accelerator.
     """
     outcome = {'held': None, 'winerror': None, 'shells': [], 'snapshot_error': '',
@@ -245,7 +287,7 @@ def who_holds_alt_c(shell_mod, accelerator: str) -> dict:
         return outcome
 
     try:
-        log, pid, segment = selector().find_live_instance()
+        log, pid, segment = live_instance()
     except Exception as exc:  # noqa: BLE001 -- an instrument fault is not a verdict
         outcome['snapshot_error'] = f'live-instance selector failed: {type(exc).__name__}: {exc}'
         pid, segment = None, ''

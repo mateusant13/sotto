@@ -26,6 +26,7 @@ import ctypes
 import ctypes.wintypes as wt
 import importlib.util
 import os
+import subprocess
 import sys
 import time
 
@@ -90,9 +91,15 @@ SELECTOR = os.path.join(HERE, 'load-shedding-oracle.py')
 def selector():
     """O escolhedor da instancia VIVA -- UM so' nesta casa, e nao um segundo.
 
-    Vive em `_main/load-shedding-oracle.py` (`find_live_instance`, assente em
-    `newest_shell_segment`): recusa marcadores de medicao, largadas que perderam a
-    mutex (`already_running=true`) e pids mortos, e diz no stdout qual escolheu.
+    Vive em `_main/load-shedding-oracle.py` e o nome que ele EXPORTA e'
+    `newest_shell_segment(log_path)`: recusa marcadores de medicao, largadas que
+    perderam a mutex (`already_running=true`) e pids mortos, e diz no stdout qual
+    escolheu. MEDIDO 2026-11-01 11:47: este ficheiro chamava
+    `selector().find_live_instance()`, que NUNCA existiu la' --
+    `AttributeError: module '...load-shedding-oracle.py' has no attribute
+    'find_live_instance'`, e o passo `hotkey-registration` da bateria crashava
+    em vez de medir. A regra nao se reescreve aqui: `live_instance()` aplica a
+    unica que existe aos logs candidatos.
     """
     if SELECTOR in sys.modules:
         return sys.modules[SELECTOR]
@@ -101,6 +108,45 @@ def selector():
     sys.modules[SELECTOR] = module
     spec.loader.exec_module(module)
     return module
+
+
+def candidate_logs():
+    """Os logs onde a instancia do DONO pode estar -- o desta arvore e o do repo principal.
+
+    MEDIDO 2026-11-01 11:47 nesta worktree: o `_main/webview-run.log` dela nao tem
+    UMA unica largada, e a instancia viva (pid 55448, `HOTKEY_REGISTERED role=panels
+    accelerator=Alt+C register=true` as 11:47:41) so' aparece no log de `H:/sotto`,
+    de onde a app arranca. Um escolhedor que so' olha o log da arvore em que corre
+    responde "nenhuma instancia viva" numa caixa onde a app esta' a trabalhar.
+    """
+    root = str(selector().ROOT)
+    logs = [os.path.join(root, '_main', 'webview-run.log')]
+    try:
+        common = subprocess.run(
+            ['git', '-C', root, 'rev-parse', '--git-common-dir'],
+            capture_output=True, text=True)
+        if common.returncode == 0 and common.stdout.strip():
+            gitdir = os.path.abspath(os.path.join(root, common.stdout.strip()))
+            main_log = os.path.join(os.path.dirname(gitdir), '_main',
+                                    'webview-run.log')
+            if main_log not in logs:
+                logs.append(main_log)
+    except OSError:
+        pass
+    return logs
+
+
+def live_instance():
+    """`(log, pid, segmento)` da instancia viva, ou `(None, None, '')`.
+
+    QUEM DECIDE E' `newest_shell_segment`, sem uma segunda regra: isto so' lhe
+    entrega os ficheiros candidatos, na ordem em que a app pode estar neles.
+    """
+    for log in candidate_logs():
+        pid, seg = selector().newest_shell_segment(log)
+        if pid is not None:
+            return log, pid, seg
+    return None, None, ''
 
 
 def live_sotto():
@@ -113,7 +159,7 @@ def live_sotto():
     40064 de uma largada de medicao que ja' nao existia e acusou a app de nao ter
     registado a tecla. O pid, o codigo e o segmento passam a vir da MESMA largada.
     """
-    log, pid, seg = selector().find_live_instance()
+    log, pid, seg = live_instance()
     if pid is None:
         return None, None, ''
     pid = int(pid)
