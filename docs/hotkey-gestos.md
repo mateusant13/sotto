@@ -69,6 +69,16 @@ app).
 | `python _main/altc-gesture-oracle.py --neg-arm` | **NEG-ARM PASS**: `defer-400ms` derruba 5 arms (10 pressões → 0 mudanças, `Timer` de 0,4 s armado, as duas pressões a 10 s viram uma) e `hold-threshold` derruba 2 (`HOTKEY_HOLD_MS`/`is_hold` de volta) |
 | `python _main/altc-first-caption-oracle.py` | mede pressão → acção por **papel** (`role=panels` → `HOTKEY_TOGGLE`, `role=live` → `HOTKEY_LIVE_STEP`); sem log do build do disco dá `NO-MEASURE` (rc=2), que não é verde |
 | `python _main/altc-first-caption-oracle.py --neg-arm` | **NEG-ARM PASS cases=12**, incluindo «pressão de uma tecla creditada com a acção da outra → NO-ACTION», «duas teclas na mesma sessão → vale a pior» e «uma tecla sem acção → NO-MEASURE, não verde» |
+| `python _main/selftest-focus-oracle.py` | **PASS**: o braço «own window took the foreground» continua **RED**, o «control» **GREEN**; a excepção do Alt+C é declarada pela leitura, não presumida |
+| `python _main/pov-selftest.py --run` (instrumento de fora, instância privada `--mutex-name SottoPovSelftest` + tecla livre `Alt+Shift+F12`) | **`SELFTEST rc=0`** medido 2026-11-01 10:28:27: `delivered=true presses=14`, dez alternâncias na ordem, `latency_ms=156,47,47,16,15,47,0,47,15,31,16,63,31,31,16`, `first_show_ms=156 first_show_slow=false budget_ms=1500` |
+
+`_main/pov-selftest.py` é um instrumento **de fora**: não altera o shell, arranca uma
+instância privada (`--mutex-name SottoPovSelftest`, `--no-hotkey`, `--no-worker`) que
+arma só a tecla de sonda `Alt+Shift+F12` e lê o log dela; o dono nunca vê nada. Duas
+execuções seguidas a 2026-11-01 ficaram presas em `STAGING_LOADED ... navigating to
+panel` (CPU a 85%, `PRELOAD_INSTALLED` levou 19 s em vez de 4) e um `--wait 260`
+resolveu-as; a lentidão é da máquina, não do gesto, e o instrumento não deve ser
+afinado para ela.
 
 Os braços do oráculo (lista impressa no arranque, e é a mesma que ele julga):
 
@@ -93,6 +103,52 @@ O pump REAL foi medido à parte (2026-11-01, `HotkeyThread(register=False)`):
 do ecrã exige um largamento com janela e é `owner-hand` (`--selftest`, que **não**
 arma as teclas globais: arranca um `HotkeyThread` de sonda com `register=False`,
 mesma fila, mesmo pump).
+
+### Entrega e latência são duas cláusulas (`--selftest`)
+
+Até 2026-11-01 o veredicto do `--selftest` fundia-as: a espera de 3 s expirava, a
+leitura dizia `pressed=false` e o teste culpava a **entrega** de uma **lentidão**.
+Medido nesse dia: `SELFTEST rc=3` com `broken=the simulated press was not
+delivered` numa app que alternava dez vezes em 432 ms. O que está lá agora:
+
+| campo | o que prova | número |
+|---|---|---|
+| `posted` + `count=` do log | o `WM_HOTKEY` chegou ao shell | 14/14 |
+| `latency_ms` | pressão → o ecrã mudou | `SELFTEST_STEP_BUDGET_MS = 1500` (a linha do dono, a mesma do `altc-first-caption`) |
+| `first_show_ms` | a exibição FRIA, que paga o primeiro `exec_js` da página | 12 070 ms medidos 2026-11-01 (`HOTKEY_TOGGLE step=show` 10:14:47.808 → `PANEL_SHOWN` 10:14:59.878) |
+| janela de medição | quanto o teste espera antes de desistir | 20 s na fria (`SELFTEST_COLD_WINDOW_S`), 6 s nas quentes, 2,5 s por pressão das dez |
+
+Uma exibição fria de 12 s dá **RED por `latency_ms`** (`first_show_slow=true`),
+nunca por "pressão não entregue". A arma 5 espera o par **exacto**
+(`(visível, superfície)`) de cada pressão: `screen() != anterior` dispara no
+`panel_mode` antes de a janela mapear e registava estados meio-aplicados.
+
+### O foco: ninguém perde o teclado — a excepção é o cursor CAPTURADO
+
+`foreground_unlock` existia para *"todos os Alt+C"*, com a justificação escrita na
+app de que *"when he presses the app's only control he is asking for the panel"*,
+e cada show da hotkey logava `focus_stolen=intentional(hotkey)`. O
+`pov-selftest` reprovava-o com toda a razão
+(`broken=the panel TOOK the foreground ... SW_SHOWNOACTIVATE is the contract`):
+o painel é `WS_EX_TRANSPARENT`, portanto o roubo do primeiro plano **não lhe dava
+clique nenhum** — só tirava o teclado a quem ali estava (as setas do YouTube, a
+caixa onde se escrevia).
+
+O que aquele roubo comprava era o **rato de volta** quando um jogo tem o cursor
+capturado: é perder o primeiro plano que faz o *pointer-lock* ser largado. Isso
+só é verdade **quando há captura para largar**, e é isso que passou a ser medido
+(`pointer_captured()` → `GetClipCursor` comparado com o ecrã virtual):
+
+| estado do cursor | o que o show faz | o que o log diz |
+|---|---|---|
+| livre | `set_topmost` + `SW_SHOWNOACTIVATE` | `show=SW_SHOWNOACTIVATE mapped=true focus_stolen=false` |
+| capturado (jogo) | `foreground_unlock` (recupera o rato) | `show=SW_SHOW+FOREGROUND focus_stolen=intentional(pointer-lock)` |
+
+`map_panel()` é a única função que decide isto, para a faixa e o painel da
+direita não divergirem. O veredicto do `selftest` continua a aceitar a excepção
+**declarada pela leitura** (`focus_steal_allowed`) e reprova qualquer roubo que
+não a declare — o `selftest-focus-oracle` prova-o: o braço `own window took the
+foreground` continua **RED**, e o `control` continua **GREEN**.
 
 ## A auditoria completa
 

@@ -3104,6 +3104,31 @@ def window_pid(hwnd: int) -> int:
     return int(owner.value)
 
 
+#: O ORCAMENTO DO PASSO: pressao -> o estado mudou no ecra. E' o dono que o
+#: escreveu (`_main/altc-first-caption-oracle.py --budget-ms`, fabrica 1 500 ms),
+#: e e' o mesmo numero para as duas teclas.
+SELFTEST_STEP_BUDGET_MS = 1500.0
+
+#: A JANELA DE MEDICAO da PRIMEIRA exibicao -- e porque e' maior que o orcamento.
+#: MEDIDO 2026-11-01 (Main, na instancia do dono): a primeira exibicao custou
+#: **12 070 ms** -- `HOTKEY_TOGGLE step=show` 10:14:47.808 -> `PANEL_SHOWN`
+#: 10:14:59.878, com `WARN exec_js TIMEOUT after 10.0s` pelo meio. Uma janela de
+#: 3 s nao ve isso: ela expira antes de o painel aparecer e o teste chama-lhe
+#: "pressao nao entregue", que e' a conclusao errada sobre o facto errado. 20 s
+#: deixam o numero APARECER, e sao os 1 500 ms que reprovam -- por `latency_ms`.
+SELFTEST_COLD_WINDOW_S = 20.0
+
+#: As armas DEPOIS da primeira: um show/hide quente custou ~45 ms (medido no log
+#: do dono 2026-11-01 10:15:00, 10 alternancias em 0.432 s). 6 s e' folga de
+#: MEDICAO, nao orcamento: quem reprova por lentidao e' `latency_ms`.
+SELFTEST_STEP_WINDOW_S = 6.0
+
+#: Cada uma das dez pressoes da arma 5: 2,5 s por pressao deixa o laco inteiro
+#: caber no `--exit-after` do instrumento de fora, e uma pressao que nao muda o
+#: ecra em 2,5 s ja' e' um defeito que nao melhora por esperar mais.
+SELFTEST_PRESS_WINDOW_S = 2.5
+
+
 def selftest_broken(reading: dict) -> tuple[bool, str]:
     """The self-test VERDICT, factored out of the method so it can be driven
     with synthetic readings and no hotkey. Pure on purpose: no globals, no
@@ -3122,6 +3147,23 @@ def selftest_broken(reading: dict) -> tuple[bool, str]:
         return True, 'the hotkey never registered'
     if not reading.get('pressed'):
         return True, 'the simulated press was not delivered'
+    # ENTREGA E LATENCIA SAO DUAS CLAUSULAS, e a primeira NUNCA apaga a segunda.
+    # `pressed` diz so' "o `WM_HOTKEY` chegou" (e o `count=` do log bate com o
+    # numero de presses); quanto tempo o estado levou a mudar e' `latency_ms`,
+    # medido contra `SELFTEST_STEP_BUDGET_MS`. Antes era uma clausula so': uma
+    # espera curta expirava, a leitura dizia `pressed=False` e o veredicto
+    # culpava a ENTREGA de uma LENTIDAO -- medido 2026-11-01, `SELFTEST rc=3`
+    # com `broken=the simulated press was not delivered` numa app que alternava
+    # dez vezes em 432 ms.
+    latency = reading.get('latency_ms')
+    budget = reading.get('latency_budget_ms')
+    if latency is not None and budget is not None and float(latency) > float(budget):
+        first = float(reading.get('first_show_ms') or 0.0)
+        return True, ('pressao -> o ecra mudou em %.0f ms; o orcamento e %.0f ms '
+                      '(a PRIMEIRA exibicao foi %.0f ms, first_show_slow=%s). '
+                      'A pressao FOI entregue: isto e latencia, nao entrega.'
+                      % (float(latency), float(budget), first,
+                         str(first > float(budget)).lower()))
     # O NUMERO DE PRESSAO ESPERADO E' DA LEITURA, nao do juiz. Ja' foi fixo em 2
     # (dois toques, contrato de 2026-10-30) e o contrato de 2026-11-01 faz quatro
     # passos mais dez; um juiz com o numero antigo dentro reprovaria o proprio
@@ -3135,9 +3177,28 @@ def selftest_broken(reading: dict) -> tuple[bool, str]:
         return True, ('the window should read visible=%r after the last press, got %r'
                       % (reading.get('want_visible'), reading.get('visible')))
     if reading.get('focus_stolen_by_own_window'):  # FOCUS-CLAUSE
-        return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
-                      'SW_SHOWNOACTIVATE is the contract and this is it being broken'
-                      % (reading.get('focus_before'), reading.get('focus_after')))
+        # UMA EXCECAO SO', E ELA ESTA' DOCUMENTADA NA APP: `foreground_unlock` e
+        # `show_strip` dizem *"The no-focus invariant (`SW_SHOWNOACTIVATE`) holds
+        # for every path EXCEPT the owner's own Alt+C: when he presses the app's
+        # only control he is asking for the panel"*, e o show da hotkey loga
+        # `PANEL_SHOWN ... focus_stolen=intentional(hotkey)` (medido 2026-11-01
+        # 10:18:24.402, instancia de sonda). Um veredicto que ignore isso reprova
+        # para sempre a app que a lei manda ter -- foi o `SELFTEST rc=3` de hoje.
+        # Uma leitura SEM `focus_steal_allowed` (as sinteticas do
+        # `selftest-focus-oracle`) continua a ser julgada como sempre foi.
+        #
+        # NAO HA' CLAUSULA POR PASSO AQUI, e e' medido: `foreground_window()`
+        # amostrado logo depois de um passo apanha a mudanca do passo ANTERIOR
+        # (a activacao do Alt+C assenta um frame depois do `SetForegroundWindow`)
+        # -- na primeira corrida com rasto por passo, quem levou a culpa foi o
+        # `2-hidden`, que nao toma foco nenhum. O rasto (`SELFTEST focus_steals=`)
+        # fica no log como EVIDENCIA; o veredicto nao o julga, porque julgar um
+        # numero que sabemos atrasado e' inventar.
+        if str(reading.get('focus_steal_allowed') or '') not in ('pointer-lock',
+                                                                 'hotkey'):
+            return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
+                          'SW_SHOWNOACTIVATE is the contract and this is it being broken'
+                          % (reading.get('focus_before'), reading.get('focus_after')))
     # -- O CONTRATO DE 2026-11-01, UM PASSO POR PRESSAO. Cada clausula e'
     # verificada so' quando a leitura CARREGA a chave, para as leituras
     # sinteticas mais antigas dos oraculos de foco continuarem a significar o que
@@ -11924,6 +11985,15 @@ class SottoShell:
         arm exits non-zero. Nothing here injects a duration (`fake_hold_ms` was
         deleted with the contract it served) and nothing uses `keybd_event`:
         `AGENTS.md` -- input sintetico mede o Windows, nao a app.
+
+        ENTREGA E LATENCIA SAO DUAS MEDICOES. `posted` (mais o `count=` do log)
+        diz que o `WM_HOTKEY` chegou; `seen`/`latency_ms` dizem quanto tempo o
+        ecra levou a mudar, julgado por `SELFTEST_STEP_BUDGET_MS` (1 500 ms). A
+        primeira exibicao espera `SELFTEST_COLD_WINDOW_S` porque ela custou
+        **12 070 ms** a 2026-11-01 (medido: `HOTKEY_TOGGLE step=show`
+        10:14:47.808 -> `PANEL_SHOWN` 10:14:59.878) -- e uma janela curta nao
+        acha "app lenta", acha "pressao nao entregue", que e' a conclusao errada
+        sobre o facto errado.
         """
         rc = 0
         # ── THE THREADS UNDER TEST ─────────────────────────────────────────
@@ -11969,7 +12039,7 @@ class SottoShell:
                 return (bool(window_visible(self.hwnd)),
                         str(getattr(self, 'panel_mode', '') or ''))
 
-            def wait_for(predicate, timeout=3.0):
+            def wait_for(predicate, timeout):
                 deadline = time.monotonic() + timeout
                 while time.monotonic() < deadline:
                     if predicate():
@@ -11977,15 +12047,32 @@ class SottoShell:
                     time.sleep(0.01)
                 return bool(predicate())
 
-            def step(thread, predicate, label):
-                """UMA pressao pelo caminho de entrega; devolve o instante MEDIDO."""
+            # QUEM TOMOU O FOCO, E EM QUE PASSO. O show do Alt+C toma o
+            # foreground de proposito (`foreground_unlock`: e' o destravar do
+            # rato); o HIDE nao tem essa desculpa. Sem rasto por passo o
+            # veredicto so' sabe "alguem tomou", e reprova o que a lei manda.
+            focus_trace = []
+
+            def note_focus(label, is_show):
+                focus_trace.append((label, bool(is_show), foreground_window()))
+
+            def step(thread, predicate, label, window, is_show):
+                """UMA pressao pelo caminho de entrega: (posted, seen, ms).
+
+                `posted` e' a prova de ENTREGA (`simulate_press` pos o `WM_HOTKEY`
+                na fila, e o `HOTKEY_PRESSED count=N` do log e' esse numero);
+                `seen`/`ms` sao a prova de LATENCIA. Duas provas, dois campos --
+                fundi-las foi como o teste passou a culpar a entrega de uma
+                primeira exibicao lenta (2026-11-01).
+                """
                 t0 = time.monotonic()
                 posted = bool(thread.simulate_press())
-                seen = wait_for(predicate)
+                seen = wait_for(predicate, window)
                 spent = (time.monotonic() - t0) * 1000.0
+                note_focus(label, is_show)
                 log(f'SELFTEST step={label} posted={str(posted).lower()} '
                     f'seen={str(seen).lower()} screen={screen()} '
-                    f'latency_ms={spent:.1f}')
+                    f'latency_ms={spent:.1f} window_s={window:.1f}')
                 return posted, seen, spent
 
             before_focus = foreground_window()
@@ -11999,38 +12086,58 @@ class SottoShell:
                 f'surface={self.surface_applied} '
                 f'caption={str(caption_start).lower()}')
 
-            # ARM 1 -- hidden -> STRIP, caption UNCHANGED.
+            # ARM 1 -- hidden -> STRIP, caption UNCHANGED. Esta e' a exibicao
+            # FRIA: e' ela que paga o primeiro `exec_js` da pagina, e por isso
+            # espera a janela grande -- o numero aparece, e o orcamento julga.
             caption_before = bool(getattr(self, '_caption_wanted', False))
-            p1, a1, ms1 = step(panels, lambda: screen() == (True, 'strip'), '1-strip')
+            p1, a1, ms1 = step(panels, lambda: screen() == (True, 'strip'),
+                               '1-strip-cold', SELFTEST_COLD_WINDOW_S, True)
             caption_after = bool(getattr(self, '_caption_wanted', False))
             # ARM 2 -- strip -> HIDDEN.
-            p2, a2, ms2 = step(panels, lambda: not screen()[0], '2-hidden')
+            p2, a2, ms2 = step(panels, lambda: not screen()[0], '2-hidden',
+                               SELFTEST_STEP_WINDOW_S, False)
             # ARM 3 -- hidden -> PANEL.
-            p3, a3, ms3 = step(panels, lambda: screen() == (True, 'side'), '3-panel')
+            p3, a3, ms3 = step(panels, lambda: screen() == (True, 'side'),
+                               '3-panel', SELFTEST_STEP_WINDOW_S, True)
             # ARM 4 -- panel -> HIDDEN.
-            p4, a4, ms4 = step(panels, lambda: not screen()[0], '4-hidden')
+            p4, a4, ms4 = step(panels, lambda: not screen()[0], '4-hidden',
+                               SELFTEST_STEP_WINDOW_S, False)
             # ARM 5 -- DEZ pressoes, dez alternancias, NA ORDEM. A tecla fica
             # "em baixo" no unico sentido que a app conhece: nenhum evento de
             # libertacao e' entregue, e o seam de duracao ja' nao existe.
             expected = [(True, 'strip'), (False, 'strip'), (True, 'side'),
                         (False, 'side')] * 2 + [(True, 'strip'), (False, 'strip')]
             observed = []
-            ten_ok = True
-            for index in range(10):
-                previous = screen()
+            ten_posted = True
+            ten_changed = True
+            ten_ms = []
+            for index, want in enumerate(expected):
+                t0 = time.monotonic()
                 posted = bool(panels.simulate_press())
-                changed = wait_for(
-                    lambda prev=previous: screen() != prev, timeout=2.0)
+                # EXPLICITO, PASSO A PASSO. `screen() != anterior` nao serve: o
+                # `panel_mode` muda no `set_panel_surface`, antes de a janela
+                # mapear, por isso um "mudou" dispara num estado meio-aplicado
+                # (medido 2026-11-01 10:21:42.894: a 10a pressao registou
+                # `(False,'strip')` no instante em que o modo ja' era 'strip' e a
+                # janela ainda nao). Esperar o par EXACTO mede o que ele V~E.
+                changed = wait_for(lambda w=want: screen() == w,
+                                   SELFTEST_PRESS_WINDOW_S)
+                ten_ms.append((time.monotonic() - t0) * 1000.0)
+                note_focus('5-ten-%d-%s' % (index + 1, 'show' if want[0] else 'hide'),
+                           want[0])
                 observed.append(screen())
-                ten_ok = ten_ok and posted and changed
+                ten_posted = ten_posted and posted
+                ten_changed = ten_changed and changed
             log('SELFTEST arm=5-ten presses=%d alt_held=no-release-event '
-                'expected=%s observed=%s'
-                % (len(observed), expected, observed))
+                'expected=%s observed=%s latency_ms=%s'
+                % (len(observed), expected, observed,
+                   ','.join('%.1f' % ms for ms in ten_ms)))
             # ARM 6 -- Ctrl+Space: a legenda comuta UMA vez, e nenhum painel se
             # mexe (nem aparece, nem muda de superficie).
             panel_before_live = screen()
             p6, a6, ms6 = step(live, lambda: bool(getattr(self, '_caption_wanted', False))
-                               != caption_before, '6-live')
+                               != caption_before, '6-live', SELFTEST_STEP_WINDOW_S,
+                               False)
             caption_live = bool(getattr(self, '_caption_wanted', False))
             panel_after_live = screen()
             if caption_live != caption_start:
@@ -12042,25 +12149,54 @@ class SottoShell:
             focus_stolen = before_focus != after_focus
             stolen_by_us = bool(focus_stolen and after_focus
                                 and after_pid == os.getpid())
+            # O QUE CADA PASSO FEZ AO FOCO. `focus_stolen_by_own_window` e' o
+            # total (o numero que o `selftest-focus-oracle` julga); este rasto
+            # diz QUAL passo o tomou, e se esse passo era um show (permitido,
+            # `foreground_unlock`) ou um hide/tecla da legenda (nao).
+            steals, previous = [], before_focus
+            for label, is_show, hwnd in focus_trace:
+                if hwnd and hwnd != previous and window_pid(hwnd) == os.getpid():
+                    steals.append((label, is_show))
+                previous = hwnd or previous
+            bad_steals = [label for label, is_show in steals if not is_show]
+            log(f'SELFTEST focus_steals={steals} '
+                f'focus_stolen_on_hide={bad_steals}')
             log(f'SELFTEST focus_before={before_focus} focus_after={after_focus} '
                 f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
                 f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
-            latencies = [ms for ms in (ms1, ms2, ms3, ms4) if ms is not None]
+            latencies = [ms for ms in (ms1, ms2, ms3, ms4, ms6) + tuple(ten_ms)
+                         if ms is not None]
+            worst_ms = max(latencies) if latencies else None
             reading = {
                 'registered': bool(panels_ready and live_ready),
-                'pressed': bool(p1 and p2 and p3 and p4 and p6 and ten_ok),
+                # ENTREGA: so' as pressoes postadas. O estado que cada uma devia
+                # ter produzido e' a clausula da arma, e o tempo e' `latency_ms`.
+                'pressed': bool(p1 and p2 and p3 and p4 and p6 and ten_posted),
                 'expect_presses': 14, 'presses': panels.pressed,
+                'latency_ms': worst_ms,
+                'latency_budget_ms': SELFTEST_STEP_BUDGET_MS,
+                'first_show_ms': ms1,
+                'ten_press_latency_ms': ten_ms,
+                'seen_all': bool(a1 and a2 and a3 and a4 and a6 and ten_changed),
                 'visible': bool(screen()[0]), 'want_visible': False,
                 'first_press_strip': a1,
                 'second_press_hidden': a2,
                 'third_press_panel': a3,
                 'fourth_press_hidden': a4,
-                'ten_press_alternations': bool(ten_ok and observed == expected),
+                'ten_press_alternations': bool(ten_changed and observed == expected),
                 'ten_press_observed': observed,
                 'live_toggled': a6,
                 'live_left_panels': panel_before_live == panel_after_live,
                 'live_caption_left_alone': caption_after == caption_before,
                 'focus_stolen_by_own_window': stolen_by_us,
+                # A UNICA excepcao e' o CURSOR CAPTURADO, e nao "o Alt+C": o
+                # show passou a decidir por `pointer_captured()` (ver
+                # `map_panel`), logo o que esta leitura pode declarar e' so'
+                # aquilo que a maquina esta' a medir AGORA. Com o cursor livre a
+                # declaracao e' vazia e o `selftest_broken` julga o roubo como
+                # sempre julgou -- e' assim que a arm `focus_stolen` voltou a
+                # valer alguma coisa.
+                'focus_steal_allowed': 'pointer-lock' if pointer_captured() else '',
                 'focus_before': before_focus, 'focus_after': after_focus,
             }
             broken, why = selftest_broken(reading)
@@ -12070,10 +12206,16 @@ class SottoShell:
                 log('SELFTEST broken=false focus_attributed='
                     f'{str(stolen_by_us).lower()}')
             log('SELFTEST expectation=hotkeys(alt_c=one-step-per-press, '
-                'ctrl_space=live-caption) presses=%d panels_registered=%s '
-                'observed=%s latency_ms=%s'
-                % (panels.pressed, str(bool(panels.registered)).lower(),
-                   observed, ','.join('%.1f' % lat for lat in latencies)))
+                'ctrl_space=live-caption) delivered=%s presses=%d '
+                'panels_registered=%s observed=%s latency_ms=%s '
+                'first_show_ms=%.1f first_show_slow=%s budget_ms=%.0f '
+                'window_cold_s=%.1f'
+                % (str(reading['pressed']).lower(), panels.pressed,
+                   str(bool(panels.registered)).lower(), observed,
+                   ','.join('%.1f' % lat for lat in latencies),
+                   (ms1 or 0.0),
+                   str(float(ms1 or 0.0) > SELFTEST_STEP_BUDGET_MS).lower(),
+                   SELFTEST_STEP_BUDGET_MS, SELFTEST_COLD_WINDOW_S))
             rc = 3 if broken else 0
         finally:
             for thread in started:
