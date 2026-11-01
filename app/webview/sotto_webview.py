@@ -1323,6 +1323,13 @@ _CODE_ID_FILES = (
     'youtube_reveal.py',
     'youtube_window.py',
 )
+#: A PAGINA tambem e' codigo, e ate' 2026-11-01 nao entrava na etiqueta. Medido: a cura do
+#: custo de animacao mudou `app/panel/panel.css` e `panel.js` (push 3,83 -> 0,72 ms, LoAF
+#: 186,7 -> 0) e a `SHELL_CODE_ID` do processo continuou `A21E04974C7F` -- ou seja o dono
+#: podia estar a olhar para a UI antiga com o portao da frescura a dizer `FRESH`. As imagens
+#: ficam de fora: elas nao decidem comportamento, e somam dezenas de MB.
+_CODE_ID_GLOBS = ('../panel/*.js', '../panel/*.css', '../panel/*.html',
+                  '../panel/themes/*.css')
 
 
 def code_identity():
@@ -1346,14 +1353,26 @@ def code_identity():
     h = hashlib.sha256()
     here = os.path.dirname(os.path.abspath(__file__))
     missing = []
-    for name in _CODE_ID_FILES:
+    names = list(_CODE_ID_FILES)
+    # Os ficheiros da PAGINA entram pela mesma porta, e ORDENADOS: um glob cuja ordem
+    # dependesse do sistema de ficheiros daria uma etiqueta que muda sem ninguem mexer.
+    page = set()
+    for pattern in _CODE_ID_GLOBS:
+        try:
+            for pth in __import__('glob').glob(os.path.join(here, pattern),
+                                               recursive=True):
+                page.add(os.path.relpath(pth, here))   # `themes/theme-1.css` inteiro
+        except Exception:  # noqa: BLE001 -- um diagnostico nunca derruba o arranque
+            missing.append(pattern)
+    names.extend(sorted(page))
+    for name in names:
         try:
             with open(os.path.join(here, name), 'rb') as fh:
                 h.update(fh.read())
         except OSError:
             missing.append(name)
     return 'sha256=%s files=%d%s' % (
-        h.hexdigest()[:12].upper(), len(_CODE_ID_FILES) - len(missing),
+        h.hexdigest()[:12].upper(), len(names) - len(missing),
         (' missing=' + ','.join(missing)) if missing else '')
 
 def log(message: str) -> None:

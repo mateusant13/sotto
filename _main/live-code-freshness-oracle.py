@@ -104,8 +104,19 @@ def _stamp_of(line):
 
 
 def _code_files(mod):
-    """A lista vem do SHELL (uma definicao so')."""
-    return list(getattr(mod, '_CODE_ID_FILES', ()))
+    """A lista vem do SHELL (uma definicao so').
+
+    Os ficheiros da PAGINA entram pela mesma porta (`_CODE_ID_GLOBS`), pela razao que a
+    etiqueta passou a incluir: um `panel.css` novo muda o que o dono ve sem mudar um `.py`.
+    """
+    names = list(getattr(mod, '_CODE_ID_FILES', ()))
+    globs = getattr(mod, '_CODE_ID_GLOBS', ())
+    if globs:
+        import glob as _glob
+        for pattern in globs:
+            for pth in sorted(_glob.glob(os.path.join(SHELL_DIR, pattern))):
+                names.append(os.path.relpath(pth, SHELL_DIR))
+    return names
 
 
 def load_shell():
