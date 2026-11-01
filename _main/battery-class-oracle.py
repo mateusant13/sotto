@@ -29,6 +29,7 @@ passo `heavy` foi rebaixado a `always` -- tem de ficar VERMELHO.
 
 Exit: 0 verde, 1 vermelho, 2 erro de setup.
 """
+# NO-BUG: portao das CLASSES de passo da bateria: recusa um passo `always` cujo comando nomeie um largador da app (o que ja' exercitou o auto-relancamento por acidente)
 from __future__ import annotations
 
 import io

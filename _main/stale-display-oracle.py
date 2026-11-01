@@ -30,6 +30,7 @@ VERMELHO; se ficar verde, o oraculo nao mede o que diz medir.
 
 Exit codes: 0 PASS, 1 FAIL, 2 setup.
 """
+# NO-BUG: instrumento do display parado: uma legenda que fica no ecra depois de o audio parar e' o defeito, e este ficheiro mede-o pela idade da ultima palavra
 from __future__ import annotations
 
 import ast

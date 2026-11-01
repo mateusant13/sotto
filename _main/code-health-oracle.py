@@ -172,22 +172,31 @@ def neg_arm(today, baseline):
     # mutantes passam a escolher dentro do conjunto que o baseline conhece.
     known = [k for k in sorted(today) if k in (baseline or {})]
 
-    def _pick(pred):
+    def _pick(pred, metric):
+        """O primeiro ficheiro do baseline para o qual `metric` esta' EM CIMA do baseline.
+
+        A clausula `>=` nao e' estetica: MEDIDO 2026-11-01, `apply_except` escolhia o
+        primeiro `.py` alfabetico com a chave e calhou em `app/webview/caption_overlay.py`,
+        que tem 2 `except_pass` contra 4 no baseline -- a divida tinha sido PAGA, portanto
+        `+1` continuava abaixo do tecto e o mutante ficava INERTE (o braco negativo
+        publicava rc=2 sem que o comparador tivesse deixado de saber ver a divida).
+        """
         for k in known:
-            if pred(k, today[k]):
+            if pred(k, today[k]) and today[k].get(metric, 0) >= (baseline.get(k) or {}).get(metric, 0):
                 return k
-        raise SystemExit('NEG-ARM setup: nenhum ficheiro do baseline satisfaz o mutante')
+        raise SystemExit('NEG-ARM setup: nenhum ficheiro do baseline satisfaz o mutante %r'
+                         % (metric,))
 
     def apply_grow(copy):
-        rel = _pick(lambda k, v: True)
+        rel = _pick(lambda k, v: True, 'bytes')
         copy[rel]['bytes'] += 1
 
     def apply_long_func(copy):
-        rel = _pick(lambda k, v: k.endswith('.py') and 'max_func' in v)
+        rel = _pick(lambda k, v: k.endswith('.py') and 'max_func' in v, 'max_func')
         copy[rel]['max_func'] += 1
 
     def apply_except(copy):
-        rel = _pick(lambda k, v: k.endswith('.py') and 'except_pass' in v)
+        rel = _pick(lambda k, v: k.endswith('.py') and 'except_pass' in v, 'except_pass')
         copy[rel]['except_pass'] += 1
 
     for name, fn in (('M1 um ficheiro cresce 1 byte', apply_grow),

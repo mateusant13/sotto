@@ -24,6 +24,7 @@ que o oraculo fique VERMELHO.
 
 Exit codes: 0 PASS, 1 FAIL, 2 setup.
 """
+# NO-BUG: instrumento da fila AO VIVO: nenhum bloco de audio pode ser perdido entre a captura e a transcricao; julga o modulo, nao o produto
 from __future__ import annotations
 
 import ast

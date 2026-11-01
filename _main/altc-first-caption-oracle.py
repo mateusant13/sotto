@@ -1,3 +1,4 @@
+# NO-BUG: instrumento da linha de aceitacao do Alt+C (ordem do dono, 2026-10-30): mede a ACCAO do gesto (`LIVE_ENABLED`/`PANEL_SHOWN`) contra 1500 ms; nao corrige o produto
 #!/usr/bin/env python
 """ALT+C -> A ACCAO DO INTERRUPTOR: a linha de 1,5 s, medida em vez de afirmada.
 

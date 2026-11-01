@@ -28,6 +28,7 @@ USO
     python _main/undefined-names-oracle.py            # a populacao de producao
     python _main/undefined-names-oracle.py --neg-arm  # prova que o detector morde
 """
+# NO-BUG: portao dos nomes: nenhum nome de producao pode ser usado sem ser definido -- nasceu de dois NameError em producao no mesmo dia
 from __future__ import annotations
 
 import argparse

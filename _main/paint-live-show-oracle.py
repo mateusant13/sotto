@@ -19,6 +19,7 @@ SEM SHOW NA SESSAO NAO E' VERDE: imprime `VERDICT: SKIPPED` com a hora do arranq
 skip-capable da bateria conta o como SKIPPED -- um passo saltado nunca e' um portao que passou.
 Efervescencia: `--neg-arm` muta uma copia do log em tres pontos e exige os tres vermelhos.
 """
+# NO-BUG: instrumento do show REAL: le o log da instancia viva do dono e exige `paint_ack=true` e `wait_ms<=400` em cada PANEL_SHOWN; diz SKIPPED quando ainda nao houve show
 from __future__ import annotations
 
 import argparse
