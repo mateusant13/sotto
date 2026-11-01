@@ -1,112 +1,142 @@
-"""O GESTO DO ALT+C -- um toque, dois toques, e SEGURAR.
+"""AS DUAS HOTKEYS DO SOTTO -- um passo por pressao, e nenhum relogio.
 
-ORDEM DO DONO, 2026-10-30 (supersede o contrato de 2026-10-18, em que UM toque
-era a legenda):
+ORDEM DO DONO, 2026-11-01, verbatim:
 
-    1 tap  -> o painel de BAIXO   (`show_strip`)
-    2 taps -> o painel da DIREITA (`show_side`)
-    HOLD   -> a legenda AO VIVO liga/desliga
+    *"modifica a legenda ao vivo hotkey. bota o padrao como control espaco. e os
+    painels deixa alt c. faz os paineis alternarem mesmo se eu deixar alt
+    apertado o tempo inteiro e spammando c. alterna entre show e hide."*
 
-PORQUE E' QUE ISTO PRECISA DE UM SINAL NOVO. `RegisterHotKey` com
-`MOD_NOREPEAT` (ligado desde sempre, `sotto_webview.py`) entrega **um**
-`WM_HOTKEY` por pressao e **nenhum** evento de libertação -- nao ha `WM_KEYUP`
-naquela fila, e `msg.lParam` nunca era lido. Sem o instante da libertação,
-"segurar" e' indistinguivel de "tocar": o contrato antigo tentava adivinha-lo
-a contar presses dentro de 700 ms, e **medido no log do dono** (2026-10-30,
-163 rajadas): 56 de 1 pressao, 34 de 2, e 73 de 3+ — um segundo de Alt+C
-segurado caía em "triplo" e mostrava o painel da DIREITA em vez de ligar a
-legenda. O contador **nao** e' o gesto.
+O QUE ISTO SUBSTITUI, e porque e' que a substituicao e' uma REMOCAO. O contrato
+de 2026-10-30 media a DURACAO da segurada (`GetAsyncKeyState` em cada volta do
+pump) e decidia por ela: um toque era o painel de baixo, dois o da direita, e
+>= 200 ms era a legenda ao vivo. Tres relogios a discordar (`HOTKEY_HOLD_MS`,
+`HOTKEY_TAP_WINDOW_MS`, `HOLD_CEILING_MS`) e uma thread a fazer polling para
+medir o que o dono ja' sabia. Ele nao pediu nenhum dos dois gestos: pediu
+*"alterna entre show e hide"* e uma tecla separada para a legenda. Uma pressao
+e' um passo -- o resto era instrumentacao nossa, e foi toda apagada com este
+ficheiro (o oraculo `_main/altc-gesture-oracle.py` guarda a ausencia).
 
-A leitura certa e' `GetAsyncKeyState(VK_MENU)`: o Alt ainda esta' em baixo
-quando o `WM_HOTKEY` chega, e sai quando o dono larga. Quanto tempo ficou
-em baixo **e'** a duracao do gesto. Aqui vive so' a decisao, pura, para poder
-ser medida sem teclado e sem janela.
+AS DUAS TECLAS, uma so' dona cada:
+
+    Alt+C       UMA pressao = UM passo do ciclo dos paineis, imediato
+    Ctrl+Space  UMA pressao = a legenda ao vivo liga/desliga
+
+O CICLO DOS PAINEIS. Cada pressao MUDA o que esta' no ecra -- nunca ha uma
+pressao que nao faca nada, e e' isso que faz o gesto funcionar com o Alt
+fisicamente em baixo e o C a ser martelado: nao ha janela de toques, nao ha
+limiar, nao ha adiamento, logo nao ha nada para o Alt preso estragar.
+
+    escondido (ultimo show: painel)  -> faixa de BAIXO   (show)
+    faixa de baixo no ecra           -> esconde          (hide)
+    escondido (ultimo show: faixa)   -> painel da DIREITA (show)
+    painel da direita no ecra        -> esconde          (hide)
+
+Dez pressoes: dez mudancas de visibilidade, e os shows alternam
+faixa, painel, faixa, painel, faixa. `next_surface` e' a regra inteira, pura,
+para poder ser medida sem teclado e sem janela.
+
+O VOCABULARIO DAS TECLAS vive aqui e em mais lado nenhum: o shell traduz os
+NOMES dos modificadores nos bits do Win32 (`RegisterHotKey`) e a tecla no `vk`
+que esta tabela devolve, e `hotkey_settings` valida o ficheiro do dono com o
+mesmo parser. Duas tabelas de teclas seriam duas verdades, e a segunda envelhece
+sozinha.
 """
 from __future__ import annotations
 
-#: Segurado pelo menos isto: o gesto e' o HOLD e nao um toque.
-#: E' o valor de FABRICA. O limiar em vigor vem de `hotkey_settings.hold_ms()`,
-#: que o dono muda no painel da direita (ordem de 2026-10-30); esta constante
-#: fica a ser o que se usa quando ninguem escolheu nada, ou quando o ficheiro
-#: da escolha esta' ilegivel. A regra continua pura: quem a chama passa o numero.
-#:
-#: PORQUE E' QUE ERA 500, PASSOU A 900, E PASSOU A 200 (medido, na mao dele).
-#: 500 -> 900 em 2026-10-30, quando ele reclamou, verbatim: *"EU TO APERTANDO
-#: ALT C E TA LIGANDO E DESLIGANDO A LEGENDA PORRA"*. As 21 pressoes lidas pelo
-#: `HotkeyThread` nessa sessao:
-#:
-#:     93 110 187 204 438 468 | 531 578 641 ... 1187 1250 1344 2000 3047
-#:
-#: O vazio entre 641 e 1187 e' onde 900 foi posto. **200 e' a ORDEM DE HOJE**
-#: (2026-10-30, verbatim: *"a porra do alt c, bota 200ms"*), e ela entra com o
-#: risco escrito em vez de escondido: **204, 438 e 468 ms da tabela acima caem
-#: agora em HOLD** -- um toque que dure mais de um quinto de segundo comuta a
-#: legenda em vez de mostrar o painel. O numero nao foi re-medido; foi ESCOLHIDO
-#: por ele, e por isso a lista do painel (`hotkey_settings.HOTKEY_HOLD_MS_CHOICES`)
-#: continua a oferecer 300/400/500/700/900/1200 para ele voltar atras num clique.
-HOTKEY_HOLD_MS = 200.0
+#: A tecla dos PAINEIS. Ordem do dono, 2026-11-01: *"os painels deixa alt c"*.
+PANELS_ACCELERATOR = 'Alt+C'
 
-#: Dois toques separados por <= isto sao UM gesto de dois toques.
-HOTKEY_TAP_WINDOW_MS = 400.0
+#: A tecla da LEGENDA AO VIVO. Ordem do dono, 2026-11-01: *"bota o padrao como
+#: control espaco"*. E' tambem o valor que `hotkey_settings` devolve quando o
+#: ficheiro da escolha nao existe ou esta' ilegivel.
+LIVE_ACCELERATOR = 'Ctrl+Space'
 
-#: Tecto da medicao: uma tecla presa (ou um `GetAsyncKeyState` que nunca baixa)
-#: nao pode bloquear o thread da hotkey para sempre.
-HOLD_CEILING_MS = 5000.0
+#: Nome do modificador tal como o dono escreve -> nome canonico. `MENU` e
+#: `SUPER` sao aceitos porque `parse_accelerator` do shell sempre os aceitou e
+#: uma tecla que ja' funcionava nao pode deixar de funcionar.
+MODIFIERS = {'ALT': 'alt', 'MENU': 'alt', 'CTRL': 'ctrl', 'CONTROL': 'ctrl',
+             'SHIFT': 'shift', 'WIN': 'win', 'SUPER': 'win'}
+
+#: A ordem em que o texto normalizado escreve os modificadores. Nao e' ranking:
+#: e' o que faz `Ctrl+Alt+Space` ser sempre a MESMA string.
+MODIFIER_ORDER = ('ctrl', 'alt', 'shift', 'win')
+MODIFIER_LABELS = {'ctrl': 'Ctrl', 'alt': 'Alt', 'shift': 'Shift', 'win': 'Win'}
+
+#: As teclas que NAO sao uma letra. `vk` e' o codigo virtual do Windows da
+#: tecla (`VK_SPACE` == 0x20); uma letra e' `ord('C')`, que e' o mesmo numero
+#: que o Windows usa para ela. O rotulo e' o que o ficheiro e o log escrevem.
+KEY_TABLE = (
+    ('Space', 0x20), ('Tab', 0x09), ('Enter', 0x0D), ('Esc', 0x1B),
+    ('Backspace', 0x08), ('Insert', 0x2D), ('Delete', 0x2E),
+    ('Home', 0x24), ('End', 0x23), ('PageUp', 0x21), ('PageDown', 0x22),
+    ('Up', 0x26), ('Down', 0x28), ('Left', 0x25), ('Right', 0x27),
+    ('F1', 0x70), ('F2', 0x71), ('F3', 0x72), ('F4', 0x73), ('F5', 0x74),
+    ('F6', 0x75), ('F7', 0x76), ('F8', 0x77), ('F9', 0x78), ('F10', 0x79),
+    ('F11', 0x7A), ('F12', 0x7B),
+)
+_KEYS = {label.upper(): vk for label, vk in KEY_TABLE}
+_LABELS = {vk: label for label, vk in KEY_TABLE}
 
 
-def is_hold(held_ms, hold_ms=HOTKEY_HOLD_MS):
-    """A tecla ficou em baixo o suficiente para o gesto ser o HOLD?
+def parse_accelerator(text):
+    """`'Alt+C'` -> `(('alt',), 0x43)`; `'Ctrl+Space'` -> `(('ctrl',), 0x20)`.
 
-    `held_ms` desconhecido (`None`) NAO e' um HOLD: nao se inventa um gesto a
-    partir de uma medicao que nao existe. Um toque e' o que sempre funcionou.
+    Levanta `ValueError` para o que NAO e' uma tecla: um accelerador que o shell
+    nao consegue traduzir em `RegisterHotKey` tem de ser recusado aqui, e nao
+    numa falha de registo que deixa a app com uma tecla morta e um log obscuro.
+
+    EXIGE PELO MENOS UM MODIFICADOR. Uma tecla global sem modificador escreve-se
+    na app que o dono estiver a usar; nao ha gesto que justifique isso, e as duas
+    teclas deste contrato tem as duas um.
     """
-    if held_ms is None:
-        return False
-    try:
-        return float(held_ms) >= float(hold_ms)
-    except (TypeError, ValueError):
-        return False
+    mods: list[str] = []
+    key = None
+    for part in str(text or '').split('+'):
+        token = part.strip()
+        if not token:
+            continue
+        upper = token.upper()
+        if upper in MODIFIERS:
+            name = MODIFIERS[upper]
+            if name in mods:
+                raise ValueError(f'duplicate modifier {token!r} in {text!r}')
+            mods.append(name)
+        elif key is not None:
+            raise ValueError(f'two keys ({key!r}, {token!r}) in {text!r}')
+        elif len(upper) == 1:
+            key = upper
+        elif upper in _KEYS:
+            key = upper
+        else:
+            raise ValueError(f'unsupported accelerator key {token!r}')
+    if key is None:
+        raise ValueError(f'no key in accelerator {text!r}')
+    if not mods:
+        raise ValueError(f'no modifier in accelerator {text!r} (a global key '
+                         'without one would type into the owner\'s app)')
+    return (tuple(name for name in MODIFIER_ORDER if name in mods),
+            ord(key) if len(key) == 1 else _KEYS[key])
 
 
-def resolve_taps(taps):
-    """Quantos toques -> que painel: `'side'` a partir de dois, `'strip'` num.
-
-    TRES OU MAIS cai no `'side'` e NAO num quarto estado: o dono deu tres
-    significados e o terceiro e' o painel da direita; um quarto estado seria
-    inventado por mim. Um toque e' sempre o painel de baixo.
-    """
-    try:
-        n = int(taps)
-    except (TypeError, ValueError):
-        n = 1
-    return 'side' if n >= 2 else 'strip'
-
-
-def surface_for(taps):
-    """O nome de superficie que `show_strip`/`show_side` usam (`'strip'`/`'panel'`)."""
-    return 'panel' if resolve_taps(taps) == 'side' else 'strip'
-
-#: O CICLO DO DONO (2026-10-30), verbatim: *"alt segurado e c multiplas vezes
-#: devem continuar mostrando os paineis e alternando entra mostrar nada, mostrar
-#: o primeiro, mostrar o segundo"*. Cada pressao AVANCA um estado, para sempre,
-#: com a tecla em baixo ou nao -- e' o que a frase dele pede: `nada -> baixo ->
-#: direita -> nada`. O contrato anterior (1 toque = baixo, 2 = direita, repetir
-#: o mesmo painel FECHA) produzia `baixo -> direita -> nada -> direita -> nada`:
-#: o quarto toque nunca voltava ao primeiro painel, e era isso que o dono
-#: chamava de "nao fez".
-CYCLE = (None, 'strip', 'panel')
+def normalise_accelerator(text):
+    """O texto canonico (`'Ctrl+Space'`, `'Alt+C'`). Levanta como `parse_accelerator`."""
+    mods, vk = parse_accelerator(text)
+    key = _LABELS.get(vk) or chr(vk)
+    return '+'.join([MODIFIER_LABELS[name] for name in mods] + [key])
 
 
 def next_surface(visible, surface):
-    """O proximo estado do ciclo, a partir do que a JANELA veste agora.
+    """UM Alt+C -> UM passo. Devolve o que MOSTRAR, ou `None` para esconder.
 
-    `visible`/`surface` sao o que o shell MEDIU (`IsWindowVisible` +
-    `surface_applied`), nunca uma intencao: um `show` que falhou deixou o painel
-    escondido, e o ciclo tem de continuar de onde o dono esta' a ver.
+    `visible` e' o que a JANELA mede (`IsWindowVisible`), nunca uma intencao: um
+    `show` que falhou deixou o painel escondido e o ciclo tem de continuar de
+    onde o dono esta' a ver.
 
-    Devolve `None` (esconder), `'strip'` (painel de baixo) ou `'panel'`
-    (painel da direita).
+    `surface` e' a ultima superficie APLICADA (`surface_applied`), e ela
+    sobrevive ao `hide` de proposito -- e' essa memoria que faz o show seguinte
+    alternar. Por isso o `hide_panel` do shell NAO limpa `surface_applied`
+    (o oraculo prende as duas coisas juntas).
     """
-    if not visible:
-        return 'strip'
-    return 'panel' if str(surface or '') == 'strip' else None
+    if visible:
+        return None
+    return 'panel' if str(surface or '') == 'strip' else 'strip'

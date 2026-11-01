@@ -302,12 +302,13 @@ def overlay_rows(rows, flatten=False):
     clean = [sotto_webview.clean_external_text(row) for row in (rows or ())]
     clean = [row for row in clean if row]
     text = " ".join(clean) if flatten else youtube_reveal.rows_text(clean)
-    # O ESTADO DO `set_text(instant=True)`: todas as palavras ja sairam. A
-    # `_display_text` e chamada SEM janela (so le `text`/`_shown`/`_n`), para a
-    # medicao passar pelo MESMO ponto que o `_update` usa antes do `_layout`.
+    # O ESTADO DO `set_text(instant=True)`: a janela do player ja' vem revelada, logo
+    # nao ha' prefixo nenhum a calcular. A `_display_text` e' chamada SEM janela (so
+    # le' `text`), para a medicao passar pelo MESMO ponto que o `_update` usa antes do
+    # `_layout`. O sprite de `_shown`/`_n` morreu em 2026-11-01 (o motor
+    # `youtube_reveal.LiveRows` revela a linha AO VIVO); aqui ficou so' o texto.
     view = type("_View", (), {})()
     view.text = text
-    view._shown = view._n = len(text.split())
     shown = caption_overlay.NativeCaptionOverlay._display_text(view)
     cur_lines, _prev, width, height, scrolled = caption_overlay._layout(
         shown, "", SCALE, WORK_WIDTH)
@@ -409,8 +410,8 @@ def wiring_faltas():
          "youtube_reveal.rows_text(rows)", shell),
         ("o _layout nao re-quebra o canal de linhas",
          "if _cw and '\\n' not in text:", overlay),
-        ("o _display_text desenha o texto completo quando revelado",
-         "self._shown >= self._n", overlay),
+        ("o _display_text nao inventa um corte na janela do player",
+         "return self.text", overlay),
     )
     return [name for name, needle, src in checks if needle not in (src or "")]
 

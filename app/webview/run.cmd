@@ -93,6 +93,33 @@ REM rung recognises (worker/sotto_worker.py `redux_live_settings`), and "0" is a
 REM explicit off. The line below only ever supplies a value when there is none.
 if not defined SOTTO_REDUX_LIVE set "SOTTO_REDUX_LIVE=1"
 
+REM ---- OS MOTORES DECIDIDOS PELA CARGA, ON BY DEFAULT (owner, 2026-11-01) ----
+REM O dono, verbatim: *"modelos carregados dependendo a carga do sistema ou nao.
+REM quando carga liberar, carrega sozinho (NUNCA TRAVAR O PC DO USUARIO OU
+REM STUTTER OU QUALQUER COISA DESSA NATUREZA) e processa qualquer audio nao
+REM processado, com o parakeet."*
+REM
+REM O QUE ESTA LINHA LIGA. `worker/sotto_worker.py` constroi o
+REM `ReduxHiddenSwitch` quando esta env vale "1": com o painel FECHADO o decode
+REM do nemotron PARA (o custo que o dono sente como stutter) e o parakeet, em
+REM segundo plano, transcreve o audio que se acumulou (`live_queue.PendingAudio`:
+REM RAM ate --redux-max-audio, depois disco -- nada e' deitado fora). Com o
+REM painel aberto volta o nemotron, como sempre. O nivel de carga medido
+REM (commit %, CPU) desliga os motores em `alta`/`muito-alta` e a descida
+REM recarrega-os sozinha.
+REM
+REM WHY HERE AND NOT IN `WorkerBridge._child_env`: a mesma razao escrita acima
+REM para o `SOTTO_REDUX_LIVE`. `_child_env` e' pinado por
+REM `_main/app-target-oracle.py` ARM e ("os.environ + SOTTO_CAPTURE_MODE, nada
+REM mais"), e um bridge que comeca a acrescentar chaves suas e' a segunda tabela
+REM que esse gate existe para impedir. Este ficheiro e' o ponto de entrada
+REM documentado e o valor aqui atravessa o `start "" "%PYW%" ...` do shell.
+REM
+REM HOW TO TURN IT OFF: `set SOTTO_REDUX_WHEN_HIDDEN=0` antes de correr. O worker
+REM le' so' "1" como ligado: "0" (ou nada) deixa o interruptor desarmado e o
+REM worker fica EXACTAMENTE o de antes -- o caminho que os oraculos ainda medem.
+if not defined SOTTO_REDUX_WHEN_HIDDEN set "SOTTO_REDUX_WHEN_HIDDEN=1"
+
 set "SHELL=%HERE%sotto_webview.py"
 if not exist "%SHELL%" (
   echo run.cmd: %SHELL% is missing. The app cannot start.

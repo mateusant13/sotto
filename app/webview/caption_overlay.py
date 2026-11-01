@@ -601,6 +601,32 @@ except Exception:  # noqa: BLE001  -- a legenda nao pode partir por um import
     _cw = None
 
 
+def _measure_budget(scale, work_width, theme=None):
+    """A MEDIDA e o TETO de uma linha, numa so' definicao.
+
+    Duas copias de "quanto mede uma linha" e' como uma legenda e' medida com uma
+    fonte e desenhada com outra. Duas copias do TETO e' como a linha que o motor
+    quebrou nao cabe na caixa que a desenha. `_layout` e o motor
+    (`youtube_reveal.LiveRows`, via `_wrap_fn`) passam os dois por aqui.
+
+    `_measure` RETORNA UMA FUNCAO de medicao -- a docstring dela explica por que:
+    a closure fixa os objectos GDI+, e usar o resultado como numero e' o defeito
+    que aquele comentario existe para impedir.
+    """
+    g = _geom(scale, theme)
+    t = g['t']
+    cur_px = g['cur_px']
+    bold = t['liveWeight'] >= 600
+
+    def cur_w(s):
+        return _measure(s, cur_px, _MEASURE_CACHE, t['fontFamily'], bold,
+                        t['liveItalic'])(s)
+
+    budget = (_cw.budget_px(work_width, cur_px, cur_w) if _cw
+              else int(work_width * 0.5))
+    return cur_w, budget
+
+
 def _layout(text, previous, scale, work_width, theme=None):
     """ONE layout for the caption, used by the measure AND by the draw.
 
@@ -626,21 +652,12 @@ def _layout(text, previous, scale, work_width, theme=None):
     cur_px, prev_px = g['cur_px'], g['prev_px']
     text = _case(text, t['liveUpper'])
     previous = _case(previous, t['prevUpper'])
-    cur_family = t['fontFamily']
-    cur_bold, prev_bold = t['liveWeight'] >= 600, t['prevWeight'] >= 600
-
-    # `_measure` RETURNS A MEASURING FUNCTION (see its docstring: the closure
-    # pins the GDI+ objects), so the call is two steps. Calling it once and
-    # using the closure as a number is the bug this comment exists to prevent.
-    def cur_w(s):
-        return _measure(s, cur_px, _MEASURE_CACHE, cur_family, cur_bold,
-                        t['liveItalic'])(s)
+    prev_bold = t['prevWeight'] >= 600
+    cur_w, budget = _measure_budget(scale, work_width, theme)
 
     def prev_w(s):
-        return _measure(s, prev_px, _MEASURE_CACHE, cur_family, prev_bold,
+        return _measure(s, prev_px, _MEASURE_CACHE, t['fontFamily'], prev_bold,
                         t['prevItalic'])(s)
-
-    budget = _cw.budget_px(work_width, cur_px, cur_w) if _cw else int(work_width * 0.5)
 
     # A JANELA DESLIZA. Antes era `_overflow` (lido por NINGUEM): toda palavra
     # alem da 2a linha nunca era desenhada -- 168 de 400 legendas do dono, 772
@@ -674,7 +691,8 @@ def _layout(text, previous, scale, work_width, theme=None):
     return cur_lines, prev_line, max(1, width), max(1, height), scrolled
 
 
-def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None):
+def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None,
+                          alphas=None):
     """Draw the caption onto a 32bpp premultiplied-ARGB bitmap (GDI+).
 
     THE THEME IS PAINTED, NOT APPLIED BY CSS. A plate is the row's own
@@ -738,15 +756,29 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
         g.FillRectangle(brush, 0.0, 0.0, float(geo['rule_w']), float(height))
         brush.Dispose()
 
-    def draw_line(s, font, color, top, h):
-        brush = SolidBrush(_colour(color))
+    def faded(color, alpha):
+        """A cor da linha com o alfa DELA (255 = como veio do tema).
+
+        O alfa POR LINHA e' o que faz a linha que rola para fora desvanecer sem
+        tocar nas outras -- o `SourceConstantAlpha` do `UpdateLayeredWindow` e' um
+        numero por janela, logo uma linha so' pode desaparecer por dentro do
+        bitmap. Multiplicar o alfa da cor e' o mesmo que o GDI+ faria com um
+        `SolidBrush` semitransparente, e nao custa um blend por pixel.
+        """
+        if alpha is None or int(alpha) >= 255:
+            return color
+        r, gg, b, a = color
+        return (r, gg, b, max(0, min(255, int(round(a * int(alpha) / 255.0)))))
+
+    def draw_line(s, font, color, top, h, alpha=None):
+        brush = SolidBrush(_colour(faded(color, alpha)))
         path = GraphicsPath()
         rect = RectangleF(float(geo['x_text']), float(top),
                           float(max(1, width - geo['x_text'] - geo['pad_r'])),
                           float(h))
         path.AddString(s, font.FontFamily, int(font.Style), font.Size,
                        rect, fmt)
-        pen = Pen(_colour(t['strokeColor']),
+        pen = Pen(_colour(faded(t['strokeColor'], alpha)),
                   max(1.5, float(t['strokePx']) * scale))
         pen.LineJoin = LineJoin.Round
         g.DrawPath(pen, path)
@@ -759,9 +791,12 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
     if prev_line:
         draw_line(prev_line, prev_font, t['prevColor'], y, geo['prev_h'])
         y += geo['prev_h']
-    for line in cur_lines:
+    for index, line in enumerate(cur_lines):
+        alpha = None
+        if alphas and index < len(alphas):
+            alpha = alphas[index]
         draw_line(_case(line, t['liveUpper']), cur_font, t['liveColor'],
-                  y, geo['line_h'])
+                  y, geo['line_h'], alpha)
         y += geo['line_h']
 
     # The design's own mark: an LED/rail on the left, or nothing when the row
@@ -772,8 +807,21 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
         # BESIDE THE LIVE LINE, NOT BESIDE THE PREVIOUS ONE. With a previous
         # line above, the old `pad + h/2` put the "listening" dot at the
         # previous line's shoulder; the dot belongs to what is being said now.
+        #
+        # E NAO FICA AO LADO DA LINHA QUE SAI (2026-11-01). Com a janela do motor
+        # (2 linhas + a que rola para fora) a PRIMEIRA linha do desenho e', nos
+        # 7,66 s de transicoes do payload, a que esta' a SAIR: o ponto verde ficava
+        # opaco ao lado de uma linha a desvanecer -- medido no bitmap, 96 pixeis a
+        # 255 enquanto o texto estava em 40, o "paint X while Y fades" que o dono
+        # chamou de bug de render. O ponto vai para a primeira linha VIVA (alfa
+        # 255), que e' a primeira do desenho em tudo o que nao e' uma transicao.
+        led_row = 0
+        for index, line in enumerate(cur_lines):
+            if not alphas or index >= len(alphas) or int(alphas[index]) >= 255:
+                led_row = index
+                break
         cy = (geo['pad_t'] + (geo['prev_h'] if prev_line else 0.0)
-              + geo['line_h'] / 2.0)
+              + geo['line_h'] * led_row + geo['line_h'] / 2.0)
         brush = SolidBrush(_colour(t['led']))
         g.FillEllipse(brush, float(led_x), float(cy - geo['led_h'] / 2.0),
                       float(geo['led_w']), float(geo['led_h']))
@@ -789,15 +837,6 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
         except Exception:
             pass
     return bmp
-
-
-#: ONE WORD EVERY THIS MANY SECONDS. 0.045 s is the same cadence `panel.css`
-#: already uses for the panel's own `--type-step`, so the live caption and the
-#: panel sprout at ONE speed and the owner does not have to learn two rhythms.
-#: It is a module constant on purpose: a word arriving every 45 ms is 22 words
-#: per second, faster than anyone speaks, so the reveal finishes inside the
-#: engine's own cadence instead of lagging it.
-WORD_STEP_S = 0.045
 
 
 def _same_line(old, new):
@@ -840,22 +879,29 @@ class NativeCaptionOverlay:
         self.theme = dict(_THEME_DEFAULT)
         self._wndproc = WNDPROC(self._on_message)
         self._ready = threading.Event()
-        # ── THE WORD-BY-WORD SPROUT (2026-10-18) ────────────────────────────
-        # `_shown` is how many words of `self.text` are ACTUALLY on screen. It
-        # is the whole feature: before it, `_update` painted the entire forming
-        # line in one `UpdateLayeredWindow`, so a fragment carrying three words
-        # put three words on screen in the same frame. Owner, verbatim:
-        # *"ta surgindo duas palavras ou mais na legenda, inves de uma por vez"*
-        # and *"nao e revelar por letra. e pra brotar palavra por palavra"*.
+        # ── O MOTOR DA LEGENDA AO VIVO (2026-11-01) ──────────────────────
+        # `_live` e' o `youtube_reveal.LiveRows` desta legenda: o ASR entrega texto a
+        # CRESCER, o motor da' a cada palavra o instante em que ela chegou e devolve
+        # as LINHAS do YouTube -- reveladas palavra a palavra, quebradas pela regra
+        # do `caption_wrap`, com a janela a rolar. Nao ha' aqui um segundo tempo: o
+        # sprout de 45 ms de relogio de parede morreu com este trabalho, e o
+        # `_main/youtube-1to1-oracle.py` (arm `one-engine`) recusa-o de volta.
         #
-        # `_reveal_gen` is the generation counter that retires a timer which is
-        # already armed when the line it belongs to is gone -- the same "decide
-        # at RUN time, not by cancelling the Timer" trick `_hotkey_single` uses
-        # in the shell, because a Timer may already be inside `_update`.
-        self._shown = 0
-        self._n = 0
-        self._reveal_timer = None
-        self._reveal_gen = 0
+        # PORQUE O MOTOR E NAO UM TIMER AQUI: o dono, 2026-11-01, verbatim:
+        # *"mesmo quando é só transcricao em tempo real, deve imitar o
+        # comportamento da legenda do youtube"*. Duas regras de tempo (uma no
+        # caminho do YouTube, outra no do ASR) e' exactamente o que produzia duas
+        # legendas diferentes no mesmo ecra.
+        self._live = None
+        # `_row_alphas` e' o alfa POR LINHA do ultimo frame (255 = linha viva); a
+        # linha que sai desvanece por dentro do bitmap, porque o
+        # `SourceConstantAlpha` do `UpdateLayeredWindow` e' um numero por JANELA.
+        self._row_alphas = None
+        # `_tick_gen` retira um tick ja' armado quando a linha que o armou ja' nao
+        # existe -- a mesma tecnica do sprout, e pela mesma razao: um `Timer` pode
+        # ja' estar dentro de `_update` quando o texto muda.
+        self._tick_gen = 0
+        self._tick_timer = None
         # O FADE DA LINHA NOVA (ordem do dono, 2026-10-30: *"por que a nossa
         # legenda nao tem a mesma animacao da do youtube?"*). `_fade_t0` e' o
         # instante em que a linha mudou, ou None quando nao ha' fade a correr.
@@ -970,22 +1016,53 @@ class NativeCaptionOverlay:
             self._fade_t0 = None
         return alpha
 
-    def _arm_fade(self):
-        """Agenda o proximo frame do fade. Sem fade a correr, nao faz nada."""
-        if self._fade_t0 is None:
-            return
-        import word_fade
-        self._fade_gen += 1
-        gen = self._fade_gen
-        delay = word_fade.next_delay(time.monotonic() - self._fade_t0)
-        t = threading.Timer(delay, lambda: self._fade_tick(gen))
-        t.daemon = True
-        t.start()
+    def _next_delay(self):
+        """Quanto falta para o proximo frame que MUDA alguma coisa.
 
-    def _fade_tick(self, gen):
+        TRES RAZOES PARA REPINTAR, e a mais proxima manda -- e nenhuma delas e' um
+        compasso fixo:
+
+          * o fade da janela (`word_fade.alpha_at`), frame a frame;
+          * a proxima PALAVRA da linha viva (`LiveRows.next_clock`): e' o unico
+            instante em que o texto muda, logo o unico instante em que vale a pena
+            desenhar. Um tick de 60 ms (`RENDER_S` do shell) desenharia 60 frames
+            por segundo para mostrar uma palavra a cada 240 ms;
+          * uma linha a SAIR: `frame(t)` diz que ha' uma, e ela desvanece ao longo
+            de `word_fade.EXIT_S`, logo precisa de frames ate' chegar a zero.
+        """
+        import word_fade
+        now = time.monotonic()
+        delay = None
+        if self._fade_t0 is not None:
+            delay = word_fade.next_delay(now - self._fade_t0)
+        if self._live is not None:
+            ahead = self._live.next_clock(now)
+            if ahead is not None:
+                step = max(word_fade.FRAME_S, float(ahead) - now)
+                delay = step if delay is None else min(delay, step)
+            if any(mark["exiting"] for mark in self._live.frame(now)):
+                delay = (word_fade.FRAME_S if delay is None
+                         else min(delay, word_fade.FRAME_S))
+        return delay
+
+    def _arm_tick(self):
+        """Agenda o proximo frame. Sem nada a mudar, nao arma nada -- e o timer
+        nao fica a girar num ecra parado."""
+        delay = self._next_delay()
+        if delay is None:
+            self._tick_timer = None
+            return
+        self._tick_gen += 1
+        gen = self._tick_gen
+        timer = threading.Timer(delay, lambda: self._tick(gen))
+        timer.daemon = True
+        self._tick_timer = timer
+        timer.start()
+
+    def _tick(self, gen):
         try:
             with self.lock:
-                if gen != self._fade_gen or self._fade_t0 is None:
+                if gen != self._tick_gen:
                     return
                 self._update()
         except Exception as exc:  # noqa: BLE001 -- see the fail-open rule
@@ -994,10 +1071,10 @@ class NativeCaptionOverlay:
     def _update(self):
         if not self.hwnd:
             return False
-        # NOT `self.text`: the sprout decides how much of it is out. This one
-        # line is the entire difference between "three words in one frame" and
-        # "three words, one at a time".
-        text = self._display_text()
+        # NOT `self.text`: o MOTOR decide o que esta' desenhado neste instante (o
+        # prefixo revelado de cada linha) e o alfa de cada uma. Esta chamada e' a
+        # diferenca entre "tres palavras num quadro" e "tres palavras, uma a uma".
+        text, alphas = self._display()
         previous = self.previous or ""
         if not text and not previous:
             self.hide()
@@ -1007,8 +1084,15 @@ class NativeCaptionOverlay:
         cur_lines, prev_line, width, height, _scrolled = _layout(
             text, previous, self.scale, self.work.get('width', 1920),
             self.theme)
+        # OS ALFAS SAO DAS LINHAS QUE `_layout` VAI DESENHAR. Se a contagem nao
+        # bater (a `_layout` pode juntar uma linha vazia), o alfa que sobra e'
+        # ignorado e nenhuma linha recebe o alfa de outra -- a comparacao e' por
+        # indice e os dois lados vem do MESMO texto.
+        if alphas and len(alphas) != len(cur_lines):
+            alphas = list(alphas[:len(cur_lines)]) + [255] * max(
+                0, len(cur_lines) - len(alphas))
         bmp = _premultiplied_bitmap(cur_lines, prev_line, width, height,
-                                    self.scale, self.theme)
+                                    self.scale, self.theme, alphas)
         try:
             from System.Drawing.Imaging import ImageLockMode, PixelFormat
             from System.Drawing import Rectangle
@@ -1048,7 +1132,7 @@ class NativeCaptionOverlay:
                 0, ctypes.byref(blend), ULW_ALPHA)
             _gdi32.SelectObject(hdc_mem, old)
             _gdi32.DeleteObject(hbmp)
-            self._arm_fade()
+            self._arm_tick()
             _gdi32.DeleteDC(hdc_mem)
             _user32.ReleaseDC(None, hdc_screen)
             if not ok:
@@ -1067,87 +1151,122 @@ class NativeCaptionOverlay:
                 pass
 
     def set_text(self, text, previous="", instant=False):
-        """One caption. `instant=True` skips the sprout (the standalone probe).
+        """Uma legenda. `instant=True` e' a JANELA DO PLAYER: chega ja' revelada,
+        linha a linha, e nada aqui a volta a temporizar.
 
-        THE REVEAL'S FOUR RULES, each with a reason:
+        DUAS FONTES, UM MOTOR (`youtube_reveal`):
 
-        * THE FIRST WORD IS SHOWN IN THIS CALL, not after a tick, so the caption
-          answers Alt+C in the same frame instead of 45 ms later.
-        * A REWRITE DOES NOT RESTART ANYTHING. `panel.js` named the alternative
-          exactly: *"a word that blinked and retyped on every fragment would be
-          worse than no reveal at all"*. `_same_line` compares the FIRST word and
-          nothing else -- comparing the whole prefix would restart the sprout on
-          every single rewrite, which is precisely the bug.
-        * A NEW LINE RESTSARTS AT 1, so the next sentence sprouts from its start.
-        * A TAIL THAT SHRANK CANNOT SHOW WORDS THAT NO LONGER EXIST, hence the
-          `min`.
+          * `instant=True` -- o caminho do YouTube. O texto chega com UMA LINHA
+            POR `\n` (`youtube_reveal.rows_text`), ja' cortado pelo relogio de
+            palavra e pela pintura do player. Aqui so' se desenha; o unico
+            movimento e' o fade da janela na linha nova.
+          * `instant=False` -- o ASR ao vivo. O texto CRESCE. O `LiveRows` da' a
+            cada palavra o instante em que ela chegou, quebra as linhas com a
+            regra do `caption_wrap` (a mesma de sempre: <= 2 linhas, nunca parte
+            uma palavra) e o motor revela palavra a palavra ao compasso medido do
+            YouTube -- e mostra as 2 linhas do ecra mais a que esta' a sair.
+
+        A PALAVRA QUE NAO MUDOU NAO REAPARECE: `LiveRows.push` guarda o instante
+        das palavras que continuam iguais no prefixo, por isso uma correccao do
+        modelo no fim da frase nao reinicia a revelacao da frase inteira -- o
+        defeito que `panel.js` descreve como *"a word that blinked and retyped on
+        every fragment would be worse than no reveal at all"*.
         """
         with self.lock:
             self.previous = str(previous or "")
             full = str(text or "")
             words = full.split()
-            if _same_line(self.text, full):
-                self._shown = min(self._shown, len(words))
-            else:
-                self._shown = 1 if words else 0
             changed = not _same_line(self.text, full)
             self.text = full
-            self._n = len(words)
-            # A LINHA MUDOU: fade. `instant` so' salta o SPROUT (a janela do
-            # YouTube chega ja' revelada), nao o fade -- sao coisas diferentes.
+            if instant:
+                self._live = None
+                self._row_alphas = None
+            else:
+                live = self._live_for()
+                live.push(full, time.monotonic())
+            # A LINHA MUDOU: fade. `instant` nao o salta -- a janela do YouTube
+            # entra com a mesma animacao (ordo do dono, 2026-10-30).
             if changed and words:
                 self._fade_t0 = time.monotonic()
-            if instant:
-                self._shown = self._n
-                self._arm_reveal()
-            else:
-                self._arm_reveal()
             return self._update()
 
-    # ── THE SPROUT ITSELF ───────────────────────────────────────────────────
+    def _live_for(self):
+        """O motor da legenda ao vivo, criado uma vez."""
+        import youtube_reveal
+        if self._live is None:
+            self._live = youtube_reveal.LiveRows(wrap=self._wrap_fn())
+        return self._live
+
+    def _wrap_fn(self):
+        """A QUEBRA DE LINHA do YouTube, com a fonte e a largura REAIS.
+
+        O `LiveRows` nao mede nada: pede as linhas a este callable. A regra e' a do
+        `caption_wrap` -- a mesma que a legenda usa desde 2026-10-17: no maximo 2
+        linhas no ecra, quebra numa costura natural, NUNCA parte uma palavra, e o
+        tecto de 42 caracteres que o payload do YouTube tambem respeita (medido:
+        a linha mais larga dos 19 eventos tem 42). A janela (2 linhas + a que sai)
+        fica no motor, nao aqui: um `wrap` que devolvesse so' 2 linhas punha o
+        roll-up a cargo da quebra, que e' o defeito que se esta' a curar.
+
+        Le' `self.scale`/`self.work`/`self.theme` NO INSTANTE DA CHAMADA: um tema
+        novo ou um monitor novo mudam a medida, e uma closure que os fixasse no
+        momento em que foi criada quebrava a linha com a fonte errada para sempre.
+        """
+        import caption_wrap as cw
+
+        def wrap(text):
+            cur_w, budget = _measure_budget(self.scale,
+                                            self.work.get('width') or 1920,
+                                            self.theme)
+            lines, _scrolled = cw.wrap(text, cur_w, budget,
+                                       max_lines=cw.UNBOUNDED_LINES)
+            return lines
+
+        return wrap
+
+    # ── O QUE ESTA' DESENHADO NESTE FRAME ───────────────────────────────────
+    def _display(self):
+        """`(texto, alfas)` deste frame -- do MOTOR quando ha' linha viva.
+
+        O texto sai com uma linha por `\n` (`rows_text`), que e' o marcador que
+        `_layout` le' para NAO re-quebrar o que ja' vem quebrado: a quebra e' do
+        motor, e uma segunda quebra com outra regra e' como uma legenda ganha duas
+        geometrias.
+        """
+        if self._live is None:
+            self._row_alphas = None
+            return self._display_text(), None
+        import youtube_reveal
+        marks = self._live.frame(time.monotonic())
+        self._row_alphas = [mark["alpha"] for mark in marks]
+        if not marks:
+            return "", None
+        return (youtube_reveal.rows_text([mark["text"] for mark in marks]),
+                self._row_alphas)
+
     def _display_text(self):
-        """What is actually drawn: the first `_shown` words of the line."""
-        return self.text if self._shown >= self._n else " ".join(
-            (self.text or "").split()[:max(0, self._shown)])
+        """O texto inteiro, quando o MOTOR nao e' a fonte (a janela do player).
 
-    def _arm_reveal(self):
-        """(Re)arm one tick. No-op when the whole line is already out."""
-        if self._shown >= self._n:
-            self._reveal_timer = None
-            return
-        self._reveal_gen += 1
-        gen = self._reveal_gen
-        t = threading.Timer(WORD_STEP_S, lambda: self._reveal_tick(gen))
-        t.daemon = True
-        self._reveal_timer = t
-        t.start()
-
-    def _reveal_tick(self, gen):
-        try:
-            with self.lock:
-                if gen != self._reveal_gen or self._shown >= self._n:
-                    return
-                self._shown += 1
-                self._update()
-                more = self._shown < self._n
-            if more:
-                self._arm_reveal()
-        except Exception as exc:  # noqa: BLE001 -- see the fail-open rule
-            self._fail_open(exc)
+        A janela do YouTube chega ja' revelada -- `window_by_paint` cortou-a pelo
+        relogio e pela pintura --, logo nao ha' aqui prefixo nenhum a calcular. O
+        que nao pode acontecer e' esta funcao inventar um corte: ela devolve o que
+        recebeu.
+        """
+        return self.text
 
     def _fail_open(self, exc):
-        """A broken sprout must never freeze the caption on one word.
+        """Um motor partido nunca congela a legenda numa palavra.
 
-        The reveal is a nicety; the caption is the product. So any error in the
-        tick puts EVERY word out at once and repaints, which is exactly the
-        behaviour the product had before this feature existed.
+        A revelacao e' um extra; a legenda e' o produto. Qualquer erro no tick
+        deixa de usar o motor e desenha o texto INTEIRO que ja' chegou -- que e'
+        exactamente o comportamento anterior a esta funcao existir.
         """
         try:
             with self.lock:
-                self._shown = self._n
+                self._live = None
+                self._row_alphas = None
                 self._update()
-            self.log(f"CAPTION_REVEAL_FAILED_OPEN error={exc!r} "
-                     f"shown={self._n}")
+            self.log(f"CAPTION_REVEAL_FAILED_OPEN error={exc!r}")
         except Exception as exc2:  # noqa: BLE001
             self.log(f"CAPTION_REVEAL_FAILED_OPEN error={exc2!r}")
 
@@ -1177,9 +1296,9 @@ class NativeCaptionOverlay:
         """
         self.text = ""
         self.previous = ""
-        self._shown = 0
-        self._n = 0
-        self._reveal_gen += 1
+        self._live = None
+        self._row_alphas = None
+        self._tick_gen += 1
         self.visible = False
         if self.hwnd:
             _user32.ShowWindow(self.hwnd, SW_HIDE)
@@ -1189,8 +1308,8 @@ class NativeCaptionOverlay:
         # The timer chain is daemonic, but retiring it here means a destroyed
         # overlay cannot try to `_update` a window handle that is already gone.
         with self.lock:
-            self._reveal_gen += 1
-            self._reveal_timer = None
+            self._tick_gen += 1
+            self._tick_timer = None
         if self.hwnd:
             try:
                 _user32.PostMessageW(self.hwnd, 0x0010, 0, 0)  # WM_CLOSE

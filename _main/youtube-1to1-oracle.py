@@ -171,6 +171,167 @@ WIRING = (
 )
 
 
+#: AS ANCORAS DO MOTOR (2026-11-01). O dono: *"mesmo quando e' so transcricao em
+#: tempo real, deve imitar o comportamento da legenda do youtube"*. Duas regras de
+#: tempo -- uma no caminho do YouTube, outra no do ASR -- produzem duas legendas no
+#: mesmo ecra; por isso o display le' `youtube_reveal` e nao tem compasso proprio.
+ENGINE = (
+    ("a linha ao vivo nasce no motor",
+     "youtube_reveal.LiveRows(wrap=self._wrap_fn())"),
+    ("o que se desenha e' o frame do motor",
+     "self._live.frame(time.monotonic())"),
+    ("a janela do player nao passa pelo motor",
+     "self._live = None"),
+)
+
+#: O QUE NAO PODE VOLTAR. Um compasso de relogio de parede no display era o segundo
+#: tempo que fazia a legenda ao vivo diferente da do YouTube.
+FORBIDDEN = ("WORD_STEP_S",)
+
+#: O passo com que se amostra o produtor do ASR: 1/60 s, o unico passo a que a
+#: descida de alfa de um *exit* (0,45 s, 255 -> 0) parece uma descida.
+LIVE_STEP = 1.0 / 60.0
+
+#: `">>"` e' o marcador de mudanca de interlocutor do YouTube, nao palavra dita: o ASR
+#: nao o produz. Entrega-lo ao `LiveRows` punha o mesmo `">>"` a abrir duas frases
+#: seguidas, e a fronteira (prefixo estavel) juntava-as numa linha so' -- artefacto do
+#: payload, nao comportamento da app.
+SPEAKER = ">>"
+
+
+def overlay_src():
+    path = os.path.join(REPO, "app", "webview", "caption_overlay.py")
+    try:
+        return io.open(path, encoding="utf-8").read()
+    except OSError:
+        return ""
+
+
+def engine_faltas(src):
+    """As ancoras ausentes (e os relogios proibidos) do display."""
+    faltas = [nome for nome, agulha in ENGINE if agulha not in (src or "")]
+    faltas += ["segundo-relogio:%s" % token for token in FORBIDDEN
+               if token in (src or "")]
+    return faltas
+
+
+def asr_text(text):
+    """A linha do payload como o ASR a diria -- sem os marcadores do YouTube."""
+    return " ".join(w for w in str(text or "").split() if w != SPEAKER)
+
+
+def asr_wrap(text):
+    """A quebra do `caption_wrap` com o tecto medido de 42 caracteres por linha.
+
+    `measure=len` porque aqui mede-se a ANIMACAO e nao a fonte: o numero da quebra
+    (`MAX_CHARS`) e' o medido, e a regra (nunca parte uma palavra, re-abre na costura
+    natural, equilibra as duas linhas) e' a mesma funcao que a app chama.
+    """
+    import caption_wrap
+    import youtube_reveal
+    return caption_wrap.wrap(text, len, youtube_reveal.MAX_CHARS,
+                             max_lines=caption_wrap.UNBOUNDED_LINES)[0]
+
+
+def live_series(cues, close="window", gap=None):
+    """O PRODUTOR DO ASR amostrado: `[(t, marks)]` de toda a faixa.
+
+    As mesmas frases que o payload declara, entregues ao `LiveRows` como o ASR as
+    entrega (uma frase por push, no instante em que a linha nasce). O `LiveRows` nao
+    guarda passado, logo reconstroi-se por frase e amostra-se o intervalo que ele
+    governa -- e' a unica forma de o replayar sem lhe pedir memoria que nao tem.
+
+    `close="clock"` injecta O DEFEITO ANTIGO (a linha sai pelo relogio, `end = at`)
+    para a arm `live-rollup` poder ficar RED: sem um mutante, "a linha sai pela
+    janela" seria uma afirmacao. Medido: com a regra do relogio o produtor do ASR
+    nunca desenha tres linhas, porque as frases chegam com mais de `EXIT_S` entre si.
+    """
+    import youtube_reveal
+    base = youtube_reveal.LiveRows
+    if close == "clock":
+        class _ClockClose(base):
+            """A linha sai pelo RELOGIO, nao pela janela (o defeito de antes)."""
+
+            def _close(self, at):
+                for row in self._rows[-self.capacity:]:
+                    closed = dict(row)
+                    closed["end"] = float(at)
+                    self.closed.append(closed)
+                self.closed = self.closed[-self.capacity:]
+        base = _ClockClose
+    rows = [r for r in youtube_reveal.rows_from_cues(cues) if asr_text(r["text"])]
+    out = []
+    for index in range(len(rows)):
+        kwargs = {"wrap": asr_wrap}
+        if gap is not None:
+            kwargs["gap"] = gap
+        live = base(**kwargs)
+        for row in rows[:index + 1]:
+            live.push(asr_text(row["text"]), float(row["start"]))
+        begin = float(rows[index]["start"])
+        end = (float(rows[index + 1]["start"]) if index + 1 < len(rows)
+               else begin + 3.0)
+        t = begin
+        while t < end:
+            out.append((round(t, 4), live.frame(t)))
+            t += LIVE_STEP
+    return out
+
+
+def _alpha_sum(bmp):
+    """A soma do canal A de um bitmap -- o unico numero que ve' o blend."""
+    import ctypes
+    from System.Drawing import Rectangle
+    from System.Drawing.Imaging import ImageLockMode, PixelFormat
+    w, h = int(bmp.Width), int(bmp.Height)
+    data = bmp.LockBits(Rectangle(0, 0, w, h), ImageLockMode.ReadOnly,
+                        PixelFormat.Format32bppPArgb)
+    stride = abs(int(data.Stride))
+    raw = ctypes.string_at(data.Scan0.ToInt64(), stride * h)
+    bmp.UnlockBits(data)
+    return sum(raw[3::4])
+
+
+def pixel_alphas(with_alphas=True):
+    """O ALFA POR LINHA chega aos PIXEIS? Mede-se o blend, nao a intencao.
+
+    O alfa da linha que sai tem de caber DENTRO do bitmap: o
+    `SourceConstantAlpha` do `UpdateLayeredWindow` e' um numero por JANELA, logo uma
+    linha nao pode desvanecer por la'. A prova e' o canal A do bitmap desenhado: se
+    o alfa da 1a linha (a que sai) desce de 255 para 1, a soma do canal A tem de
+    descer com ele. Com `with_alphas=False` o mesmo desenho e' feito sem o argumento
+    -- e' o mutante: as tres somas ficam IGUAIS e a arm tem de ficar RED.
+    """
+    import caption_overlay
+    sums = []
+    for alpha in (255, 128, 1):
+        alphas = [alpha, 255] if with_alphas else None
+        bmp = caption_overlay._premultiplied_bitmap(["Old row here", "new row"],
+                                                    "", 600, 140, 1.0, None, alphas)
+        sums.append(_alpha_sum(bmp))
+        try:
+            bmp.Dispose()
+        except Exception:  # noqa: BLE001
+            pass
+    return sums
+
+
+def live_metrics(series):
+    """O que o produtor do ASR DESENHA: 3 linhas? alfa a descer? uma palavra de cada vez?"""
+    three = [marks for _t, marks in series if len(marks) == 3]
+    rolling = [m for m in three if any(x["exiting"] for x in m)]
+    alphas = [x["alpha"] for m in three for x in m if x["exiting"]]
+    added, previous = 0, 0
+    for _t, marks in series:
+        total = sum(len(str(x["text"]).split()) for x in marks)
+        added = max(added, max(0, total - previous))
+        previous = total
+    return {"frames": len(series), "rows_three": len(three),
+            "rows_rolls_out": len(rolling), "exit_samples": len(alphas),
+            "exit_min_alpha": min(alphas) if alphas else None,
+            "max_words_added": added}
+
+
 def shell_src():
     """O caminho vivo, lido do ficheiro -- a ancoragem nao se afirma, le-se."""
     path = os.path.join(REPO, "app", "webview", "sotto_webview.py")
@@ -245,7 +406,8 @@ def served_cues():
 
 def medir(fixture_path, path,  # noqa: PLR0913
           mutate_cues=None, serve_cues=None, capacity_override=None,
-          cues_from="served", wiring_override=None):
+          cues_from="served", wiring_override=None, live_close="window",
+          live_gap=None, overlay_override=None, pixels=True):
     import youtube_captions
 
     raw = io.open(fixture_path, encoding="utf-8").read()
@@ -324,6 +486,10 @@ def medir(fixture_path, path,  # noqa: PLR0913
         "cue_words": cue_words(cues),
         "wiring_faltas": wiring_faltas(wiring_override if wiring_override is not None
                                        else shell_src()),
+        "live": live_metrics(live_series(cues, live_close, live_gap)),
+        "engine_faltas": engine_faltas(overlay_override if overlay_override is not None
+                                       else overlay_src()),
+        "pixels": pixel_alphas(pixels),
     }
 
 
@@ -354,6 +520,25 @@ def arms_of(m):
          "ancoras do caminho vivo ausentes: %d/%d%s"
          % (len(m["wiring_faltas"]), len(WIRING),
             (": " + ", ".join(m["wiring_faltas"])) if m["wiring_faltas"] else "")),
+        ("live-rollup",
+         m["live"]["rows_rolls_out"] > 0 and m["live"]["exit_min_alpha"] is not None
+         and m["live"]["exit_min_alpha"] < 255,
+         "o produtor do ASR desenha 3 linhas (a que sai a rolar) em %d/%d quadros, e o alfa dela desce de 255 ate %s"
+         % (m["live"]["rows_rolls_out"], m["live"]["frames"],
+            m["live"]["exit_min_alpha"])),
+        ("live-word-at-a-time",
+         m["live"]["max_words_added"] <= 1,
+         "o maximo de palavras que entram no MESMO quadro e' %d (um lote do ASR tem de ser revelado uma a uma)"
+         % m["live"]["max_words_added"]),
+        ("row-alpha-in-pixels",
+         (m["pixels"][0] > m["pixels"][1] > m["pixels"][2] > 0),
+         "soma do canal A do bitmap (a 1a linha sai do opaco ao invisivel): %s"
+         % (m["pixels"],)),
+        ("one-engine",
+         not m["engine_faltas"],
+         "o display le' o motor e nao tem segundo relogio: faltas=%d%s"
+         % (len(m["engine_faltas"]),
+            (": " + ", ".join(m["engine_faltas"])) if m["engine_faltas"] else "")),
     ]
 
 
@@ -437,6 +622,11 @@ MUTATIONS = (
     ("drop-offsets",     {"mutate_cues": mut_drop_offsets},     "word-reveal-1to1"),
     ("flat-reveal",      {"mutate_cues": mut_flat_reveal},      "word-reveal-1to1"),
     ("unwired-reveal",   {"wiring_drop": True},                 "reveal-wired"),
+    ("close-by-clock",   {"live_close": "clock"},               "live-rollup"),
+    ("flat-asr-batch",   {"live_gap": 0.0},                     "live-word-at-a-time"),
+    ("second-clock",     {"overlay_extra": "WORD_STEP_S = 0.045\n"},
+     "one-engine"),
+    ("row-alpha-ignored", {"pixels": False},                    "row-alpha-in-pixels"),
 )
 
 
@@ -453,6 +643,9 @@ def relatorio(m, arms):
            % (m["rows"], m["cues"], m["samples"], STEP),
            "janela           : rcRows=%d (YouTube) | %d (Sotto)" % (m["capacity_yt"], m["capacity_sotto"]),
            "caminho          : %s" % m["path"],
+           "produtor do ASR  : %d quadros | 3 linhas em %d | max palavras no mesmo quadro %d"
+           % (m["live"]["frames"], m["live"]["rows_three"],
+              m["live"]["max_words_added"]),
            "",
            "elemento                 veredicto  medicao"]
     for name, ok, detail in arms:
@@ -517,7 +710,12 @@ def main(argv=None):
                       capacity_override=kw.get("capacity_override"),
                       cues_from=args.cues,
                       wiring_override=(mut_unwired(shell_src())
-                                       if kw.get("wiring_drop") else None))
+                                       if kw.get("wiring_drop") else None),
+                      live_close=kw.get("live_close", "window"),
+                      live_gap=kw.get("live_gap"),
+                      overlay_override=(overlay_src() + kw["overlay_extra"]
+                                        if kw.get("overlay_extra") else None),
+                      pixels=kw.get("pixels", True))
             arms = dict((n, ok) for n, ok, _d in arms_of(m))
             caught = sorted(n for n, ok in arms.items() if not ok)
             named = (not arms.get(arm, True))

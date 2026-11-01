@@ -1,11 +1,20 @@
 #!/usr/bin/env python
 """ALT+C -> A ACCAO DO INTERRUPTOR: a linha de 1,5 s, medida em vez de afirmada.
 
-A LINHA DE ACEITACAO E' *A ACCAO*, NAO A CLAUSULA. O dono escreve *"alt c nao ta
-dando display em qualquer painel"* e *"1 tap = painel de baixo"*: o que tem de
-acontecer depressa e' o que o Alt+C **faz** -- a legenda liga, o painel sobe. O
-texto da legenda chega quando o motor o produz, e isso e' o carregamento do
-modelo, nao o gesto.
+A LINHA DE ACEITACAO E' *A ACCAO*, NAO A CLAUSULA. A queixa do dono foi *"alt c nao
+ta dando display em qualquer painel"*: o que tem de acontecer depressa e' o que a
+tecla **faz**. A ordem de 2026-11-01 e' verbatim *"faz os paineis alternarem mesmo
+se eu deixar alt apertado o tempo inteiro e spammando c. alterna entre show e
+hide"*, e a legenda ao vivo mudou de tecla: *"bota o padrao como control espaco"*.
+Por isso cada pressao de Alt+C deixa `HOTKEY_TOGGLE step=show|hide` e cada pressao
+de Ctrl+Space deixa `HOTKEY_LIVE_STEP` -- e' isso que este instrumento emparelha.
+
+O PARAQUEDAS DE HOJE: DUAS TECLAS. `HOTKEY_PRESSED` agora traz `role=panels|live`.
+Sem ler o papel, uma pressao de Ctrl+Space emparelhava com o `PANEL_SHOWN` de um
+Alt+C que veio dois segundos depois e publicava 2 000 ms de latencia de um gesto
+que nao foi medido -- o orcamento e' o mesmo, o gesto nao. As linhas antigas (sem
+`role=`) continuam a ser lidas pelo caminho antigo, porque um log velho nao pode
+virar lixo.
 
 ESTE FICHEIRO MEDIA A COISA ERRADA. Ate' 2026-10-30 emparelhava uma pressao com a
 pintura seguinte e chamava-lhe "primeira legenda", e o numero que saiu foi
@@ -71,7 +80,9 @@ DEFAULT_BUDGET_MS = 1500.0
 
 STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})")
 SHELL_START = re.compile(r"SHELL_STARTUP_STAGE pid=(\d+)")
-PRESS = re.compile(r"HOTKEY_PRESSED count=(\d+)")
+PRESS = re.compile(r"HOTKEY_PRESSED(?: role=(\w+))? count=(\d+)")
+TOGGLE = re.compile(r"HOTKEY_TOGGLE step=(\w+) surface=(\S+)")
+LIVE_STEP = re.compile(r"HOTKEY_LIVE_STEP caption_on=(\w+)")
 LIVE = re.compile(r"LIVE_ENABLED on=(\w+)")
 PANEL = re.compile(r"PANEL_SHOWN reason=(\S+)")
 WORKER = re.compile(r"WORKER_AUTOSTART=started")
@@ -107,7 +118,18 @@ def read_events(path):
                 continue
             press = PRESS.search(line)
             if press:
-                out.append((when, "press", {"count": int(press.group(1))}))
+                out.append((when, "press", {"count": int(press.group(2)),
+                                            "role": press.group(1) or ""}))
+                continue
+            toggle = TOGGLE.search(line)
+            if toggle:
+                out.append((when, "toggle", {"step": toggle.group(1),
+                                             "surface": toggle.group(2)}))
+                continue
+            live_step = LIVE_STEP.search(line)
+            if live_step:
+                out.append((when, "live_step",
+                            {"on": live_step.group(1) == "true"}))
                 continue
             live = LIVE.search(line)
             if live:
@@ -146,7 +168,7 @@ def sessions(events):
         if kind == "shell":
             out.append({"pid": detail["pid"], "start": when, "presses": [],
                         "live": [], "panels": [], "workers": [], "paints": [],
-                        "code": None})
+                        "toggles": [], "live_steps": [], "code": None})
             continue
         if not out:
             # Antes do primeiro `SHELL_STARTUP_STAGE` (log rotado ou antigo): nao
@@ -154,7 +176,12 @@ def sessions(events):
             continue
         current = out[-1]
         if kind == "press" and detail["count"] == 1:
-            current["presses"].append(when)
+            current["presses"].append({"when": when,
+                                       "role": detail.get("role") or ""})
+        elif kind == "toggle":
+            current["toggles"].append(when)
+        elif kind == "live_step":
+            current["live_steps"].append(when)
         elif kind == "live":
             current["live"].append(when)
         elif kind == "panel":
@@ -201,31 +228,89 @@ def first_after(stamps, when):
     return None
 
 
-def measure(session):
-    """(delta_ms | None, accao, nota) -- a ACCAO que a pressao causou.
+def press_when(press):
+    """A pressao e' um instante (os casos do `--neg-arm`) ou `{when, role}` (o log)."""
+    return press["when"] if isinstance(press, dict) else press
 
-    A accao e' a primeira coisa OBSERVAVEL que o shell fez depois da pressao,
-    entre `LIVE_ENABLED` e `PANEL_SHOWN`. Escolher um dos dois e nao o menor
-    seria escolher o resultado: um toque liga a legenda, dois tocam um painel, e
-    o orcamento do dono e' o mesmo para os dois.
+
+def first_press_per_role(session):
+    """A PRIMEIRA pressao de CADA tecla -- duas teclas, duas perguntas.
+
+    Antes de 2026-11-01 havia uma tecla e a resposta era uma. Agora um log traz
+    `role=panels` e `role=live`, e medir so' a primeira do ficheiro deixava a
+    outra sem veredicto (uma sessao em que ele so' tocou no Ctrl+Space depois de
+    um Alt+C nunca era julgada na legenda). Linhas antigas, sem `role=`, sao um
+    grupo so' -- o que era antes.
     """
-    press = session["presses"][0]
-    live = first_after(session["live"], press)
-    panel = first_after(session["panels"], press)
-    candidates = [(t, name) for t, name in ((live, "LIVE_ENABLED"), (panel, "PANEL_SHOWN")) if t]
+    out, seen = [], set()
+    for press in session["presses"]:
+        role = (press.get("role") or "") if isinstance(press, dict) else ""
+        if role in seen:
+            continue
+        seen.add(role)
+        out.append(press)
+    return out
+
+
+def measure_one(session, press):
+    """A accao que ESSA pressao causou, escolhida pelo PAPEL da tecla.
+
+    Cada tecla tem a sua accao desde 2026-11-01: um Alt+C deixa `HOTKEY_TOGGLE` +
+    `PANEL_SHOWN`/`PANEL_HIDDEN`, e um Ctrl+Space deixa `HOTKEY_LIVE_STEP` +
+    `LIVE_ENABLED`. Uma pressao de uma tecla emparelhada com a accao da OUTRA nao
+    e' uma medicao: e' a latencia de dois gestos somada.
+    """
+    when_press = press_when(press)
+    role = (press.get("role") or "") if isinstance(press, dict) else ""
+    if role == "panels":
+        allowed = ("PANEL_SHOWN", "HOTKEY_TOGGLE")
+    elif role == "live":
+        allowed = ("LIVE_ENABLED", "HOTKEY_LIVE_STEP")
+    else:
+        # Log anterior ao `role=`: nao se sabe que tecla foi, por isso vale
+        # qualquer accao -- o que valia antes desta versao. Nao se inventa papel.
+        allowed = ("LIVE_ENABLED", "PANEL_SHOWN", "HOTKEY_TOGGLE",
+                   "HOTKEY_LIVE_STEP")
+    sources = {"LIVE_ENABLED": session.get("live") or [],
+               "PANEL_SHOWN": session.get("panels") or [],
+               "HOTKEY_TOGGLE": session.get("toggles") or [],
+               "HOTKEY_LIVE_STEP": session.get("live_steps") or []}
+    candidates = [(stamp, name) for name in allowed
+                  for stamp in (first_after(sources[name], when_press),) if stamp]
     if not candidates:
         return (None, None, "NO-ACTION: a pressao esta no log e nenhuma accao "
-                            "(`LIVE_ENABLED`/`PANEL_SHOWN`) veio depois dela, na MESMA "
-                            "sessao de shell (%s..) -- nao ha gesto para medir"
-                            % press.strftime("%Y-%m-%d %H:%M:%S"))
+                            "(%s) veio depois dela, na MESMA sessao de shell -- nao "
+                            "ha gesto para medir" % "/".join(allowed))
     when, name = min(candidates)
-    delta_ms = (when - press).total_seconds() * 1000.0
+    delta_ms = (when - when_press).total_seconds() * 1000.0
     if delta_ms <= 0:
         return (None, name, "NO-MEASURE: a accao nao e posterior a pressao (delta=%.0f ms)"
                             % delta_ms)
-    return (delta_ms, name, "%s %s -> %s %s | delta=%.0f ms"
-            % ("press", press.strftime("%H:%M:%S.%f")[:-3],
-               name, when.strftime("%H:%M:%S.%f")[:-3][:12], delta_ms))
+    return (delta_ms, name, "%s %s -> %s %s | delta=%.0f ms%s"
+            % ("press", when_press.strftime("%H:%M:%S.%f")[:-3],
+               name, when.strftime("%H:%M:%S.%f")[:-3][:12], delta_ms,
+               (" role=%s" % role) if role else ""))
+
+
+def measure(session):
+    """(delta_ms | None, accao, nota) -- a PIOR das duas teclas, e nunca uma omissao verde.
+
+    Uma sessao com as duas teclas tem duas respostas; o veredicto e' o maior
+    delta (a tecla mais lenta), e se UMA delas nao tiver accao o resultado e'
+    `None`: um passo que nao se mediu nao conta como portao que passou.
+    """
+    results = [measure_one(session, press)
+               for press in first_press_per_role(session)]
+    if not results:
+        return (None, None, "NO-ACTION: a sessao nao tem pressao para medir")
+    if any(delta is None for delta, _n, _m in results):
+        first_none = next(r for r in results if r[0] is None)
+        return first_none
+    worst = max(results, key=lambda r: r[0])
+    if len(results) > 1:
+        extras = "; ".join(r[2] for r in results)
+        return (worst[0], worst[1], "%s | as duas teclas: %s" % (worst[2], extras))
+    return worst
 
 
 def load_cost(session):
@@ -300,6 +385,58 @@ def neg_arm(budget_ms):
           % ("fronteira do shell",
              "NEG-ARM PASS" if bom else "NEG-ARM FAIL"))
 
+    # CADA TECLA EMPARELA COM A SUA ACCAO (2026-11-01: duas teclas, dois gestos).
+    # Uma pressao de Ctrl+Space creditada com o `HOTKEY_TOGGLE` de um Alt+C era a
+    # latencia de dois gestos com o nome de um -- e o `role=` e' o que os separa.
+    sessao = {"presses": [{"when": base, "role": "live"}],
+              "live": [], "panels": [], "workers": [], "paints": [],
+              "toggles": [base + datetime.timedelta(milliseconds=90)],
+              "live_steps": []}
+    dentro, nota = report(sessao, budget_ms)
+    bom = dentro is None and "NO-ACTION" in nota
+    ok = ok and bom
+    print("MUTATION %-18s %s  esperado=NO-ACTION (accao da OUTRA tecla recusada)"
+          % ("papel errado", "NEG-ARM PASS" if bom else "NEG-ARM FAIL"))
+
+    sessao = {"presses": [{"when": base, "role": "panels"}],
+              "live": [], "panels": [], "workers": [], "paints": [],
+              "toggles": [base + datetime.timedelta(milliseconds=90)],
+              "live_steps": []}
+    dentro, nota = report(sessao, budget_ms)
+    bom = dentro is True and "HOTKEY_TOGGLE" in nota
+    ok = ok and bom
+    print("MUTATION %-18s %s  esperado=HOTKEY_TOGGLE obtido=%s"
+          % ("papel certo", "NEG-ARM PASS" if bom else "NEG-ARM FAIL",
+             nota.split("|")[0]))
+
+    # DUAS TECLAS NA MESMA SESSAO: o veredicto e' a PIOR (a tecla mais lenta), e
+    # uma tecla sem accao NAO e' um verde -- e' ausencia de medicao.
+    sessao = {"presses": [{"when": base, "role": "panels"},
+                          {"when": base + datetime.timedelta(seconds=1),
+                           "role": "live"}],
+              "live": [base + datetime.timedelta(milliseconds=1400)],
+              "panels": [], "workers": [], "paints": [],
+              "toggles": [base + datetime.timedelta(milliseconds=60)],
+              "live_steps": [base + datetime.timedelta(milliseconds=1400)]}
+    dentro, nota = report(sessao, budget_ms)
+    bom = dentro is True and "role=live" in nota
+    ok = ok and bom
+    print("MUTATION %-18s %s  esperado=pior-das-duas(1400ms) obtido=%s"
+          % ("duas teclas", "NEG-ARM PASS" if bom else "NEG-ARM FAIL",
+             nota.split("|")[0]))
+
+    sessao = {"presses": [{"when": base, "role": "panels"},
+                          {"when": base + datetime.timedelta(seconds=1),
+                           "role": "live"}],
+              "live": [], "panels": [], "workers": [], "paints": [],
+              "toggles": [base + datetime.timedelta(milliseconds=60)],
+              "live_steps": []}
+    dentro, nota = report(sessao, budget_ms)
+    bom = dentro is None and "role=live" not in nota
+    ok = ok and bom
+    print("MUTATION %-18s %s  esperado=None (a tecla sem accao nao passa)"
+          % ("tecla muda", "NEG-ARM PASS" if bom else "NEG-ARM FAIL"))
+
     # delta NEGATIVO nunca e' verde, mesmo chegando ao `measure` emparelhado
     dentro, _n = report({"presses": [base],
                          "live": [base - datetime.timedelta(milliseconds=900)],
@@ -309,7 +446,7 @@ def neg_arm(budget_ms):
     print("MUTATION %-18s %s  esperado=None obtido=%s"
           % ("delta negativo", "NEG-ARM PASS" if bom else "NEG-ARM FAIL", str(dentro).lower()))
 
-    print("NEG-ARM %s cases=%d" % ("PASS" if ok else "FAIL", len(casos) + 3))
+    print("NEG-ARM %s cases=%d" % ("PASS" if ok else "FAIL", len(casos) + 8))
     return 1
 
 
