@@ -17,8 +17,7 @@
     methods: ['pushCaption', 'setStatus', 'onCaption', 'onExternalCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
               'captionApplied', 'statusApplied', 'ready', 'clearApplied',
-              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause',
-              'setHotkeyHold', 'getHotkeyHold']
+              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,

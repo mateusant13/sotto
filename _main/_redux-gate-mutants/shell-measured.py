@@ -49,14 +49,37 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unicodedata  # search: folding the diacritics off
 from datetime import datetime
 
 import hot_reload
+import panel_focus as _panel_focus
 import panel_state
+
+
+# ── O INSTRUMENTO DO SELFTEST VIVE EM `app/webview/selftest_instrument.py` ───
+# `--selftest` e `--probe-reload` sao MEDICOES, e o instrumento que as faz vivia
+# dentro deste ficheiro -- que esta' debaixo do ratchet estrutural
+# (`_main/code-health-oracle.py`). Ver o cabecalho do modulo ao lado. Os nomes sao
+# os MESMOS de proposito: `sotto_webview.selftest_broken`, `.run_selftest`,
+# `.foreground_window`, `.window_pid`, `.probe_reload` e os `SELFTEST_*` continuam
+# a existir para quem os le' de fora (a largada e os oraculos
+# `selftest-focus`/`altc-first-caption`), por isso a lista abaixo e' a superficie
+# historica deste modulo e nao "imports por usar".
+import selftest_instrument
+from selftest_instrument import (  # noqa: F401 -- superficie historica do shell
+    SELFTEST_COLD_WINDOW_S, SELFTEST_PRESS_WINDOW_S, SELFTEST_STEP_BUDGET_MS,
+    SELFTEST_STEP_WINDOW_S, foreground_window, run_selftest, selftest_broken,
+    window_pid)
+
+# ── AS TRES STRUCTS WIN32 PURAS VIVEM EM `app/webview/win32_types.py` ────────
+# `RECT`, `POINT` e `CURSORINFO` sao `ctypes.Structure` sem logica, e o ratchet
+# conta CLASSES por ficheiro: com a leitura de pointer lock o shell passou de 25
+# para 26 e o tecto nao se sobe -- extrai-se. Os nomes sao os MESMOS.
+from win32_types import CURSORINFO, POINT, RECT
+
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 #: The panel UI. Read-only for this shell: these are the app's own panel files
@@ -338,6 +361,49 @@ UI_MARSHAL_TIMEOUT_S = 10.0      # the DEFAULT budget of `_ui` (unchanged)
 #: second is enough when the UI thread is idle (the common case); when it is
 #: not, the hack is POSTED instead of waited for (see `transparency_hack`).
 TRANSPARENCY_HACK_WAIT_S = 0.25
+#: ── THE PAINT ACK (2026-11-01), e o defeito que ele fecha ───────────────────
+#: O dono, verbatim: *"o painel dar show, nao deve carregar o background e
+#: mostrar, e depois carregar a ui ou algo assim."* Um `ShowWindow` de user32
+#: mapeia o FORM; nada nessa chamada pergunta a' PAGINA se ela tem uma frame
+#: para apresentar. Isto pergunta: `window.__sotto_paint(seq)` arma DOIS
+#: `requestAnimationFrame`s e so' depois escreve `window.__sotto_paint_ack = seq`.
+#: DOIS porque o primeiro callback corre ANTES de o estilo/layout/paint daquela
+#: frame estar commitado -- o segundo e' o primeiro tick que corre DEPOIS de um
+#: paint ter sido apresentado.
+#:
+#: A ESPERA E' LIMITADA E FALHA ABERTA. Uma pagina cujo rAF nunca corre (uma
+#: janela ESCONDIDA e' travada pelo compositor nesta maquina) nao pode custar ao
+#: dono um Alt+C que nao faz nada: passados `PAINT_ACK_TIMEOUT_MS` o show
+#: prossegue e a linha diz `paint_ack=false`, para o log nunca afirmar uma espera
+#: que nao aconteceu. O veredicto de que a primeira frame tem conteudo e' do
+#: instrumento (`_main/panel-paint-first-census.py`), nao desta linha.
+PAINT_ACK_TIMEOUT_MS = 60
+#: 6 ms entre leituras: o grao do rAF e' uma frame (~16 ms), portanto um poll
+#: mais apertado so' gasta idas ao UI thread.
+PAINT_ACK_POLL_S = 0.006
+#: TODO `exec_js` aqui e' limitado por ISTO, nao pelos 10 s por omissao: o
+#: chamador e' a thread da hotkey, e um UI thread preso tem de custar centenas de
+#: ms no pior caso -- a mesma licao de `TRANSPARENCY_HACK_WAIT_S`.
+PAINT_ACK_JS_TIMEOUT_S = 0.25
+
+#: O global da pagina. Instalado por nos (o shell nao edita `app/panel/**`: ha'
+#: outro lane dono desses ficheiros) e idempotente, para um segundo show nao
+#: reinstalar nada.
+PAINT_ACK_ARM_JS = (
+    '(function (seq) {'
+    '  if (typeof window.__sotto_paint !== "function") {'
+    '    window.__sotto_paint_ack = 0;'
+    '    window.__sotto_paint = function (s) {'
+    '      var fire = function () { window.__sotto_paint_ack = s; };'
+    '      if (typeof requestAnimationFrame === "function") {'
+    '        requestAnimationFrame(function () { requestAnimationFrame(fire); });'
+    '      } else { setTimeout(fire, 0); }'
+    '    };'
+    '  }'
+    '  window.__sotto_paint(seq);'
+    '  return String(document.visibilityState || "?");'
+    '})(__SEQ__)')
+PAINT_ACK_READ_JS = 'String(window.__sotto_paint_ack === __SEQ__ ? 1 : 0)'
 #: THE EXIT'S DESTROY WAIT (2026-10-21). The window destroy is COSMETIC: the
 #: shell calls `os._exit` right after, so the window dies either way. Waiting
 #: three seconds for it is three seconds the tray thread is not answering the
@@ -828,6 +894,18 @@ def _reap_child(child):
         pass
 
 
+#: O TOKEN DE ESTADO PAGA UM `stat`, NAO UMA LEITURA. Medido 2026-11-01 pela
+#: lane de perfil: `code_state_log` corre no tick de 2 s e chamava
+#: `file_sha256(SHELL_PATH)` mais o do worker -- 414 911 B relidos a cada tick,
+#: 1,30 ms por tick, 43 200 vezes por dia, e foi essa a frame que o watchdog
+#: apanhou. A chave e' `(caminho, mtime_ns, tamanho)`: qualquer escrita muda o
+#: `mtime` do NTFS (resolucao de 100 ns) ou o tamanho. Um ficheiro reescrito no
+#: MESMO tick de `mtime` com o MESMO tamanho devolveria o digest antigo -- para
+#: um token de staleness isso e' um alvo que se move em ~100 ns, e um digest de
+#: seguranca nunca passa por aqui.
+_SHA_CACHE = {}
+
+
 def file_sha256(path):
     """First 16 hex chars of a file's SHA-256, or None if it cannot be read.
 
@@ -836,11 +914,20 @@ def file_sha256(path):
     the reference implementation used so log lines stay comparable.
     """
     try:
+        stat = os.stat(path)
+        key = (path, stat.st_mtime_ns, stat.st_size)
+        hit = _SHA_CACHE.get(key)
+        if hit is not None:
+            return hit
         digest = hashlib.sha256()
         with open(path, 'rb') as handle:
             for chunk in iter(lambda: handle.read(1 << 20), b''):
                 digest.update(chunk)
-        return digest.hexdigest()[:16]
+        out = digest.hexdigest()[:16]
+        if len(_SHA_CACHE) > 64:  # o conjunto de ficheiros vigiados e' pequeno
+            _SHA_CACHE.clear()
+        _SHA_CACHE[key] = out
+        return out
     except OSError:
         return None
 
@@ -1516,15 +1603,6 @@ _MOD_BITS = {'alt': MOD_ALT, 'ctrl': MOD_CONTROL, 'shift': MOD_SHIFT,
 VK_LBUTTON = 0x01
 
 _HOTKEY_ID = 0xB0F0  # any id will do; this one is ours and is not a window id
-
-
-class RECT(ctypes.Structure):
-    _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long),
-                ('right', ctypes.c_long), ('bottom', ctypes.c_long)]
-
-
-class POINT(ctypes.Structure):
-    _fields_ = [('x', ctypes.c_long), ('y', ctypes.c_long)]
 
 
 class MSG(ctypes.Structure):
@@ -3013,8 +3091,8 @@ def window_visible(hwnd) -> bool:
 
 
 def set_topmost(hwnd) -> bool:
-    return bool(user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+    """Uma so' implementacao: a chamada Win32 vive em `panel_focus`."""
+    return _panel_focus.set_topmost(hwnd)
 
 
 #: Exact Win32 signatures for the calls the strip lane makes. `SetWindowPos`
@@ -3030,96 +3108,12 @@ user32.GetWindowLongW.argtypes = [wt.HWND, ctypes.c_int]
 user32.SetWindowPos.restype = wt.BOOL
 user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
                                 ctypes.c_int, ctypes.c_int, ctypes.c_uint]
-user32.GetForegroundWindow.restype = wt.HWND
 user32.SetForegroundWindow.restype = wt.BOOL
 user32.SetForegroundWindow.argtypes = [wt.HWND]
 user32.AttachThreadInput.restype = wt.BOOL
 user32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
 user32.BringWindowToTop.restype = wt.BOOL
 user32.BringWindowToTop.argtypes = [wt.HWND]
-user32.GetWindowThreadProcessId.restype = wt.DWORD
-user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
-
-
-def foreground_window() -> int:
-    return int(user32.GetForegroundWindow() or 0)
-
-
-#: WHO owns a window. `--selftest` needs this to tell "the panel took the
-#: foreground" from "the owner switched apps while the test was running": only
-#: the FIRST is a defect of this program, and a verdict that cannot tell them
-#: apart is flaky on a live desktop (audit rows #28 / #H6 / Finding B, closed
-#: by `_main/selftest-focus-oracle.py`).
-user32.GetWindowThreadProcessId.restype = ctypes.c_uint
-user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(ctypes.c_uint)]
-
-
-def window_pid(hwnd: int) -> int:
-    """The pid that owns `hwnd`, or 0 for no window."""
-    if not hwnd:
-        return 0
-    owner = ctypes.c_uint(0)
-    user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(owner))
-    return int(owner.value)
-
-
-def selftest_broken(reading: dict) -> tuple[bool, str]:
-    """The self-test VERDICT, factored out of the method so it can be driven
-    with synthetic readings and no hotkey. Pure on purpose: no globals, no
-    ctypes -- the oracle proves it by exec-ing this exact source in a bare
-    namespace, so a dependency creeping in here fails the gate instead of
-    passing through a module import.
-
-    `focus_stolen_by_own_window` is the clause the old verdict was missing: it
-    measured `focus_stolen` (before != after) and logged it, then computed
-    `broken` WITHOUT it -- so a run in which the panel took the foreground was
-    reported GREEN. The word "stolen" is now attributed: a FOREIGN window that
-    became foreground is somebody else using the PC, not this program cheating,
-    and failing on that would be a false alarm on every busy desktop.
-    """
-    if not reading.get('registered'):
-        return True, 'the hotkey never registered'
-    if not reading.get('pressed'):
-        return True, 'the simulated press was not delivered'
-    # O NUMERO DE PRESSAO ESPERADO E' DA LEITURA, nao do juiz. Ja' foi fixo em 2
-    # (dois toques, contrato de 2026-10-30) e o contrato de 2026-11-01 faz quatro
-    # passos mais dez; um juiz com o numero antigo dentro reprovaria o proprio
-    # desenho. Uma leitura que nao declare `expect_presses` nao e' prova sobre a
-    # contagem (as leituras sinteticas dos oraculos de foco).
-    if (reading.get('expect_presses') is not None
-            and reading.get('presses') != reading['expect_presses']):
-        return True, ('expected %r presses, saw %r'
-                      % (reading.get('expect_presses'), reading.get('presses')))
-    if 'visible' in reading and reading['visible'] != reading.get('want_visible'):
-        return True, ('the window should read visible=%r after the last press, got %r'
-                      % (reading.get('want_visible'), reading.get('visible')))
-    if reading.get('focus_stolen_by_own_window'):  # FOCUS-CLAUSE
-        return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
-                      'SW_SHOWNOACTIVATE is the contract and this is it being broken'
-                      % (reading.get('focus_before'), reading.get('focus_after')))
-    # -- O CONTRATO DE 2026-11-01, UM PASSO POR PRESSAO. Cada clausula e'
-    # verificada so' quando a leitura CARREGA a chave, para as leituras
-    # sinteticas mais antigas dos oraculos de foco continuarem a significar o que
-    # significavam -- uma leitura sem estas chaves nao e' prova sobre elas.
-    if 'first_press_strip' in reading and not reading['first_press_strip']:
-        return True, 'a PRIMEIRA pressao de Alt+C nao abriu a faixa de baixo'
-    if 'second_press_hidden' in reading and not reading['second_press_hidden']:
-        return True, 'a SEGUNDA pressao de Alt+C nao escondeu a faixa'
-    if 'third_press_panel' in reading and not reading['third_press_panel']:
-        return True, 'a TERCEIRA pressao de Alt+C nao abriu o painel da direita'
-    if 'fourth_press_hidden' in reading and not reading['fourth_press_hidden']:
-        return True, 'a QUARTA pressao de Alt+C nao escondeu o painel'
-    if ('ten_press_alternations' in reading
-            and not reading['ten_press_alternations']):
-        return True, ('dez pressoes nao deram dez alternancias na ordem: %r'
-                      % (reading.get('ten_press_observed'),))
-    if 'live_toggled' in reading and not reading['live_toggled']:
-        return True, 'o Ctrl+Space nao ligou/desligou a legenda ao vivo'
-    if 'live_left_panels' in reading and not reading['live_left_panels']:
-        return True, 'o Ctrl+Space mexeu no painel; a tecla da legenda e so a legenda'
-    if 'live_caption_left_alone' in reading and not reading['live_caption_left_alone']:
-        return True, 'o Alt+C mexeu na legenda; o painel e a legenda sao gestos diferentes'
-    return False, ''
 
 
 #: `SetWindowPos` insert-after for "move me, keep my Z order". `HWND_TOPMOST`
@@ -3129,72 +3123,14 @@ HWND_TOP = 0
 SWP_SHOWWINDOW = 0x0040
 
 
-def _foreground_steal_attached(hwnd) -> bool:
-    """Rouba o primeiro plano com a fila de input LIGADA a do dono atual.
-
-    O `SetForegroundWindow` e RECUSADO quando quem chama nao e o processo em primeiro
-    plano -- medido nesta maquina: `PANEL_FOREGROUND_UNLOCK ok=false` quatro vezes
-    seguidas (05:57:04/05:57:07/05:57:11), com o painel a aparecer ATRAS da janela em
-    uso. E o comportamento documentado do Windows, nao um bug do Sotto.
-
-    A saida documentada e `AttachThreadInput`: enquanto as duas filas estao ligadas, o
-    Windows trata os dois threads como um so para efeitos de primeiro plano, e a chamada
-    passa. Desligar no `finally` e obrigatorio -- deixar as filas ligadas prende o input
-    dos dois processos um ao outro.
-    """
-    try:
-        fg = int(user32.GetForegroundWindow() or 0)
-        if not fg:
-            return False
-        owner = wt.DWORD(0)
-        t_fg = int(user32.GetWindowThreadProcessId(wt.HWND(fg), ctypes.byref(owner)) or 0)
-        t_me = int(kernel32.GetCurrentThreadId())
-        attached = False
-        try:
-            if t_fg and t_fg != t_me:
-                attached = bool(user32.AttachThreadInput(wt.DWORD(t_me), wt.DWORD(t_fg), True))
-            user32.BringWindowToTop(wt.HWND(hwnd))
-            ok = bool(user32.SetForegroundWindow(wt.HWND(hwnd)))
-            log('PANEL_FOREGROUND_ATTACH ok=%s fg_thread=%s me_thread=%s attached=%s'
-                % (str(ok).lower(), t_fg, t_me, str(attached).lower()))
-            return ok
-        finally:
-            if attached:
-                user32.AttachThreadInput(wt.DWORD(t_me), wt.DWORD(t_fg), False)
-    except Exception as exc:  # noqa: BLE001 -- nunca matar a hotkey
-        log(f'PANEL_FOREGROUND_ATTACH_FAILED error={exc!r}')
-        return False
+def pointer_lock_state():
+    """O app em primeiro plano tem o rato preso? -- a politica vive em `panel_focus`."""
+    return _panel_focus.pointer_lock_state(log=log)
 
 
-def foreground_unlock(hwnd) -> bool:
-    """Bring the Sotto panel to the foreground and free the mouse (Alt+C).
-
-    The no-focus invariant (`SW_SHOWNOACTIVATE`, `focusable=false` parity)
-    holds for every path EXCEPT the owner's own Alt+C: when he presses the
-    app's only control he is asking for the panel, so the shell SHOWS with
-    activation (`SW_RESTORE` + `SW_SHOW`), re-asserts TopMost (the game is a
-    fullscreen topmost window; without this the strip paints under it) and
-    calls `SetForegroundWindow` on the panel form handle so clicks land on
-    Sotto. Pointer-lock RELEASE itself belongs to the game (a fullscreen
-    pointer-lock holder un-locks when it loses foreground); the shell only
-    takes foreground, never touches `ClipCursor`/`SetFocus`. Returns the
-    `SetForegroundWindow` answer, never raises.
-    """
-    if not hwnd:
-        return False
-    try:
-        set_topmost(hwnd)
-        user32.ShowWindow(hwnd, SW_RESTORE)
-        user32.ShowWindow(hwnd, SW_SHOW)
-        ok = bool(user32.SetForegroundWindow(hwnd))
-        # E SE O WINDOWS RECUSAR, INSISTE PELA FILA LIGADA. Ver o helper.
-        if not ok:
-            ok = _foreground_steal_attached(hwnd)
-    except Exception as exc:  # noqa: BLE001 -- report, never kill the hotkey
-        log(f'PANEL_FOREGROUND_UNLOCK_FAILED error={exc!r}')
-        return False
-    log(f'PANEL_FOREGROUND_UNLOCK ok={str(ok).lower()} hwnd={hwnd}')
-    return ok
+def foreground_unlock(hwnd):
+    """Mapa o painel e diz o que fez ao primeiro plano (ver `panel_focus`)."""
+    return _panel_focus.foreground_unlock(hwnd, log=log)
 
 
 def strip_geometry(work, height=STRIP_HEIGHT_FALLBACK, dock='bottom-centre'):
@@ -4316,6 +4252,25 @@ def _pack_point(x, y):
     return (int(x) & 0xFFFF) | ((int(y) & 0xFFFF) << 16)
 
 
+def _window_is_ours(hwnd) -> bool:
+    """True when `hwnd` belongs to THIS process (our menu, our dialog).
+
+    REPOSTO 2026-11-01: o nome era usado em dois sítios (`ClickWatcher._poll`, na
+    recusa de contar o próprio painel como "outra janela", e
+    `click_outside_reason`, na razão `our-own-window`), e a definição
+    DESAPARECEU numa fusão de ramos que a traziam de lados diferentes -- nenhum
+    dos dois lados a continha depois da resolução. Nada a apanhou: compila
+    (é um nome, não um símbolo), e o `NameError` só nasce no tick em que a
+    função corre. Foi encontrado por um varrimento de nomes indefinidos
+    (`_main/undefined-names-oracle.py`), não pelo compilador nem pela bateria.
+    """
+    if not hwnd:
+        return False
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(pid))
+    return int(pid.value) == os.getpid()
+
+
 def _point_in_window(hwnd, x, y) -> bool:
     rect = RECT()
     if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
@@ -4764,12 +4719,23 @@ def arm_hotkey(shell, requested: str):
     ela seria uma segunda tecla que ninguem pediu.
     """
     panels = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
-    try:
-        live = hotkey_config().accelerators()['live']
-    except Exception as exc:  # noqa: BLE001 -- a fabrica e' sempre uma resposta
-        log(f'HOTKEY_LIVE_CONFIG_FAILED error={exc!r} '
-            f'default={hotkey_numbers().LIVE_ACCELERATOR}')
-        live = hotkey_numbers().LIVE_ACCELERATOR
+    #: UMA MEDIÇÃO NÃO PODE SENTAR-SE NA TECLA DELE. Medido 2026-11-01 10:14:30:
+    #: uma instância largada para medir pediu `Ctrl+Space`, a app do dono já a
+    #: tinha, e o log dela ficou com `HOTKEY_REGISTER_FAILED role=live
+    #: winerror=1409` — a tecla do dono e' exclusiva do processo que a registou
+    #: primeiro, e o inverso também e' verdade (uma medição que a apanhe primeiro
+    #: deixa a app dele sem ela). A variável de ambiente é o mesmo caminho que o
+    #: `--hotkey` já abre para os painéis, e ausente não muda nada.
+    override = os.environ.get('SOTTO_LIVE_HOTKEY')
+    if override:
+        live = override
+    else:
+        try:
+            live = hotkey_config().accelerators()['live']
+        except Exception as exc:  # noqa: BLE001 -- a fabrica e' sempre uma resposta
+            log(f'HOTKEY_LIVE_CONFIG_FAILED error={exc!r} '
+                f'default={hotkey_numbers().LIVE_ACCELERATOR}')
+            live = hotkey_numbers().LIVE_ACCELERATOR
     shell.live_hotkey = arm_hotkey_role(shell, 'live', live, ())
     return panels
 
@@ -7746,6 +7712,98 @@ class SottoShell:
         self.exec_js('window.__sotto_emit(' +
                      json.dumps(kind) + ',' + json.dumps(json.dumps(payload)) + ')')
 
+    def exec_js_post(self, script) -> bool:
+        """Run `script` in the page and return IMMEDIATELY -- fire and forget.
+
+        ── MEDIDO 2026-11-01, e e' o defeito do dono ──────────────────────────
+        A primeira exibicao do painel custava **12,07 s**, e **10,0** deles eram
+        UM `exec_js TIMEOUT`: `window.__sotto_emit("geometry", …)` nao respondia
+        enquanto o UI thread tratava do show, e o show inteiro ficava atras dessa
+        espera (`WARN exec_js TIMEOUT after 10.0s` -> `PANEL_SURFACE` ->
+        `PANEL_SHOWN` na linha seguinte, no mesmo instante). O dono chamou-lhe
+        *"carregar o background e mostrar, e depois carregar a ui"* com razao:
+        metade do atraso era o shell a esperar por uma resposta a uma NOTIFICACAO.
+
+        Uma notificacao nao tem resposta que se use. `ExecuteScriptAsync` e'
+        arrancado no UI thread e a task NAO e' esperada, portanto nada aqui pode
+        segurar a thread que mapeia a janela. Vai por `_post` (`BeginInvoke`), o
+        que mantem a ORDEM em relacao a todos os outros scripts postados.
+        """
+        def _run():
+            try:
+                self.core.ExecuteScriptAsync(script)
+                return True
+            except Exception as exc:  # noqa: BLE001 -- uma mensagem perdida nao mata um show
+                warn(f'exec_js_post failed: {exc!r}')
+                return False
+        try:
+            return bool(self._post(_run))
+        except Exception as exc:  # noqa: BLE001
+            warn(f'exec_js_post POST failed: {exc!r}')
+            return False
+
+    def emit_nowait(self, kind, payload) -> bool:
+        """`emit`, POSTED — for the show path, which cannot wait for an answer."""
+        return self.exec_js_post('window.__sotto_emit(' +
+                                 json.dumps(kind) + ',' +
+                                 json.dumps(json.dumps(payload)) + ')')
+
+    def arm_paint_ack(self, reason) -> int:
+        """Arm the page's PAINT ACK and return its ticket. NEVER WAITS.
+
+        O mapa de uma janela e' user32 e nao pergunta nada a' pagina; este ack e'
+        a pergunta. `PAINT_ACK_ARM_JS` instala `window.__sotto_paint` (idempotente,
+        porque `app/panel/**` tem outro dono) e arma os DOIS `requestAnimationFrame`s
+        que escrevem `window.__sotto_paint_ack = seq` depois de um paint.
+
+        O ARM e' POSTADO pela razao medida em `exec_js_post`: um show que espera
+        por um script nao e' um show, e' uma espera.
+        """
+        seq = int(getattr(self, '_paint_ack_seq', 0)) + 1
+        self._paint_ack_seq = seq
+        posted = self.exec_js_post(PAINT_ACK_ARM_JS.replace('__SEQ__', str(seq)))
+        log(f'PAINT_ACK_ARM seq={seq} posted={str(posted).lower()} reason={reason}')
+        return seq if posted else 0
+
+    def wait_paint_ack(self, seq, reason) -> dict:
+        """Espera, LIMITADA, pela frame que a pagina armou. Falha sempre aberta.
+
+        `paint_ack=false` e' um FACTO medido, nunca uma razao para deixar o painel
+        sem se ver: passados `PAINT_ACK_TIMEOUT_MS` de tempo de PAREDE o show
+        segue. Uma leitura que nao responde (`NoAnswer`) TERMINA a espera em vez de
+        repetir -- sem resposta do `exec_js` significa UI thread ocupado, que e'
+        exactamente o momento em que este codigo tem de sair da frente do dono.
+        """
+        out = {'ack': False, 'wait_ms': 0.0, 'why': 'arm-not-posted'}
+        if not seq:
+            log(f'PAINT_ACK ack=false wait_ms=0 seq=0 reason={reason} '
+                f'why={out["why"]} timeout_ms={PAINT_ACK_TIMEOUT_MS}')
+            return out
+        script = PAINT_ACK_READ_JS.replace('__SEQ__', str(seq))
+        t0 = time.monotonic()
+        deadline = t0 + (PAINT_ACK_TIMEOUT_MS / 1000.0)
+        out['why'] = 'timeout'
+        while True:
+            left = deadline - time.monotonic()
+            answer = self.exec_js(
+                script, timeout=max(0.05, min(left, PAINT_ACK_JS_TIMEOUT_S)))
+            if isinstance(answer, NoAnswer):
+                out['why'] = 'ui-thread-busy'
+                break
+            if str(answer) == '1':
+                out['ack'] = True
+                out['why'] = 'painted'
+                break
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            time.sleep(min(PAINT_ACK_POLL_S, left))
+        out['wait_ms'] = round((time.monotonic() - t0) * 1000.0, 1)
+        log('PAINT_ACK ack=%s wait_ms=%s seq=%s reason=%s why=%s timeout_ms=%s'
+            % (str(out['ack']).lower(), out['wait_ms'], seq, reason,
+               out['why'], PAINT_ACK_TIMEOUT_MS))
+        return out
+
     def send_status(self, text, kind=''):
         """Status wire: `{'text': <str>, 'kind': <str>}` — F8 + D3, frozen.
 
@@ -7763,7 +7821,16 @@ class SottoShell:
         self.last_status = text
         self.emit('status', {'text': str(text), 'kind': str(kind or '')})
 
-    def send_geometry(self):
+    def send_geometry(self, post=False):
+        """Tell the page where the window is.
+
+        `post=True` is for the show path: the call becomes fire-and-forget
+        (`exec_js_post`) instead of a 10,0 s-capable wait. The measured receipt
+        is in `exec_js_post` -- this is the exact emit that timed out for 10,0 s
+        inside one Alt+C on 2026-11-01.
+        """
+        if post:
+            return self.emit_nowait('geometry', self.geometry)
         self.emit('geometry', self.geometry)
 
     # -- panel state -------------------------------------------------------
@@ -8554,7 +8621,11 @@ class SottoShell:
             log(f'BRIDGE_NO_AUDIO_RESET_FAILED error={exc!r}')
         want = surface or self.surface
         if want != self.surface_applied:
-            self.set_panel_surface(want, reason)
+            # `present=True`: THE SHOW PATH READS NOTHING FROM THE PAGE. Measured
+            # 2026-11-01: one press spent 1,75 s in a pill-width read and 10,0 s in
+            # the geometry emit, because `exec_js` waits on the very UI thread that
+            # has to map this window. See `set_panel_surface` and `exec_js_post`.
+            self.set_panel_surface(want, reason, present=True)
         # The same `panel_mode` bookkeeping the hotkey paths do, for the shows
         # that arrive another way (`--show`, the tray, `toggle_panel` from the
         # page): the cycle reads this field on the next Alt+C whatever brought
@@ -8574,6 +8645,21 @@ class SottoShell:
         wv = show_webview_children(self.hwnd)
         log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
+        # ── THE PAINT ACK: ARMED BEFORE THE MAP, AWAITED AFTER IT ───────────
+        # The owner, verbatim: *"o painel dar show, nao deve carregar o
+        # background e mostrar, e depois carregar a ui"*. The map below is a
+        # user32 call that asks the page NOTHING; the ack is the question, and
+        # `wait_paint_ack` is the only place that waits for its answer.
+        #
+        # It is awaited AFTER the map on purpose, and this is measured, not
+        # preferred: while the FORM is hidden its WebView2 does not produce
+        # frames on this box, and a script sent to it did not answer for 10,0 s
+        # (`WARN exec_js TIMEOUT after 10.0s` at 2026-11-01 10:14:49, the line
+        # Main measured inside the owner's 12,07 s first show). So the ARM is
+        # posted without waiting, the map lands, and the wait happens where an
+        # answer is actually possible -- bounded by `PAINT_ACK_TIMEOUT_MS`,
+        # failing open, never holding the map.
+        ack_seq = self.arm_paint_ack(reason)
         # SW_SHOWNOACTIVATE, not Show(): the panel must never take focus away
         # from whatever the owner is typing into (main.js: `focusable=false`).
         show_without_activating(self.hwnd)
@@ -8582,6 +8668,7 @@ class SottoShell:
         # deliberately AFTER the map because it re-runs pywebview's own
         # navigation-time `form.Show()`.
         transparency_hack(self)
+        ack = self.wait_paint_ack(ack_seq, reason)
         self.visible = window_visible(self.hwnd)
         # THE DEFERRED DEFAULT WORKER STARTS HERE (2026-10-17). The launch is
         # light on purpose; the first time the panel is actually on screen is
@@ -8598,9 +8685,10 @@ class SottoShell:
         # this makes it explicit rather than incidental).
         if self.click_watcher is not None and self.visible:
             self.click_watcher.armed = True
-        log(f'PANEL_SHOWN reason={reason} '
+        log(f'PANEL_SHOWN reason={reason} hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
-            'show=SW_SHOWNOACTIVATE focus_stolen=false')
+            f'show=SW_SHOWNOACTIVATE focus_stolen=false '
+            f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         # The worker goes back to STREAMING on this line — see the stack law at
         # `PANEL_VISIBILITY_PATH`. `self.visible` is the MEASURED value above,
         # so a Show that silently failed publishes "still hidden" and the worker
@@ -8835,20 +8923,21 @@ class SottoShell:
         return True
 
     def show_strip(self, reason):
-        """Show the bottom strip AND take foreground (the Alt+C mouse unlock).
+        """Show the bottom strip, and take the foreground ONLY to free a lock.
 
-        `show_panel`'s `SW_SHOWNOACTIVATE` invariant holds for every path
-        EXCEPT the owner's own Alt+C: pressing the app's only control is asking
-        for the panel, so the shell places the strip, then SHOWS with
-        activation (`foreground_unlock`: TopMost re-assert + `SW_RESTORE` +
-        `SW_SHOW` + `SetForegroundWindow`) so clicks land on Sotto. The game
-        releases its pointer lock itself when it loses foreground; the shell
-        never touches `ClipCursor`/`SetFocus`.
+        The activation contract this used to promise ("Alt+C always activates
+        the panel") is now MEASURED per press instead of assumed: see
+        `foreground_unlock` and `pointer_lock_state`. A press with no pointer
+        lock maps the strip with `SW_SHOWNOACTIVATE` and leaves the owner's
+        typing caret alone -- that is the whole of
+        *"vinte Alt+C nao roubam o que ele esta' a escrever"*.
         """
         if self.hwnd is None:
             return False
-        # Geometry only — `place_panel` no longer maps the window (P0).
-        self.set_panel_surface('strip', reason)
+        # Geometry only — `place_panel` no longer maps the window (P0). And
+        # `present=True`, because everything below is on the path to a MAP: the
+        # page is not read and is not waited for (see `exec_js_post`).
+        self.set_panel_surface('strip', reason, present=True)
         # AND SAY WHICH PANEL IS UP. `hotkey_pressed` is a three-state cycle
         # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, and
         # the 2026-10-09 P0 refactor removed its last writer: `place_panel` is
@@ -8867,37 +8956,45 @@ class SottoShell:
         # records WHICH surface is up, on the show itself.
         self.panel_mode = 'strip'
         # Children FIRST, so the first frame the owner sees is already the
-        # panel: `foreground_unlock` maps the FORM NOW, and the first frame of
-        # a mapped form is the FORM's own background. Measured 2026-10-09 by
-        # the owner's own eyes — a strip, then the UI one frame later.
+        # panel: a user32 show of the FORM maps it NOW, and the first frame of a
+        # mapped form is the FORM's own background. Measured 2026-10-09 by the
+        # owner's own eyes — a strip, then the UI one frame later.
         wv = show_webview_children(self.hwnd)
         log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
-        # THEN the map, which is also how the owner gets his clicks back:
-        # TopMost re-assert + SW_RESTORE + SW_SHOW + SetForegroundWindow. The
-        # Alt+C pose holds — nothing mapped before the children had
-        # WS_VISIBLE, which is what used to flash the flat strip.
-        foreground_unlock(self.hwnd)
+        # THE ACK, ARMED BEFORE THE MAP AND AWAITED AFTER IT — see `show_panel`
+        # for the measured reason (a hidden WebView2 on this box does not answer
+        # a script for 10,0 s, so a pre-map wait is a pre-map stall).
+        ack_seq = self.arm_paint_ack(reason)
+        # THEN the map: `SW_SHOWNOACTIVATE`, and `SW_SHOW+SetForegroundWindow`
+        # only when the foreground app holds a POINTER LOCK. See
+        # `foreground_unlock`; the old unconditional activation is the defect
+        # that stole the owner's caret on every press.
+        fg = foreground_unlock(self.hwnd)
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
+        ack = self.wait_paint_ack(ack_seq, reason)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-strip')
         if (getattr(self, 'external_captions_available', False)
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
-        log(f'PANEL_SHOWN reason={reason} mode=strip '
+        log(f'PANEL_SHOWN reason={reason} mode=strip hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
-            'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
+            f'show={fg.get("show")} focus={fg.get("reason")} '
+            f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
         return True
 
     def show_side(self, reason):
-        """Show the RIGHT side panel AND take foreground (the cycle's 2nd step).
+        """Show the RIGHT side panel — the cycle's second step.
 
-        Same activation contract as `show_strip` — the only difference is the
-        geometry: `dock_right` instead of `dock_strip`. Kept as its own method
-        (not a `show_panel(mode)` flag) so the `mode=` field in the log tells
-        which geometry the owner is looking at.
+        Same map contract as `show_strip`, including the focus gate: the
+        foreground is taken ONLY when the foreground app holds a pointer lock
+        (`foreground_unlock`). The only difference is the geometry: `dock_right`
+        instead of `dock_strip`. Kept as its own method (not a
+        `show_panel(mode)` flag) so the `mode=` field in the log tells which
+        geometry the owner is looking at.
 
         IT IS NO LONGER "THE DOUBLE-PRESS PATH" (2026-10-13): the double-press
         window is deleted and this is simply what the SECOND Alt+C does, from the
@@ -8917,7 +9014,7 @@ class SottoShell:
         # the owner's report -- two presses showed the strip and never the right
         # panel -- and the `if not live` guard fixed earlier was necessary but not
         # sufficient. The surface the right panel wears is `'panel'`.
-        self.set_panel_surface('panel', reason)
+        self.set_panel_surface('panel', reason, present=True)
         # WHICH PANEL IS UP — see `show_strip` for the measured defect. The
         # cycle's third arm is `panel_mode == 'side'`, and that word is what
         # makes the next Alt+C HIDE. Without it the side panel is where the
@@ -8929,17 +9026,21 @@ class SottoShell:
         wv = show_webview_children(self.hwnd)
         log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
-        # THEN the map (same contract as `show_strip`) and the hack after it.
-        foreground_unlock(self.hwnd)
+        # THE ACK, ARMED BEFORE THE MAP AND AWAITED AFTER IT — `show_panel`.
+        ack_seq = self.arm_paint_ack(reason)
+        # THEN the map: no activation unless a POINTER LOCK needs freeing.
+        fg = foreground_unlock(self.hwnd)
         transparency_hack(self)
+        ack = self.wait_paint_ack(ack_seq, reason)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-side')
         if (getattr(self, 'external_captions_available', False)
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
-        log(f'PANEL_SHOWN reason={reason} mode=side '
+        log(f'PANEL_SHOWN reason={reason} mode=side hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
-            'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
+            f'show={fg.get("show")} focus={fg.get("reason")} '
+            f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
         return True
 
@@ -10985,8 +11086,16 @@ class SottoShell:
         if self.surface == 'strip':
             self.set_panel_surface('strip', f'height-{reason}')
         return True
-    def set_panel_surface(self, surface, reason='page'):
+    def set_panel_surface(self, surface, reason='page', present=False):
         """`bridge.setPanelSurface(surface, reason)` — layout AND window, together.
+
+        `present=True` means "this call is on the path to a MAP": the show is
+        about to happen and the page's answers cannot be waited for (measured
+        2026-11-01: the pill width read took 1,75 s and the geometry emit 10,0 s
+        on ONE press, both because `exec_js` waits on a UI thread that is busy
+        mapping the window). In that mode NOTHING here reads the page: the cached
+        metrics are used, the page messages are POSTED, and the re-measure is
+        posted for right after the show. Same pixels, no wait.
 
         THE MEMBER THIS SHELL OWED THE PANEL. Before it existed, `grep -n
         'surface|SottoSurfaces|strip' app/webview/sotto_webview.py` matched 37
@@ -11035,12 +11144,26 @@ class SottoShell:
             # moment it matters: the page is loaded by the time a surface is
             # applied, so the read answers with the real number instead of a copy
             # kept in this file.
-            self.refresh_strip_height(f'surface-{reason}')
-            self.refresh_strip_width(f'surface-{reason}')
+            if present:
+                # NOT ON THE SHOW PATH. These two reads cost 1,75 s on one press
+                # (measured 2026-11-01, `STRIP_WIDTH from=None to=380` at 47.815
+                # and `WINDOW_GEOMETRY` at 49.566): `exec_js` waits on the SAME UI
+                # thread that is about to map the window. So the cached numbers go
+                # into this geometry and the re-measure is POSTED for right after.
+                self._post_metrics_refresh(name, reason)
+            else:
+                self.refresh_strip_height(f'surface-{reason}')
+                self.refresh_strip_width(f'surface-{reason}')
         script = ('(function () { if (window.SottoSurfaces) { '
                   'window.SottoSurfaces.set(' + json.dumps(name) + '); '
                   'return window.SottoSurfaces.current(); } return null; })()')
-        applied = self.exec_js(script)
+        # THE DOCUMENT'S ANSWER IS A LOG FIELD, NEVER A GATE. It is read only when
+        # nothing is waiting on this call; on the show path it is POSTED and the
+        # line says `document_surface=posted`.
+        if present:
+            applied = 'posted' if self.exec_js_post(script) else None
+        else:
+            applied = self.exec_js(script)
         geometry = self.geometry_for(name)
         if name == 'strip':
             # THE DOCK BASE, AND THE OWNER'S DRAG RESTORED FROM THE PAGE.
@@ -11051,13 +11174,21 @@ class SottoShell:
             # window, then tells the page to stop transforming so the two do not
             # add up.
             self._strip_dock_base = (int(geometry['x']), int(geometry['y']))
-            offset = self._strip_offset_from_page()
+            # THE CACHED OFFSET ON THE SHOW PATH -- see `_strip_offset_from_page`
+            # for the record and `_set_strip_offset` for the writer: the drag
+            # itself keeps the cache current, so a show only pays for the read
+            # when the cache has never been filled.
+            offset = self._strip_offset()
             if offset != (0, 0):
                 geometry = self._strip_offset_geometry(geometry, offset)
-                self.exec_js(STRIP_MOVED_JS)
+                if present:
+                    self.exec_js_post(STRIP_MOVED_JS)
+                else:
+                    self.exec_js(STRIP_MOVED_JS)
                 log(f'STRIP_DRAG_RESTORED offset={offset} '
                     f'to=({geometry["x"]},{geometry["y"]})')
-        self._apply_window_geometry(geometry, reason=f'surface-{name}')
+        self._apply_window_geometry(geometry, reason=f'surface-{name}',
+                                    present=present)
         self.surface_applied = name
         log(f'PANEL_SURFACE surface={name} reason={reason} '
             f'document_surface={json.dumps(applied)} '
@@ -11067,6 +11198,57 @@ class SottoShell:
             f'edit_mode={str(self.edit_mode).lower()}')
         self.publish_panel_visibility(f'surface-{name}')
         return True
+    def _strip_offset(self):
+        """O offset do drag: da CACHE; so' le' da pagina quando a cache esta' vazia.
+
+        A cache e' escrita pelo proprio drag (`_set_strip_offset`), que JA' sabe o
+        offset -- portanto depois do primeiro drag uma exibicao nunca paga uma
+        leitura. Sem cache (processo recem-arrancado) a leitura acontece aqui, e um
+        `NoAnswer` devolve `(0, 0)`: o dock e' o fallback honesto.
+        """
+        cached = getattr(self, '_strip_offset_cache', None)
+        if cached is None:
+            try:
+                cached = self._strip_offset_from_page()
+            except Exception as exc:  # noqa: BLE001
+                log(f'STRIP_OFFSET_CACHE_FAILED error={exc!r}')
+                cached = (0, 0)
+            self._strip_offset_cache = cached
+        return cached
+
+    def _post_metrics_refresh(self, name, reason):
+        """Re-measure the strip's metrics OFF the show path, and adopt them.
+
+        PORQUE UMA THREAD E NAO `_post`: `refresh_strip_*` chamam `exec_js`, que
+        espera por um `BeginInvoke` no UI thread -- chamado DE DENTRO do UI thread
+        (o que `_post` faz) isso e' o deadlock que `_post` documenta. Uma thread
+        propria marshala como a thread da hotkey sempre marshallou, e nao segura
+        nem o show nem o UI thread.
+
+        Se os numeros MUDARAM e a janela ainda veste esta superficie, a geometria e'
+        reaplicada -- e' o unico custo: um ajuste pequeno (um nudge) na PRIMEIRA
+        faixa de um processo, quando a cache ainda nao existia. A alternativa era
+        1,75 s de espera em cada pressao.
+        """
+        def _worker():
+            try:
+                moved = self.refresh_strip_height(f'posted-{reason}')
+                moved = self.refresh_strip_width(f'posted-{reason}') or moved
+                if moved and name == 'strip' and self.hwnd \
+                        and self.surface_applied == 'strip':
+                    self._apply_window_geometry(self.geometry_for('strip'),
+                                                reason=f'metrics-{reason}')
+            except Exception as exc:  # noqa: BLE001 -- nunca matar o show
+                warn(f'STRIP_METRICS_REFRESH_FAILED reason={reason} error={exc!r}')
+        try:
+            t = threading.Thread(target=_worker, name='sotto-strip-metrics',
+                                 daemon=True)
+            t.start()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            warn(f'STRIP_METRICS_REFRESH_POST_FAILED reason={reason} error={exc!r}')
+            return False
+
     def _strip_offset_from_page(self):
         """The owner's strip drag offset, READ OUT OF THE PAGE. `(0, 0)` if none.
 
@@ -11125,6 +11307,11 @@ class SottoShell:
             log(f'STRIP_DRAG_REFUSED why=unparsable payload={payload!r}')
             return
         phase = str(payload.get('phase') or 'move')
+        # O DRAG E' A FONTE VIVA DO OFFSET: ver `_strip_offset`, que o le' da cache
+        # no show. Sem isto, cada exibicao teria de ler `localStorage` -- uma ida
+        # ao UI thread no caminho do show, que e' o que `exec_js_post` existe para
+        # tirar de la'.
+        self._strip_offset_cache = (dx, dy)
         if self.hwnd is None:
             return
         if self.surface_applied != 'strip':
@@ -11339,12 +11526,19 @@ class SottoShell:
                      'is free. Click the status to reload them.'})
         return {'paused': True, 'text': 'Paused - engines unloaded'}
 
-    def _apply_window_geometry(self, geometry, reason='surface'):
+    def _apply_window_geometry(self, geometry, reason='surface', present=False):
         """Move/resize the NATIVE window, then pin the client area to it.
 
         ONE call per surface change and one per edit-mode drag sample — never per
         frame. `docs/release-and-overlay-plan.md:75-78` is the warning this obeys:
         moving the native window every frame is the short path to flicker.
+
+        `present=True` is the show path, and there the two PAGE steps at the end
+        are POSTED instead of waited for: `_ui`'s default budget is 10,0 s
+        (`UI_MARSHAL_TIMEOUT_S`) and `send_geometry` is exactly the
+        `window.__sotto_emit("geometry", …)` that cost the owner 10,0 s of one
+        press (2026-11-01). The window is already at the right rect when they run;
+        both only make the DOCUMENT agree, and the document can wait for a frame.
         """
         self.geometry = geometry
         hwnd = self.hwnd
@@ -11373,6 +11567,18 @@ class SottoShell:
         # `_fit_client_area` documents: pywebview sizes the WebView2 child to the
         # client area computed under the OLD border, so a resize without this
         # leaves the document laid out at the previous size.
+        #
+        # ON THE SHOW PATH IT IS POSTED, NOT AWAITED. `_fit_client_area` is a
+        # UI-thread call and `_ui` waits up to `UI_MARSHAL_TIMEOUT_S` (10,0 s)
+        # for that thread -- which, during a show, is the thread doing the map.
+        if present:
+            try:
+                self._post(lambda: self._fit_client_area(self._form()))
+            except Exception as exc:  # noqa: BLE001 -- report, never kill the show
+                warn(f'WINDOW_GEOMETRY_CLIENT_POST_FAILED reason={reason} '
+                     f'error={exc!r}')
+            self.send_geometry(post=True)
+            return
         try:
             self._ui(lambda: self._fit_client_area(self._form()))
         except Exception as exc:  # noqa: BLE001 -- report, never kill the panel
@@ -11828,191 +12034,18 @@ class SottoShell:
         return report
 
     def run_selftest(self):
-        """Prove BOTH hotkeys deliver exactly one step per press, six ways.
+        """O instrumento do Alt+C: ver `selftest_instrument.run_selftest`.
 
-        The press is a real `WM_HOTKEY` posted to a hotkey thread's own queue, so
-        the delivery path under test is the one the OS writes to. THE THREAD DOES
-        NOT TAKE THE OWNER'S KEY: in a MEASUREMENT launch (`--selftest`) the
-        global keys are disarmed by `main()`, so when one is missing this method
-        starts a hotkey thread with `register=False` -- queue and pump, no
-        `RegisterHotKey` -- and `simulate_press` posts the same message the system
-        would. Nothing on the owner's keyboard is intercepted.
-
-        THE ARMS (2026-11-01 contract -- cada pressao e' UM passo):
-
-            arm 1  press        hidden  -> STRIP   (caption UNCHANGED)
-            arm 2  press        strip   -> HIDDEN
-            arm 3  press        hidden  -> PANEL
-            arm 4  press        panel   -> HIDDEN
-            arm 5  ten presses  hidden  -> strip, hidden, panel, hidden, ...
-                                (ten alternations, in that order, with the key
-                                 "held": no release event is ever delivered, and
-                                 the retired duration seam does not exist)
-            arm 6  Ctrl+Space   the LIVE CAPTION toggles once, NO panel moves
-
-        `selftest_broken` is the gate and every arm is a clause in it, so a wrong
-        arm exits non-zero. Nothing here injects a duration (`fake_hold_ms` was
-        deleted with the contract it served) and nothing uses `keybd_event`:
-        `AGENTS.md` -- input sintetico mede o Windows, nao a app.
+        O metodo fica porque quem chama e' a LARGADA (`--selftest`), e o
+        instrumento nao pode importar o shell de volta: as pecas do produto que
+        ele mede entram por PARAMETRO -- `HotkeyThread`, as duas tabelas de
+        teclas, `window_visible`, `pointer_lock_state` e o `log`.
         """
-        rc = 0
-        # ── THE THREADS UNDER TEST ─────────────────────────────────────────
-        # A real launch hands us the armed threads. A MEASUREMENT launch arms
-        # none (main() disarms them so the owner's Alt+C never answers a probe),
-        # and that is not a reason to skip the test: a probe thread has the same
-        # queue and the same pump, it only does not call `RegisterHotKey`.
-        panels = self.hotkey
-        live = getattr(self, 'live_hotkey', None)
-        started = []
-        try:
-            if panels is None:
-                panels = HotkeyThread(hotkey_numbers().PANELS_ACCELERATOR,
-                                      lambda: self.hotkey_pressed(),
-                                      role='panels-probe', register=False)
-                panels.start()
-                started.append(panels)
-            if live is None:
-                try:
-                    live_accel = hotkey_config().accelerators()['live']
-                except Exception:  # noqa: BLE001 -- a fabrica e' sempre resposta
-                    live_accel = hotkey_numbers().LIVE_ACCELERATOR
-                live = HotkeyThread(live_accel, lambda: self.hotkey_live(),
-                                    role='live-probe', register=False)
-                live.start()
-                started.append(live)
-            panels_ready = panels.wait_ready(5)
-            live_ready = live.wait_ready(5)
-            log(f'SELFTEST threads panels={panels.accelerator} '
-                f'panels_ready={str(panels_ready).lower()} '
-                f'panels_registered={str(bool(panels.registered)).lower()} '
-                f'live={live.accelerator} live_ready={str(live_ready).lower()} '
-                f'live_registered={str(bool(live.registered)).lower()} '
-                f'probe={str(bool(started)).lower()}')
-            if not (panels_ready and live_ready):
-                log('SELFTEST broken=um dos threads da hotkey nao subiu')
-                log('SELFTEST rc=3')
-                self.request_exit(3, reason='selftest-threads')
-                return 3
-
-            def screen():
-                """O que a JANELA mede, agora -- nunca a cache `self.visible`."""
-                return (bool(window_visible(self.hwnd)),
-                        str(getattr(self, 'panel_mode', '') or ''))
-
-            def wait_for(predicate, timeout=3.0):
-                deadline = time.monotonic() + timeout
-                while time.monotonic() < deadline:
-                    if predicate():
-                        return True
-                    time.sleep(0.01)
-                return bool(predicate())
-
-            def step(thread, predicate, label):
-                """UMA pressao pelo caminho de entrega; devolve o instante MEDIDO."""
-                t0 = time.monotonic()
-                posted = bool(thread.simulate_press())
-                seen = wait_for(predicate)
-                spent = (time.monotonic() - t0) * 1000.0
-                log(f'SELFTEST step={label} posted={str(posted).lower()} '
-                    f'seen={str(seen).lower()} screen={screen()} '
-                    f'latency_ms={spent:.1f}')
-                return posted, seen, spent
-
-            before_focus = foreground_window()
-            caption_start = bool(getattr(self, '_caption_wanted', False))
-            self.hide_panel('selftest-baseline')
-            # O PONTO DE PARTIDA E' DECLARADO: o ciclo alterna o show seguinte a
-            # partir da ultima superficie APLICADA, por isso um teste que nao a
-            # fixasse comecaria num estado que depende do que a app fez antes.
-            self.set_panel_surface('panel', 'selftest-baseline')
-            log(f'SELFTEST state=hidden visible={str(screen()[0]).lower()} '
-                f'surface={self.surface_applied} '
-                f'caption={str(caption_start).lower()}')
-
-            # ARM 1 -- hidden -> STRIP, caption UNCHANGED.
-            caption_before = bool(getattr(self, '_caption_wanted', False))
-            p1, a1, ms1 = step(panels, lambda: screen() == (True, 'strip'), '1-strip')
-            caption_after = bool(getattr(self, '_caption_wanted', False))
-            # ARM 2 -- strip -> HIDDEN.
-            p2, a2, ms2 = step(panels, lambda: not screen()[0], '2-hidden')
-            # ARM 3 -- hidden -> PANEL.
-            p3, a3, ms3 = step(panels, lambda: screen() == (True, 'side'), '3-panel')
-            # ARM 4 -- panel -> HIDDEN.
-            p4, a4, ms4 = step(panels, lambda: not screen()[0], '4-hidden')
-            # ARM 5 -- DEZ pressoes, dez alternancias, NA ORDEM. A tecla fica
-            # "em baixo" no unico sentido que a app conhece: nenhum evento de
-            # libertacao e' entregue, e o seam de duracao ja' nao existe.
-            expected = [(True, 'strip'), (False, 'strip'), (True, 'side'),
-                        (False, 'side')] * 2 + [(True, 'strip'), (False, 'strip')]
-            observed = []
-            ten_ok = True
-            for index in range(10):
-                previous = screen()
-                posted = bool(panels.simulate_press())
-                changed = wait_for(
-                    lambda prev=previous: screen() != prev, timeout=2.0)
-                observed.append(screen())
-                ten_ok = ten_ok and posted and changed
-            log('SELFTEST arm=5-ten presses=%d alt_held=no-release-event '
-                'expected=%s observed=%s'
-                % (len(observed), expected, observed))
-            # ARM 6 -- Ctrl+Space: a legenda comuta UMA vez, e nenhum painel se
-            # mexe (nem aparece, nem muda de superficie).
-            panel_before_live = screen()
-            p6, a6, ms6 = step(live, lambda: bool(getattr(self, '_caption_wanted', False))
-                               != caption_before, '6-live')
-            caption_live = bool(getattr(self, '_caption_wanted', False))
-            panel_after_live = screen()
-            if caption_live != caption_start:
-                self._set_live_enabled({'on': caption_start})
-                time.sleep(0.1)
-
-            after_focus = foreground_window()
-            after_pid = window_pid(after_focus)
-            focus_stolen = before_focus != after_focus
-            stolen_by_us = bool(focus_stolen and after_focus
-                                and after_pid == os.getpid())
-            log(f'SELFTEST focus_before={before_focus} focus_after={after_focus} '
-                f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
-                f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
-            latencies = [ms for ms in (ms1, ms2, ms3, ms4) if ms is not None]
-            reading = {
-                'registered': bool(panels_ready and live_ready),
-                'pressed': bool(p1 and p2 and p3 and p4 and p6 and ten_ok),
-                'expect_presses': 14, 'presses': panels.pressed,
-                'visible': bool(screen()[0]), 'want_visible': False,
-                'first_press_strip': a1,
-                'second_press_hidden': a2,
-                'third_press_panel': a3,
-                'fourth_press_hidden': a4,
-                'ten_press_alternations': bool(ten_ok and observed == expected),
-                'ten_press_observed': observed,
-                'live_toggled': a6,
-                'live_left_panels': panel_before_live == panel_after_live,
-                'live_caption_left_alone': caption_after == caption_before,
-                'focus_stolen_by_own_window': stolen_by_us,
-                'focus_before': before_focus, 'focus_after': after_focus,
-            }
-            broken, why = selftest_broken(reading)
-            if broken:
-                log(f'SELFTEST broken={why}')
-            else:
-                log('SELFTEST broken=false focus_attributed='
-                    f'{str(stolen_by_us).lower()}')
-            log('SELFTEST expectation=hotkeys(alt_c=one-step-per-press, '
-                'ctrl_space=live-caption) presses=%d panels_registered=%s '
-                'observed=%s latency_ms=%s'
-                % (panels.pressed, str(bool(panels.registered)).lower(),
-                   observed, ','.join('%.1f' % lat for lat in latencies)))
-            rc = 3 if broken else 0
-        finally:
-            for thread in started:
-                try:
-                    thread.stop()
-                except Exception as exc:  # noqa: BLE001 -- sair nao pode falhar
-                    log(f'HOTKEY_STOP_FAILED role={thread.role} error={exc!r}')
-        log(f'SELFTEST rc={rc}')
-        self.request_exit(rc, reason='selftest')
+        return run_selftest(
+            self, log=log, HotkeyThread=HotkeyThread,
+            hotkey_numbers=hotkey_numbers, hotkey_config=hotkey_config,
+            window_visible=window_visible,
+            pointer_lock_state=pointer_lock_state)
 
 
 # ===========================================================================
@@ -14655,148 +14688,15 @@ def _preflight_refuse(args, message: str, code: int) -> int:
 
 
 def probe_reload():
-    """Prove the worker-reload guard against REAL files and a REAL watcher.
+    """O instrumento do reload, montado com as pecas DESTE modulo.
 
-    The defect: a settled worker-file change restarted the worker on the spot,
-    even mid-stream, so five lanes saving all morning produced a restart storm
-    (the "model loading toda hora" the owner saw). Three arms, each able to
-    print RED:
-
-      1. GUARD    a capture is open; the worker file is touched N times, spaced
-                  wider than the watcher's 250 ms window so each touch WOULD
-                  flush. Expect: ZERO restarts during the capture, and exactly
-                  ONE worker spawn in total once the stream ends.
-      2. STORM    the SAME N touches with the guard and the floor removed (the
-                  old behaviour). Expect: N restarts. This is the arm that makes
-                  arm 1 mean something — if the storm is not reproducible, the
-                  guard is not being tested.
-      3. BURST    a tight burst (8 writes in <250 ms) with no capture. Expect:
-                  exactly ONE restart (the debounce coalesces it).
-
-    No WebView2, no worker process: the only stand-in is the bridge, which
-    exposes the two fields the policy reads (`child`, `is_capturing()`), and the
-    `restart` callable, which counts. Everything else is the production classes.
+    Ver `selftest_instrument.probe_reload`: a politica e as duas constantes
+    viajam por parametro para o instrumento nao importar o shell de volta.
     """
-    root = tempfile.mkdtemp(prefix='sotto-reload-')
-    panel_dir = os.path.join(root, 'panel')
-    worker_dir = os.path.join(root, 'worker')
-    os.makedirs(panel_dir)
-    os.makedirs(worker_dir)
-    worker_py = os.path.join(worker_dir, 'sotto_worker.py')
-    with open(worker_py, 'w', encoding='utf-8') as fh:
-        fh.write('# seed\n')
-
-    rc = 0
-
-    class StandInBridge:
-        """Exactly the surface WorkerReloadPolicy reads, and no more."""
-
-        def __init__(self):
-            self.child = object()          # a worker is up
-            self.capturing = False
-            self.spawned_at = time.monotonic() - 1000.0
-            self.spawns = 0
-
-        def is_capturing(self):
-            return self.capturing
-
-    def run_arm(debounce_ms, min_interval_ms):
-        br = StandInBridge()
-
-        def restart(files):
-            br.spawns += 1
-            br.spawned_at = time.monotonic()
-            return True
-
-        policy = WorkerReloadPolicy(log_fn=print, get_bridge=lambda: br,
-                                    restart=restart, debounce_ms=debounce_ms,
-                                    min_interval_ms=min_interval_ms)
-        hr = hot_reload.HotReload(log=lambda line: None,
-                                  on_worker_changed=policy.request,
-                                  panel_dir=panel_dir, worker_dir=worker_dir)
-        if not hr.start():
-            return None, None, None
-        return br, policy, hr
-
-    touches = 6
-
-    # ── arm 1: the guard — a capture is open while the file is touched ──────
-    # A short 200 ms debounce keeps the arm quick; the GUARD, not the debounce,
-    # is what this arm isolates.
-    br, policy, hr = run_arm(200, WORKER_RELOAD_MIN_INTERVAL_MS)
-    if br is None:
-        print('VERDICT arm=guard watchers=0 got=0-1')
-        shutil.rmtree(root, ignore_errors=True)
-        return 3
-    br.capturing = True
-    for i in range(touches):
-        with open(worker_py, 'a', encoding='utf-8') as fh:
-            fh.write(f'# touch {i}\n')
-        time.sleep(0.4)                    # > the watcher's 250 ms window
-    time.sleep(0.9)                        # let the last flush reach the policy
-    during = br.spawns
-    print(f'ARM guard touches={touches} restarts_during_capture={during} '
-          f'expect=0')
-    if during != 0:
-        rc = 3
-    # the stream ends: the worker exits, then respawns ONCE (the app's own
-    # supervisor), which re-reads the file — no second restart is owed.
-    br.capturing = False
-    br.child = None
-    policy.boundary()
-    time.sleep(0.9)
-    br.child = object()
-    br.spawned_at = time.monotonic()
-    respawns = 1
-    total = br.spawns + respawns
-    print(f'ARM guard total_spawns={total} '
-          f'(policy_restarts={br.spawns} + boundary_respawn={respawns}) '
-          f'expect=1')
-    if total != 1:
-        rc = 3
-    policy.stop()
-    hr.stop('arm1')
-
-    # ── arm 2: the storm — the SAME touches with the guard removed ──────────
-    br, policy, hr = run_arm(0, 0)
-    if br is None:
-        print('VERDICT arm=storm watchers=0 got=0-1')
-        shutil.rmtree(root, ignore_errors=True)
-        return 3
-    br.capturing = False                   # pre-fix: no guard existed at all
-    for i in range(touches):
-        with open(worker_py, 'a', encoding='utf-8') as fh:
-            fh.write(f'# storm {i}\n')
-        time.sleep(0.4)
-    time.sleep(0.9)
-    print(f'ARM storm touches={touches} restarts={br.spawns} '
-          f'expect={touches}')
-    if br.spawns != touches:
-        rc = 3
-    policy.stop()
-    hr.stop('arm2')
-
-    # ── arm 3: the debounce — a tight burst is ONE request ──────────────────
-    br, policy, hr = run_arm(WORKER_RELOAD_DEBOUNCE_MS, 0)
-    if br is None:
-        print('VERDICT arm=burst watchers=0 got=0-1')
-        shutil.rmtree(root, ignore_errors=True)
-        return 3
-    for i in range(8):
-        with open(worker_py, 'a', encoding='utf-8') as fh:
-            fh.write(f'# burst {i}\n')
-        time.sleep(0.03)                   # under the watcher's window
-    time.sleep(0.5 + WORKER_RELOAD_DEBOUNCE_MS / 1000.0)
-    print(f'ARM burst writes=8 restarts={br.spawns} expect=1 '
-          f'debounce_ms={WORKER_RELOAD_DEBOUNCE_MS}')
-    if br.spawns != 1:
-        rc = 3
-    policy.stop()
-    hr.stop('arm3')
-
-    shutil.rmtree(root, ignore_errors=True)
-    print(f'SELFTEST reload rc={rc}')
-    return rc
+    return selftest_instrument.probe_reload(
+        WorkerReloadPolicy=WorkerReloadPolicy,
+        WORKER_RELOAD_MIN_INTERVAL_MS=WORKER_RELOAD_MIN_INTERVAL_MS,
+        WORKER_RELOAD_DEBOUNCE_MS=WORKER_RELOAD_DEBOUNCE_MS)
 
 
 #: ── THE WEBVIEW2 COMPOSITION KNOBS, AND WHY THEY ARE SET HERE ────────────────
