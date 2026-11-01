@@ -1,0 +1,14 @@
+page    : H:\sotto-wt\goal-anim\_main\_audit-render\panel-attrib.html (26 relative assets rewritten to /panel/)
+browser : C:\Program Files\Google\Chrome\Application\chrome.exe   theme=theme-5 motion=on window=6s@8Hz warmup=2500ms
+  none#1                 applied=none decls=0 ins=0
+      push  p50=0.7    p95=2.5    mean=0.99   max=8.5     over8=1   n=46 | warm p50=0.6    max=1.7
+      loaf  count=3 dur=214.1 block=0 styleAndLayout=1.1 max=81.1
+      anims total=4 | wordSpans=27 inlineBlock=27 animated=1 rowsAnimated=0
+          2x sotto-5-led-live       @ span.caption__led                          1700 {'running': 2}
+          1x sotto-5-snap           @ span.caption__word                         100 {'running': 1}
+          1x sotto-caret            @ span.caption__mark                         1060 {'running': 1}
+      long frame t=1747.8ms dur=79.5 block=0
+      long frame t=1882.5ms dur=81.1 block=0
+      long frame t=3911.5ms dur=53.5 block=0
+  none#2                 NO BEACON
+raw: I:\cc-tmp\attrib-after.json

@@ -1,0 +1,1392 @@
+{
+ "theme": "theme-5",
+ "motion": "on",
+ "seconds": 6,
+ "rateHz": 8,
+ "warmupMs": 2500,
+ "results": {
+  "none#1": {
+   "probe": "anim-cost2",
+   "theme": "theme-5",
+   "ablation": {
+    "name": "none",
+    "known": true,
+    "decls": 0,
+    "dropped": 0,
+    "inserted": 0
+   },
+   "seconds": 6,
+   "rateHz": 8,
+   "warmupMs": 2500,
+   "windowMs": 6000.6,
+   "reducedMotion": false,
+   "push": {
+    "window": {
+     "n": 45,
+     "mean": 4.14,
+     "p50": 3.6,
+     "p95": 8.3,
+     "max": 23.4,
+     "over8": 3,
+     "over50": 0
+    },
+    "warmup": {
+     "n": 19,
+     "mean": 8.86,
+     "p50": 2.6,
+     "p95": 89.3,
+     "max": 89.3,
+     "over8": 2,
+     "over50": 1
+    },
+    "samples": [
+     [
+      72.2,
+      3.2
+     ],
+     [
+      212.1,
+      3.2
+     ],
+     [
+      350.3,
+      2.7
+     ],
+     [
+      487,
+      3.7
+     ],
+     [
+      620.2,
+      2.9
+     ],
+     [
+      754.4,
+      3.8
+     ],
+     [
+      888,
+      4.6
+     ],
+     [
+      1019.5,
+      3.4
+     ],
+     [
+      1155.7,
+      2.9
+     ],
+     [
+      1289.8,
+      3.4
+     ],
+     [
+      1426.8,
+      3.4
+     ],
+     [
+      1558.9,
+      5
+     ],
+     [
+      1689.5,
+      4.9
+     ],
+     [
+      1820,
+      3.6
+     ],
+     [
+      1953.8,
+      3.5
+     ],
+     [
+      2108.8,
+      23.4
+     ],
+     [
+      2240.8,
+      4.8
+     ],
+     [
+      2370.6,
+      3.3
+     ],
+     [
+      2503.3,
+      6.4
+     ],
+     [
+      2639.3,
+      4.4
+     ],
+     [
+      2770.3,
+      3.9
+     ],
+     [
+      2911.2,
+      3.7
+     ],
+     [
+      3043.5,
+      5.5
+     ],
+     [
+      3184.1,
+      10.7
+     ],
+     [
+      3321.7,
+      4.2
+     ],
+     [
+      3463,
+      5
+     ],
+     [
+      3592.2,
+      3.7
+     ],
+     [
+      3722.5,
+      4.3
+     ],
+     [
+      3856.7,
+      5.1
+     ],
+     [
+      3986.6,
+      3.3
+     ],
+     [
+      4120.7,
+      3.7
+     ],
+     [
+      4251.5,
+      2.6
+     ],
+     [
+      4394.8,
+      5
+     ],
+     [
+      4527.3,
+      2.5
+     ],
+     [
+      4663.2,
+      2.7
+     ],
+     [
+      4798.8,
+      8.3
+     ],
+     [
+      4931.7,
+      2.5
+     ],
+     [
+      5068.1,
+      1.3
+     ],
+     [
+      5201.2,
+      1.1
+     ],
+     [
+      5336.7,
+      1.6
+     ],
+     [
+      5469.8,
+      1.4
+     ],
+     [
+      5603.4,
+      3.7
+     ],
+     [
+      5734,
+      1.1
+     ],
+     [
+      5867.8,
+      1.6
+     ],
+     [
+      5998.8,
+      1.3
+     ]
+    ]
+   },
+   "frame": {
+    "n": 347,
+    "mean": 17.29,
+    "p50": 16.7,
+    "p95": 16.8,
+    "max": 83.3,
+    "over8": 347,
+    "over50": 2
+   },
+   "loaf": {
+    "supported": true,
+    "count": 2,
+    "duration": 158.9,
+    "blocking": 0,
+    "styleAndLayout": 0.8,
+    "max": 85.5,
+    "entries": [
+     {
+      "t": 3884.2,
+      "dur": 85.5,
+      "block": 0,
+      "render": 0.6,
+      "scripts": []
+     },
+     {
+      "t": 4366.9,
+      "dur": 73.4,
+      "block": 0,
+      "render": 0.8,
+      "scripts": [
+       {
+        "f": "tick",
+        "url": "_anim-cost2.js",
+        "inv": "TimerHandler:setTimeout",
+        "dur": 5.2,
+        "fsl": 2.8
+       }
+      ]
+     }
+    ]
+   },
+   "animations": {
+    "at": 1241.5,
+    "total": 30,
+    "groups": [
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "n": 27,
+      "states": {
+       "finished": 26,
+       "running": 1
+      },
+      "props": [
+       "opacity"
+      ],
+      "dur": 100
+     },
+     {
+      "name": "sotto-5-led-live",
+      "target": "span.caption__led",
+      "n": 2,
+      "states": {
+       "running": 2
+      },
+      "props": [
+       "transform",
+       "opacity"
+      ],
+      "dur": 1700
+     },
+     {
+      "name": "sotto-caret",
+      "target": "span.caption__mark",
+      "n": 1,
+      "states": {
+       "running": 1
+      },
+      "props": [
+       "opacity"
+      ],
+      "dur": 1060
+     }
+    ],
+    "instances": [
+     {
+      "name": "sotto-5-led-live",
+      "target": "span.caption__led",
+      "state": "running",
+      "t": 3700,
+      "dur": 1700,
+      "iter": null,
+      "props": [
+       "transform",
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "running",
+      "t": 33,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-caret",
+      "target": "span.caption__mark",
+      "state": "running",
+      "t": 3700,
+      "dur": 1060,
+      "iter": null,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-led-live",
+      "target": "span.caption__led",
+      "state": "running",
+      "t": 4166,
+      "dur": 1700,
+      "iter": null,
+      "props": [
+       "transform",
+       "opacity"
+      ]
+     }
+    ],
+    "dom": {
+     "rows": 1,
+     "wordSpans": 27,
+     "wordsInlineBlock": 27,
+     "wordsAnimated": 27,
+     "wordsPromoted": 0,
+     "rowsAnimated": 0
+    }
+   },
+   "fonts": {
+    "faces": {
+     "loaded": 8,
+     "loading": 0,
+     "error": 0,
+     "unloaded": 62
+    },
+    "done": [
+     1500
+    ],
+    "fetches": [
+     {
+      "f": "barlow-condensed-latin-400-normal.woff2",
+      "start": -3231,
+      "end": -3202
+     },
+     {
+      "f": "barlow-condensed-latin-600-normal.woff2",
+      "start": -3228,
+      "end": -3199
+     },
+     {
+      "f": "ibm-plex-mono-latin-400-normal.woff2",
+      "start": -3045,
+      "end": -3007
+     },
+     {
+      "f": "barlow-condensed-latin-700-normal.woff2",
+      "start": -3045,
+      "end": -3007
+     },
+     {
+      "f": "space-grotesk-latin-700-normal.woff2",
+      "start": -2996,
+      "end": -2486
+     },
+     {
+      "f": "space-grotesk-latin-400-normal.woff2",
+      "start": -2996,
+      "end": -2476
+     },
+     {
+      "f": "space-grotesk-latin-500-normal.woff2",
+      "start": -2994,
+      "end": -2478
+     },
+     {
+      "f": "ibm-plex-mono-latin-600-normal.woff2",
+      "start": -2993,
+      "end": -2484
+     }
+    ]
+   },
+   "dom": {
+    "rows": 2,
+    "words": 0
+   },
+   "_waited_s": 11.3
+  },
+  "none#2": {
+   "probe": "anim-cost2",
+   "theme": "theme-5",
+   "ablation": {
+    "name": "none",
+    "known": true,
+    "decls": 0,
+    "dropped": 0,
+    "inserted": 0
+   },
+   "seconds": 6,
+   "rateHz": 8,
+   "warmupMs": 2500,
+   "windowMs": 6001.7,
+   "reducedMotion": false,
+   "push": {
+    "window": {
+     "n": 45,
+     "mean": 3.09,
+     "p50": 3,
+     "p95": 5.3,
+     "max": 10.6,
+     "over8": 1,
+     "over50": 0
+    },
+    "warmup": {
+     "n": 19,
+     "mean": 3.69,
+     "p50": 2.3,
+     "p95": 23.1,
+     "max": 23.1,
+     "over8": 1,
+     "over50": 0
+    },
+    "samples": [
+     [
+      36.9,
+      2.6
+     ],
+     [
+      169.3,
+      2.6
+     ],
+     [
+      301.1,
+      3.1
+     ],
+     [
+      437.2,
+      2.4
+     ],
+     [
+      570.1,
+      2.5
+     ],
+     [
+      703.4,
+      2.6
+     ],
+     [
+      836.7,
+      2.9
+     ],
+     [
+      966.5,
+      2.4
+     ],
+     [
+      1104.3,
+      4.1
+     ],
+     [
+      1236,
+      2.5
+     ],
+     [
+      1365.6,
+      2.9
+     ],
+     [
+      1503.2,
+      2.8
+     ],
+     [
+      1641.1,
+      4.9
+     ],
+     [
+      1769.8,
+      3.3
+     ],
+     [
+      1902.8,
+      3.4
+     ],
+     [
+      2038.2,
+      3.2
+     ],
+     [
+      2169.7,
+      3.5
+     ],
+     [
+      2304.9,
+      3
+     ],
+     [
+      2436.4,
+      5.3
+     ],
+     [
+      2570.3,
+      3
+     ],
+     [
+      2705.2,
+      5.8
+     ],
+     [
+      2837,
+      3.1
+     ],
+     [
+      2970.6,
+      4.3
+     ],
+     [
+      3099.8,
+      3.6
+     ],
+     [
+      3249.1,
+      3.8
+     ],
+     [
+      3386.6,
+      3.3
+     ],
+     [
+      3517.6,
+      4.1
+     ],
+     [
+      3653.6,
+      4.2
+     ],
+     [
+      3786.6,
+      3.3
+     ],
+     [
+      3920.2,
+      3.9
+     ],
+     [
+      4054.3,
+      3.1
+     ],
+     [
+      4186.8,
+      3
+     ],
+     [
+      4317.6,
+      2.2
+     ],
+     [
+      4453.6,
+      3.3
+     ],
+     [
+      4587.1,
+      2.9
+     ],
+     [
+      4724.6,
+      10.6
+     ],
+     [
+      4852.1,
+      1.3
+     ],
+     [
+      4984.1,
+      1
+     ],
+     [
+      5116.9,
+      1.2
+     ],
+     [
+      5250.8,
+      1
+     ],
+     [
+      5380,
+      1.3
+     ],
+     [
+      5516.4,
+      0.8
+     ],
+     [
+      5644,
+      2
+     ],
+     [
+      5784.2,
+      1.8
+     ],
+     [
+      5917.9,
+      1
+     ]
+    ]
+   },
+   "frame": {
+    "n": 360,
+    "mean": 16.67,
+    "p50": 16.7,
+    "p95": 16.7,
+    "max": 16.8,
+    "over8": 360,
+    "over50": 0
+   },
+   "loaf": {
+    "supported": true,
+    "count": 0,
+    "duration": 0,
+    "blocking": 0,
+    "styleAndLayout": 0,
+    "max": 0,
+    "entries": []
+   },
+   "animations": {
+    "at": 1210.3,
+    "total": 30,
+    "groups": [
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "n": 27,
+      "states": {
+       "finished": 26,
+       "running": 1
+      },
+      "props": [
+       "opacity"
+      ],
+      "dur": 100
+     },
+     {
+      "name": "sotto-5-led-live",
+      "target": "span.caption__led",
+      "n": 2,
+      "states": {
+       "running": 2
+      },
+      "props": [
+       "transform",
+       "opacity"
+      ],
+      "dur": 1700
+     },
+     {
+      "name": "sotto-caret",
+      "target": "span.caption__mark",
+      "n": 1,
+      "states": {
+       "running": 1
+      },
+      "props": [
+       "opacity"
+      ],
+      "dur": 1060
+     }
+    ],
+    "instances": [
+     {
+      "name": "sotto-5-led-live",
+      "target": "span.caption__led",
+      "state": "running",
+      "t": 3683,
+      "dur": 1700,
+      "iter": null,
+      "props": [
+       "transform",
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "finished",
+      "t": 100,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-snap",
+      "target": "span.caption__word",
+      "state": "running",
+      "t": 67,
+      "dur": 100,
+      "iter": 1,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-caret",
+      "target": "span.caption__mark",
+      "state": "running",
+      "t": 3683,
+      "dur": 1060,
+      "iter": null,
+      "props": [
+       "opacity"
+      ]
+     },
+     {
+      "name": "sotto-5-led-live",
+      "target": "span.caption__led",
+      "state": "running",
+      "t": 4083,
+      "dur": 1700,
+      "iter": null,
+      "props": [
+       "transform",
+       "opacity"
+      ]
+     }
+    ],
+    "dom": {
+     "rows": 1,
+     "wordSpans": 27,
+     "wordsInlineBlock": 27,
+     "wordsAnimated": 27,
+     "wordsPromoted": 0,
+     "rowsAnimated": 0
+    }
+   },
+   "fonts": {
+    "faces": {
+     "loaded": 8,
+     "loading": 0,
+     "error": 0,
+     "unloaded": 62
+    },
+    "done": [
+     602
+    ],
+    "fetches": [
+     {
+      "f": "barlow-condensed-latin-400-normal.woff2",
+      "start": -3152,
+      "end": -3130
+     },
+     {
+      "f": "barlow-condensed-latin-600-normal.woff2",
+      "start": -3150,
+      "end": -3127
+     },
+     {
+      "f": "ibm-plex-mono-latin-400-normal.woff2",
+      "start": -2980,
+      "end": -2963
+     },
+     {
+      "f": "barlow-condensed-latin-700-normal.woff2",
+      "start": -2980,
+      "end": -2960
+     },
+     {
+      "f": "space-grotesk-latin-700-normal.woff2",
+      "start": -2942,
+      "end": -2914
+     },
+     {
+      "f": "space-grotesk-latin-400-normal.woff2",
+      "start": -2942,
+      "end": -2913
+     },
+     {
+      "f": "space-grotesk-latin-500-normal.woff2",
+      "start": -2940,
+      "end": -2911
+     },
+     {
+      "f": "ibm-plex-mono-latin-600-normal.woff2",
+      "start": -2940,
+      "end": -2911
+     }
+    ]
+   },
+   "dom": {
+    "rows": 2,
+    "words": 0
+   },
+   "_waited_s": 10.0
+  }
+ }
+}

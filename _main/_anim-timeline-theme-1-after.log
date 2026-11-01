@@ -1,0 +1,8 @@
+page    : H:\sotto-wt\goal-anim\_main\_audit-render\panel-attrib.html (26 relative assets rewritten to /panel/)
+browser : C:\Program Files\Google\Chrome\Application\chrome.exe   theme=theme-1 motion=on window=6s@8Hz warmup=2500ms
+  none                   applied=None decls=None ins=None
+      push  p50=None   p95=None   mean=None   max=None    over8=None n=None | warm p50=None   max=None
+      loaf  count=None dur=None block=None styleAndLayout=None max=None
+      anims total=None | wordSpans=None inlineBlock=None animated=None rowsAnimated=None
+      frames=48  first={'ops': '0', 'tf': 'matrix(1, 0, 0, 1, 0, 6)', 'fl': 'none', 'disp': 'b', 'scroll': [17, 393, 334], 'rowTop': 330, 'rowH': 36, 'typing': 0, 'step': 0, 'text': 4, 't': 32}  last={'ops': '1,1,1,1,0.94', 'tf': 'none|none|none|none|matrix(1, 0, 0, 1, 0, 0.337368)', 'fl': 'none|none|none|none|none', 'disp': 'bbbbb', 'scroll': [59, 393, 334], 'rowTop': 288, 'rowH': 36, 'typing': 4, 'step': 5, 'text': 27, 't': 101}
+raw: I:\cc-tmp\timeline-theme-1-after.json

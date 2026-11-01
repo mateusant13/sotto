@@ -2791,9 +2791,20 @@ body[data-state="no-audio"] .chrome__off {
   to { opacity: 1; }
 }
 
-@keyframes sotto-type-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ── THE REVEAL BELONGS TO THE NEWEST WORD ALONE (2026-11-01, lane/goal-anim) ──
+   `theme-N.css` declares the word reveal on EVERY span of the forming tail
+   (`.caption--provisional .caption__provisional .caption__word`), yet a span's
+   animation only ever STARTS on the partial that creates it — the one that makes
+   it the newest word, which `paintWords` already marks `[data-typing]`. So the
+   rest are FINISHED `fill: both` animations that every later restyle re-applies.
+   MEASURED `_main/_anim-cost2.js` (theme-5, animations on, 6 s window): 23 word
+   animations, 21 finished, 134 ms of style+layout per window, 43.2 ms of forced
+   style+layout INSIDE one `pushCaption`; with the rule below: 1 animation,
+   `loaf.blocking` 0, push p50 0.7 ms. `cinematic.css` and `panel-designs.css`
+   already scope theirs to `[data-typing]`; `theme-3` ramps with `--w-op` and has
+   no word animation. Same rule, made to win. */
+:root[data-theme] .caption--provisional .caption__provisional .caption__word:not([data-typing]) {
+  animation: none;
 }
 
 /* THE `prefers-reduced-motion` OVERRIDE IS GONE, AND THAT IS A MEASURED DECISION

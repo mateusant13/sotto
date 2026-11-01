@@ -228,7 +228,7 @@ let selectedEntry = null;
  * chat-style one: follow by default, stop the moment the owner scrolls away from
  * the bottom, resume the moment he comes back.
  */
-let stickToNewest = true;
+let stickToNewest = true, pinnedHeight = 0;
 /** Non-empty while the feed is showing SEARCH RESULTS instead of the feed. */
 let searchQuery = '';
 /** The result set backing the current search view. */
@@ -1460,18 +1460,15 @@ function addCaption(text, reason, meta) {
   return true;
 }
 
-/**
- * Follow the newest line — but only while the owner is watching the newest line,
- * and NEVER yank the view away from someone reading back.
- *
- * The flag is the fix (see `stickToNewest` above): "already near the bottom" can
- * never become true on its own. Programmatic scrolls also fire `scroll`, and they
- * land AT the bottom, so they keep the flag armed — which is what we want.
- */
+/** One follow per frame, never in the push: `scrollHeight` costs a layout. */
+let followFrame = 0;
 function followNewestLine() {
-  if (!stickToNewest) return;
-  if (!dom.captions) return;
-  dom.captions.scrollTop = dom.captions.scrollHeight;
+  if (!stickToNewest || !dom.captions || followFrame) return;
+  if (typeof requestAnimationFrame !== 'function') return;
+  followFrame = requestAnimationFrame(() => {
+    followFrame = 0;
+    pinLiveTranscriptToBottom();
+  });
 }
 
 /**
@@ -1483,6 +1480,8 @@ function wireFollow() {
   if (!dom.captions) return;
   dom.captions.addEventListener('scroll', () => {
     const { scrollTop, scrollHeight, clientHeight } = dom.captions;
+    // A box that grew after the pin is OUR lag, not his scroll (theme-4, measured):
+    if (scrollHeight > pinnedHeight) return;
     stickToNewest = (scrollHeight - scrollTop - clientHeight) < 48;
   }, { passive: true });
 }
@@ -1534,7 +1533,7 @@ function pinHistoryToBottom() {
 function pinLiveTranscriptToBottom() {
   const box = dom.captions;
   if (!box || !stickToNewest) return false;
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = box.scrollHeight, pinnedHeight = box.scrollHeight;
   return true;
 }
 
