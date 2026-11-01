@@ -1,0 +1,2 @@
+MODE=env       port=9401 opened=False 
+MODE=settings  port=9402 opened=True targets=1 types=['page']
