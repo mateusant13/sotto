@@ -50,3 +50,22 @@ o número grande era CONTENÇÃO, não a app.
   percorre o MESMO `simulate_press` que o sistema operativo usa.
 - `drift_ms` da legenda vs. o player não foi medido nesta nota; vive nos oráculos
   `youtube-sotto-drift` e `youtube-1to1`.
+
+## Paridade dos dois produtores, vista num ecrã onde ele não está (2026-11-01 10:4x)
+
+Instrumento: `_main/sim/youtube-caption-sim.html` (gerado por
+`_main/sim/make-youtube-caption-sim.py`, que importa `youtube_reveal`/`word_fade`/`youtube_captions`
+da app e amostra o MESMO `frame()` que a app desenha) aberto no Chromium headless — nenhuma janela
+na tela dele. Frames lidos do painel de estado da própria página (t, linhas, a sair, alfa por linha).
+
+|t|modo|linhas|a sair|linhas pintadas (alfa)|
+|---|---|---|---|
+|2,707 s|YouTube (payload)|3 (janela 2+1)|1|`Have you ever had to kill a man?` **185** · `>> No.` 255 · `>> Then` 255|
+|2,580 s|ASR ao vivo (o mesmo motor)|2|0|`Have you ever had to kill a man?` 255 · `No.` 255|
+
+O que isto prova e o que não prova. **Prova** que o motor é UM: a janela (2 + 1), a linha que sai
+com alfa a descer, e a revelação palavra a palavra saem da mesma função nos dois produtores — a
+única diferença visível é o `>> ` do payload, que é do YouTube e não nosso. **Não prova** que a
+legenda ao vivo tem as mesmas palavras no mesmo instante: o ASR entrega `Then` quando o reconhece,
+e nesse instante ainda não o tinha. Conteúdo é do produtor; a FORMA é do motor.
+
