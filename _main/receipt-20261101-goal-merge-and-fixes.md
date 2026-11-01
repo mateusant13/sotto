@@ -158,3 +158,22 @@ logo as stacks saem de dentro com `sys._current_frames()`.
     load-shedding-oracle    GREEN -- arms=78 pass=78 fail=0
     live-queue-oracle       PASS  -- arms=32 fail=0        (nenhum audio fica por transcrever)
     external-resume-oracle  PASS  -- bracos: 8 verdes, 0 vermelhos
+
+## 10. A paridade do YouTube, re-corrida neste HEAD (2026-11-01 11:3x)
+
+Oito portoes, cada um pelo seu comando, ultima linha de cada:
+
+    youtube-1to1-oracle          GREEN
+    youtube-monotonic-oracle     GREEN -- 14 PASS / 0 FAIL (recuos: antiga 224, nova 0)
+    youtube-reveal-oracle        rc=0, reveal-matches-the-player GREEN 15/15,
+                                 cobertura PARCIAL 15/16 (1 amostra sem alinhamento de 3 palavras)
+    youtube-rows-oracle          GREEN
+    youtube-drift-oracle         MEASURED (rc=0) -- n=16 mean_ms=+172.5 median_ms=+107.2
+    youtube-sotto-drift-oracle   MEASURED (rc=0) -- drift_sotto mean_ms=-125.0 median_ms=-74.0
+    youtube-paint-first-oracle   PASS
+    youtube-switch-oracle        GREEN -- arms=12 pass=12 fail=0
+
+`drift_ms` e' MEDIDO, nunca booleano, e as duas distribuicoes sao de instrumentos
+diferentes: `youtube-drift` compara a NOSSA linha com o relogio do cue; `youtube-sotto-drift`
+compara o nosso overlay com o PLAYER. A cobertura PARCIAL nao e' um verde: 15 de 16 amostras,
+e a que falta nao tem alinhamento de 3 palavras para julgar.
