@@ -1,0 +1,26 @@
+===== POSITIVE: THE SHIPPED TREE  H:/sotto  (the claim) =====
+prod-n3                  verdict=GREEN flips= 3/ 3 posted= 3 delivered= 3 log(S/H)= 2/ 1 agree=True  gas=0   prop=True
+prod-n5                  verdict=GREEN flips= 5/ 5 posted= 5 delivered= 5 log(S/H)= 3/ 2 agree=True  gas=0   prop=True
+prod-n10                 verdict=GREEN flips=10/10 posted=10 delivered=10 log(S/H)= 5/ 5 agree=True  gas=0   prop=True
+prod-n40                 verdict=GREEN flips=40/40 posted=40 delivered=40 log(S/H)=20/20 agree=True  gas=0   prop=True
+prod-wide                verdict=GREEN flips=10/10 posted=10 delivered=10 log(S/H)= 5/ 5 agree=True  gas=0   prop=True
+prod-fast                verdict=GREEN flips=10/10 posted=10 delivered=10 log(S/H)= 5/ 5 agree=True  gas=0   prop=True
+prod-ultrafast           verdict=GREEN flips=10/10 posted=10 delivered=10 log(S/H)= 5/ 5 agree=True  gas=0   prop=True
+prod-n30                 verdict=GREEN flips=30/30 posted=30 delivered=30 log(S/H)=15/15 agree=True  gas=0   prop=True
+===== NULL ARM: ZERO presses (the property KNOWN ABSENT) =====
+prod-null                verdict=GREEN flips= 0/ 0 posted= 0 delivered= 0 log(S/H)= 0/ 0 agree=True  gas=0   prop=False
+===== INVERTED EXPECTATION (same probe, opposite claim: it MUST say NO) =====
+prod-invert              verdict=RED   flips=10/10 posted=10 delivered=10 log(S/H)= 5/ 5 agree=True  gas=0   prop=True
+===== NEGATIVE CONTROL 1: the TAP WINDOW (edge detect) swallows the 2nd press =====
+mutA-n3                  verdict=RED   flips= 1/ 3 posted= 3 delivered= 3 log(S/H)= 1/ 0 agree=True  gas=0   prop=False
+mutA-n10                 verdict=RED   flips= 2/10 posted=10 delivered=10 log(S/H)= 1/ 1 agree=True  gas=0   prop=False
+mutA-n40                 verdict=RED   flips= 7/40 posted=40 delivered=40 log(S/H)= 4/ 3 agree=True  gas=0   prop=False
+mutA-wide                verdict=GREEN flips=10/10 posted=10 delivered=10 log(S/H)= 5/ 5 agree=True  gas=0   prop=True
+===== NEGATIVE CONTROL 2: the RETIRED Alt-only DURATION gesture =====
+mutD-n3                  verdict=RED   flips= 1/ 3 posted= 3 delivered= 3 log(S/H)= 1/ 0 agree=True  gas=1   prop=False
+mutD-n10                 verdict=RED   flips= 1/10 posted=10 delivered=10 log(S/H)= 1/ 0 agree=True  gas=1   prop=False
+mutD-n40                 verdict=RED   flips= 1/40 posted=40 delivered=40 log(S/H)= 1/ 0 agree=True  gas=1   prop=False
+===== NEGATIVE CONTROL 3: the REAL PRE-FIX TREE (git 38ab1d6, 2026-10-30) =====
+hist-n3                  verdict=RED   flips= 3/ 3 posted= 3 delivered= 3 log(S/H)= 2/ 1 agree=True  gas=5   prop=False
+hist-n10                 verdict=RED   flips=10/10 posted=10 delivered=10 log(S/H)= 7/ 3 agree=True  gas=19  prop=False
+hist-n40                 verdict=RED   flips=40/40 posted=40 delivered=40 log(S/H)=27/13 agree=True  gas=76  prop=False
