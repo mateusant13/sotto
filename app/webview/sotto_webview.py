@@ -428,6 +428,74 @@ WORKER_PRELOAD_MAX_WAIT_S = 120.0
 WORKER_PRELOAD_POLL_S = 2.0
 PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
 STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
+#: O TETO DE UMA NOTIFICACAO (2026-11-01). Ver `emit`: as tres chamadas de
+#: `emit` do produto sao NOTIFICACOES (ninguem le o valor), e todas corriam pelo
+#: `exec_js` SINCRONO com o orcamento por omissao de 10 s. Um post nao tem
+#: orcamento nenhum: ou entra na fila do UI thread ou nao entra, e as duas coisas
+#: ficam escritas no log.
+BRIDGE_NOTIFY_POSTED = True
+
+
+def _bridge_census():
+    """O `_main/bridge-census.py`, quando `SOTTO_BRIDGE_CENSUS=1`. Senao None.
+
+    O QUE ISTO RESPONDE, e porque nao e' enfeite: `exec_js TIMEOUT after 10.0s`
+    aparece 515 vezes no log do dono e a linha nao diz ONDE o tempo foi. Ha'
+    tres donos possiveis -- o UI thread nao correu o callable, o renderer nao
+    respondeu ao `ExecuteScriptAsync`, ou a continuacao .NET nao entrou em
+    Python -- e dois deles exigem correccoes opostas. `py-spy dump` esta' NEGADO
+    nesta maquina (os error 5, medido 2026-11-01), portanto o censo tira as
+    stacks de dentro: `sys._current_frames()` (ver `_main/bridge-census.py`).
+
+    NUNCA LANCA e nunca custa nada quando desligado: uma shell que nao arranca
+    por causa de um instrumento e' pior do que uma sem instrumento.
+    """
+    global _BRIDGE_CENSUS
+    if _BRIDGE_CENSUS is not _CENSUS_UNSET:
+        return _BRIDGE_CENSUS
+    _BRIDGE_CENSUS = None
+    if (os.environ.get('SOTTO_BRIDGE_CENSUS') or '').strip().lower() not in (
+            '1', 'true', 'yes', 'on'):
+        return None
+    try:
+        import importlib.util
+        path = os.path.join(REPO_ROOT, '_main', 'bridge-census.py')
+        spec = importlib.util.spec_from_file_location('bridge_census', path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _BRIDGE_CENSUS = mod.attach(log)
+        log(f'BRIDGE_CENSUS_ON path={json.dumps(path)} '
+            f'tick_ms={int(mod.TICK_S * 1000)}')
+    except Exception as exc:  # noqa: BLE001 -- um instrumento partido e' um warn
+        warn(f'BRIDGE_CENSUS_FAILED {type(exc).__name__}: {exc}')
+        _BRIDGE_CENSUS = None
+    return _BRIDGE_CENSUS
+
+
+_CENSUS_UNSET = object()
+_BRIDGE_CENSUS = _CENSUS_UNSET
+
+
+def _task_bits(box, done):
+    """O estado .NET da chamada, para o censo. NUNCA lanca.
+
+    `status=RanToCompletion` com `continuation=unset` e' a assinatura de "o JS
+    respondeu e o Python nunca foi chamado"; `Waiting*`/`Running` com
+    `continuation=unset` e' "o renderer nunca devolveu nada". Sao dois defeitos
+    diferentes e a linha do log tem de os separar.
+    """
+    status = 'no-task'
+    try:
+        task = box.get('task')
+        if task is not None:
+            status = str(task.Status)
+    except Exception:  # noqa: BLE001
+        status = 'unreadable'
+    try:
+        cont = 'set' if done.is_set() else 'unset'
+    except Exception:  # noqa: BLE001
+        cont = '?'
+    return {'status': status, 'continuation': cont}
 
 
 class NoAnswer(dict):
@@ -7668,10 +7736,16 @@ class SottoShell:
             finally:
                 done.set()
 
+        def _start():
+            # `box['task']` existe para o CENSO, nao para o caminho: o
+            # `Task.Status` e' o unico campo que separa "o renderer nunca
+            # devolveu nada" de "o JS respondeu e a continuacao .NET nao entrou
+            # em Python" -- ver `_task_bits` e `_main/bridge-census.py`.
+            box['task'] = self.core.ExecuteScriptAsync(script)
+            box['task'].ContinueWith(Action[Task[String]](_complete))
+
         def _run():
-            self.webview2.Invoke(Func[Object](
-                lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
-                    Action[Task[String]](_complete))))
+            self.webview2.Invoke(Func[Object](_start))
 
         # ONE BUDGET, NOT TWO (2026-10-20). The marshalling wait (`_ui`) and
         # the task wait were TWO separate waits, each up to `timeout`: a
@@ -7679,12 +7753,18 @@ class SottoShell:
         # the 10 s default `reply_stats` used, on the pump thread. The
         # deadline is computed ONCE and the two waits SHARE it.
         deadline = time.monotonic() + float(timeout)
+        census = _bridge_census()
+        token = census.call(script, timeout) if census is not None else None
         marshalled = None
+        t_marshal = time.monotonic()
         try:
             marshalled = self._ui(_run, timeout=timeout)
         except Exception as exc:
             box['error'] = repr(exc)
             done.set()
+        if token is not None:
+            census.phase(token, 'marshal',
+                        (time.monotonic() - t_marshal) * 1000.0)
 
         if isinstance(marshalled, NoAnswer):
             # THE UI THREAD NEVER RAN IT. The script is still QUEUED on the
@@ -7692,25 +7772,72 @@ class SottoShell:
             # going to wait for it, and the REASON is on the record.
             warn(f'exec_js STALL reason=ui-thread-stall timeout={timeout}s '
                  f'script={script[:90]!r}')
+            if token is not None:
+                census.no_answer(token, _task_bits(box, done))
             return marshalled
 
         left = deadline - time.monotonic()
         if left <= 0 or not done.wait(left):
             warn(f'exec_js TIMEOUT after {timeout}s script={script[:90]!r}')
+            if token is not None:
+                token['task_ms'] = round(
+                    (time.monotonic() - t_marshal) * 1000.0, 1)
+                census.no_answer(token, _task_bits(box, done))
             return NoAnswer('exec-js-timeout', script[:90], timeout)
 
         if 'error' in box:
             warn(f'exec_js failed: {box["error"]}')
+            if token is not None:
+                census.no_answer(token, _task_bits(box, done))
             return NoAnswer('exec-js-error', script[:90], timeout, box['error'])
+        if token is not None:
+            census.answer(token)
         try:
             return json.loads(box.get('json', 'null'))
         except ValueError:
             return box.get('json')
 
-    def emit(self, kind, payload):
-        """main -> page: the WebView2 spelling of preload's `emit(kind, payload)`."""
-        self.exec_js('window.__sotto_emit(' +
-                     json.dumps(kind) + ',' + json.dumps(json.dumps(payload)) + ')')
+    def emit(self, kind, payload) -> bool:
+        """main -> page: `emit(kind, payload)` -- POSTED, so it never waits.
+
+        ── O QUE ESTAVA MEDIDO, e e' o defeito ────────────────────────────────
+        Isto era `self.exec_js(...)`: um round trip SINCRONO com o orcamento por
+        omissao de 10,0 s. As TRES chamadas de `emit` do produto -- `status`
+        (`send_status`), `geometry` (`send_geometry`) e `external-caption` --
+        descartam o valor de retorno: sao NOTIFICACOES. Nenhuma delas tem uma
+        resposta que use, e todas correm em threads que o dono sente:
+
+          * `status` sai do pump do worker, a MESMA thread que carrega as
+            legendas (`on_worker_status` -> `_status` -> `apply_panel_state`);
+          * `geometry` sai da thread da hotkey, no Alt+C;
+          * `external-caption` sai da thread da faixa do YouTube.
+
+        Medido no log vivo (`_main/webview-run.log`): **515**
+        `WARN exec_js TIMEOUT after 10.0s` (`grep -c`), e nos dois ultimos
+        2026-11-01 10:33:17 / 10:35:05 o script que estourou e'
+        `window.__sotto_emit("status", ...)`. Em cada um desses, a thread
+        chamadora ficou PRESA 10 s para entregar uma frase ao painel -- e a
+        linha seguinte do log (`STATUS_APPLIED`) so' aparece 10 s depois. O
+        painel nao congelava: quem congelava era o emissor.
+
+        PORQUE UM POST NAO TEM ORCAMENTO. `_post` e' `BeginInvoke`: ou entra na
+        fila do UI thread, ou nao entra -- e as duas coisas ficam escritas. A
+        ORDEM em relacao aos outros scripts postados mantem-se (mesma fila), e
+        a ordem entre duas notificacoes diferentes nunca foi garantida
+        (`emit_async` ja' o documenta); o painel e' funcao pura do ultimo
+        estado que viu.
+
+        DEVOLVE `False` quando o form ainda nao existe. Isso NAO e' silencio:
+        e' a linha `EMIT_DROPPED` abaixo, que e' o que o pedido desta lane
+        exige -- uma legenda/status perdido e' uma linha de log, nunca um
+        bloqueio.
+        """
+        posted = self.emit_nowait(kind, payload)
+        if not posted:
+            warn(f'EMIT_DROPPED kind={json.dumps(str(kind))} '
+                 f'reason=no-form posted=false '
+                 f'payload={json.dumps(payload, separators=(",", ":"))[:120]!r}')
+        return posted
 
     def exec_js_post(self, script) -> bool:
         """Run `script` in the page and return IMMEDIATELY -- fire and forget.
@@ -7743,7 +7870,12 @@ class SottoShell:
             return False
 
     def emit_nowait(self, kind, payload) -> bool:
-        """`emit`, POSTED — for the show path, which cannot wait for an answer."""
+        """The ONE place that builds a `__sotto_emit` script and POSTS it.
+
+        `emit` is this plus the `EMIT_DROPPED` line (2026-11-01: it no longer
+        waits — see `emit`); `send_geometry(post=True)` is this on the show path.
+        Returns False when the post could not be queued (no form yet).
+        """
         return self.exec_js_post('window.__sotto_emit(' +
                                  json.dumps(kind) + ',' +
                                  json.dumps(json.dumps(payload)) + ')')
@@ -7855,10 +7987,12 @@ class SottoShell:
         # re-classify the sentence with a regex.
         self.send_status(line, kind)
         info = info or {}
-        shown = self.exec_js(
+        title = str(info.get('title') or '')
+        body = str(info.get('body') or '')
+        script = (
             '(() => {'
-            '  const title = ' + json.dumps(info.get('title') or '') + ';'
-            '  const body = ' + json.dumps(info.get('body') or '') + ';'
+            '  const title = ' + json.dumps(title) + ';'
+            '  const body = ' + json.dumps(body) + ';'
             '  const kind = ' + json.dumps(kind) + ';'
             "  const t = document.querySelector('.captions__placeholder-title');"
             "  const b = document.querySelector('.captions__placeholder-body');"
@@ -7870,8 +8004,21 @@ class SottoShell:
             "           s.classList.toggle('status--noaudio', kind === 'no-audio'); }"
             "  return t ? t.textContent : '';"
             '})()')
-        if shown:
-            log(f'PLACEHOLDER_APPLIED title={json.dumps(str(shown))}')
+        # POSTED, NOT AWAITED (2026-11-01). Esta era a SEGUNDA metade do mesmo
+        # defeito: `apply_panel_state` fazia `send_status` (`emit`, sincrono) e
+        # DEPOIS este `exec_js`, sincrono, com 10 s cada -- ate' 20 s de pump do
+        # worker por um status. O valor lido era usado para UMA linha de log
+        # (`PLACEHOLDER_APPLIED title=`), e' o que a medição mostrou: 29
+        # `exec_js TIMEOUT` com o script `const title = ""; const body = ""` no
+        # log do dono. Uma escrita que compra uma linha de log nao pode custar
+        # 10 s da thread que carrega as legendas -- a linha passa a dizer o que
+        # se ESCREVEU (`posted=true`), que e' um facto do mesmo tamanho.
+        posted = self.exec_js_post(script)
+        if posted:
+            if title:
+                log(f'PLACEHOLDER_APPLIED title={json.dumps(title)} posted=true')
+        else:
+            warn(f'PLACEHOLDER_DROPPED title={json.dumps(title)} reason=no-form')
         return True
 
     def note_caption_observed(self, payload):
@@ -10757,18 +10904,20 @@ class SottoShell:
         self.meter_pushes += 1
         self.emit_async('stats', self.stats())
     def emit_async(self, kind, payload):
-        """`emit` WITHOUT waiting for the round trip — for a per-sample feed.
+        """`emit` WITH A LATCH — for a per-sample feed.
 
-        `emit` blocks on a `Task[String]` completion, which is right for a caption
-        (the caller wants to know it landed) and WRONG for the stats channel: the
-        worker may publish a meter sample at tens of Hz, and every one of those
-        round trips would stall whoever called it. Measured on this host: the
+        The difference to `emit` is no longer the wait (2026-11-01: `emit` is a
+        post too, see its docstring) but the COLLAPSE: a pending payload is
+        replaced instead of queueing a second callable, so a feed at tens of Hz
+        cannot grow the UI thread's queue with the feed. The stats channel is
+        the feed: the worker may publish a meter sample at tens of Hz, and the
         pump thread delivers captions on the same thread that reads the worker's
-        stderr, so a blocking push per sample would delay the captions
-        themselves.
+        stderr, so an unlatched push per sample would delay the captions
+        themselves. Measured on this host before either existed: a blocking push
+        per sample stalled that thread outright.
 
-        So this posts the script through `_ui` (a `BeginInvoke`, no wait) and
-        drops the resulting `Task`. Ordering between two `emit_async` calls is not
+        So this posts the script with `_post` (`BeginInvoke`, no wait) and drops
+        the resulting `Task`. Ordering between two `emit_async` calls is not
         guaranteed, and does not need to be: each one carries a WHOLE payload, and
         the panel's `pushLevel` is a pure function of the last one it saw.
 
