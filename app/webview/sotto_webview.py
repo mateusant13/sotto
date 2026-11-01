@@ -407,6 +407,68 @@ PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the pr
 STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
 
 
+def _bridge_census():
+    """O `_main/bridge-census.py`, quando `SOTTO_BRIDGE_CENSUS=1`. Senao None.
+
+    O QUE ISTO RESPONDE, e porque nao e' enfeite: `exec_js TIMEOUT after 10.0s`
+    aparece 515 vezes no log do dono e a linha nao diz ONDE o tempo foi. Ha'
+    tres donos possiveis -- o UI thread nao correu o callable, o renderer nao
+    respondeu ao `ExecuteScriptAsync`, ou a continuacao .NET nao entrou em
+    Python -- e dois deles exigem correccoes opostas. `py-spy dump` esta' NEGADO
+    nesta maquina (os error 5, medido 2026-11-01), portanto o censo tira as
+    stacks de dentro: `sys._current_frames()` (ver `_main/bridge-census.py`).
+
+    NUNCA LANCA e nunca custa nada quando desligado: uma shell que nao arranca
+    por causa de um instrumento e' pior do que uma sem instrumento.
+    """
+    global _BRIDGE_CENSUS
+    if _BRIDGE_CENSUS is not _CENSUS_UNSET:
+        return _BRIDGE_CENSUS
+    _BRIDGE_CENSUS = None
+    if (os.environ.get('SOTTO_BRIDGE_CENSUS') or '').strip().lower() not in (
+            '1', 'true', 'yes', 'on'):
+        return None
+    try:
+        import importlib.util
+        path = os.path.join(REPO_ROOT, '_main', 'bridge-census.py')
+        spec = importlib.util.spec_from_file_location('bridge_census', path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _BRIDGE_CENSUS = mod.attach(log)
+        log(f'BRIDGE_CENSUS_ON path={json.dumps(path)} '
+            f'tick_ms={int(mod.TICK_S * 1000)}')
+    except Exception as exc:  # noqa: BLE001 -- um instrumento partido e' um warn
+        warn(f'BRIDGE_CENSUS_FAILED {type(exc).__name__}: {exc}')
+        _BRIDGE_CENSUS = None
+    return _BRIDGE_CENSUS
+
+
+_CENSUS_UNSET = object()
+_BRIDGE_CENSUS = _CENSUS_UNSET
+
+
+def _task_bits(box, done):
+    """O estado .NET da chamada, para o censo. NUNCA lanca.
+
+    `status=RanToCompletion` com `continuation=unset` e' a assinatura de "o JS
+    respondeu e o Python nunca foi chamado"; `Waiting*`/`Running` com
+    `continuation=unset` e' "o renderer nunca devolveu nada". Sao dois defeitos
+    diferentes e a linha do log tem de os separar.
+    """
+    status = 'no-task'
+    try:
+        task = box.get('task')
+        if task is not None:
+            status = str(task.Status)
+    except Exception:  # noqa: BLE001
+        status = 'unreadable'
+    try:
+        cont = 'set' if done.is_set() else 'unset'
+    except Exception:  # noqa: BLE001
+        cont = '?'
+    return {'status': status, 'continuation': cont}
+
+
 class NoAnswer(dict):
     """`exec_js`/`_ui` did NOT get an answer -- and it says WHY.
 
@@ -7917,10 +7979,16 @@ class SottoShell:
             finally:
                 done.set()
 
+        def _start():
+            # `box['task']` existe para o CENSO, nao para o caminho: o
+            # `Task.Status` e' o unico campo que separa "o renderer nunca
+            # devolveu nada" de "o JS respondeu e a continuacao .NET nao entrou
+            # em Python" -- ver `_task_bits` e `_main/bridge-census.py`.
+            box['task'] = self.core.ExecuteScriptAsync(script)
+            box['task'].ContinueWith(Action[Task[String]](_complete))
+
         def _run():
-            self.webview2.Invoke(Func[Object](
-                lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
-                    Action[Task[String]](_complete))))
+            self.webview2.Invoke(Func[Object](_start))
 
         # ONE BUDGET, NOT TWO (2026-10-20). The marshalling wait (`_ui`) and
         # the task wait were TWO separate waits, each up to `timeout`: a
@@ -7928,12 +7996,18 @@ class SottoShell:
         # the 10 s default `reply_stats` used, on the pump thread. The
         # deadline is computed ONCE and the two waits SHARE it.
         deadline = time.monotonic() + float(timeout)
+        census = _bridge_census()
+        token = census.call(script, timeout) if census is not None else None
         marshalled = None
+        t_marshal = time.monotonic()
         try:
             marshalled = self._ui(_run, timeout=timeout)
         except Exception as exc:
             box['error'] = repr(exc)
             done.set()
+        if token is not None:
+            census.phase(token, 'marshal',
+                        (time.monotonic() - t_marshal) * 1000.0)
 
         if isinstance(marshalled, NoAnswer):
             # THE UI THREAD NEVER RAN IT. The script is still QUEUED on the
@@ -7941,16 +8015,26 @@ class SottoShell:
             # going to wait for it, and the REASON is on the record.
             warn(f'exec_js STALL reason=ui-thread-stall timeout={timeout}s '
                  f'script={script[:90]!r}')
+            if token is not None:
+                census.no_answer(token, _task_bits(box, done))
             return marshalled
 
         left = deadline - time.monotonic()
         if left <= 0 or not done.wait(left):
             warn(f'exec_js TIMEOUT after {timeout}s script={script[:90]!r}')
+            if token is not None:
+                token['task_ms'] = round(
+                    (time.monotonic() - t_marshal) * 1000.0, 1)
+                census.no_answer(token, _task_bits(box, done))
             return NoAnswer('exec-js-timeout', script[:90], timeout)
 
         if 'error' in box:
             warn(f'exec_js failed: {box["error"]}')
+            if token is not None:
+                census.no_answer(token, _task_bits(box, done))
             return NoAnswer('exec-js-error', script[:90], timeout, box['error'])
+        if token is not None:
+            census.answer(token)
         try:
             return json.loads(box.get('json', 'null'))
         except ValueError:
