@@ -1,0 +1,378 @@
+{
+  "schema": "sotto-youtube-1to1-capture/1",
+  "measured_on": "2026-10-26",
+  "video": "WdaHAGRBB6s",
+  "payload": {
+    "path": "H:\\sotto\\_main\\fixtures\\yt-WdaHAGRBB6s.en-orig.json3",
+    "sha256": "9806e76a435a8af8f8f6c98745579e5e14d08f57b6b85c23dc66286b461d67ab",
+    "is_player_document": true,
+    "rows_the_player_draws": 19,
+    "rcRows_declared": 2,
+    "segments_with_tOffsetMs": 69
+  },
+  "sotto": {
+    "cache_path": "H:\\sotto\\_cache\\youtube-captions\\WdaHAGRBB6s.jsonl",
+    "cache_fetched_at": 1792791307.5899339,
+    "cache_lang": "en-orig",
+    "cues": [
+      {
+        "start": 0.0,
+        "end": 2.64,
+        "text": "Have you ever had to kill a man?"
+      },
+      {
+        "start": 1.88,
+        "end": 4.64,
+        "text": ">> No."
+      },
+      {
+        "start": 2.64,
+        "end": 6.8,
+        "text": ">> Then this sword is useless."
+      },
+      {
+        "start": 4.64,
+        "end": 7.84,
+        "text": ">> Don't worry about me, Yamato. I'll be"
+      },
+      {
+        "start": 6.8,
+        "end": 9.64,
+        "text": "fine."
+      },
+      {
+        "start": 7.84,
+        "end": 11.84,
+        "text": "After the ritual, I'd love to train with"
+      },
+      {
+        "start": 9.64,
+        "end": 14.0,
+        "text": "you sometime. Blackmore Academy doesn't"
+      },
+      {
+        "start": 11.84,
+        "end": 15.64,
+        "text": "exactly offer me a challenge."
+      },
+      {
+        "start": 14.0,
+        "end": 16.52,
+        "text": ">> That's because you're fighting with"
+      },
+      {
+        "start": 15.64,
+        "end": 18.92,
+        "text": "children."
+      },
+      {
+        "start": 16.52,
+        "end": 20.92,
+        "text": ">> Correct. That's why I'm asking to train"
+      },
+      {
+        "start": 18.92,
+        "end": 21.72,
+        "text": "with you sometime. Will you help me or"
+      },
+      {
+        "start": 20.92,
+        "end": 24.0,
+        "text": "not?"
+      },
+      {
+        "start": 21.72,
+        "end": 25.92,
+        "text": ">> Maybe. Prove you're worth my time."
+      },
+      {
+        "start": 24.0,
+        "end": 27.28,
+        "text": ">> That won't be a problem."
+      },
+      {
+        "start": 25.92,
+        "end": 28.36,
+        "text": "That's quite the sword."
+      },
+      {
+        "start": 27.28,
+        "end": 29.8,
+        "text": ">> It's family."
+      },
+      {
+        "start": 28.36,
+        "end": 33.84,
+        "text": ">> Mine's an heirloom as well."
+      },
+      {
+        "start": 29.8,
+        "end": 33.84,
+        "text": ">> No, you don't understand."
+      }
+    ],
+    "offsets_carried_by_cues": 0,
+    "capacity_drawn": 2
+  },
+  "sample": {
+    "step_s": 0.05,
+    "samples": 677,
+    "side_by_side_first_20": [
+      {
+        "t": 0.0,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.05,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.1,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.15,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.2,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.25,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.3,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.35,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.4,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.45,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.5,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.55,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.6,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.65,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.7,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.75,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.8,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.85,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.9,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      },
+      {
+        "t": 0.95,
+        "youtube": [
+          "Have you ever had to kill a man?"
+        ],
+        "sotto": [
+          "Have you ever had to kill a man?"
+        ]
+      }
+    ],
+    "divergences": []
+  },
+  "arms": [
+    {
+      "element": "source-is-youtube",
+      "verdict": "GREEN",
+      "measured": "payload do player (events+wpWinPositions+wireMagic)=True | cues servidos == parse do payload=True"
+    },
+    {
+      "element": "capacity-from-payload",
+      "verdict": "GREEN",
+      "measured": "rcRows=2 no payload | o Sotto desenha 2"
+    },
+    {
+      "element": "words-1to1",
+      "verdict": "GREEN",
+      "measured": "amostras com texto diferente: 0/677"
+    },
+    {
+      "element": "linebreaks-1to1",
+      "verdict": "GREEN",
+      "measured": "amostras com numero de linhas diferente: 0/677"
+    },
+    {
+      "element": "timing-1to1",
+      "verdict": "GREEN",
+      "measured": "transicoes do player sem par: 0/18 | transicoes do Sotto a mais: 0/18 (tolerancia 0.05s)"
+    },
+    {
+      "element": "word-reveal-1to1",
+      "verdict": "RED",
+      "measured": "segmentos com tOffsetMs no payload: 69 | offsets que os cues carregam: 0"
+    }
+  ],
+  "transitions": {
+    "youtube": [
+      1.9,
+      2.65,
+      4.65,
+      6.8,
+      7.85,
+      9.65,
+      11.85,
+      14.0,
+      15.65,
+      16.55,
+      18.95,
+      20.95,
+      21.75,
+      24.0,
+      25.95,
+      27.3,
+      28.4,
+      29.8
+    ],
+    "sotto": [
+      1.9,
+      2.65,
+      4.65,
+      6.8,
+      7.85,
+      9.65,
+      11.85,
+      14.0,
+      15.65,
+      16.55,
+      18.95,
+      20.95,
+      21.75,
+      24.0,
+      25.95,
+      27.3,
+      28.4,
+      29.8
+    ]
+  }
+}

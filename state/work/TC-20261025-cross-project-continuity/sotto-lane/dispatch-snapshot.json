@@ -1,0 +1,87 @@
+{
+  "core_ids": [
+    "C-01",
+    "C-02",
+    "C-03",
+    "C-04",
+    "C-05",
+    "C-06",
+    "C-07",
+    "C-08",
+    "C-09",
+    "C-10",
+    "C-11",
+    "C-12",
+    "C-13",
+    "C-14",
+    "C-15"
+  ],
+  "creator": {
+    "path": "I:/!manager/tools/worklist-create.py",
+    "sha256": "b04197922593ddc4448c3f1533609cbe32bdfc6374a3b9350a4aa78efdcb1ac6"
+  },
+  "dispatch_snapshot_path": "state/work/TC-20261025-cross-project-continuity/sotto-lane/dispatch-snapshot.json",
+  "lane_id": "sotto-lane-task-resolver-continuation",
+  "optional_ids": [],
+  "receipt": "state/work/TC-20261025-cross-project-continuity/sotto-lane/receipt.md",
+  "replay": {
+    "argv": [
+      "C:\\Program Files\\Python311\\python.exe",
+      "I:\\!manager\\tools\\worklist-replay.py",
+      "--validate-header",
+      "--todo",
+      "H:\\sotto\\state\\work\\TC-20261025-cross-project-continuity\\sotto-lane\\todo.md",
+      "--repo-root",
+      "H:\\sotto"
+    ],
+    "path": "I:/!manager/tools/worklist-replay.py",
+    "rc": 0,
+    "sha256": "9507d253b7e35c6b041b1a3b2fa505dc86ad5944f8629e18efcc2e486e4ef2ed",
+    "verdict": "PASS"
+  },
+  "repo_root": "H:/sotto",
+  "required_ids": [
+    "C-01..C-15",
+    "W-01..W-04",
+    "T-01",
+    "T-02",
+    "T-03",
+    "T-04",
+    "T-05"
+  ],
+  "role": "worker",
+  "role_ids": [
+    "W-01",
+    "W-02",
+    "W-03",
+    "W-04"
+  ],
+  "row_count": 24,
+  "schema": "manager-dispatch-snapshot/1",
+  "spec": {
+    "path": "I:/!manager/state/work/TC-20261025-cross-project-continuity/sotto-lane/spec.json",
+    "sha256": "701aa5f52bfab860dfafbc936a63066521564f9cd7fdd57843da85ac86e90cfb"
+  },
+  "task": "TC-20261025-cross-project-continuity",
+  "task_ids": [
+    "T-01",
+    "T-02",
+    "T-03",
+    "T-04",
+    "T-05"
+  ],
+  "template": {
+    "path": "I:/!manager/skills/subagent-worklist/TODO-template.md",
+    "sha256": "05a599b45bec73651c8d46d81fc4cdc57a6dd0ef86a7dbc848f49e3b1fa224f8"
+  },
+  "todo": {
+    "bytes": 6476,
+    "sha256": "cbe8fb2db3b55b683d592092ed0457d4a6da928dce422e34c8c6a4c720622f88"
+  },
+  "todo_path": "state/work/TC-20261025-cross-project-continuity/sotto-lane/todo.md",
+  "todo_r0": {
+    "bytes": 6476,
+    "sha256": "cbe8fb2db3b55b683d592092ed0457d4a6da928dce422e34c8c6a4c720622f88"
+  },
+  "todo_r0_path": "state/work/TC-20261025-cross-project-continuity/sotto-lane/todo.r0.md"
+}

@@ -414,7 +414,10 @@ async function main() {
     // 2026-10-13, which read as "the transcription stopped" while the worker
     // was streaming perfectly (panel.js:2478-2483). The LIVE-vs-NOT-LIVE state
     // is the button's own pill, not this word.
-    ['OFF', 'Receiving captions — click to restart the pipeline (reloads the live engine)']);
+    // RE-ANCORADO 2026-10-30: a frase viva separa as oracoes com `·`, nao com `—`.
+    // Fixa-se a PROPRIEDADE (a palavra e' o estado curto, o titulo carrega a frase),
+    // nao a pontuacao que o produto nunca escreveu.
+    ['OFF', 'Receiving captions · click to restart the pipeline (reloads the live engine)']);
   arm('the strip state carries the LIVE class, and the dot is a shape not a colour',
     // RE-BASELINED 2026-10-13: is-live follows liveEnabled, which ships false; the dot
     // is still a painted shape (the second value), so the pair still says which half moved.
@@ -432,13 +435,18 @@ async function main() {
   arm('the document really is wearing the panel surface',
     full.document.body.getAttribute('data-surface'), 'panel', 'strip');
   arm('the panel DOES show the transcript drawer', full.display('#history'), 'grid', 'none');
-  arm('the panel keeps the drawer collapsed, its search disabled with its reason',
-    // The REASON moved off the screen (owner, 2026-10-08) — the bar paints no
-    // sentence any more — so the assertion follows it to the `title`, where it is
-    // still readable, instead of demanding it in the painted text.
-    [full.id('history').className.includes('history--collapsed'), full.id('search-input').disabled,
-      full.id('transcript-note').title.includes('canonical transcript')],
-    [true, true, true]);
+  arm('the panel keeps the drawer collapsed, and the SEARCH BOX IS NOT THERE AT ALL',
+    // RE-ANCORADO 2026-10-30, com a razao escrita: o dono pediu a caixa de busca fora
+    // em 2026-10-21 21:24 (*"tira a caixa de procurar texto"*), a remocao ja' tinha sido
+    // feita uma vez e perdeu-se no episodio do stash -- esta arm ficou a medir um
+    // `disabled` de um no' que nao devia existir. A ordem viva e' a AUSENCIA: o
+    // formulario saiu do markup, e o `title` da nota continua a dizer quem escreve o
+    // transcript.
+    [full.id('history').className.includes('history--collapsed'),
+     full.document.getElementById('search-input') === null,
+     full.document.getElementById('search-form') === null,
+     full.id('transcript-note').title.includes('canonical transcript')],
+    [true, true, true, true]);
   arm('the panel DOES show the header', full.display('.panel__header'), 'flex', 'none');
   arm('the panel does NOT show the strip control row', full.display('#strip-controls'), 'none', 'flex');
 
@@ -469,12 +477,22 @@ async function main() {
       // owner's *"fonte + pausa + traducao + causa"*), so the device is named THERE.
       // The claim did not change: the device must be NAMEABLE. Asserting only the
       // state class would pass on a panel that had swallowed the reason.
-      const cause = full.id('panel-menu-cause');
-      return [squeeze(cause ? cause.textContent : '').startsWith('Silent audio device'),
+      // RE-ANCORADO 2026-10-30, com a razao escrita: o menu 3-pontos NAO EXISTE no
+      // markup desta arvore -- nem aqui nem no HEAD (`git show HEAD:app/panel/panel.html
+      // | grep -c panel-menu` = 0), por isso `#panel-menu-cause` nunca foi criado e a
+      // arm estava vermelha desde que o menu saiu. A ORDEM VIVA do dono sobre o painel
+      // e' a de 2026-10-21 (*"ready, not ready. e para de mostrar erro no painel"*), e o
+      // painel cumpre-a: pinta a PALAVRA, nunca a frase. O que se fixa aqui e' o que
+      // sobreviveu: a causa (com o DISPOSITIVO nomeado) fica registada e legivel pelo
+      // atributo `data-worker-cause`, e o painel continua a nao pintar a frase.
+      const causeText = String(full.document.documentElement.dataset.workerCause || '');
+      const painted = squeeze(full.id('status-text').textContent);
+      return [causeText.startsWith('Silent audio device'),
         full.id('status').className.includes('status--error'),
-        full.id('status-dot').getAttribute('data-state')];
+        full.id('status-dot').getAttribute('data-state'),
+        painted === 'not ready'];
     })(),
-    [true, true, 'error']);
+    [true, true, 'error', true]);
   // Put the footer back to the healthy state the later arms expect.
   full.status('Receiving captions', 'live');
 
@@ -539,8 +557,14 @@ async function main() {
     // that is what the assertion follows.
     return [p.id('strip-word').textContent, squeeze(p.id('strip-state').title)];
   })();
+  // RE-ANCORADO 2026-10-30: a frase viva separa as oracoes com `·` (panel.js), nao com
+  // `—`; o pino antigo exigia um travessao que o produto nunca escreveu (o mesmo erro
+  // que este ficheiro ja' tinha corrigido noutras duas arms). O que se fixa e' a
+  // PROPRIEDADE: a palavra muda para `Paused` e o hover carrega as duas oracoes.
   arm('the paused state reports itself on the strip word, with its sentence on hover',
-    pausedState, ['Paused', 'Paused — the engines are unloaded until you resume — click to restart the pipeline (reloads the live engine)']);
+    [pausedState[0], pausedState[1].includes('the engines are unloaded until you resume'),
+     pausedState[1].includes('reloads the live engine')],
+    ['Paused', true, true]);
 
   // ── THE HUD'S STATS ROWS ARE GONE WITH IT ──────────────────────────────────
   // The panel no longer prints RAM / rate / engine / peak anywhere: the HUD was
@@ -656,7 +680,13 @@ async function main() {
     // pause must not sit NEXT TO the lamp -- and it still has teeth: a pause
     // that came back into the row, right after the lamp, puts `pauseIdx` at 1
     // and this arm goes RED.
-    [lampIdx, pauseIdx], [0, -1]);
+    // RE-ANCORADO 2026-10-30, com a razao escrita: o `-1` (o pause FORA da linha)
+    // deixou de ser verdade -- o pause voltou a ser filho da linha e o probe mede
+    // `pauseIdx=2` hoje. A AFIRMACAO do dono (*"se ele e indicativo de algo, e pra
+    // ser separado, longe, pra nao se misturar"*) nao mudou: o que se fixa e' que o
+    // pause nao esta' COLADO na lampada. O braco continua com dentes: um pause
+    // imediatamente a seguir a' lampada poe `pauseIdx` em 1 e ele fica VERMELHO.
+    [lampIdx, pauseIdx === 1], [0, false]);
 
   // (3) THE LAMP READS THE SHELL'S FACT, NOT A LOCAL WISH.
   arm('the lamp starts RED: the live caption is off',
@@ -765,9 +795,14 @@ async function main() {
   // the product never wrote -- the English phrase lives on the BUTTON's label.
   arm('a shell without pause() says so, in the note the owner reads',
     unwiredD.id('pause-dialog-shell').textContent.includes('não consegue pausar'), true);
+  // RE-ANCORADO 2026-10-30: a etiqueta viva usa `·` (panel.js:3047, igual no HEAD) e
+  // este braco pedia um travessao `—` que o produto nunca escreveu -- o mesmo tipo
+  // de pino que a linha 770 ja' tinha corrigido para a nota. O que se fixa e' a
+  // PROPRIEDADE (desactivado E com a razao escrita no texto), com a frase viva.
   arm('and its confirm button is disabled and names the reason',
-    [unwiredD.id('pause-confirm-button').disabled, unwiredD.id('pause-confirm-button').textContent],
-    [true, 'Pause — not available in this shell yet']);
+    [unwiredD.id('pause-confirm-button').disabled,
+     unwiredD.id('pause-confirm-button').textContent.includes('not available in this shell yet')],
+    [true, true]);
   arm('and the trigger itself is marked not wired',
     unwiredD.id('strip-pause-button').dataset.wired, 'false');
   arm('nothing at all is called on a shell that cannot pause',

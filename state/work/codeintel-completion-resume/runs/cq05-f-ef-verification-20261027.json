@@ -1,0 +1,49 @@
+{
+  "receipt": "cq05-f-ef-verification",
+  "measured_local": "2026-10-27T15:12:00-03:00..2026-10-27T15:13:05-03:00",
+  "workspace": "H:\\sotto",
+  "invoker": "codeintel_grep via the live codeintel MCP server (tools.codeintel.codeintel_grep), 12 calls total, no restart/reindex/bootstrap",
+  "registered_schema_fields": ["pattern: string", "limit?: number (default 30)", "path?: string|null", "regex?: boolean|null"],
+  "F_E": {
+    "multiline_field_in_schema": "ABSENT - the registered signature has exactly pattern, limit, path, regex; no multiline parameter exists",
+    "args_primary": { "pattern": "(?i)(?s)\\b(?:log|log_fn)\\s*\\([^)]*navigating to panel", "path": "app/webview/sotto_webview.py", "regex": true, "multiline": true, "limit": 10 },
+    "args_primary_b": { "pattern": "(?i)(?s)\\b(?:log|log_fn)\\s*\\([^)]*first-panel-open", "path": "app/webview/sotto_webview.py", "regex": true, "multiline": true, "limit": 10 },
+    "rc": 0,
+    "result_primary": { "total": 0, "results": [], "truncated": false, "pattern_mode": "regex", "result_limit": 10, "effective_scope": "app/webview/sotto_webview.py", "wall_ms": 169 },
+    "result_primary_b": { "total": 0, "results": [], "truncated": false, "pattern_mode": "regex", "result_limit": 10, "effective_scope": "app/webview/sotto_webview.py", "wall_ms": 54 },
+    "repeat_without_multiline_field": { "a": { "total": 0, "truncated": false, "wall_ms": 79 }, "b": { "total": 0, "truncated": false, "wall_ms": 97 } },
+    "undeclared_arg_behaviour": "multiline=true was accepted with no validation error and changed nothing: identical 0-row results with and without the field",
+    "start_end_lines": null,
+    "positive_control_same_line": "literal pattern STAGING_LOADED over the same file returns 8 matches including line 6983 (the first line of the two-line log call); literal WORKER_PRELOAD returns 21 including line 9028 (first line of the other two-line call)",
+    "claim": "codeintel_grep is line-oriented: a pattern that must cross the newline inside the same log() call returns 0 rows, while a literal on the first line of that call matches normally; the multiline parameter does not exist in the schema and is inert",
+    "artifact_for_oracle": "state/work/codeintel-completion-resume/runs/cq05-sotto-panel-exhaustive-partition-20261026.json (sha256 8F40A53349EE91E290511240F7881BF2B99AE9E4ADBFAA228F40AB6B8FF63989)"
+  },
+  "F_F": {
+    "input_artifact": "state/work/codeintel-completion-resume/runs/cq05-sotto-multiline-anchor-read-20261026.json (sha256 135BB9903A196F2FC11B9EDD16601E284D9E79727E43CA43EA5374161A27072D)",
+    "exact_input_used": { "pattern": "STAGING_LOADED", "path": "app/webview/sotto_webview.py", "regex": true },
+    "limit_5": { "total": 5, "returned": 5, "truncated": true, "result_limit": 5, "lines": [1247, 6242, 6339, 6983, 6999], "wall_ms": 109 },
+    "limit_6": { "total": 6, "returned": 6, "truncated": true, "result_limit": 6, "lines": [1247, 6242, 6339, 6983, 6999, 7024], "wall_ms": 84 },
+    "limit_8_boundary": { "total": 8, "returned": 8, "truncated": false, "result_limit": 8, "wall_ms": 144 },
+    "limit_9": { "total": 8, "returned": 8, "truncated": false, "result_limit": 9, "wall_ms": 150 },
+    "limit_10": { "total": 8, "returned": 8, "truncated": false, "result_limit": 10, "wall_ms": 64 },
+    "limit_30": { "total": 8, "returned": 8, "truncated": false, "result_limit": 30, "wall_ms": 151 },
+    "population_STAGING_LOADED": 8,
+    "population_window": "app/webview/sotto_webview.py as measured 2026-10-27T15:12-15:13 local; subject file sha256 1E450C90F7F99990D35F2486F69840F5D8E951CB1D20E240925279E659946C26",
+    "second_population": {
+      "pattern": "WORKER_PRELOAD",
+      "limit_5": { "returned": 5, "truncated": true, "lines": [351, 358, 360, 361, 362], "wall_ms": 58 },
+      "limit_6": { "returned": 6, "truncated": true, "lines": [351, 358, 360, 361, 362, 363], "wall_ms": 49 },
+      "limit_30": { "total": 21, "returned": 21, "truncated": false, "lines_includes_9028_at_position": 7, "wall_ms": 113 },
+      "population": 21
+    },
+    "total_field_semantics": "total equals the returned page size, never the population; it is capped by limit and only equals the population when truncated=false",
+    "truncated_semantics": "honest: true iff matches remain beyond the page (limit 8 of population 8 -> false; limit 6 of population 8 -> true)",
+    "refutation": "the earlier claim that truncated=true fires on a full page with nothing omitted is REFUTED. At limit 5 the population was 8, so 3 matches were omitted, not 0; the earlier reading treated total=5 as the population, which it is not. The line-oriented engine defect in F_E stands unchanged."
+  },
+  "revision": { "repo": "H:\\sotto", "head": "c21f8a751b188feec1594ff0f0b6745388b4b5fa", "branch": "feat/speaker-attribution-20261019" },
+  "UNKNOWN": [
+    "wall-clock timestamp per individual call (only wall_ms and a session-level range were captured)",
+    "whether server-side sorting differs from line order above population 21 (untested: every population measured here returned in line order)"
+  ],
+  "side_effects": "none beyond reading two existing artifacts and one time/hash probe: no build, no reindex, no bootstrap, no source edit, no config change, no pane operation"
+}

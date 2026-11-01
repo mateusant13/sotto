@@ -1,0 +1,82 @@
+{
+  "seam": "input-path: o rato do dono NUNCA passa pelo Sotto -- nao existe hook global de input em caminho nenhum",
+  "hazard": "hook global de input vivo (com ou sem painel) -> todos os eventos do rato passam por um callback Python antes de chegarem a quem quer que seja (o rato do dono trava; o resto do sistema nao; sob Ctrl+Alt+Del o Windows nao entrega hooks de utilizador)",
+  "measured": "2026-10-23: `OUTSIDE_CLICK_HOOK installed=true type=WH_MOUSE_LL` 22 ms depois do arranque, com `PANEL_VISIBILITY_ON_SCREEN visible=false panel_shown=false` (o log do dono, `_main/webview-run.log`). 2026-10-30: o dono mandou remover (*\"se esses hooks sao burros ou desnecessarios, remove\"*) e o hook saiu do shell -- o que resta e' um `SetTimer` de 100 ms so' com o painel visivel (25 ms a arrastar), e o invariante passou a ser a AUSENCIA (`C1`: zero `SetWindowsHookEx` no AST)",
+  "oracle": "_main/input-path-oracle.py",
+  "shell": "app/webview/sotto_webview.py",
+  "how_to_read": "cada invocador precisa de um controlo POSITIVO (o braco verde no codigo real) e um NEGATIVO (o mutante nomeado tem de deixar AQUELE braco vermelho). Um invocador sem os dois bloqueia a entrega do seam -- ver `_main/seam-coverage-oracle.py`.",
+  "invokers": [
+    {
+      "id": "I1",
+      "boundary": "arranque do processo -> OutsideClickWatcher.run: o tick NAO arranca sem nada para vigiar",
+      "positive_arm": "C4",
+      "negative_mutant": "timer-sempre"
+    },
+    {
+      "id": "I2",
+      "boundary": "show_panel -> armed = True (o unico sitio que arma)",
+      "positive_arm": "C9",
+      "negative_mutant": "show-nao-arma"
+    },
+    {
+      "id": "I3",
+      "boundary": "hide_panel -> armed = False (o unico sitio que desarma)",
+      "positive_arm": "C3",
+      "negative_mutant": "esconder-nao-desarma"
+    },
+    {
+      "id": "I4",
+      "boundary": "edit mode ON (tray -> click_watcher.edit_mode = True): arrastar a faixa precisa do ritmo de 25 ms",
+      "positive_arm": "C6",
+      "negative_mutant": "ritmo-unico"
+    },
+    {
+      "id": "I5",
+      "boundary": "edit mode OFF (drag terminado -> click_watcher.edit_mode = False): a propriedade TEM de re-armar o tick",
+      "positive_arm": "C8",
+      "negative_mutant": "edit-mode-sem-ritmo"
+    },
+    {
+      "id": "I6",
+      "boundary": "encerramento -> OutsideClickWatcher.stop (KillTimer)",
+      "positive_arm": "C7",
+      "negative_mutant": "stop-nao-mata"
+    },
+    {
+      "id": "I7",
+      "boundary": "caminho de excepcao / estado preso -> o mesmo `WM_TIMER` re-le a regra a cada tick",
+      "positive_arm": "C4",
+      "negative_mutant": "timer-sempre"
+    },
+    {
+      "id": "I8",
+      "boundary": "mudanca de estado noutra thread -> WM_TIMER postado por `_apply_timer`",
+      "positive_arm": "C8",
+      "negative_mutant": "edit-mode-sem-ritmo"
+    },
+    {
+      "id": "I9",
+      "boundary": "ator / caminho alternativo: um `SetWindowsHookEx` (de qualquer tipo, teclado incluido) nao pode voltar ao caminho vivo",
+      "positive_arm": "C1",
+      "negative_mutant": "hook-volta"
+    },
+    {
+      "id": "I10",
+      "boundary": "ator / caminho alternativo: uma SEGUNDA constante de hook (`WH_KEYBOARD_LL`) nao pode existir",
+      "positive_arm": "C1",
+      "negative_mutant": "hook-de-teclado"
+    },
+    {
+      "id": "I11",
+      "boundary": "a regra do tick (armed or edit_mode) nao pode ser esquecida nem alargada",
+      "positive_arm": "C2",
+      "negative_mutant": "regra-sempre"
+    },
+    {
+      "id": "I12",
+      "boundary": "o tick NAO fecha o painel por si: a decisao passa por `_consider` e as guardas dela",
+      "positive_arm": "C10",
+      "negative_mutant": "tick-fecha-direto"
+    }
+  ]
+}

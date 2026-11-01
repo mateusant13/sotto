@@ -249,17 +249,43 @@ def check_facts(shell_text, worker_text):
                     and isinstance(node.args[0], ast.Constant) \
                     and node.args[0].value == 'preload':
                 calls_preload = True
-    ok = (delay is not None and delay > 0
+    # UM TIMER FOI TROCADO POR UM WATCHER EM 2026-10-23, DE PROPOSITO (o `Timer` disparava
+    # aos 20 s e nao sabia o que o dono estava a fazer; o watcher espera que ele pare).
+    # Este braco pinava o TIMER e por isso acusava o codigo de hoje -- um braco que mede a
+    # FORMA e nao o invariante. O invariante e': (a) ha' um atraso positivo, (b) o corpo
+    # nao corre no chamador, (c) ha' saida por ambiente, (d) o motivo 'preload' e' aceite.
+    deferred = (_has_call(schedule_node, 'Timer')
+                or _has_call(schedule_node, 'Thread'))
+    # (b) o que NAO pode acontecer: o agendador chamar `start_worker` as direitas (era uma
+    # carga de ~2 GB a bloquear arranque) ou juntar-se a' thread (era o mesmo bloqueio).
+    synchronous = any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr in ('start_worker', 'join')
+        for node in ast.walk(schedule_node)) if schedule_node is not None else True
+    # ATENCAO 2026-10-30: O ATRASO PASSOU A SER ZERO, por ordem do dono
+    # (*"a porra da legenda ao vivo levou uns 20 segundos pra comecar a mostrar.
+    # nao era pra essa merda estar carregada desde sempre e mostrar
+    # IMEDIATAMENTE?"*). O braco pinava `delay > 0`, que era a cura de 2026-10-23
+    # para a queixa OPOSTA -- mede a FORMA de uma versao, nao o invariante. O
+    # invariante que sobrevive aos dois dias: o preload e' DEFERIDO (nunca corre no
+    # chamador), tem escape por ambiente, e a espera pelo dono quieto CONTINUA
+    # escrita para quem passar um atraso (`base <= 0.0 or idle >= IDLE_S`).
+    idle_gate = ('idle >= WORKER_PRELOAD_IDLE_S' in
+                 (ast.get_source_segment(shell_text, _func_node(shell_text, '_preload_when_idle'))
+                  or ''))
+    ok = (delay is not None and delay >= 0 and idle_gate
           and schedule_node is not None and body_node is not None
           and 'SOTTO_NO_PRELOAD' in schedule_src
-          and _has_call(schedule_node, 'Timer')
+          and deferred and not synchronous
           and 'preload' in reasons
           and calls_preload)
     facts.append((
         'F4 the model is ready before the owner asks', ok,
-        'the preload must be scheduled with a delay, be opt-out-able and '
-        'use the reason \'preload\' -- which `start_worker` only accepts if '
-        'it is in START_REASONS'))
+        'the preload must be DEFERRED (a Timer, or the idle watcher thread), carry a '
+        'NON-NEGATIVE delay whose idle gate still exists, be opt-out-able by '
+        'SOTTO_NO_PRELOAD, never run in the caller (no start_worker/join in the '
+        'scheduler), and use the reason \'preload\' -- '
+        'which `start_worker` only accepts if it is in START_REASONS'))
 
     # F5 -- the CUDA EP's options travel with the provider names.
     options_node = _func_node(worker_text, 'cuda_provider_options')

@@ -73,8 +73,16 @@ def watched_worker_files():
     return {'sotto_worker.py', 'redux_live.py'}
 
 
-#: The renderer assets that reload in place. Same set as hot-reload.js.
-PANEL_ASSETS = frozenset(('panel.html', 'panel.css', 'panel.js'))
+#: The renderer assets that reload in place.
+#:
+#: `stable-words.js` entrou a 2026-10-30: a pagina carrega-o com o seu proprio
+#: `<script>`, e um reload do `panel.html` volta a busca-lo -- mas uma edicao SO'
+#: nesse ficheiro nao acendia watcher nenhum, por isso a regra das palavras
+#: incompletas ficava a espera de um restart que ninguem lhe devia. O comentario
+#: antigo dizia "Same set as hot-reload.js", e esse ficheiro vive em
+#: `app/_legacy-electron/`, que esta MORTO: nao ha segunda lista para manter.
+PANEL_ASSETS = frozenset(('panel.html', 'panel.css', 'panel.js',
+                          'stable-words.js'))
 
 # --- Win32, read from the DLL, never assumed ------------------------------
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)

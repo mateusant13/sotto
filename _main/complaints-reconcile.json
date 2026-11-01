@@ -1,0 +1,537 @@
+{
+  "schema": "sotto-complaints-reconcile/1",
+  "measured_on": "2026-10-25",
+  "why": "Duas listas do mesmo dono, sobre a mesma coisa, com veredictos opostos: o backlog de 2026-10-22 conta 10 ABERTO e 6 PARCIAL; o documento de fecho conta 31 seccoes fechadas sobre o mesmo corpus. Uma linha por reclamacao, e a contradicao deixa de poder ser silenciosa. Ver _main/complaints-reconcile-gate.py.",
+  "sources": {
+    "backlog": "runs/TC-20261022-sotto-backlog.md",
+    "closure": ".opencode/complaints-closure.md",
+    "corpus": "I:\\\\!manager\\\\state\\\\herdr\\\\complaints\\\\sotto.md"
+  },
+  "join_method": "citacao exacta das palavras do dono contra o corpus (recall medido 12/39) MAIS ligacoes declaradas, cada uma verificada por vocabulario distintivo (>=5 chars, duas em comum) contra a mensagem citada; um id que a citacao exacta encontre TEM de estar declarado.",
+  "known_defects": [
+    {
+      "where": "R28",
+      "defect": "auto-fecho: a seccao 'finaliza o Sotto, tudo que reclamei tem de estar feito' e fechada com `python _main/complaints-closure-gate.py --self`, cuja saida declara o proprio documento fechado -- a evidencia e o documento a julgar-se. E o literal registado em L942 diz `sections=31 closed=30`, enquanto hoje o documento tem 31 fechadas: a evidencia citada ja nao descreve o documento que a contem, e nada a re-mede.",
+      "owner": "dono do documento de fecho (fora desta lane)",
+      "class": "BUG-20261023-03 (documentacao afirma o contrario da medicao) com a variante auto-referente"
+    }
+  ],
+  "rows": [
+    {
+      "id": "A1",
+      "backlog_state": "partial",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:19",
+      "reconciled": "partial",
+      "corpus_ids": [
+        "L122"
+      ],
+      "blocker": "VRAM de terceiros medida (services.archive_transcribe, codeintel.daemon); falta o *slip* sob inferencia, que o proprio backlog nomeia.",
+      "gap": "R21 fecha 'o Sotto causa stutter?' com uma ferramenta de log; nao mede a VRAM do Sotto com outra transcricao a correr, que e a frase do dono."
+    },
+    {
+      "id": "A2",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:20",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 20
+      }
+    },
+    {
+      "id": "A3",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:21",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L120"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 21
+      }
+    },
+    {
+      "id": "A4",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:22",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L120"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 22
+      }
+    },
+    {
+      "id": "A5",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:23",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L125"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 23
+      }
+    },
+    {
+      "id": "B1",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:29",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 29
+      }
+    },
+    {
+      "id": "B2",
+      "backlog_state": "partial",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:30",
+      "reconciled": "partial",
+      "corpus_ids": [],
+      "blocker": "Implementado por outra lane; falta a confirmacao do dono de que a lista traz todas as linguas."
+    },
+    {
+      "id": "B3",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:31",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 31
+      }
+    },
+    {
+      "id": "B4",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:32",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 32
+      }
+    },
+    {
+      "id": "B5",
+      "backlog_state": "partial",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:33",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L102"
+      ],
+      "override": {
+        "reason": "a guarda existe, MEDE-SE contra o historico do dono e esta LIGADA: `youtube_window.collapse_growth` (79 iguais consecutivas, 0 de crescimento por prefixo, 6 de sobreposicao) e chamada no caminho vivo em `app/webview/sotto_webview.py:2408-2416`, com `live_lines(cues, t, 2)`. O oraculo da janela passa 12/12. LIMITE declarado: o escritor do armazem (`history_append`) continua sem guarda propria -- defesa em profundidade ausente, nao um caminho aberto",
+        "measured_on": "2026-10-25",
+        "evidence": "_main/youtube-window-oracle.py -> BATTERY-VERDICT youtube-window-oracle PASS checks=12 fail=0; app/webview/sotto_webview.py:2408-2416 chama youtube_window.collapse_growth"
+      },
+      "evidence": {
+        "kind": "command",
+        "cmd": "python _main/youtube-window-oracle.py",
+        "expect": "BATTERY-VERDICT youtube-window-oracle PASS",
+        "rc": 0
+      }
+    },
+    {
+      "id": "B6",
+      "backlog_state": "partial",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:34",
+      "reconciled": "partial",
+      "corpus_ids": [
+        "L145",
+        "L149"
+      ],
+      "blocker": "A janela de DUAS linhas chegou ao caminho vivo (`sotto_webview.py:2408`, `live_lines(cues, t, 2)`) e o oraculo passa 12/12; falta a metade pintada (a re-embrulhar pela largura).",
+      "gap": "R26 prova a escolha da janela de duas linhas (oraculo, 12/12) mas nao o painel PINTADO: a quebra de linha que o dono ve depende da largura do renderizado, e nenhum probe de R26 le o DOM pintado."
+    },
+    {
+      "id": "B7",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:35",
+      "reconciled": "open",
+      "corpus_ids": [
+        "L122"
+      ],
+      "blocker": "Falta decidir se o texto errado vem do audio de teste (`plain-30s.wav`); ninguem re-mede com audio conhecido.",
+      "gap": "R21 e um log de performance: nao mede a qualidade do texto transcrito, que e a reclamacao."
+    },
+    {
+      "id": "C1",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:41",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 41
+      }
+    },
+    {
+      "id": "C2",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:42",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 42
+      }
+    },
+    {
+      "id": "C3",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:43",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 43
+      }
+    },
+    {
+      "id": "C4",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:44",
+      "reconciled": "open",
+      "corpus_ids": [
+        "L121"
+      ],
+      "blocker": "Tres hipoteses eliminadas por medicao; `theme-switcher.js:53` confirma Broadcast=`theme-2`; falta a metade renderizada.",
+      "gap": "R15 corre 10 probes sobre o gerador de temas e sobre a matriz renderizada; a reclamacao e sobre o tema broadcast RENDERIZADO, e a matriz mede bordas e cantos, nao o que o dono chama 'bugado'."
+    },
+    {
+      "id": "C5",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:45",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L100"
+      ],
+      "override": {
+        "reason": "o backlog de 2026-10-22 cita `panel.html:601-614` com o formulario de procura presente; hoje essas linhas sao o COMENTARIO que registra a ordem do dono (2026-10-21 21:24, verbatim) e a assercao mede 0 nos de fio e 0 no panel.js",
+        "measured_on": "2026-10-25",
+        "evidence": "_main/complaints-assert.py search-box-absent -> RESULT search-box-absent PASS (search form nodes: 0, search wiring in panel.js: 0); app/panel/panel.html:599-607 documenta a ordem e a remocao"
+      },
+      "evidence": {
+        "kind": "command",
+        "cmd": "python _main/complaints-assert.py search-box-absent",
+        "expect": "RESULT search-box-absent PASS",
+        "rc": 0
+      }
+    },
+    {
+      "id": "C6",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:46",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L100"
+      ],
+      "override": {
+        "reason": "a assercao de R16 e uma medicao real (le panel.css e panel.html com os comentarios removidos) e passa hoje: 0 regras que pintem estado por `[aria-pressed]`, 0 palavra em `::after`, 2 bolas `.live-lamp` e a regra `data-live=\"on\"`",
+        "measured_on": "2026-10-25",
+        "evidence": "_main/complaints-assert.py onoff-bars-absent -> RESULT onoff-bars-absent PASS (regras=0, ::after=0, bolas=2, data-live=on=1)"
+      },
+      "evidence": {
+        "kind": "command",
+        "cmd": "python _main/complaints-assert.py onoff-bars-absent",
+        "expect": "RESULT onoff-bars-absent PASS",
+        "rc": 0
+      }
+    },
+    {
+      "id": "C7",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:47",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L100"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 47
+      }
+    },
+    {
+      "id": "C8",
+      "backlog_state": "decided",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:48",
+      "reconciled": "decided",
+      "corpus_ids": [
+        "L100"
+      ],
+      "decision_note": "decidido pelo dono em 2026-10-22 06:4x; nao e um defeito a fechar por medicao, e uma ordem a cumprir",
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 48
+      }
+    },
+    {
+      "id": "C9",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:49",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 49
+      }
+    },
+    {
+      "id": "C10",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:50",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 50
+      }
+    },
+    {
+      "id": "C11",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:51",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 51
+      }
+    },
+    {
+      "id": "C12",
+      "backlog_state": "partial",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:52",
+      "reconciled": "partial",
+      "corpus_ids": [],
+      "blocker": "10 sequencias distintas medidas (era 9); falta a confirmacao do desenho pelo dono."
+    },
+    {
+      "id": "C13",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:53",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L106"
+      ],
+      "override": {
+        "reason": "o oraculo dos TRES overlays passa 33/33 hoje e o que ele afirma e o que o dono pediu: A3 prova que o overlay da legenda e gated em `data-float` (`display:none` por omissao, `block` so em strip+float), A2 que a superficie do painel direito e panel-scoped, C3 que nao existe no do historico/transcricao no markup do strip e B1 que nenhuma regra pinta fundo ou caixa no proprio `.caption-float`. LIMITE: prova de REGRA, nao censo de pixeis do painel direito pintado -- nenhuma sonda desta bateria faz esse censo",
+        "measured_on": "2026-10-25",
+        "evidence": "node _main/three-overlays-oracle.js -> 33 check(s), 0 failed, VERDICT: PASS; app/panel/panel.css gate do overlay em `data-float`"
+      },
+      "evidence": {
+        "kind": "command",
+        "cmd": "node _main/three-overlays-oracle.js",
+        "expect": "VERDICT: PASS",
+        "rc": 0
+      }
+    },
+    {
+      "id": "C14",
+      "backlog_state": "partial",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:54",
+      "reconciled": "partial",
+      "corpus_ids": [
+        "L100"
+      ],
+      "blocker": "Implementado por outra lane; falta a confirmacao do dono.",
+      "gap": "R16/R18 chegam por L100, uma mensagem longa que mistura a caixa de procura com o layout: os botoes de fechar/hide e 3 pontos exigem o painel renderizado, e nenhum probe de R16/R18 le o DOM pintado."
+    },
+    {
+      "id": "C15",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:55",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L100"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 55
+      }
+    },
+    {
+      "id": "C16",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:56",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 56
+      }
+    },
+    {
+      "id": "C17",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:57",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L100"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 57
+      }
+    },
+    {
+      "id": "C18",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:58",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L100"
+      ],
+      "override": {
+        "reason": "a marca foi MEDIDA no documento vivo (o `panel.html` que se entrega, em Edge sem janela, por tema e em 4 larguras) e nenhuma das 36 medicoes tem o texto mais largo do que a caixa: `over=0` em todas. O documento de 2026-10-22 dava um LIMITE INFERIOR e dizia que um limite nao e uma medicao -- esta e. LIMITE: 4 larguras medidas, nao todas as larguras de janela que o dono usa",
+        "measured_on": "2026-10-25",
+        "evidence": "node _main/brand-truncation-probe.mjs -> TOTAL: 36 brand measurement(s) across 4 widths; 0 with the text wider than its box"
+      },
+      "evidence": {
+        "kind": "command",
+        "cmd": "node _main/brand-truncation-probe.mjs",
+        "expect": "0 with the text wider than its box",
+        "rc": 0
+      }
+    },
+    {
+      "id": "C19",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:59",
+      "reconciled": "closed",
+      "corpus_ids": [
+        "L76"
+      ],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 59
+      }
+    },
+    {
+      "id": "C20",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:60",
+      "reconciled": "open",
+      "corpus_ids": [
+        "L107"
+      ],
+      "blocker": "E um pedido de FUNCIONALIDADE, nao um defeito: o proprio backlog o declara assim.",
+      "gap": "R15 mede o gerador de temas; esta linha e um pedido de FUNCIONALIDADE (aplicar o design ao tema atual ou global) que o proprio backlog marcou como fora do backlog, e nenhum probe de tema prova que o botao aplica."
+    },
+    {
+      "id": "C21",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:61",
+      "reconciled": "open",
+      "corpus_ids": [
+        "L75"
+      ],
+      "blocker": "Mede-se no renderizado (espacamento/linha esquerda), que esta fora do alcance destes probes.",
+      "gap": "R15 mede o gerador; o espacamento e a linha esquerda so existem no renderizado, que nenhum probe desta bateria le."
+    },
+    {
+      "id": "C22",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:62",
+      "reconciled": "open",
+      "corpus_ids": [
+        "L102"
+      ],
+      "blocker": "Mecanismo por confirmar; o B5 cobria o duplicado, nao o display/log da legenda do painel.",
+      "gap": "R15 chega por L100; o log/display da legenda do painel nao e o tema nem a caixa de procura."
+    },
+    {
+      "id": "D1",
+      "backlog_state": "open",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:72",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "override": {
+        "reason": "o backlog e de 2026-10-22 e declara um buraco em `on_external_captions_released`; o BUG-20261023-03 mediu que o metodo JA repoe o worker com as guardas, e o oraculo do resume prova-o hoje com 8 bracos",
+        "measured_on": "2026-10-25",
+        "evidence": "_main/external-resume-oracle.py -> EXTERNAL-RESUME VERDICT PASS (8 verdes, 0 vermelhos), rc=0"
+      },
+      "evidence": {
+        "kind": "command",
+        "cmd": "python _main/external-resume-oracle.py",
+        "expect": "EXTERNAL-RESUME VERDICT PASS",
+        "rc": 0
+      }
+    },
+    {
+      "id": "D2",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:73",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 73
+      }
+    },
+    {
+      "id": "D3",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:74",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 74
+      }
+    },
+    {
+      "id": "D4",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:75",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 75
+      }
+    },
+    {
+      "id": "E1",
+      "backlog_state": "closed",
+      "backlog_cite": "runs/TC-20261022-sotto-backlog.md:76",
+      "reconciled": "closed",
+      "corpus_ids": [],
+      "evidence": {
+        "kind": "record",
+        "file": "runs/TC-20261022-sotto-backlog.md",
+        "line": 76
+      }
+    }
+  ]
+}

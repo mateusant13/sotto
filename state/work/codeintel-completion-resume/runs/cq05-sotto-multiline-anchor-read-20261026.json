@@ -1,0 +1,53 @@
+{
+  "receipt": "cq05-sotto-multiline-anchor-read",
+  "measured": "2026-10-26",
+  "target_file": "app/webview/sotto_webview.py",
+  "probe": "CodeIntel-only recovery of the two multiline log calls whose 'panel' argument sits on a continuation line; no rg and no filesystem read was used in this probe",
+  "tools_resolved": { "grep": "tools.codeintel.codeintel_grep", "read": "tools.codeintel.codeintel_read" },
+  "calls": [
+    {
+      "n": 1, "tool": "codeintel_grep", "args": { "pattern": "STAGING_LOADED", "path": "app/webview/sotto_webview.py", "regex": true, "limit": 5 },
+      "result": { "total": 5, "rows": 5, "truncated": true, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 157, "serialized_bytes": 2908,
+        "line_numbers": [1247, 6242, 6339, 6983, 6999] },
+      "anchor_hit": "yes - the call site 6983 is the 4th of 5 rows, so the page reached it"
+    },
+    {
+      "n": 2, "tool": "codeintel_read", "args": { "file_path": "app/webview/sotto_webview.py", "lines": "6983-6986" },
+      "result": { "latency_ms": 1604, "serialized_bytes": 620, "lines_returned": 4, "context_complete": true,
+        "content": "log(f'STAGING_LOADED core={\"yes\" if self.core else \"no\"} -> '\n                f'navigating to panel {PANEL_HTML}')\n            self.window.load_url(file_url(PANEL_HTML))\n            return",
+        "recovers_panel_argument": "yes - f'navigating to panel {PANEL_HTML}' is present, i.e. the panel mention on the continuation line is recovered" }
+    },
+    {
+      "n": 3, "tool": "codeintel_grep", "args": { "pattern": "WORKER_PRELOAD", "path": "app/webview/sotto_webview.py", "regex": true, "limit": 5 },
+      "result": { "total": 5, "rows": 5, "truncated": true, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 93, "serialized_bytes": 2705,
+        "line_numbers": [351, 358, 360, 361, 362] },
+      "anchor_hit": "NO - all five rows are comments/constants near the imports (WORKER_PRELOAD_DELAY_S and the 2026-10-23 owner note); the call site 9028 is beyond the 5-row page and was NOT reachable with this anchor"
+    },
+    {
+      "n": 4, "tool": "codeintel_grep", "args": { "pattern": "WORKER_PRELOAD declined", "path": "app/webview/sotto_webview.py", "regex": true, "limit": 5 },
+      "note": "refinement issued because call 3 truncated before reaching the site; this is the same recovery idea with a unique first-line anchor",
+      "result": { "total": 1, "rows": 1, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 158, "line_numbers": [9028] },
+      "anchor_hit": "yes"
+    },
+    {
+      "n": 5, "tool": "codeintel_read", "args": { "file_path": "app/webview/sotto_webview.py", "lines": "9028-9031" },
+      "result": { "latency_ms": 1844, "serialized_bytes": 583, "lines_returned": 4, "context_complete": true,
+        "content": "log('WORKER_PRELOAD declined reason=env SOTTO_NO_PRELOAD=1 '\n                'start=first-panel-open')\n            return False\n        if delay_s is None:",
+        "recovers_panel_argument": "yes - 'start=first-panel-open' is present on the continuation line" }
+    }
+  ],
+  "verdict": {
+    "recovery_path_works": true,
+    "conditions": "codeintel_grep on a first-line anchor followed by codeintel_read over start..start+3 recovers the full multiline call, arguments and both continuation lines included, for both sites",
+    "failure_mode_measured": "the recovery is only as good as the anchor's uniqueness under the page limit. The bare anchor WORKER_PRELOAD returned 5 rows and none of them was the call site (all were comments), so at limit 5 that site was unreachable; the refined anchor 'WORKER_PRELOAD declined' (total=1) reached it immediately",
+    "context_completeness": "both reads returned exactly the 4 requested lines with no omission marker, and each returned window contains the complete two-line call plus the following two statements, so the argument is provably complete rather than clipped",
+    "truncated_flag_semantics": "measured anomaly worth recording: with limit=5, STAGING_LOADED and WORKER_PRELOAD both reported total=5, rows=5, truncated=true, i.e. the flag fires when the page fills the limit rather than when rows are known to be omitted (the refined query total=1/rows=1 reported truncated=false). truncated=true must therefore be read as 'page may be incomplete', not as proof of missing rows",
+    "latency": "grep 93-158 ms; codeintel_read is much slower at 1604-1844 ms per 4-line window",
+    "missing_page": "one real miss: bare WORKER_PRELOAD at limit 5 never reached line 9028 (see call 3); no codeintel_read window could be taken from it, which is why call 4 was needed"
+  },
+  "not_used": "no rg call, no filesystem read, no edit, no index refresh, no build, no test, no pane operation in this probe; the two start lines 6983 and 9028 came from the earlier receipt cq05-sotto-panel-exhaustive-partition-20261026.json, and were confirmed here only through codeintel_grep plus codeintel_read",
+  "NO_VERDICT": [
+    "whether these are the ONLY multiline panel calls: this probe recovers the two known sites and does not prove there is no third, because discovering an unknown multiline site requires an oracle that can see across line breaks, which codeintel_grep is measured not to be",
+    "MCP source revision - envelopes expose effective_scope/result_limit/pattern_mode/truncated only, no version or commit field"
+  ]
+}

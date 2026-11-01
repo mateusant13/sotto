@@ -81,6 +81,57 @@ def describe(err: int) -> str:
     return f'error {err}'
 
 
+APP_LOG = os.path.join(HERE, 'webview-run.log')
+MUTEX_NAME = 'Local\\SottoShell'
+
+
+def live_sotto():
+    """O pid da instancia VIVA do Sotto, lido do log que ela propria escreve.
+
+    Devolve `(pid, sha)` ou `(None, None)`. `SHELL_STARTUP_STAGE pid=` e' a linha que a
+    propria app escreve ANTES de tomar a mutex, por isso ela nomeia quem esta' a arrancar;
+    a prova de que e' a viva e' o pid responder no processo.
+    """
+    pid = None
+    sha = None
+    if not os.path.exists(APP_LOG):
+        return None, None
+    with open(APP_LOG, 'r', encoding='utf-8', errors='replace') as fh:
+        for line in fh:
+            if 'SHELL_STARTUP_STAGE' in line and 'pid=' in line:
+                for token in line.split():
+                    if token.startswith('pid='):
+                        try:
+                            pid = int(token[4:])
+                        except ValueError:
+                            pid = None
+            elif 'SHELL_CODE_ID' in line and 'sha256=' in line:
+                for token in line.split():
+                    if token.startswith('sha256='):
+                        sha = token[7:]
+    if pid is None:
+        return None, None
+    import ctypes.wintypes as _wt
+    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    handle = k32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None, sha
+    k32.CloseHandle(handle)
+    return pid, sha
+
+
+def last_registration():
+    """A ultima linha `HOTKEY_REGISTERED` do log, e se ela diz `register=true`."""
+    if not os.path.exists(APP_LOG):
+        return None
+    last = None
+    with open(APP_LOG, 'r', encoding='utf-8', errors='replace') as fh:
+        for line in fh:
+            if 'HOTKEY_REGISTERED' in line or 'HOTKEY_REGISTER_FAILED' in line:
+                last = line.rstrip()
+    return last
+
+
 def main() -> int:
     # The shell forces a message queue into existence before registering
     # (`PeekMessageW` on a thread that has never pumped is refused), so this probe
@@ -115,12 +166,30 @@ def main() -> int:
         say('  PANEL_VISIBILITY_* to see whether the window is ever MAPPED.')
     else:
         free = [k for k, v in results.items() if v and 'SHIPPED' not in k]
+        holder, sha = live_sotto()
+        reg = last_registration() or ''
+        # A ARMADILHA QUE ISTO CORRIGE (medido 2026-10-30): com a app VIVA, o Alt+C esta'
+        # tomado -- PELA PROPRIA APP. A sonda lia "outro programa tomou-o" e o passo da
+        # bateria ficava vermelho para sempre, a acusar um defeito que nao existe. Quem
+        # distingue e' o log: a instancia viva registou-o, e o pid esta' vivo.
+        if holder and 'register=true' in reg and 'Alt+C' in reg:
+            say('VERDICT: Alt+C IS HELD BY THE LIVE SOTTO ITSELF (pid=%d, code=%s).' % (holder, sha))
+            say('  This probe registered nothing because the app in front of it owns the key.')
+            say('  That is the NORMAL state with the app running -- not a defect, and not')
+            say('  evidence for a stranger. Stop the app and re-run to test a third party.')
+            say('  Log line: %s' % reg[-120:])
+            # rc=0: com a app viva o normal E' ela deter a tecla. O passo da bateria so'
+            # pode ficar vermelho quando o detentor NAO e' o Sotto (ver o fim desta funcao).
+            return 0
         say('VERDICT: Alt+C IS TAKEN — another program owns MOD_ALT + C.')
         say('  THE APP CANNOT WORK AS SHIPPED ON THIS BOX: `HotkeyThread.run` logs')
         say('  HOTKEY_REGISTER_FAILED and returns, so Alt+C answers nothing and the')
         say('  owner is shown no message at all (the panel is hidden by design).')
         say(f'  Free alternatives measured just now: {free if free else "(none)"}')
-    return 0
+        if holder:
+            say('  (a Sotto pid=%d esta viva mas o log nao diz register=true -- ver %s)'
+                % (holder, APP_LOG))
+        return 1
 
 
 if __name__ == '__main__':

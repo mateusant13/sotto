@@ -127,6 +127,45 @@ _PS_SNAPSHOT = (
 )
 
 
+DEFAULT_SHELL_LOG_FOR_CENSUS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'webview-run.log')
+
+
+def shells_from_log(path=None):
+    """As shells que o PROPRIO log nomeia -- a identidade que sobrevive ao censo.
+
+    MEDIDO 2026-10-30: o censo por `Get-CimInstance Win32_Process` com
+    `Name='pythonw.exe'` deu **zero** enquanto a app corria, porque (a) esta build corre
+    como `python.EXE` e (b) o `CommandLine` de um processo largado por token/tarefa vem
+    VAZIO. O `SHELL_STARTUP_STAGE pid=` que a app escreve ao arrancar e' a identidade que
+    o repo ja' declarou valida; o pid so' conta se ainda responder.
+    """
+    import re
+    path = path or DEFAULT_SHELL_LOG_FOR_CENSUS
+    out = []
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+            lines = fh.readlines()
+    except OSError:
+        return out
+    for line in reversed(lines[-4000:]):
+        match = re.search(r'SHELL_STARTUP_STAGE pid=(\d+)', line)
+        if not match:
+            continue
+        pid = int(match.group(1))
+        if pid in [row['pid'] for row in out]:
+            continue
+        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        handle = k32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            continue
+        k32.CloseHandle(handle)
+        out.append({'pid': pid, 'created_ms': None, 'log': path})
+        if len(out) >= 3:
+            break
+    return out
+
+
 def live_sotto_shells() -> tuple[list[dict], str]:
     """Live Sotto shells as `{pid, created_ms, log}`, or `[]` with the reason.
 
@@ -155,7 +194,9 @@ def live_sotto_shells() -> tuple[list[dict], str]:
         return [], f'powershell rc={proc.returncode} stderr={proc.stderr.strip()[:300]}'
     text = (proc.stdout or '').strip()
     if not text:
-        return [], ''  # a real, empty answer: no Sotto shell is running
+        # Um censo vazio NAO e' "nao ha shell": e' a resposta que o censo sabe dar nesta
+        # build (processo `python.EXE`, `CommandLine` vazio). O log responde melhor.
+        return shells_from_log(), ''
     try:
         rows = json.loads(text)
     except ValueError as exc:
@@ -181,6 +222,9 @@ def live_sotto_shells() -> tuple[list[dict], str]:
         elif isinstance(created, (int, float)):
             ms = int(created)
         out.append({'pid': int(r.get('ProcessId') or 0), 'created_ms': ms, 'log': log})
+    for row in shells_from_log():
+        if all(row['pid'] != seen['pid'] for seen in out):
+            out.append(row)
     return out, ''
 
 
@@ -213,6 +257,15 @@ def shell_log_state(path: str) -> dict:
     st['failed'] = re.findall(REGISTERED_FAILED_RE, text)
     if st['registered']:
         st['last_registered'] = st['registered'][-1]
+    # A ULTIMA LINHA DE HOTKEY do ficheiro inteiro: e' ela que diz se o estado ATUAL e'
+    # "registou" ou "falhou". Sem isto, um `HOTKEY_REGISTERED` de uma instancia morta
+    # (seguido de `HOTKEY_REGISTER_FAILED` da viva) leria como "a app detem a tecla".
+    tail = [line for line in text.splitlines()
+            if 'HOTKEY_REGISTERED' in line or 'HOTKEY_REGISTER_FAILED' in line
+            or 'HOTKEY_FALLBACK' in line]
+    st['last_line'] = tail[-1] if tail else ''
+    st['last_is_registration'] = bool(tail) and 'HOTKEY_REGISTERED' in tail[-1] \
+        and 'HOTKEY_REGISTER_FAILED' not in tail[-1]
     return st
 
 
@@ -288,6 +341,17 @@ def who_holds_alt_c(shell_mod, accelerator: str) -> dict:
         fresh = None
         if st['mtime_ms'] is not None and created is not None:
             fresh = st['mtime_ms'] >= created
+        elif created is None:
+            # O CENSO VEIO DO LOG, logo nao ha' idade do processo para comparar. A prova
+            # equivalente e' temporal e NAO depende do censo: a ultima linha
+            # `HOTKEY_REGISTERED` do ficheiro tem de ser a ULTIMA escrita desse log, e o
+            # pid que ele nomeia tem de estar vivo (ja' verificado em `shells_from_log`).
+            # Sem isto o instrumento acusava "outro programa" contra a propria app
+            # (medido 2026-10-30: fresh=None com a app viva e a deter a tecla).
+            last_line = st.get('last_line') or ''
+            fresh = bool(st.get('last_is_registration') and
+                         st['last_registered'] == accelerator and
+                         accelerator in last_line)
         st['fresh'] = fresh
         outcome['logs'][sh['pid']] = st
         says_alt_c = st['last_registered'] == accelerator and fresh is True

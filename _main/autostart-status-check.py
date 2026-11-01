@@ -40,12 +40,29 @@ def shell_constants():
         src = handle.read()
     # Quote-free on purpose: the first version embedded quote characters inside a double-quoted
     # Python string and did not compile, so this parses the value between the delimiters instead.
-    name = re.search(r"AUTOSTART_VALUE_NAME\s*=\s*.(.*?).$", src, re.MULTILINE)
-    key = re.search(r"AUTOSTART_RUN_KEY\s*=\s*.(.*?).$", src, re.MULTILINE)
+    # AS CONSTANTES LIDAS COMO VALORES, NAO COMO TEXTO (defeito medido 2026-10-30).
+    # O regex antigo capturava o TEXTO da linha: `AUTOSTART_RUN_KEY` e escrito com
+    # barras duplas no codigo-fonte (`Software\\Microsoft\\...`), portanto o winreg
+    # recebia um caminho com `\\` a serio, o OpenKey falhava com FileNotFoundError e
+    # este passo anunciava `state=off` enquanto o shell dizia `AUTOSTART=on` -- um
+    # DESACORDO fabricado pelo instrumento, e um passo vermelho que pedia uma mudanca
+    # no registo do dono para ficar verde. O `ast` devolve o VALOR da constante, que e
+    # exactamente o que o shell usa.
+    import ast
+    consts = {}
+    for node in ast.parse(src).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            try:
+                consts[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError, SyntaxError):
+                continue
+    name = consts.get("AUTOSTART_VALUE_NAME")
+    key = consts.get("AUTOSTART_RUN_KEY")
     if not name or not key:
         print("sotto: AUTOSTART_CHECK_FAILED could not parse the shell constants")
         sys.exit(2)
-    return name.group(1), key.group(1)
+    return name, key
 
 
 def read_state(name, keypath):

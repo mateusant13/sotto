@@ -263,6 +263,14 @@ def _load_module_from(path, name):
     return mod
 
 
+def _unlink(path):
+    """`os.remove` que nao reclama -- limpeza de mutante, nunca um veredicto."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def neg_arm(p, model_dir, sw):
     """The mutants. Returns an exit code."""
     tmpdir = tempfile.mkdtemp(prefix="sotto-lang-id-neg-", dir=os.environ.get("TMPDIR") or None)
@@ -292,7 +300,23 @@ def neg_arm(p, model_dir, sw):
             continue
 
         # The mutant becomes the SUBJECT: a copy of the file, imported by path.
-        copy = os.path.join(tmpdir, "mutant-%d-%s" % (idx, os.path.basename(m["file"])))
+        #
+        # A copia vive AO LADO do original, e nao em TMPDIR. Medido 2026-10-30:
+        # `worker/lang_prompt.py` deriva `REPO = dirname(HERE)` e cai no
+        # `docs/model-specs/original/fp16/languages.json` quando o modelo int4
+        # nao traz `languages.json` (e nao traz -- so' o export fp16 tem). Uma
+        # copia em TMPDIR punha `REPO` em `I:\cc-tmp`, a tabela deixava de
+        # existir e o mutante M1 "did not even run": o braco negativo ficava
+        # com 1 de 2 mutantes e o passo `red-as-expected-lang-id-oracle`
+        # publicava rc=2. O nome comeca por `_`, que a populacao do
+        # `exception-hygiene` e do `code-health` exclui.
+        copy = os.path.join(os.path.dirname(src_path),
+                            "_mutant_%d_%s" % (idx, os.path.basename(m["file"])))
+        # O mutante vive no repositorio, por isso NAO pode ficar la': um
+        # `_mutant_*` esquecido na arvore e' codigo morto que a proxima lane
+        # le' como se fosse produto. A limpeza e' registada ANTES de ser
+        # escrito, para uma excepcao a meio tambem o levar.
+        atexit.register(_unlink, copy)
         with io.open(copy, "w", encoding="utf-8", newline="") as fh:
             fh.write(mutated_text)
         try:

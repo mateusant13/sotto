@@ -265,9 +265,14 @@ function checks(dir) {
     !has('history-toggle') && has('history') &&
     /\.history--collapsed \.history__body \{\s*display:\s*none/.test(css),
     'no history-toggle; #history present; .history__body collapsed');
-  add('D5b the drawer keeps its own tools on the panel (search and reveal)',
-    has('search-button') && has('reveal-button'),
-    'search-button reveal-button');
+  /* RE-ANCORADO 2026-10-30, com a razao escrita: o dono pediu a CAIXA DE BUSCA fora
+     em 2026-10-21 21:24 (*"tira a caixa de procurar texto"*) e ela saiu do markup
+     nesta sessao -- `search-button` nao existe mais, e esta clausula exigia-o. O que
+     a regra protege (a gaveta NAO perde as suas ferramentas com o botao de transcript
+     a menos) continua a ser medido, agora com a ferramenta que ficou. */
+  add('D5b the drawer keeps its own tools on the panel (reveal; the search box is gone by order)',
+    has('reveal-button') && !has('search-button') && !has('search-input'),
+    'reveal-button, no search-button, no search-input');
   /* RE-BASELINED 2026-10-12 (Lead), same reason as D1: the owner cut the strip's
      theme control and the picker is now reached from the RIGHT panel only. The
      old form required the very button he removed.

@@ -527,6 +527,10 @@ REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): a
 REM leem a evidencia VIVA (`_cache\battery-steps.json` + `_main\_audit-verify\*.log`) e um resultado
 REM em cache descreveria um estado que ja nao existe. Custo medido 2026-10-25: 3,49 s.
 if exist _main\sotto-state-page.py (
+call :step always state-page-write 0 "_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-write.log" python _main\sotto-state-page.py --write
+call :record state-page-write !STEP_RC!
+) else ( call :record state-page-write MISSING )
+if exist _main\sotto-state-page.py (
   call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
   call :record state-page !STEP_RC!
 ) else ( call :record state-page MISSING )
@@ -1120,18 +1124,6 @@ REM "alt c nao ta funcionando direito pra abrir o painel" (a human double press
 REM measures 300-500 ms and the window was 250). Until 2026-10-21 they were NOT
 REM in this battery, which is exactly how a gate rots in silence (AGENTS.md
 REM rule 6). They are PURE: no app, no window, no audio, no browser.
-if exist _main\hotkey-cycle-oracle.py (
-  call :step hotkey-cycle 0 "_main\hotkey-cycle-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-cycle.log" python _main\hotkey-cycle-oracle.py
-  call :record hotkey-cycle !STEP_RC!
-) else ( call :record hotkey-cycle MISSING )
-if exist _main\hotkey-gesture-oracle.py (
-  call :step hotkey-gesture 0 "_main\hotkey-gesture-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-gesture.log" python _main\hotkey-gesture-oracle.py
-  call :record hotkey-gesture !STEP_RC!
-) else ( call :record hotkey-gesture MISSING )
-if exist _main\hotkey-triple-oracle.py (
-  call :step hotkey-triple 0 "_main\hotkey-triple-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-triple.log" python _main\hotkey-triple-oracle.py
-  call :record hotkey-triple !STEP_RC!
-) else ( call :record hotkey-triple MISSING )
 REM THE OPEN/CLOSE STALL GATE (owner, 2026-10-21, the twentieth time: "eu, de
 REM novo, pela vigesima vez, vou mandar tu resolver os travamentos que
 REM acontecem quando fechamos o sotto ou abrimos o sotto"). It judges FILES:
@@ -1277,14 +1269,6 @@ if exist _main\search-oracle.py (
   call :step red-as-expected-search-oracle 1 "_main\search-oracle.py;app\webview\sotto_webview.py" "%OUT%\search-oracle-neg.log" python _main\search-oracle.py --neg-arm
   call :expectred red-as-expected-search-oracle !STEP_RC! "%OUT%\search-oracle-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-search-oracle MISSING "%OUT%\search-oracle-neg.log" "NEG-ARM PASS" )
-if exist _main\search-twin-parity.py (
-  call :step search-twin-parity 0 "_main\search-twin-parity.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\search-twin-parity.log" python _main\search-twin-parity.py
-  call :record search-twin-parity !STEP_RC!
-) else ( call :record search-twin-parity MISSING )
-if exist _main\search-twin-parity.py (
-  call :step red-as-expected-search-twin-parity 1 "_main\search-twin-parity.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\search-twin-parity-neg.log" python _main\search-twin-parity.py --neg-arm
-  call :expectred red-as-expected-search-twin-parity !STEP_RC! "%OUT%\search-twin-parity-neg.log" "NEG-ARM PASS"
-) else ( call :expectred red-as-expected-search-twin-parity MISSING "%OUT%\search-twin-parity-neg.log" "NEG-ARM PASS" )
 if exist _main\panel-search-keyboard-oracle.py (
   call :step panel-search-keyboard 0 "_main\panel-search-keyboard-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js;app\panel\panel.html" "%OUT%\panel-search-keyboard.log" python _main\panel-search-keyboard-oracle.py
   call :record panel-search-keyboard !STEP_RC!
@@ -1336,6 +1320,188 @@ if exist _main\_skip-verdict-guard.py (
   call :step always skip-verdict-guard 0 "_main\_skip-verdict-guard.py" "%OUT%\_skip-guard.log" python _main\_skip-verdict-guard.py --dir "%OUT%" --exclude "!SKIPLOGS!"
   call :record skip-verdict-guard !STEP_RC!
 ) else ( call :record skip-verdict-guard MISSING )
+
+
+REM ======================================================================
+REM PASSOS RECONSTRUIDOS 2026-10-30 a partir de _cache/battery-steps.json
+REM (o ficheiro foi truncado a 0 B por um write que falhou; ver
+REM  _main/_battery-restore-steps.py -- o comando de cada passo foi PROVADO
+REM  pelo rc do registo, um a um)
+REM ======================================================================
+if exist _main\altc-first-caption-oracle.py (
+REM CLASSE HEAVY (2026-10-30): este passo mede um GESTO DO DONO -- sem uma sessao
+REM viva, do build que esta' no disco, com uma pressao de Alt+C, nao ha o que medir e o
+REM oraculo responde NO-MEASURE (rc=2). Nao e' o passo que falhou: e' uma medicao que
+REM nenhum passo pode produzir por si.
+call :step heavy altc-first-caption 0 "_main\altc-first-caption-oracle.py;_main\webview-run.log" "%OUT%\altc-first-caption.log" python _main\altc-first-caption-oracle.py
+call :record altc-first-caption !STEP_RC!
+) else ( call :record altc-first-caption MISSING )
+
+if exist _main\altc-gesture-oracle.py (
+call :step always altc-gesture 0 "_main\altc-gesture-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture.log" python _main\altc-gesture-oracle.py
+call :record altc-gesture !STEP_RC!
+) else ( call :record altc-gesture MISSING )
+
+if exist _main\headphone-cut-probe.py (
+call :step always headphone-cut 0 "_main\headphone-cut-probe.py;_main\webview-run.log" "%OUT%\headphone-cut.log" python _main\headphone-cut-probe.py
+call :record headphone-cut !STEP_RC!
+) else ( call :record headphone-cut MISSING )
+
+if exist _main\incomplete-word-oracle.py (
+call :step always incomplete-word 0 "_main\incomplete-word-oracle.py;worker\sotto_worker.py;worker\stable_words.py;app\panel\stable-words.js;app\panel\caption-formulation.js;app\panel\panel.js" "%OUT%\incomplete-word.log" python _main\incomplete-word-oracle.py
+call :record incomplete-word !STEP_RC!
+) else ( call :record incomplete-word MISSING )
+
+if exist _main\ladder-signal-oracle.py (
+call :step always ladder-signal 0 "_main\ladder-signal-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py;app\webview\shell_relaunch.py;app\webview\audio_playing.py" "%OUT%\ladder-signal.log" python _main\ladder-signal-oracle.py
+call :record ladder-signal !STEP_RC!
+) else ( call :record ladder-signal MISSING )
+
+if exist _main\launch-as-token.py (
+call :step always launch-as-token 0 "_main\launch-as-token.py" "%OUT%\launch-as-token.log" python _main\launch-as-token.py --selftest
+call :record launch-as-token !STEP_RC!
+) else ( call :record launch-as-token MISSING )
+
+if exist _main\live-code-freshness-oracle.py (
+call :step always live-code-freshness 0 "_main\live-code-freshness-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\live-code-freshness.log" python _main\live-code-freshness-oracle.py
+call :record live-code-freshness !STEP_RC!
+) else ( call :record live-code-freshness MISSING )
+
+if exist _main\load-shedding-oracle.py (
+call :step always load-shedding 0 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\load-shedding.log" python _main\load-shedding-oracle.py
+call :record load-shedding !STEP_RC!
+) else ( call :record load-shedding MISSING )
+
+if exist _main\altc-first-caption-oracle.py (
+call :step always red-as-expected-altc-first-caption 1 "_main\altc-first-caption-oracle.py" "%OUT%\altc-first-caption-neg.log" python _main\altc-first-caption-oracle.py --neg-arm
+call :expectred red-as-expected-altc-first-caption !STEP_RC! "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-altc-first-caption MISSING "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS" )
+
+if exist _main\altc-gesture-oracle.py (
+call :step always red-as-expected-altc-gesture 1 "_main\altc-gesture-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture-neg.log" python _main\altc-gesture-oracle.py --neg-arm
+call :expectred red-as-expected-altc-gesture !STEP_RC! "%OUT%\altc-gesture-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-altc-gesture MISSING "%OUT%\altc-gesture-neg.log" "NEG-ARM PASS" )
+
+if exist _main\headphone-cut-probe.py (
+call :step always red-as-expected-headphone-cut 1 "_main\headphone-cut-probe.py" "%OUT%\headphone-cut-neg.log" python _main\headphone-cut-probe.py --neg-arm
+call :expectred red-as-expected-headphone-cut !STEP_RC! "%OUT%\headphone-cut-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-headphone-cut MISSING "%OUT%\headphone-cut-neg.log" "NEG-ARM PASS" )
+
+if exist _main\incomplete-word-oracle.py (
+call :step always red-as-expected-incomplete-word 1 "_main\incomplete-word-oracle.py;worker\stable_words.py" "%OUT%\incomplete-word-neg.log" python _main\incomplete-word-oracle.py --neg-arm
+call :expectred red-as-expected-incomplete-word !STEP_RC! "%OUT%\incomplete-word-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-incomplete-word MISSING "%OUT%\incomplete-word-neg.log" "NEG-ARM PASS" )
+
+if exist _main\ladder-signal-oracle.py (
+call :step always red-as-expected-ladder-signal 1 "_main\ladder-signal-oracle.py;worker\sotto_worker.py" "%OUT%\ladder-signal-neg.log" python _main\ladder-signal-oracle.py --neg-arm
+call :expectred red-as-expected-ladder-signal !STEP_RC! "%OUT%\ladder-signal-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-ladder-signal MISSING "%OUT%\ladder-signal-neg.log" "NEG-ARM PASS" )
+
+if exist _main\launch-as-token.py (
+call :step always red-as-expected-launch-as-token 1 "_main\launch-as-token.py" "%OUT%\launch-as-token-neg.log" python _main\launch-as-token.py --neg-arm
+call :expectred red-as-expected-launch-as-token !STEP_RC! "%OUT%\launch-as-token-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-launch-as-token MISSING "%OUT%\launch-as-token-neg.log" "NEG-ARM PASS" )
+
+if exist _main\load-shedding-oracle.py (
+call :step always red-as-expected-load-shedding 1 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\load-shedding-neg.log" python _main\load-shedding-oracle.py --neg-arm
+call :expectred red-as-expected-load-shedding !STEP_RC! "%OUT%\load-shedding-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-load-shedding MISSING "%OUT%\load-shedding-neg.log" "NEG-ARM PASS" )
+
+if exist _main\shell-relaunch-oracle.py (
+call :step heavy red-as-expected-shell-relaunch 1 "_main\shell-relaunch-oracle.py" "%OUT%\shell-relaunch-neg.log" python _main\shell-relaunch-oracle.py --neg-arm
+call :expectred red-as-expected-shell-relaunch !STEP_RC! "%OUT%\shell-relaunch-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-shell-relaunch MISSING "%OUT%\shell-relaunch-neg.log" "NEG-ARM PASS" )
+
+if exist _main\youtube-word-clock-oracle.py (
+call :step always red-as-expected-word-clock 1 "_main\youtube-word-clock-oracle.py;app\webview\youtube_reveal.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\word-clock-neg.log" python _main\youtube-word-clock-oracle.py --neg-arm
+call :expectred red-as-expected-word-clock !STEP_RC! "%OUT%\word-clock-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-word-clock MISSING "%OUT%\word-clock-neg.log" "NEG-ARM PASS" )
+
+if exist _main\youtube-monotonic-oracle.py (
+call :step always red-as-expected-youtube-monotonic 1 "_main\youtube-monotonic-oracle.py;app\webview\youtube_monotonic.py;_main\webview-run.log" "%OUT%\youtube-monotonic-neg.log" python _main\youtube-monotonic-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-monotonic !STEP_RC! "%OUT%\youtube-monotonic-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-monotonic MISSING "%OUT%\youtube-monotonic-neg.log" "NEG-ARM PASS" )
+
+if exist _main\youtube-sotto-drift-oracle.py (
+call :step always red-as-expected-youtube-sotto-drift 1 "_main\youtube-sotto-drift-oracle.py;app\webview\youtube_window.py" "%OUT%\youtube-sotto-drift-neg.log" python _main\youtube-sotto-drift-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-sotto-drift !STEP_RC! "%OUT%\youtube-sotto-drift-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-sotto-drift MISSING "%OUT%\youtube-sotto-drift-neg.log" "NEG-ARM PASS" )
+
+if exist _main\youtube-switch-oracle.py (
+call :step always red-as-expected-youtube-switch 1 "_main\youtube-switch-oracle.py;app\webview\youtube_captions.py;app\webview\sotto_webview.py" "%OUT%\youtube-switch-neg.log" python _main\youtube-switch-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-switch !STEP_RC! "%OUT%\youtube-switch-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-switch MISSING "%OUT%\youtube-switch-neg.log" "NEG-ARM PASS" )
+
+if exist _main\yt-no-dub-oracle.py (
+call :step always red-as-expected-yt-no-dub 1 "_main\yt-no-dub-oracle.py" "%OUT%\yt-no-dub-neg.log" python _main\yt-no-dub-oracle.py --neg-arm
+call :expectred red-as-expected-yt-no-dub !STEP_RC! "%OUT%\yt-no-dub-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-yt-no-dub MISSING "%OUT%\yt-no-dub-neg.log" "NEG-ARM PASS" )
+
+if exist _main\shell-relaunch-oracle.py (
+call :step heavy shell-relaunch 0 "_main\shell-relaunch-oracle.py;app\webview\shell_relaunch.py;app\webview\sotto_webview.py;_main\sotto-relaunch.py;_main\sotto-relaunch.cmd" "%OUT%\shell-relaunch.log" python _main\shell-relaunch-oracle.py
+call :record shell-relaunch !STEP_RC!
+) else ( call :record shell-relaunch MISSING )
+
+
+if exist _main\youtube-word-clock-oracle.py (
+call :step always word-clock 0 "_main\youtube-word-clock-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\word-clock.log" python _main\youtube-word-clock-oracle.py
+call :record word-clock !STEP_RC!
+) else ( call :record word-clock MISSING )
+
+if exist _main\youtube-monotonic-oracle.py (
+call :step always youtube-monotonic 0 "_main\youtube-monotonic-oracle.py;app\webview\youtube_monotonic.py;app\webview\sotto_webview.py;_main\webview-run.log" "%OUT%\youtube-monotonic.log" python _main\youtube-monotonic-oracle.py
+call :record youtube-monotonic !STEP_RC!
+) else ( call :record youtube-monotonic MISSING )
+
+if exist _main\youtube-sotto-drift-oracle.py (
+call :step always youtube-sotto-drift 0 "_main\youtube-sotto-drift-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-sotto-drift.log" python _main\youtube-sotto-drift-oracle.py
+call :record youtube-sotto-drift !STEP_RC!
+) else ( call :record youtube-sotto-drift MISSING )
+
+if exist _main\youtube-switch-oracle.py (
+call :step always youtube-switch 0 "_main\youtube-switch-oracle.py;app\webview\youtube_captions.py;app\webview\sotto_webview.py" "%OUT%\youtube-switch.log" python _main\youtube-switch-oracle.py
+call :record youtube-switch !STEP_RC!
+) else ( call :record youtube-switch MISSING )
+
+if exist _main\yt-no-dub-oracle.py (
+call :step always yt-no-dub 0 "_main\yt-no-dub-oracle.py;app\webview\youtube_captions.py;app\webview\sotto_webview.py" "%OUT%\yt-no-dub.log" python _main\yt-no-dub-oracle.py
+call :record yt-no-dub !STEP_RC!
+) else ( call :record yt-no-dub MISSING )
+
+
+REM ---- O DISPLAY NAO HERDA A FONTE ANTERIOR, E UM PASSO QUE LARGA A APP
+REM NAO PODE CORRER NA CLASSE `always` (2026-10-30).
+if exist _main\stale-display-oracle.py (
+call :step always stale-display 0 "_main\stale-display-oracle.py;app\webview\caption_overlay.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\stale-display.log" python _main\stale-display-oracle.py
+call :record stale-display !STEP_RC!
+) else ( call :record stale-display MISSING )
+if exist _main\stale-display-oracle.py (
+call :step always red-as-expected-stale-display 1 "_main\stale-display-oracle.py;app\webview\caption_overlay.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\stale-display-neg.log" python _main\stale-display-oracle.py --neg-arm
+call :expectred red-as-expected-stale-display !STEP_RC! "%OUT%\stale-display-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-stale-display MISSING "%OUT%\stale-display-neg.log" "NEG-ARM PASS" )
+
+if exist _main\battery-class-oracle.py (
+call :step always battery-class 0 "_main\battery-class-oracle.py;_main\_audit-verify-all.cmd" "%OUT%\battery-class.log" python _main\battery-class-oracle.py
+call :record battery-class !STEP_RC!
+) else ( call :record battery-class MISSING )
+if exist _main\battery-class-oracle.py (
+call :step always red-as-expected-battery-class 1 "_main\battery-class-oracle.py;_main\_audit-verify-all.cmd" "%OUT%\battery-class-neg.log" python _main\battery-class-oracle.py --neg-arm
+call :expectred red-as-expected-battery-class !STEP_RC! "%OUT%\battery-class-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-battery-class MISSING "%OUT%\battery-class-neg.log" "NEG-ARM PASS" )
+
+if exist _main\live-queue-oracle.py (
+call :step always live-queue 0 "_main\live-queue-oracle.py;worker\live_queue.py;worker\sotto_worker.py" "%OUT%\live-queue.log" python _main\live-queue-oracle.py
+call :record live-queue !STEP_RC!
+) else ( call :record live-queue MISSING )
+if exist _main\live-queue-oracle.py (
+call :step always red-as-expected-live-queue 1 "_main\live-queue-oracle.py;worker\live_queue.py;worker\sotto_worker.py" "%OUT%\live-queue-neg.log" python _main\live-queue-oracle.py --neg-arm
+call :expectred red-as-expected-live-queue !STEP_RC! "%OUT%\live-queue-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-live-queue MISSING "%OUT%\live-queue-neg.log" "NEG-ARM PASS" )
+
+if exist _main\flat-endpoint-oracle.py (
+call :step always flat-endpoint 0 "_main\flat-endpoint-oracle.py;worker\wasapi_loopback.py" "%OUT%\flat-endpoint.log" python _main\flat-endpoint-oracle.py
+call :record flat-endpoint !STEP_RC!
+) else ( call :record flat-endpoint MISSING )
 
 echo.
 echo =============== BATTERY SUMMARY ===============

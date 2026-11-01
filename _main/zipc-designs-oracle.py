@@ -76,16 +76,23 @@ MIN_FP_SIZE = 100
 IDENTITY_MARKS = [
     ("GlassCards", r"backdrop-filter:\s*blur\(20px\)",
      "the frosted glass that gives the design its name (PanelSetA.tsx:27-31)"),
-    ("GlassCards", r"border-radius:\s*50%",
-     "the round initials avatar (PanelSetA.tsx:71-76)"),
+    # RETIRADA EM 2026-10-30, e a razao e' uma ORDEM DO DONO que esta lista nao
+    # conhecia: ele recusou o avatar (*"tem design com uma bola a esquerda ...
+    # completamente ridiculo"*, 2026-10-21 21:31) e o `complaints-assert.py
+    # avatar-absent` exige-o ausente. Duas provas da mesma arvore a pedirem coisas
+    # OPOSTAS e' a segunda verdade que este repo paga caro: fica a do dono.
+    # ("GlassCards", r"border-radius: 50%", "the round initials avatar"),
     ("Hairline", r"grid-template-columns:\s*44px 1fr",
      "the 44px time gutter of grid-cols-[44px_1fr] (PanelSetA.tsx:207)"),
     ("Hairline", r"background:\s*none",
      "no surface at all -- near-invisible panel (PanelSetA.tsx:145-146)"),
     ("Paper", r"repeating-linear-gradient\(180deg",
      "the ruled page (PanelSetA.tsx:250-256)"),
-    ("Paper", r"content:\s*\"filed\"",
-     "the filed stamp on the last row (PanelSetA.tsx:305-311)"),
+    # RETIRADA EM 2026-10-30 pela MESMA razao: o dono pediu fora o resto da demo
+    # (*"os designs tem coisas a mais que nao deveriam, da demo anterior, como algo
+    # escrito 'filed'"*, 2026-10-21 21:26) e `demo-leftovers-absent` exige `filed`
+    # ZERO ocorrencias. Pedir o carimbo de volta era pedir o defeito.
+    # ("Paper", r"content: \"filed\"", "the filed stamp on the last row"),
     ("Quotes", r'content:\s*"\\201C"',
      "the 34px opening quote (PanelSetA.tsx:392-397)"),
     ("Quotes", r"border-left:\s*2px solid",
@@ -100,16 +107,27 @@ IDENTITY_MARKS = [
      "the caret that opens the live log line (PanelSetB.tsx:84-86)"),
     ("Bubbles", r"border-radius:\s*16px 16px 16px 5px",
      "the chat bubble with its tail corner (PanelSetB.tsx:198-210)"),
+    # The DESCRIPTION was corrected on 2026-10-30, the pattern was not: the zip
+    # places the second voice with `justify-end` and the mark measured the
+    # bubble's own `align-self`. The owner refused the two-voice conversation
+    # itself (2026-10-21: *"a gente nao ta fazendo conversacao entre duas
+    # pessoas, ou simulando um bate papo"*), so the design keeps the bubble and
+    # its `align-self` side but every bubble takes ONE side. Demanding the
+    # right-hand voice back would demand the defect.
     ("Bubbles", r"align-self:\s*flex-(start|end)",
-     "the left/right two-voice layout (PanelSetB.tsx:190-196)"),
+     "the bubble lane's own alignment side (PanelSetB.tsx:190-196; one voice)"),
     ("Timeline", r"linear-gradient\(180deg, transparent",
      "the spine that fades at both ends (PanelSetB.tsx:307-309)"),
     ("Timeline", r"box-shadow:\s*0 0 0 2px",
      "the halo ring on the spine dot (PanelSetB.tsx:317-320)"),
     ("Chips", r"counter-increment:\s*zipc-chapter",
      "the chapter counter (PanelSetB.tsx:402-408)"),
-    ("Chips", r"content:\s*\"search this session",
-     "the rounded search field (PanelSetB.tsx:457-467)"),
+    # RETIRADA EM 2026-10-30: a "caixa de busca" desta Chips era cromo falso que o
+    # dono mandou sair (*"tira a caixa de procurar texto"*, 2026-10-21 21:24; o
+    # `panel.html` tinha um `<!-- ... a `content:` string, nunca um input. mock search
+    # chrome (owner asked the search box out regardless) -->`). Exigir o campo de
+    # volta era exigir o que ele recusou duas vezes.
+    # ("Chips", r"content: \"search this session\"", "the rounded search field"),
     ("Gutter", r"grid-template-columns:\s*54px 1fr",
      "the 54px margin gutter (PanelSetB.tsx:539)"),
     ("Gutter", r'content:\s*"rec"',
@@ -122,7 +140,9 @@ IDENTITY_MARKS = [
 WAS_ZERO = [
     ("repeating-linear-gradient", r"repeating-linear-gradient", 1),
     ("grid-template-columns", r"grid-template-columns", 5),
-    ("border-radius: 50%", r"border-radius:\s*50%", 4),
+    # `border-radius: 50%` SAIA DAQUI em 2026-10-30: o avatar redondo que a produzia
+    # foi retirado por ordem do dono, e uma lista de "marcas que voltaram" que exige
+    # a volta do que ele mandou tirar nao mede o desenho, mede a saudade.
     ("backdrop-filter", r"backdrop-filter", 10),
     ("::after", r"::after", 10),
     ("counter(", r"counter\(", 1),

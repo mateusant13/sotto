@@ -1,17 +1,25 @@
 #!/usr/bin/env pythonw.exe
 # -*- coding: utf-8 -*-
-"""HOOK-COST ORACLE -- how long does ONE low-level mouse-hook firing cost?
+"""DECISION-COST ORACLE -- how long does ONE outside-click decision cost?
 
-The freeze hunt closed with one open hypothesis and one number: the
-WH_MOUSE_LL click hook fires 11.82 times a minute (403 events in 34.1 min,
-one every 5.1 s) and each firing runs a synchronous print(flush) plus a log
-write and flush INSIDE the hook proc (sotto_webview.py:2044-2064 _on_mouse ->
-:2111 _consider -> :2138 _record -> :645 log). The cadence is measured; the
-DURATION is not, and a cadence without a duration cannot convict or clear
-anything. This oracle measures the duration in process: it imports the REAL
-shell as a module, builds a REAL OutsideClickWatcher whose shell is a stub,
-and times every call of the real _consider -> _record -> log path.
-No hook is installed, no window is created, nothing is launched.
+HISTORY, AND WHY THE NAME IS OLDER THAN THE SUBJECT. Born 2026-10-17 to price
+ONE firing of the `WH_MOUSE_LL` click hook, whose cadence was measured (11.82
+clicks a minute) and whose DURATION was not. A low-level mouse hook runs the
+callback on the input path: everything it costs is paid before the pointer
+moves, for the WHOLE machine.
+
+THAT HOOK WAS DELETED ON 2026-10-30 (owner: *"se esses hooks sao burros ou
+desnecessarios, remove. nao mantem nada q tu ta achando q e pior"*). Nothing in
+the shell calls `SetWindowsHookEx` any more -- `_main/input-path-oracle.py` C1
+is the gate that says so. The question this file answers did NOT disappear with
+it: the same `_consider -> _record -> log` path is what the 100 ms FOREGROUND
+tick runs, ten times a second while the panel is open. A cost that was
+irrelevant at 11.82 calls a minute stops being irrelevant at 600.
+
+So the arms are unchanged and the subject is the tick: it imports the REAL
+shell as a module, builds a REAL OutsideClickWatcher whose shell is a stub, and
+times every call of the real `_consider -> _record -> log` path.
+No hook is installed, no thread is started, no window is created.
 
 Arms:
   A the path with no --log file (stdout only)      what a run without --log pays
@@ -71,11 +79,22 @@ def main():
         w = mod.OutsideClickWatcher.__new__(mod.OutsideClickWatcher)
         threading.Thread.__init__(w, daemon=True)
         w.shell = StubShell()
+        # `__new__` salta o `__init__` (que lancaria a thread): os campos que os
+        # setters tocam tem de ser postos a mao. O `thread_id` e' None porque NAO
+        # ha thread -- e' o mesmo "sem thread" que o `_apply_timer` aguenta.
+        w.thread_id = None
+        w.exiting = threading.Event()
+        w._armed = False
+        w._edit_mode = False
+        w._dragging = False
+        w._last_drag_post = 0.0
+        w.drag_samples = 0
+        w._last_fg = None
+        w.polls = 0
         w.armed = True
         w.edit_mode = False
         w.decisions = []
         w._ready = threading.Event()
-        w.hook = None
         if arm == "N":
             def _record_nolog(self, x, y, source, reason, closed):
                 entry = {"x": x, "y": y, "source": source, "decision": reason,
@@ -141,9 +160,10 @@ def main():
         return 1
     print("  worst case in %d clicks: stdout-only %.4f ms, with-log %.4f ms," % (N, amax, bmax))
     print("  and the log write adds %.4f ms at p99 -- all far under one 60 fps frame." % (b - a))
-    print("  THEREFORE the click hook is MEASURED CLEAN as the cause of a")
-    print("  travada muito forte: its whole path is sub-frame on this box, and")
-    print("  NO Sotto event measured in this hunt reaches the stall the owner felt.")
+    print("  THEREFORE one tick's decision path is MEASURED CLEAN at the 10 Hz the")
+    print("  foreground poll asks for (10 calls a second, not the 1000 events a")
+    print("  second a low-level mouse hook put on the input path before it was")
+    print("  removed on 2026-10-30 -- see _main/input-path-oracle.py C1).")
     return 0
 
 

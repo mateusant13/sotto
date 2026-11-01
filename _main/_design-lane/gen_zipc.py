@@ -926,16 +926,20 @@ def design_ledger(d):
         ("border-radius", "var(--radius-md)"),
         ("box-shadow", "none"),
     ]))
-    # THE 'time / voice / transcript' BAND IS GONE (owner, 2026-10-21). The
-    # mockup headed its ledger with three columns (PanelSetA.tsx:484-488) because
-    # its rows came from several voices. Ours do not, so the band was a header
-    # row naming a column that contains nothing but a dot.
+    # THE 'time / voice / transcript' BAND (PanelSetA.tsx:484-488). It was
+    # removed once as "a header row naming a column that contains nothing but a
+    # dot"; the column is back, and what fills it is the panel's OWN per-source
+    # indicator (`.caption__led`, which `panel.js:1174` creates on every row and
+    # `panel.css` hides). It is a VOICE MARK, not a second voice: the grid is the
+    # zip's, the voice NAME is data the panel does not paint. See Bubbles for the
+    # one owner order in this family -- *"a gente nao ta fazendo conversacao"*.
     out.append((s + " .captions__list", [("gap", "0"), ("padding", "0")]))
-    # ONE LEDGER ENTRY: time then transcript. The mockup's third column was the
-    # speaker (`46px 58px 1fr`); with no speaker the text simply takes the rest.
+    # ONE LEDGER ENTRY: `grid grid-cols-[46px_58px_1fr]` (PanelSetA.tsx:484 and
+    # the row at :492). Column 1 is the time, column 3 the transcript, and the
+    # 58px voice column keeps the panel's own accent tick.
     out.append((s + " .caption", [
         ("display", "grid"),
-        ("grid-template-columns", "46px 1fr"),
+        ("grid-template-columns", "46px 58px 1fr"),
         ("column-gap", "8px"),
         ("align-items", "baseline"),
         ("padding", "10px 12px"),
@@ -948,12 +952,21 @@ def design_ledger(d):
     out.append((s + " .caption:nth-child(even)", [
         ("background", "color-mix(in srgb, var(--accent) 6%, transparent)"),
     ]))
-    # THE VOICE COLUMN IS GONE (owner, 2026-10-21). The mockup kept the speaker
-    # as an 8px accent disc in its own column (`panel.css` hides `.caption__led`;
-    # this design put it back in the flow). A second coloured dot per row is the
-    # two-voice metaphor again; the line keeps only its time.
+    # THE VOICE COLUMN'S MARK. `panel.css` hides the LED (`display: none;
+    # position: absolute`); the ledger puts it back in its own column as a 2px
+    # tick -- the zip paints the voice's colour there, and colour is the only
+    # part of the voice this DOM carries.
+    out.append((s + " .caption__led", [
+        ("display", "block"),
+        ("position", "static"),
+        ("grid-area", "1 / 2"),
+        ("align-self", "center"),
+        ("width", "2px"),
+        ("height", "14px"),
+        ("border-radius", "1px"),
+    ]))
     out.append((s + " .caption__time", [("grid-area", "1 / 1")]))
-    out.append((s + " .caption__text", [("grid-area", "1 / 2")]))
+    out.append((s + " .caption__text", [("grid-area", "1 / 3")]))
     out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [("border-bottom-color", "var(--accent)")]))
     out.append((s + " .panel__controls", [("justify-content", "flex-end"), ("order", "2")]))
     return out
@@ -1034,9 +1047,12 @@ def design_feed(d):
 
 
 # --------------------------------------------------------------------------
-# 07 Bubbles -- Rooftop Dusk: 'a two-voice conversation in soft bubbles'
-#    (PanelSetB.tsx:137-270). Chat bubbles: the second voice is right-aligned
-#    and the tail corner is 5px on the side the bubble leans to.
+# 07 Bubbles -- Rooftop Dusk: 'soft bubbles' (PanelSetB.tsx:137-270).
+#    The zip alternates two voices, the second right-aligned with a 5px tail
+#    corner. The owner refused the conversation itself (2026-10-21: *"a gente
+#    nao ta fazendo conversacao entre duas pessoas, ou simulando um bate papo"*),
+#    so every bubble takes the zip's START side and keeps its tail corner: one
+#    voice, the zip's shape.
 # --------------------------------------------------------------------------
 def design_bubbles(d):
     n = d["name"]
@@ -1058,14 +1074,23 @@ def design_bubbles(d):
     # conversacao entre duas pessoas, ou simulando um bate papo."* The mockup
     # header carried two pill chips, one per voice, with a 5px dot in each
     # (PanelSetB.tsx:168-178); with one stream there is no one to chip.
-    out.append((s + " .captions__list", [("gap", "10px")]))
-    # ONE BUBBLE, ONE SIDE. The mockup alternated voices: the second was right
-    # aligned and its bubble carried a 5px tail (`borderBottomRightRadius: 5`,
-    # PanelSetB.tsx:190-210). Left/right bubbles ARE a conversation, so the row
-    # is now one left-aligned card with an even radius and the full width.
+    # THE LANE IS A COLUMN so `align-self` places each bubble: the zip's rows
+    # are `flex justify-start / justify-end` children (PanelSetB.tsx:190-196).
+    # Sotto has ONE voice, so every bubble takes the START side -- the same
+    # placement, without the second voice the owner refused.
+    out.append((s + " .captions__list", [
+        ("display", "flex"),
+        ("flex-direction", "column"),
+        ("align-items", "flex-start"),
+        ("gap", "10px"),
+    ]))
+    # ONE BUBBLE, THE ZIP'S SHAPE. `max-w-[86%] px-3.5 py-2.5`,
+    # `borderRadius: 16` (PanelSetB.tsx:198-210). The bubble keeps the zip's
+    # `align-self` side and its `max-w-[86%]`; the tail corner is the design.
     out.append((s + " .caption", [
         ("display", "block"),
-        ("align-self", "stretch"),
+        ("align-self", "flex-start"),
+        ("max-width", "86%"),
         ("padding", "10px 14px"),
         ("border", "1px solid var(--line)"),
         ("border-radius", "16px"),
@@ -1093,6 +1118,10 @@ def design_bubbles(d):
     # "someone is typing / is speaking" beat of a messenger, not of a caption.
     out.append((s + " .caption--provisional", [
         ("border-color", "color-mix(in srgb, var(--accent) 20%, transparent)"),
+        # 'borderBottomLeftRadius: 5' on the live bubble (PanelSetB.tsx:203-206):
+        # one sharp corner, on the side the bubble leans to. All bubbles lean
+        # START now, so the tail is the bottom-left one.
+        ("border-radius", "16px 16px 16px 5px"),
     ]))
     out.append((s + " .panel__controls", [("justify-content", "space-between"), ("order", "1")]))
     return out
@@ -1263,9 +1292,35 @@ def design_gutter(d):
         ("border-radius", "var(--radius-md)"),
         ("box-shadow", "none"),
     ]))
-    # THE 'rec' PILL IS GONE (owner, 2026-10-21). It was the mockup's own status
-    # chip (`PanelSetB.tsx:534-537`); the panel's state is the one small ball,
-    # and a generated word cannot be that.
+    # THE 'rec' PILL (PanelSetB.tsx:534-537): a rounded-full chip carrying a live
+    # dot and the word `rec`, `held` when paused. It was once dropped as "the
+    # panel's state is the one small ball, and a generated word cannot be that";
+    # the owner's later, more specific order (quoted verbatim in `panel.css`,
+    # `#strip-live-button[aria-pressed="true"]`) says the opposite: *"deve ser
+    # CLARO quando ta live e quando nao ta"*. So the footer becomes the pill, the
+    # dot inside it is the panel's own `.status__dot`, and the word CHANGES with
+    # the state instead of sitting mute.
+    out.append((s + " .status", [
+        ("display", "inline-flex"),
+        ("align-items", "center"),
+        ("gap", "6px"),
+        ("padding", "3px 10px"),
+        ("border", "1px solid var(--line)"),
+        ("border-radius", "99px"),
+        ("background", "var(--accent-soft)"),
+    ]))
+    out.append((s + " .status::after", [
+        ("content", '"held"'),
+        ("font-family", "var(--font-mono)"),
+        ("font-size", "10px"),
+        ("text-transform", "uppercase"),
+        ("letter-spacing", "0.14em"),
+        ("color", "var(--text-muted)"),
+    ]))
+    out.append((s + " .status--live::after", [
+        ("content", '"rec"'),
+        ("color", "var(--accent)"),
+    ]))
     out.append((s + " .captions__list", [("gap", "0"), ("padding", "10px 4px")]))
     # ONE NOTE: 'grid grid-cols-[54px_1fr] gap-4 rounded-xl px-1 py-3' with a
     # 'borderBottom' hairline (PanelSetB.tsx:539-544).
@@ -1287,7 +1342,10 @@ def design_gutter(d):
     # 24px initials avatar under the time (PanelSetB.tsx:548-556); with one stream
     # it was an empty disc -- a person who is not there. The gutter keeps the
     # TIME, which is the design.
-    out.append((s + " .caption__time", [("grid-area", "1 / 1")]))
+    out.append((s + " .caption__time", [
+        ("grid-area", "1 / 1"),
+        ("align-self", "start"),
+    ]))
     out.append((s + " .caption__text", [("grid-area", "1 / 2 / span 2 / span 1")]))
     out.append((s + " .caption--latest,\n" + s + " .caption--provisional", [
         ("background", "color-mix(in srgb, var(--accent) 7%, transparent)"),
@@ -1304,7 +1362,7 @@ DESIGN_BUILDERS = [
     ("04", "Quotes", "Analog -- sleeve notes on cocoa paper, one quote per card", design_quotes),
     ("05", "Ledger", "Quiet Shelves -- a quiet ledger: time / voice / transcript", design_ledger),
     ("06", "Feed", "Lamp Black -- an ambient event log for a room that never sleeps", design_feed),
-    ("07", "Bubbles", "Rooftop Dusk -- a two-voice conversation in soft bubbles", design_bubbles),
+    ("07", "Bubbles", "Rooftop Dusk -- soft bubbles, one voice, one tail corner", design_bubbles),
     ("08", "Timeline", "Tideline -- a shoreline timeline of the take", design_timeline),
     ("09", "Chips", "Ember -- chapters of short, warm chip-rows by the stove", design_chips),
     ("10", "Gutter", "Field Notes -- a light page with a margin gutter", design_gutter),

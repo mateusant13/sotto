@@ -1,0 +1,117 @@
+{
+  "receipt": "cq05-sotto-panel-exhaustive-partition",
+  "measured": "2026-10-26",
+  "target_file": "app/webview/sotto_webview.py",
+  "goal": "enumerate the entire set of log/log_fn call lines whose arguments mention 'panel', partitioning so that every CodeIntel page is untruncated, then prove the union against the same-file rg population",
+  "population_definition": "lines where a log( or log_fn( call opens and the same line's arguments contain 'panel' (case-insensitive)",
+  "population_regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel",
+  "rg_population": {
+    "single_line_count": 87,
+    "command": "rg -n -P -- '(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel' app/webview/sotto_webview.py",
+    "line_numbers": [204, 225, 229, 232, 268, 290, 2980, 2987, 3016, 3018, 3442, 3894, 3969, 5063, 5451, 5462, 5520, 5536, 5549, 5936, 5939, 6201, 6205, 6588, 6591, 6594, 6595, 6596, 6634, 6667, 6698, 6759, 6770, 6827, 6908, 6911, 6917, 6920, 6922, 6980, 6991, 7064, 7170, 7179, 8161, 8193, 8200, 8202, 8208, 8272, 8293, 8321, 8517, 8606, 8613, 8615, 8669, 8721, 8811, 9564, 9935, 9950, 9972, 10019, 10046, 10053, 10058, 10060, 10066, 10075, 10085, 10091, 10099, 10105, 10109, 10549, 10788, 11166, 11173, 11281, 11300, 11303, 11393, 11497, 11499, 11528, 14451]
+  },
+  "partitions": [
+    {
+      "id": "P1_panel_edit",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel_edit",
+      "mcp": { "count": 17, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 149, "serialized_bytes": 8002,
+        "line_numbers": [3969, 7064, 9935, 9950, 9972, 10019, 10046, 10053, 10058, 10060, 10066, 10075, 10085, 10091, 10099, 10105, 10109] },
+      "rg": { "count": 17, "line_numbers": [3969, 7064, 9935, 9950, 9972, 10019, 10046, 10053, 10058, 10060, 10066, 10075, 10085, 10091, 10099, 10105, 10109] },
+      "set_equal": true
+    },
+    {
+      "id": "P2_panel_lazy",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel_lazy",
+      "mcp": { "count": 14, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 92, "serialized_bytes": 6696,
+        "line_numbers": [204, 225, 229, 232, 268, 290, 5063, 5936, 5939, 6908, 6911, 6917, 6920, 6922] },
+      "rg": { "count": 14, "line_numbers": [204, 225, 229, 232, 268, 290, 5063, 5936, 5939, 6908, 6911, 6917, 6920, 6922] },
+      "set_equal": true
+    },
+    {
+      "id": "P3_panel_visibility",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel_visibility",
+      "mcp": { "count": 10, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 78, "serialized_bytes": 5134,
+        "line_numbers": [5451, 5462, 5520, 5536, 5549, 6667, 6698, 6827, 8161, 8321] },
+      "rg": { "count": 10, "line_numbers": [5451, 5462, 5520, 5536, 5549, 6667, 6698, 6827, 8161, 8321] },
+      "set_equal": true
+    },
+    {
+      "id": "P4_foreground_worker_hotreload",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*(panel_foreground|worker_panel|hot_reload[a-z_]*panel)",
+      "mcp": { "count": 11, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 109, "serialized_bytes": 5558,
+        "line_numbers": [2980, 2987, 3016, 3018, 8193, 8200, 8202, 8208, 11281, 11300, 11303] },
+      "rg": { "count": 11, "line_numbers": [2980, 2987, 3016, 3018, 8193, 8200, 8202, 8208, 11281, 11300, 11303] },
+      "set_equal": true
+    },
+    {
+      "id": "P5_panel_states",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel_(shown|show_gate|show_refused|hidden|surface|placed|place_failed|geometry|exstyle|missing|stats|v2)",
+      "mcp": { "count": 20, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 597, "serialized_bytes": 9206,
+        "line_numbers": [3442, 6759, 6770, 7170, 7179, 8272, 8293, 8606, 8613, 8615, 8669, 8721, 10549, 10788, 11166, 11173, 11497, 11499, 11528, 14451] },
+      "rg": { "count": 20, "line_numbers": [3442, 6759, 6770, 7170, 7179, 8272, 8293, 8606, 8613, 8615, 8669, 8721, 10549, 10788, 11166, 11173, 11497, 11499, 11528, 14451] },
+      "set_equal": true
+    },
+    {
+      "id": "P6_named_others",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*(bridge_gate|caption_window_panel|hotkey_double|outside_click_hook|staging_seen|tray_open|unknown_document)",
+      "mcp": { "count": 12, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 288, "serialized_bytes": 5960,
+        "line_numbers": [3823, 3837, 3894, 6980, 6991, 8514, 8517, 8541, 8811, 9564, 11390, 11393] },
+      "rg": { "count": 12, "line_numbers": [3823, 3837, 3894, 6980, 6991, 8514, 8517, 8541, 8811, 9564, 11390, 11393] },
+      "set_equal": true,
+      "note": "this partition is the only one that is a superset of its population slice: the alternation names event tokens without also requiring 'panel', so 5 rows whose args never say panel come back with it (see extra_rows)"
+    },
+    {
+      "id": "P7_lowercase_panel_ops",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\(\\s*f?['\"]panel\\b",
+      "mcp": { "count": 8, "truncated": false, "effective_scope": "app/webview/sotto_webview.py", "latency_ms": 206, "serialized_bytes": 4050,
+        "line_numbers": [6201, 6205, 6588, 6591, 6594, 6595, 6596, 6634] },
+      "rg": { "count": 8, "line_numbers": [6201, 6205, 6588, 6591, 6594, 6595, 6596, 6634] },
+      "set_equal": true,
+      "note": "these are the rows with no uppercase event token - lowercase prose-style panel ops (setFocusable, setAlwaysOnTop, WS_EX_*), which the earlier event-word regex could never reach"
+    }
+  ],
+  "union_analysis": {
+    "codeintel_pages": 7,
+    "codeintel_rows_total": 92,
+    "union_unique": 92,
+    "partition_overlaps": "none - the 7 CodeIntel line sets are pairwise disjoint, so union = sum = 92",
+    "population_rows_covered": 87,
+    "population_coverage": "87/87 = 100%",
+    "missing_rows": [],
+    "extra_rows": [3823, 3837, 8514, 8541, 11390],
+    "extra_row_identity": [
+      "3823 log(f'OUTSIDE_CLICK_HOOK installed=...') - no 'panel' in args",
+      "3837 log(f'OUTSIDE_CLICK_HOOK uninstalled reason=...') - no 'panel' in args",
+      "8514 log('HOTKEY_DOUBLE_SWALLOWED double=discarded ...') - no 'panel' in args",
+      "8541 log('HOTKEY_DOUBLE_SWALLOWED single=discarded ...') - no 'panel' in args",
+      "11390 log('BRIDGE_GATE=RED reasons=...') - no 'panel' in args"
+    ],
+    "extra_row_explanation": "P6's alternation matches the event token but does not also require 'panel' inside the argument list, so it also catches same-event lines that never mention panel. They are correctly outside the population and are reported rather than silently dropped.",
+    "every_partition_parity": "set_equal=true for all 7 (CodeIntel line set identical to the same-regex rg line set)"
+  },
+  "multiline": {
+    "observable_through_codeintel": false,
+    "proof": {
+      "rg_multiline_positive_control": "rg -U -n -P -- '(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel' finds match starts at 87 single-line rows plus 6983/6984 and 9028/9029",
+      "codeintel_counter_test": [
+        { "query": "(?i)(?s)\\b(?:log|log_fn)\\s*\\([^)]*navigating to panel", "rows": 0 },
+        { "query": "(?i)(?s)\\b(?:log|log_fn)\\s*\\([^)]*first-panel-open", "rows": 0 }
+      ],
+      "conclusion": "the patterns were accepted (no regex error) but matched nothing, while rg -U proves both strings exist across the line break, so the CodeIntel grep engine is line-oriented and cannot match a call whose panel argument sits on a continuation line"
+    },
+    "unobservable_sites": [
+      "6983-6984 log(f'STAGING_LOADED core=... -> ' f'navigating to panel {PANEL_HTML}')",
+      "9028-9029 log('WORKER_PRELOAD declined reason=env SOTTO_NO_PRELOAD=1 ' 'start=first-panel-open')"
+    ],
+    "corrected_true_population": "87 observable call sites + 2 multiline-only call sites = 89 call sites whose arguments mention panel; only the 87 are recoverable through codeintel_grep"
+  },
+  "verdict": {
+    "status": "exhaustive for everything CodeIntel can see",
+    "statement": "all 87 line-observable panel log-call rows are recoverable through 7 untruncated codeintel_grep pages, each byte-for-byte equal to the rg oracle, with 92 rows returned because one partition intentionally over-covers by 5 non-panel rows",
+    "NO-VERDICT": [
+      "2 multiline call sites (6983, 9028) cannot be recovered through codeintel_grep at any limit or partition - the unobservable gap is exactly those 2 sites",
+      "MCP source revision - the grep envelope exposes effective_scope/result_limit/pattern_mode/truncated but no version or commit field"
+    ]
+  },
+  "side_effects": "none: no edits, no index refresh or bootstrap, no build, no tests, no pane operations"
+}

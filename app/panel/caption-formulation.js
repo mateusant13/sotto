@@ -500,17 +500,6 @@ function createEngine(options) {
    * words only -- and a CLOSED line's words are whole by construction.
    */
   let tailClosed = false;
-  /**
-   * THE WORKER ALREADY HELD BACK THE UNPROVEN WORD (owner, 2026-10-30:
-   * *"faz sotto identificar palavras que ainda nao estao completas e nao dar
-   * display"*). The worker stamps `stable: true` on an event whose text has no
-   * suspect word; the renderer then does NOT hold back a second one.
-   *
-   * It starts FALSE, because an event with NO `stable` key is an event from a
-   * producer that does not make the promise -- and the safe reading of a
-   * missing promise is "the word is not proven".
-   */
-  let wordsStable = false;
   /** The audio START of the buffer on screen; the worker's line identity. */
   let lineStart = null;
 
@@ -704,7 +693,6 @@ function createEngine(options) {
     bufferFinal = false;
     bufferSawFinal = false;
     tailClosed = false;
-    wordsStable = false;
     lineStart = null;
     // Same law for the producer tag: a `redux` batch line must not lend its tag
     // to the live line that follows it in the same buffer slot.
@@ -959,10 +947,6 @@ function createEngine(options) {
     // hold-back asks one question -- "is the tail's last word still
     // growing?" -- and this is the answer, from the fragment itself.
     tailClosed = !!(meta && meta.final === true);
-    // THE WORKER ALREADY HELD BACK THE UNPROVEN WORD (owner, 2026-10-30). The
-    // worker stamps `stable: true` on an event whose text has no suspect word,
-    // and the panel then does not hold back a second one.
-    wordsStable = !!(meta && meta.stable === true);
 
     // THE WHOLE TAIL GOES OUT, UNTRIMMED (2026-10-20).
     //
@@ -1033,7 +1017,6 @@ function createEngine(options) {
     bufferFinal = false;
     bufferSawFinal = false;
     tailClosed = false;
-    wordsStable = false;
     bufferProducer = null;
     bufferSawProducer = false;
     bufferProducerConflict = false;
@@ -1055,12 +1038,6 @@ function createEngine(options) {
       // decide whether the tail's LAST word may be shown: a GROWING
       // line's last word can still change, a CLOSED line's can't.
       tailClosed,
-      // THE WORKER ALREADY PROVED THE LAST WORD (owner, 2026-10-30: *"faz sotto
-      // identificar palavras que ainda nao estao completas e nao dar display"*).
-      // `worker/sotto_worker.py` holds back the unproven word and stamps the
-      // event with `stable: true`; the panel then does NOT hold back a second
-      // word. Without it the owner would lose TWO words per partial.
-      wordsStable,
     }),
 };
 }

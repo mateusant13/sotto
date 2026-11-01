@@ -77,6 +77,11 @@
   --line-strong: rgba(255, 255, 255, 0.22);
   --accent: #F2E9D8;
   --accent-soft: rgba(242, 233, 216, 0.1);
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: rgba(242, 233, 216, 0.65);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #F2E9D8;
@@ -514,7 +519,7 @@
   color: var(--text-primary);
 }
 :root[data-theme='theme-1'] .theme-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -545,7 +550,7 @@
 }
 :root[data-theme='theme-1'] .theme-button:hover {
   color: var(--text-primary);
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 :root[data-theme='theme-1'] .theme-picker {
   position: absolute;
@@ -713,6 +718,13 @@
     transition: none !important;
   }
 }
+/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+:root[data-theme='theme-1'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+:root[data-theme='theme-1'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
    Declared here so every `var()` in this file RESOLVES. A `var()` with no
    declaration anywhere and no fallback is invalid at computed-value time,

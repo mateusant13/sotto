@@ -1,0 +1,354 @@
+{
+ "video": "WdaHAGRBB6s",
+ "track": "en-orig",
+ "painted_lang": "en",
+ "painted_cues": 19,
+ "samples": [
+  {
+   "t": 0.02275,
+   "lines": [
+    "Have"
+   ],
+   "segs": [
+    {
+     "t": "Have",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 0.772258,
+   "lines": [
+    "Have you ever had"
+   ],
+   "segs": [
+    {
+     "t": "Have you ever had",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 1.412601,
+   "lines": [
+    "Have you ever had to kill a man?"
+   ],
+   "segs": [
+    {
+     "t": "Have you ever had to kill a man?",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 2.059208,
+   "lines": [
+    "Have you ever had to kill a man? >> No."
+   ],
+   "segs": [
+    {
+     "t": "Have you ever had to kill a man?",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> No.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 2.714802,
+   "lines": [
+    "Have you ever had to kill a man? >> No. >> Then"
+   ],
+   "segs": [
+    {
+     "t": "Have you ever had to kill a man?",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> No.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Then",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 3.35859,
+   "lines": [
+    ">> No. >> Then this sword"
+   ],
+   "segs": [
+    {
+     "t": ">> No.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Then this sword",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 4.027191,
+   "lines": [
+    ">> No. >> Then this sword is useless."
+   ],
+   "segs": [
+    {
+     "t": ">> No.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Then this sword is useless.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 4.681258,
+   "lines": [
+    ">> No. >> Then this sword is useless. >> Don't"
+   ],
+   "segs": [
+    {
+     "t": ">> No.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Then this sword is useless.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Don't",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 5.530551,
+   "lines": [
+    ">> Then this sword is useless. >> Don't worry about me,"
+   ],
+   "segs": [
+    {
+     "t": ">> Then this sword is useless.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Don't worry about me,",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 6.224119,
+   "lines": [
+    ">> Then this sword is useless. >> Don't worry about me, Yamato."
+   ],
+   "segs": [
+    {
+     "t": ">> Then this sword is useless.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Don't worry about me, Yamato.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 6.883805,
+   "lines": [
+    ">> Then this sword is useless. >> Don't worry about me, Yamato. I'll be fine."
+   ],
+   "segs": [
+    {
+     "t": ">> Then this sword is useless.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": ">> Don't worry about me, Yamato. I'll be",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": "fine.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 7.586433,
+   "lines": [
+    ">> Don't worry about me, Yamato. I'll be fine."
+   ],
+   "segs": [
+    {
+     "t": ">> Don't worry about me, Yamato. I'll be",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": "fine.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 8.264271,
+   "lines": [
+    ">> Don't worry about me, Yamato. I'll be fine. After the ritual,"
+   ],
+   "segs": [
+    {
+     "t": ">> Don't worry about me, Yamato. I'll be",
+     "o": 1,
+     "v": false,
+     "l": "en"
+    },
+    {
+     "t": "fine.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": "After the ritual,",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 8.907623,
+   "lines": [
+    "fine. After the ritual, I'd"
+   ],
+   "segs": [
+    {
+     "t": "fine.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": "After the ritual, I'd",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 9.544772,
+   "lines": [
+    "fine. After the ritual, I'd love to train with"
+   ],
+   "segs": [
+    {
+     "t": "fine.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": "After the ritual, I'd love to train with",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  },
+  {
+   "t": 10.192128,
+   "lines": [
+    "After the ritual, I'd love to train with you sometime."
+   ],
+   "segs": [
+    {
+     "t": "After the ritual, I'd love to train with",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    },
+    {
+     "t": "you sometime.",
+     "o": 1,
+     "v": true,
+     "l": "en"
+    }
+   ],
+   "state": 1
+  }
+ ],
+ "matches": 16,
+ "fails": [],
+ "verdict": "MATCH",
+ "captions_on": true
+}

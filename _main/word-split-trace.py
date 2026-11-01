@@ -74,7 +74,14 @@ def main():
         pcm = W.resample_to_16k(pcm, sr)
 
     t0 = time.time()
-    asr = W.StreamAsr(model_dir, providers=None, use_vad=use_vad, lang_id=lang)
+    # MEDIDO 2026-10-30: `StreamAsr(providers=None)` levanta
+    # `TypeError: 'NoneType' object is not iterable` em `provider_entries` -- a
+    # assinatura mudou desde 2026-10-07 e esta sonda ficou parada. O caminho
+    # ENVIADO escolhe a lista por `choose_providers`, por isso a sonda pergunta
+    # a ele: a lista tem de ser a mesma que a app usa.
+    providers, _avail, _note, _probed = W.choose_providers(
+        ["CUDAExecutionProvider", "CPUExecutionProvider"], model_dir)
+    asr = W.StreamAsr(model_dir, providers=providers, use_vad=use_vad, lang_id=lang)
     load_s = time.time() - t0
 
     # Spy on `detok` so the RAW string is captured without touching the worker.

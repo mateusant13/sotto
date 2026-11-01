@@ -1,0 +1,84 @@
+{
+  "receipt": "cq05-sotto-mcp-module-reload",
+  "measured": "2026-10-26",
+  "scope": "live MCP + process + config + git evidence; nothing restarted, reindexed, installed or reconfigured",
+  "mcp_server": {
+    "config_source": {
+      "command": "Get-Content H:\\env\\config\\opencode\\opencode.json -Raw | ConvertFrom-Json; .mcp.codeintel",
+      "result": { "type": "local", "command": "C:\\Program Files\\Python311\\Scripts\\codeintel-mcp.exe", "args": [], "env_keys": [], "enabled": null, "timeout": null },
+      "claim": "the registered CodeIntel MCP server is a local stdio server launched as codeintel-mcp.exe with no args and no environment overrides"
+    },
+    "live_process_this_session": {
+      "command": "Get-CimInstance Win32_Process -Filter \"ProcessId=46928\" (and parent/children)",
+      "result": { "exe": "codeintel-mcp.exe", "pid": 46928, "created": "2026-10-26T20:10:54", "parent": "opencode.exe pid 43172 created 20:10:45", "children": ["conhost.exe:12608", "python.exe:44796"] },
+      "claim": "the pane's MCP server is a child of this opencode session, spawned 9 s after the client started"
+    },
+    "python_module": {
+      "command": "& 'C:\\Program Files\\Python311\\python.exe' -c \"import codeintel; print(codeintel.__file__)\"",
+      "result": "C:\\Users\\Administrador\\Desktop\\consult-chatgpt\\consultgpt\\codeintel\\__init__.py",
+      "claim": "the imported package is a source checkout on the Desktop, not a site-packages install"
+    },
+    "entry_module": {
+      "command": "codeintel --help (subcommands) + Select-String on mcp/consolidated_server.py",
+      "result": "codeintel mcp = 'MCP stdio server and client config installer'; package contains mcp\\consolidated_server.py, mcp\\single_instance.py, mcp\\admission.py; consolidated_server.py has 150 'grep' hits",
+      "claim": "the stdio entry point is codeintel.mcp.consolidated_server; grep is handled in that process"
+    },
+    "daemon_is_separate_and_does_not_serve_grep": {
+      "command": "codeintel_health (live) + Get-CimInstance for pid 24400 + Select-String daemon_protocol.py -Pattern grep",
+      "result": { "daemon_pid": 24400, "port": 21412, "server_version": "codeintel-daemon/1.0", "uptime_s": 3808.2, "workspace_root": "H:\\sotto", "serves_this_workspace": true, "launcher": "python -c \"from codeintel.daemon import CodeintelDaemon,_install_daemon_log; ...; CodeintelDaemon(**a).start()\"", "daemon_protocol_grep_hits": 0 },
+      "claim": "the daemon keeps the index warm over a loopback port and has no grep operation in its protocol, so codeintel_grep executes inside the MCP server process, not the daemon"
+    }
+  },
+  "source_revision": {
+    "repo": {
+      "command": "git -C C:\\Users\\Administrador\\Desktop\\consult-chatgpt\\consultgpt rev-parse --short HEAD / --abbrev-ref HEAD / log -1 --format=%cI",
+      "result": { "head_short": "5cf376b3", "head_full": "5cf376b38a649d097eb5713562f83d1813c3b2d4", "branch": "perf/latency-cli", "commit_date": "2026-10-25T09:15:50-03:00" },
+      "claim": "observable source revision is HEAD 5cf376b3 on perf/latency-cli"
+    },
+    "dirty": {
+      "command": "git -C <repo> status --porcelain -- codeintel",
+      "result": [" M codeintel/cli_monolith.py", " M codeintel/literal_search.py", " M codeintel/mcp/consolidated_server.py", " M codeintel/mcp_fast.py", " M codeintel/mcp_server.py", " M codeintel/text_grep.py"],
+      "claim": "the running code is HEAD plus 6 uncommitted edits, so 'revision' is only partially described by the commit id"
+    },
+    "loaded_content_hash": { "value": "UNKNOWN", "reason": "no command was run to hash the imported modules; a commit id plus a dirty-file list does not identify the bytes actually in memory" },
+    "pip_version": { "value": "UNKNOWN", "reason": "importlib.metadata.version('codeintel') raises PackageNotFoundError - the package has no dist metadata; the only version string available is the daemon's self-reported 'codeintel-daemon/1.0'" }
+  },
+  "hot_reload": {
+    "value": false,
+    "evidence": {
+      "command": "Select-String -Path codeintel\\*.py, codeintel\\mcp\\*.py -Pattern 'importlib\\.reload|reload\\s*=\\s*True|watchfiles'",
+      "result": "strict_hits = 0",
+      "secondary": "codeintel/daemon_restart.py is an opt-in auto-restart for repeated 'throttled_host' diagnoses (CODEINTEL_DAEMON_AUTO_RESTART, default OFF), not a code-reload mechanism"
+    },
+    "claim": "no code hot-reload exists: modules are imported once at process start and stay loaded",
+    "currently_moot": {
+      "command": "Get-ChildItem <6 dirty files> | LastWriteTime vs process start times",
+      "result": "mtimes 14:11:27, 14:12:36, 14:52:39, 15:04:04, 15:24:45, 15:24:51 - all EARLIER than the daemon (19:07:53) and this session's MCP server (20:10:54)",
+      "claim": "the live processes already loaded the newest on-disk source, so no update is currently pending"
+    }
+  },
+  "least_cost_path_to_load_updated_code": {
+    "for_mcp_code_-_grep_tool_surface": {
+      "path": "start a new codeintel-mcp.exe (new client session / reconnect); the client spawns it fresh from the configured command",
+      "measured_basis": "8 concurrent codeintel-mcp.exe processes exist today, created at 15:55:22, 16:47:13, 17:02:30, 17:02:57, 19:26:56, 19:42:03, 20:09:23, 20:10:54 - one per client session, which shows respawn is routine and cheap",
+      "cost": "one process spawn (~1 s), no reindex, no install, no config change"
+    },
+    "for_daemon_code_-_index_bm25_embeddings": {
+      "path": "codeintel daemon stop, then let the next MCP call auto-start a fresh daemon",
+      "measured_basis": "codeintel daemon --help lists only start / status / stop (no restart subcommand); background memory around 802 s uptime was a single long-lived process",
+      "cost": "one daemon respawn; the index db is untouched, so no rebuild follows"
+    },
+    "not_a_path": [
+      "codeintel index . - rebuilds the index, does not reload code, and was explicitly out of bounds here",
+      "pip install / console-script reinstall - unnecessary: the package resolves by source path, so the console script already points at the edited tree"
+    ],
+    "explicitly_not_executed": true
+  },
+  "fleet_observation_measured": {
+    "command": "Get-Process codeintel-mcp + Win32_Process filter CommandLine -match CodeintelDaemon, summed WorkingSet64",
+    "result": { "codeintel_mcp_processes": 8, "codeintel_mcp_rss_mb": 69.4, "daemon_processes": 6, "daemon_rss_mb": 642.7, "daemon_pids": [27372, 6868, 39036, 31084, 20260, 24400] },
+    "note": "12 resident python processes serving CodeIntel for 642.7 + 69.4 MB total on a machine whose degradation is already documented; one daemon (24400) is bound to H:\\sotto. Reported as a measurement, not as a verdict on whether the count is by design; reaping processes is outside this lane's boundary."
+  },
+  "UNKNOWN_fields": ["loaded_content_hash", "pip_version", "whether every one of the 6 daemons is still bound to a live workspace"],
+  "side_effects": "none: no restart, no reindex, no install, no config change, no edit, no build, no test, no pane operation"
+}

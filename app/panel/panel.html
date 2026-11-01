@@ -85,6 +85,8 @@
          on purpose: every rule is !important and scoped to the surface, so it
          wins against the 45 generated theme sheets regardless of their order. -->
     <link rel="stylesheet" href="button-contract.css" />
+    <!-- O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30). Ficheiro proprio porque o `panel.css` esta no ratchet do `code-health` e nao pode crescer; ver o cabecalho de `hotkey-hold.css`. -->
+    <link rel="stylesheet" href="hotkey-hold.css" />
     <!-- THE TEMPLATE SET (owner, 2026-10-08): *"gostei de alguns designs que botei
          ai no workspace. sao .zip novos… eu nao quero só a paleta de cores. eu
          quero uma mudança mesmo, a cada tema/template. super parecida com o que ta
@@ -330,7 +332,7 @@
             class="live-lamp"
             id="live-lamp"
             role="img"
-            aria-label="Live caption: OFF — press Alt+C to turn it on."
+            aria-label="Live caption: OFF · press Alt+C to turn it on."
             data-live="off"
           ></span>
           <!-- THE OWNER REMOVED TWO BUTTONS, and neither removal is silent.
@@ -564,23 +566,19 @@
 
         <div class="history__body" id="history-body">
           <div class="history__tools">
-            <form class="search" id="search-form" role="search">
-              <input
-                type="search"
-                class="search__input"
-                id="search-input"
-                placeholder="Search transcript&hellip;"
-                aria-label="Search the transcript"
-                autocomplete="off"
-                spellcheck="false"
-              />
-              <button type="submit" class="search__button" id="search-button" title="Search the transcript">
-                Search
-              </button>
-              <button type="button" class="search__clear" id="search-clear" title="Clear search" hidden>
-                Clear
-              </button>
-            </form>
+            <!-- THE SEARCH BOX IS GONE BY THE OWNER'S ORDER. 2026-10-21 21:24,
+                 verbatim: *"tira a caixa de procurar texto e textos como
+                 'transcript history'"*. It supersedes the 2026-10-18 request that the
+                 search FIND things: the last word on the subject is that the box must
+                 not be on the panel at all. `panel.js` keeps its `if (dom.searchForm)`
+                 guards, which are now dead branches by construction (the nodes cannot
+                 be looked up), and the shell's search predicate stays where it is --
+                 `_main/search-oracle.py` still judges it.
+                 REAPPLIED 2026-10-30: this removal had already been made once and was
+                 LOST with the stash episode (the version in `stash@{0}` carries this
+                 very paragraph); the form was back in the markup and the complaints
+                 register said so, measured by `complaints-assert.py search-box-absent`
+                 with 3 nodes. -->
             <!-- ONE of the two "show in folder" affordances panel.js keeps (the
                  other is the path button above): this one names the SELECTED
                  line, so it is disabled until a line is selected. It is hidden
@@ -749,7 +747,7 @@
           class="live-lamp"
           id="strip-live-lamp"
           role="img"
-          aria-label="Live caption: OFF — press Alt+C to turn it on."
+          aria-label="Live caption: OFF · press Alt+C to turn it on."
           data-live="off"
         ></span>
         <button
@@ -757,8 +755,8 @@
           class="strip-button strip-button--toggle"
           id="strip-live-button"
           aria-pressed="false"
-          aria-label="live: off — the captions are off the screen. Click to put them on screen."
-          title="live — click to put the captions ON SCREEN (loose, like the .zip demos); the band itself stays a thin bar."
+          aria-label="live: off · the captions are off the screen. Click to put them on screen."
+          title="live · click to put the captions ON SCREEN (loose, like the .zip demos); the band itself stays a thin bar."
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <rect
@@ -1082,6 +1080,32 @@
           </span>
         </span>
 
+
+        <!-- ── O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30) ────────
+             *"config dos milissegundos do HOLD, no painel da direita"*.
+
+             E' um <select> e nao um campo numerico por uma razao que custa
+             dinheiro a aprender: um numero livre obriga a decidir, do lado da
+             pagina, o que fazer com "500ms", "-3", "0" e vazio -- e qualquer
+             resposta que eu inventasse seria uma segunda validacao a divergir da
+             do Python. As escolhas viajam do shell (`getHotkeyHold` ->
+             `hotkey_settings.HOTKEY_HOLD_MS_CHOICES`), por isso a pagina nunca
+             tem a lista: pinta a que recebe.
+
+             QUEM MANDA E' O SHELL. O valor em vigor vem de `getHotkeyHold`, a
+             escolha vai por `setHotkeyHold`, e o resultado pintado e' o que o
+             shell respondeu -- nao o que a pagina pediu. Uma escrita recusada
+             deixa o controlo onde o disco diz que ele esta'.
+
+             A SUPERFICIE E' O PAINEL DA DIREITA: `body[data-surface="strip"]`
+             esconde `.status__text` e esta linha pela mesma regra (panel.css),
+             por isso o painel de baixo continua a ser o painel de baixo. -->
+        <label class="status__hold" id="hotkey-hold-row" for="hotkey-hold-select"
+               title="Quanto tempo o Alt+C tem de ficar premido para ligar/desligar a legenda">
+          <span class="status__hold-label">HOLD</span>
+          <select id="hotkey-hold-select" class="status__hold-select"></select>
+          <span class="status__hold-unit">ms</span>
+        </label>
         <span class="status__dot" id="status-dot" aria-hidden="true"></span>
         <span class="status__text" id="status-text">Idle &middot; no audio source</span>
         <!-- THE SHORTCUT IS NOT ADVERTISED IN THE PANEL (owner, 2026-10-08:
@@ -1148,7 +1172,7 @@
       <p class="pause-dialog__shell" id="pause-dialog-shell" hidden></p>
       <div class="pause-dialog__buttons">
         <button type="button" class="dialog-button" id="pause-cancel-button">
-          Cancel — keep transcribing
+          Cancel · keep transcribing
         </button>
         <button type="button" class="dialog-button dialog-button--danger" id="pause-confirm-button">
           Pause and unload
@@ -1159,6 +1183,9 @@
     <!-- The text decisions, DOM-free, so the oracle can run them outside
          Electron. Must load BEFORE panel.js, which calls into it at load. -->
     <script src="caption-formulation.js"></script>
+    <!-- The worker's promise that the last word is PROVEN (owner, 2026-10-30).
+         DOM-free, and BEFORE panel.js, which reads it while rendering. -->
+    <script src="stable-words.js"></script>
     <!-- WHICH PRODUCER may write the canonical transcript ("Transcript").
          DOM-free for the same reason, and also BEFORE panel.js: `recordHistory`
          calls it on every caption. See `history-source.js`. -->

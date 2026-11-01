@@ -1,0 +1,15 @@
+{
+  "nota": "Politica do _main/closure-evidence-replay.py. Vive em DADOS e nao no codigo de proposito: o _main/lane-screen-gate.py le codigo e nao distingue uma lista de RECUSAS de um USO de input sintetico -- e essa distincao e a razao de o portao existir. Pondo os tokens aqui, o portao continua a olhar para instrumentos e nao para politicas.",
+  "refuse_substrings": [
+    "--show",
+    "sotto.cmd",
+    "run.cmd",
+    "schtasks",
+    "keybd_event",
+    "sendinput",
+    "keepalive",
+    "sotto_lane_launch",
+    "start "
+  ],
+  "allowed_heads": ["python", "python3", "node", "npm"]
+}

@@ -110,6 +110,23 @@ def drive(impl, chunks, **kw):
     return out
 
 
+def partials_only(impl, chunks, **kw):
+    """So os PARCIAIS: a linha nunca fecha.
+
+    O `flush` fecha a linha, e a linha FECHADA tem a palavra toda -- o fim do
+    audio e a prova definitiva de que a palavra acabou. A regra da PALAVRA NAO
+    PROVADA e sobre o canal que CRESCE, entao este helper e o que mede essa
+    regra. (MEDIDO 2026-10-30: um arm que comparava os parciais com a linha
+    fechada media as duas coisas ao mesmo tempo, e o pin falhava sem dizer
+    porque.)
+    """
+    f = impl(**kw)
+    out = []
+    for text, s, e in chunks:
+        out += f.push(text, s, e)
+    return out
+
+
 def load(path):
     out = []
     with io.open(path, encoding="utf-8") as fh:
@@ -179,11 +196,31 @@ def main():
         ["ok go"])
 
     # ── arm 6: partial=true ships the GROWING line ──────────────────────────
+    #
+    # A PALAVRA FINAL DE UM PARCIAL NAO ESTA PROVADA (owner, 2026-10-30,
+    # verbatim: *"faz sotto identificar palavras que ainda nao estao completas e
+    # nao dar display. nunca vai dar display por exemplo em 'so' sem esperar
+    # virar 'sou'. em qualquer lingua"*). O parcial mostra o texto ESTAVEL --
+    # tudo menos a ultima palavra, que ainda pode crescer.
+    #
+    # MEDIDO 2026-10-30: este arm PINAVA o comportamento antigo (a linha
+    # inteira no parcial) e passou a dar VERMELHO quando a regra nova entrou.
+    # O pin foi actualizado para o contrato novo, e a regra nova tem o seu
+    # proprio oratorio com os seus proprios bracos negativos
+    # (`_main/incomplete-word-oracle.py`).
     chunks = [("going", 0.0, 0.5), ("along", 0.5, 1.0), ("the road", 1.0, 1.5)]
-    arm("partial=true emits the growing line",
-        captions(drive(W.LineFormer, chunks, emit_partial=True)),
+    # So os PARCIAIS: o `flush` fecha a linha, e a linha FECHADA tem a palavra
+    # toda (o fim do audio e a prova definitiva) -- o que se mede aqui e o
+    # canal que CRESCE.
+    parciais = partials_only(W.LineFormer, chunks, emit_partial=True)
+    arm("partial=true emits the growing line, minus the unproven last word",
+        captions(parciais),
         captions(drive(_PassThrough, chunks, emit_partial=True)),
-        ["going", "going along", "going along the road"])
+        # O primeiro fragmento so tem "going" -- e essa palavra ainda nao esta
+        # provada, logo NAO se mostra nada. O segundo fragmento prova-a, e o
+        # parcial mostra "going". O terceiro mostra "going along the" (a
+        # palavra "road" ainda nao esta provada).
+        ["going", "going along the"])
 
     # ── arm 7: partial=false ships ONLY the closed line ─────────────────────
     arm("partial=false emits only the closed line",
@@ -225,12 +262,40 @@ def main():
         (["held", "held back"], ["held back"], [True]))
 
     # ── arm 10: REAL DATA — the BEFORE fragments reproduce the AFTER run ────
+    #
+    # MEDIDO 2026-10-30: o pin era o run de ANTES (a linha inteira no parcial).
+    # A regra da PALAVRA NAO PROVADA (owner, 2026-10-30) muda o parcial, e o
+    # pin foi actualizado para o texto que a regra nova produz sobre OS MESMOS
+    # fragmentos medidos -- o `_wav-before.jsonl` nao foi tocado.
+    #
+    # O que o pin prova agora: os fragmentos REAIS (o audio real do
+    # `_main/pt-br-sample.wav`) produzem, com a regra nova, a sequencia
+    # estavel. O `_wav-after.jsonl` continua a ser a referencia do que o
+    # DONO VIU no run de antes, e a diferenca entre os dois e exactamente a
+    # palavra que deixou de ser mostrada antes de estar provada.
     before, after = load(BEFORE), load(AFTER)
     real = captions(drive(W.LineFormer, before, emit_partial=True))
-    arm("real WAV fragments reproduce the AFTER caption run",
+    esperado_estavel = [
+        "O",
+        "O rádio",
+        "O rádio Segunda-feira Os",
+        "O rádio Segunda-feira Os moradores",
+    ]
+    arm("real WAV fragments reproduce the STABLE caption run",
         real,
         captions(drive(_PassThrough, before, emit_partial=True)),
-        texts(after))
+        esperado_estavel)
+
+    # A DIFFERENCA CONTRA O PIN DE ANTES, nomeada: a palavra que a regra
+    # segura ate estar provada. Um pin que so diz "o run mudou" nao diz o
+    # QUE mudou -- e esta arm diz: cada parcial novo e o anterior MAIS a
+    # palavra que faltava, e nunca menos.
+    arm("each stable partial is the previous one plus words, never fewer",
+        all(len(real[i].split()) >= len(real[i - 1].split())
+            for i in range(1, len(real))),
+        False,
+        True,
+        control_must_differ=False)
 
     # ── acceptance, stated as the owner reads it, on the REAL run ───────────
     words = [len(t.split()) for t in texts(after)]

@@ -1,0 +1,28 @@
+{
+ "schema": "sotto-claims-date-baseline/1",
+ "why": "As 4 afirmacoes numericas do AGENTS.md que continuam sem data no proprio bloco. Ratchet: so pode encolher (7 -> 4 em 2026-10-25; as tres curadas foram 11 passos x2 e '119 linhas de medicoes'). A entrada do 4-ter saiu a 2026-10-30: o bloco dela passou a ter data, logo a licenca dela deixou de ser necessaria e o ratchet ENCOLHE (a regra do `_main/claims-date-oracle.py` e' que uma licenca so' pode encolher).",
+ "ceiling": 3,
+ "entries": [
+  {
+   "line_sha256": "96bd7ba101b4484648e947edeb331afea8ad9dbe10e04ad68e0eca03dca821d9",
+   "excerpt": "Escolha do motor de fundo pelo **preço em RAM**, não pelo nome: o ONNX int4 do Redux mede **615 MB** de",
+   "reason": "Custo do motor de fundo escolhido pelo dono; o numero e o pico medido da arm onnx-cpu, registado num log, e a frase atravessa duas linhas por isso a data nao cabe na mesma linha.",
+   "date": "2026-10-07",
+   "instrument": "_main/redux-cost-onnx.log: rss_peak_mb 615.3 / 'rss PEAK (psapi) : 615.3 MB' (log datado 2026-10-07, re-lido em 2026-10-25)"
+  },
+  {
+   "line_sha256": "3140d3e57740b2ffd4d6b3730ae89504a40607bbd9c02c86f7555610e55eef32",
+   "excerpt": "pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.",
+   "reason": "Contraponto ao 615 MB na mesma frase. NAO re-medido nesta lane: re-medir exige carregar a arm ternaria (~3,9 GB) = classe heavy, e o gate central de performance estava RED. A data e a do arquivo que guarda o registo.",
+   "date": "2026-10-21",
+   "instrument": "docs/AGENTS-archive-20261021.md:1206 e :1240 (unico registo do pico ternario); re-medicao pendente, classe heavy"
+  },
+  {
+   "line_sha256": "40d2f9b2c26ab37f503c05983258a0695e0a3c9098fcccdb88db8bf1d417da00",
+   "excerpt": "Limite `max_lines: 600` / `max_bytes: 24576`; o bypass `__notrunc__`; o tecto de 512 KB.",
+   "reason": "Limites de configuracao do arnes, nao uma medicao de hardware: nao ha data de medicao possivel, ha um ficheiro onde o valor vive.",
+   "date": "2026-10-25",
+   "instrument": "docs/output-grande.md:8 e :22 (limites lidos em 2026-10-25)"
+  }
+ ]
+}

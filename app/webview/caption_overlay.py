@@ -29,6 +29,7 @@ import ctypes
 import json
 import os
 import threading
+import time
 from ctypes import wintypes as wt
 
 WS_EX_LAYERED = 0x00080000
@@ -641,20 +642,10 @@ def _layout(text, previous, scale, work_width, theme=None):
 
     budget = _cw.budget_px(work_width, cur_px, cur_w) if _cw else int(work_width * 0.5)
 
-    # THE WINDOW SLIDES. This line used to be
-    #
-    #     cur_lines, _overflow = _cw.wrap(text or '', cur_w, budget)
-    #
-    # with the second value bound to an underscore and read NOWHERE, so every
-    # word past the second line was simply never drawn -- silently, on every
-    # caption that outgrew two lines. MEASURED 2026-10-18 on the owner's own
-    # last 400 captions: 168 of them lost words, 772 words in total, the worst
-    # losing 59 of its 68. Owner, verbatim: *"ta cortando palavras"*.
-    #
-    # `wrap_tail` keeps `MAX_LINES` at 2 -- the industry number, and the one the
-    # owner asked for by name (*"verificar online como quebrar de um jeito bom.
-    # ou como o youtube faz"*) -- and makes the two lines the LAST two, so the
-    # newest words are the ones on screen and no word is ever simply lost.
+    # A JANELA DESLIZA. Antes era `_overflow` (lido por NINGUEM): toda palavra
+    # alem da 2a linha nunca era desenhada -- 168 de 400 legendas do dono, 772
+    # palavras (medido 2026-10-18, *"ta cortando palavras"*). `wrap_tail` mantem
+    # 2 linhas e mostra as DUAS ULTIMAS: as palavras novas ficam no ecra.
     if _cw and '\n' not in text:
         cur_lines, scrolled = _cw.wrap_tail(text or '', cur_w, budget)
     else:
@@ -865,6 +856,11 @@ class NativeCaptionOverlay:
         self._n = 0
         self._reveal_timer = None
         self._reveal_gen = 0
+        # O FADE DA LINHA NOVA (ordem do dono, 2026-10-30: *"por que a nossa
+        # legenda nao tem a mesma animacao da do youtube?"*). `_fade_t0` e' o
+        # instante em que a linha mudou, ou None quando nao ha' fade a correr.
+        self._fade_t0 = None
+        self._fade_gen = 0
         # THE WINDOW OWNS ITS OWN THREAD AND MESSAGE PUMP. Creating it on the
         # pywebview/WinForms UI thread meant every Win32 call from the caption
         # watcher blocked the UI thread (measured 2026-10-17: the UI thread
@@ -932,18 +928,14 @@ class NativeCaptionOverlay:
     def set_theme(self, tokens=None):
         """Wear a design: the panel's own live row decides the overlay's face.
 
-        CALLED FROM THE SHELL, ON THE PANEL'S PUSH. The measurement happens in
-        the document (`brand-bridge.js`) because only the document knows what
-        CSS actually resolved to -- family fallbacks, `color-mix`, the owner's
-        caption-scale dial. This side only sanitises and caches.
+        Chamado pelo shell no push do painel: so' o documento sabe em que deu o
+        CSS (fallbacks, `color-mix`, a escala dele). Aqui so' se sanitiza e se
+        guarda.
         """
         theme = _normalise_theme(tokens)
         with self.lock:
             self.theme = theme
-            # The measure cache is keyed by face+size, so a new theme is a new
-            # key and does not need eviction; clearing it is about the SIZE
-            # going down (a 10.5 px theme would otherwise keep hundreds of
-            # measured strings for a size no other theme uses).
+            # A cache e' por face+tamanho: limpar e' para o tamanho DESCER.
             _MEASURE_CACHE.clear()
             if self.hwnd and (self.text or self.previous):
                 self._update()
@@ -957,11 +949,47 @@ class NativeCaptionOverlay:
         return dict(theme)
 
     def _measure(self, text, previous):
-        """Width/height for the current text. ONE layout, shared with the draw."""
+        """Largura em px: o MESMO motor que desenha, nunca `GenericTypographic`
+        -- medido 2026-10-17, 4,7% mais estreito, e quebrar com um e desenhar com
+        o outro corta a ultima letra."""
         _lines, _prev, width, height, _scrolled = _layout(
             text, previous, self.scale, self.work.get('width', 1920),
             self.theme)
         return width, height
+
+    def _fade_alpha(self):
+        """O `SourceConstantAlpha` deste frame -- 255 sem fade. O fade e' da
+        JANELA inteira: o alfa do `UpdateLayeredWindow` e' um numero por
+        chamada."""
+        if self._fade_t0 is None:
+            return 255
+        import word_fade
+        elapsed = time.monotonic() - self._fade_t0
+        alpha = word_fade.alpha_at(elapsed)
+        if word_fade.done(alpha):
+            self._fade_t0 = None
+        return alpha
+
+    def _arm_fade(self):
+        """Agenda o proximo frame do fade. Sem fade a correr, nao faz nada."""
+        if self._fade_t0 is None:
+            return
+        import word_fade
+        self._fade_gen += 1
+        gen = self._fade_gen
+        delay = word_fade.next_delay(time.monotonic() - self._fade_t0)
+        t = threading.Timer(delay, lambda: self._fade_tick(gen))
+        t.daemon = True
+        t.start()
+
+    def _fade_tick(self, gen):
+        try:
+            with self.lock:
+                if gen != self._fade_gen or self._fade_t0 is None:
+                    return
+                self._update()
+        except Exception as exc:  # noqa: BLE001 -- see the fail-open rule
+            self._fail_open(exc)
 
     def _update(self):
         if not self.hwnd:
@@ -1012,13 +1040,15 @@ class NativeCaptionOverlay:
             pt_dst = wt.POINT(x, y)
             size_dst = wt.SIZE(width, height)
             pt_src = wt.POINT(0, 0)
-            blend = BLENDFUNCTION(AC_SRC_OVER, 0, 255, AC_SRC_ALPHA)
+            fade = self._fade_alpha()
+            blend = BLENDFUNCTION(AC_SRC_OVER, 0, fade, AC_SRC_ALPHA)
             ok = _user32.UpdateLayeredWindow(
                 self.hwnd, hdc_screen, ctypes.byref(pt_dst),
                 ctypes.byref(size_dst), hdc_mem, ctypes.byref(pt_src),
                 0, ctypes.byref(blend), ULW_ALPHA)
             _gdi32.SelectObject(hdc_mem, old)
             _gdi32.DeleteObject(hbmp)
+            self._arm_fade()
             _gdi32.DeleteDC(hdc_mem)
             _user32.ReleaseDC(None, hdc_screen)
             if not ok:
@@ -1060,8 +1090,13 @@ class NativeCaptionOverlay:
                 self._shown = min(self._shown, len(words))
             else:
                 self._shown = 1 if words else 0
+            changed = not _same_line(self.text, full)
             self.text = full
             self._n = len(words)
+            # A LINHA MUDOU: fade. `instant` so' salta o SPROUT (a janela do
+            # YouTube chega ja' revelada), nao o fade -- sao coisas diferentes.
+            if changed and words:
+                self._fade_t0 = time.monotonic()
             if instant:
                 self._shown = self._n
                 self._arm_reveal()
@@ -1133,6 +1168,22 @@ class NativeCaptionOverlay:
                 _user32.ShowWindow(self.hwnd, SW_HIDE)
                 self.visible = False
             return True
+
+    def hide(self):
+        """FECHA E LIMPA a linha; SEM lock (`_update` chama-o com o lock na mao).
+
+        FALTAVA: `_update` chamava `self.hide()` com o texto vazio, a classe nao
+        tinha `hide` e o ULTIMO bitmap ficava no ecra -- a legenda do anterior.
+        """
+        self.text = ""
+        self.previous = ""
+        self._shown = 0
+        self._n = 0
+        self._reveal_gen += 1
+        self.visible = False
+        if self.hwnd:
+            _user32.ShowWindow(self.hwnd, SW_HIDE)
+        return True
 
     def destroy(self):
         # The timer chain is daemonic, but retiring it here means a destroyed

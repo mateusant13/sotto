@@ -97,6 +97,13 @@ class Probe:
         self.hwnd = 4242
         self.visible = visible
         self.args = SimpleNamespace(show=False)
+        # O VIGILANTE DO CLIQUE FORA (product change 2026-10-23, tick 2026-10-30). The REAL
+        # `hide_panel` disarms it (`self.click_watcher.armed = False`, sotto_webview.py:8679)
+        # and `show_panel` arms it (:8658); this `Probe` was born before that and died with
+        # `AttributeError: 'Probe' object has no attribute 'click_watcher'` -- measured
+        # 2026-10-30 on the battery. The attribute present is what lets case F measure the
+        # DISARM instead of tolerating its absence.
+        self.click_watcher = SimpleNamespace(armed=True)
         self.state = {"mapped": mapped}
         mod.window_visible = lambda hwnd: bool(self.state["mapped"]) if hwnd else False
         mod.hide_window = self._hide
@@ -213,7 +220,24 @@ def run_cases(mod):
                   (e.blank_caption_calls == ["panel-hidden"]
                    and e.caption_window_calls == [])}
 
+    # F -- ADDED 2026-10-30: HIDING THE PANEL DISARMS the outside-click watcher. Without this
+    # case the attribute added to `Probe` would be decoration: a product that stopped
+    # disarming would pass unnoticed.
+    # A META DE ARME DO `show_panel` NAO SE MEDE AQUI, de proposito: ela toca a superficie
+    # (`self.surface`) e o `Probe` falso nao a tem, e construir meia shell para o provar seria
+    # medir o stub. O que esta arm mede e' a linha que o produto acrescentou a 2026-10-23 e que
+    # matava este oraculo: o vigilante sai com o painel.
+    f = Probe(mod, Shell, mapped=True, visible=True)
+    armed_before_hide = f.click_watcher.armed
+    hide(f, "audit-row60")
+    case_f = {"armed_before_hide": armed_before_hide,
+              "armed_after_hide": f.click_watcher.armed,
+              "watcher_follows_the_panel":
+                  (armed_before_hide is True and f.click_watcher.armed is False)}
+
     return {
+        "case_f_watcher": case_f,
+        "watcher_follows_the_panel": case_f["watcher_follows_the_panel"],
         "case_a_hidden": case_a,
         "case_b_shown": case_b,
         "case_c_cycle": case_c,
@@ -241,7 +265,7 @@ def main(argv=None):
     got.update(promise(run_cmd_text))
     for key in ("reasserts_when_hidden", "respected_when_shown",
                 "reasserts_after_a_hide_cycle", "stale_cache_residual",
-                "hides_the_pixels_not_the_switch"):
+                "hides_the_pixels_not_the_switch", "watcher_follows_the_panel"):
         say("  live  " + key.ljust(36) + str(got[key]))
     for key in ("claims_start_hidden", "marks_precision", "cites_the_receipt",
                 "promise_precise"):
@@ -270,8 +294,14 @@ def main(argv=None):
             + " call show_caption_window(False): measured "
             + "blank=" + str(got["case_e_caption_window"]["blank_caption_calls"])
             + " switch=" + str(got["case_e_caption_window"]["caption_window_calls"]))
+        say("VERDICT watcher (2026-10-30): "
+            + ("FOLLOWS THE PANEL" if got["watcher_follows_the_panel"]
+               else "DOES NOT FOLLOW THE PANEL")
+            + " -- armed_before_hide=" + str(got["case_f_watcher"]["armed_before_hide"])
+            + " armed_after_hide=" + str(got["case_f_watcher"]["armed_after_hide"]))
         ok = (refuted and got["promise_precise"]
-              and got["hides_the_pixels_not_the_switch"])
+              and got["hides_the_pixels_not_the_switch"]
+              and got["watcher_follows_the_panel"])
         say("VERDICT: " + ("BOTH ROWS CLOSED" if ok else "ONE OF THE TWO ROWS IS NOT CLOSED"))
         return 0 if ok else 1
 
@@ -294,6 +324,8 @@ def main(argv=None):
         wrong.append("live case D did not bail (the residual is not what this says it is)")
     if mut["stale_cache_residual"]:
         wrong.append("mutant case D still bailed (removing the guard changed nothing)")
+    if mut["watcher_follows_the_panel"] != got["watcher_follows_the_panel"]:
+        wrong.append("mutant moved watcher_follows_the_panel, which this mutant must not touch")
     for key in ("reasserts_when_hidden", "respected_when_shown",
                 "reasserts_after_a_hide_cycle", "hides_the_pixels_not_the_switch"):
         if mut[key] != got[key]:

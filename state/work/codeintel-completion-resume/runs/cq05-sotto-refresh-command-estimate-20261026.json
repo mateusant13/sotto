@@ -1,0 +1,29 @@
+{
+  "exact_command": "codeintel index .",
+  "resource_estimates": {
+    "cpu_cores_saturated": null,
+    "peak_ram_bytes": null,
+    "disk_write_bytes": null,
+    "wall_time_s": null
+  },
+  "estimate_basis": {
+    "command_source": "codeintel_health envelope field refresh_command = \"codeintel index .\" (receipt state/work/codeintel-completion-resume/runs/cq05-sotto-live-path-capability-20261026.json: health_stale=true, health_needs_refresh=true)",
+    "cli_binary": "C:\\Program Files\\Python311\\Scripts\\codeintel.exe",
+    "cli_help_confirmed": "usage: codeintel index [OPTIONS] REPO_PATH; help describes it as a deterministic blocking rebuild (foreground), unlike search's bounded 60s cold-stage budget",
+    "measured_anchors": {
+      "indexed_files": 3170,
+      "symbols": 9256,
+      "existing_index_bytes": 160641024,
+      "index_db_name": "index_feat_speaker-attribution-20261019.db",
+      "daemon_server_version": "codeintel-daemon/1.0"
+    },
+    "not_measured": "No refresh has been executed by this lane, so CPU, peak RAM, disk write volume and wall time have no measurement behind them; existing_index_bytes is a disk size of the current index, not a write-volume measurement."
+  },
+  "required_shared_lease": true,
+  "unknowns": {
+    "cpu_cores_saturated": "needs one timed `codeintel index .` run with per-process CPU sampling (e.g. Start-Process -PassThru + Get-Counter/Get-Process CPU deltas) while holding the heavy lease",
+    "peak_ram_bytes": "needs peak working set of the codeintel process during that same run (Get-Process PeakWorkingSet64)",
+    "disk_write_bytes": "needs I/O counters for the run (Get-Counter '\\Process(codeintel)\\IO Write Bytes/sec' integrated, or Process IO write bytes delta); current index is 160641024 B, which does not establish rewrite volume",
+    "wall_time_s": "needs the wall clock of the same timed run; the CLI help only documents a 60s cold-stage budget for `codeintel search` auto-index, which does not apply to an explicit `codeintel index .` rebuild"
+  }
+}

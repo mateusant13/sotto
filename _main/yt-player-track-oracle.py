@@ -401,7 +401,16 @@ def battery(mod, path, workdir, source):
             second = mod.fetch_track("cUeZMUGCxrw", player_lang="en")
             ok = (str(first.get("lang")).lower() == "pt-orig"
                   and str(second.get("lang")).lower() == "en-orig")
-            return ok, "1o=%r 2o=%r" % (first.get("lang"), second.get("lang"))
+            # DETALHE A MAIS (medido 2026-10-30): `1o/2o` sozinhos nao dizem SE a segunda
+            # resposta veio do cache, do `candidates` reutilizado ou de uma re-extracao --
+            # e sem isso um vermelho deste braco obriga a adivinhar. O `reason` e' o campo
+            # que o proprio modulo escreve para dizer "mudei a pergunta".
+            return ok, ("1o=%r 2o=%r | 2o.reason=%r cached=%r player_lang=%r known=%r "
+                        "source=%r why=%r" % (
+                            first.get("lang"), second.get("lang"),
+                            second.get("reason"), second.get("cached"),
+                            second.get("player_lang"), second.get("player_known"),
+                            second.get("player_source"), second.get("player_why")))
         finally:
             mod.CACHE_DIR = old
     attempt("a08 o PLAYER muda de faixa: o cache da faixa antiga NAO e "
@@ -447,9 +456,15 @@ def battery(mod, path, workdir, source):
 MUTANTS = [
     # THE PLAYER'S SIGNAL IS IGNORED: the language preference decides again,
     # and the line the owner compares is the wrong one from the first frame.
+    # O SITIO MUTADO E' A RE-ESCOLHA DA LISTA REUTILIZADA (2026-10-30). Antes era a
+    # extracao; depois de `_rerank_reused` existir, ignorar o player na extracao passou a
+    # ser REPARADO a jusante e nenhum braco o distinguia (medido: SURVIVED). O sitio que
+    # hoje decide o que o dono ve quando troca de faixa e' este, e e' ele que tem de
+    # morrer. O mutante da extracao fica DECLARADO como nao-detectavel em vez de contado
+    # como dente que nao existe.
     ("the-player-signal-is-ignored",
-     "    tracks = tracks_from_info(info, lang_prefs, plang)",
-     "    tracks = tracks_from_info(info, lang_prefs)"),
+     "        ordered = tracks_from_info(pseudo, lang_prefs, plang)",
+     "        ordered = tracks_from_info(pseudo, lang_prefs)"),
     # THE PLAYER'S TRACK IS MAPPED TO THE `tlang` KEY. This is THE bug the
     # owner is comparing against the screen: `a.pt` is served as `pt`, whose
     # request carries `&tlang=pt` -- a DIFFERENT request from the player's,
@@ -483,6 +498,12 @@ def main() -> int:
         return EXIT_FAIL
     with open(MODULE_PATH, "r", encoding="utf-8", newline="") as fh:
         source = fh.read()
+    # OS ANCOS SAO ESCRITOS COM `\n` E O FICHEIRO E' CRLF (medido 2026-10-30): sem esta
+    # normalizacao, TODO o anco de mais de uma linha lia-se como "ANCHOR MISSING -- oracle
+    # is stale", e o mutante era dado como decorativo por um motivo que nao era o dele.
+    # A normalizacao e' so' para COMPARAR; o ficheiro mutado e' escrito com `\n`, que o
+    # Python aceita em qualquer plataforma.
+    source = source.replace("\r\n", "\n")
 
     arms_total = arms_green = 0
     if not neg_only:

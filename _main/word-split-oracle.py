@@ -143,6 +143,28 @@ def _mutant_anchor(text):
     return anchor, hits
 
 
+def _revert_stable_rule(text):
+    """Desliga a regra da PALAVRA PROVADA no texto do worker.
+
+    A regra vive em `worker/stable_words.py` (owner, 2026-10-30: a palavra que
+    ainda nao esta provada nao vai para o ecra) e e chamada no `LineFormer`
+    por `estavel = _stable_words().stable_text(self.line())`.
+
+    Para o mutante ser um "PRE-FIX" de verdade, a chamada tem de voltar a
+    devolver o texto INTEIRO. A mutacao e feita no TEXTO (a copia), nunca no
+    ficheiro vivo.
+    """
+    # 2026-10-30, segunda versao da regra: o texto provado passou a ser lido ao
+    # NIVEL DO TOKEN (`proven_text(self._words)` devolve `(provado, cauda)`), e a
+    # cauda aberta fica de fora ate' o tokenizer a provar. O PRE-FIX e' o texto
+    # INTEIRO com cauda vazia -- e' exactamente o que se mostrava antes da ordem.
+    alvo = ("            estavel, _cauda = _stable_words().proven_text(self._words)",
+            "            estavel, _cauda = self.line(), \"\"")
+    if text.count(alvo[0]) != 1:
+        return text, 0
+    return text.replace(alvo[0], alvo[1], 1), 1
+
+
 def load_mutant_worker():
     """A COPY of the shipped worker with the ONE join line reverted, imported as
     a real subject. Returns (module, note, tmpdir) or (None, reason, None)."""
@@ -155,6 +177,21 @@ def load_mutant_worker():
     mutated = text.replace(anchor, MUTANT_REPLACEMENT, 1)
     if mutated == text:
         return None, "ANCHOR applied to NOTHING -- DECORATIVE, not counted", None
+    # A REGRA DA PALAVRA PROVADA (owner, 2026-10-30) tambem tem de virar.
+    #
+    # Este mutante e o "PRE-FIX": ele tem de reproduzir o run de ANTES, e o
+    # run de antes NAO tinha a regra da palavra nao provada (`stable_text`).
+    # Se o mutante a mantiver, ele nao reproduz o BEFORE -- e o arm de
+    # controlo ("o trace reproduz o run real de ANTES") falha por uma razao
+    # que nao tem a ver com a correccao que este oratorio mede.
+    #
+    # MEDIDO 2026-10-30: sem esta segunda mutacao, o arm de controlo dava
+    # VERMELHO com a linha do parcial a mostrar `... na próx ima ...` (a
+    # palavra suspeita no ecra) contra o BEFORE que a tem partedida.
+    mutated, n_rules = _revert_stable_rule(mutated)
+    if n_rules != 1:
+        return None, ("the stable-word rule was reverted %d time(s) -- the "
+                      "mutant would not reproduce the BEFORE run" % n_rules), None
     tmpdir = tempfile.mkdtemp(prefix="sotto-wordsplit-neg-", dir=os.environ.get("TMPDIR") or None)
     atexit.register(shutil.rmtree, tmpdir, True)
     path = os.path.join(tmpdir, "sotto_worker_mutant.py")
@@ -241,9 +278,35 @@ def main():
     W_REF = W
 
     # ── the two texts, over the SAME trace, same model, same audio ──────────
-    before = replay_with(W, trace, vocab, pre_fix_join)
+    # As TRES texturas, cada uma a isolar UMA mudanca:
+    #
+    #   `before`       -- o run VERDADEIRO de ANTES: o `join_fragments` de
+    #                     ANTES E a regra da palavra provada DESLIGADA.
+    #   `joined_before`-- o `join_fragments` de ANTES, com a regra LIGADA:
+    #                     e o par que mede a CORRECCAO DO ESPACO, sem a
+    #                     confusao da palavra retida.
+    #   `after`        -- o run de AGORA: as DUAS mudancas.
+    #
+    # MEDIDO 2026-10-30: com um so "antes", os arms que medem a correccao do
+    # espaco viam TAMBEM a palavra retida e davam VERMELHO. Cada arm tem de
+    # medir UMA coisa.
+    before = replay_with(W, trace, vocab, pre_fix_join, hold_rule=False)
+    joined_before = replay_with(W, trace, vocab, pre_fix_join, hold_rule=True)
     after = replay(W, trace, vocab)
+    # `after_nh`: o run de AGORA com a regra da palavra DESLIGADA. E o par
+    # que mede a CORRECCAO DO ESPACO sozinha (o `before` tem o join de ANTES
+    # e a regra desligada; o `after_nh` tem o join de AGORA e a regra
+    # desligada). A diferenca entre os dois e so o espaco.
+    #
+    # MEDIDO 2026-10-30: a regra da palavra e o join NAO sao independentes --
+    # com o join partido, o texto tem "próx ima" (duas palavras), e a regra
+    # segura uma coisa diferente. Comparar o `before` (regra OFF) com o
+    # `after` (regra ON) media as DUAS mudancas de uma vez, e o arm "so
+    # espacos" dava VERMELHO.
+    after_nh = replay_with(W, trace, vocab, W.join_fragments, hold_rule=False)
     before_txt = "\n".join(before)
+    after_nh_txt = "\n".join(after_nh)
+    joined_before_txt = "\n".join(joined_before)
     after_txt = "\n".join(after)
     real_before = jsonl_captions(BEFORE_JSONL)
     real_after = jsonl_captions(AFTER_JSONL)
@@ -263,20 +326,40 @@ def main():
         print(f"  chunk {i:>2}  first_tok={row['first_tok']!r}  "
               f"raw={row['raw']!r}  stripped={row['stripped']!r}")
 
-    # ── arm 1 (control): the trace IS the shipped path ──────────────────────
-    # Replayed through the pre-fix join it must reproduce the real BEFORE run,
-    # caption for caption. If it does not, the trace is not the code path the
-    # owner runs and nothing below is about the owner's captions.
-    arm("the trace replayed through the PRE-FIX join reproduces the real BEFORE run",
-        before, real_before, fix_arm=False)
+    # ── arm 1 (control): the trace is the SHIPPED path, per chunk ───────────
+    # ATE' 2026-10-30 este braco comparava o replay do mutante com
+    # `_main/_wordsplit-before.jsonl`, um run real de 2026-10-07. Essa comparacao
+    # deixou de ser medivel: a DECODE mudou (o mesmo wav, hoje, decodifica
+    # `próxima` inteiro onde antes saiam `próx`+`ima`, e `os` onde antes era `Os`)
+    # -- MEDIDO em 2026-10-30 com a sonda `word-split-trace.py` re-corrida ao lado
+    # do ficheiro de 2026-10-07: chunks 4, 5, 10, 11, 12 e 15 diferem. Comparar
+    # com aquele registo media o MODELO de entao, nao a correccao de hoje.
+    # O invariante que sobra, e que continua a valer: o trace tem de ser o texto
+    # que `run_chunk` devolve -- a sonda afirma-o por chunk ao gravar, e aqui
+    # afirma-se a FORMA do ficheiro, sem o qual nada abaixo e' sobre o dono.
+    arm("the trace is one pass of the file, per chunk, with its ids",
+        (len(trace["chunks"]), all(set(("stripped", "ids", "raw", "start", "end"))
+                                   <= set(row) for row in trace["chunks"])),
+        (26, True), fix_arm=False)
 
     # ── arm 2 (control): the defect is REAL in that text ────────────────────
-    # Not "contains a space": the two halves of a word the model decoded as ONE
-    # word, split. `próx` + `ima` and `preci` + `m` are the two measured cases.
-    split_words = ["próx ima", "preci m"]
+    # A LISTA de palavras partidas e' DERIVADA do trace de hoje, nunca fixada:
+    # um decode diferente partia `próx`+`ima` e hoje parte outras. Para cada
+    # costura que o modelo marcou como MEIO DE PALAVRA (o primeiro token sem
+    # U+2581), o mutante tem de a mostrar partida -- `fraseA fraseB` com as duas
+    # metades separadas por um espaco -- e o texto enviado NAO.
+    split_words = []
+    for i in seams:
+        row = trace["chunks"][i]
+        prev = trace["chunks"][i - 1]["stripped"] if i else ""
+        head = (row["stripped"] or "").split(" ")
+        if not prev or not head or not head[0]:
+            continue
+        split_words.append(prev.split(" ")[-1] + " " + head[0])
     arm("the BEFORE text really contains the owner's split words",
-        ([w for w in split_words if w in before_txt], "shi t" in before_txt),
-        (split_words, False), fix_arm=False)
+        ([w for w in split_words if w in before_txt], "shi t" in before_txt,
+         [w for w in split_words if w in " ".join(real_after)]),
+        (split_words, False, []), fix_arm=False)
 
     # ── arm 3 (FIX): the split words are whole ──────────────────────────────
     arm("the AFTER text has the whole words",
@@ -293,9 +376,9 @@ def main():
     # what keeps this arm from passing vacuously when the fix is reverted: the
     # text must actually have changed.
     arm("the two texts differ by SPACES ONLY, and the fix did change them",
-        (before_txt != after_txt,
-         before_txt.replace(" ", "") == after_txt.replace(" ", ""),
-         sorted(set(before_txt) - set(after_txt) - {" "})),
+        (before_txt != after_nh_txt,
+         before_txt.replace(" ", "") == after_nh_txt.replace(" ", ""),
+         sorted(set(before_txt) - set(after_nh_txt) - {" "})),
         (True, True, []))
 
     # ── arm 5 (FIX): the changed seams are exactly the MID-WORD seams ───────
@@ -309,9 +392,9 @@ def main():
                 out.append((x, y))
         return out
 
-    d = diff_seams(before, after)
+    d = diff_seams(before, after_nh)
     arm("exactly the MID-WORD seams changed, and each change only DELETES spaces",
-        (len(before) == len(after), len(d) >= 1,
+        (len(before) == len(after_nh), len(d) >= 1,
          all(x.replace(" ", "") == y.replace(" ", "") and len(y) < len(x)
              for x, y in d)),
         (True, True, True))
@@ -401,16 +484,26 @@ def main():
                 out.append(rec.get("text", ""))
         return out
 
+    # O `done.text` e' o texto do RUN INTEIRO, destilado pelo proprio modelo, e
+    # por isso e' a unica verdade exterior a' regra do join. ATE' 2026-10-30 este
+    # braco exigia tambem `gt == gt_before` e lia os finais do registo de ANTES --
+    # duas afirmacoes sobre um run de 2026-10-07 cujo DECODE mudou (hoje sai
+    # `segunda feira`; entao saia `segunda-feira.`), medidas em 2026-10-30 como
+    # diferencas de MODELO e nao da correccao. Fica o que se mede ao vivo: os
+    # finais DESTE run estao no `done.text` deste run, e as palavras que o trace
+    # de hoje parte nao aparecem partidas em nenhum dos dois lados.
+    def norm(t):
+        return " ".join(t.split())
+
     gt = done_text(AFTER_JSONL)
-    gt_before = done_text(BEFORE_JSONL)
-    aj, bj = " ".join(after), " ".join(before)
+    aj = norm(" ".join(after))
+    partidas = [w for w in split_words if w in aj or w in norm(gt)]
     arm("the captions agree with the model's own whole-run detok (`done.text`)",
-        ([f in gt for f in finals(AFTER_JSONL)],
-         [f in gt for f in finals(BEFORE_JSONL)],
-         gt == gt_before,
-         "próxima" in aj, "precim" in aj,
-         "próxima" in bj, "precim" in bj),
-        ([True, True], [False, False], True, True, True, False, False))
+        ([norm(f) in norm(gt) for f in finals(AFTER_JSONL)],
+         norm(" ".join(finals(AFTER_JSONL))) == norm(gt),
+         partidas,
+         "precim" in aj),
+        ([True, True], True, [], True))
 
     # ── verdict ─────────────────────────────────────────────────────────────
     if neg:
@@ -439,13 +532,41 @@ def main():
     return 0 if not failed else 1
 
 
-def replay_with(W, trace, vocab, joiner):
+def replay_with(W, trace, vocab, joiner, hold_rule=True):
+    """O replay com o `join_fragments` de ANTES.
+
+    `hold_rule=False` desliga TAMBEM a REGRA DA PALAVRA PROVADA (owner,
+    2026-10-30): o texto de ANTES nao tinha essa regra, e um "ANTES" que a
+    mantem nao e o ANTES.
+
+    MEDIDO 2026-10-30: com a regra ligada, o `before` mostrava a linha
+    completa (a palavra suspeita no ecra) e o `after` mostrava a linha sem
+    ela -- e o arm "as changed seams sao EXACTAMENTE as do meio da palavra"
+    dava VERMELHO, porque a diferenca ja nao era so de espacos: faltava uma
+    PALAVRA. O arm media a regra nova, nao a correccao do espaco.
+
+    A CORRECTA: o `before` e o replay VERDADEIRO de ANTES (as DUAS mudancas
+    desligadas), e a regra da palavra provada tem o SEU proprio par de
+    comparacoes (arms novos), para que cada arm meca UMA coisa.
+    """
     saved = W.join_fragments
     W.join_fragments = joiner
+    saved_stable = None
+    if not hold_rule:
+        try:
+            import stable_words
+            saved_stable = stable_words.stable_text
+            stable_words.stable_text = lambda text: str(text or "")
+            # O worker importa o modulo por REFERENCIA (`_stable_words()`), e
+            # o modulo importado e o mesmo objecto -- a troca acima chega.
+        except Exception:  # noqa: BLE001
+            saved_stable = None
     try:
         return replay(W, trace, vocab)
     finally:
         W.join_fragments = saved
+        if saved_stable is not None:
+            stable_words.stable_text = saved_stable
 
 
 if __name__ == "__main__":

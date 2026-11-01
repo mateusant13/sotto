@@ -579,15 +579,26 @@ def _base_lang(lang):
 #: day): *"para de traduzir pra pt br do ingles e do espanhol. o resto, traduza
 #: para ingles. qualquer outra lingua pra ingles."*
 #:
-#: So the caption is served in **ENGLISH** for every video: the original when
-#: the video is English, the auto-translation into English when it is not. The
-#: one exception is Spanish (below).
+#: So a video in a language OUTSIDE the untranslated set (below) is served in
+#: **ENGLISH**: the original when the video is English, the auto-translation
+#: into English when it is not.
 TARGET_LANG = 'en'
 
-#: The ONE language the owner never wants translated. Verbatim (2026-10-21):
-#: *"ah, menos espanhol"* and, later the same day, *"para de traduzir pra pt br
-#: do ingles e do espanhol"*. A Spanish video is served in SPANISH.
-NEVER_TRANSLATED_LANGS = ('es',)
+#: THE ONE RULE THAT CAN NEVER BE BROKEN (owner, 2026-10-30, verbatim):
+#: *"legendas nao traduzem entre ingles pt br e espanhol. so outras linguas,
+#: todas pro ingles."*
+#:
+#: An English, Portuguese or Spanish video is served in ITS OWN language and
+#: NOTHING ELSE -- no translation in either direction between those three. A
+#: Spanish video with no Spanish track gets NO YouTube caption (the live
+#: transcription of its own audio is the honest answer); it does NOT get the
+#: English or the Portuguese one.
+#:
+#: This SUPERSEDES `NEVER_TRANSLATED_LANGS = ('es',)` (2026-10-21), which let a
+#: Portuguese video be served in English -- measured for a `pt-BR` video, and
+#: exactly what the owner now forbids. The old name is gone on purpose: a
+#: second constant with the same job is a second truth.
+UNTRANSLATED_LANGS = ('en', 'pt', 'es')
 
 
 #: THE OWNER'S EXPLICIT TRANSLATION CHOICE (owner, 2026-10-21). `''` means the
@@ -614,37 +625,42 @@ def set_target_language(code):
 def _target_langs(orig):
     """The languages this video's caption may be served in, in order.
 
-    THE OWNER, 2026-10-21 (later the same day), verbatim: *"para de traduzir
-    pra pt br do ingles e do espanhol. o resto, traduza para ingles. qualquer
-    outra lingua pra ingles."*
+    THE RULE THAT CAN NEVER BE BROKEN (owner, 2026-10-30, verbatim):
+    *"legendas nao traduzem entre ingles pt br e espanhol. so outras linguas,
+    todas pro ingles."*
 
-    * a **Spanish** video: SPANISH, and then English. Spanish is the one the
-      owner never wants translated, and a Portuguese caption of a Spanish video
-      is not a fallback any more.
-    * an **English** video: ENGLISH (the original).
-    * **any other** video (Portuguese, Chinese, Japanese, ...): ENGLISH -- the
+    * **en / pt / es** (a video whose ORIGINAL language is one of those three):
+      that language, AND NOTHING ELSE. No translation in any direction between
+      those three, which is why the list has ONE element -- a fallback would be
+      exactly the translation the owner forbade. A Spanish video with no Spanish
+      track therefore serves NO YouTube caption, and the live transcription of
+      its own audio stays the answer.
+    * **any other language** (Chinese, Japanese, ...): ENGLISH -- the
       auto-translation into English -- and the video's OWN language as the last
       resort, for a video with no English track at all.
 
-    `orig` empty means the original could not be read: the policy does not
-    apply and the caller's preference decides (that is the pre-policy
-    behaviour, kept for the case where nobody can tell what the video is).
+    `orig` empty means the original could not be read: the rule cannot speak,
+    so the explicit pick is honoured when there is one (and nothing is asked for
+    when there is not) -- that is the pre-policy behaviour, kept for the case
+    where nobody can tell what the video is.
     """
-    if TARGET_OVERRIDE:
-        # THE OWNER'S EXPLICIT CHOICE WINS OVER EVERYTHING (owner, 2026-10-21):
-        # *"da uma opcao de escolher a traducao ... inclusive da opcao pra todas
-        # essas linguas inclusive as q acabei de falar pra nao tocar."* A video
-        # whose own language IS the chosen target is served in that language; any
-        # other video is TRANSLATED into it, Spanish included.
-        if not orig or _base_lang(orig) == TARGET_OVERRIDE:
-            return (TARGET_OVERRIDE,)
-        return (TARGET_OVERRIDE, orig)
     if not orig:
-        return ()
-    if orig in NEVER_TRANSLATED_LANGS:
-        return (orig, TARGET_LANG)
-    if orig == TARGET_LANG:
-        return (orig,)
+        # Without the video's own language the rule cannot speak at all, and the
+        # explicit pick is the only thing left to honour.
+        return (TARGET_OVERRIDE,) if TARGET_OVERRIDE else ()
+    # THE RULE IS NOT A DEFAULT -- IT CANNOT BE BROKEN BY A PICK (owner, 2026-10-30:
+    # *"regra nunca que pode ser quebrada: legendas nao traduzem entre ingles pt br
+    # e espanhol"*). The 3-dot menu used to force ANY target over the policy
+    # (`TARGET_OVERRIDE`, the owner's own request of 2026-10-21, when the policy
+    # allowed translations between those three). Under today's order a pick that
+    # would translate an en/pt/es video, or translate another language into
+    # anything but English, is not a choice -- it is the forbidden translation.
+    # So the pick is CLAMPED to the policy answer instead of being erased: the
+    # menu keeps working, the log still records what was picked, and what reaches
+    # the screen is always the rule.
+    base = _base_lang(orig)
+    if base in UNTRANSLATED_LANGS:
+        return (base,)
     return (TARGET_LANG, orig)
 
 
@@ -793,10 +809,11 @@ def tracks_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
     #    *"nao e pra traduzir. e pra ser lingua original. ... ah, menos
     #    espanhol."*
     #
-    #    THE SERVED LANGUAGE IS ENGLISH for every video, with ONE exception: a
-    #    SPANISH video is served in SPANISH. And "stop translating to pt-BR
-    #    from English and from Spanish" is ABSOLUTE: a Portuguese caption of an
-    #    English or a Spanish video is not a fallback any more.
+    #    THE SERVED LANGUAGE, owner's rule of 2026-10-30 (verbatim): *"legendas
+    #    nao traduzem entre ingles pt br e espanhol. so outras linguas, todas
+    #    pro ingles."* -> an EN, PT or ES video is served in ITS OWN language
+    #    and NOTHING else (no fallback: a fallback between those three IS the
+    #    translation he forbade); every OTHER language is served in ENGLISH.
     #
     #    MEASURED on the video the owner was watching: `language` = 'en-US'
     #    (ENGLISH) and the table carries 177 languages; the Portuguese entry
@@ -860,6 +877,52 @@ def tracks_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
     return ordered
 
 
+def _rerank_reused(reused, lang_prefs, plang, older=None):
+    """A LISTA REUTILIZADA E' RE-ESCOLHIDA PARA O PLAYER DE AGORA.
+
+    MEDIDO 2026-10-30 (`_main/yt-player-track-oracle.py` braco a08): o cache da lista de
+    candidatos existe para nao repetir os 5 s de `yt-dlp`, mas a lista era servida pela
+    ORDEM em que a pergunta ANTERIOR a escreveu. O dono trocava a faixa no player de
+    `pt` para `en` e a app servia `pt-orig` outra vez -- o `reason` dizia `ok` e o
+    `cached` dizia `False`, ou seja, nada no resultado dizia que a pergunta tinha sido
+    respondida com a ordem velha.
+
+    A ORDEM E' A MESMA DE `tracks_from_info`: reconstroi-se as duas tabelas a partir dos
+    candidatos (mais a lingua original guardada no cache) e pergunta-se outra vez. Um
+    candidato que a re-escolha nao devolva NAO se perde: fica no fim.
+    """
+    cands = [c for c in (reused or []) if isinstance(c, dict) and c.get("url")]
+    if not cands:
+        return list(reused or [])
+    manual, auto = {}, {}
+    for cand in cands:
+        entry = {"ext": cand.get("ext"), "url": cand.get("url"),
+                 "name": cand.get("name")}
+        table = manual if cand.get("source") == "manual" else auto
+        table.setdefault(str(cand.get("lang") or ""), []).append(entry)
+    pseudo = {"language": (older or {}).get("video_language") or None,
+              "subtitles": manual, "automatic_captions": auto}
+    try:
+        ordered = tracks_from_info(pseudo, lang_prefs, plang)
+    except Exception:  # noqa: BLE001 -- uma re-escolha que falha nao pode custar a lista
+        return cands
+    out = []
+    used = set()
+    for want in ordered:
+        for index, cand in enumerate(cands):
+            if index in used:
+                continue
+            if (str(cand.get("lang")) == str(want.get("lang"))
+                    and cand.get("source") == want.get("source")):
+                out.append(cand)
+                used.add(index)
+                break
+    for index, cand in enumerate(cands):
+        if index not in used:
+            out.append(cand)
+    return out
+
+
 def track_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
     """A yt-dlp info dict -> the track to use, or None.
 
@@ -883,6 +946,12 @@ def track_from_info(info, lang_prefs=("pt", "en"), player_lang=None):
 #: PLAYER SHOWS (`player_lang`): an entry written before that does not know
 #: which track the player is painting, and serving it would be serving the
 #: line the owner can see is WRONG.
+#: Quanto tempo a LISTA DE CANDIDATOS de um video pode ser reutilizada. As URLs
+#: de legenda do YouTube sao assinadas e vivem horas; meia hora e' muito dentro
+#: disso e cobre a troca de video, a recarga da pagina e um seek que mude a
+#: faixa que o player pinta. Depois disso, uma extracao nova.
+CANDIDATE_TTL_S = 1800.0
+
 CACHE_SCHEMA = 3
 
 
@@ -1173,16 +1242,60 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
                     and str(stale.get("player_lang") or "") == plang):
                 stale.pop("stale", None)
                 return _retry_payload(vid, stale, timeout)
-    info = _extract_info(vid, timeout)
-    if info is None:
+    # A EXTRACAO E' O CUSTO -- 5,0 s MEDIDOS por chamada de yt-dlp -- e o
+    # yt-dlp nao precisa de correr duas vezes para a MESMA pergunta (dono,
+    # 2026-10-30: *"trocar de video tambem demora pra caralho pra aparecer a
+    # legenda"*). MEDIDO no log dele (`_main/webview-run.log`, troca das
+    # 04:40:02): `EN-ORIG` pronto em 5,5 s, o pintado nao casou, e a SEGUNDA
+    # resposta (`PT-ORIG`) chegou as 04:40:29 -- 27 s ate' a primeira legenda,
+    # com DUAS extracoes dentro. A lista de candidatos (com as URLs) fica
+    # guardada: uma re-escolha com o pintado custa as poucas KB de cada payload,
+    # nao outra extracao.
+    reused = None
+    if use_cache:
+        try:
+            older = _cache_read(vid, allow_stale=True)
+        except Exception:  # noqa: BLE001
+            older = None
+        cands = (older or {}).get("candidates")
+        if isinstance(cands, list) and cands:
+            try:
+                age = time.time() - float((older or {}).get("fetched_at") or 0.0)
+            except (TypeError, ValueError):
+                age = CANDIDATE_TTL_S + 1
+            if 0 <= age <= CANDIDATE_TTL_S:
+                reused = _rerank_reused(cands, lang_prefs, plang, older)
+                # A CONVENCAO DE LOG DESTE MODULO e' o `print` com a tag, e nao
+                # um `log()` -- nao ha' `log` aqui, e a primeira versao desta
+                # linha chamava-o: o oraculo apanhou o `NameError` na hora.
+                if "sotto_webview" in sys.modules:
+                    try:
+                        print("sotto: YOUTUBE_TRACK_CANDIDATES_REUSED "
+                              "video_id=%s count=%d age_s=%.0f"
+                              % (vid, len(cands), age), flush=True)
+                    except Exception:  # noqa: BLE001
+                        pass
+    info = None
+    if reused is None:
+        info = _extract_info(vid, timeout)
+    if info is None and reused is None:
         # NOT cached: a failed extract is not a verdict about the video.
         result["reason"] = "extract-failed"
         result["error"] = "yt-dlp nao extraiu o video"
         return result
-    duration = info.get("duration")
-    if isinstance(duration, (int, float)):
-        result["duration"] = float(duration)
-    tracks = tracks_from_info(info, lang_prefs, plang)
+    if reused is not None:
+        tracks = list(reused)
+        result["duration"] = result.get("duration")
+    else:
+        duration = info.get("duration")
+        if isinstance(duration, (int, float)):
+            result["duration"] = float(duration)
+        tracks = tracks_from_info(info, lang_prefs, plang)
+        result["candidates"] = tracks
+        # A LINGUA ORIGINAL VAI PARA O CACHE: a politica de 2026-10-21 decide a faixa a
+        # partir dela, e uma re-escolha sobre `candidates` sem ela nao consegue repetir a
+        # decisao -- so' a preferencia. Medido 2026-10-30 no braco a08.
+        result["video_language"] = _original_language(info) or None
     if painted:
         # A BUSCA PELA PINTURA TEM UMA ORDEM MELHOR: as faixas ORIGINAIS
         # primeiro. MEASURED 2026-10-20: o pedido do player e `lang=X` SEM

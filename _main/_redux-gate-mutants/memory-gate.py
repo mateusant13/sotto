@@ -614,6 +614,28 @@ def _lang_prompt():
     return lang_prompt
 
 
+try:                       # a fila de audio vivo (ver worker/live_queue.py)
+    import live_queue as _live_queue
+except Exception:          # pragma: no cover -- o import falha so' fora do repo
+    _live_queue = None
+
+
+def _stable_words():
+    """The "the unproven word stays off the screen" rule, lazily imported.
+
+    Lazy, the way `lang_prompt` is, so this file stays runnable as a script
+    and as an imported module. It is its OWN module because this file is
+    under the `code-health` ratchet, already red for it -- a new file does
+    not make that ratchet worse.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import stable_words
+
+    return stable_words
+
+
 class StreamAsr:
     """Streaming RNN-T over the encoder/decoder/joint ONNX graphs."""
 
@@ -655,14 +677,39 @@ class StreamAsr:
 
         so = ort.SessionOptions()
         so.log_severity_level = 3
+        # ── A/B DE LOAD, MEDIDO 2026-10-23 ──────────────────────────────────
+        # O proprio worker reporta `load_phases_s`: **encoder 19.013 s** de 22.8 s
+        # (decoder 0.209, joint 0.116), com `cuda_dirs_ms=1824` e
+        # `provider_probe_ms=343`. Ou seja: o custo do arranque nao esta no disco,
+        # nem no decoder, nem no joint -- esta na sessao do ENCODER.
+        # `SOTTO_LOAD_AB` existe para medir UM travao de cada vez sem tocar no
+        # caminho por omissao (o produto fica igual ate a medicao decidir):
+        #   bytes -> os pesos vao do ficheiro directo para a sessao (menos copia)
+        #   basic -> optimizacao de grafo BASIC (menos trabalho no load)
+        _ab = os.environ.get('SOTTO_LOAD_AB', '').strip().lower()
+        if 'bytes' in _ab:
+            try:
+                so.add_session_config_entry('session.use_ort_model_bytes_directly', '1')
+            except Exception:
+                pass
+        if 'basic' in _ab:
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
         try:
             so.intra_op_num_threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
             so.inter_op_num_threads = 1
-        except Exception:
-            pass
+        except (TypeError, ValueError) as exc:
+            # UM `OMP_NUM_THREADS` INVALIDO NAO PODE SER SILENCIO: o valor ruim era
+            # engolido e o modelo ficava com o numero de threads por omissao, sem
+            # ninguem saber por que a contagem nao mudou (`.opencode`/ratchet
+            # `exception-hygiene`, medido 2026-10-30: esta era uma das 8 linhas
+            # silenciosas do ficheiro contra uma linha de base de 7).
+            err("OMP_NUM_THREADS invalido (%r); a usar o valor por omissao" % (exc,))
         # THE OPTIONS GO WITH THE NAMES (see `provider_entries`): without them
-        # the GPU arena rounds every allocation up to the next power of two
-        # and takes ~9.7 GB of the owner's 16 GB card for a 747 MB model.
+        # the GPU arena rounds every allocation up to the next power of two.
+        # MEASURED 2026-10-21 on the owner's box: the worker's VRAM delta is
+        # **1175-1703 MiB** (device peak 4344-4788 MiB) for a 747 MB model --
+        # the OLD "~9.7 GB" note in this file was NOT reproduced and is not
+        # used as a justification of anything.
         entries = provider_entries(providers)
         # THE LOAD'S PHASES, MEASURED (owner, 2026-10-21: *"abrir ou fechar o
         # sotto trava pra caralho meu pc"*). The load is what the owner waits
@@ -1125,6 +1172,55 @@ class StreamAsr:
 
 
 # ── device selection ──────────────────────────────────────────────────────────
+def signal_ranked_next(candidates, k, floor=0.002, peaks=None):
+    """Move the candidate that IS PLAYING to slot `k` and return it (None at the end).
+
+    O DEFEITO MEDIDO (dono, 2026-10-30, verbatim: *"por que a merda do meu audio
+    ainda some? arruam caralho"*). A escada abria candidatos pela ordem ESTATICA e
+    cada janela tapada lia plana, porque a ordem foi decidida no arranque -- quando
+    ele ainda nao estava a tocar nada. Medido no registo da app desta revisao:
+    `_main/webview-run.log` tem **3 060** linhas `device-rotated reason=flat`, e o
+    painel dizia-lhe `No audio to transcribe` com os `BRIDGE_STATS_PUSH` a
+    transportarem `peak=0.70`. O proprio `wasapi_loopback` ja' documenta o caso
+    (2026-10-06): a primeira janela foi para `VoiceMeeter Input`, que esta' maquina
+    nao renderiza, enquanto o audio estava em `CABLE Input`.
+
+    A pergunta tem de ser feita NO INSTANTE da rotacao, nao no arranque:
+    `live_render_peaks()` le so' o medidor de cada endpoint (0,76 s para seis) e
+    devolve `{}` quando nao consegue -- e `{}` mantem a ordem que ja' existe, porque
+    "sem leitura" nunca e' "sem sinal".
+    """
+    if k >= len(candidates):
+        return None
+    # O LEITOR RESOLVE-SE ANTES DO IMPORT: com um medidor injectado, o import do
+    # `wasapi_loopback` nao pode ser o que decide se ha' leitura (o oraculo corre
+    # de outra pasta e o import falhava calado, devolvendo a ordem estatica por
+    # dentro do ramo que existe para a corrigir).
+    reader = peaks
+    if reader is None:
+        try:
+            import wasapi_loopback
+            reader = wasapi_loopback.live_render_peaks
+        except Exception as exc:                       # noqa: BLE001 - nunca custa a rotacao
+            err('SIGNAL_RANK_IMPORT_FAILED error=%r' % (exc,))
+            return candidates[k]
+    try:
+        live = reader() or {}
+    except Exception as exc:                           # noqa: BLE001 - nunca custa a rotacao
+        err('SIGNAL_RANK_READ_FAILED error=%r' % (exc,))
+        live = {}
+    if live:
+        best_i = None
+        best_v = floor
+        for i in range(k, len(candidates)):
+            value = live.get(candidates[i].get("endpoint_id"))
+            if value is not None and value > best_v:
+                best_i, best_v = i, value
+        if best_i is not None and best_i != k:
+            candidates[k], candidates[best_i] = candidates[best_i], candidates[k]
+    return candidates[k]
+
+
 def device_candidates(cfg_audio=None, wanted=None, target_pid=None):
     """Ordered, de-duplicated list of concrete input devices to try.
 
@@ -1856,15 +1952,9 @@ class _PortAudioTap:
 #
 # THE COM PLUMBING IS A PORT of 'I:\cc-tmp\plp-target.py' (94 768 B), the
 # prototype measured GREEN twice on this box — not a re-derivation. Its
-# PRIMITIVES (_com_init, _vtbl, _release, _fmt, GUID, WAVEFORMATEX) are reused
-# from 'worker/wasapi_loopback.py', so this repo keeps ONE implementation of the
-# COM technique; what is added here is only what process loopback needs and the
-# endpoint tap does not — the activation params, the blob PROPVARIANT, the
-# completion handler, and ActivateAudioInterfaceAsync itself.
-#
-# INERT BY DEFAULT: nothing below runs unless --target-pid / SOTTO_TARGET_PID
-# names a pid. With no pid, device_candidates() returns exactly the list it
-# returned before this section existed (measured, see the receipt).
+# As primitivas COM vem de 'wasapi_loopback.py' (uma so' implementacao no repo);
+# aqui so' o que o process loopback precisa. INERTE sem --target-pid: sem pid,
+# device_candidates() devolve a lista de antes (medido, ver recibo).
 try:  # the module that already owns this repo's COM primitives
     import wasapi_loopback as _wl
 except Exception:  # pragma: no cover - _plp_require() refuses loudly instead
@@ -2999,16 +3089,20 @@ def file_tap_candidate(path):
 #:
 #:   * `arena_extend_strategy` defaults to `kNextPowerOfTwo`: every allocation
 #:     in the GPU arena is rounded UP to the next power of two. MEASURED on the
-#:     owner's own box: the worker's steady footprint is **~9.7 GB of VRAM**
-#:     (16 303 MB total, 5 380 MB free with the worker alive) for a model
-#:     whose weights are 747 MB on disk. That is 60% of the card gone, and the
-#:     things that stutter are the OWNER's: his browser, his video, his game.
+#:     owner's own box on 2026-10-21: the worker's VRAM delta is **1175-1703
+#:     MiB** (the `nvidia-smi` device peak was 4344-4788 MiB) for a model whose
+#:     weights are 747 MB on disk. THE "~9.7 GB" THAT USED TO BE WRITTEN HERE
+#:     WAS NOT REPRODUCED -- it is refuted by the measurement above and is not
+#:     used as a justification of anything.
 #:   * `gpu_mem_limit` defaults to UNLIMITED, so nothing stops the arena.
 #:   * `cudnn_conv_algo_search` defaults to `EXHAUSTIVE`: the session creation
-#:     BENCHMARKS every convolution algorithm. That is a LOAD-TIME cost, and
-#:     the load is what the owner waits for when the panel opens: MEASURED
-#:     4.1-8.1 s on a quiet machine, **32.59 s on a busy one** (the owner's own
-#:     log: `BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`).
+#:     BENCHMARKS every convolution algorithm. MEASURED with the phases timed
+#:     (see `load_phases_s`): the three sessions cost **1.738 s with HEURISTIC
+#:     and 1.824 s with EXHAUSTIVE** -- the same, inside the noise. So the
+#:     search is NOT the load's cost and it STAYS AT THE DEFAULT; what the
+#:     owner actually waits for is the load as a whole, and the cure for THAT
+#:     is the preload (the worker is born 20 s after the app starts, not when
+#:     the owner opens the panel).
 #:
 #: The options below are the documented ONNX Runtime CUDA EP options
 #: (`arena_extend_strategy`, `gpu_mem_limit`, `cudnn_conv_algo_search`,
@@ -3208,6 +3302,56 @@ def chunk_is_continuation(vocab, ids) -> bool:
     return False
 
 
+#: A COMMA FOLLOWED BY A TERMINAL IS NEVER SOMETHING THE OWNER MEANT TO READ.
+#: Owner, 2026-10-21, verbatim: *"legenda que termina em vírgula"* and, from the
+#: live box, `… enfim,.`. The model emits the comma as the LAST token of a chunk
+#: when it is still unsure whether the sentence continues; the line then closes on
+#: the cap, on a silence, or on the model's own period that lands in the NEXT
+#: chunk, and the seam is published with both marks. Nothing here rewrites a word:
+#: it removes a separator that is already contradicted by the mark beside it.
+LINE_TIDY_FIX = {
+    ",.": ".",
+    ",!": "!",
+    ",?": "?",
+    ",;": ";",
+    ",:": ":",
+}
+
+#: A FINAL line never ends on these. A partial may -- a growing sentence really is
+#: mid-clause -- but a line the worker has CLOSED is a finished sentence, and the
+#: owner reads it in the transcript. Measured complaint: *"legenda que termina em
+#: vírgula"*.
+LINE_TRAILING_JUNK = ",;:"
+
+
+def tidy_line(text):
+    """Collapse a separator the adjacent mark has already overruled.
+
+    Deliberately NOT a punctuation rewriter:
+      * a lone comma is left alone (the sentence may continue);
+      * `...` and `…` are left alone (an ellipsis is three dots on purpose);
+      * no character is ever ADDED -- this only ever removes a comma that sits
+        directly before a stronger mark, or a doubled comma.
+    """
+    if not text:
+        return text
+    out = text
+    for bad, good in LINE_TIDY_FIX.items():
+        while bad in out:
+            out = out.replace(bad, good)
+    while ",," in out:
+        out = out.replace(",,", ",")
+    return out
+
+
+def tidy_final(text):
+    """`tidy_line` plus: a CLOSED line does not end on a comma, semicolon or colon."""
+    out = tidy_line(text)
+    while out and out[-1] in LINE_TRAILING_JUNK:
+        out = out[:-1].rstrip()
+    return out
+
+
 def join_fragments(frags) -> str:
     """Join `(text, continues)` pairs: a CHUNK boundary is NOT a word boundary.
 
@@ -3348,12 +3492,12 @@ class LineFormer:
         self.source = source or None
 
     def line(self):
-        return join_fragments(self._words)
+        return tidy_line(join_fragments(self._words))
 
     def _worthy(self, text):
         return len(text.strip()) >= self.min_chars
 
-    def _event(self, text, final=False, closed=False):
+    def _event(self, text, final=False, closed=False, stable=False):
         event = {
             "type": "caption",
             "text": text,
@@ -3391,6 +3535,24 @@ class LineFormer:
             # `line_events()` can normalise both channels through one shape.
             "final": bool(final),
             "closed": bool(closed),
+            # A PALAVRA JA ESTA PROVADA (owner, 2026-10-30: *"faz sotto
+            # identificar palavras que ainda nao estao completas e nao dar
+            # display"*). O texto deste evento ja nao tem palavra suspecta: a
+            # ultima palavra foi provada pelo veredicto do tokenizer ou pelo
+            # fim da linha.
+            #
+            # O PAINEL TAMBEM SEGURA A ULTIMA PALAVRA da cauda (o hold-back do
+            # LocalAgreement-2, `panel.js renderProvisional`). Sem este sinal,
+            # as DUAS camadas segurariam uma palavra cada e o dono perderia
+            # DUAS palavras do ecra -- o dobro do que pediu. Com ele, o painel
+            # sabe que o texto que recebeu ja esta estavel e nao segura mais
+            # nada.
+            #
+            # A chave e ADICIONADA, nunca renomeada: `final`/`closed`/`source`
+            # mantem os seus meanings exactos, e um consumidor que a ignore
+            # (o `panel.js` antigo, o history store) ve o mesmo evento de
+            # sempre.
+            "stable": bool(stable),
             # STEP 3 -- WHERE THIS AUDIO CAME FROM. Present ONLY when the former
             # was given a source (every live tap has one; `--selftest` and the
             # file arm have none, so their events stay byte-identical to before
@@ -3519,8 +3681,15 @@ class LineFormer:
             return event
         return event
 
-    def _close(self):
-        text = self.line()
+    def _close(self, carry=False):
+        # A CLOSED line does not end on a comma (owner: *"legenda que termina em
+        # vírgula"*). `tidy_final` also collapses `,.` -- the seam the live box
+        # showed him -- so the closed line and the partial above it agree.
+        #
+        # `carry=True` SO' NO FECHO POR TETO: silencio e pontuacao provam a
+        # ultima palavra; o teto corta a meio e a cauda VAI PARA A LINHA SEGUINTE.
+        prov, tail = _stable_words().close_parts(self._words, carry)
+        text = tidy_final(self.line() if prov is None else prov)
         out = []
         if text and self._worthy(text):
             # THE CLOSE GOES OUT OF BAND (M2), once, and it is the only event
@@ -3536,14 +3705,16 @@ class LineFormer:
             # (arms 6/8/9/10 of `_main/caption-lines-oracle.py`) and publishing
             # the close on its own channel fixes that without moving the events
             # the renderer sees.
-            self._closed.append(self._event(text, final=True, closed=True))
+            self._closed.append(self._event(text, final=True, closed=True, stable=True))
             if text != self._shown:
                 # `emit_partial=False`: the closed line was never shown, so this
                 # IS its publication. It stays a PARTIAL on the wire — `final` is
                 # the out-of-band channel's mark — and the live path still
                 # publishes the transcript's copy from the second pass.
-                out.append(self._event(text))
-        self._words, self._start, self._end, self._shown = [], None, None, None
+                out.append(self._event(text, stable=True))
+        self._words = [(tail, False)] if tail.strip() else []
+        self._start = self._end = None
+        self._shown = None
         self._chunk_start = None
         self._chunks = []
         return out
@@ -3584,7 +3755,7 @@ class LineFormer:
         # that glues to the open word is charged its own length and no space.
         cont = bool(continues) and bool(self._words)
         if self._words and len(join_fragments(self._words + [(frag, cont)])) > self.max_chars:
-            out += self._close()
+            out += self._close(carry=True)
             cont = False
         # (3) append, remembering where the LINE began and where THIS chunk
         # began. The two are different clocks: `_start` never moves, and the
@@ -3604,8 +3775,27 @@ class LineFormer:
         if line and line[-1] in LINE_TERMINAL:
             out += self._close()
         elif self.emit_partial and self._worthy(line):
-            self._shown = line
-            out.append(self._event(line))
+            # O PARCIAL MOSTRA O TEXTO PROVADO POR TOKEN (`proven_text`): a
+            # cauda aberta fica de fora ate' o tokenizer a provar. O dono,
+            # 2026-10-30: *"nunca vai dar display em 'so' sem esperar virar
+            # 'sou'"*, e *"'CAUS' quando o falante fala 'cause like'"*.
+            estavel, _cauda = _stable_words().proven_text(self._words)
+            if self._worthy(estavel) and estavel != self._shown:
+                # O texto estavel so vai para o ecra quando MUDA. Um parcial
+                # identico ao anterior e uma reescrita do mesmo texto: o dono
+                # veria a legenda "piscar" sem mudar de conteudo, e o painel
+                # gastaria uma repintura para nada.
+                self._shown = estavel
+                out.append(self._event(estavel, stable=True))
+            # A linha so tem a palavra suspeita: NAO ha nada estavel para
+            # mostrar, e o dono pediu exatamente isso ("nao dar display").
+            #
+            # E `self._shown` NAO e posto aqui. `_shown` e o texto que o dono
+            # JA VIU, e ele nao viu este: o `_close` compara o texto fechado
+            # com `_shown` para nao reenviar o que ja foi mostrado, e um
+            # `_shown` posto aqui faria o `_close` calar a linha que o dono
+            # NUNCA viu. Uma linha de uma palavra so ("so") ficaria sem
+            # aparecer no historico.
         return out
 
     def flush(self):
@@ -3902,12 +4092,38 @@ class PanelVisibilityReader:
     make the channel untestable by the very probes that must drive it.
     """
 
+    #: The levels the shell may publish under `shed` (owner, 2026-10-30:
+    #: *"alta: desliga nemotron, so parakeet; muito alta: desliga parakeet
+    #: tambem"*). Anything else is not a level.
+    SHED_LEVELS = ('leve', 'alta', 'muito-alta')
+
     def __init__(self, path):
         self.path = path
         self.reads = 0
         self.fallbacks = 0
         self.last_reason = None
         self.last_payload = None
+
+    def shed(self, default='leve'):
+        """O nivel de shedding publicado pela shell (`leve` por omissao).
+
+        THE SAME FAIL-SAFE DIRECTION AS `visible`, and it is the whole point: a
+        file with no `shed`, an unreadable one, or a value that is not one of
+        `SHED_LEVELS` reads as **`leve`** -- i.e. CHANGE NOTHING. A level
+        invented out of a broken file would silence the only transcriber this
+        tree has, which is exactly the failure the owner already paid for.
+
+        Read from `last_payload`, so it is the SAME read the visibility decision
+        used: two reads of the same file per tick would be two chances to
+        disagree with each other.
+        """
+        payload = self.last_payload
+        if not isinstance(payload, dict):
+            return default
+        level = payload.get('shed')
+        if isinstance(level, str) and level.strip() in self.SHED_LEVELS:
+            return level.strip()
+        return default
 
     def read(self):
         """-> (visible: bool, why: str, age_s: float|None). Never raises."""
@@ -4034,6 +4250,10 @@ class ReduxHiddenSwitch:
         self.armed = bool(
             self.enabled and self.runner_available and self.model_available)
         self.mode = "stream"
+        #: O nivel de shedding da shell (`leve` ate' ela dizer outra coisa). Vive
+        #: aqui para a linha de log so' sair quando o nivel MUDA -- um log por
+        #: bloco seria ruido a 50 Hz.
+        self._shed = "leve"
         self.visible = True
         self.why = "boot"
         self.hidden_since = None
@@ -4105,19 +4325,52 @@ class ReduxHiddenSwitch:
                     f"age_s={age if age is None else round(age, 2)} "
                     f"hidden_since={round(now, 3)} "
                     f"switch_in_s={self.hidden_after_s}")
-        wanted = "batch" if (
-            not self.visible
-            and self.hidden_since is not None
-            and (now - self.hidden_since) >= self.hidden_after_s
-        ) else "stream"
+        # THE OWNER'S ORDER WEIGHS ON TOP OF VISIBILITY (2026-10-30, verbatim):
+        # *"alta: desliga nemotron, so parakeet; muito alta: desliga parakeet
+        # tambem. AUDIO SEMPRE fica para processar depois"*. The shell publishes
+        # the level in the same file this switch already polls, so no new IPC:
+        #
+        #     alta        -> "batch"  (the live engine stops, the batch one runs)
+        #     muito-alta  -> "shed"   (nothing runs; audio ACCUMULATES, never lost)
+        #     leve        -> whatever the visibility says (the behaviour of always)
+        #
+        # `shed` is honoured ONLY when this switch is armed: with no batch engine
+        # on disk, stopping the live one would leave NO transcriber, which is the
+        # one thing the HARD RULE forbids. The decision above already refuses to
+        # arm in that case, so this is not a second guard -- it is the same fact
+        # read where it matters.
+        shed = self.reader.shed()
+        if shed != getattr(self, '_shed', 'leve'):
+            self._shed = shed
+            self.log(
+                f"REDUX_SHEDDING level={shed} visible={str(self.visible).lower()} "
+                f"commit_note=the shell decides the level from the machine")
+        if shed == "muito-alta":
+            wanted = "shed"
+        elif shed == "alta":
+            wanted = "batch"
+        else:
+            wanted = "batch" if (
+                not self.visible
+                and self.hidden_since is not None
+                and (now - self.hidden_since) >= self.hidden_after_s
+            ) else "stream"
         if wanted != self.mode:
             self.mode = wanted
             self.switches += 1
             if wanted == "batch":
+                why = ('shed-' + str(getattr(self, '_shed', 'leve'))
+                       if getattr(self, '_shed', 'leve') == 'alta'
+                       else 'hidden-%ss' % self.hidden_after_s)
                 self.log(
-                    f"REDUX_MODE mode=batch visible=false reason=hidden-"
-                    f"{self.hidden_after_s}s visibility={self.why} "
+                    f"REDUX_MODE mode=batch visible={str(self.visible).lower()} "
+                    f"reason={why} visibility={self.why} "
                     f"switches={self.switches} runner={os.path.basename(self.runner)}")
+            elif wanted == "shed":
+                self.log(
+                    f"REDUX_MODE mode=shed reason=shed-muito-alta "
+                    f"visibility={self.why} switches={self.switches} "
+                    f"note=audio-fica-para-processar-depois")
             else:
                 self.log(
                     f"REDUX_MODE mode=stream visible={str(self.visible).lower()} "
@@ -4794,6 +5047,59 @@ def _lower_process_priority():
         return 'failed:%r' % (exc,)
 
 
+#: Os valores do Windows para o modo de fundo (`SetPriorityClass`). NAO sao
+#: prioridades: `..._BEGIN` poe CPU a IDLE, **I/O a Very Low** e **memoria ao
+#: degrau mais baixo** enquanto durar; `..._END` devolve a classe anterior.
+PROCESS_MODE_BACKGROUND_BEGIN = 0x00100000
+PROCESS_MODE_BACKGROUND_END = 0x00200000
+
+
+def _set_priority_class(value):
+    """`SetPriorityClass` -> 'ok' ou o motivo, sem rebentar."""
+    if os.name != 'nt':
+        return 'not-windows'
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_bool
+        ok = kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), value)
+        return 'ok' if ok else 'failed'
+    except Exception as exc:  # noqa: BLE001
+        return 'failed:%r' % (exc,)
+
+
+def _enter_load_background_mode():
+    """O CARREGAMENTO DO MODELO ENTRA EM MODO DE FUNDO DO WINDOWS (2026-10-23).
+
+    O dono, verbatim, e a segunda vez que ele o diz com esta forca: *"abrir ou
+    fechar ele faz meu pc travar PRA CARALHO"*.
+
+    `BELOW_NORMAL` (a funcao acima) baixa a prioridade de **CPU** e mais nada. O
+    que trava o rato e o resto: o worker le 1,2 GB de pesos e toca em ~2 GB de
+    memoria, e a prioridade de **I/O** e a de **memoria** continuam as de um
+    processo normal -- ele compete com o Explorer, com o compositor e com o
+    cursor. `PROCESS_MODE_BACKGROUND_BEGIN` e o mecanismo do Windows para
+    exactamente isto, e nao inventamos nada: baixa CPU a IDLE, I/O a Very Low e
+    memoria ao degrau mais baixo **so enquanto durar a carga**; `_END` devolve o
+    processo a BELOW_NORMAL, porque a inferencia ao vivo nao pode ficar a IDLE.
+
+    Devolve o que aconteceu, para o log o poder provar.
+    """
+    got = _set_priority_class(PROCESS_MODE_BACKGROUND_BEGIN)
+    return 'background' if got == 'ok' else 'no-background(%s)' % got
+
+
+def _leave_load_background_mode(entered):
+    """Sai do modo de fundo e volta a BELOW_NORMAL (a classe de trabalho)."""
+    if entered != 'background':
+        return entered
+    _set_priority_class(PROCESS_MODE_BACKGROUND_END)
+    back = _set_priority_class(0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
+    return 'background' if back == 'ok' else 'background(end=%s)' % back
+
+
 def main():
     _lower_process_priority()
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
@@ -5237,6 +5543,17 @@ def main():
 
     emit(type="status", state="model-loading", model=os.path.basename(model_dir))
     t0 = time.time()
+    # ── O CARREGAMENTO EM MODO DE FUNDO (2026-10-23) ─────────────────────────
+    # O dono, verbatim: *"abrir ou fechar ele faz meu pc travar PRA CARALHO"* e
+    # *"sotto e pra usuarios ate com pc fraco"*. A carga le 1,2 GB de pesos e
+    # toca em ~2 GB de memoria; a BELOW_NORMAL do `main` baixa a CPU e mais nada,
+    # portanto o I/O e a memoria continuavam a competir com o Explorer e com o
+    # compositor. `PROCESS_MODE_BACKGROUND_BEGIN` poe os tres no degrau mais
+    # baixo SO durante a carga; `_END` devolve a BELOW_NORMAL, porque a
+    # inferencia ao vivo nao pode ficar a IDLE. O log diz o que aconteceu.
+    load_mode = _enter_load_background_mode()
+    emit(type="status", state="model-loading", stage="priority",
+         load_priority=load_mode)
     try:
         asr = StreamAsr(model_dir, providers=providers, use_vad=use_vad, lang_id=lang_id)
     except Exception as exc:
@@ -5248,6 +5565,9 @@ def main():
             peak_rss_mb=round(peak_rss_mb(), 1),
         )
         return 2
+    finally:
+        # Caminho feliz E caminho de erro: a prioridade volta sempre.
+        _leave_load_background_mode(load_mode)
     asr.load_s = time.time() - t0
     emit(
         type="status",
@@ -5391,6 +5711,13 @@ def main():
         candidates = [file_tap_candidate(file_tap_path)]
     else:
         candidates = device_candidates(audio_cfg, wanted, target_pid=target_pid)
+        # A ORDEM ESTATICA ERA O ATRASO: a pergunta "quem toca AGORA?" so' se
+        # fazia na rotacao, depois de 6 s de janela plana (medidor: 0,76 s).
+        if not wanted:
+            try:
+                signal_ranked_next(candidates, 0)
+            except Exception as exc:  # noqa: BLE001 -- nunca custa o arranque
+                err('SIGNAL_RANK_BOOT_FAILED error=%r' % (exc,))
     if not candidates:
         emit(type="status", state="error", stage="device", detail="no input device available")
         return 2
@@ -5557,6 +5884,7 @@ def main():
             f"music_gated_chunks={asr.music_gated_chunks} "
             f"gate_kept={asr.gate.kept if asr.gate else 0} gate={'on' if asr.gate else 'off'} "
             f"queue_drops={counters['queue_drops']} "
+            f"queue_evicted={counters.get('queue_evicted', 0)} "
             f"reruns={counters['reruns']} rerun_wall_s={counters['rerun_wall_s']:.2f} "
             f"audio_s={asr.audio_s:.2f} infer_wall_s={asr.wall:.2f} rss_mb={current_rss_mb():.1f}"
         )
@@ -5587,9 +5915,14 @@ def main():
         if p > 1e-4:
             counters["nonzero_blocks"] += 1
         counters["sumsq"] += float((block.astype("float64") ** 2).sum())
-        try:
-            audio_q.put_nowait(block)
-        except queue.Full:
+        evicted, dropped = _live_queue.enqueue_live(
+            audio_q, block, _live_queue.max_blocks(block_ms))
+        if evicted:
+            counters["queue_evicted"] = counters.get("queue_evicted", 0) + evicted
+            if counters["queue_evicted"] <= 3:   # 3, nao 60000: a magnitude esta' no contador
+                err(f"audio queue over {_live_queue.LIVE_QUEUE_MAX_S}s: evicted "
+                    f"{evicted} old block(s); o NOVO e' o que se transcreve")
+        if dropped:
             counters["queue_drops"] += 1
             # Three, not sixty thousand: a full queue is a slow-consumer symptom
             # and the count above already carries the magnitude.
@@ -5619,11 +5952,8 @@ def main():
             if level is not None:
                 emit(type="meter", **level)
 
-    # The tap is swappable underneath the ASR thread: rotation replaces the
-    # stream, not the thread. `gen` is the invalidation token — a changed gen
-    # means the buffer holds audio from a device that is no longer open, so it
-    # is dropped rather than spliced onto the new device's first chunk, and the
-    # native rate is re-read because the two devices need not agree.
+    # `gen` invalida o buffer quando o dispositivo troca: audio de um tap fechado
+    # nao se cola ao primeiro chunk do novo (e a taxa nativa rele'-se).
     tap_holder = {"tap": None, "gen": 0}
 
     def asr_thread():
@@ -5636,21 +5966,12 @@ def main():
         # The chunk stream is joined into LINES here, so the panel receives a
         # phrase that grows instead of one decoded chunk per caption.
         former = LineFormer(min_chars=min_chars, emit_partial=partial)
-        # ── WHO IS SPEAKING, ON THE LIVE ARM ONLY ────────────────────────────
-        # `--speakers` is off by default and NO PROVIDER MEANS NO CHANGE: with
-        # `speaker_provider` left None, `_attribute` returns the event key for
-        # key and the file arm, the second pass and every `--selftest` run are
-        # untouched. The provider reads a payload another process publishes
-        # (`worker/speaker_sidecar.py`); `PayloadCache` re-parses only when the
-        # file's mtime moves, because this path fires on every partial.
+        # `--speakers` e' OPT-IN e sem provider nao muda nada. O sidecar
+        # (`worker/speaker_sidecar.py`) tem outro zero; `stream_epoch` e' o que
+        # torna as duas linhas de tempo comparaveis.
         if getattr(args, "speakers", False):
             import speaker_bridge                                   # noqa: PLC0415
             former.set_speaker_provider(speaker_bridge.PayloadCache())
-            # The sidecar is another process with another zero. This line is
-            # the ONLY thing that makes the two timelines comparable; without
-            # it the join silently attributes every line to the wrong voice.
-            # Measured skew against the real tap is in
-            # `_main/_speaker-chain-live.py`'s output.
             former.stream_epoch = time.time()
         # ── THE STACK LAW, in this thread ────────────────────────────────────
         # `mode` mirrors what the switch decided. It is `'stream'` and never
@@ -5883,7 +6204,8 @@ def main():
                 # STEP 3: the events of THIS tap carry ITS identity. Set here,
                 # in the branch that resets the stream for a new device, so the
                 # source can never lag the audio it describes.
-                former.set_source(getattr(live, "source", None))
+                # (o `set_source` do tap NOVO desce para DEPOIS do flush: ver a
+                #  nota no fim deste ramo)
                 native = live is not None and live.rate != TARGET_SR
                 rate = live.rate if live is not None else TARGET_SR
                 agc.reset()  # a new device starts from unity gain
@@ -5920,6 +6242,26 @@ def main():
                 drain_sites["gen-change"] += 1
                 publish_captions(drain())
                 seg_pcm.clear()
+                # ── O TAP NOVO NAO HERDA O AUDIO DO ANTIGO (2026-10-30) ───────
+                # Duas metades, as duas medidas por leitura e pelo log vivo:
+                #  1. o `flush` acima e' a linha SEGURADA do tap ANTERIOR e tem de
+                #     sair com o `source` DELE -- por isso o `set_source` do tap
+                #     novo vem depois, e nao antes;
+                #  2. os blocos que ja' estao na fila sao audio do tap abandonado:
+                #     transcreve-los e' a legenda do audio anterior no audio novo.
+                #     O bloco que temos na mao tambem e' velho, e cai.
+                zero = 0
+                while True:
+                    try:
+                        audio_q.get_nowait()
+                        zero += 1
+                    except queue.Empty:
+                        break
+                if zero:
+                    counters["queue_evicted"] = counters.get("queue_evicted", 0) + zero
+                    err(f"AUDIO_BACKLOG_EVICTED blocks={zero} reason=device-change")
+                former.set_source(getattr(live, "source", None))
+                continue
             if native:
                 # WASAPI refused 16 kHz; convert here instead.
                 block = resample_to_16k(block, rate)
@@ -5965,7 +6307,10 @@ def main():
                         counters["redux_captions"] += 1
                     emit(**payload)
                 if wanted != mode:
-                    if wanted == "batch":
+                    # ENTERING THE LIGHT PATH, for whatever reason: the panel went
+                    # away OR the machine is under pressure (`shed`). Both close the
+                    # line the streaming decoder is holding; neither resumes it.
+                    if wanted in ("batch", "shed"):
                         # Entering the LIGHT path. Close the line the streaming
                         # decoder was holding, so its words are PUBLISHED instead
                         # of stranded in a buffer nothing reads again, and drop the
@@ -6008,6 +6353,13 @@ def main():
                     # this `continue` is the CPU the owner is not paying for.
                     switch.add_audio(block)
                     switch.maybe_kick()
+                    continue
+                if mode == "shed":
+                    # "muito alta": NADA corre agora, e o AUDIO NAO SE PERDE --
+                    # ele fica na fila limitada (ordem do dono: *"audio sempre fica
+                    # para processar depois"*). Sem `maybe_kick`: acordar o modelo
+                    # e' exactamente o custo que este nivel existe para cortar.
+                    switch.add_audio(block)
                     continue
             # ── PRE-GAIN buffer ──────────────────────────────────────────────
             # The chunk the model sees is assembled here, BEFORE any gain: the
@@ -6686,7 +7038,11 @@ def main():
             if wanted and dev.get("rung") == "c":
                 outcome = "explicit-flat"
                 break
-            nxt = candidates[attempt_no + 1] if attempt_no + 1 < len(candidates) else None
+            # WHO IS PLAYING **NOW** GOES NEXT (ver `signal_ranked_next`): a ordem
+            # estatica foi decidida no arranque, quando ele ainda nao tinha som a
+            # sair; aqui a pergunta e' feita no instante em que a janela plana
+            # acabou.
+            nxt = signal_ranked_next(candidates, attempt_no + 1)
             if nxt is None:
                 # RE-ENTER — the brief's "keep looking at candidates rather than
                 # settling on the first non-dead one". Every candidate has now

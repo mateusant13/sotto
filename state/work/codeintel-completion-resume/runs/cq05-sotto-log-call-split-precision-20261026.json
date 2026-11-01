@@ -1,0 +1,118 @@
+{
+  "receipt": "cq05-sotto-log-call-split-precision",
+  "measured": "2026-10-26",
+  "target_file": "app/webview/sotto_webview.py",
+  "motivation": "the combined 100-row log-call query is hard-capped at result_limit=30, so the same population was split into semantic categories, each queried at limit 30 with self.log_fn() included",
+  "invocation": "tools.codeintel.codeintel_grep via catalog resolution; 3 calls, one per category; parameters identical except pattern",
+  "categories": [
+    {
+      "id": "A_hotkey",
+      "semantic": "exact HOTKEY_PRESSED / hotkey events",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*hotkey",
+      "mcp": {
+        "count": 18,
+        "line_numbers": [3510, 3516, 3534, 3538, 4489, 4500, 4506, 4507, 4531, 8489, 8514, 8517, 8541, 8551, 11566, 11570, 11573, 14556],
+        "effective_scope": "app/webview/sotto_webview.py",
+        "latency_ms": 134,
+        "truncated": false,
+        "result_limit": 30,
+        "pattern_mode": "regex",
+        "serialized_bytes": 8548,
+        "rows_via_log_fn": 4
+      },
+      "rg": {
+        "count": 18,
+        "line_numbers": [3510, 3516, 3534, 3538, 4489, 4500, 4506, 4507, 4531, 8489, 8514, 8517, 8541, 8551, 11566, 11570, 11573, 14556]
+      },
+      "parity": {
+        "set_equal": true,
+        "order_equal": true,
+        "truncated": false,
+        "verdict": "exact 18=18, complete and ordered identically"
+      },
+      "answers_task": "yes - this is the category the earlier patterns missed. It now contains HOTKEY_PRESSED at :3534 (emitted via self.log_fn), HOTKEY_REGISTERED/:3516, HOTKEY_REGISTER_FAILED/:3510, HOTKEY_HANDLER_FAILED/:3538, HOTKEY_UNAVAILABLE/:4500, HOTKEY_ALERT_SHOWN/:4507, HOTKEY_DOUBLE panel=strip/:8517, HOTKEY_SINGLE caption_on=/:8551, HOTKEY_CAPTION_UNDONE/:8489, SELFTEST hotkey_registered/:11573, HOTKEY_DISABLED/:14556",
+      "noise": {
+        "count": 1,
+        "row": ":4489 - prose/comment line quoting the log text, not a call",
+        "precision": "17/18 real log calls"
+      }
+    },
+    {
+      "id": "B_caption_paint",
+      "semantic": "CAPTION_PAINT / caption_paint events",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*caption[ _-]?paint",
+      "mcp": {
+        "count": 1,
+        "line_numbers": [9497],
+        "effective_scope": "app/webview/sotto_webview.py",
+        "latency_ms": 65,
+        "truncated": false,
+        "result_limit": 30,
+        "pattern_mode": "regex",
+        "serialized_bytes": 1187,
+        "rows_via_log_fn": 0
+      },
+      "rg": {
+        "count": 1,
+        "line_numbers": [9497]
+      },
+      "parity": {
+        "set_equal": true,
+        "order_equal": true,
+        "truncated": false,
+        "verdict": "exact 1=1"
+      },
+      "answers_task": "yes - the single CAPTION_PAINT emitter is a real log() call at :9497; this class is complete at one site",
+      "noise": { "count": 0, "precision": "1/1 real log calls" }
+    },
+    {
+      "id": "C_panel_events",
+      "semantic": "panel open/close/show/hide/state/visible/focus events",
+      "regex": "(?i)\\b(?:log|log_fn)\\s*\\([^)]*panel[^)]*(open|close|show|hide|state|visible|focus)",
+      "mcp": {
+        "count": 16,
+        "line_numbers": [225, 232, 6594, 6596, 6667, 6698, 6759, 6770, 6827, 8272, 8321, 8669, 8721, 10060, 10066, 10075],
+        "effective_scope": "app/webview/sotto_webview.py",
+        "latency_ms": 60,
+        "truncated": false,
+        "result_limit": 30,
+        "pattern_mode": "regex",
+        "serialized_bytes": 8308,
+        "rows_via_log_fn": 0
+      },
+      "rg": {
+        "count": 16,
+        "line_numbers": [225, 232, 6594, 6596, 6667, 6698, 6759, 6770, 6827, 8272, 8321, 8669, 8721, 10060, 10066, 10075]
+      },
+      "parity": {
+        "set_equal": true,
+        "order_equal": true,
+        "truncated": false,
+        "verdict": "exact 16=16"
+      },
+      "answers_task": "yes for the requested event words - PANEL_VISIBILITY_AT_STARTUP/:6667, PANEL_VISIBILITY_ON_SCREEN/:6698, PANEL_SHOW_REFUSED/:6759, PANEL_SHOW_GATE/:6770, PANEL_VISIBILITY_INVARIANT/:6827, PANEL_SHOWN (reason= + mode=strip + mode=side)/:8272,:8669,:8721, PANEL_VISIBILITY_CACHE_STALE/:8321, PANEL_EDIT_PROBE/:10060,:10066,:10075",
+      "noise": { "count": 0, "precision": "16/16 real log calls" },
+      "coverage_gap": {
+        "measured_not_guessed": true,
+        "panel_log_calls_total": 87,
+        "matched_by_this_regex": 16,
+        "residue_without_event_word_on_the_same_line": 71,
+        "residue_sample": ["204 PANEL_LAZY_FILTER_FAILED", "229 PANEL_LAZY_EMPTY", "268 PANEL_LAZY_RESPONSE_UNAVAILABLE", "290 PANEL_LAZY_ALLOW", "2980 PANEL_FOREGROUND_ATTACH", "2987 PANEL_FOREGROUND_ATTACH_FAILED"],
+        "why": "the requested word list is satisfied and complete, but 71 further panel log calls name other panel events (lazy-load, foreground-attach, paint, etc.) whose event word is not in (open|close|show|hide|state|visible|focus); naming those would need a second category pass"
+      }
+    }
+  ],
+  "aggregate": {
+    "mcp_rows_total": 35,
+    "rg_rows_total": 35,
+    "categories_truncated": 0,
+    "subdivision_needed": false,
+    "note": "no category hit the 30-row ceiling, so every category was fully enumerated and no NO-VERDICT is required for truncation; splitting by semantics is what made the cap stop binding",
+    "vs_combined_query": "the combined query returned 30 of 100; the split returns 35 with zero truncation and adds the 4 self.log_fn rows the literal log( patterns could never see"
+  },
+  "no_verdict": {
+    "mcp_source_revision": "NO-VERDICT - codeintel_grep envelopes expose effective_scope, result_limit, pattern_mode and truncated but no version or commit field",
+    "panel_event_completeness": "NO-VERDICT on 'all panel events' - only the requested word set was queried; 71 panel log calls remain outside it (measured, not guessed)"
+  },
+  "side_effects": "none: no source edits, no index refresh or bootstrap, no build, no tests, no pane operations"
+}

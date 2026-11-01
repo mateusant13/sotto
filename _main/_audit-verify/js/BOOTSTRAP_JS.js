@@ -3,10 +3,18 @@
   'use strict';
   if (window.sotto) return;   // a second injection must not replace a live bridge
 
-  var subs = { caption: [], status: [], geometry: [], stats: [] };
+  var subs = { caption: [], 'external-caption': [], status: [], geometry: [], stats: [] };
   var queue = [];
   var infoSeq = 0;
   var infoPending = {};
+  // THE STATS ROUND-TRIP (ported 2026-10-11 from the 55c422b reference, its
+  // lines 2336-2349 + 2227-2233). Measured gap in the live shell: Python
+  // `reply_stats` already calls `window.__sotto_stats(id, json)` (this file,
+  // `reply_stats`) and `emit_async('stats', ...)` already pushes -- but the
+  // page defined NO `__sotto_stats`, NO `getStats` and NO `onStats`, and
+  // `subs` had no `stats` topic, so every push went into `subs[kind] || []`
+  // and every poll had nothing to resolve. The meter therefore stayed at the
+  // floor with the whole channel apparently present on the Python side.
   var statsSeq = 0;
   var statsPending = {};
 
@@ -96,11 +104,11 @@
     return { text: value, meta: (meta && typeof meta === 'object') ? meta : {} };
   }
 
-  // A COUNT OF WHAT ARRIVED, per kind. Not decoration: the panel's level meter
-  // is fed BOTH by a poll (`getStats`, every 1000 ms) and by this push, so a
-  // measurement that only saw `data-level="live"` could not tell a working push
-  // from a poll doing all the work. `_main/_strip-stats-probe.py` reads this
-  // counter and requires the PUSH to have landed more than once.
+  // A COUNT OF WHAT ARRIVED, per kind (reference 2227-2233). The panel's
+  // level meter is fed BOTH by a poll and by this push, so a reader that only
+  // saw `data-level=live` could not tell a working push from a poll doing all
+  // the work. `_main/_strip-stats-probe.py` reads this counter and requires
+  // the PUSH to have landed more than once.
   window.__sotto_emit = function (kind, json) {
     var payload = null;
     try { payload = JSON.parse(json); } catch (err) { payload = null; }
@@ -116,11 +124,10 @@
     try { resolve(JSON.parse(json)); } catch (err) { resolve({ error: String(err) }); }
   };
 
-  // The worker's OWN counters, on the same id round-trip as `getInfo`, so
-  // `bridge.getStats()` really resolves with a measurement instead of a
-  // synchronous guess. The payload is the panel's whitelist and nothing else —
-  // `peak` and `blocks` — and a field the worker never printed stays ABSENT
-  // (`panel.js:1709` trusts only the fields it actually carries).
+  // Same id round-trip as `__sotto_info`, for `getStats`. Without this the
+  // shell's own `window.__sotto_stats(...)` call is a silent no-op and the
+  // Promise from `getStats()` never resolves -- which is exactly what the
+  // owner's log showed: 595 BRIDGE_STATS_REPLY lines and a dead meter.
   window.__sotto_stats = function (id, json) {
     var resolve = statsPending[id];
     if (!resolve) return;
@@ -175,6 +182,9 @@
     },
 
     onCaption: function (cb) { return subscribe('caption', cb); },
+    // THE PLAYER'S OWN CAPTIONS (YouTube/Stremio). A separate channel because
+    // each line REPLACES the live box instead of joining the ASR hypothesis.
+    onExternalCaption: function (cb) { return subscribe('external-caption', cb); },
     onStatus: function (cb) { return subscribe('status', cb); },
     onGeometry: function (cb) { return subscribe('geometry', cb); },
     onStats: function (cb) { return subscribe('stats', cb); },
@@ -183,8 +193,103 @@
     toggle: function () { post('toggle', null); },
     quit: function () { post('quit', null); },
 
+    // THE REPAIR CONTROL (panel.js:2045). reviveSupported() (:2007) gates the
+    // status click on typeof bridge.revive === 'function', so this entry is
+    // what turns the panel's only recovery path from a dead click into a
+    // request the shell answers (SottoShell.revive_worker).
+    revive: function (reason) {
+      post('revive', { reason: String(reason == null ? 'panel' : reason) });
+    },
+
     setPointerInteractive: function (active) {
       post('pointer', { active: Boolean(active) });
+    },
+
+    // Strip lane: panel asks the shell for click-through chrome while it
+    // keeps painting captions. Documented shell message `sotto:transparency`
+    // with `{ on: bool }`. No-op honest when the shell has no window yet.
+    setTransparency: function (on) {
+      post('transparency', { on: Boolean(on) });
+    },
+
+    // THE MISSING CHANNEL, AND IT IS WHY THE DEFERRED ASSETS NEVER LOADED.
+    //
+    // MEASURED 2026-10-13. `lazy-assets.js:144` asks for a deferred asset with
+    //     if (s && typeof s.dispatch === 'function') { s.dispatch('lazy-asset', ...); return; }
+    //     if (window.pywebview && window.pywebview.api && window.pywebview.api.dispatch) { ... }
+    // and `window.sotto.dispatch` DID NOT EXIST -- grep over this file returned ZERO.
+    // So the loader fell through to `window.pywebview.api.dispatch`, which is NOT the
+    // channel this shell listens on: `post()` (:2805-2808) publishes on
+    // `window.chrome.webview.postMessage`. RESULT, measured on a `cine-cellar` theme:
+    //     PANEL_LAZY_ALLOW 0    the page NEVER asked
+    //     PANEL_LAZY_EMPTY 4    the gate answered 4 requests with EMPTY 200s
+    // so `cinematic.css`, `panel-designs.css`, `skins/skins.js`, `skin-host.js` and
+    // `skin-layout.css` loaded as EMPTY BODIES. The designs and their fonts never
+    // arrived, which is the owner's *"pouquissimas fontes"* and *"varios designs
+    // estao bugados"* -- measured, not guessed.
+    //
+    // ONE LINE, and it is the same class of defect as `setStripOffset` below: this
+    // object is hand-written, not generated from the Python API, so a method the page
+    // probes for has to be declared here or the probe is false and the caller skips it
+    // in silence.
+    dispatch: function (kind, payload) {
+      post(String(kind == null ? '' : kind), payload == null ? null : payload);
+      return true;
+    },
+
+    // THE OWNER'S STRIP DRAG (panel.html:1087). `window.sotto` is THIS object,
+    // hand-written here and not generated from the Python API, so without this
+    // entry the page's `typeof bridge.setStripOffset === 'function'` probe is
+    // FALSE and the whole shell half is skipped in silence -- the bar then moves
+    // only INSIDE the window, which after the content-width fix is exactly the
+    // pill, so it cannot move at all. `x`/`y` are CUMULATIVE DIP from the dock,
+    // not deltas; `phase` is `"move"` during the drag and `"end"` on release.
+    setStripOffset: function (x, y, phase) {
+      post('setStripOffset', {
+        x: Number(x) || 0,
+        y: Number(y) || 0,
+        phase: String(phase == null ? 'move' : phase),
+      });
+    },
+
+    // THE NATIVE WINDOW DRAG (2026-10-17). ONE call per drag: the shell enters
+    // Windows' own modal move loop (`ReleaseCapture` + `WM_NCLBUTTONDOWN` /
+    // `HTCAPTION`) and persists the final rect when the owner releases the
+    // mouse. There is no per-move message and no per-move `SetWindowPos`, which
+    // is what the old JS drag was made of -- see `strip-drag.js`.
+    beginWindowDrag: function (surface) {
+      post('beginWindowDrag', { surface: surface == null ? '' : String(surface) });
+    },
+
+    // THE LIVE PILL (2026-10-17). It existed in the page but the shell had no
+    // method, so `applyLiveEnabled` painted it `aria-disabled` and its own
+    // title said the switch could not reach the engine. The shell now owns the
+    // second window: `true` shows the independent caption overlay, `false`
+    // hides it. Resolved synchronously because the visibility change is local.
+    setLiveEnabled: function (on) {
+      var want = !!on;
+      post('setLiveEnabled', { on: want });
+      return Promise.resolve({ liveEnabled: want });
+    },
+
+    // THE TRANSLATION TARGET (owner, 2026-10-21). The 3-dot menu's selector sends
+    // the chosen language here; `''` means the DEFAULT POLICY (English for every
+    // video, Spanish stays Spanish). A non-empty code forces that target for
+    // EVERY video. The shell stores it and the caption fetcher reads it.
+    setTranslationTarget: function (lang) {
+      var want = String(lang == null ? '' : lang);
+      post('translation-target', { lang: want });
+      return Promise.resolve({ lang: want });
+    },
+
+    // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
+    // always called `bridge.pause()`; the shell never had it, so the dialog
+    // said "este shell ainda não consegue pausar". The shell now stops the
+    // worker (which releases the CUDA context and its VRAM) and keeps the
+    // process paused until the owner revives it.
+    pause: function (payload) {
+      post('pause', payload || {});
+      return Promise.resolve({ paused: true, text: 'Paused - engines unloaded' });
     },
 
     // preload.js resolves a Promise here (ipcRenderer.invoke). The WebView2
@@ -198,13 +303,10 @@
       });
     },
 
-    // ── THE WORKER'S OWN COUNTERS (`getStats`/`onStats`) ────────────────────
-    // `panel.js:1695-1724` (`wireLevel`) subscribes to `onStats` AND polls
-    // `getStats` once a second; it reads `peak` and `blocks` and nothing else,
-    // and a MISSING field is not a measurement, so it must stay missing rather
-    // than arrive as a zero this shell invented. The numbers come from the
-    // worker's own `WORKER_STATS` line, which `WorkerBridge._pump` already
-    // parses into `last_worker_stats`.
+    // THE PANEL'S OWN PULL, once a second (`panel.js:2478`). The numbers are
+    // the worker's own counters, whitelisted by `stats()`; a field the worker
+    // did not print stays ABSENT rather than arriving as a zero this shell
+    // invented.
     getStats: function () {
       return new Promise(function (resolve) {
         var id = 's' + (++statsSeq);
@@ -231,7 +333,6 @@
       });
       return true;
     },
-
     captionApplied: function (text) {
       post('caption-applied', { text: String(text == null ? '' : text) });
     },

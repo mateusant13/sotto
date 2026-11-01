@@ -40,6 +40,9 @@ O PORCAO DA LAI (o que o `--verdict` diz) e o `--check-only` NAO e: o
 ficheiro que o kernel recusa (upstream #1897, #1896). O `--verdict` e o unico
 modo que este repo usa como portao.
 """
+# NO-BUG: portao das 14 leis do `LAWS.bend` — `bend PROOF.bend --verdict` no WSL
+# `ubuntu-bend`, nunca `--check-only`. Sem ele, "as leis provam o que dizem" seria
+# uma afirmacao: ele mede os 14 controles negativos, cada um com o `Location:` exacto.
 from __future__ import annotations
 
 import os
@@ -64,6 +67,12 @@ DISTRO = os.environ.get("BEND_WSL_DISTRO", "ubuntu-bend")
 #: muda este conjunto e o portao falha -- e a falha e o ponto: sem ela, uma lei
 #: apagada deixa de ser verificada e nada num run verde diria isso.
 EXPECTED_LAWS = (
+    # As tres leis do EPOCH/SLOT (2026-10-30): a legenda que nao pinta no
+    # instante em que a fonte anterior ainda tem fila, e o reinicio da
+    # numeracao por fonte nao pinta o que ja estava na tela.
+    "Cap.display_clean_before_new_source",
+    "Cap.epoch_monotonic",
+    "Nat.no_cross_source_paint",
     "Nat.live_flag_is_false_before_the_line_starts",
     "Nat.live_flag_is_started_and_not_ended",
     "Nat.of_bool_agrees_with_revealed_flag",
@@ -81,6 +90,10 @@ EXPECTED_LAWS = (
 #: ficheiro: o kernel pára na PRIMEIRA lei que falha, e dois controlos no
 #: mesmo ficheiro deixariam o segundo por exercitar.
 EXPECTED_CONTROLS = (
+    ("NEGATIVE_epoch_monotonic.bend", "Cap.epoch_monotonic"),
+    ("NEGATIVE_no_cross_source_paint.bend", "Nat.no_cross_source_paint"),
+    ("NEGATIVE_display_clean_before_new_source.bend",
+     "Cap.display_clean_before_new_source"),
     ("NEGATIVE_revealed_flag.bend", "Nat.revealed_flag_is_zero_or_one"),
     ("NEGATIVE_of_bool_agrees.bend", "Nat.of_bool_agrees_with_revealed_flag"),
     ("NEGATIVE_live_flag.bend", "Nat.live_flag_is_started_and_not_ended"),

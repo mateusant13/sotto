@@ -217,7 +217,16 @@ class FakeShell(object):
     def emit(self, kind, payload):
         self.emitted.append((kind, payload))
 
-    def push_caption_to_window(self, text):
+    def push_caption_to_window(self, text, previous=None, credits=None,
+                               instant=False, rows=None):
+        # A assinatura tem de acompanhar a do metodo REAL
+        # (`sotto_webview.Shell.push_caption_to_window`, que recebe `instant`
+        # e `rows` desde a correccao da revelacao 1:1 de 2026-10-29).
+        #
+        # MEDIDO 2026-10-30: este `FakeShell` aceitava so `text`, e a
+        # `_tick` viva chama `push_caption_to_window(text, instant=..., rows=...)`
+        # -- o `TypeError` matava o passo no MEIO, e o veredicto era um
+        # traceback em vez de um veredicto.
         self.window_lines.append(text)
 
     def start_worker(self, reason):
@@ -515,9 +524,22 @@ MUTANTS = (
      "        if (self.last_line\n"
      "                and (now - self.last_seen) >= self.RELEASE_S):"),
     ("m4", "the real cue is never emitted",
+     # MEDIDO 2026-10-30: a ancora era `return [('external:youtube:track',
+     # [text])], False`, e a correccao da revelacao 1:1 (2026-10-29) trocou-a
+     # por `self._yt_lines(track, t) or [text]` -- a janela de DUAS linhas do
+     # player. A ancora tinha de acompanhar o codigo vivo: um mutante que
+     # nao encaixa mede NADA, e o passo abortava com "the mutant m4 anchor
+     # occurs 0 times in the shell".
+     # MEDIDO 2026-10-30 (segunda vez): o CHAO DO TEMPO inseriu
+     # `self._yt_advance(...)` entre `yt_reason` e o `return`, e a ancora
+     # voltou a nao encaixar. O mutante continua a ser "a cue real nunca e'
+     # emitida" -- logo o `_yt_advance` fica NELE e o `return` e' o que muda.
      "        self.yt_reason = 'has-cue'\n"
-     "        return [('external:youtube:track', [text])], False",
+     "        self._yt_advance((cue or {}).get('start'))\n"
+     "        return [('external:youtube:track',\n"
+     "                 self._yt_lines(track, t) or [text])], False",
      "        self.yt_reason = 'has-cue'\n"
+     "        self._yt_advance((cue or {}).get('start'))\n"
      "        return [], False"),
     ("m5", "the Stremio path is demoted too",
      "        if source == 'external:youtube':",

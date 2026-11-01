@@ -1,0 +1,56 @@
+{
+  "receipt": "cq06-sotto-logcall-union",
+  "measured_utc_date": "2026-10-26",
+  "target_file": "app/webview/sotto_webview.py",
+  "mcp_call": {
+    "tool": "codeintel_grep",
+    "args": {
+      "pattern": "(?i)\\blog\\([^)]*(hotkey|panel|caption[ _-]?paint)",
+      "path": "app/webview/sotto_webview.py",
+      "regex": true,
+      "limit": 100
+    },
+    "calls_made": 1
+  },
+  "codeintel": {
+    "total": 30,
+    "rows": 30,
+    "truncated": true,
+    "result_limit": 30,
+    "limit_requested": 100,
+    "effective_scope": "app/webview/sotto_webview.py",
+    "pattern_mode": "regex",
+    "serialized_bytes": 13159,
+    "latency_ms": 1373,
+    "log_call_rows": 30,
+    "line_numbers": [204, 225, 229, 232, 268, 290, 2980, 2987, 3016, 3018, 3442, 3894, 3969, 4500, 4506, 4507, 4531, 5063, 5451, 5462, 5520, 5536, 5549, 5936, 5939, 6201, 6205, 6588, 6591, 6594]
+  },
+  "rg_oracle": {
+    "command": "rg -c -P -- '(?i)\\blog\\([^)]*(hotkey|panel|caption[ _-]?paint)' app/webview/sotto_webview.py",
+    "count": 100,
+    "line_numbers": [204, 225, 229, 232, 268, 290, 2980, 2987, 3016, 3018, 3442, 3894, 3969, 4500, 4506, 4507, 4531, 5063, 5451, 5462, 5520, 5536, 5549, 5936, 5939, 6201, 6205, 6588, 6591, 6594, 6595, 6596, 6634, 6667, 6698, 6759, 6770, 6827, 6908, 6911, 6917, 6920, 6922, 6980, 6991, 7064, 7170, 7179, 8161, 8193, 8200, 8202, 8208, 8272, 8293, 8321, 8489, 8514, 8517, 8541, 8551, 8606, 8613, 8615, 8669, 8721, 8811, 9497, 9564, 9935, 9950, 9972, 10019, 10046, 10053, 10058, 10060, 10066, 10075, 10085, 10091, 10099, 10105, 10109, 10549, 10788, 11166, 11173, 11281, 11300, 11303, 11393, 11497, 11499, 11528, 11566, 11570, 11573, 14451, 14556]
+  },
+  "parity": {
+    "prefix_identical": true,
+    "prefix_length": 30,
+    "set_equal": false,
+    "rg_rows_not_returned": 70,
+    "reason": "server clamps result_limit to 30 with no pagination (limit=100 requested, result_limit=30, truncated=true); the 30 returned rows are exactly the first 30 rg rows, so the disagreement is truncation, not a mismatch of matching semantics",
+    "precision_on_returned_page": "30/30 rows are real log() calls"
+  },
+  "useful_for_task": {
+    "verdict": "yes, high precision but incomplete",
+    "precision": "100/100 rows in the rg population begin with a log call (log( or self.log(); zero prose/comment hits)",
+    "hotkey_panel_caption_coverage": "the union query reaches the panel open/close/show/hide/state sites and the CAPTION_PAINT emitter at :9497",
+    "gaps": [
+      "self.log_fn(...) calls have no literal 'log(' and are invisible to this pattern - that is exactly how HOTKEY_PRESSED is emitted at :3534",
+      "multi-line log(...) calls whose term appears on a continuation line are never matched by any single-line regex",
+      "70 of 100 sites cannot be enumerated through this tool at any limit (30-row clamp, no offset)"
+    ]
+  },
+  "not_measured": {
+    "source_revision": "codeintel_grep envelope exposes effective_scope/result_limit/pattern_mode/truncated only; no version or commit field, so an MCP source revision is unavailable (UNKNOWN)",
+    "latency_variance": "single sample at 1373 ms; earlier identical-shape calls measured ~98-198 ms, but no repeated sampling was taken, so no latency distribution is claimed"
+  },
+  "side_effects": "none: no source edits, no index refresh/bootstrap, no build, no tests"
+}

@@ -66,6 +66,9 @@ unlifted hold:
     py -3 _main/panel-exit3-oracle.py --arm-e-real       # the two painted states, real WebView2 DOM
 
 """
+# BATTERY-HEAVY: audio-device -- este instrumento ABRE audio device; a classe pesada da bateria so'
+# corre com opt-in (SOTTO_BATTERY_HEAVY=1). A classificacao e' a do mapa STEP_KINDS
+# de `_main/battery-heavy-gate.py`; faltava so' a declaracao neste ficheiro.
 
 from __future__ import annotations
 

@@ -1,0 +1,135 @@
+{
+  "population": "as reclamacoes de desempenho/stutter do dono sobre o Sotto, 2026-10-21 .. 2026-10-23 (corpus I:\\!manager\\state\\herdr\\complaints\\sotto.md, L96/L99/L122 e as mensagens de 2026-10-23)",
+  "window": "2026-10-21 .. 2026-10-23",
+  "states": ["reported", "reproduced", "cause-isolated", "fixed", "verified", "recurrence-watch"],
+  "author": "lane deepseek-v4.1-flash (opencode-go-4)",
+  "sources": [
+    "G:\\superharness\\runs\\workflow-quality-loop-findings.md (2026-10-23 20:20)",
+    "I:\\!manager\\state\\research\\bug-hunt-workflow-approaches.md (2026-10-23 20:12)",
+    "C:\\Users\\Administrador\\Desktop\\consult-chatgpt\\consultgpt\\.agents\\work\\bug-hunting-workflow\\bug-hunting-workflow-findings.md (2026-10-23 20:33)"
+  ],
+  "bugs": [
+    {
+      "id": "BUG-20261023-01",
+      "title": "o rato do dono travava com o Sotto aberto; o resto do sistema nao",
+      "class": "objecto global do Windows instalado no arranque sem o painel precisar dele",
+      "state": "fixed",
+      "reported": {
+        "date": "2026-10-23",
+        "verbatim": "MEU MOUSE TA TRAVANDO DEMAIS. O RESTO DO SISTEMA NAO"
+      },
+      "reproduced": {
+        "date": "2026-10-23",
+        "source": "_main/incidents/INC-20261023-01-mouse-hook.md",
+        "evidence": "OUTSIDE_CLICK_HOOK installed=true hook=748365515 thread=34768 type=WH_MOUSE_LL",
+        "environment": "app normal do dono (run.cmd), painel NUNCA mostrado nesse arranque, maquina com discos quase cheios, 722 processos vivos",
+        "revision": "c21f8a7 (arvore de trabalho, nao commitada; 657 caminhos sujos de varias lanes)",
+        "artifact_sha": "489202ad335e8552fa6ff8b67970d470dc390a165aef034a6c60aff2faec3ba8"
+      },
+      "hypothesis": "o hook global de rato e instalado no arranque do OutsideClickWatcher, sem nenhuma condicao, e fica vivo enquanto o painel esta escondido",
+      "falsifier": "se o log do arranque mostrasse `installed=false` com o painel escondido -- ou `visible=true` na mesma janela de tempo -- a hipotese estaria refutada",
+      "minimal_repro": "arrancar a app sem mostrar o painel e ler duas linhas do log: `OUTSIDE_CLICK_HOOK installed=true` e `PANEL_VISIBILITY_ON_SCREEN visible=false`",
+      "cause": "o hook era instalado no arranque do OutsideClickWatcher, sem condicao; nenhum braco perguntava se estava instalado",
+      "capsule": "_main/incidents/INC-20261023-01-mouse-hook.md",
+      "regression": {
+        "gate": "input-path",
+        "neg_arm": "red-as-expected-input-path",
+        "style": "example"
+      },
+      "coverage_gate": "seam-coverage",
+      "siblings": [
+        {"instance": "RegisterHotKey(None, _HOTKEY_ID, ...) no arranque", "probe": "grep RegisterHotKey + leitura de hotkey_thread", "verdict": "benign", "why": "e global e instalado no arranque, mas o Windows CONSOME a combinacao: nao ha callback por evento, e e o unico controlo do produto"},
+        {"instance": "SetTimer(5 s) na thread do hook", "probe": "grep SetTimer/KillTimer", "verdict": "benign", "why": "temporizador por-thread, 5 s, morto no stop; nao toca no caminho de input"},
+        {"instance": "GetCursorPos (dois sitios)", "probe": "grep GetCursorPos + leitura das duas funcoes", "verdict": "clean", "why": "chamado a pedido (escolher o monitor ao mostrar; posicionar o menu do tray), nao ha polling"},
+        {"instance": "ClipCursor / SetFocus", "probe": "grep ClipCursor/SetFocus", "verdict": "clean", "why": "so aparecem em comentarios que dizem que o shell NAO lhes toca"},
+        {"instance": "WS_EX_LAYERED no painel", "probe": "leitura de 6444-6473", "verdict": "benign", "why": "opt-in por SOTTO_LAYERED=1 e desligado por omissao"},
+        {"instance": "janela layered da legenda (caption_overlay.py)", "probe": "grep WS_EX_LAYERED/UpdateLayeredWindow", "verdict": "unproven", "why": "e o produto (nao e caminho de input, WS_EX_TRANSPARENT), mas o custo de composicao com a legenda escondida NAO foi medido"}
+      ],
+      "verified": null,
+      "recurrence_watch": {
+        "instrument": "python _main\\sotto-perf-log.py --launch --seconds 150",
+        "window": "a primeira corrida real da app do dono depois de 2026-10-23"
+      }
+    },
+    {
+      "id": "BUG-20261021-02",
+      "title": "abrir/fechar o Sotto travava o PC: o modelo carregava no momento do painel, sem prioridade de I/O nem de memoria",
+      "class": "trabalho pesado feito no momento em que o dono esta a olhar",
+      "state": "fixed",
+      "reported": {
+        "date": "2026-10-21",
+        "verbatim": "abrir ou fechar o sotto trava pra caralho meu pc"
+      },
+      "reproduced": {
+        "date": "2026-10-21",
+        "source": "_main/receipt-20261021-open-close-stall.md",
+        "evidence": "BRIDGE_LOAD_MS ms=36968",
+        "environment": "app normal do dono, worker com o modelo int8 em CUDA, disco I: a 0,4 % livre",
+        "revision": "unknown (2026-10-21, arvore nao commitada; nenhum sha guardado nesse dia)",
+        "artifact_sha": "unrecorded",
+        "artifact_sha_note": "o dia 2026-10-21 nao guardou o sha do artefacto; o recibo guarda o `BRIDGE_LOAD_MS` e os numeros, nao a identidade"
+      },
+      "hypothesis": "o worker nascia no momento do painel e a carga do modelo (36,9 s, 1,2 GB de leitura) corria na prioridade errada, competindo com o compositor",
+      "falsifier": "se o log mostrasse o modelo ja carregado antes do primeiro Alt+C, ou a carga com prioridade de fundo, a hipotese estaria refutada",
+      "minimal_repro": "abrir o painel numa maquina sem o modelo em cache e ler `BRIDGE_LOAD_MS` no log",
+      "cause": "o painel abria e so entao o worker nascia; o modelo levava 36,9 s, na thread e na prioridade erradas; a carga continuou sem I/O e memoria em modo de fundo ate 2026-10-23",
+      "capsule": "_main/receipt-20261021-open-close-stall.md",
+      "regression": {
+        "gate": "open-close-stall",
+        "neg_arm": "red-as-expected-open-close-stall",
+        "style": "example"
+      },
+      "coverage_gate": null,
+      "siblings": [
+        {"instance": "classe pesada da bateria (abre app/audio/GPU)", "probe": "_main/battery-heavy-gate.py", "verdict": "fixed", "why": "os seis pesados so correm com SOTTO_BATTERY_HEAVY=1 lido pelo VALOR, e a bateria corre BelowNormal"},
+        {"instance": "carga do modelo (I/O + memoria)", "probe": "leitura de _enter_load_background_mode no worker", "verdict": "fixed", "why": "PROCESS_MODE_BACKGROUND_BEGIN durante a carga, _END no finally, load_priority no log"},
+        {"instance": "arranque do WebView2 (o custo que sobra)", "probe": "nenhum: exigiria lancar a app", "verdict": "unproven", "why": "63,6 s de saturacao medidos em 2026-10-21 com 38 msedgewebview2; nao ha instrumento que isole o arranque sem lancar a app"}
+      ],
+      "verified": null,
+      "recurrence_watch": {
+        "instrument": "python _main\\sotto-perf-log.py --launch --seconds 150",
+        "window": "a primeira corrida real da app do dono depois de 2026-10-23"
+      }
+    },
+    {
+      "id": "BUG-20261023-03",
+      "title": "o AGENTS.md descrevia um buraco que o codigo ja tinha fechado (ORDEM 3)",
+      "class": "documentacao afirma o contrario da medicao, e a afirmacao nunca e re-medida",
+      "state": "fixed",
+      "reported": {
+        "date": "2026-10-21",
+        "verbatim": "qualquer legenda que ja passou (nao e mais ao vivo) tem que ser processada tambem pelo parakeet"
+      },
+      "reproduced": {
+        "date": "2026-10-23",
+        "source": "docs/revamp-2026-10-23.md",
+        "evidence": "EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED",
+        "environment": "revisao c21f8a7, arvore suja; leitura do metodo e importacao da shell em processo (sem lancar a app)",
+        "revision": "c21f8a7",
+        "artifact_sha": "unrecorded",
+        "artifact_sha_note": "o texto anterior do AGENTS.md nao foi hasheado antes de ser corrigido; o que fica registado e o metodo re-lido e o portao que o prova"
+      },
+      "hypothesis": "o metodo `on_external_captions_released` JA repoe o worker (com exiting/park/pausa/visivel + piso de 45 s); o AGENTS descrevia uma revisao anterior e ninguem re-mediu",
+      "falsifier": "se o caminho feliz devolvesse False sem chamar `start_worker`, ou se as guardas nao existissem, a hipotese estaria refutada",
+      "minimal_repro": "ler o corpo do metodo e contar as guardas; depois exercitar os 8 bracos com um `self` falso",
+      "cause": "uma afirmacao sem data e sem instrumento sobreviveu a mudanca do comportamento; o ficheiro funciona como memoria em vez de medicao",
+      "capsule": "docs/revamp-2026-10-23.md",
+      "regression": {
+        "gate": "external-resume",
+        "neg_arm": "red-as-expected-external-resume",
+        "style": "example"
+      },
+      "coverage_gate": null,
+      "siblings": [
+        {"instance": "bullet do autostart: `HKCU\\...\\Run\\Sotto` nao existe", "probe": "Get-ItemProperty HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "verdict": "fixed", "why": "medido: 22 entradas e `Sotto` presente; a 'correcao' anterior estava ela propria errada"},
+        {"instance": "bullet do §Factos: a app arranca com o Windows", "probe": "mesma chave Run", "verdict": "fixed", "why": "era a bullet verdadeira; fica e passa a citar a medicao de hoje"},
+        {"instance": "contradicao declarada do flash do painel (0/20 vs 18/20)", "probe": "leitura do AGENTS, §Factos", "verdict": "unproven", "why": "o proprio AGENTS declara a contradicao e ninguem correu `panel-startup-flash-census.py` nesta revisao"}
+      ],
+      "verified": null,
+      "recurrence_watch": {
+        "instrument": "python _main\\agents-md-pins-oracle.py + re-medicao citada na propria frase",
+        "window": "a proxima vez que alguem citar o §3 ou o autostart sem re-medir"
+      }
+    }
+  ]
+}

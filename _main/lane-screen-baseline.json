@@ -1,0 +1,23 @@
+{
+  "_frozen": "2026-10-23",
+  "_why": "Divida ANTERIOR a regra de 2026-10-23 (AGENTS.md, marcador SOTTO_NEVER_ON_OWNER_SCREEN). O portao lane-screen-gate.py fica VERMELHO se um ficheiro fora desta lista aparecer, ou se uma destas contagens CRESCER. Nao apagar entradas para 'limpar': cada uma e um instrumento que ainda injecta input ou pede --show.",
+  "lane_show": {
+    "_lane1-worker-default-arms.py": 4,
+    "verify-all-launch-audit.py": 1
+  },
+  "synthetic": {
+    "_altc_delivery_probe.py": 3,
+    "_live_key.py": 4,
+    "_p0-map-child-timeline.py": 4,
+    "alt-c-e2e-probe.py": 5,
+    "dom-vs-glass.py": 4,
+    "focus-and-flash-gate.py": 4,
+    "hotkey-owner-identify.py": 2,
+    "hotkey-paint-probe.py": 4,
+    "strip-first-frame.py": 4,
+    "strip-white-flake.py": 4,
+    "strip-white-timeline.py": 4,
+    "strip-whose-pixels.py": 4,
+    "webview-child-gate.py": 4
+  }
+}

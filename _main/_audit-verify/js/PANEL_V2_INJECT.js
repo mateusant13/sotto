@@ -20,6 +20,11 @@
         (captions.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING)),
     },
     buttons: {
+      // A CAIXA DE BUSCA NAO EXISTE MAIS: o dono pediu-a fora em 2026-10-21 21:24
+      // (*"tira a caixa de procurar texto"*) e ela saiu do markup em 2026-10-30. As
+      // duas bandeiras passam a ser a AUSENCIA, e o veredicto abaixo exige-a -- uma
+      // sonda que continuasse a exigir o formulario estaria a pedir de volta o que
+      // ele recusou.
       search: !!document.getElementById('search-button'),
       searchInput: !!document.getElementById('search-input'),
       reveal: !!document.getElementById('reveal-button'),

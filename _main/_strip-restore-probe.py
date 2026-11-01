@@ -20,6 +20,9 @@ launch open the band in a position a probe chose.
 restore happens in `create_window`, before any show, and the arms pass
 `--exit-after`.
 """
+# BATTERY-HEAVY: app-window -- este instrumento ABRE app window; a classe pesada da bateria so'
+# corre com opt-in (SOTTO_BATTERY_HEAVY=1). A classificacao e' a do mapa STEP_KINDS
+# de `_main/battery-heavy-gate.py`; faltava so' a declaracao neste ficheiro.
 from __future__ import annotations
 
 import ctypes

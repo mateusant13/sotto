@@ -1,0 +1,55 @@
+{
+  "receipt": "cq05-sotto-log-call-precision",
+  "measured": "2026-10-26",
+  "target_file": "app/webview/sotto_webview.py",
+  "tool_call": {
+    "tool": "codeintel_grep",
+    "invocation": "direct (tools.codeintel.codeintel_grep), one call, no catalog lookup needed this turn",
+    "args": {
+      "pattern": "(?i)\\blog\\([^)]*(hotkey|panel|caption[ _-]?paint)",
+      "path": "app/webview/sotto_webview.py",
+      "regex": true,
+      "limit": 100
+    }
+  },
+  "rg_command": "rg -c -P -- '(?i)\\blog\\([^)]*(hotkey|panel|caption[ _-]?paint)' app/webview/sotto_webview.py",
+  "codeintel": {
+    "count": 30,
+    "line_numbers": [204, 225, 229, 232, 268, 290, 2980, 2987, 3016, 3018, 3442, 3894, 3969, 4500, 4506, 4507, 4531, 5063, 5451, 5462, 5520, 5536, 5549, 5936, 5939, 6201, 6205, 6588, 6591, 6594],
+    "effective_scope": "app/webview/sotto_webview.py",
+    "latency_ms": 964,
+    "truncated": true,
+    "result_limit": 30,
+    "limit_requested": 100,
+    "pattern_mode": "regex",
+    "serialized_bytes": 13159,
+    "rows_starting_with_log_call": 30
+  },
+  "rg": {
+    "count": 100,
+    "line_numbers": [204, 225, 229, 232, 268, 290, 2980, 2987, 3016, 3018, 3442, 3894, 3969, 4500, 4506, 4507, 4531, 5063, 5451, 5462, 5520, 5536, 5549, 5936, 5939, 6201, 6205, 6588, 6591, 6594, 6595, 6596, 6634, 6667, 6698, 6759, 6770, 6827, 6908, 6911, 6917, 6920, 6922, 6980, 6991, 7064, 7170, 7179, 8161, 8193, 8200, 8202, 8208, 8272, 8293, 8321, 8489, 8514, 8517, 8541, 8551, 8606, 8613, 8615, 8669, 8721, 8811, 9497, 9564, 9935, 9950, 9972, 10019, 10046, 10053, 10058, 10060, 10066, 10075, 10085, 10091, 10099, 10105, 10109, 10549, 10788, 11166, 11173, 11281, 11300, 11303, 11393, 11497, 11499, 11528, 11566, 11570, 11573, 14451, 14556]
+  },
+  "parity": {
+    "prefix_identical": true,
+    "prefix_length_matched": 30,
+    "set_equal": false,
+    "unreturned_rg_rows": 70,
+    "verdict": "the 30 returned CodeIntel rows are exactly rg rows 1-30 in the same order; the 70-row difference is the server's hard result_limit=30 with no pagination (truncated=true), not a difference in matching semantics",
+    "NO-VERDICT": "whether the remaining 70 rows are byte-identical to rg cannot be observed through this tool at any limit - NO-VERDICT by design of the 30-row ceiling"
+  },
+  "task_usefulness": {
+    "verdict": "useful, precision-complete on the returned page, incomplete in coverage",
+    "precision": "100/100 rows in the rg population begin with a real log call (log( or self.log()); zero prose/comment false positives, verified on the full population",
+    "reaches": "panel open/close/show/hide/state sites plus the CAPTION_PAINT emitter at :9497",
+    "recall_gaps": [
+      "self.log_fn(...) contains no literal 'log(' and is invisible to this pattern - that is how HOTKEY_PRESSED is emitted at :3534",
+      "multi-line log(...) calls with the term on a continuation line are unreachable by any single-line regex",
+      "70 of 100 sites cannot be enumerated (30-row clamp, no offset/pagination)"
+    ]
+  },
+  "no_verdict_fields": {
+    "mcp_source_revision": "NO-VERDICT - the codeintel_grep envelope exposes effective_scope, result_limit, pattern_mode and truncated, but no version or commit field, so a source revision is not observable",
+    "full_set_identity": "NO-VERDICT - only 30 of 100 rows are returned; set equality with rg is unobservable"
+  },
+  "side_effects": "none: no source edits, no index refresh or bootstrap, no build, no tests"
+}

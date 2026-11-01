@@ -224,3 +224,22 @@ _main/_*mutant.py
 # excludes them, and "git add -A" afterwards stages none.
 **/node_modules/
 .bend-ledger/
+
+# ── Heavy non-source trees (2026-11-01, commit sweep) ──────────────────────
+# Measured on this box: `_moved/` is 2.6 GB of relocated worktrees, `.codeintel/`
+# is 167 MB of index. Neither is source and both are reproducible/derived, so
+# committing them would put a quarter of a gigabyte of machine state in git.
+_moved/
+.codeintel/
+.agent-work/
+.pi/
+# Design renders (4.6 MB). Same rule as docs/design-audit-20261021/ above:
+# the repo keeps the sources and the measurements, not the pixels.
+_main/shots/
+# Interrupted-atomic-write leftovers and other scratch from probes.
+*.tmp
+/_main/panel-state.json.*
+/_main/panel-visibility.json.*
+# Stray shell-redirect artefacts that landed at the repo root.
+/-
+/=ro

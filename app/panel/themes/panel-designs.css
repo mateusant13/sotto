@@ -65,6 +65,11 @@
   --line-strong: transparent;
   --accent: #E8574F;
   --accent-soft: rgba(232, 87, 79, 0.12);
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: rgba(232, 87, 79, 0.65);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #E8574F;
@@ -502,7 +507,7 @@
   color: var(--text-primary);
 }
 :root[data-theme='pd-tele'] .theme-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -533,7 +538,7 @@
 }
 :root[data-theme='pd-tele'] .theme-button:hover {
   color: var(--text-primary);
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 :root[data-theme='pd-tele'] .theme-picker {
   position: absolute;
@@ -710,6 +715,13 @@
     transition: none !important;
   }
 }
+/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+:root[data-theme='pd-tele'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+:root[data-theme='pd-tele'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
    Declared here so every `var()` in this file RESOLVES. A `var()` with no
    declaration anywhere and no fallback is invalid at computed-value time,
@@ -789,6 +801,11 @@
   --line-strong: rgba(255, 255, 255, 0.22);
   --accent: #E8574F;
   --accent-soft: rgba(232, 87, 79, 0.1);
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: rgba(232, 87, 79, 0.65);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #E8574F;
@@ -1226,7 +1243,7 @@
   color: var(--text-primary);
 }
 :root[data-theme='pd-bcast'] .theme-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -1257,7 +1274,7 @@
 }
 :root[data-theme='pd-bcast'] .theme-button:hover {
   color: var(--text-primary);
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 :root[data-theme='pd-bcast'] .theme-picker {
   position: absolute;
@@ -1402,6 +1419,8 @@
   color: var(--text-primary);
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
 }
 :root[data-theme='pd-bcast'] body:not([data-surface="strip"]) .panel__controls {
   grid-column: 2;
@@ -1458,6 +1477,8 @@
   font-weight: 500;
   color: #FFFFFF;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
 }
 :root[data-theme='pd-bcast'] .captions__body {
   padding: 80px 16px 12px;
@@ -1499,6 +1520,13 @@
     transition: none !important;
   }
 }
+/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+:root[data-theme='pd-bcast'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+:root[data-theme='pd-bcast'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
    Declared here so every `var()` in this file RESOLVES. A `var()` with no
    declaration anywhere and no fallback is invalid at computed-value time,
@@ -1578,6 +1606,11 @@
   --line-strong: transparent;
   --accent: #E0A63C;
   --accent-soft: rgba(232, 87, 79, 0.12);
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: rgba(232, 87, 79, 0.65);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #E0A63C;
@@ -2020,7 +2053,7 @@
   color: var(--text-primary);
 }
 :root[data-theme='pd-mano'] .theme-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -2051,7 +2084,7 @@
 }
 :root[data-theme='pd-mano'] .theme-button:hover {
   color: var(--text-primary);
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 :root[data-theme='pd-mano'] .theme-picker {
   position: absolute;
@@ -2240,6 +2273,13 @@
     transition: none !important;
   }
 }
+/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+:root[data-theme='pd-mano'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+:root[data-theme='pd-mano'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
    Declared here so every `var()` in this file RESOLVES. A `var()` with no
    declaration anywhere and no fallback is invalid at computed-value time,
@@ -2323,6 +2363,11 @@
   --line-strong: transparent;
   --accent: #F1ECE2;
   --accent-soft: rgba(232, 87, 79, 0.12);
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: rgba(232, 87, 79, 0.65);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #F1ECE2;
@@ -2762,7 +2807,7 @@
   color: var(--text-primary);
 }
 :root[data-theme='pd-cine'] .theme-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -2793,7 +2838,7 @@
 }
 :root[data-theme='pd-cine'] .theme-button:hover {
   color: var(--text-primary);
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 :root[data-theme='pd-cine'] .theme-picker {
   position: absolute;
@@ -2991,6 +3036,13 @@
     transition: none !important;
   }
 }
+/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+:root[data-theme='pd-cine'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+:root[data-theme='pd-cine'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
    Declared here so every `var()` in this file RESOLVES. A `var()` with no
    declaration anywhere and no fallback is invalid at computed-value time,
@@ -3070,6 +3122,11 @@
   --line-strong: rgba(255, 255, 255, 0.18);
   --accent: #E8574F;
   --accent-soft: rgba(232, 87, 79, 0.08);
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: rgba(232, 87, 79, 0.65);
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: #E8574F;
@@ -3507,7 +3564,7 @@
   color: var(--text-primary);
 }
 :root[data-theme='pd-instr'] .theme-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -3538,7 +3595,7 @@
 }
 :root[data-theme='pd-instr'] .theme-button:hover {
   color: var(--text-primary);
-  border-color: var(--line-strong);
+  border-color: var(--accent);
 }
 :root[data-theme='pd-instr'] .theme-picker {
   position: absolute;
@@ -3830,6 +3887,13 @@
     transition: none !important;
   }
 }
+/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+:root[data-theme='pd-instr'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+:root[data-theme='pd-instr'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
+
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
    Declared here so every `var()` in this file RESOLVES. A `var()` with no
    declaration anywhere and no fallback is invalid at computed-value time,

@@ -209,14 +209,33 @@ class _FakeElement(object):
     """One element of the fake accessibility tree (the caption window, or one
     of its word children)."""
 
-    def __init__(self, name="", cls="", children=()):
+    def __init__(self, name="", cls="", children=(), offscreen=False,
+                 rect=(0, 0, 640, 40)):
         self.CurrentName = name
         self.CurrentClassName = cls
         self._children = list(children)
+        # UM ELEMENTO DESENHADO, COM RETANGULO (2026-10-30). O `painted_words` so' conta
+        # uma janela de legenda que o OS diz estar no ecra (`_rendered`: nao offscreen E
+        # com area > 0). O falso elemento nao tinha nem `CurrentIsOffscreen` nem
+        # `CurrentBoundingRectangle`, logo `_rendered` devolvia False e o braco a07 lia
+        # `why='no-painted-caption'` -- o oraculo acusava o modulo de nao pintar quando o
+        # que nao pintava era o fantoche.
+        self.CurrentIsOffscreen = bool(offscreen)
+        self.CurrentBoundingRectangle = _Rect(*rect)
 
     def FindAll(self, _scope, _cond):
         # The scope is ignored: a window's children ARE its words.
         return _FakeCollection(self._children)
+
+
+class _Rect(object):
+    """O retangulo que o UIA devolve: quatro inteiros, em pixels."""
+
+    def __init__(self, left, top, right, bottom):
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
 
 
 class _FakeRoot(object):
@@ -520,6 +539,11 @@ def main() -> int:
         return EXIT_FAIL
     with open(MODULE_PATH, "r", encoding="utf-8", newline="") as fh:
         source = fh.read()
+    # O FICHEIRO E' CRLF E OS ANCOS SAO ESCRITOS COM `\n` (medido 2026-10-30): sem esta
+    # normalizacao, todo o anco de mais de uma linha lia "ANCHOR MISSING", e o mutante era
+    # dado como decorativo por um motivo que nao era o dele. So' para COMPARAR -- o ficheiro
+    # mutado e' escrito com `\n`, que o Python aceita.
+    source = source.replace("\r\n", "\n")
 
     arms_total = arms_green = 0
     if not neg_only:

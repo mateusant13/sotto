@@ -1,14 +1,14 @@
 {
  "wav": "pt-br-sample.wav",
  "wav_s": 15.0,
- "model": "nemotron-3.5-asr-streaming-0.6b-int8",
- "model_dir": "worker/models/nemotron-3.5-asr-streaming-0.6b-int8",
- "worker_sha256": "CEFD18689BD54F681E7F5666437DCECA28E9E61B3F3C41666697E4FD3829BAF1",
+ "model": "nemotron-3.5-asr-ptbr-onnx-int4",
+ "model_dir": "worker/models/nemotron-3.5-asr-ptbr-onnx-int4",
+ "worker_sha256": "76DC526C73E6D3F3527E1D791D0418B87FA820A5A3FD640F04FC5FA98C9DECB0",
  "lang_id": 101,
  "lang": "auto",
  "use_vad": true,
  "chunk": 8960,
- "load_s": 2.49,
+ "load_s": 5.4,
  "chunks": [
   {
    "i": 0,
@@ -67,30 +67,30 @@
    "i": 4,
    "start": 2.24,
    "end": 2.8,
-   "n_tokens": 5,
+   "n_tokens": 4,
    "ids": [
     2,
     38,
     263,
-    1313,
-    3035
+    1313
    ],
    "first_tok": "▁",
-   "raw": " a ponte sobre",
-   "stripped": "a ponte sobre"
+   "raw": " a ponte",
+   "stripped": "a ponte"
   },
   {
    "i": 5,
    "start": 2.8,
    "end": 3.36,
-   "n_tokens": 2,
+   "n_tokens": 3,
    "ids": [
+    3035,
     2,
     46
    ],
-   "first_tok": "▁",
-   "raw": " o",
-   "stripped": "o"
+   "first_tok": "▁sobre",
+   "raw": " sobre o",
+   "stripped": "sobre o"
   },
   {
    "i": 6,
@@ -149,27 +149,26 @@
    "i": 10,
    "start": 5.6,
    "end": 6.16,
-   "n_tokens": 3,
+   "n_tokens": 4,
    "ids": [
     457,
     220,
-    195
+    195,
+    1245
    ],
    "first_tok": "▁pr",
-   "raw": " próx",
-   "stripped": "próx"
+   "raw": " próxima",
+   "stripped": "próxima"
   },
   {
    "i": 11,
    "start": 6.16,
    "end": 6.72,
-   "n_tokens": 1,
-   "ids": [
-    1245
-   ],
-   "first_tok": "ima",
-   "raw": "ima",
-   "stripped": "ima"
+   "n_tokens": 0,
+   "ids": [],
+   "first_tok": null,
+   "raw": "",
+   "stripped": ""
   },
   {
    "i": 12,
@@ -182,13 +181,13 @@
     9545,
     600,
     38,
-    1846,
+    2,
     121,
     1915
    ],
    "first_tok": "▁",
-   "raw": " segunda-feira",
-   "stripped": "segunda-feira"
+   "raw": " segunda feira",
+   "stripped": "segunda feira"
   },
   {
    "i": 13,
@@ -214,17 +213,14 @@
    "i": 15,
    "start": 8.4,
    "end": 8.96,
-   "n_tokens": 5,
+   "n_tokens": 2,
    "ids": [
-    4,
     2,
-    9596,
-    1862,
-    40
+    1143
    ],
-   "first_tok": ".",
-   "raw": ".  Os",
-   "stripped": ".  Os"
+   "first_tok": "▁",
+   "raw": " os",
+   "stripped": "os"
   },
   {
    "i": 16,

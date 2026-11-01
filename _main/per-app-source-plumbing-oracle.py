@@ -94,7 +94,14 @@ def run_checks(mod, tag):
     check("CHK-2 tap_source file", fil == "file:speech.wav", fil)
 
     # CHK-3 -- NO SOURCE => NO KEY. The exact key set of the pre-existing arms.
-    before = {"type", "text", "start", "end", "final", "closed"}
+    #
+    # `stable` ACRESCENTADO 2026-10-30, e o acrescento E' A ORDEM DO DONO: *"faz sotto
+    # identificar palavras que ainda nao estao completas e nao dar display"*. O parcial que
+    # o worker emite passa a dizer se o texto que leva JA TEM a garantia de palavra
+    # inteira, e o painel depende disso. O acrescento nao muda nada do que este oraculo
+    # protege: `source` continua a ser um EXTRA e nao um campo de base, e um consumidor que
+    # ignore `stable` ve' o mesmo evento de antes (por isso o anterior nao foi renomeado).
+    before = {"type", "text", "start", "end", "final", "closed", "stable"}
     plain = mod.LineFormer()
     ev = plain.push("ola mundo", start=0.0, end=1.0)[0]
     check("CHK-3 no-source event has no 'source' key", "source" not in ev, str(sorted(ev)))
@@ -115,11 +122,15 @@ def run_checks(mod, tag):
     swap.push("a", start=0.0, end=1.0)
     swap.set_source("device:CABLE Output")
     swap.reset()
-    after = swap.push("b", start=2.0, end=3.0)[0]
+    # DUAS PALAVRAS, E NAO UMA (2026-10-30): pela ordem do dono (*"nao dar display"* de
+    # palavra incompleta), um parcial de UMA palavra so' nao e' publicado -- o texto "a"
+    # podia ser o comeco de "abacaxi". `LineFormer.push` devolve uma lista vazia nesse caso,
+    # e nao um evento, e o oraculo rebentava com `IndexError` a acusar o modulo errado.
+    after = swap.push("b b", start=2.0, end=3.0)[0]
     check("CHK-5 set_source repoints and survives reset", after.get("source") == "device:CABLE Output",
           str(after.get("source")))
     swap.set_source(None)
-    none_ev = swap.push("c", start=4.0, end=5.0)[0]
+    none_ev = swap.push("c c", start=4.0, end=5.0)[0]
     check("CHK-5 set_source(None) removes the key again", "source" not in none_ev, str(sorted(none_ev)))
 
     # CHK-6 -- the WIRE keeps it: line_events() drops 'closed' and nothing else.

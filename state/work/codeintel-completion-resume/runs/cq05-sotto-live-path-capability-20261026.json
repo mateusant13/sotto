@@ -1,0 +1,16 @@
+{
+  "health_version": "codeintel-daemon/1.0",
+  "health_stale": true,
+  "health_needs_refresh": true,
+  "revision_field_present": false,
+  "path_accepted": true,
+  "path_rejection": null,
+  "codeintel_rows": 14,
+  "codeintel_truncated": false,
+  "codeintel_latency_ms": 69,
+  "effective_scope": "app/webview/sotto_webview.py",
+  "rg_rows": 14,
+  "parity": true,
+  "useful_for_task": true,
+  "unknown_reason": "revision_field_present=false: the codeintel_health envelope exposes server_version (codeintel-daemon/1.0) and the index filename, but no git revision/commit/sha field. rg_rows uses case-sensitive-off matching (rg -c -i -P) because CodeIntel regex is case-insensitive by default; the case-sensitive count is 4, not 14."
+}

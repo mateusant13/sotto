@@ -10,12 +10,15 @@
     title: document.title,
     readyState: document.readyState,
     hasPanelElement: !!document.getElementById('panel'),
-    methods: ['pushCaption', 'setStatus', 'onCaption', 'onStatus', 'onGeometry',
+    // `setStripOffset` is in the list because the page's drag probes for it with
+    // `typeof bridge.setStripOffset === 'function'` and SILENTLY skips the shell
+    // half when it is absent (panel.html:1126). A probe that does not name the
+    // method cannot report it missing, so the count is the live receipt.
+    methods: ['pushCaption', 'setStatus', 'onCaption', 'onExternalCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
               'captionApplied', 'statusApplied', 'ready', 'clearApplied',
-              // The two members this shell owed the panel: the surface switch
-              // (it must resize the window) and the worker's own counters.
-              'setPanelSurface', 'getStats', 'onStats']
+              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause',
+              'setHotkeyHold', 'getHotkeyHold']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,
@@ -32,9 +35,18 @@
     status: (() => {
       const s = document.getElementById('status');
       return { text: (document.getElementById('status-text') || {}).textContent || '',
+               // THE WORKER'S OWN CAUSE (owner, 2026-10-21). The panel shows only
+               // `ready` / `not ready`; the cause moved into the 3-dot menu
+               // (`#panel-menu-cause`, mirrored on `documentElement.dataset.workerCause`).
+               // A dump that reads only `text` above can no longer see the device,
+               // so the cause is published HERE too.
+               cause: (document.getElementById('panel-menu-cause') || {}).textContent
+                      || (document.documentElement.dataset ? document.documentElement.dataset.workerCause : '')
+                      || '',
                className: s ? String(s.className) : null,
                error: !!(s && s.classList.contains('status--error')),
-               live: !!(s && s.classList.contains('status--live')) };
+               live: !!(s && s.classList.contains('status--live')),
+               noAudio: !!(s && s.classList.contains('status--noaudio')) };
     })(),
     placeholder: (() => {
       const ph = document.getElementById('placeholder');

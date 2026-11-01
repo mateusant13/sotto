@@ -194,127 +194,19 @@ function tail(limit = 400) {
   return { entries: out, root: ROOT };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SEARCH — the JS twin of `history_search` in app/webview/sotto_webview.py.
-//
-// THIS FILE IS NOT ON THE SHIPPED PAGE. Measured 2026-10-11: `panel.html` loads
-// ELEVEN scripts and this is not one of them; the live path is
-// `panel.js:2842 runSearch()` -> `history-search` -> the Python twin. Only the
-// oracles read this file (`historico-vs-redux-probe.js`, `history-route-oracle.js`,
-// `live-vs-history-source-oracle.js`, `history-producer-gate.js`,
-// `canonical-producer-oracle.py`).
-//
-// IT IS STILL FIXED, AND THE REASON IS THE REASON THE PYTHON TWIN WAS: an oracle
-// that asserts on the live search and another that asserts on this one would
-// disagree, and whichever one runs second looks broken. Two implementations of one
-// contract are only worth having if they agree by construction. The three layers,
-// the per-word edit budget, the all-words rule and the per-layer caps below are the
-// same decisions, with the same numbers, as the Python side — `search-oracle.py`
-// is the gate on the Python half and reads it out of the shell by `ast`.
-// ═══════════════════════════════════════════════════════════════════════════
-
-const FUZZ_RATIO = 0.34;
-const FUZZY_MIN_WORD = 4;
-const MAX_EDITS = 2;
-const LAYER_CAPS = [1.0, 0.25, 0.05];
-const LAYER_MIN = [1, 8, 4];
-const LAYER_NAME = ['literal', 'phonetic', 'fuzzy'];
-
-const SOUNDEX = (() => {
-  const map = {};
-  'bfpv'.split('').forEach((c) => { map[c] = '1'; });
-  'cgjkqsxz'.split('').forEach((c) => { map[c] = '2'; });
-  'dt'.split('').forEach((c) => { map[c] = '3'; });
-  'l'.split('').forEach((c) => { map[c] = '4'; });
-  'mn'.split('').forEach((c) => { map[c] = '5'; });
-  'r'.split('').forEach((c) => { map[c] = '6'; });
-  return map;
-})();
-
-/** Lowercase and strip diacritics: `Maçã`/`MACA`/`maçá` all fold to `maca`. */
-function fold(text) {
-  return String(text == null ? '' : text)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-/** A 4-character sound key, or '' when the word carries no letters. */
-function soundex(word) {
-  const letters = fold(word).replace(/[^a-z]/g, '');
-  if (!letters) return '';
-  let previous = SOUNDEX[letters[0]] || '';
-  let codes = '';
-  for (const ch of letters.slice(1)) {
-    const code = SOUNDEX[ch] || '';
-    if (code && code !== previous) codes += code;
-    if (ch !== 'h' && ch !== 'w') previous = code;
-  }
-  return (letters[0].toUpperCase() + codes + '000').slice(0, 4);
-}
-
-/** Edit budget for `word`: ceil(ratio x len), capped, and 0 for short words. */
-function editBudget(word) {
-  if (word.length < FUZZY_MIN_WORD) return 0;
-  return Math.min(MAX_EDITS, Math.ceil(FUZZ_RATIO * word.length));
-}
-
-/** Edit distance, or null once it is known to exceed `cap`. */
-function boundedLevenshtein(a, b, cap) {
-  if (a === b) return 0;
-  if (Math.abs(a.length - b.length) > cap) return null;
-  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i += 1) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      current.push(Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost));
-    }
-    // The early exit reads the row MINIMUM, not its label: the Python twin had
-    // `row_min = i` and gave up on the third row, killing the layer on long words.
-    if (Math.min.apply(null, current) > cap) return null;
-    previous = current;
-  }
-  return previous[previous.length - 1] <= cap ? previous[previous.length - 1] : null;
-}
-
-/** 0 literal, 1 phonetic, 2 fuzzy, -1 no match. All-words after layer 0. */
-function matchRank(text, foldedQuery, queryWords) {
-  const foldedText = fold(text);
-  if (!foldedQuery) return -1;
-  if (foldedText.indexOf(foldedQuery) !== -1) return 0;
-  const words = foldedText.split(/\s+/).filter(Boolean);
-  if (!words.length) return -1;
-  const entryKeys = new Set(words.map(soundex));
-  if (queryWords.every((w) => soundex(w) && entryKeys.has(soundex(w)))) return 1;
-  for (const qw of queryWords) {
-    const budget = editBudget(qw);
-    if (budget <= 0) {
-      if (words.indexOf(qw) === -1) return -1;
-      continue;
-    }
-    if (!words.some((w) => boundedLevenshtein(qw, w, budget) !== null)) return -1;
-  }
-  return 2;
-}
-
 function search(query, limit = 200) {
-  const foldedQuery = fold(query).trim();
-  const queryWords = foldedQuery ? foldedQuery.split(/\s+/) : [];
+  const needle = String(query == null ? '' : query).trim().toLowerCase();
   const want = Math.max(1, Number(limit) || 200);
-  const caps = LAYER_CAPS.map((frac, i) => Math.max(LAYER_MIN[i], Math.floor(want * frac)));
-  const buckets = [[], [], []];
-  if (queryWords.length) {
+  const hits = [];
+  if (needle) {
     for (const entry of entries()) {
-      const rank = matchRank(entry.text, foldedQuery, queryWords);
-      if (rank < 0) continue;
-      if (buckets[rank].length < caps[rank]) {
-        buckets[rank].push(Object.assign({}, entry, { match: LAYER_NAME[rank] }));
+      if (entry.text.toLowerCase().includes(needle)) {
+        hits.push(entry);
+        if (hits.length >= want) break;
       }
-      if (buckets.every((b, i) => b.length >= caps[i])) break;
     }
   }
-  return { query, hits: buckets[0].concat(buckets[1], buckets[2]), root: ROOT };
+  return { query, hits, root: ROOT };
 }
 
 function root() {

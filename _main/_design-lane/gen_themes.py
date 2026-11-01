@@ -586,6 +586,11 @@ FRAME = (DIR_PANEL, 'overflow-hidden rounded-lg border shadow-[0_28px_90px', 1)
 # stays effectively opaque. HUE IS THE ZIP'S; ONLY THE ALPHA IS SOTTO'S.
 STAGE = (DIR_STAGE, 'overflow-hidden bg-black', 1)
 SLAB_OPACITY = '0.96'
+#: The alpha of `--accent-line`, the theme button's border. 0.65 is the LOWEST accent
+#: alpha that clears 3:1 against the button's own fill in all five themes (the worst
+#: lands at 3.37:1) -- measured 2026-10-30 by `_main/theme-button-contrast-oracle.py`,
+#: which used to report 1.35:1 for the `--line` hairline this replaces.
+ACCENT_LINE_ALPHA = 0.65
 
 
 def over_black(hexv, a):
@@ -918,6 +923,15 @@ def build_direction_theme(n, d, pal, psrc, fonts, fsrc, ideas):
           'a strong tier for the scrollbar thumb)' % line_lbl)
     t.put('accent_soft', rgba(t['accent'], line_a),
           'derived: the accent at the surface border alpha (%s)' % line_lbl)
+    # A LINHA DO BOTAO DE TEMA -- o accent a 0.65, e nao a hairline `--line`.
+    # MEDIDO 2026-10-30 por `_main/theme-button-contrast-oracle.py`: a hairline dava
+    # 1.35:1 a 1.56:1 contra o fundo do proprio botao (o minimo e' 3:1), ou seja o
+    # botao de tema praticamente nao tinha contorno. 0.65 e' a MENOR opacidade do
+    # accent que passa 3:1 nos cinco temas (o pior fica em 3.37:1), para o contorno
+    # ser visivel sem gritar num cromo que o dono quer calmo.
+    t.put('accent_line', rgba(t['accent'], ACCENT_LINE_ALPHA),
+          'derived: the accent at %.2f for the theme button border (3:1 floor, '
+          'measured by theme-button-contrast-oracle.py)' % ACCENT_LINE_ALPHA)
     # THE WHITE RING IS GONE, and it was the thing the owner was pointing at.
     # Owner, 2026-10-17, verbatim: *"to vendo borta branca nos paineis inves de nao
     # aparecerem e deixar a borda redonda"*. This used to read
@@ -1057,7 +1071,7 @@ def build_direction_theme(n, d, pal, psrc, fonts, fsrc, ideas):
 
 
 REQUIRED = ('accent', 'font_sans', 'font_mono', 'slab', 'slab_strong', 'slab_opacity',
-            'line', 'line_strong', 'accent_soft', 'shadow_slab', 'text_primary',
+            'line', 'line_strong', 'accent_soft', 'accent_line', 'shadow_slab', 'text_primary',
             'text_secondary', 'text_muted', 'text_confirmed', 'text_provisional',
             'ok', 'busy', 'error', 'idle', 'radius_sm', 'radius_md', 'radius_lg',
             'radius_dialog', 'space', 'size_caption', 'leading_caption',
@@ -1498,7 +1512,7 @@ SKIN = """
 
 /* ── the theme picker this module owns (no panel markup needed) ─────────── */
 {S} .theme-button{{
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--text-secondary);
@@ -1536,7 +1550,9 @@ SKIN = """
   background: var(--theme-swatch, var(--accent));
   vertical-align: middle;
 }}
-{S} .theme-button:hover{{ color: var(--text-primary); border-color: var(--line-strong); }}
+/* HOVER NAO PODE FICAR MAIS FRACO QUE O REPOUSO (C3 do oraculo de contraste): com a
+   borda de repouso no accent a 0.65, `--line-strong` DESCE o contraste ao pairar. */
+{S} .theme-button:hover{{ color: var(--text-primary); border-color: var(--accent); }}
 {S} .theme-picker{{
   position: absolute;
   top: 46px;
@@ -1710,6 +1726,11 @@ HEAD = """/* Sotto — theme {n}: {name}.
   --line-strong: {line_strong};
   --accent: {accent};
   --accent-soft: {accent_soft};
+  /* The theme button's border: the accent at 0.65, the lowest alpha that clears
+     3:1 against the button's own fill in every profile (measured 2026-10-30 by
+     `_main/theme-button-contrast-oracle.py`; the `--line` hairline it replaces
+     measured 1.35:1-1.56:1). */
+  --accent-line: {accent_line};
   /* The theme button paints its own swatch from this, so a theme's accent is
      declared in exactly one place. */
   --theme-swatch: {accent};
@@ -1990,6 +2011,11 @@ CHROME[2] = """
   color: var(--text-primary);
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
+  /* UMA SO LINHA (o dono, verbatim: *"coisa feia"* -- o timecode partia-se em duas
+     quando o cabecalho apertava). `nowrap` impede a quebra e `flex: none` impede o
+     item de encolher ate' partir: as duas metades sao a mesma promessa. */
+  white-space: nowrap;
+  flex: none;
 }
 /* THE CONTROLS ARE ON THE TOP ROW (owner, 2026-10-08: *"move todos os botoes
    la pra cima tambem"*), right-aligned, small and square. */
@@ -2740,6 +2766,23 @@ def resolve_consumed(text, sel):
         '   ------------------------------------------------------------------------ */\n'
         ":root[data-theme='%s']{\n%s\n}\n" % (note, sel, rows))
 
+#: THE WORDMARK IS THE SAME SIZE IN EVERY THEME -- appended LAST so it wins on equal
+#: specificity. THE ORDER, verbatim (owner, 2026-10-21 21:24): *"o `sotto` escrito em
+#: pixels diferentes, não tá padronizado"*. MEDIDO no que estava na arvore, por
+#: `_main/wordmark-metrics-oracle.py`: cinco temas, cinco marcas -- 11px/600/0.20em,
+#: `var(--size-time)`/600/0.14em, `var(--size-time)`/400/0.06em, 11px/500/0.34em,
+#: 9px/600/0.28em. Trocar de tema mudava TAMANHO, PESO e TRACKING do nome do produto.
+#: Cada direcao continua com a sua FAMILIA e a sua COR -- isso e' o desenho e fica --
+#: e a metrica vem de um lugar so', o `panel.css`.
+BRAND_METRICS = """/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 2026-10-21 21:24:
+ * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
+ * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
+ * specificity rule in this file cannot put them back. */
+{sel} .chrome__brand {{ font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }}
+{sel} .wordmark__text {{ font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }}
+"""
+
+
 def build(t):
     # "sel" is the data-theme value ("theme-1" for lane A, "pd-tele" for lane B)
     # and "chrome" is WHICH of the five chrome families this theme wears. They are
@@ -2781,6 +2824,7 @@ def build(t):
         shadow_slab=t['shadow_slab'],
         text_confirmed=t['text_confirmed'], text_provisional=t['text_provisional'],
         line=t['line'], line_strong=t['line_strong'], accent_soft=t['accent_soft'],
+        accent_line=t['accent_line'],
         ok=t['ok'], busy=t['busy'], error=t['error'], idle=t['idle'],
         radius_sm=t['radius_sm'], radius_md=t['radius_md'], radius_lg=t['radius_lg'],
         radius_dialog=t['radius_dialog'],
@@ -2805,7 +2849,8 @@ def build(t):
             + scope(chrome_text, sel) + "\n"
             + scope(fill(t.get('sig', ''), t), sel) + "\n"
             + scope(STRIP_GUARD, sel) + "\n"
-            + scope(MOTION, sel) + "\n")
+            + scope(MOTION, sel) + "\n"
+            + BRAND_METRICS.format(sel=":root[data-theme='%s']" % sel) + "\n")
     return resolve_consumed(text, sel)
 
 # =========================================================================== #
@@ -3144,7 +3189,7 @@ PD_SIG = {
        "@S@ .wordmark { display: none; }\n"
        "@S@ .chrome--bcast .chrome__dot { width: 7px; height: 7px; border-radius: 999px; background: @idle@; }\n"
        "@S@ body[data-state=\"live\"] .chrome--bcast .chrome__dot { background: @accent@; }\n"
-       "@S@ .chrome--bcast .chrome__tc { font-size: 12px; font-weight: 500; color: @text_primary@; font-variant-numeric: tabular-nums; }\n"
+       "@S@ .chrome--bcast .chrome__tc { font-size: 12px; font-weight: 500; color: @text_primary@; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }\n"
        "@S@ .captions__body { padding: 80px 16px 12px; }\n"
        "@S@ .captions__list { gap: 9px; }\n"
        "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
@@ -3283,6 +3328,10 @@ def build_panel_theme(i, pal, psrc, fonts, fsrc, first, dirs):
           '%s (%s x 2.2)' % (panel_src, blbl))
     t.put('accent_soft', rgba(pal['accent'], ba if ba < 1.0 else 0.12),
           '%s at the panel border alpha' % psrc['accent'])
+    # o mesmo token derivado do caminho dos temas 1-5, aqui para a familia zipc: o
+    # botao de tema de QUALQUER perfil precisa da borda visivel (3:1 medido).
+    t.put('accent_line', rgba(pal['accent'], ACCENT_LINE_ALPHA),
+          'derived: %s at %.2f for the theme button border' % (psrc['accent'], ACCENT_LINE_ALPHA))
     rm = re.search(r'rounded-\[(\d+)px\]', panel)
     t.put('radius_lg', (rm.group(1) + 'px') if rm else '0px',
           panel_src if rm else '%s (the zip states NO radius on this panel)' % panel_src)

@@ -1,0 +1,23 @@
+{
+  "_superseded_by": ".opencode/goal.json (2026-10-29, owner's new Sotto objective: YouTube subtitles 1:1)",
+  "_note": "Restored verbatim from the session read before the replacement; this file is the previous goal record and is not read by the runner.",
+  "goal": "Fechar TODAS as reclamacoes do dono sobre o sotto nas ultimas 400h: cada uma com uma seccao em .opencode/complaints-closure.md, linha evidence: com o comando corrido e a saida, e status: closed -- e o portao _main/complaints-closure-gate.py tem de provar que nenhuma falta (o braco negativo do portao corre-se a mao: rc=1 por desenho)",
+  "done_when": [
+    "python H:\\sotto\\_main\\complaints-closure-gate.py",
+    "python H:\\sotto\\_main\\youtube-paint-first-oracle.py"
+  ],
+  "status": "complete",
+  "max": 8,
+  "count": 0,
+  "done": true,
+  "evidence": [
+    {"cmd": "python H:\\sotto\\_main\\complaints-closure-gate.py", "rc": 0, "at": "2026-10-22T10:58:31Z", "tail": "CLOSURE sections=31 closed=31 covered=81/81 complaints=81 | CLOSURE-VERDICT PASS  fails=0"},
+    {"cmd": "python H:\\sotto\\_main\\youtube-paint-first-oracle.py", "rc": 0, "at": "2026-10-22T10:58:31Z", "tail": "  ok    sem palavras, cai no `track-pending` (guarda `if paint_text:`) |  | VERDICT: PASS"},
+    {"cmd": "python H:\\sotto\\_main\\complaints-closure-gate.py", "rc": 0, "at": "2026-10-22T11:30:53Z", "tail": "CLOSURE sections=31 closed=31 covered=81/81 complaints=81 | CLOSURE-VERDICT PASS  fails=0"},
+    {"cmd": "python H:\\sotto\\_main\\youtube-paint-first-oracle.py", "rc": 0, "at": "2026-10-22T11:30:54Z", "tail": "  ok    sem palavras, cai no `track-pending` (guarda `if paint_text:`) |  | VERDICT: PASS"},
+    {"cmd": "python H:\\sotto\\_main\\complaints-closure-gate.py", "rc": 0, "at": "2026-10-22T11:46:56Z", "tail": "CLOSURE sections=31 closed=31 covered=81/81 complaints=81 | CLOSURE-VERDICT PASS  fails=0"},
+    {"cmd": "python H:\\sotto\\_main\\youtube-paint-first-oracle.py", "rc": 0, "at": "2026-10-22T11:46:56Z", "tail": "  ok    sem palavras, cai no `track-pending` (guarda `if paint_text:`) |  | VERDICT: PASS"}
+  ],
+  "created": "2026-10-22T10:58:27Z",
+  "updated": "2026-10-22T11:46:56Z"
+}

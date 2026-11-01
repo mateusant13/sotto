@@ -625,14 +625,16 @@ def battery(mod, path, workdir, source):
             "(o 'menos espanhol' do dono)", a47)
 
     def a48():
-        # RE-ANCHORED 2026-10-21 (the owner's second word of the day): *"o
-        # resto, traduza para ingles. qualquer outra lingua pra ingles."* So a
-        # PORTUGUESE video is served in ENGLISH now -- the Portuguese track is
-        # in the table precisely to be NOT chosen.
+        # RE-ANCHORED 2026-10-30 -- a ORDEM QUE NAO PODE SER QUEBRADA, verbatim:
+        # *"legendas nao traduzem entre ingles pt br e espanhol. so outras
+        # linguas, todas pro ingles."* O arm ANTERIOR pedia o contrario (video
+        # pt-BR servido em INGLES), e por isso ele e' que estava errado: o dono
+        # acabou de proibir a traducao EN<->PT-BR<->ES, nos dois sentidos.
         track = mod.track_from_info(FIXTURE_INFO_PORTUGUESE)
-        ok = track is not None and track["lang"] == "en"
+        ok = track is not None and mod._base_lang(track["lang"]) == "pt"
         return ok, "track=%r" % (track,)
-    attempt("a48 um video em PORTUGUES serve a legenda em INGLES", a48)
+    attempt("a48 um video em PORTUGUES serve a legenda em PORTUGUES, "
+            "nunca em ingles (a regra de 2026-10-30)", a48)
 
     def a49():
         track = mod.track_from_info(FIXTURE_INFO_CHINESE)
@@ -669,13 +671,90 @@ def battery(mod, path, workdir, source):
     attempt("a53 sem faixa em INGLES, a lingua do video e a ultima opcao", a53)
 
     def a54():
-        # A SPANISH video with no Spanish track: ENGLISH, and NEVER the
-        # Portuguese one -- "para de traduzir pra pt br do ... espanhol".
+        # RE-ANCHORED 2026-10-30. Um video ESPANHOL sem faixa em espanhol NAO
+        # serve nada: o unico candidato que a tabela tem (`en-orig` e `pt`) e'
+        # uma TRADUCAO, e o dono proibiu a traducao EN<->PT-BR<->ES. A resposta
+        # honesta e' a transcricao ao vivo do audio dele -- que ja' e' espanhol.
         track = mod.track_from_info(FIXTURE_INFO_SPANISH_NO_ES)
-        ok = track is not None and track["lang"] == "en-orig"
+        ok = track is None
         return ok, "track=%r" % (track,)
-    attempt("a54 um video ESPANHOL sem faixa em espanhol serve INGLES, nunca "
-            "portugues", a54)
+    attempt("a54 um video ESPANHOL sem faixa em espanhol NAO e' traduzido "
+            "para ingles nem para portugues", a54)
+
+    def a_pt_only_en():
+        # UM VIDEO PORTUGUES CUJA UNICA FAIXA E' INGLESA: nada. A faixa inglesa
+        # e' uma traducao PT->EN, que a regra de 2026-10-30 proibe.
+        info = {"id": "PT-ONLY-EN", "language": "pt-BR", "duration": 60,
+                "subtitles": {},
+                "automatic_captions": {
+                    "en": [{"ext": "json3", "url": "https://example.invalid/en_pt.json3"}]}}
+        track = mod.track_from_info(info)
+        return track is None, "track=%r" % (track,)
+    attempt("a56 um video PORTUGUES com so' faixa INGLESA nao serve nada "
+            "(a traducao PT->EN e' proibida)", a_pt_only_en)
+
+    def a_es_never_en():
+        # O MESMO PARA UM VIDEO INGLES COM SO' FAIXA PORTUGUESA: nada. As duas
+        # direccoes estao fechadas, nao so' a que ele viu.
+        info = {"id": "EN-ONLY-PT", "language": "en-US", "duration": 60,
+                "subtitles": {},
+                "automatic_captions": {
+                    "pt": [{"ext": "json3", "url": "https://example.invalid/pt_en.json3"}]}}
+        track = mod.track_from_info(info)
+        return track is None, "track=%r" % (track,)
+    attempt("a57 um video INGLES com so' faixa PORTUGUESA nao serve nada "
+            "(a traducao EN->PT e' proibida)", a_es_never_en)
+
+    def a_three_never_cross():
+        # A TABELA INTEIRA, para a regra nao depender de um fixture: nenhuma das
+        # tres linguas devolve outra das tres como destino.
+        bad = []
+        for orig in ("en", "pt", "es"):
+            for got in mod._target_langs(orig):
+                if mod._base_lang(got) != orig:
+                    bad.append("%s->%s" % (orig, got))
+        return not bad, "cruzamentos=%r" % (bad,)
+    attempt("a58 EN, PT e ES nunca se traduzem ENTRE SI (a regra inteira, "
+            "varrendo as tres)", a_three_never_cross)
+
+    def a_pick_never_breaks_the_rule():
+        # A ESCOLHA EXPLICITA DO MENU NAO E' UM BURACO NA REGRA (dono, 2026-10-30:
+        # *"regra nunca que pode ser quebrada"*). Varre as tres origens contra
+        # TODAS as escolhas plausiveis: para uma origem en/pt/es a resposta tem de
+        # ser sempre a propria lingua, escolha ou nao.
+        bad = []
+        old = mod.TARGET_OVERRIDE
+        try:
+            for orig in ("en", "pt", "es"):
+                base = mod._base_lang(orig)
+                for pick in ("", "en", "pt", "es"):
+                    mod.TARGET_OVERRIDE = pick
+                    got = tuple(mod._target_langs(orig))
+                    if got != (base,):
+                        bad.append("orig=%s pick=%r -> %r" % (orig, pick, got))
+        finally:
+            mod.TARGET_OVERRIDE = old
+        return not bad, "quebras=%r" % (bad,)
+    attempt("a59 uma escolha no menu NAO quebra a regra das tres linguas "
+            "(3 origens x 4 escolhas)", a_pick_never_breaks_the_rule)
+
+    def a_pick_keeps_other_languages_english():
+        # A OUTRA METADE: uma lingua que nao e' en/pt/es vai SEMPRE para ingles,
+        # mesmo com uma escolha que apontasse para outra lingua.
+        bad = []
+        old = mod.TARGET_OVERRIDE
+        try:
+            for orig in ("zh", "ja", "de", "ko"):
+                for pick in ("", "pt", "es", "de"):
+                    mod.TARGET_OVERRIDE = pick
+                    got = tuple(mod._target_langs(orig))
+                    if not got or mod._base_lang(got[0]) != mod.TARGET_LANG:
+                        bad.append("orig=%s pick=%r -> %r" % (orig, pick, got))
+        finally:
+            mod.TARGET_OVERRIDE = old
+        return not bad, "quebras=%r" % (bad,)
+    attempt("a60 qualquer outra lingua vai SEMPRE para INGLES, escolha ou nao",
+            a_pick_keeps_other_languages_english)
 
     def a55():
         # A SPANISH video with no Spanish track and no English track either:
@@ -1097,9 +1176,30 @@ MUTANTS = [
     ("the-target-language-is-portuguese-again",
      "TARGET_LANG = 'en'",
      "TARGET_LANG = 'pt'"),
-    ("the-spanish-exception-is-forgotten",
-     "NEVER_TRANSLATED_LANGS = ('es',)",
-     "NEVER_TRANSLATED_LANGS = ()"),
+    # 2026-10-30: o conjunto passou a ter tres linguas. Os dois mutantes novos
+    # quebram UMA metade cada -- sem eles, "nunca traduzir entre en/pt/es" e'
+    # uma frase que ninguem pode provar que esta' no codigo.
+    ("the-untouched-set-loses-portuguese",
+     "UNTRANSLATED_LANGS = ('en', 'pt', 'es')",
+     "UNTRANSLATED_LANGS = ('en', 'es')"),
+    ("the-untouched-set-loses-spanish",
+     "UNTRANSLATED_LANGS = ('en', 'pt', 'es')",
+     "UNTRANSLATED_LANGS = ('en', 'pt')"),
+    # E O BURACO PELO MENU: a escolha explicita volta a passar a frente da regra
+    # (era o desenho de 2026-10-21, quando a traducao entre os tres era a
+    # politica). Sem este mutante, "a escolha nao quebra a regra" seria uma
+    # frase que ninguem prova que esta' no codigo.
+    ("the-explicit-pick-wins-over-the-rule",
+     "    if not orig:\n"
+     "        # Without the video's own language the rule cannot speak at all, and the\n"
+     "        # explicit pick is the only thing left to honour.\n"
+     "        return (TARGET_OVERRIDE,) if TARGET_OVERRIDE else ()",
+     "    if not orig:\n"
+     "        # Without the video's own language the rule cannot speak at all, and the\n"
+     "        # explicit pick is the only thing left to honour.\n"
+     "        return (TARGET_OVERRIDE,) if TARGET_OVERRIDE else ()\n"
+     "    if TARGET_OVERRIDE:\n"
+     "        return (TARGET_OVERRIDE,)"),
 ]
 
 
@@ -1115,6 +1215,11 @@ def main() -> int:
         return EXIT_FAIL
     with open(MODULE_PATH, "r", encoding="utf-8", newline="") as fh:
         source = fh.read()
+    # O FICHEIRO E' CRLF E OS ANCOS SAO ESCRITOS COM `\n` (medido 2026-10-30): sem esta
+    # normalizacao, SETE mutantes de mais de uma linha liam "ANCHOR MISSING -- oracle is
+    # stale" e a bateria ficava vermelha sem um unico defeito no codigo. So' para COMPARAR;
+    # o ficheiro mutado e' escrito com `\n`.
+    source = source.replace("\r\n", "\n")
 
     arms_total = arms_green = 0
     if not neg_only:

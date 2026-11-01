@@ -1,0 +1,8 @@
+log              : H:\sotto\_main\webview-run.log
+arranques        : 129
+sessoes c/ pressao: 35
+pressoes count=1 : 35 (no ficheiro inteiro)
+pinturas         : 5 (no ficheiro inteiro)
+orcamento        : 1500 ms
+
+sessao 1 (pid 43588): GREEN  press 08:05:33.067 -> PANEL_SHOWN 08:05:33.357 | delta=290 ms | orcamento=1500 ms | carga_do_motor=709392 ms (informacao, NAO e' portao)

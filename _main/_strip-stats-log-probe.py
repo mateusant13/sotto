@@ -53,6 +53,9 @@ floor. The defect must keep showing up.
 
     pythonw.exe _main/_strip-stats-log-probe.py
 """
+# BATTERY-HEAVY: app-window -- este instrumento ABRE app window; a classe pesada da bateria so'
+# corre com opt-in (SOTTO_BATTERY_HEAVY=1). A classificacao e' a do mapa STEP_KINDS
+# de `_main/battery-heavy-gate.py`; faltava so' a declaracao neste ficheiro.
 from __future__ import annotations
 
 import json

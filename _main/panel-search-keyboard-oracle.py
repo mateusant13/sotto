@@ -188,14 +188,22 @@ def main(argv=None):
     if bad:
         wrong.append("arm 2: %d line(s) break the invariant, e.g. %s" % (len(bad), bad[:2]))
 
+    # ARM 3, RE-ANCORADA EM 2026-10-30, com a razao escrita: o dono pediu a caixa de
+    # busca FORA em 2026-10-21 21:24 (*"tira a caixa de procurar texto"*) e ela saiu do
+    # markup nesta sessao. A premissa da linha F9 -- "o campo nao pode receber teclado" --
+    # ficou sem sujeito, e a versao mais FORTE dessa mesma linha e' a AUSENCIA: nao ha
+    # campo nenhum para receber o que quer que seja. Um campo que voltasse a aparecer
+    # sem esta arm a dizer nada passaria despercebido, por isso as duas metades ficam.
     field = ("search-input" in panel_html) and ("search-form" in panel_html)
     declared = "disabled while no writer exists" in panel_html or "search input is disabled" in panel_html
-    say("  arm 3  the field and its own condition: input present=%s, disabled-while-no-writer declared=%s"
+    absent_ok = not field
+    say("  arm 3  the field: input present=%s (absent is the owner's order), "
+        "disabled-while-no-writer declared=%s"
         % (str(field).lower(), str(declared).lower()))
-    if not field:
-        wrong.append("arm 3: the search field is gone from panel.html")
-    if not declared:
-        wrong.append("arm 3: the declared reason the box is inert (no writer) disappeared")
+    if field and not declared:
+        wrong.append("arm 3: a search field CAME BACK and its inert reason is not declared")
+    if not absent_ok and not declared:
+        pass  # covered above
 
     if not control(say):
         wrong.append("arm 4: a contradictory line slipped through -- arm 2 counts lines, it does not read them")

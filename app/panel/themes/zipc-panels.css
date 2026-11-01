@@ -1147,7 +1147,7 @@
 
 :root[data-theme='Ledger'] .caption {
   display: grid;
-  grid-template-columns: 46px 1fr;
+  grid-template-columns: 46px 58px 1fr;
   column-gap: 8px;
   align-items: baseline;
   padding: 10px 12px;
@@ -1161,12 +1161,22 @@
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
+:root[data-theme='Ledger'] .caption__led {
+  display: block;
+  position: static;
+  grid-area: 1 / 2;
+  align-self: center;
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+}
+
 :root[data-theme='Ledger'] .caption__time {
   grid-area: 1 / 1;
 }
 
 :root[data-theme='Ledger'] .caption__text {
-  grid-area: 1 / 2;
+  grid-area: 1 / 3;
 }
 
 :root[data-theme='Ledger'] .caption--latest,
@@ -1476,7 +1486,7 @@
   order: 2;
 }
 
-/* ── 07 Bubbles ── Rooftop Dusk -- a two-voice conversation in soft bubbles ─────
+/* ── 07 Bubbles ── Rooftop Dusk -- soft bubbles, one voice, one tail corner ─────
  */
 :root[data-theme='Bubbles'] {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -1659,12 +1669,16 @@
 }
 
 :root[data-theme='Bubbles'] .captions__list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
 }
 
 :root[data-theme='Bubbles'] .caption {
   display: block;
-  align-self: stretch;
+  align-self: flex-start;
+  max-width: 86%;
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -1688,6 +1702,7 @@
 
 :root[data-theme='Bubbles'] .caption--provisional {
   border-color: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 16px 16px 16px 5px;
 }
 
 :root[data-theme='Bubbles'] .panel__controls {
@@ -2361,6 +2376,30 @@
   box-shadow: none;
 }
 
+:root[data-theme='Gutter'] .status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--accent-soft);
+}
+
+:root[data-theme='Gutter'] .status::after {
+  content: "held";
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+:root[data-theme='Gutter'] .status--live::after {
+  content: "rec";
+  color: var(--accent);
+}
+
 :root[data-theme='Gutter'] .captions__list {
   gap: 0;
   padding: 10px 4px;
@@ -2381,6 +2420,7 @@
 
 :root[data-theme='Gutter'] .caption__time {
   grid-area: 1 / 1;
+  align-self: start;
 }
 
 :root[data-theme='Gutter'] .caption__text {

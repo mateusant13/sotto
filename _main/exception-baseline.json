@@ -1,0 +1,13 @@
+{
+  "app/webview/caption_overlay.py": 3,
+  "app/webview/external_subs.py": 3,
+  "app/webview/sotto_webview.py": 6,
+  "app/webview/youtube_captions.py": 2,
+  "worker/inspect_model.py": 4,
+  "worker/lang_prompt.py": 2,
+  "worker/model_vram_pool.py": 6,
+  "worker/redux_live.py": 2,
+  "worker/sotto_worker.py": 7,
+  "worker/vram_residency.py": 2,
+  "worker/wasapi_loopback.py": 3
+}

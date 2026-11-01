@@ -837,8 +837,95 @@ if (!bridge) {
   wirePause();
   // The status is a repair control: one click revives the whole pipeline.
   wireRevive();
+  // O limiar do HOLD do Alt+C: pede a lista ao shell e pinta a resposta dele.
+  watchHotkeyHold();
   announceReady();
   wireLevel();
+}
+
+
+// ---------------------------------------------------------------------------
+// O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30)
+// ---------------------------------------------------------------------------
+// O dono escolhe, no painel da direita, quanto tempo o Alt+C tem de ficar
+// premido para ligar/desligar a legenda ao vivo.
+//
+// A LISTA VEM DO SHELL e nao e' escrita aqui: `getHotkeyHold` devolve as
+// escolhas que `hotkey_settings.HOTKEY_HOLD_MS_CHOICES` define. Uma copia da
+// lista na pagina seria uma segunda verdade, e duas verdades divergem -- e' o
+// mesmo defeito que o `stat` do ficheiro de bateria ja pagou uma vez.
+//
+// A PAGINA NAO INVENTA O VALOR PINTADO. Pede, pinta a resposta, e depois de
+// gravar volta a pintar a resposta da GRAVACAO: uma escrita recusada deixa o
+// controlo onde o disco diz que ele esta', em vez de mostrar guardado o que nao
+// ficou.
+function watchHotkeyHold() {
+  const row = document.getElementById('hotkey-hold-row');
+  const select = document.getElementById('hotkey-hold-select');
+  if (!row || !select) return;
+  const wired = typeof bridge === 'object' && bridge !== null
+    && typeof bridge.getHotkeyHold === 'function';
+  if (!wired) {
+    // Sem a pergunta nao ha resposta: a linha sai do documento em vez de ficar
+    // a mostrar um controlo que nao manda em nada.
+    row.hidden = true;
+    return;
+  }
+
+  const paint = (state) => {
+    if (!state || !Array.isArray(state.choices) || !state.choices.length) {
+      row.hidden = true;
+      return;
+    }
+    row.hidden = false;
+    const wanted = String(state.holdMs === null || state.holdMs === undefined ? '' : state.holdMs);
+    if (select.dataset.choices !== state.choices.join(',')) {
+      select.textContent = '';
+      for (const ms of state.choices) {
+        const option = document.createElement('option');
+        option.value = String(ms);
+        option.textContent = String(ms);
+        select.appendChild(option);
+      }
+      select.dataset.choices = state.choices.join(',');
+    }
+    if (select.value !== wanted) select.value = wanted;
+    select.dataset.effective = wanted;
+  };
+
+  const ask = () => {
+    try {
+      const result = bridge.getHotkeyHold();
+      if (result && typeof result.then === 'function') {
+        result.then(paint).catch(() => { row.hidden = true; });
+        return;
+      }
+      paint(result);
+    } catch (err) {
+      row.hidden = true;
+    }
+  };
+
+  select.addEventListener('change', () => {
+    const ms = Number(select.value);
+    if (!Number.isFinite(ms)) return;
+    try {
+      const result = bridge.setHotkeyHold({ holdMs: ms });
+      if (result && typeof result.then === 'function') {
+        result.then((answer) => {
+          if (answer && Array.isArray(answer.choices)) paint(answer);
+          else if (answer && answer.ok) paint(Object.assign({}, answer, { choices: [] }));
+          else ask();  // recusado: volta ao que o disco diz
+        }).catch(ask);
+        return;
+      }
+      ask();
+    } catch (err) {
+      ask();
+    }
+  });
+
+  ask();
 }
 
 // THE TRANSCRIPT'S SCROLL GUARD IS ARMED WHETHER OR NOT A BRIDGE EXISTS (lane:
@@ -902,7 +989,7 @@ function engineFor(source) {
     },
     onProvisional: (committed, provisional) => renderProvisional(committed, provisional, key),
   });
-  engines.set(key, engine);
+  engines.set(key, StableWords.wrap(engine));
   return engine;
 }
 
@@ -1052,22 +1139,10 @@ function renderProvisional(committed, provisional, source) {
   // (`youtube_captions.align_painted` hands back the cue's FULL text), so
   // its last word IS a whole word and is NOT held back -- the owner
   // compares that caption against the screen, word by word, in real time.
-  const wordsAreWhole = tailClosed
-    || (key !== null && key.indexOf('external:') === 0);
-  // O TRABALHADOR JA PROVOU A PALAVRA (owner, 2026-10-30: *"faz sotto
-  // identificar palavras que ainda nao estao completas e nao dar display"*).
-  // O `worker/sotto_worker.py` segura a ultima palavra enquanto ela nao esta
-  // provada e marca o evento com `stable: true` quando ja esta. Sem este
-  // sinal, as DUAS camadas segurariam uma palavra cada e o dono perderia DUAS
-  // palavras do ecra -- o dobro do que pediu.
-  //
-  // O sinal e lido do ULTIMO evento recebido (o motor guarda o `meta` do
-  // fragmento), e so o trabalho (`proc:`/`device:`/`file:`) o traz: o
-  // YouTube (`external:`) ja e tratado pelas linhas de cima.
-  const workerStable = !!(engine && typeof engine.state === 'function'
-    && engine.state().wordsStable);
-  const shownProv = (wordsAreWhole || workerStable)
-    ? provWords : provWords.slice(0, -1);
+  // `wordsAreWhole`: are these words PROVEN whole? The worker says so when it
+  // held the unproven word back (owner, 2026-10-30); `stable-words.js` owns it.
+  const wordsAreWhole = StableWords.wordsAreWhole(tailClosed, key);
+  const shownProv = wordsAreWhole ? provWords : provWords.slice(0, -1);
   const total = confWords.length + shownProv.length;
 
   // Find or create the line that holds THIS source's provisional hypothesis. An

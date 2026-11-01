@@ -1,0 +1,226 @@
+{
+ "geometry": {
+  "work_width": 1920,
+  "scale": 1.0
+ },
+ "samples": [
+  {
+   "t": 0.02275,
+   "youtube": [
+    "Have"
+   ],
+   "overlay": [
+    "Have"
+   ],
+   "scrolled": "",
+   "same_break": true,
+   "same_joined_text": true
+  },
+  {
+   "t": 0.772258,
+   "youtube": [
+    "Have you ever had"
+   ],
+   "overlay": [
+    "Have you ever had"
+   ],
+   "scrolled": "",
+   "same_break": true,
+   "same_joined_text": true
+  },
+  {
+   "t": 1.412601,
+   "youtube": [
+    "Have you ever had to kill a man?"
+   ],
+   "overlay": [
+    "Have you ever had to kill a man?"
+   ],
+   "scrolled": "",
+   "same_break": true,
+   "same_joined_text": true
+  },
+  {
+   "t": 2.059208,
+   "youtube": [
+    "Have you ever had to kill a man?",
+    ">> No."
+   ],
+   "overlay": [
+    "Have you ever had to kill a man? >> No."
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 2.714802,
+   "youtube": [
+    "Have you ever had to kill a man?",
+    ">> No.",
+    ">> Then"
+   ],
+   "overlay": [
+    "Have you ever had to kill",
+    "a man? >> No. >> Then"
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 3.35859,
+   "youtube": [
+    ">> No.",
+    ">> Then this sword"
+   ],
+   "overlay": [
+    ">> No. >> Then this sword"
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 4.027191,
+   "youtube": [
+    ">> No.",
+    ">> Then this sword is useless."
+   ],
+   "overlay": [
+    ">> No. >> Then this sword is useless."
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 4.681258,
+   "youtube": [
+    ">> No.",
+    ">> Then this sword is useless.",
+    ">> Don't"
+   ],
+   "overlay": [
+    ">> No. >> Then this",
+    "sword is useless. >> Don't"
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 5.530551,
+   "youtube": [
+    ">> Then this sword is useless.",
+    ">> Don't worry about me,"
+   ],
+   "overlay": [
+    ">> Then this sword is useless.",
+    ">> Don't worry about me,"
+   ],
+   "scrolled": "",
+   "same_break": true,
+   "same_joined_text": true
+  },
+  {
+   "t": 6.224119,
+   "youtube": [
+    ">> Then this sword is useless.",
+    ">> Don't worry about me, Yamato."
+   ],
+   "overlay": [
+    ">> Then this sword is useless. >>",
+    "Don't worry about me, Yamato."
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 6.883805,
+   "youtube": [
+    ">> Then this sword is useless.",
+    ">> Don't worry about me, Yamato. I'll be",
+    "fine."
+   ],
+   "overlay": [
+    ">> Don't worry about",
+    "me, Yamato. I'll be fine."
+   ],
+   "scrolled": ">> Then this sword is useless.",
+   "same_break": false,
+   "same_joined_text": false
+  },
+  {
+   "t": 7.586433,
+   "youtube": [
+    ">> Don't worry about me, Yamato. I'll be",
+    "fine."
+   ],
+   "overlay": [
+    ">> Don't worry about",
+    "me, Yamato. I'll be fine."
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 8.264271,
+   "youtube": [
+    ">> Don't worry about me, Yamato. I'll be",
+    "fine.",
+    "After the ritual,"
+   ],
+   "overlay": [
+    ">> Don't worry about me,",
+    "Yamato. I'll be fine. After the ritual,"
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 8.907623,
+   "youtube": [
+    "fine.",
+    "After the ritual, I'd"
+   ],
+   "overlay": [
+    "fine. After the ritual, I'd"
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 9.544772,
+   "youtube": [
+    "fine.",
+    "After the ritual, I'd love to train with"
+   ],
+   "overlay": [
+    "fine. After the ritual, I'd love to train with"
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  },
+  {
+   "t": 10.192128,
+   "youtube": [
+    "After the ritual, I'd love to train with",
+    "you sometime."
+   ],
+   "overlay": [
+    "After the ritual, I'd love to",
+    "train with you sometime."
+   ],
+   "scrolled": "",
+   "same_break": false,
+   "same_joined_text": true
+  }
+ ],
+ "different": 12
+}
