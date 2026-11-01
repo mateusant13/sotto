@@ -4541,6 +4541,25 @@ def _pack_point(x, y):
     return (int(x) & 0xFFFF) | ((int(y) & 0xFFFF) << 16)
 
 
+def _window_is_ours(hwnd) -> bool:
+    """True when `hwnd` belongs to THIS process (our menu, our dialog).
+
+    REPOSTO 2026-11-01: o nome era usado em dois sítios (`ClickWatcher._poll`, na
+    recusa de contar o próprio painel como "outra janela", e
+    `click_outside_reason`, na razão `our-own-window`), e a definição
+    DESAPARECEU numa fusão de ramos que a traziam de lados diferentes -- nenhum
+    dos dois lados a continha depois da resolução. Nada a apanhou: compila
+    (é um nome, não um símbolo), e o `NameError` só nasce no tick em que a
+    função corre. Foi encontrado por um varrimento de nomes indefinidos
+    (`_main/undefined-names-oracle.py`), não pelo compilador nem pela bateria.
+    """
+    if not hwnd:
+        return False
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(pid))
+    return int(pid.value) == os.getpid()
+
+
 def _point_in_window(hwnd, x, y) -> bool:
     rect = RECT()
     if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):

@@ -317,7 +317,7 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
             # quando a carga libertar. Sem isto, uma descida a `muito-alta` a
             # meio de um lote de dez minutos apagava o que faltava em
             # silencio, que e' exactamente o que a ordem proibe.
-            rest = slice_blocks(held, offset)
+            rest = _slice_blocks(held, offset)
             if rest and sw.pending is not None:
                 sw.pending.requeue(rest)
             sw.log(
@@ -340,10 +340,9 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
             })
     except BaseException as exc:  # noqa: BLE001 -- carregar pode estourar memoria
         sw._release_engine("pass-failed")
-        sw._park(slice_blocks(held, offset), f"engine-{type(exc).__name__}",
+        sw._park(_slice_blocks(held, offset), f"engine-{type(exc).__name__}",
                    extra=f"windows={windows} lines={lines} error={exc!r}")
 
-@staticmethod
 def _slice_blocks(held, skip):
     """Os blocos a partir da amostra `skip` -- o que ainda NAO foi transcrito."""
     out = []

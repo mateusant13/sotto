@@ -1,0 +1,76 @@
+# Recibo — goal 2026-11-01, a colheita das lanes e as correcções que eu medi
+
+Data: 2026-11-01, sessão do dono. HEAD de partida `0946aba`; HEAD no fim deste recibo
+`981177e` (as lanes seguintes citam o seu próprio commit).
+
+Este documento existe para uma coisa só: dizer **o que foi medido, por quem, com que
+comando**, e o que continua **por medir**. `reported`/`fixed` nunca se apresentam como
+`verified`: não houve app reiniciada *pelo dono* com teclado *dele*.
+
+## 1. O que entrou por fusão
+
+| lane | commit | o que entrega | conflito e resolução |
+|---|---|---|---|
+| `lane/goal-yt` | `a667849` | um motor de display para os dois produtores (YouTube e ASR ao vivo) | automática |
+| `lane/goal-hotkey` | `f3d860f` | a tela como número; entrega ≠ latência; foco condicional | selftest ficou com a lane; o show ficou com o meu `map_panel`, depois substituído pela lane de pintura |
+| `lane/goal-paint` | `41e7bc6` | sem espera de página no show, ack de tinta limitado, foco só com pointer lock | `map_panel`/`pointer_captured` **apagadas** — `pointer_lock_state` já mede o mesmo, e duas definições divergem |
+| `lane/goal-load` | `0b8ff8c` | despejo por carga medido contra a instância **viva** | oráculo fica com a lane (seletor, ARM 5b, neg-arm) |
+| `lane/goal-profile` | `7e17f70` | recibo de perfil: 9 correcções ordenadas com ganho medido | automática (só ficheiros novos) |
+| eu | `f613373` | o primeiro plano do painel passa a ser condicional | — |
+| eu | `981177e` | o token de estado paga um `stat`, não 414 KB relidos a cada 2 s | — |
+
+## 2. Números medidos hoje, com o comando ao lado
+
+| afirmação | comando | número |
+|---|---|---|
+| o painel **não** rouba o primeiro plano | `SOTTO_POV_TAG=main python _main/pov-selftest.py --run --wait 200 --exit-after 45` | `SELFTEST rc=0 broken=false`, `focus_stolen=false focus_stolen_by_own_window=false`, `focus_before=focus_after` |
+| o show mapeia sem actuar | idem, linhas `PANEL_SHOWN` | `show=SW_SHOWNOACTIVATE focus=no-pointer-lock paint_ack=true wait_ms=0..62` |
+| Alt+C alterna a cada pressão (10 pressões) | idem, arm `ten_press_alternations` | 10/10 na ordem `strip/hide/side/hide…` |
+| pressão → acção do gesto | `python _main/altc-first-caption-oracle.py --log I:/cc-tmp/pov-selftest-main.log` | painéis **285 ms**, legenda **8 ms** (orçamento 1500 ms) — instância de medição, **não** o teclado do dono |
+| o contrato do gesto tem 86 arms | `python _main/altc-gesture-oracle.py` (+ `--neg-arm`) | `GREEN arms=86 pass=86 fail=0`; neg-arm `RED as designed` |
+| o despejo por carga | `python _main/load-shedding-oracle.py` (+ `--neg-arm`) | `GREEN arms=78 pass=78`; neg-arm `RED as designed` (`escolheu=222`) |
+| a fila drena tudo | `python _main/live-queue-oracle.py` | `PASS arms=32 fail=0` |
+| o alvo da app | `python _main/app-target-oracle.py` | `PASS live=GREEN(9/9)` |
+| o veredicto de foco morde | `python _main/selftest-focus-oracle.py` | `PASS` (própria janela RED, controlo estranho GREEN) |
+| o hash memoizado invalida | sonda `file_sha256` (hit / reescrita / mesmo tamanho / ausente) | `8ed3f6ad…` = `8ed3f6ad…` → `f144a690…` → `82d81517…` → `None` |
+
+## 3. O que NÃO está provado (e é dito, não escondido)
+
+- **Nada disto é o teclado do dono.** O instrumento posta `WM_HOTKEY`; o input sintético
+  não é evidência sobre a app dele (`docs/hotkey-gestos.md`).
+- **A primeira exibição depois de um arranque gasta ~342 ms em 20 frames em branco** (lane
+  de pintura, censo com 3 536+1 641 frames a 57,3 Hz): é o primeiro *present* do WebView2 no
+  processo, não a ordem do shell. As exibições seguintes medem `blank_frames=0`. As duas
+  alavancas testadas para o curar (superfície antes do mapa; janela estacionada fora do ecrã)
+  **falharam** e foram revertidas — `grep _park_off_screen` → 0.
+- **O braço negativo do censo de pintura não fechou.** `--variants uncured` mediu
+  `shows=0`: a variante sem a cura nunca completa um show (fica presa), portanto a
+  comparação de frames em branco contra a variante má **não existe**; o que existe é o
+  defeito a manifestar-se como bloqueio. O censo publica `FAIL (no-show-measured)`.
+- **`exec_js TIMEOUT after 10.0 s` continua vivo hoje** (10:33:17 e 10:35:05 no log do
+  dono). Está a ser diagnosticado por uma lane com o rasto de stacks (py-spy está negado
+  nesta caixa: `Acesso negado (os error 5)`, medido).
+- **`nvenc.test.mjs` falha 1 de 5** nesta máquina (`need at least 2 keyframes to measure a
+  GOP, got 1`) — o encoder da GPU devolveu um só keyframe no clipe de teste; é ambiente, e
+  não foi «corrigido» mexendo no teste.
+
+## 4. Instrumentos corrigidos nesta sessão (e porquê)
+
+1. `_main/pov-selftest.py` — **uma tag por run** (`SOTTO_POV_TAG`): eu e uma lane corríamos
+   o mesmo instrumento em duas árvores e ambos escreviam `pov-selftest.log`; o reap de um
+   matou a instância do outro (medido 10:25). Agora log, runner **e mutex** levam a tag.
+2. `_main/pov-selftest.py` — **reap**: um run cujo `RC=` nunca chega deixava o processo vivo
+   (pid 38692, oito minutos, com a `Ctrl+Space` registada — e a app do dono arrancou a seguir
+   com `HOTKEY_REGISTER_FAILED role=live winerror=1409`). A identidade é a mutex privada no
+   `CommandLine`; o kill delega a um filho `high`.
+3. `app/webview/sotto_webview.py` — `SOTTO_LIVE_HOTKEY`: uma instância de medição nunca se
+   senta na tecla do dono (o inverso também era verdade).
+4. `app/webview/sotto_webview.py` — `focus_steal_allowed` deixou de ser a constante
+   `'hotkey'` e passa a ser o que a máquina mede agora (`pointer_lock_state()['clipped']`).
+
+## 5. Disco, no fim
+
+- worktrees **deste** goal removidas depois da fusão: `goal-yt`, `goal-hotkey`,
+  `goal-paint`, `goal-load`, `goal-profile` (≈605 MB). Ficam `goal-ratchet`, `goal-bridge`,
+  `goal-anim` — vivos, morrem quando as suas lanes fecharem.
+- As worktrees anteriores a este goal não foram tocadas: não são minhas.
