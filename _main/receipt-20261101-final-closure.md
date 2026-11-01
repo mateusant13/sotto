@@ -155,3 +155,30 @@ trabalho de outro projecto não é decisão de lane. Fica nomeado para o dono de
 
 As 16 worktrees que ficam **não são deste goal** (lanes pré-existentes de outras
 sessões); metade tem árvore suja e não se tocam sem o dono.
+
+## 7. O stutter, medido (P5 #23)
+
+Não se afirma "sem stutter": mede-se, com o instrumento que conta as lacunas entre
+publicações do worker e as janelas em que um modelo está a carregar.
+
+```
+python _main/stall-under-load-oracle.py
+STALL-UNDER-LOAD sessao=2026-11-01 16:25:16.796 janelas=2 publicacoes_max=15
+  janela 16:25:19.232 -> 16:25:45.176  publicacoes=6   estalos=0
+  janela 16:27:54.239 -> sem-fim      publicacoes=15  estalos=0
+STALL-UNDER-LOAD VERDICT: GREEN
+```
+
+Números adjacentes, do mesmo dia e com o instrumento ao lado:
+
+| o quê | número | instrumento |
+|---|---|---|
+| estalos durante carga | **0** em 2 janelas | `stall-under-load-oracle.py` |
+| primeira legenda depois do Alt+C | **264 ms** (orçamento 1500 ms) | `altc-first-caption-oracle.py` na sessão real (pid 33288) |
+| painel: ms até o gesto agir | **285 ms** painéis / **8 ms** legenda | `pov-selftest` + `altc-first-caption` |
+| frames em branco no show | **0** em 230 frames (3 shows) | falsificador do paint-first (CDP) |
+| ANTES da cura, para comparação | `uncured [19,0,0] first_content 325,0 ms` | censo do paint-first |
+
+O que isto **não** diz: a caixa do dono está degradada por natureza (I: e o
+`!manager` partilham o disco), e parte do stutter dele não vem do Sotto — mas
+nenhuma dessas medições foi feita a pressionar teclas dele.
