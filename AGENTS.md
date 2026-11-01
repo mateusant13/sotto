@@ -276,9 +276,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 11:0x):** `_main\_audit-verify-all.cmd` = **146485 B**,
-  **1910 CRLF** / 0 bare LF, sha256 `52d9d6eefc6f089f454f049e78e12bb04419a353c895a3361d72baa8cbffe611`.
-  (Este pin substitui o de 2026-10-30 12:5x, 145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`,
+- **PIN do ficheiro (medido 2026-11-01, 12:4x):** `_main\_audit-verify-all.cmd` = **148889 B**,
+  **1936 CRLF** / 0 bare LF, sha256 `C9DC589CC633E31AE85B43AB75ADBAC74E78C1827793217B366A10D7A957B52B`.
+  (Este pin substitui o de 2026-11-01 11:0x, 146485 B / 1910 CRLF, DEPOIS dos tres passos do
+  PRIMEIRO FRAME do painel: `panel-paint-first-measure` (classe `heavy`, larga a instancia privada
+  do censo e grava `_main\_cache\panel-paint-first.json`), `panel-paint-first` (re-julga essa
+  leitura pela mesma funcao `verdict()` do censo, sem largar nada) e
+  `red-as-expected-panel-paint-first` (quatro mutacoes de uma leitura limpa, todas tem de ser
+  recusadas). Medido nessa corrida: `cured [0,0,0]` / `uncured [19,0,0] first_content 325,0 ms`
+  / controles `54` e `0`; `--neg-arm` deu `NEG-ARM cases=4 caught=4`.
+  O pin anterior era o de 2026-11-01 11:0x, 146485 B / 1910 CRLF, sha256 `52d9d6ee...ffe611`,
+  DEPOIS dos dois passos do portao `undefined-names`; e o de 2026-10-30 12:5x era
+  145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`,
   DEPOIS dos dois passos do portao novo `undefined-names` (+ `red-as-expected-undefined-names`,
   16 linhas: 9 de comentario e 7 de passo). O portao nasceu de um defeito medido duas vezes
   no mesmo dia em producao: o worker morreu no arranque com `NameError: name

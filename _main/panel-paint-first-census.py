@@ -813,6 +813,10 @@ def elevate(args):
         passthrough.append('--app-only')
     if args.control_only:
         passthrough.append('--control-only')
+    if getattr(args, 'save_json', ''):
+        # O FILHO e' quem mede, portanto e' ele que grava. Ja' vai ABSOLUTO: o
+        # `launch-as-token` nao garante o cwd do lancador (medido 2026-11-01).
+        passthrough += ['--save-json', args.save_json, '--json']
     try:
         os.remove(INNER_OUT)
     except OSError:
@@ -1315,6 +1319,85 @@ def verdict(apps, control, ran_control):
     return (not fails), fails
 
 
+def load_reading(path):
+    """The `--json` blob out of a saved report, or out of a battery log that holds it.
+
+    A battery step captures stdout, so the report usually arrives wrapped in the
+    VERDICT lines. Taking the LAST balanced `{...}` keeps both shapes working and
+    never guesses which brace started the object.
+    """
+    text = open(path, encoding='utf-8', errors='replace').read()
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    end = text.rfind('}')
+    while end != -1:
+        start = text.rfind('{', 0, end)
+        while start != -1:
+            try:
+                return json.loads(text[start:end + 1])
+            except ValueError:
+                start = text.rfind('{', 0, start)
+        end = text.rfind('}', 0, end)
+    raise SystemExit('--judge: no JSON reading in %s -- nothing was measured there'
+                     % (path,))
+
+
+def judge_reading(reading):
+    """`(ok, fails)` for a reading, by the SAME rules the live run uses."""
+    apps = reading.get('apps') or {}
+    control = reading.get('control') or {}
+    return verdict(apps, control, bool(control))
+
+
+def neg_arm(reading):
+    """Four mutations of a clean reading; every one MUST be refused.
+
+    The point is not that the judge can say PASS -- it is that each of its three
+    clauses can fail. A gate nobody has shown to be able to go RED is a comment.
+    """
+    import copy
+    cases = []
+
+    def mutate(label, fn):
+        r = copy.deepcopy(reading)
+        fn(r)
+        ok, fails = judge_reading(r)
+        cases.append((label, not ok, fails))
+
+    def blank_first_show(r):
+        r['apps']['cured']['shows'][0]['blank_frames'] = 1
+
+    def never_content(r):
+        r['apps']['cured']['shows'][0]['first_content_ms'] = None
+
+    def blind_classifier(r):
+        for sh in r['apps']['uncured']['shows']:
+            sh['blank_frames'] = 0
+
+    def dead_control(r):
+        r['control']['blank_first']['row']['blank_frames'] = 0
+
+    mutate('cured-show-1-blank', blank_first_show)
+    mutate('cured-never-content', never_content)
+    mutate('classifier-blind-on-uncured', blind_classifier)
+    mutate('control-blank-first-silent', dead_control)
+    base_ok, base_fails = judge_reading(reading)
+    caught = [c for c in cases if c[1]]
+    print('NEG-ARM cases=%d caught=%d' % (len(cases), len(caught)))
+    for label, refused, fails in cases:
+        print('  %-32s %s  %s' % (label, 'RED-as-required' if refused else
+                                  'NOT-CAUGHT', (fails or ['-'])[0]))
+    print('  base reading on its own: %s' % ('PASS' if base_ok else
+                                             'FAIL ' + '; '.join(base_fails)))
+    if caught and base_ok:
+        print('NEG-ARM PASS')
+        return 0
+    print('NEG-ARM FAIL -- the judge cannot tell a clean reading from a broken one')
+    return 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--run', action='store_true',
@@ -1331,10 +1414,36 @@ def main(argv=None):
                          'para a pagina carregar (medido: 90 s numa caixa ocupada)')
     ap.add_argument('--find-timeout', type=float, default=90.0)
     ap.add_argument('--json', action='store_true')
+    ap.add_argument('--save-json', metavar='PATH', default='',
+                    help='grava a leitura para o portao a poder re-julgar sem '
+                         'lancar nada (e o que a bateria le)')
+    ap.add_argument('--judge', metavar='PATH', default='',
+                    help='re-julga uma leitura ja gravada; nao lanca a app')
+    ap.add_argument('--neg-arm', action='store_true',
+                    help='com --judge: quatro mutacoes de uma leitura limpa, e '
+                         'todas tem de ser recusadas')
     ap.add_argument('--inner', metavar='PATH', default='',
                     help='(uso interno) corre a medicao e escreve o relatorio neste '
                          'ficheiro -- e o braco que corre com o token do dono')
     args = ap.parse_args(argv)
+    if getattr(args, 'save_json', ''):
+        # ABSOLUTO antes do `elevate`: o filho corre com outro cwd (medido: a
+        # leitura ia para o cwd do lancador e o portao nao a achava).
+        args.save_json = os.path.abspath(args.save_json)
+    if args.judge:
+        reading = load_reading(args.judge)
+        if args.neg_arm:
+            return neg_arm(reading)
+        ok, fails = judge_reading(reading)
+        apps = reading.get('apps') or {}
+        for tag in sorted(apps):
+            shows = apps[tag].get('shows') or []
+            print('REPLAY app[%s]: shows=%d blank_frames=%s first_content_ms=%s'
+                  % (tag, len(shows), [r['blank_frames'] for r in shows],
+                     [r['first_content_ms'] for r in shows]))
+        print('VERDICT: %s%s' % ('PASS' if ok else 'FAIL',
+                                 '' if ok else '  (%s)' % '; '.join(fails)))
+        return 0 if ok else 1
     if not args.run:
         ap.print_help()
         return 2
@@ -1406,9 +1515,14 @@ def _measure(args):
                b.get('row', {}).get('blank_frames') if b.get('row') else None))
     say('VERDICT: %s%s' % ('PASS' if ok else 'FAIL',
                            '' if ok else '  (%s)' % '; '.join(fails)))
+    reading = {'apps': apps, 'control': control, 'ok': ok, 'fails': fails}
     if args.json:
-        say(json.dumps({'apps': apps, 'control': control, 'ok': ok,
-                        'fails': fails}, indent=1, default=str))
+        say(json.dumps(reading, indent=1, default=str))
+    if getattr(args, 'save_json', ''):
+        os.makedirs(os.path.dirname(os.path.abspath(args.save_json)), exist_ok=True)
+        with open(args.save_json, 'w', encoding='utf-8', newline='\n') as fh:
+            json.dump(reading, fh, indent=1, default=str)
+        say('SAVED %s' % (args.save_json,))
     if any(not apps.get(t, {}).get('ok') for t in tags if t in apps):
         return 2
     return 0 if ok else 1

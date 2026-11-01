@@ -519,6 +519,32 @@ if exist _main\claims-date-oracle.py (
   call :expectred red-as-expected-claims-date !STEP_RC! "%OUT%\claims-date-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-claims-date MISSING "%OUT%\claims-date-neg.log" "NEG-ARM PASS" )
 
+REM --- P3: O PRIMEIRO FRAME DO PAINEL (2026-11-01, ordem do dono) ---------------
+REM "o painel dar show nao deve carregar o background e mostrar, e depois carregar a ui" -- o
+REM defeito e' o frame 0 de uma janela recem-mapeada chegar ao ecra sem conteudo. O censo
+REM `_main\panel-paint-first-census.py` MEDE isso em pixeis (std/spread sobre o buffer da
+REM janela) e compara tres bracos na mesma corrida: a app CURADA, a app do rev ANTIGO
+REM (`uncured`, que TEM de dar blank>0) e dois controles sinteticos. Medido 2026-11-01:
+REM cured [0,0,0] / uncured [17,0,0] first_content 289,5 ms.
+REM
+REM A MEDICAO e' `heavy` (larga uma instancia privada da app: o portao `battery-class`
+REM recusa um passo `always` que nomeie um largador) e grava a leitura. O passo BARATO
+REM re-julga essa leitura pela MESMA funcao `verdict()` do censo -- sem relancar nada --
+REM e o braco negativo muta uma leitura limpa em QUATRO pontos e exige que os quatro
+REM sejam recusados, para o portao nao ser um comentario que so' sabe dizer PASS.
+if exist _main\panel-paint-first-census.py (
+call :step heavy panel-paint-first-measure 0 "_main\panel-paint-first-census.py;app\webview\sotto_webview.py;app\webview\code_identity.py;app\panel\panel.js;app\panel\panel.css" "%OUT%\panel-paint-first-measure.log" python _main\panel-paint-first-census.py --run --save-json _main\_cache\panel-paint-first.json
+call :record panel-paint-first-measure !STEP_RC!
+) else ( call :record panel-paint-first-measure MISSING )
+if exist _main\panel-paint-first-census.py (
+call :step always panel-paint-first 0 "_main\panel-paint-first-census.py;_main\_cache\panel-paint-first.json" "%OUT%\panel-paint-first.log" python _main\panel-paint-first-census.py --judge _main\_cache\panel-paint-first.json
+call :record panel-paint-first !STEP_RC!
+) else ( call :record panel-paint-first MISSING )
+if exist _main\panel-paint-first-census.py (
+call :step always red-as-expected-panel-paint-first 1 "_main\panel-paint-first-census.py;_main\_cache\panel-paint-first.json" "%OUT%\panel-paint-first-neg.log" python _main\panel-paint-first-census.py --judge _main\_cache\panel-paint-first.json --neg-arm
+call :expectred red-as-expected-panel-paint-first !STEP_RC! "%OUT%\panel-paint-first-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-panel-paint-first MISSING "%OUT%\panel-paint-first-neg.log" "NEG-ARM PASS" )
+
 REM `_main\receipt-provenance-oracle.py` fecha a classe que este repo pagou em 2026-10-26: o recibo
 REM de um lane declarava `route: OpenCode Go 1` e o processo que o produziu corria em `opencode-go-3`.
 REM A rota declarada era a que a politica SONDA primeiro (model-routing.md: `opencode-go-1` primeiro),
