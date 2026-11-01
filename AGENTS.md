@@ -300,9 +300,13 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   `red-as-expected-panel-paint-first` (quatro mutacoes de uma leitura limpa, todas tem de ser
   recusadas). Medido nessa corrida: `cured [0,0,0]` / `uncured [19,0,0] first_content 325,0 ms`
   / controles `54` e `0`; `--neg-arm` deu `NEG-ARM cases=4 caught=4`.
-  (**Pin de `_main/_audit-verify-all.cmd`, medido 2026-11-01 15:0x: 154605 B, 1996 CRLF / 0 bare LF,
-  sha256 `AB09CD79...F311BE`**,
-  depois do passo `red-as-expected-strip-surface` (11 linhas: 7 de comentario e 4 de passo).
+  (**Pin de `_main/_audit-verify-all.cmd`, medido 2026-11-01 15:3x: 154856 B, 1999 CRLF / 0 bare LF,
+  sha256 `F4DC0090...EBDA8B`**,
+  depois do passo `red-as-expected-strip-surface` (14 linhas: 10 de comentario e 4 de passo).
+  O passo nasceu `always` e o portao `battery-class-oracle` deu RED com razao -- o comando nomeia
+  o proprio largador da app, e a classe e' lida do COMANDO; afrouxar o portao para este caso seria
+  o gate a servir o passo. Passou a `heavy` (as corridas que o exercitam correm com
+  `SOTTO_BATTERY_HEAVY=1`), e o `--neg-arm` do proprio portao da' rc=1.
   O instrumento `_strip-surface-probe.py` julgava 26 assercoes sem NENHUM controlo: o
   `--neg-arm` le o relatorio da corrida anterior, muta a LEITURA em tres sitios e exige os tres
   RED pelo mesmo `judge()` que publica o veredicto — mutar o `checks` ja' calculado provaria so'

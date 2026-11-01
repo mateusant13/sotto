@@ -1186,10 +1186,13 @@ REM assercoes sem NENHUM controlo: uma leitura verde era aceita por ser verde. O
 REM `--neg-arm` le o relatorio que o passo de cima acabou de escrever, muta a
 REM LEITURA em tres sitios e exige os tres RED pelo mesmo `judge()` que publica o
 REM veredicto -- matar o `checks` ja calculado provaria so a aritmetica do `any()`.
-REM `always` porque le um ficheiro que muda a cada corrida, e sem dependencia do
-REM proprio relatorio (uma dependencia que se nomeasse seria um ciclo).
+REM `heavy` e nao `always`: o comando nomeia o proprio largador da app, e o portao
+REM `battery-class-oracle` recusa qualquer passo nao-`heavy` cujo comando o nomeie
+REM (medido: a primeira versao nasceu `always` e o portao deu RED com razao). O
+REM `--neg-arm` nao larga nada -- le o relatorio --, mas a classe e' lida do
+REM COMANDO, e afrouxar o portao para este caso seria o gate a servir o passo.
 if exist _main\_strip-surface-probe.py (
-  call :step always red-as-expected-strip-surface 1 "_main\_strip-surface-probe.py" "%OUT%\strip-surface-neg.log" python _main\_strip-surface-probe.py --neg-arm
+  call :step heavy red-as-expected-strip-surface 1 "_main\_strip-surface-probe.py" "%OUT%\strip-surface-neg.log" python _main\_strip-surface-probe.py --neg-arm
   call :expectred red-as-expected-strip-surface !STEP_RC! "%OUT%\strip-surface-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-strip-surface MISSING "%OUT%\strip-surface-neg.log" "NEG-ARM PASS" )
 if exist _main\_strip-restore-probe.py (
