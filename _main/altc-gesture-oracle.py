@@ -657,7 +657,13 @@ def _copy_tree(tmp: Path) -> Path:
     webview = tmp / "app" / "webview"
     webview.mkdir(parents=True)
     for name in ("hotkey_gesture.py", "hotkey_settings.py", "sotto_webview.py",
-                 "panel_state.py"):
+                 "panel_state.py",
+                 # O shell importa estes dois desde a lane `goal-shellsplit`: o
+                 # instrumento do selftest e as structs Win32 puras. Sem eles a
+                 # copia nao ARRANCA, e o braco negativo mediria um ImportError
+                 # (vermelho pelo motivo errado -- o silencio que este oraculo
+                 # existe para nao aceitar).
+                 "selftest_instrument.py", "win32_types.py"):
         shutil.copy2(ROOT / "app" / "webview" / name, webview / name)
     (tmp / "_main").mkdir()
     shutil.copy2(LIVE_FILE, tmp / "_main" / LIVE_FILE.name)

@@ -15,10 +15,21 @@ THE FIX HAS TWO HALVES, and the second is why this is not just an `or` clause:
   2. THE VERDICT is now the pure function `selftest_broken(reading)` in the shell, so it can be driven
      with synthetic readings -- no hotkey, no WebView2, no launch.
 
+WHERE THE VERDICT LIVES NOW (2026-11-01, lane `goal-shellsplit`). The instrument that measures the
+Alt+C hotkey left the product for `app/webview/selftest_instrument.py` -- the shell is under the
+structural ratchet (`_main/code-health-oracle.py`) and a measurement instrument is not product code.
+The verdict did not get weaker with the move, it got a THIRD clause: it must still be CALLED from the
+instrument's `run_selftest`, the old inline expression must be gone from BOTH files, and the shell must
+still BIND the moved name (`from selftest_instrument import (... selftest_broken ...)`) so every
+caller that does `import sotto_webview as shell; shell.selftest_broken(...)` keeps working. Retargeting
+this oracle is the point: an oracle that reads the OLD path and finds nothing would fail -- and one
+that shrugged and passed would be the silent-pass defect this repo keeps paying for.
+
 WHAT IT ASSERTS, every run:
-  1. the shell still CALLS `selftest_broken(` (the factoring did not leave an orphan);
-  2. the old inline expression is GONE from the shell -- a presence-only check would pass with both the
-     fix and the defect on disk;
+  1. the instrument still CALLS `selftest_broken(` (the factoring did not leave an orphan);
+  2. the old inline expression is GONE from the instrument AND from the shell -- a presence-only check
+     would pass with both the fix and the defect on disk;
+  2b. the shell RE-EXPORTS the verdict, and its `run_selftest` delegates to the instrument;
   3. the function is PURE: its source is exec-ed in a BARE namespace, so a dependency creeping in (a
      global, ctypes, the module) fails here instead of passing through a module import;
   4. five readings: the positive control is ACCEPTED, the own-window theft is REFUSED, a FOREIGN window
@@ -38,6 +49,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 SHELL = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
+INSTRUMENT = os.path.join(ROOT, "app", "webview", "selftest_instrument.py")
 
 GOOD = {"registered": True, "pressed": True, "presses": 2, "visible": True, "want_visible": True,
         "focus_stolen_by_own_window": False, "focus_before": 100, "focus_after": 100}
@@ -81,15 +93,19 @@ def load(source):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--shell", default=SHELL)
+    parser.add_argument("--instrument", default=INSTRUMENT)
     parser.add_argument("--neg-arm", action="store_true")
     parsed = parser.parse_args(argv)
     say = print
     with open(parsed.shell, encoding="utf-8") as handle:
         shell = handle.read()
-    source = extract_function(shell, "selftest_broken")
+    with open(parsed.instrument, encoding="utf-8") as handle:
+        instrument = handle.read()
+    source = extract_function(instrument, "selftest_broken")
     say("selftest-focus-oracle -- the verdict now reads the focus it measures (no launch)")
     if not source:
-        say("VERDICT: FAIL -- the shell has no `selftest_broken`; the verdict was never factored")
+        say("VERDICT: FAIL -- %s has no `selftest_broken`; the verdict was never factored"
+            % os.path.basename(parsed.instrument))
         return 1
     try:
         verdict = load(source)
@@ -97,10 +113,19 @@ def main(argv=None):
         say("VERDICT: FAIL -- the verdict is NOT pure: exec in a bare namespace raised " + str(error))
         return 1
 
-    calls = shell.count("selftest_broken(")
-    orphans = "broken = (not self.hotkey.registered" in shell
-    say("  shell references to selftest_broken: " + str(calls) + " (definition + call = 2)")
-    say("  old inline expression still present: " + str(orphans).lower())
+    calls = instrument.count("selftest_broken(")
+    orphans = "broken = (not self.hotkey.registered" in instrument
+    orphans_shell = "broken = (not self.hotkey.registered" in shell
+    say("  instrument references to selftest_broken: " + str(calls) + " (definition + call = 2)")
+    say("  old inline expression still present: instrument=" + str(orphans).lower()
+        + " shell=" + str(orphans_shell).lower())
+    # THE MOVE MUST NOT ORPHAN THE NAME. Two clauses, both about the shell giving
+    # back what it used to own: the binding (so `shell.selftest_broken` is the same
+    # function) and the call path (`self.run_selftest()` -> the instrument).
+    rebound = "selftest_broken" in shell and "from selftest_instrument import" in shell
+    delegated = "return run_selftest(" in shell
+    say("  shell re-exports selftest_broken: " + str(rebound).lower())
+    say("  shell run_selftest delegates to the instrument: " + str(delegated).lower())
 
     results = {}
     for label, reading, want in CASES:
@@ -110,9 +135,17 @@ def main(argv=None):
 
     wrong = []
     if calls < 2:
-        wrong.append("the shell does not call selftest_broken (only the definition is present)")
+        wrong.append("the instrument does not call selftest_broken (only the definition is present)")
     if orphans:
+        wrong.append("the OLD inline verdict expression is still in the instrument")
+    if orphans_shell:
         wrong.append("the OLD inline verdict expression is still in the shell")
+    if not rebound:
+        wrong.append("the shell no longer re-exports selftest_broken: every `shell.selftest_broken` "
+                     "caller would break with the move")
+    if not delegated:
+        wrong.append("the shell's run_selftest does not delegate to the instrument -- no launch "
+                     "would ever reach the measurement")
     for label, _reading, want in CASES:
         if results[label] != want:
             wrong.append(label + ": expected broken=" + str(want) + ", got " + str(results[label]))
