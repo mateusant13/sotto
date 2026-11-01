@@ -59,6 +59,8 @@ floor. The defect must keep showing up.
 from __future__ import annotations
 
 import json
+
+import _high_relaunch as high_relaunch
 import os
 import re
 import shutil
@@ -279,6 +281,12 @@ def run_arm(tag, shell, run_s=RUN_S):
 
 
 def main():
+    # A MEDICAO CORRE A `HIGH`, como a app do dono. Medido 2026-11-01: da
+    # `medium` desta pane o WebView2 nunca inicializa e os bracos publicavam
+    # "a caixa estava carregada" sobre um registo com a excecao em letra.
+    rc = high_relaunch.relaunch_if_needed(__file__, sys.argv[1:])
+    if rc is not None:
+        return rc
     report = {'shell': SHELL, 'hz': HZ, 'run_s': RUN_S,
               'ready_deadline_s': READY_DEADLINE_S,
               'deadline_facts': load.deadline_facts(READY_DEADLINE_S)}

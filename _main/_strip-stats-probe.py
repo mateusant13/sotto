@@ -45,6 +45,8 @@ decision honest (with four broken copies of it) is
 from __future__ import annotations
 
 import ctypes
+
+import _high_relaunch as high_relaunch
 import ctypes.wintypes as wt
 import json
 import os
@@ -230,6 +232,12 @@ def run_arm(tag, extra, timeout=60.0):
 
 
 def main():
+    # A MEDICAO CORRE A `HIGH`, como a app do dono. Medido 2026-11-01: da
+    # `medium` desta pane o WebView2 nunca inicializa e os bracos publicavam
+    # "a caixa estava carregada" sobre um registo com a excecao em letra.
+    rc = high_relaunch.relaunch_if_needed(__file__, sys.argv[1:])
+    if rc is not None:
+        return rc
     report = {'shell': SHELL, 'standin': STANDIN, 'stamp': STAMP, 'arms': {},
               'ready_deadline_s': READY_DEADLINE_S,
               'deadline_facts': load.deadline_facts(READY_DEADLINE_S)}

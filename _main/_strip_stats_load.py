@@ -172,6 +172,15 @@ def arm_readiness(text, deadline_s=READY_DEADLINE_S):
     }
 
 
+def _webview2_failure(text):
+    """O codigo do WebView2 numa leitura, ou None (ver `_high_relaunch`)."""
+    try:
+        from _high_relaunch import webview2_failure
+    except Exception:                                        # noqa: BLE001
+        return None
+    return webview2_failure(text)
+
+
 def load_skip_reason(arms, deadline_s=READY_DEADLINE_S):
     """Why this run CANNOT measure (None when it can).
 
@@ -194,6 +203,17 @@ def load_skip_reason(arms, deadline_s=READY_DEADLINE_S):
         tag = arm.get('tag', '?')
         waited = arm.get('waited_s')
         waited_txt = ('%.1fs' % waited) if waited is not None else 'n/a'
+        failure = _webview2_failure(arm.get('text') or '')
+        if failure:
+            # MEDIDO 2026-11-01: os dois passos publicavam "a caixa estava
+            # demasiado carregada para medir" enquanto o registo do braco tinha a
+            # excecao do WebView2 em letra. A caixa nao estava carregada; o
+            # WebView2 nunca inicializou naquela integridade. Chamar a carga de
+            # causa nomeia o suspeito errado e esconde o defeito verdadeiro.
+            return ("the '%s' arm never reached %s because WebView2 never "
+                    "initialised (%s) -- this is NOT a load fact; this run "
+                    "CANNOT claim the result"
+                    % (tag, READY_MILESTONE, failure))
         return ("the '%s' arm did not reach %s within the %.0fs deadline "
                 "(waited %s; %s) -- "
                 "the box was too loaded to measure, so this run CANNOT claim "
