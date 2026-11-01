@@ -1,0 +1,50 @@
+/* ===========================================================================
+   O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30)
+   ===========================================================================
+   *"config dos milissegundos do HOLD, no painel da direita"*
+
+   VIVE NUM FICHEIRO PROPRIO, e nao em `panel.css`, por uma razao de processo e
+   nao de gosto: `panel.css` esta' no ratchet do `code-health-oracle.py` e o
+   ratchet proibe CRESCER -- uma regra nova la' teria de pagar-se com uma regra
+   velha apagada, e o dono nao pediu para apagar nada. Um ficheiro novo nao tem
+   divida anterior, e a divida que interessa (o CSS que ja' la' estava) fica
+   medida como estava.
+
+   A SUPERFICIE E' O PAINEL DA DIREITA. O painel de baixo (`.strip`) esconde a
+   barra de estado inteira com a mesma regra que esconde `#status-text`
+   (`panel.css`, `body[data-surface="strip"]`), e esta linha e' filha dessa
+   barra -- por isso o painel de baixo continua sem controlos que nao sejam os
+   dele.
+
+   NAO HA `!important` AQUI, ao contrario das regras de superficie do
+   `panel.css`: nada neste ficheiro tem de vencer um tema. Se algum dia tiver,
+   a resposta e' uma regra no tema, nao um `!important` novo.
+   =========================================================================== */
+
+.status__hold {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.status__hold-select {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 2px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+}
+
+/* O painel de baixo nao tem esta linha. A regra repete o seletor de superficie
+   que o `panel.css` usa, em vez de depender de a barra de estado inteira estar
+   escondida -- se um dia a barra aparecer no strip, este controlo continua fora
+   dele por contrato e nao por consequencia. */
+body[data-surface="strip"] .status__hold {
+  display: none;
+}

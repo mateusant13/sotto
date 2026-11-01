@@ -1,0 +1,333 @@
+/* caption-float.css — THE INDEPENDENT OVERLAY'S OWN STYLES (lane: caption).
+ *
+ * WHY THIS FILE EXISTS. panel.css styles the overlay INSIDE the panel's own world:
+ * it is painted only while the document is on the strip surface
+ * (body[data-surface="strip"][data-float="on"] .caption-float { display: block },
+ * panel.css:2789), it is placed below the panel's bar (top: 34px, panel.css:2815),
+ * and the page itself paints a 98%-opaque slab behind it — html, body
+ * { background: rgba(11, 15, 20, 0.98) } at panel.css:105-134, the rule that file
+ * calls THE RENDER PROTECTION. The owner's own words, verbatim:
+ *
+ *   "a porra da legenda, e pra ser independente do painel, nao acoplado."
+ *   "e eu to vendo div com cor solida inves de invisivel."
+ *
+ * That second sentence is measured, not inferred: the html/body slab above IS the
+ * solid div, and it paints on every surface, the floated caption included.
+ *
+ * SO THIS FILE OWNS THREE THINGS, and nothing else:
+ *   1. INDEPENDENT VISIBILITY — the overlay is painted from ITS OWN state
+ *      (#caption-float[data-float="on"]), never from the panel's surface. It is on
+ *      screen with no panel mounted at all. The one guard that survives: it never
+ *      paints over the FULL panel (body[data-surface="panel"]), because the panel
+ *      already shows the same words there.
+ *   2. NO PAINT — the overlay and every descendant paint no background, no box and
+ *      no border, in every state, and the page paints none behind it while the
+ *      caption is loose. The ONE body is the 4px bar on the left
+ *      (.caption-float__led), which is the owner's own design.
+ *   3. INDEPENDENT GEOMETRY — with no panel bar on screen the overlay hugs the
+ *      BOTTOM of the window (the zip's own bottom-anchored stage); with the strip
+ *      bar present it keeps panel.css's placement (bar on top, caption below).
+ *
+ * NO /!important/ EXCEPT THE ONE HARD GUARD IN RULE 1, and every rule is written at
+ * a specificity that beats panel.css's own without touching that file (which this
+ * lane may not edit).
+ *
+ * HOW IT LOADS. caption-float.js links this file itself (idempotently) when the
+ * document does not already link it, so the overlay carries its own styles and works
+ * in a document that has no panel at all. The Lead may ALSO add
+ * <link rel="stylesheet" href="caption-float.css" /> to panel.html; the module
+ * finds an existing link and adds nothing.
+ */
+
+/* ── 1. THE OVERLAY IS PAINTED FROM ITS OWN STATE, NOT FROM THE PANEL ────── */
+
+/* The module writes data-float on the HOST as well as on <body>, and it also owns an
+   inline display, so it is correct even before this stylesheet lands. Both agree:
+   on -> block. Specificity (1,1,0) beats panel.css's plain .caption-float
+   { display: none } (0,1,0), so this file is the last word on visibility. */
+#caption-float[data-float="on"] {
+  display: block;
+}
+
+/* THE ONE GUARD THAT STAYS: the right panel already shows the caption, so the
+   overlay must never be painted over it — the same rule panel.css expresses by
+   scoping the overlay to the strip surface, restated here in its hard form. */
+body[data-surface="panel"] #caption-float {
+  display: none !important;
+}
+
+/* ── 2. NOTHING PAINTS: NOT THE OVERLAY, NOT A DESCENDANT ───────────────── */
+
+/* DELETED 2026-10-17, AND THIS WAS THE OWNER'S "BACKGROUND".
+ *
+ * This file used to carry, verbatim:
+ *
+ *     html[data-float="on"],
+ *     body[data-float="on"] { background: transparent; border-radius: 0; }
+ *
+ * The owner, the same day, verbatim: *"sem background, sem estar conectada a
+ * qualquer painel"*. The intent was right and the mechanism was exactly wrong,
+ * and the reason is a MEASURED property of the panel's window:
+ * `WS_EX_LAYERED` is OPT-IN AND OFF BY DEFAULT here — `sotto_webview.py:4969`
+ * ("`WS_EX_LAYERED` IS OPT-IN AND OFF BY DEFAULT, MEASURED … it is the reason
+ * the strip composites WHITE"), and the running shell logs
+ * `panel setAlwaysOnTop(floating) … style=WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|
+ * WS_EX_TRANSPARENT` with NO `|WS_EX_LAYERED`.
+ *
+ * So the panel's HWND is an ordinary OPAQUE WinForms window. `transparent` on
+ * its page does not reveal the desktop; it reveals whatever the form does not
+ * paint, which is white — and it did, in the same gesture, because
+ * `data-float="on"` was written at the exact moment the caption button was
+ * clicked. That is the white slab and the white corners, measured, and the
+ * caption's own pixels were never the cause: they are transparent in every state
+ * (the list below), so what showed was the PAGE behind them.
+ *
+ * The protection stays where it belongs: `panel.css:105-127` calls its opaque
+ * base THE RENDER PROTECTION and it is never overridden from here again. The
+ * real caption has no background because it is not in this window at all — it is
+ * `NativeCaptionOverlay`, one topmost layered Win32 window drawn with
+ * `UpdateLayeredWindow` (`caption_overlay.py`), alpha per pixel, nothing behind
+ * the words.
+ *
+ * `caption.html` — the standalone caption page, which this file also serves —
+ * keeps its own transparency from its own inline `<style>` (`background:
+ * transparent !important`, after all four stylesheets), so nothing that page
+ * needs depends on the rule deleted here.
+ */
+
+/* THE OVERLAY AND EVERY DESCENDANT, IN EVERY STATE. No plate, no box, no border,
+   no backdrop, no outline — the owner: "sem fundo, sem nada". The 4px left bar is
+   deliberately NOT in this list: it is the overlay's only body. */
+#caption-float,
+#caption-float .caption-float__stage,
+#caption-float .caption-float__col,
+#caption-float .caption-float__prev,
+#caption-float .caption-float__line,
+#caption-float .caption-float__credits,
+#caption-float .caption-float__meter,
+#caption-float .caption-float__meter-fill {
+  background: none;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: 0;
+  outline: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* THE FORMING LINE CLIPS AT THE OVERLAY, NOT AT THE WINDOW. MEASURED WITH EYES
+   2026-10-15 on a fresh shot: the live line ran past the right edge and the words
+   were cut by the WINDOW silhouette instead of by the overlay own box -- so a
+   reader sees a sentence that simply stops, with no rail or radius to say where
+   the text ends. THE CONSTRAINT IS `max-width`, NOT THE WRAP MODE: the wrap mode
+   only decides what happens to a word that is too long, and a long SENTENCE of
+   ordinary words lays out wider than the box regardless. That is why the
+   measurement below kept `anywhere` and only added the box, and why changing
+   the mode here does not undo that fix. */
+/* ── 4. THE YOUTUBE DISPLAY (owner, 2026-10-20) ──────────────────────────── */
+
+/* The owner, verbatim: *"voce nao ta fazendo a legenda parecendo com como o
+ * youtube da DISPLAY e quebra as linhas e etc. é pra tu fazer isso. faça."*
+ *
+ * YouTube's own on-screen caption is: a large SANS face (Roboto, medium),
+ * WHITE, with a heavy BLACK OUTLINE around the glyphs, sitting directly on the
+ * picture with NO plate behind it, CENTRED, in AT MOST TWO lines, and the break
+ * between the two lines falls on a WORD BOUNDARY -- never inside a word.
+ *
+ * THE FACE. Roboto is not bundled. Inter IS (fonts/inter-latin-{300,400,500,
+ * 600}) and is its metric cousin: the same neo-grotesque skeleton, the same
+ * x-height, the same 500 "medium" that YouTube's caption uses. The fallback
+ * chain keeps the caption in a humanist sans if the webfont is missing.
+ *
+ * THE SIZE. 36 px is YouTube's caption size at 1080p. It is NOT a vw ramp:
+ * the caption's window is 900 px wide (`sotto_webview.py:5881`), so a vw ramp
+ * would size the words against the BOX instead of against the SCREEN the
+ * owner is watching. `--caption-scale` is the owner's own dial and still
+ * multiplies the size, exactly as it does everywhere else.
+ *
+ * THE OUTLINE. `-webkit-text-stroke` CENTRES the stroke on the glyph edge, so
+ * a 6 px stroke is 3 px of black OUTSIDE the letter and 3 px inside it --
+ * and `paint-order: stroke fill` paints the white fill ON TOP of that inner
+ * half, so the letter keeps its full shape and only the outside is black.
+ * 6 px is the same pen the native overlay uses (`caption_overlay.py:287`,
+ * `max(2.0, 6.0 * scale)`), so the two renderers agree.
+ *
+ * THE BREAKING. `overflow-wrap: normal` + `hyphens: none` is the rule that
+ * makes "the text is never split mid-word" TRUE instead of a hope: with both
+ * off, the browser may only break at a space (or after an explicit hyphen in
+ * the text). `break-word` (what this file carried before) breaks a word that
+ * does not fit on a line of its own, and `hyphens: auto` breaks it at a
+ * syllable -- both of them split a word, and the owner's own screenshot read
+ * "communicatio / n".
+ *
+ * `text-wrap: balance` is what makes the TWO lines BALANCED: without it the
+ * first line takes everything that fits and the second carries the remainder,
+ * which is the ragged look the owner is complaining about. Chromium supports
+ * it since 114 and this box runs Edge 155.
+ *
+ * ── WHERE EACH PROPERTY IS DECIDED, AND WHY IT IS NOT ALL HERE ────────────
+ * `zip-overlay.css` is the LAST sheet the caption page loads and it carries
+ * `!important` rules for the OVERLAY's type: a serif face at 1.45em with
+ * 1.28 leading and 0.005em tracking (zip-overlay.css:359-364), and
+ * `text-align: left` on the column and on both lines (:285-292). Those rules
+ * are for the zip's own card, which is what the PANEL shows.
+ *
+ * A sheet that loads EARLIER cannot beat an `!important` from a sheet that
+ * loads later -- only a LATER declaration of the same property can. So the
+ * five properties zip-overlay.css forces (font-family, font-size, line-height,
+ * letter-spacing, text-align) are decided in `caption.html`, whose <style>
+ * block loads after every sheet. EVERY OTHER PROPERTY of the caption's look
+ * is decided HERE, once.
+ *
+ * THE NUMBERS ARE TOKENS, so that the two files cannot disagree about a
+ * value: the face, the size, the weight, the leading and the outline are
+ * declared ONCE, here, and `caption.html` reads the same tokens.
+ *
+ * The rules are scoped to `html[data-caption-doc]` -- the marker only
+ * `caption.html` carries -- so the PANEL's overlay (the zip's serif card) is
+ * not touched by this lane.
+ */
+:root {
+  --caption-face: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --caption-size: 36px;
+  --caption-weight: 500;
+  --caption-leading: 1.2;
+  --caption-outline: 6px;
+  --caption-prev-size: 26px;
+  --caption-prev-outline: 4px;
+}
+
+html[data-caption-doc] #caption-float .caption-float__line {
+  max-width: 100%;
+  color: #fff;
+  -webkit-text-stroke: var(--caption-outline) #000;
+  paint-order: stroke fill;
+  font-weight: var(--caption-weight);
+  text-wrap: balance;
+  overflow-wrap: normal;
+  hyphens: none;
+  overflow-x: hidden;
+}
+
+/* THE PREVIOUS LINE: the settled cue, one size down and dimmer -- Sotto's own
+ * "the live line reads as LIVE" affordance. It gets the same face and the
+ * same outline (2 px of visible black), because over a video a dimmed word
+ * with no outline is a word the owner cannot read. */
+html[data-caption-doc] #caption-float .caption-float__prev {
+  font-size: calc(var(--caption-prev-size) * var(--caption-scale));
+  color: rgba(255, 255, 255, 0.82);
+  -webkit-text-stroke: var(--caption-prev-outline) #000;
+  paint-order: stroke fill;
+  font-weight: var(--caption-weight);
+  text-wrap: balance;
+  overflow-wrap: normal;
+  hyphens: none;
+}
+
+/* THE METER WAS THE OTHER PLATE. panel.css:2911 gave .caption-float__meter a
+   translucent white plate (rgba(255, 255, 255, 0.16)) and :2926 gave its fill the
+   accent gradient — two descendants painting colour behind the words. The owner's
+   rule is ONE body, the bar on the left. The element and its id stay (panel.js and
+   caption-float.js still feed the level into it), the plate goes: zero height, zero
+   margin, nothing painted. */
+#caption-float .caption-float__meter {
+  height: 0;
+  margin: 0;
+}
+
+/* THE ONE BODY: the zip's 4px breathing bar, kept from panel.css and restated here
+   with a fallback so a theme that never declares --accent-gradient cannot leave the
+   overlay with no body at all. */
+#caption-float .caption-float__led {
+  background: var(--accent-gradient,
+    linear-gradient(180deg, var(--accent-from, #7dd3fc), var(--accent-to, #38bdf8)));
+}
+
+/* ── 3. GEOMETRY THAT DOES NOT NEED THE PANEL ───────────────────────────── */
+
+/* WITH NO BAR ON SCREEN the overlay hugs the bottom of the window — the zip's own
+   bottom-anchored stage — instead of stretching down from the panel's 34px bar.
+   top: auto + bottom: 0 + height: auto is the whole rule: the box is its own
+   content, anchored at the bottom, whatever height the shell hands out. */
+#caption-float[data-float="on"] {
+  top: auto;
+  bottom: 0;
+  height: auto;
+  max-height: 100vh;
+}
+
+/* WITH THE STRIP BAR ON SCREEN, panel.css's own placement wins: the bar steps to the
+   top of the window and the caption takes the rest (bar on top, caption below, never
+   overlapped). Restated here at a specificity that beats rule 3's, so the two cases
+   are decided in ONE file. */
+body[data-surface="strip"] #caption-float[data-float="on"] {
+  top: 34px;
+  bottom: 0;
+  height: auto;
+}
+
+/* ══ THE SELECTED DESIGN, ON THE FLOAT (2026-10-21) ══════════════════════════
+ * WHY THIS BLOCK EXISTS. The float used to be the Zip-D caption language for
+ * every design: `zip-overlay.css` forced a SERIF line, a green LED and a
+ * left-aligned column with `!important`, so the strip-float looked identical
+ * under GlassCards' Inter and under Ledger's DM Mono. The owner asked for each
+ * design to carry its own brand on every surface, and the native overlay
+ * (`caption_overlay.py`) already receives the measured tokens from
+ * `brand-bridge.js`. This block is the page's half of the same message: it
+ * consumes the tokens ONCE, so the float cannot drift from the overlay.
+ *
+ * THE TOKENS ARE ALREADY RESOLVED PX (the bridge multiplies the panel's own
+ * value for a 1040 px strip), so no `vw` ramp here: a ramp would undo the
+ * design's size at a different window width, which is exactly the class of bug
+ * that made the zip's 13 px panel line ship at 34 px.
+ *
+ * THE PLATE. The bridge sends the EFFECTIVE row colour (the design's translucent
+ * wash composited over the panel's slab) and its own opacity. A 7% warm wash is
+ * therefore a dark warm plate here too, not the bright tan slab a raw RGBA would
+ * have produced. `padding` is floored at 8-10 px, because a plate with the text
+ * on its first pixel is the owner's "comeca no primeiro pixel" defect. */
+html[data-brand] #caption-float .caption-float__col {
+  padding: var(--brand-pad-top, 10px) var(--brand-pad-right, 14px)
+    var(--brand-pad-bottom, 10px) var(--brand-pad-left, 14px);
+  border-radius: var(--brand-radius, 12px);
+  background: var(--brand-plate, transparent);
+  text-align: var(--brand-align, left);
+}
+
+html[data-brand] #caption-float .caption-float__line {
+  font-family: var(--brand-font, inherit);
+  font-size: var(--brand-live-size, 30px);
+  font-weight: var(--brand-live-weight, 500);
+  font-style: var(--brand-live-style, normal);
+  line-height: var(--brand-live-leading, 1.2);
+  letter-spacing: var(--brand-live-tracking, normal);
+  color: var(--brand-live-color, #fff);
+  text-transform: var(--brand-live-upper, none);
+  text-align: var(--brand-align, left);
+}
+
+html[data-brand] #caption-float .caption-float__prev {
+  font-family: var(--brand-font, inherit);
+  font-size: var(--brand-prev-size, 18px);
+  font-weight: var(--brand-prev-weight, 400);
+  font-style: var(--brand-prev-style, normal);
+  line-height: var(--brand-prev-leading, 1.3);
+  letter-spacing: var(--brand-prev-tracking, normal);
+  color: var(--brand-prev-color, rgba(255, 255, 255, 0.7));
+  text-transform: var(--brand-prev-upper, none);
+  text-align: var(--brand-align, left);
+}
+
+/* THE LEFT RULE IS THE DESIGN'S, not a fixed 4 px accent bar: its width and
+ * colour are the row's own computed border-left, doubled for the 1040 px strip.
+ * A design with no rule gets `0px`, which removes the bar instead of inventing
+ * one. */
+html[data-brand] #caption-float .caption-float__led {
+  width: var(--brand-rule-w, 0px);
+  min-width: var(--brand-rule-w, 0px);
+  background: var(--brand-rule, transparent);
+  border-radius: 99px;
+  animation: none;
+  opacity: 1;
+}

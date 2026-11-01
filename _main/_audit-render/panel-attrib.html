@@ -1,0 +1,1310 @@
+<!doctype html>
+<!-- ── THE FIVE DESIGN DIRECTIONS ──────────────────────────────────────────────
+     `data-theme` on <html> IS the whole mechanism (`theme-switcher.js` writes it,
+     `themes/theme-N.css` is scoped to it). It is spelled HERE, before any CSS
+     parses, so the first paint is the chosen theme and never a flip from theme-1
+     to the stored one. The value must stay identical to the fallback the switcher
+     declares (`themes/themes.js` → `fallback`), or the two disagree for one frame.
+     `theme-1` = Teleprompter, and the order is the owner's:
+     1 Teleprompter · 2 Broadcast · 3 Manuscrito · 4 Cinema Card · 5 Instrumento. -->
+<html lang="en" data-theme="theme-1">
+  <head>
+    <meta charset="utf-8" />
+    <!-- No remote content, no inline event handlers: everything is local files
+         reached through the preload bridge. `surface.js` is the shell's ONE
+         surface hook and is deliberately `self`, like every other script here.
+         `font-src 'self'` is required by the five themes: their typefaces are
+         BUNDLED (`fonts/`, 13 `.woff2`, ~218 KB) because the panel is a `file://`
+         document with no network — the five family names exist in NO system font
+         directory on this box, so without the bundle every theme would paint a
+         fallback and the design would be a colour change. Under the old
+         `default-src 'none'` the fonts were silently refused. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:;"
+    />
+    <!-- `style-src` GAINED `'unsafe-inline'` ON 2026-10-08, AND THE REASON IS THE
+         FROZEN SKINS (`skin-host.js`). A frozen vendor design is the mockup's own
+         markup, byte for byte, and that markup carries its layout in `style=`
+         attributes — 15 custom properties on the root, a measured `right:` on the
+         caption column, a `background` on every plate. `style-src 'self'` refuses
+         an inline style ATTRIBUTE, so under the old value every skin would have
+         painted unstyled, with no error on screen and nothing in the log naming
+         the cause. `script-src` is UNCHANGED and still `'self'`: no inline script,
+         no remote script, no `eval` — the loosening is style-only, on a `file://`
+         document with no network and no third-party bytes.
+         MEASURED before the change, in `_main/_skin-owner/csp/` (Electron, this
+         exact CSP): an inline `style` attribute inside a shadow root applies
+         (`rgb(255,0,0)`, and a custom property reads back `7px`), an external
+         `<link>` inside a shadow root loads (6 rules, 2 of them `@keyframes`), and
+         a `body{}` rule does NOT reach the shadow host. The strict arm of that
+         probe did not load its page, so "the old value would have blocked it" is
+         the SPEC of `style-src`, not a second measurement. -->
+
+    <title>Sotto</title>
+    <!-- The typefaces come FIRST: an @font-face has no selector and paints
+         nothing, so it cannot collide with a theme, and a theme only has to NAME
+         a family. Unscoped on purpose (one copy for all five). -->
+    <link rel="stylesheet" href="/panel/themes/fonts.css" />
+    <link rel="stylesheet" href="/panel/panel.css" />
+    <!-- THE FLOATED CAPTION'S OWN STYLESHEET (lane CAPTION). Declared AFTER
+         `panel.css` on purpose: the overlay is a second surface, and its rules
+         are the last word on it. A missing file is not an error — a `file://`
+         stylesheet that does not resolve leaves the panel exactly as it is. -->
+    <link rel="stylesheet" href="/panel/caption-float.css" />
+    <!-- All five themes load at once: switching is ONE attribute write on <html>,
+         so there is no reload, no parse and no flicker. `theme-switcher.js`
+         applies the stored choice before the panel paints, and adds its own picker
+         button to `.panel__controls` — it never touches the caption, status or
+         history logic. -->
+    <link rel="stylesheet" href="/panel/themes/theme-1.css" />
+    <link rel="stylesheet" href="/panel/themes/theme-2.css" />
+    <link rel="stylesheet" href="/panel/themes/theme-3.css" />
+    <link rel="stylesheet" href="/panel/themes/theme-4.css" />
+    <link rel="stylesheet" href="/panel/themes/theme-5.css" />
+    <!-- THE TEN PANEL DESIGNS of the third zip (`cinematic-transcription-app-designs
+         (1).zip`): GlassCards, Hairline, Paper, Quotes, Ledger, Feed, Bubbles,
+         Timeline, Chips, Gutter. Each keeps its own palette, radius, type and
+         caption treatment, translated to this panel's size and this panel's
+         buttons — the owner's rule: *"eu quero que tudo seja traduzido pro tamanho
+         atual, e com os botoes atuais. o resto, tem que ser igual."* -->
+    <link rel="stylesheet" href="/panel/themes/zipc-panels.css" />
+    <!-- ZIP-OVERLAY.CSS IS RETIRED FROM THE PANEL (2026-10-21, owner: *"o painel
+         de baixo nao muda com o design"*). It was the old Zip-D caption language
+         and it won every fight because it loads AFTER the themes and carries
+         `!important`: it forced the strip slab to `rgba(11,15,20,.98)`, every
+         strip child to `#e8edf4`, the floated caption to a SERIF face, the LED
+         to green and the column to `text-align:left`. The result was the same
+         generic dark bar under all 45 designs, and a serif overlay under an
+         Inter/GlassCards panel. The design now comes from the theme (and from
+         `brand-bridge.js` for the native overlay), so the overrides are gone
+         from THIS document. `caption.html` still links it: that page is the
+         dead caption document and is not on the live path. -->
+    <!-- THE BUTTON CONTRACT (owner, 2026-10-17: *"todos os botoes deviam estar
+         no literalmente mesmo lugar, em todos os temas"*). It is the LAST sheet
+         on purpose: every rule is !important and scoped to the surface, so it
+         wins against the 45 generated theme sheets regardless of their order. -->
+    <link rel="stylesheet" href="/panel/button-contract.css" />
+    <!-- O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30). Ficheiro proprio porque o `panel.css` esta no ratchet do `code-health` e nao pode crescer; ver o cabecalho de `hotkey-hold.css`. -->
+    <link rel="stylesheet" href="/panel/hotkey-hold.css" />
+    <!-- THE TEMPLATE SET (owner, 2026-10-08): *"gostei de alguns designs que botei
+         ai no workspace. sao .zip novos… eu nao quero só a paleta de cores. eu
+         quero uma mudança mesmo, a cada tema/template. super parecida com o que ta
+         no zip, ou igual"*. These are the `cinematic` designs from the three zips he
+         added, re-implemented as panel themes: a REAL structural change per theme
+         (its own live-caption treatment, its own backdrop, its own typography), not
+         a recolour. ONE file, not thirty links, because it is generated whole by
+         `_main/_design-lane/gen_cinematic.py` and a theme that forgot to declare a
+         token is caught by that generator's own self-check instead of silently
+         inheriting another design's value. It loads AFTER the five so a cinematic
+         theme's rules win where they overlap, and the five are untouched by it. -->
+    <!-- THE SECOND ZIP'S FIVE PANEL DESIGNS. Generated by
+         _main/_design-lane/gen_themes.py from sotto-transcription-panel-designs.zip.
+         It loads AFTER cinematic.css so its rules win where they overlap. -->
+    <!-- ── THE SKINS (owner, 2026-10-08) ────────────────────────────────────────
+         Verbatim: *"eu nao quero o painel que temos, padrao. eu nao quero a base.
+         eu nao quero que os outros sejam um 'bandaid' por cima. uma roupa. eu quero
+         que cada painel dos .zip que eu te mandei … sejam IGUAIS aos deles. a UNICA
+         coisa que vai mudar, e os botoes adicionais que temos."*
+         So the `cinematic` themes above are no longer the whole story: a theme that
+         has a SKIN is painted by the MOCKUP'S OWN markup and the MOCKUP'S OWN
+         compiled CSS, mounted in a shadow root (`skin-host.js`) and driven with
+         live audio. `skin-layout.css` is the only rule file of ours that touches
+         it, and it hides our caption box, our transcript drawer and our
+         per-direction chrome exactly while a skin is on. A theme with no skin keeps
+         the markup it has always had. -->
+  </head>
+  <!-- TWO SURFACES, ONE DOCUMENT (owner, 2026-10-08).
+       `data-surface="panel"` is the FULL column this page has always been.
+       `data-surface="strip"` is what the app’s one control opens: the live captions and four
+       controls, nothing else. The shell switches by setting THIS ONE ATTRIBUTE
+       (`app/panel/surface.js` is the definition; the wire contract is in
+       `_main/receipt-panel-two-surfaces.md`), and everything visual about the
+       difference is in `panel.css` next to the sections it hides. -->
+  <body data-surface="panel">
+    <!-- The slab. `.panel` fills the whole window and is the only element that
+         takes pointer events. There is NO transparent margin inside this window:
+         dockRight() in main.js spends PANEL_MARGIN outside it, between the window
+         and the work-area edge, and sizes the window to the panel. Measured
+         2026-10-06 by dom-probe.js — an inset here shows up as dead transparent
+         space inside the always-on-top region and clips the slab's own shadow.
+
+         THE LAYER ORDER IS THE PRODUCT'S, top to bottom, and it is also the
+         document order (the two are kept identical on purpose, because `.panel`
+         is a CSS grid and its `grid-template-rows` is assigned IN THIS ORDER):
+           HEADER      the wordmark and the four controls.  panel surface only.
+           TRANSCRIPT  `.history` — the canonical transcript, read back from
+                       disk. It COLLAPSES to one ~50 px bar because no canonical
+                       (batch) producer exists yet: an empty feed holding half
+                       the panel reads as a broken app. panel.js adds/removes
+                       `.history--collapsed`; the expanded feed is capped so the
+                       live box keeps the height.          panel surface only.
+           LIVE        `.captions` — the streaming caption growing line by line.
+                       THE PRODUCT, and the only flexible row in the grid. BOTH
+                       surfaces: in the strip it is the WHOLE point of the window.
+           STRIPBAR    `.stripbar` — Live on/off, Pause, Open panel.  strip only.
+           FOOTER      `.status` — the status line, up to two lines so the
+                       worker's own cause is not the part that gets cut. In the
+                       strip it is one compact line (`#strip-state` + the dot).
+         THE TRANSCRIPT IS ABOVE THE LIVE BOX — the owner's own rule, verbatim
+         (2026-10-08): *"a legenda ao vivo, no painel, tem que ficar embaixo do
+         painel. o historico a cima"*. The two sections were swapped in THIS
+         markup and `panel.css`'s `grid-template-rows` moved with them, because a
+         template that does not match this order hands the `1fr` to the wrong
+         block and the live box collapses to its floor. The shell's own readback
+         of the section order is `historyAboveLive`, and it now reads TRUE. -->
+    <main class="panel" id="panel">
+      <header class="panel__header">
+        <div class="wordmark">
+          <!-- THE APP ICON AND THE 'live captions' TAG ARE GONE (owner,
+               2026-10-21): *"retira o icone do app dos paineis. deixa só escrito
+               sotto, com os diversos designs desse texto."* and *"tambem retira
+               'live captions' do painel."* What remains is the one word, wearing
+               whatever type the active design gives `.wordmark__name`. -->
+          <div class="wordmark__text">
+            <h1 class="wordmark__name">sotto</h1>
+          </div>
+        </div>
+
+        <!-- ── THE DIRECTION'S OWN HEADER (owner, 2026-10-08) ───────────────
+             THE CONTRACT CHANGED. Until this lane a theme re-skinned colour,
+             type and surface and shared ONE header and ONE footer with the other
+             four; the owner asked for the opposite, verbatim: *"quero que voce
+             monte o painel super parecido com cada tema. pode ate mudar botoes
+             de lugar, se quiser. nao quero a cara do design que tinhamos antes."*
+             So each direction now carries its OWN header line, footer line and
+             state indicator, taken from the mockups
+             (`H:\aireplay\docs\design\sotto-app-design-directions\src\components\
+             Panel.tsx`, `...\sotto-transcription-panel-designs\src\components\
+             panels.tsx`): `SOTTO / LENDO`, `REC / CH·01`, `rascunho live /
+             pág. 1`, `SOTTO / · live ·`, `ON / STBY`.
+
+             THE WORD FOR "LIVE" IS `live`, DECIDED THEME BY THEME (owner,
+             2026-10-08): *"tambem nao escreve ao vivo. escreve live. nos temas
+             relevantes."* Three of the five said `ao vivo` and all three changed —
+             `bcast`'s footer (`AO VIVO` → `LIVE`), `mano`'s header (`rascunho ao
+             vivo` → `rascunho live`), `cine`'s header (`· ao vivo ·` → `· live ·`).
+             The other two were LEFT ALONE because they do not say it: `tele`'s
+             `LENDO` ("reading") and `inst`'s `OUVINDO` ("listening") are the
+             direction's own words for the act, not a translation of "live", and
+             `bcast`'s header `REC` is a recorder's own lamp. Forcing `LIVE` into
+             those would have flattened two directions into one.
+
+             FIVE BLOCKS, ALL INERT, ONE VISIBLE. Every block is `display:none`
+             in `panel.css` and exactly one is turned on by its own theme
+             (`themes/theme-N.css`), which is the same one-attribute mechanism the
+             five already use — nothing is built, moved or fetched when the theme
+             changes, so a switch cannot fail halfway.
+
+             THE STATE WORDS ARE CSS, NOT A SECOND FACT. `panel.js` mirrors the
+             footer's own `status--live`/`status--error` onto
+             `<body data-state>`; each block carries BOTH words and the theme's
+             stylesheet shows one. No number, no confidence, no buffer is invented
+             here: the mockups' `CONF 0.93` / `buffer 38ms` are a SIMULATED script
+             (`designs.ts` → `SCRIPT`), and this panel has no such measurement, so
+             it does not print one. -->
+        <div class="chrome chrome--tele" data-chrome="head">
+          <span class="chrome__dot" aria-hidden="true"></span>
+          <span class="chrome__state">
+            <span class="chrome__on">LENDO</span><span class="chrome__off">EM ESPERA</span>
+          </span>
+        </div>
+
+        <div class="chrome chrome--bcast" data-chrome="head">
+          <span class="chrome__brand">sotto</span>
+          <span class="chrome__rec" aria-hidden="true"></span>
+          <span class="chrome__state">
+            <span class="chrome__on">REC</span><span class="chrome__off">STBY</span>
+          </span>
+          <span class="chrome__chan">CH·01</span>
+          <span class="chrome__tc" data-chrome-tc>--:--:--:--</span>
+        </div>
+
+        <!-- `rascunho live` IS GONE (owner, 2026-10-18: *"tirar rascunho live /
+             escrito ao ouvído"*). The `mano` header is now the wordmark and the page
+             number, two cells at the ends of one flex row — `justify-content:
+             space-between` in the generated theme carries them apart on its own, so
+             nothing was needed in its place.
+
+             It is not decoration being removed: the label claimed the forming line
+             is a DRAFT, which is the one thing this panel had stopped being. The
+             provenance is still recorded, but where it is true — `route=` in the
+             history file, and `provisional-draft` in the panel state — not as a
+             word on the design's forehead. The word survives only here, which is
+             what `panel-chrome-gate.py` ARM A requires. -->
+        <div class="chrome chrome--mano" data-chrome="head">
+          <span class="chrome__brand">sotto</span>
+          <span class="chrome__page">pág. 1</span>
+        </div>
+
+        <div class="chrome chrome--cine" data-chrome="head">
+          <span class="chrome__brand">sotto</span>
+          <span class="chrome__state">
+            <span class="chrome__on">· live ·</span><span class="chrome__off">· em espera ·</span>
+          </span>
+        </div>
+
+        <div class="chrome chrome--inst" data-chrome="head">
+          <span class="chrome__brand">sotto</span>
+          <span class="chrome__led" aria-hidden="true"></span>
+          <span class="chrome__state">
+            <span class="chrome__on">ON</span><span class="chrome__off">STBY</span>
+          </span>
+        </div>
+
+        <!-- TWO controls, and no more. This paragraph said "Four" until
+             2026-10-08, from the era of Clear and Quit; both buttons are GONE and
+             the note explaining each removal is inside the cluster below, so the
+             loss of Clear's capability is documented where the cluster lives, not
+             implied here. What survives on the panel surface is Pause (up from the
+             deleted HUD) and Hide.
+             (The comment TERMINATOR that used to sit on the line above was removed on
+             2026-10-08: the prose below had been written AFTER it, so the prose was naked
+             text in the body and the panel PAINTED it — a wall of developer prose over the
+             caption box, caught from a screenshot. One comment, opened once, closed once,
+             at the end. NOTE for the next editor: never write the terminator sequence
+             itself inside a comment — it ends the comment at that character, which is how
+             this defect was born, and how a note ABOUT it would be born again.)
+
+             WHERE THEY SIT IS NO LONGER THE THEME'S BUSINESS — THE OWNER RULED.
+             Verbatim, 2026-10-08: *"move todos os botoes la pra cima tambem."*
+             So this cluster is the panel's ONE control row and every direction
+             keeps it on the TOP row; what stays per-direction is its own header
+             TEXT (the state word, the channel, the clock) and the typography and
+             colour it wears. The Pause button that used to live in the deleted
+             HUD's action row was MOVED IN HERE rather than deleted, so the panel
+             surface still has every control it had.
+
+             THE CLUSTER IS ALSO THE PANEL'S DRAG HANDLE, and that is why it is
+             `no-drag`: a `-webkit-app-region: drag` header makes its children
+             undraggable-but-also-unclickable unless they are marked `no-drag`,
+             which is the classic defect of the technique. Every button in here
+             carries `-webkit-app-region: no-drag` from `panel.css`, so the drag
+             region is the header AROUND them.
+
+             The cluster is never `display:none`d by a theme, and it is this
+             cluster that carries the theme controls on BOTH surfaces: the strip
+             hides `.panel__header` outright (`panel.css`, `body[data-surface="strip"]
+             .panel__header`), so this is where the owner reaches them there too.
+
+             CORRECTED 2026-10-18. This comment used to say "the strip surface
+             carries its own theme button below (`#strip-theme-button`), which is
+             the reachability half of the same rule". There is no such button.
+             MEASURED: `id="strip-theme-button"` is absent from this document,
+             `grep -c strip-theme-button app/panel/panel.js` = 0 and every one of
+             its four occurrences in `panel.css` is a comment too -- the owner
+             deleted it from the markup, from the handler and from the styles on
+             2026-10-12, and the two comments that SAY SO are the ones below
+             (`:734` and `:743`). A comment that describes a removed control is
+             worse than no comment: it is the shape of thing another lane rebuilds
+             because it reads like an inventory. -->
+        <div class="panel__controls">
+          <!-- THE LIVE-CAPTION LAMP (owner, 2026-10-19, verbatim: *"com um alt c so,
+               com audio ou nao, tem que ter indicativo se a legenda ao vivo ativou ou
+               nao. pode fazer isso com uma bolinha que acende vermelho ou verde."*).
+
+               WHY IT IS THE FIRST CHILD AND NOT NEXT TO THE PAUSE. The owner wrote
+               *"que botao que e so um circulo e esse ao lado do botao de pause? nao faz
+               sentido. se ele e indicativo de algo, e pra ser separado, longe, pra nao
+               se misturar"* — a bare circle next to Pause reads as a BUTTON, and the
+               owner asked for an INDICATOR that is far away from the controls.
+
+               MEASURED 2026-10-20 in the REAL 380 px panel (`sotto_webview.py
+               --dump-dom`, viewport 380x900, theme-1): cluster 102..366, this lamp
+               102..112, `tune-button` 116..144, `theme-button` 148..238,
+               `theme-chevron` 242..270, `font-scale-button` 274..302,
+               `panel-pause-button` 306..334, `hide-button` 338..366, the panel's
+               right edge 380. So the lamp's right edge is 194 px from the pause's
+               left edge, and the X is the rightmost control, 14 px from the edge.
+
+               IT IS NOT A BUTTON. It is a READOUT of the shell's own account of the
+               live caption: `data-caption-window`, which `sotto_webview.py::
+               show_caption_window()` writes on every LIVE switch (`_set_live_enabled`,
+               `sotto_webview.py:9525-9566`). RED = the live caption is OFF, GREEN = it
+               is ON. `panel.js::paintLiveLamps` paints it, from that attribute and
+               from nothing else; it never invents a state and it takes no click.
+
+               `role="img"` and NOT `role="button"`: a screen reader reads the state
+               as an image with a NAME, and the name says it in words, because a
+               red/green dot is invisible to a screen reader. It is a `<span>`, so it
+               takes no focus and no keyboard slot. -->
+          <span
+            class="live-lamp"
+            id="live-lamp"
+            role="img"
+            aria-label="Live caption: OFF · press Alt+C to turn it on."
+            data-live="off"
+          ></span>
+          <!-- THE OWNER REMOVED TWO BUTTONS, and neither removal is silent.
+
+               `#quit-button` is GONE because the capability is not lost: the tray
+               menu carries "Quit Sotto" (`app/webview/sotto_webview.py`, the
+               `ID_TRAY_QUIT` item) and the owner found it by TEXT — the probe
+               `_main/tray-quit-probe.py` is what established that. So the app is
+               still closable from the panel's own tray without this control.
+
+               `#clear-button` is GONE AND ITS CAPABILITY IS UNREACHABLE. It was the
+               only caller of `engine.reset()` — the one operation that drops the
+               engine's committed and provisional words AND its re-cover watermark
+               (`emittedStart`/`emittedWords`/`emittedEnd`) so that the next fragment
+               starts a genuinely NEW line instead of being read as a continuation of
+               the one just wiped. There is no tray equivalent and no hotkey. What
+               survives is the natural line boundary: a `final:true` from the worker
+               closes the line on its own. The owner was told this in the receipt
+                (`_main/receipt-panel-stale-oracles.md`, §11). -->
+          <!-- THE TRANSCRIPT FONT DIAL, NOW ONE BUTTON (owner, 2026-10-18:
+               *"1 botao de tamanho em vez de 2"*). It was a smaller/larger PAIR on
+               each of the two surfaces — four buttons driving one number.
+
+               WHY CYCLING AND NOT A TOGGLE. The dial has real travel, not two states:
+               `FONT_SCALE_MIN 0.8` → `FONT_SCALE_MAX 2.0` in steps of `0.1`, thirteen
+               stops (`panel.js:56-58`). Collapsing that to a two-state toggle would
+               throw away eleven sizes the owner can currently reach. One button that
+               goes UP one stop and wraps to the minimum does the same job in half the
+               chrome, and unlike the pair it can never sit disabled at an end of its
+               travel — a control that does nothing is not a control.
+
+               THE STATE IS STILL VISIBLE, NOT JUST THE GLYPH. The glyph is a single
+               `A`; the current size lives in `aria-label` and `title` as a
+               percentage, refreshed by `reportFontScaleState()`. It is deliberately
+               NOT painted inside the 28 px control row: `.panel__controls` was
+               measured at 250.41 px against a 350.00 px content box
+               (`panel.css:222-230`), and a number there buys nothing the click did
+               not already show. The strip's button has a real label line, so IT does
+               print the percentage.
+
+               ONE NUMBER STILL: both buttons set `--caption-scale` in `:root`
+               (`panel.css`), from which every caption, history and strip-caption size
+               derives, so the two surfaces cannot disagree and no theme can override
+               it. `panel.js` persists the value in localStorage, unchanged.
+
+               HIDE STAYS LAST (the owner's 2026-10-08 ruling), so this sits BEFORE the
+               pause button. -->
+          <button
+            type="button"
+            class="icon-button"
+            id="font-scale-button"
+            data-font-scale-role="cycle"
+            title="Caption size"
+            aria-label="Caption size"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <text
+                x="8"
+                y="12.5"
+                text-anchor="middle"
+                font-size="12"
+                fill="currentColor"
+              >A</text>
+            </svg>
+          </button>
+          <!-- MOVED HERE FROM THE DELETED HUD. It was the panel surface's only
+               Pause control, so removing the HUD without moving it would have
+               taken a real function away. `[data-pause-trigger]` is how
+               `panel.js` finds it, so no wiring changed. -->
+          <button
+            type="button"
+            class="icon-button icon-button--danger"
+            id="panel-pause-button"
+            data-pause-trigger
+            title="Pause (unload the engines)"
+            aria-label="Pause"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M6 3.2v9.6M10 3.2v9.6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+          <!-- HIDE IS LAST, AND THAT IS THE OWNER'S RULING — 2026-10-08, verbatim:
+               *"bota o botao de hide o sotto na direita, nao no meio dos botoes,
+               em q ele esta."*
+
+               WHY A DOM SWAP AND NOT AN `order:` — measured, not assumed. The
+               cluster is a plain `flex` row (`panel.css` `.panel__controls`) and
+               NO theme sets `order` on it or on its `.icon-button`s: every
+               `order:` in `themes/theme-{1..5}.css` targets something else
+               (`theme-1:613,616`, `theme-2:646,650`, `theme-3:614`,
+               `theme-4:604`, `theme-5:660,664`). And all five themes RIGHT-ANCHOR
+               this cluster — `justify-content: space-between` on `.panel__header`
+               for themes 1/3/4, `justify-self: end` on `.panel__controls` for
+               themes 2/5. So with the cluster pinned right, the LAST child is the
+               rightmost control in every direction, and document order IS visual
+               order here: `panel.js` never re-parents these two (zero
+               `insertBefore`/`appendChild` for controls), it only looks them up by
+               id (`#hide-button`, `panel.js:69`) and by `[data-pause-trigger]`
+               (`:93`, loops `:1505`, `:1652`).
+
+               WHAT MUST NOT REGRESS: both buttons keep
+               `-webkit-app-region: no-drag` from `panel.css`, because the header
+               AROUND them is the panel's drag handle; and the strip surface has
+               no header at all (`body[data-surface="strip"] .panel__header`,
+               `panel.css:1211`) and no hide button, so it is untouched. -->
+          <button
+            type="button"
+            class="icon-button"
+            id="hide-button"
+            title="Hide"
+            aria-label="Hide panel"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- ── THE SKIN MOUNT POINT ───────────────────────────────────────────────
+           Empty and `hidden` unless the active theme HAS a skin. It is not a grid
+           item while hidden (`display: none`), so the four-row template above is
+           untouched for every theme that ships without one; when a skin is on,
+           `skin-layout.css` makes `.panel` a plain block and this element covers
+           the whole window with the design's own layers. `skin-host.js` owns the
+           shadow root inside it and nothing else in this document reaches in. -->
+      <div id="skin" hidden></div>
+
+      <!-- ── PANEL SURFACE ONLY: the canonical transcript ───────────────────
+           A FEED READ BACK FROM DISK, written by the batch pass and by nothing
+           else. No batch producer exists today, so panel.js keeps this section
+           collapsed to one bar: the label, the folder path (the button that
+           proves where the data lives), a one-line honest note saying why it is
+           empty, and a chevron to open it anyway. The search input is disabled
+           while no writer exists — a search box that can never match is a
+           promise the app cannot keep. All of it lights up by itself the day
+           `history.root()` reports a canonical producer. Rows stay in the DOM
+           while collapsed (CSS-only collapse), so a read-back probe still sees
+           them. -->
+      <section class="history history--collapsed" id="history" aria-label="Transcript">
+        <div class="history__bar">
+          <!-- ── THE TRANSCRIPT BUTTON IS GONE (owner, 2026-10-14) ────────────
+               Verbatim: *"tira o botao de transcript. ha um botao/gaveta do
+               transcript no painel. remove o CONTROLO. se a gaveta tiver de
+               ficar por detras, esconde-a mas tira o botao."*
+
+               WHAT STOOD HERE was the drawer handle: a chevron button
+               (`#history-toggle`) that expanded and collapsed this section, and
+               the ONLY control that could open the drawer by hand.
+
+               THE CONTROL IS DELETED FROM THE MARKUP, and the drawer stays
+               BEHIND, collapsed, exactly as the owner permitted: the section
+               keeps `history--collapsed`, the CSS-only hide on `.history__body`
+               keeps its rows in the DOM for a read-back probe, and the drawer
+               still opens BY ITSELF the day the shell reports a canonical
+               producer — `panel.js isTranscriptExpanded()` is unchanged and
+               nobody can open it by hand any more, which is the point.
+
+               WHAT SURVIVES BESIDE IT: the label and the FOLDER button
+               (`#history-root`, below), because the folder is where the data
+               lives and the owner kept that affordance on its own in 2026-10-08
+               (*"tambem tira essas coisas como 'h sotto history 400 lines…'"* —
+               the PATH went, the button stayed).
+
+               WHAT THE CODE LOST WITH IT: `panel.js` looked the node up as
+               `dom.transcriptToggle` and every use was already NULL-CHECKED
+               (`if (dom.transcriptToggle)` in `wireHistory` and in
+               `applyTranscriptMode`), so removing the markup cannot throw; the
+               two dead branches and the lookup were deleted in the same pass
+               rather than left pointing at nothing. The generated rules that
+               styled it (`.history__toggle` in the `SKIN` groups of
+               `gen_themes.py` and the base rules in `panel.css`) went with it.
+               Gate: `_main/three-overlays-oracle.js` arm D5 re-baselined in the
+               same pass. -->
+          <!-- THE TRANSCRIPT LABEL IS GONE. Owner: "tira o botao de transcript". The
+               CONTROL went in the previous pass; the LABEL stayed and kept painting the
+               word on the panel. MEASURED WITH EYES on a fresh shot (theme-1, 380x900,
+               2026-10-15): the word sat in the top-left corner and opened nothing.
+               history-label had 0 references in panel.js and 3 in panel.css -- and all
+               three are .captions__bar paused-state rules naming a DIFFERENT element, so
+               removing this span cannot break the drawer, which stays collapsed behind
+               its automatic half. -->
+          <button
+            type="button"
+            class="history__path"
+            id="history-root"
+            aria-label="Open the transcript folder"
+            title="Open the transcript folder"
+          >
+            <!-- The folder affordance, in place of the path that used to be
+                 painted here. `panel.js` empties this button's TEXT (the path went
+                 off screen at the owner's request) but this glyph is markup, so it
+                 stays: the capability must remain visible, not merely reachable. -->
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path
+                d="M1.75 4.25a1 1 0 0 1 1-1h3.1l1.2 1.5h6.2a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <span class="history__count" id="history-count" hidden></span>
+        </div>
+
+        <!-- THE BAR CARRIES NO SENTENCE AND NO PATH. It used to read
+             `H:\sotto\history` + `400 lines · no canonical writer — the transcript
+             stays read-only.`, and the owner had both taken off the screen
+             (2026-10-08): *"tambem tira essas coisas como 'h sotto history 400
+             lines no canonial writer 400 lines the transcript'"*. `panel.js` owns
+             the text of both nodes and now writes nothing into them; the honest
+             sentence survives as this paragraph's `title` (a hover) and the folder
+             path as the button's `title`, and both survive in the internal state.
+             The empty paragraph is hidden by the rule below so it costs no height. -->
+        <p class="history__note" id="transcript-note" hidden
+           title="The canonical transcript is written by the batch pass (Parakeet Redux). Its lines carry the redux producer stamp, so it stays read-only; until a line has arrived, it has nothing to show."
+        ></p>
+
+        <div class="history__body" id="history-body">
+          <div class="history__tools">
+            <!-- THE SEARCH BOX IS GONE BY THE OWNER'S ORDER. 2026-10-21 21:24,
+                 verbatim: *"tira a caixa de procurar texto e textos como
+                 'transcript history'"*. It supersedes the 2026-10-18 request that the
+                 search FIND things: the last word on the subject is that the box must
+                 not be on the panel at all. `panel.js` keeps its `if (dom.searchForm)`
+                 guards, which are now dead branches by construction (the nodes cannot
+                 be looked up), and the shell's search predicate stays where it is --
+                 `_main/search-oracle.py` still judges it.
+                 REAPPLIED 2026-10-30: this removal had already been made once and was
+                 LOST with the stash episode (the version in `stash@{0}` carries this
+                 very paragraph); the form was back in the markup and the complaints
+                 register said so, measured by `complaints-assert.py search-box-absent`
+                 with 3 nodes. -->
+            <!-- ONE of the two "show in folder" affordances panel.js keeps (the
+                 other is the path button above): this one names the SELECTED
+                 line, so it is disabled until a line is selected. It is hidden
+                 with the drawer body, so the PANEL also carries the always-live
+                 folder control in the HUD below. -->
+            <button
+              type="button"
+              class="reveal-button"
+              id="reveal-button"
+              title="Select a transcript line first"
+              disabled
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M1.5 4.2a1 1 0 0 1 1-1h3.1l1.3 1.4h5.6a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>Show in folder</span>
+            </button>
+          </div>
+
+          <p class="history__note history__note--status" id="history-status" hidden></p>
+
+          <!-- THE GALLERY — navigation over the days and hours the store holds,
+               and the ONLY way the list below is filled. OWNER 2026-10-08,
+               verbatim: *"na pesquisa dos transcript, tira o historico que ja
+               mostra sozinho. tem que ter apenas botoes pra navegar entre a
+               'galeria' de dias/horas"*. So the buttons are BUILT by panel.js from
+               the entries it already loaded (no extra read of the store) and the
+               list stays EMPTY until one is pressed: the wall of lines that used
+               to paint itself on open is gone, and a range (24 h, then 1 h) plus
+               its days and hours replace it. The search box above is untouched —
+               it answers a different question ("where did he say X"). -->
+          <nav class="gallery" id="history-gallery" aria-label="Transcript by day and hour"></nav>
+
+          <ol class="history__list" id="history-list" aria-live="off"></ol>
+        </div>
+      </section>
+
+      <!-- ── THE PRODUCT: the live caption box ─────────────────────────────
+           Lines arrive through the bridge, are formulated by
+           caption-formulation.js, and a committed line is added here. This is
+           the row that takes the panel's free height, and in the STRIP surface
+           it is the only content row there is. -->
+      <section class="captions" id="captions" aria-live="polite" aria-label="Live caption">
+        <div class="captions__bar">
+          <!-- REMOVED 2026-10-12 (owner: *"tira o botao da direita de mostrar
+               legenda"*). WHAT STOOD HERE WAS `#live-label` — a `<span>` that
+               painted the word "Live" over the right panel's caption box. It
+               was MEASURED before deleting, because the owner named a BUTTON and
+               this was not one: it had NO click handler anywhere (grep of
+               `panel.js` for `live-label` = 0 matches; the only `#live-label`
+               reference in the whole tree was the fixture copies under `_main/`),
+               so nothing loses a capability. The live caption is now announced
+               by the ONE control that owns it — `#strip-live-button` on the
+               bottom strip — and the caption box keeps its own `aria-label`
+               (`<section class="captions" aria-label="Live caption">`), so the
+               accessibility tree still names the region. -->
+          <!-- The "behind" chip: shown ONLY when the shell reports a stats event
+               that says the live path is falling behind (queue_drops > 0 or
+               rate < 1). `hidden` until such an event arrives; today the shell
+               has no `onStats`, so it never appears. See panel.js `wireStats`. -->
+          <span class="captions__chip" id="stats-chip" hidden></span>
+          <span class="captions__hint" id="captions-hint"></span>
+        </div>
+        <div class="captions__body" id="captions-body">
+          <div class="captions__placeholder" id="placeholder">
+            <div class="listening" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <p class="captions__placeholder-title">Waiting for audio</p>
+            <p class="captions__placeholder-body">
+              Nothing is being transcribed yet. Captions appear here line by line the
+              moment audio reaches Sotto.
+            </p>
+          </div>
+          <!-- `hidden` because the empty state shows the placeholder instead.
+               panel.js clears this attribute on the first caption; without it the
+               empty box still occupies the top of the caption area. -->
+          <ol class="captions__list" id="caption-list" hidden></ol>
+        </div>
+      </section>
+
+      <!-- ── STRIP SURFACE ONLY: the short control row the app’s one control opens ──
+           THE STRIP IS THE SHORT SURFACE: transcript drawer, header and footer
+           block are all hidden here by `panel.css`, so the window can be sized to
+           ~100 px without any of them leaking into it. `panel.js` hides/moves
+           nothing; CSS owns the whole difference.
+
+           THE FIXED ORDER (base `order` rules, so no theme can reorder it):
+           brand · grip · live · open panel · pause · hide · status. The brand is
+           leftmost and the status readout is last because it is a READOUT, not a
+           control.
+
+           ── THE LIVE BUTTON IS THE CAPTION CONTROL, AND IT SHIPS OFF ──────────
+           Owner, from his own prompts of the handoff conversation (2026-10-12),
+           verbatim: *"primeiro, o painel de baixo. NELE EU ATIVO o segundo
+           overlay, q e a legenda independente."* and *"um botao de linhar a
+           legenda, que LIGA ela NA TELA"*. The bottom band is overlay 1 and the
+           caption is overlay 2, ACTIVATED from it — so the caption is off the
+           screen until `live` is pressed, and the band is what Alt+C opens
+           (40px of buttons, nothing else). A separate "Linhar" button stood here
+           until 2026-10-13 and is DELETED: `#strip-live-button` owns the
+           caption, and `panel.js applyLiveEnabled` drives the SAME
+           `body[data-float]` attribute that button used to flip.
+
+           REMOVED 2026-10-12 from this row, both for the owner bare-minimum order
+           (*"o painel de baixo, deve conter apenas o bare minimum"*) and, in the
+           transparency case, because it IS the reported bug: the theme-list chevron
+           and the transparency button (deleted outright, together with both of its
+           hide-rules). EVERY button still exists on the RIGHT panel, which is where
+           all of them live now.
+
+           ── THE CHEVRON LEFT THE STRIP TOO, AND IT DOES NOT COME BACK ──────────
+           The note that was here said the chevron is "hidden by CSS on this surface
+           because theme-switcher.js re-creates the node when the id is absent".
+           That is no longer what holds it. On the 2026-10-12 re-anchor
+           `theme-switcher.js` `ensureChevrons` stopped BUILDING
+           `#strip-theme-chevron` — the block that did was deleted — and
+           `registerChevron` REFUSES one the strip bar ships, so it never gets a
+           click listener. `panel.css` still carries a `display: none` as the
+           second layer, and refuses the dropdown itself on this surface. Gate:
+           `_main/theme-preview-oracle.js` ARM 11/12.
+
+           CORRECTED 2026-10-18. This used to end "What stays in this row is the
+           ONE theme control the owner keeps: `#strip-theme-button`, which cycles
+           next/previous on click." There is no such button -- measured, zero
+           `id="strip-theme-button"` in this document and zero
+           `strip-theme-button` in `panel.js`; the next block says so and dates
+           the removal to 2026-10-12. What stays in this row is the open button
+           (`#strip-open-button`), which takes the owner to the panel where
+           `#theme-chevron` opens the full list. -->
+      <section class="stripbar" id="strip-controls" aria-label="Caption controls">
+        <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
+             todos os temas"*, and the strip is one of the two surfaces). The strip
+             hides `.panel__header`, so the header's own brand is not on this
+             surface at all and the strip carries its own: `sotto`, lowercase, in
+             the strip's own type and colour, before the controls and after nothing
+             — it is the leftmost thing, the way a wordmark sits. -->
+        <span class="stripbar__brand">sotto</span>
+        <!-- ── THE MOVE HANDLE (owner, 2026-10-12: *"o painel de baixo tem que ser
+             movivel pra cima ou pra baixo ou pros lados"*). It is the ONE affordance
+             the drag needs: the strip has no header and no title bar, so without a
+             visible handle the owner has no way to know the bar can be moved at all.
+             It is NOT a button — no click, no focus stop, no `role` (it is a purely
+             decorative grip, `aria-hidden`), and it never takes a click from the row.
+             `panel.js` binds the pointer gesture on `.stripbar` itself and ignores
+             pointerdowns that land on a control, so a drag started on a button is a
+             press, and a drag started anywhere on the bar moves the window. -->
+        <span class="stripbar__grip" id="strip-drag-handle" aria-hidden="true"></span>
+        <!-- THE SAME LAMP ON THE STRIP (owner, 2026-10-19). The strip hides
+             `.panel__header` outright, so the panel's lamp is not on screen here —
+             and the strip is what Alt+C opens, so the strip is where the owner's
+             "com um alt c so" actually has to be answered.
+
+             IT SITS IMMEDIATELY LEFT OF THE LIVE SWITCH, which is the control it
+             reads, and it is at the far other end from the strip's Pause (`order: 8`).
+             The order is the grip's (`order: 2`) and the markup is after the grip's,
+             so it paints between the two. ONE fact, TWO paints:
+             `panel.js::paintLiveLamps` writes both. -->
+        <span
+          class="live-lamp"
+          id="strip-live-lamp"
+          role="img"
+          aria-label="Live caption: OFF · press Alt+C to turn it on."
+          data-live="off"
+        ></span>
+        <button
+          type="button"
+          class="strip-button strip-button--toggle"
+          id="strip-live-button"
+          aria-pressed="false"
+          aria-label="live: off · the captions are off the screen. Click to put them on screen."
+          title="live · click to put the captions ON SCREEN (loose, like the .zip demos); the band itself stays a thin bar."
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <rect
+              x="1.6"
+              y="3"
+              width="12.8"
+              height="10"
+              rx="2"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.3"
+            />
+            <path
+              d="M5 7.1a1.75 1.75 0 1 0 0 1.8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.15"
+              stroke-linecap="round"
+            />
+            <path
+              d="M10.4 7.1a1.75 1.75 0 1 0 0 1.8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.15"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="strip-button__label" id="strip-live-label">live</span>
+        </button>
+
+        <!-- ── REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o
+             bare minimum"* / *"o painel de baixo ... deve ser menor ainda, mais
+             estreito, do tamanho dos botoes"*). WHAT STOOD HERE WAS
+             `#strip-theme-button`, a `.strip-button--theme` pill that cycled the
+             template on click. MEASURED BEFORE DELETING, because it was the strip's
+             only route to a theme and a previous lane opened a trap about exactly
+             that: the capability is NOT lost — `theme-switcher.js` owns BOTH
+             mounts, and the panel's own `#theme-chevron` (built inside
+             `.panel__controls`, `panel.html` above) opens the full list, so every
+             theme stays reachable from the panel; and `#strip-open-button` is one
+             click away on this very bar. What the strip loses is a SECOND door into
+             the same room. `panel.js` looks the node up as `stripThemeButton`? NO —
+             it never did: `grep -c strip-theme-button app/panel/panel.js` = 0, so
+             no handler is left dangling. The theme PICKER was already refused on
+             this surface by CSS (`body[data-surface="strip"] .theme-picker`), so
+             nothing else moves. -->
+
+        <!-- ── REMOVED 2026-10-12: the theme-list CHEVRON on the strip ──────────
+             Owner order: *"o painel de baixo, deve conter apenas o bare minimum"*.
+             The theme button itself CYCLES on click and stays; the chevron was a
+             second door into the same designs. DELETED FROM MARKUP, and the module
+             does not re-create it either — on the 2026-10-12 re-anchor
+             `theme-switcher.js` `ensureChevrons` dropped the block that built
+             `#strip-theme-chevron`, and `registerChevron` refuses one the strip bar
+             ships, so there is no node left for CSS to hide.
+
+             THAT IS THE RE-ANCHOR: the dropdown moved to the RIGHT panel. Its one
+             trigger is `#theme-chevron`, built inside `.panel__controls` — the
+             cluster where every button already lives — and the list it opens,
+             `#theme-dropdown` (a body-level popup, because `.panel` is `overflow:
+             hidden`), is refused on this surface by `panel.css` with
+             `body[data-surface="strip"] .theme-dropdown { display: none
+             !important }`, so a dropdown left open cannot follow the shell here.
+             The picker and the tune dialog stay panel-only, as before. -->
+
+        <!-- ── REMOVED 2026-10-12: TRANSPARENCY on the strip ─────────────────────
+             THIS BUTTON IS THE REPORTED BUG, so it is gone, not merely relabelled.
+             Measured on the owner shell (`_main/webview-run.log`, pid 33248): two
+             in-window clicks — points (1008,955) and (1005,951), both inside the
+             strip 1040x100@(440,920) rect — immediately before
+             `TRANSPARENCY_ON click_through=true captions=kept` (line 114746). What
+             that combination did:
+               • `panel.css` had `body[data-surface="strip"][data-transparency="on"]
+                 .panel { display: none }` — the ONLY node still painting vanished; and
+               • the shell flipped WS_EX_TRANSPARENT, so nothing could be clicked back.
+             The whole 1040x100 window became the shell opaque #0B0F14 form colour
+             (*"cliquei num botao e ele sumiu e agora ta so a cor solida de volta,
+             inteira"*). Both hide-rules are deleted from panel.css, so even a stale
+             call to `panel.js applyTransparency` can no longer hide the slab.
+             No replacement button was added anywhere: the click-through CONCEPT is
+             not the product ask — the third overlay (the floated caption) is how the
+             owner gets the caption loose on screen, with no chrome and no backplate. -->
+
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-open-button"
+          title="Open the full panel (transcript, folder and details)"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M2.6 4.4h4.1l1.3 1.4h5.4a.9.9 0 0 1 .9.9v5.4a.9.9 0 0 1-.9.9H2.6a.9.9 0 0 1-.9-.9V5.3a.9.9 0 0 1 .9-.9z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.3"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M9.4 8.6l2.2 2.2-2.2 2.2M11.4 10.8H6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="strip-button__label">Open panel</span>
+        </button>
+
+        <!-- THE CAPTION FONT DIAL, BACK ON THE STRIP (owner, 2026-10-17,
+             verbatim: *"quero o botao nesse painel de baixo da ativar a
+             legenda, aumentar ou diminuir a legenda, e pausar"*). The two
+             buttons were removed on 2026-10-12 as part of the bare-minimum
+             trim; the owner now asks for them BY NAME, so they are back with
+             the same ids `panel.js wireFontDial` already binds. One number,
+             `--caption-scale`, shared with the side panel.
+
+             2026-10-18: the PAIR is ONE button here too, same ruling as the panel's
+             (`#font-scale-button` above). It is the strip's one chance to SHOW the
+             number, because a `strip-button` has a real label line — so the label
+             prints the current percentage and `panel.js` rewrites it on every change.
+             On the panel the glyph alone has to do the job, which is why the number
+             lives in `aria-label`/`title` there. -->
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-font-scale-button"
+          data-font-scale-role="cycle"
+          title="Caption size"
+          aria-label="Caption size"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <text x="8" y="12.5" text-anchor="middle" font-size="12" fill="currentColor">A</text>
+          </svg>
+          <span class="strip-button__label" data-font-scale-readout>100%</span>
+        </button>
+
+        <!-- ── HIDE: the strip's own dismiss. It calls the SAME `bridge.hide()`
+             the panel's `#hide-button` calls — there is no second mechanism; the
+             shell re-shows the strip on Alt+C. -->
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-hide-button"
+          title="Hide the strip (Alt+C brings it back)"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="strip-button__label">Hide</span>
+        </button>
+
+        <!-- ── REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o
+             bare minimum"*). WHAT STOOD HERE WAS THE STRIP'S HALF OF THE FONT
+             DIAL — `#strip-font-smaller-button` and `#strip-font-larger-button`,
+             two `.strip-button--font` circles. MEASURED BEFORE DELETING, because the
+             owner asked for that dial on 2026-10-09 (*"bota um botao de aumentar ou
+             diminuir a fonte das transcricoes, tanto no overlay abaixo ... tanto no
+             painel da direita"*) and a previous lane's whole argument was that the
+             SAME `--caption-scale` must be reachable from both surfaces. The
+             capability is NOT lost and the two surfaces still cannot disagree: the
+             panel's own pair (`#font-smaller-button`, `#font-larger-button`) is
+             UNTOUCHED in `.panel__controls`, and `panel.js wireFontDial()` binds
+             all four with the same `applyCaptionScale`; removing two of the four
+             call sites leaves the two that remain, and the stored value is read
+             back at load for the whole document (`panel.js`, `readStoredFontScale`).
+             What the strip loses is a SECOND pair of buttons for a caption the
+             strip no longer even shows (`.captions` is `display:none` on this
+             surface — the owner's own rule). `panel.js` looks them up as
+             `stripFontSmallerButton`/`stripFontLargerButton` and every handler
+             NULL-CHECKS (the module's own contract for an older harness), so no
+             throw: `bind(dom.stripFontSmallerButton, -1)` with `null` returns on
+             the `if (!button) return;` at the top of `bind`. -->
+
+        <!-- ─── REMOVED 2026-10-13: THE SEPARATE "LINHAR" BUTTON ────────────────
+             `#strip-float-button` stood here ("Linhar", the float toggle) since
+             2026-10-12. The owner's prompts of the handoff conversation put the
+             capability on the LIVE button — *"o botao de mostrar a legenda ao vivo
+             deve ser o 'live'"*, and *"nele eu ativo o segundo overlay, q e a
+             legenda independente"* — so two doors into the same room became one.
+             The capability is not lost and is one button to the left:
+             `#strip-live-button` (above) is what puts the caption loose on the
+             screen, through the SAME `body[data-float]` attribute this button
+             used to flip. Nothing else read the removed node: `panel.js`'s
+             `dom.stripFloatButton` key went with it, and
+             `_main/strip-float-oracle.js` was re-baselined in the same edit. -->
+
+        <!-- Pause is `order: 9` now, after the font dial, so the two ACTIONS stay
+             at the end of the row and the dial stays next to the text it sizes.
+             `dom.pauseButtons` finds it by its `[data-pause-trigger]` attribute,
+             so the wiring did not change. -->
+        <button
+          type="button"
+          class="strip-button"
+          id="strip-pause-button"
+          data-pause-trigger
+          title="Pause"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M6 3.2v9.6M10 3.2v9.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.9"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="strip-button__label">Pause</span>
+        </button>
+
+        <!-- The status, reduced to a dot + ONE short word. The long sentence is
+             not deleted: `#status-text` stays in the DOM below (a read-back probe
+             still reads it) and this element carries the word. -->
+        <span class="stripbar__state" id="strip-state">
+          <span class="stripbar__dot" id="strip-dot" aria-hidden="true"></span>
+          <span class="stripbar__word" id="strip-word">Starting</span>
+        </span>
+      </section>
+
+      
+
+      <!-- ── THE HUD IS GONE (owner, 2026-10-08) ─────────────────────────────
+           Verbatim: *"tira a hud, nao quero mais. deixa tudo clean."* The
+           `<section class="hud">` that stood here carried five rows (State, RAM,
+           Rate, Engine, Peak) and an action row with "Open in folder" and Pause.
+
+           WHAT WAS LOST, AND WHAT WAS NOT — the two things it carried:
+             * "Open in folder" was NOT unique to it. The transcript bar's own
+               path button (`#history-root`, above) calls the same
+               `revealPath(null)`, so that behaviour survives without the HUD.
+             * PAUSE was unique to it. Deleting the HUD would have taken the
+               panel surface's only Pause control with it, so the button was
+               MOVED, not deleted: it now sits in `.panel__controls` at the top
+               of the panel, alongside Hide. (This line said "with Clear, Quit and
+               Hide" until 2026-10-08; those two buttons were removed from the row
+               and the note explaining each removal is in the cluster itself.) It
+               is also what the
+               owner asked for in the same breath (*"move todos os botoes la pra
+               cima tambem"*). `dom.pauseButtons` finds it by its
+               `[data-pause-trigger]` attribute, so the wiring did not change.
+             * The four "Needs bridge.getStats()" rows were honest PLACEHOLDERS:
+               the shell exposes no `getStats()`, so they printed `—` and a
+               tooltip explaining a call that does not exist. Nothing was lost
+               with them either.
+           `#stats-chip`, in the caption bar above, is NOT the HUD and STAYS: it
+           is a one-line warning that the live path is falling behind, shown only
+           when the shell reports it. -->
+
+      <footer class="status" id="status">
+        <!-- ── THE DIRECTION'S OWN FOOTER (same change as the header) ────────
+             One block per direction, all inert, one shown. `data-slot="start"`
+             is the leading label, `data-slot="end"` the trailing one, and the
+             theme's own `order` puts each where its mockup has it. The REAL
+             status sentence (`#status-text`) is untouched and stays between
+             them: the mockups are a simulation and this footer is not, so the
+             panel keeps the one line that carries the worker's own cause.
+
+             ── THE TWO `tele` LABELS LEFT THIS BAR (owner, 2026-10-14) ────────
+             Verbatim: *"tira em curso e historico das barras. o dono quer as
+             barras LIMPAS."* What stood here was the ONLY place in the panel
+             that painted those two words — `HISTÓRICO` in the `start` slot and
+             `▲ EM CURSO` in the `end` one, the Teleprompter direction's own
+             footer chrome. BOTH SPANS ARE DELETED FROM THE MARKUP, and the
+             three generated rules that styled them (`.chrome--tele[data-chrome
+             ="foot"]` and its two `data-slot` members in `theme-1.css` and
+             `panel-designs.css`) were deleted from `gen_themes.py` in the same
+             edit: a rule about a node that no longer exists is a rule about
+             nothing, and this file's own rule is to remove it rather than
+             leave it looking live.
+
+             WHAT THE BAR KEEPS: the REAL status sentence (`#status-dot` and
+             `#status-text`, below), which is the worker's own cause and not a
+             mockup label — so the footer is not empty, it is CLEAN.
+
+             WHAT WAS LOST, AND WHY NOTHING WAS: those two spans were INERT
+             chrome. No code read either node (`panel.js` never queried either
+             id and no handler was bound to them), and the only readers anywhere
+             were the expectation tables of `_main/_panel-chrome-arm.py` and
+             `_main/_panel-chrome-probe.js`, both re-baselined in the same pass
+             to demand the labels be ABSENT. The OTHER directions keep their own
+             footer chrome — `bcast`'s meter and LIVE/EM ESPERA, `mano`'s
+             "— escrito ao ouvído", `cine`'s "· · ·", `inst`'s meter and
+             OUVINDO/EM ESPERA — because the owner named `em curso` and
+             `historico` and nothing else. -->
+
+        <span class="chrome chrome--bcast" data-chrome="foot" data-slot="start">
+          <span class="chrome__meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </span>
+        <span class="chrome chrome--bcast" data-chrome="foot" data-slot="end">
+          <span class="chrome__state">
+            <span class="chrome__on">LIVE</span><span class="chrome__off">EM ESPERA</span>
+          </span>
+        </span>
+
+        <!-- `— escrito ao ouvído` IS GONE, same order, same pass. The `mano` direction
+             now has NO footer block at all, exactly as `tele` has none: the
+             manuscript design put a phrase in the footer where the other four put
+             an instrument, and the phrase was decoration.
+
+             `panel-chrome-gate.py` ARM A is extended with both words so that
+             "removed" means *removed from live markup* rather than *renamed*, and
+             ARM B's table for `mano` is emptied — deliberately. That arm exists
+             because a gate which only checked removals would pass on a panel with
+             no footer chrome anywhere; emptying one row must not silence it for
+             the OTHER three, and it does not: `bcast`, `cine` and `inst` are still
+             demanded slot by slot. -->
+        <span class="chrome chrome--cine" data-chrome="foot" data-slot="start">· · ·</span>
+
+        <span class="chrome chrome--inst" data-chrome="foot" data-slot="start">
+          <span class="chrome__meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </span>
+        <span class="chrome chrome--inst" data-chrome="foot" data-slot="end">
+          <span class="chrome__state">
+            <span class="chrome__on">OUVINDO</span><span class="chrome__off">EM ESPERA</span>
+          </span>
+        </span>
+
+
+        <!-- ── O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30) ────────
+             *"config dos milissegundos do HOLD, no painel da direita"*.
+
+             E' um <select> e nao um campo numerico por uma razao que custa
+             dinheiro a aprender: um numero livre obriga a decidir, do lado da
+             pagina, o que fazer com "500ms", "-3", "0" e vazio -- e qualquer
+             resposta que eu inventasse seria uma segunda validacao a divergir da
+             do Python. As escolhas viajam do shell (`getHotkeyHold` ->
+             `hotkey_settings.HOTKEY_HOLD_MS_CHOICES`), por isso a pagina nunca
+             tem a lista: pinta a que recebe.
+
+             QUEM MANDA E' O SHELL. O valor em vigor vem de `getHotkeyHold`, a
+             escolha vai por `setHotkeyHold`, e o resultado pintado e' o que o
+             shell respondeu -- nao o que a pagina pediu. Uma escrita recusada
+             deixa o controlo onde o disco diz que ele esta'.
+
+             A SUPERFICIE E' O PAINEL DA DIREITA: `body[data-surface="strip"]`
+             esconde `.status__text` e esta linha pela mesma regra (panel.css),
+             por isso o painel de baixo continua a ser o painel de baixo. -->
+        <label class="status__hold" id="hotkey-hold-row" for="hotkey-hold-select"
+               title="Quanto tempo o Alt+C tem de ficar premido para ligar/desligar a legenda">
+          <span class="status__hold-label">HOLD</span>
+          <select id="hotkey-hold-select" class="status__hold-select"></select>
+          <span class="status__hold-unit">ms</span>
+        </label>
+        <span class="status__dot" id="status-dot" aria-hidden="true"></span>
+        <span class="status__text" id="status-text">Idle &middot; no audio source</span>
+        <!-- THE SHORTCUT IS NOT ADVERTISED IN THE PANEL (owner, 2026-10-08:
+             *"nao fala alt c no painel"*). A `<kbd>` hint stood here naming the
+             key; it is gone, and the app's only control still works exactly as
+             before — this is the panel's copy, not the registration. -->
+      </footer>
+    </main>
+
+    <!-- ── THE PAUSE CONFIRMATION ─────────────────────────────────────────────
+         Pause UNLOADS: the streaming engine and the background transcript go,
+         and RAM and CPU come back. It costs a model load to resume, and the
+         owner asked for the dialog to say the honest thing out loud — the
+         background transcript is extremely light, so pausing is almost never
+         worth it for performance. Two steps, in-panel (never `window.confirm`,
+         which a frameless overlay cannot style and cannot default to Cancel);
+         `panel.js openPauseConfirm()` moves focus in and `closePauseConfirm()`
+         gives it back.
+
+         It lives OUTSIDE `.panel` on purpose: the slab clips its own overflow
+         (`panel.css .panel { overflow: hidden }`), and a backdrop inside it
+         would be clipped to the slab. -->
+    <!-- ─── THE FLOATED CAPTION (owner: *"linhar a legenda … NA TELA, igual um overlay,
+         EXATAMENTE IGUAL os .zip fazem"*) ─────────────────────────────────────
+         Translated from the zip's `CaptionStage.tsx`: bottom-anchored, centred,
+         `pointer-events-none`, and with NO BACKGROUND EVER — the lead receipt's own note
+         (*"tailwind classes for the caption text itself (no background, ever)"*). It is a
+         SIBLING of `.panel`, not a child: the owner's rule is that nothing goes on top of the
+         current panel or in the panel's div, and the slab clips its own overflow anyway.
+         `caption-float.js` owns it; `panel.js` only flips `data-float` and the window height.
+         The strip surface shows it; the panel surface does not (the panel already has captions). -->
+    <div id="caption-float" class="caption-float" data-float="off" aria-hidden="true">
+      <!-- THE ZIP'S "inst" DESIGN: a 4px breathing bar the text leans on, inside one
+           flex row. `caption-float.js` owns the CONTENT; the shape is panel.css. The
+           bar is the overlay's only BODY — there is no background, plate or box on
+           this overlay, ever. -->
+      <div class="caption-float__stage">
+        <span class="caption-float__led" aria-hidden="true"></span>
+        <div class="caption-float__col">
+          <p class="caption-float__prev" id="caption-float-prev" aria-hidden="true"></p>
+          <p class="caption-float__line" id="caption-float-line"></p>
+          <div class="caption-float__meter" id="caption-float-meter" aria-hidden="true">
+            <span class="caption-float__meter-fill" id="caption-float-meter-fill"></span>
+          </div>
+          <p class="caption-float__credits" id="caption-float-credits" aria-hidden="true"></p>
+        </div>
+      </div>
+    </div>
+
+    <dialog class="pause-dialog" id="pause-dialog" aria-labelledby="pause-dialog-title">
+      <h2 class="pause-dialog__title" id="pause-dialog-title">Pause and unload?</h2>
+      <p class="pause-dialog__body" id="pause-dialog-body">
+        Pausing unloads the live caption engine and the background transcript. RAM
+        and CPU are given back, and nothing is transcribed until you resume.
+      </p>
+      <!-- REMOVIDO 2026-10-15. Era o paragrafo "Worth knowing: the background
+         transcript is extremely light -- it costs almost nothing to leave running.
+         Pausing is not necessary to keep the PC fast, and resuming reloads the model
+         and takes a few seconds." Ele fazia DUAS coisas ma: enchia o dialogo ate a altura
+         que obrigava o <dialog> a ganhar barra de scroll, e ARGUMENTAVA CONTRA ele proprio
+         -- um dialogo a dizer ao utilizador que nao precisa do botao que ele acabou de
+         carregar. O dono: *"jesus que coisa mais nojenta de feia"*. -->
+
+      <p class="pause-dialog__shell" id="pause-dialog-shell" hidden></p>
+      <div class="pause-dialog__buttons">
+        <button type="button" class="dialog-button" id="pause-cancel-button">
+          Cancel · keep transcribing
+        </button>
+        <button type="button" class="dialog-button dialog-button--danger" id="pause-confirm-button">
+          Pause and unload
+        </button>
+      </div>
+    </dialog>
+
+    <!-- The text decisions, DOM-free, so the oracle can run them outside
+         Electron. Must load BEFORE panel.js, which calls into it at load. -->
+    <script src="/panel/caption-formulation.js"></script>
+    <!-- The worker's promise that the last word is PROVEN (owner, 2026-10-30).
+         DOM-free, and BEFORE panel.js, which reads it while rendering. -->
+    <script src="/panel/stable-words.js"></script>
+    <!-- WHICH PRODUCER may write the canonical transcript ("Transcript").
+         DOM-free for the same reason, and also BEFORE panel.js: `recordHistory`
+         calls it on every caption. See `history-source.js`. -->
+    <script src="/panel/history-source.js"></script>
+    <!-- THE DAY/HOUR GALLERY — the time-range query and the bucketing under it.
+         DOM-free for the same reason as the two above, and BEFORE panel.js, which
+         builds the drawer's navigation buttons from it. See `history-gallery.js`
+         for why the owner asked for it: *"tem que ter apenas botoes pra navegar
+         entre a 'galeria' de dias/horas"*. -->
+    <script src="/panel/history-gallery.js"></script>
+    <!-- WHICH SURFACE this document is wearing. Before panel.js, which asks it
+         which layout it is painting into, and before the harness's driver, which
+         picks a surface from its own URL hash. -->
+    <script src="/arm/stub.js"></script>
+    <script src="/panel/surface.js"></script>
+    <!-- THE THEME MECHANISM, in the order it needs: the manifest first (it is
+         read at parse time by the switcher, and `fetch()` of a `file://` URL is
+         refused, so it cannot be data), then the switcher, which re-applies the
+         stored theme and mounts the picker button. Both BEFORE panel.js: the
+         stored choice has to be on <html> before the panel paints. -->
+    <script src="/panel/themes/themes.js"></script>
+    <!-- THE SECOND ZIP'S FIVE PANEL DESIGNS, pushed into SottoThemeManifest.themes
+         exactly like skins/skins.js does below (same contract, same reason: a
+         file:// fetch is refused, so the manifest is a SCRIPT). It must run BEFORE
+         theme-switcher.js, which reads the manifest and mounts the picker. -->
+    <script src="/panel/themes/panel-designs.js"></script>
+    <!-- The third zip's ten panel designs, pushed into the same manifest. -->
+    <script src="/panel/themes/zipc-panels.js"></script>    <!-- ── THE FROZEN SKINS (owner, 2026-10-08) ───────────────────────────────
+         `skins/skins.js` is GENERATED (`_main/_skin-owner/pack_skins.py`). It is a
+         SCRIPT, not data: `fetch()` of a `file://` URL is refused, which is the same
+         reason the theme manifest above is a script. It carries, per design, the
+         mockup's own 15 custom properties and the mockup's own markup — four frozen
+         fragments: the stage, the chrome, the transcript panel and the live caption
+         plate — plus the vocabulary of everything the mockup INVENTED, so the host
+         can remove the fiction instead of printing it.
+         IT LOADS HERE, BEFORE THE SWITCHER, because it also APPENDS the designs our
+         theme manifest does not carry yet: the freeze lane froze all twenty designs
+         of the newest zip and only six of them had been shipped. -->
+    <!-- skins.js is ASKED, not eager: `lazy-assets.js` (injected before any of this parses)
+         tags the skins the running theme needs and the shell gates the bytes on the ask.
+         Off the first-paint path on purpose. -->
+    <script src="/panel/theme-switcher.js" defer></script>
+    <!-- THE TEMPLATE LAYER — per-theme edits, from inside the panel (owner,
+         2026-10-08): *"quero que os temas sejam templates. e quero modificar
+         coisas de cada templete de um jeito facil, pelo painel."* After the
+         switcher, because it reads the manifest the switcher also reads, follows
+         the `data-theme` attribute the switcher writes (via a MutationObserver,
+         so neither module calls the other), and puts its own gear button in
+         `.panel__controls` BEFORE the pause button so HIDE STAYS LAST — the
+         owner's rightmost ruling, which `panel.html` above makes load-bearing.
+         Before `panel.js`, which null-checks its own lookups and never asks
+         about this one. See `theme-tune.js` for why the edits are inline custom
+         properties on `<html>` and why only tokens a shipped rule CONSUMES are
+         offered as knobs. -->
+    <script src="/panel/theme-tune.js" defer></script>
+    <!-- THE HOST: it mounts the frozen fragments in a shadow root and writes audio
+         into the slots it finds. It calls nothing — `panel.js` calls it as it
+         renders — so a skin can never take the transcription down with it, and a
+         theme with no skin is untouched by it. -->
+    <!-- skin-host.js is ASKED, not eager, for the same reason and by the same mechanism. -->
+    <script src="/panel/panel.js"></script>
+    <script src="/probe/_anim-visual.js"></script>
+    <!-- S4's per-letter swap and this lane's caption overlay. BOTH are deferred, so neither is
+         on the first-paint path. `panel.js` guards the call (`if (window.SottoLetterSwap)`) and
+         `caption-float.js` only registers itself, so the order is not load-bearing: a caption
+         that lands before they execute keeps the plain-text path and never errors. -->
+    <script src="/panel/letter-swap.js" defer></script>
+    <script src="/panel/caption-float.js" defer></script>
+
+    <!-- ── THE STRIP'S MOVE GESTURE — THE PAGE HALF (owner, 2026-10-12: *"o painel de
+         baixo tem que ser movivel pra cima ou pra baixo ou pros lados"*).
+
+         WHY INLINE, AND NOT IN `panel.js`: `panel.js` is another lane's file and this
+         lane's write scope is `panel.html` + `panel.css`. The gesture is a PAGE
+         concern (it records a position); moving the WINDOW is the shell's, and this
+         script does NOT move it — it writes the position down and hands it over.
+
+         THE CONTRACT THE SHELL READS (see `_main/receipt-botoes.md` §2 for the
+         full handoff):
+           * `localStorage["sotto:strip-offset"]` = JSON
+             `{ "x": <int>, "y": <int>, "v": 1 }` — the CUMULATIVE offset in CSS
+             pixels (DIPs) from the strip's docked position, x right / y down.
+             Written on EVERY move and on release; absent = never dragged.
+           * `window.sotto.setStripOffset(dx, dy, phase)` — `phase` is `"move"`
+             during the drag and `"end"` on release. OPTIONAL: the script probes
+             for the method and calls it only when the shell ships it, so a shell
+             without it still gets the localStorage record.
+           * The page ALSO applies the offset to `.panel` as a CSS transform, so the
+             bar follows the pointer with or without the shell. When the shell moves
+             the WINDOW it must set `body[data-strip-moved]` (any value) and the page
+             then stops transforming — otherwise the two moves would add up. -->
+    <!-- THE STRIP DRAG MOVED TO AN EXTERNAL FILE. It was an inline <script> here and it
+     NEVER RAN: this document declares `script-src 'self'` with no 'unsafe-inline'
+     (:22-25), and a CSP without 'unsafe-inline' BLOCKS inline script blocks. This was
+     the ONLY inline script in the panel -- 1 inline against 12 with src -- so the one
+     piece of code that made the strip movable was dead in every launch. A blocked
+     script throws nothing and logs nothing, which is why it went unnoticed for rounds. -->
+    <script src="/panel/strip-drag.js"></script>
+    <!-- THE BRAND PROBE + BRIDGE (2026-10-21). The probe mirrors a real caption
+         row so the current theme's computed face/plate/rule can be measured
+         even when the transcript is empty; `brand-bridge.js` posts those tokens
+         to the shell, which hands them to the NATIVE overlay. Without this the
+         panel changes design and the caption the owner actually reads does not.
+         Off screen via `.brand-probe` in panel.css; never inside #caption-list,
+         so the list's own child selectors and counters do not see it. -->
+    <div class="brand-probe" id="brand-probe" aria-hidden="true">
+      <ol class="captions__list">
+        <li class="caption caption--provisional">
+          <span class="caption__led"></span>
+          <span class="caption__time">00:00</span>
+          <span class="caption__text">A legenda nasce aqui.</span>
+        </li>
+        <li class="caption caption--latest">
+          <span class="caption__led"></span>
+          <span class="caption__time">00:00</span>
+          <span class="caption__text">A linha anterior fica aqui.</span>
+        </li>
+      </ol>
+    </div>
+    <script src="/panel/brand-bridge.js"></script>
+  </body>
+</html>
