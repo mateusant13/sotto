@@ -276,8 +276,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 12:4x):** `_main\_audit-verify-all.cmd` = **148889 B**,
-  **1936 CRLF** / 0 bare LF, sha256 `C9DC589CC633E31AE85B43AB75ADBAC74E78C1827793217B366A10D7A957B52B`.
+- **PIN do ficheiro (medido 2026-11-01, 12:5x):** `_main\_audit-verify-all.cmd` = **150261 B**,
+  **1950 CRLF** / 0 bare LF, sha256 `623C4120D77A9EE43F6FE89C0FB7D50AB77E50E6F243EFB10DEC596135325643`.
+  (Este pin substitui o de 12:4x, 148889 B / 1936 CRLF, DEPOIS dos dois passos do
+  `paint-live-show` -- o oraculo que le o log da instancia VIVA do dono e exige `paint_ack=true`
+  e `wait_ms<=400` em cada `PANEL_SHOWN`; sem show desde o arranque ele diz `VERDICT: SKIPPED`
+  e o passo skip-capable conta-o como SKIPPED, nunca como verde. `--neg-arm` medido
+  `cases=3 caught=3`. O MESMO certificado se aplica ao caminho pelo qual o ficheiro se editou:
+  `open(..., 'w')` sem `newline=''` na LEITURA converte CRLF em LF e deixa 1950 LF soltos.)
   (Este pin substitui o de 2026-11-01 11:0x, 146485 B / 1910 CRLF, DEPOIS dos tres passos do
   PRIMEIRO FRAME do painel: `panel-paint-first-measure` (classe `heavy`, larga a instancia privada
   do censo e grava `_main\_cache\panel-paint-first.json`), `panel-paint-first` (re-julga essa

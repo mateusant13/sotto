@@ -532,6 +532,20 @@ REM recusa um passo `always` que nomeie um largador) e grava a leitura. O passo 
 REM re-julga essa leitura pela MESMA funcao `verdict()` do censo -- sem relancar nada --
 REM e o braco negativo muta uma leitura limpa em QUATRO pontos e exige que os quatro
 REM sejam recusados, para o portao nao ser um comentario que so' sabe dizer PASS.
+REM O MESMO defeito, no PROCESSO VIVO do dono: cada `PANEL_SHOWN` da sessao que ele carrega
+REM tem de trazer `paint_ack=true` e `wait_ms<=400`. Sem show nenhum desde o arranque o
+REM oraculo diz `VERDICT: SKIPPED` e o passo skip-capable conta-o como SKIPPED -- nunca
+REM como um portao que passou. As tres mutacoes do `--neg-arm` mordem uma cauda sintetica
+REM limpa e tem de sair todas RED (medido: cases=3 caught=3).
+
+if exist _main\paint-live-show-oracle.py (
+call :step always paint-live-show 0 "_main\paint-live-show-oracle.py;app\webview\sotto_webview.py" "%OUT%\paint-live-show.log" python _main\paint-live-show-oracle.py
+call :skipped paint-live-show !STEP_RC! "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped paint-live-show MISSING "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED" )
+if exist _main\paint-live-show-oracle.py (
+call :step always red-as-expected-paint-live-show 1 "_main\paint-live-show-oracle.py" "%OUT%\paint-live-show-neg.log" python _main\paint-live-show-oracle.py --neg-arm
+call :expectred red-as-expected-paint-live-show !STEP_RC! "%OUT%\paint-live-show-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-paint-live-show MISSING "%OUT%\paint-live-show-neg.log" "NEG-ARM PASS" )
 if exist _main\panel-paint-first-census.py (
 call :step heavy panel-paint-first-measure 0 "_main\panel-paint-first-census.py;app\webview\sotto_webview.py;app\webview\code_identity.py;app\panel\panel.js;app\panel\panel.css" "%OUT%\panel-paint-first-measure.log" python _main\panel-paint-first-census.py --run --save-json _main\_cache\panel-paint-first.json
 call :record panel-paint-first-measure !STEP_RC!
