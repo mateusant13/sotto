@@ -129,3 +129,32 @@ para os sete, e nenhum carrega modulo de `sotto`/`webview`/`onnx`. O unico par q
 deixou (46640/44468) morreu com a correccao acima. Ou seja: hoje o Sotto nao tem instancia
 orfaa -- o pid 40064 e' a app viva e fresca do dono (`live-code-freshness --strict`:
 processo sha256 == disco sha256, `Alt+C` e `Ctrl+Space` com `register=true`).
+
+## 8. O gargalo que fazia as legendas chegarem a 1,15/s: `emit` era um round-trip de 10 s
+
+Lane `lane/goal-bridge` (recibo dela em `_main/receipt-bridge-stall.md`), mesmas sondas antes
+e depois numa instancia privada:
+
+|medida|antes (300 s)|depois (600 s)|
+|---|---|---|
+|`exec_js TIMEOUT after 10.0s`|42 (todos `status=WaitingForActivation`, `continuation=unset`)|0|
+|legendas entregues|346 (1,15/s)|1875 (3,13/s, o ritmo do feeder)|
+|`EMIT_DROPPED` / `PLACEHOLDER_DROPPED`|0 / 0|0 / 0|
+
+Causa: as TRES chamadas de `emit` do produto sao notificacoes (ninguem le o valor) e todas
+passavam por `exec_js` SINCRONO com orcamento de 10 s; `apply_panel_state` pagava-o DUAS
+vezes por status. Candidatos refutados com numero: pool esgotado (nao ha pool -- um Thread
+por chamada), promessa JS que nunca assenta (o `ExecuteScriptAsync` nao espera promessas),
+UI thread bloqueado (`marshal_ms=0.0` em 37 de 42), host WebView2 ceifado (as respostas que
+chegaram 1-8 s depois provam que estava vivo).
+
+Cura: `emit` -> `emit_nowait`/`_post` (sem orcamento, ordem preservada, recusa escrita) e o
+placeholder tambem postado. O instrumento (`BRIDGE_CENSUS`, `SOTTO_BRIDGE_CENSUS=1`) passou
+a `app/webview/bridge_census.py` -- o `py-spy dump` esta NEGADO nesta maquina (`os error 5`),
+logo as stacks saem de dentro com `sys._current_frames()`.
+
+## 9. Portoes do load/resume, corridos hoje neste HEAD
+
+    load-shedding-oracle    GREEN -- arms=78 pass=78 fail=0
+    live-queue-oracle       PASS  -- arms=32 fail=0        (nenhum audio fica por transcrever)
+    external-resume-oracle  PASS  -- bracos: 8 verdes, 0 vermelhos
