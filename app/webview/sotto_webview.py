@@ -871,6 +871,18 @@ def _reap_child(child):
         pass
 
 
+#: O TOKEN DE ESTADO PAGA UM `stat`, NAO UMA LEITURA. Medido 2026-11-01 pela
+#: lane de perfil: `code_state_log` corre no tick de 2 s e chamava
+#: `file_sha256(SHELL_PATH)` mais o do worker -- 414 911 B relidos a cada tick,
+#: 1,30 ms por tick, 43 200 vezes por dia, e foi essa a frame que o watchdog
+#: apanhou. A chave e' `(caminho, mtime_ns, tamanho)`: qualquer escrita muda o
+#: `mtime` do NTFS (resolucao de 100 ns) ou o tamanho. Um ficheiro reescrito no
+#: MESMO tick de `mtime` com o MESMO tamanho devolveria o digest antigo -- para
+#: um token de staleness isso e' um alvo que se move em ~100 ns, e um digest de
+#: seguranca nunca passa por aqui.
+_SHA_CACHE = {}
+
+
 def file_sha256(path):
     """First 16 hex chars of a file's SHA-256, or None if it cannot be read.
 
@@ -879,11 +891,20 @@ def file_sha256(path):
     the reference implementation used so log lines stay comparable.
     """
     try:
+        stat = os.stat(path)
+        key = (path, stat.st_mtime_ns, stat.st_size)
+        hit = _SHA_CACHE.get(key)
+        if hit is not None:
+            return hit
         digest = hashlib.sha256()
         with open(path, 'rb') as handle:
             for chunk in iter(lambda: handle.read(1 << 20), b''):
                 digest.update(chunk)
-        return digest.hexdigest()[:16]
+        out = digest.hexdigest()[:16]
+        if len(_SHA_CACHE) > 64:  # o conjunto de ficheiros vigiados e' pequeno
+            _SHA_CACHE.clear()
+        _SHA_CACHE[key] = out
+        return out
     except OSError:
         return None
 
