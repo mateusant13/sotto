@@ -177,3 +177,36 @@ Oito portoes, cada um pelo seu comando, ultima linha de cada:
 diferentes: `youtube-drift` compara a NOSSA linha com o relogio do cue; `youtube-sotto-drift`
 compara o nosso overlay com o PLAYER. A cobertura PARCIAL nao e' um verde: 15 de 16 amostras,
 e a que falta nao tem alinhamento de 3 palavras para julgar.
+
+## 11. Um harness de browser que conduz o YouTube de verdade (existe, medido 2026-11-01)
+
+`I:/vod-rip-wt/done/wt-asrsup/e2e/tests/preview-mse-direct.spec.ts` -- Playwright, com
+`const YT_URL = 'https://www.youtube.com/watch?v=4kyvGbRpV7M'` e um `openYoutubePreview(page,
+url)` que escreve o URL num campo e carrega. Nao e' do Sotto e nao e' copiado para ca: o que
+fica registado e' que a caixa TEM um caminho de browser automatizado para um video do YouTube,
+se um dia a prova de ponta a ponta precisar de um player real em vez do payload.
+
+O que o Sotto usa hoje, e que corre verde neste HEAD, e' o payload real + o relogio do player:
+`youtube-sotto-drift-oracle` (nosso overlay contra o `currentTime`) e `youtube-1to1-oracle`
+(677/677 palavras com `tOffsetMs`).
+
+## 12. P1 fechado: a app viva e os instrumentos (2026-11-01 11:28-11:4x)
+
+    python _main/sotto-relaunch.py --relaunch --tag main:bridge-cure-1ae1ff6
+      kill pid=46972 via token(fonte=14040) ok=True -> mutex livre
+      CreateProcessAsUser(fonte=14040) ok=True err=0 filho=33464
+      pid 9572 GANHOU a mutex
+      saude: {'log': True, 'mutex': True, 'code_id': 'A21E04974C7F', 'hotkey': True, 'tray': True, 'webview2_failed': False}
+
+    python _main/live-code-freshness-oracle.py --strict
+      LIVE_CODE FRESH pid=9572 processo sha256 == disco sha256 (files=7)
+      HOTKEY_REGISTERED role=panels accelerator=Alt+C     register=true one-press-one-step
+      HOTKEY_REGISTERED role=live   accelerator=Ctrl+Space register=true one-press-one-step
+
+Instrumentos do POV em uso: `_main/pov-selftest.py` (instancia privada, token herdado,
+`--selftest` empurra o WM_HOTKEY na fila da propria app -- nenhum input sintetico),
+`app/webview/selftest_instrument.py` (leitura do ecra + trace de foco),
+`_main/panel-paint-first-census.py` (censo de frames blank/content por SHOW),
+`app/webview/bridge_census.py` (`SOTTO_BRIDGE_CENSUS=1`, stacks de dentro quando o ponte nao
+responde -- `py-spy` esta' negado nesta caixa, `os error 5`), `_main/sim/panel-sim.html`
+(simulacao 1:1 do painel+overlay quando a superficie real nao pode ser conduzida).
