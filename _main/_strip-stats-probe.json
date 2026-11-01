@@ -1,65 +1,99 @@
 {
   "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
   "standin": "H:\\sotto\\_main\\_strip-stats-worker.py",
-  "stamp": "53716-1793551296",
+  "stamp": "13332-1793561015",
   "arms": {
     "fed": {
       "tag": "fed",
-      "rc": 1,
-      "log": "H:\\sotto\\_main\\_strip-stats-fed-53716-1793551296.log",
-      "wall_s": 35.21,
+      "rc": 0,
+      "log": "H:\\sotto\\_main\\_strip-stats-fed-13332-1793561015.log",
+      "wall_s": 13.25,
       "cost": {
-        "cpu_s": 1.562,
-        "peak_ws_bytes": 128020480
+        "cpu_s": 1.719,
+        "peak_ws_bytes": 152391680
       },
-      "ready": false,
-      "ready_s": null,
-      "waited_s": 35.04,
+      "ready": true,
+      "ready_s": 1.848,
+      "waited_s": 2.22,
       "deadline_s": 30.0,
       "shell_alive_at_deadline": true,
-      "timeline": {},
-      "readiness_reason": "the page never reached RECEIVER_READY (the last milestone seen: none)",
-      "killed": true,
-      "autostart": [],
-      "probe": [],
-      "armed": [],
-      "replies": [],
-      "pushes": [],
+      "timeline": {
+        "PANEL_LAZY_GATE_ARMED": 0.993,
+        "PRELOAD_INSTALLED": 1.083,
+        "STAGING_SEEN": 1.183,
+        "STAGING_LOADED": 1.183,
+        "RECEIVER_READY": 1.848
+      },
+      "readiness_reason": "the page went live 1.8s after the launch",
+      "killed": false,
+      "autostart": [
+        "2026-11-01 16:23:37.757 sotto: WORKER_AUTOSTART=started reason=with-worker"
+      ],
+      "probe": [
+        "2026-11-01 16:23:45.774 sotto: PANEL_STATS_PROBE {\"bars\":[\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\"],\"emits\":{\"geometry\":1,\"stats\":154,\"status\":2},\"have\":10,\"level\":\"live\"}"
+      ],
+      "armed": [
+        "2026-11-01 16:23:37.758 sotto: PANEL_STATS_PROBE_ARMED s=8.0"
+      ],
+      "replies": [
+        "2026-11-01 16:23:37.058 sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={\"tag\":\"stats\"}"
+      ],
+      "pushes": [
+        "2026-11-01 16:23:37.962 sotto: BRIDGE_STATS_PUSH count=1 in_window_s=0.0 rate_hz=first payload={\"tag\":\"stats\",\"peak\":0.443448,\"blocks\":812.0,\"queue_drops\":0.0}"
+      ],
       "panel_shown": [],
       "page_errors": [],
-      "receiver_ready": [],
-      "stderr_tail": "[pywebview] WebView2 initialization failed with exception:\r\n  (0x80010108): O objeto chamado foi desconectado de seus clientes. (Exceção de HRESULT: 0x80010108 (RPC_E_DISCONNECTED))\r\r\n   em System.Runtime.InteropServices.Marshal.ThrowExceptionForHRInternal(Int32 errorCode, IntPtr errorInfo)\r\r\n   em Microsoft.Web.WebView2.Core.CoreWebView2Environment.<CreateCoreWebView2ControllerAsync>d__21.MoveNext()\r\r\n--- Fim do rastreamento de pilha do local anterior onde a exceção foi gerada ---\r\r\n   em System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()\r\r\n   em System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)\r\r\n   em Microsoft.Web.WebView2.WinForms.WebView2.<InitCoreWebView2Async>d__25.MoveNext()\r\n",
-      "log_bytes": 5312,
-      "ran": false
+      "receiver_ready": [
+        "2026-11-01 16:23:37.056 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      ],
+      "stderr_tail": "",
+      "log_bytes": 9410,
+      "ran": true
     },
     "unfed": {
       "tag": "unfed",
-      "rc": 1,
-      "log": "H:\\sotto\\_main\\_strip-stats-unfed-53716-1793551296.log",
-      "wall_s": 35.04,
+      "rc": 0,
+      "log": "H:\\sotto\\_main\\_strip-stats-unfed-13332-1793561015.log",
+      "wall_s": 13.28,
       "cost": {
-        "cpu_s": 1.641,
-        "peak_ws_bytes": 127709184
+        "cpu_s": 1.281,
+        "peak_ws_bytes": 128360448
       },
-      "ready": false,
-      "ready_s": null,
-      "waited_s": 35.01,
+      "ready": true,
+      "ready_s": 1.871,
+      "waited_s": 2.23,
       "deadline_s": 30.0,
       "shell_alive_at_deadline": true,
-      "timeline": {},
-      "readiness_reason": "the page never reached RECEIVER_READY (the last milestone seen: none)",
-      "killed": true,
-      "autostart": [],
-      "probe": [],
-      "armed": [],
-      "replies": [],
+      "timeline": {
+        "PANEL_LAZY_GATE_ARMED": 1.197,
+        "PRELOAD_INSTALLED": 1.531,
+        "STAGING_SEEN": 1.547,
+        "STAGING_LOADED": 1.547,
+        "RECEIVER_READY": 1.871
+      },
+      "readiness_reason": "the page went live 1.9s after the launch",
+      "killed": false,
+      "autostart": [
+        "2026-11-01 16:23:50.985 sotto: WORKER_AUTOSTART=declined reason=no-worker by=start_worker"
+      ],
+      "probe": [
+        "2026-11-01 16:23:58.999 sotto: PANEL_STATS_PROBE {\"bars\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"emits\":{\"geometry\":1,\"status\":1},\"have\":10,\"level\":\"none\"}"
+      ],
+      "armed": [
+        "2026-11-01 16:23:50.987 sotto: PANEL_STATS_PROBE_ARMED s=8.0"
+      ],
+      "replies": [
+        "2026-11-01 16:23:50.323 sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={\"tag\":\"stats\"}"
+      ],
       "pushes": [],
       "panel_shown": [],
       "page_errors": [],
-      "receiver_ready": [],
-      "stderr_tail": "[pywebview] WebView2 initialization failed with exception:\r\n  (0x80010108): O objeto chamado foi desconectado de seus clientes. (Exceção de HRESULT: 0x80010108 (RPC_E_DISCONNECTED))\r\r\n   em System.Runtime.InteropServices.Marshal.ThrowExceptionForHRInternal(Int32 errorCode, IntPtr errorInfo)\r\r\n   em Microsoft.Web.WebView2.Core.CoreWebView2Environment.<CreateCoreWebView2ControllerAsync>d__21.MoveNext()\r\r\n--- Fim do rastreamento de pilha do local anterior onde a exceção foi gerada ---\r\r\n   em System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()\r\r\n   em System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)\r\r\n   em Microsoft.Web.WebView2.WinForms.WebView2.<InitCoreWebView2Async>d__25.MoveNext()\r\n",
-      "log_bytes": 5308,
-      "ran": false
+      "receiver_ready": [
+        "2026-11-01 16:23:50.321 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      ],
+      "stderr_tail": "",
+      "log_bytes": 7551,
+      "ran": true
     }
   },
   "ready_deadline_s": 30.0,
@@ -71,88 +105,127 @@
     "below_loaded": true,
     "justified": true
   },
-  "fed_probe": {},
-  "unfed_probe": {},
+  "fed_probe": {
+    "bars": [
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443",
+      "0.443"
+    ],
+    "emits": {
+      "geometry": 1,
+      "stats": 154,
+      "status": 2
+    },
+    "have": 10,
+    "level": "live"
+  },
+  "unfed_probe": {
+    "bars": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "emits": {
+      "geometry": 1,
+      "status": 1
+    },
+    "have": 10,
+    "level": "none"
+  },
   "checks": [
     {
       "what": "fed: the shell ran at all (rc=0 and a log was written)",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the shell ARMED the stats probe",
-      "ok": false
+      "ok": true
     },
     {
       "what": "unfed: the shell ran at all (rc=0 and a log was written)",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the shell started the stand-in (reason=with-worker)",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the panel POLLED and was answered",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the shell PUSHED the worker counters",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the push carries a real peak and a block count",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the panel's own DOM says data-level=live",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the meter bars carry a --meter-h",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the PUSH really landed in the page (emit counts.stats >= 2)",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the push is logged at most once per interval, not per sample",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: no page error",
-      "ok": false
+      "ok": true
     },
     {
       "what": "fed: the window was never shown",
-      "ok": false
+      "ok": true
     },
     {
       "what": "unfed: the control did NOT go live (absent is not zero)",
-      "ok": false
+      "ok": true
     },
     {
       "what": "unfed: the control has no bars painted",
-      "ok": false
+      "ok": true
     },
     {
       "what": "unfed: the control still POLLED and was answered",
-      "ok": false
+      "ok": true
     },
     {
       "what": "unfed: the control pushed nothing (no worker, no counters)",
-      "ok": false
+      "ok": true
     },
     {
       "what": "unfed: no page error",
-      "ok": false
+      "ok": true
     }
   ],
-  "verdict": "SKIP",
+  "verdict": "GREEN",
   "failed": [],
-  "skip_reason": "the 'fed' arm did not reach RECEIVER_READY within the 30s deadline (waited 35.0s; the page never went live) -- the box was too loaded to measure, so this run CANNOT claim the result",
+  "skip_reason": null,
   "probe_cost": {
-    "cpu_s": 0.375,
-    "peak_ws_bytes": 22261760
+    "cpu_s": 0.109,
+    "peak_ws_bytes": 22163456
   },
-  "shell_cpu_total_s": 3.203
+  "shell_cpu_total_s": 3.0
 }

@@ -1,7 +1,7 @@
 {
   "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
   "visibility_file": "H:\\sotto\\_main\\panel-visibility.json",
-  "stamp": "54152-1793551010",
+  "stamp": "38328-1793556916",
   "arms": {
     "A": "ok",
     "B": "ok",
@@ -9,224 +9,182 @@
     "D": "ok"
   },
   "launch": {
-    "pid": 54152,
+    "pid": 38328,
     "sid": "S-1-16-12288",
     "name": "HIGH",
     "token": true
   },
   "A": {
-    "pid": 53108,
+    "pid": 36248,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-a-54152-1793551010.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-a-38328-1793556916.log",
     "probe": [
-      "2026-11-01 13:38:47.881 sotto: OUTSIDE_CLICK_PROBE begin opacity=0 visible_but_not_seen=true",
-      "2026-11-01 13:38:48.104 sotto: OUTSIDE_CLICK_PROBE shown visible=false armed=true rect=(770,992,1150,1032)",
-      "2026-11-01 13:38:49.104 sotto: OUTSIDE_CLICK_PROBE after_outside_click visible=false",
-      "2026-11-01 13:38:50.113 sotto: OUTSIDE_CLICK_PROBE after_inside_click visible=false"
+      "2026-11-01 15:15:20.523 sotto: OUTSIDE_CLICK_PROBE begin opacity=0 visible_but_not_seen=true",
+      "2026-11-01 15:15:20.758 sotto: OUTSIDE_CLICK_PROBE shown visible=false armed=true rect=(770,992,1150,1032)",
+      "2026-11-01 15:15:21.760 sotto: OUTSIDE_CLICK_PROBE after_outside_click visible=false",
+      "2026-11-01 15:15:22.774 sotto: OUTSIDE_CLICK_PROBE after_inside_click visible=false"
     ],
     "surface": [
-      "2026-11-01 13:38:47.904 sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"posted\" window=1040x148@(440,840) docked=bottom-strip edit_mode=false"
+      "2026-11-01 15:15:20.547 sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"posted\" window=1040x148@(440,840) docked=bottom-strip edit_mode=false"
     ],
     "window_geometry": [
-      "2026-11-01 13:38:47.901 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
-      "2026-11-01 13:38:47.905 sotto: WINDOW_GEOMETRY reason=metrics-probe-outside-click ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
+      "2026-11-01 15:15:20.542 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
+      "2026-11-01 15:15:20.548 sotto: WINDOW_GEOMETRY reason=metrics-probe-outside-click ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
     ],
     "strip_height": [
-      "2026-11-01 13:38:47.887 sotto: STRIP_HEIGHT from=148 to=40 source=css css_value=40 extra=0 reason=posted-probe-outside-click"
+      "2026-11-01 15:15:20.527 sotto: STRIP_HEIGHT from=148 to=40 source=css css_value=40 extra=0 reason=posted-probe-outside-click"
     ],
     "client_area": [
-      "2026-11-01 13:36:52.164 sotto: panel client area forced to 380x900 (window 380x900)",
-      "2026-11-01 13:38:47.906 sotto: panel client area forced to 380x40 (window 380x40)",
-      "2026-11-01 13:38:47.906 sotto: panel client area forced to 380x40 (window 380x40)"
+      "2026-11-01 15:15:17.265 sotto: panel client area forced to 380x900 (window 380x900)",
+      "2026-11-01 15:15:20.545 sotto: panel client area forced to 380x40 (window 380x40)",
+      "2026-11-01 15:15:20.550 sotto: panel client area forced to 380x40 (window 380x40)"
     ],
     "panel_shown": [
-      "2026-11-01 13:38:48.101 sotto: PANEL_SHOWN reason=probe-outside-click hwnd=1837084 visible=true show=SW_SHOWNOACTIVATE focus_stolen=false paint_ack=true wait_ms=187.0",
-      "2026-11-01 13:38:49.110 sotto: PANEL_SHOWN reason=probe-inside-click hwnd=1837084 visible=true show=SW_SHOWNOACTIVATE focus_stolen=false paint_ack=true wait_ms=0.0"
+      "2026-11-01 15:15:20.756 sotto: PANEL_SHOWN reason=probe-outside-click hwnd=3809460 visible=true show=SW_SHOWNOACTIVATE focus_stolen=false paint_ack=true wait_ms=204.0",
+      "2026-11-01 15:15:21.771 sotto: PANEL_SHOWN reason=probe-inside-click hwnd=3809460 visible=true show=SW_SHOWNOACTIVATE focus_stolen=false paint_ack=true wait_ms=0.0"
     ],
     "outside_click": [
-      "2026-11-01 13:38:48.101 sotto: OUTSIDE_CLICK source=foreground point=(0,63) decision=outside closed=true armed=true visible=true ignored_since_last=1",
-      "2026-11-01 13:38:49.110 sotto: OUTSIDE_CLICK source=foreground point=(0,63) decision=outside closed=true armed=true visible=true ignored_since_last=1"
+      "2026-11-01 15:15:20.757 sotto: OUTSIDE_CLICK source=foreground point=(0,63) decision=outside closed=true armed=true visible=true ignored_since_last=1",
+      "2026-11-01 15:15:21.771 sotto: OUTSIDE_CLICK source=foreground point=(0,63) decision=outside closed=true armed=true visible=true ignored_since_last=1"
     ],
     "restored": [],
     "clamped": [],
     "page_errors": [],
     "receiver_ready": [
-      "2026-11-01 13:38:45.172 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      "2026-11-01 15:15:17.876 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
     ],
     "preload": [
-      "2026-11-01 13:38:45.215 sotto: PRELOAD_ACTIVE hasSotto=true methods=19 hotkey=Alt+C platform=win32"
+      "2026-11-01 15:15:17.886 sotto: PRELOAD_ACTIVE hasSotto=true methods=19 hotkey=Alt+C platform=win32"
     ],
     "shell_exit": [
-      "2026-11-01 13:38:50.381 sotto: SHELL_EXIT rc=0 reason=probe-outside-click statsPushes=0 statsReplies=6 meterPushes=0"
+      "2026-11-01 15:15:23.038 sotto: SHELL_EXIT rc=0 reason=probe-outside-click statsPushes=0 statsReplies=5 meterPushes=0"
     ],
     "rect_after_show": [
-      "2026-11-01 13:38:48.104 sotto: OUTSIDE_CLICK_PROBE shown visible=false armed=true rect=(770,992,1150,1032)"
+      "2026-11-01 15:15:20.758 sotto: OUTSIDE_CLICK_PROBE shown visible=false armed=true rect=(770,992,1150,1032)"
     ],
     "applied_strip": true,
     "open_gap_revive": "panel.js calls revive 23x; this shell defines it 0x -- OPEN gap, not a pass",
-    "strip_line": "2026-11-01 13:38:47.904 sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"posted\" window=1040x148@(440,840) docked=bottom-strip edit_mode=false",
-    "wall_s": 122.29,
+    "strip_line": "2026-11-01 15:15:20.547 sotto: PANEL_SURFACE surface=strip reason=probe-outside-click document_surface=\"posted\" window=1040x148@(440,840) docked=bottom-strip edit_mode=false",
+    "wall_s": 9.04,
     "cost": {
-      "cpu_s": 2.156,
-      "peak_ws_bytes": 128647168
+      "cpu_s": 1.562,
+      "peak_ws_bytes": 128794624
     },
     "ran": true,
     "placed": [
-      "2026-11-01 13:38:47.901 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
-      "2026-11-01 13:38:47.905 sotto: WINDOW_GEOMETRY reason=metrics-probe-outside-click ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
+      "2026-11-01 15:15:20.542 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
+      "2026-11-01 15:15:20.548 sotto: WINDOW_GEOMETRY reason=metrics-probe-outside-click ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
     ],
     "stderr_tail": ""
   },
   "B": {
-    "pid": 49656,
+    "pid": 43892,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-b-54152-1793551010.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-b-38328-1793556916.log",
     "census_ms": 100,
-    "census_samples_visible": 6,
-    "census_visible_detail": [
-      {
-        "t": 1793551136.234,
-        "hwnd": 29894252,
-        "visible_style": true,
-        "visible_api": true,
-        "title": "Sotto",
-        "class": "WindowsForms10.Window.8.app.0.aec740_r23_ad1"
-      },
-      {
-        "t": 1793551136.351,
-        "hwnd": 29894252,
-        "visible_style": true,
-        "visible_api": true,
-        "title": "Sotto",
-        "class": "WindowsForms10.Window.8.app.0.aec740_r23_ad1"
-      },
-      {
-        "t": 1793551136.459,
-        "hwnd": 29894252,
-        "visible_style": true,
-        "visible_api": true,
-        "title": "Sotto",
-        "class": "WindowsForms10.Window.8.app.0.aec740_r23_ad1"
-      },
-      {
-        "t": 1793551136.566,
-        "hwnd": 29894252,
-        "visible_style": true,
-        "visible_api": true,
-        "title": "Sotto",
-        "class": "WindowsForms10.Window.8.app.0.aec740_r23_ad1"
-      },
-      {
-        "t": 1793551136.668,
-        "hwnd": 29894252,
-        "visible_style": true,
-        "visible_api": true,
-        "title": "Sotto",
-        "class": "WindowsForms10.Window.8.app.0.aec740_r23_ad1"
-      }
-    ],
+    "census_samples_visible": 0,
+    "census_visible_detail": [],
+    "census_offscreen_samples": 6,
     "panel_shown_lines": [],
     "window_geometry": [],
     "visibility_at_startup": [
-      "2026-11-01 13:38:54.062 sotto: PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=29894252 form.Visible=false opacity=1.0 show_requested=false"
+      "2026-11-01 15:15:26.409 sotto: PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=1450280 form.Visible=false opacity=1.0 show_requested=false"
     ],
     "receiver_ready": [
-      "2026-11-01 13:38:56.157 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+      "2026-11-01 15:15:27.745 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
     ],
     "shell_exit": [
-      "2026-11-01 13:39:05.099 sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0 statsReplies=9 meterPushes=0"
+      "2026-11-01 15:15:36.658 sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0 statsReplies=10 meterPushes=0"
     ],
-    "no_visible_sample": false,
-    "wall_s": 14.49,
+    "wall_s": 13.66,
     "cost": {
-      "cpu_s": 1.828,
-      "peak_ws_bytes": 128528384
+      "cpu_s": 1.672,
+      "peak_ws_bytes": 128704512
     },
     "ran": true,
     "placed": [],
     "stderr_tail": ""
   },
   "C": {
-    "pid": 38868,
+    "pid": 40080,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-c-54152-1793551010.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-c-38328-1793556916.log",
     "tray_menu": [
-      "2026-11-01 13:39:07.593 sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
+      "2026-11-01 15:15:39.159 sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
     ],
     "tray_window": [
-      "2026-11-01 13:39:07.580 sotto: TRAY_WINDOW created=true hwnd=5638754 class=SottoTrayWindow message_only=true taskbar_created_msg=49337"
+      "2026-11-01 15:15:39.149 sotto: TRAY_WINDOW created=true hwnd=3678428 class=SottoTrayWindow message_only=true taskbar_created_msg=49337"
     ],
     "tray_icon_add": [
-      "2026-11-01 13:39:07.593 sotto: TRAY_ICON_ADD ok=true uid=45297 cbSize=976 hicon=169087305 icon=H:\\sotto\\app\\webview\\sotto.ico winerror=0"
+      "2026-11-01 15:15:39.158 sotto: TRAY_ICON_ADD ok=true uid=45297 cbSize=976 hicon=4531871 icon=H:\\sotto\\app\\webview\\sotto.ico winerror=0"
     ],
     "tray_icon_delete": [
-      "2026-11-01 13:39:16.717 sotto: TRAY_ICON_DELETE ok=true uid=45297"
+      "2026-11-01 15:15:47.269 sotto: TRAY_ICON_DELETE ok=true uid=45297"
     ],
     "has_edit_item": true,
     "has_quit_item": true,
     "has_open_item": true,
-    "wall_s": 12.07,
+    "wall_s": 10.78,
     "cost": {
-      "cpu_s": 1.516,
-      "peak_ws_bytes": 128348160
+      "cpu_s": 1.391,
+      "peak_ws_bytes": 128499712
     },
     "ran": true,
     "placed": [],
     "stderr_tail": ""
   },
   "D": {
-    "pid": 35196,
+    "pid": 4064,
     "rc": 0,
-    "log": "H:\\sotto\\_main\\_strip-surface-probe-d-54152-1793551010.log",
+    "log": "H:\\sotto\\_main\\_strip-surface-probe-d-38328-1793556916.log",
     "probe_begin": [
-      "2026-11-01 13:39:25.563 sotto: PANEL_EDIT_PROBE begin opacity=0 visible_but_not_seen=true"
+      "2026-11-01 15:15:54.985 sotto: PANEL_EDIT_PROBE begin opacity=0 visible_but_not_seen=true"
     ],
     "enter": [
-      "2026-11-01 13:39:25.816 sotto: PANEL_EDIT_MODE on=true reason=tray surface=strip click_through=false noactivate=false rect=(770,992,1150,1032) hint=drag_the_band"
+      "2026-11-01 15:15:55.197 sotto: PANEL_EDIT_MODE on=true reason=tray surface=strip click_through=false noactivate=false rect=(770,992,1150,1032) hint=drag_the_band"
     ],
     "after_enter": [
-      "2026-11-01 13:39:25.817 sotto: PANEL_EDIT_PROBE after_enter visible=false edit_mode=true rect=(770,992,1150,1032)"
+      "2026-11-01 15:15:55.197 sotto: PANEL_EDIT_PROBE after_enter visible=false edit_mode=true rect=(770,992,1150,1032)"
     ],
     "outside_while_editing": [
-      "2026-11-01 13:39:25.817 sotto: PANEL_EDIT_PROBE outside_click_while_editing closed=false visible=false decision=edit-mode"
+      "2026-11-01 15:15:55.197 sotto: PANEL_EDIT_PROBE outside_click_while_editing closed=false visible=false decision=edit-mode"
     ],
     "drag": [
-      "2026-11-01 13:39:25.817 sotto: PANEL_EDIT_PROBE drag from=(770,992) to=(700,400)"
+      "2026-11-01 15:15:55.197 sotto: PANEL_EDIT_PROBE drag from=(770,992) to=(700,400)"
     ],
     "saved": [
-      "2026-11-01 13:39:25.830 sotto: PANEL_EDIT_GEOMETRY_SAVED surface=strip window=380x40@(700,400) moves=1 work=1920x1032@(0,0)"
+      "2026-11-01 15:15:55.203 sotto: PANEL_EDIT_GEOMETRY_SAVED surface=strip window=380x40@(700,400) moves=1 work=1920x1032@(0,0)"
     ],
     "file_line": [
-      "2026-11-01 13:39:26.818 sotto: PANEL_EDIT_PROBE file_geometry={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 380, \"height\": 40, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032} file_pid=35196 file_schema=\"sotto.panel-visibility/1\" file_visible=false"
+      "2026-11-01 15:15:56.197 sotto: PANEL_EDIT_PROBE file_geometry={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 380, \"height\": 40, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032} file_pid=4064 file_schema=\"sotto.panel-visibility/1\" file_visible=false"
     ],
     "leave": [
-      "2026-11-01 13:39:26.821 sotto: PANEL_EDIT_MODE on=false reason=tray moves=1 geometry={'surface': 'strip', 'x': 700, 'y': 400, 'width': 380, 'height': 40, 'docked': 'edited', 'workWidth': 1920, 'workHeight': 1032} click_through=true noactivate=true"
+      "2026-11-01 15:15:56.200 sotto: PANEL_EDIT_MODE on=false reason=tray moves=1 geometry={'surface': 'strip', 'x': 700, 'y': 400, 'width': 380, 'height': 40, 'docked': 'edited', 'workWidth': 1920, 'workHeight': 1032} click_through=true noactivate=true"
     ],
     "after_leave": [
-      "2026-11-01 13:39:26.821 sotto: PANEL_EDIT_PROBE after_leave edit_mode=false saved={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 380, \"height\": 40, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032}"
+      "2026-11-01 15:15:56.200 sotto: PANEL_EDIT_PROBE after_leave edit_mode=false saved={\"surface\": \"strip\", \"x\": 700, \"y\": 400, \"width\": 380, \"height\": 40, \"docked\": \"edited\", \"workWidth\": 1920, \"workHeight\": 1032}"
     ],
     "surface": [
-      "2026-11-01 13:39:25.585 sotto: PANEL_SURFACE surface=strip reason=edit-tray document_surface=\"posted\" window=1040x148@(440,840) docked=bottom-strip edit_mode=true"
+      "2026-11-01 15:15:55.002 sotto: PANEL_SURFACE surface=strip reason=edit-tray document_surface=\"posted\" window=1040x148@(440,840) docked=bottom-strip edit_mode=true"
     ],
     "window_geometry": [
-      "2026-11-01 13:39:25.583 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
-      "2026-11-01 13:39:25.587 sotto: WINDOW_GEOMETRY reason=metrics-edit-tray ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
+      "2026-11-01 15:15:55.000 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
+      "2026-11-01 15:15:55.003 sotto: WINDOW_GEOMETRY reason=metrics-edit-tray ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
     ],
     "no_drag_warning": [],
     "style_failures": [],
     "page_errors": [],
     "shell_exit": [
-      "2026-11-01 13:39:27.086 sotto: SHELL_EXIT rc=0 reason=probe-edit-mode statsPushes=0 statsReplies=5 meterPushes=0"
+      "2026-11-01 15:15:56.469 sotto: SHELL_EXIT rc=0 reason=probe-edit-mode statsPushes=0 statsReplies=5 meterPushes=0"
     ],
     "panel_shown": [
-      "2026-11-01 13:39:25.813 sotto: PANEL_SHOWN reason=edit-tray hwnd=26159040 visible=true show=SW_SHOWNOACTIVATE focus_stolen=false paint_ack=true wait_ms=203.0"
+      "2026-11-01 15:15:55.193 sotto: PANEL_SHOWN reason=edit-tray hwnd=4530400 visible=true show=SW_SHOWNOACTIVATE focus_stolen=false paint_ack=true wait_ms=187.0"
     ],
     "hides": [
-      "2026-11-01 13:39:25.816 sotto: PANEL_HIDDEN reason=click-outside visible=false"
+      "2026-11-01 15:15:55.195 sotto: PANEL_HIDDEN reason=click-outside visible=false"
     ],
-    "hides_after_edit": [
-      "2026-11-01 13:39:25.816 sotto: PANEL_HIDDEN reason=click-outside visible=false"
-    ],
+    "hides_after_edit": [],
+    "hide_race_note": "a barra foi escondida ANTES do modo de edicao ligar; a linha `outside_click_while_editing` do probe le a janela que aquele clique de fundo ja tinha fechado (produto: set_edit_mode mostra antes de armar click_watcher.edit_mode)",
     "file_geometry": {
       "surface": "strip",
       "x": 700,
@@ -237,7 +195,7 @@
       "workWidth": 1920,
       "workHeight": 1032
     },
-    "file_pid": 35196,
+    "file_pid": 4064,
     "saved_geometry": {
       "surface": "strip",
       "x": 700,
@@ -249,7 +207,7 @@
       "workHeight": 1032
     },
     "outside_file": {
-      "pid": 12880,
+      "pid": 23668,
       "schema": "sotto.panel-visibility/1",
       "visible": false,
       "geometry": {
@@ -262,17 +220,17 @@
         "workWidth": 1920,
         "workHeight": 1032
       },
-      "writtenAt": "2026-11-01T13:39:28-03:00"
+      "writtenAt": "2026-11-01T15:15:56-03:00"
     },
-    "wall_s": 10.53,
+    "wall_s": 9.28,
     "cost": {
-      "cpu_s": 2.828,
-      "peak_ws_bytes": 129196032
+      "cpu_s": 2.438,
+      "peak_ws_bytes": 128659456
     },
     "ran": true,
     "placed": [
-      "2026-11-01 13:39:25.583 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
-      "2026-11-01 13:39:25.587 sotto: WINDOW_GEOMETRY reason=metrics-edit-tray ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
+      "2026-11-01 15:15:55.000 sotto: WINDOW_GEOMETRY reason=surface-strip ok=true last_error=0 work=1920x1032@(0,0) window=1040x148@(440,840) margin=44 docked=bottom-strip visible=false",
+      "2026-11-01 15:15:55.003 sotto: WINDOW_GEOMETRY reason=metrics-edit-tray ok=true last_error=0 work=1920x1032@(0,0) window=380x40@(770,992) margin=0 docked=bottom-strip visible=false"
     ],
     "stderr_tail": ""
   },
@@ -322,8 +280,8 @@
       "ok": true
     },
     {
-      "what": "B 0 visible samples at a 100 ms census",
-      "ok": false
+      "what": "B 0 on-screen samples at a 100 ms census (offscreen/warm-up=6 nao conta)",
+      "ok": true
     },
     {
       "what": "B nothing was ever shown",
@@ -367,10 +325,10 @@
     },
     {
       "what": "D nothing closed the band once edit mode was ON",
-      "ok": false
+      "ok": true
     },
     {
-      "what": "D panel-visibility.json carries the key, or the read was provably raced by pid 35196",
+      "what": "D panel-visibility.json carries the key, or the read was provably raced by pid 4064",
       "ok": true
     },
     {
@@ -382,14 +340,11 @@
       "ok": true
     }
   ],
-  "verdict": "RED",
-  "failed": [
-    "B 0 visible samples at a 100 ms census",
-    "D nothing closed the band once edit mode was ON"
-  ],
+  "verdict": "GREEN",
+  "failed": [],
   "probe_cost": {
-    "cpu_s": 0.844,
-    "peak_ws_bytes": 25923584
+    "cpu_s": 0.359,
+    "peak_ws_bytes": 26898432
   },
-  "shell_cpu_total_s": 8.328
+  "shell_cpu_total_s": 7.063
 }

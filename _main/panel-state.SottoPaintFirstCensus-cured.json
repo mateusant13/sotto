@@ -47,7 +47,7 @@
   "panelVisibility": {
     "path": "H:\\sotto\\_main\\panel-visibility.json",
     "visible": false,
-    "since_ms": 1793550379433,
+    "since_ms": 1793555084673,
     "reason": "census-hide-census-2",
     "transitions": 5,
     "writes": 13,
@@ -78,10 +78,10 @@
   "schema": "sotto.panel-state/1",
   "reason": "periodic",
   "sequence": 5,
-  "writtenAt": "2026-11-01T13:26:20-03:00",
-  "writtenAtEpoch": 1793550380.476,
+  "writtenAt": "2026-11-01T14:44:45-03:00",
+  "writtenAtEpoch": 1793555085.735,
   "ageSeconds": 0.0,
   "ageSecondsNote": "age at write; the authoritative age is now - writtenAtEpoch and is printed by `panel_state.py --read`",
   "staleAfterSeconds": 6.0,
-  "producerPid": 18992
+  "producerPid": 58312
 }
