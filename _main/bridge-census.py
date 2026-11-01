@@ -53,6 +53,13 @@ TICK_S = 0.005
 #: Quantas frames por thread entram no censo. Tres chegam para ver a chamada
 #: (`exec_js` -> `_ui` -> `Event.wait`) sem transformar o log numa parede.
 FRAMES_PER_THREAD = 4
+#: Acima disto uma chamada que RESPONDEU ainda e' digna de uma linha. Um log com
+#: `exec_js_timeout=0` e zero chamadas escreve o mesmo que um canal saudavel;
+#: este limiar e' o que separa os dois.
+SLOW_MS = 1000.0
+#: Uma linha de resumo a cada N respostas (e na primeira), para o log de um run
+#: longo dizer quantas chamadas houve e qual foi a pior.
+SUMMARY_EVERY = 250
 
 
 def _where(frame, depth=FRAMES_PER_THREAD):
@@ -127,7 +134,27 @@ class Census:
                     self.max_marshal_ms = token['marshal_ms']
 
     def answer(self, token):
+        """Uma resposta CHEGOU. Regista o tempo e, se foi lenta, escreve-o.
+
+        `BRIDGE_CENSUS kind=slow` e' o outro lado da moeda: um `exec_js` que
+        responde em 800 ms num renderer suspenso e' a prova de que o canal esta'
+        vivo e de que o que estoura nao e' "o renderer" em geral -- e' o task que
+        nao foi servido. Sem esta linha, um log com `exec_js_timeout=0` nao
+        distingue "nao houve estouro" de "nao houve chamada nenhuma".
+        """
         self.answered += 1
+        elapsed = None
+        if token and token.get('t0'):
+            elapsed = (time.monotonic() - token['t0']) * 1000.0
+            if token.get('task_ms') is None:
+                token['task_ms'] = round(elapsed, 1)
+            with self._lock:
+                if elapsed > self.max_task_ms:
+                    self.max_task_ms = elapsed
+        if elapsed is not None and elapsed > SLOW_MS:
+            self.dump('slow', token)
+        if self.answered == 1 or self.answered % SUMMARY_EVERY == 0:
+            self._emit(self.summary())
 
     def no_answer(self, token, debug=None):
         """O orcamento estourou (ou nao houve resposta). CENSO AQUI."""
@@ -196,9 +223,9 @@ class Census:
 
     def summary(self):
         return ('BRIDGE_CENSUS_SUMMARY calls=%d answered=%d noanswer=%d '
-                'max_marshal_ms=%.1f gil_gap_ms=%.1f'
+                'max_marshal_ms=%.1f max_task_ms=%.1f gil_gap_ms=%.1f'
                 % (self.calls, self.answered, self.noanswer,
-                   self.max_marshal_ms, self.gil_gap_ms))
+                   self.max_marshal_ms, self.max_task_ms, self.gil_gap_ms))
 
     def _emit(self, line):
         try:

@@ -97,6 +97,13 @@ def write_runner(tree, p, seconds, census, feeder):
     `emit`. Medir o canal do `emit` exige a pagina carregada; `--no-lazy` e' o
     braco de controlo que o proprio shell declara (`PANEL_LAZY_GATE_DISABLED`).
 
+    `--with-worker` tambem, e pela razao oposta: `--exit-after` e' um FLAG DE
+    MEDICAO, portanto o shell recusa o worker sozinho
+    (`WORKER_AUTOSTART=declined reason=measurement-flag(--exit-after)`, medido no
+    primeiro run deste probe: zero legendas, zero status). `--with-worker` e'
+    autoritativo na tabela de `_worker_autostart_reason` e aponta ao feeder, nao
+    ao modelo de ~2 GB.
+
     `--no-self-relaunch` tambem: o watcher de disco relanca a instancia quando
     um ficheiro de `app/webview` muda, e uma medicao que se auto-relanca a meio
     mede o relancamento -- medido aqui, 2026-11-01: um `py_compile` meu durante o
@@ -111,8 +118,8 @@ def write_runner(tree, p, seconds, census, feeder):
         'set SOTTO_FEED_INTERVAL_MS=300\r\n'
         'set SOTTO_FEED_STATUS_S=4\r\n'
         '"%(py)s" "%(app)s" --mutex-name %(mutex)s --hotkey %(hotkey)s '
-        '--worker "%(feeder)s" --no-tray --no-lazy --no-self-relaunch '
-        '--exit-after %(sec)d --log "%(log)s" '
+        '--worker "%(feeder)s" --with-worker --no-tray --no-lazy '
+        '--no-self-relaunch --exit-after %(sec)d --log "%(log)s" '
         '> "%(out)s" 2>&1\r\n'
         'echo RC=%%ERRORLEVEL%% >> "%(out)s"\r\n'
     ) % {'tree': tree, 'live': FREE_LIVE_HOTKEY, 'census': census,
@@ -123,6 +130,34 @@ def write_runner(tree, p, seconds, census, feeder):
     with open(p['cmd'], 'w', encoding='ascii', newline='') as fh:
         fh.write(body)
     return p['cmd']
+
+
+def burn(count):
+    """`count` processos a CPU com prioridade BELOW_NORMAL, contidos e curtos.
+
+    PORQUE. A leitura do repo e' que "the LOAD is the TRIGGER; the CODE is the
+    FREEZE" (`UI_MARSHAL_TIMEOUT_S`), e o log do dono mostra os estouros dentro
+    de janelas de carga (carregamento do modelo, 45 temas a correr em Edge
+    headless). Medir a correccao num sistema OCIOSO mediria o sistema ocioso.
+
+    O que isto NAO e': carga no PC do dono. Prioridade BELOW_NORMAL, um processo
+    por core a MENOS do que o numero de cores, e o Windows cede a qualquer coisa
+    que ele use. Os processos sao filhos deste probe e morrem com ele.
+    """
+    import ctypes
+    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+    loop = 'while True: pass'
+    procs = []
+    for _ in range(max(0, int(count))):
+        proc = subprocess.Popen([sys.executable, '-c', loop], creationflags=flags)
+        try:
+            # BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+            ctypes.windll.kernel32.SetPriorityClass(
+                int(proc._handle), 0x4000)  # noqa: SLF001 -- um handle e' o que ha'
+        except Exception:  # noqa: BLE001 -- a prioridade e' cortesia, nao correccao
+            pass
+        procs.append(proc)
+    return procs
 
 
 def reap(mutex):
@@ -243,6 +278,8 @@ def main(argv=None):
     ap.add_argument('--census', default='1')
     ap.add_argument('--census-blocks', type=int, default=4,
                     help='quantos censos completos imprimir')
+    ap.add_argument('--burn', type=int, default=0,
+                    help='processos de carga a CPU (BELOW_NORMAL) durante o run')
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--keep', action='store_true', help='nao mata no fim')
     args = ap.parse_args(argv)
@@ -257,10 +294,21 @@ def main(argv=None):
         return 0
     if not os.path.exists(feeder):
         raise SystemExit('sem feeder em %s' % feeder)
-    print('LAUNCH tree=%s log=%s mutex=%s census=%s seconds=%g'
-          % (tree, p['log'], p['mutex'], args.census, args.seconds))
+    print('LAUNCH tree=%s log=%s mutex=%s census=%s seconds=%g burn=%d'
+          % (tree, p['log'], p['mutex'], args.census, args.seconds, args.burn))
     print('LAUNCH_OUT %s' % launch(tree, p, args.seconds, args.census, feeder))
-    done = wait_done(p, args.seconds)
+    burners = burn(args.burn) if args.burn else []
+    if burners:
+        print('BURN procs=%d priority=below-normal pid=%s'
+              % (len(burners), ','.join(str(b.pid) for b in burners)))
+    try:
+        done = wait_done(p, args.seconds)
+    finally:
+        for proc in burners:
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
     text = read(p)
     s = summarise(text)
     blocks = census_blocks(text)

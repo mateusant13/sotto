@@ -8119,7 +8119,12 @@ class SottoShell:
             return False
 
     def emit_nowait(self, kind, payload) -> bool:
-        """`emit`, POSTED — for the show path, which cannot wait for an answer."""
+        """The ONE place that builds a `__sotto_emit` script and POSTS it.
+
+        `emit` is this plus the `EMIT_DROPPED` line (2026-11-01: it no longer
+        waits — see `emit`); `send_geometry(post=True)` is this on the show path.
+        Returns False when the post could not be queued (no form yet).
+        """
         return self.exec_js_post('window.__sotto_emit(' +
                                  json.dumps(kind) + ',' +
                                  json.dumps(json.dumps(payload)) + ')')
@@ -11148,18 +11153,20 @@ class SottoShell:
         self.meter_pushes += 1
         self.emit_async('stats', self.stats())
     def emit_async(self, kind, payload):
-        """`emit` WITHOUT waiting for the round trip — for a per-sample feed.
+        """`emit` WITH A LATCH — for a per-sample feed.
 
-        `emit` blocks on a `Task[String]` completion, which is right for a caption
-        (the caller wants to know it landed) and WRONG for the stats channel: the
-        worker may publish a meter sample at tens of Hz, and every one of those
-        round trips would stall whoever called it. Measured on this host: the
+        The difference to `emit` is no longer the wait (2026-11-01: `emit` is a
+        post too, see its docstring) but the COLLAPSE: a pending payload is
+        replaced instead of queueing a second callable, so a feed at tens of Hz
+        cannot grow the UI thread's queue with the feed. The stats channel is
+        the feed: the worker may publish a meter sample at tens of Hz, and the
         pump thread delivers captions on the same thread that reads the worker's
-        stderr, so a blocking push per sample would delay the captions
-        themselves.
+        stderr, so an unlatched push per sample would delay the captions
+        themselves. Measured on this host before either existed: a blocking push
+        per sample stalled that thread outright.
 
-        So this posts the script through `_ui` (a `BeginInvoke`, no wait) and
-        drops the resulting `Task`. Ordering between two `emit_async` calls is not
+        So this posts the script with `_post` (`BeginInvoke`, no wait) and drops
+        the resulting `Task`. Ordering between two `emit_async` calls is not
         guaranteed, and does not need to be: each one carries a WHOLE payload, and
         the panel's `pushLevel` is a pure function of the last one it saw.
 
