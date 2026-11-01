@@ -1,13 +1,13 @@
 #!/usr/bin/env pythonw.exe
 # -*- coding: utf-8 -*-
-# NO-BUG: ratchet de divida (40 `except: pass` em 11 ficheiros); desbloqueia higiene, nao um bug nomeado
+# NO-BUG: ratchet de divida (40 `except: pass` em 12 ficheiros); desbloqueia higiene, nao um bug nomeado
 """EXCEPTION-HYGIENE ORACLE -- a divida de `except Exception: pass` nao cresce.
 
 A LEI (consultgpt, `.cursor/rules/fix-on-sight.mdc`): *"Any error of any kind is
 fixed on sight -- no workarounds, no silent fallbacks"*. Um `except Exception:
 pass` sem razao escrita e o silencio mais barato que existe: o produto continua a
 correr com uma perna partida e o log nao diz nada. Hoje sao **40** no codigo do
-produto, em **11** ficheiros (medido 2026-10-23, `_main/exception-baseline.json`).
+produto, em **12** ficheiros (medido 2026-11-01, `_main/exception-baseline.json`).
 
 PORQUE UMA CATRACA E NAO UMA LIMPEZA: mudar 40 tipos de excepcao num turno e como
 se parte um produto a serio -- cada `pass` pode ser um `OSError` de limpeza

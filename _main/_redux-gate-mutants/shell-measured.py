@@ -1424,23 +1424,25 @@ SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
 
 
-#: O GESTO DO ALT+C (ordem do dono, 2026-10-30 -- SUPERSEDE o contrato de
-#: 2026-10-18 em que UM toque era a legenda):
+#: AS DUAS HOTKEYS DO SOTTO (ordem do dono, 2026-11-01):
 #:
-#:     1 tap  -> o painel de BAIXO   (`show_strip`)
-#:     2 taps -> o painel da DIREITA (`show_side`)
-#:     HOLD   -> a legenda AO VIVO liga/desliga
+#:     Alt+C       UMA pressao = UM passo do ciclo dos paineis (alterna show/hide)
+#:     Ctrl+Space  UMA pressao = a legenda ao vivo liga/desliga
 #:
-#: AS DUAS CONSTANTES QUE ESTAVAM AQUI FORAM RETIRADAS COM O CONTRATO ANTIGO:
-#: `HOTKEY_CAPTION_DEFER_MS` (250) e `HOTKEY_GESTURE_MS` (700) existiam para
-#: separar "um toque e' a legenda" de "dois toques sao um painel", adivinhando o
-#: gesto a CONTAR PRESSOES dentro de uma janela. Medido no log do dono
+#: NAO HA RELOGIO NENHUM NESTE CAMINHO, e e' isso que faz o gesto funcionar com o
+#: Alt fisicamente em baixo e o C martelado: sem janela de toques e sem medicao de
+#: duracao, nao ha nada que o Alt preso possa estragar. O que saiu com o contrato
+#: de 2026-10-30 (1 toque = faixa, 2 toques = lado, HOLD = legenda):
+#: `HOTKEY_HOLD_MS`, `HOTKEY_TAP_WINDOW_MS`, `HOLD_CEILING_MS`, `is_hold`,
+#: `resolve_taps`, o `_tick`/`_finish_measure`/`_measuring`/`fake_hold_ms` do
+#: `HotkeyThread`, o `on_hold` e o `hotkey_hold`. `_main/altc-gesture-oracle.py`
+#: guarda a ausencia deles.
+#:
 #: A HISTORIA do gesto e as seis regras de prioridade estao em
-#: `docs/hotkey-altc-full-audit.md`. Os numeros vivem em `hotkey_gesture.py`, um
-#: so', lidos por `hotkey_numbers()` (`HOTKEY_HOLD_MS`, `HOTKEY_TAP_WINDOW_MS`):
-#: nao se repetem aqui, porque uma segunda copia envelhece sozinha (era 500 quando
-#: o modulo ja' dizia 200). A duracao vem de `GetAsyncKeyState(VK_MENU)`, lida no
-#: thread da hotkey -- `MOD_NOREPEAT` nao entrega evento de libertacao.
+#: `docs/hotkey-gestos.md` e `docs/hotkey-altc-full-audit.md`. As TECLAS (fabrica,
+#: vocabulario e o ciclo) vivem em `hotkey_gesture.py`, um so', lidos por
+#: `hotkey_numbers()`: nao se repetem aqui, porque uma segunda copia envelhece
+#: sozinha.
 
 
 #: Minimum seconds between two `external-end` resumes of the worker. Measured
@@ -1500,12 +1502,15 @@ MOD_SHIFT = 0x0004
 MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
 WM_HOTKEY = 0x0312
-#: `PeekMessageW` flag -- take the message out of the queue. The pump stopped
-#: blocking on `GetMessageW` in 2026-10-30 so it can read the key RELEASE.
+#: A mensagem com que `HotkeyThread.stop` ACORDA o pump: `WaitMessage` dorme ate'
+#: chegar algo a' fila, e um `Event` do `threading` nao o acorda.
+WM_APP = 0x8000
+#: `PeekMessageW` flag -- take the message out of the queue.
 PM_REMOVE = 0x0001
-#: `GetAsyncKeyState` argument for the Alt key: the only way to learn that the
-#: owner LET GO, because `MOD_NOREPEAT` sends no release event.
-VK_MENU = 0x12
+#: O bit do Win32 de cada nome de modificador que `hotkey_gesture` aceita. A ABI
+#: fica deste lado; o VOCABULARIO das teclas fica do lado puro, num sitio so'.
+_MOD_BITS = {'alt': MOD_ALT, 'ctrl': MOD_CONTROL, 'shift': MOD_SHIFT,
+             'win': MOD_WIN}
 #: O botao esquerdo do rato, lido pelo `OutsideClickWatcher` para saber se um
 #: arrasto de edit mode esta' em curso. Sem hook, isto e' a unica fonte.
 VK_LBUTTON = 0x01
@@ -3076,39 +3081,44 @@ def selftest_broken(reading: dict) -> tuple[bool, str]:
         return True, 'the hotkey never registered'
     if not reading.get('pressed'):
         return True, 'the simulated press was not delivered'
-    # `presses` e `visible` so' se verificam quando a leitura os CARREGA: o
-    # selftest de 2026-10-30 faz quatro presses (1 HOLD + 1 toque + 2 toques) e
-    # mede cada gesto pelo `panel_mode`, nao um total. Uma leitura sem as chaves
-    # nao e' prova sobre elas -- ver o comentario das clausulas no fim.
-    if 'presses' in reading and reading['presses'] != 2:
-        return True, 'expected two presses, saw %r' % (reading.get('presses'),)
+    # O NUMERO DE PRESSAO ESPERADO E' DA LEITURA, nao do juiz. Ja' foi fixo em 2
+    # (dois toques, contrato de 2026-10-30) e o contrato de 2026-11-01 faz quatro
+    # passos mais dez; um juiz com o numero antigo dentro reprovaria o proprio
+    # desenho. Uma leitura que nao declare `expect_presses` nao e' prova sobre a
+    # contagem (as leituras sinteticas dos oraculos de foco).
+    if (reading.get('expect_presses') is not None
+            and reading.get('presses') != reading['expect_presses']):
+        return True, ('expected %r presses, saw %r'
+                      % (reading.get('expect_presses'), reading.get('presses')))
     if 'visible' in reading and reading['visible'] != reading.get('want_visible'):
-        return True, ('the window should read visible=%r after both presses, got %r'
+        return True, ('the window should read visible=%r after the last press, got %r'
                       % (reading.get('want_visible'), reading.get('visible')))
     if reading.get('focus_stolen_by_own_window'):  # FOCUS-CLAUSE
         return True, ('the panel TOOK the foreground -- focus_before=%r focus_after=%r; '
                       'SW_SHOWNOACTIVATE is the contract and this is it being broken'
                       % (reading.get('focus_before'), reading.get('focus_after')))
-    # -- O CONTRATO DE 2026-10-30: HOLD e' a legenda, um toque e' o painel de
-    # BAIXO, dois toques o da DIREITA. Cada clausula e' verificada so' quando a
-    # leitura CARREGA a chave, para as leituras sinteticas mais antigas dos
-    # oraculos de foco continuarem a significar o que significavam -- uma leitura
-    # sem estas chaves nao e' prova sobre estas clausulas.
-    if 'hold_flipped_caption' in reading and not reading['hold_flipped_caption']:
-        return True, ('o HOLD do Alt+C nao ligou/desligou a legenda: o gesto '
-                      'segurado tem de ser a legenda ao vivo')
-    if 'hold_left_panel_down' in reading and not reading['hold_left_panel_down']:
-        return True, ('o HOLD do Alt+C subiu um painel. O gesto segurado e a '
-                      'legenda e tem de deixar os paineis como estavam.')
-    if 'tap_showed_strip' in reading and not reading['tap_showed_strip']:
-        return True, ('UM toque do Alt+C nao mostrou o painel de BAIXO '
-                      '(panel_mode=%r). A queixa do dono e literalmente esta.'
-                      % (reading.get('tap_mode'),))
-    if 'tap_left_caption' in reading and not reading['tap_left_caption']:
-        return True, 'o toque mexeu na legenda; a legenda e o gesto do HOLD.'
-    if 'double_showed_side' in reading and not reading['double_showed_side']:
-        return True, ('DOIS toques do Alt+C nao mostraram o painel da DIREITA '
-                      '(panel_mode=%r).' % (reading.get('double_mode'),))
+    # -- O CONTRATO DE 2026-11-01, UM PASSO POR PRESSAO. Cada clausula e'
+    # verificada so' quando a leitura CARREGA a chave, para as leituras
+    # sinteticas mais antigas dos oraculos de foco continuarem a significar o que
+    # significavam -- uma leitura sem estas chaves nao e' prova sobre elas.
+    if 'first_press_strip' in reading and not reading['first_press_strip']:
+        return True, 'a PRIMEIRA pressao de Alt+C nao abriu a faixa de baixo'
+    if 'second_press_hidden' in reading and not reading['second_press_hidden']:
+        return True, 'a SEGUNDA pressao de Alt+C nao escondeu a faixa'
+    if 'third_press_panel' in reading and not reading['third_press_panel']:
+        return True, 'a TERCEIRA pressao de Alt+C nao abriu o painel da direita'
+    if 'fourth_press_hidden' in reading and not reading['fourth_press_hidden']:
+        return True, 'a QUARTA pressao de Alt+C nao escondeu o painel'
+    if ('ten_press_alternations' in reading
+            and not reading['ten_press_alternations']):
+        return True, ('dez pressoes nao deram dez alternancias na ordem: %r'
+                      % (reading.get('ten_press_observed'),))
+    if 'live_toggled' in reading and not reading['live_toggled']:
+        return True, 'o Ctrl+Space nao ligou/desligou a legenda ao vivo'
+    if 'live_left_panels' in reading and not reading['live_left_panels']:
+        return True, 'o Ctrl+Space mexeu no painel; a tecla da legenda e so a legenda'
+    if 'live_caption_left_alone' in reading and not reading['live_caption_left_alone']:
+        return True, 'o Alt+C mexeu na legenda; o painel e a legenda sao gestos diferentes'
     return False, ''
 
 
@@ -3615,36 +3625,25 @@ def reassert_taskbar_ex_style(hwnd, where: str) -> dict:
 
 
 def parse_accelerator(accelerator: str):
-    """'Alt+C' -> (MOD_ALT, ord('C'))."""
+    """'Alt+C' -> (MOD_ALT, ord('C')); 'Ctrl+Space' -> (MOD_CONTROL, 0x20).
+
+    O VOCABULARIO DAS TECLAS NAO VIVE AQUI. `hotkey_gesture.parse_accelerator`
+    conhece os nomes dos modificadores e das teclas (incluindo `Space`), e e' o
+    MESMO parser com que `hotkey_settings` valida o ficheiro do dono -- duas
+    tabelas de teclas seriam duas verdades, e a segunda envelhece sozinha. Aqui
+    so' se traduz o NOME no bit do Win32 (`_MOD_BITS`): a ABI fica deste lado.
+    """
+    names, vk = hotkey_numbers().parse_accelerator(accelerator)
     mods = 0
-    key = None
-    named = {'ALT': MOD_ALT, 'MENU': MOD_ALT, 'CTRL': MOD_CONTROL,
-             'CONTROL': MOD_CONTROL, 'SHIFT': MOD_SHIFT, 'WIN': MOD_WIN,
-             'SUPER': MOD_WIN}
-    for part in accelerator.split('+'):
-        token = part.strip()
-        if not token:
-            continue
-        if token.upper() in named:
-            mods |= named[token.upper()]
-        else:
-            key = token.upper()
-    if key is None:
-        raise ValueError(f'no key in accelerator {accelerator!r}')
-    if len(key) != 1:
-        vk = {'F1': 0x70, 'F2': 0x71, 'F3': 0x72, 'F4': 0x73, 'F5': 0x74,
-              'F6': 0x75, 'F7': 0x76, 'F8': 0x77, 'F9': 0x78, 'F10': 0x79,
-              'F11': 0x7A, 'F12': 0x7B}
-        if key not in vk:
-            raise ValueError(f'unsupported accelerator key {key!r}')
-        return mods, vk[key]
-    return mods, ord(key)
+    for name in names:
+        mods |= _MOD_BITS[name]
+    return mods, vk
 
 
 def hotkey_numbers():
-    """Os numeros do gesto, do UNICO sitio onde eles vivem (`hotkey_gesture.py`).
+    """As teclas e o ciclo, do UNICO sitio onde eles vivem (`hotkey_gesture.py`).
 
-    Um `HOTKEY_TAP_WINDOW_MS` redefinido aqui seria uma SEGUNDA verdade, e duas
+    Uma tecla de fabrica redefinida aqui seria uma SEGUNDA verdade, e duas
     verdades divergem -- este repo ja pagou essa factura (`code-health` a medir
     dois "oraculos de enforcement" com definicoes diferentes). O import e'
     tardio pela mesma razao dos outros modulos deste ficheiro: `app/webview`
@@ -3658,7 +3657,7 @@ def hotkey_numbers():
 
 
 def hotkey_config():
-    """O estado do gesto (`hotkey_settings.py`): a escolha do dono, lida do disco."""
+    """O estado das teclas (`hotkey_settings.py`): a escolha do dono, lida do disco."""
     here = os.path.dirname(os.path.abspath(__file__))
     if here not in sys.path:
         sys.path.insert(0, here)
@@ -3666,33 +3665,8 @@ def hotkey_config():
     return hotkey_settings
 
 
-def hotkey_threshold():
-    """O limiar do HOLD EM VIGOR, em ms -- o que o dono escolheu, ou a fabrica.
-
-    O numero NAO e' constante de proposito: o dono pediu-o configuravel no painel
-    da direita (2026-10-30). `hotkey_settings.hold_ms()` le' o ficheiro da
-    escolha e devolve o valor de fabrica quando nao ha escolha ou ela esta'
-    ilegivel. Uma falha de I/O aqui NAO pode deixar o Alt+C surdo: a excepcao e'
-    apanhada e o limiar de fabrica e' o que fica.
-    """
-    try:
-        return float(hotkey_config().hold_ms())
-    except Exception as exc:  # noqa: BLE001
-        try:
-            log(f'HOTKEY_THRESHOLD_FAILED error={exc!r} default=1')
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            return float(hotkey_numbers().HOTKEY_HOLD_MS)
-        except Exception:  # noqa: BLE001
-            # Ultimo recurso: tem de ser o MESMO numero da fabrica, senao
-            # este ramo e' uma segunda verdade que ninguem mede (era 500,
-            # o valor que cortava o toque do dono ao meio).
-            return 200.0  # a fabrica de hoje (ver `hotkey_gesture`)
-
-
 class HotkeyThread(threading.Thread):
-    """Global Alt+C on its own thread with its own message queue.
+    """UMA tecla global, no seu proprio thread e na sua propria fila de mensagens.
 
     RegisterHotKey(hWnd=NULL, ...) associates the hotkey with the CALLING
     THREAD and posts WM_HOTKEY to that thread's queue, so the toggle works
@@ -3700,34 +3674,41 @@ class HotkeyThread(threading.Thread):
     the whole point of the hotkey (main.js:29-31 says the same). Running it on a
     private queue also means the WebView2 UI loop cannot starve it, and nothing
     here calls Activate/SetForegroundWindow, so it cannot steal focus.
+
+    UMA PRESSAO = UM CALLBACK. `MOD_NOREPEAT` faz o sistema entregar UM
+    `WM_HOTKEY` por pressao enquanto a tecla estiver em baixo -- e' o que impede
+    um Alt+C segurado de metralhar os paineis sozinho. O gesto nao le' relogio
+    nenhum: nao ha duracao, nao ha janela de toques, nao ha estado por pressao.
+    O que resta aqui e' entrega, e ela e' IMEDIATA.
+
+    O PUMP NAO TRABALHA. `_on_press` chama o callback do shell, que so' poem um
+    pedido numa FILA (o trabalho de janela corre no worker dessa fila) e volta --
+    por isso este thread esta' sempre pronto para a proxima pressao, mesmo com o
+    Alt fisicamente em baixo. Ocioso dorme em `WaitMessage` (0 % de CPU, entrega
+    instantanea); antes fazia 100 voltas por segundo a medir a duracao de uma
+    tecla que ja' nao se mede.
     """
 
-    def __init__(self, accelerator: str, on_hotkey, log_fn=log, on_hold=None):
-        super().__init__(name='sotto-hotkey', daemon=True)
+    def __init__(self, accelerator: str, on_hotkey, log_fn=log, role='panels',
+                 register=True):
+        super().__init__(name=f'sotto-hotkey-{role}', daemon=True)
         self.accelerator = accelerator
+        self.role = role
+        #: `False` = thread de SONDA (`--selftest`): tem fila e tem pump, mas NAO
+        #: toma a tecla do dono. Ver a docstring de `simulate_press`.
+        self.register = bool(register)
         self.modifiers, self.vk = parse_accelerator(accelerator)
         self.on_hotkey = on_hotkey
-        #: O GESTO DE SEGURAR (2026-10-30). Sem `on_hold` um HOLD cai no toque,
-        #: que e' o comportamento anterior -- uma app sem o segundo callback nao
-        #: fica surda, fica so' com o contrato antigo.
-        self.on_hold = on_hold or on_hotkey
         self.log_fn = log_fn
         self.registered = False
         self.register_error = None
         self.thread_id = None
         self.pressed = 0
-        #: O SEAM dos oraculos: quando nao e' None e' a duracao que `measure_hold`
-        #: devolve, para o gesto ser medivel sem teclado.
-        self.fake_hold_ms = None
-        #: O HOLD desta pressao JA' foi entregue (ao cruzar o limiar, nao no
-        #: release). Resetado no inicio de cada `_on_press`.
-        self._hold_fired = False
-        #: Ha' uma segurada a ser medida AGORA. A medicao vive no pump
-        #: (`_tick`), nao em `_on_press`: bloquear ali impediria o proximo
-        #: `WM_HOTKEY` (ordem do dono, 2026-10-30).
-        self._measuring = False
-        self._hold_started = 0.0
-        self._stop = threading.Event()
+        #: NAO se chama `_stop`: esse nome e' o metodo interno de
+        #: `threading.Thread`, e sombrea-lo tornava `HotkeyThread.join()` um
+        #: `TypeError: 'Event' object is not callable` (medido 2026-11-01 num
+        #: probe directo). `_stop_requested` e' so' nosso.
+        self._stop_requested = threading.Event()
         self._ready = threading.Event()
 
     def run(self):
@@ -3737,191 +3718,74 @@ class HotkeyThread(threading.Thread):
         msg = MSG()
         user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
 
-        if not user32.RegisterHotKey(None, _HOTKEY_ID,
-                                     self.modifiers | MOD_NOREPEAT, self.vk):
+        if self.register and not user32.RegisterHotKey(
+                None, _HOTKEY_ID, self.modifiers | MOD_NOREPEAT, self.vk):
             self.register_error = ctypes.get_last_error()
-            self.log_fn(f'HOTKEY_REGISTER_FAILED accelerator={self.accelerator} '
+            self.log_fn(f'HOTKEY_REGISTER_FAILED role={self.role} '
+                        f'accelerator={self.accelerator} '
                         f'winerror={self.register_error}')
+            # O PUMP CONTINUA. Antes esta funcao fazia `return`: a fila morria com
+            # o registo e `simulate_press` deixava de ter onde entregar. Uma tecla
+            # tomada por outro programa nao e' razao para o thread nao existir.
             self._ready.set()
-            return
+        elif self.register:
+            self.registered = True
+            # A LINHA DIZ O CONTRATO VIGENTE. A etiqueta antiga
+            # (`gesture=taps1|taps2|hold`) descrevia um gesto que ja' nao existe, e
+            # uma etiqueta velha ja' custou uma sessao de diagnostico errado: o log
+            # e' o que o dono le'.
+            self.log_fn(f'HOTKEY_REGISTERED role={self.role} '
+                        f'accelerator={self.accelerator} register=true '
+                        f'gesture=one-press-one-step mod_norepeat=true '
+                        f'thread={self.thread_id}')
+            self._ready.set()
+        else:
+            self.log_fn(f'HOTKEY_PROBE role={self.role} '
+                        f'accelerator={self.accelerator} register=false '
+                        f'thread={self.thread_id} '
+                        '(measurement launch: the owner keeps his key)')
+            self._ready.set()
 
-        self.registered = True
-        # A LINHA DIZ O CONTRATO VIGENTE: `toggle=show|hide` descrevia o gesto
-        # que o dono aposentou (2026-10-30) e uma etiqueta velha ja' custou uma
-        # sessao de diagnostico errado: o log e' o que ele le'.
-        self.log_fn(f'HOTKEY_REGISTERED accelerator={self.accelerator} '
-                    f'register=true '
-                    f'gesture=taps1|taps2|hold hold={hotkey_numbers().HOTKEY_HOLD_MS:.0f} '
-                    f'tap_window={hotkey_numbers().HOTKEY_TAP_WINDOW_MS:.0f} '
-                    f'mod_norepeat=true thread={self.thread_id}')
-        self._ready.set()
-
-        while not self._stop.is_set():
-            # PEEK E NAO GETMESSAGE (2026-10-30). Precisavamos de uma coisa que o
-            # `GetMessageW` bloqueante nao dava: o instante da LIBERTACAO da tecla.
-            # Com `MOD_NOREPEAT` chega UM `WM_HOTKEY` por pressao e nenhum evento de
-            # release, por isso a duracao do gesto le-se em `GetAsyncKeyState` -- e
-            # essa leitura exige que este thread volte a correr enquanto a tecla
-            # esta' em baixo. 10 ms de sonda custam nada e mantem o `WM_HOTKEY`
-            # entregue pelo sistema (o mesmo caminho de `simulate_press`).
-            got = user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE)
-            if got:
+        while not self._stop_requested.is_set():
+            if user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
                 if msg.message == WM_HOTKEY:
                     self._on_press()
                 continue
-            # O TICK. A medicao do gesto acontece AQUI, e nao dentro de
-            # `_on_press`, de proposito: uma medicao bloqueante deixava esta
-            # thread presa durante a segurada inteira (ate' `HOLD_CEILING_MS`,
-            # 5 s) sem voltar a `PeekMessageW` -- e nesse tempo nenhum
-            # `WM_HOTKEY` novo era entregue. A ordem do dono (2026-10-30) e' o
-            # contrario: *"eu apertar alt c e nao deixar alt c ir embora (manter
-            # apertado) deve mexer normalmente nos comandos, inves de impedir
-            # proximos comandos"*. O pump nunca dorme: cada volta custa uma
-            # leitura de `GetAsyncKeyState`.
-            self._tick()
-            time.sleep(0.01)
+            # OCIOSO = DORMIR. `WaitMessage` devolve no instante em que o sistema
+            # poe um `WM_HOTKEY` na fila: nao ha sonda periodica, logo nao ha
+            # leitura de teclado em repouso e nao ha custo de CPU. `stop` acorda
+            # este sono com um `WM_APP` (`PostThreadMessageW`).
+            user32.WaitMessage()
 
-    def _alt_is_down(self) -> bool:
-        """O GESTO ainda esta' em baixo? Alt **e** a tecla do hotkey.
-
-        LER SO' O ALT ERA UM DEFEITO (medido 2026-10-30, no log do dono): ele larga o `C`
-        e o Alt fica em baixo um instante -- ou fica em baixo porque estava a usar o Alt
-        para outra coisa -- e a medicao continuava a correr, atravessava o limiar e um
-        TOQUE saia como HOLD. E' a queixa dele, verbatim: *"EU TO APERTANDO ALT C E TA
-        LIGANDO E DESLIGANDO A LEGENDA PORRA"*. O gesto acaba quando QUALQUER das duas
-        teclas sobe; exigi-las juntas e' o que faz `held_ms` ser a duracao do gesto e nao
-        a duracao do Alt.
-
-        Uma leitura falhada e' "nao sei", e "nao sei" NAO fecha o gesto como toque: quem
-        chama tem o tecto (`HOLD_CEILING_MS`) para nao ficar preso.
-        """
-        try:
-            if not (user32.GetAsyncKeyState(VK_MENU) & 0x8000):
-                return False
-            return bool(user32.GetAsyncKeyState(self.vk) & 0x8000)
-        except Exception:  # noqa: BLE001
-            return False
-
-    def _deliver_hold(self):
-        """Entrega o HOLD ao shell, sem nunca deixar cair o pump.
-
-        `self._hold_fired` fica marcado ANTES da chamada: se o handler explodir,
-        o release ainda nao pode cair no ramo do toque (o dono ja' viu a accao
-        comecar, e um segundo gesto por cima seria pior do que nenhum).
-        """
-        self._hold_fired = True
-        try:
-            self.on_hold()
-        except Exception as exc:  # a toggle must never kill the pump
-            self.log_fn(f'HOTKEY_HANDLER_FAILED error={exc!r}')
-
-    def _threshold(self) -> float:
-        """O limiar EM VIGOR, em ms (o dono escolhe no painel da direita)."""
-        try:
-            return float(hotkey_threshold())
-        except Exception as exc:  # noqa: BLE001
-            self.log_fn(f'HOTKEY_THRESHOLD_FAILED error={exc!r} default=1')
-            try:
-                return float(hotkey_numbers().HOTKEY_HOLD_MS)
-            except Exception:  # noqa: BLE001
-                return 200.0  # a fabrica de hoje (ver `hotkey_gesture`)
-
-    def _finish_measure(self, held_ms, reason='release'):
-        """Fecha a medicao em curso e entrega o que ainda nao foi entregue.
-
-        Um TOQUE e' entregue no fim; um HOLD ja' foi entregue ao cruzar o
-        limiar, e o fim nao e' um segundo gesto -- o mesmo Alt+C nao pode ser
-        legenda E painel.
-        """
-        self._measuring = False
-        held = max(0.0, float(held_ms))
-        self.log_fn(f'HOTKEY_RELEASED count={self.pressed} '
-                    f'held_ms={held:.0f} hold_fired={str(self._hold_fired).lower()} '
-                    f'reason={reason} thread={self.thread_id}')
-        if self._hold_fired:
-            return
-        # UM `new-press` NAO ENTREGA HOLD (medido 2026-10-30). Quando o release se perde,
-        # o que se mede aqui e' o intervalo PRESSAO-A-PRESSAO, nao a duracao do gesto: com
-        # dous toques a 1,2 s um do outro isso virava um HOLD e a legenda comutava sozinha.
-        # O HOLD e' entregue no `_tick`, AO CRUZAR O LIMIAR, com as teclas em baixo -- se o
-        # tick nao o viu, ele nao aconteceu. Um HOLD perdido e' um dano pequeno; um HOLD
-        # inventado e' a accao errada na cara do dono.
-        try:
-            if reason == 'new-press':
-                if hotkey_numbers().is_hold(held, self._threshold()):
-                    self.log_fn(f'HOTKEY_SWALLOWED_HOLD held_ms={held:.0f} '
-                                f'reason=new-press (o tick nao viu o limiar; conta como toque)')
-                self.on_hotkey()
-            elif hotkey_numbers().is_hold(held, self._threshold()):
-                self._deliver_hold()
-            else:
-                self.on_hotkey()
-        except Exception as exc:  # a toggle must never kill the pump
-            self.log_fn(f'HOTKEY_HANDLER_FAILED error={exc!r}')
-
-    def _tick(self):
-        """Uma volta do pump: mede a segurada e, AO CRUZAR O LIMIAR, entrega.
-
-        ORDEM DO DONO (2026-10-30), verbatim: *"assim que o alt c é segurado
-        suficiente, da display ou tira display da legenda. nao é pra esperar o
-        release da tecla"*. E a segunda metade da mesma ordem: segurar Alt+C
-        nao pode impedir os proximos comandos -- por isso esta funcao NAO tem
-        `while`: ela devolve ao pump em microssegundos.
-        """
-        if not self._measuring:
-            return
-        elapsed = (time.monotonic() - self._hold_started) * 1000.0
-        if not self._hold_fired:
-            threshold = self._threshold()
-            if elapsed >= threshold:
-                down = self._alt_is_down()
-                self.log_fn(f'HOTKEY_HOLD_FIRED held_ms={elapsed:.0f} '
-                            f'threshold_ms={threshold:.0f} '
-                            f'key_still_down={str(down).lower()} '
-                            f'thread={self.thread_id}')
-                self._deliver_hold()
-                if not down:
-                    # A tecla ja' subiu: o release foi visto no mesmo tick.
-                    self._finish_measure(elapsed, reason='release-at-threshold')
-                return
-        if not self._alt_is_down():
-            self._finish_measure(elapsed)
-            return
-        if elapsed >= hotkey_numbers().HOLD_CEILING_MS:
-            # Tecto: uma tecla presa (ou um `GetAsyncKeyState` que nunca baixa)
-            # nao pode deixar a medicao aberta para sempre.
-            self._finish_measure(elapsed, reason='ceiling')
-
-    def _on_press(self):
-        """Um `WM_HOTKEY`: ABRE uma medicao. Nao mede, nao espera, nao bloqueia."""
-        # Se havia uma medicao aberta, o release dela nunca chegou (foi
-        # engolido): fecha-a como TOQUE antes de abrir a nova. Perder um release
-        # nao pode fundir dois gestos num so'.
-        if self._measuring:
-            self._finish_measure(
-                (time.monotonic() - self._hold_started) * 1000.0, reason='new-press')
-        self.pressed += 1
-        self._hold_fired = False
-        self._hold_started = time.monotonic()
-        # CK -- O CONTADOR QUE NUNCA FOI ESCRITO (2026-10-16): a pergunta era se a
-        # tecla CHEGOU ao shell. O `held_ms` sai agora em `HOTKEY_RELEASED`,
-        # porque com a medicao sem bloqueio a duracao so' se conhece no fim --
-        # escreve-la aqui seria escrever um numero que ainda nao existe.
-        self.log_fn(f'HOTKEY_PRESSED count={self.pressed} thread={self.thread_id}')
-        if self.fake_hold_ms is not None:
-            # O SEAM dos oraculos: um teclado sintetico nao existe (input
-            # sintetico mede o Windows, nao a app -- `AGENTS.md`), por isso o
-            # gesto injeta a duracao e resolve-se no acto.
-            self._measuring = True
-            self._finish_measure(float(self.fake_hold_ms), reason='fake')
-            return
-        self._measuring = True
-
-    def stop(self):
-        self._stop.set()
+        # UNREGISTER NO THREAD QUE REGISTOU. `UnregisterHotKey(NULL, id)` e' da
+        # fila do thread que chama; chamado do thread principal nao desligava
+        # nada, e a tecla ficava viva ate' o processo morrer.
         if self.registered:
             user32.UnregisterHotKey(None, _HOTKEY_ID)
             self.registered = False
+
+    def _on_press(self):
+        """Um `WM_HOTKEY`: entrega AGORA. Nao mede, nao espera, nao lembra nada."""
+        self.pressed += 1
+        # CK -- O CONTADOR DA CHEGADA (2026-10-16): a pergunta era se a tecla
+        # chegou ao shell. Continua a ser a prova de entrega, agora com o papel e
+        # a tecla na linha: duas hotkeys, dois contadores.
+        self.log_fn(f'HOTKEY_PRESSED role={self.role} count={self.pressed} '
+                    f'accelerator={self.accelerator} thread={self.thread_id}')
+        try:
+            self.on_hotkey()
+        except Exception as exc:  # a toggle must never kill the pump
+            self.log_fn(f'HOTKEY_HANDLER_FAILED role={self.role} error={exc!r}')
+
+    def stop(self):
+        """Pede ao pump que saia e ACORDA-o: um `Event` nao tira ninguem de `WaitMessage`."""
+        self._stop_requested.set()
+        if self.thread_id is not None:
+            try:
+                user32.PostThreadMessageW(self.thread_id, WM_APP, 0, 0)
+            except Exception as exc:  # noqa: BLE001 -- sair nao pode falhar
+                self.log_fn(f'HOTKEY_STOP_WAKE_FAILED role={self.role} '
+                            f'error={exc!r}')
 
     def wait_ready(self, timeout=5.0) -> bool:
         return self._ready.wait(timeout)
@@ -3932,8 +3796,14 @@ class HotkeyThread(threading.Thread):
         This exercises the registration's own delivery path — the same queue
         the OS writes to — which is what makes the two-state toggle evidence
         real rather than a direct call to the toggle function.
+
+        SO' PRECISA DA FILA, NAO DO REGISTO (2026-11-01). Num largamento de
+        MEDICAO (`--selftest`) as teclas globais nao sao tomadas -- o dono tem
+        as dele -- e o `HotkeyThread` de sonda (`register=False`) existe
+        precisamente para esta prova: o `WM_HOTKEY` que se poe aqui e' o MESMO
+        que o sistema poria, e quem o entrega e' o pump verdadeiro.
         """
-        if not self.registered or self.thread_id is None:
+        if self.thread_id is None:
             return False
         return bool(user32.PostThreadMessageW(self.thread_id, WM_HOTKEY,
                                               _HOTKEY_ID, 0))
@@ -4873,31 +4743,70 @@ def warn_hotkey_unavailable(requested: str, tried, tray=None) -> None:
             log(f'HOTKEY_ALERT_FAILED error={exc!r}')
     log('HOTKEY_ALERT_SHOWN shown=%s channel=%s'
         % (str(shown).lower(), 'balloon' if shown else 'log-only'))
-def arm_hotkey(shell, requested: str):
-    """Register `requested`, then the fallbacks; return the live thread or None.
 
-    Why a CHAIN and not one attempt: the shipped behaviour was a single
-    `RegisterHotKey`, and its failure was one log line — the app stayed running,
-    hidden, with its only control dead, and the owner was shown nothing at all
-    (the whole design is "nothing appears until you ask"). A second choice that
-    works turns a bricked app into an app with a different key, and the log says
-    which one won (`HOTKEY_FALLBACK`) so the panel's own footer stays honest.
+
+def arm_hotkey(shell, requested: str):
+    """Arma AS DUAS hotkeys e devolve o thread dos PAINEIS (ou None).
+
+    Ordem do dono, 2026-11-01: *"bota o padrao como control espaco. e os painels
+    deixa alt c"*. Duas teclas, dois threads, dois `RegisterHotKey` -- cada uma
+    com a sua fila, por isso uma tecla presa nunca atrasa a outra.
+
+    A TECLA DA LEGENDA VEM DO FICHEIRO DO DONO (`hotkey_settings.accelerators`),
+    e o valor de fabrica (`hotkey_gesture.LIVE_ACCELERATOR`) e' o que ele pediu.
+    A dos PAINEIS e' a que o comando pediu (`--hotkey`, fabrica `Alt+C`).
+
+    PORQUE E' QUE OS PAINEIS TEM CADEIA DE FALLBACK E A LEGENDA NAO. O Alt+C e'
+    o unico controlo que abre a app: se estiver tomado (outro programa), uma
+    segunda escolha transforma uma app inutilizavel numa app com outra tecla. A
+    legenda ao vivo tem o botao LIVE do painel como caminho alternativo, por isso
+    a tecla dela falhar e' um recuo, nao um brick -- e inventar uma cadeia para
+    ela seria uma segunda tecla que ninguem pediu.
     """
-    order = [requested] + [a for a in HOTKEY_FALLBACKS if a != requested]
+    panels = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
+    try:
+        live = hotkey_config().accelerators()['live']
+    except Exception as exc:  # noqa: BLE001 -- a fabrica e' sempre uma resposta
+        log(f'HOTKEY_LIVE_CONFIG_FAILED error={exc!r} '
+            f'default={hotkey_numbers().LIVE_ACCELERATOR}')
+        live = hotkey_numbers().LIVE_ACCELERATOR
+    shell.live_hotkey = arm_hotkey_role(shell, 'live', live, ())
+    return panels
+
+
+def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
+    """Regista `requested` (e a cadeia `fallbacks`) para `role`; devolve o thread."""
+    order = [requested] + [a for a in fallbacks if a != requested]
     tried = []
+    callback = (lambda: shell.hotkey_live()) if role == 'live' else (
+        lambda: shell.hotkey_pressed())
     for accelerator in order:
-        thread = HotkeyThread(accelerator, lambda: shell.hotkey_pressed(),
-                              on_hold=lambda: shell.hotkey_hold())
+        try:
+            thread = HotkeyThread(accelerator, callback, role=role)
+        except ValueError as exc:
+            # Uma tecla que o parser recusa nao chega a `RegisterHotKey`: e' um
+            # recado, e a cadeia continua (nos paineis) ou fica sem tecla (na
+            # legenda, com o botao do painel no lugar).
+            log(f'HOTKEY_ACCELERATOR_REFUSED role={role} '
+                f'accelerator={accelerator!r} error={exc!r}')
+            tried.append((accelerator, 'refused'))
+            continue
         thread.start()
         thread.wait_ready(5)
         if thread.registered:
             if accelerator != requested:
-                warn(f'HOTKEY_FALLBACK requested={requested} using={accelerator} '
+                warn(f'HOTKEY_FALLBACK role={role} requested={requested} '
+                     f'using={accelerator} '
                      'reason=requested-owned-by-another-program')
             return thread
         tried.append((accelerator, thread.register_error))
-        log(f'HOTKEY_TRY_FAILED accelerator={accelerator} '
+        log(f'HOTKEY_TRY_FAILED role={role} accelerator={accelerator} '
             f'winerror={thread.register_error}')
+    if role == 'live':
+        log(f'HOTKEY_LIVE_UNAVAILABLE accelerator={requested} '
+            f'tried={json.dumps([a for a, _ in tried])} '
+            'the panel LIVE button still toggles the caption')
+        return None
     warn_hotkey_unavailable(requested, tried, getattr(shell, 'tray', None))
     return None
 
@@ -5548,8 +5457,7 @@ BRIDGE_PROBE = r"""
     methods: ['pushCaption', 'setStatus', 'onCaption', 'onExternalCaption', 'onStatus', 'onGeometry',
               'hide', 'toggle', 'quit', 'setPointerInteractive', 'getInfo',
               'captionApplied', 'statusApplied', 'ready', 'clearApplied',
-              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause',
-              'setHotkeyHold', 'getHotkeyHold']
+              'setStripOffset', 'beginWindowDrag', 'setLiveEnabled', 'pause']
               .filter((m) => typeof window.sotto[m] === 'function'),
     hotkey: window.sotto ? window.sotto.HOTKEY : null,
     platform: window.sotto ? window.sotto.platform : null,
@@ -6073,13 +5981,6 @@ class SottoHost:
             # before this entry it was not, so the button said so in its title.
             'setLiveEnabled': ('shell', '_set_live_enabled'),
             'sotto:setLiveEnabled': ('shell', '_set_live_enabled'),
-            # O LIMIAR DO HOLD, escolhido no painel da direita (owner, 2026-10-30).
-            # Mesma forma: o nome resolve contra `self._shell`, por isso um metodo
-            # em falta e' um erro NOMEADO e nao um AttributeError dentro do pywebview.
-            'setHotkeyHold': ('shell', '_set_hotkey_hold'),
-            'sotto:setHotkeyHold': ('shell', '_set_hotkey_hold'),
-            'getHotkeyHold': ('shell', '_get_hotkey_hold'),
-            'sotto:getHotkeyHold': ('shell', '_get_hotkey_hold'),
             # THE TRANSLATION TARGET (owner, 2026-10-21): the 3-dot menu's selector.
             'translation-target': ('host', '_translation_target'),
             # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
@@ -6513,6 +6414,9 @@ class SottoShell:
             restart=self._do_worker_restart,
         )
         self.hotkey = None
+        #: A segunda tecla global: a legenda ao vivo (Ctrl+Space por fabrica).
+        #: Thread propria, fila propria -- ver `arm_hotkey`.
+        self.live_hotkey = None
         self.tray = None
         self.click_watcher = None
         self.hot_reload = None       # hot_reload.HotReload
@@ -7647,8 +7551,7 @@ class SottoShell:
     def _on_closing(self):
         if self.bridge is not None:
             self.bridge.stop('closing')
-        if self.hotkey is not None:
-            self.hotkey.stop()
+        self.stop_hotkeys()
         if self.external_caption_watcher is not None:
             self.external_caption_watcher.stop()
         if self.vram_guard is not None:
@@ -8161,13 +8064,36 @@ class SottoShell:
             'errors': writer.errors,
         }
 
+    def isolated_state_path(self, path):
+        """`path` with the process's private mutex in it, for MEASUREMENT runs.
+
+        MEDIDO 2026-11-01: uma instância largada com `--mutex-name SottoPovSelftest`
+        (o caminho sancionado para medir o POV sem tocar na app do dono) escreveu
+        `PANEL_STATE_WRITER path=H:\\sotto\\_main\\panel-state.json` e publicou
+        `producerPid=46144` no MESMO ficheiro que a instância dele usa. Uma
+        medição nao pode sobrescrever o estado vivo da app -- o dono lê esse
+        ficheiro e o worker decide por ele. O lock privado já isola o processo;
+        o estado agora isola-se com ele, no mesmo nome, e o log diz `isolated=true`
+        para o leitor saber qual dos dois ficheiros está a ler.
+
+        A instância normal (mutex por omissão) devolve o caminho de sempre,
+        byte a byte: nenhum instrumento existente muda de sítio.
+        """
+        mutex = str(getattr(self.args, 'mutex_name', '') or '')
+        if not mutex or mutex == DEFAULT_MUTEX_NAME:
+            return path
+        stem, ext = os.path.splitext(path)
+        safe = re.sub(r'[^A-Za-z0-9_.-]', '_', mutex)
+        return '%s.%s%s' % (stem, safe, ext)
+
     def start_panel_state(self):
         """Arm the periodic + on-request dump. Idempotent per process."""
         if self.panel_state is not None:
             return False
+        path = self.isolated_state_path(PANEL_STATE_PATH)
         self.panel_state = panel_state.PanelStateWriter(
-            path=PANEL_STATE_PATH,
-            request_path=PANEL_STATE_REQUEST,
+            path=path,
+            request_path=path + '.request',
             snapshot=self.panel_state_snapshot,
             log=log,
             interval_s=PANEL_STATE_INTERVAL_S,
@@ -8728,64 +8654,56 @@ class SottoShell:
         return (self.hide_panel(reason) if live else self.show_panel(
             reason, surface='strip' if reason == 'hotkey' else None))
 
-    # -- Alt+C: 1 tap = bottom panel, 2 taps = right panel, HOLD = caption ----
+    # -- Alt+C: UM passo do ciclo dos paineis; Ctrl+Space: a legenda AO VIVO ----
     def hotkey_pressed(self):
-        """Alt+C TOQUE: um = painel de BAIXO, dois = painel da DIREITA.
+        """Alt+C: UMA pressao = UM passo do ciclo dos paineis. IMEDIATO.
 
-        ORDEM DO DONO, verbatim (2026-10-30), que SUPERSEDE o contrato de
-        2026-10-18 em que um toque era a legenda:
+        ORDEM DO DONO, verbatim (2026-11-01): *"faz os paineis alternarem mesmo
+        se eu deixar alt apertado o tempo inteiro e spammando c. alterna entre
+        show e hide."*
 
-            *"1 tap = painel de baixo, 2 taps = painel da direita,
-              HOLD = legenda ao vivo on/off"*
-
-        E, no mesmo dia, a ordem que matou a espera: *"tem um delay DO CARALHO
-        pra aparecer os painels ao apertar alt c"*.
-
-        PORQUE E' QUE O TOQUE ERA ADIADO, E PORQUE E' QUE DEIXOU DE SER. Dois
-        toques tem de ser distinguidos de um antes de um painel ir para o ecra,
-        e a versao anterior resolvia isso esperando `HOTKEY_TAP_WINDOW_MS` (400
-        ms) ANTES de mostrar o primeiro painel. Medido no log dele: pressao ->
-        `PANEL_SHOWN` = **460 ms**, dos quais **8 ms** eram trabalho real. 87 %
-        da latencia era o nosso proprio adiamento.
-
-        O desenho novo mostra a faixa NO INSTANTE do primeiro toque e, se um
-        segundo toque chegar dentro da janela, PROMOVE a mesma janela para o
-        painel da direita -- que ja' esta' mapeada, por isso a promocao custa
-        uma mudanca de geometria, nao uma abertura. O custo aceite e' uma faixa
-        que por até 400 ms e' a faixa: um estado que o dono viu e pediu, ao
-        contrario dos 400 ms de nada que ele reclamou.
+        O CONTRATO ANTERIOR (2026-10-30) distinguia 1 toque de 2 toques dentro de
+        uma janela de 400 ms e media a DURACAO da segurada (`GetAsyncKeyState`)
+        para decidir se era um HOLD. Medido no log dele: pressao -> `PANEL_SHOWN`
+        = **460 ms**, dos quais **8 ms** eram trabalho real -- 87 % da latencia
+        era o nosso proprio adiamento, e o limiar partia o gesto ao meio quando o
+        Alt ficava em baixo. O gesto de hoje nao pergunta NADA sobre o tempo:
+        cada `WM_HOTKEY` e' um passo.
 
         A ACCAO NAO CORRE NESTA THREAD. `hotkey_pressed` e' chamado pelo
         `HotkeyThread`, que e' a thread do `RegisterHotKey`: trabalho de janela
-        ali bloqueia o proprio pump que entrega o proximo Alt+C. Por isso o
+        ali bloqueia o proprio pump que entrega a proxima pressao. Por isso o
         pedido vai para um worker proprio, em FILA -- um hop sem espera e sem
-        inversao de ordem entre dois toques seguidos.
+        inversao de ordem entre duas pressoes seguidas.
         """
-        window = 400.0
-        try:
-            window = float(hotkey_numbers().HOTKEY_TAP_WINDOW_MS)
-        except Exception as exc:  # noqa: BLE001
-            log(f'HOTKEY_GESTURE_FAILED error={exc!r}')
-        now = time.monotonic()
-        prev = getattr(self, '_hotkey_last_tap', 0.0)
-        count = getattr(self, '_hotkey_tap_count', 0)
-        if not (prev and (now - prev) * 1000.0 <= window):
-            count = 0
-        count += 1
-        self._hotkey_last_tap = now
-        self._hotkey_tap_count = count
-        self._hotkey_tap_token = getattr(self, '_hotkey_tap_token', 0) + 1
-        token = self._hotkey_tap_token
-        self._hotkey_dispatch(token)
-        # O timer nao adia nada: so' REARMA a contagem quando a janela fecha.
-        # Sem ele, dois toques dados com 10 s de intervalo continuariam a somar.
-        t = threading.Timer(window / 1000.0, lambda: self._hotkey_forget(token))
-        t.daemon = True
-        t.start()
-        return None
+        return self._hotkey_dispatch('panels')
 
-    def _hotkey_dispatch(self, token):
-        """Manda o gesto ao worker do painel AGORA (nunca corre na thread do hotkey)."""
+    def stop_hotkeys(self):
+        """Desliga as DUAS teclas globais (as duas, sempre: uma so' ficava viva)."""
+        for name in ('hotkey', 'live_hotkey'):
+            thread = getattr(self, name, None)
+            if thread is None:
+                continue
+            try:
+                thread.stop()
+            except Exception as exc:  # noqa: BLE001 -- sair nao pode falhar
+                log(f'HOTKEY_STOP_FAILED thread={name} error={exc!r}')
+
+    def hotkey_live(self):
+        """Ctrl+Space: UMA pressao = a legenda ao vivo liga/desliga. SO' O DISPLAY.
+
+        Ordem do dono (2026-11-01): *"modifica a legenda ao vivo hotkey. bota o
+        padrao como control espaco"*. A tecla vem de `hotkey_settings` (fabrica
+        `hotkey_gesture.LIVE_ACCELERATOR`) e e' armada por `arm_hotkey`.
+
+        Sai pela MESMA fila que o Alt+C, e nao por uma segunda: as duas teclas
+        mantem a ordem em que ele as carregou (um Ctrl+Space entre dois Alt+C
+        nao pode chegar ao ecra antes do primeiro).
+        """
+        return self._hotkey_dispatch('live')
+
+    def _hotkey_dispatch(self, kind):
+        """Manda o passo ao worker AGORA (nunca corre na thread do hotkey)."""
         try:
             q = getattr(self, '_hotkey_queue', None)
             if q is None:
@@ -8794,70 +8712,64 @@ class SottoShell:
             worker = getattr(self, '_hotkey_worker', None)
             if worker is None or not worker.is_alive():
                 worker = threading.Thread(target=self._hotkey_worker_loop,
-                                          name='sotto-panel-gesture', daemon=True)
+                                          name='sotto-hotkey-steps', daemon=True)
                 self._hotkey_worker = worker
                 worker.start()
-            q.put(token)
+            q.put(str(kind))
             return True
-        except Exception as exc:  # noqa: BLE001 -- um gesto perdido nao pode matar o pump
-            log(f'HOTKEY_GESTURE_FAILED error={exc!r}')
+        except Exception as exc:  # noqa: BLE001 -- um passo perdido nao pode matar o pump
+            log(f'HOTKEY_GESTURE_FAILED kind={kind} error={exc!r}')
             return False
 
     def _hotkey_worker_loop(self):
-        """A fila do gesto: FIFO, para dois toques nao se atropelarem."""
+        """A fila dos passos: FIFO, para duas pressoes nao se atropelarem."""
         q = self._hotkey_queue
         while True:
-            token = q.get()
+            kind = q.get()
             try:
-                self._hotkey_resolve(token)
+                self._hotkey_resolve(kind)
             except Exception as exc:  # noqa: BLE001
-                log(f'HOTKEY_HANDLER_FAILED error={exc!r}')
+                log(f'HOTKEY_HANDLER_FAILED kind={kind} error={exc!r}')
 
-    def _hotkey_forget(self, token):
-        """A janela de toques fechou: o proximo Alt+C comeca em 1."""
-        if token != getattr(self, '_hotkey_tap_token', 0):
-            return None
-        self._hotkey_tap_count = 0
-        self._hotkey_last_tap = 0.0
-        return None
+    def _hotkey_resolve(self, kind):
+        """UM passo: o painel avanca no ciclo, ou a legenda comuta. Nunca os dois.
 
-    def _hotkey_resolve(self, token):
-        """O gesto de toques: mostra, troca ou FECHA o painel que a contagem manda.
-
-        `taps` e' o numero do gesto (decidido em `hotkey_pressed`); o token so'
-        serve para o `_hotkey_forget` saber se a janela ainda e' a desta jogada.
-        Os contadores NAO sao limpos aqui: limpa-los era o que impedia o segundo
-        toque de somar.
+        A decisao le' o que a JANELA mede (`window_visible`) e o que ela VESTE
+        (`surface_applied`), nunca uma intencao: um `show` que falhou deixou o
+        painel escondido, e o ciclo tem de continuar de onde o dono esta' a ver.
+        A regra inteira esta' em `hotkey_gesture.next_surface`, e o oraculo
+        executa este corpo a partir do ficheiro que corre.
         """
-        taps = max(1, int(getattr(self, '_hotkey_tap_count', 1) or 1))
+        if str(kind) == 'live':
+            on = not bool(getattr(self, '_caption_wanted', False))
+            log(f'HOTKEY_LIVE_STEP caption_on={str(on).lower()}')
+            return self._set_live_enabled({'on': on})
+        # A MEDICAO AO VIVO, e nao a cache: duas outras vias mapeiam e desmapeiam
+        # a janela sem passar por aqui (a `form.Show()` da navegacao, gateada, e
+        # o `_reassert_hidden`), e uma cache com `True` fazia o primeiro Alt+C
+        # ser um HIDE de um painel que ele nao ve. Ver `toggle_panel`.
+        try:
+            alive = window_visible(self.hwnd) if self.hwnd else False
+        except Exception as exc:  # noqa: BLE001 -- sem leitura, fica o que se sabe
+            log(f'HOTKEY_VISIBLE_READ_FAILED error={exc!r}')
+            alive = bool(getattr(self, 'visible', False))
+        if alive != bool(getattr(self, 'visible', False)):
+            log(f'PANEL_VISIBILITY_CACHE_STALE cached={str(self.visible).lower()} '
+                f'live={str(alive).lower()} decided_by=window')
+        self.visible = alive
         shown = str(getattr(self, 'surface_applied', '') or '')
-        alive = bool(getattr(self, 'visible', False))
-        nxt = 'strip'
         try:
             nxt = hotkey_numbers().next_surface(alive, shown)
-        except Exception as exc:  # noqa: BLE001 -- sem a regra, um toque = baixo
+        except Exception as exc:  # noqa: BLE001 -- sem a regra, a faixa
             log(f'HOTKEY_GESTURE_FAILED error={exc!r}')
-        # O DONO (2026-10-30): *"alternando entra mostrar nada, mostrar o primeiro,
-        # mostrar o segundo"* -- cada pressao AVANCA um estado, com a tecla em
-        # baixo ou nao. A regra esta' em `hotkey_gesture.next_surface`, e le' o
-        # que a JANELA veste (`surface_applied`), nunca uma intencao.
+            nxt = 'strip'
         if nxt is None:
-            log(f'HOTKEY_TOGGLE hide={shown} taps={taps}')
+            log(f'HOTKEY_TOGGLE step=hide surface={shown or "-"}')
             return self.hide_panel('hotkey-toggle')
+        log(f'HOTKEY_TOGGLE step=show surface={nxt}')
         if nxt == 'panel':
             return self.show_side('hotkey-cycle-side')
         return self.show_strip('hotkey-cycle-strip')
-
-    def hotkey_hold(self):
-        """Alt+C SEGURADO: a legenda ao vivo liga/desliga. SO' O DISPLAY muda.
-
-        `_set_live_enabled` nao toca no worker, no modelo nem no historico --
-        ver `_pause_shell` (o unico caminho que DESCARREGA um motor) e
-        `push_caption_to_window` (o unico consumidor de `_caption_wanted`).
-        """
-        on = not bool(getattr(self, '_caption_wanted', False))
-        log(f'HOTKEY_HOLD caption_on={str(on).lower()}')
-        return self._set_live_enabled({'on': on})
 
     def place_panel(self, mode):
         """Move/resize the panel window to `mode` geometry ('strip'|'side').
@@ -9143,8 +9055,7 @@ class SottoShell:
         _watch_exit = getattr(self, '_multivoice_watch', None)
         if _watch_exit is not None:
             _watch_exit.stop('shell-exit')
-        if self.hotkey is not None:
-            self.hotkey.stop()
+        self.stop_hotkeys()
         if self.panel_state is not None:
             self.panel_state.stop('exit')
         if self.panel_visibility is not None:
@@ -9774,8 +9685,8 @@ class SottoShell:
             import youtube_reveal
             text = youtube_reveal.rows_text(rows)
             # A rows window is ALREADY the player's painted frame: it must
-            # never sprout again (`set_text(instant=False)` would flatten it
-            # to the first word and re-reveal with spaces).
+            # never reveal again (the engine would re-time a window the player
+            # already revealed).
             instant = True
         # O INTERRUPTOR DO DONO E A CONDICAO. Sem isto cada linha levantava a
         # janela sozinha -- medido no log de 2026-10-17: `CAPTION_OVERLAY_PUSH
@@ -11359,48 +11270,6 @@ class SottoShell:
         log(f'WINDOW_DRAG_DONE surface={surface} to=({clamped_x},{clamped_y}) '
             f'size={width}x{height} from=({x},{y})')
 
-    def _get_hotkey_hold(self, payload=None):
-        """O limiar EM VIGOR e as escolhas, para o controlo do painel pintar."""
-        try:
-            config = hotkey_config()
-            return {'holdMs': int(config.hold_ms()),
-                    'choices': list(config.HOTKEY_HOLD_MS_CHOICES),
-                    'default': int(hotkey_numbers().HOTKEY_HOLD_MS)}
-        except Exception as exc:  # noqa: BLE001
-            log(f'HOTKEY_HOLD_MS_READ_FAILED error={exc!r}')
-            return {'holdMs': None, 'choices': [], 'default': None,
-                    'error': repr(exc)}
-
-
-    def _set_hotkey_hold(self, payload):
-        """O painel da direita escolhe o limiar do HOLD do Alt+C (ordem 2026-10-30).
-
-        A ESCOLHA E' DO DONO E FICA: `hotkey_settings.write` guarda-a em
-        `_main/hotkey-settings.json`, e a thread da hotkey le'-a a cada pressao
-        (cacheada por `mtime`) -- nao ha recarregar, nao ha reiniciar a app.
-
-        O ESTADO VAI PARA A PAGINA PELO ATRIBUTO `data-hotkey-hold`, a mesma via
-        que `data-caption-window` usa: a pagina pinta o que a shell diz e nao
-        inventa um valor. Uma escrita falhada NAO muda o atributo -- mostrar
-        guardado o que nao ficou e' a mentira que este repo paga caro.
-        """
-        result = {'ok': False, 'holdMs': None, 'error': 'unavailable'}
-        try:
-            result = hotkey_config().write(payload or {})
-        except Exception as exc:  # noqa: BLE001
-            result = {'ok': False, 'holdMs': None, 'error': repr(exc)}
-        log(f'HOTKEY_HOLD_MS_SET ok={str(bool(result.get("ok"))).lower()} '
-            f'hold_ms={result.get("holdMs")} error={result.get("error")}')
-        if not result.get('ok'):
-            return result
-        effective = int(result['holdMs'])
-        try:
-            self.exec_js(f'document.body.dataset.hotkeyHold = "{effective}"')
-        except Exception as exc:  # noqa: BLE001 -- o ficheiro ja' guardou
-            log(f'HOTKEY_HOLD_MS_PAINT_FAILED error={exc!r}')
-        return result
-
-
     def _set_live_enabled(self, payload):
         """O interruptor do botao LIVE: mostra/esconde a janela da legenda.
 
@@ -11959,115 +11828,170 @@ class SottoShell:
         return report
 
     def run_selftest(self):
-        """Prove the hotkey registers and DISAMBIGUATES, without a human at a keyboard.
+        """Prove BOTH hotkeys deliver exactly one step per press, six ways.
 
-        The press is a real WM_HOTKEY posted to the registering thread's own
-        queue, so the delivery path under test is the one the OS writes to.
+        The press is a real `WM_HOTKEY` posted to a hotkey thread's own queue, so
+        the delivery path under test is the one the OS writes to. THE THREAD DOES
+        NOT TAKE THE OWNER'S KEY: in a MEASUREMENT launch (`--selftest`) the
+        global keys are disarmed by `main()`, so when one is missing this method
+        starts a hotkey thread with `register=False` -- queue and pump, no
+        `RegisterHotKey` -- and `simulate_press` posts the same message the system
+        would. Nothing on the owner's keyboard is intercepted.
 
-        IT TESTS THE 2026-10-30 CONTRACT. The docstring here used to narrate the
-        2026-10-18 one ("one press is the caption, two fast presses are the
-        first panel", inside a `HOTKEY_GESTURE_MS` window of 700 ms) while the
-        ARMS below had already been rewritten for the owner's new order. A
-        docstring that says the opposite of what the arms assert is the second
-        truth this repo keeps paying for -- the numbers it named do not exist in
-        the tree any more (`grep HOTKEY_GESTURE_MS` -> prose only). What the
-        arms actually assert, and what they have asserted since 2026-10-30:
+        THE ARMS (2026-11-01 contract -- cada pressao e' UM passo):
 
-            arm 1  HOLD (900 ms injected through the `fake_hold_ms` seam)
-                   -> the LIVE CAPTION flips, and NO panel goes up
-            arm 2  ONE tap (then past `HOTKEY_TAP_WINDOW_MS`)
-                   -> the BOTTOM STRIP is up, caption UNCHANGED
-            arm 3  TWO taps 120 ms apart (inside `HOTKEY_TAP_WINDOW_MS`)
-                   -> the RIGHT panel is up
+            arm 1  press        hidden  -> STRIP   (caption UNCHANGED)
+            arm 2  press        strip   -> HIDDEN
+            arm 3  press        hidden  -> PANEL
+            arm 4  press        panel   -> HIDDEN
+            arm 5  ten presses  hidden  -> strip, hidden, panel, hidden, ...
+                                (ten alternations, in that order, with the key
+                                 "held": no release event is ever delivered, and
+                                 the retired duration seam does not exist)
+            arm 6  Ctrl+Space   the LIVE CAPTION toggles once, NO panel moves
 
-        The duration is injected through `self.hotkey.fake_hold_ms`, never
-        faked with `keybd_event`: input sintetico mede o Windows, nao a app
-        (`AGENTS.md`), e ja' foi medido que os quatro `err=0` do pressionador
-        deram zero linhas no log do Sotto.
-
-        Arm 3 is the one that can fail for the reason that matters: if the tap
-        resolution does not bump its token, the FIRST tap's timer fires inside
-        the double and the strip flashes before the side panel -- exactly what
-        the owner did not ask for. `selftest_broken` is the gate, and it names
-        `gesture(hold=legend, tap=strip, double=side)`.
+        `selftest_broken` is the gate and every arm is a clause in it, so a wrong
+        arm exits non-zero. Nothing here injects a duration (`fake_hold_ms` was
+        deleted with the contract it served) and nothing uses `keybd_event`:
+        `AGENTS.md` -- input sintetico mede o Windows, nao a app.
         """
         rc = 0
-        if self.hotkey is None:
-            # `--no-hotkey --selftest` is a contradiction: the self-test's whole
-            # subject is the registration. Say so instead of raising on None.
-            log('SELFTEST refused=--no-hotkey (nothing registered to prove)')
-            self.request_exit(3, reason='selftest-needs-hotkey')
-            return 3
-        if not self.hotkey.wait_ready(5):
-            log('SELFTEST hotkey_registered=false')
-            rc = 3
-        else:
-            log(f'SELFTEST hotkey_registered='
-                f'{str(self.hotkey.registered).lower()} '
-                f'accelerator={self.hotkey.accelerator}')
-            before = foreground_window()
-            self.hide_panel('selftest-baseline')
+        # ── THE THREADS UNDER TEST ─────────────────────────────────────────
+        # A real launch hands us the armed threads. A MEASUREMENT launch arms
+        # none (main() disarms them so the owner's Alt+C never answers a probe),
+        # and that is not a reason to skip the test: a probe thread has the same
+        # queue and the same pump, it only does not call `RegisterHotKey`.
+        panels = self.hotkey
+        live = getattr(self, 'live_hotkey', None)
+        started = []
+        try:
+            if panels is None:
+                panels = HotkeyThread(hotkey_numbers().PANELS_ACCELERATOR,
+                                      lambda: self.hotkey_pressed(),
+                                      role='panels-probe', register=False)
+                panels.start()
+                started.append(panels)
+            if live is None:
+                try:
+                    live_accel = hotkey_config().accelerators()['live']
+                except Exception:  # noqa: BLE001 -- a fabrica e' sempre resposta
+                    live_accel = hotkey_numbers().LIVE_ACCELERATOR
+                live = HotkeyThread(live_accel, lambda: self.hotkey_live(),
+                                    role='live-probe', register=False)
+                live.start()
+                started.append(live)
+            panels_ready = panels.wait_ready(5)
+            live_ready = live.wait_ready(5)
+            log(f'SELFTEST threads panels={panels.accelerator} '
+                f'panels_ready={str(panels_ready).lower()} '
+                f'panels_registered={str(bool(panels.registered)).lower()} '
+                f'live={live.accelerator} live_ready={str(live_ready).lower()} '
+                f'live_registered={str(bool(live.registered)).lower()} '
+                f'probe={str(bool(started)).lower()}')
+            if not (panels_ready and live_ready):
+                log('SELFTEST broken=um dos threads da hotkey nao subiu')
+                log('SELFTEST rc=3')
+                self.request_exit(3, reason='selftest-threads')
+                return 3
+
+            def screen():
+                """O que a JANELA mede, agora -- nunca a cache `self.visible`."""
+                return (bool(window_visible(self.hwnd)),
+                        str(getattr(self, 'panel_mode', '') or ''))
+
+            def wait_for(predicate, timeout=3.0):
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    if predicate():
+                        return True
+                    time.sleep(0.01)
+                return bool(predicate())
+
+            def step(thread, predicate, label):
+                """UMA pressao pelo caminho de entrega; devolve o instante MEDIDO."""
+                t0 = time.monotonic()
+                posted = bool(thread.simulate_press())
+                seen = wait_for(predicate)
+                spent = (time.monotonic() - t0) * 1000.0
+                log(f'SELFTEST step={label} posted={str(posted).lower()} '
+                    f'seen={str(seen).lower()} screen={screen()} '
+                    f'latency_ms={spent:.1f}')
+                return posted, seen, spent
+
+            before_focus = foreground_window()
             caption_start = bool(getattr(self, '_caption_wanted', False))
-            log(f'SELFTEST state=hidden visible={str(self.visible).lower()} '
+            self.hide_panel('selftest-baseline')
+            # O PONTO DE PARTIDA E' DECLARADO: o ciclo alterna o show seguinte a
+            # partir da ultima superficie APLICADA, por isso um teste que nao a
+            # fixasse comecaria num estado que depende do que a app fez antes.
+            self.set_panel_surface('panel', 'selftest-baseline')
+            log(f'SELFTEST state=hidden visible={str(screen()[0]).lower()} '
+                f'surface={self.surface_applied} '
                 f'caption={str(caption_start).lower()}')
-            # ARM 1 -- HOLD IS THE CAPTION, and the panel stays DOWN.
-            # O `fake_hold_ms` e' o seam: `input sintetico mede o Windows, nao a
-            # app` (AGENTS.md), por isso a duracao do gesto injeta-se em vez de
-            # se fingir com `keybd_event`.
-            self.hotkey.fake_hold_ms = 900.0
-            pressed = self.hotkey.simulate_press()
-            time.sleep(0.45)
-            self.hotkey.fake_hold_ms = None
-            arm1_caption = bool(getattr(self, '_caption_wanted', False))
-            arm1_visible = bool(self.visible)
-            log(f'SELFTEST arm=hold visible={str(arm1_visible).lower()} '
-                f'caption={str(arm1_caption).lower()} '
-                f'caption_flipped={str(arm1_caption != caption_start).lower()}')
-            if arm1_caption != caption_start:
+
+            # ARM 1 -- hidden -> STRIP, caption UNCHANGED.
+            caption_before = bool(getattr(self, '_caption_wanted', False))
+            p1, a1, ms1 = step(panels, lambda: screen() == (True, 'strip'), '1-strip')
+            caption_after = bool(getattr(self, '_caption_wanted', False))
+            # ARM 2 -- strip -> HIDDEN.
+            p2, a2, ms2 = step(panels, lambda: not screen()[0], '2-hidden')
+            # ARM 3 -- hidden -> PANEL.
+            p3, a3, ms3 = step(panels, lambda: screen() == (True, 'side'), '3-panel')
+            # ARM 4 -- panel -> HIDDEN.
+            p4, a4, ms4 = step(panels, lambda: not screen()[0], '4-hidden')
+            # ARM 5 -- DEZ pressoes, dez alternancias, NA ORDEM. A tecla fica
+            # "em baixo" no unico sentido que a app conhece: nenhum evento de
+            # libertacao e' entregue, e o seam de duracao ja' nao existe.
+            expected = [(True, 'strip'), (False, 'strip'), (True, 'side'),
+                        (False, 'side')] * 2 + [(True, 'strip'), (False, 'strip')]
+            observed = []
+            ten_ok = True
+            for index in range(10):
+                previous = screen()
+                posted = bool(panels.simulate_press())
+                changed = wait_for(
+                    lambda prev=previous: screen() != prev, timeout=2.0)
+                observed.append(screen())
+                ten_ok = ten_ok and posted and changed
+            log('SELFTEST arm=5-ten presses=%d alt_held=no-release-event '
+                'expected=%s observed=%s'
+                % (len(observed), expected, observed))
+            # ARM 6 -- Ctrl+Space: a legenda comuta UMA vez, e nenhum painel se
+            # mexe (nem aparece, nem muda de superficie).
+            panel_before_live = screen()
+            p6, a6, ms6 = step(live, lambda: bool(getattr(self, '_caption_wanted', False))
+                               != caption_before, '6-live')
+            caption_live = bool(getattr(self, '_caption_wanted', False))
+            panel_after_live = screen()
+            if caption_live != caption_start:
                 self._set_live_enabled({'on': caption_start})
-                time.sleep(0.2)
-            # ARM 2 -- ONE TAP IS THE BOTTOM PANEL, and the caption does not move.
-            caption_before_tap = bool(getattr(self, '_caption_wanted', False))
-            self.hide_panel('selftest-arm2')
-            self.hotkey.simulate_press()
-            time.sleep(hotkey_numbers().HOTKEY_TAP_WINDOW_MS / 1000.0 + 0.45)
-            arm2_caption = bool(getattr(self, '_caption_wanted', False))
-            arm2_visible = bool(self.visible)
-            arm2_mode = str(getattr(self, 'panel_mode', ''))
-            log(f'SELFTEST arm=tap visible={str(arm2_visible).lower()} '
-                f'mode={arm2_mode or "-"} '
-                f'caption_moved={str(arm2_caption != caption_before_tap).lower()}')
-            # ARM 3 -- TWO TAPS IS THE RIGHT PANEL.
-            self.hide_panel('selftest-arm3')
-            self.hotkey.simulate_press()
-            time.sleep(0.12)          # dentro de HOTKEY_TAP_WINDOW_MS de proposito
-            self.hotkey.simulate_press()
-            time.sleep(hotkey_numbers().HOTKEY_TAP_WINDOW_MS / 1000.0 + 0.45)
-            arm3_visible = bool(self.visible)
-            arm3_mode = str(getattr(self, 'panel_mode', ''))
-            log(f'SELFTEST arm=double visible={str(arm3_visible).lower()} '
-                f'mode={arm3_mode or "-"}')
-            after = foreground_window()
-            after_pid = window_pid(after)
-            focus_stolen = before != after
-            stolen_by_us = bool(focus_stolen and after and after_pid == os.getpid())
-            log(f'SELFTEST focus_before={before} focus_after={after} '
+                time.sleep(0.1)
+
+            after_focus = foreground_window()
+            after_pid = window_pid(after_focus)
+            focus_stolen = before_focus != after_focus
+            stolen_by_us = bool(focus_stolen and after_focus
+                                and after_pid == os.getpid())
+            log(f'SELFTEST focus_before={before_focus} focus_after={after_focus} '
                 f'focus_stolen={str(focus_stolen).lower()} after_pid={after_pid} '
                 f'focus_stolen_by_own_window={str(stolen_by_us).lower()}')
-            # O HOLD e' a legenda e nao sobe painel; UM toque e' o painel de
-            # BAIXO e nao mexe na legenda; DOIS toques sao o da DIREITA.
+            latencies = [ms for ms in (ms1, ms2, ms3, ms4) if ms is not None]
             reading = {
-                'registered': bool(self.hotkey.registered), 'pressed': bool(pressed),
-                'presses': self.hotkey.pressed,
-                'hold_flipped_caption': bool(arm1_caption != caption_start),
-                'hold_left_panel_down': not arm1_visible,
-                'tap_showed_strip': (arm2_visible and arm2_mode == 'strip'),
-                'tap_mode': arm2_mode,
-                'tap_left_caption': arm2_caption == caption_before_tap,
-                'double_showed_side': (arm3_visible and arm3_mode == 'side'),
-                'double_mode': arm3_mode,
+                'registered': bool(panels_ready and live_ready),
+                'pressed': bool(p1 and p2 and p3 and p4 and p6 and ten_ok),
+                'expect_presses': 14, 'presses': panels.pressed,
+                'visible': bool(screen()[0]), 'want_visible': False,
+                'first_press_strip': a1,
+                'second_press_hidden': a2,
+                'third_press_panel': a3,
+                'fourth_press_hidden': a4,
+                'ten_press_alternations': bool(ten_ok and observed == expected),
+                'ten_press_observed': observed,
+                'live_toggled': a6,
+                'live_left_panels': panel_before_live == panel_after_live,
+                'live_caption_left_alone': caption_after == caption_before,
                 'focus_stolen_by_own_window': stolen_by_us,
-                'focus_before': before, 'focus_after': after,
+                'focus_before': before_focus, 'focus_after': after_focus,
             }
             broken, why = selftest_broken(reading)
             if broken:
@@ -12075,12 +11999,18 @@ class SottoShell:
             else:
                 log('SELFTEST broken=false focus_attributed='
                     f'{str(stolen_by_us).lower()}')
-            log('SELFTEST expectation=gesture(hold=legend, tap=strip, '
-                'double=side) tap_mode=%s double_mode=%s presses=%d '
-                'registered=%s delivered=%s'
-                % (arm2_mode or '-', arm3_mode or '-', self.hotkey.pressed,
-                   str(self.hotkey.registered).lower(), str(pressed).lower()))
+            log('SELFTEST expectation=hotkeys(alt_c=one-step-per-press, '
+                'ctrl_space=live-caption) presses=%d panels_registered=%s '
+                'observed=%s latency_ms=%s'
+                % (panels.pressed, str(bool(panels.registered)).lower(),
+                   observed, ','.join('%.1f' % lat for lat in latencies)))
             rc = 3 if broken else 0
+        finally:
+            for thread in started:
+                try:
+                    thread.stop()
+                except Exception as exc:  # noqa: BLE001 -- sair nao pode falhar
+                    log(f'HOTKEY_STOP_FAILED role={thread.role} error={exc!r}')
         log(f'SELFTEST rc={rc}')
         self.request_exit(rc, reason='selftest')
 
@@ -14467,8 +14397,11 @@ def parse_args(argv):
                         help='show the panel at startup instead of waiting '
                              'for Alt+C')
     parser.add_argument('--hotkey', default='Alt+C',
-                        help='the global toggle accelerator (default: Alt+C). If '
-                             'another program already owns it the shell tries '
+                        help='the PANELS global key (default: Alt+C). One press = '
+                             'one step of the panel cycle. The live-caption key is '
+                             'the owner\'s, persisted in _main/hotkey-settings.json '
+                             '(factory: Ctrl+Space). If another program already owns '
+                             'the panels key the shell tries '
                              + ' / '.join(HOTKEY_FALLBACKS)
                              + ' and logs which one won (HOTKEY_FALLBACK)')
     parser.add_argument('--no-hotkey', action='store_true',

@@ -1,6 +1,7 @@
 {
-  "app/webview/caption_overlay.py": 3,
+  "app/webview/caption_overlay.py": 1,
   "app/webview/external_subs.py": 3,
+  "app/webview/overlay_paint.py": 2,
   "app/webview/sotto_webview.py": 6,
   "app/webview/youtube_captions.py": 2,
   "worker/inspect_model.py": 4,

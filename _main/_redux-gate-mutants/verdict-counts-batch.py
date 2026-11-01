@@ -62,6 +62,7 @@ import math
 import os
 import queue
 import sys
+import tempfile
 import threading
 import time
 
@@ -84,7 +85,38 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # removed. Defect and evidence: docs/audit/model-config.md §6.3; fix receipts:
 # docs/audit/config-inert-fixed.md.
 DEFAULT_MODEL = os.path.join(HERE, "models", "nemotron-3.5-asr-ptbr-onnx-int4")
-TARGET_SR = 16000
+
+# ── O INTERRUPTOR DOS MOTORES VIVE EM `worker/engine_switch.py` ──────────────
+# A classe `ReduxHiddenSwitch`, o leitor da visibilidade da shell, os limites do
+# lote e as duas medidas de memoria estao no modulo ao lado: `sotto_worker.py`
+# esta' debaixo do ratchet estrutural (`_main/code-health-oracle.py`) e a classe
+# sozinha era um terco do ficheiro. O que vem de volta vem pelos MESMOS nomes, de
+# proposito -- nada la' fora muda: `sotto_worker.ReduxHiddenSwitch`,
+# `PanelVisibilityReader`, `TARGET_SR`, `REDUX_PRODUCER` continuam a existir.
+#
+# O directorio DESTE ficheiro entra no `sys.path` (e' o que `_lang_prompt` ja' faz
+# a cada chamada) porque o irmao e' importado por NOME e um importador por caminho
+# -- os oraculos carregam este ficheiro com `spec_from_file_location` -- nao poe a
+# pasta do worker no caminho.
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
+    ParakeetEngine, PanelVisibilityReader, REDUX_BATCH_INTERVAL_DEFAULT_S,
+    REDUX_CHECKPOINT_FILES, REDUX_CHECKPOINT_RELPATH,
+    REDUX_HIDDEN_AFTER_DEFAULT_S, REDUX_LIVE_CHECKPOINT_FILES,
+    REDUX_LIVE_DEADLINE_S, REDUX_LIVE_ENGINE_DEFAULT, REDUX_LIVE_KEEP_S,
+    REDUX_LIVE_MAX_QUEUE, REDUX_LIVE_MIN_AUDIO_S, REDUX_LIVE_ONNX_CHECKPOINTS,
+    REDUX_LIVE_ONNX_RELPATH, REDUX_LIVE_TERNARY_CHECKPOINTS,
+    REDUX_LIVE_TERNARY_RELPATH, REDUX_LIVE_THREADS, REDUX_MAX_AUDIO_DEFAULT_S,
+    REDUX_MIN_AUDIO_S, REDUX_MIN_FREE_MB_DEFAULT, REDUX_PRODUCER,
+    REDUX_RUNNER_DEFAULT, REDUX_RUNNER_TIMEOUT_DEFAULT_S,
+    REDUX_VISIBILITY_DEFAULT, ReduxHiddenSwitch, RunnerEngine, TARGET_SR,
+    _SHEDDING_PATH, _free_memory_mb, current_rss_mb, err, peak_rss_mb,
+    redux_checkpoint_dir, redux_checkpoint_missing, redux_live_dirs,
+    redux_live_missing,
+)
+
+
 
 # ── the universal ladder ──────────────────────────────────────────────────────
 # OWNER DIRECTIVE: "esse app nao é so pra uso meu, é pra qualquer usuario. entao
@@ -489,59 +521,11 @@ def _add_cuda_dll_dirs() -> None:
             os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
 
 
-def _pmc():
-    import ctypes
-    from ctypes import wintypes
-
-    class PMC(ctypes.Structure):
-        _fields_ = [
-            ("cb", wintypes.DWORD),
-            ("PageFaultCount", wintypes.DWORD),
-            ("PeakWorkingSetSize", ctypes.c_size_t),
-            ("WorkingSetSize", ctypes.c_size_t),
-            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-            ("PagefileUsage", ctypes.c_size_t),
-            ("PeakPagefileUsage", ctypes.c_size_t),
-        ]
-
-    c = PMC()
-    c.cb = ctypes.sizeof(PMC)
-    psapi = ctypes.WinDLL("psapi")
-    k32 = ctypes.WinDLL("kernel32")
-    # Without explicit argtypes ctypes marshals the pointer as a 32-bit int and
-    # the call fails, which is why this used to report -1.0.
-    k32.GetCurrentProcess.restype = wintypes.HANDLE
-    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
-    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-    handle = k32.GetCurrentProcess()
-    ok = psapi.GetProcessMemoryInfo(handle, ctypes.byref(c), c.cb)
-    return (ok, c)
-
-
-def peak_rss_mb() -> float:
-    """Peak working set of THIS process, read from the OS. Never estimated."""
-    ok, c = _pmc()
-    return c.PeakWorkingSetSize / (1024.0 * 1024.0) if ok else -1.0
-
-
-def current_rss_mb() -> float:
-    ok, c = _pmc()
-    return c.WorkingSetSize / (1024.0 * 1024.0) if ok else -1.0
-
-
 # ── output ────────────────────────────────────────────────────────────────────
 def emit(**payload) -> None:
     """One JSON object, one line, flushed. The whole inter-process contract."""
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
-
-
-def err(msg: str) -> None:
-    sys.stderr.write(msg + "\n")
-    sys.stderr.flush()
 
 
 # ── model ─────────────────────────────────────────────────────────────────────
@@ -618,6 +602,11 @@ try:                       # a fila de audio vivo (ver worker/live_queue.py)
     import live_queue as _live_queue
 except Exception:          # pragma: no cover -- o import falha so' fora do repo
     _live_queue = None
+
+try:                       # a politica dos motores (ver worker/engine_policy.py)
+    import engine_policy as _policy
+except Exception:          # pragma: no cover -- o import falha so' fora do repo
+    _policy = None
 
 
 def _stable_words():
@@ -1982,14 +1971,15 @@ PLP_AUTOCONVERTPCM = 0x80000000        # AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
 PLP_SRC_DEFAULT_QUALITY = 0x08000000   # AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
 
 # Win32 scalar aliases for the structures below, spelled with ctypes' own types
-# rather than ctypes.wintypes (which this file imports lazily inside _pmc()) so
-# they exist at import time here: on Windows DWORD and ULONG are 4-byte unsigned
-# and BOOL is a 4-byte signed int, which is what wintypes declares too.
-# THE IMPORT BELOW IS MODULE-LEVEL AND NOT OPTIONAL: the only other `import
-# ctypes` in this file is LOCAL to _pmc(), so every name in this block that
-# reads `ctypes` at import time was a NameError -- measured, `import
-# sotto_worker` died at this line with "name 'ctypes' is not defined", which
-# py_compile cannot see and which would have killed every launch of the app.
+# rather than ctypes.wintypes (which `_pmc()` -- in `worker/engine_switch.py` since
+# the extraction -- imports lazily) so they exist at import time here: on Windows
+# DWORD and ULONG are 4-byte unsigned and BOOL is a 4-byte signed int, which is
+# what wintypes declares too.
+# THE IMPORT BELOW IS MODULE-LEVEL AND NOT OPTIONAL: with `_pmc()` extracted, THIS
+# is the only `import ctypes` in this file, so every name in this block that reads
+# `ctypes` at import time was a NameError -- measured, `import sotto_worker` died
+# at this line with "name 'ctypes' is not defined", which py_compile cannot see and
+# which would have killed every launch of the app.
 import ctypes
 _PLP_DWORD = ctypes.c_ulong
 _PLP_WORD = ctypes.c_ushort
@@ -3857,135 +3847,14 @@ def capped_text(text: str, max_chars: int) -> str:
 # the flag off this file behaves as it did before this lane existed — no file
 # read, no extra process, no extra stdout line.
 REDUX_WHEN_HIDDEN_DEFAULT = False
-#: How long the panel must stay hidden before the batch engine takes over.
-REDUX_HIDDEN_AFTER_DEFAULT_S = 20.0
-#: How much accumulated audio one batch invocation covers. It is the granularity
-#: of the light path: a longer window is fewer model loads and later text.
-REDUX_BATCH_INTERVAL_DEFAULT_S = 15.0
-#: Bound on the audio held in RAM while hidden. Without it, "accumulate" is an
-#: unbounded buffer on a panel the owner may leave closed for hours.
-REDUX_MAX_AUDIO_DEFAULT_S = 120.0
-#: The BATCH engine's runner — ANOTHER LANE'S FILE. This lane names it, calls it
-#: and never writes it. Contract: `python redux_batch.py --wav PATH --json` ->
-#: JSONL on stdout, `{"type":"caption","text":…,"start":<s>,"end":<s>,"producer":"redux"}`.
-REDUX_RUNNER_DEFAULT = os.path.join(HERE, "redux_batch.py")
-#: The checkpoint that runner LOADS when it is invoked with no `--model-dir`,
-#: RELATIVE to the runner's own directory — `redux_batch.py` resolves it exactly
-#: this way (`HERE = Path(__file__).resolve().parent`, then
-#: `DEFAULT_MODEL_DIR = HERE / "models" / "parakeet-redux-ternary"`). `_run_runner`
-#: passes no `--model-dir`, so this is the directory every batch pass will open.
-#: Keep it in step with `redux_batch.py`: the gate below must refuse to arm on a
-#: checkpoint the runner cannot LOAD.
-REDUX_CHECKPOINT_RELPATH = os.path.join("models", "parakeet-redux-ternary")
-#: The manifests `redux_batch.load_runtime` demands, in ITS order: the first one
-#: missing is the `SystemExit` that kills the pass. The DIRECTORY existing is not
-#: the test — a directory without these loads nothing.
-REDUX_CHECKPOINT_FILES = ("config.json", "model.safetensors", "ternary.json")
-#: The shell's visibility channel — written by `app/webview/sotto_webview.py`
-#: (`PanelVisibilityWriter`), read here and nowhere else.
-REDUX_VISIBILITY_DEFAULT = os.path.join(
-    os.path.dirname(HERE), "_main", "panel-visibility.json")
-#: THE FIELD THAT OPENS THE CANONICAL TRANSCRIPT. `app/electron/history-source.js:51`
-#: (`CANONICAL_PRODUCER = 'redux'`) accepts a line only when `meta.producer` is
-#: literally this string, and `grep -rn producer worker/` had ZERO matches before
-#: this constant existed — so "History · Redux" was decorative and the archive
-#: took no new line. This is the worker's half of that contract.
-REDUX_PRODUCER = "redux"
-#: A batch invocation may not run forever: a hung runner would silently freeze
-#: the light path while the panel is closed, which looks exactly like "working".
-REDUX_RUNNER_TIMEOUT_DEFAULT_S = 180.0
-#: Below this much audio a batch invocation is not worth a model load.
-REDUX_MIN_AUDIO_S = 1.0
-#: FREE physical memory a batch invocation is allowed to start under, in MB.
-#: The runner's own documented peak is ~3.9 GB (the kestrel int8 kernel is
-#: unavailable on this box, so it falls back to the dense weight form) and the
-#: streaming model stays resident while the panel is hidden, so the default is
-#: that peak plus a margin. MEASURED reason this exists: while another job held
-#: 3.5 GB, a sibling process could not allocate a ~1 GB ONNX session at all
-#: ("bad allocation"). A pass that cannot fit should be DEFERRED, not attempted:
-#: the audio stays buffered and the next tick retries.
-REDUX_MIN_FREE_MB_DEFAULT = 4600.0
-
-# ── THE LIVE OVERLAY (lane S3) — a second pass POR CIMA of every live line ──
-# OWNER 2026-10-12, verbatim: *"nemotron a transcrever ao vivo e o parakeet
-# redux POR CIMA de tudo o que e falado ao vivo, porque tem maior qualidade."*
-# and *"o historico nao e pra ser NUNCA o historico do live nvidia. e pra ser do
-# parakeet redux"* (app/panel/panel.js).
 #
-# DEFAULT OFF, for the same measured reason the batch arm is: the overlay pays a
-# second ASR decode on top of the live one (measured ~1.0-1.4 s per 5 s window,
-# ~615 MB peak RSS, ~128% of one core at threads=2), so a switch that lands
-# before the pass is proven means a slower, fatter live run exactly while the
-# owner is not looking. With the flag off this file is byte-identical to the run
-# before this lane existed: not one read, not one branch, not one extra byte.
-#
-# WHAT IT DOES: every line the live engine CLOSES is HELD, and exactly ONE line
-# per segment is published — the Redux text when the pass answered, the live text
-# byte for byte when it did not. The panel already replaces a row in place when a
-# second event carries the same (source, start) identity, so the Redux text lands
-# in the SAME row the live partials were growing, and the history line is the
-# Redux version. The contract lives in worker/redux_live.py.
-REDUX_LIVE_DEFAULT = False
-#: The overlay's checkpoints, RELATIVE to this file. BOTH are named because
-#: `load_backend` is given both and picks by engine; the gate below refuses when
-#: the engine it would open is not on disk.
-REDUX_LIVE_TERNARY_RELPATH = os.path.join("models", "parakeet-redux-ternary")
-REDUX_LIVE_ONNX_RELPATH = os.path.join("models", "parakeet-redux-onnx-int4")
-#: WHAT EACH ENGINE'S CHECKPOINT ACTUALLY IS. The one list, applied to both
-#: directories, was WRONG, and it is the reason the owner's captions were always
-#: the Nemotron's. MEASURED 2026-10-18 in the owner's own tree:
-#:
-#:     worker/models/parakeet-redux-onnx-int4/   config.json
-#:                                           encoder-model.onnx
-#:                                           decoder_joint-model.onnx
-#:                                           preprocessor.onnx
-#:                                           vad-model.onnx
-#:                                           vocab.txt   transcribe.py
-#:
-#: An ONNX export has no `model.safetensors` and no `ternary.json` -- it never
-#: will, that is what an ONNX export IS. So `redux_live_missing()` reported the
-#: ONNX directory as incomplete even with every one of its real files present,
-#: `--redux-live` was REFUSED, and the flag's own help describes what happens
-#: next: *"Refused, and the run keeps streaming untouched, if the engine's
-#: checkpoint is not on disk."* The owner had the accurate model sitting on his
-#: disk and was told no.
-#:
-#: ONNX IS THE MEASURED DEFAULT (`REDUX_LIVE_ENGINE_DEFAULT`), and its comment
-#: below already says ONNX is 615 MB / 8.33x RTF against the ternary's 3856 MB
-#: for byte-identical text. The gate was therefore refusing the cheap engine
-#: while asking for the expensive one's files.
-REDUX_LIVE_ONNX_CHECKPOINTS = (
-    "config.json", "encoder-model.onnx", "decoder_joint-model.onnx",
-    "preprocessor.onnx", "vad-model.onnx", "vocab.txt",
-)
-REDUX_LIVE_TERNARY_CHECKPOINTS = ("config.json", "model.safetensors", "ternary.json")
-#: Kept as a NAME for anything that imported the old constant. It is no longer
-#: used to gate anything -- the two lists above are.
-REDUX_LIVE_CHECKPOINT_FILES = REDUX_LIVE_TERNARY_CHECKPOINTS
-#: ONNX is the measured default: 615 MB peak, 8.33x RTF on a 15 s clip, versus
-#: the ternary's 3856 MB and 2.2x the latency for byte-identical text (the packed
-#: int8 CPU kernel is absent from the published kestrel wheel).
-REDUX_LIVE_ENGINE_DEFAULT = "onnx"
-#: Seconds of rolling PCM the overlay retains. A line whose own start has been
-#: trimmed is refused (and shipped as the live text), so this must exceed the
-#: longest line the live engine can hold open.
-REDUX_LIVE_KEEP_S = 90.0
-#: The overlay's own deadline. A decode that outran it is released as the live
-#: text: a late Redux line is worse than the live one the owner can read now.
-REDUX_LIVE_DEADLINE_S = 4.0
-#: Bound on held segments. The count includes the one being decoded.
-REDUX_LIVE_MAX_QUEUE = 6
-#: Below this much audio a segment is not worth a decode.
-REDUX_LIVE_MIN_AUDIO_S = 1.0
-#: Threads the ONNX session gets. Measured: 2 is the sweet spot on this box.
-REDUX_LIVE_THREADS = 2
+# O INTERRUPTOR E OS SEUS LIMITES VIVEM EM `worker/engine_switch.py`. A classe, o
+# leitor da visibilidade, os manifestos de checkpoint, os limites do lote e as
+# medidas de memoria foram extraidos para la' (o ratchet estrutural pede ficheiros
+# menores) e sao importados de volta no topo deste ficheiro com os MESMOS nomes.
+# Aqui fica o FLAG, porque e' este ficheiro que o parseia, e a fiaçao do laco do
+# audio, porque e' ele que consome a resposta.
 
-
-def redux_live_dirs():
-    """(onnx_dir, ternary_dir) the overlay would open, resolved against this file."""
-    here = os.path.dirname(os.path.realpath(__file__))
-    return (os.path.join(here, REDUX_LIVE_ONNX_RELPATH),
-            os.path.join(here, REDUX_LIVE_TERNARY_RELPATH))
 
 
 def redux_live_settings(args, cfg, env=None):
@@ -4028,37 +3897,6 @@ def redux_live_settings(args, cfg, env=None):
                   or REDUX_LIVE_THREADS)
     return opt_in, why, engine, keep_s, min_audio_s, deadline_s, threads
 
-def redux_live_missing(onnx_dir, ternary_dir):
-    """The manifests NOT on disk under each dir; ([], []) when both can load.
-
-    PER-ENGINE, since 2026-10-18. It used to test `REDUX_LIVE_CHECKPOINT_FILES`
-    (the TERNARY's list) against BOTH directories, so the ONNX export -- which
-    has no safetensors and never will -- was reported incomplete with every real
-    file present, and `--redux-live` was refused on a fully-downloaded engine.
-    See the two lists above for the measurement.
-    """
-    return ([name for name in REDUX_LIVE_ONNX_CHECKPOINTS
-             if not os.path.isfile(os.path.join(onnx_dir, name))],
-            [name for name in REDUX_LIVE_TERNARY_CHECKPOINTS
-             if not os.path.isfile(os.path.join(ternary_dir, name))])
-
-
-def _free_memory_mb():
-    """Free physical memory in MB, or None when it cannot be measured.
-
-    `None` is NOT "no memory": it means the measurement itself failed, and a gate
-    that cannot measure must not block the work it would otherwise allow. The
-    caller treats `None` as "go ahead and try" — a failed measurement is not
-    evidence of pressure, and inventing a refusal from it would be this repo's
-    oldest bug wearing a new hat.
-    """
-    try:
-        import psutil
-
-        return round(psutil.virtual_memory().available / 1048576.0, 1)
-    except Exception:
-        return None
-
 
 def _positive_or(value, default):
     """A flag's built-in default when the flag was left at 0/None."""
@@ -4067,615 +3905,6 @@ def _positive_or(value, default):
     except (TypeError, ValueError):
         return float(default)
     return got if got > 0 else float(default)
-
-
-class PanelVisibilityReader:
-    """The shell's visibility file, read with the HARD RULE's fail-safe.
-
-    THE SHAPE (frozen by `app/webview/sotto_webview.py`):
-
-        {"visible": <bool>, "since_ms": <int>, "pid": <int>,
-         "writtenAtEpoch": <float>, "staleAfterSeconds": <float>, ...}
-
-    THE FAIL-SAFE IS THE WHOLE POINT, and it is in one direction on purpose.
-    EVERY way this reader can fail to get an answer — no file, an unreadable
-    file, a shape it does not recognise, a `visible` that is not a bool — returns
-    `visible=True`, i.e. KEEP STREAMING. "The file said hidden" must never be
-    produced by a file that meant nothing.
-
-    STALENESS IS THE SAME RULE. A shell that died leaves its last sentence on
-    disk forever; obeying `visible:false` from a dead producer would silence the
-    only transcriber this tree has. So `writtenAtEpoch` is checked against
-    `staleAfterSeconds`, and a stale dump also reads as visible. A dump with NO
-    `writtenAtEpoch` is treated as fresh and its `visible` is believed: that is
-    the shape a HAND-WRITTEN file (a probe, a human) has, and refusing it would
-    make the channel untestable by the very probes that must drive it.
-    """
-
-    #: The levels the shell may publish under `shed` (owner, 2026-10-30:
-    #: *"alta: desliga nemotron, so parakeet; muito alta: desliga parakeet
-    #: tambem"*). Anything else is not a level.
-    SHED_LEVELS = ('leve', 'alta', 'muito-alta')
-
-    def __init__(self, path):
-        self.path = path
-        self.reads = 0
-        self.fallbacks = 0
-        self.last_reason = None
-        self.last_payload = None
-
-    def shed(self, default='leve'):
-        """O nivel de shedding publicado pela shell (`leve` por omissao).
-
-        THE SAME FAIL-SAFE DIRECTION AS `visible`, and it is the whole point: a
-        file with no `shed`, an unreadable one, or a value that is not one of
-        `SHED_LEVELS` reads as **`leve`** -- i.e. CHANGE NOTHING. A level
-        invented out of a broken file would silence the only transcriber this
-        tree has, which is exactly the failure the owner already paid for.
-
-        Read from `last_payload`, so it is the SAME read the visibility decision
-        used: two reads of the same file per tick would be two chances to
-        disagree with each other.
-        """
-        payload = self.last_payload
-        if not isinstance(payload, dict):
-            return default
-        level = payload.get('shed')
-        if isinstance(level, str) and level.strip() in self.SHED_LEVELS:
-            return level.strip()
-        return default
-
-    def read(self):
-        """-> (visible: bool, why: str, age_s: float|None). Never raises."""
-        self.reads += 1
-        try:
-            with open(self.path, encoding="utf-8") as fh:
-                payload = json.load(fh)
-        except FileNotFoundError:
-            return self._fallback("no-file", None)
-        except Exception as exc:
-            return self._fallback(f"unreadable:{type(exc).__name__}", None)
-        if not isinstance(payload, dict) or not isinstance(payload.get("visible"), bool):
-            return self._fallback("unknown-shape", None)
-        self.last_payload = payload
-        epoch = payload.get("writtenAtEpoch")
-        if isinstance(epoch, (int, float)):
-            age = max(0.0, time.time() - float(epoch))
-            limit = payload.get("staleAfterSeconds")
-            if isinstance(limit, (int, float)) and age > float(limit):
-                return self._fallback(f"stale(age={age:.1f}s>limit={limit}s)", age)
-            self.last_reason = "fresh"
-            return bool(payload["visible"]), "fresh", age
-        self.last_reason = "fresh-no-epoch"
-        return bool(payload["visible"]), "fresh-no-epoch", None
-
-    def _fallback(self, why, age):
-        self.fallbacks += 1
-        self.last_reason = why
-        return True, why, age
-
-
-def redux_checkpoint_dir(runner):
-    """The checkpoint the batch runner opens when it is given no `--model-dir`.
-
-    Resolved the way `redux_batch.py` resolves its own default — relative to the
-    runner's directory (`HERE = Path(__file__).resolve().parent`) — because
-    `_run_runner` passes the runner no `--model-dir` and the runner therefore
-    loads exactly this path, whatever directory the worker was started from.
-    """
-    return os.path.join(os.path.dirname(os.path.realpath(runner)),
-                        REDUX_CHECKPOINT_RELPATH)
-
-
-def redux_checkpoint_missing(model_dir):
-    """The manifests NOT on disk under `model_dir`; `[]` when it can load."""
-    return [name for name in REDUX_CHECKPOINT_FILES
-            if not os.path.isfile(os.path.join(model_dir, name))]
-
-
-class ReduxHiddenSwitch:
-    """Streaming while the panel is OPEN, batch while it is CLOSED.
-
-    WHAT "STOPS" MEANS — and this is the part that must not be got wrong. The
-    thing that stops is the STREAMING DECODE: the 560 ms encoder+RNNT pass whose
-    cost the owner is paying for while nobody is looking. THE TAP DOES NOT STOP,
-    because the batch pass transcribes "the accumulated audio" and there is no
-    audio to accumulate from a closed device. A hidden panel therefore costs one
-    WAV append per 100 ms block plus one batch invocation per
-    `batch_interval_s` — LEVE, and the opposite of a forward pass per chunk.
-
-    THREE GATES, ALL OF WHICH MUST BE OPEN BEFORE THE FIRST CHUNK IS CUT:
-      1. THE FLAG (`--redux-when-hidden`, DEFAULT OFF). With it off this object
-         is never constructed and the worker is byte-identical to today.
-      2. THE RUNNER FILE *AND* THE CHECKPOINT IT WILL LOAD must exist on disk. A
-         flag that switches to an engine which is not there would trade the ONLY
-         transcriber in this tree for nothing — verbatim the failure the HARD
-         RULE in AGENTS.md was written after. THE FILE ALONE IS NOT THE ENGINE
-         (the gate until 2026-10-11, and a trap): `_run_runner` passes no
-         `--model-dir`, so the runner loads its own
-         `models/parakeet-redux-ternary`, and a runner on disk with that
-         checkpoint absent dies in `redux_batch.load_runtime`'s SystemExit on
-         EVERY pass while the switch has already cut streaming. Either absence is
-         REFUSED LOUDLY, with the missing path, and the worker stays streaming.
-      3. THE FILE MUST BE FRESH *AND* SAY HIDDEN for longer than
-         `hidden_after_s` (see `PanelVisibilityReader`: a stale or unreadable
-         file reads as VISIBLE, so gate 3 fails closed towards streaming).
-
-    THE BATCH PASS IS OFF-THREAD, and deliberately: the runner is a separate
-    process with a model load, and blocking the ASR thread on it would stall
-    `audio_q` until it overflowed and DROPPED audio — the accumulated audio the
-    batch path exists to transcribe. So the accumulated PCM is SNAPSHOT and
-    handed to the runner thread, while the ASR thread keeps consuming the queue
-    into a fresh buffer. Nothing is transcribed twice and nothing is dropped.
-
-    STDOUT STAYS ONE THREAD. The runner thread does not emit: it pushes parsed
-    caption dicts onto a queue and the ASR thread drains and emits them, so the
-    JSONL contract keeps its single writer even while the batch pass runs.
-    """
-
-    def __init__(self, enabled, reader, runner, log_fn,
-                 hidden_after_s=REDUX_HIDDEN_AFTER_DEFAULT_S,
-                 batch_interval_s=REDUX_BATCH_INTERVAL_DEFAULT_S,
-                 max_audio_s=REDUX_MAX_AUDIO_DEFAULT_S,
-                 runner_timeout_s=REDUX_RUNNER_TIMEOUT_DEFAULT_S,
-                 wav_dir=None, armed_by="--redux-when-hidden",
-                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None):
-        self.enabled = bool(enabled)
-        self.reader = reader
-        self.runner = runner
-        self.log = log_fn
-        self.armed_by = str(armed_by)
-        self.min_free_mb = float(min_free_mb or 0.0)
-        self.hidden_after_s = float(hidden_after_s)
-        self.batch_interval_s = max(1.0, float(batch_interval_s))
-        self.max_audio_s = max(self.batch_interval_s, float(max_audio_s))
-        self.runner_timeout_s = float(runner_timeout_s)
-        self.wav_dir = wav_dir
-        # ── gate 2, decided ONCE, at construction, and stated in the log ─────
-        # TWO facts, not one: the runner FILE and the checkpoint it will LOAD.
-        # `_run_runner` invokes the runner with no `--model-dir`, so the runner
-        # resolves its own `models/parakeet-redux-ternary` — and with that
-        # directory absent (measured on this box 2026-10-11: `worker/models/`
-        # holds only the nemotron export) every batch dies in
-        # `redux_batch.load_runtime`'s SystemExit. Armed on the file alone, the
-        # switch would cut the streaming decode in the asr thread (`if mode ==
-        # "batch": ... continue`) and leave the owner with NO transcriber at all,
-        # silently. So the checkpoint is part of the gate, and the refusal names
-        # the path that is missing.
-        self.runner_available = os.path.exists(self.runner)
-        self.model_dir = os.path.abspath(
-            model_dir if model_dir else redux_checkpoint_dir(self.runner))
-        self.model_missing = redux_checkpoint_missing(self.model_dir)
-        self.model_available = not self.model_missing
-        self.armed = bool(
-            self.enabled and self.runner_available and self.model_available)
-        self.mode = "stream"
-        #: O nivel de shedding da shell (`leve` ate' ela dizer outra coisa). Vive
-        #: aqui para a linha de log so' sair quando o nivel MUDA -- um log por
-        #: bloco seria ruido a 50 Hz.
-        self._shed = "leve"
-        self.visible = True
-        self.why = "boot"
-        self.hidden_since = None
-        self.switches = 0
-        self.segments = 0
-        self.segment_lines = 0
-        self.batches_kicked = 0
-        self.runner_failures = 0
-        self.refusals = 0
-        self.deferred = 0
-        self.stream_chunks_before = 0
-        self.batch_seconds = 0.0
-        self._pending = []
-        self._pending_samples = 0
-        self._inflight = None
-        self._captions = queue.Queue()
-        self._lock = threading.Lock()
-
-    # -- the log line a boot leaves ----------------------------------------
-    def boot_line(self):
-        if not self.enabled:
-            return
-        if self.armed:
-            self.log(
-                f"REDUX_SWITCH armed=true by={self.armed_by} "
-                f"hidden_after_s={self.hidden_after_s} "
-                f"batch_interval_s={self.batch_interval_s} "
-                f"max_audio_s={self.max_audio_s} min_free_mb={self.min_free_mb} "
-                f"runner={self.runner} "
-                f"visibility={self.reader.path}")
-        elif not self.runner_available:
-            # LOUD, and it is the HARD RULE speaking: without a runner on disk
-            # the switch would silence the only transcriber there is, so it is
-            # refused and the streaming path is left exactly as it is.
-            self.log(
-                f"REDUX_SWITCH_REFUSED armed=false reason=runner-missing "
-                f"runner={self.runner} — the batch engine is not on disk, so the "
-                f"streaming capture is NOT cut while the panel is hidden "
-                f"(today it is the only transcriber)")
-        else:
-            # The runner IS on disk and the checkpoint it will LOAD is not: the
-            # distinct reason (and the path) is the whole point of this branch —
-            # a bare `armed=false` would leave the next reader hunting for why.
-            self.log(
-                f"REDUX_SWITCH_REFUSED armed=false reason=checkpoint-missing "
-                f"runner={self.runner} model_dir={self.model_dir} "
-                f"missing={','.join(self.model_missing)} — the batch engine cannot "
-                f"LOAD this checkpoint (`redux_batch.load_runtime` exits on the "
-                f"first missing manifest), so the streaming capture is NOT cut "
-                f"while the panel is hidden (today it is the only transcriber)")
-
-    # -- the mode decision --------------------------------------------------
-    def tick(self, now=None):
-        """Decide the mode for THIS block, and say so in one line per change."""
-        if not self.armed:
-            return self.mode
-        now = time.time() if now is None else now
-        visible, why, age = self.reader.read()
-        self.why = why
-        if visible:
-            self.visible = True
-            self.hidden_since = None
-        else:
-            self.visible = False
-            if self.hidden_since is None:
-                self.hidden_since = now
-                self.log(
-                    f"REDUX_VISIBILITY visible=false source={why} "
-                    f"age_s={age if age is None else round(age, 2)} "
-                    f"hidden_since={round(now, 3)} "
-                    f"switch_in_s={self.hidden_after_s}")
-        # THE OWNER'S ORDER WEIGHS ON TOP OF VISIBILITY (2026-10-30, verbatim):
-        # *"alta: desliga nemotron, so parakeet; muito alta: desliga parakeet
-        # tambem. AUDIO SEMPRE fica para processar depois"*. The shell publishes
-        # the level in the same file this switch already polls, so no new IPC:
-        #
-        #     alta        -> "batch"  (the live engine stops, the batch one runs)
-        #     muito-alta  -> "shed"   (nothing runs; audio ACCUMULATES, never lost)
-        #     leve        -> whatever the visibility says (the behaviour of always)
-        #
-        # `shed` is honoured ONLY when this switch is armed: with no batch engine
-        # on disk, stopping the live one would leave NO transcriber, which is the
-        # one thing the HARD RULE forbids. The decision above already refuses to
-        # arm in that case, so this is not a second guard -- it is the same fact
-        # read where it matters.
-        shed = self.reader.shed()
-        if shed != getattr(self, '_shed', 'leve'):
-            self._shed = shed
-            self.log(
-                f"REDUX_SHEDDING level={shed} visible={str(self.visible).lower()} "
-                f"commit_note=the shell decides the level from the machine")
-        if shed == "muito-alta":
-            wanted = "shed"
-        elif shed == "alta":
-            wanted = "batch"
-        else:
-            wanted = "batch" if (
-                not self.visible
-                and self.hidden_since is not None
-                and (now - self.hidden_since) >= self.hidden_after_s
-            ) else "stream"
-        if wanted != self.mode:
-            self.mode = wanted
-            self.switches += 1
-            if wanted == "batch":
-                why = ('shed-' + str(getattr(self, '_shed', 'leve'))
-                       if getattr(self, '_shed', 'leve') == 'alta'
-                       else 'hidden-%ss' % self.hidden_after_s)
-                self.log(
-                    f"REDUX_MODE mode=batch visible={str(self.visible).lower()} "
-                    f"reason={why} visibility={self.why} "
-                    f"switches={self.switches} runner={os.path.basename(self.runner)}")
-            elif wanted == "shed":
-                self.log(
-                    f"REDUX_MODE mode=shed reason=shed-muito-alta "
-                    f"visibility={self.why} switches={self.switches} "
-                    f"note=audio-fica-para-processar-depois")
-            else:
-                self.log(
-                    f"REDUX_MODE mode=stream visible={str(self.visible).lower()} "
-                    f"reason={'visible-again' if self.visible else 'boot'} "
-                    f"switches={self.switches} segments={self.segments}")
-        return self.mode
-
-    # -- the accumulation ---------------------------------------------------
-    def add_audio(self, block):
-        """Hold one 16 kHz block for the batch pass. Bounded by `max_audio_s`."""
-        with self._lock:
-            self._pending.append(block)
-            self._pending_samples += int(block.size)
-            limit = int(self.max_audio_s * TARGET_SR)
-            while self._pending_samples > limit and len(self._pending) > 1:
-                dropped = self._pending.pop(0)
-                self._pending_samples -= int(dropped.size)
-                # Dropping the OLDEST audio is the only bounded choice, and it is
-                # said out loud rather than leaked silently: a hidden panel is
-                # not supposed to transcribe an unbounded backlog.
-                if self._pending_samples % (5 * TARGET_SR) < int(block.size):
-                    self.log(
-                        f"REDUX_BUFFER_TRIMMED max_audio_s={self.max_audio_s} "
-                        f"held_s={round(self._pending_samples / TARGET_SR, 2)}")
-
-    def pending_seconds(self):
-        return round(self._pending_samples / float(TARGET_SR), 2)
-
-    def take_pending(self):
-        """Snapshot and clear: the runner gets THIS audio, once."""
-        with self._lock:
-            held = self._pending
-            samples = self._pending_samples
-            self._pending = []
-            self._pending_samples = 0
-        return held, samples
-
-    # -- the batch pass -----------------------------------------------------
-    def maybe_kick(self, reason="interval"):
-        """Start a batch pass if one is not already running and it is worth it.
-
-        THE INTERVAL IS A FLOOR, NOT A HINT. This is the measured bug the first
-        version of this method shipped: it delegated straight to `flush_pending`,
-        whose only floor is `REDUX_MIN_AUDIO_S` (the point at which a model load
-        is worth it at all), so on the live loop — which calls this once per
-        100 ms block — it kicked a batch every time one second of audio had
-        accumulated. Twelve invocations for sixteen seconds of hidden audio, and
-        with a runner that takes seconds to load its weights the light path
-        becomes a queue of model loads: the exact opposite of "um transcritor
-        LEVE". The interval gate belongs HERE, where it means "how much audio one
-        pass covers", and the minimum belongs in `flush_pending`, where it means
-        "do not wake the model for a rounding error".
-
-        This is also the only caller that RESPECTS the memory floor, because it is
-        the only one that can afford to wait: a deferred interval pass keeps its
-        audio and retries on the next tick (see `flush_pending`).
-        """
-        if not self.armed or self.mode != "batch":
-            return False
-        if self.pending_seconds() < self.batch_interval_s:
-            return False
-        return self.flush_pending(reason, respect_memory_floor=True)
-
-    def flush_pending(self, reason="flush", respect_memory_floor=False):
-        """One batch pass over the audio held NOW, whatever the mode is.
-
-        THE TAIL IS THE POINT. The panel coming back must not LOSE the audio that
-        accumulated since the last interval pass, and it must not DELAY the return
-        to streaming either — "panel visible again -> back to streaming
-        immediately". So this kick is allowed in EITHER mode and always runs
-        off-thread, exactly like the interval ones; its lines come out through
-        `drain_captions()` while the stream is already live again. Ordering is
-        carried by `start`/`end` on every line, not by arrival order.
-
-        This is the path the TAILS take (panel visible again, stream end), so it
-        deliberately does NOT apply the interval floor: whatever is left must be
-        transcribed. `REDUX_MIN_AUDIO_S` is the only floor, and it exists so a
-        few milliseconds of audio does not pay for a model load.
-
-        THE MEMORY FLOOR IS APPLIED ONLY WHEN WAITING IS FREE. `maybe_kick` (the
-        interval path) passes `respect_memory_floor=True`: under pressure the pass
-        is DEFERRED and its audio stays buffered, so the next tick retries and
-        nothing is lost. A TAIL cannot be deferred — there is no next tick, so a
-        deferral would simply drop the owner's last minute — so a tail ATTEMPTS
-        under pressure and says in the log that it did. Both outcomes are stated;
-        neither is silent.
-        """
-        if not self.armed:
-            return False
-        if self._inflight is not None and self._inflight.is_alive():
-            # A pass is already running. The audio keeps accumulating and the
-            # next tick will cover it; nothing is dropped by refusing here.
-            return False
-        if self.min_free_mb > 0:
-            free = _free_memory_mb()
-            if free is not None and free < self.min_free_mb:
-                if respect_memory_floor:
-                    self.deferred += 1
-                    # RATE-LIMITED, for the reason `on_block`'s `queue_drops` is:
-                    # this is evaluated once per 100 ms block, and MEASURED that
-                    # way the first version wrote NINETY lines in thirteen seconds
-                    # of pressure — a log that grows ~36 000 lines an hour on the
-                    # exact path (a hidden panel on a busy box) where nobody is
-                    # watching. The COUNTER stays exact; only the prose is thin.
-                    if self.deferred <= 3 or self.deferred % 30 == 0:
-                        self.log(
-                            f"REDUX_BATCH_DEFERRED reason=low-memory free_mb={free} "
-                            f"floor_mb={self.min_free_mb} "
-                            f"held_s={self.pending_seconds()} deferred={self.deferred} "
-                            f"— the batch engine's documented peak is ~3.9 GB and a failed "
-                            f"allocation would lose this pass; the audio stays buffered and "
-                            f"the next tick retries")
-                    return False
-                self.deferred += 1
-                self.log(
-                    f"REDUX_BATCH_LOW_MEMORY free_mb={free} floor_mb={self.min_free_mb} "
-                    f"reason={reason} attempting=anyway deferred={self.deferred} — a tail "
-                    f"has no next tick, so the attempt is made and this line is the "
-                    f"receipt that it was made under pressure")
-        held, samples = self.take_pending()
-        if samples < int(REDUX_MIN_AUDIO_S * TARGET_SR):
-            # Not worth a model load: put it back and wait for more audio.
-            with self._lock:
-                self._pending = held + self._pending
-                self._pending_samples += samples
-            return False
-        self.batches_kicked += 1
-        self.batch_seconds += samples / float(TARGET_SR)
-        self._inflight = threading.Thread(
-            target=self._run_runner, args=(held, samples, reason),
-            name="redux-batch", daemon=True)
-        self._inflight.start()
-        self.log(
-            f"REDUX_BATCH_KICK reason={reason} audio_s={round(samples / TARGET_SR, 2)} "
-            f"kicks={self.batches_kicked} pid={os.getpid()}")
-        return True
-
-    def _write_wav(self, pcm, path):
-        """16 kHz mono PCM16, via `wave` — no dependency and no ffmpeg."""
-        import wave
-
-        import numpy as np
-
-        data = np.clip(np.concatenate(pcm) if len(pcm) > 1 else pcm[0], -1.0, 1.0)
-        ints = (data * 32767.0).astype("<i2")
-        with wave.open(path, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(TARGET_SR)
-            wav.writeframes(ints.tobytes())
-
-    def _run_runner(self, held, samples, reason):
-        """Invoke the batch engine and queue its caption lines. Never raises.
-
-        THE FAILURE THIS CANNOT BE ALLOWED TO HAVE: dying quietly. A batch pass
-        that fails and says nothing turns "the light path is working" into a
-        claim with no evidence, and the owner's captions simply stop. Every exit
-        from this method logs, and a failure leaves a `REDUX_BATCH_FAILED` line
-        on stderr and a `redux-batch-error` status on stdout.
-        """
-        import subprocess
-        import tempfile
-
-        wav_path = None
-        try:
-            if self.wav_dir is None:
-                # ONE directory per process, not per batch: a `mkdtemp` per
-                # invocation leaks a directory every `batch_interval_s`, and a
-                # panel left closed overnight is exactly when that is not
-                # noticed. The WAV itself is removed after every run.
-                self.wav_dir = tempfile.mkdtemp(prefix="sotto-redux-")
-            wav_dir = self.wav_dir
-            os.makedirs(wav_dir, exist_ok=True)
-            wav_path = os.path.join(
-                wav_dir, f"redux-{os.getpid()}-{self.batches_kicked}.wav")
-            self._write_wav(held, wav_path)
-            cmd = [sys.executable, self.runner, "--wav", wav_path, "--json"]
-            # CREATE_NO_WINDOW: the house rule. This worker already runs without
-            # a console; a child python.exe would otherwise open a NEW console
-            # window on the owner's screen, and the 60 s census names the pid.
-            creationflags = 0x08000000 if os.name == "nt" else 0
-            t_runner = time.time()
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=self.runner_timeout_s,
-                creationflags=creationflags)
-            runner_wall = round(time.time() - t_runner, 2)
-            lines = 0
-            for raw in (proc.stdout or "").splitlines():
-                raw = raw.strip()
-                if not raw:
-                    continue
-                try:
-                    payload = json.loads(raw)
-                except ValueError:
-                    self.log(f"REDUX_BATCH_MALFORMED line={json.dumps(raw[:160])}")
-                    continue
-                if not isinstance(payload, dict) or payload.get("type") != "caption":
-                    continue
-                text = str(payload.get("text") or "").strip()
-                if not text:
-                    continue
-                # ── THE PAYOFF ───────────────────────────────────────────────
-                # `producer` is stamped HERE and not taken from the runner's own
-                # line unless the runner already said it: the field is what
-                # `app/electron/history-source.js:51,61-63` requires, and a batch
-                # line that reached the transcript without it would be refused.
-                # `final:true` is the worker's OWN route vote — the panel's
-                # engine reads it to derive `route='final'`
-                # (`caption-formulation.js` `routeFor`).
-                self._captions.put({
-                    "type": "caption",
-                    "text": text,
-                    "start": payload.get("start"),
-                    "end": payload.get("end"),
-                    "final": True,
-                    "producer": str(payload.get("producer") or REDUX_PRODUCER),
-                    "producerModel": os.path.basename(
-                        str(payload.get("model") or self.runner)),
-                    "route": "redux-batch",
-                })
-                lines += 1
-            self.segments += 1
-            self.segment_lines += lines
-            self.log(
-                f"REDUX_BATCH_DONE reason={reason} "
-                f"audio_s={round(samples / float(TARGET_SR), 2)} lines={lines} "
-                f"rc={proc.returncode} segments={self.segments} "
-                f"wall_s={runner_wall} timeout_s={self.runner_timeout_s}")
-            # A NON-ZERO rc IS A FAILURE, not "the audio had nothing to say", and
-            # it is counted and named as one. Two separate things are reported
-            # because they are different facts: `REDUX_BATCH_DONE` says the runner
-            # RETURNED (with its rc), and `REDUX_BATCH_FAILED` says this run lost a
-            # pass. MEASURED reason this is not left to the empty-caption status:
-            # the runner's stderr is captured and would otherwise be discarded, so
-            # a runner that refuses its input (wrong WAV shape, missing weights, a
-            # Python traceback) reported as `lines=0` — indistinguishable from a
-            # silence, which is the "green exit code on a broken stage" class this
-            # repo has been bitten by. The tail is logged ONLY on failure, so a
-            # healthy run stays quiet.
-            if proc.returncode != 0:
-                self.runner_failures += 1
-                tail = " | ".join(
-                    (proc.stderr or "").strip().splitlines()[-4:])[:600]
-                self.log(
-                    f"REDUX_BATCH_FAILED reason=runner-rc rc={proc.returncode} "
-                    f"runner={os.path.basename(self.runner)} "
-                    f"failures={self.runner_failures} tail={json.dumps(tail)}")
-            if lines == 0:
-                # A silent batch is a FACT the run must state: the panel is
-                # hidden, the switch is armed, and the audio produced nothing.
-                self._captions.put({
-                    "type": "status",
-                    "state": "redux-batch-empty",
-                    "producer": REDUX_PRODUCER,
-                    "audio_s": round(samples / float(TARGET_SR), 2),
-                    "detail": (
-                        f"the batch engine ran over {round(samples / float(TARGET_SR), 2)}s "
-                        f"of accumulated audio and emitted no caption "
-                        f"(rc={proc.returncode}); the panel is hidden and this is the "
-                        f"only transcriber running"),
-                })
-        except subprocess.TimeoutExpired:
-            self.runner_failures += 1
-            self.log(
-                f"REDUX_BATCH_FAILED reason=timeout timeout_s={self.runner_timeout_s} "
-                f"runner={self.runner} failures={self.runner_failures}")
-        except Exception as exc:
-            self.runner_failures += 1
-            self.log(
-                f"REDUX_BATCH_FAILED reason={type(exc).__name__} error={exc!r} "
-                f"failures={self.runner_failures}")
-        finally:
-            if wav_path:
-                try:
-                    os.remove(wav_path)
-                except OSError:
-                    pass
-
-    def drain_captions(self):
-        """The lines the runner produced, for the ASR thread to emit. Non-blocking."""
-        out = []
-        while True:
-            try:
-                out.append(self._captions.get_nowait())
-            except queue.Empty:
-                return out
-
-    def in_flight(self):
-        return self._inflight is not None and self._inflight.is_alive()
-
-    def stop(self):
-        """Last call: let the runner finish, then report what the switch did."""
-        if not self.enabled:
-            return
-        if self._inflight is not None:
-            self._inflight.join(timeout=max(5.0, self.runner_timeout_s))
-        self.log(
-            f"REDUX_SWITCH_STOP armed={str(self.armed).lower()} "
-            f"switches={self.switches} segments={self.segments} "
-            f"segment_lines={self.segment_lines} kicks={self.batches_kicked} "
-            f"batch_seconds={round(self.batch_seconds, 2)} "
-            f"failures={self.runner_failures} deferred={self.deferred} "
-            f"refusals={self.refusals} "
-            f"fallbacks={self.reader.fallbacks}/{self.reader.reads}")
 
 
 # ── selftest ──────────────────────────────────────────────────────────────────
@@ -5097,6 +4326,39 @@ def _leave_load_background_mode(entered):
     _set_priority_class(PROCESS_MODE_BACKGROUND_END)
     back = _set_priority_class(0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
     return 'background' if back == 'ok' else 'background(end=%s)' % back
+
+
+def _redux_done_fields(switch, counters):
+    """Os numeros da STACK LAW no `done`, e a razao de cada um.
+
+    Extraido de `main()` para o ratchet estrutural (`_main/code-health-oracle.py`
+    mede a funcao mais longa do ficheiro e `main` era ela). O GUARDA ficou la', e
+    ele e' o que torna "flag off = a linha de hoje, byte a byte" verificavel:
+    `main` so' chama isto dentro de `if switch is not None:`, e
+    `_main/redux-flag-gate.py` pina essa ancora. `_pending_counts()` e' lido no
+    mesmo instante em que os campos sao montados, como era antes.
+
+    `captions` (o `done` de cima) continua a ser a contagem do motor de
+    STREAMING; `reduxCaptions` e' a do motor de lote, e as duas nunca sao somadas
+    aqui -- "que motor falou" e' a pergunta que esta lane existe para responder.
+    """
+    return dict(
+        reduxEnabled=True,
+        reduxArmed=switch.armed,
+        reduxRunner=os.path.basename(switch.runner),
+        reduxCaptions=counters["redux_captions"],
+        reduxSwitches=switch.switches,
+        reduxSegments=switch.segments,
+        reduxSegmentLines=switch.segment_lines,
+        reduxBatchKicks=switch.batches_kicked,
+        reduxBatchSeconds=round(switch.batch_seconds, 2),
+        reduxRunnerFailures=switch.runner_failures,
+        reduxBatchDeferred=switch.deferred,
+        reduxMinFreeMb=switch.min_free_mb,
+        **_policy.done_fields(switch, switch._pending_counts()),
+        reduxVisibilityReads=switch.reader.reads,
+        reduxVisibilityFallbacks=switch.reader.fallbacks,
+    )
 
 
 def main():
@@ -6347,17 +5609,18 @@ def main():
                                 f"stream starts against the batch window's cache")
                     mode = wanted
                 if mode == "batch":
-                    # The tap's audio, held for the batch pass and bounded by
-                    # --redux-max-audio. The streaming decode below is SKIPPED:
-                    # this `continue` is the CPU the owner is not paying for.
+                    # Held for the background pass: RAM to --redux-max-audio,
+                    # then the DISK spool -- in order, lossless
+                    # (`live_queue.PendingAudio`). The decode below is SKIPPED.
                     switch.add_audio(block)
                     switch.maybe_kick()
                     continue
                 if mode == "shed":
-                    # "muito alta": NADA corre agora, e o AUDIO NAO SE PERDE --
-                    # ele fica na fila limitada (ordem do dono: *"audio sempre fica
-                    # para processar depois"*). Sem `maybe_kick`: acordar o modelo
-                    # e' exactamente o custo que este nivel existe para cortar.
+                    # "muito alta": nada corre e o AUDIO NAO SE PERDE -- entra
+                    # na espera sem perdas (`PendingAudio`: RAM, depois disco,
+                    # por ordem) e o motor de fundo le'-o todo quando a carga
+                    # libertar. Sem `maybe_kick`: acordar o modelo e' o custo
+                    # que este nivel existe para cortar.
                     switch.add_audio(block)
                     continue
             # ── PRE-GAIN buffer ──────────────────────────────────────────────
@@ -6498,6 +5761,9 @@ def main():
     # the byte-identical default.
     redux_optin = bool(args.redux_when_hidden) or (
         str(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") or "").strip() == "1")
+    # Medicao e spool, de `engine_policy` (o porque' esta' la'): antes do
+    # interruptor, cuja forma (`if redux_optin:` + construtor) e' pinada.
+    probe, spool_dir = _policy.probe_and_spool(_SHEDDING_PATH, err)
     if redux_optin:
         switch = ReduxHiddenSwitch(
             enabled=True,
@@ -6517,6 +5783,8 @@ def main():
             wav_dir=os.environ.get("SOTTO_REDUX_WAV_DIR") or None,
             min_free_mb=_positive_or(
                 args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
+            probe=probe,
+            spool_dir=spool_dir,
         )
         switch.boot_line()
         # ── THE LIVE OVERLAY (lane S3), constructed only when it is opted in ────
@@ -7379,23 +6647,11 @@ def main():
     # count; `reduxCaptions` is the batch engine's, and the two are never added
     # together here — "which engine spoke" is the question this lane exists to
     # be able to ask.
+    # OS CAMPOS foram para `_redux_done_fields()` (o ratchet mede `main`); o
+    # GUARDA fica AQUI, nesta linha, porque e' ele que torna a promessa
+    # verificavel -- e o `_main/redux-flag-gate.py` pina-o.
     if switch is not None:
-        done_payload.update(
-            reduxEnabled=True,
-            reduxArmed=switch.armed,
-            reduxRunner=os.path.basename(switch.runner),
-            reduxCaptions=counters["redux_captions"],
-            reduxSwitches=switch.switches,
-            reduxSegments=switch.segments,
-            reduxSegmentLines=switch.segment_lines,
-            reduxBatchKicks=switch.batches_kicked,
-            reduxBatchSeconds=round(switch.batch_seconds, 2),
-            reduxRunnerFailures=switch.runner_failures,
-            reduxBatchDeferred=switch.deferred,
-            reduxMinFreeMb=switch.min_free_mb,
-            reduxVisibilityReads=switch.reader.reads,
-            reduxVisibilityFallbacks=switch.reader.fallbacks,
-        )
+        done_payload.update(_redux_done_fields(switch, counters))
     if overlay is not None:
         # THE OVERLAY'S OWN VERDICT, kept SEPARATE from the batch arm's. A
         # number that mixes the two engines cannot answer the only question
