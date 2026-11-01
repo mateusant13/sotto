@@ -210,3 +210,27 @@ Instrumentos do POV em uso: `_main/pov-selftest.py` (instancia privada, token he
 `app/webview/bridge_census.py` (`SOTTO_BRIDGE_CENSUS=1`, stacks de dentro quando o ponte nao
 responde -- `py-spy` esta' negado nesta caixa, `os error 5`), `_main/sim/panel-sim.html`
 (simulacao 1:1 do painel+overlay quando a superficie real nao pode ser conduzida).
+
+## 13. Censo de fugas na instancia viva (2026-11-01 11:28-11:40)
+
+**Processos.** Depois do relancamento ha UM processo do Sotto: pid 9572 (o que ganhou
+`Local\SottoShell`). Sete `pythonw.exe` antigos continuam na caixa e **nenhum e' do Sotto**:
+`grep -c "pid=<n>" _main/webview-run.log` da' **0** para os sete, e nenhum carrega modulo de
+`sotto`/`webview`/`onnx`. O par que a minha medicao havia deixado (46640/44468) morreu quando
+o `pov-selftest` passou a levar `--no-self-relaunch` (seccao 7).
+
+**RAM.** pid 9572 a T+17 min: `WorkingSet64 = 164 MB`, `PrivateMemorySize64 = 123 MB`.
+
+**O churn do worker esta' CAPADO, e o cap foi visto a funcionar ao vivo.** Quatro mortes por
+silencio em 10 minutos e a quarta **nao** reiniciou:
+
+    11:30:33 BRIDGE_RESTART reason=exit ladder=no-audio in_ms=15000
+    11:33:09 BRIDGE_RESTART reason=exit ladder=no-audio in_ms=30000
+    11:35:48 BRIDGE_RESTART reason=exit ladder=no-audio in_ms=60000
+    11:38:59 BRIDGE_RESTART_SUPPRESSED reason=exit ladder=no-audio no_audio_restarts=3 cap=3
+             why=restarting-cannot-fix-a-routing-problem resume=press-Alt+C
+
+Ou seja: a regra que o AGENTS.md cita (*"o worker morre e recarrega ~1 GB de modelo 88 vezes em
+17 minutos"*) esta' de facto fechada -- tres recargas com escada 15/30/60 s e depois o shell
+PARA e diz ao dono o que conferir. O par de 2 s que existe no log e' de 10:50, o laco de
+`NameError: REDUX_LIVE_DEFAULT` de ANTES da cura, nao do codigo de hoje.
