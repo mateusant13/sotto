@@ -90,7 +90,12 @@ def write_runner(exit_after):
         '@echo off\r\n'
         'cd /d %s\r\n'
         'set SOTTO_LIVE_HOTKEY=%s\r\n'
-        '"%s" "%s" --selftest --no-worker --mutex-name %s --hotkey %s '
+        # `--no-self-relaunch`: medido em 2026-11-01 11:14 -- sem a bandeira o
+        # `--exit-after` nao FECHA a medicao, ela RE-LANCA-SE como a instancia do
+        # dono (pid 40064, viva 6 min depois dos 45 s pedidos, ja' sem a tag). Uma
+        # medicao que se promove a app ocupa o mutex `Local\SottoShell` e o dono
+        # fica sem conseguir abrir a dele.
+        '"%s" "%s" --selftest --no-worker --no-self-relaunch --mutex-name %s --hotkey %s '
         '--exit-after %d --log "%s" > "%s" 2>&1\r\n'
         'echo RC=%%ERRORLEVEL%% >> "%s"\r\n'
     ) % (ROOT, FREE_LIVE_HOTKEY, sys.executable,

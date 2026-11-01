@@ -74,3 +74,58 @@ comando**, e o que continua **por medir**. `reported`/`fixed` nunca se apresenta
   `goal-paint`, `goal-load`, `goal-profile` (≈605 MB). Ficam `goal-ratchet`, `goal-bridge`,
   `goal-anim` — vivos, morrem quando as suas lanes fecharem.
 - As worktrees anteriores a este goal não foram tocadas: não são minhas.
+
+## 6. Depois das fusões: três nomes usados e nunca definidos (o produto estava partido)
+
+A app do dono estava a correr `BRIDGE_DEATH rc=4 ... captions=0` e **ninguém transcrevia**.
+A causa não foi uma lane má: foi a **fusão** de duas lanes que mexeram no mesmo ficheiro.
+Nenhum portão da casa apanha isto — `py_compile` olha a sintaxe e a bateria **importa** os
+módulos, e um import passa. O que apanhou foi um varrimento novo:
+
+| defeito | onde | porquê é invisível | efeito medido |
+|---|---|---|---|
+| `REDUX_LIVE_DEFAULT` usado no `argparse` e fora da lista de `from engine_switch import (...)` | `worker/sotto_worker.py` | o nome só é lido quando `main()` corre | `BRIDGE_DEATH rc=4`, `captions=0` |
+| `slice_blocks` chamado quando o nome é `_slice_blocks` | `worker/engine_policy.py`, no caminho do **despejo** | a segunda chamada está **dentro** do `except BaseException`, logo o `NameError` sai do handler | worker morto a meio de um lote |
+| `_window_is_ours` perdeu a definição (era usada em 2 sítios) | `app/webview/sotto_webview.py` | `NameError` só nasce no tick do `ClickWatcher` | o "clique fora" nunca fechava o painel |
+
+`_main/undefined-names-oracle.py` varre 13 ficheiros de produção, tem `--neg-arm` que
+reproduz o defeito de hoje numa fixture (acusa) e par mudo (o par correcto passa); está na
+bateria como `undefined-names` + `red-as-expected-undefined-names`.
+
+**Verificação no produto:** `python _main/sotto-relaunch.py --relaunch` →
+`pid 25112 GANHOU a mutex`, `saude ... code_id=AB042936B24A`, `LIVE_CODE FRESH`
+(processo == disco), `BRIDGE_START reason=preload` e o processo do worker **vivo**
+(pid 45272) — o `NameError` do arranque desapareceu. O único aviso vivo é o do áudio:
+`BRIDGE_DEATH rc=3 kind=no-audio "Audio tap carried no signal - every candidate device was
+flat"`, com o endpoint por omissão medido **não silenciado e a 100 %** — é silêncio de
+fonte, não da app.
+
+## 7. O bug que mata o Alt+C de vez em quando não é do Alt+C
+
+`python _main/sotto-relaunch.py --relaunch` **abortou** às 10:56: `kill pid=13120 NAO morreu
+em 15 s`. Uma segunda tentativa matou-o em 1 s. O log do mesmo instante tem três
+`WARN exec_js TIMEOUT after 10.0s` — a thread da UI presa no bridge. Um processo com a UI
+presa não responde ao kill delegado na primeira tentativa. Está a ser diagnosticado por uma
+lane (py-spy está negado nesta caixa: `Acesso negado (os error 5)`).
+
+## 7. Um `--exit-after` que nao fechava: a medicao PROMOVIA-SE a app do dono
+
+Medido 2026-11-01 11:14-11:24. O `_main/pov-selftest.py` largava o shell com
+`--selftest --exit-after 45` **sem** `--no-self-relaunch`. Resultado: aos 45 s o shell nao
+morria -- **re-lancava-se** como a instancia do dono (pid 40064, viva e a escrever
+`panel-state.json` seis minutos depois), ja' sem a tag da medicao e a segurar o mutex
+`Local\SottoShell`. Uma largada de medicao que se promove a app e' a mesma classe do
+incidente que o `reap()` deste ficheiro existe para apanhar, mas por outra porta: o
+`reap` so' mata o que ainda tem a tag.
+
+Correccao: a linha do runner passa a levar `--no-self-relaunch`. Prova (o mesmo comando,
+tag privada `reap`): `SELFTEST rc=0`, `shell: RC=0`, e o censo de `pythonw` a seguir **nao
+tem** o par de processos do run (antes tinha: 46640/44468).
+
+### Censo de fugas (2026-11-01 11:2x)
+Sete `pythonw.exe` anteriores (`13604, 25628, 21216, 26064, 54632, 36516, 55956`) existem
+na caixa mas **nenhum e' do Sotto**: `grep -c "pid=<n>" _main/webview-run.log` da' **0**
+para os sete, e nenhum carrega modulo de `sotto`/`webview`/`onnx`. O unico par que o run
+deixou (46640/44468) morreu com a correccao acima. Ou seja: hoje o Sotto nao tem instancia
+orfaa -- o pid 40064 e' a app viva e fresca do dono (`live-code-freshness --strict`:
+processo sha256 == disco sha256, `Alt+C` e `Ctrl+Space` com `register=true`).
