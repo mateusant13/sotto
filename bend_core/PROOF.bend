@@ -397,3 +397,112 @@ def Laws.Nat.window_rows_never_exceeds_the_capacity(live_rows, capacity):
 def Laws.Nat.window_rows_never_exceeds_the_live_rows(live_rows, capacity):
   %Equal.sym(Nat, Laws.Nat.window_rows(live_rows, capacity), Nat.min(capacity, live_rows), Laws.Nat.window_rows_is_the_minimum(live_rows, capacity)) : {Nat.is_le(_, live_rows) == True{} : Bool}
   min_le_r(capacity, live_rows)
+
+# ---------------------------------------------------------------------------
+# THE EPOCH ORDER (2026-10-30): three laws over the same four production sites.
+#
+# `le_refl` first, because a variable `a` does not reduce: `is_le(a, a)` is
+# `Cmp.is_le(Nat.cmp(a, a))` and `Nat.cmp` matches BOTH arguments at once, so
+# the neutral case needs the induction, exactly like `le_1_r`.
+# ---------------------------------------------------------------------------
+
+def le_refl(a: Nat) -> {Nat.is_le(a, a) == True{} : Bool}:
+  match a:
+    case 0n:
+      {==}
+    case 1n+ap:
+      le_refl(ap)
+
+# ---------------------------------------------------------------------------
+# LEMMA: one event does not take the epoch backwards.
+#
+# Only the EVENT is matched here, and the state is read through `Cap.epoch`.
+# That works because the model's transitions CONSTRUCT the next state
+# (`Cap{Nat.add(1n, Cap.epoch(c)), ...}`) instead of matching on `c`: a match on
+# a variable is stuck until the kernel splits it, so a transition written with a
+# `match` would leave `Cap.epoch(Cap.on_new_source(c))` neutral here and
+# `le_1_r`/`le_refl` would have nothing to apply to. MEDIDO: with the `match`
+# shape the kernel refused this lemma with
+# "expected: is_le(epoch, Cap.epoch(Cap.on_drain(Cap{...})))".
+#
+# With it, `NewSource` and `Blank` land on `is_le(epoch, 1 + epoch)` (`le_1_r`)
+# and `Push`/`Drain` land on `is_le(epoch, epoch)` (`le_refl`).
+# ---------------------------------------------------------------------------
+
+def epoch_step_le(c: Laws.Cap, ev: Laws.Ev) -> {Nat.is_le(Laws.Cap.epoch(c), Laws.Cap.epoch(Laws.Cap.step(c, ev))) == True{} : Bool}:
+  match ev:
+    case Laws.EvNewSource{}:
+      le_1_r(Laws.Cap.epoch(c))
+    case Laws.EvBlank{}:
+      le_1_r(Laws.Cap.epoch(c))
+    case Laws.EvPush{}:
+      le_refl(Laws.Cap.epoch(c))
+    case Laws.EvDrain{}:
+      le_refl(Laws.Cap.epoch(c))
+
+# A RUN: one `epoch_step_le` per event, chained. `c` is erased because the
+# Cons arm mentions it three times (the step, the step again inside the
+# recursive call, and the goal) and Bend is affine.
+def epoch_run_le(+evs: Laws.Evs, +c: Laws.Cap) -> {Nat.is_le(Laws.Cap.epoch(c), Laws.Cap.epoch(Laws.Evs.run(evs, c))) == True{} : Bool}:
+  match evs:
+    case Laws.EvsNil{}:
+      le_refl(Laws.Cap.epoch(c))
+    case Laws.EvsCon{head, tail}:
+      le_trans(Laws.Cap.epoch(c), Laws.Cap.epoch(Laws.Cap.step(c, head)), Laws.Cap.epoch(Laws.Evs.run(tail, Laws.Cap.step(c, head))), epoch_step_le(c, head), epoch_run_le(tail, Laws.Cap.step(c, head)))
+
+# PROOF: the source epoch never decreases over a whole session.
+def Laws.Cap.epoch_monotonic(evs, c):
+  epoch_run_le(evs, c)
+
+# ---------------------------------------------------------------------------
+# LEMMA: the model's structural equality and Base's comparison are the SAME
+# equality. Both strip one successor from both sides at once (`Nat.cmp` does
+# it in its `1+ap / 1+bp` arm), so the induction is the step case and the three
+# decided arms are computation.
+# ---------------------------------------------------------------------------
+
+def same_epoch_agrees(a: Nat, b: Nat) -> {Laws.Nat.same_epoch(a, b) == Cmp.is_eq(Nat.cmp(a, b)) : Bool}:
+  match a b:
+    case 0n 0n:
+      {==}
+    case 0n 1n+bp:
+      {==}
+    case 1n+ap 0n:
+      {==}
+    case 1n+ap 1n+bp:
+      same_epoch_agrees(ap, bp)
+
+# PROOF: a paint carries the current epoch, in BOTH directions. The chain is
+#   `paint_flag` = `revealed_flag(same_epoch s c)`            (delta)
+#   `same_epoch_agrees`   : that equals `revealed_flag(is_eq(cmp s c))`
+#   `of_bool_agrees...`   : and that equals `of_bool(is_eq(cmp s c))`.
+# The last step is the law proved above this file's model section, used
+# through `Equal.sym` because the law states `of_bool == revealed_flag` and the
+# goal needs `revealed_flag == of_bool`.
+# ---------------------------------------------------------------------------
+
+def Laws.Nat.no_cross_source_paint(stamp, cur):
+  Equal.trans(Nat, Laws.Nat.revealed_flag(Laws.Nat.same_epoch(stamp, cur)), Laws.Nat.revealed_flag(Cmp.is_eq(Nat.cmp(stamp, cur))), Laws.Nat.of_bool(Cmp.is_eq(Nat.cmp(stamp, cur))), Equal.cong(Bool, Nat, z => Laws.Nat.revealed_flag(z), Laws.Nat.same_epoch(stamp, cur), Cmp.is_eq(Nat.cmp(stamp, cur)), same_epoch_agrees(stamp, cur)), Equal.sym(Nat, Laws.Nat.of_bool(Cmp.is_eq(Nat.cmp(stamp, cur))), Laws.Nat.revealed_flag(Cmp.is_eq(Nat.cmp(stamp, cur))), Laws.Nat.of_bool_agrees_with_revealed_flag(Cmp.is_eq(Nat.cmp(stamp, cur)))))
+
+# `same_epoch` is stuck on a variable (the same reason as `le_refl`), so the
+# reflexivity of the epoch comparison needs its own induction.
+def same_epoch_refl(a: Nat) -> {Laws.Nat.same_epoch(a, a) == True{} : Bool}:
+  match a:
+    case 0n:
+      {==}
+    case 1n+ap:
+      same_epoch_refl(ap)
+
+# PROOF: a new source starts clean.
+#
+# The three parts of the conjunction collapse by computation once `c` is split:
+# `Cap.shown(Cap.on_blank(c))` is `False{}` and `Slot.is_idle(Cap.slot(...))`
+# is `True{}`, so `Bool.and` eats both and what is LEFT is the epoch equality
+# `same_epoch(1 + epoch, 1 + epoch)` -- `same_epoch_refl` at that same term.
+# The split of `c` is what lets `on_blank` reduce at all.
+# ---------------------------------------------------------------------------
+
+def Laws.Cap.display_clean_before_new_source(c):
+  match c:
+    case Laws.Cap{epoch, slot, shown}:
+      same_epoch_refl(Nat.add(1n, epoch))

@@ -9,7 +9,10 @@
 #
 # PROVE: as DECISOES PURAS do caminho 1:1 -- quantas palavras de uma linha o
 # YouTube ja revelou num instante, se uma linha esta viva nesse instante, e
-# quantas linhas a janela mostra. Cada `law` e um enunciado sobre o modelo
+# quantas linhas a janela mostra -- E, desde 2026-10-30, a ORDEM DO EPOCH DE
+# FONTE da legenda propria (DECISAO 5, no fim deste ficheiro): o epoch nunca
+# decresce, uma pintura so carrega o epoch corrente, e a fonte nova comeca com
+# a fila vazia e os pixeis limpos. Cada `law` e um enunciado sobre o modelo
 # abaixo, quantificado sobre TODAS as entradas do seu dominio, verificado pelo
 # kernel (Lean 4.34 via BendTT).
 #
@@ -74,8 +77,13 @@
 # MEDIDO 2026-10-29: a linha apontava para `bash tools/bend_verify.sh`, que nao
 # existe NESTE repositorio (e um caminho herdado do `consultgpt`, de onde este
 # pacote foi portado). O portao real aqui e `_main/bend-laws-gate.py`, que
-# envolve o `bend --verdict` e acrescenta os onze controlos negativos e as duas
-# sondas de tamper.
+# envolve o `bend --verdict` e acrescenta os catorze controlos negativos e as
+# duas sondas de tamper.
+#
+# MEDIDO 2026-10-30: o gate MUDOU de forma. `_main/bend-laws-gate.py` fixa a
+# INVENTARIO de leis e o CONJUNTO de controlos, e por isso acrescentar uma lei
+# aqui exige acrescentar a linha nos dois pins de la (senao o gate sai 5). O
+# portao das PROVAS e, e sempre foi, `bend PROOF.bend --verdict`.
 
 import Base
 
@@ -341,3 +349,235 @@ law Nat.window_rows_never_exceeds_the_live_rows:
 
 def Nat.window_rows(+live_rows: Nat, +capacity: Nat) -> Nat:
   Bool.pick(Nat, Nat.is_le(capacity, live_rows), capacity, live_rows)
+
+# ===========================================================================
+# DECISAO 5 -- A ORDEM DO EPOCH DE FONTE (2026-10-30)
+#
+# O DONO, 2026-10-30, verbatim: *"a legenda do audio anterior aparece no audio
+# novo"*. O defeito nao e' de texto nem de timing: e' de ORDEM -- um texto
+# enfileirado para uma fonte de audio e' pintado quando a fonte ja e' outra.
+#
+# O FATO MEDIDO, em `app/webview/sotto_webview.py` (numeros de linha lidos no
+# ficheiro a 2026-10-30):
+#
+#   * `_blank_caption_window` (:9719) faz
+#         self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
+#         self._caption_pending = None
+#     e depois esconde o overlay (`ov.show(False)`) -- limpa pixeis E fila.
+#   * `start_worker` (:9514) faz AS MESMAS duas linhas quando um worker arranca
+#     (`self._source_epoch = int(...) + 1`, `self._caption_pending = None`):
+#     "UM WORKER NOVO E' UMA FONTE NOVA". Nao mexe nos pixeis.
+#   * `push_caption_to_window` (:9798) grava no slot UNICO
+#         (now, text, previous, int(getattr(self, '_source_epoch', 0)))
+#     -- o texto viaja com o epoch COM QUE FOI ENFILEIRADO.
+#   * `_drain` (:9812-9819) compara ANTES de pintar:
+#         cur = int(getattr(self, '_source_epoch', 0))
+#         if epoch != cur: log CAPTION_DROP_EPOCH ...
+#         ov.set_text(...)
+#
+# O QUE ESTE MODELO PROVE: a ordem do epoch e' a ordem das fontes. Um epoch
+# que nunca decresce; um texto estampado com E so pinta com o epoch corrente
+# igual a E; e a transicao para uma fonte nova deixa o widget LIMPO (fila
+# vazia, nada no ecra), de modo que o primeiro texto da fonte nova e' o
+# primeiro texto escrito depois dessa limpeza.
+#
+# O QUE NAO PROVE: que existe UM slot so (e' a producao que o garante, e o
+# `_drain` e' um `_post` na thread de UI); que a thread de UI corre quando o
+# modelo diz; nem o orcamento de tempo (o "quase 1:1"), que continua a ser
+# medido por `_main/youtube-drift-oracle.py`. Um `CAPTION_DROP_EPOCH` no log e'
+# o modelo a funcionar -- e nao prova nenhuma; a prova e' este ficheiro.
+#
+# A REACHABILITY (F-6), nomeada: `start_worker` e `_blank_caption_window` sao
+# os DOIS sitios que incrementam o epoch, e ambos limpam a fila; o
+# `_caption_idle_hide` chama o segundo a cada 6 s de silencio (linhas
+# `CAPTION_WINDOW_IDLE_HIDDEN` no log de 2026-10-17 citadas no proprio
+# docstring). O `push` seguinte carimba o epoch novo, e o `_drain` que corre
+# depois de um arranque ou de um blank e' o input que as tres leis restringem.
+# ===========================================================================
+
+# O SLOT: o unico texto enfileirado, com o epoch com que foi carimbado.
+type Slot is Data:
+  SlotIdle{}
+  SlotHeld{stamp: Nat}
+
+# O ESTADO DO WIDGET: o epoch da fonte, o slot, e se ha pixeis no ecra.
+type Cap is Data:
+  Cap{epoch: Nat, slot: Slot, shown: Bool}
+
+# OS ACONTECIMENTOS. Sao exactamente os quatro sitios da producao acima.
+type Ev is Data:
+  EvNewSource{}
+  EvBlank{}
+  EvPush{}
+  EvDrain{}
+
+# Uma sequencia de acontecimentos: uma sessao.
+type Evs is Data:
+  EvsNil{}
+  EvsCon{head: Ev, tail: Evs}
+
+def Cap.epoch(c: Cap) -> Nat:
+  match c:
+    case Cap{epoch, slot, shown}:
+      epoch
+
+def Cap.slot(c: Cap) -> Slot:
+  match c:
+    case Cap{epoch, slot, shown}:
+      slot
+
+def Cap.shown(c: Cap) -> Bool:
+  match c:
+    case Cap{epoch, slot, shown}:
+      shown
+
+def Slot.is_idle(slot: Slot) -> Bool:
+  match slot:
+    case SlotIdle{}:
+      True{}
+    case SlotHeld{stamp}:
+      False{}
+
+# O EPOCH E' O MESMO? A forma ESTRUTURAL -- o `match` sobre os dois numeros,
+# que e' a forma que a guarda `epoch != cur` da producao tem depois de o
+# compilador lhe tirar a negacao.
+def Nat.same_epoch(a: Nat, b: Nat) -> Bool:
+  match a b:
+    case 0n 0n:
+      True{}
+    case 0n 1n+bp:
+      False{}
+    case 1n+ap 0n:
+      False{}
+    case 1n+ap 1n+bp:
+      Nat.same_epoch(ap, bp)
+
+# A DECISAO DO `_drain`: pintar (1) ou largar (0). A PRODUCAO larga quando
+# `epoch != cur`; o modelo devolve o indicador da IGUALDADE, que e' a mesma
+# guarda com a negacao resolvida, e a lei abaixo amarra-o a uma segunda
+# implementacao da igualdade (`Cmp.is_eq(Nat.cmp(..))`, a que o Base ja tem).
+def Nat.paint_flag(stamp: Nat, +cur: Nat) -> Nat:
+  Nat.revealed_flag(Nat.same_epoch(stamp, cur))
+
+# ---------------------------------------------------------------------------
+# LEI 2 -- UMA PINTURA SO CARREGA O EPOCH CORRENTE.
+#
+# A guarda do `_drain` e' uma igualdade, e o modelo diz isso dos DOIS lados:
+# epoch igual pinta, epoch diferente nao pinta. A igualdade do modelo
+# (`Nat.same_epoch`, estrutural) e' amarrada a uma SEGUNDA implementacao da
+# mesma igualdade (`Cmp.is_eq(Nat.cmp(..))`, a que o Base ja traz) -- e por
+# isso a lei nao passa nem com "nunca pinta" (o lado do igual falharia) nem com
+# "pinta sempre" (o lado do diferente falharia). Uma implicacao escrita com
+# `for h:` nao apanhava o "nunca pinta" (F-6b, BEND_PROOFS_REFERENCE.md §8):
+# uma premissa impossivel dispensa qualquer conclusao.
+#
+# REJECTS: o `_drain` ANTERIOR a 2026-10-30, que pintava o que estivesse no
+# slot sem comparar nada -- a legenda do audio anterior no audio novo. Uma
+# guarda trocada (`stamp <= cur`, "pinta tudo o que nao venha do futuro")
+# tambem nao passa: com o carimbo 2 e o epoch 1 as duas respostas diferem.
+law Nat.no_cross_source_paint:
+  for +stamp: Nat
+  for +cur: Nat
+  {Nat.paint_flag(stamp, cur)
+     == Nat.of_bool(Cmp.is_eq(Nat.cmp(stamp, cur))) : Nat}
+
+# A FONTE NOVA (`start_worker`): epoch + 1 e a fila limpa. Os pixeis ficam --
+# esta transicao nao chama `ov.show(False)`.
+#
+# As transicoes leem o estado pelas PROJECCOES (`Cap.epoch(c)`) e nao por um
+# `match` sobre `c`. Nao e' estilo: um `match` sobre uma variavel nao reduz
+# enquanto o kernel nao a divide, e por isso `Cap.epoch(Cap.on_blank(c))`
+# ficaria preso com `c` neutro -- um `def` que constroi o construtor deixa a
+# projeccao reduzir (iota) em qualquer estado. MEDIDO: a versao com `match`
+# dentro das transicoes recusou a prova de `epoch_step_le` com
+# "expected: is_le(epoch, Cap.epoch(Cap.on_drain(Cap{...})))".
+def Cap.on_new_source(+c: Cap) -> Cap:
+  Cap{Nat.add(1n, Cap.epoch(c)), SlotIdle{}, Cap.shown(c)}
+
+# O BLANK (`_blank_caption_window`): epoch + 1, fila limpa e pixeis limpos. E a
+# transicao que a lei 3 restringe, linha a linha.
+def Cap.on_blank(+c: Cap) -> Cap:
+  Cap{Nat.add(1n, Cap.epoch(c)), SlotIdle{}, False{}}
+
+# O PUSH (`push_caption_to_window`): o texto carimba o epoch CORRENTE e
+# sobrescreve o slot -- o epoch aparece duas vezes porque o carimbo e' o epoch
+# do estado, e por isso o parametro e' apagado.
+def Cap.on_push(+c: Cap) -> Cap:
+  Cap{Cap.epoch(c), SlotHeld{Cap.epoch(c)}, Cap.shown(c)}
+
+# A guarda do drain, vista do SLOT: e' este Bool que decide a pintura. E a
+# MESMA igualdade que `Nat.paint_flag` (aqui o Bool, la o indicador 0/1), e a
+# lei 2 e' a que amarra essa igualdade a segunda implementacao do Base.
+def Slot.paints(slot: Slot, +cur: Nat) -> Bool:
+  match slot:
+    case SlotIdle{}:
+      False{}
+    case SlotHeld{stamp}:
+      Nat.same_epoch(stamp, cur)
+
+# O DRAIN (`_drain`): o slot esvazia-se sempre (foi consumido), e os pixeis
+# so mudam quando a guarda deixa pintar.
+def Cap.on_drain(+c: Cap) -> Cap:
+  Cap{Cap.epoch(c), SlotIdle{},
+      Bool.or(Cap.shown(c), Slot.paints(Cap.slot(c), Cap.epoch(c)))}
+
+def Cap.step(+c: Cap, ev: Ev) -> Cap:
+  match ev:
+    case EvNewSource{}:
+      Cap.on_new_source(c)
+    case EvBlank{}:
+      Cap.on_blank(c)
+    case EvPush{}:
+      Cap.on_push(c)
+    case EvDrain{}:
+      Cap.on_drain(c)
+
+def Evs.run(evs: Evs, +c: Cap) -> Cap:
+  match evs:
+    case EvsNil{}:
+      c
+    case EvsCon{head, tail}:
+      Evs.run(tail, Cap.step(c, head))
+
+# ---------------------------------------------------------------------------
+# LEI 1 -- O EPOCH DA FONTE NUNCA DECRESCE.
+#
+# Uma fonte e' uma ordem: se o numero de uma fonte pode voltar atras, um
+# carimbo do passado pode coincidir com o presente e a guarda do `_drain` deixa
+# de distinguir as fontes. E por isso que o incremento e' `+ 1` e nunca um
+# `= 0` ("recomecar a numeracao").
+#
+# REJECTS: um `_blank_caption_window` que RESETASSE o epoch
+# (`self._source_epoch = 0` em vez de `int(...) + 1`) -- a implementacao
+# plausivel "recomeca a numeracao na fonte nova", que faz um texto da fonte
+# anterior carimbar 0 e o epoch corrente voltar a 0 depois de um blank.
+law Cap.epoch_monotonic:
+  for +evs: Evs
+  for c: Cap
+  {Nat.is_le(Cap.epoch(c), Cap.epoch(Evs.run(evs, c))) == True{} : Bool}
+
+# ---------------------------------------------------------------------------
+# LEI 3 -- A FONTE NOVA COMECA LIMPA.
+#
+# Antes do primeiro texto de uma fonte nova houve uma LIMPEZA: a transicao do
+# blank leva o epoch para o seguinte, esvazia o slot unico e tira os pixeis.
+# Duas consequencias, e ambas importam: um texto da fonte anterior nao pode ser
+# o proximo a pintar (o slot esta vazio), e o que o dono ve no instante da
+# fonte nova nao e' o texto antigo (os pixeis estao limpos).
+#
+# O terceiro conjunct amarra o epoch do blank a EXACTAMENTE o seguinte -- nem o
+# mesmo (que nao seria fonte nova) nem um salto -- com a igualdade do PROPRIO
+# modelo (`Nat.same_epoch`). Que essa igualdade e' a do Base e' o que a lei 2
+# prova; aqui ela so precisa de ser reflexiva.
+#
+# REJECTS: o `_blank_caption_window` com `self._caption_pending = None`
+# apagado -- as duas linhas sao adjacentes, e sem essa o texto do audio
+# anterior continua no slot quando a fonte nova comeca. E o mesmo sitio com
+# `ov.show(False)` apagado: a fila limpa mas o ecra nao.
+law Cap.display_clean_before_new_source:
+  for +c: Cap
+  {Bool.and(
+     Bool.and(Bool.not(Cap.shown(Cap.on_blank(c))),
+              Slot.is_idle(Cap.slot(Cap.on_blank(c)))),
+     Nat.same_epoch(Cap.epoch(Cap.on_blank(c)),
+                    Nat.add(1n, Cap.epoch(c)))) == True{} : Bool}

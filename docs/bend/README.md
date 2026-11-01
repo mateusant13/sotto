@@ -91,9 +91,9 @@ order was about the **YouTube** path, and that is the bundle that was written fi
 
 | file | what it is |
 |---|---|
-| `bend_core/LAWS.bend` | 11 laws over the pure model of the 1:1 decisions (reveal count, line liveness, window size) + the model they need |
+| `bend_core/LAWS.bend` | **14** laws over the pure model of the 1:1 decisions (reveal count, line liveness, window size, and — re-measured 2026-10-30 — the epoch/slot trio: `Cap.epoch_monotonic`, `Nat.no_cross_source_paint`, `Cap.display_clean_before_new_source`) + the model they need |
 | `bend_core/PROOF.bend` | one `def Laws.<law>` per law, plus the refutation helpers |
-| `bend_core/NEGATIVE_*.bend` | 11 controls, one FALSE claim each, each naming the law it falsifies |
+| `bend_core/NEGATIVE_*.bend` | **14** controls, one FALSE claim each, each naming the law it falsifies |
 | `bend_core/model.py` | the same model in Python for a host without Bend — a SAMPLE, not a proof, and it says so |
 | `_main/bend-laws-gate.py` | the gate: `bend PROOF.bend --verdict` in WSL, with six typed exit codes, the pinned law inventory, the control set, and two tamper probes |
 

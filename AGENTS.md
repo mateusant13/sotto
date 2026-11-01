@@ -1,4 +1,7 @@
 # Sotto — contexto do repo para todo agente e subagente
+## Owner rule — ship work without paperwork drag (2026-10-31T02:59:01-03:00)
+Keep useful behavior and its minimum proof/docs moving in the same fast delivery. Skip optional process artifacts when they cost more than the change. Before agent fan-out or disk-heavy builds/tests, use `fast-land-shared-artifacts`: measure total disk growth, share the sanctioned target/cache across lanes, and serialize instead of duplicating heavy artifacts when sharing is unsafe. This owner direction supersedes older process checklists that add optional work without protecting a concrete risk; keep only minimum proof for correctness, security, data integrity, or destructive work.
+
 ## Bend 2 — MANDATORY reference bundle, read before any load-bearing claim (owner, 2026-10-29)
 `docs/bend/README.md` is the entry point (ported from consultgpt 2026-10-29, byte-identical copies,
 sha256 in that file). Read it, then `docs/bend/BEND_PROOFS_REFERENCE.md`, then
@@ -56,11 +59,11 @@ O detalhe medido de cada ordem vive nos docs. **Uma linha por ordem, e é isto q
 | # | a ordem | o que é lei | detalhe |
 |---|---|---|---|
 | 1 | track do YouTube na língua original | inglês → inglês; espanhol → **nunca traduzido**; qualquer outra → inglês | `docs/politica-youtube.md` |
-| 2 | Alt+C à velocidade humana | 1 pressão = legenda on/off · 2 = painel de baixo · 3 = painel da direita; o gesto **desfaz** a legenda | `docs/hotkey-gestos.md` |
+| 2 | Alt+C: o gesto é **medido**, não contado | 1 toque = painel de BAIXO · 2 toques = painel da DIREITA · **HOLD** = legenda ao vivo on/off (desligar é só DISPLAY: modelo e histórico continuam) | `docs/hotkey-gestos.md` |
 | 3 | Parakeet é o segundo pass | ao vivo = nemotron só com painel aberto; fundo = Parakeet; retoma atrás de 4 guardas + piso de 45 s | `docs/worker-lifecycle.md` |
 | 4 | testes lentos e pesados | cache por **conteúdo**, classe `heavy` nunca corre sem opt-in, **um passo saltado não é um portão que passou** | `docs/bateria-e-portoes.md` |
 | 4-ter | o custo do Sotto | 10 processos, pico 1801 MB, worker 104 % de CPU com dois loads; parte do stutter **não** é do Sotto | `docs/custo-medido.md` |
-| 5 | o rato não passa pelo Sotto | um hook global só existe com painel visível ou edit mode, e mede-se **pela ausência** | `docs/mouse-e-input.md` |
+| 5 | o rato não passa pelo Sotto | **nenhum** hook global de input existe em caminho nenhum (o `WH_MOUSE_LL` foi removido a 2026-10-30: um tick de 100 ms lê o foreground, 25 ms a arrastar), e mede-se **pela ausência** | `docs/mouse-e-input.md` |
 
 ## MODO BUG-HUNT - OBRIGATORIO PARA QUALQUER DEFEITO REPORTADO (2026-10-23)
 
@@ -73,6 +76,12 @@ guardar a evidencia em FICHEIRO; 4. **uma hipotese + o que a refutaria**; 5. min
 CLASSE e varrer os irmaos com a mesma sonda; 7. regressao no estilo certo; 8. provar o detector
 (negativo derruba AQUELE braco); 9. cobertura por invocador; 10. replay + verificador != autor;
 11. capsula de incidente + `recurrence-watch` com instrumento e janela.
+
+**PASSO 0 — O PROCESSO E' O DA ARVORE?** Antes de julgar qualquer comportamento que ele relata:
+`python _main/live-code-freshness-oracle.py --strict`. `STALE` = a app que ele carrega e' anterior ao
+codigo; a primeira accao e' **reiniciar**, nao corrigir. `UNKNOWN` nao e' `FRESH`. Nascido de um erro
+medido a 2026-10-30: ele carregava numa instancia de 01:12:39 (log com `HOTKEY_SINGLE`, etiqueta com
+zero ocorrencias no fonte) enquanto quatro oraculos verdes julgavam FICHEIROS -- ver `docs/bug-hunt.md`.
 
 **`reported` e `fixed` nunca se apresentam como `verified`.**
 
@@ -97,6 +106,13 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
 (batch sobre o áudio acumulado, leve em RAM). *"o nvidia é pro ao vivo, o parakeet redux é pro geral."*
 Escolha do motor de fundo pelo **preço em RAM**, não pelo nome: o ONNX int4 do Redux mede **615 MB** de
 pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
+
+**UM CANDIDATO JÁ' FOI MEDIDO E RECUSADO (2026-10-30): `ARK-ASR-0.6B`.** Não tem `pt` na lista de
+línguas e **traduz** em vez de transcrever (no clipe pt-BR de 15 s saiu inglês, com erros); no en-US
+gastou 31,25 s para 8,5 s de áudio (0,27×) com pico de 2358 MB, contra 1,25 s (6,83×) e 598 MB do
+parakeet int4; e não faz ao vivo (janela de 30 s autorregressiva). Não integrar de novo sem um
+checkpoint com português e sem tradução — `_main/receipt-20261030-ark-asr-vs-parakeet.md`,
+`_main/engine-compare.py` para re-medir.
 
 ## PREMISSAS PROIBIDAS (retiradas pelo dono)
 **O Sotto NÃO dá nomes a vozes e ninguém volta a propôr isso.** O objectivo da cadeia de falantes é
@@ -140,6 +156,19 @@ só separar audio pra transcrever cada falante?"*
      executa código** — `pythonw -c "open(...,'w').write(...)"` não escreveu ficheiro nenhum e o processo
      fica com **1 thread / 2 MB**. O `--selftest` da ferramenta passou a exigir **execução**, não só
      integridade, precisamente por causa disto.
+  4-bis. **A CONCLUSAO "esta pane nao pode largar" ESTAVA ERRADA, e o erro era do INSTRUMENTO
+     (medido 2026-10-30).** O `CreateProcessAsUser` nunca falhou: o pedido de token pedia
+     `TOKEN_ADJUST_SESSIONID` (exige `SeTcbPrivilege`) e `TOKEN_ADJUST_DEFAULT`, e **cada um deles
+     sozinho derruba o pedido inteiro com `err=5`** — logo parecia "sem acesso". Direito a direito
+     contra o token da app viva: `DUPLICATE` ok, `DUP|QUERY` ok, `DUP|QUERY|ASSIGN_PRIMARY` ok,
+     `+ADJUST_SESSIONID` err=5, `+ADJUST_DEFAULT` err=5. Com
+     `DUPLICATE|QUERY|ASSIGN_PRIMARY` o filho corre no desktop dele e mede `S-1-16-12288` **high**
+     (provado por execução: escreveu o próprio pid). A primitiva é **`_main/launch-as-token.py`**
+     (`--selftest` exige execução **e** herança do nível; `--neg-arm` repõe o direito culpado e
+     exige o `err=5` de volta), e é ela que `_main/sotto-relaunch.py --relaunch` usa **primeiro**,
+     com a tarefa `\Sotto` só como recurso — sem instância viva não há token `high` para emprestar.
+     O que continua fora de alcance, medido: abrir o token do **pid 4 (SYSTEM)** dá `err=5`, porque
+     SYSTEM está **acima** de `high`; isso é o Windows, não uma permissão perdida.
   **O QUE ISSO MANDA FAZER:** o dono abre a app (duplo-clique) ou o autostart abre-a no logon. Uma lane
   **não** deixa uma instância partida a deter `Local\SottoShell`: uma instância velha faz as largadas
   seguintes morrerem em silêncio entre `SHELL_STARTUP_STAGE stage=pre-lock` e `SINGLE_INSTANCE` (medido:
@@ -182,10 +211,11 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (medido 2026-10-21 01:5x):** re-measured 2026-10-21 the output is 6934 B,
-107 lines, 107 CRLF / 0 bare LF, rc 0, sha256
-`51B52939F76C4AA5A35D7D865ED7C6B38C01ACFAD829F36C7A6032C337E01B47`. O portão do pin é
+**PIN do `run.cmd --help` (medido 2026-10-21 01:5x):** re-measured 2026-10-21 the output is 7061 B, 109 lines, 109 CRLF / 0 bare LF, rc 0, sha256
+`6F9E246DED82C05343AD55B0A63319C70AF0BED2D6AEBF7A4D240B8780DF8D9A`. O portão do pin é
 `_main/agents-md-pins-oracle.py`: se o `--help` mudar, este número muda, e o gate obriga a re-medir **aqui**.
+(Re-medido 2026-10-30 quando a bandeira `--no-self-relaunch` entrou no shell: era 6934 B / 107 linhas.
+A bandeira existe porque o dono nao quer aprovar nada para ver codigo novo -- ver `app/webview/shell_relaunch.py`.)
 (O número vai **sem asteriscos**: o braço negativo do portão muta o número com um padrão que exige
 `the output is ` seguido dos dígitos — com o `**` do markdown o padrão não pega e o portão perde o
 seu braço negativo.)
@@ -244,8 +274,98 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-10-30 08:1x):** `_main\_audit-verify-all.cmd` = **135712 B**,
-  **1777 CRLF** / 0 bare LF, sha256 `F05027472377B036C1F7281216B38DC3589125E9CC653733DE5D32848D33289A`.
+- **PIN do ficheiro (medido 2026-10-30, 12:5x):** `_main\_audit-verify-all.cmd` = **145028 B**,
+  **1894 CRLF** / 0 bare LF, sha256 `6D2F4EA847B4B26EBFFF9821F2C54C795A5063506A4060C3BA79A51423ACC221`.
+  (Este pin substitui o de 151485 B DEPOIS de o ficheiro ter sido truncado a 0 B por um
+  `io.open(p,'wb')` que levantou no `write()` — o truncate acontece antes do erro. A recuperacao:
+  `git show HEAD` (115 passos) + os 28 passos que `_cache/battery-steps.json` provava que existiam,
+  cada um reconstruido com o comando PROVADO pelo rc do registo (`_main/_battery-restore-steps.py`).
+  O que esta medido hoje: **171 passos declarados, 169 no registo, 0 em falta**.
+  A reconstrucao declarou os passos novos como `always` e dois deles -- `shell-relaunch` e o seu
+  negativo -- EXERCITAM o auto-relancamento: o log da app tem dois `SHELL_STARTUP_STAGE` (pids 8992
+  as 12:07:05 e 33300 as 12:09:12) nascidos nos dois minutos em que a bateria correu. Passaram a
+  `heavy` e o portao novo `_main/battery-class-oracle.py` recusa qualquer passo `always` cujo
+  comando nomeie um largador da app (3 arms + `--neg-arm`, ambos verdes).
+  Era 151485 B / 1960 CRLF antes disso.
+  (Era 151439 B antes de as duas etapas do `load-shedding` passarem a nomear `worker\sotto_worker.py`
+  nas dependencias: as arms 6-7 do oraculo executam o LEITOR e o DECISOR reais desse ficheiro, e uma
+  dependencia que nao o nomeia deixaria a etapa em cache a descrever um worker que ja' mudou.
+  A bateria a seguir mediu **steps=164, failed=1** (`code-health`, o ratchet dos dois ficheiros
+  onde a ordem aterrou). Era **29** falhas no inicio da sessao.)
+  (O run de 11:5x que esta nota citava como `failed: -none-` **NAO E' EVIDENCIA**: a `.cmd` foi
+  truncada a 0 B as 12:0x e todos os runs depois disso correram outro ficheiro. O run que conta e'
+  o de 2026-10-30 13:3x, com a `.cmd` reconstruida: **steps=171 gate=100 control=8 skipped=9
+  expect-red=54 missing=0, failed: -none-, exit-code 0, BATTERY-VERDICT: GREEN WITH 9 SKIPPED**
+  (os 9 sao a classe HEAVY, que nao corre sem `SOTTO_BATTERY_HEAVY=1`).
+  Recibo: `_main/receipt-20261030-battery-restore-and-gates.md`.)
+  (Era 148686 B / 1928 CRLF antes dos dois passos do `ladder-signal` -- a escada de dispositivos do
+  worker passa a perguntar ao medidor VIVO em cada rotacao, e a guarda de som impede o
+  auto-relancamento de reiniciar a app com audio a tocar. Nasceu da queixa do dono de 2026-10-30,
+  verbatim: *"por que a merda do meu audio ainda some? arruam caralho"*, medida em 3 060 linhas
+  `device-rotated reason=flat` e num painel a dizer `No audio to transcribe` com o sinal noutro
+  endpoint.)
+  (Era 147736 B / 1917 CRLF antes do passo `state-page-write`: a pagina e' GERADA e o `--check`
+  compara as celulas dela com o registo VIVO, logo um ficheiro de dias antes reprova sempre --
+  medido, `cells-match-record` 107 celulas e tres passos que a pagina ainda nao conhecia. O par
+  passou a ser `--write` e DEPOIS `--check`, no fim da `.cmd`, com as deps do escritor a NAO
+  nomearem `docs\state-generated.md` (esse e' o que ele ESCREVE).)
+  (Era 147313 B / 1910 CRLF antes de o par `state-page` + `red-as-expected-state-page` ser MOVIDO para
+  o FIM da `.cmd`: ele compara os passos DECLARADOS (159) com os REGISTADOS em `_cache\battery-steps.json`,
+  e a correr em `:550` acusava de ausentes tres passos que ainda nao tinham chegado a vez --
+  medido, `ausentes=['shell-relaunch','red-as-expected-shell-relaunch','live-code-freshness']`.
+  Um passo que descreve a corrida corre DEPOIS dela.)
+  (Era 147313 B / 1910 CRLF antes dos dois passos do `headphone-cut` — o instrumento que junta o
+  canal do Windows (`IMMNotificationClient`, via `pycaw` em `_main/_libs`) com as linhas de audio do
+  `webview-run.log` e diz QUEM cortou, e o `--neg-arm` que prova que uma janela vazia NAO acusa
+  ninguem: `desconhecido` nunca e' inocencia. Os dois `always` porque leem o log vivo e o estado do
+  dispositivo, que mudam a cada segundo.)
+  (Era 146335 B / 1898 CRLF antes dos dois passos de `launch-as-token` +
+  `red-as-expected-launch-as-token`: o `--selftest` que larga um filho com o token de um processo
+  ja' `high` e exige que ele EXECUTE e HERDE o nivel da fonte, e o braco negativo que repoe
+  `TOKEN_ADJUST_SESSIONID` no pedido e tem de voltar a `err=5`. Os dois `always` porque leem a
+  integridade viva da maquina.)
+  (Era 140391 B / 1831 CRLF antes dos quatro passos de 2026-10-30 -- `word-clock`,
+  `red-as-expected-word-clock`, `youtube-switch` e `red-as-expected-youtube-switch`: a revelacao
+  palavra a palavra medido contra o relogio do proprio YouTube, o fade da linha nova, e o custo da
+  troca de faixa contado com uma rede FALSA (duas extracoes de yt-dlp -> 27 s de ecra vazio, medido
+  no log dele as 04:40:02; agora uma).)
+  (Era 140255 B / 1827 CRLF antes de os passos `search-twin-parity` e
+  `red-as-expected-search-twin-parity` serem APOSENTADOS: o segundo motor da busca, em
+  JavaScript, NAO EXISTE na arvore -- `grep -rn soundex --include=*.js .` da' **0** ficheiros,
+  a versao com `const SOUNDEX` so' vive no indice do `stash@{0}` (commit 3120551, nunca em
+  HEAD), e o painel chama `historyApi.search` do SHELL (`panel.js:3309,3323`), que e' a unica
+  implementacao. O passo positivo estava vermelho por desenho (`SOUNDEX table not found`) e o
+  negativo publicava rc=0 ao MESMO tempo -- dois vereditos sobre um ficheiro que nao tem o que
+  o oraculo julga. A busca continua provada por `search-oracle.py` e
+  `panel-search-keyboard-oracle.py`; um segundo motor pede um portao novo.)
+  (Era 139081 B / 1813 CRLF antes do par `load-shedding` + `red-as-expected-load-shedding` --
+  o SHEDDING POR CARGA (ordem do dono, 2026-10-30 cumprida): `alta` desliga o nemotron e deixa o
+  parakeet, `muito-alta` desliga os dois, e a TABELA nao tem nivel nenhum que largue o AUDIO, que e'
+  sempre "fica para processar depois". O oraculo le a tabela e a histerese do modulo (26 arms) e le,
+  na CLASSE do shell, que a accao esta' DESARMADA por omissao -- medido: o worker nao tem canal de
+  controlo (`sotto_worker.py` nao le' stdin), por isso o unico lever para o nemotron leva o parakeet
+  tambem; ligar isso automaticamente a partir de um limiar nao calibrado na maquina do dono seria
+  desligar a transcricao por causa de um build. `SOTTO_LOAD_SHED_ACT=1` arma; sem ele o monitor
+  escreve `LOAD_SHEDDING level=.. commit_pct=..` a cada mudanca de nivel e nao toca em nada.)
+  (Era 137701 B / 1797 CRLF antes do par `altc-first-caption` + `red-as-expected-altc-first-caption`:
+  a linha de aceitacao do Alt+C passou a medir a **ACCAO** do gesto (`LIVE_ENABLED`/`PANEL_SHOWN`)
+  contra 1500 ms, e nao "pressao -> pintura de texto". MEDIDO na sessao real de 2026-10-30
+  (`pid 33288`): **264 ms**. O ficheiro antigo emparelhava uma pressao de **2026-10-15** com uma
+  pintura de **2026-10-30** -- quinze dias e um arranque de shell pelo meio -- e publicava
+  **57 105 ms** contra os 1500 ms; o numero era do INSTRUMENTO. O custo de carregar o motor
+  (54 s medidos) passou a ser INFORMACAO desse passo e nunca portao.)
+  (Era 137532 B / 1797 CRLF antes do par `altc-gesture` + `red-as-expected-altc-gesture`, que
+  SUBSTITUI os tres passos do contrato antigo do Alt+C (`hotkey-cycle`, `hotkey-gesture`,
+  `hotkey-triple`): os ficheiros foram apagados porque mediam 1/2/3 pressoes dentro de uma janela,
+  que o dono aposentou em 2026-10-30 com *"1 tap = painel de baixo, 2 taps = painel da direita,
+  HOLD = legenda ao vivo on/off"*. O numero do gesto passou a viver so' em
+  `app/webview/hotkey_gesture.py` e o shell le-o por `hotkey_numbers()`.)
+  (Era 135712 B / 1777 CRLF antes dos dois passos do `youtube-monotonic` — a
+  legenda que NAO RECUA no tempo: `youtube_monotonic.decide` + o replay do log
+  real (regra antiga recua 157 vezes, pior 310,68 s; regra nova 0) e o
+  `red-as-expected-youtube-monotonic`. Nasceu da queixa do dono de 2026-10-30:
+  *"a legenda nao ta sincronizada direito. e parece que repete a legenda de
+  instantes atras no ao vivo, depois desbuga, e mostra ao vivo"*.)
   (Era 133826 B / 1753 CRLF antes dos dois passos do `youtube-sotto-drift` —
   o NOSSO overlay contra o PLAYER, em `drift_ms`: `drift_sotto_ms` = -125.0 ms
   (mediana -74.0), `drift_player_ms` = +125.0 ms.)
