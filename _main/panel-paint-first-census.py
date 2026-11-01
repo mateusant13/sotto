@@ -58,7 +58,7 @@ depois. Por isso o braco da app corre duas vezes:
 
     cured     o shell do worktree (`app/webview/sotto_webview.py`, os bytes agora)
               -> todo show TEM de dar `blank_frames=0`
-    uncured   os bytes de `HEAD` (`git show HEAD:app/webview/sotto_webview.py`)
+    uncured   os bytes de `41e7bc6^` (o commit de antes da cura; ver UNCURED_REV)
               -> pelo menos um show TEM de dar `blank_frames>0`, senao este
               instrumento nunca viu o defeito que diz medir
 
@@ -571,18 +571,32 @@ _MAIN_ANCHOR = "if __name__ == '__main__':"
 _DRIVER_CALL = 'paint_census_drive(self)'
 
 
-def variant_bytes(tag):
-    """The shell's own bytes for `tag`: `cured` = the worktree, `uncured` = HEAD."""
+#: O COMMIT DE ANTES DA CURA, pinado (2026-11-01). A arma `uncured` lia `HEAD`,
+#: e isso deixou de servir no minuto em que a cura foi COMMITADA: os dois bracos
+#: passaram a ser os mesmos bytes e o controle negativo da' verde por nao haver
+#: nada de errado para medir -- o zero de um instrumento que ja' nao distingue
+#: nada. `41e7bc6` e' o commit que introduziu `arm_paint_ack` (medido com
+#: `git log -S arm_paint_ack`), logo a copia ANTERIOR leva a partir de `41e7bc6^`.
+UNCURED_REV = '41e7bc6^'
+
+
+def variant_bytes(tag, uncured_rev=None):
+    """Os bytes do shell para `tag`: `cured` = o worktree, `uncured` = `UNCURED_REV`."""
     if tag == 'cured':
         with open(SHELL, 'r', encoding='utf-8', newline='') as fh:
             return fh.read()
     if tag == 'uncured':
+        rev = uncured_rev or UNCURED_REV
         proc = subprocess.run(['git', '-C', ROOT, 'show',
-                               'HEAD:app/webview/sotto_webview.py'],
+                               '%s:app/webview/sotto_webview.py' % rev],
                               capture_output=True, text=True)
         if proc.returncode != 0 or not proc.stdout:
-            raise SystemExit('variant uncured: `git show HEAD:...` failed: %s'
-                             % (proc.stderr.strip()[:200] or 'no output'))
+            raise SystemExit('variant uncured: `git show %s:...` failed: %s'
+                             % (rev, proc.stderr.strip()[:200] or 'no output'))
+        if 'arm_paint_ack' in proc.stdout:
+            raise SystemExit(
+                'variant uncured: %s JA TEM a cura (arm_paint_ack) -- escolher '
+                'outro rev, senao o controle negativo mede o codigo curado' % rev)
         return proc.stdout
     raise SystemExit('variant: unknown tag %r (cured|uncured)' % (tag,))
 
