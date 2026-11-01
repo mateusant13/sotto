@@ -258,3 +258,49 @@ O `.git` do Sotto mede 8.0 GB (pack 4.66 GiB) e NAO cresceu com este goal: `git 
 -- '.codeintel/*'` da' **0**, e os maiores blobs da historia sao `app/panel/skins/cinematic-2/img/
 38663879.png` (2.5 MB) e `_moved/aireplay/_main/_nv-cdx-inventory.txt` (2.3 MB) -- nenhuma arvore
 de GB entrou.
+
+## 15. O custo de pintar uma linha de legenda: 3,83 -> 0,72 ms (lane `goal-anim`, `5e38c4c`)
+
+Instrumento: `_main/_lane-profile-paint.py --themes theme-5 --arms reduced,on` (6 s de janela) e
+`_main/_anim-cost2.py` (p50). Numeros medidos pela lane, dois runs por braco:
+
+|medida|antes 1 / 2|depois 1 / 2|
+|---|---|---|
+|push mean|3,83 / 3,47 ms|**0,72 / 0,70 ms**|
+|push max|38,5 / 158,4 ms|5,8 / 13,8 ms|
+|LoAF blocking (com animacao ligada)|**186,7 ms** / 0|0 / 0|
+|`anims total`|30|4|
+
+Tres mudancas: (1) `panel.css` -- o reveal passou a ser scoped ao `[data-typing]` (so'
+`theme-1/2/4/5.css` o punha em TODOS os spans, portanto 26 reveals ja' acabados eram
+re-aplicados a cada restyle); (2) `followNewestLine()` deixa de escrever layout dentro do push
+(um rAF por frame, depois o pin); (3) o pin passa a recordar o `scrollHeight` que apontou, para o
+`wireFollow` nao se desarmar do nosso proprio lag de um parcial -- **reproduzido 2/2** no theme-4
+(50 px por linha contra a tolerancia de 48) e corrigido.
+
+O LOOK e' o mesmo, provado e nao afirmado: `_main/_anim-timeline-diff.py` sobre registos por frame
+(theme-1/4/5) da' "THE LOOK IS THE SAME", e a diferenca fica quantificada -- a cauda era apanhada a
+opacidade 0,42-0,93 com blur 0,88 px por parcial antes, e fica a 1,00 depois.
+
+## 16. O POV do dono agora, lido pelos proprios instrumentos (2026-11-01 12:19)
+
+`python app/webview/panel_state.py --read` na instancia viva (pid 50132, `SHELL_CODE_ID
+sha256=54D789DEA953 files=39`, fresco):
+
+    namedState    = no-audio
+    placeholder   = title='No audio to transcribe'
+    endpoint      = 'Mixagem estéreo (Realtek HD Audio Stereo input)' api=None from='done'
+    noAudio       = True evidence='done verdict=silent-device'
+    deaths        = 4 spawns=4 captions=0
+
+E a escada de dispositivos do worker, no mesmo ficheiro:
+
+    11:52:29 .. 11:53:41   STATUS_APPLIED "device-rotated (flat)"  (8 rotacoes)
+    11:53:57  BRIDGE_STATUS_NOAUDIO state="device-exhausted" kind=no-audio
+              text="Audio tap carried no signal - every candidate device was flat"
+
+Ou seja: naquele minuto a caixa nao tinha audio em endpoint NENHUM que o worker tentasse -- nao e'
+o worker a perder a rotagem, e' a escada a fazer o trabalho dela e a parar. O caminho de volta
+existe e e' o documentado: Alt+C -> `_start_deferred_worker('show-panel')` volta a tentar, e o
+estado publicado diz ao dono o que conferir. Nada aqui contradiz os gates: `load-shedding`,
+`live-queue` e `external-resume` estao verdes neste HEAD.
