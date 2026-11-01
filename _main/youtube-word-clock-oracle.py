@@ -303,7 +303,7 @@ def neg_arm() -> int:
         copy.mkdir(parents=True)
         for name in ("youtube_captions.py", "youtube_reveal.py",
                      "youtube_window.py", "sotto_webview.py",
-                     "caption_overlay.py", "word_fade.py"):
+                     "caption_overlay.py", "overlay_paint.py", "word_fade.py"):
             shutil.copy2(WEBVIEW / name, copy / name)
         target = copy / "youtube_reveal.py"
         text = target.read_text(encoding="utf-8")

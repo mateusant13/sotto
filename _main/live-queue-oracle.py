@@ -235,17 +235,26 @@ def main() -> int:
     # O WIRING do worker para a espera: o acumulador antigo (que TRIMAVA) ja'
     # nao pode existir. Um `REDUX_BUFFER_TRIMMED` de volta seria audio do dono a
     # desaparecer com uma linha de log a dizer que aconteceu.
+    #
+    # A CLASSE DO INTERRUPTOR VIVE EM `worker/engine_switch.py` DESDE A EXTRACCAO
+    # (o ratchet estrutural mede o ficheiro mais longo e a funcao mais longa), e
+    # `add_audio` -- quem acumula -- foi com ela. O que se exige e' o numero
+    # publicado e o bloco guardado, nao o sitio onde esta' escrito: por isso estes
+    # dois arms leem o PAR, como o arm dos campos ja' lia o `engine_policy.py`.
+    extra = os.path.join(WORKER, "engine_switch.py")
+    extra_src = io.open(extra, encoding="utf-8").read() if os.path.exists(extra) else ""
     arm("o acumulador que TRIMAVA o audio ja' nao esta' no worker",
-        "REDUX_BUFFER_TRIMMED" in src, False)
-    arm("o worker acumula na `PendingAudio` (RAM -> disco)", "self.pending.add(block)" in src, True)
+        "REDUX_BUFFER_TRIMMED" in src or "REDUX_BUFFER_TRIMMED" in extra_src, False)
+    arm("o worker acumula na `PendingAudio` (RAM -> disco)",
+        "self.pending.add(block)" in src or "self.pending.add(block)" in extra_src, True)
     # OS CAMPOS SAO ESCRITOS EM `worker/engine_policy.py` desde a extraccao (o
     # `done` do worker chama `_policy.done_fields`): o arm le' os DOIS ficheiros,
     # porque o que se exige e' o numero publicado, nao o sitio onde esta' escrito.
-    extra = os.path.join(WORKER, "engine_policy.py")
-    extra_src = io.open(extra, encoding="utf-8").read() if os.path.exists(extra) else ""
+    fields = os.path.join(WORKER, "engine_policy.py")
+    field_src = io.open(fields, encoding="utf-8").read() if os.path.exists(fields) else ""
     arm("o worker publica entradas e saidas do audio que esperou",
-        ("reduxAudioIn" in src or "reduxAudioIn" in extra_src)
-        and ("reduxAudioOut" in src or "reduxAudioOut" in extra_src), True)
+        ("reduxAudioIn" in src or "reduxAudioIn" in field_src)
+        and ("reduxAudioOut" in src or "reduxAudioOut" in field_src), True)
 
     if "--neg-arm" in sys.argv[1:]:
         tmp = tempfile.mkdtemp(prefix="live-queue-")

@@ -114,6 +114,12 @@ FIXTURE = os.path.join(HERE, "fixtures", "yt-WdaHAGRBB6s.en-orig.json3")
 LIVE = os.path.join(HERE, "fixtures", "yt-WdaHAGRBB6s.live-compare-20261026.json")
 SHELL = os.path.join(WEBVIEW, "sotto_webview.py")
 OVERLAY = os.path.join(WEBVIEW, "caption_overlay.py")
+#: O `_layout` (e o resto da metade pura da pintura) vive em `overlay_paint.py`
+#: desde a extraccao que o ratchet estrutural exigiu; `caption_overlay.py`
+#: re-exporta-o com o MESMO nome. As ancoras do canal sao lidas no PAR, como os
+#: arms de wiring do `live-queue-oracle.py`: o que se exige e' o
+#: comportamento do canal, nao o ficheiro onde a linha esta' escrita.
+PAINT = os.path.join(WEBVIEW, "overlay_paint.py")
 
 #: A geometria do sitio onde o dono ve a legenda (a mesma de 2026-10-17 e do
 #: `yt-break-position-probe.py`): area de 1920 px, escala 1.0, sem tema.
@@ -400,7 +406,10 @@ def wiring_faltas():
     `_display_text` do overlay a respeitarem o canal.
     """
     shell = _src(SHELL)
-    overlay = _src(OVERLAY)
+    # `_display_text` e' metodo (fica no `caption_overlay.py`); o `_layout` e as
+    # medidas vivem no par. Concatenar os dois le' o canal INTEIRO, que e' o que
+    # estas ancoras declaram exigir.
+    overlay = (_src(OVERLAY) or "") + "\n" + (_src(PAINT) or "")
     checks = (
         ("a janela por pintura esta no ramo painted",
          "youtube_reveal.window_by_paint(", shell),

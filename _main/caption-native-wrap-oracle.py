@@ -154,9 +154,13 @@ MUTANTS = [
 def run_with(wrap_source: str, overlay_path: str):
     """Install `wrap_source` as the module `caption_wrap`, then load the overlay.
 
-    The overlay does `import caption_wrap as _cw` at MODULE level, so the
-    mutant has to be in `sys.modules` BEFORE the overlay is loaded -- that is
-    what makes the overlay draw the MUTANT lines.
+    The overlay's LAYOUT does `import caption_wrap as _cw` at MODULE level --
+    and the layout half lives in `overlay_paint.py` since the extraction -- so
+    the mutant has to be in `sys.modules` BEFORE either module is loaded, and
+    the already-loaded layout module has to be dropped or it would keep the
+    shipped `caption_wrap`. That is what makes the overlay draw the MUTANT
+    lines; without the pop the M1/M2 mutants are silently decorative and this
+    oracle refuses to count them.
     """
     tmp = tempfile.NamedTemporaryFile('w', suffix='.py', delete=False,
                                       encoding='utf-8')
@@ -168,6 +172,7 @@ def run_with(wrap_source: str, overlay_path: str):
         mod = importlib.util.module_from_spec(spec)
         sys.modules['caption_wrap'] = mod
         spec.loader.exec_module(mod)
+        sys.modules.pop('overlay_paint', None)
         overlay = load_module(overlay_path, 'caption_overlay_probe')
         return check_corpus(overlay, mod, 'mutant')
     finally:

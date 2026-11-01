@@ -35,6 +35,16 @@ WHAT IT ASSERTS (each a named arm, so a failure names the claim):
                    and not only on transitions, so a map nobody announced is
                    still recorded.
 
+TWO WORKER FILES, ONE SOURCE. The switch, its visibility reader and the `redux*`
+constants were extracted to `worker/engine_switch.py` (the structural ratchet in
+`_main/code-health-oracle.py` measures the longest function and the line count of
+`sotto_worker.py`, and it was asking for exactly that). The claims are about the
+SHIPPED PRODUCT, not about a file name, so `check_worker` reads the worker AND its
+extracted module, joined with a separator a regex cannot match across; the mutants
+carry the target file they revert. Reading only `sotto_worker.py` would certify a
+file that no longer contains the switch — the "value computed and discarded" class
+this gate exists to catch, one level up.
+
 BOTH COLOURS IN ONE COMMAND. The shipped files must come out GREEN, and SEVEN
 mutated COPIES — one per claim, each reverting exactly that claim — must each go
 RED on that claim and ONLY that claim, which is what makes it a control:
@@ -45,6 +55,7 @@ Nothing is written next to the shipped sources: the mutants live in
     python _main/redux-flag-gate.py              # shipped files, expect GREEN
     python _main/redux-flag-gate.py --neg-arm    # + 7 mutants, expect each RED
     python _main/redux-flag-gate.py --worker P --shell P   # a specific pair
+    python _main/redux-flag-gate.py --engine-switch P      # the extracted module
 
 Exit 0 when every claim holds in the shipped pair AND every mutant moves exactly
 its own claim; 1 otherwise; 2 on a setup error.
@@ -61,6 +72,13 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 WORKER_DEFAULT = os.path.join(ROOT, "worker", "sotto_worker.py")
+#: O modulo extraido do interruptor. `sotto_worker.py` re-exporta-o, mas o FONTE das
+#: armas `stamp`/`hard-rule`/`fail-safe`/`memory-gate` e' este ficheiro desde a
+#: extraccao -- ler so' o worker certificaria um ficheiro que ja' nao tem o switch.
+ENGINE_SWITCH_DEFAULT = os.path.join(ROOT, "worker", "engine_switch.py")
+#: A costura entre os dois. Um comentario nao casa com nenhum `\s*\n\s*` das armas,
+#: por isso nenhuma ancora pode ser satisfeita ATRAVES da fronteira dos ficheiros.
+SEAM = "\n# ─────────────────── worker/engine_switch.py ───────────────────\n"
 SHELL_DEFAULT = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
 MUTANT_DIR = os.path.join(HERE, "_redux-gate-mutants")
 LOG = os.path.join(HERE, "_redux-gate.log")
@@ -280,7 +298,10 @@ MUTANTS = [
     ("env-optin", "worker",
      'str(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") or "").strip() == "1")',
      'str(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") or "").strip() == "0")'),
-    ("memory-gate", "worker",
+    #: "engine" = `worker/engine_switch.py`, o modulo extraido. A arma nao mudou de
+    #: SENTIDO -- mudou de ficheiro, e um mutante aplicado ao ficheiro errado seria
+    #: "SETUP: anchor NOT FOUND", nao um controlo.
+    ("memory-gate", "engine",
      'return self.flush_pending(reason, respect_memory_floor=True)',
      'return self.flush_pending(reason, respect_memory_floor=False)'),
     ("switch-wired", "worker",
@@ -288,17 +309,17 @@ MUTANTS = [
      '                    continue',
      'switch.add_audio(block)\n                    switch.maybe_kick()\n'
      '                    pass'),
-    ("stamp", "worker",
+    ("stamp", "engine",
      'REDUX_PRODUCER = "redux"', 'REDUX_PRODUCER = "live"'),
     # REBASELINED 2026-10-12 with the claim above: the live expression spans two lines and carries a
     # THIRD condition, so the old single-line anchor built nothing and the gate said so honestly
     # ("SETUP: anchor NOT FOUND for mutant hard-rule -- that claim is not controlled"). The anchor is
     # now the one-line substring that exists verbatim, and dropping the runner/model conditions is
     # exactly the mutation the claim is supposed to catch.
-    ("hard-rule", "worker",
+    ("hard-rule", "engine",
      'self.enabled and self.runner_available and self.model_available',
      'self.enabled'),
-    ("fail-safe", "worker",
+    ("fail-safe", "engine",
      'def _fallback(self, why, age):\n        self.fallbacks += 1\n'
      '        self.last_reason = why\n        return True, why, age',
      'def _fallback(self, why, age):\n        self.fallbacks += 1\n'
@@ -332,17 +353,20 @@ def write_mutant(name: str, src: str, old: str, new: str, ext: str):
     return path, None
 
 
-def evaluate(worker_path, shell_path, label):
+def evaluate(worker_path, engine_path, shell_path, label):
     """-> (all_ok, failing_claims, notes)"""
     try:
         with open(worker_path, encoding="utf-8") as fh:
             wsrc = fh.read()
+        with open(engine_path, encoding="utf-8") as fh:
+            esrc = fh.read()
         with open(shell_path, encoding="utf-8") as fh:
             ssrc = fh.read()
     except OSError as exc:
-        say(f"SETUP ERROR: cannot read {worker_path}/{shell_path}: {exc!r}")
+        say(f"SETUP ERROR: cannot read {worker_path}/{engine_path}/"
+            f"{shell_path}: {exc!r}")
         raise
-    wclaims, wnotes = check_worker(wsrc)
+    wclaims, wnotes = check_worker(wsrc + SEAM + esrc)
     sclaims, snotes = check_shell(ssrc)
     claims = {**wclaims, **sclaims}
     notes = wnotes + snotes
@@ -357,19 +381,23 @@ def evaluate(worker_path, shell_path, label):
 def main() -> int:
     ap = argparse.ArgumentParser(prog="redux-flag-gate")
     ap.add_argument("--worker", default=WORKER_DEFAULT)
+    ap.add_argument("--engine-switch", default=ENGINE_SWITCH_DEFAULT,
+                    help="the extracted switch (worker/engine_switch.py); the "
+                         "claims are read from the worker AND this file")
     ap.add_argument("--shell", default=SHELL_DEFAULT)
     ap.add_argument("--neg-arm", action="store_true",
                     help="also build one mutated COPY per claim and require each "
                          "to go RED on its OWN claim and only that one")
     args = ap.parse_args()
 
-    for path in (args.worker, args.shell):
+    for path in (args.worker, args.engine_switch, args.shell):
         if not os.path.exists(path):
             say(f"SETUP ERROR: no such file: {path}")
             return 2
 
     say("=== REDUX FLAG GATE — is the switch OFF by default and WIRED? ===")
-    ok, bad, shipped_claims = evaluate(args.worker, args.shell, "shipped")
+    ok, bad, shipped_claims = evaluate(args.worker, args.engine_switch,
+                                       args.shell, "shipped")
     say(f"[shipped] VERDICT {'GREEN' if ok else 'RED'} "
         f"({len(shipped_claims) - len(bad)}/{len(shipped_claims)} claims hold)"
         + (f" — failing: {', '.join(bad)}" if bad else ""))
@@ -389,6 +417,8 @@ def main() -> int:
     say("=== NEGATIVE ARM — one mutated COPY per claim ===")
     with open(args.worker, encoding="utf-8") as fh:
         wsrc = fh.read()
+    with open(args.engine_switch, encoding="utf-8") as fh:
+        esrc = fh.read()
     with open(args.shell, encoding="utf-8") as fh:
         ssrc = fh.read()
     if os.path.isdir(MUTANT_DIR):
@@ -400,18 +430,19 @@ def main() -> int:
     overmoved: list[str] = []
     setup: list[str] = []
     for name, target, old, new in MUTANTS:
-        src = wsrc if target == "worker" else ssrc
+        src = {"worker": wsrc, "engine": esrc, "shell": ssrc}[target]
         path, err = write_mutant(name, src, old, new, ".py")
         if err:
             setup.append(err)
             say(f"[mutant {name}] SETUP ERROR: {err}")
             continue
-        # The mutant replaces ONLY its own file; the other half stays the
-        # shipped one, so a RED on the claim it reverts cannot be blamed on a
+        # The mutant replaces ONLY its own file; the other files stay the
+        # shipped ones, so a RED on the claim it reverts cannot be blamed on a
         # second edit.
         mworker = path if target == "worker" else args.worker
+        mengine = path if target == "engine" else args.engine_switch
         mshell = path if target == "shell" else args.shell
-        mok, mbad, _ = evaluate(mworker, mshell, f"mutant {name}")
+        mok, mbad, _ = evaluate(mworker, mengine, mshell, f"mutant {name}")
         if not mbad:
             stayed.append(name)
             say(f"[mutant {name}] DID NOT MOVE — the claim it reverts stayed green, "

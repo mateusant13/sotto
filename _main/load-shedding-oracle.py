@@ -313,13 +313,18 @@ def neg_arm_channel() -> int:
         copy.mkdir(parents=True, exist_ok=True)
         shutil.copy2(SHELL, copy / "sotto_webview.py")
         worker_copy, _webview = _mutant_layout(tmp)
-        text = WORKER.read_text(encoding="utf-8")
+        # O CANAL e' o `tick()` da classe, e a classe vive em `engine_switch.py`
+        # desde a extraccao -- mutar o `sotto_worker.py` aqui nao tocava em nada
+        # que estes arms executam, e o "nao consegui mutar o alvo" era a unica
+        # coisa honesta que o braco conseguia dizer.
+        switch_copy = tmp / "worker" / "engine_switch.py"
+        text = switch_copy.read_text(encoding="utf-8")
         mutant = text.replace('        if shed == "muito-alta":\n            wanted = "shed"',
                               '        if shed == "muito-alta":\n            wanted = "batch"')
         if mutant == text:
             print("NEG-ARM(canal): nao consegui mutar o alvo (o texto mudou)")
             return EXIT_PASS
-        worker_copy.write_text(mutant, encoding="utf-8")
+        switch_copy.write_text(mutant, encoding="utf-8")
         print("NEG-ARM(canal): `muito-alta` passa a deixar o parakeet a correr")
         globals()["WORKER"] = worker_copy
         rc = run(copy / "load_shedding.py", copy / "sotto_webview.py")
@@ -342,6 +347,13 @@ def _load_worker(path: Path):
     # passariam sem medir nada.
     if str(path.parent) not in sys.path:
         sys.path.insert(0, str(path.parent))
+    # OS IRMAOS SAO RE-IMPORTADOS DO DIRECTORIO DESTE FICHEIRO. Sem isto, o
+    # `engine_switch` do repo REAL (ja' em `sys.modules` desde o primeiro load)
+    # sobrevivia a' carga de um mini repo, e os mutantes dos bracos negativos
+    # (canal e derrama) escreviam um ficheiro que ninguem importava -- o braco
+    # dizia "nao consegui mutar o alvo" e passava.
+    for name in ("engine_switch", "engine_policy", "live_queue"):
+        sys.modules.pop(name, None)
     spec = _ilu.spec_from_file_location("sotto_worker_probe", str(path))
     mod = _ilu.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -549,13 +561,19 @@ def _mutant_layout(tmp: Path):
     importa um worker SEM a decisao e SEM a espera, e os RED que isso produz nao
     vem do mutante -- medem o layout do oraculo. Devolve
     `(caminho do worker mutante, pasta app/webview)`.
+
+    OS IRMAOS DO WORKER VEM TODOS. Desde a extraccao o interruptor (a classe que
+    estes arms executam) vive em `worker/engine_switch.py`, e ele proprio importa
+    `engine_policy`; um mini repo com so' o `live_queue.py` importaria o
+    `engine_switch` do repo REAL e o mutante aplicado aqui nao seria o que corre.
     """
     worker_dir = tmp / "worker"
     webview = tmp / "app" / "webview"
     worker_dir.mkdir(parents=True, exist_ok=True)
     webview.mkdir(parents=True, exist_ok=True)
     shutil.copy2(MODULE, webview / "load_shedding.py")
-    shutil.copy2(ROOT / "worker" / "live_queue.py", worker_dir / "live_queue.py")
+    for sibling in ("live_queue.py", "engine_switch.py", "engine_policy.py"):
+        shutil.copy2(ROOT / "worker" / sibling, worker_dir / sibling)
     return worker_dir / "sotto_worker.py", webview
 
 
@@ -569,7 +587,10 @@ def neg_arm_drain() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="load-shed-drain-neg-"))
     try:
         worker_copy, _webview = _mutant_layout(tmp)
-        text = WORKER.read_text(encoding="utf-8")
+        # `add_audio` vive em `engine_switch.py` desde a extraccao: o mutante tem
+        # de ser escrito no ficheiro que os arms IMPORTAM (ver `_mutant_layout`).
+        switch_copy = tmp / "worker" / "engine_switch.py"
+        text = switch_copy.read_text(encoding="utf-8")
         mutant = text.replace(
             "        if self.pending is None:\n            return False\n"
             "        return self.pending.add(block)",
@@ -580,7 +601,7 @@ def neg_arm_drain() -> int:
         if mutant == text:
             print("NEG-ARM(derrama): nao consegui mutar o alvo (o texto mudou)")
             return EXIT_PASS
-        worker_copy.write_text(mutant, encoding="utf-8")
+        switch_copy.write_text(mutant, encoding="utf-8")
         print("NEG-ARM(derrama): com a RAM cheia o audio NOVO passa a ser deitado fora")
         rows.clear()
         arms_load(worker_copy, tmp)
