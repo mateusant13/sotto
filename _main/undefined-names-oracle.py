@@ -163,9 +163,13 @@ def neg_arm():
             ok = False
         else:
             print('  GREEN o par correcto passa sem uma linha')
+    #: A CONVENCAO DA CASA: um braco negativo que provou o vermelho SAI `rc=1`
+    #: (ver `code-health-oracle --neg-arm` e `call :expectred`, que exige 1 e
+    #: procura "NEG-ARM PASS" no log). Um zero aqui seria lido como "o defeito
+    #: nao foi reproduzido".
     print('NEG-ARM %s' % ('PASS -- o detector morde e o par correcto e mudo'
-                          if ok else 'FAIL'))
-    return 0 if ok else 1
+                          if ok else 'FAIL -- o detector ficou mudo'))
+    return 1 if ok else 0
 
 
 def main(argv=None):

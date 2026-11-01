@@ -457,6 +457,22 @@ if exist _main\code-health-oracle.py (
   call :step always red-as-expected-code-health 1 "_main\code-health-oracle.py" "%OUT%\code-health-neg.log" python _main\code-health-oracle.py --neg-arm
   call :expectred red-as-expected-code-health !STEP_RC! "%OUT%\code-health-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-code-health MISSING "%OUT%\code-health-neg.log" "NEG-ARM PASS" )
+REM NOMES USADOS E NUNCA DEFINIDOS (2026-11-01). `py_compile` olha a sintaxe e a
+REM bateria IMPORTA os modulos -- um import passa. Medido duas vezes hoje, as duas em
+REM producao: o worker morreu no arranque com `NameError: name 'REDUX_LIVE_DEFAULT'
+REM is not defined` (a lista de `from engine_switch import (...)` perdeu o nome) e o
+REM caminho do despejo chamava `slice_blocks` quando o nome e' `_slice_blocks` --
+REM logo o NameError saia do `except BaseException` e matava o worker. `always` de
+REM proposito: a populacao e' uma LISTA de ficheiros de producao, e uma lista de deps
+REM em cache descreveria um codigo que ja' mudou.
+if exist _main\undefined-names-oracle.py (
+  call :step always undefined-names 0 "_main\undefined-names-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_policy.py;worker\engine_switch.py" "%OUT%\undefined-names.log" python _main\undefined-names-oracle.py
+  call :record undefined-names !STEP_RC!
+) else ( call :record undefined-names MISSING )
+if exist _main\undefined-names-oracle.py (
+  call :step always red-as-expected-undefined-names 1 "_main\undefined-names-oracle.py" "%OUT%\undefined-names-neg.log" python _main\undefined-names-oracle.py --neg-arm
+  call :expectred red-as-expected-undefined-names !STEP_RC! "%OUT%\undefined-names-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-undefined-names MISSING "%OUT%\undefined-names-neg.log" "NEG-ARM PASS" )
 REM A BATTERIA QUE NAO ABRE O MUNDO DO DONO (owner, 2026-10-21, verbatim:
 REM *"tu ta fazendo algo que faz meu pc travar/stutter?"* e *"tu vai garantir que
 REM minha reclamacao nunca mais aconteca"*). O portão julga FICHEIROS e corre as

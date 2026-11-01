@@ -211,9 +211,11 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (medido 2026-10-21 01:5x):** re-measured 2026-10-21 the output is 7061 B, 109 lines, 109 CRLF / 0 bare LF, rc 0, sha256
-`6F9E246DED82C05343AD55B0A63319C70AF0BED2D6AEBF7A4D240B8780DF8D9A`. O portão do pin é
+**PIN do `run.cmd --help` (medido 2026-11-01 11:0x):** re-measured 2026-11-01 the output is 7281 B, 112 lines, 112 CRLF / 0 bare LF, rc 0, sha256
+`0F1E61994DFBAA170A52D5131F5CB19DDBB388620B3F64458D13BD55066CFBA1`. O portão do pin é
 `_main/agents-md-pins-oracle.py`: se o `--help` mudar, este número muda, e o gate obriga a re-medir **aqui**.
+(Re-medido 2026-11-01 depois das três lanes que tocaram o `run.cmd` — hotkey, load e youtube; era
+7061 B / 109 linhas, o número de 2026-10-21.)
 (Re-medido 2026-10-30 quando a bandeira `--no-self-relaunch` entrou no shell: era 6934 B / 107 linhas.
 A bandeira existe porque o dono nao quer aprovar nada para ver codigo novo -- ver `app/webview/shell_relaunch.py`.)
 (O número vai **sem asteriscos**: o braço negativo do portão muta o número com um padrão que exige
@@ -274,8 +276,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-10-30, 12:5x):** `_main\_audit-verify-all.cmd` = **145028 B**,
-  **1894 CRLF** / 0 bare LF, sha256 `6D2F4EA847B4B26EBFFF9821F2C54C795A5063506A4060C3BA79A51423ACC221`.
+- **PIN do ficheiro (medido 2026-11-01, 11:0x):** `_main\_audit-verify-all.cmd` = **146485 B**,
+  **1910 CRLF** / 0 bare LF, sha256 `52d9d6eefc6f089f454f049e78e12bb04419a353c895a3361d72baa8cbffe611`.
+  (Este pin substitui o de 2026-10-30 12:5x, 145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`,
+  DEPOIS dos dois passos do portao novo `undefined-names` (+ `red-as-expected-undefined-names`,
+  16 linhas: 9 de comentario e 7 de passo). O portao nasceu de um defeito medido duas vezes
+  no mesmo dia em producao: o worker morreu no arranque com `NameError: name
+  'REDUX_LIVE_DEFAULT' is not defined` e o caminho do DESPEJO chamava `slice_blocks` quando o
+  nome e' `_slice_blocks` — nenhum `py_compile` e nenhum import da bateria os apanha.)
   (Este pin substitui o de 151485 B DEPOIS de o ficheiro ter sido truncado a 0 B por um
   `io.open(p,'wb')` que levantou no `write()` — o truncate acontece antes do erro. A recuperacao:
   `git show HEAD` (115 passos) + os 28 passos que `_cache/battery-steps.json` provava que existiam,
