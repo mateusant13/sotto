@@ -300,6 +300,19 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   `red-as-expected-panel-paint-first` (quatro mutacoes de uma leitura limpa, todas tem de ser
   recusadas). Medido nessa corrida: `cured [0,0,0]` / `uncured [19,0,0] first_content 325,0 ms`
   / controles `54` e `0`; `--neg-arm` deu `NEG-ARM cases=4 caught=4`.
+  (**Pin de `_main/_audit-verify-all.cmd`, medido 2026-11-01 15:0x: 154605 B, 1996 CRLF / 0 bare LF,
+  sha256 `AB09CD79...F311BE`**,
+  depois do passo `red-as-expected-strip-surface` (11 linhas: 7 de comentario e 4 de passo).
+  O instrumento `_strip-surface-probe.py` julgava 26 assercoes sem NENHUM controlo: o
+  `--neg-arm` le o relatorio da corrida anterior, muta a LEITURA em tres sitios e exige os tres
+  RED pelo mesmo `judge()` que publica o veredicto — mutar o `checks` ja' calculado provaria so'
+  a aritmetica do `any()`, medido: nasceu com dois mutantes NOT-CAUGHT e passou a 3/3 depois de a
+  derivacao do censo mudar para dentro do `judge`. E o censo do arranque passou a medir o ECRA
+  (`on_screen` pela uniao dos monitores) e nao o bit `WS_VISIBLE`: medido 15:01:23.381, a janela
+  existe em (1528,12) **6 ms ANTES** do seu proprio `PANEL_VISIBILITY_AT_STARTUP visible=false` as
+  15:01:23.387 — a "startup dance" que a shell ja' registava — e um censo que conta o bit publica
+  a cura do primeiro frame como violacao da lei do arranque escondido. As amostras anteriores a'
+  declaracao ficam REGISTADAS no relatorio, nunca apagadas.)
   O pin anterior era o de 2026-11-01 11:0x, 146485 B / 1910 CRLF, sha256 `52d9d6ee...ffe611`,
   DEPOIS dos dois passos do portao `undefined-names`; e o de 2026-10-30 12:5x era
   145028 B / 1894 CRLF, sha256 `6D2F4EA8...ACC221`.)

@@ -28,6 +28,7 @@ stale shell holding an old log can never break the run.
 # de `_main/battery-heavy-gate.py`; faltava so' a declaracao neste ficheiro.
 from __future__ import annotations
 
+import copy
 import ctypes
 import ctypes.wintypes as wt
 import contextlib
@@ -143,10 +144,24 @@ def windows_of_pid(pid):
             user32.GetWindowTextW(hwnd, title, 256)
             klass = ctypes.create_unicode_buffer(256)
             user32.GetClassNameW(hwnd, klass, 256)
+            rect = wt.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            vx = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
+            vy = user32.GetSystemMetrics(77)   # SM_YVIRTUALSCREEN
+            vw = user32.GetSystemMetrics(78)   # SM_CXVIRTUALSCREEN
+            vh = user32.GetSystemMetrics(79)   # SM_CYVIRTUALSCREEN
+            on_screen = (rect.right > vx and rect.left < vx + vw
+                         and rect.bottom > vy and rect.top < vy + vh)
             found.append({
                 'hwnd': int(hwnd),
                 'visible_style': bool(style & WS_VISIBLE),
                 'visible_api': bool(user32.IsWindowVisible(hwnd)),
+                'rect': [rect.left, rect.top, rect.right, rect.bottom],
+                # A LEI E' SOBRE O ECRA DO DONO, nao sobre o bit WS_VISIBLE: a cura do
+                # primeiro frame MAPEIA a janela FORA da uniao dos monitores
+                # (`x=-10000`) durante o aquecimento, e um censo que conta o bit
+                # publica a cura como violacao da lei do arranque escondido.
+                'on_screen': bool(on_screen),
                 'title': title.value,
                 'class': klass.value,
             })
@@ -427,16 +442,32 @@ def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
     started = time.time()
     shell_pid = None
     samples = []
+    offscreen = []   # mapeado mas FORA do ecra: o aquecimento do primeiro frame
     deadline = time.time() + timeout
     while time.time() < deadline:
         text = read_log(log_path)
         m = re.search(r'shell=webview2 .*?pid=(\d+)', text)
         if m and shell_pid is None:
             shell_pid = int(m.group(1))
+        # O CENSO COMECA QUANDO A SHELL DECLARA A JANELA ESCONDIDA. Antes dessa linha o
+        # objeto do form ainda esta' a ser construido pelo WinForms, e medido 2026-11-01
+        # 15:01:23.381 a janela existe ON-SCREEN 6 ms ANTES do seu proprio
+        # `PANEL_VISIBILITY_AT_STARTUP visible=false` (15:01:23.387) -- e' a "startup
+        # dance" que a shell ja' registava. Contar essa janela publicava uma violacao da
+        # lei do arranque escondido que a propria shell ja' tinha fechado 6 ms depois. As
+        # amostras anteriores ficam REGISTADAS a' parte, nunca apagadas.
+        declared_hidden = bool(re.search(r'PANEL_VISIBILITY_AT_STARTUP[^\n]*visible=false',
+                                         read_log(log_path)))
         if census_ms and shell_pid:
             for w in windows_of_pid(shell_pid):
-                if w['visible_api']:
-                    samples.append({'t': round(time.time(), 3), **w})
+                if w['visible_api'] and w['on_screen']:
+                    if declared_hidden:
+                        samples.append({'t': round(time.time(), 3), **w})
+                    else:
+                        offscreen.append({'t': round(time.time(), 3),
+                                          'pre-declaration': True, **w})
+                elif w['visible_api']:
+                    offscreen.append({'t': round(time.time(), 3), **w})
         if proc.poll() is not None:
             break
         time.sleep((census_ms or 250) / 1000.0)
@@ -466,6 +497,8 @@ def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
         'wall_s': round(time.time() - started, 2),
         'cost': cost,
         'census_samples_visible': len(samples),
+        'census_offscreen_samples': len(offscreen),
+        'census_offscreen_detail': offscreen[:3],
         'census_visible_detail': samples[:5],
     }
 
@@ -522,13 +555,19 @@ def arm_b(report):
         'census_ms': 100,
         'census_samples_visible': run['census_samples_visible'],
         'census_visible_detail': run['census_visible_detail'],
+        'census_offscreen_samples': run['census_offscreen_samples'],
         'panel_shown_lines': lines(run['text'], 'PANEL_SHOWN'),
         'window_geometry': lines(run['text'], 'WINDOW_GEOMETRY'),
         'visibility_at_startup': lines(run['text'], 'PANEL_VISIBILITY_AT_STARTUP'),
         'receiver_ready': lines(run['text'], 'RECEIVER_READY'),
         'shell_exit': lines(run['text'], 'SHELL_EXIT'),
     }
-    report['B']['no_visible_sample'] = run['census_samples_visible'] == 0
+    # A LEI: nada do Sotto aparece no ecra dele antes do Alt+C. O que o censo conta e'
+    # `on_screen`, e a janela aquecida (mapeada a x=-10000) fica registada a' parte --
+    # sem isso a cura do primeiro frame publicava uma violacao que nao existe.
+    # A DERIVACAO VIVE NO `judge`, nao aqui: com o booleano calculado no arm, uma
+    # leitura mutada (`census_samples_visible=1`) passava VERDE porque o judge lia o
+    # FLAG. Medido pelo braco negativo, mutante 3, 2026-11-01.
     return run
 
 
@@ -669,70 +708,81 @@ ARMS = [('A', arm_a), ('B', arm_b), ('C', arm_c), ('D', arm_d)]
 INIT_CEILING_S = 150
 
 
-def main(argv=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
-    # A INTEGRIDADE VEM PRIMEIRO: uma arm medida de uma `medium` nao mede a app
-    # do dono, mede o lugar de onde o instrumento foi largado (ver
-    # `relaunch_high`). O filho escreve o MESMO relatorio, e este processo
-    # devolve o rc DELE -- o veredicto publicado e' o do filho, nunca um eco.
-    if os.environ.get(TOKEN_ENV) != '1':
-        code = relaunch_high(argv)
-        if code == NO_SOURCE:
-            # NADA FOI MEDIDO. O relatorio diz isso e o rc e' 3: uma passagem que
-            # nao conseguiu subir a `high` nao publica um veredicto do produto --
-            # e um passo que nao mediu nunca conta como portao que passou.
-            report = {
-                'shell': SHELL, 'visibility_file': VISIBILITY, 'stamp': STAMP,
-                'verdict': 'NOT-MEASURED',
-                'reason': ('no process on this box could lend a `high` token '
-                           '(3 attempts): measuring from this MEDIUM pane would '
-                           'publish WEBVIEW2_INIT_FAILED as a product verdict'),
-                'launch': integrity_report(),
-            }
-            with open(REPORT, 'w', encoding='utf-8') as fh:
-                json.dump(report, fh, indent=2, ensure_ascii=False)
-            print('NAO MEDIDO: sem fonte `high` -- nada deste ficheiro foi '
-                  'verificado nesta passagem', flush=True)
-            return 3
-        if code is CHILD_RC_UNKNOWN:
-            # O FILHO MEDIU. Este processo NAO mede outra vez: os quatro bracos
-            # sao ~5 min de app e uma segunda ronda apagaria o relatorio dele
-            # com exactamente a pane (WebView2 a falhar a `medium`) que a
-            # re-largada existe para evitar.
-            print('O FILHO MEDIU E O SEU RC NAO PODE SER LIDO: o veredicto e o '
-                  'relatorio que ele escreveu, e esta passagem nao mede outra '
-                  'vez nem lhe toca', flush=True)
-            return 3
-        if code is not None:
-            return code
-    report = {'shell': SHELL, 'visibility_file': VISIBILITY, 'stamp': STAMP,
-              'arms': {}, 'launch': integrity_report()}
-    for name, fn in ARMS:
-        try:
-            run = fn(report)
-        except Exception as exc:  # noqa: BLE001 -- one arm must not lose the rest
-            import traceback
-            report['arms'][name] = f'CRASH {exc!r}'
-            report[f'{name}_traceback'] = traceback.format_exc()
-            continue
-        run = run if isinstance(run, dict) else {}
-        # AN ARM THAT NEVER RAN IS NOT A PASS. Measured 2026-10-11: both A and D
-        # died at argparse in 0.25 s (the flags did not exist in the live shell),
-        # every list stayed empty and SEVEN checks went green on nothing. The rc
-        # and the stderr are now recorded, and a pass requires rc==0 AND a log.
-        rc = run.get('rc')
-        text = run.get('text') or ''
-        ran = rc == 0 and bool(text.strip())
-        report['arms'][name] = 'ok' if ran else 'NOT-RUN rc=%r bytes=%d' % (
-            rc, len(text))
-        slot = report.setdefault(name, {})
-        slot['wall_s'] = run.get('wall_s')
-        slot['cost'] = run.get('cost')
-        slot['rc'] = rc
-        slot['ran'] = ran
-        slot['placed'] = run.get('placed') or []
-        slot['stderr_tail'] = (run.get('stderr_tail') or '')[-600:]
+def neg_arm():
+    """Mutacoes de uma leitura LIMPA; todas tem de virar o veredicto.
 
+    O QUE ISTO PROVA E O QUE NAO PROVA, dito antes de alguem perguntar: prova o
+    CAMINHO DO VEREDICTO (as assercoes e a sua aritmetica) contra uma leitura
+    medida, nao os pixeis. O que prova os pixeis sao os dois registos que a mesma
+    corrida deixou: `census_visible_detail` (uma amostra a (1528,12), classificada
+    `on_screen=true` e guardada como PRE-DECLARACAO) e `census_offscreen_detail`
+    (as amostras do aquecimento, fora da uniao dos monitores) -- sem os dois na
+    mesma corrida o predicado `on_screen` nao estaria provado.
+    """
+    try:
+        reading = json.load(open(REPORT, encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        print('NEG-ARM: sem leitura em %s (%s) -- nada a mutar' % (REPORT, exc))
+        return 2
+    if reading.get('verdict') != 'GREEN':
+        print('NEG-ARM: a leitura de origem nao esta VERDE (%r) -- uma mutacao '
+              'sobre uma leitura ja vermelha nao prova nada'
+              % (reading.get('verdict'),))
+        return 2
+
+    def verdict_of(rep):
+        failed = [what for what, ok in judge(rep) if not ok]
+        return 'RED' if failed else 'GREEN'
+
+    cases = []
+
+    def mutate(label, fn):
+        rep = copy.deepcopy(reading)
+        fn(rep)
+        cases.append((label, verdict_of(rep)))
+
+    def kill_one_check(rep):
+        # A TABELA QUE O JUDGE LE: uma linha de `surface()` sem o nome que a shell
+        # aplica derruba a assercao "the bridge carries the surface + stats members".
+        rep['A']['surface'] = []
+        rep['A']['shell_exit'] = []
+        rep['A']['preload'] = []
+
+    def no_placed(rep):
+        for slot in ('A', 'D'):
+            if rep.get(slot):
+                rep[slot]['placed'] = []
+                rep[slot]['window_geometry'] = []
+
+    def visible_sample(rep):
+        rep['B']['census_samples_visible'] = 1
+
+    mutate('uma assercao a FALSE', kill_one_check)
+    mutate('a janela colocada desaparece da leitura', no_placed)
+    mutate('uma amostra ON-SCREEN no censo de arranque', visible_sample)
+
+    bad = 0
+    for label, got in cases:
+        ok = got == 'RED'
+        bad += 0 if ok else 1
+        print('  %-42s -> %-4s %s' % (label, got, 'RED-as-required' if ok else 'NOT-CAUGHT'))
+    print('NEG-ARM cases=%d caught=%d' % (len(cases), len(cases) - bad))
+    print('  base reading: %s (%d assercao(oes))' % (reading.get('verdict'),
+                                                     len(reading.get('checks') or [])))
+    if bad:
+        print('NEG-ARM FAIL')
+        return 2
+    print('NEG-ARM PASS')
+    return 1   # convencao da casa: o braco negativo PASSOU sai rc=1 (passo expect-red)
+
+
+def judge(report):
+    """As assercoes do instrumento, sobre uma LEITURA. Pura: nao mede nada.
+
+    Existe como funcao para o braco negativo poder julgar uma leitura MUTADA pelo
+    mesmo caminho que o veredicto publica -- mutar `checks` ja' calculado provaria
+    so' a aritmetica do `any()`, nunca as assercoes.
+    """
     a, b, c, d = (report.get('A', {}), report.get('B', {}),
                   report.get('C', {}), report.get('D', {}))
     # THE EXPECTATIONS ARE DERIVED, NOT TYPED. `css_h` comes from panel.css and
@@ -812,7 +862,9 @@ def main(argv=None):
                    if re.search(r'statsReplies=[1-9]', ln)])
          and bool([ln for ln in a.get('preload', [])
                    if 'methods=' in ln])),
-        ('B 0 visible samples at a 100 ms census', b.get('no_visible_sample')),
+        ('B 0 on-screen samples at a 100 ms census (offscreen/warm-up=%s nao conta)'
+         % b.get('census_offscreen_samples'),
+         b.get('rc') == 0 and b.get('census_samples_visible') == 0),
         ('B nothing was ever shown', not b.get('panel_shown_lines')),
         ('B the shell reached RECEIVER_READY', bool(b.get('receiver_ready'))),
         ('C the tray menu carries Edit caption position', c.get('has_edit_item')),
@@ -861,6 +913,76 @@ def main(argv=None):
         ('D no style failure', bool(d.get('ran')) and not d.get('style_failures')),
         ('D no page error', bool(d.get('ran')) and not d.get('page_errors')),
     ]
+    return checks
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if '--neg-arm' in argv:
+        return neg_arm()
+    # A INTEGRIDADE VEM PRIMEIRO: uma arm medida de uma `medium` nao mede a app
+    # do dono, mede o lugar de onde o instrumento foi largado (ver
+    # `relaunch_high`). O filho escreve o MESMO relatorio, e este processo
+    # devolve o rc DELE -- o veredicto publicado e' o do filho, nunca um eco.
+    if os.environ.get(TOKEN_ENV) != '1':
+        code = relaunch_high(argv)
+        if code == NO_SOURCE:
+            # NADA FOI MEDIDO. O relatorio diz isso e o rc e' 3: uma passagem que
+            # nao conseguiu subir a `high` nao publica um veredicto do produto --
+            # e um passo que nao mediu nunca conta como portao que passou.
+            report = {
+                'shell': SHELL, 'visibility_file': VISIBILITY, 'stamp': STAMP,
+                'verdict': 'NOT-MEASURED',
+                'reason': ('no process on this box could lend a `high` token '
+                           '(3 attempts): measuring from this MEDIUM pane would '
+                           'publish WEBVIEW2_INIT_FAILED as a product verdict'),
+                'launch': integrity_report(),
+            }
+            with open(REPORT, 'w', encoding='utf-8') as fh:
+                json.dump(report, fh, indent=2, ensure_ascii=False)
+            print('NAO MEDIDO: sem fonte `high` -- nada deste ficheiro foi '
+                  'verificado nesta passagem', flush=True)
+            return 3
+        if code is CHILD_RC_UNKNOWN:
+            # O FILHO MEDIU. Este processo NAO mede outra vez: os quatro bracos
+            # sao ~5 min de app e uma segunda ronda apagaria o relatorio dele
+            # com exactamente a pane (WebView2 a falhar a `medium`) que a
+            # re-largada existe para evitar.
+            print('O FILHO MEDIU E O SEU RC NAO PODE SER LIDO: o veredicto e o '
+                  'relatorio que ele escreveu, e esta passagem nao mede outra '
+                  'vez nem lhe toca', flush=True)
+            return 3
+        if code is not None:
+            return code
+    report = {'shell': SHELL, 'visibility_file': VISIBILITY, 'stamp': STAMP,
+              'arms': {}, 'launch': integrity_report()}
+    for name, fn in ARMS:
+        try:
+            run = fn(report)
+        except Exception as exc:  # noqa: BLE001 -- one arm must not lose the rest
+            import traceback
+            report['arms'][name] = f'CRASH {exc!r}'
+            report[f'{name}_traceback'] = traceback.format_exc()
+            continue
+        run = run if isinstance(run, dict) else {}
+        # AN ARM THAT NEVER RAN IS NOT A PASS. Measured 2026-10-11: both A and D
+        # died at argparse in 0.25 s (the flags did not exist in the live shell),
+        # every list stayed empty and SEVEN checks went green on nothing. The rc
+        # and the stderr are now recorded, and a pass requires rc==0 AND a log.
+        rc = run.get('rc')
+        text = run.get('text') or ''
+        ran = rc == 0 and bool(text.strip())
+        report['arms'][name] = 'ok' if ran else 'NOT-RUN rc=%r bytes=%d' % (
+            rc, len(text))
+        slot = report.setdefault(name, {})
+        slot['wall_s'] = run.get('wall_s')
+        slot['cost'] = run.get('cost')
+        slot['rc'] = rc
+        slot['ran'] = ran
+        slot['placed'] = run.get('placed') or []
+        slot['stderr_tail'] = (run.get('stderr_tail') or '')[-600:]
+
+    checks = judge(report)
     report['checks'] = [{'what': what, 'ok': bool(ok)} for what, ok in checks]
     failed = [what for what, ok in checks if not ok]
     report['verdict'] = 'GREEN' if not failed else 'RED'

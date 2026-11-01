@@ -1181,6 +1181,17 @@ if exist _main\_strip-surface-probe.py (
   call :step heavy strip-surface-runtime 0 "_main\_strip-surface-probe.py;app\webview\sotto_webview.py;app\panel\panel.css" "%OUT%\strip-surface.log" python _main\_strip-surface-probe.py
   call :record strip-surface-runtime !STEP_RC!
 ) else ( call :record strip-surface-runtime MISSING )
+REM O BRACO NEGATIVO DO strip-surface (2026-11-01). O instrumento julgava 26
+REM assercoes sem NENHUM controlo: uma leitura verde era aceita por ser verde. O
+REM `--neg-arm` le o relatorio que o passo de cima acabou de escrever, muta a
+REM LEITURA em tres sitios e exige os tres RED pelo mesmo `judge()` que publica o
+REM veredicto -- matar o `checks` ja calculado provaria so a aritmetica do `any()`.
+REM `always` porque le um ficheiro que muda a cada corrida, e sem dependencia do
+REM proprio relatorio (uma dependencia que se nomeasse seria um ciclo).
+if exist _main\_strip-surface-probe.py (
+  call :step always red-as-expected-strip-surface 1 "_main\_strip-surface-probe.py" "%OUT%\strip-surface-neg.log" python _main\_strip-surface-probe.py --neg-arm
+  call :expectred red-as-expected-strip-surface !STEP_RC! "%OUT%\strip-surface-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-strip-surface MISSING "%OUT%\strip-surface-neg.log" "NEG-ARM PASS" )
 if exist _main\_strip-restore-probe.py (
   call :step heavy strip-geometry-restore 0 "_main\_strip-restore-probe.py;app\webview\sotto_webview.py" "%OUT%\strip-restore.log" python _main\_strip-restore-probe.py
   call :record strip-geometry-restore !STEP_RC!
