@@ -1,0 +1,84 @@
+{
+ "seconds": 6,
+ "rateHz": 8,
+ "deadline_s": 180.0,
+ "results": {
+  "theme-5": {
+   "reduced": {
+    "theme": "theme-5",
+    "arm": "reduced",
+    "seconds": 6,
+    "rateHz": 8,
+    "windowMs": 6145.3,
+    "reducedMotion": true,
+    "loafObserver": true,
+    "longtaskObserver": true,
+    "loaf": {
+     "count": 5,
+     "seen": 7,
+     "dropped": 2,
+     "duration": 1153.1,
+     "blocking": 260,
+     "styleAndLayout": 0.9,
+     "render": 2,
+     "max": 448.2
+    },
+    "longtask": {
+     "count": 1,
+     "seen": 2,
+     "dropped": 1,
+     "duration": 309
+    },
+    "forcedLayout": {
+     "count": 278,
+     "skipped": 0,
+     "total": 16,
+     "mean": 0.058,
+     "max": 2
+    },
+    "forcedLed": {
+     "count": 278,
+     "mean": 0.036,
+     "max": 1.2
+    },
+    "forcedList": {
+     "count": 278,
+     "mean": 0.02,
+     "max": 0.8
+    },
+    "control": {
+     "installed": false,
+     "writes": 0,
+     "skipped": 0,
+     "applied": null
+    },
+    "frame": {
+     "n": 277,
+     "mean": 22.08,
+     "p50": 16.7,
+     "p95": 16.8,
+     "max": 450,
+     "over33": 9,
+     "over50": 8
+    },
+    "push": {
+     "count": 41,
+     "total": 258.5,
+     "mean": 6.305,
+     "max": 144.1
+    },
+    "dom": {
+     "rows": 1,
+     "words": 40,
+     "led": 1
+    },
+    "animations": {
+     "led": "none",
+     "meter": "none",
+     "wordTransition": "none"
+    },
+    "_waited_s": 9.4
+   }
+  }
+ }
+}
