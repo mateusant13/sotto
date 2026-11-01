@@ -109,10 +109,11 @@ HEAVY_FLOOR = {
     "strip-stats-wave": "app-window",
     "control-panel-exit3-neg-arm": "audio-device",
     "mute-audio": "audio-device",
-    # 2026-10-30: o passo que mede o GESTO do dono. Nao abre janela, nao abre
-    # dispositivo e nao carrega modelo -- depende da MAO do dono (uma pressao de
-    # Alt+C numa sessao viva), e sem ela o instrumento responde NO-MEASURE.
-    "altc-first-caption": "owner-hand",
+    # 2026-11-01: o passo deixou de esperar pela MAO do dono. Ele CORRE a medicao
+    # (`pov-selftest.py --run`: segunda instancia, mutex privada, teclas livres,
+    # token `high`) e julga o log que essa medicao escreveu -- logo abre o mundo
+    # `app-window` (nunca na tela dele) e nao depende de um gesto que ninguem faz.
+    "altc-first-caption": "app-window",
     # 2026-10-30: o auto-relancamento do shell LARGA a app (o passo estava
     # `always` e o log da app ganhou dois `SHELL_STARTUP_STAGE` num run).
     "shell-relaunch": "app-window",

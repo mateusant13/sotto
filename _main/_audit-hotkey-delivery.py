@@ -44,8 +44,13 @@ reported UNVERIFIED. A SKIP is never a pass:
 
   * the verdict line says `SKIPPED` and the summary states that "Alt+C works" is
     the one claim this run could NOT make;
-  * the process table AND the shell's own log must BOTH corroborate. Holding alone
-    is not enough, so a stranger holding Alt+C can never be excused;
+  * the LIVE INSTANCE and its own words must BOTH corroborate. The instance comes
+    from the one selector this repo has (`_main/load-shedding-oracle.py`,
+    `find_live_instance`: alive, won the mutex, not a measurement launch), and its
+    OWN segment of the log must say `HOTKEY_REGISTERED accelerator=Alt+C
+    register=true`. Holding alone is not enough, so a stranger holding Alt+C can
+    never be excused — and a MEASUREMENT launch that happens to be last in the log
+    can never be mistaken for the app (measured 2026-11-01 11:16: it was);
   * if the shell in the log got a FALLBACK key, that means Alt+C is held by
     something that is NOT the Sotto shell and the arm is RED, naming the holder;
   * arms 2, 3 and 4 run either way — the fallback chain, the single-instance lock
@@ -67,9 +72,7 @@ from __future__ import annotations
 
 import ctypes
 import os
-import subprocess
 import sys
-import tempfile
 import threading
 import time
 
@@ -77,12 +80,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 SHELL_DIR = os.path.join(ROOT, 'app', 'webview')
 LOG = os.path.join(HERE, '_audit-probe', 'hotkey-delivery.log')
-DEFAULT_SHELL_LOG = os.path.join(HERE, 'webview-run.log')
-REG_EXE = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'reg.exe')
-
-#: `HOTKEY_REGISTERED accelerator=Alt+C register=true isRegistered=true …`
-REGISTERED_RE = r'HOTKEY_REGISTERED accelerator=(\S+)\s'
-REGISTERED_FAILED_RE = r'HOTKEY_REGISTER_FAILED accelerator=(\S+)\s+winerror=(\d+)'
 
 lines: list[str] = []
 failed: list[str] = []
@@ -113,160 +110,81 @@ def skip(name: str, why: str) -> None:
 # ---------------------------------------------------------------------------
 # WHO holds the key — the distinction this instrument was missing
 # ---------------------------------------------------------------------------
-# Getting a Windows process list from Python on this box has one measured trap
-# (`AGENTS.md`): the INLINE `powershell -Command` form of a CIM query returns EMPTY
-# stdout here, so an inline version would silently report "nothing is running". The
-# file form returns every row; this writes a temp `.ps1` and runs that, which is the
-# form that is known to work. It is a read-only query: no /IM, no taskkill, nothing
-# is filtered by name for killing — this probe must never touch the owner's app.
-_PS_SNAPSHOT = (
-    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n'
-    'Get-CimInstance Win32_Process -Filter "Name = \'pythonw.exe\'" |\n'
-    '  Where-Object { $_.CommandLine -like \'*sotto_webview.py*\' } |\n'
-    '  Select-Object ProcessId, CreationDate, CommandLine | ConvertTo-Json -Compress\n'
-)
+# A IDENTIDADE DA INSTANCIA VIVA NAO SE ESCREVE OUTRA VEZ AQUI. Ela vive em
+# `_main/load-shedding-oracle.py` (`find_live_instance`, assente em
+# `newest_shell_segment`): recusa marcadores de medicao (`--selftest`,
+# `--mutex-name`, `--no-worker`), recusa a largada que PERDEU a mutex
+# (`SINGLE_INSTANCE already_running=true`) e recusa pids mortos; escolhe entre o
+# log deste repo e o do checkout principal, porque a app do dono arranca de la'.
+#
+# O CAMINHO ANTIGO DESTE FICHEIRO -- `Get-CimInstance` + "as tres ultimas linhas
+# de SHELL_STARTUP_STAGE" + o ficheiro de log INTEIRO para o `HOTKEY_REGISTERED`
+# -- foi RETIRADO em 2026-11-01: medido na bateria das 11:16, ele deu
+# `Alt+C held=True` com a app do dono viva e a registrar a tecla, e publicou
+# "no live Sotto shell claims it -- the holder is another program". Era o censo
+# a julgar a MEDICAO em vez da instancia, que e' exactamente a classe que o
+# escolhedor unico existe para fechar.
+SELECTOR = os.path.join(HERE, 'load-shedding-oracle.py')
 
 
-DEFAULT_SHELL_LOG_FOR_CENSUS = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'webview-run.log')
+def selector():
+    """O escolhedor unico da instancia viva (`load-shedding-oracle.py`)."""
+    if SELECTOR in sys.modules:
+        return sys.modules[SELECTOR]
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location('hotkey_live_instance', SELECTOR)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[SELECTOR] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def shells_from_log(path=None):
-    """As shells que o PROPRIO log nomeia -- a identidade que sobrevive ao censo.
 
-    MEDIDO 2026-10-30: o censo por `Get-CimInstance Win32_Process` com
-    `Name='pythonw.exe'` deu **zero** enquanto a app corria, porque (a) esta build corre
-    como `python.EXE` e (b) o `CommandLine` de um processo largado por token/tarefa vem
-    VAZIO. O `SHELL_STARTUP_STAGE pid=` que a app escreve ao arrancar e' a identidade que
-    o repo ja' declarou valida; o pid so' conta se ainda responder.
-    """
-    import re
-    path = path or DEFAULT_SHELL_LOG_FOR_CENSUS
-    out = []
-    try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
-            lines = fh.readlines()
-    except OSError:
-        return out
-    for line in reversed(lines[-4000:]):
-        match = re.search(r'SHELL_STARTUP_STAGE pid=(\d+)', line)
-        if not match:
-            continue
-        pid = int(match.group(1))
-        if pid in [row['pid'] for row in out]:
-            continue
-        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
-        handle = k32.OpenProcess(0x1000, False, pid)
-        if not handle:
-            continue
-        k32.CloseHandle(handle)
-        out.append({'pid': pid, 'created_ms': None, 'log': path})
-        if len(out) >= 3:
-            break
-    return out
+def shell_log_state(segment: str) -> dict:
+    """O que ESTA largada diz que registou -- o SEGMENTO dela, nao o ficheiro.
 
+    O ficheiro `webview-run.log` e' escrito por TODAS as instancias e por todas as
+    medicoes: a ultima linha de hotkey dele pode ser de outra. MEDIDO 2026-11-01
+    11:16: a app do dono registou Alt+C e a ultima linha do ficheiro dizia
+    `HOTKEY_REGISTERED role=live accelerator=Ctrl+Space`, por isso o instrumento
+    publicou "no live Sotto shell claims it -- the holder is another program" com
+    a prova do contrario quatro linhas acima.
 
-def live_sotto_shells() -> tuple[list[dict], str]:
-    """Live Sotto shells as `{pid, created_ms, log}`, or `[]` with the reason.
-
-    A snapshot that DID NOT RUN must not read as "no shell is running": the caller
-    treats `[]` as a positive finding and a non-empty `error` as unknown.
-    """
-    import json
-
-    tmp = os.path.join(tempfile.gettempdir(), f'sotto-hotkey-audit-{os.getpid()}.ps1')
-    try:
-        with open(tmp, 'w', encoding='utf-8') as fh:
-            fh.write(_PS_SNAPSHOT)
-        proc = subprocess.run(
-            ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', tmp],
-            capture_output=True, text=True, timeout=30,
-            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-        )
-    except Exception as exc:  # noqa: BLE001 -- an instrument fault is not a verdict
-        return [], f'{type(exc).__name__}: {exc}'
-    finally:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-    if proc.returncode != 0:
-        return [], f'powershell rc={proc.returncode} stderr={proc.stderr.strip()[:300]}'
-    text = (proc.stdout or '').strip()
-    if not text:
-        # Um censo vazio NAO e' "nao ha shell": e' a resposta que o censo sabe dar nesta
-        # build (processo `python.EXE`, `CommandLine` vazio). O log responde melhor.
-        return shells_from_log(), ''
-    try:
-        rows = json.loads(text)
-    except ValueError as exc:
-        return [], f'cannot parse the snapshot ({exc}): {text[:200]}'
-    if isinstance(rows, dict):
-        rows = [rows]
-    out = []
-    for r in rows:
-        cmd = r.get('CommandLine') or ''
-        log = DEFAULT_SHELL_LOG
-        parts = cmd.split()
-        if '--log' in parts:
-            i = parts.index('--log')
-            if i + 1 < len(parts):
-                log = parts[i + 1].strip('"')
-        created = r.get('CreationDate')
-        ms = None
-        if isinstance(created, str) and created.startswith('/Date('):
-            try:
-                ms = int(created[len('/Date('):].split(')')[0].split('+')[0].split('-0')[0])
-            except ValueError:
-                ms = None
-        elif isinstance(created, (int, float)):
-            ms = int(created)
-        out.append({'pid': int(r.get('ProcessId') or 0), 'created_ms': ms, 'log': log})
-    for row in shells_from_log():
-        if all(row['pid'] != seen['pid'] for seen in out):
-            out.append(row)
-    return out, ''
-
-
-def _mtime_ms(path: str):
-    try:
-        return os.stat(path).st_mtime * 1000.0
-    except OSError:
-        return None
-
-
-def shell_log_state(path: str) -> dict:
-    """What a shell's OWN log says it registered, and whether this process wrote it.
-
-    `fresh` is the corroboration that matters: the log's mtime is at or after the
-    shell process started, so the `HOTKEY_REGISTERED` lines in it were written by
-    the shell that is running NOW, not by a previous run of the same file.
+    Por acelerador, o estado e' o da ULTIMA linha DESTA instancia que o nomeia: um
+    `HOTKEY_REGISTERED ... register=true` seguido de `HOTKEY_REGISTER_FAILED` da
+    MESMA instancia e' "falhou", e o inverso e' "registou".
     """
     import re
 
-    st = {'exists': os.path.isfile(path), 'mtime_ms': _mtime_ms(path),
-          'registered': [], 'failed': [], 'last_registered': None, 'fresh': None}
-    if not st['exists']:
-        return st
-    try:
-        with open(path, encoding='utf-8', errors='replace') as fh:
-            text = fh.read()
-    except OSError:
-        return st
-    st['registered'] = re.findall(REGISTERED_RE, text)
-    st['failed'] = re.findall(REGISTERED_FAILED_RE, text)
-    if st['registered']:
-        st['last_registered'] = st['registered'][-1]
-    # A ULTIMA LINHA DE HOTKEY do ficheiro inteiro: e' ela que diz se o estado ATUAL e'
-    # "registou" ou "falhou". Sem isto, um `HOTKEY_REGISTERED` de uma instancia morta
-    # (seguido de `HOTKEY_REGISTER_FAILED` da viva) leria como "a app detem a tecla".
-    tail = [line for line in text.splitlines()
-            if 'HOTKEY_REGISTERED' in line or 'HOTKEY_REGISTER_FAILED' in line
-            or 'HOTKEY_FALLBACK' in line]
-    st['last_line'] = tail[-1] if tail else ''
-    st['last_is_registration'] = bool(tail) and 'HOTKEY_REGISTERED' in tail[-1] \
-        and 'HOTKEY_REGISTER_FAILED' not in tail[-1]
+    st = {'state': {}, 'registered': [], 'failed': [], 'last_line': ''}
+    hotkey_lines = []
+    for line in segment.splitlines():
+        if 'HOTKEY_REGISTERED' not in line and 'HOTKEY_REGISTER_FAILED' not in line \
+                and 'HOTKEY_FALLBACK' not in line:
+            continue
+        hotkey_lines.append(line)
+        # A LINHA TEM CAMPOS A MAIS DESDE 2026-11-01 (`role=panels`, ver
+        # `HotkeyThread`), por isso o acelerador e' LIDO, nao posicionado: o
+        # `REGISTERED_RE` antigo exigia `accelerator=` logo apos
+        # `HOTKEY_REGISTERED` e devolvia ZERO em todas as linhas deste build.
+        accelerator = None
+        for token in line.split():
+            if token.startswith('accelerator='):
+                accelerator = token[len('accelerator='):]
+                break
+        if accelerator is None:
+            continue
+        if 'HOTKEY_REGISTER_FAILED' in line:
+            st['failed'].append(accelerator)
+            st['state'][accelerator] = 'failed'
+        elif 'register=true' in line:
+            st['registered'].append(accelerator)
+            st['state'][accelerator] = 'registered'
+    st['last_line'] = hotkey_lines[-1] if hotkey_lines else ''
     return st
+
+
 
 
 def key_held(accelerator: str, hotkey_id: int) -> tuple[bool, int]:
@@ -309,8 +227,9 @@ def who_holds_alt_c(shell_mod, accelerator: str) -> dict:
 
     Both halves are required before a shell gets the blame or the credit:
       * the OS must report the shell's id as HOLDING the key, and
-      * a live Sotto shell must exist AND its own log must show it registered
-        Alt+C — corroboration that the holder is that shell and not a stranger.
+      * the LIVE instance — the one `selector().find_live_instance()` picks: alive,
+        holding the mutex, not a measurement launch — must say, in ITS OWN segment
+        of the log, that it registered THAT accelerator.
     """
     outcome = {'held': None, 'winerror': None, 'shells': [], 'snapshot_error': '',
                'logs': {}, 'sotto_owns': False, 'why': ''}
@@ -325,59 +244,39 @@ def who_holds_alt_c(shell_mod, accelerator: str) -> dict:
     if not held:
         return outcome
 
-    shells, snapshot_error = live_sotto_shells()
-    outcome['shells'] = shells
-    outcome['snapshot_error'] = snapshot_error
-    if not shells:
+    try:
+        log, pid, segment = selector().find_live_instance()
+    except Exception as exc:  # noqa: BLE001 -- an instrument fault is not a verdict
+        outcome['snapshot_error'] = f'live-instance selector failed: {type(exc).__name__}: {exc}'
+        pid, segment = None, ''
+        log = ''
+    if pid is None:
+        outcome['why'] = ('the key is HELD and NO launch in the candidate logs is the live '
+                          'Sotto instance (no alive pid that won the mutex, or only '
+                          'measurement launches) — so nothing can corroborate the holder')
+        return outcome
+    pid = int(pid)
+    st = shell_log_state(segment)
+    outcome['shells'] = [{'pid': pid, 'log': str(log)}]
+    outcome['logs'][pid] = st
+    if st['state'].get(accelerator) == 'registered':
+        outcome['sotto_owns'] = True
+        outcome['owner_pid'] = pid
+        outcome['owner_log'] = str(log)
         outcome['why'] = (
-            'the process snapshot found NO live Sotto shell'
-            + (f' (and did not run: {snapshot_error})' if snapshot_error else '')
+            f'pid {pid} is the live instance (alive, won the mutex, no measurement '
+            f'marker) and its OWN segment of {log} carries "HOTKEY_REGISTERED '
+            f'accelerator={accelerator} register=true"'
         )
         return outcome
-
-    for sh in shells:
-        st = shell_log_state(sh['log'])
-        created = sh['created_ms']
-        fresh = None
-        if st['mtime_ms'] is not None and created is not None:
-            fresh = st['mtime_ms'] >= created
-        elif created is None:
-            # O CENSO VEIO DO LOG, logo nao ha' idade do processo para comparar. A prova
-            # equivalente e' temporal e NAO depende do censo: a ultima linha
-            # `HOTKEY_REGISTERED` do ficheiro tem de ser a ULTIMA escrita desse log, e o
-            # pid que ele nomeia tem de estar vivo (ja' verificado em `shells_from_log`).
-            # Sem isto o instrumento acusava "outro programa" contra a propria app
-            # (medido 2026-10-30: fresh=None com a app viva e a deter a tecla).
-            last_line = st.get('last_line') or ''
-            fresh = bool(st.get('last_is_registration') and
-                         st['last_registered'] == accelerator and
-                         accelerator in last_line)
-        st['fresh'] = fresh
-        outcome['logs'][sh['pid']] = st
-        says_alt_c = st['last_registered'] == accelerator and fresh is True
-        if says_alt_c:
-            outcome['sotto_owns'] = True
-            outcome['owner_pid'] = sh['pid']
-            outcome['owner_log'] = sh['log']
-            outcome['why'] = (
-                f'pid {sh["pid"]} is running and its own log ({sh["log"]}) carries '
-                f'HOTKEY_REGISTERED accelerator={accelerator} written at or after that '
-                f'process started (log mtime >= process start)'
-            )
-            return outcome
-
-    details = []
-    for sh in shells:
-        st = outcome['logs'].get(sh['pid'], {})
-        details.append(
-            f'pid {sh["pid"]}: log={sh["log"]} last_registered='
-            f'{st.get("last_registered")!r} fresh={st.get("fresh")}'
-        )
     outcome['why'] = (
-        'the key is HELD but no live Sotto shell claims it in its own log — the holder is '
-        'another program. ' + '; '.join(details)
+        f'the key is HELD and the live instance pid {pid} ({log}) does NOT say '
+        f'accelerator={accelerator} register=true in its own segment: state='
+        f'{st["state"].get(accelerator)!r} last_hotkey_line={st["last_line"][-120:]!r}'
+        f' — the holder is another program'
     )
     return outcome
+
 
 
 class StubShell:
@@ -421,10 +320,12 @@ def main() -> int:
             f'asked on id {shell_mod._HOTKEY_ID:#06x}')
         for sh in owners['shells']:
             st = owners['logs'].get(sh['pid'], {})
-            say(f'  live Sotto shell pid={sh["pid"]} log={sh["log"]} '
-                f'last_registered={st.get("last_registered")!r} log_fresh={st.get("fresh")}')
+            say(f'  live instance pid={sh["pid"]} log={sh["log"]} '
+                f'hotkeys={st.get("state")}')
         if owners['snapshot_error']:
-            say(f'  snapshot note: {owners["snapshot_error"]}')
+            say(f'  selector note: {owners["snapshot_error"]}')
+        if owners['held'] and not owners['sotto_owns']:
+            say(f'  who holds it: {owners["why"]}')
 
     stub = StubShell()
     fired = threading.Event()

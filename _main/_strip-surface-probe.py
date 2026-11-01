@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import importlib.util
 import json
 import os
 import re
@@ -45,6 +46,15 @@ PYW = sys.executable if sys.executable.lower().endswith('pythonw.exe') \
 VISIBILITY = os.path.join(HERE, 'panel-visibility.json')
 REPORT = os.path.join(HERE, '_strip-surface-probe.json')
 STAMP = f'{os.getpid()}-{int(time.time())}'
+LAUNCH_AS_TOKEN = os.path.join(HERE, 'launch-as-token.py')
+#: Marca a passagem que JA' corre com o token emprestado: sem ela a re-largada
+#: seria um laco (o filho volta a ver-se `medium` se a fonte nao der o nivel).
+TOKEN_ENV = 'SOTTO_STRIP_PROBE_TOKEN'
+
+#: O filho `high` MEDIU e o seu rc nao pode ser lido. Nao e' `None` (= "nao houve
+#: filho, mede tu"), porque as duas situacoes pedem o contrario uma da outra:
+#: medir de novo por cima de um relatorio valido foi a avaria de 2026-11-01.
+CHILD_RC_UNKNOWN = 'child-rc-unknown'
 
 CREATE_NO_WINDOW = 0x08000000
 user32 = ctypes.WinDLL('user32', use_last_error=True)
@@ -200,6 +210,89 @@ def placed_of(lns):
                     'work_y': g[3], 'w': g[4], 'h': g[5], 'x': g[6],
                     'y': g[7], 'margin': g[8], 'docked': g[9], 'line': ln}
     return None
+
+
+def load_launcher():
+    """`launch-as-token.py`, cujo nome tem hifen e por isso nao se importa."""
+    spec = importlib.util.spec_from_file_location('strip_launch_as_token',
+                                                  LAUNCH_AS_TOKEN)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def integrity_report():
+    """A integridade DESTE processo, por extenso -- vai para o relatorio."""
+    try:
+        module = load_launcher()
+        sid = module.integrity_of()
+        return {'pid': os.getpid(), 'sid': sid,
+                'name': module.integrity_name(sid),
+                'token': os.environ.get(TOKEN_ENV) == '1'}
+    except Exception as exc:                                      # noqa: BLE001
+        return {'pid': os.getpid(), 'sid': None, 'name': 'UNKNOWN',
+                'token': os.environ.get(TOKEN_ENV) == '1', 'error': repr(exc)}
+
+
+def relaunch_high(argv):
+    """Corre ESTE instrumento outra vez com o token de um processo `high`.
+
+    MEDIDO 2026-11-01 (bateria 11:19, e o `stderr` do braco A): esta pane corre a
+    `medium` (`S-1-16-8192`) e um filho DIRECTO dela mede, nas QUATRO arms,
+    `WEBVIEW2_INIT_FAILED error= (0x80010108) RPC_E_DISCONNECTED` -- o
+    instrumento inteiro falhava por onde era largado, e o veredicto publicado era
+    "o produto nao aplica a strip". A app do dono corre a `high`
+    (`S-1-16-12288`), e e' essa a condicao que se quer medir. Mesma classe que
+    `_main/pov-selftest.py` ja' resolveu (`launch-as-token.py`, fonte
+    `explorer.exe`); este ficheiro nao escreve uma segunda primitiva.
+
+    Devolve o rc do filho, ou None quando nao ha' processo fonte (e nesse caso o
+    chamador mede assim mesmo e o relatorio diz de que integridade falou).
+    """
+    module = load_launcher()
+    this = integrity_report()
+    if this['name'] == 'HIGH':
+        return None
+    source = module.source_pid()
+    if not source:
+        print('SEM FONTE `high` nesta sessao: mediria a MEDIUM e veria '
+              'WEBVIEW2_INIT_FAILED em todas as arms', flush=True)
+        return None
+    os.environ[TOKEN_ENV] = '1'
+    ok, err, child = module.launch(
+        source, sys.executable, [os.path.abspath(__file__)] + list(argv),
+        cwd=os.path.dirname(HERE))
+    if not ok:
+        print('RE-LARGADA FALHOU: CreateProcessAsUser err=%d (fonte pid=%d)'
+              % (err, source), flush=True)
+        return None
+    # UM HANDLE DO PROCESSO QUE NOS CRIAMOS: `WaitForSingleObject` diz que ele
+    # saiu, e o pid nao e' reutilizado debaixo da espera (mesma licao do
+    # `--selftest` de `launch-as-token.py`).
+    #
+    # O ACESSO E' DOIS, NAO UM (medido 2026-11-01, `rc=?`): um handle aberto so'
+    # com SYNCHRONIZE deixa ESPERAR mas nao LER o codigo -- `GetExitCodeProcess`
+    # falha com access denied, este processo devolvia None, `main()` caia no
+    # caminho "medir assim mesmo" e uma SEGUNDA ronda a `medium` reescrevia o
+    # relatorio do filho: os quatro bracos passaram a `rc=1` com
+    # `CreateCoreWebView2ControllerAsync` a falhar -- a pane que a re-largada
+    # existe para evitar, publicada por cima de uma medicao boa.
+    kernel32.OpenProcess.restype = wt.HANDLE
+    handle = kernel32.OpenProcess(0x00100000 | 0x1000, False, child)  # SYNCHRONIZE|QUERY
+    if not handle:
+        print('RE-LARGADA: sem handle para o filho pid=%d' % child, flush=True)
+        return CHILD_RC_UNKNOWN
+    kernel32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
+    kernel32.WaitForSingleObject.restype = wt.DWORD
+    kernel32.GetExitCodeProcess.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
+    kernel32.WaitForSingleObject(handle, 900000)              # 15 min: as arms somam ~4
+    code = wt.DWORD()
+    ok_code = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+    kernel32.CloseHandle(handle)
+    print('medido pelo filho pid=%d (fonte pid=%d, %s): rc=%s'
+          % (child, source, module.integrity_name(module.integrity_of(source)),
+             code.value if ok_code else '?'), flush=True)
+    return int(code.value) if ok_code else CHILD_RC_UNKNOWN
 
 
 def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
@@ -415,9 +508,27 @@ def arm_d(report):
 ARMS = [('A', arm_a), ('B', arm_b), ('C', arm_c), ('D', arm_d)]
 
 
-def main():
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # A INTEGRIDADE VEM PRIMEIRO: uma arm medida de uma `medium` nao mede a app
+    # do dono, mede o lugar de onde o instrumento foi largado (ver
+    # `relaunch_high`). O filho escreve o MESMO relatorio, e este processo
+    # devolve o rc DELE -- o veredicto publicado e' o do filho, nunca um eco.
+    if os.environ.get(TOKEN_ENV) != '1':
+        code = relaunch_high(argv)
+        if code is CHILD_RC_UNKNOWN:
+            # O FILHO MEDIU. Este processo NAO mede outra vez: os quatro bracos
+            # sao ~5 min de app e uma segunda ronda apagaria o relatorio dele
+            # com exactamente a pane (WebView2 a falhar a `medium`) que a
+            # re-largada existe para evitar.
+            print('O FILHO MEDIU E O SEU RC NAO PODE SER LIDO: o veredicto e o '
+                  'relatorio que ele escreveu, e esta passagem nao mede outra '
+                  'vez nem lhe toca', flush=True)
+            return 3
+        if code is not None:
+            return code
     report = {'shell': SHELL, 'visibility_file': VISIBILITY, 'stamp': STAMP,
-              'arms': {}}
+              'arms': {}, 'launch': integrity_report()}
     for name, fn in ARMS:
         try:
             run = fn(report)
