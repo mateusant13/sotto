@@ -161,6 +161,11 @@ class FakeShell:
         self.on_worker_status = lambda text, kind, info: None
         self.on_worker_stats = lambda parsed: None
         self.on_worker_meter = lambda sample: None
+        #: O `start_worker` REAL entrega este callback ao bridge
+        #: (`on_loading_text=self.push_caption_to_window`, linha 9412). O stub
+        #: tem de o ter: sem ele a arma `g` morria com `AttributeError` e o
+        #: oráculo publicava FAIL sobre um caminho que nao chegou a correr.
+        self.push_caption_to_window = lambda *a, **k: None
 
     def apply_panel_state(self, text, kind='busy', info=None):
         self._painted.append((text, kind, dict(info or {})))

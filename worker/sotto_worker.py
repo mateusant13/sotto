@@ -62,6 +62,7 @@ import math
 import os
 import queue
 import sys
+import tempfile
 import threading
 import time
 
@@ -618,6 +619,19 @@ try:                       # a fila de audio vivo (ver worker/live_queue.py)
     import live_queue as _live_queue
 except Exception:          # pragma: no cover -- o import falha so' fora do repo
     _live_queue = None
+
+try:                       # a politica dos motores (ver worker/engine_policy.py)
+    import engine_policy as _policy
+except Exception:          # pragma: no cover -- o import falha so' fora do repo
+    _policy = None
+
+#: A DECISAO do shedding e' UMA so', e ela vive ao lado da shell
+#: (`app/webview/load_shedding.py`): a tabela dos motores, os limiares e a
+#: histerese. O worker a IMPORTA em vez de ter a sua -- `_policy.shedding()`
+#: carrega-a por caminho, porque o worker corre de `worker/` e a shell de
+#: `app/webview/`, e o `None` degrada para o nivel publicado pela shell.
+_SHEDDING_PATH = os.path.join(os.path.dirname(HERE), "app", "webview",
+                              "load_shedding.py")
 
 
 def _stable_words():
@@ -4173,6 +4187,14 @@ def redux_checkpoint_missing(model_dir):
             if not os.path.isfile(os.path.join(model_dir, name))]
 
 
+# ── A POLITICA DOS MOTORES VIVE EM `worker/engine_policy.py` ─────────────────
+# Os DOIS motores de fundo (o parakeet ONNX e o executor ternario), a ordem dos
+# niveis e a forma dos numeros do log estao la', com o porque escrito. Aqui
+# ficam as referencias: extrair e' a cura que o proprio ratchet estrutural
+# (`_main/code-health-oracle.py`) pede -- este ficheiro nao pode crescer.
+ParakeetEngine = _policy.ParakeetEngine
+RunnerEngine = _policy.RunnerEngine
+
 class ReduxHiddenSwitch:
     """Streaming while the panel is OPEN, batch while it is CLOSED.
 
@@ -4185,21 +4207,29 @@ class ReduxHiddenSwitch:
     `batch_interval_s` — LEVE, and the opposite of a forward pass per chunk.
 
     THREE GATES, ALL OF WHICH MUST BE OPEN BEFORE THE FIRST CHUNK IS CUT:
-      1. THE FLAG (`--redux-when-hidden`, DEFAULT OFF). With it off this object
-         is never constructed and the worker is byte-identical to today.
-      2. THE RUNNER FILE *AND* THE CHECKPOINT IT WILL LOAD must exist on disk. A
-         flag that switches to an engine which is not there would trade the ONLY
-         transcriber in this tree for nothing — verbatim the failure the HARD
-         RULE in AGENTS.md was written after. THE FILE ALONE IS NOT THE ENGINE
-         (the gate until 2026-10-11, and a trap): `_run_runner` passes no
-         `--model-dir`, so the runner loads its own
-         `models/parakeet-redux-ternary`, and a runner on disk with that
+      1. THE FLAG/GATE (`--redux-when-hidden`, or the shipped default). With the
+         switch not constructed the worker is the plain streaming worker.
+      2. THE BACKGROUND ENGINE must be on disk: THE PARKEET (`ParakeetEngine`,
+         the ONNX int4 export) OR, for the ternary checkpoint, the runner FILE
+         *AND* the checkpoint it will LOAD. A flag that switches to an engine
+         which is not there would trade the ONLY transcriber in this tree for
+         nothing — verbatim the failure the HARD RULE in AGENTS.md was written
+         after. THE FILE ALONE IS NOT THE ENGINE (the gate until 2026-10-11, and
+         a trap): `_run_runner` passes no `--model-dir`, so the runner loads its
+         own `models/parakeet-redux-ternary`, and a runner on disk with that
          checkpoint absent dies in `redux_batch.load_runtime`'s SystemExit on
          EVERY pass while the switch has already cut streaming. Either absence is
          REFUSED LOUDLY, with the missing path, and the worker stays streaming.
       3. THE FILE MUST BE FRESH *AND* SAY HIDDEN for longer than
          `hidden_after_s` (see `PanelVisibilityReader`: a stale or unreadable
          file reads as VISIBLE, so gate 3 fails closed towards streaming).
+
+    THE AUDIO THAT WAITS IS NEVER DROPPED (owner, 2026-11-01). While a pass is
+    not allowed to run — the panel is closed, the level says `shed`, the memory
+    floor defers it — the blocks go into `live_queue.PendingAudio`: RAM up to
+    `max_audio_s`, then a DISK SPOOL, in order and lossless. When the load falls
+    the pass reads EVERYTHING that accumulated. The old behaviour (trim the
+    oldest block over 120 s) deleted the owner's audio silently; the spool cannot.
 
     THE BATCH PASS IS OFF-THREAD, and deliberately: the runner is a separate
     process with a model load, and blocking the ASR thread on it would stall
@@ -4219,18 +4249,27 @@ class ReduxHiddenSwitch:
                  max_audio_s=REDUX_MAX_AUDIO_DEFAULT_S,
                  runner_timeout_s=REDUX_RUNNER_TIMEOUT_DEFAULT_S,
                  wav_dir=None, armed_by="--redux-when-hidden",
-                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None):
+                 min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None,
+                 engine=None, probe=None, pending=None, spool_dir=None,
+                 engine_min_free_mb=None, engine_window_s=None):
         self.enabled = bool(enabled)
         self.reader = reader
         self.runner = runner
         self.log = log_fn
         self.armed_by = str(armed_by)
         self.min_free_mb = float(min_free_mb or 0.0)
+        self.engine_min_free_mb = float(
+            _policy.REDUX_ENGINE_MIN_FREE_MB if engine_min_free_mb is None
+            else engine_min_free_mb)
+        self.engine_window_s = max(0.5, float(
+            _policy.REDUX_ENGINE_WINDOW_S if engine_window_s is None
+            else engine_window_s))
         self.hidden_after_s = float(hidden_after_s)
         self.batch_interval_s = max(1.0, float(batch_interval_s))
         self.max_audio_s = max(self.batch_interval_s, float(max_audio_s))
         self.runner_timeout_s = float(runner_timeout_s)
         self.wav_dir = wav_dir
+        self.spool_dir = spool_dir
         # ── gate 2, decided ONCE, at construction, and stated in the log ─────
         # TWO facts, not one: the runner FILE and the checkpoint it will LOAD.
         # `_run_runner` invokes the runner with no `--model-dir`, so the runner
@@ -4247,13 +4286,66 @@ class ReduxHiddenSwitch:
             model_dir if model_dir else redux_checkpoint_dir(self.runner))
         self.model_missing = redux_checkpoint_missing(self.model_dir)
         self.model_available = not self.model_missing
+        # ── WHO RUNS THE BATCH: the parakeet, and only then the runner ───────
+        # The ONNX int4 parakeet is the engine this machine actually HAS (the
+        # ternary checkpoint is not on disk), so it is preferred. `engine`
+        # defaults to a real `ParakeetEngine`; an injected object must offer
+        # `available`, `name()`, `load()`, `release()`, `transcribe(pcm)`.
+        # `RunnerEngine` keeps the ternary path and its contract (`--wav --json`)
+        # exactly as it was.
+        #: Os tres factos do worker que o lote extraido le' (`engine_policy`):
+        #: a taxa, o produtor das linhas e o medidor de RSS. Passam como
+        #: atributos para a politica nao importar o worker (seria a segunda
+        #: tabela) nem duplicar constantes.
+        self.rate = TARGET_SR
+        self.producer = REDUX_PRODUCER
+        self.rss = current_rss_mb
+        self.engine = (engine if engine is not None
+                       else ParakeetEngine(
+                           REDUX_LIVE_ENGINE_DEFAULT, redux_live_dirs,
+                           redux_live_missing, current_rss_mb,
+                           threads=REDUX_LIVE_THREADS, log_fn=log_fn))
+        self.runner_engine = RunnerEngine(runner, redux_checkpoint_dir,
+                                          redux_checkpoint_missing, log_fn=log_fn)
+        self.engine_available = bool(getattr(self.engine, "available", False))
+        self.batch_kind = ("parakeet" if self.engine_available
+                           else ("runner" if self.runner_engine.available
+                                 else None))
+        # A FORMA DESTA EXPRESSAO E' PINADA por `_main/redux-flag-gate.py`
+        # (claim `hard-rule`: `self.armed = bool(` seguido de
+        # `self.enabled and self.runner_available`), e o pino esta' certo: sem
+        # interruptor nao ha' `armed`, e sem motor a parar o nemotron deixaria o
+        # dono sem transcritor. A condicao nova -- o PARKEET no disco tambem arma
+        # -- entra como o outro ramo do `or`, sem partir a ancora.
         self.armed = bool(
-            self.enabled and self.runner_available and self.model_available)
+            self.enabled and self.runner_available and self.model_available
+            or (self.enabled and self.engine_available))
         self.mode = "stream"
-        #: O nivel de shedding da shell (`leve` ate' ela dizer outra coisa). Vive
-        #: aqui para a linha de log so' sair quando o nivel MUDA -- um log por
-        #: bloco seria ruido a 50 Hz.
+        # ── O NIVEL: a shell publica-o, o worker MEDE-o, obedece-se ao PIOR ──
+        # `probe` e' a medicao local (`load_shedding.LoadProbe`): commit % e
+        # CPU %, uma leitura por `SAMPLE_INTERVAL_S`. `None` (o omissao do
+        # construtor, e o que alguns oraculos usam) deixa a decisao como era:
+        # so' o nivel publicado conta. `main()` passa um probe real; o oraculo
+        # passa um com leituras escritas.
+        self.probe = probe
+        shed_module = _policy.shedding(_SHEDDING_PATH, err)
+        self._shedder = shed_module.LoadShedding() if shed_module is not None else None
+        self._fed_at = None
+        #: O nivel EM VIGOR (o pior entre o publicado e o medido). Vive aqui para
+        #: a linha de log so' sair quando o nivel MUDA -- um log por bloco de
+        #: 100 ms seria ruido.
         self._shed = "leve"
+        self._shed_published = "leve"
+        self._shed_measured = "leve"
+        self._shed_why = ""
+        self._commit_pct = None
+        self._cpu_pct = None
+        #: O audio que espera por um motor (RAM -> disco), NUNCA perdido.
+        self.pending = pending if pending is not None else (
+            _live_queue.PendingAudio(rate=TARGET_SR, ram_s=self.max_audio_s,
+                                     spool_dir=spool_dir,
+                                     log=(log_fn or (lambda _m: None)))
+            if _live_queue is not None else None)
         self.visible = True
         self.why = "boot"
         self.hidden_since = None
@@ -4266,9 +4358,12 @@ class ReduxHiddenSwitch:
         self.deferred = 0
         self.stream_chunks_before = 0
         self.batch_seconds = 0.0
-        self._pending = []
-        self._pending_samples = 0
+        #: O relogio do PROPRIO audio (segundos capturados desde o arranque), para
+        #: as linhas do lote levarem `start`/`end` honestos e nao um zero repetido.
+        self._audio_clock_s = 0.0
         self._inflight = None
+        self._release_when_idle = False
+        self._backoff_until = 0.0
         self._captions = queue.Queue()
         self._lock = threading.Lock()
 
@@ -4284,6 +4379,21 @@ class ReduxHiddenSwitch:
                 f"max_audio_s={self.max_audio_s} min_free_mb={self.min_free_mb} "
                 f"runner={self.runner} "
                 f"visibility={self.reader.path}")
+            # A SEGUNDA linha, de proposito: a primeira e' um contrato congelado
+            # (`_main/redux-arm-weights-oracle.py` W6 compara-a com uma regex
+            # ancorada em `visibility=...$`), e o que este lane acrescenta e' um
+            # FACTO NOVO -- quem corre o lote, de onde, e se a maquina esta' a ser
+            # medida localmente. Meter isto na linha de cima partia o contrato
+            # para dar a mesma informacao num sitio pior.
+            self.log(
+                f"REDUX_BATCH_ENGINE engine={self.batch_kind} "
+                f"name={self.engine.name()} dir={getattr(self.engine, 'dir', '')} "
+                f"missing={','.join(getattr(self.engine, 'missing', []) or []) or 'none'} "
+                f"runner_available={str(self.runner_available).lower()} "
+                f"checkpoint_available={str(self.model_available).lower()} "
+                f"engine_min_free_mb={self.engine_min_free_mb} "
+                f"probe={'local' if self.probe is not None else 'shell-only'} "
+                f"spool={self.spool_dir}")
         elif not self.runner_available:
             # LOUD, and it is the HARD RULE speaking: without a runner on disk
             # the switch would silence the only transcriber there is, so it is
@@ -4339,12 +4449,32 @@ class ReduxHiddenSwitch:
         # one thing the HARD RULE forbids. The decision above already refuses to
         # arm in that case, so this is not a second guard -- it is the same fact
         # read where it matters.
-        shed = self.reader.shed()
+        #
+        # TWO CHANNELS, ONE DECISION (owner, 2026-11-01: the decision "reads the
+        # MEASURED load (commit %, CPU) and records the number that triggered
+        # it"). The shell publishes a level in the file this switch already polls;
+        # the worker now MEASURES the same two things itself every
+        # `SAMPLE_INTERVAL_S` and obeys the WORSE of the two. That is what makes
+        # the level exist when the shell wrote nothing (boot, a dead shell,
+        # `SOTTO_LOAD_SHED=0`), and the log line carries commit/cpu so the number
+        # that decided anything is never a guess.
+        shed_published = self.reader.shed()
+        measured, commit_pct, cpu_pct, measured_why = self._measure(shed_published)
+        shed = _policy.worse_level(PanelVisibilityReader.SHED_LEVELS,
+                                   shed_published, measured)
+        self._shed_published = shed_published
+        self._shed_measured = measured
         if shed != getattr(self, '_shed', 'leve'):
             self._shed = shed
+            self._shed_why = measured_why
+            engines = self._engines_for(shed)
             self.log(
-                f"REDUX_SHEDDING level={shed} visible={str(self.visible).lower()} "
-                f"commit_note=the shell decides the level from the machine")
+                f"REDUX_SHEDDING level={shed} published={shed_published} "
+                f"measured={measured} commit_pct={_policy.fmt_num(commit_pct)} "
+                f"cpu_pct={_policy.fmt_num(cpu_pct)} "
+                f"engines={','.join('%s:%s' % (k, 'on' if v else 'off') for k, v in engines.items()) or 'n/a'} "
+                f"why={json.dumps(measured_why or 'the shell decided')} "
+                f"visible={str(self.visible).lower()}")
         if shed == "muito-alta":
             wanted = "shed"
         elif shed == "alta":
@@ -4365,48 +4495,111 @@ class ReduxHiddenSwitch:
                 self.log(
                     f"REDUX_MODE mode=batch visible={str(self.visible).lower()} "
                     f"reason={why} visibility={self.why} "
-                    f"switches={self.switches} runner={os.path.basename(self.runner)}")
+                    f"switches={self.switches} engine={self.batch_kind} "
+                    f"runner={os.path.basename(self.runner)}")
             elif wanted == "shed":
                 self.log(
                     f"REDUX_MODE mode=shed reason=shed-muito-alta "
                     f"visibility={self.why} switches={self.switches} "
+                    f"held_s={self.pending_seconds()} "
                     f"note=audio-fica-para-processar-depois")
             else:
                 self.log(
                     f"REDUX_MODE mode=stream visible={str(self.visible).lower()} "
                     f"reason={'visible-again' if self.visible else 'boot'} "
                     f"switches={self.switches} segments={self.segments}")
+        # ── A CARGA LIBERTA, E O MOTOR VOLTA SOZINHO ─────────────────────────
+        # `muito-alta` manda parar o parakeet, e parar e' LARGAR O MODELO: a
+        # referencia ao backend cai e o RSS que voltou fica no log. O lote
+        # seguinte — que so' e' pedido quando o nivel desce (ver `maybe_kick`) —
+        # carrega-o outra vez, na thread do lote. Um lote ja' a correr nao e'
+        # interrompido: o `release` espera que ele acabe (`_release_when_idle`),
+        # porque matar uma inferencia a meio e' como nao a ter feito.
+        if self.mode == "shed":
+            if self.in_flight():
+                self._release_when_idle = True
+            else:
+                self._release_when_idle = False
+                self._release_engine("shed-muito-alta")
         return self.mode
+
+    # -- a medicao da carga -------------------------------------------------
+    def _measure(self, published):
+        """A leitura LOCAL da maquina: `(nivel, commit_pct, cpu_pct, razao)`.
+
+        `(published, None, None, "")` quando nao ha' probe (o omissao) ou quando
+        o modulo da decisao nao esta' neste checkout: a decisao fica exactamente
+        a de antes, com o nivel publicado. Uma amostra so' por
+        `SAMPLE_INTERVAL_S` -- as outras devolvem a ultima (`fresh=False`) sem
+        mexer no `LoadShedding`, senao a mesma leitura contaria como cinco
+        confirmacoes de descida.
+        """
+        if self.probe is None or self._shedder is None:
+            return published, None, None, ""
+        try:
+            commit_pct, cpu_pct, fresh = self.probe.sample()
+        except Exception as exc:  # noqa: BLE001 -- medir nao pode matar o audio
+            self.probe = None
+            self.log(f"REDUX_LOAD_PROBE_FAILED {type(exc).__name__}: {exc} — "
+                     f"a decisao volta a ser a da shell")
+            return published, None, None, ""
+        if not fresh:
+            return self._shed_measured, self._commit_pct, self._cpu_pct, self._shed_why
+        level, _changed, why = self._shedder.observe(commit_pct, cpu_pct)
+        self._commit_pct = commit_pct
+        self._cpu_pct = cpu_pct
+        self._shed_why = why
+        return level, commit_pct, cpu_pct, why
+
+    @staticmethod
+    def _engines_for(level):
+        """`{'nemotron': bool, 'parakeet': bool}` do nivel -- se o modulo existir."""
+        module = _policy.shedding(_SHEDDING_PATH, err)
+        table = getattr(module, "ENGINES", None) if module is not None else None
+        if isinstance(table, dict) and level in table:
+            return dict(table[level])
+        return {}
+
+    def _release_engine(self, reason):
+        release = getattr(self.engine, "release", None)
+        if not callable(release):
+            return False
+        try:
+            released = bool(release(reason=reason))
+        except Exception as exc:  # noqa: BLE001 -- largar memoria nao pode matar o audio
+            self.log(f"REDUX_ENGINE_RELEASE_FAILED reason={reason} "
+                     f"error={type(exc).__name__}: {exc}")
+            return False
+        if released:
+            # A LARGADA E' UMA ACCAO DO INTERRUPTOR, por isso e' o interruptor que
+            # a diz: o log fica completo quer o motor seja o parakeet real (que
+            # acrescenta o RSS que voltou) quer seja um objecto injectado.
+            self.log(f"REDUX_ENGINE_RELEASE reason={reason} engine={self.batch_kind} "
+                     f"held_s={self.pending_seconds()} "
+                     f"— a carga mandou parar; recarrega sozinho quando a carga libertar")
+        return released
 
     # -- the accumulation ---------------------------------------------------
     def add_audio(self, block):
-        """Hold one 16 kHz block for the batch pass. Bounded by `max_audio_s`."""
-        with self._lock:
-            self._pending.append(block)
-            self._pending_samples += int(block.size)
-            limit = int(self.max_audio_s * TARGET_SR)
-            while self._pending_samples > limit and len(self._pending) > 1:
-                dropped = self._pending.pop(0)
-                self._pending_samples -= int(dropped.size)
-                # Dropping the OLDEST audio is the only bounded choice, and it is
-                # said out loud rather than leaked silently: a hidden panel is
-                # not supposed to transcribe an unbounded backlog.
-                if self._pending_samples % (5 * TARGET_SR) < int(block.size):
-                    self.log(
-                        f"REDUX_BUFFER_TRIMMED max_audio_s={self.max_audio_s} "
-                        f"held_s={round(self._pending_samples / TARGET_SR, 2)}")
+        """Hold one 16 kHz block for the background engine. NEVER DROPS IT.
+
+        The hold is `live_queue.PendingAudio`: RAM up to `max_audio_s` and then a
+        DISK SPOOL, in order and byte-exact. The block also advances the audio
+        clock, which is what gives the transcribed lines honest `start`/`end`.
+        """
+        self._audio_clock_s += int(getattr(block, "size", 0)) / float(TARGET_SR)
+        if self.pending is None:
+            return False
+        return self.pending.add(block)
 
     def pending_seconds(self):
-        return round(self._pending_samples / float(TARGET_SR), 2)
+        return self.pending.seconds() if self.pending is not None else 0.0
 
     def take_pending(self):
-        """Snapshot and clear: the runner gets THIS audio, once."""
-        with self._lock:
-            held = self._pending
-            samples = self._pending_samples
-            self._pending = []
-            self._pending_samples = 0
-        return held, samples
+        """Snapshot and clear: the engine gets THIS audio, once, in order."""
+        if self.pending is None:
+            return [], 0
+        return self.pending.take_all()
 
     # -- the batch pass -----------------------------------------------------
     def maybe_kick(self, reason="interval"):
@@ -4464,9 +4657,20 @@ class ReduxHiddenSwitch:
             # A pass is already running. The audio keeps accumulating and the
             # next tick will cover it; nothing is dropped by refusing here.
             return False
-        if self.min_free_mb > 0:
+        if time.time() < self._backoff_until:
+            # O lote anterior falhou: o audio esta' de volta na fila e o motor
+            # arrefece (ver `_park`). Isto e' o que impede um motor partido de
+            # carregar 615 MB a cada segundo -- um busy loop com factura de RAM.
+            return False
+        # O PISO DE MEMORIA E' O DO MOTOR QUE VAI CORRER. O executor ternario tem
+        # um pico documentado de ~3,9 GB; o parakeet ONNX tem 615 MB medidos. Um
+        # piso unico de 4600 MB adiava um lote de 615 MB numa maquina saudavel --
+        # ou seja, `alta`/painel fechado nunca chegavam a correr.
+        floor_mb = (self.engine_min_free_mb if self.batch_kind == "parakeet"
+                    else self.min_free_mb)
+        if floor_mb > 0:
             free = _free_memory_mb()
-            if free is not None and free < self.min_free_mb:
+            if free is not None and free < floor_mb:
                 if respect_memory_floor:
                     self.deferred += 1
                     # RATE-LIMITED, for the reason `on_block`'s `queue_drops` is:
@@ -4478,35 +4682,60 @@ class ReduxHiddenSwitch:
                     if self.deferred <= 3 or self.deferred % 30 == 0:
                         self.log(
                             f"REDUX_BATCH_DEFERRED reason=low-memory free_mb={free} "
-                            f"floor_mb={self.min_free_mb} "
+                            f"floor_mb={floor_mb} engine={self.batch_kind} "
                             f"held_s={self.pending_seconds()} deferred={self.deferred} "
-                            f"— the batch engine's documented peak is ~3.9 GB and a failed "
-                            f"allocation would lose this pass; the audio stays buffered and "
-                            f"the next tick retries")
+                            f"— the engine's documented peak is 3.9 GB (ternary) or "
+                            f"615 MB (onnx int4) and a failed allocation would lose this "
+                            f"pass; the audio stays buffered and the next tick retries")
                     return False
                 self.deferred += 1
                 self.log(
-                    f"REDUX_BATCH_LOW_MEMORY free_mb={free} floor_mb={self.min_free_mb} "
-                    f"reason={reason} attempting=anyway deferred={self.deferred} — a tail "
-                    f"has no next tick, so the attempt is made and this line is the "
-                    f"receipt that it was made under pressure")
+                    f"REDUX_BATCH_LOW_MEMORY free_mb={free} floor_mb={floor_mb} "
+                    f"engine={self.batch_kind} reason={reason} attempting=anyway "
+                    f"deferred={self.deferred} — a tail has no next tick, so the attempt "
+                    f"is made and this line is the receipt that it was made under pressure")
         held, samples = self.take_pending()
         if samples < int(REDUX_MIN_AUDIO_S * TARGET_SR):
-            # Not worth a model load: put it back and wait for more audio.
-            with self._lock:
-                self._pending = held + self._pending
-                self._pending_samples += samples
+            # Not worth a model load: put it back and wait for more audio. The
+            # spool gives it BACK to the front in one piece -- nothing is lost,
+            # and nothing is transcribed out of order.
+            if self.pending is not None:
+                self.pending.requeue(held)
+            return False
+        return self._start_pass(held, samples, reason)
+
+    def _start_pass(self, held, samples, reason):
+        """Arranca UM lote na thread `redux-batch`. Nao bloqueia quem o pede.
+
+        QUEM CORRE E' ESCOLHIDO AQUI, e o log diz qual: `parakeet` (o ONNX int4,
+        neste processo, carregado pela propria thread) ou `runner` (o executor
+        ternario num processo filho, o contrato `--wav --json` de sempre).
+        """
+        if not held:
             return False
         self.batches_kicked += 1
         self.batch_seconds += samples / float(TARGET_SR)
+        #: O relogio do AUDIO (nao o da parede) onde este lote comeca: e' o que
+        #: faz cada linha levar `start`/`end` do audio que cobriu.
+        start_s = max(0.0, self._audio_clock_s - samples / float(TARGET_SR))
+        if self.batch_kind == "parakeet":
+            target = _policy.run_engine_pass
+            args = (self, held, samples, reason, start_s)
+        else:
+            target, args = self._run_runner, (held, samples, reason)
         self._inflight = threading.Thread(
-            target=self._run_runner, args=(held, samples, reason),
-            name="redux-batch", daemon=True)
+            target=target, args=args, name="redux-batch", daemon=True)
         self._inflight.start()
         self.log(
-            f"REDUX_BATCH_KICK reason={reason} audio_s={round(samples / TARGET_SR, 2)} "
-            f"kicks={self.batches_kicked} pid={os.getpid()}")
+            f"REDUX_BATCH_KICK reason={reason} engine={self.batch_kind} "
+            f"audio_s={round(samples / float(TARGET_SR), 2)} "
+            f"kicks={self.batches_kicked} held_in={self._pending_counts().get('blocks_in')} "
+            f"pid={os.getpid()}")
         return True
+
+    def _pending_counts(self):
+        getter = getattr(self.pending, "counts", None)
+        return getter() if callable(getter) else {}
 
     def _write_wav(self, pcm, path):
         """16 kHz mono PCM16, via `wave` — no dependency and no ffmpeg."""
@@ -4612,13 +4841,18 @@ class ReduxHiddenSwitch:
             # repo has been bitten by. The tail is logged ONLY on failure, so a
             # healthy run stays quiet.
             if proc.returncode != 0:
-                self.runner_failures += 1
                 tail = " | ".join(
                     (proc.stderr or "").strip().splitlines()[-4:])[:600]
-                self.log(
-                    f"REDUX_BATCH_FAILED reason=runner-rc rc={proc.returncode} "
-                    f"runner={os.path.basename(self.runner)} "
-                    f"failures={self.runner_failures} tail={json.dumps(tail)}")
+                # NAO SE PERDE AUDIO POR UM rc: com ZERO linhas o lote inteiro
+                # volta para o principio do que espera e sera' tentado outra vez
+                # (com backoff). Com linhas ja' emitidas nao ha' como saber que
+                # amostra cada uma cobriu, por isso nao se re-enfileira nada --
+                # duplicar a legenda do dono e' pior do que um rc estranho, e a
+                # linha `REDUX_BATCH_FAILED` fica como o recibo disso.
+                rest = held if lines == 0 else []
+                _policy.park_pass(self, rest, "runner-rc", extra=f"rc={proc.returncode} "
+                           f"lines={lines} runner={os.path.basename(self.runner)} "
+                           f"tail={json.dumps(tail)}")
             if lines == 0:
                 # A silent batch is a FACT the run must state: the panel is
                 # hidden, the switch is armed, and the audio produced nothing.
@@ -4634,15 +4868,10 @@ class ReduxHiddenSwitch:
                         f"only transcriber running"),
                 })
         except subprocess.TimeoutExpired:
-            self.runner_failures += 1
-            self.log(
-                f"REDUX_BATCH_FAILED reason=timeout timeout_s={self.runner_timeout_s} "
-                f"runner={self.runner} failures={self.runner_failures}")
+            _policy.park_pass(self, held, "timeout",
+                       extra=f"timeout_s={self.runner_timeout_s} runner={self.runner}")
         except Exception as exc:
-            self.runner_failures += 1
-            self.log(
-                f"REDUX_BATCH_FAILED reason={type(exc).__name__} error={exc!r} "
-                f"failures={self.runner_failures}")
+            _policy.park_pass(self, held, type(exc).__name__, extra=f"error={exc!r}")
         finally:
             if wav_path:
                 try:
@@ -4663,18 +4892,42 @@ class ReduxHiddenSwitch:
         return self._inflight is not None and self._inflight.is_alive()
 
     def stop(self):
-        """Last call: let the runner finish, then report what the switch did."""
+        """Last call: transcribe the tail, let the engine finish, then report.
+
+        O FIM DO STREAM NAO E' UM SITIO ONDE SE DEITA AUDIO FORA. O que ainda
+        espera por um motor e' transcrito AQUI, sincronamente e com o teto de
+        `runner_timeout_s`, porque depois deste metodo o processo vai embora e o
+        audio que ficou na `PendingAudio` (RAM ou spool) nao tem quem o leia. E'
+        a mesma regra do tail do painel: o ultimo minuto do dono conta.
+        """
         if not self.enabled:
             return
         if self._inflight is not None:
             self._inflight.join(timeout=max(5.0, self.runner_timeout_s))
+        left = self.pending_seconds() if self.pending is not None else 0.0
+        if self.armed and not self.in_flight() and left > 0:
+            remaining = self.take_pending()
+            if remaining[1] >= int(REDUX_MIN_AUDIO_S * TARGET_SR):
+                start_s = max(0.0, self._audio_clock_s
+                              - remaining[1] / float(TARGET_SR))
+                self.log(f"REDUX_SHUTDOWN_TAIL audio_s={round(remaining[1] / float(TARGET_SR), 2)} "
+                         f"— o audio que esperava por um motor e' transcrito antes de sair")
+                if self.batch_kind == "parakeet":
+                    _policy.run_engine_pass(self, remaining[0], remaining[1], "shutdown", start_s)
+                else:
+                    self._run_runner(remaining[0], remaining[1], "shutdown")
+            else:
+                if self.pending is not None:
+                    self.pending.requeue(remaining[0])
+        self._release_engine("stop")
         self.log(
             f"REDUX_SWITCH_STOP armed={str(self.armed).lower()} "
             f"switches={self.switches} segments={self.segments} "
             f"segment_lines={self.segment_lines} kicks={self.batches_kicked} "
             f"batch_seconds={round(self.batch_seconds, 2)} "
             f"failures={self.runner_failures} deferred={self.deferred} "
-            f"refusals={self.refusals} "
+            f"refusals={self.refusals} left_s={left} "
+            f"spooled={self._pending_counts().get('spooled', 0)} "
             f"fallbacks={self.reader.fallbacks}/{self.reader.reads}")
 
 
@@ -6348,17 +6601,18 @@ def main():
                                 f"stream starts against the batch window's cache")
                     mode = wanted
                 if mode == "batch":
-                    # The tap's audio, held for the batch pass and bounded by
-                    # --redux-max-audio. The streaming decode below is SKIPPED:
-                    # this `continue` is the CPU the owner is not paying for.
+                    # Held for the background pass: RAM to --redux-max-audio,
+                    # then the DISK spool -- in order, lossless
+                    # (`live_queue.PendingAudio`). The decode below is SKIPPED.
                     switch.add_audio(block)
                     switch.maybe_kick()
                     continue
                 if mode == "shed":
-                    # "muito alta": NADA corre agora, e o AUDIO NAO SE PERDE --
-                    # ele fica na fila limitada (ordem do dono: *"audio sempre fica
-                    # para processar depois"*). Sem `maybe_kick`: acordar o modelo
-                    # e' exactamente o custo que este nivel existe para cortar.
+                    # "muito alta": nada corre e o AUDIO NAO SE PERDE -- entra
+                    # na espera sem perdas (`PendingAudio`: RAM, depois disco,
+                    # por ordem) e o motor de fundo le'-o todo quando a carga
+                    # libertar. Sem `maybe_kick`: acordar o modelo e' o custo
+                    # que este nivel existe para cortar.
                     switch.add_audio(block)
                     continue
             # ── PRE-GAIN buffer ──────────────────────────────────────────────
@@ -6499,6 +6753,9 @@ def main():
     # the byte-identical default.
     redux_optin = bool(args.redux_when_hidden) or (
         str(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") or "").strip() == "1")
+    # Medicao e spool, de `engine_policy` (o porque' esta' la'): antes do
+    # interruptor, cuja forma (`if redux_optin:` + construtor) e' pinada.
+    probe, spool_dir = _policy.probe_and_spool(_SHEDDING_PATH, err)
     if redux_optin:
         switch = ReduxHiddenSwitch(
             enabled=True,
@@ -6518,6 +6775,8 @@ def main():
             wav_dir=os.environ.get("SOTTO_REDUX_WAV_DIR") or None,
             min_free_mb=_positive_or(
                 args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
+            probe=probe,
+            spool_dir=spool_dir,
         )
         switch.boot_line()
         # ── THE LIVE OVERLAY (lane S3), constructed only when it is opted in ────
@@ -7380,6 +7639,8 @@ def main():
     # count; `reduxCaptions` is the batch engine's, and the two are never added
     # together here — "which engine spoke" is the question this lane exists to
     # be able to ask.
+    # `_pc` FORA do `if`: a ancora `if switch is not None:` + `update(` e' pinada.
+    _pc = switch._pending_counts() if switch is not None else {}
     if switch is not None:
         done_payload.update(
             reduxEnabled=True,
@@ -7394,6 +7655,7 @@ def main():
             reduxRunnerFailures=switch.runner_failures,
             reduxBatchDeferred=switch.deferred,
             reduxMinFreeMb=switch.min_free_mb,
+            **_policy.done_fields(switch, _pc),
             reduxVisibilityReads=switch.reader.reads,
             reduxVisibilityFallbacks=switch.reader.fallbacks,
         )

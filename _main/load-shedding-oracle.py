@@ -49,7 +49,12 @@ import tempfile
 import time as _time
 from pathlib import Path
 
-ROOT = Path(os.environ.get("SOTTO_ROOT") or r"H:\sotto").resolve()
+#: O CHECKOUT QUE SE MEDE. O omissao era `H:\sotto` cravado, o que fazia uma
+#: corrida DE UMA WORKTREE medir o repo principal em silencio -- o mesmo verde
+#: sobre outro ficheiro. Passa a ser o repo DESTE oraculo (a convencao do
+#: `live-queue-oracle.py`), e `SOTTO_ROOT` continua a mandar quando e' dado.
+ROOT = Path(os.environ.get("SOTTO_ROOT")
+            or Path(__file__).resolve().parent.parent).resolve()
 MODULE = ROOT / "app" / "webview" / "load_shedding.py"
 SHELL = ROOT / "app" / "webview" / "sotto_webview.py"
 WORKER = ROOT / "worker" / "sotto_worker.py"
@@ -117,18 +122,206 @@ def _body_end(tree, start_line):
     return best
 
 
-def newest_shell_segment(log_path=None):
-    """(pid, texto) da ULTIMA largada do shell no log vivo. (None, '') se nao ha'."""
+#: O que faz de uma largada uma MEDICAO e nao a instancia do dono. As lanes
+#: arrancam o shell com a mutex renomeada, em modo selftest ou sem worker, e
+#: morrem quando o teste acaba -- mas deixam `SHELL_STARTUP_STAGE pid=N` no log,
+#: e a ultima dessas linhas NAO e' a app. Julgar a ultima linha foi o defeito de
+#: 2026-11-01: o oraculo leu o pid de uma largada de medicao (ja' morta) e
+#: reprovou a app do dono por uma linha que pertencia a outra instancia.
+MEASURE_MARKERS = ("--mutex-name", "--selftest", "--no-worker",
+                   "selftest=", "SOTTO_SELFTEST")
+
+#: Quantas recusas o escolhedor imprime antes de resumir. O log guarda uma
+#: largada por arranque, e num dia de lanes sao dezenas: o veredicto tem de ser
+#: a coisa mais alta do stdout, nao a lista de pids que nao interessam.
+_SKIP_LINES = 6
+
+
+def _pid_alive(pid):
+    """True/False se o processo existe; None quando nao se pode saber.
+
+    Windows: `OpenProcess` + `GetExitCodeProcess` (STILL_ACTIVE=259). Fora do
+    Windows devolve None, e entao a escolha cai no criterio da mutex so'.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = wintypes.DWORD()
+        ok = k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        k32.CloseHandle(handle)
+        return bool(ok) and code.value == 259
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def _not_the_instance(pid, seg, alive):
+    """Porque e' que esta largada NAO e' a instancia viva; None quando E'.
+
+    Tres perguntas, na ordem em que cada uma pode excluir uma largada:
+    1. o texto traz um marcador de medicao (a lane nao e' a app);
+    2. a largada PERDEU a mutex (`SINGLE_INSTANCE ... already_running=true`);
+    3. o processo ja' nao existe (largada morta, tipicamente de medicao).
+    Sem a linha `SINGLE_INSTANCE` a largada nao chegou a disputar a mutex e
+    tambem nao serve -- mas isso so' decide quando nao ha' processo vivo: um
+    shell vivo com o log cortado continua a ser a instancia.
+    """
+    low = seg.lower()
+    for marker in MEASURE_MARKERS:
+        if marker.lower() in low:
+            return f"marcador de medicao {marker!r}"
+    live = alive(pid)
+    if live is False:
+        return "processo ja' nao existe (largada morta)"
+    m = re.search(r"SINGLE_INSTANCE name=\S+ already_running=(true|false)", seg)
+    if m and m.group(1) == "true":
+        return "perdeu a mutex (already_running=true)"
+    if not m and live is not True:
+        return "sem `SINGLE_INSTANCE` e sem processo para confirmar"
+    return None
+
+
+def shell_launches(log_path=None):
+    """[(pid, segmento)] de todas as largadas, da mais NOVA para a mais velha.
+
+    O segmento de cada uma vai da sua linha `SHELL_STARTUP_STAGE` ate' a linha
+    seguinte da MESMA especie -- o log e' escrito por varias instancias, por isso
+    um segmento e' uma aproximacao e as arms so' o usam para o que a propria
+    largada escreveu no arranque.
+    """
     path = Path(log_path) if log_path else (ROOT / "_main" / "webview-run.log")
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None, ""
+        return []
     hits = list(re.finditer(r"SHELL_STARTUP_STAGE pid=(\d+)", text))
-    if not hits:
+    starts = [h.start() for h in hits] + [len(text)]
+    launches = [(h.group(1), text[starts[i]:starts[i + 1]])
+                for i, h in enumerate(hits)]
+    launches.reverse()
+    return launches
+
+
+def newest_shell_segment(log_path=None, alive=_pid_alive):
+    """(pid, texto) da largada que E' a instancia viva; (None, '') se nao ha'.
+
+    "A instancia" = a largada mais recente que (a) nao e' medicao, (b) ganhou a
+    mutex e (c) tem processo vivo. Diz no stdout qual escolheu e porque' recusou
+    as outras: um oraculo que julga a instancia errada tem de deixar rasto do
+    erro, e nao so' o vermelho.
+    """
+    launches = shell_launches(log_path)
+    if not launches:
         return None, ""
-    pid = hits[-1].group(1)
-    return pid, text[hits[-1].start():]
+    path = Path(log_path) if log_path else (ROOT / "_main" / "webview-run.log")
+    try:
+        tail = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        tail = ""
+    skipped = 0
+    for pid, seg in launches:
+        why = _not_the_instance(pid, seg, alive)
+        if why is None:
+            print(f"  instancia escolhida: pid={pid} (viva, ganhou a mutex,"
+                  f" sem marcador de medicao)")
+            if skipped:
+                print(f"  {skipped} largada(s) mais nova(s) recusada(s) antes desta")
+            # A cauda INTEIRA a partir do arranque desta instancia: uma largada
+            # posterior nao a interrompe -- so' acrescenta linhas ao mesmo
+            # ficheiro, e as linhas desta continuam la'.
+            start = tail.find(f"SHELL_STARTUP_STAGE pid={pid}")
+            return pid, (tail[start:] if start >= 0 else seg)
+        skipped += 1
+        # O log acumula uma largada por cada arranque e cada medicao: sem tecto
+        # esta lista seria o oraculo a falar mais alto do que o veredicto.
+        if skipped <= _SKIP_LINES:
+            print(f"  largada ignorada: pid={pid} -- {why}")
+    if skipped > _SKIP_LINES:
+        print(f"  ... e {skipped - _SKIP_LINES} largada(s) mais antigas, ignoradas"
+              f" pelo mesmo criterio")
+    print("  nenhuma largada e' a instancia viva -- as arms do log ficam sem sujeito")
+    return None, ""
+
+class _NoEngine:
+    """O motor de batch que NAO existe -- injectado no interruptor do oraculo.
+
+    PORQUE E' PRECISO DIZER-LHE. `ReduxHiddenSwitch.armed` e' verdadeiro quando
+    o parakeet esta' no disco OU o runner existe; a arm da HARD RULE tirava so' o
+    runner e deixava a decisao nas maos da maquina. Na maquina de medicao o
+    parakeet existe, `armed=True` era a resposta CORRECTA e o oraculo reprovava-a
+    -- media o disco, nao a regra. Um motor explicito com `available=False` (e
+    `dir` vazio, para o log nao citar um caminho alheio) tira a maquina da
+    equacao: o que sobra e' o codigo.
+    """
+
+    available = False
+    dir = ""
+
+    def release(self, *args, **kwargs):
+        return None
+
+    def load(self, *args, **kwargs):
+        raise AssertionError("um motor que nao existe nao carrega")
+
+
+def _naive_selector(log_path=None, alive=None):
+    """O ESCOLHEDOR ANTIGO -- a ultima linha do log, sem perguntar mais nada.
+
+    Existe para ser mutante: se as arms do escolhedor nao ficarem VERMELHAS com
+    este, nao medem a escolha da instancia (foi exactamente este comportamento
+    que reprovou a app do dono, lendo o pid de uma largada de medicao morta).
+    """
+    launches = shell_launches(log_path)
+    if not launches:
+        return None, ""
+    pid, _seg = launches[0]
+    path = Path(log_path) if log_path else (ROOT / "_main" / "webview-run.log")
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return pid, ""
+    return pid, text
+
+
+def selector_arms(select):
+    """As arms do ESCOLHEDOR, parametrizadas: `select` e' o que esta' a ser julgado."""
+    fake = Path(tempfile.mkdtemp(prefix="load-shed-log-")) / "run.log"
+    try:
+        fake.write_text(
+            "2026-11-01 10:00:00.000 sotto: SHELL_STARTUP_STAGE pid=111 stage=pre-lock\n"
+            "2026-11-01 10:00:00.100 sotto: SINGLE_INSTANCE name=Local\\SottoShell"
+            " already_running=false\n"
+            "2026-11-01 10:00:01.500 sotto: LOAD_SHEDDING_STARTED interval_s=5 canal=shed\n"
+            "2026-11-01 10:05:00.000 sotto: SHELL_STARTUP_STAGE pid=222 stage=pre-lock\n"
+            "2026-11-01 10:05:00.100 sotto: SINGLE_INSTANCE name=Local\\SottoShell"
+            " already_running=false\n"
+            "2026-11-01 10:05:00.200 sotto: SHELL_ARGS --selftest --no-worker\n",
+            encoding="utf-8")
+        vivo = lambda p: str(p) == "111"                         # noqa: E731
+        escolhido, texto = select(fake, alive=vivo)
+        add(escolhido == "111",
+            "com a viva por baixo de uma medicao, escolhe a VIVA",
+            "escolheu=%s (a ultima linha do log e' a 222)" % (escolhido or "-"))
+        add("LOAD_SHEDDING_STARTED" in texto,
+            "e o texto escolhido chega ao `LOAD_SHEDDING_STARTED` (a cauda, nao"
+            " um segmento cortado pela largada seguinte)")
+        add(shell_launches(fake)[0][0] == "222",
+            "o log sintetico tem mesmo o defeito: a ultima linha e' a medicao 222")
+        add(select(fake, alive=lambda _p: False) == (None, ""),
+            "sem nenhuma viva, o escolhedor devolve NADA (arm sem sujeito, nao"
+            " um veredicto sobre uma instancia fantasma)")
+    finally:
+        shutil.rmtree(fake.parent, ignore_errors=True)
+
 
 def verdict(name: str) -> int:
     failed = [r for r in rows if not r[0]]
@@ -252,11 +445,25 @@ def run(module_path: Path, shell_path: Path) -> int:
         " (linha %s contra .start() na linha %s)" % (log_line, start_line))
     pid, seg = newest_shell_segment()
     add('LOAD_SHEDDING_START_FAILED' not in seg,
-        "a ultima largada real (pid %s) nao tem `LOAD_SHEDDING_START_FAILED`"
-        % (pid or "nenhum"))
+        "a INSTANCIA VIVA (pid %s) nao tem `LOAD_SHEDDING_START_FAILED`"
+        % (pid or "nenhuma -- arm sem sujeito"))
     add('LOAD_SHEDDING_STARTED' in seg or pid is None,
-        "a ultima largada real (pid %s) registou `LOAD_SHEDDING_STARTED`" % (pid or "-"))
+        "a INSTANCIA VIVA (pid %s) registou `LOAD_SHEDDING_STARTED`"
+        % (pid or "nenhuma -- arm sem sujeito"))
+
+    # ARM 5b -- O ESCOLHEDOR JULGADO: a arm acima vale o que valer a escolha da
+    # instancia, e essa escolha partiu-se a 2026-11-01 (o oraculo leu o pid de
+    # uma largada de MEDICAO ja' morta e reprovou a app do dono). Um log
+    # sintetico com a forma exacta do defeito -- uma medicao por cima da
+    # instancia -- e' o que prova que o escolhedor prefere a viva.
+    print("\nARM 5b -- o ESCOLHEDOR da largada: a viva, nunca a medicao por cima")
+    selector_arms(newest_shell_segment)
     arms_channel(shell_path)
+    load_tmp = Path(tempfile.mkdtemp(prefix="load-shed-load-"))
+    try:
+        arms_load(globals().get("WORKER", ROOT / "worker" / "sotto_worker.py"), load_tmp)
+    finally:
+        shutil.rmtree(load_tmp, ignore_errors=True)
     return verdict("LOAD-SHEDDING")
 
 
@@ -300,10 +507,9 @@ def neg_arm_channel() -> int:
     saved = globals().get("WORKER", WORKER)
     try:
         copy = tmp / "app" / "webview"
-        copy.mkdir(parents=True)
-        shutil.copy2(MODULE, copy / "load_shedding.py")
+        copy.mkdir(parents=True, exist_ok=True)
         shutil.copy2(SHELL, copy / "sotto_webview.py")
-        worker_copy = tmp / "sotto_worker.py"
+        worker_copy, _webview = _mutant_layout(tmp)
         text = WORKER.read_text(encoding="utf-8")
         mutant = text.replace('        if shed == "muito-alta":\n            wanted = "shed"',
                               '        if shed == "muito-alta":\n            wanted = "batch"')
@@ -326,10 +532,265 @@ def neg_arm_channel() -> int:
 
 def _load_worker(path: Path):
     """O worker REAL, importado do ficheiro (o import custa ~0 s: medido)."""
+    # O directorio do worker no `sys.path`: `sotto_worker.py` faz
+    # `import live_queue as _live_queue` no TOPO do ficheiro, por isso o import
+    # so' encontra a ESPERA se `worker/` estiver no caminho. Um oraculo que
+    # carregasse o worker sem isto mediria `pending=None` e os arms do audio
+    # passariam sem medir nada.
+    if str(path.parent) not in sys.path:
+        sys.path.insert(0, str(path.parent))
     spec = _ilu.spec_from_file_location("sotto_worker_probe", str(path))
     mod = _ilu.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+# ── ARM 9/10: a MEDICAO decide, e a carga a libertar devolve os motores ──────
+class _FakeReader:
+    """O ficheiro da shell: `visible` e `shed`, escritos pelo oraculo."""
+
+    def __init__(self, visible=False, level="leve"):
+        self.path = "<oracle-reader>"
+        self.visible = visible
+        self.level = level
+        self.reads = 0
+        self.fallbacks = 0
+
+    def read(self):
+        self.reads += 1
+        return self.visible, "oracle", 0.0
+
+    def shed(self):
+        return self.level
+
+
+class _FakeProbe:
+    """Uma sequencia de leituras (commit %, CPU %) -- uma NOVA por chamada."""
+
+    def __init__(self, seq):
+        self.seq = list(seq)
+        self.i = 0
+        self.samples = 0
+
+    def sample(self):
+        commit, cpu = self.seq[min(self.i, len(self.seq) - 1)]
+        self.i += 1
+        self.samples += 1
+        return float(commit), float(cpu), True
+
+
+class _FakeEngine:
+    """O parakeet, com a interface que o interruptor usa e nada mais."""
+
+    available = True
+    missing = []
+    dir = "<oracle>/parakeet-redux"
+
+    def __init__(self):
+        self.loads = 0
+        self.releases = 0
+        self.calls = 0
+        self._loaded = False
+
+    def name(self):
+        return "onnx"
+
+    @property
+    def loaded(self):
+        return self._loaded
+
+    def load(self):
+        self._loaded = True
+        self.loads += 1
+        return self
+
+    def release(self, reason="idle"):
+        if not self._loaded:
+            return False
+        self._loaded = False
+        self.releases += 1
+        return True
+
+    def transcribe(self, pcm):
+        self.calls += 1
+        return "o audio que esperou virou legenda"
+
+
+#: Blocos de audio que o braco empurra com o painel fechado. 25 x 100 ms = 2,5 s,
+#: mais do que `max_audio_s=1.0` de RAM: o caminho do SPOOL e' medido, nao lido.
+LOAD_BLOCKS = 25
+
+
+def arms_load(worker_path: Path, tmp: Path) -> None:
+    """ARMs 9 e 10: a medicao local, a espera do audio e a volta sozinha."""
+    import numpy as np
+
+    try:
+        sw = _load_worker(worker_path)
+    except Exception as exc:                                        # noqa: BLE001
+        add(False, "o worker importa para os arms de carga", repr(exc))
+        return
+    add(sw._live_queue is not None, "o worker tem a ESPERA (`live_queue`) importada")
+    add(sw._policy.shedding(sw._SHEDDING_PATH, None) is not None,
+        "o worker importa o modulo da decisao (via `engine_policy`)")
+    if sw._live_queue is None or sw._policy.shedding(sw._SHEDDING_PATH, None) is None:
+        return
+
+    print("\nARM 9 -- a DECISAO le' a carga MEDIDA, e escreve o numero")
+    logs: list[str] = []
+    eng = _FakeEngine()
+    reader = _FakeReader(visible=False)          # o painel esta' FECHADO
+    probe = _FakeProbe([(96.0, 11.0)])
+    s = sw.ReduxHiddenSwitch(
+        True, reader, str(tmp / "no-runner.py"), logs.append,
+        hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng, probe=probe, spool_dir=str(tmp / "spool"))
+    add(s.armed is True, "armado: o parakeet no disco e' o motor de fundo",
+        f"engine={s.batch_kind} armed={s.armed}")
+    add(s.batch_kind == "parakeet", "o lote corre no PARKEET, nao no runner ternario")
+    add(s.tick() == "shed",
+        "commit 96 % MEDIDO -> shed, mesmo com a shell a dizer `leve`")
+    line = [l for l in logs if l.startswith("REDUX_SHEDDING")]
+    add(bool(line) and "commit_pct=96.0%" in line[-1] and "measured=muito-alta" in line[-1],
+        "o numero que disparou esta' no log", line[-1] if line else "(sem linha)")
+    add(bool(line) and "published=leve" in line[-1],
+        "e o log diz que a shell nao tinha dito nada (foi a medicao)")
+
+    # O AUDIO QUE CHEGA COM NADA CARREGADO: entra TODO, e o modelo nem acorda.
+    for _i in range(LOAD_BLOCKS):
+        s.add_audio(np.full(1600, 0.25, dtype=np.float32))
+        s.maybe_kick()
+    counts = s._pending_counts()
+    add(counts["blocks_in"] == LOAD_BLOCKS,
+        f"os {LOAD_BLOCKS} blocos capturados com nada carregado entraram na espera",
+        str(counts["blocks_in"]))
+    add(counts["dropped"] == 0, "nenhum foi deitado fora", str(counts["dropped"]))
+    add(counts["spilled_blocks"] > 0,
+        "a espera transbordou da RAM para o DISCO (nao para o lixo)",
+        f"spilled={counts['spilled_blocks']}")
+    add(counts["seconds"] >= LOAD_BLOCKS * 0.1 - 0.001,
+        "e o audio inteiro continua a espera", f"{counts['seconds']} s")
+    add((eng.loaded, eng.loads) == (False, 0),
+        "com a maquina a 96 % o modelo NAO foi carregado")
+
+    # A CARGA LIBERTA: o nivel desce degrau a degrau, e o motor volta sozinho.
+    probe.seq = [(12.0, 6.0)]
+    mode = s.mode
+    for _i in range(30):
+        mode = s.tick()
+        if mode == "batch":
+            break
+    add(mode == "batch", "a carga a libertar devolve o worker ao lote (sozinho)",
+        f"mode={mode} level={s._shed}")
+    s.maybe_kick()
+    if s.in_flight():
+        s._inflight.join(30.0)
+    after = s._pending_counts()
+    add(eng.loads >= 1, "o motor CARREGOU sozinho quando a carga libertou",
+        f"loads={eng.loads}")
+    add(after["blocks_in"] == after["blocks_out"],
+        "contagem: N entrou == N saiu",
+        f"in={after['blocks_in']} out={after['blocks_out']}")
+    add(after["seconds"] == 0.0, "a espera DRENOU para ZERO", f"{after['seconds']} s")
+    add(after["dropped"] == 0, "e nada se perdeu no caminho", str(after["dropped"]))
+    caps = [c for c in s.drain_captions() if c.get("type") == "caption"]
+    add(len(caps) >= 1, "o audio que esperou virou legenda", f"{len(caps)} linha(s)")
+    if caps:
+        span = round(caps[-1]["end"] - caps[0]["start"], 2)
+        add(span > 0 and caps[0]["start"] == 0.0,
+            "e as linhas levam o tempo REAL do audio que cobriram",
+            f"start={caps[0]['start']} end={caps[-1]['end']} span={span}s")
+    add(all(c.get("route") == "redux-batch" for c in caps),
+        "todas as linhas dizem de que motor vieram (`route=redux-batch`)")
+
+    print("\nARM 10 -- `muito-alta` LARGA o modelo, e o lote seguinte recarrega-o")
+    logs2: list[str] = []
+    eng2 = _FakeEngine()
+    eng2.load()                                   # ja' esta' carregado
+    reader2 = _FakeReader(visible=False)
+    probe2 = _FakeProbe([(96.0, 95.0)])
+    s2 = sw.ReduxHiddenSwitch(
+        True, reader2, str(tmp / "no-runner.py"), logs2.append,
+        hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng2, probe=probe2, spool_dir=str(tmp / "spool2"))
+    add(s2.tick() == "shed", "96 % de commit e 95 % de CPU -> shed")
+    add((eng2.loaded, eng2.releases) == (False, 1),
+        "o modelo foi LARGADO (a sessao ONNX cai e o RSS volta)",
+        f"loaded={eng2.loaded} releases={eng2.releases}")
+    add(any("REDUX_ENGINE_RELEASE" in l for l in logs2),
+        "e a largada esta' no log, com o motivo",
+        next((l for l in logs2 if "REDUX_ENGINE_RELEASE" in l), ""))
+    probe2.seq = [(8.0, 4.0)]
+    for _i in range(30):
+        if s2.tick() == "batch":
+            break
+    s2.add_audio(np.full(1600, 0.1, dtype=np.float32))
+    for _i in range(9):
+        s2.add_audio(np.full(1600, 0.1, dtype=np.float32))
+    s2.maybe_kick()
+    if s2.in_flight():
+        s2._inflight.join(30.0)
+    add(eng2.loads >= 2, "e RECARREGOU sozinho no lote seguinte",
+        f"loads={eng2.loads}")
+    add(s2._pending_counts()["blocks_in"] == s2._pending_counts()["blocks_out"],
+        "as 10 linhas de audio desse lote tambem entraram e sairam",
+        f"in={s2._pending_counts()['blocks_in']} out={s2._pending_counts()['blocks_out']}")
+
+
+def _mutant_layout(tmp: Path):
+    """Um repo em miniatura: `tmp/worker/sotto_worker.py` + `tmp/app/webview/`.
+
+    O ARRANJO E' O CONTEUDO DO TESTE. `sotto_worker.py` resolve o modulo da
+    decisao por caminho relativo ao PAI da sua pasta (`_SHEDDING_PATH`) e importa
+    `live_queue` da SUA pasta. Um mutante posto solto em `tmp/sotto_worker.py`
+    importa um worker SEM a decisao e SEM a espera, e os RED que isso produz nao
+    vem do mutante -- medem o layout do oraculo. Devolve
+    `(caminho do worker mutante, pasta app/webview)`.
+    """
+    worker_dir = tmp / "worker"
+    webview = tmp / "app" / "webview"
+    worker_dir.mkdir(parents=True, exist_ok=True)
+    webview.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(MODULE, webview / "load_shedding.py")
+    shutil.copy2(ROOT / "worker" / "live_queue.py", worker_dir / "live_queue.py")
+    return worker_dir / "sotto_worker.py", webview
+
+
+def neg_arm_drain() -> int:
+    """Muta o worker para DEITAR UM BLOCO FORA e exige RED nos arms da carga.
+
+    O mutante e' o defeito antigo, no sitio novo: a espera passa do tecto de RAM e
+    o bloco NOVO e' recusado em vez de ir para o disco. Se o oraculo nao o vir, os
+    arms 9/10 sao prosa.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="load-shed-drain-neg-"))
+    try:
+        worker_copy, _webview = _mutant_layout(tmp)
+        text = WORKER.read_text(encoding="utf-8")
+        mutant = text.replace(
+            "        if self.pending is None:\n            return False\n"
+            "        return self.pending.add(block)",
+            "        if self.pending is None:\n            return False\n"
+            "        if self.pending.seconds() > self.max_audio_s:\n"
+            "            return False  # MUTANTE: deita fora o audio novo\n"
+            "        return self.pending.add(block)")
+        if mutant == text:
+            print("NEG-ARM(derrama): nao consegui mutar o alvo (o texto mudou)")
+            return EXIT_PASS
+        worker_copy.write_text(mutant, encoding="utf-8")
+        print("NEG-ARM(derrama): com a RAM cheia o audio NOVO passa a ser deitado fora")
+        rows.clear()
+        arms_load(worker_copy, tmp)
+        failed = [r for r in rows if not r[0]]
+        if failed:
+            for _ok, name, detail in failed:
+                print(f"  RED   {name}  {detail}")
+            print(f"\nNEG-ARM(derrama) PASS -- RED as designed: {len(failed)} arm(s)")
+            return EXIT_FAIL
+        print("\nNEG-ARM(derrama) FAIL -- o oraculo NAO ve o bloco deitado fora")
+        return EXIT_PASS
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def arms_channel(shell_path: Path) -> None:
@@ -392,11 +853,13 @@ def arms_channel(shell_path: Path) -> None:
             "alta com o painel escondido continua batch (uma decisao, nao duas)")
         nao_armado = sw.ReduxHiddenSwitch(
             True, sw.PanelVisibilityReader(str(vis)), str(tmp / "nope.py"),
-            lambda _m: None, hidden_after_s=0.0, model_dir=str(model))
+            lambda _m: None, hidden_after_s=0.0, model_dir=str(model),
+            engine=_NoEngine())
         vis.write_text(pay(shed="muito-alta"), encoding="utf-8")
         add(nao_armado.tick() == "stream",
             "sem motor de batch na maquina o shed NAO corta o ao vivo (HARD RULE)",
-            "armed=%s" % nao_armado.armed)
+            "armed=%s engine_available=%s" % (nao_armado.armed,
+                                              nao_armado.engine_available))
 
         print("\nARM 8 -- o ESCRITOR publica `shed` no MESMO ficheiro congelado")
         try:
@@ -436,16 +899,45 @@ def arms_channel(shell_path: Path) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def neg_arm_selector() -> int:
+    """Muta o ESCOLHEDOR da largada para o defeito de 2026-11-01 e exige RED.
+
+    O instrumento tambem e' mutavel: um escolhedor que volta a pegar na ULTIMA
+    linha do log (medicao morta por cima da app viva) tem de fazer as arms do
+    escolhedor ficarem VERMELHAS -- sem isso o braco que reprovou a app do dono
+    podia voltar sem ninguem dar por isso.
+    """
+    rows.clear()
+    print("NEG-ARM(selector): o escolhedor volta a ser `hits[-1]` (a ultima largada)")
+    selector_arms(_naive_selector)
+    failed = [r for r in rows if not r[0]]
+    print("\nNEG-ARM(selector) frechas: %d de %d" % (len(failed), len(rows)))
+    if failed:
+        print("NEG-ARM(selector) PASS -- RED as designed:")
+        for _ok, name, detail in failed:
+            print("   RED  %s  %s" % (name, detail))
+        return EXIT_FAIL
+    print("\nNEG-ARM(selector) FAIL -- o escolhedor antigo passou: as arms nao o medem")
+    return EXIT_PASS
+
+
 def main(argv) -> int:
+    if "--neg-arm-drain" in argv:
+        return neg_arm_drain()
     if "--neg-arm-channel" in argv:
         return neg_arm_channel()
     if "--neg-arm" in argv:
-        # OS DOIS MUTANTES, e o pior dos dois e' o veredicto: uma tabela trocada
-        # ou um canal trocado tem de ser apanhados, e um verde num deles nao
-        # compra o outro.
+        # OS QUATRO MUTANTES, e o pior dos quatro e' o veredicto: uma tabela
+        # trocada, um canal trocado, um bloco de audio deitado fora, ou um
+        # escolhedor que julga a instancia errada tem de ser apanhados, e um
+        # verde num deles nao compra os outros.
         table = neg_arm()
         channel = neg_arm_channel()
-        return EXIT_FAIL if (table == EXIT_FAIL and channel == EXIT_FAIL) else EXIT_PASS
+        drain = neg_arm_drain()
+        selector = neg_arm_selector()
+        return (EXIT_FAIL if (table == EXIT_FAIL and channel == EXIT_FAIL
+                              and drain == EXIT_FAIL and selector == EXIT_FAIL)
+                else EXIT_PASS)
     return run(MODULE, SHELL)
 
 

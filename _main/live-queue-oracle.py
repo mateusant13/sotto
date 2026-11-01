@@ -59,6 +59,127 @@ def old_policy(q, block, cap):
         return 1
 
 
+# ── A ESPERA (`PendingAudio`): o audio que nenhum motor leu ──────────────────
+#: Quantos blocos de 100 ms a corrida empurra. 100 blocos = 10 s de audio, e a
+#: RAM da espera e' posta a 1 s: a corrida TEM de passar pelo spool para o
+#: oraculo medir a ordem a atravessar a fronteira RAM/disco.
+PENDING_BLOCKS = 100
+PENDING_BLOCK = 1600
+PENDING_RAM_S = 1.0
+
+
+def pending_checks(LQ, tmp, tag=""):
+    """Os arms da ESPERA, executaveis contra o modulo REAL e contra um MUTANTE.
+
+    Cada bloco leva um valor distinto (`i + 1`) para a ORDEM ser verificavel e
+    nao descrita: uma espera que devolva os blocos baralhados devolve outra frase.
+    """
+    import numpy as np
+
+    out = []
+
+    def chk(name, real, want):
+        out.append((real == want, tag + name, real, want))
+
+    spool = os.path.join(tmp, "spool")
+    pend = LQ.PendingAudio(rate=16000, ram_s=PENDING_RAM_S, spool_dir=spool,
+                           log=lambda _m: None)
+    for i in range(PENDING_BLOCKS):
+        pend.add((np.full(PENDING_BLOCK, i + 1, dtype=np.float32)))
+    counts = pend.counts()
+    chk("a espera recebeu todos os blocos", counts["blocks_in"], PENDING_BLOCKS)
+    chk("o audio esperado e' o que entrou (10 s)", counts["seconds"],
+        round(PENDING_BLOCKS * PENDING_BLOCK / 16000.0, 3))
+    chk("o transbordo foi para o DISCO, nao para o lixo", counts["spilled_blocks"] > 0, True)
+    chk("nada foi deitado fora (`dropped`)", counts["dropped"], 0)
+    chk("ainda nada foi entregue (`blocks_out`)", counts["blocks_out"], 0)
+    chk("todos os blocos continuam a espera (RAM + disco)",
+        counts["held_blocks"], PENDING_BLOCKS)
+
+    held, samples = pend.take_all()
+    chk("a entrega devolve TODOS os blocos", len(held), PENDING_BLOCKS)
+    chk("a entrega devolve TODAS as amostras", samples, PENDING_BLOCKS * PENDING_BLOCK)
+    chk("a ordem e' a de CHEGADA, a atravessar a RAM e o disco",
+        [int(b[0]) for b in held], list(range(1, PENDING_BLOCKS + 1)))
+    after = pend.counts()
+    chk("depois da entrega a espera esta' a ZERO (drena)",
+        (after["seconds"], after["held_blocks"]), (0.0, 0))
+    chk("contagem: entradas == saidas", after["blocks_in"], after["blocks_out"])
+    chk("contagem: saidas == blocos recebidos", after["blocks_out"], PENDING_BLOCKS)
+    chk("o spool nao fica no disco depois de entregue",
+        [n for n in (os.listdir(spool) if os.path.isdir(spool) else [])], [])
+
+    # -- a DEVOLUCAO: o que foi tirado e nao transcrito volta para a FRENTE --
+    back = LQ.PendingAudio(rate=16000, ram_s=PENDING_RAM_S, spool_dir=spool,
+                           log=lambda _m: None)
+    for i in range(5):
+        back.add(np.full(PENDING_BLOCK, i + 1, dtype=np.float32))
+    taken, _n = back.take_all()
+    kept = back.requeue(taken[2:])
+    again, _n2 = back.take_all()
+    chk("a devolucao poe os blocos outra vez a espera", kept, 3)
+    chk("e a ordem da devolucao e' a mesma (bloco 3 primeiro)",
+        [int(b[0]) for b in again], [3, 4, 5])
+    chk("a devolucao nao inventa entradas nem saidas",
+        (back.counts()["blocks_in"], back.counts()["blocks_out"]), (5, 5))
+    chk("e nada foi perdido no caminho de ida e volta", back.counts()["dropped"], 0)
+    return out
+
+
+def run_negative_mutants(LQ_PATH):
+    """DOIS mutantes plausiveis, cada um tem de derrubar os arms da ESPERA.
+
+    (a) o DEFEITO ANTIGO, outra vez: ao passar da RAM, deitar fora o bloco mais
+        ANTIGO (`pop(0)`) em vez de o escrever no disco;
+    (b) a fila FECHADA CEDO: `take_all` devolve so' o primeiro bloco e o resto
+        fica para tras -- o "drena para zero" deixa de ser verdade e o audio
+        transcrito e' uma fraccao do capturado.
+    """
+    reds = []
+    mutants = {
+        "drop-oldest-over-ram": (
+            "                head = self._ram[0]\n"
+            "                if not self._spill_locked(head):",
+            "                head = self._ram[0]\n"
+            "                self._ram.pop(0)\n"
+            "                self._ram_samples -= int(getattr(head, 'size', 0))\n"
+            "                continue\n"
+            "                if not self._spill_locked(head):"),
+        "take_all-closes-early": (
+            "            held.extend(ram)",
+            "            held = held[:1]\n            ram = ram[:0]\n"
+            "            self._ram_samples = 0\n            held.extend(ram)"),
+    }
+    for name, (before, after) in mutants.items():
+        tmp = tempfile.mkdtemp(prefix="live-queue-neg-")
+        try:
+            text = io.open(LQ_PATH, encoding="utf-8").read()
+            mutant = text.replace(before, after)
+            if mutant == text:
+                print(f"[FAIL] neg-arm({name}): nao consegui mutar o alvo")
+                reds.append(False)
+                continue
+            io.open(os.path.join(tmp, "live_queue.py"), "w", encoding="utf-8").write(mutant)
+            sys.path.insert(0, tmp)
+            for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
+                del sys.modules[name_mod]
+            import live_queue as MUT
+            try:
+                failed = [c for c in pending_checks(MUT, tmp, tag=f"{name}: ") if not c[0]]
+            except Exception as exc:  # noqa: BLE001 -- um mutante que rebenta E' red
+                failed = [("", f"{name}: rebentou ({type(exc).__name__}: {exc})", None, None)]
+            red = bool(failed)
+            print(f"[{'PASS' if red else 'FAIL'}] neg-arm({name}): o mutante derruba "
+                  f"{len(failed)} arm(s) da espera (1o: {failed[0][1] if failed else '--'})")
+            reds.append(red)
+        finally:
+            sys.path.remove(tmp)
+            for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
+                del sys.modules[name_mod]
+            shutil.rmtree(tmp, ignore_errors=True)
+    return reds
+
+
 def main() -> int:
     import live_queue as LQ
 
@@ -99,6 +220,33 @@ def main() -> int:
     arm("o worker publica o contador `queue_evicted`",
         'counters["queue_evicted"]' in src, True)
 
+    # ── A ESPERA: o audio capturado com NADA carregado ───────────────────────
+    # A ordem do dono de 2026-11-01 nao deixa margem: *"processa qualquer audio
+    # nao processado, com o parakeet"*. Estes arms executam o `PendingAudio`
+    # REAL e exigem o que a palavra "qualquer" significa: N entra, N sai, 0
+    # deitados fora, e a espera a ZERO quando o motor a le'.
+    tmp_wait = tempfile.mkdtemp(prefix="live-queue-wait-")
+    try:
+        for ok, name, real, want in pending_checks(LQ, tmp_wait):
+            arm(name, real, want)
+    finally:
+        shutil.rmtree(tmp_wait, ignore_errors=True)
+
+    # O WIRING do worker para a espera: o acumulador antigo (que TRIMAVA) ja'
+    # nao pode existir. Um `REDUX_BUFFER_TRIMMED` de volta seria audio do dono a
+    # desaparecer com uma linha de log a dizer que aconteceu.
+    arm("o acumulador que TRIMAVA o audio ja' nao esta' no worker",
+        "REDUX_BUFFER_TRIMMED" in src, False)
+    arm("o worker acumula na `PendingAudio` (RAM -> disco)", "self.pending.add(block)" in src, True)
+    # OS CAMPOS SAO ESCRITOS EM `worker/engine_policy.py` desde a extraccao (o
+    # `done` do worker chama `_policy.done_fields`): o arm le' os DOIS ficheiros,
+    # porque o que se exige e' o numero publicado, nao o sitio onde esta' escrito.
+    extra = os.path.join(WORKER, "engine_policy.py")
+    extra_src = io.open(extra, encoding="utf-8").read() if os.path.exists(extra) else ""
+    arm("o worker publica entradas e saidas do audio que esperou",
+        ("reduxAudioIn" in src or "reduxAudioIn" in extra_src)
+        and ("reduxAudioOut" in src or "reduxAudioOut" in extra_src), True)
+
     if "--neg-arm" in sys.argv[1:]:
         tmp = tempfile.mkdtemp(prefix="live-queue-")
         try:
@@ -123,7 +271,14 @@ def main() -> int:
                   f"o criterio -- fila final={len(ficou)} (esperado != 5)")
             RESULTS.append(red)
         finally:
+            sys.path.remove(tmp)
+            for m in [m for m in list(sys.modules) if m == "live_queue"]:
+                del sys.modules[m]
             shutil.rmtree(tmp, ignore_errors=True)
+        # E os dois mutantes da ESPERA -- um que PERDE um bloco, outro que FECHA a
+        # fila cedo. Sem eles, os arms da espera seriam os unicos deste oraculo
+        # que nada derruba, e um arm que nada derruba nao mede nada.
+        RESULTS.extend(run_negative_mutants(os.path.join(WORKER, "live_queue.py")))
 
     fail = RESULTS.count(False)
     print(f"\nLIVE-QUEUE {'VERDICT PASS' if fail == 0 else 'VERDICT RED'} "
