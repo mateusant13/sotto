@@ -23,12 +23,24 @@ responde à ordem dele e' a da PRIMEIRA FRAME visivel: se ela e' uma cor chapada
 
 PORQUE SO' AS FRAMES VISIVEIS CONTAM. Uma janela escondida tambem pode ser
 capturada (`PrintWindow` nao depende da posicao), e antes do mapa ela e' -- por
-construcao -- uma cor chapada. Contar essas seria inventar o defeito. O que o dono
-ve e' a primeira frame com `IsWindowVisible=true`, portanto e' essa a frame 0 de
-cada show, e a captura le a visibilidade AO MESMO TEMPO que os pixels.
+construcao -- uma cor chapada. Contar essas seria inventar o defeito.
+
+A FRAME 0 E' A PRIMEIRA FRAME QUE ELE PODE VER, e desde 2026-11-01 sao DUAS
+condicoes, nao uma. O shell mapeia a janela FORA do ecra virtual para pagar a
+PRIMEIRA pintura do processo (`PAINT_WARM` no log, uma vez por arranque) e so'
+depois mostra o painel, ja' quente, no rect do show. Uma janela visivel mas fora
+do ecra virtual ninguem a ve: contar essas frames como show seria medir um rect
+que nao esta' em ecra nenhum. A frame 0 de um show e' a primeira frame com
+`IsWindowVisible=true` E o rect da janela a intersectar o ecra virtual; uma
+stretch visivel fora do ecra imediatamente antes de um show fica no relatorio como
+`staged` -- e no build curado ela e' 0, porque o aquecimento e' no ARRANQUE e nao
+por show (medido: mover a janela mapeada custa os mesmos ~270 ms). As armas de
+CONTROLO nao usam esta regra: a janela delas esta' fora do ecra por construcao e o
+que elas provam e' o CLASSIFICADOR (`PrintWindow` nao depende da posicao), nao a
+posicao.
 
 A ARMA DE CONTROLO (obrigatoria, e' o que torna o numero uma medida). O mesmo
-classificador corre sobre uma janela que ESTE instrumento cria, FORA do ecra do
+classificador corre sobre uma janela que ESTE INSTRUMENTO cria, FORA do ecra do
 dono (`x=-10000`, `SW_SHOWNOACTIVATE`):
     control-blank-first    mapeada com um fundo solido e so' depois populada
                            -> TEM de reportar blank_frames > 0 (senao o
@@ -37,6 +49,18 @@ dono (`x=-10000`, `SW_SHOWNOACTIVATE`):
                            -> TEM de reportar blank_frames = 0 (senao o
                            classificador chama "blank" a tudo, e o mesmo zero
                            seria um artefacto do instrumento).
+
+E "BLANK" NAO E' "NAO HA' CAPTURA" (2026-11-01, e este era um defeito MEU). A
+primeira versao desta arma reportava `blank_frames=1`: a frame `i0`, mapeada e ja'
+pintada, vinha `std=0.0 mean=0.0` -- o buffer INTEIRO a zero, incluindo os bytes
+que o `PrintWindow` deveria ter escrito. A janela do controlo pinta o fundo em
+`0x202020` (mean=32) e a app em `#0B0F14` (mean~15): nenhuma cor de nenhuma das
+duas e' zero. Um buffer a zero nao e' uma frame chapada, e' a MEMORIA ANTES DE
+QUALQUER PINTURA -- o `PrintWindow` devolveu TRUE e o DWM ainda nao tinha superficie
+para a janela recem-mapeada. Isso e' uma CAPTURA PERDIDA (`no-surface`), a mesma
+classe que `printwindow-false`/`no-dc`, e e' contada como tal em vez de virar 1
+blank. Nao ha' limiar novo aqui: `mean==0.0 e std==0.0` e' a assinatura de um
+buffer intocado, nao um numero ajustado para o caso passar.
 
 O DRIVER E' O DA CASA. Arranca uma SEGUNDA instancia com `--mutex-name` privado,
 tecla livre, `--no-worker` e o token de um processo `high` do dono
@@ -123,6 +147,11 @@ BLANK_SPREAD_MAX = 8
 SAMPLE_POINTS = 4096
 CAPTURE_PERIOD_S = 1.0 / 60.0
 
+#: O ECRA VIRTUAL (`GetSystemMetrics`): a uniao de todos os monitores. E' o que
+#: separa "a janela foi mapeada" de "a janela esta' onde o dono a pode ver".
+SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
+SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 78, 79
+
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 gdi32 = ctypes.WinDLL('gdi32', use_last_error=True)
 
@@ -161,6 +190,8 @@ user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.GetClassNameW.restype = ctypes.c_int
 user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
 user32.GetClientRect.restype = wintypes.BOOL
+user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+user32.GetSystemMetrics.restype = ctypes.c_int
 user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
 user32.GetWindowRect.restype = wintypes.BOOL
 user32.GetDC.argtypes = [wintypes.HWND]
@@ -314,6 +345,19 @@ class Grabber:
         ms = (time.perf_counter() - t0) * 1000.0
         self.durations.append(ms)
         out = classify(self.buf.raw, self.w, self.h) or {'ok': False, 'why': 'empty'}
+        # ── "BLANK" NAO E' "NAO HA' CAPTURA" (ver a docstring do modulo) ──────
+        # Um buffer com mean==0.0 E std==0.0 esta' INTEIRO a zero: nenhum byte
+        # foi escrito pelo `PrintWindow`, que devolveu TRUE na mesma. Isto e' o
+        # DWM sem superficie para uma janela recem-mapeada (medido na arma
+        # `control-content-first`: `i0[std=0.0 spread=0.0 mean=0.0]`, com a
+        # janela a pintar `0x202020`). Contar isto como blank acusaria o
+        # classificador de chamar blank a uma frame de CONTEUDO; contá-lo como
+        # captura perdida e' o que a frame e' de facto. As cores de ambas as
+        # janelas sao nao-zero, portanto o teste nao esconde pintura nenhuma.
+        if out['std'] == 0.0 and out['mean'] == 0.0:
+            self._count('no-surface')
+            return {'ok': False, 'why': 'no-surface', 'grab_ms': round(ms, 2),
+                    'size': '%dx%d' % (self.w, self.h)}
         out['ok'] = True
         out['grab_ms'] = round(ms, 2)
         out['size'] = '%dx%d' % (self.w, self.h)
@@ -341,6 +385,25 @@ def window_text(hwnd) -> str:
     return buf.value
 
 
+def window_onscreen(hwnd) -> bool:
+    """O rect da janela toca no ecra virtual? -- a SEGUNDA metade da frame 0.
+
+    `IsWindowVisible` diz que o Windows a considera visivel, e uma janela mapeada
+    com o rect fora do ecra e' visivel. O que o dono ve e' a INTERSECCAO com o
+    ecra virtual (a uniao dos monitores), e e' isso que este predicado responde --
+    a mesma pergunta para "sem show" e "aquecimento fora do ecra".
+    """
+    rect = RECT()
+    if not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+        return False
+    x0 = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+    y0 = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+    x1 = x0 + user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+    y1 = y0 + user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+    return (min(rect.right, x1) - max(rect.left, x0) > 0
+            and min(rect.bottom, y1) - max(rect.top, y0) > 0)
+
+
 # ---------------------------------------------------------------------------
 # the frame loop -- ONE loop, used by the app arm and by both control arms
 # ---------------------------------------------------------------------------
@@ -362,7 +425,8 @@ def capture_for(hwnd, seconds, period=CAPTURE_PERIOD_S, on_frame=None, stop=None
         t0 = time.perf_counter()
         visible = bool(user32.IsWindowVisible(wintypes.HWND(hwnd)))
         fg = int(user32.GetForegroundWindow() or 0)
-        frame = {'t': t0, 'visible': visible, 'fg': fg, 'fg_pid': window_pid(fg)}
+        frame = {'t': t0, 'visible': visible, 'onscreen': window_onscreen(hwnd),
+                 'fg': fg, 'fg_pid': window_pid(fg)}
         if visible:
             frame.update(grabber.grab())
         else:
@@ -378,11 +442,20 @@ def capture_for(hwnd, seconds, period=CAPTURE_PERIOD_S, on_frame=None, stop=None
     return frames, grabber
 
 
-def runs_of_visible(frames):
-    """Contiguous `IsWindowVisible=true` stretches: one stretch IS one show."""
+def runs_of_visible(frames, onscreen=False):
+    """Contiguous visible stretches: one stretch IS one show.
+
+    `onscreen=True` is the APP arm, and it is the definition of a show since
+    2026-11-01: the shell maps the panel OUT of the virtual screen and moves it
+    on only after the page's paint ack, so `IsWindowVisible` alone would start the
+    show at a rect nobody can see (the `staged` frames, reported apart). The
+    CONTROL arms keep the plain version: their window lives at `x=-10000` on
+    purpose, and what they prove is the classifier, not the staging.
+    """
     runs, cur = [], None
     for f in frames:
-        if f['visible']:
+        shown = f['visible'] and (f.get('onscreen') or not onscreen)
+        if shown:
             if cur is None:
                 cur = []
                 runs.append(cur)
@@ -413,16 +486,41 @@ def split_startup_dance(runs):
     return keep, ignored
 
 
+def _staged_before(frames, first):
+    """(frames, ms) spent VISIBLE but OFF the virtual screen, right before `first`.
+
+    A window that is mapped out of sight and then brought on screen spends that
+    stretch where nobody can see it, so it is reported apart instead of being
+    counted as blanks. It is ZERO on the cured build, and that is by design: the
+    first present is paid ONCE at startup (`PAINT_WARM` in the log, window off
+    the virtual screen), and every show then maps at its own rect already warm --
+    measured, because MOVING a mapped window back on screen pays the same ~270 ms
+    the cure exists to remove.
+    """
+    idx = next((k for k, f in enumerate(frames) if f is first), 0)
+    count, t0 = 0, None
+    for f in reversed(frames[:idx]):
+        if not (f['visible'] and not f.get('onscreen')):
+            break
+        count += 1
+        t0 = f['t']
+    return count, (0.0 if t0 is None else round((first['t'] - t0) * 1000.0, 1))
+
+
 def summarise_run(run, frames, shell_pid):
     """blank frame count and ms-to-first-content for ONE show, plus the focus.
 
-    `blank_frames` counts VISIBLE blank frames from the first visible frame
-    onwards, stopping at the first content frame. A show that never reaches
-    content reports `first_content_ms=None` and `blank_frames=<all frames>`,
-    because "it never painted" is the defect in its worst form and rounding it
-    into a zero would be the lie this instrument exists to prevent.
+    `blank_frames` counts VISIBLE blank frames from the first frame the owner can
+    SEE (visible AND on screen -- see `runs_of_visible`) onwards, stopping at the
+    first content frame. A show that never reaches content reports
+    `first_content_ms=None` and `blank_frames=<all frames>`, because "it never
+    painted" is the defect in its worst form and rounding it into a zero would be
+    the lie this instrument exists to prevent. Frames that are visible but off
+    the screen are the staging stretch and are reported as `staged_*`, never as
+    blanks: the owner could not see them.
     """
     first = run[0]
+    staged_frames, staged_ms = _staged_before(frames, first)
     blanks = 0
     first_content = None
     capture_failures = 0
@@ -452,6 +550,8 @@ def summarise_run(run, frames, shell_pid):
     return {
         'started_ms': round((first['t'] - frames[0]['t']) * 1000.0, 1),
         'visible_frames': len(run),
+        'staged_frames': staged_frames,
+        'staged_ms': staged_ms,
         'capture_failures': capture_failures,
         'blank_frames': blanks,
         'first_content_ms': (None if first_content is None
@@ -459,6 +559,7 @@ def summarise_run(run, frames, shell_pid):
         'later_blank_frames': later_blanks,
         'first_std': first.get('std'),
         'first_spread': first.get('spread'),
+        'first_mean': first.get('mean'),
         'first_size': first.get('size'),
         'focus_before_pid': _fg_before(frames, first),
         'focus_after_pid': run[min(1, len(run) - 1)]['fg_pid'],
@@ -847,7 +948,7 @@ def arm_app(args, tag):
                 % ((len(got) - 1) / span if span else 0, span))
         text = read_text(log_path)
         shows = re.findall(r'PANEL_SHOWN[^\n]*', text)
-        app_runs, ignored = split_startup_dance(runs_of_visible(got))
+        app_runs, ignored = split_startup_dance(runs_of_visible(got, onscreen=True))
         say('  log: PANEL_SHOWN x%d  PANEL_HIDDEN x%d  |  measured visible '
             'stretches=%d  ignored_startup_map=%d  driver x%d'
             % (len(shows), len(re.findall(r'PANEL_HIDDEN', text)), len(app_runs),
@@ -865,7 +966,9 @@ def arm_app(args, tag):
             row['log'] = (shows[n - 1][:160] if n - 1 < len(shows)
                           else '(no PANEL_SHOWN line)')
             results.append(row)
-        ack_lines = re.findall(r'PAINT_ACK[^\n]*', text)
+        ack_lines = re.findall(r'PAINT_ACK ack=[^\n]*', text)
+        for warm in re.findall(r'PAINT_WARM [^\n]*', text):
+            say('  warm: %s' % warm[:160])
         fg_lines = re.findall(r'FOREGROUND_(?:TAKEN|KEPT)[^\n]*', text)
         for row in results:
             say('')
@@ -874,15 +977,24 @@ def arm_app(args, tag):
                 % (row['show'], row['blank_frames'], row['first_content_ms'],
                    row['visible_frames'], row['later_blank_frames'],
                    row['capture_failures']))
-            say('    first frame: std=%s spread=%s size=%s  (blank if std<=%s)'
-                % (row['first_std'], row['first_spread'], row['first_size'],
-                   BLANK_STD_MAX))
+            say('    staged: frames=%d ms=%s (visible, OFF the virtual screen: '
+                'nobody could see those frames)'
+                % (row['staged_frames'], row['staged_ms']))
+            say('    first frame: std=%s spread=%s mean=%s size=%s  (blank if std<=%s)'
+                % (row['first_std'], row['first_spread'], row['first_mean'],
+                   row['first_size'], BLANK_STD_MAX))
             say('    focus: before_pid=%s after_pid=%s stolen_by_shell=%s'
                 % (row['focus_before_pid'], row['focus_after_pid'],
                    str(row['focus_stolen_by_shell']).lower()))
             say('    log: %s' % row['log'])
-            if row['show'] - 1 < len(ack_lines):
-                say('    ack: %s' % ack_lines[row['show'] - 1][:160])
+            # POR `reason=`, NAO POR INDICE: o aquecimento de arranque tambem
+            # escreve `PAINT_ACK`, portanto o n-esimo ack do log ja' nao e' o
+            # n-esimo show.
+            reason = re.search(r'reason=(\S+)', row['log'])
+            want = 'reason=%s ' % (reason.group(1),) if reason else None
+            ack = next((l for l in ack_lines if want and want in l + ' '), None)
+            if ack:
+                say('    ack: %s' % ack[:160])
             if row['show'] - 1 < len(fg_lines):
                 say('    fg : %s' % fg_lines[row['show'] - 1][:160])
         if not results:
@@ -1092,10 +1204,11 @@ def arm_control():
         out['blank_first'] = {'mapped': mapped, 'row': row, 'frames': len(frames),
                               't_switch_s': switch_at}
         say('  control-blank-first  mapped=%s frames=%d  blank_frames=%s  '
-            'first_content_ms=%s'
+            'first_content_ms=%s  capture_failures=%s'
             % (str(mapped).lower(), len(frames),
                row['blank_frames'] if row else '(no visible frame)',
-               row['first_content_ms'] if row else '(none)'))
+               row['first_content_ms'] if row else '(none)',
+               row['capture_failures'] if row else '-'))
         stds_blank = [f['std'] for f in frames if f.get('ok') and f['t'] - frames[0]['t'] < switch_at]
         stds_content = [f['std'] for f in frames
                         if f.get('ok') and f['t'] - frames[0]['t'] >= switch_at + 0.1]
@@ -1112,28 +1225,37 @@ def arm_control():
     try:
         win.paint_now()
         mapped = win.map_it()
-        # AND THE PAINT IS FORCED ONCE MORE, SYNCHRONOUSLY, AFTER THE MAP.
-        # MEASURED 2026-11-01: without this the FIRST captured frame came back
-        # std=0.0 (an all-zero bitmap: `PrintWindow` said TRUE and filled
-        # nothing) and the arm failed its own clause with 1 blank out of 29. The
-        # `UpdateWindow` before the map does not paint a window that has never
-        # been mapped; this one runs on the census's OWN thread, so it returns
-        # only after `WM_PAINT` has completed -- which is the state the app must
-        # reach (content ready at the map), not a favour granted to the app arm,
-        # which still counts from its first visible frame.
+        # AND THE PAINT IS FORCED ONCE MORE, SYNCHRONOUSLY, AFTER THE MAP. The
+        # state the app must reach is "content ready AT the map", and this window
+        # is ours, so it can reach it exactly: `UpdateWindow` before the map does
+        # not paint a window that has never been mapped, and this one runs on the
+        # census's OWN thread, so it returns only after `WM_PAINT` completed.
+        #
+        # E MESMO ASSIM A PRIMEIRA FRAME CAPTURADA VEM `std=0.0 mean=0.0` -- o
+        # buffer INTEIRO a zero, incluindo os bytes que o `PrintWindow` devia ter
+        # escrito (a linha `first frames` imprime-a ao lado da de conteudo). Isso
+        # nao e' uma frame chapada: e' o DWM sem superficie para uma janela
+        # mapeada um microssegundo antes, com `PrintWindow` a devolver TRUE e a
+        # nao escrever nada. `Grabber.grab` classifica-a como CAPTURA PERDIDA
+        # (`no-surface`) e `summarise_run` salta-a, como ja' fazia com
+        # `printwindow-false`: uma captura que nao existe nao pode virar um blank.
         win.paint_now()
         frames, grabber = capture_for(win.hwnd, 0.5)
         grabber.close()
         runs = runs_of_visible(frames)
         row = summarise_run(runs[0], frames, 0) if runs else None
         out['content_first'] = {'mapped': mapped, 'row': row, 'frames': len(frames)}
-        say('  control-content-first mapped=%s frames=%d  blank_frames=%s'
+        say('  control-content-first mapped=%s frames=%d  blank_frames=%s  '
+            'capture_failures=%s'
             % (str(mapped).lower(), len(frames),
-               row['blank_frames'] if row else '(no visible frame)'))
+               row['blank_frames'] if row else '(no visible frame)',
+               row['capture_failures'] if row else '-'))
+        say('    grab failures: %s' % (grabber.reasons or '{}'))
         say('    first frames: %s'
-            % ' '.join('i%d[std=%s spread=%s mean=%s]'
-                       % (f['i'], f.get('std'), f.get('spread'), f.get('mean'))
-                       for f in frames[:4]))
+            % ' '.join('i%d[%s std=%s spread=%s mean=%s]'
+                       % (f['i'], 'ok' if f.get('ok') else f.get('why'),
+                          f.get('std'), f.get('spread'), f.get('mean'))
+                       for f in frames[:5]))
     finally:
         win.destroy()
     return out
@@ -1185,9 +1307,11 @@ def verdict(apps, control, ran_control):
             fails.append('control-blank-first did NOT report blank>0 -- the '
                          'classifier cannot see the defect, so the app zeros mean '
                          'nothing')
-        if not b.get('row') or b['row']['blank_frames'] != 0:
-            fails.append('control-content-first reported blank>0 -- the classifier '
-                         'calls everything blank')
+        if (not b.get('row') or b['row']['blank_frames'] != 0
+                or b['row']['first_content_ms'] is None):
+            fails.append('control-content-first did not land on a CONTENT frame '
+                         'with blank_frames=0 -- either the classifier calls '
+                         'everything blank or it never captured the window')
     return (not fails), fails
 
 

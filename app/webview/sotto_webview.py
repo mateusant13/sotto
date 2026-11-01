@@ -378,7 +378,23 @@ TRANSPARENCY_HACK_WAIT_S = 0.25
 #: prossegue e a linha diz `paint_ack=false`, para o log nunca afirmar uma espera
 #: que nao aconteceu. O veredicto de que a primeira frame tem conteudo e' do
 #: instrumento (`_main/panel-paint-first-census.py`), nao desta linha.
-PAINT_ACK_TIMEOUT_MS = 60
+#:
+#: 60 -> 400 ms EM 2026-11-01, e o numero e' MEDIDO: o MESMO caminho acusou o
+#: primeiro ack frio em **187 ms** no `side` e **47 ms** no `strip` (16/0 ms
+#: quentes). A 60 ms a cura valia 28 ms: a espera terminava antes de a pagina
+#: responder. 400 ms fica ao dobro dos 187 ms e longe dos 1500 ms do gesto
+#: (`_main/altc-first-caption-oracle.py`). O ack NAO e' a cura inteira, so' a
+#: parte que a pagina pode confirmar -- o custo da PRIMEIRA pintura e' pago em
+#: `_warm_paint`, porque ele nao aparece em frame nenhuma antes de o dono ver.
+PAINT_ACK_TIMEOUT_MS = 400
+#: O AQUECIMENTO DA PRIMEIRA PINTURA (2026-11-01): 2x os **325 ms** medidos,
+#: pagos no ARRANQUE com a janela fora do ecra -- o dono nao espera por ele. O
+#: porque completo, com a medicao, esta' em `_warm_paint`.
+PAINT_WARM_SETTLE_S = 0.6
+#: `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` (winuser.h): a janela do aquecimento
+#: tem de ficar fora da UNIAO dos monitores, nao so' fora do principal.
+SM_XVIRTUALSCREEN = 76
+SM_YVIRTUALSCREEN = 77
 #: 6 ms entre leituras: o grao do rAF e' uma frame (~16 ms), portanto um poll
 #: mais apertado so' gasta idas ao UI thread.
 PAINT_ACK_POLL_S = 0.006
@@ -7391,6 +7407,10 @@ class SottoShell:
                     self.vram_guard.start()
             except Exception as exc:  # noqa: BLE001
                 log(f'VRAM_GUARD_START_FAILED error={exc!r}')
+            # THE FIRST PRESENT IS PAID HERE, OFF THE SCREEN -- see
+            # `_warm_paint`. It must be BEFORE any show, or the first Alt+C
+            # pays it with the window on screen (measured: 19 blank frames).
+            self._warm_paint('startup')
             if self.args.show:
                 self.show_panel('startup', surface='panel')
             self._measure_on_screen_visibility('startup')
@@ -8972,68 +8992,61 @@ class SottoShell:
             return self.show_side('hotkey-cycle-side')
         return self.show_strip('hotkey-cycle-strip')
 
-    def place_panel(self, mode):
-        """Move/resize the panel window to `mode` geometry ('strip'|'side').
+    def _warm_paint(self, reason='startup'):
+        """Pay the page's FIRST presented frame OFF the owner's screen.
 
-        Recomputes from the LIVE work area (`primary_display`, not the cached
-        `self.display`: the owner may have changed monitors since startup),
-        moves with `SetWindowPos` in PHYSICAL pixels (DIP geometry times the
-        scale factor — the same units `_fit_client_area` pins the client area
-        with), re-pins the client area through `_ui`, and tells the page the
-        new geometry over the existing `send_geometry` seam. Never raises:
-        a failed place is a log line and `False`, and the show that called it
-        still foregrounds whatever is on screen.
+        ── MEDIDO 2026-11-01, e e' o defeito que sobrava ──────────────────────
+        A primeira frame que a pagina apresenta traz so' o fundo dela e a UI
+        chega 270-325 ms depois (censo: `blank_frames=19`, `first_content_ms=325`,
+        `first frame std=0.0 mean=18`); TODOS os shows seguintes sao
+        content-first. Logo o custo e' da primeira apresentacao do processo, e
+        esperar por ele dentro de um show e' esperar com a janela a' vista -- o
+        que o dono proibiu. Paga-se UMA vez, aqui, com a janela MAPEADA (e' isso
+        que faz a pagina pintar) no rect que o show vai usar, mas FORA do ecra
+        virtual: o rect acaba antes da borda da uniao dos monitores, logo a
+        interseccao e' vazia e o dono nao ve pixel nenhum -- e o censo concorda,
+        porque so' conta frame `window_onscreen`.
 
-        DOES NOT MAP THE WINDOW — that is the P0 of this whole session, and
-        it is why the flag is `SWP_NOACTIVATE` and not `SWP_SHOWWINDOW`. The
-        owner's report was: he pressed Alt+C, saw a solid-colour strip for a
-        frame, and only then the panel. Moving a window while it is hidden is
-        legal and measured on this box; `SetWindowPos` with a size and no
-        show flag only takes effect on the NEXT show, which the caller does
-        AFTER the WebView2 children carry WS_VISIBLE. Callers: read the new
-        order in `show_strip`.
+        O rect VOLTA ao lugar ainda escondido, e o show seguinte MAPEIA ali': e'
+        um mapa novo numa janela ja' quente, nao um MOVIMENTO da janela quente
+        (medido: mover a janela mapeada custa os mesmos ~270 ms que a cura
+        existe para remover).
+
+        Nao ha' sinal do compositor para esperar, portanto a espera e' o pior
+        caso MEDIDO (`PAINT_WARM_SETTLE_S`), o que so' custa no arranque. O ack
+        da pagina e' lido primeiro e o `wait_ms` fica no log: se a pagina nao
+        responder, o aquecimento falha ABERTO, como todo o resto desta cura.
         """
-        try:
-            self.display = target_display()
-        except Exception as exc:  # noqa: BLE001 -- stale cache beats no window
-            warn(f'PANEL_PLACE_DISPLAY_FAILED mode={mode} error={exc!r}')
-        if not self.display:
-            warn(f'PANEL_PLACE_FAILED mode={mode} reason=no-display')
+        hwnd = self.hwnd
+        geometry = self.geometry
+        if not hwnd or not isinstance(geometry, dict):
+            log(f'PAINT_WARM reason={reason} ran=false why=no-hwnd-or-geometry')
             return False
-        work = self.display['workArea']
-        # The height is the STYLESHEET's, never hard-coded: `--strip-height`
-        # is read here (once per real change) and the fallback is logged when
-        # the page cannot answer. Guarded on the renderer because `--show` can
-        # place the panel before the bridge has answered.
-        if self.renderer_ready.is_set():
-            self.refresh_strip_height('place-' + str(mode))
-            self.refresh_strip_width('place-' + str(mode))
-        geometry = (dock_strip(work, width=self.strip_width_live(),
-                               height=self.strip_height)
-                    if mode == 'strip' else dock_right(work))
-        self.geometry = geometry
-        self.panel_mode = mode
-        if self.hwnd:
-            try:
-                scale = self.display.get('scaleFactor') or 1
-                user32.SetWindowPos(
-                    self.hwnd, HWND_TOP,
-                    int(geometry['x'] * scale), int(geometry['y'] * scale),
-                    int(geometry['width'] * scale),
-                    int(geometry['height'] * scale),
-                    SWP_NOACTIVATE)
-            except Exception as exc:  # noqa: BLE001 -- report, never kill Alt+C
-                log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
-                return False
-            form = self.form or self._form()
-            if form is not None:
-                try:
-                    self._ui(lambda: self._fit_client_area(form))
-                except Exception as exc:  # noqa: BLE001 -- same contract
-                    log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
-        self.send_geometry()
-        log(f'PANEL_PLACED mode={mode} {summary(geometry)}')
-        return True
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        size = (int(geometry['width'] * scale), int(geometry['height'] * scale))
+        # FORA DO ECRA VIRTUAL, POR INTEIRO: o rect acaba antes da borda da
+        # uniao dos monitores, portanto a interseccao e' vazia
+        # (`window_onscreen=false` no censo).
+        warm_x = user32.GetSystemMetrics(SM_XVIRTUALSCREEN) - size[0] - 16
+        warm_y = user32.GetSystemMetrics(SM_YVIRTUALSCREEN) - size[1] - 16
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, warm_x, warm_y,
+                            size[0], size[1], SWP_NOACTIVATE)
+        seq = self.arm_paint_ack(reason)
+        show_without_activating(hwnd)
+        ack = self.wait_paint_ack(seq, reason)
+        time.sleep(PAINT_WARM_SETTLE_S)
+        hide_window(hwnd)
+        # E O RECT VOLTA AO QUE O SHOW VAI USAR, ainda escondido: um show que
+        # encontre a superficie ja' aplicada nao torna a colocar a janela.
+        user32.SetWindowPos(
+            hwnd, HWND_TOPMOST,
+            int(geometry['x'] * scale), int(geometry['y'] * scale),
+            size[0], size[1], SWP_NOACTIVATE)
+        log(f'PAINT_WARM reason={reason} ran=true size={size[0]}x{size[1]} '
+            f'ack={str(ack["ack"]).lower()} ack_wait_ms={ack["wait_ms"]} '
+            f'settle_s={PAINT_WARM_SETTLE_S} '
+            f'visible={str(window_visible(hwnd)).lower()}')
+        return bool(ack['ack'])
 
     def show_strip(self, reason):
         """Show the bottom strip, and take the foreground ONLY to free a lock.
@@ -9047,26 +9060,18 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
-        # Geometry only — `place_panel` no longer maps the window (P0). And
-        # `present=True`, because everything below is on the path to a MAP: the
-        # page is not read and is not waited for (see `exec_js_post`).
+        # Geometry only — nothing here maps the window; the map is below, off
+        # the screen. And `present=True`, because everything below is on the
+        # path to a MAP: the page is not read and is not waited for (see
+        # `exec_js_post`).
         self.set_panel_surface('strip', reason, present=True)
-        # AND SAY WHICH PANEL IS UP. `hotkey_pressed` is a three-state cycle
-        # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, and
-        # the 2026-10-09 P0 refactor removed its last writer: `place_panel` is
-        # the only assignment of `panel_mode` and NOTHING calls `place_panel`
-        # any more (measured: `grep -n place_panel` on the live shell returns
-        # the definition, two comments and a docstring -- ZERO call sites). So
-        # the SECOND Alt+C painted the side panel and every press after it
-        # painted the side panel AGAIN instead of hiding: `panel_mode` still
-        # said 'strip', so the `panel_mode == 'side'` arm of the cycle was
-        # unreachable. The owner measured it on his own keyboard -- ten presses
-        # in three seconds (2026-10-14 20:18:01.297 .. 20:18:04.605) each
-        # logging `PANEL_SHOWN reason=hotkey mode=side`, and exactly ONE
-        # `PANEL_HIDDEN` in the whole 114 394-line log (reason=page) -- and
-        # reported "alt c nao aperta direito em diversos caso". The window
-        # state is still read from `window_visible` below; this line only
-        # records WHICH surface is up, on the show itself.
+        # AND SAY WHICH PANEL IS UP: `hotkey_pressed` is a three-state cycle
+        # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, whose
+        # OTHER writer was the dead `place_panel`. Without this line the SECOND
+        # Alt+C repainted the side panel forever instead of hiding (owner,
+        # 2026-10-14: ten presses, all `mode=side`, one `PANEL_HIDDEN` in the
+        # whole log). The window state is read from `window_visible` below; this
+        # line records only WHICH surface is up, on the show itself.
         self.panel_mode = 'strip'
         # Children FIRST, so the first frame the owner sees is already the
         # panel: a user32 show of the FORM maps it NOW, and the first frame of a
@@ -9115,7 +9120,7 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
-        # Geometry only — `place_panel` no longer maps the window (P0).
+        # Geometry only — the map is below, off the screen.
         #
         # CORRECTED 2026-10-12, AND THIS IS THE OWNER'S Alt+C BUG. This line
         # passed the literal `'side'`, and `'side'` IS NOT A SURFACE NAME:
