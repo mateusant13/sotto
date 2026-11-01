@@ -1,0 +1,48 @@
+  none                   applied=none decls=0 ins=0
+      push  p50=3.1    p95=6.9    mean=3.2    max=7.7     over8=0   n=45 | warm p50=2.3    max=16.6
+      loaf  count=0 dur=0 block=0 styleAndLayout=0 max=0
+      anims total=30 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+  no-word-fill           applied=no-word-fill decls=15 ins=0
+      push  p50=2.6    p95=4.3    mean=2.66   max=9.7     over8=1   n=45 | warm p50=2.3    max=17.4
+      loaf  count=0 dur=0 block=0 styleAndLayout=0 max=0
+      anims total=4 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+  newest-only            applied=newest-only decls=14 ins=0
+      push  p50=2.7    p95=6.5    mean=2.85   max=8.1     over8=2   n=44 | warm p50=2.5    max=10.4
+      loaf  count=0 dur=0 block=0 styleAndLayout=0 max=0
+      anims total=4 | wordSpans=27 inlineBlock=1 animated=1 rowsAnimated=0
+  no-word-anim           applied=no-word-anim decls=17 ins=0
+      push  p50=2.6    p95=8.9    mean=4.58   max=77.2    over8=3   n=44 | warm p50=2.3    max=17.2
+      loaf  count=4 dur=281.5 block=28 styleAndLayout=4.4 max=89.8
+      anims total=3 | wordSpans=26 inlineBlock=26 animated=0 rowsAnimated=0
+      long frame t=1256.1ms dur=78.2 block=28
+      long frame t=1809.8ms dur=50.2 block=0
+      long frame t=4711.3ms dur=63.3 block=0
+      long frame t=5011.6ms dur=89.8 block=0
+  no-led-anim            applied=no-led-anim decls=6 ins=0
+      push  p50=2.8    p95=4.9    mean=2.81   max=6.3     over8=0   n=43 | warm p50=2.2    max=18.1
+      loaf  count=1 dur=255.5 block=0 styleAndLayout=0.6 max=255.5
+      anims total=28 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+      long frame t=1798.5ms dur=255.5 block=0
+  promote                applied=promote decls=0 ins=2
+      push  p50=3.4    p95=26.2   mean=6.5    max=63.5    over8=5   n=41 | warm p50=2.4    max=127.9
+      loaf  count=8 dur=513.8 block=14.3 styleAndLayout=5.9 max=84.2
+      anims total=29 | wordSpans=26 inlineBlock=26 animated=26 rowsAnimated=0
+      long frame t=1072.6ms dur=51.6 block=0
+      long frame t=1022ms dur=50.2 block=0
+      long frame t=1154.5ms dur=84.2 block=0
+      long frame t=1255.5ms dur=52.5 block=0
+  no-scroll-read         applied=no-scroll-read decls=0 ins=1
+      push  p50=3.2    p95=8.1    mean=4.81   max=66.8    over8=3   n=43 | warm p50=2.6    max=46.3
+      loaf  count=3 dur=489.8 block=303.4 styleAndLayout=1.7 max=354.1
+      anims total=30 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+      long frame t=2239.7ms dur=354.1 block=285.6
+      long frame t=2594.1ms dur=68 block=17.8
+      long frame t=5115.4ms dur=67.7 block=0
+  contain-rows           applied=contain-rows decls=0 ins=2
+      push  p50=3.2    p95=8.5    mean=7.64   max=131.2   over8=3   n=41 | warm p50=2.4    max=17.7
+      loaf  count=6 dur=811.4 block=121 styleAndLayout=91.3 max=232.8
+      anims total=30 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+      long frame t=1731.3ms dur=88.7 block=38.6
+      long frame t=3510.7ms dur=132.5 block=82.4
+      long frame t=3799.5ms dur=111 block=0
+      long frame t=4407.7ms dur=86.6 block=0

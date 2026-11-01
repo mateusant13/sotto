@@ -1,0 +1,20 @@
+page    : H:\sotto-wt\goal-anim\_main\_audit-render\panel-attrib.html (26 relative assets rewritten to /panel/)
+browser : C:\Program Files\Google\Chrome\Application\chrome.exe   theme=theme-5 motion=on window=6s@8Hz warmup=2500ms
+  none#1                 applied=none decls=0 ins=0
+      push  p50=3.6    p95=8.3    mean=4.14   max=23.4    over8=3   n=45 | warm p50=2.6    max=89.3
+      loaf  count=2 dur=158.9 block=0 styleAndLayout=0.8 max=85.5
+      anims total=30 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+         27x sotto-5-snap           @ span.caption__word                         100 {'finished': 26, 'running': 1}
+          2x sotto-5-led-live       @ span.caption__led                          1700 {'running': 2}
+          1x sotto-caret            @ span.caption__mark                         1060 {'running': 1}
+      long frame t=3884.2ms dur=85.5 block=0
+      long frame t=4366.9ms dur=73.4 block=0
+         tick                     _anim-cost2.js     TimerHandler:setTimeout dur=5.2      forcedLayout=2.8
+  none#2                 applied=none decls=0 ins=0
+      push  p50=3      p95=5.3    mean=3.09   max=10.6    over8=1   n=45 | warm p50=2.3    max=23.1
+      loaf  count=0 dur=0 block=0 styleAndLayout=0 max=0
+      anims total=30 | wordSpans=27 inlineBlock=27 animated=27 rowsAnimated=0
+         27x sotto-5-snap           @ span.caption__word                         100 {'finished': 26, 'running': 1}
+          2x sotto-5-led-live       @ span.caption__led                          1700 {'running': 2}
+          1x sotto-caret            @ span.caption__mark                         1060 {'running': 1}
+raw: I:\cc-tmp\attrib-before.json

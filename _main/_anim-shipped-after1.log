@@ -1,0 +1,13 @@
+browser : C:\Program Files\Google\Chrome\Application\chrome.exe
+beacon  : http://127.0.0.1:64358/   deadline/arm: 180 s
+stream  : 6 s at 8 partials/s into the REAL panel.js (shipped bytes)
+  reduced   waited=  8.8s windowMs=6003.9 reducedMotion=True
+            push  mean=0.72 p50=None p95=None max=1.8 n=45
+            frame p50=16.7 p95=16.8 max=200 over50=2 n=343
+            loaf  count=1 duration=245.5 blocking=0 styleAndLayout=0.1
+  on        waited= 15.3s windowMs=6003.1 reducedMotion=False
+            push  mean=0.804 p50=None p95=None max=5.8 n=46
+            frame p50=16.7 p95=16.8 max=33.4 over50=0 n=357
+            loaf  count=0 duration=0 blocking=0 styleAndLayout=0
+theme-5: INCOMPLETE - one arm produced no measurement
+raw: H:\sotto-wt\goal-anim\_main\_lane-profile-paint.json
