@@ -27,6 +27,7 @@ USO
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -36,14 +37,23 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = os.environ.get('SOTTO_TMP') or r'I:\cc-tmp'
-SELFTEST_LOG = os.path.join(TMP, 'pov-selftest.log')
-SELFTEST_OUT = os.path.join(TMP, 'pov-selftest.out')
-RUNNER = os.path.join(TMP, 'pov-selftest-run.cmd')
+#: UM RUN POR TAG. Medido 2026-11-01 10:25: eu e uma lane corremos este instrumento
+#: ao mesmo tempo em duas arvores diferentes e ambos escreveram o MESMO
+#: `pov-selftest.log`; o reap de um matou a instancia do outro pelo nome da mutex
+#: partilhada e as duas medicoes leram as linhas uma da outra. A tag separa log,
+#: runner E mutex: `SOTTO_POV_TAG=lane-x python _main/pov-selftest.py --run`.
+TAG = os.environ.get('SOTTO_POV_TAG') or 'main'
+SELFTEST_LOG = os.path.join(TMP, 'pov-selftest-%s.log' % TAG)
+SELFTEST_OUT = os.path.join(TMP, 'pov-selftest-%s.out' % TAG)
+RUNNER = os.path.join(TMP, 'pov-selftest-run-%s.cmd' % TAG)
 
 #: `--hotkey` tem de ser uma tecla que NINGUEM tem. Medido em 2026-10-07
 #: (`_main/_audit-hotkey-probe.py`): Alt+F9 ja' estava tomado nesta caixa; Alt+Shift+F12 nao.
 FREE_HOTKEY = 'Alt+Shift+F12'
-MUTEX = 'SottoPovSelftest'
+#: A tecla da LEGENDA tambem e' desviada: a do dono (`Ctrl+Space`) e' exclusiva
+#: do processo que a registou primeiro, e uma medicao que a apanhe rouba-lha.
+FREE_LIVE_HOTKEY = 'Alt+Shift+F11'
+MUTEX = 'SottoPovSelftest-%s' % TAG
 
 
 def source_pid():
@@ -79,10 +89,12 @@ def write_runner(exit_after):
     body = (
         '@echo off\r\n'
         'cd /d %s\r\n'
+        'set SOTTO_LIVE_HOTKEY=%s\r\n'
         '"%s" "%s" --selftest --no-worker --mutex-name %s --hotkey %s '
         '--exit-after %d --log "%s" > "%s" 2>&1\r\n'
         'echo RC=%%ERRORLEVEL%% >> "%s"\r\n'
-    ) % (ROOT, sys.executable, os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py'),
+    ) % (ROOT, FREE_LIVE_HOTKEY, sys.executable,
+         os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py'),
          MUTEX, FREE_HOTKEY, exit_after, SELFTEST_LOG, SELFTEST_OUT, SELFTEST_OUT)
     with open(RUNNER, 'w', encoding='ascii', newline='') as fh:
         fh.write(body)
@@ -109,6 +121,52 @@ def launch(exit_after=45, wait=60.0):
             break
         time.sleep(1.0)
     return read_log()
+
+
+def reap():
+    """Mata as instâncias de MEDIÇÃO que sobreviveram ao run, e diz quantas.
+
+    PORQUE EXISTE (medido 2026-11-01 10:24). Um run cujo `RC=` nunca chegou
+    deixou o pid 38692 vivo durante oito minutos, com a `Ctrl+Space` registada
+    por ele — e a app do dono, quando arrancou a seguir, escreveu
+    `HOTKEY_REGISTER_FAILED role=live accelerator=Ctrl+Space winerror=1409` e
+    ficou sem a tecla que ele pediu. Uma medição que sobrevive é uma fuga: ocupa
+    a tecla global, a memória e o disco do dono.
+
+    A identidade é a mutex PRIVADA no `CommandLine` (`--mutex-name`), nunca um
+    nome de processo: o filtro por nome já matou dois processos alheios neste
+    repo. O kill passa por `_main/sotto-relaunch.py`, que delega a um filho
+    `high` (esta pane é `medium` e `taskkill` dá `Acesso negado`, medido).
+    """
+    killed = []
+    try:
+        import psutil
+    except ImportError:
+        return killed
+    targets = []
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if (proc.info['name'] or '').lower() not in ('python.exe', 'pythonw.exe'):
+                continue
+            cmd = ' '.join(proc.info['cmdline'] or [])
+            if '--mutex-name %s' % MUTEX in cmd and 'sotto_webview' in cmd:
+                targets.append(proc.info['pid'])
+        except Exception:  # noqa: BLE001 -- processo que morreu a meio da leitura
+            continue
+    if not targets:
+        return killed
+    spec = importlib.util.spec_from_file_location(
+        'relaunch', os.path.join(ROOT, '_main', 'sotto-relaunch.py'))
+    relaunch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(relaunch)
+    for pid in targets:
+        try:
+            ok = bool(relaunch.kill(pid))
+        except Exception as exc:  # noqa: BLE001
+            print('reap: pid=%d falhou: %r' % (pid, exc))
+            continue
+        killed.append((pid, ok))
+    return killed
 
 
 def read_log():
@@ -145,7 +203,9 @@ def main(argv=None):
         ap.print_help()
         return 2
     log = launch(exit_after=args.exit_after, wait=args.wait)
+    reaped = reap()
     summary = summarise(log)
+    summary['reaped'] = reaped
     if args.json:
         print(json.dumps(summary, indent=1, ensure_ascii=False))
         return 0

@@ -3004,6 +3004,47 @@ def show_without_activating(hwnd) -> bool:
     return bool(user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE))
 
 
+def pointer_captured() -> bool:
+    """True quando ALGUEM está a segurar o cursor (o pointer-lock de um jogo).
+
+    Porque é que isto decide quem leva o primeiro plano (medido 2026-11-01). O
+    `pov-selftest` reprovava o painel com
+
+        BROKEN: broken=the panel TOOK the foreground ... SW_SHOWNOACTIVATE is the contract
+
+    e tinha razão: `show_strip`/`show_side` chamavam `foreground_unlock` em
+    *todos* os Alt+C, e o resultado no log era
+    `show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)`. O painel é
+    `WS_EX_TRANSPARENT` (clique atravessa), logo roubar o primeiro plano não lhe
+    dá clique nenhum — só tira o teclado a quem ali estava (as setas do YouTube,
+    a caixa de texto onde se escrevia).
+
+    O que aquele `foreground_unlock` comprava era outra coisa, e continua a ser
+    precisa: quando um jogo tem o cursor CAPTURADO, perder o primeiro plano é o
+    que o faz largar o *pointer-lock* e devolver o rato ao dono. Mas isso só é
+    verdade quando há captura para largar — e é isso que se mede aqui:
+    `GetClipCursor` devolve o rectângulo a que o cursor está preso, e uma captura
+    é um rectângulo MENOR que o ecrã virtual. Sem captura, o painel aparece com
+    `SW_SHOWNOACTIVATE` e não toca no foco de ninguém.
+    """
+    try:
+        rect = RECT()
+        if not user32.GetClipCursor(ctypes.byref(rect)):
+            return False
+        vx = int(user32.GetSystemMetrics(76))   # SM_XVIRTUALSCREEN
+        vy = int(user32.GetSystemMetrics(77))   # SM_YVIRTUALSCREEN
+        vw = int(user32.GetSystemMetrics(78))   # SM_CXVIRTUALSCREEN
+        vh = int(user32.GetSystemMetrics(79))   # SM_CYVIRTUALSCREEN
+        inside = (int(rect.left) >= vx and int(rect.top) >= vy
+                  and int(rect.right) <= vx + vw and int(rect.bottom) <= vy + vh)
+        smaller = ((int(rect.right) - int(rect.left)) < vw
+                   or (int(rect.bottom) - int(rect.top)) < vh)
+        return bool(inside and smaller)
+    except Exception as exc:  # noqa: BLE001 -- a sonda nunca derruba a hotkey
+        log(f'POINTER_CAPTURE_PROBE_FAILED error={exc!r}')
+        return False
+
+
 def hide_window(hwnd) -> bool:
     return bool(user32.ShowWindow(hwnd, SW_HIDE))
 
@@ -3195,6 +3236,25 @@ def foreground_unlock(hwnd) -> bool:
         return False
     log(f'PANEL_FOREGROUND_UNLOCK ok={str(ok).lower()} hwnd={hwnd}')
     return ok
+
+
+def map_panel(hwnd) -> str:
+    """Mapa o painel e devolve a nota de log do que fez ao primeiro plano.
+
+    Uma função, não duas cópias: `show_strip` e `show_side` têm de escrever a
+    MESMA decisão de foco, senão a segunda metade do ciclo (o painel da direita)
+    volta a roubar o foco sem ninguém reparar. Ver `pointer_captured` para a
+    medição que decidiu isto.
+    """
+    if not hwnd:
+        return 'show=NONE focus_stolen=false'
+    if pointer_captured():
+        ok = foreground_unlock(hwnd)
+        return ('show=SW_SHOW+FOREGROUND focus_stolen=intentional(pointer-lock) '
+                f'unlock_ok={str(ok).lower()}')
+    set_topmost(hwnd)
+    mapped = show_without_activating(hwnd)
+    return f'show=SW_SHOWNOACTIVATE mapped={str(mapped).lower()} focus_stolen=false'
 
 
 def strip_geometry(work, height=STRIP_HEIGHT_FALLBACK, dock='bottom-centre'):
@@ -4764,12 +4824,23 @@ def arm_hotkey(shell, requested: str):
     ela seria uma segunda tecla que ninguem pediu.
     """
     panels = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
-    try:
-        live = hotkey_config().accelerators()['live']
-    except Exception as exc:  # noqa: BLE001 -- a fabrica e' sempre uma resposta
-        log(f'HOTKEY_LIVE_CONFIG_FAILED error={exc!r} '
-            f'default={hotkey_numbers().LIVE_ACCELERATOR}')
-        live = hotkey_numbers().LIVE_ACCELERATOR
+    #: UMA MEDIÇÃO NÃO PODE SENTAR-SE NA TECLA DELE. Medido 2026-11-01 10:14:30:
+    #: uma instância largada para medir pediu `Ctrl+Space`, a app do dono já a
+    #: tinha, e o log dela ficou com `HOTKEY_REGISTER_FAILED role=live
+    #: winerror=1409` — a tecla do dono e' exclusiva do processo que a registou
+    #: primeiro, e o inverso também e' verdade (uma medição que a apanhe primeiro
+    #: deixa a app dele sem ela). A variável de ambiente é o mesmo caminho que o
+    #: `--hotkey` já abre para os painéis, e ausente não muda nada.
+    override = os.environ.get('SOTTO_LIVE_HOTKEY')
+    if override:
+        live = override
+    else:
+        try:
+            live = hotkey_config().accelerators()['live']
+        except Exception as exc:  # noqa: BLE001 -- a fabrica e' sempre uma resposta
+            log(f'HOTKEY_LIVE_CONFIG_FAILED error={exc!r} '
+                f'default={hotkey_numbers().LIVE_ACCELERATOR}')
+            live = hotkey_numbers().LIVE_ACCELERATOR
     shell.live_hotkey = arm_hotkey_role(shell, 'live', live, ())
     return panels
 
@@ -8873,11 +8944,12 @@ class SottoShell:
         wv = show_webview_children(self.hwnd)
         log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
-        # THEN the map, which is also how the owner gets his clicks back:
-        # TopMost re-assert + SW_RESTORE + SW_SHOW + SetForegroundWindow. The
-        # Alt+C pose holds — nothing mapped before the children had
-        # WS_VISIBLE, which is what used to flash the flat strip.
-        foreground_unlock(self.hwnd)
+        # THEN the map. O FOCO E' CONDICIONAL (medido 2026-11-01): com o cursor
+        # capturado por um jogo o primeiro plano e' o que o faz devolver o rato,
+        # e sem captura o painel e' `WS_EX_TRANSPARENT` -- roubar o foco nao lhe
+        # da clique nenhum e tira o teclado a quem ali estava. Ver
+        # `pointer_captured` para a medicao e a recusa do selftest.
+        show_note = map_panel(self.hwnd)
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
@@ -8886,8 +8958,7 @@ class SottoShell:
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=strip '
-            f'visible={str(self.visible).lower()} '
-            'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
+            f'visible={str(self.visible).lower()} {show_note}')
         self.publish_panel_visibility(reason)
         return True
 
@@ -8930,7 +9001,7 @@ class SottoShell:
         log(f'WEBVIEW_CHILD shown={len(wv["shown"])} '
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
         # THEN the map (same contract as `show_strip`) and the hack after it.
-        foreground_unlock(self.hwnd)
+        show_note = map_panel(self.hwnd)
         transparency_hack(self)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-side')
@@ -8938,8 +9009,7 @@ class SottoShell:
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
         log(f'PANEL_SHOWN reason={reason} mode=side '
-            f'visible={str(self.visible).lower()} '
-            'show=SW_SHOW+FOREGROUND focus_stolen=intentional(hotkey)')
+            f'visible={str(self.visible).lower()} {show_note}')
         self.publish_panel_visibility(reason)
         return True
 
