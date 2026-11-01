@@ -68,10 +68,15 @@ BATTERY_REL = os.path.join("_main", "_audit-verify-all.cmd")
 # QUE ESTAO no repo; a guarda continua a ser a mesma -- se a skill voltar a mudar sem
 # ninguem re-medir, este check recusa outra vez.
 # (Era `1.3.0` / `9220565f6e6111922fcdd6724cc7a7f3dc0c212957556f4de6b24f206dac022f`.)
+# RE-MEDIDO 2026-11-01: o passo `gitattributes-verify` obrigou a normalizar 22 ficheiros ao
+# que um checkout produz, e esta skill estava entre eles (CRLF num repo cujo `.gitattributes`
+# pede LF). O CONTEUDO nao mudou -- os quatro checks de substancia passam sem edicao -- e o
+# digest muda porque os BYTES mudam. Era `7330aaf8...d076cf` (20385 B, CRLF); agora 20247 B
+# em LF, que e' o que o checkout entrega.
 # O canonico de `I:/!manager` tem 22607 B: e' um ficheiro DIFERENTE de proposito (a copia
 # do repo e' um porto, nao um espelho), por isso o digest mede ESTA copia.
 PINNED_VERSION = "1.4.1"
-PINNED_SHA256 = "7330aaf8ddd5ec93123046a78a2b7bf4302f40a7413cdc9db89ce9bb65d076cf"
+PINNED_SHA256 = "7d6b3f129d772985088679a70c80765d3e7fcc17d6f484f46bbb0febe8327c62"
 
 # As frases que provam que a lei do bootstrap continua na skill. Cada uma e uma ideia,
 # nao uma linha: se a skill as perder, o mandato fica sem o seu unico mecanismo.

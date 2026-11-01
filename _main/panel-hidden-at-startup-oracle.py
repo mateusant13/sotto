@@ -586,7 +586,11 @@ class Harness:
         # `set_panel_surface` is the DOCUMENT+HWND half of a surface change and
         # runs `exec_js` against a WebView2 that does not exist here. Stubbed so
         # the Alt+C path (`show_strip`/`show_side`) can be driven for real.
-        owner.set_panel_surface = lambda surface, reason='page': True
+        # 2026-11-01: o produto passou a chamar `set_panel_surface(..., present=True)` no
+        # caminho do MAP (sotto_webview.py:8711, 9017, 9085). A lambda SEM `present`
+        # fazia o braco `SHOW-ROBUST` do oraculo rebentar com `TypeError` -- um crash do
+        # INSTRUMENTO publicado como defeito do produto.
+        owner.set_panel_surface = lambda surface, reason='page', present=False: True
         # The two ways a caption leaves the shell. The EXTERNAL-FLAG arm drives
         # the real `external_caption`, which calls both; they need the page.
         owner.emit = lambda kind, payload: None

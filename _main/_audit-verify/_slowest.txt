@@ -1,8 +1,8 @@
-strip-surface-runtime                          281.27 s
 shots-delta-oracle                             258.05 s
-strip-geometry-restore                         129.09 s
-strip-stats-log-budget                          70.49 s
-strip-stats-wave                                70.41 s
-red-as-expected-state-page                      70.20 s
-headphone-cut                                   60.55 s
-bend-laws                                       38.42 s
+device-silence                                 185.76 s
+strip-surface-runtime                          161.35 s
+strip-geometry-restore                         125.31 s
+panel-paint-first-measure                       98.95 s
+strip-stats-log-budget                          70.76 s
+strip-stats-wave                                70.56 s
+red-as-expected-state-page                      66.80 s

@@ -1,7 +1,7 @@
 {
   "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
   "visibility_file": "H:\\sotto\\_main\\panel-visibility.json",
-  "stamp": "39748-1792619393",
+  "stamp": "17500-1793551170",
   "cases": {
     "in-bounds": {
       "expected_clamped": false,
@@ -9,33 +9,31 @@
         {
           "attempt": 1,
           "seeded": true,
-          "rc": 0,
+          "rc": 1,
           "reseeded": false
         }
       ],
       "attempt": 1,
       "seeded": true,
-      "seed_note": "seeded over pid=50516",
+      "seed_note": "seeded over pid=12880",
       "tag": "in-bounds-a1",
-      "rc": 0,
-      "log": "H:\\sotto\\_main\\_strip-restore-in-bounds-a1-39748-1792619393.log",
+      "rc": 1,
+      "log": "H:\\sotto\\_main\\_strip-restore-in-bounds-a1-17500-1793551170.log",
       "reseeded": false,
-      "wall_s": 14.03,
+      "wall_s": 60.91,
       "cost": {
-        "cpu_s": 0.984,
-        "peak_ws_bytes": 126169088
+        "cpu_s": 1.656,
+        "peak_ws_bytes": 127619072
       },
       "restored": [
-        "2026-10-21 18:49:54.563 sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(700,400) writtenAt=2026-10-21T18:49:54-03:00 clamped=false"
+        "2026-11-01 13:39:33.126 sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(700,400) writtenAt=2026-11-01T13:39:31-03:00 clamped=false"
       ],
       "clamped": [],
       "refused": [],
       "failed": [],
       "window_geometry": [],
       "panel_shown": [],
-      "visibility": [
-        "2026-10-21 18:49:57.914 sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1792619397914"
-      ]
+      "visibility": []
     },
     "off-screen": {
       "expected_clamped": true,
@@ -43,38 +41,36 @@
         {
           "attempt": 1,
           "seeded": true,
-          "rc": 0,
+          "rc": 1,
           "reseeded": false
         }
       ],
       "attempt": 1,
       "seeded": true,
-      "seed_note": "seeded over pid=50516",
+      "seed_note": "seeded over pid=12880",
       "tag": "off-screen-a1",
-      "rc": 0,
-      "log": "H:\\sotto\\_main\\_strip-restore-off-screen-a1-39748-1792619393.log",
+      "rc": 1,
+      "log": "H:\\sotto\\_main\\_strip-restore-off-screen-a1-17500-1793551170.log",
       "reseeded": false,
-      "wall_s": 13.28,
+      "wall_s": 60.26,
       "cost": {
-        "cpu_s": 0.953,
-        "peak_ws_bytes": 125898752
+        "cpu_s": 1.625,
+        "peak_ws_bytes": 127717376
       },
       "restored": [
-        "2026-10-21 18:50:09.692 sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(880,884) writtenAt=2026-10-21T18:50:09-03:00 clamped=true"
+        "2026-11-01 13:40:35.674 sotto: PANEL_GEOMETRY_RESTORED surface=strip rect=1040x148@(880,884) writtenAt=2026-11-01T13:40:35-03:00 clamped=true"
       ],
       "clamped": [
-        "2026-10-21 18:50:09.693 sotto: PANEL_GEOMETRY_CLAMPED surface=strip was=1040x148@(5000,5000) now=1040x148@(880,884) work=1920x1032@(0,0)"
+        "2026-11-01 13:40:35.674 sotto: PANEL_GEOMETRY_CLAMPED surface=strip was=1040x148@(5000,5000) now=1040x148@(880,884) work=1920x1032@(0,0)"
       ],
       "refused": [],
       "failed": [],
       "window_geometry": [],
       "panel_shown": [],
-      "visibility": [
-        "2026-10-21 18:50:12.222 sotto: PANEL_VISIBILITY_MODE visible=false reason=boot transitions=1 since_ms=1792619412222"
-      ]
+      "visibility": []
     }
   },
-  "original_len": 615,
+  "original_len": 628,
   "file_restored": true,
   "checks": [
     {
@@ -105,7 +101,7 @@
   "verdict": "GREEN",
   "failed": [],
   "probe_cost": {
-    "cpu_s": 0.062,
-    "peak_ws_bytes": 21192704
+    "cpu_s": 0.125,
+    "peak_ws_bytes": 21970944
   }
 }

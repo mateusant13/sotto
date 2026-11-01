@@ -1,0 +1,87 @@
+{
+  "namedState": "no-worker",
+  "panel": {
+    "live": {
+      "count": 0,
+      "hidden": true,
+      "hint": "",
+      "lines": [],
+      "provisionalCount": 0,
+      "scroll": {
+        "atBottom": true,
+        "client": 749,
+        "height": 749,
+        "overflowing": false,
+        "top": 0
+      }
+    },
+    "placeholder": {
+      "body": "This shell was started with --no-worker, so no audio is being captured. Start it without that flag (run.cmd, the documented entry) to transcribe.",
+      "hidden": false,
+      "title": "No worker · captions are impossible"
+    },
+    "status": {
+      "kind": "error",
+      "text": "not ready"
+    },
+    "url": "file:///H:/sotto/app/panel/panel.html"
+  },
+  "panelDom": {
+    "ageSeconds": 2.015,
+    "pending": true,
+    "reason": "",
+    "detail": null
+  },
+  "shell": {
+    "visible": false,
+    "hotkey": "Alt+Shift+F12",
+    "rendererReady": true,
+    "bridgeInstalled": true,
+    "lastStatus": "No transcription worker is running (started with --no-worker)",
+    "captionLogCount": 0,
+    "reloadCount": 0,
+    "workerPath": "H:\\sotto\\worker\\sotto_worker.py",
+    "log": "I:\\cc-tmp\\panel-paint-first-cured.log",
+    "hotReload": false
+  },
+  "panelVisibility": {
+    "path": "H:\\sotto\\_main\\panel-visibility.json",
+    "visible": false,
+    "since_ms": 1793550379433,
+    "reason": "census-hide-census-2",
+    "transitions": 5,
+    "writes": 13,
+    "errors": 0
+  },
+  "code": {
+    "worker": {
+      "path": null,
+      "disk": null,
+      "loaded": null,
+      "stale": false
+    },
+    "shell": {
+      "path": "H:\\sotto\\app\\webview\\_census-cured-sotto_webview.py",
+      "disk": "44ffaf3ce7b66d83",
+      "loaded": "44ffaf3ce7b66d83",
+      "stale": false,
+      "reloadable": false,
+      "restart_hint": "a shell change needs a shell restart"
+    },
+    "pending": null,
+    "pending_ms": null,
+    "max_defer_ms": 25000
+  },
+  "meterPushes": 0,
+  "statsPushes": 0,
+  "worker": null,
+  "schema": "sotto.panel-state/1",
+  "reason": "periodic",
+  "sequence": 5,
+  "writtenAt": "2026-11-01T13:26:20-03:00",
+  "writtenAtEpoch": 1793550380.476,
+  "ageSeconds": 0.0,
+  "ageSecondsNote": "age at write; the authoritative age is now - writtenAtEpoch and is printed by `panel_state.py --read`",
+  "staleAfterSeconds": 6.0,
+  "producerPid": 18992
+}

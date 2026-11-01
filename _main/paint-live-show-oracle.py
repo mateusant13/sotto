@@ -127,9 +127,9 @@ def neg_arm(text):
     print('NEG-ARM cases=%d caught=%d' % (len(cases), len(cases) - bad))
     if bad:
         print('NEG-ARM FAIL')
-        return 1
+        return 2
     print('NEG-ARM PASS')
-    return 0
+    return 1   # convencao da casa: o braco negativo PASSOU sai rc=1 e o passo e' expect-red
 
 
 def main(argv=None):

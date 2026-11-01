@@ -56,6 +56,8 @@ from datetime import datetime
 
 import hot_reload
 import panel_focus as _panel_focus
+import bridge_census as _bridge_census_mod
+from code_identity import code_identity as _code_identity
 import panel_state
 
 
@@ -377,7 +379,23 @@ TRANSPARENCY_HACK_WAIT_S = 0.25
 #: prossegue e a linha diz `paint_ack=false`, para o log nunca afirmar uma espera
 #: que nao aconteceu. O veredicto de que a primeira frame tem conteudo e' do
 #: instrumento (`_main/panel-paint-first-census.py`), nao desta linha.
-PAINT_ACK_TIMEOUT_MS = 60
+#:
+#: 60 -> 400 ms EM 2026-11-01, e o numero e' MEDIDO: o MESMO caminho acusou o
+#: primeiro ack frio em **187 ms** no `side` e **47 ms** no `strip` (16/0 ms
+#: quentes). A 60 ms a cura valia 28 ms: a espera terminava antes de a pagina
+#: responder. 400 ms fica ao dobro dos 187 ms e longe dos 1500 ms do gesto
+#: (`_main/altc-first-caption-oracle.py`). O ack NAO e' a cura inteira, so' a
+#: parte que a pagina pode confirmar -- o custo da PRIMEIRA pintura e' pago em
+#: `_warm_paint`, porque ele nao aparece em frame nenhuma antes de o dono ver.
+PAINT_ACK_TIMEOUT_MS = 400
+#: O AQUECIMENTO DA PRIMEIRA PINTURA (2026-11-01): 2x os **325 ms** medidos,
+#: pagos no ARRANQUE com a janela fora do ecra -- o dono nao espera por ele. O
+#: porque completo, com a medicao, esta' em `_warm_paint`.
+PAINT_WARM_SETTLE_S = 0.6
+#: `SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN` (winuser.h): a janela do aquecimento
+#: tem de ficar fora da UNIAO dos monitores, nao so' fora do principal.
+SM_XVIRTUALSCREEN = 76
+SM_YVIRTUALSCREEN = 77
 #: 6 ms entre leituras: o grao do rAF e' uma frame (~16 ms), portanto um poll
 #: mais apertado so' gasta idas ao UI thread.
 PAINT_ACK_POLL_S = 0.006
@@ -428,6 +446,20 @@ WORKER_PRELOAD_MAX_WAIT_S = 120.0
 WORKER_PRELOAD_POLL_S = 2.0
 PANEL_STATE_JS_TIMEOUT_S = 1.0   # the DIAGNOSTIC's budget: a dump is not the product
 STATS_REPLY_MAX_PENDING = 64     # the bound on the replies waiting for the UI thread
+#: O TETO DE UMA NOTIFICACAO (2026-11-01). Ver `emit`: as tres chamadas de
+#: `emit` do produto sao NOTIFICACOES (ninguem le o valor), e todas corriam pelo
+#: `exec_js` SINCRONO com o orcamento por omissao de 10 s. Um post nao tem
+#: orcamento nenhum: ou entra na fila do UI thread ou nao entra, e as duas coisas
+#: ficam escritas no log.
+BRIDGE_NOTIFY_POSTED = True
+
+
+def _bridge_census():
+    return _bridge_census_mod.census(log, warn, REPO_ROOT)
+
+
+def _task_bits(box, done):
+    return _bridge_census_mod.task_bits(box, done)
 
 
 class NoAnswer(dict):
@@ -1299,47 +1331,15 @@ def _stamp() -> str:
 #: causa de um ficheiro que o processo nem carrega, e um numero que muda por
 #: engano treina quem o le a ignora-lo. Cada um destes e' carregado ao vivo no
 #: caminho que o dono usa (o painel, a legenda, o YouTube, o gesto).
-_CODE_ID_FILES = (
-    'sotto_webview.py',
-    'hotkey_gesture.py',
-    'caption_overlay.py',
-    'caption_wrap.py',
-    'youtube_captions.py',
-    'youtube_reveal.py',
-    'youtube_window.py',
-)
+#: Os ficheiros que a etiqueta cobre vivem em `code_identity` (uma definicao so'); o shell
+#: re-exporta-os porque o `_main/live-code-freshness-oracle.py` os le' daqui.
+from code_identity import _CODE_ID_FILES, _CODE_ID_GLOBS  # noqa: F401
 
 
 def code_identity():
-    """`sha256=<12 hex> files=<n> ...` -- o codigo que ESTE processo carregou.
+    """`sha256=<12 hex> files=<n> ...` -- o codigo que ESTE processo carregou."""
+    return _code_identity(os.path.dirname(os.path.abspath(__file__)))
 
-    Nasceu de um erro medido, nao de estetica. O dono carregou Alt+C numa
-    instancia de 01:12:39 e reclamou que a legenda ligava e desligava; o gesto
-    novo (1 toque = painel de baixo, 2 = direita, HOLD = legenda) ja' estava no
-    disco. O log da instancia provava-o -- escrevia `HOTKEY_SINGLE`, uma
-    etiqueta que o fonte ja' nao sabe escrever -- mas so' quem compara etiquetas
-    a mao o via. Quatro oraculos verdes julgavam FICHEIROS; ele carregava num
-    PROCESSO.
-
-    Um unico fio fecha a classe: o processo diz, ao arrancar, o sha256 do que
-    carregou, e `_main/live-code-freshness-oracle.py` compara-o com o do disco.
-
-    Nunca lanca: uma shell que nao arranca por causa de um numero de diagnostico
-    e' pior do que uma shell sem numero.
-    """
-    import hashlib
-    h = hashlib.sha256()
-    here = os.path.dirname(os.path.abspath(__file__))
-    missing = []
-    for name in _CODE_ID_FILES:
-        try:
-            with open(os.path.join(here, name), 'rb') as fh:
-                h.update(fh.read())
-        except OSError:
-            missing.append(name)
-    return 'sha256=%s files=%d%s' % (
-        h.hexdigest()[:12].upper(), len(_CODE_ID_FILES) - len(missing),
-        (' missing=' + ','.join(missing)) if missing else '')
 
 def log(message: str) -> None:
     """One `sotto: ` prefixed line on stdout, mirrored to --log when asked.
@@ -7357,6 +7357,10 @@ class SottoShell:
                     self.vram_guard.start()
             except Exception as exc:  # noqa: BLE001
                 log(f'VRAM_GUARD_START_FAILED error={exc!r}')
+            # THE FIRST PRESENT IS PAID HERE, OFF THE SCREEN -- see
+            # `_warm_paint`. It must be BEFORE any show, or the first Alt+C
+            # pays it with the window on screen (measured: 19 blank frames).
+            self._warm_paint('startup')
             if self.args.show:
                 self.show_panel('startup', surface='panel')
             self._measure_on_screen_visibility('startup')
@@ -7668,10 +7672,16 @@ class SottoShell:
             finally:
                 done.set()
 
+        def _start():
+            # `box['task']` existe para o CENSO, nao para o caminho: o
+            # `Task.Status` e' o unico campo que separa "o renderer nunca
+            # devolveu nada" de "o JS respondeu e a continuacao .NET nao entrou
+            # em Python" -- ver `_task_bits` e `_main/bridge-census.py`.
+            box['task'] = self.core.ExecuteScriptAsync(script)
+            box['task'].ContinueWith(Action[Task[String]](_complete))
+
         def _run():
-            self.webview2.Invoke(Func[Object](
-                lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
-                    Action[Task[String]](_complete))))
+            self.webview2.Invoke(Func[Object](_start))
 
         # ONE BUDGET, NOT TWO (2026-10-20). The marshalling wait (`_ui`) and
         # the task wait were TWO separate waits, each up to `timeout`: a
@@ -7679,12 +7689,18 @@ class SottoShell:
         # the 10 s default `reply_stats` used, on the pump thread. The
         # deadline is computed ONCE and the two waits SHARE it.
         deadline = time.monotonic() + float(timeout)
+        census = _bridge_census()
+        token = census.call(script, timeout) if census is not None else None
         marshalled = None
+        t_marshal = time.monotonic()
         try:
             marshalled = self._ui(_run, timeout=timeout)
         except Exception as exc:
             box['error'] = repr(exc)
             done.set()
+        if token is not None:
+            census.phase(token, 'marshal',
+                        (time.monotonic() - t_marshal) * 1000.0)
 
         if isinstance(marshalled, NoAnswer):
             # THE UI THREAD NEVER RAN IT. The script is still QUEUED on the
@@ -7692,25 +7708,72 @@ class SottoShell:
             # going to wait for it, and the REASON is on the record.
             warn(f'exec_js STALL reason=ui-thread-stall timeout={timeout}s '
                  f'script={script[:90]!r}')
+            if token is not None:
+                census.no_answer(token, _task_bits(box, done))
             return marshalled
 
         left = deadline - time.monotonic()
         if left <= 0 or not done.wait(left):
             warn(f'exec_js TIMEOUT after {timeout}s script={script[:90]!r}')
+            if token is not None:
+                token['task_ms'] = round(
+                    (time.monotonic() - t_marshal) * 1000.0, 1)
+                census.no_answer(token, _task_bits(box, done))
             return NoAnswer('exec-js-timeout', script[:90], timeout)
 
         if 'error' in box:
             warn(f'exec_js failed: {box["error"]}')
+            if token is not None:
+                census.no_answer(token, _task_bits(box, done))
             return NoAnswer('exec-js-error', script[:90], timeout, box['error'])
+        if token is not None:
+            census.answer(token)
         try:
             return json.loads(box.get('json', 'null'))
         except ValueError:
             return box.get('json')
 
-    def emit(self, kind, payload):
-        """main -> page: the WebView2 spelling of preload's `emit(kind, payload)`."""
-        self.exec_js('window.__sotto_emit(' +
-                     json.dumps(kind) + ',' + json.dumps(json.dumps(payload)) + ')')
+    def emit(self, kind, payload) -> bool:
+        """main -> page: `emit(kind, payload)` -- POSTED, so it never waits.
+
+        ── O QUE ESTAVA MEDIDO, e e' o defeito ────────────────────────────────
+        Isto era `self.exec_js(...)`: um round trip SINCRONO com o orcamento por
+        omissao de 10,0 s. As TRES chamadas de `emit` do produto -- `status`
+        (`send_status`), `geometry` (`send_geometry`) e `external-caption` --
+        descartam o valor de retorno: sao NOTIFICACOES. Nenhuma delas tem uma
+        resposta que use, e todas correm em threads que o dono sente:
+
+          * `status` sai do pump do worker, a MESMA thread que carrega as
+            legendas (`on_worker_status` -> `_status` -> `apply_panel_state`);
+          * `geometry` sai da thread da hotkey, no Alt+C;
+          * `external-caption` sai da thread da faixa do YouTube.
+
+        Medido no log vivo (`_main/webview-run.log`): **515**
+        `WARN exec_js TIMEOUT after 10.0s` (`grep -c`), e nos dois ultimos
+        2026-11-01 10:33:17 / 10:35:05 o script que estourou e'
+        `window.__sotto_emit("status", ...)`. Em cada um desses, a thread
+        chamadora ficou PRESA 10 s para entregar uma frase ao painel -- e a
+        linha seguinte do log (`STATUS_APPLIED`) so' aparece 10 s depois. O
+        painel nao congelava: quem congelava era o emissor.
+
+        PORQUE UM POST NAO TEM ORCAMENTO. `_post` e' `BeginInvoke`: ou entra na
+        fila do UI thread, ou nao entra -- e as duas coisas ficam escritas. A
+        ORDEM em relacao aos outros scripts postados mantem-se (mesma fila), e
+        a ordem entre duas notificacoes diferentes nunca foi garantida
+        (`emit_async` ja' o documenta); o painel e' funcao pura do ultimo
+        estado que viu.
+
+        DEVOLVE `False` quando o form ainda nao existe. Isso NAO e' silencio:
+        e' a linha `EMIT_DROPPED` abaixo, que e' o que o pedido desta lane
+        exige -- uma legenda/status perdido e' uma linha de log, nunca um
+        bloqueio.
+        """
+        posted = self.emit_nowait(kind, payload)
+        if not posted:
+            warn(f'EMIT_DROPPED kind={json.dumps(str(kind))} '
+                 f'reason=no-form posted=false '
+                 f'payload={json.dumps(payload, separators=(",", ":"))[:120]!r}')
+        return posted
 
     def exec_js_post(self, script) -> bool:
         """Run `script` in the page and return IMMEDIATELY -- fire and forget.
@@ -7743,7 +7806,12 @@ class SottoShell:
             return False
 
     def emit_nowait(self, kind, payload) -> bool:
-        """`emit`, POSTED — for the show path, which cannot wait for an answer."""
+        """The ONE place that builds a `__sotto_emit` script and POSTS it.
+
+        `emit` is this plus the `EMIT_DROPPED` line (2026-11-01: it no longer
+        waits — see `emit`); `send_geometry(post=True)` is this on the show path.
+        Returns False when the post could not be queued (no form yet).
+        """
         return self.exec_js_post('window.__sotto_emit(' +
                                  json.dumps(kind) + ',' +
                                  json.dumps(json.dumps(payload)) + ')')
@@ -7855,10 +7923,12 @@ class SottoShell:
         # re-classify the sentence with a regex.
         self.send_status(line, kind)
         info = info or {}
-        shown = self.exec_js(
+        title = str(info.get('title') or '')
+        body = str(info.get('body') or '')
+        script = (
             '(() => {'
-            '  const title = ' + json.dumps(info.get('title') or '') + ';'
-            '  const body = ' + json.dumps(info.get('body') or '') + ';'
+            '  const title = ' + json.dumps(title) + ';'
+            '  const body = ' + json.dumps(body) + ';'
             '  const kind = ' + json.dumps(kind) + ';'
             "  const t = document.querySelector('.captions__placeholder-title');"
             "  const b = document.querySelector('.captions__placeholder-body');"
@@ -7870,8 +7940,21 @@ class SottoShell:
             "           s.classList.toggle('status--noaudio', kind === 'no-audio'); }"
             "  return t ? t.textContent : '';"
             '})()')
-        if shown:
-            log(f'PLACEHOLDER_APPLIED title={json.dumps(str(shown))}')
+        # POSTED, NOT AWAITED (2026-11-01). Esta era a SEGUNDA metade do mesmo
+        # defeito: `apply_panel_state` fazia `send_status` (`emit`, sincrono) e
+        # DEPOIS este `exec_js`, sincrono, com 10 s cada -- ate' 20 s de pump do
+        # worker por um status. O valor lido era usado para UMA linha de log
+        # (`PLACEHOLDER_APPLIED title=`), e' o que a medição mostrou: 29
+        # `exec_js TIMEOUT` com o script `const title = ""; const body = ""` no
+        # log do dono. Uma escrita que compra uma linha de log nao pode custar
+        # 10 s da thread que carrega as legendas -- a linha passa a dizer o que
+        # se ESCREVEU (`posted=true`), que e' um facto do mesmo tamanho.
+        posted = self.exec_js_post(script)
+        if posted:
+            if title:
+                log(f'PLACEHOLDER_APPLIED title={json.dumps(title)} posted=true')
+        else:
+            warn(f'PLACEHOLDER_DROPPED title={json.dumps(title)} reason=no-form')
         return True
 
     def note_caption_observed(self, payload):
@@ -8859,68 +8942,61 @@ class SottoShell:
             return self.show_side('hotkey-cycle-side')
         return self.show_strip('hotkey-cycle-strip')
 
-    def place_panel(self, mode):
-        """Move/resize the panel window to `mode` geometry ('strip'|'side').
+    def _warm_paint(self, reason='startup'):
+        """Pay the page's FIRST presented frame OFF the owner's screen.
 
-        Recomputes from the LIVE work area (`primary_display`, not the cached
-        `self.display`: the owner may have changed monitors since startup),
-        moves with `SetWindowPos` in PHYSICAL pixels (DIP geometry times the
-        scale factor — the same units `_fit_client_area` pins the client area
-        with), re-pins the client area through `_ui`, and tells the page the
-        new geometry over the existing `send_geometry` seam. Never raises:
-        a failed place is a log line and `False`, and the show that called it
-        still foregrounds whatever is on screen.
+        ── MEDIDO 2026-11-01, e e' o defeito que sobrava ──────────────────────
+        A primeira frame que a pagina apresenta traz so' o fundo dela e a UI
+        chega 270-325 ms depois (censo: `blank_frames=19`, `first_content_ms=325`,
+        `first frame std=0.0 mean=18`); TODOS os shows seguintes sao
+        content-first. Logo o custo e' da primeira apresentacao do processo, e
+        esperar por ele dentro de um show e' esperar com a janela a' vista -- o
+        que o dono proibiu. Paga-se UMA vez, aqui, com a janela MAPEADA (e' isso
+        que faz a pagina pintar) no rect que o show vai usar, mas FORA do ecra
+        virtual: o rect acaba antes da borda da uniao dos monitores, logo a
+        interseccao e' vazia e o dono nao ve pixel nenhum -- e o censo concorda,
+        porque so' conta frame `window_onscreen`.
 
-        DOES NOT MAP THE WINDOW — that is the P0 of this whole session, and
-        it is why the flag is `SWP_NOACTIVATE` and not `SWP_SHOWWINDOW`. The
-        owner's report was: he pressed Alt+C, saw a solid-colour strip for a
-        frame, and only then the panel. Moving a window while it is hidden is
-        legal and measured on this box; `SetWindowPos` with a size and no
-        show flag only takes effect on the NEXT show, which the caller does
-        AFTER the WebView2 children carry WS_VISIBLE. Callers: read the new
-        order in `show_strip`.
+        O rect VOLTA ao lugar ainda escondido, e o show seguinte MAPEIA ali': e'
+        um mapa novo numa janela ja' quente, nao um MOVIMENTO da janela quente
+        (medido: mover a janela mapeada custa os mesmos ~270 ms que a cura
+        existe para remover).
+
+        Nao ha' sinal do compositor para esperar, portanto a espera e' o pior
+        caso MEDIDO (`PAINT_WARM_SETTLE_S`), o que so' custa no arranque. O ack
+        da pagina e' lido primeiro e o `wait_ms` fica no log: se a pagina nao
+        responder, o aquecimento falha ABERTO, como todo o resto desta cura.
         """
-        try:
-            self.display = target_display()
-        except Exception as exc:  # noqa: BLE001 -- stale cache beats no window
-            warn(f'PANEL_PLACE_DISPLAY_FAILED mode={mode} error={exc!r}')
-        if not self.display:
-            warn(f'PANEL_PLACE_FAILED mode={mode} reason=no-display')
+        hwnd = self.hwnd
+        geometry = self.geometry
+        if not hwnd or not isinstance(geometry, dict):
+            log(f'PAINT_WARM reason={reason} ran=false why=no-hwnd-or-geometry')
             return False
-        work = self.display['workArea']
-        # The height is the STYLESHEET's, never hard-coded: `--strip-height`
-        # is read here (once per real change) and the fallback is logged when
-        # the page cannot answer. Guarded on the renderer because `--show` can
-        # place the panel before the bridge has answered.
-        if self.renderer_ready.is_set():
-            self.refresh_strip_height('place-' + str(mode))
-            self.refresh_strip_width('place-' + str(mode))
-        geometry = (dock_strip(work, width=self.strip_width_live(),
-                               height=self.strip_height)
-                    if mode == 'strip' else dock_right(work))
-        self.geometry = geometry
-        self.panel_mode = mode
-        if self.hwnd:
-            try:
-                scale = self.display.get('scaleFactor') or 1
-                user32.SetWindowPos(
-                    self.hwnd, HWND_TOP,
-                    int(geometry['x'] * scale), int(geometry['y'] * scale),
-                    int(geometry['width'] * scale),
-                    int(geometry['height'] * scale),
-                    SWP_NOACTIVATE)
-            except Exception as exc:  # noqa: BLE001 -- report, never kill Alt+C
-                log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
-                return False
-            form = self.form or self._form()
-            if form is not None:
-                try:
-                    self._ui(lambda: self._fit_client_area(form))
-                except Exception as exc:  # noqa: BLE001 -- same contract
-                    log(f'PANEL_PLACE_FAILED mode={mode} error={exc!r}')
-        self.send_geometry()
-        log(f'PANEL_PLACED mode={mode} {summary(geometry)}')
-        return True
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        size = (int(geometry['width'] * scale), int(geometry['height'] * scale))
+        # FORA DO ECRA VIRTUAL, POR INTEIRO: o rect acaba antes da borda da
+        # uniao dos monitores, portanto a interseccao e' vazia
+        # (`window_onscreen=false` no censo).
+        warm_x = user32.GetSystemMetrics(SM_XVIRTUALSCREEN) - size[0] - 16
+        warm_y = user32.GetSystemMetrics(SM_YVIRTUALSCREEN) - size[1] - 16
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, warm_x, warm_y,
+                            size[0], size[1], SWP_NOACTIVATE)
+        seq = self.arm_paint_ack(reason)
+        show_without_activating(hwnd)
+        ack = self.wait_paint_ack(seq, reason)
+        time.sleep(PAINT_WARM_SETTLE_S)
+        hide_window(hwnd)
+        # E O RECT VOLTA AO QUE O SHOW VAI USAR, ainda escondido: um show que
+        # encontre a superficie ja' aplicada nao torna a colocar a janela.
+        user32.SetWindowPos(
+            hwnd, HWND_TOPMOST,
+            int(geometry['x'] * scale), int(geometry['y'] * scale),
+            size[0], size[1], SWP_NOACTIVATE)
+        log(f'PAINT_WARM reason={reason} ran=true size={size[0]}x{size[1]} '
+            f'ack={str(ack["ack"]).lower()} ack_wait_ms={ack["wait_ms"]} '
+            f'settle_s={PAINT_WARM_SETTLE_S} '
+            f'visible={str(window_visible(hwnd)).lower()}')
+        return bool(ack['ack'])
 
     def show_strip(self, reason):
         """Show the bottom strip, and take the foreground ONLY to free a lock.
@@ -8934,26 +9010,18 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
-        # Geometry only — `place_panel` no longer maps the window (P0). And
-        # `present=True`, because everything below is on the path to a MAP: the
-        # page is not read and is not waited for (see `exec_js_post`).
+        # Geometry only — nothing here maps the window; the map is below, off
+        # the screen. And `present=True`, because everything below is on the
+        # path to a MAP: the page is not read and is not waited for (see
+        # `exec_js_post`).
         self.set_panel_surface('strip', reason, present=True)
-        # AND SAY WHICH PANEL IS UP. `hotkey_pressed` is a three-state cycle
-        # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, and
-        # the 2026-10-09 P0 refactor removed its last writer: `place_panel` is
-        # the only assignment of `panel_mode` and NOTHING calls `place_panel`
-        # any more (measured: `grep -n place_panel` on the live shell returns
-        # the definition, two comments and a docstring -- ZERO call sites). So
-        # the SECOND Alt+C painted the side panel and every press after it
-        # painted the side panel AGAIN instead of hiding: `panel_mode` still
-        # said 'strip', so the `panel_mode == 'side'` arm of the cycle was
-        # unreachable. The owner measured it on his own keyboard -- ten presses
-        # in three seconds (2026-10-14 20:18:01.297 .. 20:18:04.605) each
-        # logging `PANEL_SHOWN reason=hotkey mode=side`, and exactly ONE
-        # `PANEL_HIDDEN` in the whole 114 394-line log (reason=page) -- and
-        # reported "alt c nao aperta direito em diversos caso". The window
-        # state is still read from `window_visible` below; this line only
-        # records WHICH surface is up, on the show itself.
+        # AND SAY WHICH PANEL IS UP: `hotkey_pressed` is a three-state cycle
+        # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, whose
+        # OTHER writer was the dead `place_panel`. Without this line the SECOND
+        # Alt+C repainted the side panel forever instead of hiding (owner,
+        # 2026-10-14: ten presses, all `mode=side`, one `PANEL_HIDDEN` in the
+        # whole log). The window state is read from `window_visible` below; this
+        # line records only WHICH surface is up, on the show itself.
         self.panel_mode = 'strip'
         # Children FIRST, so the first frame the owner sees is already the
         # panel: a user32 show of the FORM maps it NOW, and the first frame of a
@@ -9002,7 +9070,7 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
-        # Geometry only — `place_panel` no longer maps the window (P0).
+        # Geometry only — the map is below, off the screen.
         #
         # CORRECTED 2026-10-12, AND THIS IS THE OWNER'S Alt+C BUG. This line
         # passed the literal `'side'`, and `'side'` IS NOT A SURFACE NAME:
@@ -10757,18 +10825,20 @@ class SottoShell:
         self.meter_pushes += 1
         self.emit_async('stats', self.stats())
     def emit_async(self, kind, payload):
-        """`emit` WITHOUT waiting for the round trip — for a per-sample feed.
+        """`emit` WITH A LATCH — for a per-sample feed.
 
-        `emit` blocks on a `Task[String]` completion, which is right for a caption
-        (the caller wants to know it landed) and WRONG for the stats channel: the
-        worker may publish a meter sample at tens of Hz, and every one of those
-        round trips would stall whoever called it. Measured on this host: the
+        The difference to `emit` is no longer the wait (2026-11-01: `emit` is a
+        post too, see its docstring) but the COLLAPSE: a pending payload is
+        replaced instead of queueing a second callable, so a feed at tens of Hz
+        cannot grow the UI thread's queue with the feed. The stats channel is
+        the feed: the worker may publish a meter sample at tens of Hz, and the
         pump thread delivers captions on the same thread that reads the worker's
-        stderr, so a blocking push per sample would delay the captions
-        themselves.
+        stderr, so an unlatched push per sample would delay the captions
+        themselves. Measured on this host before either existed: a blocking push
+        per sample stalled that thread outright.
 
-        So this posts the script through `_ui` (a `BeginInvoke`, no wait) and
-        drops the resulting `Task`. Ordering between two `emit_async` calls is not
+        So this posts the script with `_post` (`BeginInvoke`, no wait) and drops
+        the resulting `Task`. Ordering between two `emit_async` calls is not
         guaranteed, and does not need to be: each one carries a WHOLE payload, and
         the panel's `pushLevel` is a pure function of the last one it saw.
 

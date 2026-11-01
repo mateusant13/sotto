@@ -4076,12 +4076,18 @@ def decide_verdict(counters, outcome, ran_but_silent) -> str:
     whenever the verdict is not `captions-emitted`
     (`app/webview/sotto_webview.py:165` `HEALTHY_DONE_VERDICTS = {'captions-emitted'}`
     → `worker_status_kind`, `:309`), so the WORD — not the exit code — is what
-    has to stop a failed run from being announced as a healthy one. main() still
-    returns `3 if ran_but_silent else 0`: 3 is the established meaning "a tap
-    OPENED, ran a window and measured digital silence" and a caller separates
-    "never started" (2) from that; reusing 3 for a signal-carrying run whose
-    model emitted nothing would make 3 mean two different things, and the shell
-    already refuses to call any non-`captions-emitted` verdict healthy.
+    has to stop a failed run from being announced as a healthy one. main()
+    returns `3 if (ran_but_silent or counters["blocks"] == 0) else 0`: 3 is the
+    established meaning "a tap OPENED and the run got nothing", and a caller
+    separates "never started" (2) from that. `ran_but_silent` is silence MEASURED
+    over a real window (blocks >= TAP_SILENT_BLOCKS, peak under the floor); the
+    second half of the conjunction is the weaker and worse fact measured
+    2026-11-01 — an endpoint that opened and delivered ZERO callback blocks, not
+    even silence, which used to reach `no-callback-blocks` and exit 0, i.e. a
+    run that heard nothing at all reporting success. Reusing 3 for a
+    signal-carrying run whose model emitted nothing would still make 3 mean two
+    different things, and the shell already refuses to call any
+    non-`captions-emitted` verdict healthy.
 
     `counters` keys read: `captions`, `chunks`, `blocks`, `nonzero_blocks`,
     `resampled_samples`, `music_gated_chunks`, `vad_gated_chunks`,
@@ -4120,9 +4126,9 @@ def decide_verdict(counters, outcome, ran_but_silent) -> str:
     `ran_but_silent` is the MEASURED, device-attributable fact (a candidate
     OPENED, ran a full window and stayed under the floor); `outcome in
     ("all-flat","open-failed")` is only the weaker statement that no candidate
-    settled. The specific fact, and the one the exit code is already built from
-    (`return 3 if ran_but_silent else 0`), is tested FIRST, so the verdict word
-    and the exit code can no longer diverge.
+    settled. The specific fact, and the one the exit code is built from
+    (`return 3 if (ran_but_silent or counters["blocks"] == 0) else 0`), is
+    tested FIRST, so the verdict word and the exit code can no longer diverge.
     """
     # ── THE COUNTERS ARE COERCED, AND THE GATE THAT DRIVES THIS FUNCTION IS WHY ─
     # The adversary lane fed `decide_verdict` a JSON-derived mapping (2026-10-07,
@@ -6688,7 +6694,13 @@ def main():
     # device, heard nothing, and reported success to a caller that has no other
     # way to tell. 3 is distinct from 2 (setup error) so a caller can separate
     # "never started" from "started and got nothing".
-    return 3 if ran_but_silent else 0
+    #
+    # ZERO BLOCKS IS THE WORST CASE OF THE SAME FACT, AND IT USED TO EXIT 0
+    # (measured 2026-11-01, `_main/device-silence-oracle.py`): the endpoint
+    # opened, the callback was never called once, so no ledger row qualified as
+    # `silent_rows`, the verdict said `no-callback-blocks`, and this returned 0.
+    # The full reasoning lives in `decide_verdict`'s docstring.
+    return 3 if (ran_but_silent or counters["blocks"] == 0) else 0
 
 
 def contract_guard(main_fn, emit_fn=emit, err_fn=err) -> int:

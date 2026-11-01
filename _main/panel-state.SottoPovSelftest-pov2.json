@@ -1,0 +1,87 @@
+{
+  "namedState": "no-worker",
+  "panel": {
+    "live": {
+      "count": 0,
+      "hidden": true,
+      "hint": "",
+      "lines": [],
+      "provisionalCount": 0,
+      "scroll": {
+        "atBottom": true,
+        "client": 749,
+        "height": 749,
+        "overflowing": false,
+        "top": 0
+      }
+    },
+    "placeholder": {
+      "body": "Nothing is being transcribed yet. Captions appear here line by line the\n              moment audio reaches Sotto.",
+      "hidden": false,
+      "title": "Waiting for audio"
+    },
+    "status": {
+      "kind": "busy",
+      "text": "Idle · no audio source"
+    },
+    "url": "file:///H:/sotto/app/panel/panel.html"
+  },
+  "panelDom": {
+    "ageSeconds": 6.156,
+    "pending": true,
+    "reason": "",
+    "detail": null
+  },
+  "shell": {
+    "visible": false,
+    "hotkey": "Alt+Shift+F12",
+    "rendererReady": true,
+    "bridgeInstalled": true,
+    "lastStatus": "No transcription worker is running (started with --no-worker)",
+    "captionLogCount": 0,
+    "reloadCount": 0,
+    "workerPath": "H:\\sotto\\worker\\sotto_worker.py",
+    "log": "I:\\cc-tmp\\pov-selftest-pov2.log",
+    "hotReload": false
+  },
+  "panelVisibility": {
+    "path": "H:\\sotto\\_main\\panel-visibility.json",
+    "visible": false,
+    "since_ms": 1793543368650,
+    "reason": "boot",
+    "transitions": 1,
+    "writes": 5,
+    "errors": 0
+  },
+  "code": {
+    "worker": {
+      "path": null,
+      "disk": null,
+      "loaded": null,
+      "stale": false
+    },
+    "shell": {
+      "path": "H:\\sotto\\app\\webview\\sotto_webview.py",
+      "disk": "821b226535a0169d",
+      "loaded": "821b226535a0169d",
+      "stale": false,
+      "reloadable": false,
+      "restart_hint": "a shell change needs a shell restart"
+    },
+    "pending": null,
+    "pending_ms": null,
+    "max_defer_ms": 25000
+  },
+  "meterPushes": 0,
+  "statsPushes": 0,
+  "worker": null,
+  "schema": "sotto.panel-state/1",
+  "reason": "periodic",
+  "sequence": 5,
+  "writtenAt": "2026-11-01T11:29:36-03:00",
+  "writtenAtEpoch": 1793543376.681,
+  "ageSeconds": 0.0,
+  "ageSecondsNote": "age at write; the authoritative age is now - writtenAtEpoch and is printed by `panel_state.py --read`",
+  "staleAfterSeconds": 6.0,
+  "producerPid": 46552
+}

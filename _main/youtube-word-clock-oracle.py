@@ -307,8 +307,14 @@ def neg_arm() -> int:
             shutil.copy2(WEBVIEW / name, copy / name)
         target = copy / "youtube_reveal.py"
         text = target.read_text(encoding="utf-8")
-        mutant = text.replace("                    wanted = min(wanted, clock)",
-                              "                    wanted = wanted")
+        # 2026-11-01: o alvo mudou de forma (o `min` estava a ser aplicado dentro de um
+        # ternario de UMA linha, `cap = (min(wanted, clock) if wanted > 0 else clock)`),
+        # e a ancora antiga deixou de casar -- o braco dizia "o texto mudou" em vez de
+        # provar o que quer que fosse. A mutacao continua a mesma ideia: tirar o relogio
+        # do cap, que e' exactamente a lei que o oraculo julga.
+        mutant = text.replace(
+            "                    cap = (min(wanted, clock) if wanted > 0 else clock)",
+            "                    cap = (wanted if wanted > 0 else clock)")
         if mutant == text:
             print("NEG-ARM: nao consegui mutar o alvo (o texto mudou)")
             return EXIT_FAIL

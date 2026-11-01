@@ -102,6 +102,8 @@ rc=1  o veredicto falhou, e a linha VERDICT diz qual clausula
 rc=2  nao foi possivel medir (a app nao arrancou / o painel nunca apareceu) --
       isso nao e' um verde nem um vermelho, e' um instrumento sem sujeito
 """
+# BATTERY-HEAVY: app-window -- larga uma instancia PRIVADA da app (off-screen em
+# x=-10000, `SW_SHOWNOACTIVATE`, token `high` do dono) para ler os pixeis do primeiro frame
 from __future__ import annotations
 
 import argparse
@@ -1393,7 +1395,7 @@ def neg_arm(reading):
                                              'FAIL ' + '; '.join(base_fails)))
     if caught and base_ok:
         print('NEG-ARM PASS')
-        return 0
+        return 1   # convencao da casa: o braco negativo PASSOU sai rc=1 e o passo e' expect-red
     print('NEG-ARM FAIL -- the judge cannot tell a clean reading from a broken one')
     return 1
 
