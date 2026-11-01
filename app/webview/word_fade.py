@@ -69,3 +69,45 @@ def next_delay(elapsed, duration=DURATION_S):
     """Quanto falta para o proximo frame -- nunca mais que `FRAME_S`."""
     left = float(duration) - max(0.0, float(elapsed or 0.0))
     return max(0.0, min(FRAME_S, left))
+
+
+#: A DURACAO DO FADE DE SAIDA -- a linha que ROLA PARA FORA da janela.
+#:
+#: Nao e' escolhida: e' o unico intervalo que reproduz os 16 quadros da captura
+#: do player (`_main/fixtures/yt-WdaHAGRBB6s.live-compare-20261026.json`), e o
+#: instrumento re-deriva os limites a cada corrida:
+#: `_main/sim/measure-youtube-captions.py`, chave `rollup.exit_s_bracket_s` =
+#: **0,424 .. 0,552 s**. Dentro do intervalo, 0,45 e' o valor que o modelo usa.
+#:
+#: A LINHA QUE SAI NAO APAGA E FICA: ela rola para cima, para fora da caixa da
+#: janela -- medido, 1 das 16 amostras tem a linha FORA da caixa com `opacity`
+#: ainda a 1. O que este numero da' ao desenho e' a outra metade: o tempo durante
+#: o qual ela ainda e' pintada antes de o bitmap a largar.
+EXIT_S = 0.45
+
+
+def alpha_out(elapsed, duration=EXIT_S):
+    """O alfa da linha que esta' a sair: FULL -> 0 em `duration` segundos.
+
+    A CURVA E' A MESMA DO FADE DE ENTRADA, lida ao contrario: `alpha_at` faz
+    `1-(1-x)^2` (sai depressa do zero); aqui o que sai depressa e' o APAGAR, e o
+    que resta depois de `x` do tempo e' `(1-x)^2`. As duas curvas tem a mesma
+    forma -- ease-out --, e por isso a linha nova e a velha parecem o mesmo
+    movimento em sentidos opostos.
+
+    `elapsed` None devolve FULL: sem instante nao se apaga nada. Uma linha que
+    ficasse a 0 seria uma legenda invisivel, e este modulo nunca escolhe isso por
+    falta de informacao.
+    """
+    if elapsed is None:
+        return FULL
+    try:
+        t = float(elapsed)
+    except (TypeError, ValueError):
+        return FULL
+    if t <= 0.0:
+        return FULL
+    if t >= float(duration):
+        return 0
+    left = 1.0 - (t / float(duration))
+    return max(0, min(FULL, int(round(FULL * left * left))))
