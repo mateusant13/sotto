@@ -3980,6 +3980,9 @@ class OutsideClickWatcher(threading.Thread):
         self.drag_samples = 0
         self._last_fg = None
         self.polls = 0
+        #: Quando o show armou este vigia: foreground que mude nos primeiros
+        #: 250 ms e do show (`PANEL_SHOWN` .724 -> `PANEL_HIDDEN` .736, 2026-11-02).
+        self._armed_at = 0.0
 
     # `armed`/`edit_mode` sao PROPRIEDADES: quem os escreve (o `show_panel` e o
     # item de tray do edit mode) nao precisa de saber que a escrita tem de mexer
@@ -4129,6 +4132,8 @@ class OutsideClickWatcher(threading.Thread):
                 return
             was = self._last_fg
             self._last_fg = fg
+            if self._armed_at and (time.monotonic() - self._armed_at) < 0.25:
+                return     # o show e dono dos seus primeiros 12 ms (medido)
             if was == fg:
                 # JA' ERA DE OUTRA JANELA no tick anterior: a mudanca de
                 # foreground JA' disparou o fecho. Um segundo tick nao e' um
@@ -8775,6 +8780,7 @@ class SottoShell:
         # this makes it explicit rather than incidental).
         if self.click_watcher is not None and self.visible:
             self.click_watcher.armed = True
+            self.click_watcher._armed_at = time.monotonic()
         log(f'PANEL_SHOWN reason={reason} hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show=SW_SHOWNOACTIVATE focus_stolen=false '
@@ -10357,13 +10363,9 @@ class SottoShell:
             return False
         self.edit_mode = enabled
         if enabled:
-            # ARMED BEFORE THE SHOW (measured 2026-11-02): `show_panel()` costs the
-            # paint ack -- 156 ms in the arm that found this -- so arming the
-            # watcher afterwards left the band visible while the watcher still read
-            # `edit_mode=false`: `PANEL_SHOWN ... 09.307` then `OUTSIDE_CLICK
-            # closed=true` at `09.311`. Asking the tray for "edit the band" and
-            # getting the band HIDDEN by that request is the defect; the guard
-            # has to precede the thing it guards.
+            # ARMADO ANTES DO SHOW (medido 2026-11-02): o show custa o paint ack
+            # (156 ms) e, armado depois, a faixa ficava visivel com o vigia a ler
+            # `edit_mode=false` -- `PANEL_SHOWN` .307, `PANEL_HIDDEN` .311.
             if self.click_watcher is not None:
                 # The watcher's own thread reads this; it also STOPS closing the
                 # panel on an outside click while the owner is positioning it.

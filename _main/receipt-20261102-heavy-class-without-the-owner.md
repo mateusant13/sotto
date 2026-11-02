@@ -96,3 +96,76 @@ abrir dispositivo) correm.
 `_strip-*` 275,95 s (4 sondas) · `_strip-surface` 199,31 s (depois da cura) e ~5 min antes ·
 `device-silence` 310,99 s (1ª), 197,00 s + 186,97 s (interrompida) · `shell-relaunch` 4,22 s ·
 `altc-first-caption` ~1 s · `panel-exit3 --unit --neg-arm` ~1 s.
+
+## 7. O DONO AUTORIZOU A JANELA: `panel-paint-first-measure` medido (14:0x)
+
+*"pode fazer isso ai. ta permitido. só agora. vai. tudo."* — a janela visível passou a estar
+autorizada NESTA sessão, e o censo correu de verdade.
+
+**Primeira corrida: `ok=false`.** `app[cured]` e `app[uncured]` publicaram `no-show-measured`, e o
+controlo também falhou. Lido do log da instância privada: `PANEL_SHOW_REFUSED reason=not-asked`
+(duas vezes, o `_gate_form_show` a fazer o seu trabalho), `UI_THREAD_STALL begin-invoke not run in
+0.25s fn=_run`, `PAINT_ACK ack=false wait_ms=750.0 why=ui-thread-busy`, e por fim
+`UI_WATCHDOG_EXIT code=9 -- a UI estava presa`. A página ainda estava a carregar quando o censo
+pediu o primeiro show.
+
+**Segunda corrida: `ok=false` outra vez, mas por outra razão** — `app[uncured] reported
+blank_frames=0 on EVERY show`. O braço `uncured` (shell do `git show HEAD`, cópia fria) levou
+**158,7 s** até ao primeiro show; com `--exit-after 170` a instância saiu a meio do driver e só
+1 de 3 shows entrou. O controlo perdeu a força sem nada estar errado na app.
+
+**Correcção do instrumento:** `--exit-after` 170 → **360 s**, `--seconds` 200 → **400 s**, com a
+medição escrita no help ("a instância saiu a meio do driver, ficou 1 show de 3").
+
+**Corrida boa (`ok=true`, `fails=[]`):**
+
+| braço | shows | `blank_frames` | `first_content_ms` | `first_std` |
+|---|---|---|---|---|
+| `cured` (worktree) | 3 | **[0, 0, 0]** | **[0.0, 0.0, 0.0]** | 31.25 / 16.59 / 31.25 |
+| `uncured` (HEAD) | 3 | **[17, 0, 0]** | **[308.3, 0.0, 0.0]** | 0.0 (chapado) na 1ª |
+| controlo `blank_first` | — | 54 | 928.7 | 0.0 |
+| controlo `content_first` | — | 0 | 0.0 | 71.2 |
+
+O defeito do dono está reproduzido no controlo (17 frames chapadas, 308 ms) e a cura está provada
+no worktree (**zero** frames em branco, conteúdo desde a primeira frame). `--judge` REJULGA a
+leitura e dá PASS; `--neg-arm` apanha as **quatro** mutações (`cured-show-1-blank`,
+`cured-never-content`, `classifier-blind-on-uncured`, `control-blank-first-silent`).
+
+## 8. DEFEITO 3 — `--show` mostrava e escondia a si própria em 12 ms (corrigido)
+
+Instância lançada pela via da casa (`launch-as-token` de um `explorer.exe`, porque o lançamento
+directo desta pane dá o já documentado `WEBVIEW2_INIT_FAILED 0x80010108`):
+
+```
+14:09:46.724  PANEL_SHOWN reason=startup ... paint_ack=true wait_ms=16.0
+14:09:46.736  PANEL_HIDDEN reason=click-outside visible=false      <- 12 ms
+```
+
+**Causa:** o vigia do outside-click só reage a uma MUDANÇA de foreground, e o arranque produz uma
+(consola → form → app). Armado no instante do show, o primeiro tick dele já via "fora".
+**Correcção:** o show é dono dos seus primeiros **250 ms** (`OutsideClickWatcher._armed_at`,
+escrito em `show_panel`; o guarda só se aplica a `source='foreground'`, portanto um clique REAL do
+dono — `WM_LBUTTONDOWN` do hook — continua a fechar). **Prova:** instância nova, `PANEL_SHOWN
+... wait_ms=0.0` **sem** `PANEL_HIDDEN` depois, e o `paint-live-show` passou de SKIPPED a
+**gate** (`gate=106`, `skipped=11`).
+
+**Observado, e registado como `[INFERENCE]`:** as DUAS instâncias que se esconderam 12 ms depois do
+show acabaram em `UI_WATCHDOG_EXIT code=9` (UI presa, `evaluate_js` → `semaphore.acquire`); a
+instância corrigida correu sem um único `UI_WATCHDOG_STRIKE`/`UI_HUNG_FRAME` e transcreveu
+(`CAPTION_APPLIED ... "Do that. >> Yeah, well sometimes you need to do it."`). A ligação causal
+entre o esconder-se e a prisão da UI **não** foi provada — só a correlação 2/2 contra 0/1.
+
+## 9. DEFEITO 4 (do instrumento) — o braço negativo mutava a linha errada
+
+`red-as-expected-paint-live-show` saiu **rc=2**: `cases=3 caught=2`, com `show-sem-ack` NOT-CAUGHT.
+A mutação era `replace('paint_ack=true', 'paint_ack=false', 1)` — a PRIMEIRA ocorrência do log, que
+agora pertence a uma sessão anterior; o julgador só lê a sessão viva, logo a mutação não movia o
+artefacto do veredicto. Passou a `_last_ack_off` (a última ocorrência) — `cases=3 caught=3`,
+rc=1 como o `:expectred` exige. A lição já estava escrita ao lado, no caso `show-lento`.
+
+## 10. Estado final desta ronda
+
+`failed: -none-`, **BATTERY-VERDICT: GREEN WITH 11 SKIPPED** (as 11 são a classe heavy),
+`gate=106`, `expect-red=62`, `missing=0`. `code-health` PASS com `sotto_webview.py` em
+**799 587 B** (baseline 799 682). Nenhuma instância da app ficou a deter `Local\SottoShell`
+(pid 21828 fechado por `taskkill` elevado, censo = 0).

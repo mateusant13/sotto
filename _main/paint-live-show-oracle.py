@@ -100,9 +100,21 @@ def judge(text):
     return 'GREEN', detail
 
 
+def _last_ack_off(text):
+    """Desliga o `paint_ack` do ULTIMO show -- o que o veredicto realmente le."""
+    at = text.rfind('paint_ack=true')
+    if at < 0:
+        return text
+    return text[:at] + 'paint_ack=false' + text[at + len('paint_ack=true'):]
+
+
 NEG_CASES = (
     # (rotulo, o que muda, o que se espera)
-    ('show-sem-ack', lambda t: t.replace('paint_ack=true', 'paint_ack=false', 1), 'RED'),
+    # A ULTIMA, NAO A PRIMEIRA (medido 2026-11-02): `replace(..., 1)` mutava o
+    # `PANEL_SHOWN` de uma sessao ANTERIOR e o julgar so le a sessao viva -- a
+    # mutacao nao movia o artefacto do veredicto e o braco publicava NOT-CAUGHT
+    # (cases=3 caught=2). A licao ja' estava no `show-lento` ao lado.
+    ('show-sem-ack', _last_ack_off, 'RED'),
     # A cauda sintetica e' a ULTIMA ocorrencia: mutar a primeira apanhava uma sessao velha
     # e o braco passava verde (medido).
     ('show-lento', lambda t: re.sub(r'wait_ms=[\d.]+(?=[^\d.]*$)', 'wait_ms=951.0', t), 'RED'),

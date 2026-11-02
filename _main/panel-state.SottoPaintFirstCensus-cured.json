@@ -9,8 +9,8 @@
       "provisionalCount": 0,
       "scroll": {
         "atBottom": true,
-        "client": 749,
-        "height": 749,
+        "client": 0,
+        "height": 0,
         "overflowing": false,
         "top": 0
       }
@@ -27,7 +27,7 @@
     "url": "file:///H:/sotto/app/panel/panel.html"
   },
   "panelDom": {
-    "ageSeconds": 2.015,
+    "ageSeconds": 1.969,
     "pending": true,
     "reason": "",
     "detail": null
@@ -47,10 +47,10 @@
   "panelVisibility": {
     "path": "H:\\sotto\\_main\\panel-visibility.json",
     "visible": false,
-    "since_ms": 1793555084673,
-    "reason": "census-hide-census-2",
-    "transitions": 5,
-    "writes": 13,
+    "since_ms": 1793639169579,
+    "reason": "census-hide-census-3",
+    "transitions": 7,
+    "writes": 17,
     "errors": 0
   },
   "code": {
@@ -62,8 +62,8 @@
     },
     "shell": {
       "path": "H:\\sotto\\app\\webview\\_census-cured-sotto_webview.py",
-      "disk": "44ffaf3ce7b66d83",
-      "loaded": "44ffaf3ce7b66d83",
+      "disk": "9a54cca95379045e",
+      "loaded": "9a54cca95379045e",
       "stale": false,
       "reloadable": false,
       "restart_hint": "a shell change needs a shell restart"
@@ -77,11 +77,11 @@
   "worker": null,
   "schema": "sotto.panel-state/1",
   "reason": "periodic",
-  "sequence": 5,
-  "writtenAt": "2026-11-01T14:44:45-03:00",
-  "writtenAtEpoch": 1793555085.735,
+  "sequence": 6,
+  "writtenAt": "2026-11-02T14:06:09-03:00",
+  "writtenAtEpoch": 1793639169.591,
   "ageSeconds": 0.0,
   "ageSecondsNote": "age at write; the authoritative age is now - writtenAtEpoch and is printed by `panel_state.py --read`",
   "staleAfterSeconds": 6.0,
-  "producerPid": 58312
+  "producerPid": 34812
 }

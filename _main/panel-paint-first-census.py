@@ -1409,11 +1409,15 @@ def main(argv=None):
     ap.add_argument('--variants', default='cured,uncured',
                     help='quais bytes da app medir: cured (o worktree), uncured '
                          '(HEAD), ou os dois separados por virgula')
-    ap.add_argument('--seconds', type=float, default=200.0,
+    ap.add_argument('--seconds', type=float, default=400.0,
                     help='tecto do braco da app (a app sai sozinha por --exit-after)')
-    ap.add_argument('--exit-after', type=float, default=170.0,
+    ap.add_argument('--exit-after', type=float, default=360.0,
                     help='a instancia privada sai sozinha; tem de sobrar tempo '
-                         'para a pagina carregar (medido: 90 s numa caixa ocupada)')
+                         'para a pagina carregar. MEDIDO 2026-11-02: o braco '
+                         '`uncured` (shell do HEAD, copia fria) levou 158,7 s ate '
+                         'ao primeiro show com 170 s de tecto -- a instancia saiu a '
+                         'meio do driver, ficou 1 show de 3, e o controlo perdeu a '
+                         'forca sem que nada estivesse errado na app')
     ap.add_argument('--find-timeout', type=float, default=90.0)
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--save-json', metavar='PATH', default='',

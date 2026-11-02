@@ -1,8 +1,8 @@
 shots-delta-oracle                             258.05 s
 device-silence                                 168.49 s
-red-as-expected-state-page                     150.25 s
 strip-geometry-restore                         125.31 s
-headphone-cut                                   61.56 s
+red-as-expected-state-page                     123.39 s
+headphone-cut                                   61.21 s
 strip-stats-log-budget                          59.92 s
 red-as-expected-device-silence                  50.64 s
 strip-surface-runtime                           44.20 s
