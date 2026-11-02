@@ -64,6 +64,14 @@ du -sh /i/cc-tmp  ->  392M
 df -h /i          ->  3.6T usado, 85G livres (era 60G livres, 99% -> 98%)
 ```
 
+## O que estava FALTANDO no disco (e nao por causa deste censo)
+
+`worker/models/` estava **vazio** quando este censo chegou la, com `mtime` de 2026-11-01 16:28 -- duas
+horas antes da primeira remocao desta lane. O export ONNX int4 do parakeet foi reposto por junction
+para `H:\VOD.RIP-models\parakeet-redux-onnx-int4` (416 MB, zero bytes duplicados); o nemotron ptbr
+int4 e o parakeet ternario nao existem em disco nenhum desta maquina. Detalhe, linha temporal e
+manifestos: `_main/receipt-20261102-worker-models-emptied.md`.
+
 ## O que NAO foi removido, e a razao medida
 
 - **`_moved/aireplay` — 2,0 GB, rastreado (928 ficheiros): REMOVIDO na segunda passagem.** O bloqueio
