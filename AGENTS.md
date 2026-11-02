@@ -285,8 +285,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02, 03:1x):** `_main\_audit-verify-all.cmd` = **157244 B**,
-  **2027 CRLF** / 0 bare LF, sha256 `4BFFB1A2E6F193C2CF28697C1527C89D4A864EC7AA257580D54AA77C09302F0D`.
+- **PIN do ficheiro (medido 2026-11-02, 19:1x):** `_main\_audit-verify-all.cmd` = **158822 B**,
+  **2043 CRLF** / 0 bare LF, sha256 `e11caf32de850e6090dd16369d6b01dd01e8ccc5ec89884d0b78bf094e0f9a16`.
+  (Este pin substitui o de 03:1x, 157244 B / 2027 CRLF, DEPOIS dos dois passos do
+  `reveal-park` e do seu `red-as-expected`: o dono reportou, na sessao dele, *"transcricao
+  ao vivo nao ta funcionando"* e *"a animacao da legenda que e' copiada do youtube ta errada
+  ... reaplicando a animacao atual"*. O log dele mediu as duas: `BRIDGE_STOP
+  reason=external-captions` as 18:52:13 com `spawns=1` ate' ao fim (8 min sem microfone) e 18
+  `YOUTUBE_CAPTION` todas `why=painted-other-track` com o relogio do UIA a saltar de segundo em
+  segundo. Cinco arms + tres mutantes, cada um a derrubar o SEU braco.)
   (Este pin substitui o de 01:1x, 156033 B / 2011 CRLF, DEPOIS dos dois passos do `nemotron-weights`
   e do seu `red-as-expected`: a 2026-11-01 16:28 o `worker/models/` foi esvaziado e o worker morreu no
   arranque com `model dir not found`, e nada na bateria perguntava se o motor AO VIVO tinha pesos. Os

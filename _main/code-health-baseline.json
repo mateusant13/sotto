@@ -1,444 +1,444 @@
 {
- "files": {
-  "app/panel/brand-bridge.js": {
-   "bytes": 20596,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 466,
-   "max_func": 0,
-   "max_func_name": ""
+  "files": {
+    "app/panel/brand-bridge.js": {
+      "bytes": 20596,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 466,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/button-contract.css": {
+      "bytes": 18475,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 414,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/caption-float.css": {
+      "bytes": 17064,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 333,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/caption-float.js": {
+      "bytes": 20366,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 450,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/caption-formulation.js": {
+      "bytes": 51698,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 1070,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/history-gallery.js": {
+      "bytes": 7638,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 191,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/history-source.js": {
+      "bytes": 4986,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 100,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/history-store.js": {
+      "bytes": 14757,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 364,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/lazy-assets.js": {
+      "bytes": 18556,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 389,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/letter-swap.js": {
+      "bytes": 20563,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 415,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/panel.css": {
+      "bytes": 165478,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 3812,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/panel.js": {
+      "bytes": 197093,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 3956,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/skin-host.js": {
+      "bytes": 41940,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 956,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/skin-layout.css": {
+      "bytes": 14552,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 304,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/strip-drag.js": {
+      "bytes": 7318,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 173,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/surface.js": {
+      "bytes": 4425,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 112,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/theme-switcher.js": {
+      "bytes": 48819,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 1106,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/theme-tune.js": {
+      "bytes": 50294,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 1134,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/panel/zip-overlay.css": {
+      "bytes": 30415,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 545,
+      "max_func": 0,
+      "max_func_name": ""
+    },
+    "app/webview/caption_overlay.py": {
+      "bytes": 53597,
+      "classes": 5,
+      "defs": 21,
+      "except_pass": 4,
+      "globals": 1,
+      "lines": 1219,
+      "max_func": 132,
+      "max_func_name": "_normalise_theme"
+    },
+    "app/webview/caption_wrap.py": {
+      "bytes": 20049,
+      "classes": 0,
+      "defs": 9,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 418,
+      "max_func": 61,
+      "max_func_name": "_seam_index"
+    },
+    "app/webview/external_subs.py": {
+      "bytes": 35117,
+      "classes": 0,
+      "defs": 29,
+      "except_pass": 3,
+      "globals": 0,
+      "lines": 861,
+      "max_func": 77,
+      "max_func_name": "_stable"
+    },
+    "app/webview/hot_reload.py": {
+      "bytes": 32661,
+      "classes": 4,
+      "defs": 4,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 738,
+      "max_func": 149,
+      "max_func_name": "selftest"
+    },
+    "app/webview/panel_state.py": {
+      "bytes": 15439,
+      "classes": 1,
+      "defs": 8,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 347,
+      "max_func": 56,
+      "max_func_name": "format_report"
+    },
+    "app/webview/run-cmd-log-append.py": {
+      "bytes": 3261,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 78,
+      "max_func": 31,
+      "max_func_name": "main"
+    },
+    "app/webview/sotto_webview.py": {
+      "bytes": 800961,
+      "classes": 23,
+      "defs": 102,
+      "except_pass": 21,
+      "globals": 4,
+      "lines": 15196,
+      "max_func": 292,
+      "max_func_name": "main"
+    },
+    "app/webview/youtube_captions.py": {
+      "bytes": 95302,
+      "classes": 1,
+      "defs": 61,
+      "except_pass": 4,
+      "globals": 1,
+      "lines": 2228,
+      "max_func": 281,
+      "max_func_name": "fetch_track"
+    },
+    "app/webview/youtube_window.py": {
+      "bytes": 9972,
+      "classes": 0,
+      "defs": 8,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 240,
+      "max_func": 42,
+      "max_func_name": "revealed_text"
+    },
+    "worker/audio_queue_consumer.py": {
+      "bytes": 9793,
+      "classes": 1,
+      "defs": 2,
+      "except_pass": 2,
+      "globals": 0,
+      "lines": 219,
+      "max_func": 28,
+      "max_func_name": "run_once"
+    },
+    "worker/audio_recorder.py": {
+      "bytes": 13577,
+      "classes": 1,
+      "defs": 2,
+      "except_pass": 3,
+      "globals": 0,
+      "lines": 328,
+      "max_func": 53,
+      "max_func_name": "_flush"
+    },
+    "worker/denoise.py": {
+      "bytes": 27001,
+      "classes": 1,
+      "defs": 8,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 614,
+      "max_func": 165,
+      "max_func_name": "selftest"
+    },
+    "worker/inspect_model.py": {
+      "bytes": 4202,
+      "classes": 0,
+      "defs": 1,
+      "except_pass": 4,
+      "globals": 0,
+      "lines": 118,
+      "max_func": 24,
+      "max_func_name": "check_for_sessions"
+    },
+    "worker/lang_prompt.py": {
+      "bytes": 14097,
+      "classes": 2,
+      "defs": 9,
+      "except_pass": 3,
+      "globals": 0,
+      "lines": 317,
+      "max_func": 53,
+      "max_func_name": "resolve_lang_id"
+    },
+    "worker/model_vram_pool.py": {
+      "bytes": 16351,
+      "classes": 2,
+      "defs": 16,
+      "except_pass": 7,
+      "globals": 0,
+      "lines": 411,
+      "max_func": 61,
+      "max_func_name": "get_or_load"
+    },
+    "worker/qwen_summary.py": {
+      "bytes": 84826,
+      "classes": 3,
+      "defs": 35,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 1781,
+      "max_func": 445,
+      "max_func_name": "main"
+    },
+    "worker/redux_batch.py": {
+      "bytes": 8559,
+      "classes": 1,
+      "defs": 6,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 210,
+      "max_func": 65,
+      "max_func_name": "main"
+    },
+    "worker/redux_live.py": {
+      "bytes": 74357,
+      "classes": 6,
+      "defs": 16,
+      "except_pass": 4,
+      "globals": 0,
+      "lines": 1596,
+      "max_func": 121,
+      "max_func_name": "main"
+    },
+    "worker/sotto_worker.py": {
+      "bytes": 399036,
+      "classes": 19,
+      "defs": 61,
+      "except_pass": 13,
+      "globals": 4,
+      "lines": 7479,
+      "max_func": 2333,
+      "max_func_name": "main"
+    },
+    "worker/speaker_bridge.py": {
+      "bytes": 11242,
+      "classes": 1,
+      "defs": 5,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 256,
+      "max_func": 40,
+      "max_func_name": "watch_payload_if_fresh"
+    },
+    "worker/speaker_id.py": {
+      "bytes": 15917,
+      "classes": 1,
+      "defs": 10,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 357,
+      "max_func": 78,
+      "max_func_name": "speaker_for_window"
+    },
+    "worker/speaker_sidecar.py": {
+      "bytes": 67261,
+      "classes": 3,
+      "defs": 22,
+      "except_pass": 5,
+      "globals": 0,
+      "lines": 1432,
+      "max_func": 195,
+      "max_func_name": "main"
+    },
+    "worker/vram_residency.py": {
+      "bytes": 15903,
+      "classes": 0,
+      "defs": 13,
+      "except_pass": 2,
+      "globals": 0,
+      "lines": 400,
+      "max_func": 40,
+      "max_func_name": "find_foreign_holders"
+    },
+    "worker/wasapi_loopback.py": {
+      "bytes": 52369,
+      "classes": 6,
+      "defs": 21,
+      "except_pass": 4,
+      "globals": 0,
+      "lines": 1162,
+      "max_func": 142,
+      "max_func_name": "_pump"
+    }
   },
-  "app/panel/button-contract.css": {
-   "bytes": 18475,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 414,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/caption-float.css": {
-   "bytes": 17064,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 333,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/caption-float.js": {
-   "bytes": 20366,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 450,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/caption-formulation.js": {
-   "bytes": 51698,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 1070,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/history-gallery.js": {
-   "bytes": 7638,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 191,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/history-source.js": {
-   "bytes": 4986,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 100,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/history-store.js": {
-   "bytes": 14757,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 364,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/lazy-assets.js": {
-   "bytes": 18556,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 389,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/letter-swap.js": {
-   "bytes": 20563,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 415,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/panel.css": {
-   "bytes": 165478,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 3812,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/panel.js": {
-   "bytes": 196396,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 3946,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/skin-host.js": {
-   "bytes": 41940,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 956,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/skin-layout.css": {
-   "bytes": 14552,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 304,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/strip-drag.js": {
-   "bytes": 7318,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 173,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/surface.js": {
-   "bytes": 4425,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 112,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/theme-switcher.js": {
-   "bytes": 48819,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 1106,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/theme-tune.js": {
-   "bytes": 50294,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 1134,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/panel/zip-overlay.css": {
-   "bytes": 30415,
-   "classes": 0,
-   "defs": 0,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 545,
-   "max_func": 0,
-   "max_func_name": ""
-  },
-  "app/webview/caption_overlay.py": {
-   "bytes": 53597,
-   "classes": 5,
-   "defs": 21,
-   "except_pass": 4,
-   "globals": 1,
-   "lines": 1219,
-   "max_func": 132,
-   "max_func_name": "_normalise_theme"
-  },
-  "app/webview/caption_wrap.py": {
-   "bytes": 20049,
-   "classes": 0,
-   "defs": 9,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 418,
-   "max_func": 61,
-   "max_func_name": "_seam_index"
-  },
-  "app/webview/external_subs.py": {
-   "bytes": 35117,
-   "classes": 0,
-   "defs": 29,
-   "except_pass": 3,
-   "globals": 0,
-   "lines": 861,
-   "max_func": 77,
-   "max_func_name": "_stable"
-  },
-  "app/webview/hot_reload.py": {
-   "bytes": 32661,
-   "classes": 4,
-   "defs": 4,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 738,
-   "max_func": 149,
-   "max_func_name": "selftest"
-  },
-  "app/webview/panel_state.py": {
-   "bytes": 15439,
-   "classes": 1,
-   "defs": 8,
-   "except_pass": 1,
-   "globals": 0,
-   "lines": 347,
-   "max_func": 56,
-   "max_func_name": "format_report"
-  },
-  "app/webview/run-cmd-log-append.py": {
-   "bytes": 3261,
-   "classes": 0,
-   "defs": 2,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 78,
-   "max_func": 31,
-   "max_func_name": "main"
-  },
-  "app/webview/sotto_webview.py": {
-   "bytes": 799682,
-   "classes": 25,
-   "defs": 102,
-   "except_pass": 22,
-   "globals": 4,
-   "lines": 15257,
-   "max_func": 301,
-   "max_func_name": "_on_loaded"
-  },
-  "app/webview/youtube_captions.py": {
-   "bytes": 95302,
-   "classes": 1,
-   "defs": 61,
-   "except_pass": 4,
-   "globals": 1,
-   "lines": 2228,
-   "max_func": 281,
-   "max_func_name": "fetch_track"
-  },
-  "app/webview/youtube_window.py": {
-   "bytes": 9972,
-   "classes": 0,
-   "defs": 8,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 240,
-   "max_func": 42,
-   "max_func_name": "revealed_text"
-  },
-  "worker/audio_queue_consumer.py": {
-   "bytes": 9793,
-   "classes": 1,
-   "defs": 2,
-   "except_pass": 2,
-   "globals": 0,
-   "lines": 219,
-   "max_func": 28,
-   "max_func_name": "run_once"
-  },
-  "worker/audio_recorder.py": {
-   "bytes": 13577,
-   "classes": 1,
-   "defs": 2,
-   "except_pass": 3,
-   "globals": 0,
-   "lines": 328,
-   "max_func": 53,
-   "max_func_name": "_flush"
-  },
-  "worker/denoise.py": {
-   "bytes": 27001,
-   "classes": 1,
-   "defs": 8,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 614,
-   "max_func": 165,
-   "max_func_name": "selftest"
-  },
-  "worker/inspect_model.py": {
-   "bytes": 4202,
-   "classes": 0,
-   "defs": 1,
-   "except_pass": 4,
-   "globals": 0,
-   "lines": 118,
-   "max_func": 24,
-   "max_func_name": "check_for_sessions"
-  },
-  "worker/lang_prompt.py": {
-   "bytes": 14097,
-   "classes": 2,
-   "defs": 9,
-   "except_pass": 3,
-   "globals": 0,
-   "lines": 317,
-   "max_func": 53,
-   "max_func_name": "resolve_lang_id"
-  },
-  "worker/model_vram_pool.py": {
-   "bytes": 16351,
-   "classes": 2,
-   "defs": 16,
-   "except_pass": 7,
-   "globals": 0,
-   "lines": 411,
-   "max_func": 61,
-   "max_func_name": "get_or_load"
-  },
-  "worker/qwen_summary.py": {
-   "bytes": 84826,
-   "classes": 3,
-   "defs": 35,
-   "except_pass": 1,
-   "globals": 0,
-   "lines": 1781,
-   "max_func": 445,
-   "max_func_name": "main"
-  },
-  "worker/redux_batch.py": {
-   "bytes": 8559,
-   "classes": 1,
-   "defs": 6,
-   "except_pass": 1,
-   "globals": 0,
-   "lines": 210,
-   "max_func": 65,
-   "max_func_name": "main"
-  },
-  "worker/redux_live.py": {
-   "bytes": 74357,
-   "classes": 6,
-   "defs": 16,
-   "except_pass": 4,
-   "globals": 0,
-   "lines": 1596,
-   "max_func": 121,
-   "max_func_name": "main"
-  },
-  "worker/sotto_worker.py": {
-   "bytes": 399036,
-   "classes": 19,
-   "defs": 61,
-   "except_pass": 13,
-   "globals": 4,
-   "lines": 7479,
-   "max_func": 2333,
-   "max_func_name": "main"
-  },
-  "worker/speaker_bridge.py": {
-   "bytes": 11242,
-   "classes": 1,
-   "defs": 5,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 256,
-   "max_func": 40,
-   "max_func_name": "watch_payload_if_fresh"
-  },
-  "worker/speaker_id.py": {
-   "bytes": 15917,
-   "classes": 1,
-   "defs": 10,
-   "except_pass": 0,
-   "globals": 0,
-   "lines": 357,
-   "max_func": 78,
-   "max_func_name": "speaker_for_window"
-  },
-  "worker/speaker_sidecar.py": {
-   "bytes": 67261,
-   "classes": 3,
-   "defs": 22,
-   "except_pass": 5,
-   "globals": 0,
-   "lines": 1432,
-   "max_func": 195,
-   "max_func_name": "main"
-  },
-  "worker/vram_residency.py": {
-   "bytes": 15903,
-   "classes": 0,
-   "defs": 13,
-   "except_pass": 2,
-   "globals": 0,
-   "lines": 400,
-   "max_func": 40,
-   "max_func_name": "find_foreign_holders"
-  },
-  "worker/wasapi_loopback.py": {
-   "bytes": 52369,
-   "classes": 6,
-   "defs": 21,
-   "except_pass": 4,
-   "globals": 0,
-   "lines": 1162,
-   "max_func": 142,
-   "max_func_name": "_pump"
-  }
- },
- "measured": "2026-10-30",
- "metrics": [
-  "bytes",
-  "lines",
-  "defs",
-  "classes",
-  "max_func",
-  "except_pass",
-  "globals"
- ]
+  "measured": "2026-11-02",
+  "metrics": [
+    "bytes",
+    "lines",
+    "defs",
+    "classes",
+    "max_func",
+    "except_pass",
+    "globals"
+  ]
 }

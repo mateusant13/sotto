@@ -455,6 +455,22 @@ if exist _main\external-resume-oracle.py (
   call :step red-as-expected-external-resume 1 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-neg.log" python _main\external-resume-oracle.py --neg-arm
   call :expectred red-as-expected-external-resume !STEP_RC! "%OUT%\external-resume-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-external-resume MISSING "%OUT%\external-resume-neg.log" "NEG-ARM PASS" )
+REM `reveal-park-oracle.py` fecha as duas metades que o dono reportou em 2026-11-02:
+REM a frase do YouTube entrando de uma vez (o ancora do relogio fino so' existia no
+REM ramo `painted`, e o ramo do relogio so' mudava o ecra quando o UIA mudava de
+REM segundo) e o microfone PARKED para sempre (`BRIDGE_STOP reason=external-captions`
+REM as 18:52:13, `spawns=1` ate' ao fim da sessao dele). Cinco arms: ancora nos dois
+REM ramos do relogio, a revelacao palavra a palavra contra o `tOffsetMs` do fixture,
+REM o microfone a voltar depois de 30 s, e o piso que impede o buraco entre cues de
+REM custar uma carga de modelo. Tres mutantes, cada um derruba O SEU braco.
+if exist _main\reveal-park-oracle.py (
+  call :step reveal-park 0 "_main\reveal-park-oracle.py;app\webview\sotto_webview.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_window.py;app\webview\youtube_captions.py" "%OUT%\reveal-park.log" python _main\reveal-park-oracle.py
+  call :record reveal-park !STEP_RC!
+) else ( call :record reveal-park MISSING )
+if exist _main\reveal-park-oracle.py (
+  call :step red-as-expected-reveal-park 1 "_main\reveal-park-oracle.py;app\webview\sotto_webview.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_window.py;app\webview\youtube_captions.py" "%OUT%\reveal-park-neg.log" python _main\reveal-park-oracle.py --neg-arm
+  call :expectred red-as-expected-reveal-park !STEP_RC! "%OUT%\reveal-park-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-reveal-park MISSING "%OUT%\reveal-park-neg.log" "NEG-ARM PASS" )
 REM `code-health-oracle.py` e o RATCHET do "horrivel" medido: 758 679 B / 13 273
 REM linhas num modulo, uma funcao `main` de 2 297 linhas, 82 `except: pass`. Nao
 REM preme por um big-bang (as notas dizem `smaller batches`); mede sete factos por

@@ -624,9 +624,16 @@ function wordRamp(i, n) {
  * single spaces, so `textContent` reads exactly as the old `join(' ')` did, and
  * `.caption__confirmed` / `.caption__provisional` keep their meaning.
  */
-function paintWords(host, words, offset, total, totalChanged, typingIndex) {
+function paintWords(host, words, offset, total, totalChanged, typingIndex, flat) {
   if (!host) return;
   const typing = typeof typingIndex === 'number' ? typingIndex : -1;
+  // A LINHA DO PLAYER NAO TEM RAMPA (2026-11-02). MEDIDO no banco de ensaio:
+  // `--w-op` era recalculado a cada acrescento ('Lean' 1 -> 0.725 -> 0.633), ou
+  // seja a frase ja' no ecra era re-animada -- o dono: *"tu ta simplesmente
+  // reaplicando a animacao atual"*. O YouTube deixa a palavra que apareceu em
+  // contraste cheio. `flat` vem de `renderProvisional` pela regra `external:`.
+  const restyle = !!totalChanged && !flat;
+  const ramp = flat ? '1' : null;
   for (let i = 0; i < words.length; i += 1) {
     let span = host.children[i];
     let fresh = false;
@@ -648,10 +655,10 @@ function paintWords(host, words, offset, total, totalChanged, typingIndex) {
       span.dataset.w = words[i];
       paintChars(span, words[i], isTyping);
     }
-    if (fresh || totalChanged) {
+    if (fresh || restyle) {
       span.style.setProperty('--w-i', String(offset + i));
       span.style.setProperty('--w-n', String(total));
-      span.style.setProperty('--w-op', wordRamp(offset + i, total));
+      span.style.setProperty('--w-op', ramp === null ? wordRamp(offset + i, total) : ramp);
     }
   }
   while (host.children.length > words.length) {
@@ -1217,14 +1224,17 @@ function renderProvisional(committed, provisional, source) {
   // app's row keeps its spans and its ramp.
   const paintedWords = paintedWordsBySource.get(key) || { confirmed: [], provisional: [], total: 0 };
   const totalChanged = total !== paintedWords.total;
-  paintWords(line.querySelector('.caption__confirmed'), confWords, 0, total, totalChanged);
+  // O PLAYER NAO TEM RAMPA: a palavra que o YouTube ja' desenhou fica como esta'.
+  const playerLine = key !== null && key.indexOf('external:') === 0;
+  paintWords(line.querySelector('.caption__confirmed'), confWords, 0, total, totalChanged,
+    undefined, playerLine);
   // AND THE WORD REVEAL, on the newest word of the forming line — see
   // `paintChars`. `shownProv.length - 1` is `-1` for an empty tail, which is
   // exactly "nothing types": a line whose words have all settled is text the
   // model has stopped reconsidering, and retyping it would be a lie about what
   // just arrived.
   paintWords(line.querySelector('.caption__provisional'), shownProv,
-    confWords.length, total, totalChanged, shownProv.length - 1);
+    confWords.length, total, totalChanged, shownProv.length - 1, playerLine);
   const mark = line.querySelector('.caption__mark');
   // THE MARK FOLLOWS THE UNTRIMMED TAIL: the line IS still forming even while
   // its growing word is held back, and the marker is how the owner knows that.

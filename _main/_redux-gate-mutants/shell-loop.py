@@ -2530,6 +2530,13 @@ class ExternalCaptionWatcher(threading.Thread):
                 # ate' 359 s -- e era isto que o dono via como *"repete a
                 # legenda de instantes atras"*.
                 now_t = self._yt_decide(now_t)
+                # O RELOGIO FINO NESTE RAMO TAMBEM (2026-11-02). MEDIDO na sessao
+                # do dono (pid 18676): 18 YOUTUBE_CAPTION, todas
+                # why=painted-other-track, e o relogio do UIA a saltar de segundo em
+                # segundo -- o ancora so' existia no ramo `painted`, logo a frase
+                # entrava de uma vez. Prova: _main/reveal-park-oracle.py A1/A2.
+                self._yt_anchor = (float(now_t), time.monotonic())
+                self._yt_track = track
                 cue = None
                 try:
                     import youtube_captions
@@ -2585,6 +2592,10 @@ class ExternalCaptionWatcher(threading.Thread):
         # um congelamento GRANDE contra a ultima pintura; o chao fecha o resto,
         # para nao haver duas regras de tempo diferentes no mesmo ficheiro.
         t = self._yt_decide(t)
+        # O MESMO ANCORA NESTE RAMO (2026-11-02, ver acima; provado em A5 do
+        # `_main/reveal-park-oracle.py`).
+        self._yt_anchor = (float(t), time.monotonic())
+        self._yt_track = track
         cue = None
         try:
             import youtube_captions
@@ -2754,6 +2765,15 @@ class ExternalCaptionWatcher(threading.Thread):
         if (not yt_mode and self.last_line
                 and (now - self.last_seen) >= self.RELEASE_S):
             self._release('no-caption')
+        # A FAIXA NAO PINTA NADA: O MICROFONE VOLTA (2026-11-02). MEDIDO no dono:
+        # BRIDGE_STOP reason=external-captions as 18:52:13, spawns=1 ate' ao fim --
+        # 8 min sem transcricao ao vivo enquanto o ramo do YouTube so' APAGAVA a
+        # janela. A prova e' A3/A4 de `_main/reveal-park-oracle.py`.
+        elif yt_mode and not self.last_line and self.last_seen:
+            # O silencio do YouTube e' LONGO por desenho: entre duas cues ha' buracos
+            # de 6 a 16 s medidos, e um piso curto poria o micro em treadmill.
+            if (now - self.last_seen) >= self.YT_RELEASE_S:
+                self._release('yt-no-line')
 
     def _release(self, reason):
         if self.last_line:
