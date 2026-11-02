@@ -61,12 +61,12 @@
    "max_func_name": ""
   },
   "app/panel/history-source.js": {
-   "bytes": 3708,
+   "bytes": 4986,
    "classes": 0,
    "defs": 0,
    "except_pass": 0,
    "globals": 0,
-   "lines": 77,
+   "lines": 100,
    "max_func": 0,
    "max_func_name": ""
   },
@@ -111,12 +111,12 @@
    "max_func_name": ""
   },
   "app/panel/panel.js": {
-   "bytes": 195667,
+   "bytes": 196396,
    "classes": 0,
    "defs": 0,
    "except_pass": 0,
    "globals": 0,
-   "lines": 3935,
+   "lines": 3946,
    "max_func": 0,
    "max_func_name": ""
   },

@@ -4,15 +4,15 @@
    "capturing": true,
    "deferred_line": "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_at=next-closed-line-or-ceiling",
    "max_defer_ms": 600000,
-   "pending_ms": 46,
-   "pid_after": 43696,
-   "pid_before": 43696,
+   "pending_ms": 45,
+   "pid_after": 35668,
+   "pid_before": 35668,
    "policy_lines": [
     "HOT_RELOAD_WORKER_QUEUED files=1 debounce_ms=0 min_interval_ms=0 max_defer_ms=600000",
     "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_at=next-closed-line-or-ceiling"
    ],
    "policy_pending": [
-    "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_a.py"
+    "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_a.py"
    ],
    "restarts": 0,
    "stale_before_edit": false
@@ -21,13 +21,13 @@
    "after": {
     "disk": "be9cf2a170162a3c",
     "loaded": "8cdc576b05790b1b",
-    "path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_b.py",
+    "path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_b.py",
     "stale": true
    },
    "before": {
     "disk": "8cdc576b05790b1b",
     "loaded": "8cdc576b05790b1b",
-    "path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_b.py",
+    "path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_b.py",
     "stale": false
    },
    "probe_bytes": 5477,
@@ -37,11 +37,11 @@
   },
   "C_closed_line": {
    "applied_lines": [
-    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=593"
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=562"
    ],
    "boundary_lines": [
-    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=593",
-    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=593"
+    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=562",
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=562"
    ],
    "caption_lines": 0,
    "captions": [
@@ -62,18 +62,18 @@
      "text": "stand-in closed line"
     }
    ],
-   "pid_after": 36728,
-   "pid_before": 36728,
-   "pid_while_held": 36728,
+   "pid_after": 40664,
+   "pid_before": 40664,
+   "pid_while_held": 40664,
    "policy_lines": [
     "HOT_RELOAD_WORKER_QUEUED files=1 debounce_ms=0 min_interval_ms=0 max_defer_ms=600000",
     "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_at=next-closed-line-or-ceiling",
-    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=593",
-    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=593",
-    "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=593 waited_ms=593 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
+    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=562",
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=562",
+    "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=562 waited_ms=562 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
    ],
    "reported_lines": [
-    "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=593 waited_ms=593 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
+    "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=562 waited_ms=562 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
    ],
    "restarts": 0,
    "restarts_while_held": 0,
@@ -81,36 +81,36 @@
   },
   "D_ceiling": {
    "forced_lines": [],
-   "pid_after": 55380,
-   "pid_before": 55380,
+   "pid_after": 42028,
+   "pid_before": 42028,
    "policy_pending": null,
    "reload_lines": [
     "HOT_RELOAD_WORKER_QUEUED files=1 debounce_ms=0 min_interval_ms=0 max_defer_ms=1000",
     "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=1000 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_at=next-closed-line-or-ceiling",
-    "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=1014 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- ha 25 s que este ceiling \"for\u00e7ava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
+    "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=1015 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- ha 25 s que este ceiling \"for\u00e7ava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
    ],
    "reported_lines": [
-    "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=1014 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- ha 25 s que este ceiling \"for\u00e7ava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
+    "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=1015 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- ha 25 s que este ceiling \"for\u00e7ava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
    ],
    "restarts": 0,
    "still_capturing": true
   },
   "E_floor": {
    "cooldown_lines": [
-    "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=58797 min_interval_ms=60000 waited_ms=686 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_when=floor-elapses"
+    "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59031 min_interval_ms=60000 waited_ms=562 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_when=floor-elapses"
    ],
    "pending": [
-    "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_e.py"
+    "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_e.py"
    ],
    "pending_held": true,
-   "pid_after": 56812,
-   "pid_before": 56812,
+   "pid_after": 40316,
+   "pid_before": 40316,
    "policy_lines": [
     "HOT_RELOAD_WORKER_QUEUED files=1 debounce_ms=0 min_interval_ms=60000 max_defer_ms=600000",
-    "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_at=next-closed-line-or-ceiling",
-    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=686",
-    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=686",
-    "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=58797 min_interval_ms=60000 waited_ms=686 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_when=floor-elapses"
+    "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=14 max_defer_ms=600000 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_at=next-closed-line-or-ceiling",
+    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=562",
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=562",
+    "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59031 min_interval_ms=60000 waited_ms=562 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_when=floor-elapses"
    ],
    "restarts": 0
   },
@@ -153,7 +153,7 @@
   },
   "F_wave_nometer": {
    "last_worker_stats": {
-    "childPid": 25332,
+    "childPid": 8356,
     "fields": {
      "audio_s": "12.5",
      "blocks": "812",
@@ -180,14 +180,14 @@
  "checks": [
   {
    "detail": {
-    "pid": 43696
+    "pid": 35668
    },
    "ok": true,
    "what": "A: the child is really capturing (the guard is not vacuous)"
   },
   {
    "detail": {
-    "pid": 43696,
+    "pid": 35668,
     "restarts": 0
    },
    "ok": true,
@@ -206,7 +206,7 @@
    "detail": {
     "disk": "8cdc576b05790b1b",
     "loaded": "8cdc576b05790b1b",
-    "path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_b.py",
+    "path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_b.py",
     "stale": false
    },
    "ok": true,
@@ -216,7 +216,7 @@
    "detail": {
     "disk": "be9cf2a170162a3c",
     "loaded": "8cdc576b05790b1b",
-    "path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_b.py",
+    "path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_b.py",
     "stale": true
    },
    "ok": true,
@@ -226,7 +226,7 @@
    "detail": {
     "disk": "be9cf2a170162a3c",
     "loaded": "8cdc576b05790b1b",
-    "path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_b.py",
+    "path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_b.py",
     "stale": true
    },
    "ok": true,
@@ -234,7 +234,7 @@
   },
   {
    "detail": {
-    "pid_while_held": 36728,
+    "pid_while_held": 40664,
     "restarts_while_held": 0
    },
    "ok": true,
@@ -242,16 +242,16 @@
   },
   {
    "detail": [
-    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=593",
-    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=593"
+    "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=562",
+    "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=562"
    ],
    "ok": true,
    "what": "C: the REAL child closed a line and the shell saw it as the boundary"
   },
   {
    "detail": {
-    "pid_after": 36728,
-    "pid_before": 36728,
+    "pid_after": 40664,
+    "pid_before": 40664,
     "restarts": 0
    },
    "ok": true,
@@ -285,8 +285,8 @@
   },
   {
    "detail": {
-    "pid_after": 55380,
-    "pid_before": 55380,
+    "pid_after": 42028,
+    "pid_before": 42028,
     "restarts": 0
    },
    "ok": true,
@@ -294,7 +294,7 @@
   },
   {
    "detail": [
-    "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=1014 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- ha 25 s que este ceiling \"for\u00e7ava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
+    "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=1015 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b action=none -- ha 25 s que este ceiling \"for\u00e7ava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
    ],
    "ok": true,
    "what": "D: the log says the ceiling forced NOTHING, and says why"
@@ -305,7 +305,7 @@
   },
   {
    "detail": {
-    "pid": 56812,
+    "pid": 40316,
     "restarts": 0
    },
    "ok": true,
@@ -313,7 +313,7 @@
   },
   {
    "detail": [
-    "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=58797 min_interval_ms=60000 waited_ms=686 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_when=floor-elapses"
+    "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59031 min_interval_ms=60000 waited_ms=562 code_is_stale=True sha256_disk=be9cf2a170162a3c sha256_at_spawn=8cdc576b05790b1b applies_when=floor-elapses"
    ],
    "ok": true,
    "what": "E: the cooldown names how long is left and that the code is stale"
@@ -383,7 +383,7 @@
   {
    "detail": {
     "last_worker_stats": {
-     "childPid": 25332,
+     "childPid": 8356,
      "fields": {
       "audio_s": "12.5",
       "blocks": "812",
@@ -425,13 +425,13 @@
     "on_meter": "callable:on_worker_meter",
     "on_stats": "callable:on_worker_stats",
     "on_status": "callable:on_worker_status",
-    "worker_path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_mutant_boundary.py"
+    "worker_path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_mutant_boundary.py"
    },
    "at": {
     "file": "sotto_webview.py",
-    "line": 12905,
+    "line": 12912,
     "name": "WorkerBridge.__init__ (the callback slots)",
-    "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+    "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
     "surface": "bridge.__init__"
    },
    "constructed": "WorkerBridge(**['command', 'log', 'on_caption', 'on_meter', 'on_stats', 'on_status', 'worker_path']) reason=reload-probe",
@@ -458,7 +458,7 @@
     "extra_args",
     "on_loading_text"
    ],
-   "signature": "WorkerBridge(self, command, worker_path, device=None, capture_mode='callback', log=<function log at 0x0000018B9D8863E0>, on_caption=None, on_status=None, on_stats=None, on_meter=None, silence_ms=30000, load_silence_ms=180000, backoff_base=1000, backoff_max=30000, no_audio_backoff_base=15000, no_audio_backoff_max=300000, no_audio_restart_cap=3, target_pid=None, extra_args=None, on_loading_text=None)",
+   "signature": "WorkerBridge(self, command, worker_path, device=None, capture_mode='callback', log=<function log at 0x0000022ED0CB1E40>, on_caption=None, on_status=None, on_stats=None, on_meter=None, silence_ms=30000, load_silence_ms=180000, backoff_base=1000, backoff_max=30000, no_audio_backoff_base=15000, no_audio_backoff_max=300000, no_audio_restart_cap=3, target_pid=None, extra_args=None, on_loading_text=None)",
    "unmapped": [],
    "var_keyword": false,
    "want": {
@@ -468,7 +468,7 @@
     "on_meter": "callable:on_worker_meter",
     "on_stats": "callable:on_worker_stats",
     "on_status": "callable:on_worker_status",
-    "worker_path": "G:\\Temp\\sotto-reload-probe-a_7_aq4m\\sotto_worker_copy_mutant_boundary.py"
+    "worker_path": "G:\\Temp\\sotto-reload-probe-72zilo1o\\sotto_worker_copy_mutant_boundary.py"
    }
   },
   "policy.__init__": {
@@ -480,9 +480,9 @@
    },
    "at": {
     "file": "sotto_webview.py",
-    "line": 12181,
+    "line": 12188,
     "name": "WorkerReloadPolicy.__init__ (the keywords)",
-    "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+    "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
     "surface": "policy.__init__"
    },
    "constructed": "WorkerReloadPolicy(log_fn=..., get_bridge=..., restart=..., **['debounce_ms', 'defer_recheck_ms', 'max_defer_ms', 'min_interval_ms'])",
@@ -522,29 +522,29 @@
    "why": "the broken copy lost the line: the arm can fail"
   }
  ],
- "shell_sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+ "shell_sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
  "surface": {
   "boundary": {
    "file": "sotto_webview.py",
-   "line": 12220,
+   "line": 12227,
    "name": "WorkerReloadPolicy.boundary (the boundary signal)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "boundary"
   },
   "boundary_closed": {
    "file": "sotto_webview.py",
-   "line": 12235,
+   "line": 12242,
    "name": "HOT_RELOAD_WORKER_BOUNDARY",
    "present_in_loaded_shell": true,
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "boundary_closed",
    "why": "PRESENT in the loaded shell at this run: this row is a MEASUREMENT, not an assertion of absence"
   },
   "bridge.__init__": {
    "file": "sotto_webview.py",
-   "line": 12905,
+   "line": 12912,
    "name": "WorkerBridge.__init__ (the callback slots)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "bridge.__init__"
   },
   "defer_recheck_ms": {
@@ -558,9 +558,9 @@
   },
   "fire": {
    "file": "sotto_webview.py",
-   "line": 12301,
+   "line": 12308,
    "name": "WorkerReloadPolicy._fire (where a hold is decided)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "fire"
   },
   "forced": {
@@ -581,10 +581,10 @@
   },
   "meter_pushes": {
    "file": "sotto_webview.py",
-   "line": 6429,
+   "line": 6436,
    "name": "meter_pushes",
    "present_in_loaded_shell": true,
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "meter_pushes",
    "why": "PRESENT in the loaded shell at this run: this row is a MEASUREMENT, not an assertion of absence"
   },
@@ -599,65 +599,65 @@
   },
   "on_worker_caption": {
    "file": "sotto_webview.py",
-   "line": 9998,
+   "line": 10005,
    "name": "SottoShell.on_worker_caption (the closed line)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "on_worker_caption"
   },
   "on_worker_meter": {
    "file": "sotto_webview.py",
-   "line": 10806,
+   "line": 10813,
    "name": "SottoShell.on_worker_meter",
    "present_in_loaded_shell": true,
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "on_worker_meter",
    "why": "PRESENT in the loaded shell at this run: this row is a MEASUREMENT, not an assertion of absence"
   },
   "on_worker_stats": {
    "file": "sotto_webview.py",
-   "line": 10769,
+   "line": 10776,
    "name": "SottoShell.on_worker_stats",
    "present_in_loaded_shell": true,
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "on_worker_stats",
    "why": "PRESENT in the loaded shell at this run: this row is a MEASUREMENT, not an assertion of absence"
   },
   "on_worker_status": {
    "file": "sotto_webview.py",
-   "line": 11773,
+   "line": 11780,
    "name": "SottoShell.on_worker_status (the status boundary)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "on_worker_status"
   },
   "policy": {
    "file": "sotto_webview.py",
-   "line": 12126,
+   "line": 12133,
    "name": "WorkerReloadPolicy (the class the arms drive)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "policy"
   },
   "policy.__init__": {
    "file": "sotto_webview.py",
-   "line": 12181,
+   "line": 12188,
    "name": "WorkerReloadPolicy.__init__ (the keywords)",
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "policy.__init__"
   },
   "state": {
    "file": "sotto_webview.py",
-   "line": 12249,
+   "line": 12256,
    "name": "WorkerReloadPolicy.state()",
    "present_in_loaded_shell": true,
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "state",
    "why": "PRESENT in the loaded shell at this run: this row is a MEASUREMENT, not an assertion of absence"
   },
   "stats": {
    "file": "sotto_webview.py",
-   "line": 10555,
+   "line": 10562,
    "name": "SottoShell.stats()",
    "present_in_loaded_shell": true,
-   "sha256": "c86a0fdbb8c4de9e9982f06b7ac72ab55fc97915cb594978f4994efe41c90a96",
+   "sha256": "3d20e52aa65432a7bfde5380132b530bd72f7edba9657867f566fe1b757cf425",
    "surface": "stats",
    "why": "PRESENT in the loaded shell at this run: this row is a MEASUREMENT, not an assertion of absence"
   }

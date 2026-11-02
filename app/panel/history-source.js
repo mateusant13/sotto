@@ -65,44 +65,13 @@ function isCanonicalLine(meta) {
 }
 
 /**
- * WHICH ROUTE the canonical transcript records for this line, or `null` when the
- * line may never enter it.
- *
- * WHY IT LIVES HERE (2026-11-01). The panel's choke point used to be
- *
- *     const route = meta && meta.route;
- *     if (route !== 'final') return;              // <- refused FIRST
- *     if (!isCanonicalLine(meta)) return;
- *
- * and the BATCH engine emits `{"type":"caption","text":…,"start":…,"end":…,
- * "producer":"redux"}` -- measured in `worker/redux_batch.py:185-197`: NO
- * `route`, no `final` flag. So a parakeet line was refused one statement BEFORE
- * the guard that exists to accept it, the store never saw one, and the owner's
- * transcript stayed the live nvidia's:
- *
- *     "o historico simplesmente mostra a legenda ao vivo, inves de mostrar a
- *      versao processada pelo redux" (2026-10-06)
- *
- * MEASURED over the whole store on 2026-11-01: 2084 lines, and ALL 502 without a
- * `route=` suffix are from 2026-10-06, i.e. from before the provenance suffix
- * existed. Since 2026-10-07 every line carries `route=`. Not one batch line has
- * ever reached the disk.
- *
- * THE DECISION, in this order and fail-closed at every step:
- *   1. `provisional-draft` is the live caption the box paints: REFUSED. This
- *      refusal does not soften -- it is the owner's 2026-10-06 rule.
- *   2. anything that is not a canonical line (absent or unknown producer) is
- *      REFUSED, exactly as `isCanonicalLine` says.
- *   3. a canonical line that the worker closed (`route:'final'`) keeps `final`.
- *   4. a canonical line with NO route is the BATCH pass's own output: it gets
- *      the route name `batch`. The batch engine has no notion of "closing" a
- *      line -- every segment it emits IS the finished text -- so an absent route
- *      is not a defect there, it is the shape of that producer.
- *
- * The name is `batch` and not `final` ON PURPOSE: a transcript that says
- * `route=final` means "the LIVE worker's second pass closed this line", and a
- * batch line wearing that name would forge provenance in the very field an audit
- * reads to tell the two sources apart.
+ * The route the canonical transcript records for a line, or `null` when the line may never
+ * enter it. The panel's choke point used to demand `route === 'final'` BEFORE asking whether the
+ * producer was canonical, and the BATCH engine emits no route at all (`worker/redux_batch.py:185`)
+ * -- so a parakeet line died one statement before the guard that accepts it: 0 `route=batch` in
+ * 2084 store lines, measured 2026-11-01. The name is `batch` and never `final` because
+ * `route=final` means the LIVE worker's second pass closed the line; see
+ * `_main/receipt-20261101-batch-transcript-path.md`.
  */
 function transcriptRoute(meta) {
   const route = meta && meta.route;

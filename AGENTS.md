@@ -276,8 +276,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 16:5x):** `_main\_audit-verify-all.cmd` = **155976 B**,
-  **2011 CRLF** / 0 bare LF, sha256 `A4D2D1EDCB98AFA7E11D77F7940897F6E957347D9D2059B9C7D9A22243B2B55C`.
+- **PIN do ficheiro (medido 2026-11-02, 01:1x):** `_main\_audit-verify-all.cmd` = **156033 B**,
+  **2011 CRLF** / 0 bare LF, sha256 `B15AFEA91B9EB42D1826BD56B5A01DE373EEBF3C7B795FCBF962442F52FF4379`.
+  (Este pin substitui o de 16:5x, 155976 B / 2011 CRLF, DEPOIS de a linha do `redux-transcript-path`
+  passar de `:record` para `:expectred`: declarada com `:record`, um passo que EXIGE rc=1 contava
+  como passo normal a espera de 0 e a bateria publicava-o em `failed` -- e o `state-page` tinha
+  razao ao dizer `sem :expectred declarado`. Com `:expectred` a mesma linha exige rc=1 E a frase
+  `NEG-ARM: PASS` no log. Ver `_main/receipt-20261101-batch-transcript-path.md`.)
   (Este pin substitui o de 15:3x, 154856 B / 1999 CRLF, DEPOIS dos dois passos do
   `redux-transcript-path`: o oraculo que executa as tres metades do caminho da linha do
   BATCH ate ao disco (a decisao `transcriptRoute`, o call site `recordHistory` e o escritor

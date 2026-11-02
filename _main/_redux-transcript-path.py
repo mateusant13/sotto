@@ -292,7 +292,11 @@ BEFORE_JS = """function transcriptRoute(meta) {
 def mutant_js(tmpdir):
     """A copy of the shipped module carrying the BEFORE refusal."""
     with open(SOURCE_JS, 'r', encoding='utf-8', newline='') as fh:
-        src = fh.read()
+        # THE MUTANT IS WRITTEN WITH LF ON PURPOSE: the live file is CRLF (the panel
+        # oracle refuses a pure-LF `panel.js`), and searching it for LF anchors
+        # silently found nothing once -- the arm failed with `substring not found`
+        # instead of proving a defect. Normalise the COPY, never the source.
+        src = fh.read().replace('\r\n', '\n')
     start = src.index('function transcriptRoute(meta) {')
     end = src.index('\n}\n', start) + 3
     mutated = src[:start] + BEFORE_JS + '\n' + src[end:]

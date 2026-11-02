@@ -176,7 +176,7 @@ REM de baixo exige que os mutantes vao RED.
 call :step redux-transcript-path 0 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path.log" python _main\_redux-transcript-path.py
 call :record redux-transcript-path !STEP_RC!
 call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
-call :record red-as-expected-redux-transcript-path !STEP_RC!
+call :expectred red-as-expected-redux-transcript-path !STEP_RC! "%OUT%\redux-transcript-path-neg.log" "NEG-ARM: PASS"
 
 echo === the gates added by this round ===
 REM The SECOND control of the same gate, added 2026-10-19: the first one

@@ -31,12 +31,38 @@ Instrumento de cada linha abaixo (tudo medido nesta maquina, hoje): `du -sh`, `g
 |`_main/_venv-diar`|12 MB|0|idem|`rm -rf`|
 |`_main/_skin-lane/shots`|16 MB|0|screenshots de uma lane de design, nao rastreados|`rm -rf`|
 
-**Total devolvido: ~8,4 GB.**
+**Total devolvido: ~34 GB** (8,4 GB no repo + 25,6 GB no `TMPDIR`).
 
 Worktrees removidas (branch preservada): `ArbV9`, `clipasr`, `cut4`, `engproc`, `fixcut`, `ParseFix`,
 `ReplyFix`, `specs57`, `stripctl`, `stripsh`, `wgcunb`. **Mantidas** por terem trabalho nao commitado:
 `ArbV8` (dirty=11, 4 commits acima de `origin/main`), `audioclip`, `AuthFix`, `StdinV9` — e a
 `I:/wt/CutVerbI2`, que vive fora desta raiz.
+
+## O TEMPORARIO — o maior buraco de todos (segunda passagem)
+
+`I:\cc-tmp` e' o `TMPDIR` de todas as lanes deste repo (AGENTS.md: *"`TMPDIR` = `I:\cc-tmp`; `G:` enche e
+mata lanes com ENOSPC"*). Medido hoje: **28 GB em 11 212 entradas**. As maiores eram copias de arvore e
+saidas de sonda de semanas atras, datadas pelo ficheiro mais novo de cada uma:
+
+|entrada|tamanho|ficheiro mais novo|
+|---|---|---|
+|`rea-lane`|8,1 GB|2026-10-10|
+|`cronfix2`|3,2 GB|2026-10-07|
+|`design-sweep`|668 MB|2026-10-20|
+|`slice-scale-*` (4)|298 MB cada|2026-10-07|
+|`index-perf-thgtvb6p`|298 MB|2026-10-07|
+|`rev2`|256 MB|2026-10-09|
+|`sess`|223 MB|2026-10-13|
+|`edge-1to1`|205 MB|2026-10-26|
+
+Politica aplicada: apagar o que nao e' tocado ha **3 dias**, medindo o `mtime` de cada entrada de topo;
+nada mais novo foi tocado (as jobs desta sessao ficaram). Resultado medido:
+
+```
+removidas=10799  mantidas=411  libertados=25.6 GB
+du -sh /i/cc-tmp  ->  392M
+df -h /i          ->  3.6T usado, 85G livres (era 60G livres, 99% -> 98%)
+```
 
 ## O que NAO foi removido, e a razao medida
 

@@ -3733,3 +3733,63 @@ GATE_RUN 2026-11-02T03:43:40.703Z
   RESULT 9 passed, 0 refused
   GATE_EXIT 0
 
+GATE_RUN 2026-11-02T03:47:18.659Z
+  POPULATION 9 probe scripts
+  RED_ARM refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  clip-not-keyframed-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  keyframe-shape-probe.mjs PASS       exit 0, all 8 receipt keys printed, and 2 truth-valued key(s) compared
+  loaded-module-probe.mjs PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  still-screen-probe.mjs PASS       exit 0, all 7 receipt keys printed, and 1 truth-valued key(s) compared
+  stored-keyframe-arm-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 3 truth-valued key(s) compared
+  RESULT 9 passed, 0 refused
+  GATE_EXIT 0
+
+GATE_RUN 2026-11-02T04:35:22.325Z
+  POPULATION 9 probe scripts
+  RED_ARM refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  clip-not-keyframed-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  compose-probe.mjs    FAILED     exit 1: deliver() -> THREW Error: instant replay refused: G:\Temp\shadowplay-e2e-91eVFS\0000.mp4 holds 22 contiguous d
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  keyframe-shape-probe.mjs PASS       exit 0, all 8 receipt keys printed, and 2 truth-valued key(s) compared
+  loaded-module-probe.mjs PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  still-screen-probe.mjs PASS       exit 0, all 7 receipt keys printed, and 1 truth-valued key(s) compared
+  stored-keyframe-arm-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 3 truth-valued key(s) compared
+  RESULT 8 passed, 1 refused
+  GATE_EXIT 1
+
+GATE_RUN 2026-11-02T04:37:09.122Z
+  POPULATION 9 probe scripts
+  RED_ARM refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  clip-not-keyframed-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  keyframe-shape-probe.mjs PASS       exit 0, all 8 receipt keys printed, and 2 truth-valued key(s) compared
+  loaded-module-probe.mjs PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  still-screen-probe.mjs PASS       exit 0, all 7 receipt keys printed, and 1 truth-valued key(s) compared
+  stored-keyframe-arm-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 3 truth-valued key(s) compared
+  RESULT 9 passed, 0 refused
+  GATE_EXIT 0
+
+GATE_RUN 2026-11-02T04:39:20.851Z
+  POPULATION 9 probe scripts
+  RED_ARM refused=true
+  _nonidr-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  clip-not-keyframed-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  compose-probe.mjs    PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  cw-probe.mjs         PASS       exit 0, all 5 receipt keys printed, and 1 truth-valued key(s) compared
+  keyframe-shape-probe.mjs PASS       exit 0, all 8 receipt keys printed, and 2 truth-valued key(s) compared
+  loaded-module-probe.mjs PASS       exit 0, all 6 receipt keys printed, and 1 truth-valued key(s) compared
+  perf-probe.mjs       PASS       exit 0, all 4 receipt keys printed, and 1 truth-valued key(s) compared
+  still-screen-probe.mjs PASS       exit 0, all 7 receipt keys printed, and 1 truth-valued key(s) compared
+  stored-keyframe-arm-probe.mjs PASS       exit 0, all 4 receipt keys printed, and 3 truth-valued key(s) compared
+  RESULT 9 passed, 0 refused
+  GATE_EXIT 0
+

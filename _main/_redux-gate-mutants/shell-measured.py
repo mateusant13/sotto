@@ -547,7 +547,14 @@ HISTORY_DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 HISTORY_TAIL_RE = re.compile(r'\s*<!--.*?-->\s*$')
 #: The vocabulary `_history_provenance` is allowed to write. A route outside it
 #: is not written at all: a marker nobody can interpret is worse than none.
-HISTORY_ROUTES = ('final', 'provisional-draft')
+HISTORY_ROUTES = ('final', 'provisional-draft', 'batch')
+#: `batch` is the CANONICAL (parakeet) pass's own name (2026-11-01). The batch
+#: engine emits no `final` flag (`worker/redux_batch.py:185`), so its lines had no
+#: route the store would print, and the panel's choke point refused them one
+#: statement before the producer guard. The word is `batch` and not `final` on
+#: purpose: `route=final` means the LIVE worker's second pass closed the line, and
+#: a batch line wearing it would forge the very field an audit reads to tell the
+#: two sources apart. See `app/panel/history-source.js:transcriptRoute`.
 #: The route SOURCES `_history_provenance` is allowed to write as `src=` — WHICH
 #: branch decided the route. `'fallback'` is the one the de-landing produced
 #: SILENTLY: a line that reached the transcript ONLY because the renderer's
