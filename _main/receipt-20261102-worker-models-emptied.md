@@ -115,6 +115,28 @@ do export diz `model_path=/datadisks/disk2/nebanfic/multilingual_onnx_int4_v3`, 
 o produziu). O caminho GGUF tambem nao existe no produto: `worker/` so' conta `.gguf` como ficheiro de
 pesos (`vram_residency.py:211`), nao o carrega.
 
+### O motor LIVE tambem carrega com estes pesos (medido 2026-11-02)
+
+`worker/redux_live.py` e' o mesmo runtime ONNX e nao precisava do nemotron para correr. Alimentado com
+`--wav _main/en-us-sample.wav` (sem `--max-seconds`, que por contrato e' `0 = corre ate' pararem` — o
+wav e' um alimentador de medicao e repete, nao um bug), o motor arrancou e emitiu o contrato completo:
+
+```
+{"model": "onnx-int4", "type": "caption", "text": "...", "start": 845.0, "end": 850.0,
+ "final": true, "producer": "redux"}
+LIVE_STATS passes=172 captions=342 finals=170 blocks=8946 audio_s=855.0 backlog_s=33.67
+           peak=0.689819 overruns=172 mean_compute_s=5.16 max_compute_s=7.29
+```
+
+Duas leituras honestas deste numero, e nenhuma delas e' "o motor esta mau":
+
+1. **`overruns=172/172` com `step_s=2.0` e `window_s=5.00`**: cada passe custa ~5,16 s para uma janela
+   de 5 s, logo fica em ~0,97x do tempo real e o `backlog_s` sobe para 38 s e fica la. Nesta maquina
+   (54 % de CPU, 24,4 GB de RAM livres no momento da medicao) o Redux ONNX **nao sustenta** o passo de
+   2 s. E' exactamente a razao de a lei da stack pôr o nemotron no AO VIVO e o parakeet no fundo.
+2. O motor de BATCH nao foi medido por este numero: o `wall=10.4s` da sonda de fila inclui o
+   carregamento do ONNX (416 MB) dentro do mesmo `run_once`, portanto nao e' taxa de transcricao.
+
 ## Reproduzir a medicao
 
 ```
