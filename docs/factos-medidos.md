@@ -160,3 +160,14 @@
   `max_compute_s=7.29` para `step_s=2.0`/`window_s=5.00`, `overruns=172/172`, `backlog_s` estavel em
   34-38 s, `peak=0.689819`, com 54 % de CPU e 24,4 GB de RAM livres. Nao e' defeito do motor: e' a
   razao medida de a lei da stack pôr o nemotron no AO VIVO e o parakeet no fundo.
+- **A EDICAO DA FAIXA ESCONDIA A PROPRIA FAIXA (medido 2026-11-02 12:55:09, corrigido 13:03:33):**
+  `PANEL_SHOWN ... 09.307` (`paint_ack wait_ms=156.0`) e `OUTSIDE_CLICK decision=outside closed=true`
+  no mesmo instante, `PANEL_HIDDEN` as `09.311`, e `PANEL_EDIT_MODE on=true` as `09.311` — 4 ms tarde
+  demais. O guarda do outside-click era armado DEPOIS de `show_panel()`, e o show custa o paint ack.
+  Armado ANTES, `_strip-surface-probe` deu GREEN 26/26 e o braço D registou
+  `OUTSIDE_CLICK source=probe-edit-outside decision=edit-mode closed=false`.
+- **`--max-seconds` E TEMPO DE PAREDE DESDE O ARRANQUE, PORTANTO INCLUI O CARREGAMENTO DO MODELO
+  (medido 2026-11-02):** `load_s=38,96` (frio) e 23,09 (quente) contra uma janela de 20 s no ARM3 do
+  `device-silence` deu `captions=0` com `blocks=56 peak=0,275 speech_blocks=6` — captou fala e não
+  transcreveu nada porque a janela fechou antes do primeiro decode. O oráculo passou a derivar a janela
+  do `load_s` da PRÓPRIA corrida (`load_s + max(secs,20) + 10`, uma única repetição).

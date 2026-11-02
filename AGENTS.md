@@ -190,6 +190,15 @@ só separar audio pra transcrever cada falante?"*
 - **Áudio de teste é MUDO.** Qualquer teste que renderize áudio usa `_main/mute-audio.py --mute/--unmute`
   (portão: `_main/mute-audio-oracle.py`, 21/21 arms, 8/8 mutantes). A recusa antiga (comparar com o
   endpoint default e sair rc=4) **continua**; o mute acrescenta-se.
+- **E MUDAR A DEFAULT NAO BASTA (medido 2026-11-02, 13:1x).** O dono ouviu áudio de teste com o
+  `mute-audio.py --mute` aplicado: o `feed_cable` do `device-silence` renderiza para
+  `CABLE Input (VB-Audio Virtual Cable)` e o VoiceMeeter encaminha isso para uma saída de HARDWARE que
+  **não** é a default — a default era o `VoiceMeeter Input`. O `--mute` muta **um** papel; não prova
+  nada sobre o que ele ouve. Censo read-only: `python _main/mute-audio.py --status-all` (41 endpoints
+  nesta máquina). Custo de errar: mutei a máquina inteira dele para calar o teste e devolvi 21 endpoints
+  à mão; ele reparou, e com razão. **Um instrumento que RENDERIZA áudio (ARM3 do `device-silence`,
+  `feed_cable`, o oráculo do mute) não corre numa lane desta máquina**; só correm os que LÊEM — log,
+  DOM, unit arms, e os que importam o shell sem abrir dispositivo.
 - **`TMPDIR` = `I:\cc-tmp`.** `G:` enche e mata lanes com ENOSPC.
 - **Caminhos nativos `H:\`.** `./node_modules/.bin/electron` não executa (rc=127). E não lançar esse
   binário como app: o Electron está MORTO.

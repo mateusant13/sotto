@@ -344,6 +344,30 @@ def _emit(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
+def list_endpoints() -> list[dict]:
+    """Every audio endpoint with its mute and volume. Never raises for one device.
+    """
+    rows = []
+    try:
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+        from comtypes import CLSCTX_ALL
+        from ctypes import POINTER, cast
+    except Exception as exc:                                   # noqa: BLE001
+        return [{"error": f"{type(exc).__name__}: {exc}"}]
+    for dev in AudioUtilities.GetAllDevices():
+        name = getattr(dev, "FriendlyName", "?")
+        row = {"name": name}
+        try:
+            vol = cast(dev._dev.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None),
+                       POINTER(IAudioEndpointVolume))
+            row["muted"] = bool(vol.GetMute())
+            row["scalar"] = round(float(vol.GetMasterVolumeLevelScalar()), 3)
+        except Exception as exc:                               # noqa: BLE001
+            row["inactive"] = type(exc).__name__
+        rows.append(row)
+    return rows
+
+
 def _cli(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="mute-audio.py",
@@ -355,6 +379,8 @@ def _cli(argv=None) -> int:
                        help="restore the volume saved by --mute")
     group.add_argument("--status", action="store_true",
                        help="print the default output and its volume")
+    group.add_argument("--status-all", action="store_true",
+                       help="print EVERY endpoint and its mute/volume -- the read-only census that shows what --mute does NOT cover")
     parser.add_argument("--no-wait", action="store_true",
                        help="with --mute: leave the mute in place and exit")
     parser.add_argument("--state-path", default=None,
@@ -367,6 +393,16 @@ def _cli(argv=None) -> int:
     path = args.state_path or default_state_path()
     backend = PycawBackend(role=args.role)
 
+    if getattr(args, "status_all", False):
+        # READ-ONLY, AND IT EXISTS BECAUSE OF A MEASURED FAILURE (2026-11-02).
+        # `--mute` mutes ONE endpoint: the default OUTPUT role. The owner heard a
+        # test render anyway, because the render went into `CABLE Input (VB-Audio
+        # Virtual Cable)` and VoiceMeeter forwards that to a hardware out that is
+        # NOT the default. Muting the default proved nothing about what he hears;
+        # the census proves it per endpoint, and a step that renders audio must
+        # name the endpoint it renders into and show it muted HERE.
+        _emit({"state": "status-all", "endpoints": list_endpoints()})
+        return EXIT_OK
     if args.mute:
         try:
             result = mute_default_output(args.reason, backend=backend,

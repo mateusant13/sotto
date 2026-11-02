@@ -10357,16 +10357,13 @@ class SottoShell:
             return False
         self.edit_mode = enabled
         if enabled:
-            # The band has to be ON SCREEN to be positioned — and the strip is
-            # what the owner is positioning, so the show path applies it (and
-            # does the resize while the window is still hidden).
-            if not window_visible(hwnd):
-                self.show_panel(f'edit-{reason}')
-            try:
-                make_click_through(hwnd, False)
-                set_ex_style(hwnd, remove=WS_EX_NOACTIVATE)
-            except Exception as exc:  # noqa: BLE001 -- report, never kill the app
-                warn(f'PANEL_EDIT_MODE_STYLE_FAILED error={exc!r}')
+            # ARMED BEFORE THE SHOW (measured 2026-11-02): `show_panel()` costs the
+            # paint ack -- 156 ms in the arm that found this -- so arming the
+            # watcher afterwards left the band visible while the watcher still read
+            # `edit_mode=false`: `PANEL_SHOWN ... 09.307` then `OUTSIDE_CLICK
+            # closed=true` at `09.311`. Asking the tray for "edit the band" and
+            # getting the band HIDDEN by that request is the defect; the guard
+            # has to precede the thing it guards.
             if self.click_watcher is not None:
                 # The watcher's own thread reads this; it also STOPS closing the
                 # panel on an outside click while the owner is positioning it.
@@ -10379,6 +10376,16 @@ class SottoShell:
                 warn('PANEL_EDIT_MODE_NO_DRAG the outside-click watcher is not '
                      'running (--no-click-outside), so the band cannot be '
                      'dragged; the tray item still toggles the mode')
+            # The band has to be ON SCREEN to be positioned — and the strip is
+            # what the owner is positioning, so the show path applies it (and
+            # does the resize while the window is still hidden).
+            if not window_visible(hwnd):
+                self.show_panel(f'edit-{reason}')
+            try:
+                make_click_through(hwnd, False)
+                set_ex_style(hwnd, remove=WS_EX_NOACTIVATE)
+            except Exception as exc:  # noqa: BLE001 -- report, never kill the app
+                warn(f'PANEL_EDIT_MODE_STYLE_FAILED error={exc!r}')
             self.edit_moves = 0
             rect = RECT()
             user32.GetWindowRect(hwnd, ctypes.byref(rect))

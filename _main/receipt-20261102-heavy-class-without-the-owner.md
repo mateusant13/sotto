@@ -1,0 +1,98 @@
+# Receipt — the heavy class, run without the owner: 8 of 12 measured, 2 defects, 1 refusal
+
+**Data:** 2026-11-02, 12:40–13:5x. **Árvore:** `H:/sotto`, `feat/speaker-attribution-20261019`.
+**Pedido do dono:** *"do the rest"* (fechar os 12 passos que a bateria publicou como SKIPPED) e, ao
+mesmo tempo, *"testa o sotto SEM eu ouvir os audios de teste"*.
+
+## 1. O que se mediu, e com que instrumento
+
+| passo (classe heavy) | instrumento | veredicto desta ronda |
+|---|---|---|
+| `panel-exit3` (`--unit --neg-arm`) | `_main/panel-exit3-oracle.py` | **PASS**, `failures: []` |
+| `altc-first-caption` | `_main/altc-first-caption-oracle.py` | **GREEN**, `sessoes=1 fora_do_orcamento=0` — press `12:50:24.118 -> HOTKEY_TOGGLE 12:50:24.119` (**1 ms**), press `12:50:24.519 -> HOTKEY_LIVE_STEP 12:50:24.522` (**3 ms**), orçamento 1500 ms |
+| `strip-stats-wave` | `_main/_strip-stats-probe.py` | **GREEN** — `level=live bars=10 emits.stats=154 pushes=1`, `ready_s(fed=2.065,unfed=1.9)` |
+| `strip-stats-log-budget` | `_main/_strip-stats-log-probe.py` | **CONTROL PASS**, `ratio=364.4x` (443 linhas/amostra vs 1 agregada) |
+| `strip-geometry-restore` | `_main/_strip-restore-probe.py` | **GREEN**, 6 checks, `file_restored=true`, rc=0 (o instrumento é MUDO: só o exit code fala — 0 = PASS, 3 = RED) |
+| `strip-surface-runtime` | `_main/_strip-surface-probe.py` | **RED → corrigido → GREEN 26/26** (§2) |
+| `shell-relaunch` | `_main/shell-relaunch-oracle.py` | **GREEN**, `arms=12 pass=12 fail=0`; o `--selftest` usa um STUB no disparo (não lança a app) |
+| `paint-live-show` | `_main/paint-live-show-oracle.py` | **SKIPPED** — `shows=0`: o dono não deu um Alt+C na sessão viva. Sem show não há o que julgar, e o passo diz isso em vez de fingir verde |
+
+**Não corridos, por decisão** (§3): `panel-paint-first-measure` (abre janela VISÍVEL de propósito),
+`device-silence` + `red-as-expected-device-silence` (renderiza áudio audível), `mute-audio` (mexe no
+mute do sistema dele).
+
+## 2. DEFEITO 1 — a edição da faixa escondia a própria faixa (medido 12:55:09, corrigido 13:03:33)
+
+O `_strip-surface-probe` deu **RED** com **um** check falhado: `D nothing closed the band once edit
+mode was ON`. A cadeia, lida do log do próprio shell:
+
+```
+12:55:09.307  PANEL_SHOWN reason=edit-tray ... visible=true paint_ack=true wait_ms=156.0
+12:55:09.307  OUTSIDE_CLICK source=foreground point=(758,478) decision=outside closed=true
+12:55:09.311  PANEL_HIDDEN reason=click-outside visible=false
+12:55:09.311  PANEL_EDIT_MODE on=true reason=tray ...     <- 4 ms TARDE DEMAIS
+```
+
+**Causa:** `set_edit_mode()` armava o guarda **depois** de `show_panel()`, e `show_panel()` custa o
+paint ack (156 ms medidos). Nessa janela a faixa estava visível e o watcher, na sua própria thread,
+ainda lia `edit_mode=false` — o pedido "editar a faixa" escondia a faixa.
+**Correcção:** `app/webview/sotto_webview.py`, o guarda (`click_watcher.edit_mode = True`) passa a ser
+armado **antes** do show. O comentário nomeia o número e a linha do log que o provam.
+**Prova depois da correcção:** mesmo instrumento, **GREEN 26/26**, e o log do braço D mostra
+`OUTSIDE_CLICK source=probe-edit-outside ... decision=edit-mode closed=false`.
+
+## 3. DEFEITO 2 — o ARM3 do `device-silence` tinha um orçamento menor do que o carregamento do modelo
+
+Primeira ronda: `verdict=captions-zero`, `blocks=56`, `peak=0.274963`, `speech_blocks=6`,
+`captions=0`. Não era a transcrição que falhava: **`load_s=38.96`** e `--max-seconds` é tempo de
+PAREDE desde o arranque do processo (`t_start = time.time()` no topo de `main`, antes do load). Uma
+janela de 20 s é engolida inteira pelo carregamento.
+
+**Correcção (instrumento, não produto):** `_main/device-silence-oracle.py` ganhou `load_seconds()`,
+que lê o `load_s` do **próprio registo da corrida**, e o ARM3 repete **uma única vez** com
+`load_s + max(secs,20) + 10` segundos — e **só** quando o registo prova que o load comeu a janela
+(`captions=0`, `blocks>0`, `load_s >= janela`). Qualquer outra forma é julgada tal como cai, por isso
+uma regressão real continua a dar RED. Medido na 2ª ronda: `load_s=23.09` → `window_s=54`, e o
+orçamento aparece no veredicto como `retry`.
+
+**Estado:** o ARM3 foi **interrompido por ordem do dono** e não se voltou a correr — ver §4.
+
+## 4. A RECUSA, e o instrumento que nasceu dela
+
+Ordem do dono, verbatim: *"testa o sotto sem eu ouvir os audios de teste"* / *"PRA TU MATAR ESSE
+SCRIPT ... QUE TOCA UM AUDIO Q EU ESCUTO"* / *"tu literalmente mutou o meu sistema inves de ser o
+audio que tu tava tocando"*.
+
+**O facto medido que explica tudo:** `_main/mute-audio.py --mute` muta **um** endpoint — o papel de
+saída *default*. O áudio do teste não passa por lá: o `feed_cable` renderiza para
+`CABLE Input (VB-Audio Virtual Cable)` e o VoiceMeeter encaminha-o para uma saída de hardware que
+**não** é a default. Mutar a default não prova nada sobre o que o dono ouve; mutar **todos** os
+endpoints cala a máquina dele inteira, que é pior e foi o que aconteceu (desfeito: 21 endpoints
+repostos, `muted=false`, `scalar=1.0`).
+
+**O que ficou no repo:** `_main/mute-audio.py --status-all` — censo **read-only** que imprime
+`name/muted/scalar/inactive` de cada endpoint (41 nesta máquina). Um passo que renderiza áudio tem de
+nomear o endpoint em que renderiza e mostrá-lo mudo **aqui**; uma lane não volta a tocar no mute do
+sistema.
+
+**Regra operacional que passa a valer nesta árvore:** instrumentos que RENDERIZAM áudio (o ARM3 do
+`device-silence`, o `feed_cable`) não correm numa lane desta máquina — não são silenciáveis sem calar
+o dono ou sem lhe tocar no áudio. Os que só LÊEM (log, DOM, unit arms, e os que importam o shell sem
+abrir dispositivo) correm.
+
+## 5. O que continua por medir, e por quem
+
+| passo | porque não correu aqui | o que o fecha |
+|---|---|---|
+| `panel-paint-first-measure` | abre uma janela **visível** de propósito (mede o primeiro frame no ecrã) — `SOTTO_NEVER_ON_OWNER_SCREEN` | o dono abre a app, ou autoriza explicitamente uma janela nesta sessão |
+| `device-silence` (ARM3) · `red-as-expected-device-silence` | renderiza áudio que ele ouve (§4) | uma sessão em que ele autorize o áudio, ou um endpoint que não chegue a nenhuma saída de hardware |
+| `mute-audio` (21 arms) | mexe no mute do sistema dele | idem |
+| `paint-live-show` | exige um Alt+C na instância viva | ele dá um Alt+C numa sessão com a app aberta |
+
+**Nada disto é um verde.** São quatro janelas fechadas por regra, e ficam nomeadas.
+
+## 6. Custo
+
+`_strip-*` 275,95 s (4 sondas) · `_strip-surface` 199,31 s (depois da cura) e ~5 min antes ·
+`device-silence` 310,99 s (1ª), 197,00 s + 186,97 s (interrompida) · `shell-relaunch` 4,22 s ·
+`altc-first-caption` ~1 s · `panel-exit3 --unit --neg-arm` ~1 s.

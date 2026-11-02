@@ -1,98 +1,98 @@
 {
   "shell": "H:\\sotto\\app\\webview\\sotto_webview.py",
   "standin": "H:\\sotto\\_main\\_strip-stats-worker.py",
-  "stamp": "13332-1793561015",
+  "stamp": "3724-1793634638",
   "arms": {
     "fed": {
       "tag": "fed",
       "rc": 0,
-      "log": "H:\\sotto\\_main\\_strip-stats-fed-13332-1793561015.log",
-      "wall_s": 13.25,
+      "log": "H:\\sotto\\_main\\_strip-stats-fed-3724-1793634638.log",
+      "wall_s": 13.45,
       "cost": {
-        "cpu_s": 1.719,
-        "peak_ws_bytes": 152391680
+        "cpu_s": 2.094,
+        "peak_ws_bytes": 153067520
       },
       "ready": true,
-      "ready_s": 1.848,
-      "waited_s": 2.22,
+      "ready_s": 2.065,
+      "waited_s": 2.42,
       "deadline_s": 30.0,
       "shell_alive_at_deadline": true,
       "timeline": {
-        "PANEL_LAZY_GATE_ARMED": 0.993,
-        "PRELOAD_INSTALLED": 1.083,
-        "STAGING_SEEN": 1.183,
-        "STAGING_LOADED": 1.183,
-        "RECEIVER_READY": 1.848
+        "PANEL_LAZY_GATE_ARMED": 1.447,
+        "PRELOAD_INSTALLED": 1.662,
+        "STAGING_SEEN": 1.686,
+        "STAGING_LOADED": 1.686,
+        "RECEIVER_READY": 2.065
       },
-      "readiness_reason": "the page went live 1.8s after the launch",
+      "readiness_reason": "the page went live 2.1s after the launch",
       "killed": false,
       "autostart": [
-        "2026-11-01 16:23:37.757 sotto: WORKER_AUTOSTART=started reason=with-worker"
+        "2026-11-02 12:50:41.642 sotto: WORKER_AUTOSTART=started reason=with-worker"
       ],
       "probe": [
-        "2026-11-01 16:23:45.774 sotto: PANEL_STATS_PROBE {\"bars\":[\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\"],\"emits\":{\"geometry\":1,\"stats\":154,\"status\":2},\"have\":10,\"level\":\"live\"}"
+        "2026-11-02 12:50:49.649 sotto: PANEL_STATS_PROBE {\"bars\":[\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\",\"0.443\"],\"emits\":{\"geometry\":1,\"stats\":154,\"status\":2},\"have\":10,\"level\":\"live\"}"
       ],
       "armed": [
-        "2026-11-01 16:23:37.758 sotto: PANEL_STATS_PROBE_ARMED s=8.0"
+        "2026-11-02 12:50:41.644 sotto: PANEL_STATS_PROBE_ARMED s=8.0"
       ],
       "replies": [
-        "2026-11-01 16:23:37.058 sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={\"tag\":\"stats\"}"
+        "2026-11-02 12:50:40.951 sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={\"tag\":\"stats\"}"
       ],
       "pushes": [
-        "2026-11-01 16:23:37.962 sotto: BRIDGE_STATS_PUSH count=1 in_window_s=0.0 rate_hz=first payload={\"tag\":\"stats\",\"peak\":0.443448,\"blocks\":812.0,\"queue_drops\":0.0}"
+        "2026-11-02 12:50:41.804 sotto: BRIDGE_STATS_PUSH count=1 in_window_s=0.0 rate_hz=first payload={\"tag\":\"stats\",\"peak\":0.443448,\"blocks\":812.0,\"queue_drops\":0.0}"
       ],
       "panel_shown": [],
       "page_errors": [],
       "receiver_ready": [
-        "2026-11-01 16:23:37.056 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+        "2026-11-02 12:50:40.951 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
       ],
       "stderr_tail": "",
-      "log_bytes": 9410,
+      "log_bytes": 9413,
       "ran": true
     },
     "unfed": {
       "tag": "unfed",
       "rc": 0,
-      "log": "H:\\sotto\\_main\\_strip-stats-unfed-13332-1793561015.log",
-      "wall_s": 13.28,
+      "log": "H:\\sotto\\_main\\_strip-stats-unfed-3724-1793634638.log",
+      "wall_s": 13.24,
       "cost": {
-        "cpu_s": 1.281,
-        "peak_ws_bytes": 128360448
+        "cpu_s": 1.734,
+        "peak_ws_bytes": 128393216
       },
       "ready": true,
-      "ready_s": 1.871,
+      "ready_s": 1.9,
       "waited_s": 2.23,
       "deadline_s": 30.0,
       "shell_alive_at_deadline": true,
       "timeline": {
-        "PANEL_LAZY_GATE_ARMED": 1.197,
-        "PRELOAD_INSTALLED": 1.531,
-        "STAGING_SEEN": 1.547,
-        "STAGING_LOADED": 1.547,
-        "RECEIVER_READY": 1.871
+        "PANEL_LAZY_GATE_ARMED": 1.459,
+        "PRELOAD_INSTALLED": 1.54,
+        "STAGING_SEEN": 1.557,
+        "STAGING_LOADED": 1.557,
+        "RECEIVER_READY": 1.9
       },
       "readiness_reason": "the page went live 1.9s after the launch",
       "killed": false,
       "autostart": [
-        "2026-11-01 16:23:50.985 sotto: WORKER_AUTOSTART=declined reason=no-worker by=start_worker"
+        "2026-11-02 12:50:54.902 sotto: WORKER_AUTOSTART=declined reason=no-worker by=start_worker"
       ],
       "probe": [
-        "2026-11-01 16:23:58.999 sotto: PANEL_STATS_PROBE {\"bars\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"emits\":{\"geometry\":1,\"status\":1},\"have\":10,\"level\":\"none\"}"
+        "2026-11-02 12:51:02.908 sotto: PANEL_STATS_PROBE {\"bars\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"emits\":{\"geometry\":1,\"status\":1},\"have\":10,\"level\":\"none\"}"
       ],
       "armed": [
-        "2026-11-01 16:23:50.987 sotto: PANEL_STATS_PROBE_ARMED s=8.0"
+        "2026-11-02 12:50:54.903 sotto: PANEL_STATS_PROBE_ARMED s=8.0"
       ],
       "replies": [
-        "2026-11-01 16:23:50.323 sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={\"tag\":\"stats\"}"
+        "2026-11-02 12:50:54.252 sotto: BRIDGE_STATS_REPLY id=s1 count=1 payload={\"tag\":\"stats\"}"
       ],
       "pushes": [],
       "panel_shown": [],
       "page_errors": [],
       "receiver_ready": [
-        "2026-11-01 16:23:50.321 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
+        "2026-11-02 12:50:54.251 sotto: RECEIVER_READY captions=0 hasBridge=True placeholder=\"Waiting for audio Nothing is being transcribed yet. Captions appear here line by\""
       ],
       "stderr_tail": "",
-      "log_bytes": 7551,
+      "log_bytes": 7554,
       "ran": true
     }
   },
@@ -224,8 +224,8 @@
   "failed": [],
   "skip_reason": null,
   "probe_cost": {
-    "cpu_s": 0.109,
-    "peak_ws_bytes": 22163456
+    "cpu_s": 0.125,
+    "peak_ws_bytes": 21970944
   },
-  "shell_cpu_total_s": 3.0
+  "shell_cpu_total_s": 3.828
 }

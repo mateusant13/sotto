@@ -56,6 +56,7 @@ from __future__ import annotations
 # `_main/battery-heavy-gate.py`; faltava so' a declaracao neste ficheiro.
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -280,14 +281,53 @@ def arm_silence(secs: str, out: str = "oracle-silent.jsonl") -> dict:
             "shell_kind": kind, "shell_footer": footer, "failures": failures}
 
 
+def load_seconds(res: dict) -> float | None:
+    """How long the run's OWN model load took, from the run's own record."""
+    for o in res.get("statuses", []):
+        v = o.get("load_s") if o.get("state") == "model-loaded" else None
+        if isinstance(v, (int, float)) and v > 0:
+            return float(v)
+    return None
+
+
 def arm_routed(secs: str) -> dict:
-    """ARM 3: speech rendered into the cable must be transcribed, exit 0."""
+    """ARM 3: speech rendered into the cable must be transcribed, exit 0.
+
+    THE WINDOW MUST COVER THE LOAD, AND THE LOAD IS MEASURED, NOT ASSUMED
+    (measured 2026-11-02). `--max-seconds` is WALL time from process start
+    (`sotto_worker.py` starts the clock before the model is loaded,
+    `t_start = time.time()` at the top of `main`). On this box the live model
+    costs `load_s=38.96` s cold, so a 20 s window is consumed ENTIRELY by the
+    load: the run reported `blocks=56 peak=0.275 speech_blocks=6 captions=0` --
+    speech really was captured and transcribed into nothing, because the window
+    closed before a decode could land. That is an INSTRUMENT budget, not a
+    product defect, and the two must never be confused in either direction:
+    the arm retries ONCE with `load_s + max(secs, 20) + 10` seconds, and ONLY
+    when the run's own record proves the load ate the whole window (captions=0,
+    blocks>0, load_s >= window). Every other shape is judged as it lands, so a
+    real regression still goes RED.
+    """
     stop = threading.Event()
     t = threading.Thread(target=feed_cable, args=(stop,), daemon=True)
     t.start()
     time.sleep(1.5)
     a = run_worker(os.path.join(RUNS, "oracle-pos.jsonl"),
                    ["--max-seconds", secs, "--device", CABLE])
+    load_s = load_seconds(a)
+    retried = None
+    if (not a["captions"] and (a["done"].get("blocks") or 0) > 0
+            and load_s is not None and load_s >= float(secs)):
+        window = int(math.ceil(load_s)) + max(int(float(secs)), 20) + 10
+        stop.set()
+        t.join(timeout=5)
+        retried = {"why": "the run's own load_s ate the whole window",
+                   "load_s": load_s, "window_s": window}
+        stop = threading.Event()
+        t = threading.Thread(target=feed_cable, args=(stop,), daemon=True)
+        t.start()
+        time.sleep(1.5)
+        a = run_worker(os.path.join(RUNS, "oracle-pos.jsonl"),
+                       ["--max-seconds", str(window), "--device", CABLE])
     stop.set()
     t.join(timeout=5)
     failures: list[str] = []
@@ -310,7 +350,8 @@ def arm_routed(secs: str) -> dict:
             "verdict": a["done"].get("verdict"), "captions": len(a["captions"]),
             "device": a["done"].get("device"), "peak": a["done"].get("peak"),
             "proved_alive": a["done"].get("proved_alive"),
-            "rotations": a["done"].get("rotations"),
+            "rotations": a["done"].get("rotations"), "load_s": load_s,
+            "retry": retried,
             "shell_kind": kind,
             "caption_words": a["text"][:180], "failures": failures}
 
