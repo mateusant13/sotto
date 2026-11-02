@@ -166,6 +166,18 @@ call :record live-vs-history-source-oracle !STEP_RC!
 call :step historico-vs-redux-probe 0 "_main\historico-vs-redux-probe.js;app\panel\caption-formulation.js;app\panel\history-store.js" "%OUT%\oracle-historico-vs-redux.log" node _main\historico-vs-redux-probe.js
 call :record historico-vs-redux-probe !STEP_RC!
 
+REM O CAMINHO DA LINHA DO BATCH ATE O DISCO (2026-11-01). O motor de batch emite
+REM `{type,text,start,end,producer:'redux'}` -- SEM `route`, SEM flag `final`
+REM (`worker/redux_batch.py:185`), e o choke point do painel recusava-a uma instrucao
+REM ANTES da guarda que existe para a aceitar: medido na loja inteira, 0 linhas
+REM `route=batch` em 2084. O oraculo executa as TRES metades do ficheiro entregue
+REM (a decisao, o call site `recordHistory` e o escritor da proveniencia) e o braco
+REM de baixo exige que os mutantes vao RED.
+call :step redux-transcript-path 0 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path.log" python _main\_redux-transcript-path.py
+call :record redux-transcript-path !STEP_RC!
+call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
+call :record red-as-expected-redux-transcript-path !STEP_RC!
+
 echo === the gates added by this round ===
 REM The SECOND control of the same gate, added 2026-10-19: the first one
 REM drops the `captions-zero` guard; this one drops the LIVE-OVERLAY term

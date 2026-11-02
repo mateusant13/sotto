@@ -276,9 +276,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-01, 14:0x):** `_main\_audit-verify-all.cmd` = **153624 B**,
-  **1985 CRLF** / 0 bare LF, sha256 `9296FE33B793BA61049600142A438E5042E30FB2C2E78F47A98A2D80C5038D8B`.
-  (Este pin substitui o de 13:0x, 152130 B / 1971 CRLF, DEPOIS dos dois passos do
+- **PIN do ficheiro (medido 2026-11-01, 16:5x):** `_main\_audit-verify-all.cmd` = **155976 B**,
+  **2011 CRLF** / 0 bare LF, sha256 `A4D2D1EDCB98AFA7E11D77F7940897F6E957347D9D2059B9C7D9A22243B2B55C`.
+  (Este pin substitui o de 15:3x, 154856 B / 1999 CRLF, DEPOIS dos dois passos do
+  `redux-transcript-path`: o oraculo que executa as tres metades do caminho da linha do
+  BATCH ate ao disco (a decisao `transcriptRoute`, o call site `recordHistory` e o escritor
+  `_history_provenance`) e o `red-as-expected` que exige os quatro mutantes RED. Nasceu do
+  defeito medido: o motor de batch emite `{type,text,start,end,producer:'redux'}` sem `route`
+  e sem `final` (`worker/redux_batch.py:185`) e o choke point recusava-a uma instrucao ANTES
+  da guarda que a aceita — 2084 linhas na loja, **zero** `route=batch`.)
+  (Este pin substitui o de 14:0x, 153624 B / 1985 CRLF, DEPOIS dos dois passos do
   `stall-under-load`: o oraculo que julga as janelas de carga da sessao VIVA
   (`BRIDGE_SPAWN` -> `BRIDGE_LOAD_MS`) e recusa um unico `UI_THREAD_STALL` dentro delas.
   Medido na sessao de 13:5x: 4 janelas, 0 estalos. O terceiro braco do `--neg-arm` e' de

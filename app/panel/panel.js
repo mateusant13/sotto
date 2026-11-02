@@ -1869,8 +1869,20 @@ function recordHistory(text, reason, meta) {
   // 'final'` default made this guard VACUOUS — MEASURED 2026-10-06: every
   // commit arrived with `route=null` and every one was written, so the WHOLE
   // live caption reached the transcript (the defect the owner reported).
-  const route = meta && meta.route;
-  if (route !== 'final') return;
+  // THE ROUTE IS DERIVED, NOT DEMANDED (2026-11-01). This used to be
+  //   const route = meta && meta.route;
+  //   if (route !== 'final') return;          // <- refused FIRST
+  // and the BATCH engine emits no route at all (`worker/redux_batch.py:185`),
+  // so a parakeet line died one statement before the guard that accepts it. The
+  // decision now lives in the DOM-free predicate, so the oracle executes THIS
+  // rule: `provisional-draft` refused always, non-canonical refused always, a
+  // canonical line recorded as `final` when the worker closed it and as `batch`
+  // when the batch pass produced it.
+  const sourceApi = window.SottoHistorySource;
+  const route = sourceApi && sourceApi.transcriptRoute
+    ? sourceApi.transcriptRoute(meta)
+    : null;
+  if (!route) return;
   // OWNER 2026-10-07 — the SECOND half, and the one the owner reported missing:
   // the canonical transcript ("History · Redux") is a DIFFERENT SOURCE. A
   // `route=final` line the LIVE nvidia streaming engine produced is STILL the
