@@ -64,6 +64,57 @@ responde `fila vazia` (rc 0) — o caminho do consumidor ONNX abre.
 there` — e' o oraculo a dizer a verdade sobre a maquina, nao uma regressao de codigo. Os mesmos passos
 volveram a verde no instante em que os pesos voltarem ao caminho que `worker/config.json` nomeia.
 
+## CORRECCAO 2026-11-02 — a junction NAO bastava, e o export completo foi reposto
+
+A primeira tentativa (junction para `H:\VOD.RIP-models\parakeet-redux-onnx-int4`) punha os `.onnx` no
+caminho certo e **nao** fazia o motor carregar. A sonda de fila deu a razao exata:
+
+```
+audio-queue-consumer: FALHOU seg-0001.wav -- No module named 'transcribe'
+audio-queue-consumer: seg-0001.wav state=error:ModuleNotFoundError
+```
+
+`worker/redux_live.py:294-305` poe o DIRECTORIO DO MODELO em `sys.path` porque **o export traz o seu
+proprio `transcribe.py`** (o laco TDT de referencia, 17 844 B). A copia que sobreviveu em
+`H:\VOD.RIP-models` tem os pesos e nao tem esse ficheiro; o fallback `models/parakeet-redux-reference`
+tambem nao existe. Ou seja: a junction provava "os bytes estao ali", nunca "o motor carrega".
+
+O proprio recuo do carregador nomeia o instrumento certo — `python _main\fetch-parakeet.py` — e esse
+script **nao estava na arvore**: so' no indice do `stash@{0}` (commit `3120551`). Recuperado para
+`_main/fetch-parakeet.py` e corrido. Ele baixa `eschmidbauer/parakeet-redux-onnx` na revisao FIXADA e
+verifica contagens de bytes + prefixos de sha256 contra os valores registados:
+
+```
+GREEN decoder_joint-model.onnx   72552270 B  sha256=97ae0cb0
+GREEN encoder-model.onnx        343841943 B  sha256=ade2c65c
+GREEN preprocessor.onnx           1224294 B  sha256=3de5742f
+GREEN vad-model.onnx             18300687 B  sha256=18dfbe34
+GREEN transcribe.py                 17844 B
+GREEN vocab.txt / config.json / onnxruntime 1.30.0
+VERDICT: GREEN -- os pesos estao em disco e sao os registados
+```
+
+A junction foi desfeita e o export vive agora em `worker/models/parakeet-redux-onnx-int4` (416 MB em
+`H:`), dentro da arvore que o codigo le. **Prova por EXECUCAO**, com um segmento real na fila:
+
+```
+loading Parakeet ONNX from H:\sotto\worker\models\parakeet-redux-onnx-int4
+model ready (onnx-int4)
+seg-0001.wav state=done wall=10.4s
+text='The radio announced that the bridge over the river will be closed next Monday. Residents need an alter.'
+```
+
+O `audio=0.0s` dessa linha e' da MINHA linha de indice de teste: `run_once` le `duration_s` do
+`index.jsonl` (`audio_queue_consumer.py:170`) e a linha sintetica nao trazia o campo — nao e' defeito
+de medida.
+
+**O que continua em falta, e nao tem fonte**: o `nemotron-3.5-asr-ptbr-onnx-int4` (motor AO VIVO). O Hub
+publica `nvidia/nemotron-3.5-asr-streaming-0.6b` (multilingue, pt-BR = 12) com `safetensors`, `.nemo` e
+`.q8_0.gguf` — **nenhum export ONNX**, e este repo nao tem pipeline de quantizacao (`model_config.json`
+do export diz `model_path=/datadisks/disk2/nebanfic/multilingual_onnx_int4_v3`, um caminho da maquina que
+o produziu). O caminho GGUF tambem nao existe no produto: `worker/` so' conta `.gguf` como ficheiro de
+pesos (`vram_residency.py:211`), nao o carrega.
+
 ## Reproduzir a medicao
 
 ```
@@ -71,4 +122,5 @@ du -sh worker/models/*                      # o que esta' la, hoje
 grep -n "model dir not found" _main/webview-run.log | tail -3
 python -c "import json;print(json.load(open('worker/config.json'))['model']['dir'])"
 python _main/model-spec-oracle.py           # rc != 0 enquanto o nemotron nao voltar
+python _main/fetch-parakeet.py --verify     # o parakeet: GREEN hoje
 ```
