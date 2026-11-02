@@ -306,7 +306,7 @@
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-midnight-rain'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
-  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Sem fade de entrada na legenda (dono, 2026-11-02). */
 }
 /* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).
  * This theme used to switch the character reveal OFF with a rule for
@@ -540,7 +540,7 @@
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-warm-hour'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
-  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Sem fade de entrada na legenda (dono, 2026-11-02). */
 }
 /* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).
  * This theme used to switch the character reveal OFF with a rule for
@@ -772,7 +772,7 @@
 /* THE REVEAL — `rise`. One word, or one character, at a time. */
 :root[data-theme='cine-velvet-dusk'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
-  animation: cine-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Sem fade de entrada na legenda (dono, 2026-11-02). */
 }
 /* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).
  * This theme used to switch the character reveal OFF with a rule for
@@ -1463,7 +1463,7 @@
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-motel-glow'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
-  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Sem fade de entrada na legenda (dono, 2026-11-02). */
 }
 /* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).
  * This theme used to switch the character reveal OFF with a rule for
@@ -1918,7 +1918,7 @@
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-quiet-streets'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
-  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Sem fade de entrada na legenda (dono, 2026-11-02). */
 }
 /* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).
  * This theme used to switch the character reveal OFF with a rule for
@@ -2152,7 +2152,7 @@
 /* THE REVEAL — `fade`. One word, or one character, at a time. */
 :root[data-theme='cine-last-reel'] .caption--provisional .caption__word[data-typing] {
   color: var(--accent);   /* the newest word, the zip's `--caption-accent` role */
-  animation: cine-fade 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Sem fade de entrada na legenda (dono, 2026-11-02). */
 }
 /* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).
  * This theme used to switch the character reveal OFF with a rule for

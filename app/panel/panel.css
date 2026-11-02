@@ -1241,7 +1241,11 @@ body[data-level="none"] .chrome__meter i {
   border-radius: 8px;
   border-left: 2px solid transparent;
   background: rgba(148, 163, 184, 0.05);
-  animation: caption-in 220ms ease-out both;
+  /* SEM FADE DE ENTRADA (ordem do dono, 2026-11-02, verbatim: *"e tira a
+     animacao de fade in"*). A linha aparece inteira, como no YouTube: o
+     `caption-in` (220 ms, opacity 0->1 + translateY 5px) punha a frase a
+     entrar em vez de estar. */
+  animation: none;
 }
 
 .caption:hover {
@@ -1324,17 +1328,6 @@ body[data-level="none"] .chrome__meter i {
 
 .brand-probe .captions__list {
   padding: 10px;
-}
-
-@keyframes caption-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 /* The empty state. This is what the owner sees before the first caption: a
@@ -2782,13 +2775,11 @@ body[data-state="no-audio"] .chrome__off {
    all still sets `--type-step: 0ms` and gets a word that simply appears. */
 .caption--provisional .caption__word[data-typing] {
   opacity: 1;
-  animation: sotto-word-in 140ms ease-out both;
-  animation-delay: calc(var(--type-step) * 0ms);
-}
-
-@keyframes sotto-word-in {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
+  /* SEM FADE (dono, 2026-11-02). A palavra nova APARECE. O `!important`
+     existe porque `cinematic.css` declara `cine-fade`/`cine-rise` no
+     MESMO seletor e carrega depois deste ficheiro -- sem ele, escolher um
+     tema da zip voltava a por a legenda a esbater-se. */
+  animation: none !important;
 }
 
 /* ── THE REVEAL BELONGS TO THE NEWEST WORD ALONE (2026-11-01, lane/goal-anim) ──

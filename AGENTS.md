@@ -285,8 +285,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02, 19:1x):** `_main\_audit-verify-all.cmd` = **158822 B**,
-  **2043 CRLF** / 0 bare LF, sha256 `e11caf32de850e6090dd16369d6b01dd01e8ccc5ec89884d0b78bf094e0f9a16`.
+- **PIN do ficheiro (medido 2026-11-02, 22:5x):** `_main\_audit-verify-all.cmd` = **161422 B**,
+  **2073 CRLF** / 0 bare LF, sha256 `57196AB193DFFE6E855A2A22EB2EC2A1422D0147E963F121A3AA65117C12327F`.
+  (Este pin substitui o de 19:1x, 158822 B / 2043 CRLF, DEPOIS de QUATRO passos novos desta noite:
+  `caption-seam-dedup` + `red-as-expected-caption-seam-dedup` e `agc-peak-ceiling` +
+  `red-as-expected-agc-peak-ceiling`. Os dois nasceram da MESMA medicao no caminho VIVO sobre 30 s do
+  loopback `VoiceMeeter Input` do dono (`SOTTO_FILE_TAP`): o `WORKER_STATS` publicava
+  `peak_out=1.000000` em TODOS os ticks com ganhos ate +23,5 dB -- o `np.clip` DEPOIS do ganho, ou seja
+  topos achatados -- e a linha saia `tem umas tem umas youtuber` porque o chunk N+1 re-decodifica o rabo
+  do N. O carry do predictor NAO se desliga: medido no MESMO audio, sem ele o run inteiro morre para
+  `Caram Tem`, logo a cura do seam e` de TEXTO, em `join_fragments`. Braco negativo do teto: desarma
+  `if g > g_ceiling` num TOKEN numa copia do worker e da` RED com `peak_out=1.0000`; o do dedup poe
+  `SEAM_REPEAT_MIN_WORDS = 1` e derruba a arm que protege a fala (`nao nao` tem de sobreviver).)
   (Este pin substitui o de 03:1x, 157244 B / 2027 CRLF, DEPOIS dos dois passos do
   `reveal-park` e do seu `red-as-expected`: o dono reportou, na sessao dele, *"transcricao
   ao vivo nao ta funcionando"* e *"a animacao da legenda que e' copiada do youtube ta errada

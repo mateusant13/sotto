@@ -83,7 +83,10 @@ MUTANT_BODY_LINES = [
     "            out += text",
     "        else:",
     '            out += " " + text',
-    "    return out.strip()",
+    # 2026-11-02: `join_fragments` passou a devolver o texto pela cura do seam
+    # (`dedup_seam_repeat`), por isso o ancora desta ultima linha acompanhou-a.
+    # O corpo continua a ser o MESMO, e o mutante continua a ser o PRE-FIX.
+    "    return dedup_seam_repeat(out.strip())",
 ]
 MUTANT_REPLACEMENT = '    return " ".join(t for t, _c in frags if t).strip()'
 

@@ -455,6 +455,36 @@ if exist _main\external-resume-oracle.py (
   call :step red-as-expected-external-resume 1 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-neg.log" python _main\external-resume-oracle.py --neg-arm
   call :expectred red-as-expected-external-resume !STEP_RC! "%OUT%\external-resume-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-external-resume MISSING "%OUT%\external-resume-neg.log" "NEG-ARM PASS" )
+REM `caption-seam-dedup-oracle.py` -- a repeticao no seam do chunk. Medido na
+REM captura real do dono: os chunks `'umas'` (16,80-17,36) e `'tem umas'`
+REM (17,36-17,92) produziam a linha `... tem umas tem umas youtuber ...`. O carry
+REM do predictor NAO se desliga (medido no mesmo audio: sem carry o run morre para
+REM `Caram Tem`), por isso a cura e' de texto, em `join_fragments`. Sete arms e o
+REM braco negativo que poe `SEAM_REPEAT_MIN_WORDS = 1` e tem de derrubar a arm B
+REM (uma palavra repetida e' fala, nao artefacto).
+if exist _main\caption-seam-dedup-oracle.py (
+  call :step caption-seam-dedup 0 "_main\caption-seam-dedup-oracle.py;worker\sotto_worker.py" "%OUT%\caption-seam-dedup.log" python _main\caption-seam-dedup-oracle.py
+  call :record caption-seam-dedup !STEP_RC!
+) else ( call :record caption-seam-dedup MISSING )
+if exist _main\caption-seam-dedup-oracle.py (
+  call :step red-as-expected-caption-seam-dedup 1 "_main\caption-seam-dedup-oracle.py;worker\sotto_worker.py" "%OUT%\caption-seam-dedup-neg.log" python _main\caption-seam-dedup-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-seam-dedup !STEP_RC! "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-caption-seam-dedup MISSING "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS" )
+REM `agc_order_probe.py` arm D -- O TETO DE PICO. O ganho era aplicado e depois
+REM `np.clip`-ado, um CORTE DURO; na captura real do dono (loopback `VoiceMeeter
+REM Input`, 30 s) o `WORKER_STATS` publicou `peak_out=1.000000` em TODOS os ticks e
+REM ganhos ate' +23,5 dB -- o modelo ouvia topos achatados e o texto dele saia
+REM instavel entre duas passagens do MESMO audio. A arm D exige pico de saida <=
+REM `AGC_CEILING` com `limited_blocks > 0`, e o braco negativo desarma o teto num
+REM TOKEN numa copia do worker e exige o RED no mesmo `main()`.
+if exist _main\agc_order_probe.py (
+  call :step agc-peak-ceiling 0 "_main\agc_order_probe.py;worker\sotto_worker.py" "%OUT%\agc-peak-ceiling.log" python _main\agc_order_probe.py
+  call :record agc-peak-ceiling !STEP_RC!
+) else ( call :record agc-peak-ceiling MISSING )
+if exist _main\agc_order_probe.py (
+  call :step red-as-expected-agc-peak-ceiling 1 "_main\agc_order_probe.py;worker\sotto_worker.py" "%OUT%\agc-peak-ceiling-neg.log" python _main\agc_order_probe.py --neg-arm
+  call :expectred red-as-expected-agc-peak-ceiling !STEP_RC! "%OUT%\agc-peak-ceiling-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-agc-peak-ceiling MISSING "%OUT%\agc-peak-ceiling-neg.log" "NEG-ARM PASS" )
 REM `reveal-park-oracle.py` fecha as duas metades que o dono reportou em 2026-11-02:
 REM a frase do YouTube entrando de uma vez (o ancora do relogio fino so' existia no
 REM ramo `painted`, e o ramo do relogio so' mudava o ecra quando o UIA mudava de

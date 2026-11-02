@@ -1452,6 +1452,19 @@ AGC_FLOOR_DBFS = -60.0    # at/below this the block is silence: hold, do not boo
 AGC_ATTACK = 0.50         # loud transient -> pull gain DOWN fast (per ~100 ms block)
 AGC_RELEASE = 0.10        # recover gain UP slowly
 AGC_SUBBLOCK = 1600       # 100 ms @ 16 kHz — the block AGC_ATTACK/AGC_RELEASE are per
+# ── O TETO DE PICO: A MEDICAO QUE ISTO CORRIGE (2026-11-02) ────────────────
+# O ganho era aplicado e depois `np.clip(out, -1, 1)` -- um CORTE DURO. Numa
+# captura real do dono (loopback `VoiceMeeter Input`, 30 s, pico BRUTO 1,0045)
+# o `WORKER_STATS` publicou `peak_out=1.000000` em TODOS os ticks e `gain_max_db`
+# ate **+23,5 dB**: o modelo ouvia uma onda de topos achatados. O alvo de RMS
+# (-20 dBFS) nao ve o pico, por isso pedir +24 dB num bloco que ja toca no teto
+# e' pedir distorcao -- e o texto dele saia instavel entre duas passagens do
+# MESMO audio ("vituber"/"vtubers", "sapadas"/"safadas").
+# A CORRECCAO: o ganho APLICADO e' limitado pelo espaco de pico do bloco
+# (`AGC_CEILING / pico`). O ganho suavizado (`self.gain_db`) continua a ser a
+# decisao do ataque/libertacao -- so' a AMPLITUDE aplicada cede ao teto, e o
+# `limited_blocks` diz quando cedeu. Zero amostras cortadas por construcao.
+AGC_CEILING = 0.98        # nunca passar disto no sinal que o modelo recebe
 # ── THE ORDER: SPEECH DECISION FIRST, GAIN AFTER (lane SottoAgcSpeechOrder) ──
 # The AGC (above) and the speech/music gate (below) were landed by two lanes and
 # wired so that the GAIN ran FIRST, on the whole block, and the SPEECH DECISION
@@ -1508,6 +1521,10 @@ class AutoGain:
         self.min_applied_db = 0.0
         self.max_applied_db = 0.0
         self.peak_out = 0.0
+        # Quantos sub-blocos cederam ao teto de pico, e o ganho MAIS
+        # restringido que o teto impôs. Zero = o alvo de RMS coube.
+        self.limited_blocks = 0
+        self.limit_db_min = 0.0
         self.blocks = 0
         self.gain_db = 0.0
         # WHAT THE STAGE WOULD HAVE DONE, and whether it was allowed to act.
@@ -1577,7 +1594,21 @@ class AutoGain:
         # Gain HELD (at its last value) across sub-floor blocks: a pause must not
         # pump, and the level is already right when speech resumes.
         g = 10.0 ** (self.gain_db / 20.0)
+        # O TETO DE PICO, aplicado ANTES de multiplicar: se este sub-bloco
+        # ja' tem um pico alto, o ganho aplicado desce ate' o pico caber. O
+        # `self.gain_db` NAO se move com isto -- e' a decisao suavizada, e o
+        # limite de hoje nao pode amortecer a libertacao de amanha.
+        pk_in = float(np.abs(sub).max())
+        if pk_in > 0.0:
+            g_ceiling = AGC_CEILING / pk_in
+            if g > g_ceiling:
+                self.limited_blocks += 1
+                lim_db = 20.0 * math.log10(max(g_ceiling, 1e-9))
+                self.limit_db_min = min(self.limit_db_min, lim_db)
+                g = g_ceiling
         out = (sub * g).astype(np.float32)
+        # Rede de seguranca para arredondamento em float32; com o teto acima
+        # NENHUMA amostra chega aqui acima de AGC_CEILING.
         np.clip(out, -1.0, 1.0, out=out)
         self.blocks += 1
         self.speech_blocks += 1
@@ -3368,7 +3399,49 @@ def join_fragments(frags) -> str:
             out += text
         else:
             out += " " + text
-    return out.strip()
+    return dedup_seam_repeat(out.strip())
+
+
+#: O TAMANHO MINIMO do que se pode repetir. UMA palavra repetida e' fala ("nao
+#: nao", "e e") e NAO se toca; DUAS ou mais, contiguas, e' o modelo a repetir o
+#: rabo do chunk anterior -- o defeito mediavel do dono.
+SEAM_REPEAT_MIN_WORDS = 2
+SEAM_REPEAT_MAX_WORDS = 6
+
+
+def dedup_seam_repeat(text):
+    """Colapsa uma repeticao IMEDIATA de 2+ palavras: `X Y X Y` -> `X Y`.
+
+    O DEFEITO, medido 2026-11-02 na captura real do dono (`SOTTO_FILE_TAP` sobre
+    30 s do loopback `VoiceMeeter Input`): os textos dos chunks eram
+
+        14,00-14,56 'caramba'   16,24-16,80 'tem'   16,80-17,36 'umas'
+        17,36-17,92 'tem umas'  17,92-18,48 'youtuber que' ...
+
+    e a LINHA publicada era `... tem umas tem umas youtuber ...` -- o chunk
+    seguinte re-decodifica o rabo do anterior e o emite outra vez. O carry do
+    predictor entre chunks e' obrigatorio (medido no mesmo audio: desligado, a
+    transcricao da linha inteira morre para `Caram Tem`), por isso a cura nao
+    pode ser no decode; e' aqui, na UNICA funcao que decide o texto.
+
+    PORQUE NAO UMA PALAVRA: `nao nao`, `e e` e `ja ja` sao fala normal. So' um
+    segmento de DUAS ou mais palavras, repetido por inteiro e IMEDIATAMENTE, e'
+    o artefacto -- e o limite superior existe para nao engolir uma frase que
+    alguem repetiu de proposito.
+    """
+    if not text:
+        return text
+    words = text.split()
+    if len(words) < 2 * SEAM_REPEAT_MIN_WORDS:
+        return text
+    # Do mais longo para o mais curto: o artefacto repete o rabo COMPLETO do
+    # chunk anterior, nao so' as ultimas duas palavras.
+    for k in range(min(SEAM_REPEAT_MAX_WORDS, len(words) // 2), SEAM_REPEAT_MIN_WORDS - 1, -1):
+        for i in range(len(words) - 2 * k, -1, -1):
+            if words[i:i + k] == words[i + k:i + 2 * k]:
+                words = words[:i + k] + words[i + 2 * k:]
+                return " ".join(words)
+    return text
 
 
 class LineFormer:
@@ -4003,7 +4076,7 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
     for event in line_events(former.take_closed()):
         emit(model=asr.name, **event)
     wall = time.time() - t0
-    full = asr.detok(asr.labels)
+    full = dedup_seam_repeat(asr.detok(asr.labels))
     emit(
         type="status",
         state="selftest-done",
@@ -5143,6 +5216,7 @@ def main():
             f"gain_max_db={agc.max_applied_db:+.1f} peak_out={agc.peak_out:.6f} "
             f"gain_would_db={agc.would_db:+.1f} gain_would_max_db={agc.would_max_db:+.1f} "
             f"held_blocks={agc.non_speech_blocks} speech_blocks={agc.speech_blocks} "
+            f"limited_blocks={agc.limited_blocks} limit_db_min={agc.limit_db_min:+.1f} "
             f"agc={'on' if agc_enabled else 'off'} "
             f"resampled_samples={counters['resampled_samples']} chunks={counters['chunks']} "
             f"captions={counters['captions']} tokens={asr.labels_total} "
@@ -6595,13 +6669,12 @@ def main():
         )
 
     # ── the run's text, CAPPED (F17) ─────────────────────────────────────────
-    # `detok(asr.labels)` is the whole run in one string and it ships as ONE
-    # JSONL line. `output.done_text_max_chars` bounds it; the untruncated length
+    # `detok(asr.labels)` ships as ONE JSONL line, bounded by `done_text_max_chars`;
     # and the flag travel beside it, so "the line is short" and "the run was
     # short" stay distinguishable. `tokens` is `labels_total`, NOT
     # `len(asr.labels)`: the list is bounded (MAX_RETAINED_LABELS) and its length
     # stops being the run's token count once anything is pruned.
-    done_text_full = asr.detok(asr.labels)
+    done_text_full = dedup_seam_repeat(asr.detok(asr.labels))
     done_text = capped_text(done_text_full, done_text_max_chars)
     done_payload = dict(
         type="status",
