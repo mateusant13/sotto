@@ -31,7 +31,7 @@ Instrumento de cada linha abaixo (tudo medido nesta maquina, hoje): `du -sh`, `g
 |`_main/_venv-diar`|12 MB|0|idem|`rm -rf`|
 |`_main/_skin-lane/shots`|16 MB|0|screenshots de uma lane de design, nao rastreados|`rm -rf`|
 
-**Total devolvido: ~6,4 GB.**
+**Total devolvido: ~8,4 GB.**
 
 Worktrees removidas (branch preservada): `ArbV9`, `clipasr`, `cut4`, `engproc`, `fixcut`, `ParseFix`,
 `ReplyFix`, `specs57`, `stripctl`, `stripsh`, `wgcunb`. **Mantidas** por terem trabalho nao commitado:
@@ -40,12 +40,18 @@ Worktrees removidas (branch preservada): `ArbV9`, `clipasr`, `cut4`, `engproc`, 
 
 ## O que NAO foi removido, e a razao medida
 
-- **`_moved/aireplay` — 2,0 GB, rastreado (928 ficheiros).** O produto nao o usa: `git grep` sobre
-  `app/` e `worker/` devolve 0 linhas (ja' medido em `_main/PARITY-GAP.md`). O que impede a remocao nao
-  e' uso, e' **um portao**: `_main/channel-class-site-oracle.py` pina linhas DENTRO dessa arvore
-  (`src/pipeline/share_export.py:119`, `share_gate.py:123`, `share_gate.py:661`). Apagar a arvore deixa
-  esse oraculo vermelho sem que nada de vivo tenha mudado. **Decisao pendente do dono**: aposentar o
-  oraculo (e o passo dele na bateria) para libertar 2,0 GB, ou manter a arvore como referencia citada.
+- **`_moved/aireplay` — 2,0 GB, rastreado (928 ficheiros): REMOVIDO na segunda passagem.** O bloqueio
+  era um portao, nao uso: `_main/channel-class-site-oracle.py` tinha 3 linhas `DECLARED` a apontar para
+  `src/pipeline/*.py` daquela arvore, e o `cited-instruments-oracle.py` exige que todo o caminho citado
+  no `docs/audit/00-MAPA-CONSOLIDADO.md` EXISTA. Removidos os 3 rows (uma "parked tree" nao e' classe
+  de defeito atingivel por ninguem), o mapa repontado para os sucessores vivos onde existia sucessor e
+  marcado `(removida 2026-11-02)` onde nao, `_negarm5.py` passa a recusar com uma mensagem que nomeia a
+  arvore apagada. Medido depois: `channel-class-site-oracle` rc 0 (11 sites, 2 declarados),
+  `cited-instruments-oracle` rc 0 (49 caminhos, 0 ABSENT) e o seu `--neg-arm` rc 0,
+  `battery-class-oracle` rc 0. Commit `d1c8378`: `934 files changed, 43 insertions(+), 211228 deletions(-)`.
+  Seis junctions internas foram desligadas SEM tocar nos alvos (uma apontava para fora do repo,
+  `I:\!manager\.agents\skills\fast-land-shared-artifacts`, e continua la).
+  **+2,03 GB devolvidos** (2,0 GB da arvore rastreada + 31 MB de `_moved/aireplay-wt`, que era untracked).
 - **`.git/objects` — 4,7 GB num so pack.** `git verify-pack` mede cinco blobs de **1179 / 922 / 658 /
   639 / 514 MB** na historia. Nenhum `gc` os remove: so' uma reescrita de historia (`filter-repo`) os
   tira, e isso muda **todos** os SHAs, invalida as worktrees e exige force-push numa branch
