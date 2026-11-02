@@ -137,6 +137,52 @@ Duas leituras honestas deste numero, e nenhuma delas e' "o motor esta mau":
 2. O motor de BATCH nao foi medido por este numero: o `wall=10.4s` da sonda de fila inclui o
    carregamento do ONNX (416 MB) dentro do mesmo `run_once`, portanto nao e' taxa de transcricao.
 
+## RESOLVIDO 2026-11-02 — o nemotron voltou, de uma fonte publica que existe
+
+Eu tinha dito que o Hub nao publica export ONNX deste modelo. **Errado para o que importa**: a busca
+anterior olhou `nvidia/` e nao `onnx-community/`. O repo publicado e'
+
+    onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4     revisao 8364d9e2dd9da23789b480bdbba9e423717e42ee
+
+e o layout e' exactamente o que `worker/sotto_worker.py` le (ORT GenAI): `genai_config.json`,
+`encoder.onnx` + `encoder.onnx.data`, `decoder.onnx`, `joint.onnx`, `vocab.txt`,
+`audio_processor_config.json`, `model_config.json`, `tokenizer.json`, `silero_vad.onnx`.
+Baixado para `worker/models/nemotron-3.5-asr-ptbr-onnx-int4` — **788 069 519 B em 16 ficheiros**,
+contra os 783 537 972 B / 32 ficheiros registados do export local perdido (mesma familia, quantizacao
+publicada por outra entidade).
+
+**Os tres numeros normativos batem, lidos do proprio export** (nao assumidos):
+
+```
+blank_id=13087   chunk_samples=8960   max_symbols_per_step=10   left_context=56
+decoder.hidden_size=640  decoder.num_hidden_layers=2
+```
+
+**Os cinco oraculos que estavam vermelhos por `SETUP ERROR` voltaram a verde:** `model-spec-oracle` 0,
+`lang-id-oracle` 0, `word-split-oracle` 0, `vad-option-probe` 0, `_audit-fresh-processor-probe` 0
+(arm1..arm5 GREEN, "two processors from one og.Model are independently buffered").
+
+**Prova por execucao do motor AO VIVO** (`--audio`, sem dispositivo, headless):
+
+| fixture | providers | load_s | rtf | peak_rss_mb | texto |
+|---|---|---|---|---|---|
+| `en-us-sample.wav` (8,4 s) | CUDA+CPU | 8,78 | **0,479** | 809 | *The Radio announced that the bridge over the river will be closed next Mone. Residents need an alternative route to get to work* |
+| `en-us-sample.wav` | CPU so' | 10,75 | 3,078 | 422 | idem, byte a byte (logo e' deterministico, nao e' deriva de provider) |
+| `live-sample-cable-input.wav` (30,1 s) | CUDA+CPU | 9,58 | **0,280** | 785 | *Bora fazer um gland* — 96 % blanks, 26 chunks vazios, 25 gated por VAD: o clipe e' quase todo silencio com uma frase |
+
+`lang_id` resolveu 101 (auto) e 12 (pt-BR) pelos caminhos normais do `lang_prompt`, com a tabela lida de
+`docs/model-specs/original/fp16/languages.json` (o export int4 nao traz `languages.json`, como o proprio
+`lang_prompt.py:131` ja dizia).
+
+**E o parakeet, na mesma maquina, no MESMO clipe de 30,1 s:** `audio=30.1s wall=12.8s (2.4x tempo
+real)`, texto `Bora fazer um plein dout de aí.`. Os dois motores concordam que o clipe diz "bora fazer
+um …" e divergem na palavra estrangeira — e' audio dificil, nao falha de um deles.
+
+**O que NAO se afirma**: que este export tenha a mesma qualidade do `multilingual_onnx_int4_v3` local
+perdido. Nao existe registo do texto do nemotron nesse clipe de 8,4 s com o artefacto antigo, portanto
+uma comparacao seria invencao. O que esta' medido e' que o motor carrega, decodifica, respeita as
+constantes e cabe em 810 MB de pico.
+
 ## Reproduzir a medicao
 
 ```
@@ -145,4 +191,5 @@ grep -n "model dir not found" _main/webview-run.log | tail -3
 python -c "import json;print(json.load(open('worker/config.json'))['model']['dir'])"
 python _main/model-spec-oracle.py           # rc != 0 enquanto o nemotron nao voltar
 python _main/fetch-parakeet.py --verify     # o parakeet: GREEN hoje
+python worker/sotto_worker.py --audio _main/en-us-sample.wav --max-seconds 60   # o ao vivo: rtf 0.479
 ```

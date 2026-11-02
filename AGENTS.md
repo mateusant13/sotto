@@ -276,8 +276,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02, 01:1x):** `_main\_audit-verify-all.cmd` = **156033 B**,
-  **2011 CRLF** / 0 bare LF, sha256 `B15AFEA91B9EB42D1826BD56B5A01DE373EEBF3C7B795FCBF962442F52FF4379`.
+- **PIN do ficheiro (medido 2026-11-02, 03:1x):** `_main\_audit-verify-all.cmd` = **157244 B**,
+  **2027 CRLF** / 0 bare LF, sha256 `4BFFB1A2E6F193C2CF28697C1527C89D4A864EC7AA257580D54AA77C09302F0D`.
+  (Este pin substitui o de 01:1x, 156033 B / 2011 CRLF, DEPOIS dos dois passos do `nemotron-weights`
+  e do seu `red-as-expected`: a 2026-11-01 16:28 o `worker/models/` foi esvaziado e o worker morreu no
+  arranque com `model dir not found`, e nada na bateria perguntava se o motor AO VIVO tinha pesos. Os
+  dois leem o `genai_config.json` REAL e exigem os tres numeros normativos (`blank_id=13087`,
+  `chunk_samples=8960`, `max_symbols_per_step=10`) e os tamanhos dos grafos; o braco negativo muta o
+  `chunk_samples` numa COPIA e exige o RED. Nenhum dos dois faz rede: um portao que descarrega e um
+  portao que falha offline. Repor e' `python _main/fetch-nemotron.py`, com a revisao fixada.)
   (Este pin substitui o de 16:5x, 155976 B / 2011 CRLF, DEPOIS de a linha do `redux-transcript-path`
   passar de `:record` para `:expectred`: declarada com `:record`, um passo que EXIGE rc=1 contava
   como passo normal a espera de 0 e a bateria publicava-o em `failed` -- e o `state-page` tinha

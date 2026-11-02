@@ -149,10 +149,12 @@
   72 552 270 B `97ae0cb0`, preprocessor 1 224 294 B `3de5742f`, vad 18 300 687 B `18dfbe34`,
   `transcribe.py` 17 844 B — e transcreve de verdade: um segmento na fila deu
   "The radio announced that the bridge over the river will be closed next Monday. Residents need an
-  alter." O **nemotron ao vivo NAO se repoe**: o Hub nao publica export ONNX dele (so'
-  safetensors/.nemo/.q8_0.gguf) e o repo nao tem pipeline de quantizacao, logo os passos
-  `lang-id`/`model-spec`/`word-split`/`vad-option`/`fresh-processor` e os seus negativos ficam
-  vermelhos com `SETUP ERROR` ate' o dono repor o artefacto.
+  alter." O **nemotron ao vivo TAMBEM se repoe** (medido 2026-11-02, correccao da mesma nota):
+  `onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4` na revisao `8364d9e2` publica o layout
+  ORT GenAI completo — 788 069 519 B em 16 ficheiros, `blank_id=13087`, `chunk_samples=8960`,
+  `max_symbols_per_step=10`, `left_context=56`, `decoder.hidden_size=640` — e o motor ao vivo
+  transcreve com ele: `rtf 0.479` com CUDA+CPU (pico 809 MB) e `rtf 3.078` so' a CPU (pico 422 MB)
+  no clipe de 8,4 s, texto identico nos dois. Reposto por `python _main/fetch-nemotron.py`.
 - **O REDUX ONNX AO VIVO FICA EM 0,97x DO TEMPO REAL NESTA MAQUINA (medido 2026-11-02,
   `worker/redux_live.py --wav _main/en-us-sample.wav`, 172 passes):** `mean_compute_s=5.16`
   `max_compute_s=7.29` para `step_s=2.0`/`window_s=5.00`, `overruns=172/172`, `backlog_s` estavel em

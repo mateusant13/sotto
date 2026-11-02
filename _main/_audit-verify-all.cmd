@@ -1519,6 +1519,22 @@ call :step always red-as-expected-launch-as-token 1 "_main\launch-as-token.py" "
 call :expectred red-as-expected-launch-as-token !STEP_RC! "%OUT%\launch-as-token-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-launch-as-token MISSING "%OUT%\launch-as-token-neg.log" "NEG-ARM PASS" )
 
+rem --- O MOTOR AO VIVO TEM PESOS? (2026-11-02) -------------------------------------
+rem worker/models/ foi ESVAZIADO a 2026-11-01 16:28 e o worker morreu no arranque com
+rem "model dir not found". Este passo le o genai_config.json REAL e exige os tres numeros
+rem normativos (blank_id/chunk_samples/max_symbols_per_step) e os tamanhos dos grafos. Um
+rem artefacto que ja desapareceu uma vez repoe-se por um comando: _main\fetch-nemotron.py.
+rem NAO descarrega nada -- um portao que faz rede e um portao que falha offline.
+if exist _main\fetch-nemotron.py (
+call :step always nemotron-weights 0 "_main\fetch-nemotron.py" "%OUT%\nemotron-weights.log" python _main\fetch-nemotron.py --verify
+call :record nemotron-weights !STEP_RC!
+) else ( call :record nemotron-weights MISSING )
+
+if exist _main\fetch-nemotron.py (
+call :step always red-as-expected-nemotron-weights 1 "_main\fetch-nemotron.py" "%OUT%\nemotron-weights-neg.log" python _main\fetch-nemotron.py --neg-arm
+call :expectred red-as-expected-nemotron-weights !STEP_RC! "%OUT%\nemotron-weights-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-nemotron-weights MISSING "%OUT%\nemotron-weights-neg.log" "NEG-ARM: PASS" )
+
 if exist _main\load-shedding-oracle.py (
 call :step always red-as-expected-load-shedding 1 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\load-shedding-neg.log" python _main\load-shedding-oracle.py --neg-arm
 call :expectred red-as-expected-load-shedding !STEP_RC! "%OUT%\load-shedding-neg.log" "NEG-ARM PASS"
