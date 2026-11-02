@@ -59,6 +59,7 @@ class Fake(object):
         self.stopped = False
         self.deaths = 0
         self.killed = False
+        self._rss_at = 0.0
         self.armed = 0
         self.pending_error = {'state': 'exit', 'text': 'x', 'body': ''}
         # NAO remova: um `__getattr__` permissivo devolve uma FUNCAO para um nome
@@ -189,7 +190,9 @@ def neg_arm():
               % (name, proc.returncode, must_fail, caught, "PASS" if caught else "FAIL"))
         ok = ok and caught
     print("NEG-ARM PASS" if ok else "NEG-ARM FAIL")
-    return 0 if ok else 1
+    # RED as designed: um braco negativo que FUNCIONA sai 1, para o `:expectred`
+    # da bateria exigir rc=1 E a frase `NEG-ARM PASS` no log.
+    return 1 if ok else 0
 
 
 if __name__ == "__main__":

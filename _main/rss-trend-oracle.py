@@ -142,7 +142,7 @@ def neg_arm():
     print('NEG-ARM limiar=1e9 rc=%d arm1_red=%s  %s'
           % (proc.returncode, red, 'PASS' if red else 'FAIL'))
     print('NEG-ARM PASS' if red else 'NEG-ARM FAIL')
-    return 0 if red else 1
+    return 1 if red else 0
 
 
 if __name__ == '__main__':

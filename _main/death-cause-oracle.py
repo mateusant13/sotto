@@ -179,7 +179,9 @@ def neg_arm():
     print("NEG-ARM mutant rc=%d A_guarda_3=%s E_widestring=%s  %s"
           % (proc.returncode, a_fail, e_fail, "PASS" if ok else "FAIL"))
     print("NEG-ARM PASS" if ok else "NEG-ARM FAIL")
-    return 0 if ok else 1
+    # RED as designed: um braco negativo que APANHA o mutante sai 1, e 0 quando nao
+    # apanha -- e' assim que o `:expectred` da bateria exige rc=1 E `NEG-ARM PASS`.
+    return 1 if ok else 0
 
 
 if __name__ == "__main__":

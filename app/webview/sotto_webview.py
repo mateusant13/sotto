@@ -14829,7 +14829,9 @@ def probe_reload():
 #: Por isso as duas constantes abaixo sao ENV VARS -- a unica forma honrada no PRIMEIRO
 #: frame -- e tem de ser postas ANTES de o ambiente WebView2 existir, ou seja antes de
 #: `webview.start()`. O pywebview ja' poe `DefaultBackgroundColor = Color.Transparent`
-#: (`webview/platforms/edgechromium.py:113-114`), o que cobre a propriedade e nao o frame 1.WEBVIEW2_BG_TRANSPARENT = '00000000'          # AA=00 → fully transparent
+#: (`webview/platforms/edgechromium.py:113-114`), o que cobre a propriedade e nao o frame 1.
+
+WEBVIEW2_BG_TRANSPARENT = '00000000'          # AA=00 → fully transparent
 #: Window-to-Visual hosting: "a developer experience nearly identical to Windowed
 #: hosting, but ... content is output to a Visual that is hosted in an HWND
 #: rather than to the window directly". It sounds like the fix for the white.
