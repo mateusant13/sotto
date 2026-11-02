@@ -1,5 +1,0 @@
-
-TaskPath                                       TaskName                          State
---------                                       --------                          -----
-\                                              SottoReplayHeartbeat              Running
-

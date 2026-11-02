@@ -1,3 +1,0 @@
-EngineConfig:
-  onnxruntime:
-    use_cuda: true

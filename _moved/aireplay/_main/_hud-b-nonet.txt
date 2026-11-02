@@ -1,3 +1,0 @@
---- rc=0 killed=False wall=18.5s args=
-
-LOADED=False

@@ -37,13 +37,17 @@ BATTERY = os.path.join(ROOT, "_main", "instruments-battery.mjs")
 
 #: TWO boundaries the first draft got wrong, and both produced FALSE ABSENT rows (measured -- four of
 #: the six "absent" citations were this scanner's fault, not the map's):
-#:   (?<![A-Za-z0-9_/])  the path must not START mid-path: `_moved/aireplay/_main/window-census.ps1`
+#:   (?<![A-Za-z0-9_/])  the path must not START mid-path: the parked tree's
+#:                       `_moved/aireplay/_main/window-census.ps1` (removida 2026-11-02) also
 #:                       contains `_main/window-census.ps1`, which is not a citation to `_main/`.
 #:   (?![A-Za-z0-9])     the extension must not match a PREFIX: `oracle-after.json` was read as
 #:                       `oracle-after.js` and reported absent while the file was right there.
 CITATION = re.compile(r"(?<![A-Za-z0-9_/])((?:app|worker|docs|scripts|_main|_moved)/[A-Za-z0-9_./-]+"
                       r"\.(?:py|js|mjs|cmd|ps1|json|jsonl|md))(?![A-Za-z0-9])(?::(\d+)(?:-(\d+))?)?")
 
+#: `_moved` STAYS in the alternation on purpose. The tree was removed on 2026-11-02, so a NEW
+#: citation to it must be reported ABSENT -- dropping the prefix here would let the map point into a
+#: directory that no longer exists without this oracle saying a word.
 LAUNCH_MARKERS = ("run.cmd", "sotto_webview.py", "sotto_worker.py", "_audit-verify-all",
                   "webview.create_window", "_legacy-electron")
 

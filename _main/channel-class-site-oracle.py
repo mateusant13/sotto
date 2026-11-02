@@ -52,13 +52,13 @@ DECLARED = {
     ("_main/redux-long-probe.py", 342):
         "diagnostics only: the .stdout.txt/.stderr.txt it writes are never READ (re-measured: the only "
         "later uses are two more closes)",
-    ("_moved/aireplay/src/pipeline/share_export.py", 119):
-        "PARKED TREE (docs declare it parked, not the product); captures a channel these flags empty",
-    ("_moved/aireplay/src/pipeline/share_gate.py", 123):
-        "PARKED TREE; captures a channel these flags empty",
-    ("_moved/aireplay/src/pipeline/share_gate.py", 661):
-        "PARKED TREE; captures a channel these flags empty",
 }
+
+#: WHY THREE ROWS LEFT THIS DICT ON 2026-11-02. They declared `share_export.py:119`,
+#: `share_gate.py:123` and `share_gate.py:661` under the parked `_moved/aireplay` tree. That tree
+#: (2.0 GB, nothing live wired it) was deleted, so `git ls-files` no longer returns those sites and
+#: a verdict for them would be a claim about a file nobody can open. A declared site inside a tree
+#: nothing runs is not a defect class anyone can hit; what stays above is every site that can.
 
 
 def child():

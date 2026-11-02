@@ -3,9 +3,9 @@
 
 WHY A SUCCESSOR INSTEAD OF A FIX. Audit rows #31 and #32 indict the house census --
 `MainWindowHandle != 0` with no monitor test, and a predicate that is not panel-specific (it has
-alarmed on `cmd`, `dwm` and plain `python`). That file lives in the parked tree
-`_moved/aireplay/_main/window-census.ps1`, which this session must NOT modify, so the finding cannot
-be repaired in place. What CAN be done is to build the census the rows describe, keep every test
+alarmed on `cmd`, `dwm` and plain `python`). That file lived in the parked tree
+`_moved/aireplay/_main/window-census.ps1` (removida 2026-11-02), which this session must NOT modify,
+so the finding cannot be repaired in place. What CAN be done is to build the census the rows describe, keep every test
 SEPARATELY NAMED, and gate each one with its own mutant -- which is what this file is.
 
 WHAT IT MEASURES. One window row qualifies as "the panel is on screen" only if ALL SEVEN hold:

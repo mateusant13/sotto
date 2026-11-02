@@ -1,3 +1,0 @@
---- rc=0 killed=False wall=20.58s args=--opaque --no-gate
-
-LOADED=False

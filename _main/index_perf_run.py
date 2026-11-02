@@ -2,12 +2,13 @@
 
 WHY THIS EXISTS
 ---------------
-`_moved/aireplay/_main/slice_scale_probe.py` prints p50/p95/max/%-under-budget
-without ever saying what machine produced them.  Measured consequence: the same
-n=211200 run was recorded as a 3.3x miss in one window and a 4.7x miss in
-another, and n=20000 read 5.34 ms on a quiet host and 15.14 ms on a 13-lane
-one.  Those are not two facts about the code; they are one fact about the code
-plus an undeclared amount of someone else's CPU.
+The probe that used to live at `_moved/aireplay/_main/slice_scale_probe.py` (arvore
+`_moved/aireplay` removida 2026-11-02) printed p50/p95/max/%-under-budget without ever
+saying what machine produced them.  Measured consequence: the same n=211200 run was
+recorded as a 3.3x miss in one window and a 4.7x miss in another, and n=20000 read
+5.34 ms on a quiet host and 15.14 ms on a 13-lane one.  Those are not two facts about
+the code; they are one fact about the code plus an undeclared amount of someone
+else's CPU.
 
 The probe is NOT edited here -- its gate is owned and proven by another lane.
 This runner wraps it instead: it samples the host before, during and after,
@@ -40,6 +41,13 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 SRC_INDEX = ROOT / "_moved" / "aireplay" / "src" / "index"
 PROBE = ROOT / "_moved" / "aireplay" / "_main" / "slice_scale_probe.py"
+
+#: A arvore `_moved/aireplay` foi removida em 2026-11-02 e NAO tem sucessor vivo: o `store` e a
+#: sonda viviam la, e o indice de pesquisa nunca chegou a estar ligado ao produto. Recusar em vez de
+#: importar um modulo que ja nao existe -- a mensagem NOMEIA o que desapareceu.
+if not SRC_INDEX.is_dir() or not PROBE.is_file():
+    raise SystemExit("index_perf_run: a arvore `_moved/aireplay` foi REMOVIDA em 2026-11-02; "
+                     "nao ha `slice_scale_probe.py` nem `store` vivos para este runner medir")
 
 sys.path.insert(0, str(SRC_INDEX))
 import store  # noqa: E402

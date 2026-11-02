@@ -1,2 +1,0 @@
-STDIN_PROBE_OK - 1
-queue_pop 3

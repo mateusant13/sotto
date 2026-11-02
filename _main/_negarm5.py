@@ -82,6 +82,9 @@ try:  # keep non-ASCII alive on cp1252 consoles (this has bitten lanes here)
 except Exception:  # noqa: BLE001
     pass
 
+#: REMOVED ON 2026-11-02: the parked `_moved/aireplay` tree (2.0 GB, nothing live wired it) was
+#: deleted, so this default no longer names a repository. It is kept as text only so `main()` can
+#: NAME what disappeared instead of auditing an empty directory and printing a verdict.
 DEFAULT_REPO = r"H:\sotto\_moved\aireplay"
 STORE_DB = r"C:\Users\Administrador\.minimax\v2\sqlite\runtime-state.sqlite"
 
@@ -890,6 +893,12 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     ap.add_argument("--fail-on-findings", action="store_true")
     a = ap.parse_args(argv)
+
+    if not os.path.isdir(a.repo):
+        print("RECEIPT-AUDIT ERROR: repository %r does not exist. The built-in default is %r -- the "
+              "parked tree, REMOVED on 2026-11-02. Name a live tree with --repo."
+              % (a.repo, DEFAULT_REPO), file=sys.stderr)
+        return 1
 
     try:
         rep = build_report(a.repo, a.store)
