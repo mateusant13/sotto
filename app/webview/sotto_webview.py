@@ -872,6 +872,12 @@ WORKER_SILENCE_MS = 30000
 WORKER_LOAD_SILENCE_MS = 180000
 
 
+#: Quantas linhas de stderr a morte PUBLICA. Eram TRES, e tres escondem a causa:
+#: medido 2026-11-02, o worker morreu duas vezes `rc=1` (19:22:29, 19:36:40) e a
+#: cauda era `WORKER_STATS` + `REDUX_BATCH_KICK` -- o traceback ficou de fora.
+STDERR_TAIL_MAX = 40
+
+
 def parse_worker_stats(line):
     """`{'tag': 'tick'|'final', 'fields': {...}, 'line': ...}` or None.
 
@@ -12445,37 +12451,15 @@ class WorkerReloadPolicy:
                           max(0, self.max_defer_ms - waited_ms)))
             return
         if capturing and not boundary and not forced and not transcribing:
-            # ── THIS USED TO RESTART THE WORKER. IT NO LONGER DOES. ──────────
-            # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar
-            # por 2 minutos inteiros? ... faz guard pra essa merda NUNCA MAIS
-            # ACONTECER na tua vida"* e depois *"vai no disco e o watcher e
-            # entenda por que ele nao impediu essa caga gigante. e arruma ELE.
-            # e faz ele funcionar"*.
-            #
-            # PORQUÊ O WATCHER NÃO IMPEDIU NADA, E A RESPOSTA É ESTA LINHA.
-            # O watcher (`hot_reload.py`) só decide QUANDO um estouro de
-            # edições assentou. Quem decidia SE esse estouro podia gastar um
-            # reinício era `WorkerReloadPolicy` — e a política foi escrita com a
-            # convicção, na sua própria docstring, de que
-            #     "a stale running worker is worse than one warm-up"
-            # ou seja: reiniciar logo, sem perguntar a ninguém. Foi exactamente o
-            # que aconteceu, DUAS VEZES, e o próprio log guardou o preço:
-            #     22:30:11  HOT_RELOAD_WORKER_RESTART  after_idle_ms=35000
-            #     22:35:25  HOT_RELOAD_WORKER_IDLE_APPLIED cost=one-model-warm-up
-            #
-            # Um guard a jusante (o `worker_restart_allowed`) chega para o
-            # reinício não acontecer, mas NÃO chega para o estrago parar de
-            # acontecer: a política continuava a percorrer o debounce, o
-            # boundary, o ceiling e o floor — temporizadores, linhas de log e
-            # decisões — para ir fazer algo que ia ser recusado. E, pior, o
-            # `FORCED` de baixo era um tecto que **forçava** o reinício ao fim de
-            # 25 s sem fronteira, ou seja, precisamente quando a máquina está
-            # quieta. A máquina quieta é quando se pode estragar a máquina.
-            #
-            # A CORRECÇÃO É DA POLÍTICA, E É: **não existe caminho de "um ficheiro
-            # mudou" para "reiniciar o worker".** Este ramo passa a ser um
-            # RELATÓRIO e acaba aqui. O código fica desatualizado à espera de
-            # uma PESSOA — que é quem paga a warm-up.
+            # ── UM FICHEIRO MUDOU NAO REINICIA O WORKER. SO' UM RELATORIO. ────
+            # O dono, 2026-10-17: *"é tu que tá fazendo meu pc travar por 2 minutos
+            # inteiros? ... faz guard pra essa merda NUNCA MAIS ACONTECER"*. O preco, do
+            # proprio log: `HOT_RELOAD_WORKER_RESTART after_idle_ms=35000` e
+            # `HOT_RELOAD_WORKER_IDLE_APPLIED cost=one-model-warm-up`, DUAS vezes. A
+            # `WorkerReloadPolicy` acreditava (na sua docstring) que "a stale running
+            # worker is worse than one warm-up"; hoje nao existe caminho de "um ficheiro
+            # mudou" para "reiniciar". O codigo fica desatualizado a espera de uma
+            # PESSOA -- e quem paga a warm-up e ela. (Narrativa: docs/worker-lifecycle.md.)
             disk, loaded = self._digests(bridge)
             idle_ms = (int((now_s - last_caption_at) * 1000)
                        if last_caption_at > 0.0 else None)
@@ -13475,8 +13459,15 @@ class WorkerBridge:
         try:
             for line in stream:
                 if name == 'stderr':
+                    # O ONNX Runtime escreve em WIDESTRING: lido byte a byte vira
+                    # `\u0000\u001b\u0000[` (medido 19:00:24) e a mensagem fica ilegivel.
+                    if '\x00' in line:
+                        line = line[:len(line) & ~1]
+                        line = line.encode('latin-1', 'ignore').decode('utf-16-le', 'ignore')
                     self.stderr_tail.append(line.rstrip())
-                    del self.stderr_tail[:-3]
+                    # 3 linhas escondiam a causa (2026-11-02: duas mortes `rc=1` com
+                    # `WORKER_STATS` no lugar do traceback, que vem ANTES).
+                    del self.stderr_tail[:-STDERR_TAIL_MAX]
                     # The worker's own counters line, kept whole (see
                     # `last_worker_stats`): the text dump reads `peak` and
                     # `nonzero_blocks` from here, not from a new measurement.
@@ -13982,7 +13973,12 @@ class WorkerBridge:
         self.log(f'BRIDGE_EXIT pid={child.pid} rc={rc} spawns={self.spawns} '
                  f'captions={self.captions} statuses={self.statuses} '
                  f'malformed={self.malformed} '
-                 f'stderr_tail={json.dumps(self.stderr_tail[-3:])}')
+                 f'stderr_tail={json.dumps(self.stderr_tail[-STDERR_TAIL_MAX:])}')
+        _exc = next((l.strip()[:200] for l in reversed(self.stderr_tail)
+                     if l[:1] not in (" ", "\t")
+                     and ("Error" in l or "Exception" in l)), None)
+        if _exc:
+            self.log(f'BRIDGE_DEATH_CAUSE {_exc}')
         self.child = None
         self.capturing = False
         if self.stopped:

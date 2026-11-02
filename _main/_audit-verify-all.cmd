@@ -455,6 +455,21 @@ if exist _main\external-resume-oracle.py (
   call :step red-as-expected-external-resume 1 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-neg.log" python _main\external-resume-oracle.py --neg-arm
   call :expectred red-as-expected-external-resume !STEP_RC! "%OUT%\external-resume-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-external-resume MISSING "%OUT%\external-resume-neg.log" "NEG-ARM PASS" )
+REM `death-cause-oracle.py` -- A MORTE DO WORKER TEM DE PUBLICAR A CAUSA. Medido na
+REM sessao do dono a jogar (2026-11-02): o worker morreu DUAS vezes `rc=1` (19:22:29 e
+REM 19:36:40, 14-26 s de recarga cada) e o `BRIDGE_DEATH` publicava TRES linhas de
+REM stderr -- `WORKER_STATS` + `REDUX_BATCH_KICK` -- com o traceback de fora. As duas
+REM mortes ficaram indiagnosticaveis. Agora a cauda guarda 40 linhas e a morte publica
+REM `BRIDGE_DEATH_CAUSE <excecao>`. Quatro arms com um FILHO real, e o braco negativo
+REM repoe `STDERR_TAIL_MAX = 3` e tem de derrubar a arm da retencao.
+if exist _main\death-cause-oracle.py (
+  call :step death-cause 0 "_main\death-cause-oracle.py;app\webview\sotto_webview.py" "%OUT%\death-cause.log" python _main\death-cause-oracle.py
+  call :record death-cause !STEP_RC!
+) else ( call :record death-cause MISSING )
+if exist _main\death-cause-oracle.py (
+  call :step red-as-expected-death-cause 1 "_main\death-cause-oracle.py;app\webview\sotto_webview.py" "%OUT%\death-cause-neg.log" python _main\death-cause-oracle.py --neg-arm
+  call :expectred red-as-expected-death-cause !STEP_RC! "%OUT%\death-cause-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-death-cause MISSING "%OUT%\death-cause-neg.log" "NEG-ARM PASS" )
 REM `caption-seam-dedup-oracle.py` -- a repeticao no seam do chunk. Medido na
 REM captura real do dono: os chunks `'umas'` (16,80-17,36) e `'tem umas'`
 REM (17,36-17,92) produziam a linha `... tem umas tem umas youtuber ...`. O carry

@@ -285,8 +285,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02, 22:5x):** `_main\_audit-verify-all.cmd` = **161422 B**,
-  **2073 CRLF** / 0 bare LF, sha256 `57196AB193DFFE6E855A2A22EB2EC2A1422D0147E963F121A3AA65117C12327F`.
+- **PIN do ficheiro (medido 2026-11-02):** `_main\_audit-verify-all.cmd` = **162703 B**,
+  **2088 CRLF** / 0 bare LF, sha256 `693249EB9B243A45B49DCAB92C6AC5CC5C1DA7D89207AD960ECA655197870640`.
+  (Este pin substitui o de 22:5x, 161422 B / 2073 CRLF, DEPOIS dos dois passos do `death-cause`:
+  a morte de um worker `rc=1` custa uma recarga de 14-26 s, e a cauda de stderr que o
+  `BRIDGE_DEATH` publicava tinha TRES linhas -- `WORKER_STATS` + `REDUX_BATCH_KICK` -- com o
+  traceback de fora: medido 2026-11-02 na sessao do dono a jogar, duas mortes (19:22:29 e
+  19:36:40) ficaram indiagnosticaveis. Agora a cauda guarda 40 linhas e a morte publica
+  `BRIDGE_DEATH_CAUSE <excecao>`. O braco negativo repoe `STDERR_TAIL_MAX = 3` numa COPIA e
+  derruba a arm da retencao.)
   (Este pin substitui o de 19:1x, 158822 B / 2043 CRLF, DEPOIS de QUATRO passos novos desta noite:
   `caption-seam-dedup` + `red-as-expected-caption-seam-dedup` e `agc-peak-ceiling` +
   `red-as-expected-agc-peak-ceiling`. Os dois nasceram da MESMA medicao no caminho VIVO sobre 30 s do
