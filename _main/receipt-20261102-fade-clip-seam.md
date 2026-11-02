@@ -120,3 +120,21 @@ p50 **1,515 s**. **Este número NÃO é latência de pintura** e não se apresen
 quando a linha **fecha** — e a linha fecha 1,5-8 s depois de nascer. A latência da
 pintura provisória não tem instrumento hoje; fica declarada em
 `docs/por-medir.md`-classe, não afirmada.
+
+## 6. Fecho medido
+
+```
+bateria: steps=193  gate=108  control=8  skipped=12  expect-red=65  missing=0  failed=-none-
+BATTERY-VERDICT: GREEN WITH 12 SKIPPED   exit 0   (90 passos em cache)
+pin novo: _main\_audit-verify-all.cmd = 161422 B / 2073 CRLF / 0 bare LF
+          sha256 57196AB193DFFE6E855A2A22EB2EC2A1422D0147E963F121A3AA65117C12327F
+[step] caption-seam-dedup                  rc=0
+[step] red-as-expected-caption-seam-dedup  rc=1  [EXPECT-RED]
+[step] agc-peak-ceiling                    rc=0
+[step] red-as-expected-agc-peak-ceiling    rc=1  [EXPECT-RED]
+code-health: PASS (o `main()` do worker tinha crescido 7 linhas com a cura; o
+ratchet vive em 2333 e o comentario foi comprimido em vez de o baseline baixar)
+
+commit 75ad2f6 (push origin/feat/speaker-attribution-20261019), pre-commit:
+15 suites + 9 gate probes verdes.
+```
