@@ -142,3 +142,19 @@
   derruba (medido: rc=1, `armed` RED + log-dentro-do-guard RED).
 - **O `run.cmd`/shell ARRANCA COM `LOAD_SHEDDING_STARTED` E SEM `HOTKEY_..._FAILED` (medido
   2026-10-30 10:58:59, pid 43304):** `gesture=taps-1|taps-2|hold hold_ms=200 tap_window_ms=400`.
+- **AS TRES DIRECTORIAS DE MODELO DO `worker/models/` ESTAVAM VAZIAS A 2026-11-02 01:26, E SO' UMA SE
+  REPOE SOZINHA (medido 2026-11-02):** o directorio estava vazio (mtime 2026-11-01 16:28; o log tem
+  `model-loaded` as 16:25:45 e `model dir not found` as 16:28:30). O parakeet ONNX int4 voltou por
+  `python _main/fetch-parakeet.py` — `VERDICT GREEN`, encoder 343 841 943 B `ade2c65c`, decoder_joint
+  72 552 270 B `97ae0cb0`, preprocessor 1 224 294 B `3de5742f`, vad 18 300 687 B `18dfbe34`,
+  `transcribe.py` 17 844 B — e transcreve de verdade: um segmento na fila deu
+  "The radio announced that the bridge over the river will be closed next Monday. Residents need an
+  alter." O **nemotron ao vivo NAO se repoe**: o Hub nao publica export ONNX dele (so'
+  safetensors/.nemo/.q8_0.gguf) e o repo nao tem pipeline de quantizacao, logo os passos
+  `lang-id`/`model-spec`/`word-split`/`vad-option`/`fresh-processor` e os seus negativos ficam
+  vermelhos com `SETUP ERROR` ate' o dono repor o artefacto.
+- **O REDUX ONNX AO VIVO FICA EM 0,97x DO TEMPO REAL NESTA MAQUINA (medido 2026-11-02,
+  `worker/redux_live.py --wav _main/en-us-sample.wav`, 172 passes):** `mean_compute_s=5.16`
+  `max_compute_s=7.29` para `step_s=2.0`/`window_s=5.00`, `overruns=172/172`, `backlog_s` estavel em
+  34-38 s, `peak=0.689819`, com 54 % de CPU e 24,4 GB de RAM livres. Nao e' defeito do motor: e' a
+  razao medida de a lei da stack pôr o nemotron no AO VIVO e o parakeet no fundo.
