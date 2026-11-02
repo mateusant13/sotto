@@ -455,6 +455,22 @@ if exist _main\external-resume-oracle.py (
   call :step red-as-expected-external-resume 1 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-neg.log" python _main\external-resume-oracle.py --neg-arm
   call :expectred red-as-expected-external-resume !STEP_RC! "%OUT%\external-resume-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-external-resume MISSING "%OUT%\external-resume-neg.log" "NEG-ARM PASS" )
+REM `silence-kill-oracle.py` -- UM KILL DO PROPRIO SHELL NAO E' UMA MORTE DO WORKER.
+REM Medido no log do dono: das 10 `BRIDGE_SILENT` anomalas, 9 sao seguidas no mesmo pid do
+REM `BRIDGE_EXIT rc=1` que o `TerminateProcess` devolve -- e o `_wait` publicava-o como
+REM `BRIDGE_DEATH kind=error`, painel vermelho e recarga contada como falha, num worker que
+REM transcrevia. O caso que doi' (19:36:40) tinha `CAPTION_APPLIED count=200` 0,4 s antes: o
+REM `blocks` congela durante um lote longo e o cao de guarda mata quem trabalha. Agora o kill
+REM publica `BRIDGE_KILLED` e `killed=true`, e as linhas de lote contam como progresso. Cinco
+REM arms; o braco negativo muta a marca do kill e as PROGRESS_TAGS e exige as duas RED.
+if exist _main\silence-kill-oracle.py (
+  call :step silence-kill 0 "_main\silence-kill-oracle.py;app\webview\sotto_webview.py" "%OUT%\silence-kill.log" python _main\silence-kill-oracle.py
+  call :record silence-kill !STEP_RC!
+) else ( call :record silence-kill MISSING )
+if exist _main\silence-kill-oracle.py (
+  call :step red-as-expected-silence-kill 1 "_main\silence-kill-oracle.py;app\webview\sotto_webview.py" "%OUT%\silence-kill-neg.log" python _main\silence-kill-oracle.py --neg-arm
+  call :expectred red-as-expected-silence-kill !STEP_RC! "%OUT%\silence-kill-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-silence-kill MISSING "%OUT%\silence-kill-neg.log" "NEG-ARM PASS" )
 REM `death-cause-oracle.py` -- A MORTE DO WORKER TEM DE PUBLICAR A CAUSA. Medido na
 REM sessao do dono a jogar (2026-11-02): o worker morreu DUAS vezes `rc=1` (19:22:29 e
 REM 19:36:40, 14-26 s de recarga cada) e o `BRIDGE_DEATH` publicava TRES linhas de

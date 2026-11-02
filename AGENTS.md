@@ -285,8 +285,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02):** `_main\_audit-verify-all.cmd` = **162703 B**,
-  **2088 CRLF** / 0 bare LF, sha256 `693249EB9B243A45B49DCAB92C6AC5CC5C1DA7D89207AD960ECA655197870640`.
+- **PIN do ficheiro (medido 2026-11-02):** `_main\_audit-verify-all.cmd` = **164144 B**,
+  **2104 CRLF** / 0 bare LF, sha256 `3DE483AE078455FE6AB2E5A171366D2B0BAC02E2EC32134A6BAE8622538225BE`.
+  (Este pin substitui o de 162703 B, DEPOIS dos dois passos do `silence-kill`: das 10
+  `BRIDGE_SILENT` anomalas do log do dono, **9** sao seguidas no mesmo pid do `BRIDGE_EXIT`
+  `rc=1` que o `TerminateProcess` do proprio shell devolve, e o `_wait` publicava-o como
+  `BRIDGE_DEATH kind=error` -- painel vermelho e recarga contada como falha num worker que
+  transcrevia. O caso de 19:36:40 tinha `CAPTION_APPLIED count=200` 0,4 s antes: o `blocks`
+  congela dentro de um lote longo e o cao de guarda mata quem trabalha. Agora o kill publica
+  `BRIDGE_KILLED` + `killed=true`, e `REDUX_BATCH_KICK`/`REDUX_ENGINE_DONE`/`REDUX_MODE`
+  contam como progresso. Cinco arms + dois mutantes (marca do kill, PROGRESS_TAGS).)
   (Este pin substitui o de 22:5x, 161422 B / 2073 CRLF, DEPOIS dos dois passos do `death-cause`:
   a morte de um worker `rc=1` custa uma recarga de 14-26 s, e a cauda de stderr que o
   `BRIDGE_DEATH` publicava tinha TRES linhas -- `WORKER_STATS` + `REDUX_BATCH_KICK` -- com o

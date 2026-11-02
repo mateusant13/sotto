@@ -171,3 +171,16 @@
   `device-silence` deu `captions=0` com `blocks=56 peak=0,275 speech_blocks=6` — captou fala e não
   transcreveu nada porque a janela fechou antes do primeiro decode. O oráculo passou a derivar a janela
   do `load_s` da PRÓPRIA corrida (`load_s + max(secs,20) + 10`, uma única repetição).
+- **O ELECTRON MORTO PESAVA 1,046 GB DESTE REPO (medido 2026-11-02):** tres copias do mesmo runtime
+  defunto -- `node_modules/electron-stub/dist` 369 MB, `app/node_modules/electron` 332 MB,
+  `app/_legacy-electron/node_modules` 345 MB. Nenhuma e' referenciada por codigo vivo (o painel e'
+  ES modules servidos pelo WebView2, sem bundler; o unico consumidor vivo de `_legacy-electron` e'
+  `transcript-append-oracle.js`, que so' usa `node:fs`/`node:path`). Removidas, e a prova e' a
+  mesma porta que as usaria: `node app/shadowplay/run-all.mjs` -> `SUITES 15 passed, 0 failed` +
+  `GATE 9 passed / 0 refused`, e `node app/_legacy-electron/transcript-append-oracle.js` ->
+  `RESULT: GREEN`. H: foi de 54 GB para 55 GB livres.
+- **`git worktree list` MENTIA 16 WORKTREES E HAVIA 6 (medido 2026-11-02):** dez eram registos de
+  directorios que ja' nao existem; `git worktree prune` limpou-os sem tocar em dados. Os seis reais
+  ocupam 78+80+44+44+44 MB (`ArbV8`, `audioclip`, `AuthFix`, `StdinV9`, `CutVerbI2`) e cada um tem
+  commits fora do ramo actual (1-9), por isso NAO se apagam sem decisao: apagar o directorio nao
+  apaga o ramo, mas apaga o que esta' por commitar la'.

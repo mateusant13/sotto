@@ -872,6 +872,10 @@ WORKER_SILENCE_MS = 30000
 WORKER_LOAD_SILENCE_MS = 180000
 
 
+#: As linhas de stderr que provam que o worker esta VIVO a trabalhar. `WORKER_STATS` so'
+#: conta quando `blocks` AVANCA (`_note_progress`); num lote longo ele congela -- e o
+#: worker era morto por isso.
+PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE')
 #: Quantas linhas de stderr a morte PUBLICA. Eram TRES, e tres escondem a causa:
 #: medido 2026-11-02, o worker morreu duas vezes `rc=1` (19:22:29, 19:36:40) e a
 #: cauda era `WORKER_STATS` + `REDUX_BATCH_KICK` -- o traceback ficou de fora.
@@ -5901,39 +5905,17 @@ class SottoHost:
 
         kind = message.get('kind')
         payload = message.get('payload')
-        # ONE BAD ENTRY COSTS ONLY ITS OWN KIND, and that is a REWRITE, not the
-        # guard that stood here before. MEASURED 2026-10-13: this map was a bare
-        # dict literal, and a dict literal evaluates EVERY value, so ONE entry
-        # naming a method this class does not have (`self._set_strip_offset` -- a
-        # SottoShell method at :7005, not a SottoHost one) raised AttributeError
-        # while BUILDING the map, BEFORE `.get(kind)` ran, and `dispatch` died for
-        # EVERY kind: the deferred-asset ask (PANEL_LAZY_ALLOW 0), the panel's own
-        # `ready()` (RECEIVER_READY 0) and every probe kind. Two and a half hours
-        # of a dead page->shell channel, invisible because the exception went to
-        # pywebview's own logger instead of this shell's log.
-        #
-        # THE TABLE HOLDS NAMES, NOT VALUES, and that is the fix: a STRING cannot
-        # fail to evaluate. Every entry is resolved on its own, with `getattr`, one
-        # by one, in `_resolve_handler_map`, so an entry that does not resolve is
-        # SKIPPED, NAMES ITSELF and leaves every other kind working:
-        #     BRIDGE_HANDLER_MAP_FAILED kind='...' name='...' error=...
-        # One bad entry therefore costs exactly its own kind. A kind whose entry
-        # failed still lands in BRIDGE_UNKNOWN_KIND one line later -- the page's
-        # own view, unchanged from before, with the reason right above it.
-        #
-        # The three entries that CANNOT be a name on this class -- `hide`, `toggle`
-        # and `quit` call `self._shell.<method>('page')` and DROP the page's payload
-        # -- carry ('shell-call', method, reason); the two `setStripOffset` entries
-        # carry ('shell', method), because the receiver is the SHELL and getting
-        # that wrong is the entry that killed the channel.
-        #
-        # THE try/except BELOW IS THE LAST-RESORT NET, NOT THE FIX, said because
-        # the first version of this guard claimed the opposite. If someone writes
-        # an ATTRIBUTE ACCESS in this table again, the whole table fails to build
-        # and the net is loud about it (BRIDGE_HANDLER_MAP_FAILED with NO kind=,
-        # empty map: every kind dead, LOUDLY). The per-kind isolation is the loop
-        # in `_resolve_handler_map`, and it is what the gate's isolation arm
-        # proves: the bad entry is NAMED, and the good kinds still dispatch.
+        # UM KIND MAU CUSTA SO' O PROPRIO KIND. Medido 2026-10-13: o mapa era um dict
+        # literal, e um valor que levantava (`self._set_strip_offset`, metodo da shell e nao
+        # do host) matava o `.get(kind)` de TODOS os kinds -- canal pagina->shell morto 2,5 h,
+        # invisivel porque a excepcao ia para o logger do pywebview. A TABELA PASSOU A
+        # GUARDAR NOMES: `_resolve_handler_map` resolve um a um com `getattr` e um que nao
+        # resolve e' SALTA e DIZ-SE (`BRIDGE_HANDLER_MAP_FAILED kind=... name=... error=...`),
+        # e o kind cai em `BRIDGE_UNKNOWN_KIND` uma linha depois. As entradas que nao podem
+        # ser nome desta classe -- `hide`, `toggle`, `quit` chamam `self._shell.<m>('page')`
+        # e deitam fora o payload -- levam `('shell-call', method, reason)`; os dois
+        # `setStripOffset` levam `('shell', method)`. O `try/except` abaixo e' a REDE DE ULTIMO
+        # RECURSO, nao a cura: a isolacao por kind e' o laco, e a arm do portao prova-o.
         try:
             table = {
             'caption-observed': ('host', '_caption_observed'),
@@ -13071,6 +13053,11 @@ class WorkerBridge:
         # the comment names is 0.0.
         self.no_audio_evidence_at = 0.0
         self.deaths = 0
+        #: TRUE entre o `terminate()` do proprio shell e o `_wait` que o ve morrer.
+        #: Sem isto um HOMICIDIO era publicado como morte: medido no log do dono, 9 das
+        #: 10 silencias anomalas sao seguidas do `rc=1` que o `TerminateProcess` devolve,
+        #: e o `BRIDGE_DEATH kind=error` pintava o painel de vermelho num worker saudavel.
+        self.killed = False
         self.stderr_tail = []
         #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
         #: That stream is the ONLY place `peak`/`nonzero_blocks` are published,
@@ -13464,6 +13451,11 @@ class WorkerBridge:
                     if '\x00' in line:
                         line = line[:len(line) & ~1]
                         line = line.encode('latin-1', 'ignore').decode('utf-16-le', 'ignore')
+                    # O LOTE A CORRER TAMBEM E' PROGRESSO: um `BRIDGE_SILENT` as 19:36:40
+                    # matou um worker que tinha entregue legenda 1,9 s antes; o `blocks`
+                    # congelado (o lote segura o laco) foi o que pareceu um travao.
+                    if line.startswith(PROGRESS_TAGS):
+                        self._arm_silence()
                     self.stderr_tail.append(line.rstrip())
                     # 3 linhas escondiam a causa (2026-11-02: duas mortes `rc=1` com
                     # `WORKER_STATS` no lugar do traceback, que vem ANTES).
@@ -13970,7 +13962,9 @@ class WorkerBridge:
             return
         rc = child.wait()
         self.last_exit = rc
-        self.log(f'BRIDGE_EXIT pid={child.pid} rc={rc} spawns={self.spawns} '
+        killed, self.killed = self.killed, False
+        self.log(f'BRIDGE_EXIT pid={child.pid} rc={rc} killed={killed} '
+                 f'spawns={self.spawns} '
                  f'captions={self.captions} statuses={self.statuses} '
                  f'malformed={self.malformed} '
                  f'stderr_tail={json.dumps(self.stderr_tail[-STDERR_TAIL_MAX:])}')
@@ -13981,6 +13975,14 @@ class WorkerBridge:
             self.log(f'BRIDGE_DEATH_CAUSE {_exc}')
         self.child = None
         self.capturing = False
+        if killed:
+            # O SHELL MATOU-O (janela de silencio, timeout de load): o `rc=1` e
+            # o `TerminateProcess` do Windows, nao a sentenca do worker. Publique-se
+            # como o que e', e NAO como `BRIDGE_DEATH kind=error` + recarga contada
+            # como falha: o `_kill_and_restart` ja' agendou a volta, com a razao dele.
+            self.log(f'BRIDGE_KILLED pid={child.pid} rc={rc} '
+                     'why=the-shell-terminated-it')
+            return
         if self.stopped:
             return
         # The stderr tail is the worker's own sentence about its own death
@@ -14036,6 +14038,7 @@ class WorkerBridge:
 
     def _kill_and_restart(self, reason):
         child, self.child = self.child, None
+        self.killed = child is not None
         if child is not None:
             try:
                 child.terminate()
@@ -14803,36 +14806,21 @@ def probe_reload():
 
 #: ── THE WEBVIEW2 COMPOSITION KNOBS, AND WHY THEY ARE SET HERE ────────────────
 #:
-#: WebView2 has TWO hosting models (Microsoft, "Windowed vs. Visual hosting of
-#: WebView2"). pywebview uses the first: a `WRY`/`Chrome_WidgetWin` CHILD HWND,
-#: created by `CreateCoreWebView2Controller`. DWM composites that child HWND on
-#: its own layer, independently of the parent window — so the parent's own
-#: `WS_EX_LAYERED` state, its layered alpha and its colour key do NOT reach the
-#: content, and the surface shows the compositor's default between the moment
-#: the HWND is mapped and the moment the browser process paints real pixels.
-#: That gap is the WHITE the owner reported; it is not a defect in our CSS.
+#: O BRANCO entre o HWND mapeado e o primeiro pixel NAO e' CSS nosso: o pywebview usa
+#: WINDOWED hosting (um `Chrome_WidgetWin` filho criado por `CreateCoreWebView2Controller`)
+#: e o DWM compoe esse filho na sua propria camada -- logo `WS_EX_LAYERED`/`LWA_COLORKEY`
+#: no pai nao chegam ao conteudo. Documentado e medido: MicrosoftEdge/WebView2Feedback#118
+#: (`LWA_COLORKEY` "did not work", `LWA_ALPHA` sim; a resposta da Microsoft foi "no plans to
+#: further support keying out a specific color"), unoplatform/uno#22694 (o mesmo estouro em
+#: show/hide/recreate como "a fundamental limitation of the Win32 HWND composition model")
+#: e a doc do `DefaultBackgroundColor` (o default e' BRANCO, e "just setting the color by
+#: property can still leave the app with a white flicker ... setting the color via
+#: environment variable solves this issue").
 #:
-#: Measured and independently documented upstream:
-#:   · MicrosoftEdge/WebView2Feedback#118 — `WS_EX_LAYERED` + `LWA_COLORKEY`
-#:     around a WebView2 "did not work", while `LWA_ALPHA` on the same HWND did.
-#:     Microsoft's answer was "no plans to further support keying out a specific
-#:     color"; the supported route is `DefaultBackgroundColor`.
-#:   · unoplatform/uno#22694 — the same three defects (white flash on
-#:     show/hide/recreate, position flash, airspace) from "a fundamental
-#:     limitation of the Win32 HWND composition model"; the author's own words
-#:     are that the workarounds "reduce severity but cannot eliminate the flash".
-#:   · Microsoft, `DefaultBackgroundColor` — the default is WHITE, and "just
-#:     setting the color by property can still leave the app with a white
-#:     flicker before the property takes effect. Setting the color via
-#:     environment variable solves this issue."
-#:
-#: So both knobs below are set as ENVIRONMENT VARIABLES, which is the only form
-#: that is honoured from the first frame, and both must be set BEFORE the
-#: WebView2 environment is created — i.e. before `webview.start()`. pywebview
-#: sets `DefaultBackgroundColor = Color.Transparent` itself
-#: (`webview/platforms/edgechromium.py:113-114`, `transparent=True` is our
-#: default), which covers the property but not the first frame.
-WEBVIEW2_BG_TRANSPARENT = '00000000'          # AA=00 → fully transparent
+#: Por isso as duas constantes abaixo sao ENV VARS -- a unica forma honrada no PRIMEIRO
+#: frame -- e tem de ser postas ANTES de o ambiente WebView2 existir, ou seja antes de
+#: `webview.start()`. O pywebview ja' poe `DefaultBackgroundColor = Color.Transparent`
+#: (`webview/platforms/edgechromium.py:113-114`), o que cobre a propriedade e nao o frame 1.WEBVIEW2_BG_TRANSPARENT = '00000000'          # AA=00 → fully transparent
 #: Window-to-Visual hosting: "a developer experience nearly identical to Windowed
 #: hosting, but ... content is output to a Visual that is hosted in an HWND
 #: rather than to the window directly". It sounds like the fix for the white.
