@@ -471,6 +471,20 @@ if exist _main\silence-kill-oracle.py (
   call :step red-as-expected-silence-kill 1 "_main\silence-kill-oracle.py;app\webview\sotto_webview.py" "%OUT%\silence-kill-neg.log" python _main\silence-kill-oracle.py --neg-arm
   call :expectred red-as-expected-silence-kill !STEP_RC! "%OUT%\silence-kill-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-silence-kill MISSING "%OUT%\silence-kill-neg.log" "NEG-ARM PASS" )
+REM `rss-trend-oracle.py` -- A MEMORIA TEM DE SER UMA SERIE. O worker publica `rss_mb` em cada
+REM `WORKER_STATS`, mas a shell so' o guardava na CAUDA DA MORTE: o numero existia exactamente
+REM quando ja' nao havia o que medir, e 'leak' ficava uma afirmacao sem medida. Desde 2026-11-02
+REM a shell escreve `BRIDGE_RSS rss_mb=.. blocks=..` uma vez por minuto, e este passo julga a
+REM forma: fuga linear (FLAG), aquecimento que assenta (ok), dente de serra (ok) e serie curta
+REM (UNKNOWN -- NUNCA verde). O braco negativo poe o limiar em 1e9 e a arm da fuga tem de cair.
+if exist _main\rss-trend-oracle.py (
+  call :step rss-trend 0 "_main\rss-trend-oracle.py;app\webview\sotto_webview.py" "%OUT%\rss-trend.log" python _main\rss-trend-oracle.py
+  call :record rss-trend !STEP_RC!
+) else ( call :record rss-trend MISSING )
+if exist _main\rss-trend-oracle.py (
+  call :step red-as-expected-rss-trend 1 "_main\rss-trend-oracle.py" "%OUT%\rss-trend-neg.log" python _main\rss-trend-oracle.py --neg-arm
+  call :expectred red-as-expected-rss-trend !STEP_RC! "%OUT%\rss-trend-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-rss-trend MISSING "%OUT%\rss-trend-neg.log" "NEG-ARM PASS" )
 REM `death-cause-oracle.py` -- A MORTE DO WORKER TEM DE PUBLICAR A CAUSA. Medido na
 REM sessao do dono a jogar (2026-11-02): o worker morreu DUAS vezes `rc=1` (19:22:29 e
 REM 19:36:40, 14-26 s de recarga cada) e o `BRIDGE_DEATH` publicava TRES linhas de

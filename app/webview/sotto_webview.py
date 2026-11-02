@@ -13058,6 +13058,7 @@ class WorkerBridge:
         #: 10 silencias anomalas sao seguidas do `rc=1` que o `TerminateProcess` devolve,
         #: e o `BRIDGE_DEATH kind=error` pintava o painel de vermelho num worker saudavel.
         self.killed = False
+        self._rss_at = 0.0
         self.stderr_tail = []
         #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
         #: That stream is the ONLY place `peak`/`nonzero_blocks` are published,
@@ -13487,6 +13488,14 @@ class WorkerBridge:
                             # `_arm_silence`, so the one periodic signal the
                             # worker publishes never reached the watchdog.
                             self._note_progress(parsed)
+                            # A MEMORIA PUBLICADA: uma linha por minuto. Sem serie nao ha'
+                            # como provar nem refutar uma fuga -- o `rss_mb` so' aparecia na
+                            # cauda da morte, ou seja exactamente quando ja' nao havia o que medir.
+                            if time.monotonic() - self._rss_at >= 60.0:
+                                self._rss_at = time.monotonic()
+                                _f = parsed.get('fields') or {}
+                                self.log('BRIDGE_RSS rss_mb=%s blocks=%s' % (
+                                    _f.get('rss_mb', '-'), _f.get('blocks', '-')))
                     continue
                 text = line.strip()
                 if text:

@@ -285,8 +285,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02):** `_main\_audit-verify-all.cmd` = **164144 B**,
-  **2104 CRLF** / 0 bare LF, sha256 `3DE483AE078455FE6AB2E5A171366D2B0BAC02E2EC32134A6BAE8622538225BE`.
+- **PIN do ficheiro (medido 2026-11-02):** `_main\_audit-verify-all.cmd` = **165353 B**,
+  **2118 CRLF** / 0 bare LF, sha256 `A7B0EC240F51980CDD9CCC77F36EA2D6580A0B171464DEF4702510A2E19FA412`.
+  (Este pin substitui o de 164144 B, DEPOIS dos dois passos do `rss-trend`: o worker publica
+  `rss_mb` em cada `WORKER_STATS` e a shell so' o guardava na cauda da morte -- o numero
+  existia exactamente quando ja' nao havia o que medir, e "leak" era uma afirmacao sem
+  medida. Agora a shell escreve `BRIDGE_RSS rss_mb=.. blocks=..` uma vez por minuto e o
+  passo julga a FORMA da serie (fuga linear = FLAG; aquecimento que assenta = ok; dente de
+  serra = ok; serie curta = UNKNOWN, nunca verde). O negativo poe o limiar em 1e9 e a arm da
+  fuga tem de cair.)
   (Este pin substitui o de 162703 B, DEPOIS dos dois passos do `silence-kill`: das 10
   `BRIDGE_SILENT` anomalas do log do dono, **9** sao seguidas no mesmo pid do `BRIDGE_EXIT`
   `rc=1` que o `TerminateProcess` do proprio shell devolve, e o `_wait` publicava-o como
