@@ -130,3 +130,23 @@ O QUE ISSO EXIGE (decisao de arquitectura, nao um remendo):
 O que NAO se faz enquanto isto estiver aberto: chamar 1:1 ao produto. A ordem de leitura,
 a geometria, a quebra de linha e o "passo do player" estao corrigidos e provados; a
 FONTE pode desaparecer debaixo deles.
+
+## CORRECCAO DO RECIBO -- o ecra NAO congelou (medido 2026-11-03 01:0x)
+
+A primeira leitura desta paragem dizia que o ultimo quadro ficava CONGELADO no
+ecra (`display_age_ms_median=46 470`). A medicao seguinte desmente a leitura e
+mantem o numero: o instrumento le o ultimo quadro que a app DESENHOU, e a app
+ja' limpa o overlay 6 s depois da ultima legenda --
+
+    CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s epoch=2 wanted=true
+
+-- logo o que o dono ve durante a paragem e' NADA, nao texto velho. Tentei
+acrescentar um clear mais cedo (2,5 s) e a instrumentacao mostrou que ele era
+redundante: a decisao disparava (`YOUTUBE_PAINT_BLANK_DECISION fire=True`) e nao
+mudava o que ja' estava limpo. Foi removido -- um gate que nao muda o ecra e'
+peso morto.
+
+O defeito real, esse, mantem-se e e' o que o `YOUTUBE_PAINT_STALL` nomeia: com a
+aba do YouTube em segundo plano o Chrome deixa de expor a legenda na arvore de
+acessibilidade, e o Sotto nao tem fonte nenhuma para ler. Texto nenhum aparece
+ate' a fonte voltar.

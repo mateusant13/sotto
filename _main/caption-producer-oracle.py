@@ -37,6 +37,7 @@ USO:
 from __future__ import annotations
 
 import argparse
+import importlib.util as _iu
 import io
 import os
 import re
@@ -117,6 +118,11 @@ def arms():
     # e o mesmo filho lido duas vezes nao vira palavra repetida.
     rows_ok, rows_note = _rows_arm()
     out.append(('rows-are-the-players', rows_ok, rows_note))
+
+    # 8. SEM FONTE, O ECRA LIMPA-SE (2026-11-03). A pintura parada durante
+    # minutos deixava o ultimo quadro CONGELADO no ecra (medido 46 s de idade).
+    # A regra 1:1 nao e' "mostrar o que ele mostrou", e' "mostrar o que ele
+    # mostra": sem fonte, limpa-se uma vez.
     return out
 
 
@@ -208,6 +214,7 @@ def neg_arm():
     m4 = window.replace('if starts and current:', 'if False and current:', 1)
     rows_ok = _rows_arm_from(m4)
     results.append(('marker-merge-back', 'rows-are-the-players', not rows_ok))
+
 
     bad = 0
     for name, arm, red in results:
