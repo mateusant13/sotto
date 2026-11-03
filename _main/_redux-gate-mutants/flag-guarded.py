@@ -788,6 +788,15 @@ class StreamAsr:
         self.audio_s = 0.0
         self.wall = 0.0
         self.load_s = 0.0
+        # ONDE O TEMPO VAI, POR ESTAGIO (2026-11-02). The owner asked which path
+        # costs what, and the honest answer needed numbers: with CUDA the model
+        # alone is 52 ms per 560 ms chunk, but the WHOLE worker run measured 3,9 s
+        # for 13,44 s of audio where the bare graph took 1,25 s. These three
+        # counters split that gap instead of guessing: `pre` is the feature front
+        # end + Silero VAD (`sp.process`), `enc` the encoder session and `dec` the
+        # greedy walk (decoder + joint). Published in the selftest payload and in
+        # `WORKER_TIMING`, so a regression in any stage is a number, not a feeling.
+        self.stage_s = {"pre": 0.0, "enc": 0.0, "dec": 0.0}
         # Stage counters for the live path. `frames_walked` / `blank_frames` are
         # the discriminator the live run was missing: a greedy walk that only ever
         # argmaxes to blank means the model saw nothing to say, and `blank_frac`
@@ -980,7 +989,9 @@ class StreamAsr:
                 self.wall += time.time() - t_start
             return "", 0
 
+        _t_pre = time.time()
         feats = self.sp.process(pcm_chunk)
+        self.stage_s["pre"] += time.time() - _t_pre
         # ── the VAD-gated chunk ──────────────────────────────────────────────
         # `use_vad` is not a passive flag in onnxruntime-genai 0.17.1: the
         # StreamingProcessor CONSUMES it, and when the shipped Silero VAD
@@ -1007,6 +1018,7 @@ class StreamAsr:
         af = feats["audio_features"]
         af = af.as_numpy() if hasattr(af, "as_numpy") else np.asarray(af)
 
+        _t_enc = time.time()
         enc_out, enc_len, self.cc, self.ct, self.ccl = self.enc.run(
             [
                 "outputs",
@@ -1024,6 +1036,8 @@ class StreamAsr:
                 "lang_id": self.lid,
             },
         )
+        self.stage_s["enc"] += time.time() - _t_enc
+        _t_dec = time.time()
         T = int(np.asarray(enc_len).reshape(-1)[0])
 
         # ── THE PREDICTOR CARRIES ACROSS THE BOUNDARY (arm 3, CURA 2026-10-06) ──
@@ -1163,6 +1177,9 @@ class StreamAsr:
         # probes that must not change; every emitter reads it immediately after
         # the call and hands it to `LineFormer.push(continues=...)`.
         self.chunk_continues = chunk_is_continuation(self.vocab, chunk_ids)
+        # O WALK (decoder + joint) fecha a conta: `pre` e `enc` ja' foram somados
+        # acima, portanto o resto do `run_chunk` e' este laco.
+        self.stage_s["dec"] += time.time() - _t_dec
         return self.detok(chunk_ids), len(chunk_ids)
 
 
@@ -3251,7 +3268,20 @@ def file_tap_candidate(path):
 #: by what is asked, not by the next power of two) -- and it is in the
 #: environment because the owner knows his card and this file does not.
 CUDA_MEM_LIMIT_MB_ENV = "SOTTO_CUDA_MEM_LIMIT_MB"
-CUDA_MEM_LIMIT_MB_DEFAULT = 4096
+#: MEDIDO 2026-11-02, `worker/assets/sample1.flac` (13,44 s), RTX 5080, os tres
+#: estagios instrumentados (`stage_s`), com o teto do arena a variar e TODO o resto
+#: fixo -- a unica diferenca entre as linhas e' este numero:
+#:
+#:     4096 MB   enc 3,256 s   wall 3,719 s
+#:     8192 MB   enc 2,927 s   wall 3,343 s
+#:        0 MB   enc 2,662 s   wall 3,161 s   (sem teto)
+#:
+#: O teto custava **18 % no encoder** -- e o encoder e' 87 % do tempo do worker.
+#: `kSameAsRequested` ja' cresce pelo que e' PEDIDO (nao pela proxima potencia de
+#: dois), portanto o arena de um modelo int4 de 690 MB nao dispara: ele pede o que
+#: a inferencia precisa. O default passa a 0 (sem teto) e o ambiente continua a
+#: poder po-lo de volta, porque quem conhece o cartao e' o dono.
+CUDA_MEM_LIMIT_MB_DEFAULT = 0
 CUDA_ARENA_ENV = "SOTTO_CUDA_ARENA"
 #: `cudnn_conv_algo_search` STAYS AT ITS DEFAULT, and that is a MEASUREMENT, not
 #: an oversight: with the phases timed (see `load_phases_s`) the three sessions
@@ -4217,6 +4247,8 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
         music_gated_chunks=asr.music_gated_chunks,
         gate=("on" if asr.gate else "off"),
         peak_rss_mb=round(peak_rss_mb(), 1),
+        # ONDE O TEMPO VAI: pre (front end + VAD), enc (encoder), dec (walk).
+        stage_s={k: round(v, 3) for k, v in (asr.stage_s or {}).items()},
     )
     # The human-readable proof goes to STDERR, never stdout: stdout is the
     # inter-process contract (one JSON object per line) and every non-JSON byte

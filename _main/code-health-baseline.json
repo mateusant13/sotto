@@ -561,12 +561,12 @@
       "max_func_name": "main"
     },
     "worker/sotto_worker.py": {
-      "bytes": 370327,
+      "bytes": 372375,
       "classes": 17,
       "defs": 58,
       "except_pass": 12,
       "globals": 4,
-      "lines": 6928,
+      "lines": 6960,
       "max_func": 2322,
       "max_func_name": "main"
     },

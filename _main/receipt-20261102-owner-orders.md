@@ -101,3 +101,41 @@ Passos novos: `console-window-gate` + `red-as-expected-console-window-gate`,
 `owner-audio-gate` + `red-as-expected-owner-audio-gate`, `worker-providers` +
 `red-as-expected-worker-providers`; `mute-audio`, `device-silence` e o seu negativo
 passaram a `:skipped`.
+
+## 4. Onde o tempo do worker vai (perfil, não palpite)
+
+O `worker/sotto_worker.py` passou a medir **três estágios** por chunk —
+`stage_s = {pre, enc, dec}` — publicados no payload do `--selftest` e somados sem
+sobreposição (`pre` = front end + Silero VAD, `enc` = sessão do encoder, `dec` =
+walk guloso). Medido, `sample1.flac` (13,44 s), RTX 5080, três corridas:
+
+| estágio | tempo | fatia |
+|---|---|---|
+| `enc` (encoder) | 2,04–2,62 s | **~87 %** |
+| `dec` (decoder + joint) | 0,23–0,25 s | ~10 % |
+| `pre` (front end + VAD) | 0,04–0,06 s | ~2 % |
+| total | 2,3–2,9 s | 4,6–5,8× tempo real |
+
+O primeiro número que eu publiquei (1,25 s / 10,75×) **não é reprodutível**: as
+corridas repetidas na mesma máquina dão 2,3–2,9 s. O que fica como afirmação é a
+faixa reprodutível, não o melhor caso isolado — 330 ms medidos antes eram de
+máquina ocupada e 1,25 s foi de uma corrida que não voltou a repetir.
+
+**Teto do arena CUDA custava 18 %** (tudo o resto fixo):
+
+| `SOTTO_CUDA_MEM_LIMIT_MB` | `enc` | total |
+|---|---|---|
+| 4096 (era o default) | 3,256 s | 3,719 s |
+| 8192 | 2,927 s | 3,343 s |
+| 0 (sem teto, **agora o default**) | 2,662 s | 3,161 s |
+
+`kSameAsRequested` já cresce pelo que é pedido, e o modelo int4 pede ~1 GB: o teto
+não protegia nada e custava 18 % num estágio que é 87 % do tempo. O ambiente
+continua a poder repô-lo.
+
+**TensorRT foi tentado e não está disponível:** `onnxruntime` responde
+`Please install TensorRT libraries` e cai para CUDA. Fica nomeado como o lever
+seguinte (o encoder é conv-pesado), com o custo do download por decidir pelo dono.
+Aviso do próprio ORT, medido no perfil: `2 Memcpy nodes are added ... might have
+negative impact on performance (including unable to run CUDA graph)` — o próximo
+passo técnico é IOBinding + CUDA graph, não mais um provider.

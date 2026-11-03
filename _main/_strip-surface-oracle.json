@@ -288,7 +288,7 @@
           "floor": {
             "restarts": 0,
             "cooldown": [
-              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59938 min_interval_ms=60000 waited_ms=62 code_is_stale=True sha256_disk=966b66d84c3066cb sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
+              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59937 min_interval_ms=60000 waited_ms=63 code_is_stale=True sha256_disk=966b66d84c3066cb sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
             ],
             "pending": true
           }
