@@ -8103,7 +8103,8 @@ class SottoHost:
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
             f'count={len(self._shell.caption_log)}'
             f' kind={"final" if getattr(shell, "_last_push_final", False) else "partial"}'
-            + (f' audio_ms={audio_ms} queue_ms={queue_ms}'
+            + (f' aged_kind={"hold-expired" if (queue_ms is not None and shell.CAPTION_HOLD_BAND_MS[0] <= int(queue_ms) <= shell.CAPTION_HOLD_BAND_MS[1]) else "transport"}'
+               f' audio_ms={audio_ms} queue_ms={queue_ms}'
                f' budget_ms={shell.CAPTION_BUDGET_MS}'
                f' over={str(audio_ms > shell.CAPTION_BUDGET_MS).lower()}'
                if audio_ms is not None else ''))
@@ -12381,6 +12382,14 @@ class SottoShell:
     #: a legenda "parece" atrasada.
     CAPTION_BUDGET_MS = 1500
 
+    #: A BANDA DO SEGURA INTENCIONAL (2026-11-03). MEDIDO tres vezes na sessao
+    #: do dono (17:43:02, 17:43:11, 17:40:47): `queue_ms=1504`, sempre. O painel
+    #: segura a cauda da linha ate' `COMMIT_MAX_HOLD_MS` (1500 ms,
+    #: `caption-formulation.js:150`) quando nao chega fragmento novo -- ou seja,
+    #: quando o audio ficou em silencio. O numero existe para o log distinguir
+    #: "o ecra esta' atrasado" de "o painel estava a esperar, de proposito".
+    CAPTION_HOLD_BAND_MS = (1490, 1520)
+
     def _caption_lag_note(self, audio_ms, queue_ms=0):
         """Guarda a idade de UMA legenda pintada e publica o resumo da janela.
 
@@ -12390,6 +12399,9 @@ class SottoShell:
         `CAPTION_LAG_STATS n=.. p50=.. p90=.. max=.. over=..` com o orcamento
         ao lado, que e' o que faz um log passar a gritar sozinho.
         """
+        low, high = self.CAPTION_HOLD_BAND_MS
+        if queue_ms is not None and low <= int(queue_ms) <= high:
+            self._caption_hold = int(getattr(self, '_caption_hold', 0)) + 1
         if audio_ms <= self.CAPTION_BUDGET_MS:
             pass
         else:
@@ -12408,6 +12420,7 @@ class SottoShell:
 
             log(f'CAPTION_LAG_STATS n={n} p50={pct(0.5)} p90={pct(0.9)} '
                 f'max={ordered[-1]} over={self._caption_lag_blown} '
+                f'held={int(getattr(self, "_caption_hold", 0))} '
                 f'budget_ms={self.CAPTION_BUDGET_MS}')
 
     def _drain_caption_pending(self):

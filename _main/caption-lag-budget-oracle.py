@@ -108,6 +108,7 @@ def make_shell(mod, lines, hold=False):
     shell._caption_pending_cue = None
     shell._caption_pending_tap_ms = None
     shell.CAPTION_BUDGET_MS = mod.SottoShell.CAPTION_BUDGET_MS
+    shell.CAPTION_HOLD_BAND_MS = mod.SottoShell.CAPTION_HOLD_BAND_MS
     shell._caption_ages = []
     shell._caption_lag_blown = 0
     shell.display = {'scaleFactor': 1.0}
@@ -340,9 +341,35 @@ def arm_panel_apply_age(mod, lines):
     blown = take(lines, 'CAPTION_BUDGET_BLOWN')
     ok = (applied is not None and 'over=true' in applied
           and field(applied, 'audio_ms') is not None
+          and 'aged_kind=transport' in applied
           and blown is not None and 'path=panel' in blown)
     return ok, ('APPLIED=%s | BLOWN=%s'
                 % ((applied or 'AUSENTE')[:120], (blown or 'AUSENTE')[:70]))
+
+
+def arm_hold_band_named(mod, lines):
+    """A ESPERA INTENCIONAL TEM NOME: `queue_ms` na banda de 1500 -> held.
+
+    Medido 17:43:02/17:43:11/17:40:47 na sessao do dono: `queue_ms=1504`
+    exatamente, tres vezes -- o `COMMIT_MAX_HOLD_MS` do painel a soltar a cauda
+    depois de o audio parar. Sem o nome, o mesmo numero le-se como atraso.
+    """
+    shell = make_shell(mod, lines)
+    shell.caption_log = []
+    shell._last_push_tap_ms = int(time.time() * 1000.0) - 1560
+    shell._last_push_at = time.time() - 1.504
+    handler = types.SimpleNamespace(_shell=shell)
+    for name in dir(mod):
+        obj = getattr(mod, name)
+        if isinstance(obj, type) and hasattr(obj, '_caption_applied'):
+            handler._caption_applied = types.MethodType(obj._caption_applied, handler)
+            break
+    lines[:] = []
+    handler._caption_applied({'text': 'a cauda segurada'})
+    applied = take(lines, 'CAPTION_APPLIED')
+    ok = (applied is not None and 'aged_kind=hold-expired' in applied
+          and int(getattr(shell, '_caption_hold', 0)) == 1)
+    return ok, (applied or 'AUSENTE')[:150]
 
 
 def arm_stats(mod, shell, lines, worker_event):
@@ -380,11 +407,13 @@ def main(argv):
                            '        tap = None', 1)
         mut6 = src.replace("        self._caption_lag_blown = 0",
                            '        pass', 1)
+        mut7 = src.replace("    CAPTION_HOLD_BAND_MS = (1490, 1520)",
+                           '    CAPTION_HOLD_BAND_MS = (0, 0)', 1)
         worker_src = io.open(WORKER, encoding='utf-8').read()
         mut5 = worker_src.replace('                    wall=_wall_tap,',
                                   '                    wall=time.time(),', 1)
         if (mut1 == src or mut2 == src or mut3 == src or mut4 == src
-                or mut5 == worker_src or mut6 == src):
+                or mut5 == worker_src or mut6 == src or mut7 == src):
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -400,6 +429,9 @@ def main(argv):
         mut4_path = os.path.join(tmpdir, 'sotto_webview_m4.py')
         with io.open(mut4_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut4)
+        mut7_path = os.path.join(tmpdir, 'sotto_webview_m7.py')
+        with io.open(mut7_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut7)
         mut6_path = os.path.join(tmpdir, 'sotto_webview_m6.py')
         with io.open(mut6_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut6)
@@ -444,6 +476,8 @@ def main(argv):
                      lambda: arm_tap_before_decode()),
                     ('panel-apply-carries-audio-age',
                      lambda: arm_panel_apply_age(mod, lines)),
+                    ('hold-band-is-named',
+                     lambda: arm_hold_band_named(mod, lines)),
                     ('lag-stats-serie',
                      lambda: arm_stats(mod, shell, lines, worker_event))):
                 ok, detail = fn()
@@ -471,7 +505,9 @@ def main(argv):
                     (mut5_path, 'carimbo depois do decode',
                      {'tap-stamped-before-decode'}),
                     (mut6_path, 'campo da serie nao declarado',
-                     {'init-declares-lag-fields'}),):
+                     {'init-declares-lag-fields'}),
+                    (mut7_path, 'banda do hold desligada',
+                     {'hold-band-is-named'}),):
                 print('=== mutante: %s' % why)
                 if path in (mut5_path, mut6_path):
                     # O mutante do WORKER julga-se pela arm de AST, nao por um
