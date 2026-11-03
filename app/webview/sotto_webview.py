@@ -3642,10 +3642,6 @@ class ExternalCaptionWatcher(threading.Thread):
         self.last_rows = []
         self.finalized = False
         self._caption_pending = None
-        #: O `tap_ms` da ultima linha EMPURRADA (2026-11-03): o pixel do painel
-        #: mede a idade do audio contra ele em `_caption_applied`.
-        self._last_push_tap_ms = None
-        self._last_push_at = 0.0
         blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
         if blank is not None:
             blank('video-changed')
@@ -8106,6 +8102,7 @@ class SottoHost:
             shell._caption_lag_note(audio_ms, queue_ms=queue_ms)
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
             f'count={len(self._shell.caption_log)}'
+            f' kind={"final" if getattr(shell, "_last_push_final", False) else "partial"}'
             + (f' audio_ms={audio_ms} queue_ms={queue_ms}'
                f' budget_ms={shell.CAPTION_BUDGET_MS}'
                f' over={str(audio_ms > shell.CAPTION_BUDGET_MS).lower()}'
@@ -8344,6 +8341,18 @@ def search_layer_cap(rank, limit):
 class SottoShell:
     def __init__(self, args):
         self.args = args
+        #: O `tap_ms` da ultima linha EMPURRADA (2026-11-03): o pixel do painel
+        #: mede a idade do audio contra ele em `_caption_applied`.
+        self._last_push_tap_ms = None
+        self._last_push_at = 0.0
+        #: A SERIE de idades do audio ate' ao pixel e o contador de estouros
+        #: (2026-11-03). Criados AQUI e nao pregicadamente: medido no log dele
+        #: (17:38:35) um `BRIDGE_HANDLER_FAILED kind=caption-applied`
+        #: `AttributeError: _caption_lag_blown` -- o primeiro ack estourava o
+        #: orcamento antes de a serie existir, e a excepcao comia a linha do log
+        #: exactamente no caso que interessa.
+        self._caption_ages = []
+        self._caption_lag_blown = 0
         self.window = None            # pywebview Window
         self.form = None              # pywebview's WinForms BrowserForm
         self.webview2 = None          # the WebView2 control
@@ -12750,6 +12759,12 @@ class SottoShell:
         # aqui o `tap_ms` que saiu, o lado do painel nao tem contra o que medir
         # a idade e o orcamento nao tem como estourar.
         _meta = meta if isinstance(meta, dict) else {}
+        #: A LINHA ESTA' FECHADA? (2026-11-03). Uma linha `final` so' fecha quando
+        #: o worker a FECHA, e com o audio em silencio a cauda fecha minutos
+        #: depois -- medido 59,9 s as 17:39:38 (desktop mudo). Sem esta etiqueta
+        #: o mesmo numero mistura "o ecra esta' atrasado" com "a linha acabou de
+        #: fechar", que sao perguntas diferentes.
+        self._last_push_final = bool(_meta.get('final'))
         self._last_push_tap_ms = _meta.get('tap_ms') or self._last_push_tap_ms
         self._last_push_at = time.time()
         log(f'BRIDGE_CAPTION_SENT delivered=async text={json.dumps(text)}')

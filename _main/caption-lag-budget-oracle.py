@@ -250,6 +250,29 @@ def arm_coalesce_cumulative(mod, lines, worker_event):
     return ok, ('texto=%r | COALESCE=%s' % (text, 'sim' if coal else 'nao'))
 
 
+def arm_init_declares_lag_fields(path=SHELL):
+    """O CAMPO TEM DE EXISTIR ANTES DO PRIMEIRO USO (medido: 17:38:35).
+
+    `BRIDGE_HANDLER_FAILED kind=caption-applied AttributeError: _caption_lag_blown`
+    -- o primeiro ack estourava o orcamento antes de a serie existir, e a
+    excepcao comia a linha do log no caso que interessa. Esta arm le o
+    `__init__` do shell e exige as duas atribuicoes.
+    """
+    tree = ast.parse(io.open(path, encoding='utf-8').read())
+    assigned = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == '__init__':
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Assign):
+                    for target in inner.targets:
+                        if (isinstance(target, ast.Attribute)
+                                and isinstance(target.value, ast.Name)
+                                and target.value.id == 'self'):
+                            assigned.add(target.attr)
+    missing = sorted({'_caption_ages', '_caption_lag_blown'} - assigned)
+    return not missing, ('faltam=%s' % (missing or 'nenhum'))
+
+
 def arm_tap_before_decode(path=WORKER):
     """O CARIMBO ANTES DO DECODE: sem isto a idade exclui a maior parcela.
 
@@ -355,10 +378,13 @@ def main(argv):
                            '                pass', 1)
         mut4 = src.replace("        tap = getattr(shell, '_last_push_tap_ms', None)",
                            '        tap = None', 1)
+        mut6 = src.replace("        self._caption_lag_blown = 0",
+                           '        pass', 1)
         worker_src = io.open(WORKER, encoding='utf-8').read()
         mut5 = worker_src.replace('                    wall=_wall_tap,',
                                   '                    wall=time.time(),', 1)
-        if mut1 == src or mut2 == src or mut3 == src or mut4 == src or mut5 == worker_src:
+        if (mut1 == src or mut2 == src or mut3 == src or mut4 == src
+                or mut5 == worker_src or mut6 == src):
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -374,6 +400,9 @@ def main(argv):
         mut4_path = os.path.join(tmpdir, 'sotto_webview_m4.py')
         with io.open(mut4_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut4)
+        mut6_path = os.path.join(tmpdir, 'sotto_webview_m6.py')
+        with io.open(mut6_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut6)
         mut5_path = os.path.join(tmpdir, 'sotto_worker_m5.py')
         with io.open(mut5_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut5)
@@ -409,6 +438,8 @@ def main(argv):
                      lambda: arm_coalesce_keeps_both(mod, lines, worker_event)),
                     ('coalesce-cumulative-not-joined',
                      lambda: arm_coalesce_cumulative(mod, lines, worker_event)),
+                    ('init-declares-lag-fields',
+                     lambda: arm_init_declares_lag_fields()),
                     ('tap-stamped-before-decode',
                      lambda: arm_tap_before_decode()),
                     ('panel-apply-carries-audio-age',
@@ -438,16 +469,21 @@ def main(argv):
                     (mut4_path, 'pixel sem idade de audio',
                      {'panel-apply-carries-audio-age'}),
                     (mut5_path, 'carimbo depois do decode',
-                     {'tap-stamped-before-decode'}),):
+                     {'tap-stamped-before-decode'}),
+                    (mut6_path, 'campo da serie nao declarado',
+                     {'init-declares-lag-fields'}),):
                 print('=== mutante: %s' % why)
-                if path == mut5_path:
+                if path in (mut5_path, mut6_path):
                     # O mutante do WORKER julga-se pela arm de AST, nao por um
                     # shell que nao existe neste ficheiro.
-                    ok, detail = arm_tap_before_decode(path)
+                    name = ('tap-stamped-before-decode' if path == mut5_path
+                            else 'init-declares-lag-fields')
+                    ok, detail = (arm_tap_before_decode(path)
+                                  if path == mut5_path
+                                  else arm_init_declares_lag_fields(path))
                     print('%-28s %s %s'
-                          % ('tap-stamped-before-decode',
-                             'PASS' if ok else 'RED', detail[:200]))
-                    rows = [('tap-stamped-before-decode', ok, detail)]
+                          % (name, 'PASS' if ok else 'RED', detail[:200]))
+                    rows = [(name, ok, detail)]
                 else:
                     rows = run_arms(path, 'sotto_shell_lag_mutant')
                 red = {n for n, ok, _ in rows if not ok}
