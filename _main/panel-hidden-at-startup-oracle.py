@@ -600,7 +600,8 @@ class Harness:
         # 'instant'` -- e a culpa caia no shell. Um fantoche com a assinatura velha e' um
         # oraculo a medir o passado.
         owner.push_caption_to_window = (lambda text, previous=None,
-                                        credits=None, instant=False, rows=None: False)
+                                        credits=None, instant=False, cue=None,
+                                        rows=None: False)
         # `_reload_policy` carries real state; the arm only needs to know that
         # it was called.
         owner._reload_policy = _FakeReloadPolicy()

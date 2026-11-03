@@ -1341,6 +1341,10 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
     s = sw.ReduxHiddenSwitch(
         True, reader, str(tmp / "no-runner.py"), logs.append,
         hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        # ESTA ARM PROVA O MECANISMO `hidden_after_s`, e desde 2026-11-03 ele
+        # esta' DESLIGADO por omissao (o dono: o modelo fica sempre). A arm
+        # liga-o de proposito; quem prova a omissao e' a ARM 12.
+        unload_when_hidden=True,
         engine=eng, probe=probe, spool_dir=str(tmp / "spool"))
     add(s.armed is True, "armado: o parakeet no disco e' o motor de fundo",
         f"engine={s.batch_kind} armed={s.armed}")
@@ -1409,6 +1413,7 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
     s2 = sw.ReduxHiddenSwitch(
         True, reader2, str(tmp / "no-runner.py"), logs2.append,
         hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        unload_when_hidden=True,
         engine=eng2, probe=probe2, spool_dir=str(tmp / "spool2"))
     add(s2.tick() == "shed", "96 % de commit e 95 % de CPU -> shed")
     add((eng2.loaded, eng2.releases) == (False, 1),
@@ -1432,6 +1437,62 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
     add(s2._pending_counts()["blocks_in"] == s2._pending_counts()["blocks_out"],
         "as 10 linhas de audio desse lote tambem entraram e sairam",
         f"in={s2._pending_counts()['blocks_in']} out={s2._pending_counts()['blocks_out']}")
+
+
+    # ARM 12 -- A VISAO NAO E' PRESSAO (ordem do dono, 2026-11-03, verbatim:
+    # *"era pra ta com o modelo sempre. e so descarregar quando o pc precisa da
+    # vram ou gpu em outros apps"*). Sem a bandeira, painel escondido + maquina
+    # folgada tem de deixar o motor AO VIVO carregado: era isto que fazia o dono
+    # ver `carregando modelo…` ao apertar Ctrl+Espaco com um video a tocar.
+    print("\nARM 12 -- escondido e sem pressao: o motor ao vivo FICA carregado")
+    logs3: list[str] = []
+    eng3 = _FakeEngine()
+    eng3.load()
+    reader3 = _FakeReader(visible=False)
+    probe3 = _FakeProbe([(8.0, 4.0)])
+    s3 = sw.ReduxHiddenSwitch(
+        True, reader3, str(tmp / "no-runner.py"), logs3.append,
+        hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng3, probe=probe3, spool_dir=str(tmp / "spool3"))
+    modes = [s3.tick() for _ in range(5)]
+    add(modes == ["stream"] * 5,
+        "escondido desde t=0 com a maquina livre: o modo FICA `stream`",
+        f"modes={modes} unload_when_hidden={s3.unload_when_hidden}")
+    add((eng3.loaded, eng3.releases) == (True, 0),
+        "e o modelo NAO foi largado nem uma vez",
+        f"loaded={eng3.loaded} releases={eng3.releases}")
+
+    # ARM 13 -- O ESTACIONAMENTO DA SHELL LARGA O MOTOR, NAO O PROCESSO
+    # (2026-11-03): e' o pedido que substitui o `bridge.stop('external-captions')`,
+    # que matava o worker e com ele o cliente WASAPI -- o audio do dono piscava.
+    print("\nARM 13 -- park=captions -> batch, e o log nomeia o pedido")
+    logs4: list[str] = []
+
+    class _ParkReader(_FakeReader):
+        def __init__(self, visible, park):
+            super().__init__(visible)
+            self._park_reason = park
+
+        def park(self):
+            return self._park_reason
+
+    eng4 = _FakeEngine()
+    eng4.load()
+    s4 = sw.ReduxHiddenSwitch(
+        True, _ParkReader(False, 'captions'), str(tmp / "no-runner.py"),
+        logs4.append, hidden_after_s=0.0, batch_interval_s=1.0,
+        max_audio_s=1.0, engine=eng4, probe=_FakeProbe([(8.0, 4.0)]),
+        spool_dir=str(tmp / "spool4"))
+    mode = s4.tick()
+    add(mode == "batch", "park=captions -> batch (o ao vivo para, o parakeet fica)",
+        f"mode={mode}")
+    add(any("park=captions" in l for l in logs4),
+        "e a linha nomeia o pedido da shell",
+        next((l for l in logs4 if "REDUX_SHEDDING" in l), ""))
+    s4.reader._park_reason = None
+    mode2 = s4.tick()
+    add(mode2 == "stream", "sem pedido, volta a `stream` (o motor recarrega sozinho)",
+        f"mode={mode2}")
 
 
 def _mutant_layout(tmp: Path):

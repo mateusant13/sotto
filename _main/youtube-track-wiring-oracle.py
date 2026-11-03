@@ -179,6 +179,10 @@ class FakeShell(object):
         self.external_lines = 0
         self.external_suppressed = 0
         self._external_parked = False
+        # 2026-11-03: o estacionamento virou um PEDIDO (`park`), nao um
+        # `bridge.stop()` -- a lista e' o que os bracos leem.
+        self._engine_park = None
+        self.parks = []
         self._paused = False
         self._external_last_text = ''
         self._last_external_resume = 0.0
@@ -218,7 +222,7 @@ class FakeShell(object):
         self.emitted.append((kind, payload))
 
     def push_caption_to_window(self, text, previous=None, credits=None,
-                               instant=False, rows=None):
+                               instant=False, cue=None, rows=None):
         # A assinatura tem de acompanhar a do metodo REAL
         # (`sotto_webview.Shell.push_caption_to_window`, que recebe `instant`
         # e `rows` desde a correccao da revelacao 1:1 de 2026-10-29).
@@ -232,6 +236,23 @@ class FakeShell(object):
     def start_worker(self, reason):
         self.resumes.append(reason)
         return True
+
+    def engine_park_reason(self):
+        return self._engine_park
+
+    def set_engine_park(self, reason):
+        self.parks.append(reason)
+        self._engine_park = reason
+        return True
+
+    def _park_worker_when_settled(self, source):
+        """O pedido AGENDADO da shell (2026-11-02): aqui e' imediato.
+
+        O atraso de `EXTERNAL_PARK_DELAY_S` e' o que este oraculo NAO mede -- ele
+        mede a ROTA (o player pede o estacionamento?), e para isso o pedido tem
+        de acontecer no mesmo tick.
+        """
+        return self._park_worker_for_external(source)
 
     def _release(self, reason):
         self.releases += 1

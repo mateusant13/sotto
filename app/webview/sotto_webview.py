@@ -1637,12 +1637,12 @@ SWP_NOACTIVATE = 0x0010
 #: sozinha.
 
 
-#: Minimum seconds between two `external-end` resumes of the worker. Measured
-#: 2026-10-18: two full model loads 2 min 52 s apart, with 1 245 MB resident, each
-#: followed by the device ladder. 45 s is long enough that a player blinking its
-#: caption layer cannot drive a load, and short enough that when the owner stops
-#: watching captions the microphone comes back while he is still waiting for it.
-EXTERNAL_RESUME_MIN_S = 45.0
+#: (O PISO `EXTERNAL_RESUME_MIN_S` SAIU A 2026-11-03 COM O PROCESSO.) Ele limitava
+#: a frequencia de `start_worker` porque cada um custava uma carga de modelo --
+#: medido 2026-10-18, duas cargas em 2 min 52 s. O release passou a limpar um
+#: PEDIDO num ficheiro (`park`), que nao custa nada: manter o piso era o unico
+#: defeito que sobrava, e com ele o motor ficava largado ate' 45 s depois de o
+#: player parar. Ver `_main/external-resume-oracle.py`.
 
 #: QUANTO TEMPO UM CAPTION DO PLAYER TEM DE DURAR ANTES DE O TRABALHADOR SER
 #: ESTACIONADO (2026-11-02). O estacionamento existe para libertar a VRAM enquanto
@@ -7686,7 +7686,7 @@ class PanelVisibilityWriter:
 
     def __init__(self, path, observe, log=lambda _m: None,
                  interval_s=PANEL_VISIBILITY_INTERVAL_S, extra=None,
-                 shed_provider=None):
+                 shed_provider=None, park_provider=None):
         self.path = path
         #: `observe()` -> bool, read LIVE from the window at call time.
         self.observe = observe
@@ -7701,6 +7701,15 @@ class PanelVisibilityWriter:
         #: None. Callback for the same reason as `extra`: the level CHANGES at
         #: runtime and the file must name the level at the write.
         self.shed_provider = shed_provider
+        #: `park_provider()` -> o motivo do ESTACIONAMENTO DO MOTOR
+        #: (`captions`/`vram`) ou None. ORDEM DO DONO, 2026-11-03, verbatim:
+        #: *"tu nao consegue fazer o sotto se conectar ao audio atual inves de
+        #: ficar matando o audio toda hora?"* -- estacionar o worker por causa
+        #: das legendas do player MATAVA o processo, e com ele o cliente
+        #: WASAPI, e o audio dele piscava. Agora o pedido viaja por este
+        #: ficheiro e o worker LARGA O MOTOR, nao a captura: um processo, um
+        #: cliente de audio, nenhum blink.
+        self.park_provider = park_provider
         self.visible = None
         self.since_ms = None
         self.reason = 'boot'
@@ -7793,6 +7802,16 @@ class PanelVisibilityWriter:
             self.log('PANEL_VISIBILITY_SHED_FAILED error=%r' % (exc,))
         if isinstance(level, str) and level:
             payload['shed'] = level
+        # O ESTACIONAMENTO DO MOTOR TAMBEM VIAJA AQUI (2026-11-03). Additive no
+        # mesmo contrato congelado: o leitor do worker ignora chaves que nao
+        # conhece, e esta e' o pedido que substitui o `bridge.stop()`.
+        try:
+            park = self.park_provider() if self.park_provider is not None else None
+        except Exception as exc:  # noqa: BLE001 -- the file must still land
+            park = None
+            self.log('PANEL_VISIBILITY_PARK_FAILED error=%r' % (exc,))
+        if isinstance(park, str) and park:
+            payload['park'] = park
         # THE `geometry` KEY — additive, and it is why the edit mode does NOT get
         # a second file. `schema` stays `sotto.panel-visibility/1`: no field was
         # renamed or removed, and the worker's `PanelVisibilityReader` reads
@@ -10525,6 +10544,7 @@ class SottoShell:
             interval_s=PANEL_VISIBILITY_INTERVAL_S,
             extra=self.geometry_snapshot,
             shed_provider=self.shedding_level,
+            park_provider=self.engine_park_reason,
         )
         return self.panel_visibility.start()
 
@@ -12713,18 +12733,48 @@ class SottoShell:
             return False
         return self._park_worker_for_external(source)
 
+    def engine_park_reason(self):
+        """O pedido de estacionamento publicado no `panel-visibility.json`."""
+        return getattr(self, '_engine_park', None)
+
+    def set_engine_park(self, reason):
+        """Pede ao worker que LARGUE O MOTOR, sem matar o processo.
+
+        ORDEM DO DONO, 2026-11-03, verbatim: *"tu nao consegue fazer o sotto se
+        conectar ao audio atual inves de ficar matando o audio toda hora?"*.
+        `bridge.stop()` matava o processo e com ele o cliente WASAPI -- a cada
+        paragem o audio DELE piscava, e a volta custava 14-26 s de recarga. O
+        pedido viaja no ficheiro que o worker JA' sonda (uma chave additive), e
+        o worker larga o nemotron na thread do lote: um processo, um cliente de
+        audio, nenhum blink.
+        """
+        reason = reason if isinstance(reason, str) and reason else None
+        if getattr(self, '_engine_park', None) == reason:
+            return False
+        self._engine_park = reason
+        try:
+            log(f'ENGINE_PARK reason={reason or "off"}')
+            self.publish_panel_visibility(f'engine-park-{reason or "off"}')
+        except Exception as exc:  # noqa: BLE001 -- nunca derruba o caminho
+            log(f'ENGINE_PARK_FAILED reason={reason or "off"} error={exc!r}')
+        return True
+
     def _park_worker_for_external(self, source):
-        """Free the worker (and its VRAM) while the player supplies captions."""
+        """Larga o MOTOR AO VIVO enquanto o player fornece as legendas.
+
+        O PROCESSO FICA. E' a diferenca que o dono pediu: o modelo e' o que
+        custa VRAM, e o cliente de audio dele e' o que ele ouve a piscar.
+        """
         if self._paused or self._external_parked:
             return False
         bridge = getattr(self, 'bridge', None)
         if bridge is None or getattr(bridge, 'child', None) is None:
             return False
-        log(f'EXTERNAL_CAPTIONS_WORKER_PARKED source={source} '
-            f'pid={getattr(bridge.child, "pid", None)}')
-        bridge.stop('external-captions')
-        self.bridge = None
         self._external_parked = True
+        self.set_engine_park('captions')
+        log(f'EXTERNAL_CAPTIONS_ENGINE_PARKED source={source} '
+            f'pid={getattr(bridge.child, "pid", None)} '
+            f'mode=engine-not-process')
         return True
 
     def park_worker_for_vram(self, free_mb):
@@ -12735,10 +12785,14 @@ class SottoShell:
         if bridge is None or getattr(bridge, 'child', None) is None:
             return False
         pid = getattr(bridge.child, 'pid', None)
-        log(f'VRAM_GUARD_PARKING free_mb={free_mb:.0f} pid={pid}')
-        bridge.stop('vram-pressure')
-        self.bridge = None
+        log(f'VRAM_GUARD_PARKING free_mb={free_mb:.0f} pid={pid} '
+            f'mode=engine-not-process')
+        # A GPU E' O MOTIVO LEGITIMO DE LARGAR O MOTOR (ordem do dono,
+        # 2026-11-03) -- mas largar o MOTOR nao pede matar o PROCESSO, e era o
+        # processo que levava o cliente WASAPI com ele. `vram` larga os dois
+        # motores dentro do worker e deixa a captura e o audio acumulado.
         self._vram_parked = True
+        self.set_engine_park('vram')
         self.apply_panel_state(
             'Paused - GPU in use by another app', 'idle',
             {'title': 'GPU busy',
@@ -12754,8 +12808,10 @@ class SottoShell:
         self._vram_parked = False
         if not (self.visible or getattr(self, '_caption_window_shown', False)):
             return False
-        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f}')
-        return self.start_worker('vram-resume')
+        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f} mode=engine-not-process')
+        if self.engine_park_reason() in ('vram', None):
+            self.set_engine_park(None)
+        return True
 
     def on_external_captions_released(self):
         """The player stopped showing captions: give the microphone back.
@@ -12796,20 +12852,23 @@ class SottoShell:
             return False
         if not (self.visible or getattr(self, '_caption_window_shown', False)):
             return False
+        # O PISO DE 45 s SAIU COM O PROCESSO (2026-11-03). Ele existia porque o
+        # gatilho e' um elemento de UI (poll de 0,30 s) e cada `start_worker`
+        # custava uma carga de modelo. Limpar um PEDIDO num ficheiro nao custa
+        # nada: o throttle passou a ser o unico defeito que sobrava -- com ele o
+        # motor ficava largado ate' 45 s DEPOIS de o player parar.
         now = time.monotonic()
-        last = getattr(self, '_last_external_resume', 0.0)
-        waited = now - last
-        if last and waited < EXTERNAL_RESUME_MIN_S:
-            # DEFERRED, NOT DROPPED. The worker is wanted; it is simply not
-            # wanted `waited` seconds after the last time we loaded it. Saying so
-            # is the whole point -- a silent skip here is what made this
-            # invisible for as long as it was running.
-            log(f'EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED since_s={waited:.1f} '
-                f'min_s={EXTERNAL_RESUME_MIN_S}')
-            return False
         self._last_external_resume = now
-        log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
-        return self.start_worker('external-end')
+        # O MOTOR VOLTA, O PROCESSO NUNCA SAIU (2026-11-03): o pedido de
+        # estacionamento e' limpo e o worker recarrega o ao vivo sozinho.
+        # SO' O PEDIDO DELE: os dois motivos dividem um campo, e a GPU (que
+        # pode ter pedido o motor enquanto o player falava) nao e' libertada
+        # por um release de legendas.
+        if self.engine_park_reason() == 'captions':
+            self.set_engine_park(None)
+        log('EXTERNAL_CAPTIONS_ENGINE_RESUMED reason=player-stopped '
+            'mode=engine-not-process')
+        return True
 
     #: THE FLAGS THAT MAKE A RUN A MEASUREMENT. A measurement measures the
     #: PANEL or the SHELL -- its geometry, its edit mode, its outside click.

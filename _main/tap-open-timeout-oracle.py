@@ -325,7 +325,12 @@ class FakeShell(object):
         self._external_parked = True
         self._paused = False
         self._last_external_resume = 0.0
+        # A 2026-11-03 o release deixou de arrancar processo: ele LIMPA o pedido
+        # de estacionamento do motor. As duas listas medem coisas diferentes e o
+        # braco diz qual delas julga.
+        self._engine_park = 'captions'
         self.resumes = []
+        self.parks = []
         self.on_external_captions_released = types.MethodType(
             mod.SottoShell.on_external_captions_released, self)
 
@@ -333,25 +338,43 @@ class FakeShell(object):
         self.resumes.append(reason)
         return True
 
+    def engine_park_reason(self):
+        return self._engine_park
+
+    def set_engine_park(self, reason):
+        self.parks.append(reason)
+        self._engine_park = reason
+        return True
+
 
 def arm_s1_alive(mod):
-    """The shell is ALIVE: the worker comes back. The path must still work."""
+    """A shell VIVA: o pedido de estacionamento e' limpo, e nada e' arrancado.
+
+    2026-11-03: o release deixou de matar/relancar o worker. O que ele tem de
+    fazer e' devolver o motor, ou seja limpar `park` -- e nunca chamar
+    `start_worker`, porque o processo nunca saiu.
+    """
     shell = FakeShell(mod, exiting=False)
     shell.on_external_captions_released()
-    if not shell.resumes:
-        return False, "the worker did NOT come back on a live shell"
-    return True, "reason=%s" % shell.resumes[0]
+    if shell.parks != [None]:
+        return False, ("the park was NOT cleared on a live shell: parks=%r"
+                       % (shell.parks,))
+    if shell.resumes:
+        return False, ("the release started a PROCESS: %r -- the worker was "
+                       "never stopped, so a spawn here is a second worker"
+                       % (shell.resumes,))
+    return True, "park cleared, no process started"
 
 
 def arm_s2_dying(mod):
     """The shell is DYING: the worker must NOT come back."""
     shell = FakeShell(mod, exiting=True)
     shell.on_external_captions_released()
-    if shell.resumes:
-        return False, ("the worker came back while the shell was dying: %r -- "
-                       "that worker is an ORPHAN (os._exit does not kill a "
-                       "child process)" % (shell.resumes,))
-    return True, "no worker was started"
+    if shell.resumes or shell.parks:
+        return False, ("the release ran while the shell was dying: "
+                       "resumes=%r parks=%r -- work started for a process that "
+                       "is going away" % (shell.resumes, shell.parks))
+    return True, "nothing was cleared and nothing was started"
 
 
 # ── the arms ────────────────────────────────────────────────────────────────
@@ -370,7 +393,7 @@ def build_arms():
         ("w5", "w", arm_w5_deadline,
          "the deadline is the configured one"),
         ("s1", "s", arm_s1_alive,
-         "the shell is ALIVE: the worker comes back"),
+         "the shell is ALIVE: the park is cleared and NO process starts"),
         ("s2", "s", arm_s2_dying,
          "the shell is DYING: the worker does NOT come back"),
     ]

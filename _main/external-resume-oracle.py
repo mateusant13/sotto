@@ -6,41 +6,41 @@
 A ORDEM 3 do dono: *"legenda ao vivo, com o modelo nemotron... qualquer legenda que
 ja passou tem que ser processada tambem pelo parakeet, ou imediatamente, ou com
 delay, ou quando seguro de fazer isso... se minha legenda ao vivo ta desativada e
-eu nao to usando, e so o parakeet que comanda."* O `AGENTS.md` fechava-a com um
-buraco declarado: *"`on_external_captions_released()` nao traz o worker de volta
-(de proposito...)"*.
+eu nao to usando, e so o parakeet que comanda."*
 
-RE-MEDIDO 2026-10-23: **o buraco, como estava escrito, ja nao existe.** O metodo
-(mesma revisao, `SottoShell.on_external_captions_released`) traz o worker de
-volta, atras de QUATRO guardas e de um piso de 45 s:
+O CONTRATO MUDOU A 2026-11-03, por ordem do dono, verbatim: *"tu nao consegue
+fazer o sotto se conectar ao audio atual inves de ficar matando o audio toda
+hora?"*. Ate' aqui o estacionamento por causa das legendas do player era um
+`bridge.stop('external-captions')`: MATAVA o processo, e com ele o cliente WASAPI
+-- o audio do dono piscava a cada paragem -- e a volta custava uma carga de modelo
+de 14-26 s. O log dele conta o custo: **15** `EXTERNAL_CAPTIONS_WORKER_PARKED` num
+dia.
 
-  exiting        a shell esta a morrer -> nao arranca (senao fica um ORFAO: o
-                 `os._exit` nao mata o filho, e um worker orfao carrega 1,2 GB
-                 depois de a app ter fechado -- medido 2026-10-20)
-  !parked        um release sem park e ruido do leitor
-  paused         o dono pos o Sotto em pausa
-  escondido      nem painel nem legenda visiveis -> nao ha para quem transcrever
-  piso 45 s      o gatilho e um elemento de UI (o leitor faz poll a 0,30 s), nao
-                 audio: um player que pestaneja a legenda custaria uma carga de
-                 modelo por pestanejo
+AGORA o estacionamento e' um PEDIDO NUM FICHEIRO (`park` no
+`panel-visibility.json`, a mesma chave additive do `shed`): o worker LARGA O
+MOTOR e MANTEM o processo e a captura. Um processo, um cliente de audio, nenhum
+blink -- e nenhuma recarga quando o player volta.
 
-O QUE FALTAVA, E O QUE ESTE PORTAO FECHA: **nada disto era provado por nada.** O
-comportamento estava certo e podia ser quebrado por qualquer edicao futura em
-silencio -- e a nota do Superharness diz que um defeito corrigido sem controlo
-volta. Aqui cada guarda tem um braco e um mutante que a derruba, e cada mutante
-tem de derrubar O SEU braco.
+Este portao prova as duas metades, e cada uma tem um mutante:
+
+  E1-E5  o RELEASE so' limpa o pedido atras das mesmas quatro guardas, e NUNCA
+         arranca um processo (o worker nunca saiu);
+  E6-E8  o PARK publica `captions` e NAO chama `bridge.stop`; repetir o pedido
+         nao republica; e a volta devolve o pedido a `None`.
+
+O PISO DE 45 s SAIU. Ele existia porque cada disparo custava uma carga de modelo;
+limpar um pedido nao custa nada, e manten-lo era o unico defeito que sobrava --
+com ele o motor ficava largado ate' 45 s depois de o player parar.
 
     python _main\\external-resume-oracle.py            # rc=0 verde, rc=2 vermelho
     python _main\\external-resume-oracle.py --neg-arm  # rc=1 POR DESENHO
 
-NAO lanca nada: importa a shell em processo (como `input-path-oracle.py`), monta
-um `self` falso com os atributos que o metodo le, e conta as chamadas a
-`start_worker`. Nao cria janela, nao instala hook, nao arranca worker.
+NAO lanca nada: importa a shell em processo, monta um `self` falso com os
+atributos que os metodos leem, e conta as chamadas em vez de as fazer.
 """
 import argparse
 import os
 import sys
-import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -84,152 +84,200 @@ def clean_mutants():
                 pass
 
 
+class _Exit(object):
+    def __init__(self, v):
+        self.v = v
+
+    def is_set(self):
+        return self.v
+
+
+class _Child(object):
+    pid = 4242
+
+
+class _Bridge(object):
+    """O que o estacionamento le' da ponte -- e o `stop` que ele NAO pode chamar."""
+
+    def __init__(self):
+        self.child = _Child()
+        self.stops = []
+
+    def stop(self, reason):
+        self.stops.append(reason)
+        self.child = None
+        return True
+
+
 def _stub(mod, **kw):
-    class _Exit(object):
-        def __init__(self, v):
-            self.v = v
-
-        def is_set(self):
-            return self.v
-
     s = type('Stub', (), {})()
     s.exiting = _Exit(kw.get('exiting', False))
     s._external_parked = kw.get('parked', True)
     s._paused = kw.get('paused', False)
     s.visible = kw.get('visible', True)
     s._caption_window_shown = kw.get('caption', False)
-    s.calls = []
-    s.start_worker = lambda reason: (s.calls.append(reason), True)[1]
-    if 'last' in kw:
-        s._last_external_resume = kw['last']
+    s._engine_park = kw.get('engine_park', 'captions')
+    s._last_external_resume = kw.get('last', 0.0)
+    s.bridge = kw.get('bridge', None)
+    s.starts = []
+    s.parks = []
+    s.publishes = []
+    s.start_worker = lambda reason: (s.starts.append(reason), True)[1]
+    s.engine_park_reason = lambda: getattr(s, '_engine_park', None)
+    s.set_engine_park = lambda reason: (s.parks.append(reason),
+                                        setattr(s, '_engine_park', reason),
+                                        True)[2]
+    s.publish_panel_visibility = lambda reason: (s.publishes.append(reason),
+                                                 True)[1]
     return s
 
 
 def arms(mod, text):
-    """[(rotulo, ok, detalhe)] -- cada braco julga UMA guarda."""
-    fn = mod.SottoShell.on_external_captions_released
+    """[(rotulo, ok, detalhe)] -- cada braco julga UMA coisa."""
+    release = mod.SottoShell.on_external_captions_released
+    park = mod.SottoShell._park_worker_for_external
     seen = []
     mod.log = lambda m: seen.append(m)
     out = []
 
     s = _stub(mod, exiting=True)
-    r = fn(s)
-    out.append(('E1 shell a sair nao arranca worker', r is False and not s.calls,
-                {'ret': r, 'calls': s.calls, 'log': seen[-1:]}))
+    r = release(s)
+    out.append(('E1 shell a sair nao limpa o pedido', r is False and not s.parks,
+                {'ret': r, 'parks': s.parks, 'log': seen[-1:]}))
     seen[:] = []
 
     s = _stub(mod, parked=False)
-    r = fn(s)
-    out.append(('E2 release sem park nao arranca', r is False and not s.calls,
-                {'ret': r, 'calls': s.calls}))
+    r = release(s)
+    out.append(('E2 release sem park nao limpa nada', r is False and not s.parks,
+                {'ret': r, 'parks': s.parks}))
     seen[:] = []
 
     s = _stub(mod, paused=True)
-    r = fn(s)
-    out.append(('E3 em pausa nao arranca', r is False and not s.calls,
-                {'ret': r, 'calls': s.calls}))
+    r = release(s)
+    out.append(('E3 em pausa nao limpa o pedido', r is False and not s.parks,
+                {'ret': r, 'parks': s.parks}))
     seen[:] = []
 
     s = _stub(mod, visible=False, caption=False)
-    r = fn(s)
-    out.append(('E4 escondido nao arranca', r is False and not s.calls,
-                {'ret': r, 'calls': s.calls}))
+    r = release(s)
+    out.append(('E4 escondido nao limpa o pedido', r is False and not s.parks,
+                {'ret': r, 'parks': s.parks}))
     seen[:] = []
 
     s = _stub(mod, visible=False, caption=True)
-    r = fn(s)
-    out.append(('E5 a legenda visivel conta como visivel',
-                r is True and s.calls == ['external-end'],
-                {'ret': r, 'calls': s.calls}))
+    r = release(s)
+    out.append(('E5 a legenda visivel limpa o pedido e NAO arranca processo',
+                r is True and s.parks == [None] and s.starts == [],
+                {'ret': r, 'parks': s.parks, 'starts': s.starts}))
     seen[:] = []
 
-    last = time.monotonic() - 1.0
-    s = _stub(mod, last=last)
-    r = fn(s)
-    out.append(('E6 dentro dos 45 s: DEFERRED e o relogio nao anda',
-                r is False and not s.calls
-                and getattr(s, '_last_external_resume', None) == last
-                and any('EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED' in m
-                        for m in seen),
-                {'ret': r, 'calls': s.calls, 'last': last,
-                 'now': getattr(s, '_last_external_resume', None),
-                 'log': seen[-1:]}))
+    s = _stub(mod, parked=False, bridge=_Bridge())
+    r = park(s, 'external:youtube:track')
+    out.append(('E6 o park publica `captions` e NAO mata o processo',
+                r is True and s.parks == ['captions'] and s.bridge.stops == []
+                and getattr(s.bridge, 'child', None) is not None,
+                {'ret': r, 'parks': s.parks, 'stops': s.bridge.stops}))
     seen[:] = []
 
-    s = _stub(mod)
-    r = fn(s)
-    out.append(('E7 caminho feliz arranca uma vez e marca o relogio',
-                r is True and s.calls == ['external-end']
-                and getattr(s, '_last_external_resume', 0.0) > 0.0,
-                {'ret': r, 'calls': s.calls}))
+    s = _stub(mod, parked=True, bridge=_Bridge())
+    r = park(s, 'external:youtube:track')
+    out.append(('E7 repetir o park nao republica', r is False and not s.parks,
+                {'ret': r, 'parks': s.parks}))
     seen[:] = []
 
-    s = _stub(mod, last=time.monotonic() - 100.0)
-    r = fn(s)
-    out.append(('E8 passados os 45 s volta a arrancar',
-                r is True and s.calls == ['external-end'],
-                {'ret': r, 'calls': s.calls}))
+    s = _stub(mod, visible=True, engine_park='captions')
+    r = release(s)
+    out.append(('E8 a volta devolve o pedido a None (o motor recarrega)',
+                r is True and s.parks == [None]
+                and getattr(s, '_engine_park', 'x') is None,
+                {'ret': r, 'parks': s.parks, 'park': s._engine_park}))
+    seen[:] = []
+
+    # PRECEDENCIA: os dois motivos dividem o mesmo campo, e quem liberta tem de
+    # ser o SEU. Uma release de legendas nao devolve a GPU que outro app pediu.
+    s = _stub(mod, visible=True, engine_park='vram')
+    r = release(s)
+    out.append(('E9 release de legendas nao liberta um park de VRAM',
+                r is True and s.parks == [],
+                {'ret': r, 'parks': s.parks, 'park': s._engine_park}))
+    seen[:] = []
+
+    # O CANAL INTEIRO, PONTA A PONTA: a shell ESCREVE o pedido no ficheiro real
+    # (o `PanelVisibilityWriter` verdadeiro) e o LEITOR verdadeiro do worker
+    # le'-o. Sem esta arm, "o pedido viaja" era uma afirmacao sobre dois nomes de
+    # chave que ninguem tinha visto concordar.
+    import tempfile
+    tmpdir = tempfile.mkdtemp(prefix='extresume-park-')
+    path = os.path.join(tmpdir, 'panel-visibility.json')
+    w = mod.PanelVisibilityWriter(path=path, observe=lambda: False,
+                                  log=lambda _m: None, interval_s=30.0,
+                                  park_provider=lambda: 'captions')
+    w.write('test')
+    sw_mod = load_module(os.path.join(REPO, 'worker', 'engine_switch.py'),
+                         'extresume_switch')
+    reader = sw_mod.PanelVisibilityReader(path)
+    reader.read()
+    out.append(('E11 o ficheiro real leva `park=captions` ate ao leitor do worker',
+                reader.park() == 'captions' and reader.shed() == 'leve',
+                {'park': reader.park(), 'shed': reader.shed()}))
+    seen[:] = []
+
+    resume = mod.SottoShell.resume_after_vram
+    s = _stub(mod, visible=True, engine_park='captions')
+    s._vram_parked = True
+    r = resume(s, 9000.0)
+    out.append(('E10 a GPU livre nao liberta um park de legendas',
+                r is True and s.parks == [],
+                {'ret': r, 'parks': s.parks, 'park': s._engine_park}))
     return out
 
 
 MUTANTS = [
     ('sem-guarda-exiting',
-     'a shell a morrer deixa um worker ORFAO (E1)',
+     'a shell a morrer limpa o pedido enquanto o processo morre (E1)',
      """        if self.exiting.is_set():
             log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
             return False""",
      """        if False:
             log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
             return False""",
-     'E1 shell a sair nao arranca worker'),
+     'E1 shell a sair nao limpa o pedido'),
     ('sem-guarda-park',
-     'um release sem park arranca o worker (E2)',
+     'um release sem park limpa um pedido que nao existe (E2)',
      """        if not self._external_parked:
             return False""",
      """        if False:
             return False""",
-     'E2 release sem park nao arranca'),
+     'E2 release sem park nao limpa nada'),
     ('sem-guarda-pausa',
-     'em pausa arranca o worker (E3)',
+     'em pausa limpa o pedido (E3)',
      """        if self._paused:
             return False""",
      """        if False:
             return False""",
-     'E3 em pausa nao arranca'),
+     'E3 em pausa nao limpa o pedido'),
     ('sem-guarda-visivel',
-     'escondido arranca o worker (E4)',
+     'escondido limpa o pedido (E4)',
      """        if not (self.visible or getattr(self, '_caption_window_shown', False)):
             return False""",
      """        if False:
             return False""",
-     'E4 escondido nao arranca'),
+     'E4 escondido nao limpa o pedido'),
     ('legenda-nao-conta',
-     'a legenda visivel deixa de contar como visivel (E5)',
+     'a legenda visivel deixa de contar (E5)',
      """        if not (self.visible or getattr(self, '_caption_window_shown', False)):
             return False""",
      """        if not self.visible:
             return False""",
-     'E5 a legenda visivel conta como visivel'),
-    ('sem-piso-45s',
-     'o piso de 45 s desaparece: o pestanejo do player costa uma carga (E6)',
-     """        if last and waited < EXTERNAL_RESUME_MIN_S:""",
-     """        if False:""",
-     'E6 dentro dos 45 s: DEFERRED e o relogio nao anda'),
-    ('relogio-antes-do-piso',
-     'o relogio anda mesmo quando o arranque e adiado (E6)',
-     """        now = time.monotonic()
-        last = getattr(self, '_last_external_resume', 0.0)
-        waited = now - last""",
-     """        now = time.monotonic()
-        last = getattr(self, '_last_external_resume', 0.0)
-        self._last_external_resume = now
-        waited = now - last""",
-     'E6 dentro dos 45 s: DEFERRED e o relogio nao anda'),
-    ('relogio-nao-anda',
-     'o caminho feliz nao marca o relogio, logo o piso nunca se aplica (E7)',
-     """        self._last_external_resume = now""",
-     """        pass""",
-     'E7 caminho feliz arranca uma vez e marca o relogio'),
+     'E5 a legenda visivel limpa o pedido e NAO arranca processo'),
+    ('park-mata-o-processo',
+     'o park volta a MATAR o worker -- o blink e a recarga de antes (E6)',
+     """        self._external_parked = True
+        self.set_engine_park('captions')""",
+     """        self._external_parked = True
+        bridge.stop('external-captions')
+        self.bridge = None""",
+     'E6 o park publica `captions` e NAO mata o processo'),
 ]
 
 
@@ -267,7 +315,7 @@ def neg_arm():
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--neg-arm', action='store_true',
-                    help='os 8 mutantes tem de derrubar O SEU braco')
+                    help='os mutantes tem de derrubar O SEU braco')
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -282,7 +330,7 @@ def main(argv=None):
         print('%s %s  %s' % ('GREEN' if ok else 'RED  ', label,
                              '' if ok else got))
         bad += 0 if ok else 1
-    print('braços: %d verdes, %d vermelhos' % (len(results) - bad, bad))
+    print('bracos: %d verdes, %d vermelhos' % (len(results) - bad, bad))
     print('EXTERNAL-RESUME VERDICT %s' % ('PASS' if not bad else 'FAIL'))
     return 0 if not bad else 2
 
