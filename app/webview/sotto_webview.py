@@ -1861,7 +1861,13 @@ class VramGuard(threading.Thread):
                     else:
                         self.low = 0
                         self.high = 0
-                self.stop_event.wait(self.INTERVAL_S)
+                # OCIOSO NAO E' 25 Hz (2026-11-03, MEDIDO). O dono joga com o
+            # Sotto a viver: sem janela de player nao ha' legenda para ler, e
+            # o laco custava o mesmo. Um laco que pergunta 25x/s quando nao ha'
+            # ninguem para responder e' carga emprestada ao jogo dele.
+            _has_player = bool(getattr(self, 'target_hwnd', 0))
+            self.stop_event.wait(self.INTERVAL_S if _has_player
+                                 else self.IDLE_INTERVAL_S)
         finally:
             try:
                 pynvml.nvmlShutdown()
@@ -2162,6 +2168,8 @@ class ExternalCaptionWatcher(threading.Thread):
     #: 318 ms. O alvo e' o player: o resto do orcamento passa a ser 40 ms, para
     #: o periodo ficar so' o custo da leitura.
     INTERVAL_S = 0.04
+    #: Sem player nenhum, 4 Hz. Ver o comment do `wait` no fim do `run`.
+    IDLE_INTERVAL_S = 0.25
     #: A cadencia do DESENHO da legenda do YouTube, entre leituras do UIA. 60 ms
     #: e' mais fino do que o espaco entre palavras do payload (medido: 0, 240,
     #: 400 ms) e grosso o bastante para nao gastar CPU: recompza texto ja'
@@ -2573,6 +2581,15 @@ class ExternalCaptionWatcher(threading.Thread):
             except ValueError:
                 pass
         import external_subs
+        # O ALVO NAO SE REDECIDE 25x POR SEGUNDO (2026-11-03, MEDIDO).
+        # `EXTERNAL_CAPTIONS_READ_MS phases={'target': 47..172}` repetido: a
+        # leitura da janela e' de microssegundos, mas DECIDIR A FONTE custa
+        # 46-63 ms. Uma pergunta que so' muda quando muda a janela nao precisa
+        # da resposta a cada 40 ms: 200 ms de validade e' mais rapido do que
+        # qualquer olho distingue uma troca de janela.
+        _tc = getattr(self, '_target_cache', None)
+        if _tc and time.monotonic() - _tc[0] <= 0.2:
+            return _tc[1]
         fg = int(ctypes.windll.user32.GetForegroundWindow() or 0)
         if fg:
             try:
@@ -2610,13 +2627,41 @@ class ExternalCaptionWatcher(threading.Thread):
                         and time.monotonic() - _fc[3] <= 6.0):
                     src = _fc[2]
                 else:
+                    # A ARVORE DE ACESSIBILIDADE NAO SE ABRE POR QUALQUER JANELA
+                    # (2026-11-03, MEDIDO). `player_source` so' pode responder
+                    # "player" por TITULO (precisa de um browser) ou por URL
+                    # (que aqui ainda nao existe): as duas provas se decidem
+                    # com o titulo e o NOME DO PROCESSO, ambos Win32 em
+                    # microssegundos. Perguntar a' UIA primeiro custou 29 s numa
+                    # unica leitura (`EXTERNAL_CAPTIONS_READ_MS ms=28953.0
+                    # phases={'target': 28953.0}`) -- e esses 29 s NAO SAO SO'
+                    # DO LEITOR: a chamada COM segura o GIL, e o observador do
+                    # Ctrl+Space, que roda a 25 ms, ficou 29,3 s sem correr
+                    # (`HOTKEY_OBSERVER_ALIVE max_gap_ms=29266`), logo as
+                    # pressoes do dono nesse intervalo nao existiram para a app.
+                    # O jogo dele, o editor e o Explorer nao tem "youtube" nem
+                    # "stremio" no titulo nem no nome: a UIA nunca e' chamada.
                     try:
-                        src = external_subs.player_source(fg, uia, UIA)
+                        _proc = external_subs._process_name(fg)
                     except Exception:
+                        _proc = ''
+                    _tl = str(title or '').lower()
+                    if ('youtube' in _tl or 'stremio' in _tl
+                            or 'stremio' in str(_proc or '').lower()
+                            or not _proc):
+                        # `not _proc` = nao se sabe quem e' a janela: ai a
+                        # pergunta cara volta a ser feita, porque uma janela
+                        # desconhecida pode ser um player que a CDP nao ve.
+                        try:
+                            src = external_subs.player_source(fg, uia, UIA)
+                        except Exception:
+                            src = ''
+                    else:
                         src = ''
                     self._yt_fg_cache = (fg, title, src, time.monotonic())
                 if src:
                     self.target_hwnd = fg
+                    self._target_cache = (time.monotonic(), fg)
         if not self.target_hwnd or not ctypes.windll.user32.IsWindow(
                 wt.HWND(self.target_hwnd)):
             # NO WINDOW IN THE FOREGROUND (or the one we had is gone). The
@@ -5006,6 +5051,9 @@ class HotkeyThread(threading.Thread):
         self.register_error = None
         self.thread_id = None
         self.pressed = 0
+        #: Voltas do laco -- o batimento publica este numero para que
+        #: "a tecla nao respondeu" nunca mais seja um adjectivo.
+        self.loops = 0
         #: NAO se chama `_stop`: esse nome e' o metodo interno de
         #: `threading.Thread`, e sombrea-lo tornava `HotkeyThread.join()` um
         #: `TypeError: 'Event' object is not callable` (medido 2026-11-01 num
@@ -5142,6 +5190,19 @@ DEFAULT_MUTEX_NAME = 'Local\\SottoShell'
 #: GENERICO por modificador (0x10/0x11/0x12) que responde a esquerda e a direita.
 _MODIFIER_VK = {'ctrl': 0x11, 'alt': 0x12, 'shift': 0x10, 'win': 0x5B}
 
+#: Os VK LATERAIS dos mesmos modificadores (2026-11-03). O generico responde
+#: em quase todo o teclado, mas ha' teclados e remappers que so' publicam o
+#: esquerdo/direito -- e o sintoma e' indistinguivel de uma tecla morta: o
+#: observador corre, le' 0, e nunca dispara. Ler os tres e aceitar QUALQUER
+#: deles custa duas leituras e remove a duvida inteira.
+_MODIFIER_VARIANTS = {'ctrl': (0xA2, 0xA3), 'shift': (0xA0, 0xA1),
+                      'alt': (0xA4, 0xA5), 'win': (0x5B, 0x5C)}
+
+#: `SOTTO_HOTKEY_TRACE=1` escreve a BORDA do estado das teclas observadas.
+#: Existe porque "carreguei e nao aconteceu nada" precisa de um numero: com
+#: isto ligado, o log mostra o que o processo VIU, nao o que se esperava.
+_HOTKEY_TRACE = os.environ.get('SOTTO_HOTKEY_TRACE', '') == '1'
+
 
 class PassiveHotkeyThread(threading.Thread):
     """A TECLA DA LEGENDA **OBSERVADA**, NUNCA TOMADA (ordem do dono, 2026-11-02).
@@ -5179,6 +5240,11 @@ class PassiveHotkeyThread(threading.Thread):
         self.register_error = None
         self.thread_id = None
         self.pressed = 0
+        #: Voltas do laco. O batimento publica ESTE numero: `loops=` a subir
+        #: e' a prova de que o observador corre, e `max_gap_ms=` diz se a
+        #: volta foi estrangulada. Sem ele, uma tecla morta e um observador
+        #: morto escrevem a mesma coisa no log: nada.
+        self.loops = 0
         self._stop_requested = threading.Event()
         self._ready = threading.Event()
         #: `key_state(vk) -> bool` -- o oraculo injecta uma sequencia falsa; o
@@ -5186,12 +5252,18 @@ class PassiveHotkeyThread(threading.Thread):
         #: borda, o nao-repetir e a chamada do callback sao o que se mede.
         self.key_state = key_state
         #: Os VK desta combinacao: os modificadores nomeados + a tecla.
-        self.keys = []
+        # UM GRUPO POR TECLA NOMEADA: basta QUALQUER VK do grupo estar em baixo.
+        self.key_groups = []
         for name in str(accelerator).split('+'):
             name = name.strip().lower()
             if name in _MODIFIER_VK:
-                self.keys.append(_MODIFIER_VK[name])
-        self.keys.append(int(self.vk))
+                _group = [int(_MODIFIER_VK[name])]
+                for _extra in _MODIFIER_VARIANTS.get(name, ()):
+                    if int(_extra) not in _group:
+                        _group.append(int(_extra))
+                self.key_groups.append(tuple(_group))
+        self.key_groups.append((int(self.vk),))
+        self.keys = [g[0] for g in self.key_groups]
 
     def run(self):
         self.thread_id = int(kernel32.GetCurrentThreadId())
@@ -5204,13 +5276,46 @@ class PassiveHotkeyThread(threading.Thread):
                 return 0x8000 if self.key_state(int(vk)) else 0
         else:
             get_state = user32.GetAsyncKeyState
+        # O OBSERVADOR DIZ QUE ESTA' VIVO, E DIZ QUANDO PARA (2026-11-03).
+        # MEDIDO: o dono carregou em Ctrl+Space e o log do shell nao teve
+        # UMA linha `HOTKEY_PRESSED role=live` -- nem pressao, nem falha.
+        # Um observador silencioso e' indistinguivel de uma tecla morta, e
+        # as duas tambem sao indistinguiveis de uma tecla que ele nao
+        # carregou. Este batimento resolve a duvida com um numero: o contador
+        # de voltas cresce? a volta ficou presa?
+        self.log_fn('HOTKEY_OBSERVER_KEYS role=%s groups=%s'
+                    % (self.role, [[hex(int(v)) for v in g]
+                                   for g in self.key_groups]))
+        _beats = 0
+        _last_beat = time.monotonic()
+        _last_loop = time.monotonic()
         held = False
         while not self._stop_requested.is_set():
+            _now_loop = time.monotonic()
+            self._wake_gap = max(float(getattr(self, '_wake_gap', 0.0)),
+                                 _now_loop - _last_loop)
+            _last_loop = _now_loop
+            if _now_loop - _last_beat >= 5.0:
+                _beats += 1
+                self.log_fn('HOTKEY_OBSERVER_ALIVE role=%s beats=%d '
+                            'loops=%d max_gap_ms=%d'
+                            % (self.role, _beats, self.loops,
+                               round(getattr(self, '_wake_gap', 0.0) * 1000.0)))
+                self._wake_gap = 0.0
+                _last_beat = _now_loop
+            self.loops += 1
             down = True
-            for vk in self.keys:
-                if not (int(get_state(int(vk))) & 0x8000):
+            for _group in self.key_groups:
+                if not any(int(get_state(int(vk))) & 0x8000
+                           for vk in _group):
                     down = False
                     break
+            if _HOTKEY_TRACE and getattr(self, '_trace', None) != down:
+                self._trace = down
+                self.log_fn('HOTKEY_TRACE role=%s down=%s groups=%s'
+                            % (self.role, str(down).lower(),
+                               [[hex(int(v)) for v in g]
+                                for g in self.key_groups]))
             if down and not held:
                 held = True
                 try:
@@ -10683,7 +10788,21 @@ class SottoShell:
             # legenda. A tecla e' um INTERRUPTOR DO QUE ELE VE (o mesmo facto que o
             # lamp do painel pinta, `data-caption-window`), e o que ele ve' e'
             # `_caption_window_shown`: uma pressao muda SEMPRE o ecra.
+            # O QUE CONTA COMO "NO ECRA" E' O QUE A JANELA MEDE (2026-11-03).
+            # A cache dizia `mostrada` apos um pedido, e no arranque o pedido
+            # vem RESTAURADO (`CAPTION_WANTED_RESTORED on=true`): a primeira
+            # pressao do dono ESCONDIA uma janela que ele talvez nunca tenha
+            # visto, e a leitura dele foi *"to apertando control espaco e nao ta
+            # ligando"*. O painel ja' resolve isto assim (`window_visible`,
+            # "a MEDICAO ao vivo, e nao a cache"); o overlay passa a usar a
+            # mesma regra. Sem janela para medir (oraculo), fica a cache.
             shown = bool(getattr(self, '_caption_window_shown', False))
+            _ov = getattr(self, 'caption_overlay', None)
+            if _ov is not None and getattr(_ov, 'hwnd', None):
+                try:
+                    shown = bool(window_visible(_ov.hwnd))
+                except Exception as exc:  # noqa: BLE001 -- sem leitura, cache
+                    log(f'CAPTION_VISIBLE_READ_FAILED error={exc!r}')
             on = not shown
             log(f'HOTKEY_LIVE_STEP caption_on={str(on).lower()} '
                 f'shown={str(shown).lower()} '
@@ -11715,6 +11834,87 @@ class SottoShell:
             except Exception:
                 pass
 
+
+    def _drain_caption_pending(self):
+        """Pinta o que esta' no slot. Corre na thread `sotto-caption-paint`."""
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return
+        instant = bool(getattr(self, '_caption_pending_instant', False))
+        self._caption_drain_posted = False
+        pending = getattr(self, '_caption_pending', None)
+        if pending is None:
+            return
+        enqueued, new_text, new_prev, epoch = pending
+        self._caption_pending = None
+        # UM TEXTO DE EPOCH GASTO NAO PINTA -- e' o jumpscare (2026-10-30).
+        cur = int(getattr(self, '_source_epoch', 0))
+        if epoch != cur:
+            log(f'CAPTION_DROP_EPOCH enq={epoch} cur={cur} '
+                f'text={json.dumps((new_text or "")[:60])}')
+            return
+        age_ms = int((time.time() - enqueued) * 1000)
+        try:
+            ov.set_work_area(self.work_area(),
+                             (self.display or {}).get('scaleFactor') or 1.0)
+            ov.set_text(new_text, new_prev, instant)
+            ov.show(True)
+            self._overlay_pushes += 1
+            # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
+            # "Alt+C -> legenda no ecra em 1,5 s" nao tinha instrumento: a PRESSao
+            # esta no log desde sempre (`HOTKEY_PRESSED`, com o carimbo de tempo de
+            # `log()`), mas a PINTURA so aparecia em `count=1/50/500` e nas linhas
+            # `CAPTION_OVERLAY_LAG` -- logo a segunda legenda da sessao nao deixava
+            # rasto nenhum, e nao havia como medir diferenca nenhuma. Esta linha sai
+            # UMA vez por legenda que NASCE (texto vazio -> texto), que e exactamente
+            # o evento que o dono ve, com o `instant` do caminho (o YouTube entrega o
+            # prefixo ja revelado) e o hwnd. Nao muda o desenho: escreve no log.
+            was_blank = not (getattr(self, '_caption_painted', '') or '').strip()
+            self._caption_painted = new_text or ''
+            if was_blank and (new_text or '').strip():
+                log(f'CAPTION_PAINT instant={str(bool(instant)).lower()} '
+                    f'hwnd={ov.hwnd} text={json.dumps(new_text[:60])}')
+            if age_ms >= 100:
+                log(f'CAPTION_OVERLAY_LAG age_ms={age_ms} '
+                    f'count={self._overlay_pushes} '
+                    f'text={json.dumps(new_text[:60])}')
+            if self._overlay_pushes in (1, 50, 500):
+                log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
+                    f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
+                    f'text={json.dumps(new_text[:60])}')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
+
+    def _caption_paint_wake(self):
+        """Acorda a thread que pinta a legenda (cria-a na primeira vez)."""
+        ev = getattr(self, '_caption_event', None)
+        if ev is None:
+            ev = self._caption_event = threading.Event()
+            threading.Thread(target=self._caption_paint_loop,
+                             name='sotto-caption-paint', daemon=True).start()
+        ev.set()
+
+    def _caption_paint_loop(self):
+        """UM slot, UMA thread: pinta sempre o texto MAIS RECENTE.
+
+        O `_drain` ja' e' dono do slot (`_caption_pending`), por isso a
+        regra de "nunca um texto velho" nao muda -- muda so' QUEM a corre.
+        Uma excepcao aqui nao pode matar a thread: sem ela a legenda nunca
+        mais pinta, e um silencio e' pior do que uma linha feia.
+        """
+        ev = self._caption_event
+        while True:
+            ev.wait(0.5)
+            ev.clear()
+            self._caption_drain_posted = False
+            try:
+                self._drain_caption_pending()
+            except Exception as exc:  # noqa: BLE001
+                try:
+                    log('CAPTION_PAINT_FAILED error=%r' % (exc,))
+                except Exception:
+                    pass
+
     def push_caption_to_window(self, text, previous=None, credits=None, instant=False,
                                rows=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
@@ -11783,55 +11983,19 @@ class SottoShell:
         now = time.time()
         self._caption_pending = (now, text or '', previous or '',
                                  int(getattr(self, '_source_epoch', 0)))
+        # O `instant` VIVE NO SLOT (2026-11-03): a pintura deixou de ser
+        # uma closure para ser uma thread propria, e um caminho que
+        # depende de uma variavel local de OUTRA funcao nao sobrevive a
+        # essa mudanca.
+        self._caption_pending_instant = bool(instant)
         dbg = self._overlay_pushes < 3
-
-        def _drain():
-            self._caption_drain_posted = False
-            pending = getattr(self, '_caption_pending', None)
-            if pending is None:
-                return
-            enqueued, new_text, new_prev, epoch = pending
-            self._caption_pending = None
-            # UM TEXTO DE EPOCH GASTO NAO PINTA -- e' o jumpscare (2026-10-30).
-            cur = int(getattr(self, '_source_epoch', 0))
-            if epoch != cur:
-                log(f'CAPTION_DROP_EPOCH enq={epoch} cur={cur} '
-                    f'text={json.dumps((new_text or "")[:60])}')
-                return
-            age_ms = int((time.time() - enqueued) * 1000)
-            try:
-                ov.set_work_area(self.work_area(),
-                                 (self.display or {}).get('scaleFactor') or 1.0)
-                ov.set_text(new_text, new_prev, instant)
-                ov.show(True)
-                self._overlay_pushes += 1
-                # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
-                # "Alt+C -> legenda no ecra em 1,5 s" nao tinha instrumento: a PRESSao
-                # esta no log desde sempre (`HOTKEY_PRESSED`, com o carimbo de tempo de
-                # `log()`), mas a PINTURA so aparecia em `count=1/50/500` e nas linhas
-                # `CAPTION_OVERLAY_LAG` -- logo a segunda legenda da sessao nao deixava
-                # rasto nenhum, e nao havia como medir diferenca nenhuma. Esta linha sai
-                # UMA vez por legenda que NASCE (texto vazio -> texto), que e exactamente
-                # o evento que o dono ve, com o `instant` do caminho (o YouTube entrega o
-                # prefixo ja revelado) e o hwnd. Nao muda o desenho: escreve no log.
-                was_blank = not (getattr(self, '_caption_painted', '') or '').strip()
-                self._caption_painted = new_text or ''
-                if was_blank and (new_text or '').strip():
-                    log(f'CAPTION_PAINT instant={str(bool(instant)).lower()} '
-                        f'hwnd={ov.hwnd} text={json.dumps(new_text[:60])}')
-                if age_ms >= 100:
-                    log(f'CAPTION_OVERLAY_LAG age_ms={age_ms} '
-                        f'count={self._overlay_pushes} '
-                        f'text={json.dumps(new_text[:60])}')
-                if self._overlay_pushes in (1, 50, 500):
-                    log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
-                        f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
-                        f'text={json.dumps(new_text[:60])}')
-            except Exception as exc:  # noqa: BLE001
-                log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
-
         if dbg:
-            log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} post=ui')
+            # A ETIQUETA ACOMPANHA O MECANISMO (2026-11-03): a pintura deixou de
+            # ser um `_post` para a thread de UI, e uma etiqueta `post=ui` num
+            # log que ja' pinta noutra thread e' uma pista FALSA para quem
+            # diagnosticar.
+            log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} '
+                f'thread=caption-paint')
         in_flight = (getattr(self, '_caption_drain_posted', False)
                      and (now - getattr(self, '_caption_drain_posted_at', 0.0)) < 2.0)
         if in_flight:
@@ -11842,9 +12006,22 @@ class SottoShell:
         self._caption_drain_posted = True
         self._caption_drain_posted_at = now
         try:
-            self._post(_drain)
-        except Exception:  # noqa: BLE001
-            _drain()
+            # A PINTURA NAO MORA NA THREAD DE UI (2026-11-03, MEDIDO).
+            # `CAPTION_OVERLAY_PUSH_ENTER 04:50:41.528` -> `CAPTION_PAINT
+            # 04:50:42.645`: 1,1 s de atraso porque o `_post` espera que a
+            # thread de UI esteja livre, e ela passa MINUTOS dentro da
+            # navegacao do WebView2 (`WEBVIEW_NAV start -> dom` = 25 s
+            # medidos). O overlay e' uma janela Win32 com thread propria
+            # (`caption_overlay._thread_main`), logo a pintura nao precisa
+            # de pywebview para nada. Uma thread so' para a legenda corta
+            # a ultima dependencia entre a legenda e o painel.
+            self._caption_paint_wake()
+        except Exception as exc:  # noqa: BLE001
+            # A THREAD NAO PODE SER A UNICA SAIDA: se ela nao arrancar,
+            # este processo pinta no sitio onde pintava antes.
+            log('CAPTION_PAINT_THREAD_FAILED error=%r' % (exc,))
+            self._caption_drain_posted = False
+            self._drain_caption_pending()
         self._arm_caption_idle_hide()
         return True
 
@@ -15954,6 +16131,16 @@ class WorkerBridge:
                         * 1000.0)
             if (quiet_ms < self.load_silence_ms
                     or elapsed_ms < WORKER_LOAD_HARD_CEILING_MS * 0.5):
+                # UMA LINHA POR CARGA, NAO UMA POR SEGUNDO (2026-11-03).
+                # MEDIDO: um load de 206 s escreveu 115 destas linhas, uma
+                # por segundo, cada uma com um fsync no log de 50 MB. O
+                # vigia re-arma de 1 em 1 s; a carga e' uma so', e o
+                # espaco tambem e' um sinal (mudanca de fase).
+                _now_load = time.monotonic()
+                if _now_load - getattr(self, '_load_line_at', 0.0) < 15.0:
+                    self._arm_silence()
+                    return
+                self._load_line_at = _now_load
                 self.log(f'BRIDGE_SILENT_LOADING ms={round(quiet_ms)} '
                          f'pid={self.child.pid} '
                          f'total_ms={round(elapsed_ms)} '
@@ -17230,8 +17417,14 @@ def main(argv=None):
         # depois entrega a maquina ao WebView2. Tecto obrigatorio -- uma
         # app sem painel e' o defeito que se estava a evitar.
         try:
+            # DEFAULT ZERO (2026-11-03, MEDIDO): o `run.cmd` tem um portao de
+            # prontidao e chamou `HANG rc=4 by=run.cmd-readiness` a um arranque
+            # que so' estava a espERAR pelo modelo antes de abrir a pagina -- a
+            # app ficou sem painel e o dono sem nada. A espera nao comprou nada
+            # medivel (o modelo demora o mesmo; o WebView2 nao e' o culpado),
+            # logo fica opt-in para quem a quiser medir.
             _wait_model = float(os.environ.get('SOTTO_WEBVIEW_AFTER_LOAD_S',
-                                               '25'))
+                                               '0'))
         except ValueError:
             _wait_model = 25.0
         if _wait_model > 0 and getattr(shell, 'bridge', None) is not None:

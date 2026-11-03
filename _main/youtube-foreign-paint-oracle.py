@@ -35,6 +35,7 @@ import importlib.util
 import os
 import shutil
 import sys
+import threading
 import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -64,7 +65,13 @@ class FakeThread(object):
         self.requests = []
 
     def request(self, vid, painted=None):
+        # O CONTRATO MUDOU 2026-11-03: `request` deixou de bloquear e passou a
+        # devolver o que JA' ESTIVER PRONTO (`_yt_track_poll`, fire-and-forget).
+        # Um stub que devolvesse `None` punha o laco no ramo `track is None` --
+        # e o oraculo media as palavras do player a caminho, nunca a decisao da
+        # faixa que ele existe para julgar. Devolver a faixa e' o contrato.
         self.requests.append((vid, tuple(painted or ())))
+        return self.track
 
     def current(self, vid):
         return self.track
@@ -98,6 +105,14 @@ def build_watcher(mod, painted, clocks, track=None):
     # de um atributo em vez do ramo `painted-other-track`.
     obj.yt_serve_floor = None
     obj.yt_held_logged = None
+    # 2026-11-03: o `__init__` vivo tambem ganhou o AMOSTRADOR DO RELOGIO
+    # (`_ensure_clock_sampler`), uma thread que le' UIA a 0,40 s. Um stub que nao
+    # a declare levanta `AttributeError: no attribute 'stop_event'` dentro dela e
+    # -- pior -- um stub que a deixe arrancar faz este oraculo abrir UIA, que ele
+    # promete NAO fazer no proprio cabecalho. O sentinela desliga-a: a amostra do
+    # relogio continua a ser a lista fixa deste instrumento.
+    obj.stop_event = threading.Event()
+    obj._yt_clock_thread = True
     obj._youtube_video_id = lambda *a: VID
     paints = list(painted)
     ticks = list(clocks)
