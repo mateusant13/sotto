@@ -3795,6 +3795,16 @@ SEAM_REPEAT_MIN_WORDS = 2
 SEAM_REPEAT_MAX_WORDS = 6
 
 
+def _seam_key(word):
+    """A palavra como ela se COMPARA: sem caixa e sem pontuacao nas bordas.
+
+    `Sempre` (o modelo capitaliza o inicio da linha) e `sempre` sao a MESMA
+    palavra para efeito de repeticao, e `vam,` e `vam` tambem. A chave vazia
+    (um `...` sozinho) nunca casa, e por isso o `all(...)` no colapso.
+    """
+    return word.strip('.,;:!?\u00ab\u00bb"\'()[]-').casefold()
+
+
 def dedup_seam_repeat(text):
     """Colapsa uma repeticao IMEDIATA de 2+ palavras: `X Y X Y` -> `X Y`.
 
@@ -3820,14 +3830,38 @@ def dedup_seam_repeat(text):
     words = text.split()
     if len(words) < 2 * SEAM_REPEAT_MIN_WORDS:
         return text
-    # Do mais longo para o mais curto: o artefacto repete o rabo COMPLETO do
-    # chunk anterior, nao so' as ultimas duas palavras.
-    for k in range(min(SEAM_REPEAT_MAX_WORDS, len(words) // 2), SEAM_REPEAT_MIN_WORDS - 1, -1):
-        for i in range(len(words) - 2 * k, -1, -1):
-            if words[i:i + k] == words[i + k:i + 2 * k]:
-                words = words[:i + k] + words[i + 2 * k:]
-                return " ".join(words)
-    return text
+    # A COMPARACAO E' NORMALIZADA, E O COLAPSO REPETE ATE' ESTABILIZAR
+    # (MEASURADO 2026-11-03 na sessao viva do dono, 62 linhas do
+    # `CAPTION_APPLIED`, 2 com repeticao). A versao anterior comparava
+    # `words[i:i+k] == words[i+k:i+2*k]` -- SENSIVEL a maiuscula e a virgula --
+    # e fazia UMA passagem. As duas linhas que ela deixou passar:
+    #
+    #   'Sempre falei do sempre falei do cenario sempre falei do cenario politico.'
+    #   'Acompanha vam, e me acompanha vam, e me acompanha ha.'
+    #
+    # Na primeira o run repetido comeca em `Sempre` (maiuscula, inicio da linha)
+    # e reaparece como `sempre`: a comparacao exacta nunca casa. E o artefacto
+    # CRESCE (`A`, `A+B`, `A+B+C`), por isso tirar uma so' vez ainda deixa uma
+    # copia -- o laco tem de correr outra vez sobre o texto que ja' encolheu.
+    keys = [_seam_key(w) for w in words]
+    changed = False
+
+    def _collapse_once():
+        """Uma passagem: tira a copia mais comprida e diz se mexeu."""
+        for k in range(min(SEAM_REPEAT_MAX_WORDS, len(words) // 2),
+                       SEAM_REPEAT_MIN_WORDS - 1, -1):
+            for i in range(len(words) - 2 * k, -1, -1):
+                if keys[i:i + k] == keys[i + k:i + 2 * k] and all(keys[i:i + k]):
+                    words[:] = words[:i + k] + words[i + 2 * k:]
+                    keys[:] = keys[:i + k] + keys[i + 2 * k:]
+                    return True
+        return False
+
+    for _pass in range(4):
+        if not _collapse_once():
+            break
+        changed = True
+    return " ".join(words) if changed else text
 
 
 class LineFormer:

@@ -57,6 +57,18 @@ MEASURED = [
 MEASURED_LINE = "caramba tem umas youtuber que elas só são sapadas mesmo não é"
 MEASURED_DUP = "caramba tem umas tem umas youtuber que elas só são sapadas mesmo não é"
 
+#: AS DUAS LINHAS QUE A REGRA DEIXAVA PASSAR, verbatim do `CAPTION_APPLIED` da
+#: sessao VIVA do dono (2026-11-03, 11:39, instancia pid 55456; 2 de 62 linhas
+#: com repeticao). A comparacao exacta nunca casava a primeira -- o run repetido
+#: comeca em `Sempre` (maiuscula de inicio de linha) e volta como `sempre` -- e o
+#: artefacto CRESCE (`A`, `A+B`, `A+B+C`), por isso uma passagem so' ainda
+#: deixava uma copia.
+LIVE_GROWING_DUP = ("Sempre falei do sempre falei do cenário "
+                    "sempre falei do cenário político.")
+LIVE_GROWING_LINE = "Sempre falei do cenário político."
+LIVE_COMMA_DUP = "Acompanha vam, e me acompanha vam, e me acompanha há."
+LIVE_COMMA_LINE = "Acompanha vam, e me acompanha há."
+
 
 def load(path=WORKER):
     spec = importlib.util.spec_from_file_location("sotto_worker_dedup", path)
@@ -93,6 +105,12 @@ def main():
          and src.count("dedup_seam_repeat(") >= 4)
     checks.append(("G", g, "dedup_seam_repeat call sites=%d" % src.count("dedup_seam_repeat(")))
 
+    h = f(LIVE_GROWING_DUP)
+    checks.append(("H", h == LIVE_GROWING_LINE, h))
+
+    i = f(LIVE_COMMA_DUP)
+    checks.append(("I", i == LIVE_COMMA_LINE, i))
+
     for name, ok, val in checks:
         print("%s %s %r" % (name, "PASS" if ok else "FAIL", val))
     ok = all(c[1] for c in checks)
@@ -125,6 +143,35 @@ def neg_arm():
     for ln in (proc.stdout or "").splitlines():
         if ln.startswith("B "):
             print("  ", ln)
+
+    # SEGUNDO MUTANTE: a NORMALIZACAO. Sem `casefold`/sem tirar a pontuacao o
+    # run que comeca em `Sempre` (ou em `vam,`) nunca casa com a copia, e a
+    # linha sai repetida -- e' exactamente o que o log do dono publicou.
+    needle2 = "    return word.strip('.,;:!?\\u00ab\\u00bb\"\\'()[]-').casefold()"
+    caught2 = False
+    if needle2 in text:
+        mutant2 = text.replace(needle2, "    return word", 1)
+        fd2, tmp2 = tempfile.mkstemp(prefix="_mutant_seamkey_", suffix=".py",
+                                     dir=os.path.dirname(os.path.abspath(WORKER)))
+        os.close(fd2)
+        with open(tmp2, "w", encoding="utf-8", newline="") as fh:
+            fh.write(mutant2)
+        try:
+            proc2 = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp2],
+                                   capture_output=True, text=True)
+        finally:
+            try:
+                os.unlink(tmp2)
+            except OSError:
+                pass
+        caught2 = proc2.returncode != 0 and "H FAIL" in (proc2.stdout or "")
+        print("NEG-ARM seam-key mutant rc=%d caught=%s" % (proc2.returncode, caught2))
+        for ln in (proc2.stdout or "").splitlines():
+            if ln.startswith("H "):
+                print("  ", ln)
+    else:
+        print("NEG-ARM seam-key mutant: ANCORA AUSENTE no worker")
+    caught = caught and caught2
     print("NEG-ARM PASS" if caught else "NEG-ARM FAIL")
     # O `:expectred` da bateria exige rc=1 quando o mutante APANHADO: o passo
     # negativo PASSA com um RED (o defeito foi nomeado), nao com um zero.
@@ -146,9 +193,11 @@ if __name__ == "__main__":
         w = load(path)
         ok_b = w.dedup_seam_repeat("nao nao é isso") == "nao nao é isso"
         ok_a = w.dedup_seam_repeat(MEASURED_DUP) == MEASURED_LINE
+        ok_h = w.dedup_seam_repeat(LIVE_GROWING_DUP) == LIVE_GROWING_LINE
         print("A %s" % ("PASS" if ok_a else "FAIL"))
         print("B %s" % ("PASS" if ok_b else "FAIL"))
-        ok = ok_a and ok_b
+        print("H %s" % ("PASS" if ok_h else "FAIL"))
+        ok = ok_a and ok_b and ok_h
         print("VERDICT:", "GREEN" if ok else "RED")
         raise SystemExit(0 if ok else 1)
     raise SystemExit(main())
