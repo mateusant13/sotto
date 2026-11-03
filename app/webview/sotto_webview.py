@@ -3430,12 +3430,87 @@ class ExternalCaptionWatcher(threading.Thread):
             track blinks, and every blink would cost a model load
             (MEASURED 11.6 s, 1 218 MB resident).
         """
-        # A IDENTIDADE VEM DA FONTE QUE JA' ESTA' LIDA (2026-11-03, MEDIDO). A
-        # varredura dos `Edit` do Chrome custa 94-109 ms por tick, e o snapshot da
-        # CDP ja' traz o `videoId` da pagina que ele esta' a ler. Perguntar a'
-        # arvore de acessibilidade quando a resposta ja' esta' na mao era 90% da
-        # leitura (`phases={'vid': 109.0, 'painted': 109.0}`). A UIA continua a ser
-        # a fonte quando nao ha snapshot -- sem CDP, sem resposta.
+        vid, _src, _wait = self._yt_identify(hwnd, uia, UIA)
+        if _wait:
+            return [], False
+        if not vid:
+            return [], self._yt_forget('no-video-id', urgent=False)
+        if vid != self.yt_video_id:
+            self._yt_switch_video(vid, _src)
+        reply = self._yt_cdp_fast_lines(hwnd, uia, UIA, vid)
+        if reply is not None:
+            return reply
+        thread = getattr(self.shell, 'youtube_track_thread', None)
+        _yt_mark(self, 'thread')
+        if thread is None:
+            return [], self._yt_forget('no-track-thread', urgent=False)
+        # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
+        _t_yt = time.monotonic()
+        self._ensure_clock_sampler()
+        painted = self._youtube_painted(hwnd, uia, UIA)
+        _yt_mark(self, 'painted')
+        reply = self._yt_cdp_lines(vid)
+        if reply is not None:
+            return reply
+        # O PEDIDO DA FAIXA: `_yt_track_poll` decide, nao bloqueia, e o DOM do
+        # player decide se ele existe -- o porque' medido esta' no docstring dela
+        # (46 766 ms e 62 234 ms num tick eram o `yt-dlp` a correr DENTRO do laco).
+        track = self._yt_track_poll(thread, vid, painted)
+        _yt_mark(self, 'track')
+        if track is None:
+            return self._yt_untracked_lines(hwnd, uia, UIA, painted)
+        if track.get('state') != 'has-track':
+            reason = track.get('reason') or track.get('state') or 'unknown'
+            return [], self._yt_forget('no-track:%s' % reason, urgent=True)
+        if painted:
+            reply = self._yt_painted_lines_match(hwnd, uia, UIA, track, painted, vid)
+            if reply is None:
+                reply = self._yt_aligned_painted(hwnd, uia, UIA, track, painted, vid)
+            if reply is not None:
+                return reply
+            now_t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+            key = ' '.join(str(w) for w in painted)[:120]
+            moved = (now_t is not None
+                     and (self.yt_foreign_t is None
+                          or abs(float(now_t) - float(self.yt_foreign_t)) > 0.05))
+            if now_t is not None and (moved or key == self.yt_foreign_key):
+                self.yt_foreign_t, self.yt_foreign_key = float(now_t), key
+                # O RELOGIO NAO RECUA O ECRA (2026-10-30). `now_t` passa a ser
+                # o instante autorizado por `youtube_monotonic.decide`: nunca
+                # atras do chao, excepto quando o PROPRIO relogio recuou (seek).
+                # MEDIDO: 129 das 2126 linhas de `webview-run.log` recuavam --
+                # ate' 359 s -- e era isto que o dono via como *"repete a
+                # legenda de instantes atras"*.
+                now_t = self._yt_decide(now_t)
+                # O RELOGIO FINO NESTE RAMO TAMBEM (2026-11-02). MEDIDO na sessao
+                # do dono (pid 18676): 18 YOUTUBE_CAPTION, todas
+                # why=painted-other-track, e o relogio do UIA a saltar de segundo em
+                # segundo -- o ancora so' existia no ramo `painted`, logo a frase
+                # entrava de uma vez. Prova: _main/reveal-park-oracle.py A1/A2.
+                self._yt_anchor = (float(now_t), time.monotonic())
+                self._yt_track = track
+                reply = self._yt_clock_cue(track, now_t, vid)
+            else:
+                reply = None
+            if reply is not None:
+                return reply
+            return self._yt_no_clock_lines(hwnd, uia, UIA, track, painted, vid)
+        return self._yt_clock_lines(hwnd, uia, UIA, track, vid)
+
+    def _yt_identify(self, hwnd, uia, UIA):
+        """QUAL e' o video, e a porta da CDP ja' leu a resposta?
+
+        A IDENTIDADE VEM DA FONTE QUE JA' ESTA' LIDA (2026-11-03, MEDIDO). A
+        varredura dos `Edit` do Chrome custa 94-109 ms por tick, e o snapshot da
+        CDP ja' traz o `videoId` da pagina que ele esta' a ler. Perguntar a'
+        arvore de acessibilidade quando a resposta ja' esta' na mao era 90% da
+        leitura (`phases={'vid': 109.0, 'painted': 109.0}`). A UIA continua a ser
+        a fonte quando nao ha snapshot -- sem CDP, sem resposta.
+
+        Devolve `(vid, src, wait)`. `wait=True` e' "a foto seguinte traz o id":
+        a porta esta' viva e o id ja' e' conhecido, portanto nao se paga a
+        varredura dos `Edit` neste tick.
+        """
         vid = ''
         # A PORTA ABRE ANTES DE SE PERGUNTAR O ID (2026-11-03). Ver
         # `_yt_cdp_ensure`: o id vem da foto, e a foto so' existe com a porta
@@ -3482,67 +3557,76 @@ class ExternalCaptionWatcher(threading.Thread):
                     vid = ''
             if _src and _src is not False and getattr(self, 'yt_video_id', ''):
                 _yt_mark(self, 'vid')
-                return [], False
+                return '', _src, True
             vid = self._youtube_video_id(hwnd, uia, UIA)
         _yt_mark(self, 'vid')
-        if not vid:
-            return [], self._yt_forget('no-video-id', urgent=False)
-        if vid != self.yt_video_id:
-            self.yt_video_id = vid
-            # A PORTA PASSA A SABER QUAL ABA E' A NOSSA (2026-11-03). MEDIDO:
-            # `YOUTUBE_CDP_SOURCE state=ambiguous` -- com duas abas `watch`
-            # abertas a fonte nao escolhe e a foto nunca chega; e foi este
-            # idioma que a ordem antiga (id primeiro, porta depois) escondia.
-            if _src and _src is not False:
-                try:
-                    _src.set_video_id(vid)
-                except Exception:         # noqa: BLE001
-                    pass
-            self.yt_cue = ''
-            # TROCAR DE VIDEO NAO DEIXA A LINHA DO ANTERIOR NO ECRA (2026-11-03).
-            # O dono alterna entre videos a toda a hora; a primeira leitura do novo
-            # chega numa foto (dezenas de ms), mas ate' la' o que esta' no ecra e' a
-            # ultima linha do OUTRO video -- duas legendas, uma delas falsa. A
-            # janela apaga-se aqui e a linha nova entra assim que houver.
-            self._yt_switch_at = time.monotonic()
-            # O APAGAR DA JANELA MORA NA SHELL, NAO AQUI (2026-11-03). MEDIDO com
-            # o oraculo `_main/yt-loop-uia-oracle.py`: `self._blank_caption_window`
-            # nao existe neste objecto -- a chamada levantava `AttributeError` a
-            # cada troca de video, ou seja o ramo que devia limpar a linha do
-            # video ANTERIOR morria antes de a limpar (e a linha antiga ficava no
-            # ecra, que e' o defeito que este ramo existe para evitar).
-            _bw = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
-            if _bw is not None:
-                try:
-                    _bw('video-changed')
-                except Exception:             # noqa: BLE001
-                    pass
-            # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
-            # the line of this one, and it is what the clock is compared
-            # with, so it goes with the video.
-            self.yt_hit = None
-            # UM VIDEO NOVO NAO HERDA NADA (2026-10-30): cada campo por-video era
-            # uma forma de a legenda do anterior voltar ao ecra.
-            self.yt_serve_floor = None
-            self.yt_foreign_t = None
-            self.yt_foreign_key = ''
-            self._yt_anchor = None
-            self._yt_track = None
-            self.last_line = ''
-            self.last_rows = []
-            self.finalized = False
-            self._caption_pending = None
-            blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
-            if blank is not None:
-                blank('video-changed')
-            log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
-        # O CAMINHO BARATO VEM PRIMEIRO (2026-11-03). MEDIDO no dono: o laco
-        # pagou 46 s e 62 s num tick (`EXTERNAL_CAPTIONS_READ_MS ms=46766.0`),
-        # e o custo era o que vinha DEPOIS daqui: a leitura UIA das palavras
-        # (`phases={'painted': 17843.0}`) e o `yt-dlp` da faixa. Quando a CDP
-        # entrega as linhas do DOM do player, essas linhas SAO a legenda: nao ha'
-        # nada a alinhar, nada a pedir, nada a perguntar a' arvore. Este `return`
-        # e' o que faz o tick custar ~20 ms em vez de dezenas de segundos.
+        return vid, _src, False
+
+    def _yt_switch_video(self, vid, src):
+        """TROCAR DE VIDEO NAO DEIXA A LINHA DO ANTERIOR NO ECRA (2026-11-03).
+
+        O dono alterna entre videos a toda a hora; a primeira leitura do novo
+        chega numa foto (dezenas de ms), mas ate' la' o que esta' no ecra e' a
+        ultima linha do OUTRO video -- duas legendas, uma delas falsa. A
+        janela apaga-se aqui e a linha nova entra assim que houver.
+        """
+        self.yt_video_id = vid
+        # A PORTA PASSA A SABER QUAL ABA E' A NOSSA (2026-11-03). MEDIDO:
+        # `YOUTUBE_CDP_SOURCE state=ambiguous` -- com duas abas `watch`
+        # abertas a fonte nao escolhe e a foto nunca chega; e foi este
+        # idioma que a ordem antiga (id primeiro, porta depois) escondia.
+        if src and src is not False:
+            try:
+                src.set_video_id(vid)
+            except Exception:         # noqa: BLE001
+                pass
+        self.yt_cue = ''
+        self._yt_switch_at = time.monotonic()
+        # O APAGAR DA JANELA MORA NA SHELL, NAO AQUI (2026-11-03). MEDIDO com
+        # o oraculo `_main/yt-loop-uia-oracle.py`: `self._blank_caption_window`
+        # nao existe neste objecto -- a chamada levantava `AttributeError` a
+        # cada troca de video, ou seja o ramo que devia limpar a linha do
+        # video ANTERIOR morria antes de a limpar (e a linha antiga ficava no
+        # ecra, que e' o defeito que este ramo existe para evitar).
+        _bw = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
+        if _bw is not None:
+            try:
+                _bw('video-changed')
+            except Exception:             # noqa: BLE001
+                pass
+        # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
+        # the line of this one, and it is what the clock is compared
+        # with, so it goes with the video.
+        self.yt_hit = None
+        # UM VIDEO NOVO NAO HERDA NADA (2026-10-30): cada campo por-video era
+        # uma forma de a legenda do anterior voltar ao ecra.
+        self.yt_serve_floor = None
+        self.yt_foreign_t = None
+        self.yt_foreign_key = ''
+        self._yt_anchor = None
+        self._yt_track = None
+        self.last_line = ''
+        self.last_rows = []
+        self.finalized = False
+        self._caption_pending = None
+        blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
+        if blank is not None:
+            blank('video-changed')
+        log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
+
+    def _yt_cdp_fast_lines(self, hwnd, uia, UIA, vid):
+        """O CAMINHO BARATO VEM PRIMEIRO (2026-11-03), e decide sozinho.
+
+        MEDIDO no dono: o laco pagou 46 s e 62 s num tick
+        (`EXTERNAL_CAPTIONS_READ_MS ms=46766.0`), e o custo era o que vinha
+        DEPOIS daqui: a leitura UIA das palavras (`phases={'painted':
+        17843.0}`) e o `yt-dlp` da faixa. Quando a CDP entrega as linhas do DOM
+        do player, essas linhas SAO a legenda: nao ha' nada a alinhar, nada a
+        pedir, nada a perguntar a' arvore. Este caminho e' o que faz o tick
+        custar ~20 ms em vez de dezenas de segundos.
+
+        Devolve a resposta, ou `None` quando nao ha' linhas na foto.
+        """
         _snap_fast = self._yt_cdp_snapshot(hwnd, uia, UIA, declared=vid or None)
         _yt_mark(self, 'fast-snap')
         if _snap_fast and _snap_fast.get('rows'):
@@ -3557,310 +3641,303 @@ class ExternalCaptionWatcher(threading.Thread):
                 self.yt_cue = ' '.join(_fast_rows)
                 return [('external:youtube:track', _fast_rows)], False
             return [], False
-        thread = getattr(self.shell, 'youtube_track_thread', None)
-        _yt_mark(self, 'thread')
-        if thread is None:
-            return [], self._yt_forget('no-track-thread', urgent=False)
-        # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
-        _t_yt = time.monotonic()
-        self._ensure_clock_sampler()
-        painted = self._youtube_painted(hwnd, uia, UIA)
-        _yt_mark(self, 'painted')
-        # A LINHA DO PLAYER PASSA A' FRENTE DE TUDO (2026-11-03). Quando a CDP
-        # entrega as linhas que o player TEM no DOM, essas linhas SAO a legenda:
-        # nao se alinha com a faixa, nao se espera cue, nao se re-quebra. MEDIDO
-        # nesta sessao: com a faixa a' frente o ecra ficou 60 s sem uma unica
-        # linha (`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s`) enquanto o
-        # player pintava duas; e o alinhamento prendia-se em `cue=1114` minutos
-        # depois de o video a ter passado. O que o player desenha e' o 1:1, por
-        # definicao -- `_youtube_painted` ja' leu isso.
+        return None
+
+    def _yt_cdp_lines(self, vid):
+        """A LINHA DO PLAYER PASSA A' FRENTE DE TUDO (2026-11-03).
+
+        Quando a CDP entrega as linhas que o player TEM no DOM, essas linhas SAO
+        a legenda: nao se alinha com a faixa, nao se espera cue, nao se
+        re-quebra. MEDIDO nesta sessao: com a faixa a' frente o ecra ficou 60 s
+        sem uma unica linha (`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s`)
+        enquanto o player pintava duas; e o alinhamento prendia-se em `cue=1114`
+        minutos depois de o video a ter passado. O que o player desenha e' o 1:1,
+        por definicao -- `_youtube_painted` ja' leu isso.
+
+        Devolve a resposta, ou `None` quando a foto nao trouxe linhas.
+        """
         cdp_rows = list(getattr(self, 'yt_cdp_rows', None) or ())
-        if cdp_rows:
-            self.yt_cdp_rows = None
-            self.yt_reason = 'cdp-lines'
-            # A TROCA DE VIDEO TEM UM NUMERO (2026-11-03). O dono alterna entre
-            # videos e pediu para eu saber como isso se comporta: daqui sai
-            # `YOUTUBE_SWITCH_FIRST_FRAME ms=..` -- do instante em que o id mudou
-            # ate' a primeira linha do video NOVO no ecra. Sem este numero, uma
-            # troca lenta volta a ser uma impressao.
-            _sw = getattr(self, '_yt_switch_at', None)
-            if _sw is not None:
-                self._yt_switch_at = None
-                log('YOUTUBE_SWITCH_FIRST_FRAME ms=%.0f video_id=%s rows=%d'
-                    % ((time.monotonic() - _sw) * 1000.0, vid, len(cdp_rows)))
-            self.yt_cue = ' '.join(cdp_rows)
-            self.yt_foreign_t = None
-            if self.yt_cue != self.yt_caption_logged:
-                self.yt_caption_logged = self.yt_cue
-                log('YOUTUBE_CAPTION video_id=%s track=- lines=%d ratio=1.00 '
-                    'text=%r why=cdp-lines' % (vid, len(cdp_rows), self.yt_cue[:90]))
-            return [('external:youtube:track', cdp_rows)], False
-        # THE THREAD IS TOLD WHAT IS BEING PAINTED, EVERY TIME. MEASURED
-        # 2026-10-20: the thread's own log said `cue=126` for a minute while
-        # the player was already painting another cue -- the paint it had
-        # was the one from the last REQUEST, and the request only happened
-        # when the alignment failed.
-        # ENQUANTO O DOM DO PLAYER ENTREGA, A FAIXA NAO SE PEDE (2026-11-03).
-        # A faixa custa um `yt-dlp` (segundos), um subprocesso por video e uma
-        # leitura UIA (`player_track_signal` -> `edit_values`), e uma dessas
-        # leituras apareceu PRESA no `UI_HUNG_FRAME` desta sessao. Ela so' serve
-        # para o caso em que o player NAO expoe as linhas (aba congelada) -- nesse
-        # caso o `painted_now` falso deixa o pedido passar. MEDIDO antes desta
-        # regra: duas extraccoes de yt-dlp numa troca custaram 27 s de ecra vazio.
-        #
-        # O PEDIDO NUNCA BLOQUEIA, E O DOM DECIDE SE ELE EXISTE (2026-11-03).
-        # `_yt_track_poll` e' a unica entrada do laco nesta thread: com o DOM do
-        # player a entregar linhas recentes ele nem PEDE (a faixa nao acrescenta
-        # nada e custa um `yt-dlp`); sem elas ele pede, e a resposta e' so' a que
-        # ja' estiver pronta. MEDIDO: `EXTERNAL_CAPTIONS_READ_MS ms=46766.0` e
-        # `ms=62234.0` eram o `yt-dlp` a correr DENTRO deste laco.
-        track = self._yt_track_poll(thread, vid, painted)
-        _yt_mark(self, 'track')
-        if track is None:
-            # AS PALAVRAS DO PLAYER ANTES DO TRACK. OWNER, 2026-10-22 09:35,
-            # verbatim: *"tu so viu carregar a pagina depois de varios segundos de ja
-            # ter carregado? arruma isso."* A causa era de DESENHO, nao de velocidade:
-            # a leitura das palavras pintadas (UI Automation) e barata e ja estava feita
-            # aqui em cima, mas a linha so era emitida depois de o track chegar -- e o
-            # extract mede segundos. Estas palavras SAO o texto que o YouTube esta a
-            # desenhar, logo sao 1:1 por construcao; o track substitui-as quando chega,
-            # com a janela de duas linhas e o timing. Sem palavras, nada e inventado:
-            # a linha fica vazia e o motivo continua `track-pending`.
-            try:
-                import youtube_window
-                paint_text = youtube_window.paint_line(painted)
-            except Exception as exc:  # noqa: BLE001
-                log(f"YOUTUBE_PAINT_LINE_FAILED error={exc!r}")
-                paint_text = ""
-            # AS LINHAS, NAO A LINHA COLADA (2026-11-02). `paint_line` junta
-            # `['>> Nossa.', '>> ta segurando essa wave,']` num texto so', e o
-            # overlay re-quebra onde quer -- o dono viu exactamente isso. O que o
-            # player desenha sao DUAS linhas, e sao essas que saem.
-            try:
-                lines_now = self._yt_rows(painted, hwnd, uia, UIA)
-            except Exception:  # noqa: BLE001
-                lines_now = []
-            if lines_now:
-                self.yt_reason = "painted-untracked"
-                self.yt_cue = " ".join(lines_now)
-                return [("external:youtube:track", lines_now)], False
-            if paint_text:
-                self.yt_reason = "painted-untracked"
-                self.yt_cue = paint_text
-                return [("external:youtube:track", [paint_text])], False
-            return [], self._yt_forget('track-pending', urgent=False)
-        if track.get('state') != 'has-track':
-            reason = track.get('reason') or track.get('state') or 'unknown'
-            return [], self._yt_forget('no-track:%s' % reason, urgent=True)
-        if painted:
-            # A FAIXA MANUAL DESENHA LINHAS INTEIRAS, E `align_painted` PROCURA
-            # PALAVRAS (2026-11-02). MEDIDO nesta box no arranque de 22:16:47, com
-            # o player a pintar `>> Nossa.` num video `lang=pt-orig`:
-            #   `YOUTUBE_TRACK_PAINT source=painted-no-match cue=- match=0
-            #    painted_words=5`
-            # Os filhos da janela de legenda sao LINHAS, nao palavras, portanto o
-            # alinhamento nunca casa -- e o ecra passava a ser servido pelo RELOGIO.
-            # E' dai' que vinham as tres imagens do dono: a linha a construir-se,
-            # meia palavra cortada e o cue anterior empilhado. Quando o player
-            # desenha linhas inteiras E elas pertencem a faixa servida, a copia
-            # directa (mesmo texto, mesmo instante) substitui a janela.
+        if not cdp_rows:
+            return None
+        self.yt_cdp_rows = None
+        self.yt_reason = 'cdp-lines'
+        # A TROCA DE VIDEO TEM UM NUMERO (2026-11-03). O dono alterna entre
+        # videos e pediu para eu saber como isso se comporta: daqui sai
+        # `YOUTUBE_SWITCH_FIRST_FRAME ms=..` -- do instante em que o id mudou
+        # ate' a primeira linha do video NOVO no ecra. Sem este numero, uma
+        # troca lenta volta a ser uma impressao.
+        _sw = getattr(self, '_yt_switch_at', None)
+        if _sw is not None:
+            self._yt_switch_at = None
+            log('YOUTUBE_SWITCH_FIRST_FRAME ms=%.0f video_id=%s rows=%d'
+                % ((time.monotonic() - _sw) * 1000.0, vid, len(cdp_rows)))
+        self.yt_cue = ' '.join(cdp_rows)
+        self.yt_foreign_t = None
+        if self.yt_cue != self.yt_caption_logged:
+            self.yt_caption_logged = self.yt_cue
+            log('YOUTUBE_CAPTION video_id=%s track=- lines=%d ratio=1.00 '
+                'text=%r why=cdp-lines' % (vid, len(cdp_rows), self.yt_cue[:90]))
+        return [('external:youtube:track', cdp_rows)], False
+
+    def _yt_untracked_lines(self, hwnd, uia, UIA, painted):
+        """AS PALAVRAS DO PLAYER ANTES DO TRACK. OWNER, 2026-10-22 09:35.
+
+        verbatim: *"tu so viu carregar a pagina depois de varios segundos de ja
+        ter carregado? arruma isso."* A causa era de DESENHO, nao de velocidade:
+        a leitura das palavras pintadas (UI Automation) e barata e ja estava feita
+        aqui em cima, mas a linha so era emitida depois de o track chegar -- e o
+        extract mede segundos. Estas palavras SAO o texto que o YouTube esta a
+        desenhar, logo sao 1:1 por construcao; o track substitui-as quando chega,
+        com a janela de duas linhas e o timing. Sem palavras, nada e inventado:
+        a linha fica vazia e o motivo continua `track-pending`.
+        """
+        try:
+            import youtube_window
+            paint_text = youtube_window.paint_line(painted)
+        except Exception as exc:  # noqa: BLE001
+            log(f"YOUTUBE_PAINT_LINE_FAILED error={exc!r}")
+            paint_text = ""
+        # AS LINHAS, NAO A LINHA COLADA (2026-11-02). `paint_line` junta
+        # `['>> Nossa.', '>> ta segurando essa wave,']` num texto so', e o
+        # overlay re-quebra onde quer -- o dono viu exactamente isso. O que o
+        # player desenha sao DUAS linhas, e sao essas que saem.
+        try:
+            lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+        except Exception:  # noqa: BLE001
             lines_now = []
+        if lines_now:
+            self.yt_reason = "painted-untracked"
+            self.yt_cue = " ".join(lines_now)
+            return [("external:youtube:track", lines_now)], False
+        if paint_text:
+            self.yt_reason = "painted-untracked"
+            self.yt_cue = paint_text
+            return [("external:youtube:track", [paint_text])], False
+        return [], self._yt_forget('track-pending', urgent=False)
+
+    def _yt_painted_lines_match(self, hwnd, uia, UIA, track, painted, vid):
+        """A FAIXA MANUAL DESENHA LINHAS INTEIRAS, E `align_painted` PROCURA
+        PALAVRAS (2026-11-02).
+
+        MEDIDO nesta box no arranque de 22:16:47, com o player a pintar
+        `>> Nossa.` num video `lang=pt-orig`:
+          `YOUTUBE_TRACK_PAINT source=painted-no-match cue=- match=0
+           painted_words=5`
+        Os filhos da janela de legenda sao LINHAS, nao palavras, portanto o
+        alinhamento nunca casa -- e o ecra passava a ser servido pelo RELOGIO.
+        E' dai' que vinham as tres imagens do dono: a linha a construir-se,
+        meia palavra cortada e o cue anterior empilhado. Quando o player
+        desenha linhas inteiras E elas pertencem a faixa servida, a copia
+        directa (mesmo texto, mesmo instante) substitui a janela.
+
+        Devolve a resposta, ou `None` quando as linhas nao pertencem a faixa.
+        """
+        lines_now = []
+        try:
+            import youtube_window as _ytw
+            lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+        if lines_now and any(len(line.split()) >= 2 for line in lines_now):
+            t_probe = None
             try:
-                import youtube_window as _ytw
-                lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+                t_probe = self._youtube_time(hwnd, uia, UIA,
+                                             track.get('duration'))
             except Exception as exc:  # noqa: BLE001
-                log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
-            if lines_now and any(len(line.split()) >= 2 for line in lines_now):
-                t_probe = None
-                try:
-                    t_probe = self._youtube_time(hwnd, uia, UIA,
-                                                 track.get('duration'))
-                except Exception as exc:  # noqa: BLE001
-                    log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
-                pool = self._yt_words_pool(track, t_probe)
-                try:
-                    same = _ytw.match_ratio(lines_now, pool)
-                except Exception as exc:  # noqa: BLE001
-                    log(f'YOUTUBE_PAINT_MATCH_FAILED error={exc!r}')
-                    same = {'ok': False, 'ratio': 0.0}
-                if same.get('ok'):
-                    self.yt_foreign_t = None
-                    self.yt_cue = ' '.join(lines_now)
-                    self.yt_reason = 'painted-lines'
-                    if t_probe is not None:
-                        self._yt_anchor = (float(t_probe), time.monotonic())
-                        self._yt_track = track
-                    if self.yt_cue != self.yt_caption_logged:
-                        self.yt_caption_logged = self.yt_cue
-                        log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s '
-                            'ratio=%.2f text=%r why=painted-lines'
-                            % (vid, track.get('lang') or '-', len(lines_now),
-                               float(same.get('ratio') or 0.0), self.yt_cue[:90]))
-                    return [('external:youtube:track', lines_now)], False
-            hit = None
+                log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
+            pool = self._yt_words_pool(track, t_probe)
             try:
-                import youtube_captions
-                _t_align = time.monotonic()
-                hit = youtube_captions.align_painted(track.get('cues') or (),
-                                                      painted)
-                self._yt_prof("align", _t_align)
+                same = _ytw.match_ratio(lines_now, pool)
             except Exception as exc:  # noqa: BLE001
-                log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
-            if not hit and painted:
-                # A MEDICAO QUE FALTAVA (2026-11-02). `match=0` com a faixa certa
-                # foi medido tres vezes nesta box e nao dizia PORQUE: agora o log
-                # traz as palavras pintadas e as primeiras palavras das cues, uma
-                # vez por texto, para a divergencia ser lida e nao adivinhada.
-                key = ' '.join(str(w) for w in painted)[:120]
-                if key != getattr(self, 'yt_miss_logged', ''):
-                    self.yt_miss_logged = key
-                    first = []
-                    for cue in (track.get('cues') or ())[:3]:
-                        first.extend(str(cue.get('text') or '').split()[:8])
-                    log('YOUTUBE_ALIGN_MISS video_id=%s painted=%r cue0=%r'
-                        % (vid, list(painted)[:6], first[:8]))
-            if hit:
-                text = str(hit.get('text') or '').strip()
-                if text:
-                    self.yt_hit = hit
-                    self.yt_foreign_t = None
-                    self.yt_cue = text
-                    self.yt_reason = 'painted'
-                    # A PINTURA E' O RELOGIO MAIS ADIANTADO QUE EXISTE: e' o
-                    # que o player esta' a desenhar agora. O chao sobe com ela,
-                    # e e' isso que impede o relogio atrasado de recuar o ecra.
-                    self._yt_advance((hit.get('cue') or {}).get('start'))
-                    # THE DECISION, WRITTEN. This is the line the owner can
-                    # compare with the screen: the cue of the track the
-                    # player is painting, at the instant it is painting it.
-                    if text != self.yt_caption_logged:
-                        self.yt_caption_logged = text
-                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s '
-                            'track=%s words=%s text=%r'
-                            % (vid, hit.get('index'),
-                               hit.get('cue', {}).get('start'),
-                               track.get('lang') or '-', hit.get('exact'),
-                               text[:90]))
-                    # A JANELA REVELADA PELAS PALAVRAS QUE O PLAYER PINTOU
-                    # (2026-10-29). MEDIDO: este ramo montava a janela com o
-                    # INICIO DO CUE (`hit.cue.start + 0.001`), e `revealed_lines`
-                    # corta a linha pelos relogios das palavras -- logo SO a
-                    # primeira palavra passava, e a linha NUNCA crescia no ecra.
-                    # O relogio certo aqui sao as PALAVRAS QUE O PLAYER JA
-                    # PINTOU: elas sao o prefixo revelado do cue, palavra a
-                    # palavra, 1:1 por construcao. Ver `youtube_reveal.py`.
-                    # O RELOGIO DO PROPRIO PLAYER, e nao so' a pintura, para
-                    # cortar a linha na PALAVRA (2026-10-30, ver
-                    # `youtube_reveal.word_clock_count`). Este `t` e' tambem o
-                    # ANCORA da recomposicao a 60 ms: `yt_live_frame` avanca-o
-                    # com `monotonic()` entre leituras do UIA, por isso as
-                    # palavras seguintes aparecem uma a uma sem custar uma
-                    # leitura de acessibilidade por palavra.
-                    played_t = None
-                    try:
-                        played_t = self._youtube_time(hwnd, uia, UIA,
-                                                      track.get('duration'))
-                    except Exception as exc:  # noqa: BLE001
-                        log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
-                    if played_t is not None:
-                        self._yt_anchor = (float(played_t), time.monotonic())
-                        self._yt_track = track
-                    else:
-                        self._yt_anchor = None
-                    # O TEXTO QUE O PLAYER DESENHA E' A LEGENDA (2026-11-02, ordem
-                    # do dono: *"sotto devia ta copiando 1:1 sem truncar palavras"*).
-                    # Aqui estava `window_by_paint`, que re-quebra a partir do track e
-                    # corta em `cap = min(pintado, relogio_de_palavra)`: dai' vem a linha
-                    # que se CONSTR OI ao longo do cue, a meia palavra (`Yamato ja' d`) e
-                    # a janela que empilha o cue anterior por baixo do actual -- as tres
-                    # coisas que ele fotografou. As linhas pintadas JA' SAO o texto do
-                    # YouTube, uma por linha: saem inteiras, no instante em que mudam.
-                    try:
-                        import youtube_window
-                        lines = self._yt_rows(painted, hwnd, uia, UIA)
-                    except Exception as exc:  # noqa: BLE001
-                        log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
-                        lines = []
-                    return [('external:youtube:track', lines or [text])], False
-            # THE PLAYER IS PAINTING ANOTHER TRACK -- AND THE OWNER WAS LEFT WITH NOTHING.
-            #
-            # MEDIDO 2026-10-23 (`_main/yt-1to1-live-compare.py`, Edge proprio, video
-            # WdaHAGRBB6s): o player pinta `pt`, a TRADUCAO automatica, enquanto a politica
-            # serve `en-orig`. As palavras pintadas nunca estao na faixa servida, logo o
-            # `align_painted` nao tem o que alinhar -- e a app devolvia NADA, para sempre.
-            # Nao era lentidao: era um beco sem saida, e o ASR tomava o lugar do YouTube (é
-            # isso que o dono chamou *"a legenda do youtube ta completamente bugada"*).
-            #
-            # A SAIDA NAO E SEGUIR A TRADUCAO (proibido: *"para de traduzir pra pt br do
-            # ingles e do espanhol"*). E o RELOGIO do player dizer onde o video esta e
-            # desenhar-se a cue da faixa SERVIDA nesse instante. O relogio so e usado
-            # enquanto ANDA: o congelado e medido (lia t=2.0 com o video a 530), e a prova
-            # do congelamento e uma PINTURA QUE MUDA COM O RELOGIO PARADO.
-            now_t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
-            key = ' '.join(str(w) for w in painted)[:120]
-            moved = (now_t is not None
-                     and (self.yt_foreign_t is None
-                          or abs(float(now_t) - float(self.yt_foreign_t)) > 0.05))
-            if now_t is not None and (moved or key == self.yt_foreign_key):
-                self.yt_foreign_t, self.yt_foreign_key = float(now_t), key
-                # O RELOGIO NAO RECUA O ECRA (2026-10-30). `now_t` passa a ser
-                # o instante autorizado por `youtube_monotonic.decide`: nunca
-                # atras do chao, excepto quando o PROPRIO relogio recuou (seek).
-                # MEDIDO: 129 das 2126 linhas de `webview-run.log` recuavam --
-                # ate' 359 s -- e era isto que o dono via como *"repete a
-                # legenda de instantes atras"*.
-                now_t = self._yt_decide(now_t)
-                # O RELOGIO FINO NESTE RAMO TAMBEM (2026-11-02). MEDIDO na sessao
-                # do dono (pid 18676): 18 YOUTUBE_CAPTION, todas
-                # why=painted-other-track, e o relogio do UIA a saltar de segundo em
-                # segundo -- o ancora so' existia no ramo `painted`, logo a frase
-                # entrava de uma vez. Prova: _main/reveal-park-oracle.py A1/A2.
-                self._yt_anchor = (float(now_t), time.monotonic())
-                self._yt_track = track
-                cue = None
-                try:
-                    import youtube_captions
-                    cue = youtube_captions.cue_at(track.get('cues') or (), now_t)
-                except Exception as exc:  # noqa: BLE001
-                    log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
-                text = str((cue or {}).get('text') or '').strip()
-                if text:
-                    self.yt_cue = text
-                    self.yt_reason = 'painted-other-track:clock'
-                    self._yt_advance((cue or {}).get('start'))
-                    if text != self.yt_caption_logged:
-                        self.yt_caption_logged = text
-                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s track=%s '
-                            'text=%r why=painted-other-track'
-                            % (vid, (cue or {}).get('start'), round(now_t, 2),
-                               track.get('lang') or '-', text[:90]))
-                    return [('external:youtube:track',
-                             self._yt_lines(track, now_t) or [text])], False
-            # O RAMO QUE DEIXAVA O ECRA VAZIO COM O PLAYER A DESENHAR (2026-11-02,
-            # terceira imagem do dono: duas linhas no YouTube, nada no Sotto). Cai
-            # aqui quando o track servido nao alinha E o relogio do player nao deu
-            # um instante -- ai' o unico texto verdadeiro que existe e' o que o
-            # player esta' a desenhar. Nao se inventa, nao se atrasa: pinta-se.
-            try:
-                import youtube_window as _ytw
-                lines_now = self._yt_rows(painted, hwnd, uia, UIA)
-            except Exception as exc:  # noqa: BLE001
-                log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
-                lines_now = []
-            if lines_now:
-                self.yt_reason = 'painted-no-clock'
+                log(f'YOUTUBE_PAINT_MATCH_FAILED error={exc!r}')
+                same = {'ok': False, 'ratio': 0.0}
+            if same.get('ok'):
+                self.yt_foreign_t = None
                 self.yt_cue = ' '.join(lines_now)
+                self.yt_reason = 'painted-lines'
+                if t_probe is not None:
+                    self._yt_anchor = (float(t_probe), time.monotonic())
+                    self._yt_track = track
                 if self.yt_cue != self.yt_caption_logged:
                     self.yt_caption_logged = self.yt_cue
-                    log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s text=%r '
-                        'why=painted-no-clock'
+                    log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s '
+                        'ratio=%.2f text=%r why=painted-lines'
                         % (vid, track.get('lang') or '-', len(lines_now),
-                           self.yt_cue[:90]))
+                           float(same.get('ratio') or 0.0), self.yt_cue[:90]))
                 return [('external:youtube:track', lines_now)], False
-            return [], self._yt_forget('painted-other-track', urgent=False)
-        # NO PAINTED LINE: the captions are off, or the player is between
-        # cues. Then the clock is the only clock there is -- but it is only
-        # trusted when the last alignment agrees with it.
+        return None
+
+    def _yt_aligned_painted(self, hwnd, uia, UIA, track, painted, vid):
+        """A PINTURA ALINHA COM O CUE DA FAIXA SERVIDA -- e essa e' a linha.
+
+        E' o caminho 1:1 de sempre: `align_painted` diz QUAL cue o player esta'
+        a pintar, a ancora passa a ser o relogio do proprio player (a 60 ms,
+        `yt_live_frame`), e o texto servido sao as LINHAS que ele desenha, nao a
+        janela re-quebrada a partir da faixa.
+
+        Devolve a resposta, ou `None` quando a pintura nao casou com a faixa
+        (o ramo de outro track decide entao pelo relogio).
+        """
+        hit = None
+        try:
+            import youtube_captions
+            _t_align = time.monotonic()
+            hit = youtube_captions.align_painted(track.get('cues') or (),
+                                                  painted)
+            self._yt_prof("align", _t_align)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
+        if not hit and painted:
+            # A MEDICAO QUE FALTAVA (2026-11-02). `match=0` com a faixa certa
+            # foi medido tres vezes nesta box e nao dizia PORQUE: agora o log
+            # traz as palavras pintadas e as primeiras palavras das cues, uma
+            # vez por texto, para a divergencia ser lida e nao adivinhada.
+            key = ' '.join(str(w) for w in painted)[:120]
+            if key != getattr(self, 'yt_miss_logged', ''):
+                self.yt_miss_logged = key
+                first = []
+                for cue in (track.get('cues') or ())[:3]:
+                    first.extend(str(cue.get('text') or '').split()[:8])
+                log('YOUTUBE_ALIGN_MISS video_id=%s painted=%r cue0=%r'
+                    % (vid, list(painted)[:6], first[:8]))
+        if hit:
+            text = str(hit.get('text') or '').strip()
+            if text:
+                self.yt_hit = hit
+                self.yt_foreign_t = None
+                self.yt_cue = text
+                self.yt_reason = 'painted'
+                # A PINTURA E' O RELOGIO MAIS ADIANTADO QUE EXISTE: e' o
+                # que o player esta' a desenhar agora. O chao sobe com ela,
+                # e e' isso que impede o relogio atrasado de recuar o ecra.
+                self._yt_advance((hit.get('cue') or {}).get('start'))
+                # THE DECISION, WRITTEN. This is the line the owner can
+                # compare with the screen: the cue of the track the
+                # player is painting, at the instant it is painting it.
+                if text != self.yt_caption_logged:
+                    self.yt_caption_logged = text
+                    log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s '
+                        'track=%s words=%s text=%r'
+                        % (vid, hit.get('index'),
+                           hit.get('cue', {}).get('start'),
+                           track.get('lang') or '-', hit.get('exact'),
+                           text[:90]))
+                # A JANELA REVELADA PELAS PALAVRAS QUE O PLAYER PINTOU
+                # (2026-10-29). MEDIDO: este ramo montava a janela com o
+                # INICIO DO CUE (`hit.cue.start + 0.001`), e `revealed_lines`
+                # corta a linha pelos relogios das palavras -- logo SO a
+                # primeira palavra passava, e a linha NUNCA crescia no ecra.
+                # O relogio certo aqui sao as PALAVRAS QUE O PLAYER JA
+                # PINTOU: elas sao o prefixo revelado do cue, palavra a
+                # palavra, 1:1 por construcao. Ver `youtube_reveal.py`.
+                # O RELOGIO DO PROPRIO PLAYER, e nao so' a pintura, para
+                # cortar a linha na PALAVRA (2026-10-30, ver
+                # `youtube_reveal.word_clock_count`). Este `t` e' tambem o
+                # ANCORA da recomposicao a 60 ms: `yt_live_frame` avanca-o
+                # com `monotonic()` entre leituras do UIA, por isso as
+                # palavras seguintes aparecem uma a uma sem custar uma
+                # leitura de acessibilidade por palavra.
+                played_t = None
+                try:
+                    played_t = self._youtube_time(hwnd, uia, UIA,
+                                                  track.get('duration'))
+                except Exception as exc:  # noqa: BLE001
+                    log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
+                if played_t is not None:
+                    self._yt_anchor = (float(played_t), time.monotonic())
+                    self._yt_track = track
+                else:
+                    self._yt_anchor = None
+                # O TEXTO QUE O PLAYER DESENHA E' A LEGENDA (2026-11-02, ordem
+                # do dono: *"sotto devia ta copiando 1:1 sem truncar palavras"*).
+                # Aqui estava `window_by_paint`, que re-quebra a partir do track e
+                # corta em `cap = min(pintado, relogio_de_palavra)`: dai' vem a linha
+                # que se CONSTR OI ao longo do cue, a meia palavra (`Yamato ja' d`) e
+                # a janela que empilha o cue anterior por baixo do actual -- as tres
+                # coisas que ele fotografou. As linhas pintadas JA' SAO o texto do
+                # YouTube, uma por linha: saem inteiras, no instante em que mudam.
+                try:
+                    import youtube_window
+                    lines = self._yt_rows(painted, hwnd, uia, UIA)
+                except Exception as exc:  # noqa: BLE001
+                    log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+                    lines = []
+                return [('external:youtube:track', lines or [text])], False
+        return None
+
+    def _yt_clock_cue(self, track, now_t, vid):
+        """THE PLAYER IS PAINTING ANOTHER TRACK -- AND THE OWNER WAS LEFT WITH NOTHING.
+
+        MEDIDO 2026-10-23 (`_main/yt-1to1-live-compare.py`, Edge proprio, video
+        WdaHAGRBB6s): o player pinta `pt`, a TRADUCAO automatica, enquanto a politica
+        serve `en-orig`. As palavras pintadas nunca estao na faixa servida, logo o
+        `align_painted` nao tem o que alinhar -- e a app devolvia NADA, para sempre.
+        Nao era lentidao: era um beco sem saida, e o ASR tomava o lugar do YouTube (é
+        isso que o dono chamou *"a legenda do youtube ta completamente bugada"*).
+
+        A SAIDA NAO E SEGUIR A TRADUCAO (proibido: *"para de traduzir pra pt br do
+        ingles e do espanhol"*). E o RELOGIO do player dizer onde o video esta e
+        desenhar-se a cue da faixa SERVIDA nesse instante. O relogio so e usado
+        enquanto ANDA: o congelado e medido (lia t=2.0 com o video a 530), e a prova
+        do congelamento e uma PINTURA QUE MUDA COM O RELOGIO PARADO. Quem chama ja'
+        verificou que ele ANDA ou que a pintura nao mudou com ele parado.
+
+        Devolve a resposta, ou `None` quando nao ha' cue nesse instante -- e
+        entao quem decide e' o ramo que pinta as linhas do player
+        (`_yt_no_clock_lines`).
+        """
+        cue = None
+        try:
+            import youtube_captions
+            cue = youtube_captions.cue_at(track.get('cues') or (), now_t)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        text = str((cue or {}).get('text') or '').strip()
+        if not text:
+            return None
+        self.yt_cue = text
+        self.yt_reason = 'painted-other-track:clock'
+        self._yt_advance((cue or {}).get('start'))
+        if text != self.yt_caption_logged:
+            self.yt_caption_logged = text
+            log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s track=%s '
+                'text=%r why=painted-other-track'
+                % (vid, (cue or {}).get('start'), round(now_t, 2),
+                   track.get('lang') or '-', text[:90]))
+        return [('external:youtube:track',
+                 self._yt_lines(track, now_t) or [text])], False
+
+    def _yt_no_clock_lines(self, hwnd, uia, UIA, track, painted, vid):
+        """O RAMO QUE DEIXAVA O ECRA VAZIO COM O PLAYER A DESENHAR (2026-11-02,
+        terceira imagem do dono: duas linhas no YouTube, nada no Sotto).
+
+        Cai aqui quando o track servido nao alinha E o relogio do player nao deu
+        um instante -- ai' o unico texto verdadeiro que existe e' o que o player
+        esta' a desenhar. Nao se inventa, nao se atrasa: pinta-se.
+        """
+        try:
+            import youtube_window as _ytw
+            lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+            lines_now = []
+        if lines_now:
+            self.yt_reason = 'painted-no-clock'
+            self.yt_cue = ' '.join(lines_now)
+            if self.yt_cue != self.yt_caption_logged:
+                self.yt_caption_logged = self.yt_cue
+                log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s text=%r '
+                    'why=painted-no-clock'
+                    % (vid, track.get('lang') or '-', len(lines_now),
+                       self.yt_cue[:90]))
+            return [('external:youtube:track', lines_now)], False
+        return [], self._yt_forget('painted-other-track', urgent=False)
+
+    def _yt_clock_lines(self, hwnd, uia, UIA, track, vid):
+        """SEM LINHA PINTADA: ou a legenda esta' desligada, ou o player esta'
+        entre cues. Entao o relogio e' o unico relogio que existe -- mas so' se
+        confia nele quando o ultimo alinhamento concorda com ele.
+        """
         t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
         if t is None:
             # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
