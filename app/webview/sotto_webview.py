@@ -2030,6 +2030,26 @@ class YouTubeTrackThread(threading.Thread):
                len(paint) if paint else 0))
 
 
+def _yt_mark(owner, phase):
+    """Marca a fase em ms desde o inicio da LEITURA (2026-11-03).
+
+    Existe por um `EXTERNAL_CAPTIONS_READ_MS ms=58516.0` medido nesta sessao: uma
+    leitura de 58 s sem nome de fase. Um numero assim sem nome e' um beco.
+    """
+    try:
+        start = getattr(owner, '_yt_phase_start', None)
+        if start is None:
+            owner._yt_phase_start = time.monotonic()
+            start = owner._yt_phase_start
+        phases = getattr(owner, '_yt_phases', None)
+        if phases is None or getattr(owner, '_yt_phase_start', None) != start:
+            phases = {}
+            owner._yt_phases = phases
+        phases[phase] = round((time.monotonic() - start) * 1000.0, 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class ExternalCaptionWatcher(threading.Thread):
     """READ THE CAPTIONS A PLAYER ALREADY SHOWS (owner, 2026-10-17).
 
@@ -2158,6 +2178,8 @@ class ExternalCaptionWatcher(threading.Thread):
                 # de distancia e o ecra um cue atras. Este numero existe para a
                 # proxima regressao ser apanhada por um numero, nao por um olho.
                 _t_read = time.monotonic()
+                self._yt_phase_start = _t_read
+                self._yt_phases = {}
                 got, yt_mode = self._read(uia, UIA)
                 self.reads += 1
                 _ms = (time.monotonic() - _t_read) * 1000.0
@@ -2165,7 +2187,8 @@ class ExternalCaptionWatcher(threading.Thread):
                     _now = time.monotonic()
                     if _now - getattr(self, "read_slow_logged", 0.0) > 5.0:
                         self.read_slow_logged = _now
-                        log('EXTERNAL_CAPTIONS_READ_MS ms=%.1f' % _ms)
+                        log('EXTERNAL_CAPTIONS_READ_MS ms=%.1f phases=%s'
+                            % (_ms, getattr(self, '_yt_phases', {})))
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
@@ -2261,6 +2284,15 @@ class ExternalCaptionWatcher(threading.Thread):
                 _prof.enable()
             try:
                 lines, urgent = self._youtube(hwnd, uia, UIA)
+                # UM PRODUTOR POR VEZ (2026-11-03, MEDIDO). Quando a leitura
+                # forneceu linhas, o re-render da faixa a 60 ms tem de CALAR: os
+                # dois alternavam no mesmo ecra (log: `src=...track` e
+                # `src=...liveframe` a cada 150 ms, com janelas diferentes), que e'
+                # o defeito que o dono descreveu como *"trocando a atual e a antiga
+                # ao mesmo tempo"*. O liveframe passa a ser so' o que preenche um
+                # silencio de leitura.
+                if lines:
+                    self.yt_live_paint_at = time.monotonic()
             finally:
                 if os.environ.get("SOTTO_YT_CPROFILE") == "1":
                     _prof.disable()
@@ -2427,6 +2459,15 @@ class ExternalCaptionWatcher(threading.Thread):
         """
         _t0 = time.monotonic()
         try:
+            cdp_rows = getattr(self, 'yt_cdp_rows', None)
+            if cdp_rows is not None:
+                # A FOTO DA CDP E' A DO PLAYER, LINHA A LINHA (2026-11-03): nao se
+                # reagrupa e nao se retem. A histerese de 280 ms existe para
+                # esconder TRANSITORIOS DA NOSSA LEITURA; um quadro que veio do DOM
+                # do player e' o que ele esta' a mostrar, inclusive a rolagem.
+                self.yt_cdp_rows = None
+                self.yt_live_paint_at = time.monotonic()
+                return list(cdp_rows)
             import youtube_window as _ytw
             rows = _ytw.painted_rows(painted, getattr(self, 'yt_paint_items', None))
             if os.environ.get("SOTTO_YT_PROFILE") == "1" and painted and not rows:
@@ -2491,8 +2532,34 @@ class ExternalCaptionWatcher(threading.Thread):
             # geometria do instante anterior -- palavras certas, ordem trocada.
             # MEDIDO com `_main/_yt-live-latency.py`: 20 de 32 quadros errados
             # desse tipo. Agora cada leitura traz os rects DELA, so' os dela.
-            got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
-                                                 with_rect=True)
+            # A CDP E' A FONTE PRIMARIA QUANDO EXISTE (2026-11-03, MEDIDO).
+            # A leitura pela arvore de acessibilidade custa 62-110 ms por tick e
+            # le o que o Chrome EXPOE -- inclusive o no' antigo e o novo enquanto
+            # a cue vira, que e' a origem medida das linhas `['a', 'a a resposta
+            # em cima do Sniper']`. A CDP lê o DOM do player: 10 ms, as linhas
+            # que ele tem, e sem nos fantasmas. A UIA continua a ser a rede:
+            # quando a porta nao responde, o caminho antigo corre igual.
+            snap = self._yt_cdp_snapshot(hwnd, uia, UIA)
+            if snap is not None:
+                # AS LINHAS VEM PRONTAS DO DOM (2026-11-03). O `.caption-visual-line`
+                # E' a linha que o player desenhou: reagrupar por `mid` so' pode
+                # estragar -- e estragou, medido: `['a affliction ali ja' pronto ali
+                # do']` onde o player tem `['a larocache. affliction ali tem ja'
+                # pronto uma rift']`. Com o snapshot a decisao de quebra de linha
+                # deixa de ser nossa.
+                self.yt_cdp_rows = list(snap['rows'])
+                # `words` SAO PALAVRAS nos dois caminhos (2026-11-03). A arvore
+                # de acessibilidade expoe um no' por PALAVRA; o DOM expoe um por
+                # LINHA (`ytp-caption-segment`). Alinhamento e revelacao contam
+                # palavras, por isso a linha parte-se aqui -- senao o mesmo
+                # instante tinha 20 'palavras' por uma fonte e 2 pela outra, e o
+                # desenho alternava entre as duas geometrias.
+                got = {'words': [w for line in snap['rows'] for w in line.split()],
+                       'items': snap['items'], 'why': 'cdp'}
+            else:
+                self.yt_cdp_rows = None
+                got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
+                                                     with_rect=True)
             if got and got.get("items"):
                 self.yt_paint_items = got["items"]
             self._yt_prof("paint", _t0)
@@ -2545,6 +2612,79 @@ class ExternalCaptionWatcher(threading.Thread):
                     % (_now - since, why))
         return words
 
+    def _yt_cdp_snapshot(self, hwnd, uia, UIA):
+        """A legenda do player pela CDP do Chrome, quando a arvore nao a tem.
+
+        Devolve o snapshot (`rows`/`items`) ou None. Recusa-se a ler quando a
+        aba da CDP mostra OUTRO video que nao o que o Sotto declarou ler: com
+        duas abas `watch` abertas isso seria mostrar a legenda de um video no
+        ecra do outro -- o erro que a `open_socket(video_id=)` do instrumento
+        ja' cometeu uma vez em 2026-11-03 e que deu um veredicto inteiro errado.
+        """
+        if os.environ.get('SOTTO_YT_CDP', '1') == '0':
+            return None
+        source = getattr(self, '_yt_cdp_source', None)
+        if source is None:
+            try:
+                import youtube_cdp_source
+            except Exception as exc:  # noqa: BLE001
+                log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))
+                self._yt_cdp_source = False
+                return None
+            source = youtube_cdp_source.CdpCaptionSource(log=log)
+            self._yt_cdp_source = source
+            source.start()
+        if source is False:
+            return None
+        declared = ''
+        try:
+            declared = self._youtube_video_id(hwnd, uia, UIA) or ''
+        except Exception:  # noqa: BLE001
+            declared = ''
+        _yt_mark(self, 'declared')
+        # COM DUAS ABAS ABERTAS, SO' A DO VIDEO QUE ELE LE' (medido 2026-11-03:
+        # `list_targets` devolve 2 `watch` nesta maquina). Sem o id, o modulo
+        # responde `ambiguous` e nao se adivinha.
+        try:
+            source.set_video_id(declared)
+        except Exception:  # noqa: BLE001
+            pass
+        # UMA FOTO COM 1,2 s AINDA SERVE: a cue do player fica no ecra mais
+        # tempo do que isso, e recusar aos 0,6 s so' fazia piscar entre a CDP
+        # e a arvore de acessibilidade (medido 2026-11-03: `why=cdp` e
+        # `why=painted` alternados a cada segundo).
+        snap = source.snapshot(max_age=1.2)
+        if snap is not None:
+            # O RELOGIO DO PLAYER VEM NO MESMO SNAPSHOT (2026-11-03): `t` e'
+            # `video.currentTime`, medido a avancar 56,9 s em 57 s de relogio de
+            # parede enquanto o DOM da legenda estava CONGELADO -- e' a unica
+            # leitura que continua verdadeira com a aba escondida.
+            self.yt_cdp_clock = (float(snap.get('t')), time.monotonic()) \
+                if snap.get('t') is not None else None
+            # VIDEO EM PAUSA NAO E' SILENCIO (2026-11-03, MEDIDO): com o player
+            # parado em `t=34.571` o YouTube continua a mostrar a legenda, e o
+            # Sotto apagava a dele aos 6 s (`CAPTION_WINDOW_BLANKED
+            # reason=no-caption-for-6.0s`) -- o ecra ficava vazio ao lado de um
+            # video que tem a frase escrita.
+            self.yt_cdp_paused = bool(snap.get('paused')) \
+                if snap.get('paused') is not None else False
+            # O ESPELHO NA SHELL: quem arma o apagar por inatividade e' a shell,
+            # noutro objeto (`SottoShell._caption_idle_hide`). Sem este espelho o
+            # guarda ficava no objeto errado e o ecra apagava na mesma.
+            shell = getattr(self, 'shell', None)
+            if shell is not None:
+                shell.yt_source_paused = self.yt_cdp_paused
+        if snap is None or not snap.get('items'):
+            return None
+        seen = snap.get('videoId') or ''
+        if declared and seen and declared != seen:
+            stamp = getattr(self, 'yt_cdp_mismatch_logged', None)
+            if stamp != (declared, seen):
+                self.yt_cdp_mismatch_logged = (declared, seen)
+                log('YOUTUBE_CDP_SOURCE refused=video-mismatch declared=%s seen=%s'
+                    % (declared, seen))
+            return None
+        return snap
     def _yt_clock_agrees(self, t):
         """Is the clock INSIDE the cue the player was painting?
 
@@ -2652,7 +2792,24 @@ class ExternalCaptionWatcher(threading.Thread):
             track blinks, and every blink would cost a model load
             (MEASURED 11.6 s, 1 218 MB resident).
         """
-        vid = self._youtube_video_id(hwnd, uia, UIA)
+        # A IDENTIDADE VEM DA FONTE QUE JA' ESTA' LIDA (2026-11-03, MEDIDO). A
+        # varredura dos `Edit` do Chrome custa 94-109 ms por tick, e o snapshot da
+        # CDP ja' traz o `videoId` da pagina que ele esta' a ler. Perguntar a'
+        # arvore de acessibilidade quando a resposta ja' esta' na mao era 90% da
+        # leitura (`phases={'vid': 109.0, 'painted': 109.0}`). A UIA continua a ser
+        # a fonte quando nao ha snapshot -- sem CDP, sem resposta.
+        vid = ''
+        _src = getattr(self, '_yt_cdp_source', None)
+        if _src and _src is not False:
+            try:
+                _early = _src.snapshot(max_age=1.5)
+            except Exception:  # noqa: BLE001
+                _early = None
+            if _early:
+                vid = str(_early.get('videoId') or '')
+        if not vid:
+            vid = self._youtube_video_id(hwnd, uia, UIA)
+        _yt_mark(self, 'vid')
         if not vid:
             return [], self._yt_forget('no-video-id', urgent=False)
         if vid != self.yt_video_id:
@@ -2678,12 +2835,33 @@ class ExternalCaptionWatcher(threading.Thread):
                 blank('video-changed')
             log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
         thread = getattr(self.shell, 'youtube_track_thread', None)
+        _yt_mark(self, 'thread')
         if thread is None:
             return [], self._yt_forget('no-track-thread', urgent=False)
         # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
         _t_yt = time.monotonic()
         self._ensure_clock_sampler()
         painted = self._youtube_painted(hwnd, uia, UIA)
+        _yt_mark(self, 'painted')
+        # A LINHA DO PLAYER PASSA A' FRENTE DE TUDO (2026-11-03). Quando a CDP
+        # entrega as linhas que o player TEM no DOM, essas linhas SAO a legenda:
+        # nao se alinha com a faixa, nao se espera cue, nao se re-quebra. MEDIDO
+        # nesta sessao: com a faixa a' frente o ecra ficou 60 s sem uma unica
+        # linha (`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s`) enquanto o
+        # player pintava duas; e o alinhamento prendia-se em `cue=1114` minutos
+        # depois de o video a ter passado. O que o player desenha e' o 1:1, por
+        # definicao -- `_youtube_painted` ja' leu isso.
+        cdp_rows = list(getattr(self, 'yt_cdp_rows', None) or ())
+        if cdp_rows:
+            self.yt_cdp_rows = None
+            self.yt_reason = 'cdp-lines'
+            self.yt_cue = ' '.join(cdp_rows)
+            self.yt_foreign_t = None
+            if self.yt_cue != self.yt_caption_logged:
+                self.yt_caption_logged = self.yt_cue
+                log('YOUTUBE_CAPTION video_id=%s track=- lines=%d ratio=1.00 '
+                    'text=%r why=cdp-lines' % (vid, len(cdp_rows), self.yt_cue[:90]))
+            return [('external:youtube:track', cdp_rows)], False
         # THE THREAD IS TOLD WHAT IS BEING PAINTED, EVERY TIME. MEASURED
         # 2026-10-20: the thread's own log said `cue=126` for a minute while
         # the player was already painting another cue -- the paint it had
@@ -2691,6 +2869,7 @@ class ExternalCaptionWatcher(threading.Thread):
         # when the alignment failed.
         thread.request(vid, painted=painted)
         track = thread.current(vid)
+        _yt_mark(self, 'track')
         if track is None:
             # AS PALAVRAS DO PLAYER ANTES DO TRACK. OWNER, 2026-10-22 09:35,
             # verbatim: *"tu so viu carregar a pagina depois de varios segundos de ja
@@ -3093,15 +3272,49 @@ class ExternalCaptionWatcher(threading.Thread):
             title = _ext._window_title(hwnd)
         except Exception:  # noqa: BLE001
             title = ""
+        # O CACHE VALE PELO TITULO, NAO PELO HWND (2026-11-03, MEDIDO). O `hwnd`
+        # aqui e' o da janela em primeiro plano, que muda de tick para tick quando
+        # o dono toca em qualquer sitio; com o hwnd na chave o cache nunca servia e
+        # CADA tick pagava a varredura dos `Edit` do Chrome -- medido no log desta
+        # sessao: `phases={'declared': 156.0, 'painted': 172.0}`, ou seja, o id era
+        # 90% da leitura, e uma vez `10281.0` (dez segundos!) com o desenho a
+        # espera. O titulo do YouTube muda quando se navega, que e' exactamente a
+        # unica coisa que invalida o id.
         cached = getattr(self, "_yt_vid_cache", None)
-        if cached and cached[0] == key and cached[1] == title:
-            if time.monotonic() - cached[3] <= self.YT_VIDEO_TTL_S:
+        if cached and time.monotonic() - cached[3] <= self.YT_VIDEO_TTL_S:
+            # O TITULO VAZIO NAO INVALIDA NADA (2026-11-03, MEDIDO). O `hwnd` e' o
+            # da janela em PRIMEIRO PLANO, e ela alterna: um tick le' o titulo do
+            # Chrome, o seguinte le' "" porque quem esta' a frente e' outra janela.
+            # Com o titulo na comparacao, os dois ticks escreviam caches um do
+            # outro e CADA UM pagava a varredura dos `Edit` (94 ms medidos,
+            # `YOUTUBE_VID_SCAN ms=94.0 hits=1`). Titulo vazio = "nao sei se mudou":
+            # vale o ultimo id por 5 s; um titulo DIFERENTE e' navegacao e varre.
+            if not title:
+                if time.monotonic() - cached[3] <= 5.0:
+                    return cached[2]
+            elif cached[1] == title:
                 return cached[2]
+        # A FALHA TAMBEM SE LEMBRA (2026-11-03). Sem isto, uma janela em que a
+        # varredura NAO acha id (a barra de endereco escondida, outro perfil do
+        # Chrome) pagava o preco inteiro a cada tick, para sempre. Meio segundo de
+        # memoria da falha e' invisivel para um video e corta o custo por 8.
+        miss = getattr(self, "_yt_vid_miss", None)
+        if miss and miss[0] == title and time.monotonic() - miss[1] <= 0.5:
+            return ''
+        _scan_t = time.monotonic()
         try:
             values = external_subs.edit_values(hwnd, uia, UIA)
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_EDIT_VALUES_FAILED error={exc!r}')
             return ''
+        # QUEM PAGA A VARREDURA, E DE QUE TITULO (2026-11-03): o cache vale pelo
+        # titulo, e sem esta linha um `declared` caro e' indistinguivel de um
+        # titulo que muda a cada tick.
+        if time.monotonic() - getattr(self, '_yt_vid_scan_logged', 0.0) > 5.0:
+            self._yt_vid_scan_logged = time.monotonic()
+            log('YOUTUBE_VID_SCAN ms=%.1f hwnd=%s title=%r hits=%d'
+                % ((time.monotonic() - _scan_t) * 1000.0, key, title[:60],
+                   len(values or [])))
         for value in values:
             try:
                 vid = youtube_captions.video_id_from_url(value)
@@ -3110,6 +3323,7 @@ class ExternalCaptionWatcher(threading.Thread):
             if vid:
                 self._yt_vid_cache = (key, title, vid, time.monotonic())
                 return vid
+        self._yt_vid_miss = (title, time.monotonic())
         return ''
 
     def _yt_prof(self, stage, t0, detail=""):
@@ -3188,6 +3402,20 @@ class ExternalCaptionWatcher(threading.Thread):
         caller keeps the ASR running.
         """
         self._yt_clock_dur = duration
+        # O RELOGIO DA CDP PRIMEIRO (2026-11-03, MEDIDO): `video.currentTime` pela
+        # CDP e' o MESMO relogio do player, custa 2-5 ms e continua a andar com a
+        # aba escondida -- 56,9 s em 57 s de relogio de parede enquanto o DOM da
+        # legenda estava congelado. O caminho por UIA le' o texto do relogio na
+        # arvore de acessibilidade, que nessa mesma janela nao atualizava.
+        cdp_clock = getattr(self, 'yt_cdp_clock', None)
+        if cdp_clock is not None:
+            base_t, base_mono = cdp_clock
+            age = time.monotonic() - base_mono
+            # EXTRAPOLA NO MAXIMO 0,5 s: um renderer adiado por 3 s nao pode
+            # empurrar a legenda 3 s para a frente do que se ve'.
+            if 0.0 <= age <= 2.0:
+                self._yt_clock_last = (float(base_t), time.monotonic())
+                return float(base_t) + min(age, 0.5)
         last = getattr(self, "_yt_clock_last", None)
         if last is not None:
             age = time.monotonic() - last[1]

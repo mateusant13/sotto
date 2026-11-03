@@ -115,15 +115,31 @@ def sample(seconds, period, play=True):
         print('ABORT: %s' % error)
         return time.time(), []
     js = probe_mod.SILENT_PROBE if play else probe_mod.PROBE
-    extra = (('Page.setWebLifecycleState', {'state': 'active'}),
-             ('Emulation.setFocusEmulationEnabled', {'enabled': True}))
+    # NENHUM 'EMULATION' NO INSTRUMENTO (2026-11-03, MEDIDO). Estes dois pedidos
+    # existiam para 'acordar' a aba escondida. Medidos lado a lado, no mesmo
+    # minuto, com 20 leituras cada:
+    #
+    #   nada               mediana 2-5 ms    p90 64-88 ms
+    #   focus emulation    mediana   108 ms   p90 5009 ms    (PIOR)
+    #   lifecycle=active   mediana   3-4 ms   p90 61-74 ms
+    #   os dois            mediana   246 ms   p90 6889 ms    (PESSIMO)
+    #
+    # O `setFocusEmulationEnabled` faz a pagina acreditar que esta' focada e
+    # custa ate' 9 s por leitura: o instrumento estava a criar a lentidao que
+    # depois media.
+    extra = ()
     started = time.time()
     samples = []
     counter = [0]
     with io.open(SAMPLES, 'w', encoding='utf-8') as sink:
         try:
             while time.time() - started < seconds:
-                reading = probe_mod.review(ws, counter, js, extra)
+                try:
+                    reading = probe_mod.review(ws, counter, js, extra)
+                except Exception as exc:  # noqa: BLE001
+                    # A aba escondida pode adiar uma leitura por segundos; uma
+                    # amostra perdida nao e' o fim da medicao.
+                    reading = {'error': type(exc).__name__, 'rows': []}
                 entry = {'w': round(time.time(), 3),
                          't': reading.get('t'),
                          'paused': reading.get('paused'),

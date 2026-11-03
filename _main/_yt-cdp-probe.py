@@ -35,11 +35,39 @@ YT = re.compile(r'^https?://(www\.|m\.|music\.)?(youtube\.com|youtu\.be)(/|$)')
 PROBE = """(() => {
   try {
     const v = document.querySelector('video');
-    const segs = Array.from(document.querySelectorAll('.ytp-caption-segment'))
-      .map(e => e.textContent.trim()).filter(Boolean);
-    return JSON.stringify({url: location.href.slice(0, 120), hasVideo: !!v,
+    const box = document.querySelector('.ytp-caption-window-container');
+    const out = {url: location.href.slice(0, 120), hasVideo: !!v,
       t: v ? Math.round(v.currentTime*1000)/1000 : null,
-      paused: v ? v.paused : null, muted: v ? v.muted : null, rows: segs});
+      paused: v ? v.paused : null, muted: v ? v.muted : null,
+      rows: [], segs: []};
+    if (!box) return JSON.stringify(out);
+    const lines = Array.prototype.slice.call(
+        box.querySelectorAll('.caption-visual-line'));
+    out.segs = Array.prototype.slice.call(
+        box.querySelectorAll('.ytp-caption-segment'))
+      .map(e => e.textContent.trim()).filter(Boolean);
+    // AS LINHAS QUE O PLAYER MOSTRA, e nao o historico do DOM (2026-11-03):
+    // o clip e' o ancestral com `overflow: hidden`, e as linhas que rolaram
+    // para fora continuam no DOM. Sem isto o instrumento comparava as nossas 2
+    // linhas com as 9 do historico e chamava "1:1 falhado" a tudo.
+    let clip = null;
+    for (let el = lines.length ? lines[0].parentElement : null; el;
+         el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (cs.overflow === 'hidden' || cs.overflowY === 'hidden') {
+        clip = el.getBoundingClientRect(); break;
+      }
+    }
+    out.rows = lines.filter(line => {
+      const r = line.getBoundingClientRect();
+      const h = r.height || (r.bottom - r.top);
+      if (!(h > 1)) return false;
+      if (!clip) return true;
+      const ov = Math.min(r.bottom, clip.bottom) - Math.max(r.top, clip.top);
+      return ov >= 0.5 * h;
+    }).map(line => (line.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return JSON.stringify(out);
   } catch (e) { return JSON.stringify({error: String(e)}); }
 })()"""
 

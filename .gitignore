@@ -263,3 +263,15 @@ _main/caption-wanted.json.tmp
 _main/_yt-sync-live.txt
 _main/_yt-cprofile.txt
 _main/overlay-style.png
+
+# -- Caches de ferramenta e restos de sessao (2026-11-03) -------------------
+# O indice do codeintel e reproduzivel (167 MB nesta maquina) e o resto sao
+# restos de sessoes de agente: nenhum e fonte.
+.codeintel/
+.agent-work/
+.pi/
+AGENTS.md.*.bak
+- 
+=ro
+_main/_yt-*.json
+_main/_yt-1to1-live*.json
