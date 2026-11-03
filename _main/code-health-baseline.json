@@ -411,22 +411,22 @@
       "max_func_name": "alpha_out"
     },
     "app/webview/youtube_captions.py": {
-      "bytes": 105454,
+      "bytes": 106197,
       "classes": 1,
       "defs": 68,
       "except_pass": 9,
       "globals": 1,
-      "lines": 2455,
+      "lines": 2474,
       "max_func": 281,
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 22589,
+      "bytes": 23662,
       "classes": 1,
       "defs": 4,
       "except_pass": 4,
       "globals": 0,
-      "lines": 519,
+      "lines": 539,
       "max_func": 107,
       "max_func_name": "_run"
     },

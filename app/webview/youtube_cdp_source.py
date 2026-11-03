@@ -235,6 +235,11 @@ def pick_target(tabs, video_id="", window_title=""):
     return tabs[0], "only-tab"
 
 
+# O CUSTO DE PERGUNTAR A ABA. Medido 2026-11-03: um `/json/list` de 1125 ms
+# dentro do laco de leitura; trocar de video e' raro, perder quadros nao e'.
+_TID_SLOW_MS = 500.0
+_TID_SLOW_TTL_S = 10.0
+
 class CdpCaptionSource:
     """Le as linhas que o player desenha, em segundo plano, pela CDP.
 
@@ -328,10 +333,12 @@ class CdpCaptionSource:
         arvore. Uma chamada HTTP por `cache_s`, nao por tick.
         """
         now = time.monotonic()
+        ttl = float(getattr(self, '_tid_ttl', 2.0) or 2.0)
         cached = getattr(self, '_tid_cache', None)
-        if cached and now - cached[0] < 2.0:
+        if cached and now - cached[0] < ttl:
             return cached[1]
         vid = ''
+        t0 = time.monotonic()
         try:
             tabs, _others = list_targets(self.port)
             target, why = self._choose(tabs)
@@ -343,6 +350,19 @@ class CdpCaptionSource:
                     vid = url.split('v=', 1)[1].split('&', 1)[0]
         except Exception:                 # noqa: BLE001
             vid = ''
+        # A CHAMADA QUE COME O TICK (2026-11-03, MEDIDO): `EXTERNAL_CAPTIONS_READ_MS`
+        # publicou `phases={'vid': 1125.0}` com todas as outras a 0,0 -- um
+        # `/json/list` de 1,1 s dentro do laco de leitura, e o laco perde os
+        # quadros que caem nessa janela. A aba do dono troca de video de vez em
+        # quando, nunca 12 vezes por minuto: quando a chamada passa de
+        # `_TID_SLOW_MS`, o cache estica para `_TID_SLOW_TTL_S` e o custo vai ao log.
+        cost_ms = (time.monotonic() - t0) * 1000.0
+        if cost_ms > _TID_SLOW_MS:
+            self._tid_ttl = _TID_SLOW_TTL_S
+            self._log('YOUTUBE_TARGET_SLOW ms=%.0f vid=%s ttl_s=%.0f'
+                      % (cost_ms, vid or '-', _TID_SLOW_TTL_S))
+        else:
+            self._tid_ttl = 2.0
         self._tid_cache = (now, vid)
         return vid
 

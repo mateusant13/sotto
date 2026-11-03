@@ -1878,17 +1878,36 @@ def _external_subs():
     return external_subs
 
 
+_WINDOW_VID_TTL_S = 5.0
+_window_vid_memo = {}
+
+
 def _window_video_id(hwnd, uia, UIA):
-    """The video id playing in this window, or "" when it cannot be read."""
+    """The video id playing in this window, or "" when it cannot be read.
+
+    MEMOIZED FOR `_WINDOW_VID_TTL_S` (MEDIDO 2026-11-03): a varredura da arvore
+    de acessibilidade custa 60-140 ms e uma vez 6,8 s nesta maquina, e esta
+    funcao corre no caminho da LEITURA da legenda -- `EXTERNAL_CAPTIONS_READ_MS`
+    publicou `phases={'vid': 1125.0}` com as outras fases a 0,0. O id so' serve
+    para recusar um player que mostra OUTRO video: cinco segundos de atraso nessa
+    recusa nao custa nada, e um segundo por leitura custa tudo.
+    """
+    key = int(hwnd or 0)
+    now = time.monotonic()
+    hit = _window_vid_memo.get(key)
+    if hit is not None and 0.0 <= now - hit[1] <= _WINDOW_VID_TTL_S:
+        return hit[0]
+    vid = ""
     try:
         es = _external_subs()
         for value in es.edit_values(hwnd, uia, UIA):
             vid = video_id_from_url(value)
             if vid:
-                return vid
+                break
     except Exception:
-        return ""
-    return ""
+        vid = ""
+    _window_vid_memo[key] = (vid, now)
+    return vid
 
 
 def player_track_signal(video_id=None, hwnd=None):
