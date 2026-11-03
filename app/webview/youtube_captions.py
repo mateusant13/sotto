@@ -2007,6 +2007,34 @@ def _painted_children(el, uia):
     return out
 
 
+def _painted_items(el, uia):
+    """Os filhos de UMA janela de legenda, com o RECT: [{"text", "left", ...}]."""
+    out = []
+    try:
+        kids = el.FindAll(0x2, uia.CreateTrueCondition())  # TreeScope_Children
+    except Exception:
+        return out
+    for k in range(kids.Length):
+        c = kids.GetElement(k)
+        try:
+            name = str(c.CurrentName or "").strip()
+        except Exception:
+            continue
+        if not name:
+            continue
+        item = {"text": name, "left": 0, "top": 0, "right": 0, "bottom": 0}
+        try:
+            rect = c.CurrentBoundingRectangle
+            item["left"] = int(rect.left)
+            item["top"] = int(rect.top)
+            item["right"] = int(rect.right)
+            item["bottom"] = int(rect.bottom)
+        except Exception:  # noqa: BLE001
+            pass
+        out.append(item)
+    return out
+
+
 def _rendered(el):
     """Is this element actually being DRAWN, or is it a leftover in the tree?
 
@@ -2056,6 +2084,7 @@ def painted_words(uia, UIA, hwnd=None, root=None):
         return {"words": [], "cls": "", "why": "no-root"}
     best = []
     best_cls = ""
+    best_items = []
     for el in _elements(_all_elements(uia, root)):
         cls = _class_name(el).lower()
         if _CAPTION_WINDOW_WORDS not in cls:
@@ -2065,13 +2094,18 @@ def painted_words(uia, UIA, hwnd=None, root=None):
         # last line, and the app shows it as if the player were painting it now.
         if not _rendered(el):
             continue
-        words = _painted_children(el, uia)
-        if len(words) > len(best):
+        items = _painted_items(el, uia)
+        words = [it["text"] for it in items]
+        if len(words) >= len(best):
             best = words
             best_cls = _class_name(el)
+            best_items = items
     if not best:
-        return {"words": [], "cls": "", "why": "no-painted-caption"}
-    return {"words": best, "cls": best_cls, "why": "painted"}
+        return {"words": [], "cls": "", "why": "no-painted-caption", "items": []}
+    # AS QUEBRAS DE LINHA SAO DO PLAYER, E ESTAO' NO RECT (2026-11-02). As
+    # palavras da legenda automatica chegam soltas; o que diz em que LINHA cada
+    # uma cai e' o rectangulo de cada filho. `items` leva-os a quem desenha.
+    return {"words": best, "cls": best_cls, "why": "painted", "items": best_items}
 
 
 def _align_from(cue_words, low, j0, off0):
@@ -2126,6 +2160,19 @@ def _align_from(cue_words, low, j0, off0):
             "aligned": pos, "exact": exact, "partial": partial}
 
 
+def _align_tokens(tokens):
+    """Tokens de fala, sem o marcador `>>` do player -- os dois lados da comparacao."""
+    out = []
+    for tok in tokens or ():
+        text = str(tok)
+        while text.startswith(">>"):
+            text = text[2:].strip()
+        text = text.strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def align_painted(cues, painted):
     """Which cue is the player painting? -> dict or None.
 
@@ -2150,11 +2197,20 @@ def align_painted(cues, painted):
     """
     if isinstance(painted, str):
         painted = painted.split()
-    painted = [str(w).strip() for w in (painted or []) if str(w).strip()]
+    # O MARCADOR DE FALA NAO ALINHA (2026-11-02). MEDIDO nesta box: o player
+    # pintava `[\'>> Nossa.\', \'>> ta\', \'segurando\', ...]` -- linhas e
+    # palavras MISTURADAS na mesma lista, com `>>` colado ao primeiro token de
+    # cada linha --, as cues da faixa `pt-orig` tambem trazem `>>`, e o
+    # alinhamento dava `match=0` numa faixa que era a nossa. O ecra caia no ramo
+    # do relogio, e e\' desse ramo que vinham as tres imagens do dono. A
+    # comparacao passa a ser feita em PALAVRAS, com o marcador removido dos dois
+    # lados; o `>>` continua a existir no texto servido (e\' dele, nao nosso).
+    painted = _align_tokens(" ".join(str(w) for w in (painted or ())).split())
     if not painted:
         return None
     low = [w.lower() for w in painted]
-    cue_words = [str((c or {}).get("text") or "").split() for c in (cues or ())]
+    cue_words = [_align_tokens(str((c or {}).get("text") or "").split())
+                 for c in (cues or ())]
     best = None
     for j0, cwords in enumerate(cue_words):
         if not cwords:

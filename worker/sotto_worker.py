@@ -1208,8 +1208,16 @@ def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0
     """
     if not live:
         return None
-    if device_peak is not None and float(device_peak) >= float(tap_floor):
-        return None
+    # O PICO DA JANELA NAO DECIDE (2026-11-02, medido na sessao do dono). Havia
+    # aqui um veto `device_peak >= tap_floor -> rotaciona`, e `device_peak` e' o
+    # MAXIMO da janela: UM som no inicio dela (o clique que abre o video, um bipe
+    # do Windows) tirava as janelas seguintes do direito a espera. E' isso que se
+    # le no log dele: `BRIDGE_METER peak=0.1677` as 22:24:32 e depois
+    # `device-rotated (flat)` as 22:24:41, :50, 22:25:00, :07, :14, :30, :46,
+    # 22:26:02, :17, :34 -- dez clientes WASAPI em dois minutos, cada um um hitch
+    # no motor de audio que ele partilha com o YouTube, e ele ouviu isso como
+    # *"ja nao mandei tu parar de mutar do nada meu audio?"*. A pergunta certa
+    # vai ao medidor VIVO, que fala do AGORA, e nao ao maximo de uma janela.
     try:
         loudest = max(float(v) for v in live.values())
     except (TypeError, ValueError):

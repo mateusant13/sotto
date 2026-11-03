@@ -310,8 +310,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02, 23:4x):** `_main\_audit-verify-all.cmd` = **170272 B**,
-  **2167 CRLF** / 0 bare LF, sha256 `9DFEF8F658F35B0B655507973893EB819693FAD4F6195819FEBE32542BE8F4FA`.
+- **PIN do ficheiro (medido 2026-11-02, 23:5x):** `_main\_audit-verify-all.cmd` = **171635 B**,
+  **2182 CRLF** / 0 bare LF, sha256 `5960C07445FFE54D3EF1DF34083D63B813A20CC2A42CF005356E2A05F24F1CBC`.
+  (Este pin substitui o de 170272 B, DEPOIS do par `youtube-verbatim` + o seu
+  `red-as-expected`: as tres imagens do dono de 2026-11-02 sao o mesmo caminho --
+  *"sotto devia ta copiando 1:1 sem truncar palavras"*, a linha que se construia ao
+  longo do cue em vez de aparecer no timing do YouTube, e o ecra vazio com o player
+  a desenhar duas linhas. O ramo pintado devolve agora as LINHAS do player
+  (`youtube_window.painted_lines`), sem a janela por relogio de palavra que cortava
+  em `cap = min(pintado, relogio)` -- dai a meia palavra e o cue anterior
+  empilhado por baixo do actual. O braco negativo corta a ultima palavra numa
+  COPIA e derruba tres arms.)
   (Este pin substitui o de 166642 B / 2134 CRLF, DEPOIS das tres portas que nasceram das ordens
   dele de 2026-11-02 — `console-window-gate` (+neg: nenhuma chamada nova a `cmd`/`powershell`/`.cmd`
   sem `CREATE_NO_WINDOW`; a divida anterior ficou congelada em `_main/console-window-baseline.json`,

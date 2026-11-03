@@ -546,6 +546,21 @@ if exist _main\reveal-park-oracle.py (
   call :step red-as-expected-reveal-park 1 "_main\reveal-park-oracle.py;app\webview\sotto_webview.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;app\webview\youtube_window.py;app\webview\youtube_captions.py" "%OUT%\reveal-park-neg.log" python _main\reveal-park-oracle.py --neg-arm
   call :expectred red-as-expected-reveal-park !STEP_RC! "%OUT%\reveal-park-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-reveal-park MISSING "%OUT%\reveal-park-neg.log" "NEG-ARM PASS" )
+REM `youtube-verbatim-oracle.py` fecha as TRES imagens que o dono mandou a 2026-11-02,
+REM verbatim: *"sotto devia ta copiando 1:1 sem truncar palavras"* e *"ja nao ta
+REM aparecendo"*. O ramo pintado deixou de re-quebrar a partir do track (a janela
+REM cortava em `cap = min(pintado, relogio_de_palavra)`: meia palavra, linha a
+REM construir-se, e o cue anterior empilhado por baixo) e passou a devolver as
+REM LINHAS que o player desenha, uma por linha, inteiras, com o `>>` removido.
+REM `always` porque le o SHELL e o `youtube_window.py` ao vivo.
+if exist _main\youtube-verbatim-oracle.py (
+  call :step youtube-verbatim 0 "_main\youtube-verbatim-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_window.py" "%OUT%\youtube-verbatim.log" python _main\youtube-verbatim-oracle.py
+  call :record youtube-verbatim !STEP_RC!
+) else ( call :record youtube-verbatim MISSING )
+if exist _main\youtube-verbatim-oracle.py (
+  call :step red-as-expected-youtube-verbatim 1 "_main\youtube-verbatim-oracle.py;app\webview\youtube_window.py" "%OUT%\youtube-verbatim-neg.log" python _main\youtube-verbatim-oracle.py --neg-arm
+  call :expectred red-as-expected-youtube-verbatim !STEP_RC! "%OUT%\youtube-verbatim-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-youtube-verbatim MISSING "%OUT%\youtube-verbatim-neg.log" "NEG-ARM: PASS" )
 REM `code-health-oracle.py` e o RATCHET do "horrivel" medido: 758 679 B / 13 273
 REM linhas num modulo, uma funcao `main` de 2 297 linhas, 82 `except: pass`. Nao
 REM preme por um big-bang (as notas dizem `smaller batches`); mede sete factos por

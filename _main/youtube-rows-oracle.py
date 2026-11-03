@@ -411,8 +411,12 @@ def wiring_faltas():
     # estas ancoras declaram exigir.
     overlay = (_src(OVERLAY) or "") + "\n" + (_src(PAINT) or "")
     checks = (
-        ("a janela por pintura esta no ramo painted",
-         "youtube_reveal.window_by_paint(", shell),
+        # A 2026-11-02 o ramo pintado passou a DEVOLVER as linhas do player
+        # (ordem do dono: copia 1:1, sem a linha a construir-se). A ancora e a
+        # chamada a `_yt_rows(painted)` nos dois ramos, e a ausencia da
+        # janela por relogio de palavra dentro de `_youtube`.
+        ("as linhas pintadas sao a legenda, sem janela por relogio",
+         "_yt_rows(painted)", shell),
         ("o _tick entrega todas as linhas",
          "rows = list(lines) if (yt_mode and lines) else None", shell),
         ("o push leva as linhas pelo rows_text",

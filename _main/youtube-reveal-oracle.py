@@ -74,6 +74,22 @@ def load_live():
         return json.load(fh)
 
 
+def verbatim_live(src):
+    """O ramo pintado devolve as LINHAS do player, e nao uma janela por relogio?
+
+    Mede-se no CORPO de `_youtube` (codigo, nao comentario): `_yt_rows(painted)`
+    tem de estar la' e `window_by_paint(` nao -- o `cap` por relogio de palavra e' o
+    que fazia a linha construir-se ao longo do cue (imagem 1 e 2 do dono, 2026-11-02).
+    """
+    shell_src = src or ""
+    start = shell_src.find("    def _youtube(self, hwnd, uia, UIA):")
+    if start < 0:
+        return False
+    end = shell_src.find("\n    def ", start + 10)
+    body = shell_src[start:end if end > 0 else len(shell_src)]
+    return body.count("_yt_rows(painted)") >= 2 and "window_by_paint(" not in body
+
+
 def old_clock_in_code(path):
     """O relogio ANTIGO (`cue.start + 0.001`) ainda esta no CODIGO?
 
@@ -345,8 +361,14 @@ def main(argv=None):
     # nao tem comentarios -- e o que separa "a regra esta escrita" de "a regra
     # esta no codigo".
     tem_velho = bool(old_clock_in_code(SHELL))
-    add("caminho vivo    : a janela pelas palavras pintadas esta ligada: %s"
-        % ("SIM" if "youtube_reveal.window_by_paint(" in (src or "") else "NAO"))
+    # A LEI MUDOU A 2026-11-02 (ordem do dono: *"copiando 1:1 sem truncar
+    # palavras"*). A janela por relogio de palavra era o DEFEITO -- a linha
+    # construia-se ao longo do cue --, por isso o caminho vivo deixou de a
+    # chamar e passou a devolver as LINHAS que o player desenha. O que se
+    # verifica agora e essa chamada; a janela continua provada como ENGINE na
+    # arma `reveal-matches-the-player`, que a chama directamente.
+    add("caminho vivo    : as linhas pintadas do player sao a legenda: %s"
+        % ("SIM" if verbatim_live(src) else "NAO"))
     add("                  o relogio do inicio do cue ainda esta no ramo painted: %s"
         % ("SIM (DEFEITO)" if tem_velho else "NAO"))
     add("")
@@ -363,8 +385,9 @@ def main(argv=None):
     add("the-old-clock-was-broken       %-10s a janela antiga tambem batia: %d/%d"
         % ("GREEN" if m["old_same"] < m["total"] else "RED",
            m["old_same"], m["total"]))
-    add("wiring-is-live                 %-10s a janela pelas palavras pintadas esta ligada"
-        % ("GREEN" if "youtube_reveal.window_by_paint(" in (src or "") else "RED"))
+    add("wiring-is-live                 %-10s as linhas pintadas sao a legenda, "
+        "sem janela por relogio"
+        % ("GREEN" if verbatim_live(src) else "RED"))
     add("")
 
     if m["diffs"]:
@@ -381,7 +404,7 @@ def main(argv=None):
         # O defeito antigo tem de ser visivel: se a janela antiga tambem batesse,
         # este ficheiro nao mediria nada.
         bad = 1
-    if "youtube_reveal.window_by_paint(" not in (src or ""):
+    if not verbatim_live(src):
         bad = 1
     if tem_velho:
         # O relogio antigo no ramo `painted` e o DEFECTO que este ficheiro

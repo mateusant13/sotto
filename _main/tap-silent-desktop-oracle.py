@@ -66,9 +66,18 @@ def arms(mod):
     out.append(('6 medidor ilegivel {} -> rotaciona (None)',
                 hold(0.0, FLOOR, {}, WINDOW, 0, CAP), None))
 
-    # 7: esta tap CARREGA sinal -- a janela plana nao e' silencio da maquina.
-    out.append(('7 esta tap acima do piso -> rotaciona (None)',
-                hold(0.050, FLOOR, silent, WINDOW, 0, CAP), None))
+    # 7: A LEI MUDOU A 2026-11-02, e o numero esta' no log do dono. O `device_peak`
+    # e' o MAXIMO da janela, nao o agora: um som no inicio dela (o clique que abre o
+    # video, um bipe) revogava a espera de todas as janelas seguintes e a escada
+    # abriu dez clientes WASAPI em dois minutos (`BRIDGE_METER peak=0.1677` as
+    # 22:24:32, `device-rotated (flat)` as :41, :50, 22:25:00, :07, :14, :30, :46,
+    # 22:26:02, :17, :34). Ele ouviu isso como o audio a sumir. Com o medidor VIVO
+    # calado, a janela espera -- e a tap acima do piso ja' nao decide nada.
+    out.append(('7 tap acima do piso mas maquina calada AGORA -> espera 12 s',
+                hold(0.050, FLOOR, silent, WINDOW, 0, CAP), 12.0))
+    # 7-bis: o numero que ele viu. Pico de janela 0.1677, medidor vivo a zero.
+    out.append(('7b pico de janela 0.1677 com a maquina calada -> espera 12 s',
+                hold(0.1677, FLOOR, silent, WINDOW, 0, CAP), 12.0))
 
     # 8: lixo no payload do medidor nao pode explodir nem inventar espera.
     out.append(('8 valores nao numericos -> rotaciona (None)',

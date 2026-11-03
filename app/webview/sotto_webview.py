@@ -1556,6 +1556,16 @@ SWP_NOACTIVATE = 0x0010
 #: watching captions the microphone comes back while he is still waiting for it.
 EXTERNAL_RESUME_MIN_S = 45.0
 
+#: QUANTO TEMPO UM CAPTION DO PLAYER TEM DE DURAR ANTES DE O TRABALHADOR SER
+#: ESTACIONADO (2026-11-02). O estacionamento existe para libertar a VRAM enquanto
+#: o YouTube serve a linha, mas ele MATA o worker -- e matar/reabrir um cliente
+#: WASAPI e' um hitch no motor de audio que o dono partilha com o video. MEDIDO na
+#: sessao dele: 10 `EXTERNAL_CAPTIONS_WORKER_PARKED` e 10 `_RESUMED` desde as
+#: 20:00, e ele ouviu isso como o audio a sumir (*"ja nao mandei tu parar de mutar
+#: do nada meu audio?"*). O piso e' o mesmo raciocinio do `RELEASE_S`: a cadencia
+#: e' do player, nao nossa -- uma janela curta de legenda nao pode custar um load.
+EXTERNAL_PARK_DELAY_S = 20.0
+
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
 #: the CSS, never hard-coded); STRIP_HEIGHT_FALLBACK exists only so a missing
@@ -2259,6 +2269,35 @@ class ExternalCaptionWatcher(threading.Thread):
         self.target_hwnd = 0
         return 0
 
+    def _yt_rows(self, painted):
+        """As linhas a desenhar: o que o player pintou, NAS LINHAS dele."""
+        try:
+            import youtube_window as _ytw
+            return _ytw.painted_rows(painted, getattr(self, 'yt_paint_items', None))
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+            return []
+
+    def _yt_words_pool(self, track, t=None):
+        """As palavras da faixa servida, uma vez por faixa (nao por tick).
+
+        O laco de pintura corre a cada ~60 ms: varrer 1436 cues por tick seria
+        trabalho a mais no fio da shell. A faixa e' um objecto novo quando muda
+        (`youtube_track_thread` reconstroi), por isso a identidade basta como
+        chave -- nunca um `id` reciclado nem uma data de cache.
+        """
+        cached = getattr(self, '_yt_pool', None)
+        if cached and cached[0] is track:
+            return cached[1]
+        try:
+            import youtube_window as _ytw
+            pool = _ytw.track_words(track.get('cues') or ())
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_WORDS_POOL_FAILED error={exc!r}')
+            pool = set()
+        self._yt_pool = (track, pool)
+        return pool
+
     def _youtube_painted(self, hwnd, uia, UIA):
         """The words the player is painting RIGHT NOW -> [] when there are none.
 
@@ -2274,6 +2313,9 @@ class ExternalCaptionWatcher(threading.Thread):
             log(f'YOUTUBE_PAINT_READ_FAILED error={exc!r}')
             return []
         words = got.get('words') or []
+        # OS RECTS SÃO A QUEBRA DE LINHA DO PLAYER (2026-11-02): guardam-se aqui
+        # para `_yt_rows` compor as MESMAS linhas que ele desenhou, sem re-quebrar.
+        self.yt_paint_items = got.get('items') or []
         why = str(got.get('why') or '')
         if why != self.yt_paint_why:
             self.yt_paint_why = why
@@ -2440,6 +2482,18 @@ class ExternalCaptionWatcher(threading.Thread):
             except Exception as exc:  # noqa: BLE001
                 log(f"YOUTUBE_PAINT_LINE_FAILED error={exc!r}")
                 paint_text = ""
+            # AS LINHAS, NAO A LINHA COLADA (2026-11-02). `paint_line` junta
+            # `['>> Nossa.', '>> ta segurando essa wave,']` num texto so', e o
+            # overlay re-quebra onde quer -- o dono viu exactamente isso. O que o
+            # player desenha sao DUAS linhas, e sao essas que saem.
+            try:
+                lines_now = self._yt_rows(painted)
+            except Exception:  # noqa: BLE001
+                lines_now = []
+            if lines_now:
+                self.yt_reason = "painted-untracked"
+                self.yt_cue = " ".join(lines_now)
+                return [("external:youtube:track", lines_now)], False
             if paint_text:
                 self.yt_reason = "painted-untracked"
                 self.yt_cue = paint_text
@@ -2449,6 +2503,50 @@ class ExternalCaptionWatcher(threading.Thread):
             reason = track.get('reason') or track.get('state') or 'unknown'
             return [], self._yt_forget('no-track:%s' % reason, urgent=True)
         if painted:
+            # A FAIXA MANUAL DESENHA LINHAS INTEIRAS, E `align_painted` PROCURA
+            # PALAVRAS (2026-11-02). MEDIDO nesta box no arranque de 22:16:47, com
+            # o player a pintar `>> Nossa.` num video `lang=pt-orig`:
+            #   `YOUTUBE_TRACK_PAINT source=painted-no-match cue=- match=0
+            #    painted_words=5`
+            # Os filhos da janela de legenda sao LINHAS, nao palavras, portanto o
+            # alinhamento nunca casa -- e o ecra passava a ser servido pelo RELOGIO.
+            # E' dai' que vinham as tres imagens do dono: a linha a construir-se,
+            # meia palavra cortada e o cue anterior empilhado. Quando o player
+            # desenha linhas inteiras E elas pertencem a faixa servida, a copia
+            # directa (mesmo texto, mesmo instante) substitui a janela.
+            lines_now = []
+            try:
+                import youtube_window as _ytw
+                lines_now = self._yt_rows(painted)
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+            if lines_now and any(len(line.split()) >= 2 for line in lines_now):
+                t_probe = None
+                try:
+                    t_probe = self._youtube_time(hwnd, uia, UIA,
+                                                 track.get('duration'))
+                except Exception as exc:  # noqa: BLE001
+                    log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
+                pool = self._yt_words_pool(track, t_probe)
+                try:
+                    same = _ytw.match_ratio(lines_now, pool)
+                except Exception as exc:  # noqa: BLE001
+                    log(f'YOUTUBE_PAINT_MATCH_FAILED error={exc!r}')
+                    same = {'ok': False, 'ratio': 0.0}
+                if same.get('ok'):
+                    self.yt_foreign_t = None
+                    self.yt_cue = ' '.join(lines_now)
+                    self.yt_reason = 'painted-lines'
+                    if t_probe is not None:
+                        self._yt_anchor = (float(t_probe), time.monotonic())
+                        self._yt_track = track
+                    if self.yt_cue != self.yt_caption_logged:
+                        self.yt_caption_logged = self.yt_cue
+                        log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s '
+                            'ratio=%.2f text=%r why=painted-lines'
+                            % (vid, track.get('lang') or '-', len(lines_now),
+                               float(same.get('ratio') or 0.0), self.yt_cue[:90]))
+                    return [('external:youtube:track', lines_now)], False
             hit = None
             try:
                 import youtube_captions
@@ -2456,6 +2554,19 @@ class ExternalCaptionWatcher(threading.Thread):
                                                       painted)
             except Exception as exc:  # noqa: BLE001
                 log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
+            if not hit and painted:
+                # A MEDICAO QUE FALTAVA (2026-11-02). `match=0` com a faixa certa
+                # foi medido tres vezes nesta box e nao dizia PORQUE: agora o log
+                # traz as palavras pintadas e as primeiras palavras das cues, uma
+                # vez por texto, para a divergencia ser lida e nao adivinhada.
+                key = ' '.join(str(w) for w in painted)[:120]
+                if key != getattr(self, 'yt_miss_logged', ''):
+                    self.yt_miss_logged = key
+                    first = []
+                    for cue in (track.get('cues') or ())[:3]:
+                        first.extend(str(cue.get('text') or '').split()[:8])
+                    log('YOUTUBE_ALIGN_MISS video_id=%s painted=%r cue0=%r'
+                        % (vid, list(painted)[:6], first[:8]))
             if hit:
                 text = str(hit.get('text') or '').strip()
                 if text:
@@ -2504,13 +2615,20 @@ class ExternalCaptionWatcher(threading.Thread):
                         self._yt_track = track
                     else:
                         self._yt_anchor = None
-                    lines = []
+                    # O TEXTO QUE O PLAYER DESENHA E' A LEGENDA (2026-11-02, ordem
+                    # do dono: *"sotto devia ta copiando 1:1 sem truncar palavras"*).
+                    # Aqui estava `window_by_paint`, que re-quebra a partir do track e
+                    # corta em `cap = min(pintado, relogio_de_palavra)`: dai' vem a linha
+                    # que se CONSTR OI ao longo do cue, a meia palavra (`Yamato ja' d`) e
+                    # a janela que empilha o cue anterior por baixo do actual -- as tres
+                    # coisas que ele fotografou. As linhas pintadas JA' SAO o texto do
+                    # YouTube, uma por linha: saem inteiras, no instante em que mudam.
                     try:
-                        import youtube_reveal
-                        lines = youtube_reveal.window_by_paint(
-                            track.get('cues') or (), hit, played_t=played_t)
+                        import youtube_window
+                        lines = self._yt_rows(painted)
                     except Exception as exc:  # noqa: BLE001
-                        log(f'YOUTUBE_PAINT_WINDOW_FAILED error={exc!r}')
+                        log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+                        lines = []
                     return [('external:youtube:track', lines or [text])], False
             # THE PLAYER IS PAINTING ANOTHER TRACK -- AND THE OWNER WAS LEFT WITH NOTHING.
             #
@@ -2566,6 +2684,27 @@ class ExternalCaptionWatcher(threading.Thread):
                                track.get('lang') or '-', text[:90]))
                     return [('external:youtube:track',
                              self._yt_lines(track, now_t) or [text])], False
+            # O RAMO QUE DEIXAVA O ECRA VAZIO COM O PLAYER A DESENHAR (2026-11-02,
+            # terceira imagem do dono: duas linhas no YouTube, nada no Sotto). Cai
+            # aqui quando o track servido nao alinha E o relogio do player nao deu
+            # um instante -- ai' o unico texto verdadeiro que existe e' o que o
+            # player esta' a desenhar. Nao se inventa, nao se atrasa: pinta-se.
+            try:
+                import youtube_window as _ytw
+                lines_now = self._yt_rows(painted)
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+                lines_now = []
+            if lines_now:
+                self.yt_reason = 'painted-no-clock'
+                self.yt_cue = ' '.join(lines_now)
+                if self.yt_cue != self.yt_caption_logged:
+                    self.yt_caption_logged = self.yt_cue
+                    log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s text=%r '
+                        'why=painted-no-clock'
+                        % (vid, track.get('lang') or '-', len(lines_now),
+                           self.yt_cue[:90]))
+                return [('external:youtube:track', lines_now)], False
             return [], self._yt_forget('painted-other-track', urgent=False)
         # NO PAINTED LINE: the captions are off, or the player is between
         # cues. Then the clock is the only clock there is -- but it is only
@@ -2796,6 +2935,11 @@ class ExternalCaptionWatcher(threading.Thread):
             self.finalized = False
         self.shell.external_captions_active = False
         self.shell.external_captions_available = False
+        # O PISO DO ESTACIONAMENTO COMECA DE NOVO a cada janela (2026-11-02): um
+        # video que volta a servir linhas abre uma janela nova, e o worker so' e'
+        # estacionado depois do mesmo rato -- nunca "herdado" da janela anterior.
+        self.shell._external_since = None
+        self.shell._external_park_deferred_logged = False
         try:
             self.shell.on_external_captions_released()
         except Exception as exc:  # noqa: BLE001
@@ -10097,7 +10241,10 @@ class SottoShell:
                 f'text={json.dumps(text[:60])}')
         if not self.external_captions_active:
             self.external_captions_active = True
-            self._park_worker_for_external(source)
+            self._external_since = time.monotonic()
+        # O ESTACIONAMENTO ESPERA (2026-11-02): a primeira linha do player NAO mata
+        # o worker. Ver `EXTERNAL_PARK_DELAY_S`.
+        self._park_worker_when_settled(source)
         now = time.monotonic()
         meta = {
             'start': round(now, 2),
@@ -10115,10 +10262,41 @@ class SottoShell:
         # history, because the engine appends a new partial before its hold
         # timer commits the previous one.
         self.emit('external-caption', {'text': text, 'meta': meta})
+        # O QUE CHEGOU AO ECRA, e nao so' o que se decidiu (2026-11-02). As tres
+        # imagens do dono nao distinguiam "decidimos mal" de "pintamos mal": este
+        # registo fecha essa separacao -- `rows` e' o numero de LINHAS enviadas ao
+        # overlay e `lines` o texto de cada uma. Loga na mudanca, nunca por tick.
+        _rows_for_log = list(rows or [text])
+        _key = '\u2028'.join(_rows_for_log)
+        if _key != getattr(self, '_external_rows_logged', ''):
+            self._external_rows_logged = _key
+            log('EXTERNAL_CAPTION_DRAWN rows=%d lines=%r'
+                % (len(_rows_for_log), [r[:70] for r in _rows_for_log]))
         self.push_caption_to_window(text, instant=instant, rows=rows)
         if final:
             self._reload_policy.boundary(closed=True, why='external-line')
         return True
+
+    def _park_worker_when_settled(self, source):
+        """Estaciona o worker so' quando o player ja' serve linhas ha' um rato.
+
+        MEDIDO 2026-11-02 na sessao do dono: 10 paragens e 10 recargas desde as
+        20:00 -- cada uma mata e reabre um cliente WASAPI, e o audio dele pisca.
+        Uma janela curta de legenda nao pode custar isso; so' um video a servir
+        captions de forma continuada justifica libertar a VRAM.
+        """
+        since = getattr(self, '_external_since', None)
+        if not since:
+            self._external_since = time.monotonic()
+            since = self._external_since
+        age = time.monotonic() - float(since)
+        if age < EXTERNAL_PARK_DELAY_S:
+            if not getattr(self, '_external_park_deferred_logged', False):
+                self._external_park_deferred_logged = True
+                log('EXTERNAL_CAPTIONS_PARK_DEFERRED age_s=%.1f min_s=%.0f'
+                    % (age, EXTERNAL_PARK_DELAY_S))
+            return False
+        return self._park_worker_for_external(source)
 
     def _park_worker_for_external(self, source):
         """Free the worker (and its VRAM) while the player supplies captions."""
