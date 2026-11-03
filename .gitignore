@@ -249,3 +249,10 @@ _main/shots/
 .codeintel/
 .agent-work/
 .pi/
+
+# -- Machine state (2026-11-02): written every 3 s / per relaunch / per gate run ----
+# Versioning these means every run leaves the tree dirty and a commit carries a
+# state file that describes a machine moment, not the source.
+_main/panel-visibility.json
+_main/shell-relaunch.json
+app/shadowplay/state/gate/gate-log.txt
